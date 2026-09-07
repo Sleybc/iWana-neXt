@@ -1619,10 +1619,26 @@ export function PortalSidePeek({
       return;
     }
 
-    previousActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    previousActiveElementRef.current = opener;
 
     const focusFrame = window.requestAnimationFrame(() => {
+      // Misma carrera que `OperationalSidePeek`, `usePortalSideDrawerA11y` y
+      // `Dialog`: el frame diferido puede caer DESPUÉS de la primera
+      // interacción del operador y arrastrar el foco fuera del control en uso
+      // —cerrando el desplegable recién abierto o descartando lo tecleado—.
+      // Solo se reubica el foco si nadie lo reclamó entretanto.
+      const active = document.activeElement;
+      const untouched =
+        active == null ||
+        active === document.body ||
+        active === document.documentElement ||
+        active === opener;
+
+      if (!untouched) {
+        return;
+      }
+
       const focusTarget = getFocusableElements()[0] ?? panelRef.current;
       focusTarget?.focus();
     });

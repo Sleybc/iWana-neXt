@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   Button,
   CheckboxCard,
@@ -332,6 +332,118 @@ describe('shared ui primitives', () => {
 
     requestAnimationFrameSpy.mockRestore();
     cancelAnimationFrameSpy.mockRestore();
+  });
+
+  // El foco de apertura de `DialogContent` se difiere un `requestAnimationFrame`
+  // y ese frame puede caer DESPUÉS de la primera interacción del operador. Estos
+  // tres casos fijan el contrato: enfocar siempre que nadie haya reclamado el
+  // foco, y nunca pisar una interacción ya iniciada. El rAF se intercepta para
+  // controlar el instante exacto en que corre el frame — es lo que hace la
+  // carrera determinista en vez de intermitente.
+  //
+  // Viven en el portal, no en `packages/ui`, porque ese paquete tiene
+  // `jest.config.js` pero ningún script `test` en su `package.json`: sus specs no
+  // se ejecutan en CI. Aquí sí corren (`@iwana/ui` está mapeado a su fuente).
+  function captureFrames() {
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    return {
+      frames,
+      run: () =>
+        act(() => {
+          frames.forEach((frame) => frame(0));
+        }),
+    };
+  }
+
+  function DialogWithSelectHarness() {
+    return (
+      <Dialog>
+        <DialogTrigger>Abrir ajuste</DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ajuste de existencias</DialogTitle>
+          </DialogHeader>
+          {/* La acción de cierre precede al cuerpo, así que el primer focusable
+              del panel queda FUERA del Select: enfocarlo saca el foco del
+              wrapper y su `onBlurCapture` desmonta el menú portalado. */}
+          <button type="button">Cancelar</button>
+          <Select
+            label="Condición"
+            options={[
+              { value: 'ok', label: 'Buena' },
+              { value: 'nok', label: 'Averiada' },
+            ]}
+          />
+          <input aria-label="Cantidad" />
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  it('should focus the dialog on open when nobody claimed focus meanwhile', () => {
+    const { run } = captureFrames();
+
+    render(<DialogWithSelectHarness />);
+    const trigger = screen.getByRole('button', { name: 'Abrir ajuste' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    run();
+
+    // El foco de apertura es lo que hace el diálogo usable con teclado y lector
+    // de pantalla: la guarda no puede eliminarlo.
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
+    jest.restoreAllMocks();
+  });
+
+  it('should not close a dropdown opened before the deferred focus frame runs', () => {
+    const { run } = captureFrames();
+
+    render(<DialogWithSelectHarness />);
+    const trigger = screen.getByRole('button', { name: 'Abrir ajuste' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    // El operador abre el desplegable antes de que corra el frame diferido.
+    const combobox = screen.getByRole('combobox');
+    act(() => {
+      combobox.focus();
+      fireEvent.click(combobox);
+    });
+    expect(document.querySelectorAll('[role="listbox"] [role="option"]')).toHaveLength(2);
+
+    run();
+
+    // Sin la guarda: el foco saltaba al botón «Cancelar» y las opciones
+    // portaladas caían de 2 a 0 — el menú se cerraba solo.
+    expect(combobox).toHaveFocus();
+    expect(document.querySelectorAll('[role="listbox"] [role="option"]')).toHaveLength(2);
+    jest.restoreAllMocks();
+  });
+
+  it('should not steal focus from a field already being typed into', () => {
+    const { run } = captureFrames();
+
+    render(<DialogWithSelectHarness />);
+    const trigger = screen.getByRole('button', { name: 'Abrir ajuste' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const field = screen.getByLabelText('Cantidad');
+    act(() => {
+      field.focus();
+      fireEvent.change(field, { target: { value: '12' } });
+    });
+
+    run();
+
+    expect(field).toHaveFocus();
+    jest.restoreAllMocks();
   });
 
   it('should expose dialog title and description through aria metadata', async () => {

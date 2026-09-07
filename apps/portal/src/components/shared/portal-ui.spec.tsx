@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import {
@@ -241,6 +241,64 @@ describe('PortalSidePeek a11y', () => {
 
     // El botón de guardar sigue siendo alcanzable dentro del trap (no regresionamos el footer).
     expect(saveButton).toBeInTheDocument();
+  });
+
+  // Misma carrera que `Dialog`, `OperationalSidePeek` y `usePortalSideDrawerA11y`:
+  // el foco de apertura se difiere un `requestAnimationFrame` y ese frame puede
+  // caer DESPUÉS de la primera interacción. Se intercepta el rAF para fijar el
+  // instante en que corre y hacer la carrera determinista.
+  it('enfoca al abrir cuando nadie ha reclamado el foco', () => {
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    // Documento en reposo: el foco no puede venir prestado del caso anterior.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    render(
+      <PortalSidePeek open onClose={jest.fn()} title="Crear ítem">
+        <input aria-label="Cantidad" />
+      </PortalSidePeek>,
+    );
+
+    act(() => {
+      frames.forEach((frame) => frame(0));
+    });
+
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus();
+    jest.restoreAllMocks();
+  });
+
+  it('no roba el foco a una interacción ya en curso', () => {
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+    render(
+      <PortalSidePeek open onClose={jest.fn()} title="Crear ítem">
+        <input aria-label="Cantidad" />
+      </PortalSidePeek>,
+    );
+
+    // El operador toca un control del panel antes de que corra el frame diferido.
+    const field = screen.getByLabelText('Cantidad');
+    act(() => {
+      field.focus();
+    });
+
+    act(() => {
+      frames.forEach((frame) => frame(0));
+    });
+
+    // Reubicar el foco aquí cierra un desplegable recién abierto o descarta lo
+    // que se está tecleando.
+    expect(field).toHaveFocus();
+    jest.restoreAllMocks();
   });
 
   it('se apila en --z-drawer por encima de barras sticky (ADR-075)', () => {

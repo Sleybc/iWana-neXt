@@ -178,8 +178,8 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
         return;
       }
 
-      previousActiveElementRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      previousActiveElementRef.current = opener;
 
       const focusTarget =
         initialFocusRef?.current ?? getFocusableElements()[0] ?? contentRef.current;
@@ -189,6 +189,36 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
       }
 
       const focusFrame = window.requestAnimationFrame(() => {
+        // El foco de apertura se difiere un frame para que el diálogo ya esté
+        // pintado, pero ese frame puede caer DESPUÉS de la primera interacción
+        // del operador. Si para entonces alguien más reclamó el foco —un
+        // desplegable recién abierto (el menú del `Select` vive en un portal
+        // fuera del panel y su `onBlurCapture` lo cierra al perder el foco), un
+        // campo que se está tecleando— reubicarlo aquí cierra el desplegable o
+        // le arranca el foco a la captura en curso. Medido sobre este mismo
+        // componente: `activeElement` pasaba del `combobox` al primer botón del
+        // diálogo y las opciones portaladas caían de 2 a 0.
+        //
+        // Solo se enfoca cuando el foco sigue donde estaba al abrir: el
+        // documento en reposo o el propio disparador. El foco de apertura
+        // (accesibilidad) se conserva íntegro en el camino normal; en el camino
+        // suprimido la trampa de Tab devuelve el foco al diálogo en la primera
+        // pulsación, porque `handleKeyDown` reenfoca cuando el activo no está
+        // contenido en el panel.
+        //
+        // Misma guarda que `OperationalSidePeek` y `usePortalSideDrawerA11y`
+        // (commit 8fe22a87). Los tres sitios deben moverse juntos.
+        const active = document.activeElement;
+        const untouched =
+          active == null ||
+          active === document.body ||
+          active === document.documentElement ||
+          active === opener;
+
+        if (!untouched) {
+          return;
+        }
+
         focusTarget.focus();
       });
 
