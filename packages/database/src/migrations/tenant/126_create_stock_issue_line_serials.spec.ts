@@ -16,8 +16,13 @@ function mockRunner(
   routes: Array<{ match: string | RegExp; rows: unknown }> = [],
   defaultRows: unknown = undefined,
 ): MockRunner {
+  // La existencia de la hija se sondea con `to_regclass` (no con `hasTable`,
+  // que resuelve contra `options.schema` en vez de la ruta de la sesión). La
+  // ruta va al final: un test que necesite «la hija no existe» la sobrescribe
+  // declarándola antes.
+  const withProbe = [...routes, { match: 'to_regclass', rows: count(1) }];
   const query = jest.fn().mockImplementation(async (sql: string) => {
-    for (const route of routes) {
+    for (const route of withProbe) {
       const hits =
         typeof route.match === 'string' ? sql.includes(route.match) : route.match.test(sql);
       if (hits) {
@@ -42,9 +47,9 @@ async function upSql(runner?: MockRunner): Promise<string> {
   return mock.query.mock.calls.map((call: unknown[]) => String(call[0])).join('\n');
 }
 
-async function downSql(hasTable: boolean): Promise<{ sql: string; runner: MockRunner }> {
-  const runner = mockRunner();
-  runner.hasTable.mockResolvedValue(hasTable);
+async function downSql(exists: boolean): Promise<{ sql: string; runner: MockRunner }> {
+  const runner = mockRunner([{ match: 'to_regclass', rows: count(exists ? 1 : 0) }]);
+  runner.hasTable.mockResolvedValue(exists);
   await new CreateStockIssueLineSerials1260000000000().down({
     query: runner.query,
     hasTable: runner.hasTable,
@@ -110,9 +115,18 @@ describe('CreateStockIssueLineSerials126 (S2.1 · B1)', () => {
     expect(sql).toContain('i.status');
     // La hija hereda las marcas de la línea, no NOW().
     expect(sql).toContain('l.created_at, l.updated_at');
-    // Idempotencia: NOT EXISTS por (línea, serial) + ON CONFLICT DO NOTHING.
+    // Idempotencia: NOT EXISTS por (línea, serial) + ON CONFLICT acotado.
     expect(sql).toContain('NOT EXISTS');
-    expect(sql).toContain('ON CONFLICT DO NOTHING');
+  });
+
+  it('acota el ON CONFLICT al índice único parcial, no a cualquier conflicto', async () => {
+    const sql = await upSql();
+
+    // Un `ON CONFLICT DO NOTHING` desnudo tragaría también choques de PK.
+    expect(sql).not.toMatch(/ON CONFLICT\s+DO NOTHING/);
+    expect(sql).toMatch(
+      /ON CONFLICT \(tenant_id, serialized_asset_id\)[\s\S]*?WHERE issue_status NOT IN \('DISPATCHED', 'RECEIVED', 'CANCELLED'\)[\s\S]*?DO NOTHING/,
+    );
   });
 
   it('la vía simple del backfill no pagina (un solo INSERT sin LIMIT)', async () => {
@@ -159,6 +173,41 @@ describe('CreateStockIssueLineSerials126 (S2.1 · B1)', () => {
         hasTable: runner.hasTable,
       } as never),
     ).rejects.toThrow(/\[126 pre-vuelo 0c\].*3/);
+  });
+
+  it('pre-vuelo 0c proyecta también los compromisos ya vivos en la hija (S2.1 · B1)', async () => {
+    const runner = mockRunner();
+    await upSql(runner);
+
+    const preflight0c = runner.query.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .find((sql) => sql.includes('AS colisiones'));
+
+    expect(preflight0c).toBeDefined();
+    // Rama 1: compromisos activos ya materializados en la hija.
+    expect(preflight0c).toContain('FROM stock_issue_line_serials hija');
+    expect(preflight0c).toContain(
+      "hija.issue_status NOT IN ('DISPATCHED', 'RECEIVED', 'CANCELLED')",
+    );
+    // Rama 2: candidatos del backfill, sin contar dos veces lo ya replicado.
+    expect(preflight0c).toContain('FROM stock_issue_lines l');
+    expect(preflight0c).toContain('FROM stock_issue_line_serials replica');
+    expect(preflight0c).toContain('UNION ALL');
+  });
+
+  it('pre-vuelo 0c se reduce a los singulares cuando la hija aún no existe', async () => {
+    const runner = mockRunner([{ match: 'to_regclass', rows: count(0) }]);
+    await upSql(runner);
+
+    const preflight0c = runner.query.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .find((sql) => sql.includes('AS colisiones'));
+
+    expect(preflight0c).toBeDefined();
+    // Primera ejecución: la hija no existe, referenciarla reventaría en parse.
+    expect(preflight0c).not.toContain('stock_issue_line_serials');
+    expect(preflight0c).not.toContain('UNION ALL');
+    expect(preflight0c).toContain('FROM stock_issue_lines l');
   });
 
   it('post-vuelo cobertura aborta con conteo si falta réplica en la hija', async () => {
@@ -226,10 +275,12 @@ describe('CreateStockIssueLineSerials126 (S2.1 · B1)', () => {
   });
 
   it('down no toca nada si la tabla no existe', async () => {
-    const { sql, runner } = await downSql(false);
+    const { sql } = await downSql(false);
 
-    expect(runner.hasTable).toHaveBeenCalledWith('stock_issue_line_serials');
-    expect(sql).toBe('');
+    // La sonda de existencia sí se emite (es SQL, no `hasTable`), pero nada más:
+    // sin respaldo, sin DROP y sin tocar la tabla que no está.
+    expect(sql).toContain('to_regclass');
+    expect(sql).not.toMatch(/\b(DROP|ALTER|CREATE|INSERT)\b/i);
   });
 
   it('declara H8 en el header: sin FK hacia serialized_assets', async () => {

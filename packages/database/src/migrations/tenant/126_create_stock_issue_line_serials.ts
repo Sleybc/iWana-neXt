@@ -20,8 +20,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * en la hija, heredando `created_at`/`updated_at` de la línea (no `NOW()`:
  * la hija no debe parecer más nueva que su origen); a partir de aquí el grupo
  * es la fuente de compromiso de seriales y el singular queda como campo de
- * transición. El backfill es idempotente (`NOT EXISTS` + `ON CONFLICT DO
- * NOTHING`): re-correr `up` no duplica filas.
+ * transición. El backfill es idempotente (`NOT EXISTS` por (línea, serial)):
+ * re-correr `up` no duplica filas. El `ON CONFLICT` apunta explícitamente al
+ * índice único parcial y no a «cualquier conflicto»: solo la carrera contra
+ * ese índice se descarta en silencio; un choque de PK sigue reventando.
  *
  * Volumen: si algún tenant supera 5.000 singulares, el backfill corre por
  * rangos de `l.id` en lotes de 1.000 (keyset, sin OFFSET) para no retener
@@ -29,7 +31,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * Pre-vuelo (abortan con conteo, sin PII): 0a líneas con serial huérfanas
  * (sin cabecera), 0b `tenant_id` de la línea distinto del de su cabecera, 0c
- * colisiones activas (mismo serial en más de una salida no terminal).
+ * colisiones activas (mismo serial comprometido por más de una salida no
+ * terminal) sobre el universo completo de compromisos: los ya materializados
+ * en la hija más los candidatos del backfill.
  * Post-vuelo (abortan con conteo): cobertura (todo singular con réplica en
  * la hija) y espejo (toda fila hija con `issue_status` igual al de su cabecera).
  *
@@ -101,7 +105,7 @@ export class CreateStockIssueLineSerials1260000000000 implements MigrationInterf
    * únicamente en la tabla de respaldo.
    */
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const exists = await queryRunner.hasTable('stock_issue_line_serials');
+    const exists = await this.childTableExists(queryRunner);
 
     if (!exists) {
       return;
@@ -112,6 +116,25 @@ export class CreateStockIssueLineSerials1260000000000 implements MigrationInterf
       SELECT * FROM stock_issue_line_serials
     `);
     await queryRunner.query(`DROP TABLE IF EXISTS stock_issue_line_serials`);
+  }
+
+  /**
+   * ¿Existe ya la tabla hija? Se resuelve con `to_regclass`, que sigue la ruta
+   * de búsqueda de la sesión igual que el DDL sin calificar de esta migración.
+   *
+   * `QueryRunner.hasTable()` NO sirve aquí: resuelve el schema contra
+   * `options.schema` del DataSource, no contra la sesión. Un runner que fije la
+   * ruta por conexión y deje `options.schema` en su valor por defecto obtiene
+   * `false` para una tabla que sí existe — y entonces `down` se convierte en un
+   * no-op silencioso y el pre-vuelo 0c en una sonda ciega.
+   */
+  private async childTableExists(queryRunner: QueryRunner): Promise<boolean> {
+    const present = await this.countRows(
+      queryRunner,
+      `SELECT CASE WHEN to_regclass('stock_issue_line_serials') IS NULL THEN 0 ELSE 1 END AS total`,
+    );
+
+    return present > 0;
   }
 
   private async countRows(
@@ -169,24 +192,75 @@ export class CreateStockIssueLineSerials1260000000000 implements MigrationInterf
     }
   }
 
-  /**
-   * Pre-vuelo 0c: el mismo serial en más de una salida no terminal. El índice
-   * único parcial rechazaría el backfill a mitad de camino sin este freno.
-   */
-  private async assertNoActiveCollisions(queryRunner: QueryRunner): Promise<void> {
-    const terminal = CreateStockIssueLineSerials1260000000000.TERMINAL_STATUSES.map(
+  /** Lista de estados terminales lista para interpolar en SQL. */
+  private static terminalStatusList(): string {
+    return CreateStockIssueLineSerials1260000000000.TERMINAL_STATUSES.map(
       (status) => `'${status}'`,
     ).join(', ');
-    const collisions = await this.countRows(
-      queryRunner,
-      `
-        SELECT COUNT(*) AS total FROM (
+  }
+
+  /**
+   * Proyección del universo de compromisos activos de serial *tras* el backfill:
+   * filas activas ya materializadas en la hija ∪ singulares que el backfill
+   * aún debe copiar. Sobre la primera ejecución la hija no existe y la
+   * proyección se reduce a los singulares.
+   */
+  private activeCommitmentsSql(childTableExists: boolean): string {
+    const terminal = CreateStockIssueLineSerials1260000000000.terminalStatusList();
+    const materialized = childTableExists
+      ? `
+          SELECT hija.tenant_id, hija.serialized_asset_id
+          FROM stock_issue_line_serials hija
+          WHERE hija.issue_status NOT IN (${terminal})
+          UNION ALL`
+      : '';
+    // Un singular ya replicado se cuenta por su fila hija, no dos veces.
+    const pendingReplicaOnly = childTableExists
+      ? `
+            AND NOT EXISTS (
+              SELECT 1 FROM stock_issue_line_serials replica
+              WHERE replica.line_id = l.id
+                AND replica.serialized_asset_id = l.serialized_asset_id
+            )`
+      : '';
+
+    return `${materialized}
           SELECT l.tenant_id, l.serialized_asset_id
           FROM stock_issue_lines l
           JOIN stock_issues i ON i.id = l.issue_id
           WHERE l.serialized_asset_id IS NOT NULL
-            AND i.status NOT IN (${terminal})
-          GROUP BY l.tenant_id, l.serialized_asset_id
+            AND i.status NOT IN (${terminal})${pendingReplicaOnly}`;
+  }
+
+  /**
+   * Pre-vuelo 0c: el mismo serial comprometido por más de una salida no
+   * terminal. El índice único parcial rechazaría el backfill sin este freno.
+   *
+   * El universo de compromisos no es solo el singular de la línea: tras el
+   * primer `up` la fuente autoritativa es la hija, y un grupo puede comprometer
+   * seriales que no viven en el singular de transición (ese es justamente el
+   * objetivo de S2). Una sonda que solo mirara `stock_issue_lines` es ciega a
+   * esos compromisos, deja pasar el pre-vuelo y el `INSERT` del backfill choca
+   * contra `uq_stock_issue_line_serials_active_asset`: el `ON CONFLICT` lo
+   * descarta y el hueco solo aparece aguas abajo, en el post-vuelo de
+   * cobertura, sin nombrar la causa (defecto S2.1 · B1). La sonda cuenta las
+   * tuplas (tenant, serial) con más de un compromiso activo proyectado, que es
+   * exactamente lo que el índice único parcial rechazaría.
+   */
+  private async assertNoActiveCollisions(queryRunner: QueryRunner): Promise<void> {
+    // Misma resolución de nombre que el DDL (ver `childTableExists`): con
+    // `hasTable()` esta sonda quedaba ciega a la hija ya existente, la
+    // proyección omitía los compromisos materializados y el pre-vuelo dejaba
+    // pasar la colisión hasta el post-vuelo de cobertura.
+    const childTableExists = await this.childTableExists(queryRunner);
+    const collisions = await this.countRows(
+      queryRunner,
+      `
+        SELECT COUNT(*) AS total FROM (
+          SELECT compromisos.tenant_id, compromisos.serialized_asset_id
+          FROM (${this.activeCommitmentsSql(childTableExists)}
+          ) AS compromisos
+          GROUP BY compromisos.tenant_id, compromisos.serialized_asset_id
           HAVING COUNT(*) > 1
         ) AS colisiones
       `,
@@ -206,6 +280,18 @@ export class CreateStockIssueLineSerials1260000000000 implements MigrationInterf
     await this.assertNoActiveCollisions(queryRunner);
   }
 
+  /**
+   * Conflicto acotado al índice único parcial: solo la carrera contra
+   * `uq_stock_issue_line_serials_active_asset` se descarta en silencio (el
+   * pre-vuelo 0c ya la descartó en frío). Un `ON CONFLICT DO NOTHING` desnudo
+   * tragaría también choques de PK, que deben reventar.
+   */
+  private static conflictTargetSql(): string {
+    return `ON CONFLICT (tenant_id, serialized_asset_id)
+        WHERE issue_status NOT IN (${CreateStockIssueLineSerials1260000000000.terminalStatusList()})
+        DO NOTHING`;
+  }
+
   private backfillInsertSql(rangeFilter: string, paged: boolean): string {
     const paging = paged
       ? `ORDER BY l.id LIMIT ${CreateStockIssueLineSerials1260000000000.BACKFILL_BATCH_SIZE}`
@@ -223,7 +309,7 @@ export class CreateStockIssueLineSerials1260000000000 implements MigrationInterf
           WHERE s.line_id = l.id AND s.serialized_asset_id = l.serialized_asset_id
         )
       ${paging}
-      ON CONFLICT DO NOTHING
+      ${CreateStockIssueLineSerials1260000000000.conflictTargetSql()}
     `;
   }
 
@@ -289,7 +375,7 @@ export class CreateStockIssueLineSerials1260000000000 implements MigrationInterf
               SELECT 1 FROM stock_issue_line_serials s
               WHERE s.line_id = l.id AND s.serialized_asset_id = l.serialized_asset_id
             )
-          ON CONFLICT DO NOTHING
+          ${CreateStockIssueLineSerials1260000000000.conflictTargetSql()}
         `,
         [firstId, batchLastId],
       );

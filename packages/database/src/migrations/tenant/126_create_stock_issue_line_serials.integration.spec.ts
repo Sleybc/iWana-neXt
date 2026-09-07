@@ -25,6 +25,15 @@ const ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const LINE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const ASSET_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
+/** Salida REQUESTED con un serial propio: backfill legítimo del re-run. */
+const SECOND_ISSUE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const SECOND_LINE_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+const SECOND_ASSET_ID = '11111111-1111-4111-8111-111111111111';
+
+/** Salida REQUESTED que reclama un serial ya comprometido: debe ser rechazada. */
+const THIRD_ISSUE_ID = '22222222-2222-4222-8222-222222222222';
+const THIRD_LINE_ID = '33333333-3333-4333-8333-333333333333';
+
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 
 if (!dbAvailable) {
@@ -153,13 +162,11 @@ describeWithDb(
 
     it('el re-run de up hace backfill del singular nuevo sin duplicar (S2.1 · B1)', async () => {
       const lineCreatedAt = new Date('2026-01-02T03:04:05.000Z');
-      const secondIssueId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
-      const secondLineId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
       await runner.query(
-        `INSERT INTO stock_issues (id, tenant_id, status) VALUES ('${secondIssueId}', '${TENANT_ID}', 'REQUESTED')`,
+        `INSERT INTO stock_issues (id, tenant_id, status) VALUES ('${SECOND_ISSUE_ID}', '${TENANT_ID}', 'REQUESTED')`,
       );
       await runner.query(
-        `INSERT INTO stock_issue_lines (id, tenant_id, issue_id, serialized_asset_id, created_at, updated_at) VALUES ('${secondLineId}', '${TENANT_ID}', '${secondIssueId}', '${ASSET_ID}', '${lineCreatedAt.toISOString()}', '${lineCreatedAt.toISOString()}')`,
+        `INSERT INTO stock_issue_lines (id, tenant_id, issue_id, serialized_asset_id, created_at, updated_at) VALUES ('${SECOND_LINE_ID}', '${TENANT_ID}', '${SECOND_ISSUE_ID}', '${SECOND_ASSET_ID}', '${lineCreatedAt.toISOString()}', '${lineCreatedAt.toISOString()}')`,
       );
 
       // Pre-vuelo en verde (padre existe, mismo tenant, sin colisiones) y el
@@ -169,7 +176,7 @@ describeWithDb(
       const repository = runner.manager.getRepository(StockIssueLineSerial);
       const rows = await repository.find({ where: { tenantId: TENANT_ID } });
       expect(rows).toHaveLength(2);
-      const backfilled = rows.find((row) => row.lineId === secondLineId);
+      const backfilled = rows.find((row) => row.lineId === SECOND_LINE_ID);
       expect(backfilled?.issueStatus).toBe(StockIssueStatus.REQUESTED);
       // La hija hereda las marcas de la línea, no NOW().
       expect(backfilled?.createdAt?.getTime()).toBe(lineCreatedAt.getTime());
@@ -178,6 +185,58 @@ describeWithDb(
       await new CreateStockIssueLineSerials1260000000000().up(runner);
       const rerun = await repository.find({ where: { tenantId: TENANT_ID } });
       expect(rerun).toHaveLength(2);
+    });
+
+    /**
+     * Regresión S2.1 · B1 — el pre-vuelo 0c es ciego a la hija.
+     *
+     * `ASSET_ID` ya está comprometido por una fila hija activa (salida DRAFT).
+     * Una segunda salida no terminal que lo reclame en su singular es el estado
+     * que la spec §5.3 prohíbe ("sin repetir entre líneas ni entre salidas
+     * activas") y que `uq_stock_issue_line_serials_active_asset` rechaza. El
+     * freno correcto es el pre-vuelo 0c, en frío y sin haber escrito nada; antes
+     * de este fix el `ON CONFLICT` se tragaba la fila y el hueco solo aparecía
+     * aguas abajo, en el post-vuelo de cobertura.
+     */
+    it('el pre-vuelo 0c aborta si el serial ya está comprometido en la hija (S2.1 · B1)', async () => {
+      await runner.query(
+        `INSERT INTO stock_issues (id, tenant_id, status) VALUES ('${THIRD_ISSUE_ID}', '${TENANT_ID}', 'REQUESTED')`,
+      );
+      await runner.query(
+        `INSERT INTO stock_issue_lines (id, tenant_id, issue_id, serialized_asset_id) VALUES ('${THIRD_LINE_ID}', '${TENANT_ID}', '${THIRD_ISSUE_ID}', '${ASSET_ID}')`,
+      );
+
+      await expect(new CreateStockIssueLineSerials1260000000000().up(runner)).rejects.toThrow(
+        /\[126 pre-vuelo 0c\] 1 serial\(es\) comprometido\(s\) en más de una salida activa/,
+      );
+
+      // Aborta en frío: ni una fila escrita, y el hueco NO llega al post-vuelo.
+      const repository = runner.manager.getRepository(StockIssueLineSerial);
+      expect(await repository.find({ where: { tenantId: TENANT_ID } })).toHaveLength(2);
+
+      // Resuelto el compromiso duplicado, la migración vuelve a correr limpia.
+      await runner.query(`DELETE FROM stock_issue_lines WHERE id = '${THIRD_LINE_ID}'`);
+      await new CreateStockIssueLineSerials1260000000000().up(runner);
+      expect(await repository.find({ where: { tenantId: TENANT_ID } })).toHaveLength(2);
+    });
+
+    it('down respalda en _backup_126 y up vuelve a levantar la tabla limpia', async () => {
+      await new CreateStockIssueLineSerials1260000000000().down(runner);
+
+      const backup = (await runner.query(
+        `SELECT COUNT(*)::int AS total FROM stock_issue_line_serials_backup_126`,
+      )) as Array<{ total: number }>;
+      expect(backup[0]?.total).toBe(2);
+      expect(await runner.hasTable('stock_issue_line_serials')).toBe(false);
+
+      // up tras down: pre-vuelo y post-vuelo en verde; renace solo el singular
+      // (la pérdida LOSSY documentada: la línea sin singular no vuelve).
+      await new CreateStockIssueLineSerials1260000000000().up(runner);
+      const repository = runner.manager.getRepository(StockIssueLineSerial);
+      const rows = await repository.find({ where: { tenantId: TENANT_ID } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.lineId).toBe(SECOND_LINE_ID);
+      expect(rows[0]?.serializedAssetId).toBe(SECOND_ASSET_ID);
     });
   },
 );
