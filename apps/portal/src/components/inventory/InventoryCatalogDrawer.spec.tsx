@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps } from 'react';
 import {
@@ -29,6 +29,18 @@ import {
   INVENTORY_NO_COST_LABEL,
   INVENTORY_STANDARD_COST_LABEL,
 } from './inventory-labels';
+
+/**
+ * Este drawer valida en `blur` y pinta el error en un re-render posterior al
+ * evento. El default de 1000 ms de las utilidades async basta en local pero no
+ * bajo la saturación del runner Linux, donde cayeron primero el caso A3
+ * (`0ef8b88d`) y después su vecino de costo negativo. Se sube el presupuesto de
+ * espera **solo para este archivo** en vez de parchear cada aserción: la causa
+ * es una y es del componente, no de un caso concreto. No se toca el default
+ * global del portal — subirlo en las 233 suites haría que un fallo real tarde
+ * 5 s en reportarse.
+ */
+configure({ asyncUtilTimeout: 5000 });
 
 const item: InventoryItemRecord = {
   id: 'item-1',

@@ -1,8 +1,20 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { configure, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InventoryTrackingMode, SerializedAssetStatus, StockBalanceCondition } from '@iwana/shared';
 import { SERIAL_QTY_HELP_TEXT, StockIssueLineSidePeek } from './StockIssueLineSidePeek';
 import type { StockIssueDraftLine } from './stock-issue-draft';
+
+/**
+ * `requestClose` de OperationalSidePeek es async y hace `await` sobre la
+ * guardia: aunque el callback es síncrono, el `await` empuja el `setCloseNotice`
+ * a una microtarea posterior al `keydown`, así que el aviso se pinta fuera del
+ * flujo del evento. Igual pasa con las opciones del Select, que montan en un
+ * tick posterior al click. El default de 1000 ms no alcanza bajo la saturación
+ * del runner Linux. Se sube el presupuesto solo para este archivo; el
+ * componente del design system no se toca (tiene otros consumidores y su
+ * cambio es de AI-DS-OWNER).
+ */
+configure({ asyncUtilTimeout: 5000 });
 
 jest.mock('@/lib/api-client', () => {
   const actual = jest.requireActual('@/lib/api-client');
@@ -368,12 +380,7 @@ describe('StockIssueLineSidePeek', () => {
     await user.clear(quantityInput);
     await user.type(quantityInput, '4');
     await user.keyboard('{Escape}');
-    // `requestClose` de OperationalSidePeek es async y hace `await` sobre la
-    // guardia, así que el aviso se pinta en una microtarea posterior al evento.
-    // Bajo la saturación del runner Linux el default de 1000 ms no alcanza.
-    expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toHaveTextContent(
-      /cambios sin guardar/i,
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cambios sin guardar/i);
 
     await user.clear(quantityInput);
     await user.type(quantityInput, '1');
@@ -396,9 +403,7 @@ describe('StockIssueLineSidePeek', () => {
     await user.type(screen.getByLabelText('Cantidad'), '4');
     await user.keyboard('{Escape}');
 
-    // Misma cadena async que el caso anterior: espera explícita en vez del
-    // timeout implícito de 1000 ms.
-    const alert = await screen.findByRole('alert', {}, { timeout: 5000 });
+    const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Agregar al borrador');
     expect(alert).toHaveTextContent('Guardar cambios');
     expect(alert).toHaveTextContent('Cancelar');
@@ -425,9 +430,7 @@ describe('StockIssueLineSidePeek', () => {
 
     // El operador cambia la condición mientras llega la etiqueta real.
     await user.click(await screen.findByRole('combobox', { name: 'Condición' }));
-    // El desplegable del Select monta sus opciones en un tick posterior al
-    // click; con el archivo completo en marcha el default de 1000 ms no basta.
-    await user.click(await screen.findByRole('option', { name: /Nuevo/ }, { timeout: 5000 }));
+    await user.click(await screen.findByRole('option', { name: /Nuevo/ }));
 
     rerender(
       <StockIssueLineSidePeek

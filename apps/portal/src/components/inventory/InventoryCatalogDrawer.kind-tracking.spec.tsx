@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { configure, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps } from 'react';
 import {
@@ -26,6 +26,11 @@ import {
  * completo y pasa aislado. Subir su timeout ya se intentó (`0ef8b88d`) sin
  * resolverlo: la causa es la carga acumulada del archivo, no la espera.
  */
+
+// Mismo presupuesto de espera que el spec hermano: el drawer valida en `blur` y
+// pinta en un re-render posterior (ver la nota extensa en
+// `InventoryCatalogDrawer.spec.tsx`).
+configure({ asyncUtilTimeout: 5000 });
 
 const item: InventoryItemRecord = {
   id: 'item-1',
