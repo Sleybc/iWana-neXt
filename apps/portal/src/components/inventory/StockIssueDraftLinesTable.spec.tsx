@@ -275,4 +275,88 @@ describe('StockIssueDraftLinesTable', () => {
     });
     expect(onQuantityChange).toHaveBeenCalledWith('line-1', '5');
   });
+
+  it('el stepper suma una unidad desde la fila y notifica el valor nuevo', async () => {
+    const user = userEvent.setup();
+    const onQuantityChange = jest.fn();
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        onQuantityChange={onQuantityChange}
+        lines={[buildLine({ requestedQty: '2' })]}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Más unidades de Cable drop'));
+
+    expect(onQuantityChange).toHaveBeenCalledWith('line-1', '3');
+  });
+
+  it('el stepper resta una unidad desde la fila', async () => {
+    const user = userEvent.setup();
+    const onQuantityChange = jest.fn();
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        onQuantityChange={onQuantityChange}
+        lines={[buildLine({ requestedQty: '5' })]}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Menos unidades de Cable drop'));
+
+    expect(onQuantityChange).toHaveBeenCalledWith('line-1', '4');
+  });
+
+  it('el stepper conserva los decimales de la cantidad', async () => {
+    const user = userEvent.setup();
+    const onQuantityChange = jest.fn();
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        onQuantityChange={onQuantityChange}
+        lines={[buildLine({ requestedQty: '2.5' })]}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Menos unidades de Cable drop'));
+
+    expect(onQuantityChange).toHaveBeenCalledWith('line-1', '1.5');
+  });
+
+  it('el paso negativo se deshabilita en 1 y el positivo permanece activo', () => {
+    render(<StockIssueDraftLinesTable {...baseProps} lines={[buildLine({ requestedQty: '1' })]} />);
+
+    expect(screen.getByLabelText('Menos unidades de Cable drop')).toBeDisabled();
+    expect(screen.getByLabelText('Más unidades de Cable drop')).toBeEnabled();
+  });
+
+  it('el stepper respeta el estado busy', () => {
+    render(<StockIssueDraftLinesTable {...baseProps} busy lines={[buildLine()]} />);
+
+    expect(screen.getByLabelText('Más unidades de Cable drop')).toBeDisabled();
+    expect(screen.getByLabelText('Menos unidades de Cable drop')).toBeDisabled();
+  });
+
+  it('la línea serializada no tiene stepper: la cantidad la fija el grupo de seriales', () => {
+    render(
+      <StockIssueDraftLinesTable
+        {...baseProps}
+        lines={[
+          buildLine({
+            productLabel: 'Router Onu Gpon',
+            unitOfMeasure: 'UNIT',
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+            serializedAssetId: 'asset-1',
+            serializedAssetIds: ['asset-1'],
+            requestedQty: '1',
+            availableSerialCount: 3,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByLabelText('Más unidades de Router Onu Gpon')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Menos unidades de Router Onu Gpon')).not.toBeInTheDocument();
+  });
 });

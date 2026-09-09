@@ -97,9 +97,44 @@ export function resolveBindHost(env = process.env, root = repoRoot) {
   return DEFAULT_BIND_HOST;
 }
 
+/**
+ * Extrae el puerto de los args de `next dev` (`--port 3001`, `--port=3001`
+ * o `-p 3001`). Solo dev: es para el log inicial de la convencion de
+ * aislamiento de cookies por host.
+ */
+export function resolveDevPort(args = process.argv.slice(2)) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === '--port' || arg === '-p') {
+      return args[i + 1] ?? '';
+    }
+
+    if (arg.startsWith('--port=')) {
+      return arg.slice('--port='.length);
+    }
+  }
+
+  return '';
+}
+
 function main() {
   const forwardedArgs = process.argv.slice(2);
   const bindHost = resolveBindHost();
+  const devPort = resolveDevPort(forwardedArgs);
+
+  // Convencion de aislamiento de cookies por host en dev: el portal sirve en
+  // `http://localhost:3002` y la consola de plataforma en
+  // `http://127.0.0.1:3001`. Hosts distintos → jars de cookies distintos → la
+  // cookie de una consola nunca viaja a la otra. Quien navegue ambas consolas
+  // en `localhost` queda cubierto por el fail-fast del refresh, no por el jar.
+  const devUrl = devPort ? `http://${bindHost}:${devPort}` : `http://${bindHost}`;
+  console.info(`[next-dev] dev en ${devUrl} (bind ${bindHost}).`);
+  if (devPort === '3001' || devPort === '3002') {
+    console.info(
+      '[next-dev] convencion dev: portal en http://localhost:3002, plataforma en http://127.0.0.1:3001 — hosts distintos, jars de cookies distintos.',
+    );
+  }
 
   // `next` es dependencia de cada app, no del root: se resuelve desde el cwd de
   // la app y se invoca con el ejecutable de Node para no depender de un shell.

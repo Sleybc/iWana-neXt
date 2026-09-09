@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -43,6 +44,7 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { JWT_CLAIMS_BY_TOKEN_TYPE } from './auth.constants';
+import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
 import { AuthResponse, MfaSetupResponse } from './interfaces/auth-response.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import {
@@ -56,12 +58,6 @@ const LOCKOUT_DURATION_SECONDS = 15 * 60;
 
 /** Intentos fallidos maximos antes de lockout */
 const MAX_FAILED_ATTEMPTS = 5;
-
-/** TTL del access token en segundos (15 minutos) */
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-
-/** TTL del refresh token en segundos (7 dias) */
-const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /** Duracion del token de reset de contrasena (1 hora en ms) */
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -115,6 +111,22 @@ export class AuthService {
   private readonly mfaEncryptionKey: Buffer;
   private readonly mfaEncryptionKeyPrevious: Buffer | null;
 
+  /**
+   * TTL efectivo del access token en segundos (JWT_ACCESS_EXPIRATION, default 15 min).
+   * Resuelto en el constructor: la configuracion validada no cambia en caliente.
+   */
+  private readonly accessTokenTtlSeconds: number;
+
+  /** TTL efectivo del refresh token en segundos (JWT_REFRESH_EXPIRATION, default 7 dias). */
+  private readonly refreshTokenTtlSeconds: number;
+
+  /**
+   * Reason codes de sesion para diagnostico post-mortem. Nunca incluyen tokens,
+   * hashes completos, correos ni IPs — solo codigos estables y, cuando aplica,
+   * el prefijo de 8 caracteres del familyId de la sesion.
+   */
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -139,6 +151,8 @@ export class AuthService {
     const keys = loadAesGcmKeyPair(this.configService);
     this.mfaEncryptionKey = keys.activeKey;
     this.mfaEncryptionKeyPrevious = keys.previousKey;
+    this.accessTokenTtlSeconds = resolveAccessTokenTtlSeconds(this.configService);
+    this.refreshTokenTtlSeconds = resolveRefreshTokenTtlSeconds(this.configService);
   }
 
   // ---------------------------------------------------------------------------
@@ -479,6 +493,7 @@ export class AuthService {
       });
 
       if (!existing) {
+        this.logger.warn('REFRESH_INVALID — refresh de tenant no encontrado.');
         throw new UnauthorizedException('Refresh token invalido.');
       }
 
@@ -490,6 +505,10 @@ export class AuthService {
           { familyId: existing.familyId, revokedAt: undefined },
           { revokedAt: new Date(), revokeReason: 'REUSE_ATTACK' },
         );
+        // Solo el prefijo del familyId: diagnosticable sin exponer el identificador completo.
+        this.logger.warn(
+          `REFRESH_REUSE_DETECTED — familia ${existing.familyId.slice(0, 8)} revocada (tenant).`,
+        );
         throw new UnauthorizedException(
           'Sesion invalida detectada. Se cerraron todas las sesiones activas.',
         );
@@ -497,12 +516,14 @@ export class AuthService {
 
       // Verificar expiracion
       if (existing.expiresAt < new Date()) {
+        this.logger.warn('REFRESH_EXPIRED — refresh de tenant vencido.');
         throw new UnauthorizedException('Refresh token expirado.');
       }
 
       // Buscar el usuario para emitir nuevo access token
       const user = await qr.manager.findOne(User, { where: { id: existing.userId } });
       if (!user || user.status !== UserStatus.ACTIVE) {
+        this.logger.warn('REFRESH_USER_UNAVAILABLE — usuario de tenant ausente o inactivo.');
         throw new UnauthorizedException('Usuario no disponible.');
       }
 
@@ -570,19 +591,19 @@ export class AuthService {
     const rawToken = crypto.randomBytes(48).toString('hex');
     const tokenHash = this.hashToken(rawToken);
     const sessionFamilyId = familyId ?? crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + this.refreshTokenTtlSeconds * 1000).toISOString();
 
     await this.redis.set(
       this.platformRefreshKey(tokenHash),
       JSON.stringify({ userId, familyId: sessionFamilyId, expiresAt, revokedAt: null }),
       'EX',
-      REFRESH_TOKEN_TTL_SECONDS,
+      this.refreshTokenTtlSeconds,
     );
 
     await this.redis.sadd(this.platformRefreshFamilyKey(sessionFamilyId), tokenHash);
     await this.redis.expire(
       this.platformRefreshFamilyKey(sessionFamilyId),
-      REFRESH_TOKEN_TTL_SECONDS,
+      this.refreshTokenTtlSeconds,
     );
 
     return rawToken;
@@ -601,6 +622,7 @@ export class AuthService {
     const recordRaw = await this.redis.get(this.platformRefreshKey(tokenHash));
 
     if (!recordRaw) {
+      this.logger.warn('PLATFORM_REFRESH_INVALID — refresh de plataforma no encontrado.');
       throw new UnauthorizedException('Refresh token invalido.');
     }
 
@@ -613,12 +635,17 @@ export class AuthService {
 
     if (record.revokedAt) {
       await this.revokePlatformRefreshFamily(record.familyId);
+      // Solo el prefijo del familyId: diagnosticable sin exponer el identificador completo.
+      this.logger.warn(
+        `PLATFORM_REFRESH_REUSE_DETECTED — familia ${record.familyId.slice(0, 8)} revocada.`,
+      );
       throw new UnauthorizedException(
         'Sesion invalida detectada. Se cerraron todas las sesiones activas.',
       );
     }
 
     if (new Date(record.expiresAt) < new Date()) {
+      this.logger.warn('PLATFORM_REFRESH_EXPIRED — refresh de plataforma vencido.');
       throw new UnauthorizedException('Refresh token expirado.');
     }
 
@@ -627,6 +654,9 @@ export class AuthService {
       withDeleted: false,
     });
     if (!user || user.status !== UserStatus.ACTIVE) {
+      this.logger.warn(
+        'PLATFORM_REFRESH_USER_UNAVAILABLE — usuario de plataforma ausente o inactivo.',
+      );
       throw new UnauthorizedException('Usuario no disponible.');
     }
 
@@ -635,7 +665,7 @@ export class AuthService {
       this.platformRefreshKey(tokenHash),
       JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
       'EX',
-      REFRESH_TOKEN_TTL_SECONDS,
+      this.refreshTokenTtlSeconds,
     );
 
     const { accessToken } = this.signPlatformAccessToken(user);
@@ -673,7 +703,7 @@ export class AuthService {
       key,
       JSON.stringify({ ...record, revokedAt: new Date().toISOString() }),
       'EX',
-      REFRESH_TOKEN_TTL_SECONDS,
+      this.refreshTokenTtlSeconds,
     );
   }
 
@@ -1348,7 +1378,7 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: `${ACCESS_TOKEN_TTL_SECONDS}s`,
+      expiresIn: `${this.accessTokenTtlSeconds}s`,
       algorithm: 'RS256',
       // Audiencia de tenant: un token emitido aqui no verifica como token de plataforma.
       issuer: JWT_CLAIMS_BY_TOKEN_TYPE.tenant.issuer,
@@ -1385,7 +1415,7 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: `${ACCESS_TOKEN_TTL_SECONDS}s`,
+      expiresIn: `${this.accessTokenTtlSeconds}s`,
       algorithm: 'RS256',
       // Audiencia de plataforma: solo estos tokens verifican en la consola de plataforma.
       issuer: JWT_CLAIMS_BY_TOKEN_TYPE.platform.issuer,
@@ -1422,7 +1452,7 @@ export class AuthService {
       userId,
       tokenHash,
       familyId: sessionFamilyId,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
+      expiresAt: new Date(Date.now() + this.refreshTokenTtlSeconds * 1000),
       revokedAt: null,
       ipAddress: ipAddress ?? null,
       userAgent: userAgent ?? null,

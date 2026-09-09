@@ -46,7 +46,7 @@ export function CounterPurchaseLinesTable({
             <tr>
               <th className={portalDataTableHeadClassName}>Producto</th>
               <th className={portalDataTableHeadClassName}>Cantidad</th>
-              <th className={portalDataTableHeadClassName}>Costo unitario</th>
+              <th className={portalDataTableHeadClassName}>Costo unitario (sin impuestos)</th>
               <th className={portalDataTableHeadClassName}>Lote</th>
               <th className={portalDataTableHeadClassName}>Seriales</th>
               <th className={`${portalDataTableHeadClassName} w-24`}>
@@ -76,7 +76,7 @@ export function CounterPurchaseLinesTable({
                 </td>
                 <td className={portalDataTableCellClassName}>
                   <Input
-                    aria-label={`Costo unitario de ${line.name}`}
+                    aria-label={`Costo unitario (sin impuestos) de ${line.name}`}
                     type="number"
                     min="0"
                     step="0.01"

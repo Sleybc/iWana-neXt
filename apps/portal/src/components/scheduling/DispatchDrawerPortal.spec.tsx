@@ -10,11 +10,16 @@ describe('DispatchDrawerPortal', () => {
       </DispatchDrawerPortal>,
     );
 
+    // La capa está portalada a `document.body`: se llega a ella por el panel,
+    // nunca por el contenedor de render, que queda vacío.
     const layer = screen.getByText('Contenido del despacho').parentElement;
-    const overlay = screen.getByRole('button', { name: 'Cerrar panel de despacho' });
+    const overlay = document.body.querySelector<HTMLElement>('[data-portal-veil]');
 
-    expect(layer).toHaveClass('z-(--z-drawer)');
+    expect(layer).toHaveClass('z-(--z-modal)');
+    expect(overlay).not.toBeNull();
+    expect(overlay).toHaveAttribute('aria-hidden', 'true');
     expect(overlay).toHaveClass('backdrop-blur-sm');
+    expect(overlay).toHaveClass('bg-(--color-veil)');
     expect(overlay).toHaveClass('absolute', 'inset-0');
   });
 
@@ -27,7 +32,10 @@ describe('DispatchDrawerPortal', () => {
       </DispatchDrawerPortal>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar panel de despacho' }));
+    // El velo cierra en `mousedown`, no en `click`.
+    const overlay = document.body.querySelector<HTMLElement>('[data-portal-veil]');
+    expect(overlay).not.toBeNull();
+    fireEvent.mouseDown(overlay as HTMLElement);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

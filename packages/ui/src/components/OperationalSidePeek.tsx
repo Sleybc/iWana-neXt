@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import { Button } from './Button';
+import { ModalLayer } from './ModalLayer';
+import { overlayEdgeClassName } from './ModalLayer';
 import { cn } from '../lib/utils';
 
 export interface OperationalSidePeekProps {
@@ -126,14 +128,13 @@ export function OperationalSidePeek({
 
   if (!open) return null;
 
+  // Portal, escalón, velo y alineación viven en `ModalLayer`: una sola capa en
+  // `--z-modal` con el velo `absolute` dentro de ella y el panel como hermano
+  // posterior. La guarda de `busy` no viaja a la capa —`requestClose` ya la
+  // aplica—, así que el velo conserva exactamente el comportamiento de cierre
+  // que tenía como botón.
   return (
-    <div className="fixed inset-0 z-(--z-modal) flex justify-end" role="presentation">
-      <button
-        type="button"
-        className="absolute inset-0 h-full w-full cursor-default border-0 bg-black/40 backdrop-blur-[2px] p-0 dark:bg-black/60"
-        aria-label="Cerrar detalle operativo"
-        onClick={() => void requestClose()}
-      />
+    <ModalLayer align="end" onVeilClick={() => void requestClose()}>
       <aside
         ref={panelRef}
         role="dialog"
@@ -142,8 +143,11 @@ export function OperationalSidePeek({
         aria-labelledby={titleId}
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
+        // Sin z literal (ADR-075 §2): el panel pinta sobre el velo por orden de
+        // documento — es hermano posterior y está posicionado.
         className={cn(
-          'relative z-10 flex h-full w-full flex-col border-l border-gray-200 bg-white shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2 md:max-w-[32rem]',
+          overlayEdgeClassName,
+          'relative flex h-full w-full flex-col border-l bg-white shadow-iwana-soft dark:bg-dark-surface-2 md:max-w-[32rem]',
           size === 'wide' && 'md:max-w-[48rem]',
           className,
         )}
@@ -195,6 +199,6 @@ export function OperationalSidePeek({
           </footer>
         ) : null}
       </aside>
-    </div>
+    </ModalLayer>
   );
 }

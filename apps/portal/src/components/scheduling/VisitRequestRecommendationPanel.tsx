@@ -572,6 +572,7 @@ export function VisitRequestRecommendationPanel({
     </>
   );
 
+  // Sin z (ADR-075 §2): en drawer el panel pinta sobre el velo de DispatchDrawerPortal por orden de documento — es hermano posterior y está posicionado.
   const panel = (
     <aside
       role={presentation === 'drawer' ? 'dialog' : undefined}
@@ -584,7 +585,7 @@ export function VisitRequestRecommendationPanel({
             ? compactRail
               ? 'flex h-full min-h-[520px] flex-1 flex-col overflow-hidden bg-white dark:bg-dark-surface-2'
               : 'flex h-full min-h-[720px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-border dark:bg-dark-surface-2'
-            : 'relative z-10 flex h-dvh w-full max-w-[560px] flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-1'
+            : 'relative flex h-dvh w-full max-w-[560px] flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-2'
       }
     >
       {!isPeek ? (
@@ -1189,7 +1190,7 @@ export function VisitRequestRecommendationPanel({
                           className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary ${
                             manualStartTime === option.value
                               ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-100'
-                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-1 dark:text-gray-200 dark:hover:bg-dark-surface-2'
+                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-2'
                           }`}
                           onClick={() => {
                             setManualStartTime(option.value);

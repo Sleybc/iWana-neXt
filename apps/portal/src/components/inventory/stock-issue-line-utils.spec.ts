@@ -21,6 +21,7 @@ import {
   listSerializedAssetsForItemAtLocation,
   resolveSingleLotIdFromLots,
   searchPickableSerializedAssets,
+  stepDraftQuantity,
 } from './stock-issue-line-utils';
 import type { StockIssueDraftLine } from './stock-issue-draft';
 
@@ -96,6 +97,27 @@ describe('stock-issue-line-utils', () => {
     expect(isSerializedTrackingMode(InventoryTrackingMode.FIXED_ASSET)).toBe(true);
     expect(isSerializedTrackingMode(InventoryTrackingMode.CONSUMABLE)).toBe(false);
     expect(isSerializedTrackingMode(undefined)).toBe(false);
+  });
+
+  describe('stepDraftQuantity', () => {
+    it('suma y resta un paso entero desde un valor entero', () => {
+      expect(stepDraftQuantity('2', 1)).toBe('3');
+      expect(stepDraftQuantity('2', -1)).toBe('1');
+    });
+
+    it('conserva los decimales al desplazar', () => {
+      expect(stepDraftQuantity('1.5', 1)).toBe('2.5');
+      expect(stepDraftQuantity('2.5', -1)).toBe('1.5');
+    });
+
+    it('trata vacío o no numérico como cero al sumar', () => {
+      expect(stepDraftQuantity('', 1)).toBe('1');
+      expect(stepDraftQuantity('abc', 1)).toBe('1');
+    });
+
+    it('evita el ruido de coma flotante con dos decimales', () => {
+      expect(stepDraftQuantity('0.7', 1)).toBe('1.7');
+    });
   });
 
   it('lista lotes con número real y solo con disponible en la condición', () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from 'react';
+import { Minus, Plus } from 'lucide-react';
 import { getInventoryUnitOfMeasureLabel } from '@iwana/shared';
 import type { StockIssuePickableItem } from '@iwana/shared';
 import { Badge, Button, Input } from '@iwana/ui';
@@ -23,6 +24,7 @@ import {
   formatLotOptionLabel,
   getAvailableQtyForDraftLine,
   isSerializedTrackingMode,
+  stepDraftQuantity,
   stockConditionBadgeVariant,
 } from './stock-issue-line-utils';
 import { StockIssueBulkEditBar } from './StockIssueBulkEditBar';
@@ -46,6 +48,8 @@ interface StockIssueDraftLinesTableProps {
   pickableById?: Map<string, StockIssuePickableItem>;
   /** Deshabilita los controles de la tabla mientras se envía la salida. */
   busy?: boolean;
+  /** Línea cuya celda de cantidad se resalta como acento de interacción (duplicado). */
+  highlightQuantityLineId?: string | null;
   onItemChange: (lineId: string, hydration: StockIssueDraftItemHydration | null) => void;
   onQuantityChange: (lineId: string, value: string) => void;
   /** Reabre el panel de línea con los valores actuales de la fila (CA-S2-08). */
@@ -85,6 +89,8 @@ function truncateSerialLabels(labels: string[], maxVisible = 2): string {
 interface StockIssueDraftLineRowProps {
   line: StockIssueDraftLine;
   selected: boolean;
+  /** Acento de interacción transitorio sobre la celda de cantidad. */
+  highlighted: boolean;
   serialLabelsById: Record<string, string>;
   lineError?: StockIssueDraftLineError | undefined;
   pickableById?: Map<string, StockIssuePickableItem> | undefined;
@@ -104,6 +110,7 @@ interface StockIssueDraftLineRowProps {
 const StockIssueDraftLineRow = memo(function StockIssueDraftLineRow({
   line,
   selected,
+  highlighted,
   serialLabelsById,
   lineError,
   pickableById,
@@ -136,6 +143,9 @@ const StockIssueDraftLineRow = memo(function StockIssueDraftLineRow({
       : null;
   const exceedsAvailable =
     availableQty != null && isRequestedQtyExceedingAvailable(line.requestedQty, availableQty);
+  // El envío exige cantidad > 0: el paso negativo se apaga en 1 (y en vacío);
+  // el tipeo libre sigue siendo la vía para decimales.
+  const canStepDown = (Number.parseFloat(line.requestedQty) || 0) > 1;
 
   return (
     <tr className={portalTableRowHoverClassName}>
@@ -257,18 +267,48 @@ const StockIssueDraftLineRow = memo(function StockIssueDraftLineRow({
           </p>
         ) : null}
       </td>
-      <td className={portalDataTableCellClassName}>
+      <td
+        className={`${portalDataTableCellClassName}${
+          highlighted ? ' bg-iwana-secondary-50 dark:bg-iwana-secondary-500/10' : ''
+        }`}
+      >
         {serialized ? (
           <span className="tabular-nums text-gray-900 dark:text-white">{line.requestedQty}</span>
         ) : (
-          <div className="max-w-24 space-y-1">
-            <Input
-              id={qtyControlId}
-              aria-label={`Cantidad ${line.productLabel || 'manual'}`}
-              value={line.requestedQty}
-              disabled={busy}
-              onChange={(event) => onQuantityChange(line.id, event.target.value)}
-            />
+          <div className="space-y-1">
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-11 w-11 shrink-0 p-0"
+                aria-label={`Menos unidades de ${line.productLabel || 'manual'}`}
+                disabled={busy || !canStepDown}
+                onClick={() => onQuantityChange(line.id, stepDraftQuantity(line.requestedQty, -1))}
+              >
+                <Minus className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <Input
+                id={qtyControlId}
+                aria-label={`Cantidad ${line.productLabel || 'manual'}`}
+                className="text-center tabular-nums"
+                inputMode="decimal"
+                value={line.requestedQty}
+                disabled={busy}
+                onChange={(event) => onQuantityChange(line.id, event.target.value)}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-11 w-11 shrink-0 p-0"
+                aria-label={`Más unidades de ${line.productLabel || 'manual'}`}
+                disabled={busy}
+                onClick={() => onQuantityChange(line.id, stepDraftQuantity(line.requestedQty, 1))}
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
             {exceedsAvailable ? (
               <p className="text-xs text-error-700 dark:text-error-400">
                 Supera el material disponible en origen. No podrás crear la salida hasta ajustar la
@@ -323,6 +363,7 @@ export function StockIssueDraftLinesTable({
   liveNotice = '',
   pickableById,
   busy = false,
+  highlightQuantityLineId,
   onItemChange,
   onQuantityChange,
   onModifyLine,
@@ -394,6 +435,7 @@ export function StockIssueDraftLinesTable({
                 key={line.id}
                 line={line}
                 selected={selectedLineIds.includes(line.id)}
+                highlighted={line.id === highlightQuantityLineId}
                 serialLabelsById={serialLabelsById}
                 lineError={lineErrors[line.id]}
                 pickableById={pickableById}

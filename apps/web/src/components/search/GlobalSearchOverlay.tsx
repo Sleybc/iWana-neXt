@@ -62,7 +62,7 @@ export function GlobalSearchOverlay({
   const trimmedQuery = query.trim();
 
   return (
-    <div className="absolute top-full left-0 right-0 z-50 mt-3">
+    <div className="absolute top-full left-0 right-0 z-(--z-popover) mt-3">
       <div className="overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.18)] dark:border-dark-border-2 dark:bg-dark-surface-2">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-border-2">
           <div>

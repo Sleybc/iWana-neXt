@@ -212,9 +212,25 @@ export function ContractCard({
 
           {menuOpen && (
             <>
-              {/* Overlay para cerrar */}
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden />
-              <div className="absolute right-0 top-9 z-20 min-w-[160px] rounded-xl border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-border dark:bg-dark-surface">
+              {/*
+                Cazador de clic exterior y menú comparten el escalón `--z-popover`
+                (ADR-075 §2). El cazador NO es una capa visible: es una superficie
+                transparente de captura, y por eso no reclama un escalón propio —
+                sube al mismo que el menú al que sirve, exactamente como el velo y
+                el panel comparten `--z-modal` en la gramática de capa única. Dentro
+                de ese escalón el orden de documento decide: el menú va después, así
+                que pinta encima.
+
+                Sin z el cazador quedaba por debajo de cualquier hermano posicionado
+                posterior con z > 0 y un clic sobre esa zona dejaba de cerrar el menú
+                (el contrato implícito de orden de documento que el ADR vino a matar).
+              */}
+              <div
+                className="fixed inset-0 z-(--z-popover)"
+                onClick={() => setMenuOpen(false)}
+                aria-hidden
+              />
+              <div className="absolute right-0 top-9 z-(--z-popover) min-w-[160px] rounded-xl border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-border dark:bg-dark-surface">
                 {/* Acciones de transición */}
                 {actions.map((a) => (
                   <button

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
@@ -8,6 +8,7 @@ import {
   StockLot,
   StockMovement,
   StockMovementLine,
+  StockMovementTax,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -17,7 +18,19 @@ import {
   InventoryTrackingMode,
   SerializedAssetStatus,
   StockMovementOrigin,
+  TaxContext,
+  TaxQuoteEffect,
 } from '@iwana/shared';
+import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
+import {
+  computeQuoteTaxes,
+  formatTaxRate,
+  QuoteTaxCalcError,
+  roundHalfUpToCents,
+  toSupplierQuoteTaxApiSnapshot,
+  type QuoteTaxCalcResult,
+  type SupplierQuoteTaxApiSnapshot,
+} from '../utils/quote-tax-calc';
 import { CreateCounterPurchaseInput, CreateCounterPurchaseSchema } from '../dto';
 import { resolveReceiptUomConversion } from '../utils/uom-conversion';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -65,9 +78,71 @@ function buildDerivedIdempotencyKey(
         .sort(),
       condition: line.condition,
     })),
+    taxes: [...(input.taxes ?? [])]
+      .map((tax) => ({ code: tax.code, applies: tax.applies, rate: tax.rate ?? null }))
+      .sort((a, b) => a.code.localeCompare(b.code)),
   };
   const digest = createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
   return `counter-purchase:${input.partyRefId}:${invoiceSegment}:${digest}`;
+}
+
+/**
+ * Base neta del movimiento: Σ (quantity × unitCost) en unidad base,
+ * cada producto redondeado a centavos HALF_UP y total redondeado.
+ * Los tributos nunca entran al costing (D2 del contrato Fase 26).
+ */
+function computeCounterPurchaseBase(
+  lines: ReadonlyArray<{ quantity: number | string; unitCost: number | string | null }>,
+): number {
+  let total = 0;
+  for (const line of lines) {
+    const quantity = typeof line.quantity === 'number' ? line.quantity : Number(line.quantity);
+    const unitCost =
+      line.unitCost == null || line.unitCost === ''
+        ? 0
+        : typeof line.unitCost === 'number'
+          ? line.unitCost
+          : Number(line.unitCost);
+    total += roundHalfUpToCents(quantity * unitCost);
+  }
+  return roundHalfUpToCents(total);
+}
+
+function mapPersistedCounterTax(
+  row: StockMovementTax,
+  catalogByCode: Map<string, { name: string }>,
+): SupplierQuoteTaxApiSnapshot {
+  const effect =
+    row.effect === TaxQuoteEffect.ADD || row.effect === TaxQuoteEffect.WITHHOLD
+      ? row.effect
+      : TaxQuoteEffect.WITHHOLD;
+  return {
+    code: row.taxCode,
+    name: catalogByCode.get(row.taxCode)?.name ?? row.taxCode,
+    category: row.taxCategory,
+    effect,
+    applies: true,
+    rate: row.rate,
+    baseAmount: row.baseAmount,
+    taxAmount: row.taxAmount,
+  };
+}
+
+/** Neto estimado a pagar desde filas persistidas (replay idempotente). */
+function deriveCounterPayableAmount(
+  base: number,
+  taxes: ReadonlyArray<SupplierQuoteTaxApiSnapshot>,
+): string {
+  let addTotal = 0;
+  let withholdTotal = 0;
+  for (const tax of taxes) {
+    if (tax.effect === TaxQuoteEffect.ADD) {
+      addTotal = roundHalfUpToCents(addTotal + Number(tax.taxAmount));
+    } else {
+      withholdTotal = roundHalfUpToCents(withholdTotal + Number(tax.taxAmount));
+    }
+  }
+  return roundHalfUpToCents(base + addTotal - withholdTotal).toFixed(2);
 }
 
 @Injectable()
@@ -78,11 +153,14 @@ export class CounterPurchaseService {
     private readonly serializedAssetService: SerializedAssetService,
     private readonly inventoryCostingService: InventoryCostingService,
     private readonly domainEventPublisher: InventoryDomainEventPublisher,
+    @Inject(TaxCatalogReadPort) private readonly taxCatalogPort: TaxCatalogReadPort,
   ) {}
 
   async record(input: CreateCounterPurchaseInput, actor: JwtPayload) {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = CreateCounterPurchaseSchema.parse(input);
+    const catalog = await this.taxCatalogPort.listByContext(TaxContext.PURCHASE);
+    const catalogByCode = new Map(catalog.map((entry) => [entry.code, entry]));
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       let itemIds: string[] = [];
@@ -92,6 +170,8 @@ export class CounterPurchaseService {
         movement: StockMovement;
         lines: StockMovementLine[];
         movementResult: Awaited<ReturnType<StockLedgerService['recordMovementWithManager']>> | null;
+        taxes: SupplierQuoteTaxApiSnapshot[];
+        payableAmount: string;
       };
 
       const result = await withTransaction(qr.manager, async (manager): Promise<RecordTxResult> => {
@@ -120,10 +200,18 @@ export class CounterPurchaseService {
             where: { tenantId, movementId: existingMovement.id },
             order: { createdAt: 'ASC' },
           });
+          const persistedTaxes = await manager.find(StockMovementTax, {
+            where: { tenantId, stockMovementId: existingMovement.id },
+            order: { taxCode: 'ASC' },
+          });
+          const taxes = persistedTaxes.map((row) => mapPersistedCounterTax(row, catalogByCode));
+          const base = computeCounterPurchaseBase(existingLines);
           return {
             movement: existingMovement,
             lines: existingLines,
             movementResult: null,
+            taxes,
+            payableAmount: deriveCounterPayableAmount(base, taxes),
           };
         }
 
@@ -264,6 +352,24 @@ export class CounterPurchaseService {
           }
         }
 
+        // Tributos informativos de cabecera (Fase 26 D3): el cliente solo
+        // declara code/applies/rate; base y montos los calcula el servidor.
+        const counterBase = computeCounterPurchaseBase(movementLines);
+        let taxComputation: QuoteTaxCalcResult;
+        try {
+          taxComputation = computeQuoteTaxes({
+            amount: counterBase,
+            shippingCost: 0,
+            taxes: validated.taxes ?? [],
+            catalog,
+          });
+        } catch (error) {
+          if (error instanceof QuoteTaxCalcError) {
+            throw new BadRequestException(error.message);
+          }
+          throw error;
+        }
+
         await this.inventoryCostingService.applyReceiptCostingWithManager(
           manager,
           tenantId,
@@ -299,10 +405,31 @@ export class CounterPurchaseService {
           actor,
         );
 
+        if (taxComputation.taxes.length > 0) {
+          await manager.save(
+            StockMovementTax,
+            taxComputation.taxes.map((taxLine) =>
+              manager.create(StockMovementTax, {
+                tenantId,
+                stockMovementId: movementResult.movement.id,
+                taxCode: taxLine.taxCode,
+                taxCategory: taxLine.taxCategory,
+                effect: taxLine.effect,
+                rate: formatTaxRate(taxLine.rate),
+                baseAmount: taxLine.baseAmount.toFixed(2),
+                taxAmount: taxLine.taxAmount.toFixed(2),
+                taxDefinitionId: taxLine.taxDefinitionId,
+              }),
+            ),
+          );
+        }
+
         return {
           movement: movementResult.movement,
           lines: movementResult.lines,
           movementResult,
+          taxes: taxComputation.taxes.map(toSupplierQuoteTaxApiSnapshot),
+          payableAmount: taxComputation.payableAmount.toFixed(2),
         };
       });
 
@@ -326,6 +453,8 @@ export class CounterPurchaseService {
       return {
         movement: result.movement,
         lines: result.lines,
+        taxes: result.taxes,
+        payableAmount: result.payableAmount,
       };
     });
   }

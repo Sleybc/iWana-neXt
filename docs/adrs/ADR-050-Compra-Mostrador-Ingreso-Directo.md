@@ -130,6 +130,19 @@ El RFQ NO se decide en este ADR; se enuncia para trazabilidad del roadmap.
 
 ---
 
+## Update 2026-09-09 — Extensión informativa de tributos a nivel cabecera (Fase 26, sin cambio de decisión)
+
+La compra de mostrador admite captura informativa de tributos (IVA, retenciones) a nivel cabecera del movimiento, replicando el patrón aprobado de Fase 25 de cotizaciones (spec `docs/specs/2026-09-09-mod12-compras-mostrador-impuestos-design.md`):
+
+- Snapshot fiscal en tabla nueva `stock_movement_taxes` (FK CASCADE a `stock_movements`); sin columnas nuevas en `stock_movements`.
+- `unitCost` sigue siendo base neta del costing: los tributos NO capitalizan en el costo promedio.
+- Boundary intacto: inventory consume taxation solo vía `TaxCatalogReadPort`; la UI de inventory jamás llama `/taxation/`.
+- Nuevo `GET /purchasing/tax-presets` (roles ADMIN|NOC|SUPPORT) para el panel; el servidor calcula (`computeQuoteTaxes` con `shippingCost: 0`) e ignora montos del cliente.
+
+Se reafirma que la valorización contable/DIAN sigue fuera de alcance y "requiere verificación con fuente oficial" antes de cualquier automatización tributaria sobre estos ingresos. Este update no cambia el estado Aprobado ni requiere re-aprobación del CTO; G7 de Fase 26 queda pendiente como en Fase 25.
+
+---
+
 ## Estado de aprobacion
 
 Este ADR fue **Aprobado por el CTO** (2026-07-11). Habilita la ejecucion de la Fase 03 conforme al plan y prompt asociados. La adicion del valor de enum y el endpoint de ingreso directo cuentan con el GO del CTO (cambio de schema -> revision reforzada aplicada).

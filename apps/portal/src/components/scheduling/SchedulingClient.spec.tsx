@@ -834,45 +834,57 @@ describe('SchedulingClient', () => {
   });
 
   it('mantiene el rail de pendientes al soltar una solicitud en la grilla diaria', async () => {
-    wfmApiMock.visitRequests.list.mockResolvedValue({
-      items: [buildPendingVisitRequest()],
-      meta: { total: 1, page: 1, limit: 8, totalPages: 1 },
-    });
+    // El slot objetivo son las 14:00 del día seleccionado (hoy). `ScheduleCalendar`
+    // descarta el drop sobre franjas pasadas (`isScheduleDaySlotInPast`, que compara
+    // contra `new Date()` real), así que sin reloj fijo este caso es verde hasta las
+    // 14:00 locales y rojo el resto de la jornada — y en CI, que corre en UTC, rojo
+    // cinco horas antes. Se fija el reloj con el patrón que ya usa este archivo.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-23T06:00:00'));
 
-    render(<SchedulingClient surface="agenda" />);
+    try {
+      wfmApiMock.visitRequests.list.mockResolvedValue({
+        items: [buildPendingVisitRequest()],
+        meta: { total: 1, page: 1, limit: 8, totalPages: 1 },
+      });
 
-    expect(
-      await screen.findByRole('heading', { name: 'Pendientes por programar' }),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(wfmApiMock.visitRequests.list).toHaveBeenCalledWith(
-        expect.objectContaining({ scope: 'actionable' }),
-      );
-    });
-    expect(screen.getByText('María Gómez')).toBeInTheDocument();
+      render(<SchedulingClient surface="agenda" />);
 
-    const dropTarget = await screen.findByRole('button', {
-      name: /Crear evento para Luisa Campos a las 14:00/i,
-    });
-    const dragPayload = serializePendingVisitDragPayload({
-      visitRequestId: 'vr-1',
-      organizationSiteId: '77777777-7777-4777-8777-777777777777',
-      workType: WfmWorkType.INSTALLATION,
-      durationMinutes: 120,
-      customerDisplayName: 'María Gómez',
-      title: 'Instalación GPON barrio norte',
-    });
-    const dataTransfer = {
-      getData: jest.fn((type: string) => (type === PENDING_VISIT_DRAG_MIME ? dragPayload : '')),
-      dropEffect: 'copy',
-    };
+      expect(
+        await screen.findByRole('heading', { name: 'Pendientes por programar' }),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(wfmApiMock.visitRequests.list).toHaveBeenCalledWith(
+          expect.objectContaining({ scope: 'actionable' }),
+        );
+      });
+      expect(screen.getByText('María Gómez')).toBeInTheDocument();
 
-    fireEvent.dragOver(dropTarget, { dataTransfer });
-    fireEvent.drop(dropTarget, { dataTransfer });
+      const dropTarget = await screen.findByRole('button', {
+        name: /Crear evento para Luisa Campos a las 14:00/i,
+      });
+      const dragPayload = serializePendingVisitDragPayload({
+        visitRequestId: 'vr-1',
+        organizationSiteId: '77777777-7777-4777-8777-777777777777',
+        workType: WfmWorkType.INSTALLATION,
+        durationMinutes: 120,
+        customerDisplayName: 'María Gómez',
+        title: 'Instalación GPON barrio norte',
+      });
+      const dataTransfer = {
+        getData: jest.fn((type: string) => (type === PENDING_VISIT_DRAG_MIME ? dragPayload : '')),
+        dropEffect: 'copy',
+      };
 
-    expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
-    expect(screen.queryByText('Despacho de la solicitud')).not.toBeInTheDocument();
-    expect(screen.getByText('Instalación GPON barrio norte')).toBeInTheDocument();
+      fireEvent.dragOver(dropTarget, { dataTransfer });
+      fireEvent.drop(dropTarget, { dataTransfer });
+
+      expect(screen.getByRole('heading', { name: 'Pendientes por programar' })).toBeInTheDocument();
+      expect(screen.queryByText('Despacho de la solicitud')).not.toBeInTheDocument();
+      expect(screen.getByText('Instalación GPON barrio norte')).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('renderiza el resumen operativo y no muestra calendario completo en dashboard', async () => {

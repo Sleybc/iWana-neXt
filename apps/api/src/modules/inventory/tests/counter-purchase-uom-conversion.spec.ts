@@ -119,6 +119,7 @@ function buildService(manager: ReturnType<typeof buildManager>) {
       captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
       publishAfterCommittedMovement: jest.fn(),
     } as never,
+    { listByContext: jest.fn().mockResolvedValue([]) } as never,
   );
 
   return { service, stockLedgerServiceMock };

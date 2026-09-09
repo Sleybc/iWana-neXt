@@ -6,7 +6,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100;0,300;0,400;0,500;0,600;0,700;1,100;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* Tailwind 4 — activacion CSS-first */
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Escaneo de fuentes de clases Tailwind en el monorepo.
    Tailwind 4 no escanea node_modules por defecto.
@@ -26,91 +26,91 @@
    ================================================================ */
 @theme {
   /* Tipografia — Exo 2 Bold/Thin segun Manual Identidad Corporativa iWana */
-  --font-sans:    'Exo 2', 'SF Pro Display', system-ui, sans-serif;
+  --font-sans: 'Exo 2', 'SF Pro Display', system-ui, sans-serif;
   --font-display: 'Exo 2', sans-serif;
-  --font-mono:    var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', monospace;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Color primario — Azul Noche iWana (escala oficial Manual de Identidad) */
-  --color-iwana-primary:     #17163A;
-  --color-iwana-primary-50:  #F8F8FB;
-  --color-iwana-primary-100: #E8E7F0;
-  --color-iwana-primary-200: #D1CFE1;
-  --color-iwana-primary-300: #A8A4C8;
-  --color-iwana-primary-400: #7B75AB;
-  --color-iwana-primary-500: #5A5190;
-  --color-iwana-primary-600: #4A4176;
-  --color-iwana-primary-700: #3D3461;
-  --color-iwana-primary-800: #342E52;
-  --color-iwana-primary-900: #17163A;
-  --color-iwana-primary-950: #0F0E24;
+  --color-iwana-primary: #17163a;
+  --color-iwana-primary-50: #f8f8fb;
+  --color-iwana-primary-100: #e8e7f0;
+  --color-iwana-primary-200: #d1cfe1;
+  --color-iwana-primary-300: #a8a4c8;
+  --color-iwana-primary-400: #7b75ab;
+  --color-iwana-primary-500: #5a5190;
+  --color-iwana-primary-600: #4a4176;
+  --color-iwana-primary-700: #3d3461;
+  --color-iwana-primary-800: #342e52;
+  --color-iwana-primary-900: #17163a;
+  --color-iwana-primary-950: #0f0e24;
 
   /* Color secundario — Lima iWana (escala oficial Manual de Identidad) */
   /* SOLO decorativo — ver nota accesibilidad arriba */
-  --color-iwana-secondary:     #A5C330;
-  --color-iwana-secondary-50:  #F7FCE8;
-  --color-iwana-secondary-100: #EDF8CC;
-  --color-iwana-secondary-200: #DCF19F;
-  --color-iwana-secondary-300: #C5E668;
-  --color-iwana-secondary-400: #B2D93C;
-  --color-iwana-secondary-500: #A5C330;
-  --color-iwana-secondary-600: #8BA020;
+  --color-iwana-secondary: #a5c330;
+  --color-iwana-secondary-50: #f7fce8;
+  --color-iwana-secondary-100: #edf8cc;
+  --color-iwana-secondary-200: #dcf19f;
+  --color-iwana-secondary-300: #c5e668;
+  --color-iwana-secondary-400: #b2d93c;
+  --color-iwana-secondary-500: #a5c330;
+  --color-iwana-secondary-600: #8ba020;
   /* Texto accesible sobre blanco — contraste 4,76:1 (WCAG AA).
      Sobre iwana-surface-soft: 4,53:1. Sobre iwana-primary-50: 4,49:1 (falla como texto). */
-  --color-iwana-secondary-700: #6A7A1C;
-  --color-iwana-secondary-800: #55621C;
-  --color-iwana-secondary-900: #48531D;
-  --color-iwana-secondary-950: #252E0B;
+  --color-iwana-secondary-700: #6a7a1c;
+  --color-iwana-secondary-800: #55621c;
+  --color-iwana-secondary-900: #48531d;
+  --color-iwana-secondary-950: #252e0b;
 
   /* Color neutral — Gris iWana (R:174 G:174 B:173, Manual de Identidad) */
-  --color-iwana-neutral:     #AEAEAD;
-  --color-iwana-neutral-50:  #F9F9F9;
-  --color-iwana-neutral-100: #F1F1F1;
-  --color-iwana-neutral-200: #E4E4E4;
-  --color-iwana-neutral-300: #D1D1D1;
-  --color-iwana-neutral-400: #B8B8B8;
-  --color-iwana-neutral-500: #AEAEAD;
-  --color-iwana-neutral-600: #8A8A8A;
-  --color-iwana-neutral-700: #6F6F6F;
-  --color-iwana-neutral-800: #5C5C5C;
-  --color-iwana-neutral-900: #4F4F4F;
-  --color-iwana-neutral-950: #2E2E2E;
+  --color-iwana-neutral: #aeaead;
+  --color-iwana-neutral-50: #f9f9f9;
+  --color-iwana-neutral-100: #f1f1f1;
+  --color-iwana-neutral-200: #e4e4e4;
+  --color-iwana-neutral-300: #d1d1d1;
+  --color-iwana-neutral-400: #b8b8b8;
+  --color-iwana-neutral-500: #aeaead;
+  --color-iwana-neutral-600: #8a8a8a;
+  --color-iwana-neutral-700: #6f6f6f;
+  --color-iwana-neutral-800: #5c5c5c;
+  --color-iwana-neutral-900: #4f4f4f;
+  --color-iwana-neutral-950: #2e2e2e;
 
   /* Tokens semanticos de superficie */
-  --color-iwana-background: #FFFFFF;
-  --color-iwana-foreground: #17163A;
-  --color-iwana-muted:      #F5F5F5;
-  --color-iwana-surface-soft: #F8FAF5;
-  --color-iwana-accent:     #A5C330;
+  --color-iwana-background: #ffffff;
+  --color-iwana-foreground: #17163a;
+  --color-iwana-muted: #f5f5f5;
+  --color-iwana-surface-soft: #f8faf5;
+  --color-iwana-accent: #a5c330;
 
   /* Colores semanticos — valores base iWana */
-  --color-iwana-success: #22C55E;
-  --color-iwana-warning: #F59E0B;
-  --color-iwana-error:   #EF4444;
+  --color-iwana-success: #22c55e;
+  --color-iwana-warning: #f59e0b;
+  --color-iwana-error: #ef4444;
   /* Texto de error AA sobre blanco (4,83:1) — solo para texto de error;
      el token base --color-iwana-error se conserva para bordes e iconos.
      Decisión DS-OWNER (Task 0/A5, plan 2026-08-18). */
-  --color-iwana-error-700: #DC2626;
-  --color-iwana-info:    #3B82F6;
+  --color-iwana-error-700: #dc2626;
+  --color-iwana-info: #3b82f6;
 
   /* Colores semanticos TailAdmin — compatibles con Tailwind 4 CSS-first */
   /* Escala de tonos para pill badges, trend badges y estados de UI */
-  --color-success-50:  oklch(0.97 0.03 145);
-  --color-success-400: oklch(0.80 0.14 145);
+  --color-success-50: oklch(0.97 0.03 145);
+  --color-success-400: oklch(0.8 0.14 145);
   --color-success-500: oklch(0.72 0.15 145);
   --color-success-600: oklch(0.62 0.16 145);
   --color-success-700: oklch(0.52 0.17 145);
-  --color-error-50:    oklch(0.97 0.03 25);
-  --color-error-400:   oklch(0.72 0.16 25);
-  --color-error-500:   oklch(0.65 0.18 25);
-  --color-error-600:   oklch(0.55 0.20 25);
-  --color-error-700:   oklch(0.48 0.18 25);
+  --color-error-50: oklch(0.97 0.03 25);
+  --color-error-400: oklch(0.72 0.16 25);
+  --color-error-500: oklch(0.65 0.18 25);
+  --color-error-600: oklch(0.55 0.2 25);
+  --color-error-700: oklch(0.48 0.18 25);
 
   /* Radio de bordes */
-  --radius-sm:   0.375rem;
-  --radius-md:   0.5rem;
-  --radius-lg:   0.75rem;
-  --radius-xl:   1rem;
-  --radius-2xl:  1.5rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
   --radius-full: 9999px;
 
   /* ================================================================
@@ -123,40 +123,75 @@
      EMPAREJAMIENTO OBLIGATORIO (ADR-056 §2, ratificado DS-OWNER): estas superficies
      definen el fondo, no lo que va encima. Texto: #F0F0F0 o iwana-neutral-400+;
      PROHIBIDO neutral-700 y gray-500/600. Lima: en dark el minimo es
-     iwana-secondary-400 (la regla -700 es exclusiva de claro). Borde que identifica
-     un control: iwana-neutral-600, no dark-border (1.06:1 sobre surface-3).
+     iwana-secondary-400 (la regla -700 es exclusiva de claro). Borde de una superficie que
+     SE SUPERPONE (control cuyo limite lo identifica, capa modal, flotante anclado):
+     iwana-neutral-600, no dark-border (1.06:1 sobre surface-3). Se especifica contra
+     la propia superficie, nunca contra lo que quede detras. Vehiculo: el class-token
+     overlayEdgeClassName. En flujo la regla no aplica (ADR-056 §2 regla 3, enmienda
+     del 2026-09-07).
      ================================================================ */
-  --color-dark-surface:   #181818;   /* fondo base: layout, page wrapper */
-  --color-dark-surface-2: #222222;   /* elevacion 1: cards, panels, topheader */
-  --color-dark-surface-3: #2A2A2A;   /* elevacion 2: inputs, botones, dropdowns */
-  --color-dark-surface-4: #333333;   /* elevacion 3: hover states, avatar */
+  --color-dark-surface: #181818; /* fondo base: layout, page wrapper */
+  --color-dark-surface-2: #222222; /* elevacion 1: cards, panels, topheader */
+  --color-dark-surface-3: #2a2a2a; /* elevacion 2: inputs, botones, dropdowns */
+  --color-dark-surface-4: #333333; /* elevacion 3: hover states, avatar */
 
-  --color-dark-border:    #2E2E2E;   /* border principal (reemplaza gray-800) */
-  --color-dark-border-2:  #383838;   /* border secundario (reemplaza gray-700) */
+  --color-dark-border: #2e2e2e; /* border principal (reemplaza gray-800) */
+  --color-dark-border-2: #383838; /* border secundario (reemplaza gray-700) */
 
   /* Sombras iWana — escala definida en Manual de Implementacion */
   /* Base (Manual secc. 3.1) */
-  --shadow-iwana:        0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
-  --shadow-iwana-lg:     0 10px 15px -3px rgba(23, 22, 58, 0.10), 0 4px 6px -2px rgba(23, 22, 58, 0.05);
+  --shadow-iwana: 0 1px 3px 0 rgba(23, 22, 58, 0.1), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
+  --shadow-iwana-lg: 0 10px 15px -3px rgba(23, 22, 58, 0.1), 0 4px 6px -2px rgba(23, 22, 58, 0.05);
   /* Extendidas — usadas en Card, PageHeader y contenedores elevados */
-  --shadow-iwana-soft:   0 10px 40px -10px rgba(23, 22, 58, 0.08);
+  --shadow-iwana-soft: 0 10px 40px -10px rgba(23, 22, 58, 0.08);
   --shadow-iwana-active: 0 8px 30px -5px rgba(23, 22, 58, 0.12);
-  --shadow-iwana-card:   0 1px 3px 0 rgba(23, 22, 58, 0.10), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
+  --shadow-iwana-card: 0 1px 3px 0 rgba(23, 22, 58, 0.1), 0 1px 2px 0 rgba(23, 22, 58, 0.06);
 
-  /* Capas de superposición — ADR-075. Fuente de verdad de los valores.
+  /* Capas de superposición — ADR-075 §1, tabla reemplazada por la Adenda A de
+     la enmienda C-DS-04 (aprobada por el CTO el 2026-09-07). Fuente de verdad
+     de los valores.
+     Cada escalón se nombra por su RELACIÓN DE APILAMIENTO, no por el mueble
+     que lo ocupa: nombrar el mueble fue el defecto que la enmienda corrige.
      Separación de 100 entre escalones: 99 huecos libres para una capa
      intermedia no prevista, sin renumerar las existentes.
-     Consumo: z-(--z-modal) o zIndex: 'var(--z-modal)'. Prohibido z literal. */
-  --z-base:    0;
-  --z-sticky:  100;
+     Consumo: z-(--z-modal) o zIndex: 'var(--z-modal)'. Prohibido z literal.
+     Un z declarado bajo un ancestro que ya crea contexto de apilamiento no es
+     un escalón sino ordenación local, y queda fuera de este contrato (§2ter).
+     `--z-base` (0) se retiró en C-DS-04: no tenía consumidor en fuente y
+     `z-index: 0` no equivale a `z-index: auto`. */
+
+  /* Barra del shell en reposo, adherida al scroll, que pinta sobre el
+     contenido que la atraviesa. */
+  --z-sticky: 100;
   /* Offset sticky bajo el TopHeader del portal (py-3 + h-11 + border-b). */
   --portal-sticky-offset: 69px;
-  --z-overlay: 200;
-  --z-drawer:  300;
-  --z-modal:   400;
-  /* Flotantes anclados que deben superar modal/cajón (Select, Popover, menús). */
+  /* Superficie del shell que se eleva sobre OTRA barra en reposo del mismo
+     shell sin llegar a ser panel. El escalón describe la vecindad, no el
+     mueble: un shell sin ese competidor deja su barra en --z-sticky. */
+  --z-shell-raised: 200;
+  /* Chrome del shell que actúa como panel y debe sobrevivir a su propio velo:
+     el único caso en que el velo queda POR DEBAJO del panel. */
+  --z-shell-panel: 300;
+  /* Capa portalada a document.body que captura el foco; su velo viaja DENTRO
+     de ella, nunca en un escalón propio (§2bis). */
+  --z-modal: 400;
+  /* Superficie flotante anclada a un disparador, que puede vivir dentro de una
+     capa modal y aun así debe seguir visible (Select, Popover, menús). */
   --z-popover: 500;
-  --z-toast:   600;
+  /* RESERVADO — sin consumidor ni componente en el monorepo. El escalón se
+     mantiene tomado para que exista antes que el componente. */
+  --z-toast: 600;
+
+  /* Velo de las capas modales — contrato `docs/specs/2026-09-07-contrato-modal-layer-velo.md`.
+     45% es la opacidad MÍNIMA que satisface WCAG 1.4.11 (3:1) para el borde de
+     un panel blanco contra el fondo velado: /30 da 2,10:1, /40 da 2,85:1, /45
+     da 3,35:1. No se elige, se calcula; los cuatro valores restantes que
+     convivían en el árbol (/30, /40, /50, /55) se retiraron.
+     El valor de modo oscuro vive en la regla `.dark` de más abajo, FUERA de
+     `@theme`: es la única forma de que una sola clase —`bg-(--color-veil)`, sin
+     variante `dark:`— sirva a los dos temas. Olvidarse del modo oscuro dejó
+     siete de diez velos pintando el valor claro en oscuro. */
+  --color-veil: rgb(0 0 0 / 45%);
 }
 
 /* ================================================================
@@ -165,13 +200,22 @@
 body {
   font-family: var(--font-sans);
   color: var(--color-iwana-primary);
-  background-color: #FFFFFF;
+  background-color: #ffffff;
 }
 
 /* Dark mode base — aplicado via clase .dark en <html> */
 .dark body {
-  color: #F0F0F0;
+  color: #f0f0f0;
   background-color: var(--color-dark-surface);
+}
+
+/* Redefinición de custom property por tema — la primera del sistema.
+   `.dark` va en <html> y las custom properties heredan, así que el valor llega
+   al velo aunque la capa modal esté portalada a <body>: el portal cuelga del
+   mismo <html>. Va fuera de `@theme` (que emite en `@layer theme`) para que
+   gane por estar sin capa, no por especificidad. */
+.dark {
+  --color-veil: rgb(0 0 0 / 60%);
 }
 
 /* ================================================================
@@ -211,7 +255,7 @@ body {
 @layer components {
   /* Efecto glassmorphism — fondos traslucidos con blur */
   .iwana-glass {
-    background: color-mix(in srgb, #FFFFFF 80%, transparent);
+    background: color-mix(in srgb, #ffffff 80%, transparent);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -219,12 +263,20 @@ body {
 
   /* Degradado de marca horizontal */
   .iwana-gradient {
-    background: linear-gradient(135deg, var(--color-iwana-primary) 0%, var(--color-iwana-secondary) 100%);
+    background: linear-gradient(
+      135deg,
+      var(--color-iwana-primary) 0%,
+      var(--color-iwana-secondary) 100%
+    );
   }
 
   /* Texto con degradado de marca */
   .iwana-text-gradient {
-    background: linear-gradient(90deg, var(--color-iwana-primary) 0%, var(--color-iwana-secondary-700) 100%);
+    background: linear-gradient(
+      90deg,
+      var(--color-iwana-primary) 0%,
+      var(--color-iwana-secondary-700) 100%
+    );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -264,4 +316,3 @@ body {
    Activa estilos oscuros cuando el elemento html tiene clase 'dark'
    ================================================================ */
 @variant dark (&:where(.dark, .dark *));
-

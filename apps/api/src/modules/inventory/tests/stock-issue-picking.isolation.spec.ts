@@ -104,8 +104,10 @@ function managerForSeed(seed: TenantSeed) {
       qb.having = jest.fn().mockReturnValue(qb);
       qb.offset = jest.fn().mockReturnValue(qb);
       qb.limit = jest.fn().mockReturnValue(qb);
-      qb.from = jest.fn().mockImplementation((target: unknown) => {
-        if (typeof target === 'function') {
+      qb.from = jest.fn().mockImplementation((target: unknown, alias?: unknown) => {
+        // `.from(StockBalance, 'balance')` establece el main alias de la
+        // subconsulta; el callback de subquery (un solo argumento) se ejecuta.
+        if (alias === undefined && typeof target === 'function') {
           (target as (inner: unknown) => void)(qb);
         }
         return qb;

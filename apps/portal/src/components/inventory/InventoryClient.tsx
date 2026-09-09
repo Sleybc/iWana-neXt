@@ -234,6 +234,16 @@ function mapInventoryError(error: unknown): string {
   return 'No fue posible completar la operación. Intenta nuevamente.';
 }
 
+/**
+ * El error proviene de una sesión expirada: solo el drawer de proveedores usa
+ * esta distinción para ofrecer re-autenticación en sitio; los demás
+ * consumidores de `mapInventoryError` quedan como están y el resto de la app
+ * se cubre con el modal global por evento.
+ */
+function isSessionError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.code === 'SESSION_EXPIRED');
+}
+
 interface InventoryClientProps {
   initialTab?: string;
   federatedMode?: boolean;
@@ -441,6 +451,9 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
   const [supplierDrawerOpen, setSupplierDrawerOpen] = useState(false);
   const [supplierEditItem, setSupplierEditItem] = useState<SupplierProfileRecord | null>(null);
   const [supplierSubmitError, setSupplierSubmitError] = useState<string | null>(null);
+  // El fallo del guardado fue por sesión expirada: activa los CTA de
+  // recuperación en sitio de SupplierFormDrawer (re-autenticación sin recarga).
+  const [supplierSessionExpired, setSupplierSessionExpired] = useState(false);
   const [isSubmittingSupplier, setIsSubmittingSupplier] = useState(false);
   const [supplierLabels, setSupplierLabels] = useState<Record<string, string>>({});
   const [isCatalogSearching, setIsCatalogSearching] = useState(false);
@@ -1494,10 +1507,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
 
   async function openSupplierDetail(supplier: SupplierProfileRecord) {
     setSupplierSubmitError(null);
+    setSupplierSessionExpired(false);
     try {
       const detail = await purchasingApi.getSupplier(supplier.partyRefId);
       openSupplierDrawer(detail);
     } catch (detailError) {
+      setSupplierSessionExpired(isSessionError(detailError));
       setSupplierSubmitError(mapInventoryError(detailError));
     }
   }
@@ -1505,6 +1520,7 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
   async function handleCreateSupplier(payload: CreateSupplierDto) {
     setIsSubmittingSupplier(true);
     setSupplierSubmitError(null);
+    setSupplierSessionExpired(false);
     try {
       await purchasingApi.createSupplier(payload);
       setSupplierDrawerOpen(false);
@@ -1512,6 +1528,7 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
       setMovementNotice('Proveedor registrado.');
       setSuppliersListRevision((value) => value + 1);
     } catch (submitError) {
+      setSupplierSessionExpired(isSessionError(submitError));
       setSupplierSubmitError(mapInventoryError(submitError));
     } finally {
       setIsSubmittingSupplier(false);
@@ -1521,12 +1538,14 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
   async function handleUpdateSupplier(partyRefId: string, payload: UpdateSupplierDto) {
     setIsSubmittingSupplier(true);
     setSupplierSubmitError(null);
+    setSupplierSessionExpired(false);
     try {
       const updated = await purchasingApi.updateSupplier(partyRefId, payload);
       setSupplierEditItem(updated);
       setMovementNotice('Proveedor actualizado.');
       setSuppliersListRevision((value) => value + 1);
     } catch (submitError) {
+      setSupplierSessionExpired(isSessionError(submitError));
       setSupplierSubmitError(mapInventoryError(submitError));
     } finally {
       setIsSubmittingSupplier(false);
@@ -1536,12 +1555,14 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
   async function handleSetSupplierStatus(partyRefId: string, status: SupplierProfileStatus) {
     setIsSubmittingSupplier(true);
     setSupplierSubmitError(null);
+    setSupplierSessionExpired(false);
     try {
       const updated = await purchasingApi.setSupplierStatus(partyRefId, { status });
       setSupplierEditItem(updated);
       setMovementNotice('Estado del proveedor actualizado.');
       setSuppliersListRevision((value) => value + 1);
     } catch (submitError) {
+      setSupplierSessionExpired(isSessionError(submitError));
       setSupplierSubmitError(mapInventoryError(submitError));
     } finally {
       setIsSubmittingSupplier(false);
@@ -3163,10 +3184,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
         supplier={supplierEditItem}
         isSubmitting={isSubmittingSupplier}
         error={supplierSubmitError}
+        isSessionError={supplierSessionExpired}
         onClose={() => {
           setSupplierDrawerOpen(false);
           setSupplierEditItem(null);
           setSupplierSubmitError(null);
+          setSupplierSessionExpired(false);
         }}
         onCreate={handleCreateSupplier}
         onUpdate={handleUpdateSupplier}

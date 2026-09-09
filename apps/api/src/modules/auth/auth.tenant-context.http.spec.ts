@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
   ValidationPipe,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TenantContext } from '@iwana/db';
@@ -87,6 +88,14 @@ const tenantFixture = {
         forgotPassword: jest.fn(),
         resetPassword: jest.fn(),
         changePassword: jest.fn(),
+      },
+    },
+    {
+      // El controlador lee de aqui los TTL de sesion para el maxAge de las
+      // cookies; sin valor configurado responde con el default (15m / 7d).
+      provide: ConfigService,
+      useValue: {
+        get: jest.fn().mockImplementation((key: string, defaultValue?: unknown) => defaultValue),
       },
     },
     {

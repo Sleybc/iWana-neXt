@@ -239,6 +239,18 @@ export function fallbackSerializedAssetLabel(assetId: string): string {
 }
 
 /**
+ * Suma un paso (±1) a la cantidad tecleada de una línea del borrador, con dos
+ * decimales máximos (numeric(12,2) del contrato). Vacío o no numérico cuenta
+ * como cero. El llamador deshabilita el paso negativo cuando el valor es ≤ 1:
+ * el envío exige cantidad > 0 y el tipeo libre sigue siendo la vía decimal.
+ */
+export function stepDraftQuantity(value: string, delta: number): string {
+  const parsed = Number.parseFloat(value);
+  const current = Number.isFinite(parsed) ? parsed : 0;
+  return (Math.round((current + delta) * 100) / 100).toString();
+}
+
+/**
  * Variante tonal del `Badge` de `@iwana/ui` para la condición de saldo.
  * Fuente única para catálogo y tabla del borrador; el texto visible siempre
  * viene de `getStockBalanceConditionLabel` (nunca el enum crudo).

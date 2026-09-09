@@ -144,4 +144,22 @@ describe('TopHeader', () => {
     expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,8}/);
     expect(container.innerHTML).toMatch(/z-\(--z-sticky\)/);
   });
+
+  it('con un drawer modal abierto el header sigue en z-sticky bajo el velo y queda inerte', () => {
+    const { container } = render(
+      <TopHeader
+        desktopCollapsed={false}
+        setDesktopCollapsed={jest.fn()}
+        mobileOpen={false}
+        setMobileOpen={jest.fn()}
+        modalDrawerOpen
+      />,
+    );
+
+    const header = container.querySelector('header');
+    expect(header).toHaveAttribute('inert');
+    expect(header).toHaveAttribute('aria-hidden', 'true');
+    expect(header?.className).toMatch(/z-\(--z-sticky\)/);
+    expect(header?.className).not.toMatch(/z-\(--z-shell-panel\)/);
+  });
 });

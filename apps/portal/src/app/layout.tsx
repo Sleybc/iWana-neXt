@@ -5,6 +5,7 @@ import './portal-typography.css';
 import { ThemeProvider, THEME_BOOTSTRAP_SCRIPT } from '@iwana/ui';
 import { Exo_2, JetBrains_Mono } from 'next/font/google';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import { SessionRecoveryModal } from '@/components/auth/SessionRecoveryModal';
 import { TenantFavicon } from '@/components/layout/TenantFavicon';
 
 const exo2 = Exo_2({
@@ -46,6 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AuthProvider>
               <TenantFavicon />
               {children}
+              {/* Recuperación de sesión en sitio: una sola instancia global
+                  escucha `iwana:session-expired` y re-autentica sin recargar. */}
+              <SessionRecoveryModal />
             </AuthProvider>
           </Suspense>
         </ThemeProvider>

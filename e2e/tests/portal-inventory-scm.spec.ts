@@ -124,19 +124,6 @@ async function openRfqRoundSection(workbench: import('@playwright/test').Locator
   await expect(createButton).toBeVisible();
 }
 
-async function assignIssueLineSerial(
-  page: import('@playwright/test').Page,
-  main: import('@playwright/test').Locator,
-  productSku: string,
-  serialLabel = 'SN-001',
-) {
-  await selectComboboxOption(
-    page,
-    main.getByRole('combobox', { name: new RegExp(`Serial .*${productSku}`, 'i') }),
-    serialLabel,
-  );
-}
-
 async function openStockIssueComposer(main: import('@playwright/test').Locator) {
   await main
     .getByRole('navigation', { name: 'Secciones de inventario' })
@@ -154,10 +141,13 @@ function extractSkuTokenFromPattern(pattern: RegExp): string {
 
 async function waitForIssueSourceMaterial(main: import('@playwright/test').Locator) {
   const composer = main.getByRole('tabpanel', { name: 'Salidas' });
-  await composer.getByRole('tab', { name: /^Con material/ }).click();
-  await expect(composer.getByRole('tab', { name: /^Con material \([1-9]/ })).toBeVisible({
-    timeout: 15_000,
-  });
+  await composer.getByLabel('Buscar producto').fill('ONT');
+  await expect(
+    composer
+      .getByRole('button')
+      .filter({ hasText: /ONT-HG8245/i })
+      .first(),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 async function addIssueCatalogItemsToDraft(
@@ -166,24 +156,27 @@ async function addIssueCatalogItemsToDraft(
   productPatterns: RegExp[],
 ) {
   const composer = main.getByRole('tabpanel', { name: 'Salidas' });
-  await composer.getByRole('tab', { name: /^Con material/ }).click();
   for (const pattern of productPatterns) {
-    const suggestionCheckbox = composer.getByRole('checkbox', { name: pattern }).first();
-    if (await suggestionCheckbox.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await suggestionCheckbox.check();
-      continue;
-    }
+    const skuToken = extractSkuTokenFromPattern(pattern);
+    await composer.getByLabel('Buscar producto').fill(skuToken.slice(0, 6));
+    const resultButton = composer
+      .getByRole('button')
+      .filter({ hasText: new RegExp(skuToken, 'i') })
+      .first();
+    await expect(resultButton).toBeVisible({ timeout: 10_000 });
+    await resultButton.click();
 
-    await composer.getByRole('tab', { name: /^Catálogo \(\d+\)$/ }).click();
-    const query = extractSkuTokenFromPattern(pattern).slice(0, 6);
-    await composer.getByLabel('Buscar ítem').fill(query);
-    const catalogCheckbox = composer.getByRole('checkbox', { name: pattern }).first();
-    await expect(catalogCheckbox).toBeVisible({ timeout: 10_000 });
-    await catalogCheckbox.check();
-    await composer.getByRole('tab', { name: /^Con material/ }).click();
+    // El alta abre el panel de captura: con serial exigido, elige el primero.
+    const dialog = page.getByRole('dialog').filter({ hasText: new RegExp(skuToken, 'i') });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    const serialInput = dialog.getByPlaceholder('Buscar serial disponible');
+    if (await serialInput.isVisible().catch(() => false)) {
+      await serialInput.click();
+      await dialog.getByRole('option').first().click();
+    }
+    await dialog.getByRole('button', { name: 'Agregar al borrador' }).click();
+    await expect(dialog).toHaveCount(0);
   }
-  const count = productPatterns.length;
-  await composer.getByRole('button', { name: new RegExp(`Agregar ${count} producto`) }).click();
 }
 
 async function dismissOpenListbox(page: import('@playwright/test').Page) {
@@ -3897,7 +3890,6 @@ test.describe('Portal Inventario / SCM', () => {
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*ONT-HG8245/i]);
-    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(
@@ -3977,7 +3969,6 @@ test.describe('Portal Inventario / SCM', () => {
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*ONT-HG8245/i]);
-    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(main.getByText(/Salida creada/i)).toBeVisible();
@@ -4098,7 +4089,6 @@ test.describe('Portal Inventario / SCM', () => {
       /Seleccionar .*ONT-HG8245/i,
       /Seleccionar .*CAB-DROP/i,
     ]);
-    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await expect(
@@ -4807,7 +4797,6 @@ test.describe('Portal Inventario / Bodegas', () => {
       'MOV-03 · Móvil con tope (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*ONT-HG8245/i]);
-    await assignIssueLineSerial(page, main, 'ONT-HG8245');
     await main.getByRole('button', { name: 'Crear salida' }).click();
 
     await main.getByRole('button', { name: 'Despachar' }).first().click();

@@ -294,7 +294,6 @@ export function InventoryCategoryDrawer({
       drawerRef={drawerRef}
       labelledBy="inventory-category-drawer-title"
       describedBy="inventory-category-drawer-description"
-      closeAriaLabel="Cerrar categoría"
       maxWidthClass="max-w-2xl"
       onRequestClose={requestClose}
       closeDisabled={isSubmitting}

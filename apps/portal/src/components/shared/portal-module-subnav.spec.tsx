@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { Layers } from 'lucide-react';
 import { PortalModuleSubnav, type PortalModuleSubnavGroup } from './portal-ui';
+import { PORTAL_MODAL_DRAWER_STATE_EVENT } from './portal-side-drawer-layers';
 
 const groups: PortalModuleSubnavGroup[] = [
   {
@@ -134,6 +135,34 @@ describe('PortalModuleSubnav', () => {
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Catálogo' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Reglas' })).toBeInTheDocument();
+  });
+
+  it('con un drawer modal abierto el rail queda bajo el velo (sticky) e inerte', () => {
+    mockMatchMediaLg(true);
+
+    render(
+      <PortalModuleSubnav
+        groups={groups}
+        value="plans"
+        onValueChange={jest.fn()}
+        ariaLabel="Secciones comerciales"
+      />,
+    );
+
+    // El rail se suscribe al canal del portal: no hay prop que cada pantalla
+    // deba acordarse de cablear para cada uno de sus drawers.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(PORTAL_MODAL_DRAWER_STATE_EVENT, { detail: { open: true } }),
+      );
+    });
+
+    const nav = screen.getByRole('navigation', { hidden: true });
+    expect(nav).toHaveClass('lg:z-(--z-sticky)');
+    expect(nav).not.toHaveClass('lg:z-(--z-shell-panel)');
+    expect(nav).toHaveAttribute('inert');
+    expect(nav).toHaveAttribute('aria-hidden', 'true');
+    expect(nav).toHaveAttribute('aria-label', 'Secciones comerciales');
   });
 });
 

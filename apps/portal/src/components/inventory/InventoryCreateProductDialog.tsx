@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ChevronDown } from 'lucide-react';
-import { Button, Input, Select } from '@iwana/ui';
+import { Button, Input, ModalLayer, Select, overlayEdgeClassName, cn } from '@iwana/ui';
 import {
   buildCompositeSkuBase,
   InventoryBarcodeType,
@@ -26,6 +26,7 @@ import {
 import { PortalDiscardChangesDialog } from '@/components/shared/PortalDiscardChangesDialog';
 import { useDiscardChangesGuard } from '@/components/shared/use-discard-changes-guard';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
+import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import {
   getInventoryItemKindLabel,
   getInventoryTrackingModeLabel,
@@ -296,6 +297,10 @@ export function InventoryCreateProductDialog({
 
   usePortalSideDrawerA11y(open && !discardOpen, drawerRef, requestClose);
 
+  // Difunde la apertura hacia el chrome: inerte bajo el velo mientras el
+  // drawer viva (apilado ADR-075, velo sobre el chrome).
+  usePortalModalDrawerBroadcast(open);
+
   const validationSummary = buildValidationSummary(errors, submitCount);
   const selectedCategory = useMemo(
     () => selectableCategories.find((category) => category.id === watchedValues.categoryId),
@@ -317,296 +322,303 @@ export function InventoryCreateProductDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[1200] bg-black/45">
-      <button
-        type="button"
-        tabIndex={-1}
-        className="absolute inset-0 cursor-default"
-        aria-label="Cerrar nuevo producto"
-        onClick={requestClose}
-      />
-      <aside
-        ref={drawerRef}
-        role="dialog"
-        aria-labelledby="inventory-create-product-dialog-title"
-        aria-describedby="inventory-create-product-dialog-description"
-        aria-modal="true"
-        tabIndex={-1}
-        className="absolute inset-y-0 right-0 z-[1201] flex w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl outline-none dark:border-dark-border dark:bg-dark-surface-2"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
-          <div className="min-w-0">
-            <p className="portal-eyebrow">Catálogo</p>
-            <h2
-              id="inventory-create-product-dialog-title"
-              className="mt-1 text-xl font-semibold text-gray-900 dark:text-white"
-            >
-              Nuevo producto
-            </h2>
-            <p
-              id="inventory-create-product-dialog-description"
-              className="mt-2 text-sm text-gray-500 dark:text-gray-400"
-            >
-              Crea un producto para agregarlo al catálogo. Podrás completar compras, inventario y
-              activos fijos después.
-            </p>
-          </div>
-          <Button type="button" variant="secondary" onClick={requestClose} disabled={isSubmitting}>
-            Cerrar
-          </Button>
-        </div>
-
-        <form
-          className="flex min-h-0 flex-1 flex-col"
-          onSubmit={handleSubmit(async (values) => {
-            await onSubmit(buildPayload(values));
-          })}
+    <>
+      <ModalLayer align="end" onVeilClick={requestClose}>
+        <aside
+          ref={drawerRef}
+          role="dialog"
+          aria-labelledby="inventory-create-product-dialog-title"
+          aria-describedby="inventory-create-product-dialog-description"
+          aria-modal="true"
+          tabIndex={-1}
+          className={cn(
+            overlayEdgeClassName,
+            'pointer-events-auto relative flex h-full w-full max-w-2xl flex-col border-l bg-white shadow-2xl outline-none dark:bg-dark-surface-2',
+          )}
         >
-          <div className="flex-1 overflow-y-auto px-6 py-5">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {error ? (
-                <PortalAlert
-                  variant="error"
-                  title="No fue posible crear el producto"
-                  description={error}
-                  className="md:col-span-2 min-w-0"
-                />
-              ) : null}
-              {validationSummary ? (
-                <PortalAlert
-                  variant="warning"
-                  title="Revisa el formulario"
-                  description={validationSummary}
-                  className="md:col-span-2 min-w-0"
-                />
-              ) : null}
-
-              <div className="md:col-span-2 min-w-0">
-                <Input
-                  label="Nombre"
-                  aria-label="Nombre"
-                  autoFocus
-                  requiredIndicator={true}
-                  error={errors.name?.message}
-                  {...register('name')}
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2 min-w-0">
-                <Controller
-                  name="categoryId"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      id="inventory-create-product-category"
-                      label="Categoría"
-                      aria-label="Categoría"
-                      options={categoryOptions}
-                      value={field.value}
-                      ref={(element) => {
-                        field.ref(element);
-                        categorySelectRef.current = element;
-                      }}
-                      {...(errors.categoryId?.message ? { error: errors.categoryId.message } : {})}
-                      onChange={(event) => field.onChange(event.target.value)}
-                    />
-                  )}
-                />
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  onClick={() => onCreateCategoryClick?.()}
-                >
-                  Crear categoría aquí
-                </Button>
-                {categoryInlineContent ? (
-                  <div
-                    role="region"
-                    aria-label="Creación inline de categoría"
-                    className={portalWellClassName}
-                  >
-                    {categoryInlineContent}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="min-w-0">
-                <Controller
-                  name="itemKind"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      id="inventory-create-product-item-kind"
-                      label="Tipo de producto"
-                      aria-label="Tipo de producto"
-                      options={ITEM_KIND_OPTIONS}
-                      value={field.value}
-                      onChange={(event) => field.onChange(event.target.value as InventoryItemKind)}
-                    />
-                  )}
-                />
-              </div>
-
-              <div className="min-w-0">
-                <Controller
-                  name="trackingMode"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      id="inventory-create-product-tracking"
-                      label="Control de material"
-                      aria-label="Control de material"
-                      options={TRACKING_OPTIONS}
-                      value={field.value}
-                      {...(errors.trackingMode?.message
-                        ? { error: errors.trackingMode.message }
-                        : {})}
-                      onChange={(event) =>
-                        field.onChange(event.target.value as InventoryTrackingMode)
-                      }
-                    />
-                  )}
-                />
-              </div>
-
-              <div className="md:col-span-2 min-w-0">
-                <Controller
-                  name="unitOfMeasure"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      id="inventory-create-product-unit"
-                      label="Unidad de medida"
-                      aria-label="Unidad de medida"
-                      options={[...INVENTORY_UNIT_OF_MEASURE_OPTIONS]}
-                      value={field.value}
-                      {...(errors.unitOfMeasure?.message
-                        ? { error: errors.unitOfMeasure.message }
-                        : {})}
-                      onChange={(event) => field.onChange(event.target.value)}
-                    />
-                  )}
-                />
-              </div>
-
-              <div className="min-w-0">
-                <Input label="Marca" aria-label="Marca" {...register('brand')} />
-              </div>
-              <div className="min-w-0">
-                <Input
-                  label="Modelo"
-                  aria-label="Modelo"
-                  helperText="Opcional. Ambos forman parte del código del producto, que no se puede modificar después."
-                  {...register('model')}
-                />
-              </div>
-
-              <div className="min-w-0">
-                <Input
-                  label={INVENTORY_BARCODE_LABEL}
-                  aria-label={INVENTORY_BARCODE_LABEL}
-                  helperText={INVENTORY_BARCODE_CREATE_HELP_TEXT}
-                  error={errors.barcode?.message}
-                  {...register('barcode')}
-                />
-              </div>
-
-              <div className="min-w-0">
-                <Controller
-                  name="barcodeType"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      id="inventory-create-product-barcode-type"
-                      label={INVENTORY_BARCODE_TYPE_LABEL}
-                      aria-label={INVENTORY_BARCODE_TYPE_LABEL}
-                      options={[
-                        { value: '', label: INVENTORY_BARCODE_NO_CODE_LABEL },
-                        ...INVENTORY_BARCODE_TYPE_OPTIONS,
-                      ]}
-                      value={field.value}
-                      {...(errors.barcodeType?.message
-                        ? { error: errors.barcodeType.message }
-                        : {})}
-                      onChange={(event) => field.onChange(event.target.value)}
-                      helperText="Va junto al código: uno sin el otro se rechaza."
-                    />
-                  )}
-                />
-              </div>
-
-              {skuPreview ? (
-                <div className="rounded-2xl border border-iwana-primary-100 bg-iwana-primary-50 p-3 text-sm md:col-span-2 min-w-0 dark:border-iwana-primary-900/50 dark:bg-iwana-primary-950/20">
-                  <p className="font-medium text-iwana-primary dark:text-gray-200">
-                    Código sugerido
-                  </p>
-                  <p className="mt-1 font-mono text-xs text-gray-900 dark:text-white">
-                    {skuPreview}
-                  </p>
-                  <p className="mt-1 text-xs text-iwana-primary dark:text-gray-400">
-                    Se asigna automáticamente al crear el producto.
-                  </p>
-                </div>
-              ) : null}
-
-              <details className="group rounded-2xl border border-gray-200 p-4 md:col-span-2 min-w-0 dark:border-dark-border">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      Agregar descripción
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      La puedes completar más adelante. No forma parte del código del producto.
-                    </p>
-                  </div>
-                  <ChevronDown
-                    className="h-4 w-4 shrink-0 text-iwana-primary transition-transform group-open:rotate-180"
-                    aria-hidden
-                  />
-                </summary>
-
-                <div className="mt-4 space-y-4">
-                  <label
-                    htmlFor="inventory-create-product-description"
-                    className="space-y-1 text-sm"
-                  >
-                    <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
-                      Descripción
-                    </span>
-                    <textarea
-                      id="inventory-create-product-description"
-                      aria-label="Descripción"
-                      {...register('description')}
-                      className={portalTextareaClassName}
-                    />
-                  </label>
-                </div>
-              </details>
+          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
+            <div className="min-w-0">
+              <p className="portal-eyebrow">Catálogo</p>
+              <h2
+                id="inventory-create-product-dialog-title"
+                className="mt-1 text-xl font-semibold text-gray-900 dark:text-white"
+              >
+                Nuevo producto
+              </h2>
+              <p
+                id="inventory-create-product-dialog-description"
+                className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+              >
+                Crea un producto para agregarlo al catálogo. Podrás completar compras, inventario y
+                activos fijos después.
+              </p>
             </div>
-          </div>
-
-          <div className="flex justify-end gap-2 border-t border-gray-200 px-6 py-4 dark:border-dark-border">
             <Button
               type="button"
               variant="secondary"
               onClick={requestClose}
               disabled={isSubmitting}
             >
-              Cancelar
-            </Button>
-            <Button type="submit" loading={isSubmitting}>
-              Crear producto
+              Cerrar
             </Button>
           </div>
-        </form>
-      </aside>
+
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            onSubmit={handleSubmit(async (values) => {
+              await onSubmit(buildPayload(values));
+            })}
+          >
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {error ? (
+                  <PortalAlert
+                    variant="error"
+                    title="No fue posible crear el producto"
+                    description={error}
+                    className="md:col-span-2 min-w-0"
+                  />
+                ) : null}
+                {validationSummary ? (
+                  <PortalAlert
+                    variant="warning"
+                    title="Revisa el formulario"
+                    description={validationSummary}
+                    className="md:col-span-2 min-w-0"
+                  />
+                ) : null}
+
+                <div className="md:col-span-2 min-w-0">
+                  <Input
+                    label="Nombre"
+                    aria-label="Nombre"
+                    autoFocus
+                    requiredIndicator={true}
+                    error={errors.name?.message}
+                    {...register('name')}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2 min-w-0">
+                  <Controller
+                    name="categoryId"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        id="inventory-create-product-category"
+                        label="Categoría"
+                        aria-label="Categoría"
+                        options={categoryOptions}
+                        value={field.value}
+                        ref={(element) => {
+                          field.ref(element);
+                          categorySelectRef.current = element;
+                        }}
+                        {...(errors.categoryId?.message
+                          ? { error: errors.categoryId.message }
+                          : {})}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    onClick={() => onCreateCategoryClick?.()}
+                  >
+                    Crear categoría aquí
+                  </Button>
+                  {categoryInlineContent ? (
+                    <div
+                      role="region"
+                      aria-label="Creación inline de categoría"
+                      className={portalWellClassName}
+                    >
+                      {categoryInlineContent}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="min-w-0">
+                  <Controller
+                    name="itemKind"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        id="inventory-create-product-item-kind"
+                        label="Tipo de producto"
+                        aria-label="Tipo de producto"
+                        options={ITEM_KIND_OPTIONS}
+                        value={field.value}
+                        onChange={(event) =>
+                          field.onChange(event.target.value as InventoryItemKind)
+                        }
+                      />
+                    )}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <Controller
+                    name="trackingMode"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        id="inventory-create-product-tracking"
+                        label="Control de material"
+                        aria-label="Control de material"
+                        options={TRACKING_OPTIONS}
+                        value={field.value}
+                        {...(errors.trackingMode?.message
+                          ? { error: errors.trackingMode.message }
+                          : {})}
+                        onChange={(event) =>
+                          field.onChange(event.target.value as InventoryTrackingMode)
+                        }
+                      />
+                    )}
+                  />
+                </div>
+
+                <div className="md:col-span-2 min-w-0">
+                  <Controller
+                    name="unitOfMeasure"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        id="inventory-create-product-unit"
+                        label="Unidad de medida"
+                        aria-label="Unidad de medida"
+                        options={[...INVENTORY_UNIT_OF_MEASURE_OPTIONS]}
+                        value={field.value}
+                        {...(errors.unitOfMeasure?.message
+                          ? { error: errors.unitOfMeasure.message }
+                          : {})}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    )}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <Input label="Marca" aria-label="Marca" {...register('brand')} />
+                </div>
+                <div className="min-w-0">
+                  <Input
+                    label="Modelo"
+                    aria-label="Modelo"
+                    helperText="Opcional. Ambos forman parte del código del producto, que no se puede modificar después."
+                    {...register('model')}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <Input
+                    label={INVENTORY_BARCODE_LABEL}
+                    aria-label={INVENTORY_BARCODE_LABEL}
+                    helperText={INVENTORY_BARCODE_CREATE_HELP_TEXT}
+                    error={errors.barcode?.message}
+                    {...register('barcode')}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <Controller
+                    name="barcodeType"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        id="inventory-create-product-barcode-type"
+                        label={INVENTORY_BARCODE_TYPE_LABEL}
+                        aria-label={INVENTORY_BARCODE_TYPE_LABEL}
+                        options={[
+                          { value: '', label: INVENTORY_BARCODE_NO_CODE_LABEL },
+                          ...INVENTORY_BARCODE_TYPE_OPTIONS,
+                        ]}
+                        value={field.value}
+                        {...(errors.barcodeType?.message
+                          ? { error: errors.barcodeType.message }
+                          : {})}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        helperText="Va junto al código: uno sin el otro se rechaza."
+                      />
+                    )}
+                  />
+                </div>
+
+                {skuPreview ? (
+                  <div className="rounded-2xl border border-iwana-primary-100 bg-iwana-primary-50 p-3 text-sm md:col-span-2 min-w-0 dark:border-iwana-primary-900/50 dark:bg-iwana-primary-950/20">
+                    <p className="font-medium text-iwana-primary dark:text-gray-200">
+                      Código sugerido
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-gray-900 dark:text-white">
+                      {skuPreview}
+                    </p>
+                    <p className="mt-1 text-xs text-iwana-primary dark:text-gray-400">
+                      Se asigna automáticamente al crear el producto.
+                    </p>
+                  </div>
+                ) : null}
+
+                <details className="group rounded-2xl border border-gray-200 p-4 md:col-span-2 min-w-0 dark:border-dark-border">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        Agregar descripción
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        La puedes completar más adelante. No forma parte del código del producto.
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className="h-4 w-4 shrink-0 text-iwana-primary transition-transform group-open:rotate-180"
+                      aria-hidden
+                    />
+                  </summary>
+
+                  <div className="mt-4 space-y-4">
+                    <label
+                      htmlFor="inventory-create-product-description"
+                      className="space-y-1 text-sm"
+                    >
+                      <span className="font-medium text-iwana-secondary-700 dark:text-gray-200">
+                        Descripción
+                      </span>
+                      <textarea
+                        id="inventory-create-product-description"
+                        aria-label="Descripción"
+                        {...register('description')}
+                        className={portalTextareaClassName}
+                      />
+                    </label>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-gray-200 px-6 py-4 dark:border-dark-border">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={requestClose}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" loading={isSubmitting}>
+                Crear producto
+              </Button>
+            </div>
+          </form>
+        </aside>
+      </ModalLayer>
 
       <PortalDiscardChangesDialog
         open={discardOpen}
         onConfirm={confirmDiscard}
         onCancel={cancelDiscard}
       />
-    </div>
+    </>
   );
 }

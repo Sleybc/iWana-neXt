@@ -19,6 +19,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -2405,6 +2406,331 @@ describe('AuthService', () => {
       expect(JWT_CLAIMS_BY_TOKEN_TYPE.platform.audience).not.toBe(
         JWT_CLAIMS_BY_TOKEN_TYPE.tenant.audience,
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // OBSERVABILIDAD — reason codes de sesion (sin PII)
+  // ---------------------------------------------------------------------------
+
+  describe('refreshTokens() — reason codes de observabilidad', () => {
+    let warnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('emite REFRESH_INVALID cuando el token no existe', async () => {
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(service.refreshTokens('x'.repeat(96))).rejects.toThrow(UnauthorizedException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('REFRESH_INVALID'));
+    });
+
+    it('emite REFRESH_REUSE_DETECTED con familyId truncado a 8 caracteres y mantiene la revocacion', async () => {
+      const rawToken = 'f'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+      const familyId = 'family-uuid-1';
+
+      const revokedToken = {
+        id: 'rt-uuid-old',
+        userId: 'user-uuid-1',
+        tokenHash: hashedToken,
+        familyId,
+        revokedAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      };
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(revokedToken),
+        update: jest.fn().mockResolvedValue({ affected: 3 }),
+      });
+
+      await expect(service.refreshTokens(rawToken)).rejects.toThrow(UnauthorizedException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('REFRESH_REUSE_DETECTED'));
+      const loggedLine = warnSpy.mock.calls
+        .map((call) => String(call[0]))
+        .find((line) => line.includes('REFRESH_REUSE_DETECTED'));
+      expect(loggedLine).toContain(familyId.slice(0, 8));
+      // El identificador completo de la familia nunca llega al log.
+      expect(loggedLine).not.toContain(familyId);
+      // La deteccion de reuse no cambio: la familia se revoca igual.
+      expect(manager.update).toHaveBeenCalledWith(
+        RefreshToken,
+        expect.objectContaining({ familyId }),
+        expect.objectContaining({ revokeReason: 'REUSE_ATTACK' }),
+      );
+      // Sin PII: el token raw y su hash no aparecen en el log.
+      expect(loggedLine).not.toContain(rawToken);
+      expect(loggedLine).not.toContain(hashedToken);
+    });
+
+    it('emite REFRESH_EXPIRED cuando el token esta vencido', async () => {
+      const rawToken = '0'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue({
+          id: 'rt-expired-2',
+          userId: 'user-uuid-1',
+          tokenHash: hashedToken,
+          familyId: 'family-uuid-9',
+          revokedAt: null,
+          expiresAt: new Date(Date.now() - 1000),
+        }),
+      });
+
+      await expect(service.refreshTokens(rawToken)).rejects.toThrow(UnauthorizedException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('REFRESH_EXPIRED'));
+    });
+
+    it('emite REFRESH_USER_UNAVAILABLE cuando el usuario no esta activo', async () => {
+      const rawToken = '1'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+
+      setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'rt-valid-2',
+            userId: 'user-uuid-1',
+            tokenHash: hashedToken,
+            familyId: 'family-uuid-8',
+            revokedAt: null,
+            expiresAt: new Date(Date.now() + 86400000),
+          })
+          .mockResolvedValueOnce(buildUser({ status: UserStatus.INACTIVE })),
+      });
+
+      await expect(service.refreshTokens(rawToken)).rejects.toThrow(UnauthorizedException);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('REFRESH_USER_UNAVAILABLE'));
+    });
+  });
+
+  describe('refreshPlatformTokens() — reason codes de observabilidad', () => {
+    let warnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    function platformRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        userId: 'platform-uuid-1',
+        familyId: 'family-uuid-plat',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        revokedAt: null,
+        ...overrides,
+      };
+    }
+
+    it('emite PLATFORM_REFRESH_INVALID cuando el token no existe en Redis', async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await expect(service.refreshPlatformTokens('token-desconocido')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('PLATFORM_REFRESH_INVALID'));
+    });
+
+    it('emite PLATFORM_REFRESH_REUSE_DETECTED con familyId truncado y mantiene la revocacion de familia', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify(platformRecord({ revokedAt: new Date().toISOString() })),
+      );
+      mockRedis.smembers.mockResolvedValue(['hash-1']);
+
+      await expect(service.refreshPlatformTokens('token-reusado')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('PLATFORM_REFRESH_REUSE_DETECTED'),
+      );
+      const loggedLine = warnSpy.mock.calls
+        .map((call) => String(call[0]))
+        .find((line) => line.includes('PLATFORM_REFRESH_REUSE_DETECTED'));
+      expect(loggedLine).toContain('family-uuid-plat'.slice(0, 8));
+      expect(loggedLine).not.toContain('family-uuid-plat');
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:token:hash-1');
+      expect(mockRedis.del).toHaveBeenCalledWith('platform:refresh:family:family-uuid-plat');
+    });
+
+    it('emite PLATFORM_REFRESH_EXPIRED cuando el token esta vencido', async () => {
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify(platformRecord({ expiresAt: new Date(Date.now() - 1000).toISOString() })),
+      );
+
+      await expect(service.refreshPlatformTokens('token-vencido')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('PLATFORM_REFRESH_EXPIRED'));
+    });
+
+    it('emite PLATFORM_REFRESH_USER_UNAVAILABLE cuando el usuario no esta activo', async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(platformRecord()));
+      (
+        service as unknown as {
+          platformUserRepository: { findOne: jest.Mock };
+        }
+      ).platformUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.refreshPlatformTokens('token-sin-usuario')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('PLATFORM_REFRESH_USER_UNAVAILABLE'),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TTL DE SESION CONFIGURABLE (JWT_ACCESS_EXPIRATION / JWT_REFRESH_EXPIRATION)
+  // ---------------------------------------------------------------------------
+
+  describe('TTL de sesion configurable', () => {
+    /**
+     * Compila un AuthService con la configuracion dada. Los TTL se resuelven en
+     * el constructor, asi que cada combinacion requiere su propio modulo.
+     */
+    async function compileServiceWithConfig(configMap: Record<string, string>): Promise<{
+      service: AuthService;
+      jwtSign: jest.Mock;
+    }> {
+      const jwtSign = jest.fn().mockReturnValue('mock.jwt.token');
+      const moduleRef: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          { provide: getRepositoryToken(User), useValue: { findOne: jest.fn() } },
+          {
+            provide: getRepositoryToken(PlatformUser),
+            useValue: { findOne: jest.fn(), update: jest.fn() },
+          },
+          { provide: getRepositoryToken(RefreshToken), useValue: { findOne: jest.fn() } },
+          {
+            provide: JwtService,
+            useValue: {
+              sign: jwtSign,
+              verify: jest.fn().mockReturnValue({ jti: 'test-jti', exp: 0 }),
+            },
+          },
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest
+                .fn()
+                .mockImplementation((key: string, def?: unknown) => configMap[key] ?? def),
+              getOrThrow: jest.fn().mockImplementation((key: string) => {
+                if (key === 'MFA_ENCRYPTION_KEY') {
+                  return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+                }
+                throw new Error(`ConfigService.getOrThrow: clave no mapeada en test: ${key}`);
+              }),
+            },
+          },
+          { provide: DataSource, useValue: {} },
+          { provide: REDIS_CLIENT, useValue: mockRedis },
+          { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+          {
+            provide: PlatformAuditService,
+            useValue: { log: jest.fn().mockResolvedValue(undefined) },
+          },
+          {
+            provide: MailerService,
+            useValue: { sendMail: jest.fn().mockResolvedValue(undefined) },
+          },
+        ],
+      }).compile();
+
+      return { service: moduleRef.get<AuthService>(AuthService), jwtSign };
+    }
+
+    /** Ejecuta un refresh valido y devuelve la entidad de refresh token creada. */
+    async function refreshConTokenValido(
+      target: AuthService,
+    ): Promise<{ expiresAt: Date } | undefined> {
+      const rawToken = '2'.repeat(96);
+      const hashedToken = require('crypto').createHash('sha256').update(rawToken).digest('hex');
+
+      const { manager } = setupRunInTenantSchema({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'rt-ttl',
+            userId: 'user-uuid-1',
+            tokenHash: hashedToken,
+            familyId: 'family-uuid-ttl',
+            revokedAt: null,
+            expiresAt: new Date(Date.now() + 86400000),
+          })
+          .mockResolvedValueOnce(buildUser()),
+      });
+
+      await target.refreshTokens(rawToken);
+
+      return manager.create?.mock.calls[0]?.[1] as { expiresAt: Date } | undefined;
+    }
+
+    it('usa JWT_REFRESH_EXPIRATION para la expiracion del refresh token persistido', async () => {
+      const { service: ttlService } = await compileServiceWithConfig({
+        JWT_ACCESS_EXPIRATION: '1h',
+        JWT_REFRESH_EXPIRATION: '30d',
+      });
+
+      const creado = await refreshConTokenValido(ttlService);
+
+      expect(creado).toBeDefined();
+      const vidaMs = creado!.expiresAt.getTime() - Date.now();
+      const treintaDiasMs = 30 * 24 * 60 * 60 * 1000;
+      expect(vidaMs).toBeGreaterThan(treintaDiasMs - 60_000);
+      expect(vidaMs).toBeLessThanOrEqual(treintaDiasMs);
+    });
+
+    it('usa JWT_ACCESS_EXPIRATION en el expiresIn del access token firmado', async () => {
+      const { service: ttlService, jwtSign } = await compileServiceWithConfig({
+        JWT_ACCESS_EXPIRATION: '1h',
+        JWT_REFRESH_EXPIRATION: '30d',
+      });
+
+      await refreshConTokenValido(ttlService);
+
+      expect(jwtSign).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ expiresIn: '3600s' }),
+      );
+    });
+
+    it('aplica los defaults 15m / 7d cuando la configuracion no trae las variables', async () => {
+      const { service: defaultService, jwtSign } = await compileServiceWithConfig({});
+
+      const creado = await refreshConTokenValido(defaultService);
+
+      expect(jwtSign).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ expiresIn: '900s' }),
+      );
+
+      expect(creado).toBeDefined();
+      const vidaMs = creado!.expiresAt.getTime() - Date.now();
+      const sieteDiasMs = 7 * 24 * 60 * 60 * 1000;
+      expect(vidaMs).toBeGreaterThan(sieteDiasMs - 60_000);
+      expect(vidaMs).toBeLessThanOrEqual(sieteDiasMs);
     });
   });
 });

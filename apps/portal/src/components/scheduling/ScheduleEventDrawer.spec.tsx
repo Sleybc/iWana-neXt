@@ -266,9 +266,12 @@ describe('ScheduleEventDrawer — coordinación', () => {
 
   it('NO expone UUID como contenido principal', () => {
     // El ID del evento no debe ser texto visible prominente
-    const { container } = render(<ScheduleEventDrawer {...baseProps} />);
-    // El id técnico no debe estar en un heading o label principal
-    const headings = container.querySelectorAll('h2, h3');
+    render(<ScheduleEventDrawer {...baseProps} />);
+    // El id técnico no debe estar en un heading o label principal.
+    // Se busca en `document.body` y no en el `container` del render: el cajón se
+    // portala al body, así que un `container` vacío haría pasar la aserción sin
+    // recorrer un solo encabezado.
+    const headings = document.body.querySelectorAll('h2, h3');
     for (const heading of headings) {
       expect(heading.textContent).not.toContain(baseEvent.id);
     }

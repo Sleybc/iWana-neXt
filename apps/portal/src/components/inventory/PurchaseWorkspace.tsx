@@ -15,6 +15,7 @@ import type {
   InventoryCatalogOptionRecord,
   InventoryItemRecord,
   PurchaseOrderLineRecord,
+  PurchaseTaxPresetRecord,
   PurchaseOrderRecord,
   PurchaseRequestDetailRecord,
   PurchaseRequestRecord,
@@ -163,6 +164,11 @@ interface PurchaseWorkspaceProps {
   onCatalogSearch?: (search: string) => void;
   createInitialValues?: PurchaseComposerInitialValues | null;
   onCreateInitialValuesConsumed?: () => void;
+  /**
+   * Presets PURCHASE inyectables (Fase 26, tests). En runtime el workspace los
+   * carga al abrir el modo counter-purchase; la prop tiene precedencia.
+   */
+  counterPurchaseTaxPresets?: PurchaseTaxPresetRecord[] | undefined;
 }
 
 function PurchaseWorkspaceInner({
@@ -223,6 +229,7 @@ function PurchaseWorkspaceInner({
   onCatalogSearch,
   createInitialValues = null,
   onCreateInitialValuesConsumed,
+  counterPurchaseTaxPresets,
 }: PurchaseWorkspaceProps) {
   const outOfRangeShownRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
@@ -535,6 +542,21 @@ function PurchaseWorkspaceInner({
     setPrefillKey(null);
   }
 
+  const [fetchedCounterPurchaseTaxPresets, setFetchedCounterPurchaseTaxPresets] = useState<
+    PurchaseTaxPresetRecord[] | undefined
+  >(undefined);
+  const effectiveCounterPurchaseTaxPresets =
+    counterPurchaseTaxPresets ?? fetchedCounterPurchaseTaxPresets;
+
+  async function loadCounterPurchaseTaxPresets() {
+    try {
+      const presets = await purchasingApi.getTaxPresets();
+      setFetchedCounterPurchaseTaxPresets(presets);
+    } catch {
+      setFetchedCounterPurchaseTaxPresets(undefined);
+    }
+  }
+
   function openCounterPurchaseMode() {
     setSelectedRequestId(null);
     setDetail(null);
@@ -542,6 +564,7 @@ function PurchaseWorkspaceInner({
     setSupplierSummary(null);
     setSupplierError(null);
     setWorkspaceMode('counter-purchase');
+    void loadCounterPurchaseTaxPresets();
   }
 
   function closeCounterPurchaseMode() {
@@ -739,6 +762,7 @@ function PurchaseWorkspaceInner({
           supplierLabels={resolvedSupplierLabels}
           onBack={closeCounterPurchaseMode}
           onSubmit={onCounterPurchase}
+          taxPresets={effectiveCounterPurchaseTaxPresets}
           {...(onCatalogSearch ? { onCatalogSearch } : {})}
           {...(onDismissCounterPurchaseSuccess
             ? { onDismissSuccess: onDismissCounterPurchaseSuccess }

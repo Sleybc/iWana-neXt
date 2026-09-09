@@ -167,7 +167,7 @@ export class StockIssuePickingService {
       .from(
         (sub) =>
           this.withStockGroups(
-            sub.select('item.id', 'groupItemId'),
+            sub.from(StockBalance, 'balance').select('item.id', 'groupItemId'),
             tenantId,
             locationId,
             searchText,
@@ -196,7 +196,10 @@ export class StockIssuePickingService {
         'SUM(balance.quantity_on_hand::numeric) - SUM(balance.quantity_reserved::numeric)',
         'totalAvailable',
       )
-      .orderBy('totalAvailable', 'DESC')
+      .orderBy(
+        'SUM(balance.quantity_on_hand::numeric) - SUM(balance.quantity_reserved::numeric)',
+        'DESC',
+      )
       .addOrderBy('item.name', 'ASC')
       .addOrderBy('item.id', 'ASC')
       .offset((page - 1) * limit)

@@ -54,12 +54,31 @@ Las cuatro reglas siguientes completan la norma. Todas se expresan con **tokens 
 
 | # | Regla | Fundamento |
 | --- | --- | --- |
-| 1 | **Texto sobre dark:** permitido `#F0F0F0` (base) e `iwana-neutral-400` o más claro. **Prohibidos** `iwana-neutral-700` y `gray-500`/`gray-600` en toda superficie; `iwana-neutral-600` prohibido sobre `dark-surface-3` y `-4` | El par base `#F0F0F0` va de 11.09:1 a 15.58:1 — holgura AAA. `neutral-700` cae a 2.51-3.53:1 |
+| 1 | **Texto sobre dark:** permitido `#F0F0F0` (base) e `iwana-neutral-400` o más claro. **Prohibidos** `iwana-neutral-700` y `gray-500`/`gray-600` en toda superficie; `iwana-neutral-600` prohibido **como texto** sobre `dark-surface-3` y `-4` (umbral 4.5:1; da 4.16:1). La prohibición es de texto: **como borde** el umbral es 3:1 y `neutral-600` pasa en las cuatro superficies — ver regla 3 | El par base `#F0F0F0` va de 11.09:1 a 15.58:1 — holgura AAA. `neutral-700` cae a 2.51-3.53:1 |
 | 2 | **Lima sobre dark — la regla se invierte:** `iwana-secondary-700` es **exclusiva de claro**. En dark el mínimo es **`-400`** (7.75:1 en el peor caso). `-600` prohibido sobre `dark-surface-4`. Formulación: *claro → `-700` o más oscuro; dark → `-400` o más claro* | `-700` sobre dark falla en las **cuatro** superficies (2.66-3.73:1) |
-| 3 | **Bordes:** `dark-border`/`dark-border-2` son **divisores decorativos**, nunca el único identificador de un control. Un input o botón cuyo límite dependa del borde usa **`iwana-neutral-600`** (≥3.66:1 en las cuatro) | `dark-border` sobre `surface-3` = **1.06:1**. Falla 1.4.11 |
+| 3 | **Bordes:** `dark-border`/`dark-border-2` son **divisores decorativos**, nunca el portador único del límite de un elemento. Usan **`iwana-neutral-600`** (≥3.66:1 sobre las cuatro superficies) los elementos cuyo límite **se superpone a otro contenido en vez de componer con él**: controles cuyo límite los identifica, y toda superficie que se pinta sobre contenido que no le pertenece — capas modales y superficies flotantes ancladas. El límite se especifica **contra la propia superficie del elemento**, nunca contra lo que quede detrás: el fondo de una superposición es contenido arbitrario y ningún valor fijo cumple 3:1 contra su rango. En claro el límite lo porta el par superficie/fondo y el borde queda decorativo; **el par portador cambia con el sustrato, y al menos uno debe llegar a 3:1**. Fuera de las superposiciones la regla **no** aplica: un borde de agrupación en flujo, del que no se depende para identificar componente ni estado, no se escala. Vehículo: el class-token `overlayEdgeClassName` de `@iwana/ui` | `dark-border` sobre `surface-3` = **1.06:1**. Panel modal sobre fondo velado = **1.24:1**; flotante dentro de un panel modal = **1.00:1** (mismo token de superficie, sin velo que ayude). `neutral-600` sobre `dark-surface-2` = **4.61:1** |
 | 4 | **Semánticos:** `error` e `info` requieren su tono `-400` sobre `dark-surface-3` y `-4` | Base cae a 3.36-3.90:1. `success` y `warning` pasan en las cuatro |
 
 **Nota no bloqueante:** la separación entre superficies adyacentes es 1.11-1.14 — escala perceptualmente muy plana. No es fallo WCAG (la elevación decorativa está exenta), pero conviene revisarlo si la jerarquía visual en dark resulta ilegible.
+
+> **Enmienda del 2026-09-07 — aprobada por el CTO.** `[CONSULTA]` de AI-DS-OWNER, con dirección
+> visual de AI-PROD-UX. Origen: la consolidación del velo (`--color-veil`) dejó al descubierto que
+> en oscuro **ninguna opacidad de negro separa el panel de su fondo** — `dark-surface-2` sobre
+> fondo velado da 1.24:1, y un velo al 100% solo llegaría a 1.32:1. La separación tiene que
+> venir del borde, y la fila 3 hablaba solo de **controles**.
+>
+> **Qué cambia:** la fila 3 pasa de enumerar muebles a describir la **relación de apilamiento**
+> —superposición frente a composición—, de modo que cubra controles, capas modales y superficies
+> flotantes ancladas sin tener que reenmendarse con cada componente nuevo. Es la misma lección
+> que ADR-075 §1 aprendió con la escala `--z-*`. La fila 1 se precisa: su prohibición de
+> `neutral-600` sobre `surface-3`/`-4` es **de texto** (umbral 4.5:1), no de borde (umbral 3:1),
+> y sin esa precisión las dos filas se leen como contradictorias.
+>
+> **Qué NO cambia:** ningún valor. `iwana-neutral-600` ya estaba normado para bordes que
+> identifican; se amplía el predicado, no la paleta. Vehículo: el class-token
+> `overlayEdgeClassName` de `@iwana/ui` — `globals.css` no añade ni una línea.
+>
+> Detalle de la decisión, aritmética y migración: `docs/specs/2026-09-07-borde-panel-modal-oscuro.md`.
 
 ### 3. Definición canónica de Estrella Polar — tres dominios de autoridad
 

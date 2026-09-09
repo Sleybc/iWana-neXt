@@ -116,7 +116,7 @@ export function DailyTimelineHoverHint({
                 position: 'fixed',
                 top: position.top,
                 left: position.left,
-                zIndex: 11000,
+                zIndex: 'var(--z-popover)',
                 width: 'min(280px, calc(100vw - 24px))',
               }}
               className="rounded-2xl border border-gray-200 bg-white/98 shadow-(--shadow-iwana-lg) ring-1 ring-black/5 backdrop-blur-md dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10"

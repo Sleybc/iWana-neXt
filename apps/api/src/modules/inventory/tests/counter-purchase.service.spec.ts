@@ -3,9 +3,14 @@ import { DataSource } from 'typeorm';
 import {
   AssetLifecycleEventType,
   InventoryTrackingMode,
+  JurisdictionLevel,
   SerializedAssetStatus,
   StockBalanceCondition,
   StockMovementOrigin,
+  TaxCategory,
+  TaxContext,
+  TaxOrigin,
+  TaxTreatment,
   UserRole,
 } from '@iwana/shared';
 import {
@@ -14,6 +19,7 @@ import {
   StockLot,
   StockMovement,
   StockMovementLine,
+  StockMovementTax,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -27,6 +33,7 @@ jest.mock('@iwana/db', () => ({
   StockLot: class StockLot {},
   StockMovement: class StockMovement {},
   StockMovementLine: class StockMovementLine {},
+  StockMovementTax: class StockMovementTax {},
   TenantContext: {
     getOrThrow: jest.fn().mockReturnValue({
       tenantId: 'tenant-001',
@@ -59,10 +66,14 @@ describe('CounterPurchaseService', () => {
     captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),
     publishAfterCommittedMovement: jest.fn(),
   };
+  const taxCatalogPortMock = {
+    listByContext: jest.fn().mockResolvedValue([]),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
     domainEventPublisherMock.captureItemSnapshots.mockResolvedValue(new Map());
+    taxCatalogPortMock.listByContext.mockResolvedValue([]);
     (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
       tenantId: 'tenant-001',
       schemaName: 'tenant_001',
@@ -164,6 +175,7 @@ describe('CounterPurchaseService', () => {
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     const result = await service.record(
@@ -229,6 +241,7 @@ describe('CounterPurchaseService', () => {
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     const result = await service.record(
@@ -308,6 +321,7 @@ describe('CounterPurchaseService', () => {
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     await service.record(
@@ -369,6 +383,7 @@ describe('CounterPurchaseService', () => {
       serializedAssetServiceMock as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     const payload: CreateCounterPurchaseInput = {
@@ -419,6 +434,7 @@ describe('CounterPurchaseService', () => {
       { normalizeSerial: jest.fn(), createReceivedAssetWithManager: jest.fn() } as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     await service.record(
@@ -457,6 +473,7 @@ describe('CounterPurchaseService', () => {
       {} as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     await expect(
@@ -515,6 +532,7 @@ describe('CounterPurchaseService', () => {
       {} as never,
       inventoryCostingServiceMock as never,
       domainEventPublisherMock as never,
+      taxCatalogPortMock as never,
     );
 
     await expect(
@@ -536,5 +554,372 @@ describe('CounterPurchaseService', () => {
         actor,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  describe('tributos informativos de cabecera (Fase 26)', () => {
+    function catalogEntry(overrides: Record<string, unknown>) {
+      return {
+        id: 'tax-001',
+        code: 'IVA_19',
+        name: 'IVA 19%',
+        category: TaxCategory.VAT,
+        jurisdictionLevel: JurisdictionLevel.NATIONAL,
+        municipalityCode: null,
+        baseRate: '19.0000',
+        treatment: TaxTreatment.STANDARD,
+        context: TaxContext.PURCHASE,
+        origin: TaxOrigin.SYSTEM,
+        isActive: true,
+        notes: null,
+        ...overrides,
+      };
+    }
+
+    const ivaCatalog = [catalogEntry({})];
+    const ivaReteIvaCatalog = [
+      catalogEntry({}),
+      catalogEntry({
+        id: 'tax-002',
+        code: 'RETE_IVA',
+        name: 'Rete IVA',
+        category: TaxCategory.WITHHOLDING,
+        baseRate: '15.0000',
+      }),
+    ];
+
+    function buildTaxService(catalog: unknown[]) {
+      taxCatalogPortMock.listByContext.mockResolvedValue(catalog);
+      return new CounterPurchaseService(
+        {} as DataSource,
+        {
+          recordMovementWithManager: jest.fn().mockResolvedValue({
+            movement: { id: 'mov-tax-001', movementNumber: 'MOV-000020' },
+            lines: [{ id: 'line-tax-001' }],
+            created: true,
+          }),
+        } as never,
+        {
+          normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
+          createReceivedAssetWithManager: jest.fn(),
+        } as never,
+        inventoryCostingServiceMock as never,
+        domainEventPublisherMock as never,
+        taxCatalogPortMock as never,
+      );
+    }
+
+    function baseInput(
+      overrides: Partial<CreateCounterPurchaseInput> = {},
+    ): CreateCounterPurchaseInput {
+      return {
+        partyRefId: PARTY_REF_ID,
+        invoiceNumber: 'FAC-TAX-01',
+        destinationLocationId: LOCATION_ID,
+        lines: [
+          {
+            itemId: ITEM_CONSUMABLE_ID,
+            quantityReceived: 5,
+            unitCost: 1200,
+            serialNumbers: [],
+            condition: StockBalanceCondition.NEW,
+          },
+        ],
+        ...overrides,
+      };
+    }
+
+    it('sin taxes responde retrocompatible: taxes [] y payableAmount = base', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService([]);
+
+      const result = await service.record(baseInput(), actor);
+
+      expect(result.taxes).toEqual([]);
+      expect(result.payableAmount).toBe('6000.00');
+    });
+
+    it('con IVA 19 calcula snapshot y neto estimado', async () => {
+      const { manager, save } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService(ivaCatalog);
+
+      const result = await service.record(
+        baseInput({
+          invoiceNumber: 'FAC-TAX-02',
+          lines: [
+            {
+              itemId: ITEM_CONSUMABLE_ID,
+              quantityReceived: 1,
+              unitCost: 100,
+              serialNumbers: [],
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+          taxes: [{ code: 'IVA_19', applies: true }],
+        }),
+        actor,
+      );
+
+      expect(result.taxes).toEqual([
+        expect.objectContaining({
+          code: 'IVA_19',
+          effect: 'ADD',
+          applies: true,
+          rate: '19.0000',
+          baseAmount: '100.00',
+          taxAmount: '19.00',
+        }),
+      ]);
+      expect(result.payableAmount).toBe('119.00');
+      const persisted = save.mock.calls.filter(([entity]) => entity === StockMovementTax);
+      expect(persisted).toHaveLength(1);
+      expect(inventoryCostingServiceMock.applyReceiptCostingWithManager).toHaveBeenCalledWith(
+        manager,
+        'tenant-001',
+        [expect.objectContaining({ itemId: ITEM_CONSUMABLE_ID, unitCost: 100, quantity: 1 })],
+      );
+    });
+
+    it('RETE_IVA calcula sobre el monto de IVA', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService(ivaReteIvaCatalog);
+
+      const result = await service.record(
+        baseInput({
+          invoiceNumber: 'FAC-TAX-03',
+          lines: [
+            {
+              itemId: ITEM_CONSUMABLE_ID,
+              quantityReceived: 1,
+              unitCost: 100,
+              serialNumbers: [],
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+          taxes: [
+            { code: 'IVA_19', applies: true },
+            { code: 'RETE_IVA', applies: true },
+          ],
+        }),
+        actor,
+      );
+
+      const reteIva = result.taxes.find((tax) => tax.code === 'RETE_IVA');
+      expect(reteIva).toEqual(
+        expect.objectContaining({ baseAmount: '19.00', taxAmount: '2.85', effect: 'WITHHOLD' }),
+      );
+      expect(result.payableAmount).toBe('116.15');
+    });
+
+    it('RETE_IVA sin IVA aplicable liquida en cero', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService(ivaReteIvaCatalog);
+
+      const result = await service.record(
+        baseInput({
+          invoiceNumber: 'FAC-TAX-04',
+          lines: [
+            {
+              itemId: ITEM_CONSUMABLE_ID,
+              quantityReceived: 1,
+              unitCost: 100,
+              serialNumbers: [],
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+          taxes: [
+            { code: 'IVA_19', applies: false },
+            { code: 'RETE_IVA', applies: true },
+          ],
+        }),
+        actor,
+      );
+
+      expect(result.taxes).toHaveLength(1);
+      expect(result.taxes[0]).toEqual(
+        expect.objectContaining({ code: 'RETE_IVA', baseAmount: '0.00', taxAmount: '0.00' }),
+      );
+      expect(result.payableAmount).toBe('100.00');
+    });
+
+    it('rechaza códigos de tributo duplicados', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService(ivaCatalog);
+
+      await expect(
+        service.record(
+          baseInput({
+            taxes: [
+              { code: 'IVA_19', applies: true },
+              { code: 'IVA_19', applies: false },
+            ],
+          }),
+          actor,
+        ),
+      ).rejects.toThrow('Hay códigos de tributo duplicados en la cotización.');
+    });
+
+    it('rechaza tributo inactivo o fuera del contexto de compra', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService([catalogEntry({ isActive: false })]);
+
+      await expect(
+        service.record(baseInput({ taxes: [{ code: 'IVA_19', applies: true }] }), actor),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza tributo de contexto de ventas en compra de mostrador', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService([catalogEntry({ context: TaxContext.SALES })]);
+
+      await expect(
+        service.record(baseInput({ taxes: [{ code: 'IVA_19', applies: true }] }), actor),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza tasa fuera de 0–100', async () => {
+      const { manager } = buildManager();
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService(ivaCatalog);
+
+      await expect(
+        service.record(baseInput({ taxes: [{ code: 'IVA_19', applies: true, rate: 101 }] }), actor),
+      ).rejects.toThrow();
+    });
+
+    it('el replay idempotente devuelve taxes y payableAmount del movimiento existente', async () => {
+      const idempotencyKey = 'counter-purchase:tax-replay';
+      const { manager, save } = buildManager({
+        existingMovement: { id: 'mov-existing-tax', idempotencyKey },
+      });
+      manager.find = jest.fn().mockImplementation(async (entity, query) => {
+        if (entity === StockMovementLine && query.where.movementId === 'mov-existing-tax') {
+          return [{ id: 'line-001', quantity: '1.00', unitCost: '100.00' }];
+        }
+        if (entity === StockMovementTax && query.where.stockMovementId === 'mov-existing-tax') {
+          return [
+            {
+              id: 'tax-row-001',
+              taxCode: 'IVA_19',
+              taxCategory: 'VAT',
+              effect: 'ADD',
+              rate: '19.0000',
+              baseAmount: '100.00',
+              taxAmount: '19.00',
+            },
+          ];
+        }
+        return [];
+      });
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      const service = buildTaxService(ivaCatalog);
+
+      const result = await service.record(
+        baseInput({
+          invoiceNumber: 'FAC-TAX-REPLAY',
+          idempotencyKey,
+          lines: [
+            {
+              itemId: ITEM_CONSUMABLE_ID,
+              quantityReceived: 1,
+              unitCost: 100,
+              serialNumbers: [],
+              condition: StockBalanceCondition.NEW,
+            },
+          ],
+        }),
+        actor,
+      );
+
+      expect(result.movement.id).toBe('mov-existing-tax');
+      expect(result.taxes).toEqual([
+        expect.objectContaining({ code: 'IVA_19', taxAmount: '19.00', applies: true }),
+      ]);
+      expect(result.payableAmount).toBe('119.00');
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('ingresos idénticos con tributos distintos no colisionan en la clave derivada', async () => {
+      const { manager } = buildManager();
+      const seenKeys: string[] = [];
+      const stockLedgerServiceMock = {
+        recordMovementWithManager: jest.fn().mockImplementation(async (_m, _t, payload) => {
+          seenKeys.push(payload.idempotencyKey);
+          return {
+            movement: { id: `mov-${seenKeys.length}`, movementNumber: `MOV-${seenKeys.length}` },
+            lines: [{ id: `line-${seenKeys.length}` }],
+            created: true,
+          };
+        }),
+      };
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+      taxCatalogPortMock.listByContext.mockResolvedValue(ivaCatalog);
+      const service = new CounterPurchaseService(
+        {} as DataSource,
+        stockLedgerServiceMock as never,
+        {
+          normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
+          createReceivedAssetWithManager: jest.fn(),
+        } as never,
+        inventoryCostingServiceMock as never,
+        domainEventPublisherMock as never,
+        taxCatalogPortMock as never,
+      );
+
+      const lines: CreateCounterPurchaseInput['lines'] = [
+        {
+          itemId: ITEM_CONSUMABLE_ID,
+          quantityReceived: 1,
+          unitCost: 100,
+          serialNumbers: [],
+          condition: StockBalanceCondition.NEW,
+        },
+      ];
+      await service.record(
+        baseInput({
+          invoiceNumber: 'FAC-TAX-HASH',
+          lines,
+          taxes: [{ code: 'IVA_19', applies: true }],
+        }),
+        actor,
+      );
+      await service.record(
+        baseInput({
+          invoiceNumber: 'FAC-TAX-HASH',
+          lines,
+          taxes: [{ code: 'IVA_19', applies: false }],
+        }),
+        actor,
+      );
+
+      expect(seenKeys).toHaveLength(2);
+      expect(seenKeys[0]).not.toBe(seenKeys[1]);
+    });
   });
 });

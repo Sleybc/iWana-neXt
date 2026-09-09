@@ -298,3 +298,82 @@ Descartado con evidencia que sea regresión de los cambios de foco de esta sesi�
 Un apunte sobre el propio proceso: tres intentos de esta sesión (los timeouts del panel, el `@SkipThrottle()` del rate limiting y la espera de `SchedulingClient`) fallaron por el mismo motivo — leer «tarda» donde el mensaje decía «no existe». Los dos arreglos que sí funcionaron (foco diferido y migración 126) salieron a la primera, y en ambos casos se había reproducido el fallo antes de tocar nada. Los dos intentos sin causa confirmada se revirtieron en vez de dejarlos: un cambio que no arregla nada, con un comentario que explica algo falso, es peor que el defecto que pretendía tapar.
 
 Cuatro de los cinco defectos de esta sesión estaban ocultos tras compuertas que no podían fallar: la migración 126 llevaba rota desde S2.1 porque el job moría antes de llegar a su paso, y `packages/ui` acumulaba 29 tests que nunca se ejecutaron. Cada arreglo destapó el siguiente. Es el patrón que ADR-056 persigue y conviene mirarlo como tal: un gate verde que nunca corrió no es una garantía, es una deuda sin declarar.
+
+## 15. Cantidad descubrible en el borrador (2026-09-08) — stepper, foco y resalte de duplicados
+
+Hallazgo de producto del composer: el operador percibía que solo podía agregar una unidad por producto. La capacidad **ya existía** — `requestedQty` era editable en fila, panel y edición masiva, y el contrato API acepta cualquier cantidad `> 0` (decimal para consumibles; en serializados la cantidad es el tamaño del grupo) — el defecto era de affordance: el alta por selección nacía en `1` (`addCatalogSelectionToDraft`), el dedup por clave de identidad impide repetir ítem, y el input de la fila no se percibía como editable.
+
+### 15.1 Cambios (Opción A — afinar el borrador; sin cambio de contrato)
+
+| Archivo | Cambio |
+|---|---|
+| `stock-issue-line-utils.ts` | Nueva `stepDraftQuantity(value, delta)`: paso ±1 con dos decimales (`numeric(12,2)`); vacío/no numérico cuenta como 0. El llamador deshabilita el paso negativo cuando el valor es ≤ 1 (el envío exige `> 0`); el tipeo libre sigue siendo la vía decimal. |
+| `StockIssueDraftLinesTable.tsx` | Stepper −/+ alrededor del input de cantidad en filas no serializadas (botones 44×44 `h-11 w-11`, foco visible, `tabular-nums`, `inputMode="decimal"`). Los serializados no cambian: cantidad fija = grupo de seriales. Nueva prop `highlightQuantityLineId` para el acento de interacción sobre la celda (`bg-iwana-secondary-50` / `dark:bg-iwana-secondary-500/10`). |
+| `StockIssueComposer.tsx` | Al agregar desde selección, el foco va a la cantidad de la primera línea editable nueva (`scrollIntoView` + `focus`, respeta `prefers-reduced-motion`). Al intentar ítems ya presentes, el aviso de duplicado se acompaña del resalte transitorio (2,5 s) de la celda de cantidad de la línea existente: el texto dice qué hacer y el acento dice dónde. |
+
+Decisiones registradas: los botones se etiquetan «Más/Menos unidades de {producto}» — sin la palabra «cantidad» — para no colisionar con los selectores `/Cantidad .*/` del E2E (`createConsumableSaleIssue`) ni con `getByLabelText` de las specs vigentes. La Opción B (cantidad en el momento de selección) queda como extensión posterior si la operación la pide. Filas duplicadas del mismo ítem quedan descartadas: el backend ya suma tuplas (ítem, lote, condición) en una sola reserva.
+
+### 15.2 Evidencia
+
+- TDD: specs rojas confirmadas antes de implementar; verdes después — `stock-issue-line-utils.spec`, `StockIssueDraftLinesTable.spec`, `StockIssueComposer.spec`: **66/66**.
+- Regresión del módulo en portal: **78 suites, 553 tests** en verde; `tsc --noEmit` limpio; ESLint 0 errores en los archivos tocados; `audit-ui.mjs` sin hallazgos.
+
+### 15.3 Pendiente de verificación humana
+
+La verificación visual en la app local exige sesión con MFA (el portal estaba en `/auth/login` al cierre), así que el paso final —mirar el stepper en la tabla real— queda para la próxima sesión autenticada. El comportamiento está cubierto por los casos nuevos de foco, resalte y stepper.
+
+## 16. Alta por panel de configuración (2026-09-08) — cantidad y seriales al agregar
+
+El operador esperaba que «Agregar N producto(s)» abriera el panel de línea para escoger cantidad y seriales **en el momento del alta**; en su lugar las líneas caían al borrador con cantidad 1 y el panel (que ya hacía exactamente eso) quedaba escondido tras el clic en el nombre del producto, una affordance casi invisible. Decisión aprobada con el CTO de producto: flujo **secuencial uno a uno** y **reutilización** de `StockIssueLineSidePeek` (sin modal nuevo).
+
+### 16.1 Comportamiento nuevo
+
+| Flujo | Antes | Ahora |
+|---|---|---|
+| 1 producto seleccionado | Línea en borrador con cantidad 1 | Panel `create` con línea provisional; el borrador no se toca hasta confirmar |
+| N productos | N líneas con cantidad 1 | Cola: el panel pasa al siguiente producto al confirmar cada uno |
+| Ítem ya en borrador | Aviso + resalte de celda | Panel `edit` sobre la línea existente (sin duplicar); aviso «Productos omitidos» solo si hubo varios |
+| Cancelar/Escape a media cola | — | La captura en curso y el resto de la cola **vuelven a sus casillas**; las líneas ya confirmadas permanecen |
+
+El borrador ya no recibe líneas sin configurar desde esta vía (desaparece el «Falta configurar seriales» por alta rápida; las redes de seguridad permanecen: badge en tabla y auto-abrir desde submit inválido, CA-S1-05). En móvil, el salto al paso de revisión se difiere al cierre del flujo — el footer de captura ya ofrece «Revisar selección».
+
+### 16.2 Cambios
+
+- `StockIssueComposer.tsx`: `handleAddSelectedProducts` arma la cola ordenada (sugerencias → catálogo, con caché B1 y dedup por ítem) y abre el panel sobre una línea provisional; estado `addFlowActive`/`addFlowQueue`/`pendingDuplicateLineId`; `advanceAddFlow` encadena confirmaciones; `handlePeekOpenChange` distingue cancelación (restaura selección) de transición entre líneas. `openPeekForItem` reutiliza `buildProvisionalDraftLine` (DRY). **Quedan superseded y retirados** los añadidos de §15 que el panel deja sin efecto y con los que peleaba: foco inline (`setQtyFocusLineId`) y resalte de duplicado (`qtyHighlightLineId` + prop en la tabla), y el aviso G1 «usa Modificar» para serializados. **El stepper −/+ por fila se conserva** para ajustes posteriores.
+- E2E `portal-inventory-scm.spec.ts`: `addIssueCatalogItemsToDraft` ahora conduce el panel por cada producto (elige el primer serial cuando el ítem lo exige) y se retiraron las 4 llamadas a `assignIssueLineSerial` (el serial ya se asigna en el alta). Los rellenos inline de `Cantidad .*CAB-DROP` siguen válidos: el input de la tabla existe tras confirmar el panel.
+
+### 16.3 Evidencia
+
+- TDD: casos nuevos en `StockIssueComposer.spec.tsx` (alta abre panel sin tocar borrador; cantidad elegida queda en la línea; N=2 secuencial; cancelar restaura selección; duplicado abre edición; serializado exige seriales antes de entrar) — suite en **30/30**.
+- Regresión portal inventory: **78 suites, 553 tests**; `tsc --noEmit` limpio; ESLint 0 errores; `audit-ui.mjs` sin hallazgos.
+
+### 16.4 Pendiente
+
+- La suite E2E portal no se ejecutó en local (exige pila completa); el helper quedó actualizado al flujo de panel y pendiente de corrida de CI.
+- Verificación visual con sesión activa (pendiente desde §15.3), ahora sobre el flujo nuevo.
+
+## 17. "Buscar y agregar" en el composer (2026-09-08) — búsqueda primero, §16 superseded
+
+Con el flujo de alta validado en §16, la pregunta de escala quedó abierta: ¿qué pasa con la sección de productos cuando la bodega tiene 100+ SKUs? Diagnóstico con evidencia: las listas ya estaban paginadas (el dolor real era cazar producto a producto por páginas con checkboxes, no la altura); el flujo dominante validado con producto es **«ya sé qué llevar»**; y existían piezas reutilizables (búsqueda de servidor transversal, escáner con coincidencia única, panel de captura). Decisión aprobada: **búsqueda primero** (dirección A), recientes fuera de alcance.
+
+### 17.1 Comportamiento nuevo
+
+- **En reposo solo hay buscador** («Busca por código, nombre, marca o escanea») y «Agregar línea manual». Sin tabs, sin listas, sin checkboxes, sin barra de selección: la columna deja de crecer con el catálogo.
+- Al buscar (≥2 caracteres): resultados acotados con **disponibilidad como dato** («Disponible en origen: 8 Unidad · 8 nuevo») o badge «Sin disponible en origen»; sin filtro de stock — lo buscado aparece siempre.
+- **Clic en el resultado → panel de captura** (condición · lote · seriales · cantidad). Al confirmar, el restaurador de foco del panel devuelve el foco al buscador (se enfoca al abrir): encadenar productos o escaneos es un gesto por producto.
+- **Escáner**: Enter con coincidencia única abre el panel directamente (antes auto-marcaba un checkbox); con coincidencia múltiple, los resultados quedan para elegir.
+- Ítem ya en borrador → el panel abre en edición (CA-S2.1-FE01 intacto).
+
+### 17.2 §16 superseded en parte
+
+La cola secuencial del alta (`addFlowActive`/`addFlowQueue`/`pendingDuplicateLineId`) y los checkboxes quedaron **retirados**: con una sola vía de alta (buscar → panel), no hay lote que encadenar. El stepper −/+, la edición masiva, el panel y «Agregar línea manual» se conservan. Archivos retirados del composer: `PurchaseSuggestionList.tsx`, `StockIssueCatalogSelector.tsx` (su tipo de desglose pasó al composer); `PurchaseSelectionBar.tsx` **permanece** (lo usa `StockReplenishmentPanel`) y `StockIssueSourceTabs.tsx` permanece como origen del tipo que consume `usePickableScope`.
+
+### 17.3 Bug corregido de paso
+
+`listPickableItems` en `api-client.ts` **no serializaba `page`** en la query: el pager numerado (ADR-065) dependía de un parámetro que nunca viajaba. Corregido; el caso CA-S2-10 del composer cubre el paso de `page` por el hook. Deuda declarada: la serialización del builder de query no tiene prueba unitaria propia (la capa de fetch se mockea en specs); la corrida E2E es la que la ejercita de punta a punta.
+
+### 17.4 Evidencia y pendientes
+
+- Suite del composer reescrita al camino nuevo: **30/30**; regresión portal inventory **78 suites / 553 tests**; `tsc --noEmit` limpio; ESLint 0 errores; `audit-ui.mjs` sin hallazgos. Spec del diseño: `docs/specs/2026-09-08-composer-buscar-y-agregar-design.md`.
+- E2E `portal-inventory-scm.spec.ts`: helper reescrito (búsqueda → resultado → panel → confirmar, con serial cuando el ítem lo exige) y `waitForIssueSourceMaterial` adaptado; **pendiente de corrida CI** (pila completa), igual que la verificación visual con sesión.
+- Limpieza futura declarada: `usePickableScope` conserva la maquinaria de dos ámbitos (ahora solo se usa `catalog`) y la paginación del listado vive en estado de componente (desviación conocida de ADR-065 §9).

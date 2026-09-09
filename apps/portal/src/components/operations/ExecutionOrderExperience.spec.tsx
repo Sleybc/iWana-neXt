@@ -181,8 +181,12 @@ describe('componentes de ejecución', () => {
       </OperationalSidePeek>,
     );
 
-    const overlay = screen.getByRole('button', { name: 'Cerrar detalle operativo' });
-    fireEvent.click(overlay);
+    // El velo dejó de ser un `<button>` etiquetado y cierra en `mousedown`. La
+    // capa está portalada: se consulta `document.body`, no el contenedor.
+    const overlay = document.body.querySelector<HTMLElement>('[data-portal-veil]');
+    expect(overlay).not.toBeNull();
+    expect(overlay).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.mouseDown(overlay as HTMLElement);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

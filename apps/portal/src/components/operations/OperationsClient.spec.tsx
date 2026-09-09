@@ -825,8 +825,12 @@ describe('OperationsClient', () => {
         });
 
         // El usuario cierra el drawer mientras la custodia sigue en vuelo: el
-        // cierre invalida la apertura (seq guard).
-        await user.click(screen.getByRole('button', { name: 'Cerrar detalle operativo' }));
+        // cierre invalida la apertura (seq guard). El velo ya no es un
+        // `<button>` etiquetado: se localiza por `data-portal-veil` sobre
+        // `document.body`, donde vive la capa portalada.
+        const veil = document.body.querySelector<HTMLElement>('[data-portal-veil]');
+        expect(veil).not.toBeNull();
+        await user.click(veil as HTMLElement);
         expect(screen.queryByText('OT-CUSTODY-LATE')).not.toBeInTheDocument();
 
         // La respuesta tardía llega después: no reabre el drawer ni pinta datos.

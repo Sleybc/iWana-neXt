@@ -685,7 +685,6 @@ export function InventoryCatalogDrawer({
       open={open}
       drawerRef={drawerRef}
       labelledBy="inventory-catalog-edit-title"
-      closeAriaLabel="Cerrar edición de producto"
       maxWidthClass="max-w-4xl"
       onRequestClose={requestClose}
       discardOpen={discardOpen}

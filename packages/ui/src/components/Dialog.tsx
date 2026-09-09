@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { createPortal } from 'react-dom';
+import { ModalLayer } from './ModalLayer';
+import { overlayEdgeClassName } from './ModalLayer';
 import { cn } from '../lib/utils';
 
 interface DialogContextValue {
@@ -316,15 +317,26 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
       return null;
     }
 
-    return createPortal(
-      <div
-        className="fixed inset-0 z-10000 flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm"
-        onMouseDown={() => {
+    // El velo vive en `ModalLayer`, no en esta capa. Antes el `backdrop-blur-sm`
+    // se pintaba SOBRE el elemento `fixed inset-0`: ese `backdrop-filter`
+    // convertía la capa en contexto de apilamiento y en bloque contenedor de
+    // sus descendientes `fixed`, así que atrapaba exactamente a los
+    // `--z-popover` que el comentario del panel (más abajo) se cuidaba de no
+    // atrapar — el ancestro ya lo hacía (ADR-075 §2ter).
+    //
+    // El velo es hermano del panel y su `absolute inset-0` resuelve contra la
+    // caja de relleno de la capa, así que sigue cubriendo el `px-4 py-6`: el
+    // cierre por clic en el margen se conserva.
+    return (
+      <ModalLayer
+        align="center"
+        className="px-4 py-6"
+        onVeilClick={() => {
           if (!isTopMostDialogLayer(layerId)) {
             return;
           }
 
-          // Click sobre el overlay equivale a interacción fuera del contenido.
+          // Interacción sobre el velo equivale a interacción fuera del contenido.
           onInteractOutside?.();
           setOpen(false);
         }}
@@ -347,20 +359,21 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
             {...(descriptionId ? { 'aria-describedby': descriptionId } : {})}
             tabIndex={-1}
             className={cn(
-              'relative z-10001 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-border dark:bg-dark-surface-2',
+              // Sin z: el contenido es descendiente de la capa `--z-modal` y
+              // pinta sobre el velo por orden de documento. Un z propio aquí
+              // crearía un contexto de apilamiento que atraparía a los
+              // descendientes en `--z-popover` que no se portalan (Popover).
+              overlayEdgeClassName,
+              'relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border bg-white p-6 shadow-2xl dark:bg-dark-surface-2',
 
               className,
             )}
-            onMouseDown={(event) => {
-              event.stopPropagation();
-            }}
             {...props}
           >
             {children}
           </div>
         </DialogContentContext.Provider>
-      </div>,
-      document.body,
+      </ModalLayer>
     );
   },
 );

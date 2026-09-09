@@ -39,6 +39,8 @@ export * from './components/Tabs';
 export * from './components/DropdownMenu';
 export * from './components/SectionAccordion';
 export * from './components/ProgressMeter';
+export * from './components/ModalLayer';
+export * from './components/ShellSearchSheet';
 export * from './components/OperationalSidePeek';
 export * from './components/Popover';
 export * from './components/Calendar';

@@ -526,7 +526,7 @@ export function PendingVisitRequestDetailPanel({
   );
 
   const panel = isDrawer ? (
-    <aside className="relative z-10 flex h-dvh w-full max-w-[560px] flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-1">
+    <aside className="relative flex h-dvh w-full max-w-[560px] flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl dark:border-dark-border dark:bg-dark-surface-2">
       {panelBody}
     </aside>
   ) : (

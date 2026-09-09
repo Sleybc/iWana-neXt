@@ -8,6 +8,10 @@ import { TopHeader } from '@/components/layout/TopHeader';
 import { tenantSelfApi, type TenantSelf } from '@/lib/api-client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
+import {
+  PORTAL_MODAL_DRAWER_STATE_EVENT,
+  type PortalModalDrawerStateDetail,
+} from '@/components/shared/portal-side-drawer-layers';
 
 const BRANDING_EVENT_NAME = 'tenant-branding-updated';
 
@@ -62,6 +66,11 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
   const [sidebarDesktopCollapsed, setSidebarDesktopCollapsed] = useState(false);
   // Estado mobile: el drawer arranca cerrado
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
+  // Un drawer modal del portal (p. ej. detalle de producto en Inventario) está
+  // abierto: el chrome (Sidebar y TopHeader) queda bajo el velo —atenuado y
+  // desenfocado— e inerte, y el sidebar mobile se cierra para no coexistir con
+  // el drawer.
+  const [modalDrawerOpen, setModalDrawerOpen] = useState(false);
   // Perfil del tenant — cargado una vez para sidebar y otros consumidores del layout
   const [tenantProfile, setTenantProfile] = useState<TenantSelf | null>(null);
 
@@ -172,6 +181,28 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
     document.title = resolveDashboardTitle(tenantProfile);
   }, [tenantProfile]);
 
+  // Drawer modal del portal (difundido por `usePortalModalDrawerBroadcast`):
+  // vuelve el chrome inerte y cierra el sidebar mobile para no abrir ambos a
+  // la vez. El drawer vive después en el DOM, así que manda él.
+  useEffect(() => {
+    const handleModalDrawerState = (event: Event) => {
+      const detail = (event as CustomEvent<PortalModalDrawerStateDetail>).detail;
+      if (!detail) {
+        return;
+      }
+
+      setModalDrawerOpen(detail.open);
+      if (detail.open) {
+        setSidebarMobileOpen(false);
+      }
+    };
+
+    window.addEventListener(PORTAL_MODAL_DRAWER_STATE_EVENT, handleModalDrawerState);
+    return () => {
+      window.removeEventListener(PORTAL_MODAL_DRAWER_STATE_EVENT, handleModalDrawerState);
+    };
+  }, []);
+
   if (authLoading && !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-iwana-neutral-50 dark:bg-dark-surface">
@@ -187,10 +218,16 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
   return (
     <PermissionsProvider>
       <div className="flex min-h-screen overflow-x-hidden bg-white dark:bg-dark-surface-2">
-        {/* OVERLAY para mobile — cierra el drawer al hacer click externo */}
+        {/* OVERLAY para mobile — cierra el drawer al hacer click externo.
+            Adopta el token `--color-veil` (/45 en claro, /60 en oscuro) y gana
+            así el valor de modo oscuro que no tenía. NO consume `ModalLayer`:
+            es la excepción de §2bis —su panel es el `Sidebar`, chrome que no
+            puede portalarse—, así que sigue siendo un constructo de dos
+            escalones con el velo por DEBAJO del panel. Sin desenfoque a
+            propósito: es el único velo de la familia que no debe desenfocar. */}
         {sidebarMobileOpen && (
           <div
-            className="fixed inset-0 z-(--z-overlay) bg-black/50 lg:hidden"
+            className="fixed inset-0 z-(--z-shell-raised) bg-(--color-veil) lg:hidden"
             onClick={() => setSidebarMobileOpen(false)}
             aria-hidden="true"
           />
@@ -203,6 +240,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
           mobileOpen={sidebarMobileOpen}
           setMobileOpen={setSidebarMobileOpen}
           profile={tenantProfile}
+          modalDrawerOpen={modalDrawerOpen}
         />
 
         {/* ÁREA DE CONTENIDO PRINCIPAL */}
@@ -213,6 +251,7 @@ export default function PortalDashboardLayout({ children }: { children: ReactNod
             setDesktopCollapsed={setSidebarDesktopCollapsed}
             mobileOpen={sidebarMobileOpen}
             setMobileOpen={setSidebarMobileOpen}
+            modalDrawerOpen={modalDrawerOpen}
           />
 
           {/* CONTENIDO DE LA PÁGINA */}

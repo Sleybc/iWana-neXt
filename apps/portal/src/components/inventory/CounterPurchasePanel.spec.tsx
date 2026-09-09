@@ -4,9 +4,12 @@ import { InventoryItemCategory, InventoryItemKind } from '@iwana/shared';
 import type {
   InventoryCatalogOptionRecord,
   InventoryItemRecord,
+  PurchaseTaxPresetRecord,
   StockLocationRecord,
   StockMovementResultRecord,
 } from '@/lib/api-client';
+import { formatInventoryMoney } from './inventory-labels';
+import { QUOTE_TAX_RATE_ERROR } from './quote-tax-calc';
 import { CounterPurchasePanel } from './CounterPurchasePanel';
 
 jest.mock('./SupplierPicker', () => ({
@@ -76,6 +79,16 @@ const locations: StockLocationRecord[] = [
 ];
 
 const items: InventoryItemRecord[] = [];
+
+async function fillValidCounterPurchaseForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /Seleccionar Proveedor/i }));
+  await user.type(screen.getByLabelText(/Factura o soporte/i), 'FAC-001');
+  await user.click(screen.getByRole('button', { name: /Bodega destino/i }));
+
+  const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
+  await user.type(searchInput, 'ONT');
+  await user.click(await screen.findByRole('option', { name: /ONT-001/i }));
+}
 
 describe('CounterPurchasePanel', () => {
   it('usa shell create-mode y secciones de datos, líneas y notas', () => {
@@ -169,6 +182,178 @@ describe('CounterPurchasePanel', () => {
         }),
       );
     });
+  });
+
+  it('muestra la sección de tributos de la compra con IVA aplicado por defecto', () => {
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Tributos de esta compra (según factura)')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Informativo: sirve para estimar el pago según la factura. No es un cálculo tributario ni un documento DIAN.',
+      ),
+    ).toBeInTheDocument();
+    const ivaCheckbox = screen.getByRole('checkbox', { name: 'IVA' });
+    expect(ivaCheckbox).toBeChecked();
+    expect(screen.getByLabelText(/Tasa de IVA/i)).toHaveValue(19);
+  });
+
+  it('incluye los tributos aplicados en el payload del registro', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await fillValidCounterPurchaseForm(user);
+    await user.click(screen.getByRole('button', { name: /Registrar ingreso directo/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taxes: [{ code: 'IVA_19', applies: true, rate: 19 }],
+        }),
+      );
+    });
+  });
+
+  it('usa la tasa del preset para el IVA por defecto cuando llegan presets', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const taxPresets: PurchaseTaxPresetRecord[] = [
+      {
+        code: 'IVA_19',
+        name: 'IVA',
+        category: 'VAT',
+        baseRate: 10,
+        treatment: 'STANDARD',
+        context: 'PURCHASE',
+      },
+    ];
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={onSubmit}
+        taxPresets={taxPresets}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Tasa de IVA/i)).toHaveValue(10);
+
+    await fillValidCounterPurchaseForm(user);
+    await user.click(screen.getByRole('button', { name: /Registrar ingreso directo/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taxes: [{ code: 'IVA_19', applies: true, rate: 10 }],
+        }),
+      );
+    });
+  });
+
+  it('muestra el total estimado con tributos sobre el subtotal neto', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    await fillValidCounterPurchaseForm(user);
+
+    expect(screen.getByText('Subtotal (neto)')).toBeInTheDocument();
+    expect(screen.getAllByText('Total estimado con tributos').length).toBeGreaterThan(0);
+    // Línea 120000 × 1 con IVA 19% → neto estimado 142800.
+    const expected = formatInventoryMoney(142800).replace(/\u00a0/g, ' ');
+    const matches = screen.getAllByText((content) => content.replace(/\u00a0/g, ' ') === expected);
+    expect(matches.length).toBeGreaterThan(0);
+  });
+
+  it('bloquea el registro cuando la tasa es inválida', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await fillValidCounterPurchaseForm(user);
+
+    const rateInput = screen.getByLabelText(/Tasa de IVA/i);
+    await user.clear(rateInput);
+    await user.type(rateInput, '200');
+
+    await user.click(screen.getByRole('button', { name: /Registrar ingreso directo/i }));
+
+    const errors = await screen.findAllByText(QUOTE_TAX_RATE_ERROR);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('etiqueta el costo unitario como sin impuestos', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001/i }));
+
+    expect(screen.getByText('Costo unitario (sin impuestos)')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Costo unitario (sin impuestos) de ONT WiFi 6'),
+    ).toBeInTheDocument();
   });
 
   it('ofrece registrar otro ingreso tras el éxito', async () => {

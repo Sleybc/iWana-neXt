@@ -42,6 +42,7 @@ import {
   CancelStockIssueSchema,
   CreateCounterPurchaseDto,
   CreateCounterPurchaseSchema,
+  AddCounterPurchaseTaxDto,
   CreateStockAdjustmentDto,
   CreateStockAdjustmentSchema,
   CreateStockCountDto,
@@ -137,7 +138,7 @@ import { CycleCountService } from './services/cycle-count.service';
 import { WriteOffService } from './services/write-off.service';
 
 @ApiTags('inventory')
-@ApiExtraModels(InventoryListMetaDto, PickerSearchResponseDto)
+@ApiExtraModels(InventoryListMetaDto, PickerSearchResponseDto, AddCounterPurchaseTaxDto)
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('inventory')
@@ -796,7 +797,17 @@ export class InventoryController {
   @Post('counter-purchases')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.INVENTORY_STOCK_MANAGE)
-  @ApiOperation({ summary: 'Registrar ingreso directo por compra de mostrador' })
+  @ApiOperation({
+    summary: 'Registrar ingreso directo por compra de mostrador',
+    description:
+      'Registra ingreso directo con factura en mano. El servidor calcula tributos informativos ' +
+      'a partir de taxes[] (code, applies, rate opcional) contra el catálogo PURCHASE; ' +
+      'el costing sigue sobre base neta sin capitalizar tributos.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Movimiento con líneas, taxes calculados y payableAmount estimado',
+  })
   createCounterPurchase(
     @Body(new ZodValidationPipe(CreateCounterPurchaseSchema)) body: CreateCounterPurchaseDto,
     @CurrentUser() actor: JwtPayload,

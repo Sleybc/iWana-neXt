@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { overlayEdgeClassName } from './ModalLayer';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -288,8 +289,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           position: 'fixed',
           left,
           width: resolvedWidth,
-          // Debe superar overlays/modales que usan z-index alto en apps web/portal.
-          zIndex: 11000,
+          // Capa popover (ADR-075): debe pintar sobre overlays/modales (--z-modal).
+          zIndex: 'var(--z-popover)',
           maxHeight: menuMaxHeight ?? '38vh',
           ...(placeAbove
             ? {
@@ -550,7 +551,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                   aria-labelledby={label ? labelId : ariaLabelledBy}
                   aria-label={label ?? placeholder ?? 'Opciones'}
                   className={cn(
-                    'max-h-[38vh] overflow-y-auto overscroll-contain rounded-[28px] border border-white/90 bg-white/98 p-2 shadow-(--shadow-iwana-lg) ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:border-dark-border dark:bg-dark-surface-2/98 dark:ring-white/10',
+                    overlayEdgeClassName,
+                    'max-h-[38vh] overflow-y-auto overscroll-contain rounded-[28px] border bg-white/98 p-2 shadow-(--shadow-iwana-lg) ring-1 ring-black/5 backdrop-blur-md sm:max-h-72 dark:bg-dark-surface-2/98 dark:ring-white/10',
                     menuClassName,
                   )}
                   style={menuStyle}
@@ -650,7 +652,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                     position: 'fixed',
                     top: hoverHintPosition.top,
                     left: hoverHintPosition.left,
-                    zIndex: 11000,
+                    zIndex: 'var(--z-popover)',
                     width: 'min(320px, calc(100vw - 24px))',
                   }}
                   className="rounded-2xl border border-gray-200 bg-white/98 px-3.5 py-2.5 text-sm font-medium leading-snug text-gray-900 shadow-(--shadow-iwana-lg) ring-1 ring-black/5 backdrop-blur-md dark:border-dark-border dark:bg-dark-surface-2/98 dark:text-white dark:ring-white/10"

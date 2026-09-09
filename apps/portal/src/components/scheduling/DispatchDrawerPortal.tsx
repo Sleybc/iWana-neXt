@@ -1,8 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { cn } from '@iwana/ui';
+import { ModalLayer } from '@iwana/ui';
 
 export type DispatchDrawerScope = 'mobile' | 'all';
 
@@ -11,7 +10,6 @@ interface DispatchDrawerPortalProps {
   onClose: () => void;
   children: ReactNode;
   drawerScope?: DispatchDrawerScope;
-  overlayLabel?: string;
 }
 
 export function DispatchDrawerPortal({
@@ -19,27 +17,22 @@ export function DispatchDrawerPortal({
   onClose,
   children,
   drawerScope = 'all',
-  overlayLabel = 'Cerrar panel de despacho',
 }: DispatchDrawerPortalProps) {
-  if (!open || typeof document === 'undefined') {
+  if (!open) {
     return null;
   }
 
-  return createPortal(
-    <div
-      className={cn(
-        'fixed inset-0 z-(--z-drawer) flex justify-end',
-        drawerScope === 'mobile' && 'xl:hidden',
-      )}
+  // `drawerScope` es el único alcance responsive de la capa: en `mobile` el
+  // panel de despacho ya vive maquetado en el rail a partir de `xl`, así que la
+  // capa modal debe desaparecer ahí en vez de duplicarlo. Es exactamente el uso
+  // que el contrato reserva a `className` (alcance responsive y padding).
+  return (
+    <ModalLayer
+      align="end"
+      onVeilClick={onClose}
+      {...(drawerScope === 'mobile' ? { className: 'xl:hidden' } : {})}
     >
-      <button
-        type="button"
-        aria-label={overlayLabel}
-        className="absolute inset-0 bg-black/45 backdrop-blur-sm"
-        onClick={onClose}
-      />
       {children}
-    </div>,
-    document.body,
+    </ModalLayer>
   );
 }

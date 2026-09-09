@@ -89,6 +89,7 @@ export { PurchaseRfqInvitation } from './purchase-rfq-invitation.entity';
 export { SupplierQuote } from './supplier-quote.entity';
 export { SupplierQuoteLine } from './supplier-quote-line.entity';
 export { SupplierQuoteTax } from './supplier-quote-tax.entity';
+export { StockMovementTax } from './stock-movement-tax.entity';
 export { PurchaseOrder } from './purchase-order.entity';
 export { PurchaseOrderLine } from './purchase-order-line.entity';
 export { GoodsReceipt } from './goods-receipt.entity';

@@ -251,7 +251,7 @@ async function addSerializedViaPanel(
   user: ReturnType<typeof userEvent.setup>,
   options?: { serialLabels?: string[] },
 ) {
-  await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
+  await user.type(screen.getByLabelText('Buscar producto'), 'SER-9');
   await user.click(await screen.findByRole('button', { name: /SER-9 · Router Onu Gpon/ }));
 
   const dialog = await screen.findByRole('dialog', { name: /Router Onu Gpon/ });
@@ -261,6 +261,38 @@ async function addSerializedViaPanel(
   for (const [index, label] of labels.entries()) {
     if (index > 0) {
       // Tras agregar, el picker cierra el listado; escribir reabre la búsqueda.
+      await user.type(serialInput, 'SN');
+    }
+    await user.click(await within(dialog).findByRole('option', { name: new RegExp(label) }));
+  }
+  await user.click(within(dialog).getByRole('button', { name: 'Agregar al borrador' }));
+  return dialog;
+}
+
+/**
+ * Alta por selección (casilleros): con la selección ya marcada, pulsa
+ * «Agregar N producto(s)» y configura la línea en el panel (cantidad y/o
+ * seriales) antes de confirmar. Con `cancel` solo abre el panel y lo cierra
+ * con Escape para verificar la restauración de la selección.
+ */
+async function addViaSearch(
+  user: ReturnType<typeof userEvent.setup>,
+  query: string,
+  productName: RegExp,
+  options?: { quantity?: string; serialLabels?: string[] },
+) {
+  await user.type(screen.getByLabelText('Buscar producto'), query);
+  await user.click(await screen.findByRole('button', { name: productName }));
+  const dialog = await screen.findByRole('dialog', { name: productName });
+  if (options?.quantity) {
+    const qtyInput = within(dialog).getByLabelText('Cantidad');
+    await user.clear(qtyInput);
+    await user.type(qtyInput, options.quantity);
+  }
+  for (const [index, label] of (options?.serialLabels ?? []).entries()) {
+    const serialInput = within(dialog).getByPlaceholderText('Buscar serial disponible');
+    await user.click(serialInput);
+    if (index > 0) {
       await user.type(serialInput, 'SN');
     }
     await user.click(await within(dialog).findByRole('option', { name: new RegExp(label) }));
@@ -319,117 +351,101 @@ describe('StockIssueComposer', () => {
     searchItemsForPickerMock.mockResolvedValue({ data: [], total: 0 });
   });
 
-  it('CA-S1-01: elegida la bodega y sin escribir nada, Con material lista con cantidad y el contador refleja meta.total', async () => {
+  it('CA-S1-01: elegida la bodega y sin busqueda no hay lista; al buscar, cada resultado trae disponibilidad', async () => {
     const user = setupUser();
-    listPickableItemsMock.mockImplementation((params: { scope?: string }) => {
-      if (params.scope === 'catalog') {
-        return Promise.resolve({ data: [], meta: buildMeta({ total: 128 }) });
-      }
-      return Promise.resolve({
-        data: [buildPickable(), pickableCable],
-        meta: buildMeta({ total: 2 }),
-      });
-    });
-
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
 
+    // En reposo: solo el buscador; ninguna lista que crezca con el catalogo.
+    expect(await screen.findByText('Busca un producto para agregar')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
     expect(await screen.findByText(/ONT-001 · ONT WiFi 6/)).toBeInTheDocument();
-    expect(screen.getByText(/Disponible en origen: 3/)).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Con material (2)' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Catálogo (128)' })).toBeInTheDocument();
-    // B1 se consulta una vez por pestaña (origen + scope), sin N+1 por ítem.
+    expect(screen.getAllByText(/Disponible en origen: 3/).length).toBeGreaterThanOrEqual(1);
     expect(listPickableItemsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceLocationId: 'loc-1', scope: 'with-stock' }),
+      expect.objectContaining({ sourceLocationId: 'loc-1', scope: 'catalog' }),
       expect.anything(),
     );
     expect(getItemMock).not.toHaveBeenCalled();
   });
 
-  it('CA-S2-10: con más ítems que la página, la segunda página es alcanzable desde el pager (ADR-065)', async () => {
+  it('CA-S2-10: con mas items que la pagina, la segunda pagina es alcanzable desde el pager (ADR-065)', async () => {
     const user = setupUser();
     const universe = Array.from({ length: 26 }, (_, index) =>
       buildPickable({ itemId: `item-${index}`, sku: `SKU-${index}`, name: `Producto ${index}` }),
     );
     listPickableItemsMock.mockImplementation(
-      (params: { scope?: string; page?: number; limit?: number }) => {
+      (params: { scope?: string; page?: number; limit?: number; q?: string }) => {
         if (params.scope === 'catalog') {
-          return Promise.resolve({ data: [], meta: buildMeta({ total: 0 }) });
+          const limit = params.limit ?? PORTAL_DEFAULT_PAGE_SIZE;
+          const page = params.page ?? 1;
+          const filtered = universe.filter((item) =>
+            `${item.sku} ${item.name}`.toLowerCase().includes((params.q ?? '').toLowerCase()),
+          );
+          return Promise.resolve({
+            data: filtered.slice((page - 1) * limit, page * limit),
+            meta: buildMeta({
+              total: filtered.length,
+              page,
+              limit,
+              hasMore: page * limit < filtered.length,
+            }),
+          });
         }
-        const limit = params.limit ?? PORTAL_DEFAULT_PAGE_SIZE;
-        const page = params.page ?? 1;
-        return Promise.resolve({
-          data: universe.slice((page - 1) * limit, page * limit),
-          meta: buildMeta({
-            total: universe.length,
-            page,
-            limit,
-            hasMore: page * limit < universe.length,
-          }),
-        });
+        return Promise.resolve({ data: [], meta: buildMeta({ total: 0 }) });
       },
     );
 
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    expect(await screen.findByRole('tab', { name: 'Con material (26)' })).toBeInTheDocument();
-
-    // Pie numerado con conteo en el pie; la primera página no contiene el ítem 25.
-    expect(screen.getByText('Mostrando 1–20 de 26 productos')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Buscar producto'), 'Producto');
+    expect(await screen.findByText('Mostrando 1–20 de 26 productos')).toBeInTheDocument();
     expect(screen.queryByText(/SKU-25 · Producto 25/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Siguiente' }));
     expect(await screen.findByText(/SKU-25 · Producto 25/)).toBeInTheDocument();
     expect(listPickableItemsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 2, scope: 'with-stock' }),
+      expect.objectContaining({ page: 2, scope: 'catalog' }),
       expect.anything(),
     );
     expect(screen.getByText('Mostrando 21–26 de 26 productos')).toBeInTheDocument();
   });
 
-  it('CA-S1-02: el catálogo muestra categoría, unidad y disponible reales', async () => {
+  it('CA-S1-02: el resultado del buscador muestra disponibilidad real', async () => {
     const user = setupUser();
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-
-    const catalogTable = await screen.findByRole('table');
-    const body = within(catalogTable).getAllByRole('row').slice(1);
-    expect(body.length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Equipos de cliente').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('Unidad').length).toBeGreaterThanOrEqual(2);
-    // Disponible real por ítem, sin hardcodes de categoría ni unidad.
-    expect(screen.getAllByText('Materiales').length).toBeGreaterThanOrEqual(1);
+    await user.type(screen.getByLabelText('Buscar producto'), 'Cable');
+    expect(await screen.findByText(/CAB-010 · Cable drop/)).toBeInTheDocument();
+    expect(screen.getByText(/Disponible en origen: 8/)).toBeInTheDocument();
   });
 
-  it('CA-S1-03: el disponible se ve por condición, sin ocultar reacondicionado', async () => {
+  it('CA-S1-03: el disponible se ve por condicion, sin ocultar reacondicionado', async () => {
     const user = setupUser();
     mockPickableBackend({ stock: [buildPickable(), pickableRouter] });
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    // Sugerencia con desglose en texto.
+    await user.type(screen.getByLabelText('Buscar producto'), 'Router');
     expect(await screen.findByText(/1 nuevo · 2 reacondicionado/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-    // Catálogo con badges tonales por condición, nunca enums crudos.
-    expect(await screen.findByText('Reacondicionado · 2')).toBeInTheDocument();
     expect(screen.queryByText(/REFURBISHED/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/NEW/)).not.toBeInTheDocument();
   });
 
-  it('busca con un solo carácter contra el mismo endpoint (fin del mínimo de 2)', async () => {
+  it('busca con un solo caracter contra el mismo endpoint (fin del minimo de 2)', async () => {
     const user = setupUser();
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    expect(await screen.findByText(/ONT-001 · ONT WiFi 6/)).toBeInTheDocument();
+    expect(await screen.findByText('Busca un producto para agregar')).toBeInTheDocument();
 
-    expect(screen.getByPlaceholderText('Buscar por código, nombre o marca')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Buscar ítem'), 'O');
+    expect(
+      screen.getByPlaceholderText('Busca por código, nombre, marca o escanea'),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Buscar producto'), 'O');
 
     await waitFor(() => {
       expect(listPickableItemsMock).toHaveBeenCalledWith(
@@ -446,6 +462,7 @@ describe('StockIssueComposer', () => {
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
     expect(await screen.findByText('No fue posible cargar el material')).toBeInTheDocument();
 
     mockPickableBackend();
@@ -453,40 +470,34 @@ describe('StockIssueComposer', () => {
     expect(await screen.findByText(/ONT-001 · ONT WiFi 6/)).toBeInTheDocument();
   });
 
-  it('pide la bodega de origen y avisa cuando no hay material', async () => {
+  it('pide la bodega de origen y, con ella, muestra el estado vacio de busqueda', async () => {
     const user = setupUser();
     renderComposer();
 
     expect(
       screen.getByText(
-        'Con el origen definido verás el material disponible para agregar a la salida.',
+        'Selecciona primero la bodega de origen para buscar con el disponible de cada producto.',
       ),
     ).toBeInTheDocument();
 
     mockPickableBackend({ stock: [], catalog: [] });
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    expect(await screen.findByText('Esta bodega no tiene material disponible')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
+    expect(await screen.findByText('No hay productos que coincidan')).toBeInTheDocument();
   });
 
-  it('renders create-mode sections and submits multiple lines', async () => {
+  it('renders create-mode sections and submits the searched line', async () => {
     const user = setupUser();
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 
     renderComposer({ onSubmit });
 
-    expect(screen.getByRole('heading', { name: 'Datos de la salida' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Con material/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Buscar y agregar' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
     await user.click(screen.getByRole('button', { name: 'Destino' }));
 
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar ONT/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
-
-    expect(screen.getAllByText('ONT-001 · ONT WiFi 6').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('columnheader', { name: 'Cantidad' }).length).toBeGreaterThanOrEqual(
-      1,
-    );
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
 
     await user.click(screen.getByRole('button', { name: 'Crear salida' }));
 
@@ -520,118 +531,167 @@ describe('StockIssueComposer', () => {
     expect(screen.getByText(STOCK_COMMITTED_NEXT_STEP_TEXT)).toBeInTheDocument();
   });
 
-  it('shows stock suggestions and warns when quantity exceeds available balance', async () => {
+  it('warns when quantity exceeds available balance inside the capture panel', async () => {
     const user = setupUser();
-
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
+    await user.click(await screen.findByRole('button', { name: /ONT-001 · ONT WiFi 6/ }));
 
-    expect(await screen.findByText(/Disponible en origen: 3/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
-
-    const quantityInput = screen.getByLabelText(/Cantidad ONT WiFi/i);
+    const dialog = await screen.findByRole('dialog', { name: /ONT WiFi 6/ });
+    const quantityInput = within(dialog).getByLabelText('Cantidad');
     await user.clear(quantityInput);
     await user.type(quantityInput, '9');
 
-    expect(screen.getByText(/Supera el material disponible en origen/i)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Supera el material disponible en origen/i),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Agregar al borrador' })).toBeDisabled();
   });
 
-  it('CA-S1-07: la línea con lote único nace con él y el detalle muestra número y vencimiento', async () => {
+  it('buscar y abrir: el resultado abre el panel de configuración sin tocar el borrador', async () => {
     const user = setupUser();
-    mockPickableBackend({
-      stock: [
-        buildPickable({
-          availability: [
-            {
-              condition: StockBalanceCondition.NEW,
-              quantityOnHand: '50',
-              quantityReserved: '0',
-              available: '50',
-            },
-          ],
-          totalAvailable: '50',
-          lots: [
-            {
-              lotId: 'lote-a',
-              lotNumber: 'LOTE-A',
-              expiryDate: '2026-05-20',
-              condition: StockBalanceCondition.NEW,
-              available: '50',
-            },
-          ],
-        }),
-      ],
-    });
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    expect(await screen.findByText(/Disponible en origen: 50/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
+    await user.click(await screen.findByRole('button', { name: /ONT-001 · ONT WiFi 6/ }));
 
-    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    // El panel se abre con el producto cargado; el borrador sigue vacio hasta
+    // confirmar la captura.
+    const dialog = await screen.findByRole('dialog', { name: /ONT WiFi 6/ });
+    expect(within(dialog).getByLabelText('Cantidad')).toHaveValue('1');
+    // El borrador queda intacto: el vacio sigue presente con el panel abierto.
+    expect(screen.getByText('Aún no hay líneas en el borrador')).toBeInTheDocument();
+  });
 
-    // Lote único: la línea nace con ese lote y el detalle lo muestra como dato.
+  it('buscar y agregar: la cantidad elegida en el panel queda en la linea del borrador', async () => {
+    const user = setupUser();
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/, { quantity: '2' });
+
+    expect(await screen.findByLabelText(/Cantidad ONT WiFi/i)).toHaveValue('2');
+  });
+
+  it('confirmar el alta devuelve el foco al buscador para encadenar productos', async () => {
+    const user = setupUser();
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
+
+    expect(await screen.findByLabelText('Buscar producto')).toHaveFocus();
+  });
+
+  it('cancelar el panel descarta la captura: el borrador queda vacio', async () => {
+    const user = setupUser();
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
+    await user.click(await screen.findByRole('button', { name: /ONT-001 · ONT WiFi 6/ }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Aún no hay líneas en el borrador')).toBeInTheDocument();
+  });
+
+  it('reintentar un item ya agregado abre el panel en edicion sobre esa linea', async () => {
+    const user = setupUser();
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/, { quantity: '2' });
+
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT');
+    await user.click(await screen.findByRole('button', { name: /ONT-001 · ONT WiFi 6/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: /ONT WiFi 6/ });
+    expect(within(dialog).getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+    expect(await within(dialog).findByLabelText('Cantidad')).toHaveValue('2');
+  });
+
+  it('CA-S1-07: la linea con lote unico nace con el y el detalle muestra numero y vencimiento', async () => {
+    const user = setupUser();
+    const onuConLoteUnico = buildPickable({
+      availability: [
+        {
+          condition: StockBalanceCondition.NEW,
+          quantityOnHand: '50',
+          quantityReserved: '0',
+          available: '50',
+        },
+      ],
+      totalAvailable: '50',
+      lots: [
+        {
+          lotId: 'lote-a',
+          lotNumber: 'LOTE-A',
+          expiryDate: '2026-05-20',
+          condition: StockBalanceCondition.NEW,
+          available: '50',
+        },
+      ],
+    });
+    mockPickableBackend({ stock: [onuConLoteUnico], catalog: [onuConLoteUnico] });
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
+
+    // Lote unico: la linea nace con ese lote y el detalle lo muestra como dato.
     expect(screen.getByText(/Lote LOTE-A · vence 20\/05\/2026 · 50/)).toBeInTheDocument();
   });
 
-  it('deja la elección al operador cuando hay más de un lote en origen', async () => {
+  it('deja la eleccion al operador cuando hay mas de un lote en origen', async () => {
     const user = setupUser();
-    mockPickableBackend({
-      stock: [
-        buildPickable({
-          availability: [
-            {
-              condition: StockBalanceCondition.NEW,
-              quantityOnHand: '50',
-              quantityReserved: '0',
-              available: '50',
-            },
-          ],
-          totalAvailable: '50',
-          lots: [
-            {
-              lotId: 'lote-a',
-              lotNumber: 'LOTE-A',
-              expiryDate: null,
-              condition: StockBalanceCondition.NEW,
-              available: '30',
-            },
-            {
-              lotId: 'lote-b',
-              lotNumber: 'LOTE-B',
-              expiryDate: null,
-              condition: StockBalanceCondition.NEW,
-              available: '20',
-            },
-          ],
-        }),
+    const onuConDosLotes = buildPickable({
+      availability: [
+        {
+          condition: StockBalanceCondition.NEW,
+          quantityOnHand: '50',
+          quantityReserved: '0',
+          available: '50',
+        },
+      ],
+      totalAvailable: '50',
+      lots: [
+        {
+          lotId: 'lote-a',
+          lotNumber: 'LOTE-A',
+          expiryDate: null,
+          condition: StockBalanceCondition.NEW,
+          available: '30',
+        },
+        {
+          lotId: 'lote-b',
+          lotNumber: 'LOTE-B',
+          expiryDate: null,
+          condition: StockBalanceCondition.NEW,
+          available: '20',
+        },
       ],
     });
+    mockPickableBackend({ stock: [onuConDosLotes], catalog: [onuConDosLotes] });
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-
-    expect(await screen.findByText(/Disponible en origen: 50/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('checkbox', { name: /Seleccionar ONT/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
 
     // Con dos lotes no se adivina: la fila no muestra lote y Modificar abre el panel.
     expect(screen.queryByText(/Lote LOTE-A/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Lote LOTE-B/)).not.toBeInTheDocument();
   });
 
-  it('CA-S2-07: el clic en el producto abre el panel con condición, lote, seriales y cantidad', async () => {
+  it('CA-S2-07: el resultado del buscador abre el panel con condicion, lote, seriales y cantidad', async () => {
     const user = setupUser();
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-
-    // El clic va sobre el nombre (botón), no sobre la fila: el checkbox queda intacto.
+    await user.type(screen.getByLabelText('Buscar producto'), 'SER-9');
     await user.click(await screen.findByRole('button', { name: /SER-9 · Router Onu Gpon/ }));
 
     const dialog = await screen.findByRole('dialog', { name: /Router Onu Gpon/ });
@@ -641,9 +701,6 @@ describe('StockIssueComposer', () => {
     expect(within(dialog).getByText('Cantidad')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Cantidad')).toHaveValue('0');
     expect(within(dialog).getByRole('status')).toHaveTextContent(SERIAL_QTY_HELP_TEXT);
-
-    // El checkbox de la vía rápida no quedó marcado por la apertura del panel.
-    expect(screen.getByRole('checkbox', { name: /Seleccionar SER-9/i })).not.toBeChecked();
   });
 
   it('CA-S2-08: Modificar reabre el panel con los valores actuales de la línea', async () => {
@@ -668,50 +725,39 @@ describe('StockIssueComposer', () => {
     expect(await within(dialog).findByLabelText('Cantidad')).toHaveValue('2');
   });
 
-  it('CA-S2-09: la tabla del borrador no tiene columna Condición editable', async () => {
+  it('CA-S2-09: la tabla del borrador no tiene columna Condicion editable', async () => {
     const user = setupUser();
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar SER-9/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
 
-    expect(screen.queryByRole('columnheader', { name: 'Condición' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Condicion' })).not.toBeInTheDocument();
     expect(screen.queryAllByRole('combobox', { name: /Condición/ })).toHaveLength(0);
-    // La condición se lee como dato en el detalle.
+    // La condicion se lee como dato en el detalle.
     expect(screen.getAllByText('Nuevo').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('CA-S1-05: la línea de vía rápida sin seriales bloquea el envío y Modificar lo resuelve', async () => {
+  it('CA-S1-05: el serializado exige seriales en el panel antes de entrar al borrador', async () => {
     const user = setupUser();
     const onSubmit = jest.fn().mockResolvedValue(undefined);
     renderComposer({ onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
     await user.click(screen.getByRole('button', { name: 'Destino' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar SER-9/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'SER-9');
+    await user.click(await screen.findByRole('button', { name: /SER-9 · Router Onu Gpon/ }));
 
-    const submitButton = screen.getByRole('button', { name: 'Crear salida' });
-    expect(submitButton).toBeEnabled();
-    await user.click(submitButton);
+    // La confirmacion queda bloqueada hasta elegir seriales: la linea no entra
+    // al borrador sin configuracion.
+    const dialog = await screen.findByRole('dialog', { name: /Router Onu Gpon/ });
+    expect(within(dialog).getByRole('button', { name: 'Agregar al borrador' })).toBeDisabled();
 
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(await screen.findByText('No se pudo crear la salida')).toBeInTheDocument();
-    const messages = await screen.findAllByText('Selecciona los seriales de Router Onu Gpon.');
-    expect(messages.length).toBeGreaterThanOrEqual(2);
-    // El foco de la corrección va al panel de la línea inválida.
-    expect(await screen.findByRole('dialog', { name: /Router Onu Gpon/ })).toBeInTheDocument();
-
-    // Dentro del panel se eligen los seriales y la cantidad queda fija en N.
-    const dialog = screen.getByRole('dialog', { name: /Router Onu Gpon/ });
     const serialInput = within(dialog).getByPlaceholderText('Buscar serial disponible');
     await user.click(serialInput);
     await user.click(await within(dialog).findByRole('option', { name: /SN-001/ }));
     expect(within(dialog).getByLabelText('Cantidad')).toHaveValue('1');
-    await user.click(within(dialog).getByRole('button', { name: 'Guardar cambios' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al borrador' }));
 
     await user.click(screen.getByRole('button', { name: 'Crear salida' }));
     await waitFor(() => {
@@ -740,40 +786,19 @@ describe('StockIssueComposer', () => {
     renderComposer({ onSubmit });
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar SER-9/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'SER-9');
+    await user.click(await screen.findByRole('button', { name: /SER-9 · Router Onu Gpon/ }));
 
-    // La fila hace visible el pendiente con el badge (mitigación G1).
-    expect(await screen.findByText('Falta configurar seriales')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Crear salida' }));
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(await screen.findByText('No se pudo crear la salida')).toBeInTheDocument();
-
-    // El panel explica por qué y la confirmación queda bloqueada.
+    // El panel abre directo con el bloqueo y la explicacion; el borrador
+    // permanece vacio porque la linea nunca entro sin configurar.
     const dialog = await screen.findByRole('dialog', { name: /Router Onu Gpon/ });
     expect(
       await within(dialog).findByText(
         'Este producto serializado no tiene seriales disponibles en esta bodega.',
       ),
     ).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
-  });
-
-  it('la vía rápida anuncia la línea serializada sin seriales en la región viva', async () => {
-    const user = setupUser();
-    renderComposer();
-
-    await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar SER-9/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
-
-    expect(await screen.findByText('Falta configurar seriales')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Se agregó Router Onu Gpon sin seriales: usa Modificar en la fila/),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Agregar al borrador' })).toBeDisabled();
+    expect(screen.getByText('Aún no hay líneas en el borrador')).toBeInTheDocument();
   });
 
   it('la vía manual hidrata el serializado y exige seriales por el panel (C3)', async () => {
@@ -785,7 +810,7 @@ describe('StockIssueComposer', () => {
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    expect(await screen.findByText(/ONT-001 · ONT WiFi 6/)).toBeInTheDocument();
+    expect(await screen.findByText('Busca un producto para agregar')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Agregar línea manual' }));
 
@@ -844,7 +869,7 @@ describe('StockIssueComposer', () => {
 
     expect(screen.getByText('Edición disponible en estado solicitada')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Contexto de la salida' })).toBeInTheDocument();
-    expect((await screen.findAllByText('ONT-001 · ONT WiFi 6')).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText('ONT WiFi 6')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
   });
 
@@ -899,110 +924,55 @@ describe('StockIssueComposer', () => {
     expect(await screen.findByRole('dialog', { name: /Router Onu Gpon/ })).toBeInTheDocument();
   });
 
-  it('F4: el código deja marcada la coincidencia única sin clic manual (CA-F4-05)', async () => {
-    listPickableItemsMock.mockImplementation((params: { scope?: string; q?: string }) => {
-      if (params.scope === 'catalog' && params.q?.trim()) {
-        return Promise.resolve({
-          data: [
-            buildPickable({
-              itemId: 'item-9',
-              sku: 'ONT-009',
-              name: 'ONT Escaneada',
-              categoryName: 'Equipos de cliente',
-              unitOfMeasure: 'UNIT',
-            }),
-          ],
-          meta: buildMeta({ total: 1 }),
-        });
-      }
-      return Promise.resolve({ data: [], meta: buildMeta({ total: 0 }) });
-    });
-
-    renderComposer();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Origen' }));
-    fireEvent.click(await screen.findByRole('tab', { name: /Catálogo/ }));
-    const searchInput = screen.getByLabelText('Buscar ítem');
-    fireEvent.change(searchInput, {
-      target: { value: '4006381333931' },
-    });
-    // El lector cierra con Enter: solo el escaneo auto-marca (S2.1 C4).
-    fireEvent.keyDown(searchInput, { key: 'Enter', code: 'Enter' });
-
-    // El código viaja como q al endpoint B1 (el backend ya resuelve barcode).
-    await screen.findByRole('checkbox', { name: /ONT Escaneada/i });
-    expect(listPickableItemsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ q: '4006381333931', scope: 'catalog' }),
-      expect.anything(),
-    );
-    // Coincidencia única: queda marcada sin clic manual; el escaneo sigue vivo.
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: /ONT Escaneada/i })).toBeChecked();
-    });
-    // Guarda loading + anuncio en la región viva de captura.
-    expect(
-      await screen.findByText('Se marcó ONT-009 · ONT Escaneada por escaneo.'),
-    ).toBeInTheDocument();
-  });
-
-  it('la búsqueda tecleada con una sola coincidencia no auto-marca (solo el escaneo)', async () => {
-    listPickableItemsMock.mockImplementation((params: { scope?: string; q?: string }) => {
-      if (params.scope === 'catalog' && params.q?.trim()) {
-        return Promise.resolve({
-          data: [
-            buildPickable({
-              itemId: 'item-9',
-              sku: 'ONT-009',
-              name: 'ONT Escaneada',
-              categoryName: 'Equipos de cliente',
-              unitOfMeasure: 'UNIT',
-            }),
-          ],
-          meta: buildMeta({ total: 1 }),
-        });
-      }
-      return Promise.resolve({ data: [], meta: buildMeta({ total: 0 }) });
-    });
-
-    renderComposer();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Origen' }));
-    fireEvent.click(await screen.findByRole('tab', { name: /Catálogo/ }));
-    fireEvent.change(screen.getByLabelText('Buscar ítem'), {
-      target: { value: '4006381333931' },
-    });
-
-    // Sin Enter no hay escaneo: la coincidencia única queda sin marcar.
-    const checkbox = await screen.findByRole('checkbox', { name: /ONT Escaneada/i });
-    expect(checkbox).not.toBeChecked();
-  });
-
-  it('CA-S2.1-FE01: abrir por nombre un ítem ya en el borrador abre edición, no duplica', async () => {
+  it('F4 (CA-F4-05): el escaneo con coincidencia unica abre el panel directo', async () => {
     const user = setupUser();
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(screen.getByRole('tab', { name: /Catálogo/ }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT-001');
+    await user.keyboard('{Enter}');
 
-    // Vía rápida primero: la línea queda pendiente de seriales.
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar SER-9/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
-    expect(await screen.findByText('Falta configurar seriales')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: /ONT WiFi 6/ })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Se abrió ONT-001 · ONT WiFi 6 para configurar la línea/),
+    ).toBeInTheDocument();
+  });
 
-    // Clic en el nombre: abre edición sobre la misma línea, no una provisional.
+  it('la busqueda tecleada con una sola coincidencia no abre nada sin Enter', async () => {
+    const user = setupUser();
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await user.type(screen.getByLabelText('Buscar producto'), 'ONT-001');
+
+    // La coincidencia unica queda listada para eleccion manual: sin Enter no
+    // hay captura automatica.
+    expect(await screen.findByText(/ONT-001 · ONT WiFi 6/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('CA-S2.1-FE01: rebuscar un item ya en el borrador abre edicion, no duplica', async () => {
+    const user = setupUser();
+    renderComposer();
+
+    await user.click(screen.getByRole('button', { name: 'Origen' }));
+    await addViaSearch(user, 'SER-9', /Router Onu Gpon/, { serialLabels: ['SN-001'] });
+
+    // Buscar de nuevo y abrir el mismo item: edicion sobre la misma linea.
+    await user.type(screen.getByLabelText('Buscar producto'), 'SER-9');
     await user.click(await screen.findByRole('button', { name: /SER-9 · Router Onu Gpon/ }));
     const dialog = await screen.findByRole('dialog', { name: /Router Onu Gpon/ });
     expect(within(dialog).getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
 
-    const serialInput = within(dialog).getByPlaceholderText('Buscar serial disponible');
-    await user.click(serialInput);
-    await user.click(await within(dialog).findByRole('option', { name: /SN-001/ }));
+    // La hidratacion trae el serial de la linea antes de permitir guardar.
+    expect(await within(dialog).findByText('SN-001')).toBeInTheDocument();
+    expect(await within(dialog).findByLabelText('Cantidad')).toHaveValue('1');
     await user.click(within(dialog).getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
-    // Una sola fila del ítem en el borrador.
+    // Una sola fila del item en el borrador.
     expect(screen.getAllByText('Router Onu Gpon')).toHaveLength(1);
   });
 
@@ -1014,29 +984,24 @@ describe('StockIssueComposer', () => {
           return Promise.resolve({ data: [], meta: buildMeta({ total: 0 }) });
         }
         return Promise.resolve({
-          data:
-            params.scope === 'catalog'
-              ? [buildPickable(), pickableCable, pickableRouter]
-              : [buildPickable(), pickableCable],
-          meta: buildMeta({ total: params.scope === 'catalog' ? 3 : 2 }),
+          data: [buildPickable(), pickableCable],
+          meta: buildMeta({ total: 2 }),
         });
       },
     );
     renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar ONT/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
     expect(await screen.findByText(/ONT-001 · ONT WiFi 6/)).toBeInTheDocument();
     expect(screen.queryByText('Bodega cambiada')).not.toBeInTheDocument();
 
-    // Cambio de bodega: aviso explícito y disponible anterior invalidado.
+    // Cambio de bodega: aviso explicito y disponible anterior invalidado.
     mockSourceId = 'loc-2';
     await user.click(screen.getByRole('button', { name: 'Origen' }));
 
     expect(await screen.findByText('Bodega cambiada')).toBeInTheDocument();
     expect(screen.getByText(/Supera el material disponible en origen/i)).toBeInTheDocument();
-    expect(screen.getByText('Esta bodega no tiene material disponible')).toBeInTheDocument();
   });
 
   it('CA-S2.1-FE05: con busy la cantidad inline y las acciones se deshabilitan', async () => {
@@ -1044,8 +1009,7 @@ describe('StockIssueComposer', () => {
     const { rerender } = renderComposer();
 
     await user.click(screen.getByRole('button', { name: 'Origen' }));
-    await user.click(await screen.findByRole('checkbox', { name: /Seleccionar ONT/i }));
-    await user.click(screen.getByRole('button', { name: /Agregar 1 producto/i }));
+    await addViaSearch(user, 'ONT', /ONT WiFi 6/);
     const quantityInput = await screen.findByLabelText(/Cantidad ONT WiFi/i);
     expect(quantityInput).toBeEnabled();
 

@@ -9,6 +9,7 @@ import {
   InventoryTrackingMode,
 } from '@iwana/shared';
 import type { InventoryCategoryRecord, InventoryItemRecord } from '@/lib/api-client';
+import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
 import {
   buildPayload,
   InventoryCatalogDrawer,
@@ -914,5 +915,38 @@ describe('InventoryCatalogDrawer · F4 código de barras (PRD §11)', () => {
     expect(validateCatalogBarcode({ barcode: '8412345678904', barcodeType: 'EAN13' })).toBe(
       'El dígito de control del código EAN13 no es válido: revisa que el número esté completo y sin errores de tecleo.',
     );
+  });
+});
+
+describe('InventoryCatalogDrawer · capas ADR-075', () => {
+  it('velo y panel en la capa z-modal sobre el chrome, con difusión del estado modal', () => {
+    const dispatchSpy = jest.spyOn(window, 'dispatchEvent');
+    renderDrawer();
+
+    // El velo dejó de ser un `<button>` etiquetado: se localiza por
+    // `data-portal-veil` sobre `document.body`, que es donde la capa se porta.
+    const velo = document.body.querySelector<HTMLElement>('[data-portal-veil]');
+    expect(velo).not.toBeNull();
+    expect(velo).toHaveAttribute('aria-hidden', 'true');
+    expect(velo).toHaveClass('absolute');
+    expect(velo?.parentElement).toHaveClass('z-(--z-modal)');
+    // Una sola clase para los dos temas: el token se redefine bajo `.dark`.
+    expect(velo).toHaveClass('bg-(--color-veil)');
+    expect(velo).toHaveClass('backdrop-blur-sm');
+    expect(velo?.className).not.toMatch(/dark:bg-black/);
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveClass('relative');
+    expect(dialog.parentElement).toHaveClass('z-(--z-modal)');
+
+    // El shell difunde la apertura: el layout vuelve el chrome inerte mientras
+    // el drawer viva y el sidebar mobile no coexiste con el drawer.
+    const modalStateEvents = dispatchSpy.mock.calls
+      .map(([event]) => event as CustomEvent)
+      .filter((event) => event.type === PORTAL_MODAL_DRAWER_STATE_EVENT);
+    expect(modalStateEvents.some((event) => event.detail?.open === true)).toBe(true);
+
+    dispatchSpy.mockRestore();
   });
 });

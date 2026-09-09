@@ -104,6 +104,19 @@ export class PurchasingController {
     private readonly supplierProfileService: SupplierProfileService,
   ) {}
 
+  @Get('tax-presets')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
+  @ApiOperation({ summary: 'Listar presets de tributos de compra' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Presets del catálogo PURCHASE `{ code, name, category, baseRate, treatment, context }[]`',
+  })
+  listTaxPresets() {
+    return this.purchasingQueryService.listTaxPresets();
+  }
+
   @Get('requests')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)

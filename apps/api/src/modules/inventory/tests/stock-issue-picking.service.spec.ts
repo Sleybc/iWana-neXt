@@ -195,8 +195,8 @@ function buildManager(seed: PickingSeed) {
         limitVal = value;
         return qb;
       });
-      qb.from = jest.fn().mockImplementation((target: unknown) => {
-        if (typeof target === 'function') {
+      qb.from = jest.fn().mockImplementation((target: unknown, alias?: unknown) => {
+        if (alias === undefined && typeof target === 'function') {
           (target as (inner: unknown) => void)(qb);
         }
         return qb;
@@ -441,7 +441,7 @@ describe('StockIssuePickingService', () => {
     expect(pageQb).toBeDefined();
     expect((pageQb?.['limit'] as jest.Mock).mock.calls).toContainEqual([1]);
     expect((pageQb?.['orderBy'] as jest.Mock).mock.calls).toContainEqual([
-      'totalAvailable',
+      'SUM(balance.quantity_on_hand::numeric) - SUM(balance.quantity_reserved::numeric)',
       'DESC',
     ]);
     // El total cuenta en SQL los grupos que pasan el HAVING (sin el ítem en cero).

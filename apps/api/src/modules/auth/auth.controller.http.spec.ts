@@ -1,4 +1,5 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AuthController } from './auth.controller';
@@ -78,6 +79,16 @@ describe('AuthController HTTP', () => {
         {
           provide: AuthService,
           useValue: mockAuthService,
+        },
+        {
+          // El controlador lee de aqui los TTL de sesion para el maxAge de las
+          // cookies; sin valor configurado responde con el default (15m / 7d).
+          provide: ConfigService,
+          useValue: {
+            get: jest
+              .fn()
+              .mockImplementation((key: string, defaultValue?: unknown) => defaultValue),
+          },
         },
         JwtAuthGuard,
       ],

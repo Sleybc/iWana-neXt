@@ -30,6 +30,12 @@ interface SidebarProps {
   setMobileOpen: (v: boolean) => void;
   /** Datos del tenant autenticado — para mostrar sello y nombre en el header del sidebar */
   profile?: TenantSelf | null;
+  /**
+   * True mientras un drawer modal del portal está abierto (p. ej. el detalle
+   * de producto de Inventario). El sidebar queda inerte + aria-hidden para
+   * confinar el foco al panel del drawer, aunque siga visible sobre el velo.
+   */
+  modalDrawerOpen?: boolean;
 }
 
 interface NavItem {
@@ -363,12 +369,13 @@ export const Sidebar = ({
   mobileOpen,
   setMobileOpen,
   profile,
+  modalDrawerOpen = false,
 }: SidebarProps) => {
   const sidebar = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const tenantDisplayName = resolveTenantDisplayName(profile);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
-  const drawerInert = isMobileViewport && !mobileOpen;
+  const drawerInert = (isMobileViewport && !mobileOpen) || modalDrawerOpen;
   const { status } = usePermissions();
 
   // Persistir estado desktop en localStorage — solo al montar
@@ -416,7 +423,15 @@ export const Sidebar = ({
       inert={drawerInert || undefined}
       aria-hidden={drawerInert ? true : undefined}
       className={cn(
-        'fixed left-0 top-0 z-(--z-drawer) flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-all duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
+        // La transición se limita a lo que el sidebar anima de verdad: el ancho
+        // al colapsar y el desplazamiento del drawer mobile. `transition-all`
+        // arrastra cualquier propiedad futura —`z-index` incluido, que es
+        // interpolable— y convierte un cambio de capa en una animación.
+        'fixed left-0 top-0 z-(--z-shell-panel) flex h-screen flex-col overflow-y-hidden border-r border-transparent bg-white transition-[width,transform] duration-200 ease-linear dark:border-transparent dark:bg-dark-surface-2',
+        // El escalón del sidebar NO cambia al abrirse un drawer modal: es la
+        // capa del drawer (`--z-modal`) la que se monta por encima y lo atenúa
+        // con su velo (`ModalLayer`). Degradar el chrome exigía un
+        // viaje de evento + re-render y hacía visible el retardo.
         'lg:static lg:translate-x-0',
         desktopCollapsed ? 'lg:w-[90px]' : 'lg:w-[290px]',
         mobileOpen ? 'translate-x-0 w-[290px]' : 'max-lg:-translate-x-full w-[290px]',

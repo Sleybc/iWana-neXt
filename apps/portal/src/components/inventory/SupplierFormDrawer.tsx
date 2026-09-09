@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Input, Select } from '@iwana/ui';
+import { Badge, Button, Input, ModalLayer, Select, overlayEdgeClassName, cn } from '@iwana/ui';
 import {
   DocumentTypeParty,
   IncotermCode,
@@ -24,6 +24,8 @@ import {
 import { PortalDiscardChangesDialog } from '@/components/shared/PortalDiscardChangesDialog';
 import { useDiscardChangesGuard } from '@/components/shared/use-discard-changes-guard';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
+import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
+import { openSessionRecovery } from '@/components/auth/SessionRecoveryModal';
 import { getSupplierProfileStatusLabel } from './inventory-labels';
 import { SupplierSummaryCard } from './SupplierSummaryCard';
 
@@ -233,6 +235,12 @@ interface SupplierFormDrawerProps {
   supplier: SupplierProfileRecord | null;
   isSubmitting: boolean;
   error: string | null;
+  /**
+   * El error actual es de sesión (401 / sesión expirada): la alerta ofrece
+   * recuperación en sitio con CTA «Iniciar sesión» (modal global) además de
+   * «Reintentar», útil también tras re-autenticarse.
+   */
+  isSessionError?: boolean;
   onClose: () => void;
   onCreate: (payload: CreateSupplierDto) => Promise<void>;
   onUpdate: (partyRefId: string, payload: UpdateSupplierDto) => Promise<void>;
@@ -244,6 +252,7 @@ export function SupplierFormDrawer({
   supplier,
   isSubmitting,
   error,
+  isSessionError = false,
   onClose,
   onCreate,
   onUpdate,
@@ -309,6 +318,10 @@ export function SupplierFormDrawer({
   });
 
   usePortalSideDrawerA11y(open && !discardOpen, drawerRef, requestClose);
+
+  // Difunde la apertura hacia el chrome: inerte bajo el velo mientras el
+  // drawer viva (apilado ADR-075, velo sobre el chrome).
+  usePortalModalDrawerBroadcast(open);
 
   const partySummary = useMemo(() => (supplier ? mapPartyToSummary(supplier) : null), [supplier]);
 
@@ -455,136 +468,166 @@ export function SupplierFormDrawer({
   const title = isEditing ? 'Editar proveedor' : 'Nuevo proveedor';
 
   return (
-    <div className="fixed inset-0 z-[1200] bg-black/45">
-      <button
-        type="button"
-        tabIndex={-1}
-        className="absolute inset-0 cursor-default"
-        aria-label="Cerrar proveedor"
-        onClick={requestClose}
-      />
-      <aside
-        ref={drawerRef}
-        role="dialog"
-        aria-labelledby="supplier-form-drawer-title"
-        aria-describedby="supplier-form-drawer-description"
-        aria-modal="true"
-        tabIndex={-1}
-        className="absolute inset-y-0 right-0 z-[1201] flex w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl outline-none dark:border-dark-border dark:bg-dark-surface-2"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
-          <div className="min-w-0">
-            <p className="portal-eyebrow">Proveedores</p>
-            <h2
-              id="supplier-form-drawer-title"
-              className="mt-1 text-xl font-semibold text-gray-900 dark:text-white"
-            >
-              {title}
-            </h2>
-            <p
-              id="supplier-form-drawer-description"
-              className="mt-2 text-sm text-gray-500 dark:text-gray-400"
-            >
-              {isEditing
-                ? 'Actualiza condiciones comerciales y contacto de compras.'
-                : 'Registra la identidad del tercero y su perfil comercial de compras.'}
-            </p>
-            {isEditing && supplier ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant="neutral">{supplier.supplierCode}</Badge>
-                <Badge variant="primary">{getSupplierProfileStatusLabel(supplier.status)}</Badge>
-              </div>
-            ) : null}
-          </div>
-          <Button type="button" variant="secondary" onClick={requestClose} disabled={isSubmitting}>
-            Cerrar
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="space-y-4">
-            {error ? (
-              <PortalAlert variant="error" title="No fue posible guardar" description={error} />
-            ) : null}
-            {validationError ? (
-              <PortalAlert
-                variant="warning"
-                title="Revisa el formulario"
-                description={validationError}
-              />
-            ) : null}
-
-            {isEditing ? (
-              <>
-                <SupplierSummaryCard summary={partySummary} />
-                {renderCommercialFields()}
-                {renderStatusActions()}
-              </>
-            ) : (
-              <>
-                {!isEditing && createStep === 'identity' ? renderIdentityStep() : null}
-                {!isEditing && createStep === 'commercial' ? (
-                  <>
-                    {identityReuseNotice ? (
-                      <PortalAlert
-                        variant="info"
-                        title="Identidad reutilizada"
-                        description={identityReuseNotice}
-                      />
-                    ) : null}
-                    {reusedPartySummary ? (
-                      <SupplierSummaryCard summary={reusedPartySummary} />
-                    ) : null}
-                    {renderCommercialFields()}
-                  </>
-                ) : null}
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-6 py-4 dark:border-dark-border">
-          {!isEditing && createStep === 'commercial' ? (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={isSubmitting}
-              onClick={() => setCreateStep('identity')}
-            >
-              Volver a identidad
-            </Button>
-          ) : (
-            <span />
+    <>
+      <ModalLayer align="end" onVeilClick={requestClose}>
+        <aside
+          ref={drawerRef}
+          role="dialog"
+          aria-labelledby="supplier-form-drawer-title"
+          aria-describedby="supplier-form-drawer-description"
+          aria-modal="true"
+          tabIndex={-1}
+          className={cn(
+            overlayEdgeClassName,
+            'pointer-events-auto relative flex h-full w-full max-w-2xl flex-col border-l bg-white shadow-2xl outline-none dark:bg-dark-surface-2',
           )}
-
-          <div className="flex flex-wrap gap-2">
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
+            <div className="min-w-0">
+              <p className="portal-eyebrow">Proveedores</p>
+              <h2
+                id="supplier-form-drawer-title"
+                className="mt-1 text-xl font-semibold text-gray-900 dark:text-white"
+              >
+                {title}
+              </h2>
+              <p
+                id="supplier-form-drawer-description"
+                className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+              >
+                {isEditing
+                  ? 'Actualiza condiciones comerciales y contacto de compras.'
+                  : 'Registra la identidad del tercero y su perfil comercial de compras.'}
+              </p>
+              {isEditing && supplier ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="neutral">{supplier.supplierCode}</Badge>
+                  <Badge variant="primary">{getSupplierProfileStatusLabel(supplier.status)}</Badge>
+                </div>
+              ) : null}
+            </div>
             <Button
               type="button"
               variant="secondary"
               onClick={requestClose}
               disabled={isSubmitting}
             >
-              Cancelar
+              Cerrar
             </Button>
-            {!isEditing && createStep === 'identity' ? (
-              <Button type="button" onClick={handleContinueToCommercial} disabled={isSubmitting}>
-                Continuar
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="space-y-4">
+              {error ? (
+                <PortalAlert
+                  variant="error"
+                  title="No fue posible guardar"
+                  description={error}
+                  action={
+                    isSessionError ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={isSubmitting}
+                          onClick={openSessionRecovery}
+                        >
+                          Iniciar sesión
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={isSubmitting}
+                          onClick={() => void handleSubmit()}
+                        >
+                          Reintentar
+                        </Button>
+                      </div>
+                    ) : undefined
+                  }
+                />
+              ) : null}
+              {validationError ? (
+                <PortalAlert
+                  variant="warning"
+                  title="Revisa el formulario"
+                  description={validationError}
+                />
+              ) : null}
+
+              {isEditing ? (
+                <>
+                  <SupplierSummaryCard summary={partySummary} />
+                  {renderCommercialFields()}
+                  {renderStatusActions()}
+                </>
+              ) : (
+                <>
+                  {!isEditing && createStep === 'identity' ? renderIdentityStep() : null}
+                  {!isEditing && createStep === 'commercial' ? (
+                    <>
+                      {identityReuseNotice ? (
+                        <PortalAlert
+                          variant="info"
+                          title="Identidad reutilizada"
+                          description={identityReuseNotice}
+                        />
+                      ) : null}
+                      {reusedPartySummary ? (
+                        <SupplierSummaryCard summary={reusedPartySummary} />
+                      ) : null}
+                      {renderCommercialFields()}
+                    </>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-6 py-4 dark:border-dark-border">
+            {!isEditing && createStep === 'commercial' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isSubmitting}
+                onClick={() => setCreateStep('identity')}
+              >
+                Volver a identidad
               </Button>
             ) : (
-              <Button type="button" loading={isSubmitting} onClick={() => void handleSubmit()}>
-                {isEditing ? 'Guardar cambios' : 'Crear proveedor'}
-              </Button>
+              <span />
             )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={requestClose}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              {!isEditing && createStep === 'identity' ? (
+                <Button type="button" onClick={handleContinueToCommercial} disabled={isSubmitting}>
+                  Continuar
+                </Button>
+              ) : (
+                <Button type="button" loading={isSubmitting} onClick={() => void handleSubmit()}>
+                  {isEditing ? 'Guardar cambios' : 'Crear proveedor'}
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+      </ModalLayer>
 
       <PortalDiscardChangesDialog
         open={discardOpen}
         onConfirm={confirmDiscard}
         onCancel={cancelDiscard}
       />
-    </div>
+    </>
   );
 
   function renderIdentityStep() {

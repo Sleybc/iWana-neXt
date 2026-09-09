@@ -180,6 +180,38 @@ let refreshAccessTokenPromise: Promise<string> | null = null;
 let terminalSessionError: ApiError | null = null;
 
 /**
+ * Evento de ventana congelado (contrato con el frente C): se emite cuando la
+ * renovación reactiva del token falla de forma definitiva y el estado terminal
+ * queda fijado. La UI lo consume para notificar la expiración sin esperar a que
+ * falle la siguiente petición.
+ */
+export const SESSION_EXPIRED_EVENT = 'iwana:session-expired';
+
+/**
+ * Coordinación de la renovación ENTRE pestañas (ADR-081): el lock de Web Locks
+ * serializa la rotación a nivel de navegador y el canal difunde el resultado.
+ * Sin soporte de ambas APIs (jsdom, navegadores antiguos) se degrada al
+ * single-flight por pestaña sin romper nada.
+ */
+const AUTH_REFRESH_LOCK_NAME = 'iwana-portal-auth-refresh';
+const AUTH_BROADCAST_CHANNEL_NAME = 'iwana-portal-auth';
+/** Ventana en la que una renovación anunciada por otra pestaña se reutiliza sin segunda llamada. */
+const CROSS_TAB_RENEWAL_WINDOW_MS = 5_000;
+/** Antelación de la renovación proactiva respecto a `exp` del access token. */
+const PROACTIVE_REFRESH_MARGIN_MS = 90_000;
+
+interface AuthBroadcastMessage {
+  type: 'access-renewed';
+  accessToken: string;
+}
+
+let authBroadcastChannel: BroadcastChannel | null = null;
+/** Epoch ms de la última renovación conocida (propia o anunciada por otra pestaña). */
+let lastCrossTabRenewalAt = 0;
+let proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let proactiveRefreshListenersAttached = false;
+
+/**
  * Access token de sesión en estado del cliente, en memoria. Se pierde al
  * recargar — aceptado por diseño (ADR-081, decisión 6). El transporte de sesión
  * es la cookie httpOnly emitida por el API.
@@ -222,7 +254,10 @@ function decodeJwtPayload(token: string): { exp?: number } | null {
     if (parts.length !== 3) return null;
     const encodedPayload = parts[1];
     if (!encodedPayload) return null;
-    const payload = JSON.parse(atob(encodedPayload.replace(/-/g, '+').replace(/_/g, '/'))) as {
+    const base64 = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+    // Los JWT omiten el padding base64; se normaliza antes de decodificar.
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as {
       exp?: number;
     };
     return payload;
@@ -250,6 +285,20 @@ export function persistAccessToken(token: string): void {
   }
 
   inMemoryAccessToken = token || null;
+  // B2: cada token no vacío (login, refresh reactivo o adopción por broadcast)
+  // reprograma la renovación proactiva; con token vacío la cancela (logout,
+  // fallo de renovación).
+  scheduleProactiveRefresh();
+}
+
+/**
+ * B3 (contrato congelado con el frente C): reinicia el estado terminal de
+ * sesión para la UI de re-login. Tras un login exitoso `persistAccessToken` ya
+ * limpia este estado con el token no vacío; esta exportación cubre el reset
+ * explícito. Deja el cliente en condiciones de volver a hacer peticiones.
+ */
+export function clearTerminalSessionError(): void {
+  terminalSessionError = null;
 }
 
 /** Lee el token de alcance limitado para MFA setup desde el estado en memoria. */
@@ -357,7 +406,137 @@ function getTenantSlug(tenantSlugOverride?: string): string {
   );
 }
 
-async function refreshAccessToken(tenantSlug: string): Promise<string> {
+type RefreshSource = 'reactive' | 'proactive';
+
+interface RefreshOptions {
+  /** Origen del disparo: un 401 real (reactivo) o el temporizador proactivo. */
+  source?: RefreshSource;
+}
+
+/** B3 (contrato congelado con el frente C): avisa a la app de la expiración terminal. */
+function notifySessionExpired(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+  } catch {
+    // La notificación es best-effort; no enmascara el error de sesión original.
+  }
+}
+
+function getAuthBroadcastChannel(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') {
+    return null;
+  }
+
+  if (!authBroadcastChannel) {
+    try {
+      authBroadcastChannel = new BroadcastChannel(AUTH_BROADCAST_CHANNEL_NAME);
+      authBroadcastChannel.onmessage = handleAuthBroadcastMessage;
+    } catch {
+      // Origen opaco o canal no disponible: la coordinación cross-tab queda
+      // degradada sin afectar al flujo de renovación local.
+      authBroadcastChannel = null;
+    }
+  }
+
+  return authBroadcastChannel;
+}
+
+/** Adopta la renovación anunciada por otra pestaña (B1): token + ventana de reutilización. */
+function handleAuthBroadcastMessage(event: MessageEvent): void {
+  const message = event.data as AuthBroadcastMessage | null;
+  if (!message || message.type !== 'access-renewed' || !message.accessToken) {
+    return;
+  }
+
+  lastCrossTabRenewalAt = Date.now();
+  // persistAccessToken reprograma además la renovación proactiva local (B2).
+  persistAccessToken(message.accessToken);
+}
+
+/** Difunde la renovación al resto de pestañas. Best-effort: nunca lanza. */
+function broadcastAccessRenewed(accessToken: string): void {
+  const channel = getAuthBroadcastChannel();
+  if (!channel) {
+    return;
+  }
+
+  try {
+    const message: AuthBroadcastMessage = { type: 'access-renewed', accessToken };
+    channel.postMessage(message);
+  } catch {
+    // postMessage sobre un canal cerrado lanza; la difusión no es crítica.
+  }
+}
+
+/**
+ * Rotación del refresh token serializada ENTRE pestañas con Web Locks (B1).
+ * Sin el lock, dos pestañas rotando en carrera hacen que la perdedora presente
+ * un refresh token ya rotado; el backend lo interpreta como reuse attack y
+ * revoca toda la familia de sesión. Sin `navigator.locks` se degrada al
+ * single-flight por pestaña (comportamiento previo).
+ */
+async function requestRefreshAcrossTabs(
+  tenantSlug: string,
+  source: RefreshSource,
+): Promise<string> {
+  if (typeof navigator === 'undefined' || !navigator.locks) {
+    return performRefreshRequest(tenantSlug, source);
+  }
+
+  return navigator.locks.request(AUTH_REFRESH_LOCK_NAME, async () => {
+    // Dentro del lock se re-verifica: otra pestaña pudo renovar hace instantes y
+    // anunciarlo por BroadcastChannel. Reutilizar ese token evita una segunda
+    // rotación innecesaria de la familia.
+    const adoptedToken = readStoredAccessToken();
+    if (adoptedToken && Date.now() - lastCrossTabRenewalAt < CROSS_TAB_RENEWAL_WINDOW_MS) {
+      return adoptedToken;
+    }
+
+    return performRefreshRequest(tenantSlug, source);
+  });
+}
+
+async function performRefreshRequest(tenantSlug: string, source: RefreshSource): Promise<string> {
+  const res = await fetch(`${resolveApiBase()}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Tenant-Slug': tenantSlug,
+      // C-2 (ADR-081): el refresh se autentica por la cookie httpOnly de
+      // refresh; todo método mutante cookie-autenticado exige la cabecera CSRF.
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    credentials: 'include',
+    signal: AbortSignal.timeout(12_000),
+  });
+
+  if (!res.ok) {
+    persistAccessToken('');
+    const error = new ApiError(401, 'SESSION_EXPIRED', 'La sesión expiró. Inicia sesión de nuevo.');
+
+    // Solo el fallo reactivo (tras un 401 real) fija el estado terminal y
+    // notifica a la app (B3). El fallo proactivo se tolera en silencio (B2): la
+    // expiración la decide el siguiente 401 real con su flujo reactivo.
+    if (source === 'reactive') {
+      terminalSessionError = error;
+      notifySessionExpired();
+    }
+
+    throw error;
+  }
+
+  const body = (await res.json()) as ApiEnvelope<{ accessToken: string }>;
+  persistAccessToken(body.data.accessToken);
+  lastCrossTabRenewalAt = Date.now();
+  broadcastAccessRenewed(body.data.accessToken);
+  return body.data.accessToken;
+}
+
+async function refreshAccessToken(tenantSlug: string, options?: RefreshOptions): Promise<string> {
   if (terminalSessionError) {
     throw terminalSessionError;
   }
@@ -366,39 +545,122 @@ async function refreshAccessToken(tenantSlug: string): Promise<string> {
     return refreshAccessTokenPromise;
   }
 
-  refreshAccessTokenPromise = (async () => {
-    const res = await fetch(`${resolveApiBase()}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Tenant-Slug': tenantSlug,
-        // C-2 (ADR-081): el refresh se autentica por la cookie httpOnly de
-        // refresh; todo método mutante cookie-autenticado exige la cabecera CSRF.
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      credentials: 'include',
-      signal: AbortSignal.timeout(12_000),
-    });
-
-    if (!res.ok) {
-      persistAccessToken('');
-      terminalSessionError = new ApiError(
-        401,
-        'SESSION_EXPIRED',
-        'La sesión expiró. Inicia sesión de nuevo.',
-      );
-      throw terminalSessionError;
-    }
-
-    const body = (await res.json()) as ApiEnvelope<{ accessToken: string }>;
-    persistAccessToken(body.data.accessToken);
-    return body.data.accessToken;
-  })();
+  // Compromiso aceptado del single-flight: si un disparo proactivo inició la
+  // promesa compartida y falla, el waitter reactivo recibe un fallo sin estado
+  // terminal; el siguiente 401 repetirá la renovación con origen reactivo.
+  refreshAccessTokenPromise = requestRefreshAcrossTabs(tenantSlug, options?.source ?? 'reactive');
 
   try {
     return await refreshAccessTokenPromise;
   } finally {
     refreshAccessTokenPromise = null;
+  }
+}
+
+function cancelProactiveRefreshTimer(): void {
+  if (proactiveRefreshTimer !== null) {
+    clearTimeout(proactiveRefreshTimer);
+    proactiveRefreshTimer = null;
+  }
+}
+
+function handleProactiveVisibilityChange(): void {
+  if (document.visibilityState === 'visible') {
+    refreshIfExpiringSoon();
+  }
+}
+
+function handleProactiveWindowFocus(): void {
+  refreshIfExpiringSoon();
+}
+
+function ensureProactiveRefreshListeners(): void {
+  if (proactiveRefreshListenersAttached) {
+    return;
+  }
+
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return;
+  }
+
+  proactiveRefreshListenersAttached = true;
+  // Los timers de pestaña en segundo plano se throttlean: al recuperar
+  // visibilidad se verifica la vigencia y se renueva de inmediato si toca.
+  document.addEventListener('visibilitychange', handleProactiveVisibilityChange);
+  window.addEventListener('focus', handleProactiveWindowFocus);
+}
+
+function removeProactiveRefreshListeners(): void {
+  if (!proactiveRefreshListenersAttached) {
+    return;
+  }
+
+  proactiveRefreshListenersAttached = false;
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleProactiveVisibilityChange);
+  }
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('focus', handleProactiveWindowFocus);
+  }
+}
+
+/**
+ * Reprograma la renovación proactiva (B2) con cada token no vacío: login,
+ * refresh reactivo o adopción por broadcast. Un token sin `exp` parseable no
+ * agenda nada; el flujo reactivo sobre 401 sigue siendo la red de seguridad.
+ */
+function scheduleProactiveRefresh(): void {
+  cancelProactiveRefreshTimer();
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const token = readStoredAccessToken();
+  if (!token) {
+    return;
+  }
+
+  const exp = decodeJwtPayload(token)?.exp;
+  if (!exp) {
+    return;
+  }
+
+  ensureProactiveRefreshListeners();
+
+  const delayMs = Math.max(exp * 1000 - PROACTIVE_REFRESH_MARGIN_MS - Date.now(), 0);
+  proactiveRefreshTimer = setTimeout(() => {
+    proactiveRefreshTimer = null;
+    void runProactiveRefresh();
+  }, delayMs);
+}
+
+/** Tras recuperar visibilidad/foco: renueva ya si el token vence dentro del margen. */
+function refreshIfExpiringSoon(): void {
+  const token = readStoredAccessToken();
+  if (!token) {
+    return;
+  }
+
+  const exp = decodeJwtPayload(token)?.exp;
+  if (!exp || exp * 1000 - Date.now() >= PROACTIVE_REFRESH_MARGIN_MS) {
+    return;
+  }
+
+  void runProactiveRefresh();
+}
+
+/**
+ * Disparo proactivo (B2): tolerante al fallo. Un fallo aquí NO fija el estado
+ * terminal ni expira la sesión; el siguiente 401 real activará el flujo
+ * reactivo, único autorizado para marcar la sesión como terminada (B3).
+ */
+async function runProactiveRefresh(): Promise<void> {
+  try {
+    await refreshAccessToken(getTenantSlug(), { source: 'proactive' });
+  } catch {
+    // Fallo tolerado: si la sesión realmente expiró, el flujo reactivo lo
+    // confirmará con el siguiente 401 y entonces sí notificará a la app.
   }
 }
 
@@ -586,6 +848,8 @@ export const authApi = {
       // aunque el backend falle para no bloquear al usuario en la UI.
     } finally {
       persistAccessToken('');
+      // B2: el logout cancela la renovación proactiva y sus listeners.
+      removeProactiveRefreshListeners();
       persistTenantSlug('');
       clearPendingTenantMfaLogin();
       clearMfaSetupTokenFromMemory();
@@ -7333,9 +7597,29 @@ export interface StockMovementLineRecord {
   updatedAt: string;
 }
 
+/**
+ * Snapshot fiscal informativo por movimiento (Fase 26, réplica del shape de
+ * `SupplierQuoteTaxRecord`). `effect`/`applies` fijos en servidor; montos en
+ * strings de 2 decimales. Opcionales en lectura para tolerar backend legacy.
+ */
+export interface CounterPurchaseTaxSnapshot {
+  code: string;
+  name: string;
+  category: string;
+  effect: 'ADD' | 'WITHHOLD';
+  applies: true;
+  rate: string;
+  baseAmount: string;
+  taxAmount: string;
+}
+
 export interface StockMovementResultRecord {
   movement: StockMovementRecord;
   lines: StockMovementLineRecord[];
+  /** Snapshot fiscal informativo. Ausente en respuestas legacy durante el rollout. */
+  taxes?: CounterPurchaseTaxSnapshot[];
+  /** Neto estimado a pagar (base + ADD − WITHHOLD). Ausente en backend legacy. */
+  payableAmount?: string;
 }
 
 export interface StockMovementKardexLineRecord {
@@ -8015,6 +8299,11 @@ export interface CreateCounterPurchaseDto {
   notes?: string | null;
   idempotencyKey?: string | null;
   lines: CreateCounterPurchaseLineDto[];
+  /**
+   * Tributos informativos a nivel cabecera (Fase 26). Solo se envían filas
+   * aplicadas; el servidor ignora montos y recalcula contra el catálogo.
+   */
+  taxes?: Array<{ code: string; applies: boolean; rate?: number }>;
 }
 
 export interface WriteOffAssetDto {
@@ -8788,6 +9077,7 @@ export const inventoryApi = {
         q: params.q?.trim() ? params.q.trim() : undefined,
         scope: params.scope,
         cursor: params.cursor,
+        page: params.page != null ? String(params.page) : undefined,
         limit: params.limit != null ? String(params.limit) : undefined,
       })}`,
       {
@@ -9051,6 +9341,18 @@ export const purchasingApi = {
   getRequestDetail: (id: string, tenantSlug?: string) =>
     request<PurchaseRequestDetailRecord>(
       `/purchasing/requests/${id}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  /**
+   * Presets PURCHASE para el panel de compra de mostrador (Fase 26).
+   * El panel es 100% props-driven: `PurchaseWorkspace` los carga al abrir el
+   * modo counter-purchase. Nunca llamar `/taxation/` desde la UI de inventory.
+   */
+  getTaxPresets: (tenantSlug?: string) =>
+    request<PurchaseTaxPresetRecord[]>(
+      '/purchasing/tax-presets',
       { returnFullResponse: true },
       tenantSlug,
     ),

@@ -377,7 +377,7 @@ export function WeeklyTechnicianMatrix({
                                             'w-full rounded-xl border px-3 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary',
                                             isCurrent
                                               ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-100'
-                                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-1 dark:text-gray-200 dark:hover:bg-dark-surface-3',
+                                              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200 dark:hover:bg-dark-surface-3',
                                           )}
                                           onClick={() => {
                                             onSelectRecommendation(
@@ -416,7 +416,7 @@ export function WeeklyTechnicianMatrix({
                                         [cellKey]: event.target.value,
                                       }))
                                     }
-                                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-1 dark:text-white"
+                                    className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-iwana-primary dark:border-dark-border dark:bg-dark-surface-3 dark:text-white"
                                   />
                                 </label>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400">

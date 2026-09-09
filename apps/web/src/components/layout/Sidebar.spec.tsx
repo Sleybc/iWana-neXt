@@ -91,7 +91,7 @@ describe('Sidebar (CA-NAV)', () => {
 
     const aside = screen.getByRole('complementary', { name: PLATFORM_UI_COPY.shell.navLandmark });
     expect(aside).toHaveClass('bg-white');
-    expect(aside.className).toContain('z-(--z-drawer)');
+    expect(aside.className).toContain('z-(--z-shell-panel)');
     expect(aside.className).toContain('dark:bg-dark-surface-2');
     // BLOQUEO-3 / navy Superado: fill blanco es la receta; no reabrir bg-iwana-primary.
     expect(aside.className).not.toMatch(/backdrop-blur|bg-white\/95|bg-iwana-primary/);

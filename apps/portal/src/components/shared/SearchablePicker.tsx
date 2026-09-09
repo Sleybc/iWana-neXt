@@ -173,7 +173,7 @@ function DefaultItemContent({ item }: { item: SearchablePickerItem }) {
 type ListboxPhase = 'closed' | 'threshold' | 'loading' | 'results' | 'empty' | 'error';
 
 const listboxSurfaceClassName = cn(
-  'z-30 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-iwana-soft',
+  'z-(--z-popover) overflow-hidden rounded-xl border border-gray-200 bg-white shadow-iwana-soft',
   'dark:border-dark-border dark:bg-dark-surface-3 dark:shadow-none',
   // ≥md: dropdown anclado; <md: panel inferior usable con teclado virtual
   'fixed inset-x-0 bottom-0 max-h-[min(70vh,24rem)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:right-0 md:top-full md:mt-1 md:max-h-60',

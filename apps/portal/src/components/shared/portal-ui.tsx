@@ -36,11 +36,17 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
+  ModalLayer,
   Select,
   SkeletonBlock,
   cn,
   interactiveFocusClassName,
+  overlayEdgeClassName,
 } from '@iwana/ui';
+import {
+  usePortalModalDrawerBroadcast,
+  usePortalModalDrawerOpen,
+} from './use-portal-modal-drawer-broadcast';
 import { PORTAL_DEFAULT_PAGE_SIZE, PORTAL_PAGE_SIZE_OPTIONS } from '@/lib/portal-page-size';
 import type { PortalSortDirection } from '@/lib/use-table-query-state';
 
@@ -1712,6 +1718,10 @@ export function PortalSidePeek({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [getFocusableElements, layerId, open]);
 
+  // Difunde la apertura hacia el chrome: Sidebar, TopHeader y subnav quedan
+  // inertes bajo el velo, y el sidebar mobile se cierra mientras el peek viva.
+  usePortalModalDrawerBroadcast(open);
+
   useEffect(() => {
     if (!open || typeof document === 'undefined') {
       return;
@@ -1737,18 +1747,30 @@ export function PortalSidePeek({
     return null;
   }
 
+  // Portal, escalón, velo y alineación viven en `ModalLayer` (`@iwana/ui`). Dos
+  // razones para que la capa esté portalada a `document.body` y en `--z-modal`:
+  //
+  // 1. Un `fixed inset-0` que vive dentro del árbol de la página se ancla al
+  //    primer ancestro que le cree bloque contenedor (`transform`, `filter`,
+  //    `backdrop-filter`, `contain`, `will-change`…) y deja de cubrir el
+  //    viewport: tapa el contenido y **deja el chrome fuera** del velo.
+  // 2. En `--z-shell-panel` compartía escalón con el `Sidebar`, así que su velo
+  //    solo cubría el chrome porque `<main>` va después de `<Sidebar>` en el
+  //    DOM — el contrato negociado por orden de inserción que ADR-075 vino a
+  //    eliminar.
+  //
+  // La guarda de anidamiento no viaja a la capa: `ModalLayer` no conoce la pila
+  // de peeks, así que el consumidor decide si su `onVeilClick` cierra o no.
   return (
-    <div className="fixed inset-0 z-(--z-drawer) flex justify-end" role="presentation">
-      <div
-        className="absolute inset-0 bg-black/40 dark:bg-black/60"
-        aria-hidden="true"
-        onMouseDown={() => {
-          if (!isTopMostSidePeekLayer(layerId)) {
-            return;
-          }
-          onClose();
-        }}
-      />
+    <ModalLayer
+      align="end"
+      onVeilClick={() => {
+        if (!isTopMostSidePeekLayer(layerId)) {
+          return;
+        }
+        onClose();
+      }}
+    >
       <aside
         ref={panelRef}
         role="dialog"
@@ -1756,13 +1778,13 @@ export function PortalSidePeek({
         aria-labelledby={titleId}
         {...(description ? { 'aria-describedby': descriptionId } : {})}
         tabIndex={-1}
+        // Sin z literal (ADR-075 §2): el panel pinta sobre el velo por orden de
+        // documento — es hermano posterior y está posicionado.
         className={cn(
-          'relative z-10 flex h-full w-full max-w-lg flex-col border-l border-gray-200 bg-white shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2',
+          overlayEdgeClassName,
+          'relative flex h-full w-full max-w-lg flex-col border-l bg-white shadow-iwana-soft dark:bg-dark-surface-2',
           className,
         )}
-        onMouseDown={(event) => {
-          event.stopPropagation();
-        }}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
           <div className="min-w-0">
@@ -1798,7 +1820,7 @@ export function PortalSidePeek({
           </footer>
         ) : null}
       </aside>
-    </div>
+    </ModalLayer>
   );
 }
 
@@ -2340,6 +2362,12 @@ export function PortalModuleSubnav({
   ariaLabel,
 }: PortalModuleSubnavProps) {
   const isLgUp = useMinWidthLg();
+  // Con un drawer modal abierto el rail conserva su `lg:z-(--z-sticky)` — bajo
+  // el velo, que lo atenúa y desenfoca con el resto del chrome — y queda inerte
+  // para confinar el foco al panel. El estado se toma del canal del portal, no
+  // de un prop cableado por cada pantalla: cablearlo a mano dejaba el rail
+  // tabulable con los drawers que la pantalla olvidara conectar.
+  const modalDrawerOpen = usePortalModalDrawerOpen();
   const [dialogOpen, setDialogOpen] = useState(false);
   const listId = useId();
   const currentItem = resolveSubnavItem(groups, value);
@@ -2356,7 +2384,12 @@ export function PortalModuleSubnav({
 
   if (isLgUp) {
     return (
-      <nav aria-label={ariaLabel} className={portalModuleSubnavRailClassName}>
+      <nav
+        aria-label={ariaLabel}
+        inert={modalDrawerOpen || undefined}
+        aria-hidden={modalDrawerOpen ? true : undefined}
+        className={portalModuleSubnavRailClassName}
+      >
         <PortalModuleSubnavList
           groups={groups}
           value={value}
@@ -2408,7 +2441,7 @@ export function PortalModuleSubnav({
 
 /** Footer sticky compartido en flujos create-mode (compras, salidas, recepciones). */
 export const createModeStickyFooterClassName =
-  'sticky bottom-0 z-20 rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3';
+  'sticky bottom-0 z-(--z-sticky) rounded-2xl border border-gray-200 bg-iwana-surface-soft px-4 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface-3';
 
 export interface CreateModeSummaryFooterProps {
   title?: string;

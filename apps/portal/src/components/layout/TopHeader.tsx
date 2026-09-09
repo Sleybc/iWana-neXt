@@ -14,6 +14,13 @@ interface TopHeaderProps {
   setDesktopCollapsed: (v: boolean) => void;
   mobileOpen: boolean;
   setMobileOpen: (v: boolean) => void;
+  /**
+   * True mientras un drawer modal del portal está abierto (p. ej. el detalle
+   * de producto de Inventario). El header se mantiene en z-(--z-sticky), por
+   * debajo del velo (z-overlay), para atenuarse y desenfocarse con el resto
+   * del chrome, y queda inerte + aria-hidden para confinar el foco al panel.
+   */
+  modalDrawerOpen?: boolean;
 }
 
 export const TopHeader = ({
@@ -21,6 +28,7 @@ export const TopHeader = ({
   setDesktopCollapsed,
   mobileOpen,
   setMobileOpen,
+  modalDrawerOpen = false,
 }: TopHeaderProps) => {
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
@@ -69,13 +77,23 @@ export const TopHeader = ({
 
   return (
     <header
+      inert={modalDrawerOpen || undefined}
+      aria-hidden={modalDrawerOpen ? true : undefined}
       className={cn(
         'sticky top-0 flex w-full border-b border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2',
-        // La búsqueda global abierta eleva el header un escalón (sticky 100 → overlay 200)
-        // para que su panel pinte sobre el subnav del módulo, que vive en sticky 100
-        // y va después en el DOM. Al cerrar vuelve a sticky. Misma intención que
-        // el max-lg:z-(--z-overlay) del contenedor móvil (ADR-075, sin literales).
-        searchOpen ? 'z-(--z-overlay)' : 'z-(--z-sticky)',
+        // La búsqueda global abierta eleva el header un escalón (sticky 100 →
+        // shell-raised 200) para que su panel pinte sobre el subnav del módulo, que
+        // vive en sticky 100 y va después en el DOM. Al cerrar vuelve a sticky.
+        //
+        // El --z-shell-raised del contenedor interior de la hoja es ordenación local
+        // dentro del contexto de apilamiento que crea este header `sticky`: el escalón
+        // real lo fija esta línea. El gemelo de apps/web se queda en --z-sticky por no
+        // tener subnav con el que competir; no unificar los dos números — lo que debe
+        // unificarse es el constructo (anatomía y estados), no el escalón.
+        //
+        // Un drawer modal no altera este escalón: su capa (`--z-modal`) pinta
+        // por encima de ambos. `modalDrawerOpen` aquí solo gobierna la inercia.
+        searchOpen ? 'z-(--z-shell-raised)' : 'z-(--z-sticky)',
       )}
     >
       <div className="flex flex-grow items-center justify-between px-4 py-3 md:px-6">
@@ -128,7 +146,7 @@ export const TopHeader = ({
           className={cn(
             'mx-6 flex-1 max-w-lg',
             searchOpen
-              ? 'max-lg:fixed max-lg:inset-0 max-lg:z-(--z-overlay) max-lg:mx-0 max-lg:flex max-lg:max-w-none max-lg:flex-col max-lg:bg-white max-lg:p-4 dark:max-lg:bg-dark-surface'
+              ? 'max-lg:fixed max-lg:inset-0 max-lg:z-(--z-shell-raised) max-lg:mx-0 max-lg:flex max-lg:max-w-none max-lg:flex-col max-lg:bg-white max-lg:p-4 dark:max-lg:bg-dark-surface'
               : 'max-lg:hidden',
           )}
         >

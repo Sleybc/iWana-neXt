@@ -37,9 +37,15 @@ export default function ProtectedLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-dark-surface-2">
+      {/* Velo del sidebar mobile. Adopta el token `--color-veil` (/45 en claro,
+          /60 en oscuro) y gana así el valor de modo oscuro que no tenía. NO
+          consume `ModalLayer`: es la excepción de §2bis —su panel es el
+          `Sidebar`, chrome que no puede portalarse—, así que sigue siendo un
+          constructo de dos escalones con el velo por DEBAJO del panel. Sin
+          desenfoque a propósito. */}
       {sidebarMobileOpen && (
         <div
-          className="fixed inset-0 z-(--z-overlay) bg-black/50 lg:hidden"
+          className="fixed inset-0 z-(--z-shell-raised) bg-(--color-veil) lg:hidden"
           onClick={() => setSidebarMobileOpen(false)}
           aria-hidden="true"
         />

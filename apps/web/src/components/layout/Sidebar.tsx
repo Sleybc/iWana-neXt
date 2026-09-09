@@ -123,7 +123,7 @@ export const Sidebar = ({
       ref={sidebar}
       aria-label={PLATFORM_UI_COPY.shell.navLandmark}
       className={cn(
-        'fixed left-0 top-0 z-(--z-drawer) flex h-screen flex-col overflow-y-hidden',
+        'fixed left-0 top-0 z-(--z-shell-panel) flex h-screen flex-col overflow-y-hidden',
         'border-r border-transparent bg-white dark:border-transparent dark:bg-dark-surface-2',
         'transition-all duration-200 ease-linear',
         'lg:static lg:translate-x-0',

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   InventoryItemCategory,
   InventoryItemKind,
@@ -7,6 +7,7 @@ import {
 } from '@iwana/shared';
 import { inventoryApi, type InventoryItemRecord } from '@/lib/api-client';
 import { StockItemDetailDrawer } from './StockItemDetailDrawer';
+import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
 import {
   formatInventoryCostOrNone,
   INVENTORY_AVERAGE_COST_LABEL,
@@ -112,6 +113,99 @@ describe('StockItemDetailDrawer · costos F4 / G6 P2', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText(INVENTORY_NO_COST_LABEL).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('difunde el estado modal al abrir para que el chrome quede inerte bajo el velo', async () => {
+    const estados: boolean[] = [];
+    const escucha = (event: Event) => {
+      estados.push((event as CustomEvent<{ open: boolean }>).detail.open);
+    };
+    window.addEventListener(PORTAL_MODAL_DRAWER_STATE_EVENT, escucha);
+
+    const { rerender } = render(
+      <StockItemDetailDrawer
+        open={false}
+        item={item}
+        balances={[]}
+        locations={[]}
+        onClose={jest.fn()}
+      />,
+    );
+
+    // Cerrado no difunde: el chrome sigue operable.
+    expect(estados).toEqual([]);
+
+    rerender(
+      <StockItemDetailDrawer open item={item} balances={[]} locations={[]} onClose={jest.fn()} />,
+    );
+
+    await waitFor(() => expect(estados).toEqual([true]));
+
+    window.removeEventListener(PORTAL_MODAL_DRAWER_STATE_EVENT, escucha);
+  });
+
+  it('libera el estado modal al desmontar con el drawer abierto', async () => {
+    const estados: boolean[] = [];
+    const escucha = (event: Event) => {
+      estados.push((event as CustomEvent<{ open: boolean }>).detail.open);
+    };
+    window.addEventListener(PORTAL_MODAL_DRAWER_STATE_EVENT, escucha);
+
+    const { unmount } = render(
+      <StockItemDetailDrawer open item={item} balances={[]} locations={[]} onClose={jest.fn()} />,
+    );
+
+    await waitFor(() => expect(estados).toEqual([true]));
+
+    unmount();
+
+    // Navegar fuera con el drawer abierto no puede dejar el chrome inerte.
+    await waitFor(() => expect(estados).toEqual([true, false]));
+
+    window.removeEventListener(PORTAL_MODAL_DRAWER_STATE_EVENT, escucha);
+  });
+
+  it('velo y panel comparten la capa z-modal, por encima del chrome (ADR-075)', async () => {
+    const onClose = jest.fn();
+    render(
+      <StockItemDetailDrawer open item={item} balances={[]} locations={[]} onClose={onClose} />,
+    );
+
+    // El velo NO es un `<button>`: es hermano del panel `aria-modal`, fuera de
+    // su subárbol, y toda AT que honre `aria-modal` lo omite. Se localiza por
+    // `data-portal-veil`, el marcador que declara `ModalLayer`. La consulta
+    // sale de `document.body` porque la capa está portalada: preguntarle al
+    // contenedor de render devolvería siempre vacío y el aserto sería vacuo.
+    const velo = document.body.querySelector<HTMLElement>('[data-portal-veil]');
+    expect(velo).not.toBeNull();
+    expect(velo?.tagName).toBe('DIV');
+    expect(velo).toHaveAttribute('aria-hidden', 'true');
+    // El velo vive DENTRO de la capa del drawer: `--z-shell-raised` (200) no
+    // puede cubrir el Sidebar, que ocupa `--z-shell-panel` (300).
+    expect(velo).toHaveClass('absolute');
+    expect(velo).not.toHaveClass('z-(--z-shell-raised)');
+    expect(velo?.parentElement).toHaveClass('z-(--z-modal)');
+    // Una sola clase para los dos temas: el token se redefine bajo `.dark`, así
+    // que no hay variante `dark:` que olvidar.
+    expect(velo).toHaveClass('bg-(--color-veil)');
+    expect(velo?.className).not.toMatch(/dark:bg-black/);
+    // El velo desenfoca el chrome que queda debajo (sidebar, header y subnav).
+    expect(velo).toHaveClass('backdrop-blur-sm');
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveClass('relative');
+    expect(dialog.parentElement).toHaveClass('z-(--z-modal)');
+
+    // Cierra en `mousedown`, no en `click`.
+    fireEvent.mouseDown(velo as HTMLElement);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Flush del fetch del kardex para que la resolución de `listMovements`
+    // quede dentro de act() y no genere actualizaciones fuera de act.
+    await waitFor(() => {
+      expect(screen.getByText('Sin movimientos')).toBeInTheDocument();
     });
   });
 });

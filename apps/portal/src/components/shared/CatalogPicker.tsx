@@ -93,8 +93,19 @@ export function CatalogPicker<T>({
       {/* Dropdown */}
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={close} aria-hidden />
-          <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border dark:bg-dark-surface-2">
+          {/*
+            Cazador de clic exterior y panel comparten el escalón `--z-popover`
+            (ADR-075 §2). El cazador NO es una capa visible: es una superficie
+            transparente de captura y no reclama escalón propio — sube al del panel
+            al que sirve, como el velo y el panel comparten `--z-modal` en la
+            gramática de capa única. Dentro del escalón manda el orden de documento:
+            el panel va después y pinta encima.
+
+            Sin z el cazador quedaba bajo cualquier hermano posicionado posterior con
+            z > 0 y el clic fuera dejaba de cerrar el desplegable.
+          */}
+          <div className="fixed inset-0 z-(--z-popover)" onClick={close} aria-hidden />
+          <div className="absolute left-0 right-0 top-full z-(--z-popover) mt-1 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border dark:bg-dark-surface-2">
             {/* Search */}
             <div className="border-b border-gray-100 p-2 dark:border-dark-border">
               <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5 dark:bg-dark-surface">
@@ -288,8 +299,19 @@ export function MultiCatalogPicker<T>({
       {/* Dropdown */}
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={close} aria-hidden />
-          <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border dark:bg-dark-surface-2">
+          {/*
+            Cazador de clic exterior y panel comparten el escalón `--z-popover`
+            (ADR-075 §2). El cazador NO es una capa visible: es una superficie
+            transparente de captura y no reclama escalón propio — sube al del panel
+            al que sirve, como el velo y el panel comparten `--z-modal` en la
+            gramática de capa única. Dentro del escalón manda el orden de documento:
+            el panel va después y pinta encima.
+
+            Sin z el cazador quedaba bajo cualquier hermano posicionado posterior con
+            z > 0 y el clic fuera dejaba de cerrar el desplegable.
+          */}
+          <div className="fixed inset-0 z-(--z-popover)" onClick={close} aria-hidden />
+          <div className="absolute left-0 right-0 top-full z-(--z-popover) mt-1 rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-border dark:bg-dark-surface-2">
             <div className="border-b border-gray-100 p-2 dark:border-dark-border">
               <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5 dark:bg-dark-surface">
                 <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />

@@ -6,6 +6,12 @@ import {
   mfaEncryptionKeyPreviousJoiSchema,
 } from './common/crypto/aes-gcm.util';
 import { piiHashKeyJoiSchema } from './common/crypto/pii-hash-key.util';
+import {
+  DEFAULT_ACCESS_TOKEN_TTL,
+  DEFAULT_REFRESH_TOKEN_TTL,
+  MIN_ACCESS_TOKEN_TTL_SECONDS,
+  parseDurationToSeconds,
+} from './modules/auth/token-ttl.constants';
 
 type ApiDataSourceOptions = Pick<
   TypeOrmModuleOptions,
@@ -145,6 +151,42 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
     JWT_PRIVATE_KEY: Joi.string().required(),
     JWT_PUBLIC_KEY: Joi.string().required(),
+    // TTL de los tokens de sesion (JWT_ACCESS_EXPIRATION / JWT_REFRESH_EXPIRATION).
+    // Formato `<numero><s|m|h|d>`; el parser y los defaults viven en
+    // modules/auth/token-ttl.constants.ts, y tanto la firma del JWT como el
+    // maxAge de las cookies de sesión leen de aquí — la cookie debe vivir lo
+    // mismo que el token. Minimo por token: un access de menos de 60s no es
+    // una politica, es un typo.
+    JWT_ACCESS_EXPIRATION: Joi.string()
+      .pattern(/^\d+(s|m|h|d)$/)
+      .default(DEFAULT_ACCESS_TOKEN_TTL)
+      .custom((value: string, helpers: Joi.CustomHelpers<string>) => {
+        const seconds = parseDurationToSeconds(value, Number.NaN);
+        if (Number.isNaN(seconds) || seconds < MIN_ACCESS_TOKEN_TTL_SECONDS) {
+          return helpers.error('any.invalid');
+        }
+        return value;
+      })
+      .messages({
+        'any.invalid': `JWT_ACCESS_EXPIRATION debe expresar al menos ${MIN_ACCESS_TOKEN_TTL_SECONDS} segundos en formato <numero><s|m|h|d>.`,
+        'string.pattern.base':
+          'JWT_ACCESS_EXPIRATION debe usar el formato <numero><s|m|h|d> (ej. 15m, 7d).',
+      }),
+    JWT_REFRESH_EXPIRATION: Joi.string()
+      .pattern(/^\d+(s|m|h|d)$/)
+      .default(DEFAULT_REFRESH_TOKEN_TTL)
+      .custom((value: string, helpers: Joi.CustomHelpers<string>) => {
+        const seconds = parseDurationToSeconds(value, Number.NaN);
+        if (Number.isNaN(seconds) || seconds < MIN_ACCESS_TOKEN_TTL_SECONDS) {
+          return helpers.error('any.invalid');
+        }
+        return value;
+      })
+      .messages({
+        'any.invalid': `JWT_REFRESH_EXPIRATION debe expresar al menos ${MIN_ACCESS_TOKEN_TTL_SECONDS} segundos en formato <numero><s|m|h|d>.`,
+        'string.pattern.base':
+          'JWT_REFRESH_EXPIRATION debe usar el formato <numero><s|m|h|d> (ej. 15m, 7d).',
+      }),
     // Secreto HMAC para idempotencia durable de comandos de órdenes de ejecución.
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
     // Umbrales operativos del relay: no hay valores por defecto aprobados.

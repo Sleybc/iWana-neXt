@@ -1,9 +1,14 @@
 // apps/web/src/components/layout/TopHeader.tsx
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { Menu, Search, X } from 'lucide-react';
-import { cn, headerIconControlClassName, interactiveFocusClassName } from '@iwana/ui';
+import {
+  cn,
+  headerIconControlClassName,
+  interactiveFocusClassName,
+  ShellSearchSheet,
+} from '@iwana/ui';
 import { DropdownUser } from './DropdownUser';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
@@ -19,9 +24,6 @@ interface TopHeaderProps {
   setMobileOpen: (v: boolean) => void;
 }
 
-const MOBILE_SEARCH_FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 export const TopHeader = ({
   desktopCollapsed,
   setDesktopCollapsed,
@@ -31,8 +33,6 @@ export const TopHeader = ({
   const { logoUrl } = usePlatformBrandingAssets();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  const mobileSearchOverlayRef = useRef<HTMLDivElement>(null);
-  const wasMobileSearchOpenRef = useRef(false);
   const menuToggleAriaProps = {
     'aria-controls': 'sidebar',
     'aria-expanded': mobileOpen,
@@ -47,76 +47,23 @@ export const TopHeader = ({
       : PLATFORM_UI_COPY.shell.collapseSidebar,
   } as const;
 
-  useEffect(() => {
-    if (mobileSearchOpen) {
-      wasMobileSearchOpenRef.current = true;
-      const frameId = window.requestAnimationFrame(() => {
-        const input =
-          mobileSearchOverlayRef.current?.querySelector<HTMLInputElement>('input[role="combobox"]');
-        input?.focus();
-      });
-      return () => window.cancelAnimationFrame(frameId);
-    }
-
-    if (wasMobileSearchOpenRef.current) {
-      wasMobileSearchOpenRef.current = false;
-      searchTriggerRef.current?.focus();
-    }
-
-    return undefined;
-  }, [mobileSearchOpen]);
-
-  useEffect(() => {
-    if (!mobileSearchOpen) {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMobileSearchOpen(false);
-        return;
-      }
-
-      if (event.key !== 'Tab') {
-        return;
-      }
-
-      const overlay = mobileSearchOverlayRef.current;
-      if (!overlay) {
-        return;
-      }
-
-      const focusables = Array.from(
-        overlay.querySelectorAll<HTMLElement>(MOBILE_SEARCH_FOCUSABLE_SELECTOR),
-      );
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (!first || !last) {
-        return;
-      }
-
-      const active = document.activeElement;
-
-      if (event.shiftKey) {
-        if (active === first || !overlay.contains(active)) {
-          event.preventDefault();
-          last.focus();
-        }
-        return;
-      }
-
-      if (active === last || !overlay.contains(active)) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [mobileSearchOpen]);
-
   return (
-    <header className="sticky top-0 z-20 flex w-full border-b border-transparent bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-transparent dark:bg-dark-surface-2/95">
+    // El escalón de la hoja de búsqueda móvil es ESTE, no el de la hoja: el header
+    // es `sticky` y crea contexto de apilamiento, así que cualquier z declarado en
+    // un descendiente ordena solo hermanos. Se queda en --z-sticky (100) porque
+    // apps/web no tiene ninguna barra de shell adherida posterior en el DOM con la
+    // que competir; el gemelo del portal está en 200 por su subnav de módulo, y esa
+    // diferencia es correcta: el escalón describe la vecindad, no el componente
+    // (ADR-075 §2). Disparo para subir a --z-shell-raised: el día que apps/web
+    // incorpore su propio subnav en --z-sticky. No copiar el 200 del portal antes.
+    //
+    // [PENDIENTE de verificación en navegador] `backdrop-blur` convierte a este
+    // header en bloque contenedor de descendientes `fixed`: si el navegador lo
+    // aplica como especifica Filter Effects L2, el `fixed inset-0` de la hoja
+    // cubre la caja del header, no el viewport. La corrección sería del constructo
+    // (portalar la hoja fuera del header), no del token, y exige reasignación de
+    // escalón por AI-DS-OWNER.
+    <header className="sticky top-0 z-(--z-sticky) flex w-full border-b border-transparent bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-transparent dark:bg-dark-surface-2/95">
       <div className="flex flex-grow items-center justify-between px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
           <button
@@ -174,7 +121,7 @@ export const TopHeader = ({
             type="button"
             aria-label="Buscar en la plataforma"
             aria-expanded={mobileSearchOpen}
-            aria-controls="mobile-global-search"
+            aria-controls="shell-search-sheet"
             onClick={() => setMobileSearchOpen(true)}
             className={cn(headerIconControlClassName, interactiveFocusClassName, 'lg:hidden')}
           >
@@ -186,33 +133,15 @@ export const TopHeader = ({
         </div>
       </div>
 
-      {mobileSearchOpen ? (
-        <div
-          ref={mobileSearchOverlayRef}
-          id="mobile-global-search"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Buscar en la plataforma"
-          className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-dark-surface lg:hidden"
-        >
-          <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2 dark:border-dark-border">
-            <button
-              type="button"
-              aria-label="Cerrar búsqueda"
-              onClick={() => setMobileSearchOpen(false)}
-              className={cn(headerIconControlClassName, interactiveFocusClassName)}
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
-            <p className="truncate text-sm font-semibold text-iwana-primary dark:text-white">
-              Buscar en la plataforma
-            </p>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <GlobalSearch />
-          </div>
-        </div>
-      ) : null}
+      <ShellSearchSheet
+        open={mobileSearchOpen}
+        onClose={() => setMobileSearchOpen(false)}
+        title="Buscar en la plataforma"
+        closeLabel="Cerrar búsqueda"
+        triggerRef={searchTriggerRef}
+      >
+        <GlobalSearch />
+      </ShellSearchSheet>
     </header>
   );
 };

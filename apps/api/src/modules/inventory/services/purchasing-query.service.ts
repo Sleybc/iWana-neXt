@@ -475,6 +475,11 @@ export class PurchasingQueryService {
     });
   }
 
+  async listTaxPresets() {
+    const catalog = await this.taxCatalogPort.listByContext(TaxContext.PURCHASE);
+    return catalog.map(mapPurchaseTaxPreset);
+  }
+
   async getProviderSummary(partyRefId: string) {
     const summary = await this.supplierPartyPort.getSupplierSummary(partyRefId);
 

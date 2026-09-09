@@ -17,6 +17,10 @@ interface QuoteTaxFieldsProps {
   onChange: (next: QuoteTaxState) => void;
   presets?: PurchaseTaxPresetRecord[] | undefined;
   disabled?: boolean;
+  /** Título visible de la sección. Default = copy de cotización (Fase 25). */
+  title?: string;
+  /** Texto informativo bajo el título. Default = copy de cotización (Fase 25). */
+  hint?: string;
 }
 
 export function QuoteTaxFields({
@@ -24,6 +28,8 @@ export function QuoteTaxFields({
   onChange,
   presets,
   disabled = false,
+  title = 'Tributos de esta cotización',
+  hint = QUOTE_TAX_NOT_SUPPLIER_PROFILE_COPY,
 }: QuoteTaxFieldsProps) {
   function updateRow(code: QuoteTaxCode, patch: Partial<QuoteTaxState[QuoteTaxCode]>) {
     onChange({
@@ -38,12 +44,8 @@ export function QuoteTaxFields({
   return (
     <div className="space-y-3 rounded-2xl border border-gray-200 p-3 dark:border-dark-border">
       <div className="space-y-1">
-        <p className="text-sm font-medium text-gray-900 dark:text-white">
-          Tributos de esta cotización
-        </p>
-        <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
-          {QUOTE_TAX_NOT_SUPPLIER_PROFILE_COPY}
-        </p>
+        <p className="text-sm font-medium text-gray-900 dark:text-white">{title}</p>
+        <p className="text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">{hint}</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">

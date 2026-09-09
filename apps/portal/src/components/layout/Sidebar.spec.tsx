@@ -244,6 +244,43 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'Inicio' })).toBeInTheDocument();
   });
 
+  it('con un drawer modal abierto, el sidebar queda inerte y aria-hidden en desktop', () => {
+    mockMatchMedia(false);
+
+    renderSidebar({ mobileOpen: false, modalDrawerOpen: true });
+
+    const sidebar = screen.getByRole('complementary', { hidden: true });
+    expect(sidebar).toHaveAttribute('inert');
+    expect(sidebar).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.queryByRole('link', { name: 'Inicio' })).not.toBeInTheDocument();
+  });
+
+  it('el sidebar no cambia de escalon con un drawer modal: lo cubre la capa del drawer', () => {
+    mockMatchMedia(false);
+
+    renderSidebar({ mobileOpen: false, modalDrawerOpen: true });
+
+    const sidebar = screen.getByRole('complementary', { hidden: true });
+    // `lg:static` deja el token z-(--z-shell-panel) sin efecto en desktop: el
+    // velo del drawer modal viaja DENTRO de su propia capa `--z-modal`
+    // (C-DS-04 §2bis) y pinta encima, atenuando + desenfocando el chrome.
+    expect(sidebar.className).toMatch(/lg:static/);
+    expect(sidebar.className).not.toMatch(/lg:relative/);
+    // El escalón NO cambia: degradar el chrome exigía un viaje de evento y un
+    // re-render, y el retardo se veía. La capa del drawer (`--z-modal`) es la
+    // que se monta por encima.
+    expect(sidebar.className).toMatch(/z-\(--z-shell-panel\)/);
+    // `--z-base` quedó retirado por C-DS-04 (sin consumidor; `z-index: 0` no
+    // equivale a `auto`). El guardia se conserva: la vía de regresión que
+    // cierra es reintroducirlo para degradar el chrome bajo el velo.
+    expect(sidebar.className).not.toMatch(/z-\(--z-base\)/);
+    // `transition-all` arrastraría cualquier propiedad futura, `z-index`
+    // incluido, que es interpolable y convertiría un cambio de capa en
+    // animación.
+    expect(sidebar.className).toMatch(/transition-\[width,transform\]/);
+    expect(sidebar.className).not.toMatch(/transition-all/);
+  });
+
   it('targets táctiles del shell: cierre h-11 w-11 y filas/marca min-h-11', () => {
     mockMatchMedia(true);
     renderSidebar({ mobileOpen: true });

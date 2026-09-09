@@ -4,6 +4,7 @@ import {
   ExecutionOrderResult,
   InventoryDisposition,
 } from '@iwana/shared';
+import { persistTenantSlug } from './tenant-resolution';
 
 type MockResponse = {
   ok: boolean;
@@ -19,6 +20,64 @@ function createJsonResponse(status: number, body: unknown): MockResponse {
     headers: new Headers({ 'content-type': 'application/json' }),
     json: async () => body,
   };
+}
+
+/** JWT de prueba con `exp` real: header.payload.firma (payload base64url sin padding). */
+function makeAccessToken(expSeconds: number): string {
+  const encode = (value: object): string =>
+    btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ exp: expSeconds })}.firma-test`;
+}
+
+/** Doble de BroadcastChannel: difunde a las OTRAS instancias, nunca a sí mismo. */
+class MockBroadcastChannel {
+  static instances: MockBroadcastChannel[] = [];
+
+  name: string;
+  received: unknown[] = [];
+  onmessage: ((event: MessageEvent) => void) | null = null;
+
+  constructor(name: string) {
+    this.name = name;
+    MockBroadcastChannel.instances.push(this);
+  }
+
+  postMessage(message: unknown): void {
+    for (const instance of MockBroadcastChannel.instances) {
+      if (instance !== this) {
+        instance.received.push(message);
+        instance.onmessage?.(new MessageEvent('message', { data: message }));
+      }
+    }
+  }
+
+  close(): void {
+    /* sin-op: el cierre no afecta a estos tests */
+  }
+
+  static reset(): void {
+    MockBroadcastChannel.instances = [];
+  }
+}
+
+function installBroadcastChannelMock(): void {
+  MockBroadcastChannel.reset();
+  Reflect.set(globalThis, 'BroadcastChannel', MockBroadcastChannel);
+}
+
+/** Instala un LockManager serializado (callback inmediato) y devuelve el registro de locks. */
+function installLockManagerMock(): string[] {
+  const lockRequests: string[] = [];
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async (_name: string, callback: () => unknown): Promise<unknown> => {
+        lockRequests.push(_name);
+        return await callback();
+      },
+    } as unknown as LockManager,
+  });
+  return lockRequests;
 }
 
 describe('api-client auth refresh handling', () => {
@@ -574,5 +633,290 @@ describe('tasksApi execution order payloads', () => {
       ),
     ).toThrow('La evidencia requiere un requisito válido de la plantilla.');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('api-client renovación de sesión entre pestañas', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, 'BroadcastChannel');
+    Reflect.deleteProperty(navigator, 'locks');
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('anuncia la renovación por BroadcastChannel y adopta el token de otra pestaña sin segunda llamada de red', async () => {
+    installBroadcastChannelMock();
+    const lockRequests = installLockManagerMock();
+
+    // Pestaña «vecina» registrada antes que la del módulo: recibe la difusión.
+    const otherTab = new MockBroadcastChannel('iwana-portal-auth');
+
+    let refreshCalls = 0;
+    let profileAttempts = 0;
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return createJsonResponse(200, {
+          data: { accessToken: 'token-pestaña-a' },
+        });
+      }
+
+      if (url.endsWith('/access-control/profiles')) {
+        profileAttempts += 1;
+        // Dos 401 separados fuerzan dos flujos de renovación reactiva.
+        if (profileAttempts === 1 || profileAttempts === 3) {
+          return createJsonResponse(401, { message: 'Unauthorized' });
+        }
+        return createJsonResponse(200, { data: [] });
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { accessControlApi, isStoredTokenValid, persistAccessToken } =
+      await import('./api-client');
+    persistAccessToken('expired-token');
+
+    // Primera renovación: sale a red y difunde el token al resto de pestañas.
+    await accessControlApi.listProfiles('isp-demo');
+    expect(refreshCalls).toBe(1);
+    expect(otherTab.received).toEqual([{ type: 'access-renewed', accessToken: 'token-pestaña-a' }]);
+
+    // Otra pestaña renueva y lo anuncia: este contexto adopta el token vivo.
+    const renewedElsewhere = makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60);
+    otherTab.postMessage({ type: 'access-renewed', accessToken: renewedElsewhere });
+    expect(isStoredTokenValid()).toBe(true);
+
+    // Segundo 401: dentro del lock se reutiliza la renovación reciente, sin red.
+    await accessControlApi.listProfiles('isp-demo');
+    expect(refreshCalls).toBe(1);
+    expect(lockRequests).toHaveLength(2);
+    expect(profileAttempts).toBe(4);
+
+    // Limpieza: el token adoptado agenda renovación proactiva; se cancela.
+    persistAccessToken('');
+  });
+});
+
+describe('api-client refresh proactivo', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('renueva el access token a exp − 90s sin esperar un 401', async () => {
+    persistTenantSlug('isp-demo');
+    let refreshCalls = 0;
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return createJsonResponse(200, {
+          data: { accessToken: makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60) },
+        });
+      }
+      throw new Error(`Unexpected fetch call: ${String(input)}`);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { persistAccessToken } = await import('./api-client');
+    // exp es de segundos: el disparo se deriva del mismo redondeo que el timer.
+    const persistAtMs = Date.now();
+    const expSeconds = Math.floor(persistAtMs / 1000) + 15 * 60;
+    persistAccessToken(makeAccessToken(expSeconds));
+
+    // Un instante antes del margen no debe disparar nada.
+    const firesAtMs = expSeconds * 1000 - 90 * 1000;
+    await jest.advanceTimersByTimeAsync(firesAtMs - persistAtMs - 1);
+    expect(refreshCalls).toBe(0);
+
+    await jest.advanceTimersByTimeAsync(1);
+    expect(refreshCalls).toBe(1);
+
+    // El token renovado reprograma la siguiente renovación proactiva.
+    await jest.advanceTimersByTimeAsync(16 * 60 * 1000);
+    expect(refreshCalls).toBe(2);
+  });
+
+  it('tolera en silencio el fallo proactivo: sin estado terminal ni iwana:session-expired', async () => {
+    persistTenantSlug('isp-demo');
+    let refreshCalls = 0;
+    let profileCalls = 0;
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return createJsonResponse(401, { message: 'Unauthorized' });
+      }
+      if (url.endsWith('/access-control/profiles')) {
+        profileCalls += 1;
+        return createJsonResponse(200, { data: [] });
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const sessionExpiredListener = jest.fn();
+    window.addEventListener('iwana:session-expired', sessionExpiredListener);
+
+    const { accessControlApi, persistAccessToken } = await import('./api-client');
+    persistAccessToken(makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60));
+
+    await jest.advanceTimersByTimeAsync(15 * 60 * 1000 - 90 * 1000);
+    expect(refreshCalls).toBe(1);
+    expect(sessionExpiredListener).not.toHaveBeenCalled();
+
+    // Sin estado terminal: la siguiente petición sale a red normalmente.
+    await expect(accessControlApi.listProfiles('isp-demo')).resolves.toEqual([]);
+    expect(profileCalls).toBe(1);
+
+    window.removeEventListener('iwana:session-expired', sessionExpiredListener);
+  });
+
+  it('el logout cancela la renovación proactiva pendiente', async () => {
+    let refreshCalls = 0;
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return createJsonResponse(200, {
+          data: { accessToken: makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60) },
+        });
+      }
+      if (url.endsWith('/auth/logout')) {
+        return createJsonResponse(200, { data: { message: 'Sesión cerrada' } });
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { authApi, persistAccessToken } = await import('./api-client');
+    persistAccessToken(makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60));
+
+    await authApi.logout('isp-demo');
+
+    await jest.advanceTimersByTimeAsync(60 * 60 * 1000);
+    expect(refreshCalls).toBe(0);
+  });
+});
+
+describe('api-client expiración terminal notificable', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('emite iwana:session-expired en el fallo reactivo y clearTerminalSessionError desbloquea las peticiones sin recargar', async () => {
+    let refreshCalls = 0;
+    let profileAttempts = 0;
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        if (refreshCalls === 1) {
+          return createJsonResponse(401, { message: 'Unauthorized' });
+        }
+        return createJsonResponse(200, {
+          data: { accessToken: makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60) },
+        });
+      }
+      if (url.endsWith('/access-control/profiles')) {
+        profileAttempts += 1;
+        if (profileAttempts <= 2) {
+          return createJsonResponse(401, { message: 'Unauthorized' });
+        }
+        return createJsonResponse(200, { data: [] });
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const sessionExpiredListener = jest.fn();
+    window.addEventListener('iwana:session-expired', sessionExpiredListener);
+
+    const { accessControlApi, clearTerminalSessionError, persistAccessToken } =
+      await import('./api-client');
+    persistAccessToken('expired-token');
+
+    // 1) Fallo reactivo definitivo: rechaza y emite el evento congelado.
+    await expect(accessControlApi.listProfiles('isp-demo')).rejects.toEqual(
+      expect.objectContaining({ status: 401, code: 'SESSION_EXPIRED' }),
+    );
+    expect(sessionExpiredListener).toHaveBeenCalledTimes(1);
+
+    // 2) Estado pegajoso: la siguiente petición falla al instante, sin red.
+    const fetchCallsBeforeSticky = fetchMock.mock.calls.length;
+    await expect(accessControlApi.listProfiles('isp-demo')).rejects.toEqual(
+      expect.objectContaining({ code: 'SESSION_EXPIRED' }),
+    );
+    expect(fetchMock.mock.calls.length).toBe(fetchCallsBeforeSticky);
+
+    // 3) clearTerminalSessionError desbloquea: sale a red, renueva y reintenta.
+    clearTerminalSessionError();
+    await expect(accessControlApi.listProfiles('isp-demo')).resolves.toEqual([]);
+    expect(refreshCalls).toBe(2);
+    expect(profileAttempts).toBe(3);
+
+    window.removeEventListener('iwana:session-expired', sessionExpiredListener);
+  });
+
+  it('persistAccessToken con un token nuevo limpia el estado terminal como un reingreso', async () => {
+    let refreshCalls = 0;
+    let profileAttempts = 0;
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        refreshCalls += 1;
+        return createJsonResponse(401, { message: 'Unauthorized' });
+      }
+      if (url.endsWith('/access-control/profiles')) {
+        profileAttempts += 1;
+        if (profileAttempts === 1) {
+          return createJsonResponse(401, { message: 'Unauthorized' });
+        }
+        return createJsonResponse(200, { data: [] });
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const sessionExpiredListener = jest.fn();
+    window.addEventListener('iwana:session-expired', sessionExpiredListener);
+
+    const { accessControlApi, persistAccessToken } = await import('./api-client');
+    persistAccessToken('expired-token');
+
+    await expect(accessControlApi.listProfiles('isp-demo')).rejects.toEqual(
+      expect.objectContaining({ status: 401, code: 'SESSION_EXPIRED' }),
+    );
+    expect(sessionExpiredListener).toHaveBeenCalledTimes(1);
+
+    // Login exitoso simulado: el token no vacío limpia el estado terminal.
+    persistAccessToken(makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60));
+
+    await expect(accessControlApi.listProfiles('isp-demo')).resolves.toEqual([]);
+    expect(refreshCalls).toBe(1);
+    expect(profileAttempts).toBe(2);
+
+    window.removeEventListener('iwana:session-expired', sessionExpiredListener);
   });
 });

@@ -301,28 +301,31 @@ describe('PortalSidePeek a11y', () => {
     jest.restoreAllMocks();
   });
 
-  it('se apila en --z-drawer por encima de barras sticky (ADR-075)', () => {
-    render(
+  it('monta la capa en el body, en --z-modal y sin z literal en el panel (ADR-075)', () => {
+    const { container } = render(
       <PortalSidePeek open onClose={jest.fn()} title="Nuevo plan">
         Campo
       </PortalSidePeek>,
     );
 
     const layer = screen.getByRole('presentation');
-    expect(layer).toHaveClass('z-(--z-drawer)');
+    expect(layer).toHaveClass('z-(--z-modal)');
+    expect(layer).not.toHaveClass('z-(--z-shell-panel)');
     expect(layer).not.toHaveClass('z-40');
-  });
 
-  it('se apila en --z-drawer por encima de barras sticky (ADR-075)', () => {
-    render(
-      <PortalSidePeek open onClose={jest.fn()} title="Nuevo plan">
-        Campo
-      </PortalSidePeek>,
-    );
+    // Portalado al `body`: la capa deja de colgar del árbol de la página, así
+    // que ningún ancestro con `transform`/`filter`/`contain` puede anclar el
+    // `fixed inset-0` y dejar el chrome fuera del velo. El contenedor de render
+    // queda vacío — el aserto que impide que este spec se vuelva vacuo.
+    expect(layer.parentElement).toBe(document.body);
+    expect(container).toBeEmptyDOMElement();
 
-    const layer = screen.getByRole('presentation');
-    expect(layer).toHaveClass('z-(--z-drawer)');
-    expect(layer).not.toHaveClass('z-40');
+    // El panel pinta sobre el velo por orden de documento (hermano posterior y
+    // posicionado), no por un escalón local literal.
+    const dialog = screen.getByRole('dialog', { name: 'Nuevo plan' });
+    expect(dialog).toHaveClass('relative');
+    expect(dialog.className).not.toMatch(/(^|\s)z-\d/);
+    expect(dialog.previousElementSibling).toHaveClass('absolute');
   });
 
   it('al abrir enfoca el panel y al cerrar restaura el foco al trigger', async () => {

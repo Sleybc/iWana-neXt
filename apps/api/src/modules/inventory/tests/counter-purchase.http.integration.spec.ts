@@ -7,6 +7,13 @@ import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { InventoryController } from '../inventory.controller';
+import { PurchasingController } from '../purchasing.controller';
+import { PurchasingQueryService } from '../services/purchasing-query.service';
+import { GoodsReceiptService } from '../services/goods-receipt.service';
+import { PurchasingService } from '../services/purchasing.service';
+import { RfqPdfService } from '../services/rfq-pdf.service';
+import { RfqService } from '../services/rfq.service';
+import { SupplierProfileService } from '../services/supplier-profile.service';
 import { StockIssuePickingService } from '../services/stock-issue-picking.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { InventoryCategoryService } from '../services/inventory-category.service';
@@ -85,12 +92,27 @@ describe('Counter purchase HTTP integration', () => {
         origin: 'COUNTER_PURCHASE',
       },
       lines: [{ id: 'line-counter-001', quantity: '3.00' }],
+      taxes: [],
+      payableAmount: '4500.00',
     }),
+  };
+
+  const purchasingQueryServiceMock = {
+    listTaxPresets: jest.fn().mockResolvedValue([
+      {
+        code: 'IVA_19',
+        name: 'IVA 19%',
+        category: 'VAT',
+        baseRate: 19,
+        treatment: 'STANDARD',
+        context: 'PURCHASE',
+      },
+    ]),
   };
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      controllers: [InventoryController],
+      controllers: [InventoryController, PurchasingController],
       providers: [
         { provide: InventoryItemService, useValue: {} },
         { provide: InventoryCategoryService, useValue: {} },
@@ -108,6 +130,12 @@ describe('Counter purchase HTTP integration', () => {
         { provide: AssetLoanService, useValue: {} },
         { provide: WriteOffService, useValue: {} },
         { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },
+        { provide: PurchasingQueryService, useValue: purchasingQueryServiceMock },
+        { provide: PurchasingService, useValue: {} },
+        { provide: GoodsReceiptService, useValue: {} },
+        { provide: RfqService, useValue: {} },
+        { provide: RfqPdfService, useValue: {} },
+        { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
       ],
@@ -160,5 +188,77 @@ describe('Counter purchase HTTP integration', () => {
       }),
       expect.objectContaining({ role: UserRole.SUPPORT }),
     );
+  });
+
+  it('forwards taxes payload and returns extended tax response', async () => {
+    counterPurchaseServiceMock.record.mockResolvedValueOnce({
+      movement: {
+        id: 'mov-counter-002',
+        movementNumber: 'MOV-000100',
+        origin: 'COUNTER_PURCHASE',
+      },
+      lines: [{ id: 'line-counter-002', quantity: '1.00' }],
+      taxes: [
+        {
+          code: 'IVA_19',
+          name: 'IVA 19%',
+          category: 'VAT',
+          effect: 'ADD',
+          applies: true,
+          rate: '19.0000',
+          baseAmount: '100.00',
+          taxAmount: '19.00',
+        },
+      ],
+      payableAmount: '119.00',
+    });
+
+    const payload = {
+      partyRefId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      invoiceNumber: 'FAC-HTTP-002',
+      destinationLocationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      lines: [
+        {
+          itemId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          quantityReceived: 1,
+          unitCost: 100,
+        },
+      ],
+      taxes: [{ code: 'IVA_19', applies: true }],
+    };
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/inventory/counter-purchases')
+      .set('Authorization', 'Bearer support-token')
+      .send(payload)
+      .expect(201);
+
+    expect(response.body.taxes).toEqual([
+      expect.objectContaining({ code: 'IVA_19', taxAmount: '19.00' }),
+    ]);
+    expect(response.body.payableAmount).toBe('119.00');
+    expect(counterPurchaseServiceMock.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taxes: [expect.objectContaining({ code: 'IVA_19', applies: true })],
+      }),
+      expect.objectContaining({ role: UserRole.SUPPORT }),
+    );
+  });
+
+  it('tax-presets rejects unauthenticated callers', async () => {
+    // El JwtAuthGuard simulado responde false sin token → 403 del framework.
+    await request(app.getHttpServer()).get('/api/v1/purchasing/tax-presets').expect(403);
+  });
+
+  it('tax-presets lists purchase presets for support role', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/purchasing/tax-presets')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(response.body).toEqual([
+      expect.objectContaining({ code: 'IVA_19', context: 'PURCHASE', baseRate: 19 }),
+    ]);
+    expect(purchasingQueryServiceMock.listTaxPresets).toHaveBeenCalled();
   });
 });

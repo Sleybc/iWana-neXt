@@ -90,6 +90,8 @@ export function StockWorkspace({
   const [detailItem, setDetailItem] = useState<InventoryItemRecord | null>(null);
   const [adjustItemId, setAdjustItemId] = useState<string | null>(null);
 
+  const detailOpen = detailItem !== null;
+
   useEffect(() => {
     if (initialSubview) {
       setSubview(initialSubview);

@@ -3191,17 +3191,62 @@ export class CreateCounterPurchaseLineDto {
   condition?: StockBalanceCondition;
 }
 
-export const CreateCounterPurchaseSchema = z.object({
-  partyRefId: z.string().uuid(),
-  invoiceNumber: z.string().trim().min(1).max(120),
-  purchaseDate: optionalDateString,
-  destinationLocationId: z.string().uuid(),
-  notes: optionalTrimmedString(4000),
-  idempotencyKey: optionalTrimmedString(160),
-  lines: z.array(CreateCounterPurchaseLineSchema).min(1),
+export const AddCounterPurchaseTaxSchema = z.object({
+  code: z.string().trim().min(2).max(40),
+  applies: z.boolean(),
+  rate: z.coerce.number().min(0).max(100).optional(),
 });
 
+export type AddCounterPurchaseTaxInput = z.infer<typeof AddCounterPurchaseTaxSchema>;
+
+export const CreateCounterPurchaseSchema = z
+  .object({
+    partyRefId: z.string().uuid(),
+    invoiceNumber: z.string().trim().min(1).max(120),
+    purchaseDate: optionalDateString,
+    destinationLocationId: z.string().uuid(),
+    notes: optionalTrimmedString(4000),
+    idempotencyKey: optionalTrimmedString(160),
+    lines: z.array(CreateCounterPurchaseLineSchema).min(1),
+    taxes: z.array(AddCounterPurchaseTaxSchema).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.taxes?.length) {
+      return;
+    }
+
+    const seenCodes = new Set<string>();
+    value.taxes.forEach((tax, index) => {
+      if (seenCodes.has(tax.code)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Hay códigos de tributo duplicados en la cotización.',
+          path: ['taxes', index, 'code'],
+        });
+      }
+      seenCodes.add(tax.code);
+    });
+  });
+
 export type CreateCounterPurchaseInput = z.infer<typeof CreateCounterPurchaseSchema>;
+
+export class AddCounterPurchaseTaxDto {
+  @ApiProperty({ minLength: 2, maxLength: 40, example: 'IVA_19' })
+  @Allow()
+  code!: string;
+
+  @ApiProperty({ description: 'Solo se persisten filas con applies=true' })
+  @Allow()
+  applies!: boolean;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 100,
+    description: 'Tasa 0–100. Si se omite, el servidor usa la tasa del catálogo.',
+  })
+  @Allow()
+  rate?: number;
+}
 
 export class CreateCounterPurchaseDto {
   @ApiProperty({ description: 'Referencia al proveedor en MOD08 Parties' })
@@ -3233,6 +3278,12 @@ export class CreateCounterPurchaseDto {
   @ValidateNested({ each: true })
   @Type(() => CreateCounterPurchaseLineDto)
   lines!: CreateCounterPurchaseLineDto[];
+
+  @ApiPropertyOptional({ type: [AddCounterPurchaseTaxDto] })
+  @Allow()
+  @ValidateNested({ each: true })
+  @Type(() => AddCounterPurchaseTaxDto)
+  taxes?: AddCounterPurchaseTaxDto[];
 }
 
 export const WriteOffAssetSchema = z

@@ -4,15 +4,17 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Post,
   Request,
   Response,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
+import { CookieOptions, Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { TenantContext } from '@iwana/db';
 import { AuthService } from './auth.service';
 import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
@@ -38,34 +40,13 @@ import {
   tenantAccessCookieName,
   tenantRefreshCookieName,
 } from './session-cookies.constants';
+import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
 
 /** Nombre de la cookie del refresh token del portal (audiencia tenant). */
 const REFRESH_TOKEN_COOKIE = tenantRefreshCookieName();
 
-/** Opciones de la cookie del refresh token: httpOnly, SameSite=Strict.
- *  `Secure` lo resuelve `isCookieSecure()`: true en producción (C-5, ADR-081),
- *  y fuera de ella el valor real de COOKIE_SECURE (HTTP on-prem sin TLS).
- */
-const REFRESH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: isCookieSecure(),
-  sameSite: 'strict' as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias en ms
-  path: '/api/v1/auth',
-};
-
-/** Opciones de la cookie del access token (ADR-081, decisiones 1 y 4).
- *  Path=/ (cubre toda la ruta del API), httpOnly y SameSite=Strict.
- *  `Secure` lo resuelve `isCookieSecure()` (C-5). El prefijo __Host- en
- *  producción lo resuelve el nombre de la cookie.
- */
-const ACCESS_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: isCookieSecure(),
-  sameSite: 'strict' as const,
-  maxAge: 15 * 60 * 1000, // 15 min — el mismo TTL del access token
-  path: '/',
-};
+/** Path de las cookies de refresh: restringido al flujo de autenticacion. */
+const REFRESH_COOKIE_PATH = '/api/v1/auth';
 
 /**
  * Controlador de autenticacion.
@@ -86,7 +67,46 @@ const ACCESS_COOKIE_OPTIONS = {
 @ApiTags('auth')
 @ApiBearerAuth('access-token')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  /** Reason codes de sesion — nunca tokens, hashes completos, correos ni IPs. */
+  private readonly logger = new Logger(AuthController.name);
+
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  /**
+   * Opciones de la cookie de access. El `maxAge` se sincroniza con el TTL
+   * configurado del token (JWT_ACCESS_EXPIRATION): la cookie no debe sobrevivir
+   * a la credencial que contiene.
+   *
+   * `Secure` lo resuelve `isCookieSecure()` (C-5, ADR-081). El prefijo
+   * `__Host-` en produccion lo resuelve el nombre de la cookie.
+   */
+  private accessCookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: isCookieSecure(),
+      sameSite: 'strict',
+      maxAge: resolveAccessTokenTtlSeconds(this.configService) * 1000,
+      path: '/',
+    };
+  }
+
+  /**
+   * Opciones de la cookie de refresh: httpOnly, SameSite=Strict y `maxAge`
+   * sincronizado con el TTL configurado del token (JWT_REFRESH_EXPIRATION).
+   * `Secure` lo resuelve `isCookieSecure()` (C-5, ADR-081).
+   */
+  private refreshCookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: isCookieSecure(),
+      sameSite: 'strict',
+      maxAge: resolveRefreshTokenTtlSeconds(this.configService) * 1000,
+      path: REFRESH_COOKIE_PATH,
+    };
+  }
 
   /**
    * POST /api/v1/auth/login
@@ -116,12 +136,12 @@ export class AuthController {
     // de alcance limitado (mfa-setup) queda fuera de la cookie: vive en memoria
     // en el cliente (decision 6 del ADR), nunca en almacenamiento persistente.
     if (!result.mfaRequired && !result.mfaSetupRequired && result.accessToken) {
-      res.cookie(tenantAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
+      res.cookie(tenantAccessCookieName(), result.accessToken, this.accessCookieOptions());
     }
 
     if (!result.mfaRequired && result.refreshToken) {
       // Solo emitir cookie si el login fue completo (no requiere MFA)
-      res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, this.refreshCookieOptions());
     }
 
     return {
@@ -161,11 +181,11 @@ export class AuthController {
     // cookie de access y la de refresh solo en el login completo. El token de
     // alcance limitado (password-change) no entra en cookies: queda en memoria.
     if (!result.mfaRequired && !result.passwordResetRequired && result.accessToken) {
-      res.cookie(platformAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
+      res.cookie(platformAccessCookieName(), result.accessToken, this.accessCookieOptions());
     }
 
     if (!result.mfaRequired && !result.passwordResetRequired && result.refreshToken) {
-      res.cookie(platformRefreshCookieName(), result.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie(platformRefreshCookieName(), result.refreshToken, this.refreshCookieOptions());
     }
 
     return {
@@ -184,51 +204,135 @@ export class AuthController {
    * POST /api/v1/auth/refresh
    * Rota el refresh token. Lee la cookie httpOnly, emite nuevos tokens.
    *
+   * Ruteo por audiencia: el cliente declara su audiencia con el header
+   * `X-Tenant-Slug` (el portal lo envia SIEMPRE; la consola de plataforma
+   * NUNCA).
+   *
+   * - Con audiencia tenant declarada: fail-fast. Solo se intenta la rama
+   *   tenant. Si la cookie tenant falta o es rechazada, se responde 401
+   *   inmediato; la cookie de plataforma presente se ignora sin consumirla
+   *   (una sesion de plataforma jamas autoriza al portal, asi que el fallback
+   *   seria un ciclo desperdiciado que rota tokens inutilmente y pospone el
+   *   error que de todos modos termina en el modal de recuperacion).
+   * - Sin header (plataforma y clientes sin declarar): platform-first con
+   *   fallback a tenant por retrocompatibilidad con llamadas que solo traen
+   *   esa credencial.
+   *
+   * Cada cookie se valida por su propio nombre, nunca por la ausencia de la
+   * otra, y la deteccion de reuse sigue operando en el servicio.
+   *
    * RF-AUTH-05, RF-AUTH-06 (reuse attack detection)
    */
   @Public()
   @Post('refresh')
+  @Throttle({ default: { ttl: 60000, limit: 30 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotar el refresh token (cookie httpOnly)' })
   @ApiResponse({ status: 200, description: 'Nuevo access token emitido.' })
   @ApiResponse({ status: 401, description: 'Refresh token invalido o expirado.' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async refresh(
     @Request() req: ExpressRequest,
     @Response({ passthrough: true }) res: ExpressResponse,
   ): Promise<{ data: { accessToken: string } }> {
     const cookies = (req.cookies ?? {}) as Record<string, string>;
-    const rawRefreshToken = cookies[tenantRefreshCookieName()];
+    const rawTenantRefreshToken = cookies[tenantRefreshCookieName()];
     const rawPlatformRefreshToken = cookies[platformRefreshCookieName()];
-
-    if (!rawRefreshToken && !rawPlatformRefreshToken) {
-      throw new UnauthorizedException('No se encontro el refresh token.');
-    }
-
     const ipAddress = req.ip ?? req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
-    if (rawPlatformRefreshToken) {
-      // Ciclo de refresco de la consola de plataforma (C-6, ADR-081).
-      const result = await this.authService.refreshPlatformTokens(
-        rawPlatformRefreshToken,
-        ipAddress,
-        userAgent,
-      );
+    // `X-Tenant-Slug` duplicado llega como `string[]` en Express: se toma el
+    // primero (misma tolerancia que el TenantMiddleware con el slug).
+    const tenantSlugHeader = req.headers['x-tenant-slug'];
+    const declaredSlug = Array.isArray(tenantSlugHeader) ? tenantSlugHeader[0] : tenantSlugHeader;
+    const declaresTenant = typeof declaredSlug === 'string' && declaredSlug.trim().length > 0;
 
-      // La cookie de access tambien se rota: el cliente no puede escribirla
-      // (httpOnly), asi que la emite el servidor en cada renovacion.
-      res.cookie(platformAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
-      res.cookie(platformRefreshCookieName(), result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    // Fail-fast: con audiencia tenant declarada, la sesion de plataforma no
+    // autoriza nada y se ignora sin consumirla.
+    if (declaresTenant) {
+      if (!rawTenantRefreshToken) {
+        this.logger.warn('REFRESH_COOKIE_MISSING — audiencia tenant declarada sin cookie tenant.');
+        throw new UnauthorizedException('No se encontro el refresh token.');
+      }
 
-      return { data: { accessToken: result.accessToken } };
+      return this.refreshTenantSession(rawTenantRefreshToken, ipAddress, userAgent, res);
     }
 
-    // Sin refresh de plataforma presente, aqui rawRefreshToken es obligatorio:
-    // el guard de arriba ya lanzo 401 si ninguna de las dos cookies venia.
-    const result = await this.authService.refreshTokens(rawRefreshToken!, ipAddress, userAgent);
+    if (!rawTenantRefreshToken && !rawPlatformRefreshToken) {
+      this.logger.warn('REFRESH_COOKIE_MISSING — peticion sin cookie de refresh.');
+      throw new UnauthorizedException('No se encontro el refresh token.');
+    }
 
-    res.cookie(tenantAccessCookieName(), result.accessToken, ACCESS_COOKIE_OPTIONS);
-    res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+    if (rawPlatformRefreshToken) {
+      try {
+        return await this.refreshPlatformSession(
+          rawPlatformRefreshToken,
+          ipAddress,
+          userAgent,
+          res,
+        );
+      } catch (primaryError) {
+        // Un fallo no-401 no es credencial rechazada: no se enmascara.
+        if (!(primaryError instanceof UnauthorizedException) || !rawTenantRefreshToken) {
+          throw primaryError;
+        }
+
+        this.logger.warn('REFRESH_FALLBACK_ATTEMPTED — platform rechazado, probando tenant.');
+        try {
+          return await this.refreshTenantSession(rawTenantRefreshToken, ipAddress, userAgent, res);
+        } catch (fallbackError) {
+          // Ambas rechazadas: manda el error de la credencial prioritaria.
+          if (!(fallbackError instanceof UnauthorizedException)) {
+            throw fallbackError;
+          }
+          throw primaryError;
+        }
+      }
+    }
+
+    // Sin cookie de plataforma, el guard inicial garantiza que la credencial
+    // presente es la del tenant (TS no sigue la disyuncion del guard).
+    return this.refreshTenantSession(rawTenantRefreshToken!, ipAddress, userAgent, res);
+  }
+
+  /**
+   * Rama tenant del refresh: rota la sesion del portal y re-emite sus cookies.
+   * Las cookies de respuesta solo se emiten si la rama fue exitosa.
+   */
+  private async refreshTenantSession(
+    rawRefreshToken: string,
+    ipAddress: string | undefined,
+    userAgent: string | undefined,
+    res: ExpressResponse,
+  ): Promise<{ data: { accessToken: string } }> {
+    const result = await this.authService.refreshTokens(rawRefreshToken, ipAddress, userAgent);
+
+    // La cookie de access tambien se rota: el cliente no puede escribirla
+    // (httpOnly), asi que la emite el servidor en cada renovacion.
+    res.cookie(tenantAccessCookieName(), result.accessToken, this.accessCookieOptions());
+    res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, this.refreshCookieOptions());
+
+    return { data: { accessToken: result.accessToken } };
+  }
+
+  /**
+   * Rama de plataforma del refresh (C-6, ADR-081): rota la sesion de la consola
+   * y re-emite sus cookies. Las cookies solo se emiten si la rama fue exitosa.
+   */
+  private async refreshPlatformSession(
+    rawRefreshToken: string,
+    ipAddress: string | undefined,
+    userAgent: string | undefined,
+    res: ExpressResponse,
+  ): Promise<{ data: { accessToken: string } }> {
+    const result = await this.authService.refreshPlatformTokens(
+      rawRefreshToken,
+      ipAddress,
+      userAgent,
+    );
+
+    res.cookie(platformAccessCookieName(), result.accessToken, this.accessCookieOptions());
+    res.cookie(platformRefreshCookieName(), result.refreshToken, this.refreshCookieOptions());
 
     return { data: { accessToken: result.accessToken } };
   }
@@ -256,8 +360,8 @@ export class AuthController {
 
     // Limpiar las cookies de la sesion: access (Path=/) y refresh (Path=/api/v1/auth)
     // en ambas audiencias, para que el logout no dependa de cual estaba presente.
-    res.clearCookie(tenantRefreshCookieName(), { path: '/api/v1/auth' });
-    res.clearCookie(platformRefreshCookieName(), { path: '/api/v1/auth' });
+    res.clearCookie(tenantRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
+    res.clearCookie(platformRefreshCookieName(), { path: REFRESH_COOKIE_PATH });
     res.clearCookie(tenantAccessCookieName(), { path: '/' });
     res.clearCookie(platformAccessCookieName(), { path: '/' });
 

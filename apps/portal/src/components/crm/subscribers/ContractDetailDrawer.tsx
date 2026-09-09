@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Archive,
   Building2,
@@ -17,9 +17,12 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
+import { ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
 import { CustomerSegment } from '@iwana/shared';
 import type { Contract, ContractStatus } from '@/lib/api-client';
 import { ApiError, contractsApi } from '@/lib/api-client';
+import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
+import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import { formatLocationLabel } from './subscriber-ui';
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
@@ -268,6 +271,13 @@ export function ContractDetailDrawer({
   onRemove,
 }: ContractDetailDrawerProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
+  // Estos diálogos se montan/desmontan desde el padre, así que su apertura es su
+  // propia presencia: se difunde `true` mientras vivan y el hook libera el estado
+  // al desmontar. Sin esto el chrome queda bajo el velo pero NO inerte y el foco
+  // escapa (mismo defecto que M9 corrigió en `PortalSidePeek`).
+  usePortalModalDrawerBroadcast(true);
+
   const [form, setForm] = useState<EditForm>(() => buildEditForm(contract));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -337,6 +347,17 @@ export function ContractDetailDrawer({
     setSaveError(null);
   };
 
+  // Escape, trampa de foco, foco inicial y retorno al disparador. Es
+  // PRERREQUISITO del velo, no un extra: el velo dejó de ser un `<button>`
+  // etiquetado, así que Escape y el botón «Cerrar» de la cabecera son el único
+  // affordance de cierre para teclado y AT (contrato del velo §2). Sin el hook,
+  // quitar el botón dejaba el panel sin salida por teclado.
+  //
+  // Escape replica exactamente el botón de la cabecera: con edición en curso
+  // cancela la edición en lugar de descartar el panel — la misma razón por la
+  // que el velo queda inerte mientras `isEditing`.
+  usePortalSideDrawerA11y(true, panelRef, isEditing ? handleCancelEdit : onClose);
+
   // ── Transiciones de estado ───────────────────────────────────────────────
 
   const handleTransition = async (action: TransitionAction) => {
@@ -368,21 +389,30 @@ export function ContractDetailDrawer({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  // Capa única ADR-075 **portalada a `document.body`** (enmienda C-DS-04 §2bis):
+  // velo y panel comparten UNA capa `--z-modal`, por encima del chrome. El velo
+  // vive dentro de la capa y el panel es hermano posterior posicionado: pinta
+  // sobre el velo por orden de documento.
+  //
+  // El velo queda INERTE mientras `isEditing`: no se descarta una edición en
+  // curso por un clic fuera. Sin handler no hay elemento accionable que
+  // anunciar — la razón por la que el velo dejó de ser un `<button>`.
+  //
+  // Velo /30 → /45 (token `--color-veil`): el /30 fallaba WCAG 1.4.11 con
+  // 2,10:1 entre el borde del panel blanco y el fondo velado.
   return (
-    <>
-      {/* Overlay */}
-      <div
-        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-        onClick={isEditing ? undefined : onClose}
-        aria-hidden
-      />
-
+    <ModalLayer align="end" {...(isEditing ? {} : { onVeilClick: onClose })}>
       {/* Drawer */}
       <aside
+        ref={panelRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawer-contract-title"
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl dark:bg-dark-bg"
+        className={cn(
+          overlayEdgeClassName,
+          'border-l relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl outline-none dark:bg-dark-surface-2',
+        )}
       >
         {/* Cabecera */}
         <div className="flex items-start gap-3 border-b border-gray-100 px-6 py-5 dark:border-dark-border">
@@ -798,6 +828,6 @@ export function ContractDetailDrawer({
           )}
         </div>
       </aside>
-    </>
+    </ModalLayer>
   );
 }

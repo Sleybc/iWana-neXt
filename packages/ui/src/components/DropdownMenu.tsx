@@ -2,6 +2,7 @@
 'use client';
 
 import * as React from 'react';
+import { overlayEdgeClassName } from './ModalLayer';
 import { createPortal } from 'react-dom';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -225,7 +226,7 @@ const DropdownMenuContent = React.forwardRef<HTMLDivElement, DropdownMenuContent
           position: 'fixed',
           top,
           left: Math.min(Math.max(8, rawLeft), maxLeft),
-          zIndex: 1200,
+          zIndex: 'var(--z-popover)',
         });
       };
 
@@ -320,7 +321,8 @@ const DropdownMenuContent = React.forwardRef<HTMLDivElement, DropdownMenuContent
         role="menu"
         style={style}
         className={cn(
-          'overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg outline-none dark:border-gray-700 dark:bg-dark-surface-2',
+          overlayEdgeClassName,
+          'overflow-hidden rounded-xl border bg-white py-1 shadow-lg outline-none dark:bg-dark-surface-2',
           width,
           className,
         )}

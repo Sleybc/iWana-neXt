@@ -8,6 +8,7 @@ import {
 } from '@iwana/shared';
 import type { InventoryCategoryRecord } from '@/lib/api-client';
 import { InventoryCreateProductDialog } from './InventoryCreateProductDialog';
+import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
 
 function buildCategory(overrides: Partial<InventoryCategoryRecord> = {}): InventoryCategoryRecord {
   return {
@@ -491,5 +492,37 @@ describe('InventoryCreateProductDialog', () => {
     expect(
       controlItem!.compareDocumentPosition(codigoItem!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+describe('InventoryCreateProductDialog · capas ADR-075', () => {
+  it('velo y panel en la capa z-modal sobre el chrome, con difusión del estado modal', async () => {
+    const dispatchSpy = jest.spyOn(window, 'dispatchEvent');
+    renderDialog();
+
+    await screen.findByRole('dialog', { name: 'Nuevo producto' });
+
+    // El velo dejó de ser un `<button>` etiquetado: se localiza por
+    // `data-portal-veil` sobre `document.body`, que es donde la capa se porta.
+    const velo = document.body.querySelector<HTMLElement>('[data-portal-veil]');
+    expect(velo).not.toBeNull();
+    expect(velo).toHaveAttribute('aria-hidden', 'true');
+    expect(velo).toHaveClass('absolute');
+    expect(velo?.parentElement).toHaveClass('z-(--z-modal)');
+    expect(velo).toHaveClass('bg-(--color-veil)');
+    expect(velo).toHaveClass('backdrop-blur-sm');
+
+    const dialog = screen.getByRole('dialog', { name: 'Nuevo producto' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveClass('relative');
+    expect(dialog.parentElement).toHaveClass('z-(--z-modal)');
+
+    // La difusión de apertura vuelve el chrome inerte mientras el diálogo viva.
+    const modalStateEvents = dispatchSpy.mock.calls
+      .map(([event]) => event as CustomEvent)
+      .filter((event) => event.type === PORTAL_MODAL_DRAWER_STATE_EVENT);
+    expect(modalStateEvents.some((event) => event.detail?.open === true)).toBe(true);
+
+    dispatchSpy.mockRestore();
   });
 });
