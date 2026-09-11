@@ -34,7 +34,7 @@ import {
   portalResourceTabListClassName,
   portalResourceTabTriggerClassName,
 } from '@/components/shared/portal-ui';
-import { formatInventoryDate, getSerializedAssetStatusLabel } from './inventory-labels';
+import { formatInventoryDateOnly, getSerializedAssetStatusLabel } from './inventory-labels';
 import { AssetLoansPanel } from './AssetLoansPanel';
 import { UsefulLifeAlertsPanel } from './UsefulLifeAlertsPanel';
 
@@ -251,7 +251,7 @@ function AssetsListSection({
                         {locationMap.get(asset.currentLocationId ?? '')?.name ?? 'Sin ubicación'}
                       </td>
                       <td className={portalDataTableCellClassName}>
-                        {formatInventoryDate(asset.purchaseDate)}
+                        {formatInventoryDateOnly(asset.purchaseDate)}
                       </td>
                       <td className={portalDataTableCellClassName}>
                         <Button

@@ -15,7 +15,7 @@ import {
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
-  formatInventoryDate,
+  formatInventoryDateOnly,
   getPurchaseRequestDisplayStatus,
   getPurchaseRequestPriorityBadgeVariant,
   getPurchaseRequestPriorityLabel,
@@ -143,7 +143,7 @@ export function PurchaseRequestsTable({
                 <td
                   className={`${portalDataTableCellClassName} ${isOverdue ? 'font-medium text-rose-700 dark:text-rose-300' : ''}`}
                 >
-                  {formatInventoryDate(request.neededByDate)}
+                  {formatInventoryDateOnly(request.neededByDate)}
                 </td>
                 <td className={portalDataTableCellClassName}>
                   <div className="flex flex-wrap gap-1">

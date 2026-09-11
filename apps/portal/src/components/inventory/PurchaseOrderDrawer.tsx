@@ -33,7 +33,7 @@ import {
 } from './inventory-date';
 import {
   formatInventoryCurrency,
-  formatInventoryDate,
+  formatInventoryDateOnly,
   getPurchaseRequestStatusLabel,
 } from './inventory-labels';
 import {
@@ -251,7 +251,7 @@ export function PurchaseOrderDrawer({
               <div className="rounded-2xl border border-gray-200 bg-white p-3 text-sm dark:border-dark-border dark:bg-dark-surface-3">
                 <p className="portal-eyebrow-muted">Fecha requerida</p>
                 <p className="mt-2 font-medium text-gray-900 dark:text-white">
-                  {formatInventoryDate(request.neededByDate)}
+                  {formatInventoryDateOnly(request.neededByDate)}
                 </p>
               </div>
             </div>

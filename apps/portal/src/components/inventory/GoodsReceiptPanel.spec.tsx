@@ -4,7 +4,11 @@ import { GoodsReceiptStatus, PurchaseOrderStatus } from '@iwana/shared';
 import { inventoryApi } from '@/lib/api-client';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
 import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
-import { formatInventoryDate, formatInventoryDateTime } from './inventory-labels';
+import {
+  formatInventoryDate,
+  formatInventoryDateOnly,
+  formatInventoryDateTime,
+} from './inventory-labels';
 
 jest.mock('@/lib/api-client', () => {
   const actual = jest.requireActual('@/lib/api-client');
@@ -161,7 +165,7 @@ describe('GoodsReceiptPanel', () => {
     const entregaEsperada = screen.getByText('Entrega esperada').closest('dl');
     expect(entregaEsperada).not.toBeNull();
     expect(
-      within(entregaEsperada as HTMLElement).getByText(formatInventoryDate('2026-08-15')),
+      within(entregaEsperada as HTMLElement).getByText(formatInventoryDateOnly('2026-08-15')),
     ).toBeInTheDocument();
   });
 
@@ -182,7 +186,7 @@ describe('GoodsReceiptPanel', () => {
       />,
     );
 
-    expect(screen.getByText(formatInventoryDate('2026-10-01'))).toBeInTheDocument();
+    expect(screen.getByText(formatInventoryDateOnly('2026-10-01'))).toBeInTheDocument();
     expect(screen.queryByText('Sin fecha')).not.toBeInTheDocument();
   });
 

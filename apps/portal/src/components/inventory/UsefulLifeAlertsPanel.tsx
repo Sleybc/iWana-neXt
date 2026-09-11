@@ -28,7 +28,7 @@ import {
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
-  formatInventoryDate,
+  formatInventoryDateOnly,
   getUsefulLifeStatusBadgeVariant,
   getUsefulLifeStatusLabel,
   USEFUL_LIFE_STATUS_LABELS,
@@ -300,10 +300,10 @@ function UsefulLifeAlertsPanelInner({
                       {formatMonthsRemaining(alert.monthsRemaining)}
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      {formatInventoryDate(alert.purchaseDate)}
+                      {formatInventoryDateOnly(alert.purchaseDate)}
                     </td>
                     <td className={portalDataTableCellClassName}>
-                      {formatInventoryDate(alert.warrantyUntil)}
+                      {formatInventoryDateOnly(alert.warrantyUntil)}
                     </td>
                     <td className={portalDataTableCellClassName}>
                       <Button

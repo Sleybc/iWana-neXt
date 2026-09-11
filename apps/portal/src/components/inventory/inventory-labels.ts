@@ -688,6 +688,24 @@ export function formatInventoryDate(value: string | null | undefined): string {
   }).format(new Date(value));
 }
 
+/**
+ * Fechas puras (columna `date`, sin hora — ej. neededByDate, responseDeadline,
+ * validUntil, purchaseDate, warrantyUntil, expectedDeliveryDate). `new Date('YYYY-MM-DD')`
+ * parsea como medianoche UTC; sin fijar `timeZone: 'UTC'` en el formateador, el navegador la
+ * retrocede al día anterior en cualquier zona horaria negativa (ej. América/Bogotá, UTC-5).
+ * Mismo patrón que ya usa stock-issue-line-utils.ts:424-429.
+ */
+export function formatInventoryDateOnly(value: string | null | undefined): string {
+  if (!value) {
+    return 'Sin fecha';
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeZone: 'UTC',
+  }).format(new Date(value));
+}
+
 /** Primera fecha usable (ignora `null`, `undefined` y string vacío). */
 export function coalesceInventoryDate(...values: Array<string | null | undefined>): string | null {
   for (const value of values) {

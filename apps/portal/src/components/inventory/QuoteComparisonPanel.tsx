@@ -4,7 +4,7 @@ import type { SupplierQuoteRecord } from '@/lib/api-client';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { cn, Button } from '@iwana/ui';
 import {
-  formatInventoryDate,
+  formatInventoryDateOnly,
   formatInventoryMoney,
   getSupplierDisplayLabel,
 } from './inventory-labels';
@@ -81,7 +81,7 @@ export function QuoteComparisonPanel({
               <div>
                 <p className="font-medium text-gray-900 dark:text-white">{supplierName}</p>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  {quote.quoteNumber} · Válida hasta {formatInventoryDate(quote.validUntil)}
+                  {quote.quoteNumber} · Válida hasta {formatInventoryDateOnly(quote.validUntil)}
                 </p>
               </div>
               <div className="text-right">

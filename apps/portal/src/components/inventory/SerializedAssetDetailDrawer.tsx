@@ -19,6 +19,7 @@ import {
 import {
   formatInventoryCostOrNone,
   formatInventoryDate,
+  formatInventoryDateOnly,
   formatInventoryDateTime,
   formatInventoryOpaqueRef,
   formatInventoryQuantity,
@@ -284,7 +285,9 @@ export function SerializedAssetDetailDrawer({
                   <div>
                     <dt className="text-gray-500 dark:text-gray-400">Fecha de recepción</dt>
                     <dd className="font-medium text-gray-900 dark:text-white">
-                      {formatInventoryDate(detail.purchaseOrigin.receivedAt ?? detail.purchaseDate)}
+                      {detail.purchaseOrigin.receivedAt
+                        ? formatInventoryDate(detail.purchaseOrigin.receivedAt)
+                        : formatInventoryDateOnly(detail.purchaseDate)}
                     </dd>
                   </div>
                   <div>
@@ -343,7 +346,9 @@ export function SerializedAssetDetailDrawer({
                   <div>
                     <dt className="text-gray-500 dark:text-gray-400">Garantía</dt>
                     <dd className="font-medium text-gray-900 dark:text-white">
-                      {formatInventoryDate(detail.usefulLife.warrantyUntil ?? detail.warrantyUntil)}{' '}
+                      {formatInventoryDateOnly(
+                        detail.usefulLife.warrantyUntil ?? detail.warrantyUntil,
+                      )}{' '}
                       ·{' '}
                       {getWarrantyCoverageLabel(
                         detail.usefulLife.warrantyUntil ?? detail.warrantyUntil,

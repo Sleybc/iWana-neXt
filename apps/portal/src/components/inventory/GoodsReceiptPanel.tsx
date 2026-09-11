@@ -27,6 +27,7 @@ import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
 import {
   coalesceInventoryDate,
   formatInventoryDate,
+  formatInventoryDateOnly,
   formatInventoryDateTime,
   formatInventoryQuantity,
   getGoodsReceiptStatusLabel,
@@ -349,7 +350,7 @@ export function GoodsReceiptPanel({
         <dl className="text-sm">
           <dt className="portal-eyebrow-muted">Entrega esperada</dt>
           <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-            {formatInventoryDate(
+            {formatInventoryDateOnly(
               coalesceInventoryDate(
                 order.expectedDeliveryDate,
                 orders.find((entry) => entry.id === order.id)?.expectedDeliveryDate,

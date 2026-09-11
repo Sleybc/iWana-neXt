@@ -53,7 +53,7 @@ import {
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryCurrency,
-  formatInventoryDate,
+  formatInventoryDateOnly,
   getPurchaseOrderStatusLabel,
   getPurchaseRequestLineSourceLabel,
   getPurchaseRequestLineStatusLabel,
@@ -794,7 +794,7 @@ export function PurchaseRequestWorkbenchDrawer({
                         <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
                           Fecha requerida
                         </dt>
-                        <dd className="mt-1">{formatInventoryDate(request.neededByDate)}</dd>
+                        <dd className="mt-1">{formatInventoryDateOnly(request.neededByDate)}</dd>
                       </div>
                       <div>
                         <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">

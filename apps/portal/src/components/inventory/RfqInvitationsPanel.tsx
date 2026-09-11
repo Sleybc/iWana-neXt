@@ -24,6 +24,7 @@ import {
 } from '@/components/shared/portal-ui';
 import {
   formatInventoryDate,
+  formatInventoryDateOnly,
   formatInventoryMoney,
   getPurchaseRfqInvitationStatusBadgeVariant,
   getPurchaseRfqInvitationStatusLabel,
@@ -547,7 +548,7 @@ export function RfqInvitationsPanel({
                 {rfqStatus ? getPurchaseRfqStatusLabel(rfqStatus) : '—'}
               </p>
               <p className="mt-1 text-xs text-gray-500">
-                Fecha límite: {formatInventoryDate(rfq.responseDeadline)}
+                Fecha límite: {formatInventoryDateOnly(rfq.responseDeadline)}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
