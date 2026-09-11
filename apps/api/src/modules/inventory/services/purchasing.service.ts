@@ -242,7 +242,7 @@ export class PurchasingService {
       withTransaction(qr.manager, async (manager) => {
         const request = await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
 
-        await this.supplierProfileService.assertEligibleForPurchasing(
+        await this.supplierProfileService.assertNotBlockedForPurchasing(
           manager,
           tenantId,
           validated.partyRefId,
@@ -803,7 +803,7 @@ export class PurchasingService {
             throw new BadRequestException(blockingReason);
           }
 
-          await this.supplierProfileService.assertEligibleForPurchasing(
+          await this.supplierProfileService.assertNotBlockedForPurchasing(
             manager,
             tenantId,
             awardInput.awardedPartyRefId,
@@ -1103,7 +1103,7 @@ export class PurchasingService {
     },
     actor: JwtPayload,
   ): Promise<PurchaseOrder> {
-    await this.supplierProfileService.assertEligibleForPurchasing(
+    await this.supplierProfileService.assertNotBlockedForPurchasing(
       manager,
       tenantId,
       input.partyRefId,

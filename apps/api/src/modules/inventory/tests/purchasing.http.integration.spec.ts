@@ -361,7 +361,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
         { provide: RfqPdfService, useValue: { renderAllInvitationsZip: jest.fn() } },
         {
           provide: SupplierProfileService,
-          useValue: { assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined) },
+          useValue: { assertNotBlockedForPurchasing: jest.fn().mockResolvedValue(undefined) },
         },
         { provide: SupplierPartyPort, useValue: supplierPartyPortMock },
         {

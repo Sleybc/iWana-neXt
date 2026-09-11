@@ -2474,14 +2474,30 @@ export class CreateRfqDto {
   notes?: string | null;
 }
 
+/**
+ * Cota superior de proveedores por invitación: acota el trabajo por request (consultas y filas)
+ * para que un solo body no monopolice una conexión del pool compartido entre tenants.
+ */
+export const MAX_RFQ_INVITED_SUPPLIERS = 50;
+
 export const InviteSuppliersSchema = z.object({
-  partyRefIds: z.array(z.string().uuid()).min(1),
+  partyRefIds: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(MAX_RFQ_INVITED_SUPPLIERS)
+    // La deduplicación es idempotente para el llamador: invitar dos veces al mismo proveedor
+    // en el mismo body ya devolvía una sola invitación.
+    .transform((partyRefIds) => Array.from(new Set(partyRefIds))),
 });
 
 export type InviteSuppliersInput = z.infer<typeof InviteSuppliersSchema>;
 
 export class InviteSuppliersDto {
-  @ApiProperty({ type: [String], description: 'Referencias de proveedores (MOD08 Parties)' })
+  @ApiProperty({
+    type: [String],
+    description: 'Referencias de proveedores (MOD08 Parties)',
+    maxItems: MAX_RFQ_INVITED_SUPPLIERS,
+  })
   @Allow()
   partyRefIds!: string[];
 }

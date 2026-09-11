@@ -272,7 +272,7 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
         applyQuoteToInvitation: jest.fn(),
       } as unknown as RfqService,
       {
-        assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined),
+        assertNotBlockedForPurchasing: jest.fn().mockResolvedValue(undefined),
       } as unknown as SupplierProfileService,
       {
         listByContext: jest.fn().mockResolvedValue([]),

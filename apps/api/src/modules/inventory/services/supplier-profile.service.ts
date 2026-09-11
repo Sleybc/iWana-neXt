@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Brackets, DataSource, EntityManager } from 'typeorm';
+import { Brackets, DataSource, EntityManager, In } from 'typeorm';
 import { SupplierProfile, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   DocumentTypeParty,
@@ -303,8 +303,14 @@ export class SupplierProfileService {
     );
   }
 
-  /** Rechaza proveedores con perfil INACTIVE/BLOCKED en nuevas operaciones de compra. */
-  async assertEligibleForPurchasing(
+  /**
+   * Rechaza proveedores con perfil INACTIVE/BLOCKED en nuevas operaciones de compra.
+   *
+   * NO verifica existencia del tercero ni su rol en MOD08: la ausencia de perfil comercial es
+   * legítima (proveedor todavía sin ficha). Esa verificación corresponde al `SupplierPartyPort`.
+   * El nombre lo dice explícitamente para que ningún llamante lo tome por una guarda de identidad.
+   */
+  async assertNotBlockedForPurchasing(
     manager: EntityManager,
     tenantId: string,
     partyRefId: string,
@@ -317,8 +323,36 @@ export class SupplierProfileService {
       return;
     }
 
-    const statusLabel = profile.status === SupplierProfileStatus.BLOCKED ? 'bloqueado' : 'inactivo';
-    throw new BadRequestException(
+    throw this.blockedProfileError(profile.status);
+  }
+
+  /**
+   * Variante por lote de {@link assertNotBlockedForPurchasing}: una sola consulta para todo el
+   * conjunto, en vez de un round-trip por proveedor dentro de la transacción del llamador.
+   */
+  async assertNotBlockedForPurchasingBatch(
+    manager: EntityManager,
+    tenantId: string,
+    partyRefIds: string[],
+  ): Promise<void> {
+    if (partyRefIds.length === 0) {
+      return;
+    }
+
+    const profiles = await manager.find(SupplierProfile, {
+      where: { tenantId, partyRefId: In(partyRefIds) },
+    });
+
+    const blocked = profiles.find((profile) => profile.status !== SupplierProfileStatus.ACTIVE);
+
+    if (blocked) {
+      throw this.blockedProfileError(blocked.status);
+    }
+  }
+
+  private blockedProfileError(status: SupplierProfileStatus): BadRequestException {
+    const statusLabel = status === SupplierProfileStatus.BLOCKED ? 'bloqueado' : 'inactivo';
+    return new BadRequestException(
       `El proveedor está ${statusLabel} y no puede usarse en nuevas operaciones de compra.`,
     );
   }

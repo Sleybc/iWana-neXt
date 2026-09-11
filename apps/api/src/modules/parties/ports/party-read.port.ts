@@ -63,6 +63,12 @@ export abstract class IPartyReadPort {
     },
   ): Promise<PartySearchResult>;
   abstract listRoles(partyId: string): Promise<PartyRoleSnapshot[]>;
+  /**
+   * Filtra, en una sola consulta, los ids que corresponden a un tercero existente (no eliminado)
+   * con el rol indicado en estado ACTIVE. Guarda de existencia/rol para consumidores externos
+   * que reciben referencias `partyRefId` desde el borde HTTP.
+   */
+  abstract filterPartyIdsByActiveRole(role: PartyRoleType, partyIds: string[]): Promise<string[]>;
   abstract listContacts(partyId: string): Promise<PartyContactSnapshot[]>;
   abstract listContactsForIds(partyIds: string[]): Promise<Map<string, PartyContactSnapshot[]>>;
 }

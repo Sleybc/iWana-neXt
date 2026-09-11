@@ -148,7 +148,7 @@ describe('PurchasingPolicyService', () => {
 
 describe('PurchasingService', () => {
   const supplierProfileServiceMock = {
-    assertEligibleForPurchasing: jest.fn().mockResolvedValue(undefined),
+    assertNotBlockedForPurchasing: jest.fn().mockResolvedValue(undefined),
   } as unknown as SupplierProfileService;
 
   beforeEach(() => {

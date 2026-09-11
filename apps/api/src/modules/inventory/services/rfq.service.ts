@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import {
   PurchaseRequest,
   PurchaseRequestLine,
@@ -32,6 +32,7 @@ import {
 import { generateSequentialNumber } from '../utils/sequential-number';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { isPostgresUniqueViolation } from './inventory-postgres.util';
+import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { SupplierProfileService } from './supplier-profile.service';
 
 export interface PurchaseRfqDetail {
@@ -63,6 +64,7 @@ export class RfqService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly supplierProfileService: SupplierProfileService,
+    private readonly supplierPartyPort: SupplierPartyPort,
   ) {}
 
   async createFromRequest(
@@ -143,54 +145,74 @@ export class RfqService {
           );
         }
 
-        const created: PurchaseRfqInvitation[] = [];
+        // Guarda por lote (P0-2/P0-4): perfiles bloqueados/inactivos y existencia + rol
+        // SUPPLIER activo se resuelven en una sola consulta cada uno, en vez de un
+        // round-trip por partyRefId.
+        await this.supplierProfileService.assertNotBlockedForPurchasingBatch(
+          manager,
+          tenantId,
+          validated.partyRefIds,
+        );
 
-        for (const partyRefId of validated.partyRefIds) {
-          await this.supplierProfileService.assertEligibleForPurchasing(
-            manager,
-            tenantId,
-            partyRefId,
+        const activeRefs = await this.supplierPartyPort.filterActiveSupplierRefs(
+          validated.partyRefIds,
+        );
+        const invalidRefs = validated.partyRefIds.filter(
+          (partyRefId) => !activeRefs.has(partyRefId),
+        );
+
+        if (invalidRefs.length > 0) {
+          throw new BadRequestException(
+            'Uno o más proveedores no existen o no tienen rol de proveedor activo.',
           );
+        }
 
-          const existing = await manager.findOne(PurchaseRfqInvitation, {
-            where: { tenantId, rfqId, partyRefId },
-          });
+        const existingInvitations = await manager.find(PurchaseRfqInvitation, {
+          where: { tenantId, rfqId, partyRefId: In(validated.partyRefIds) },
+        });
+        const existingPartyRefIds = new Set(
+          existingInvitations.map((invitation) => invitation.partyRefId),
+        );
 
-          if (existing) {
-            created.push(existing);
-            continue;
-          }
+        const partyRefIdsToInsert = validated.partyRefIds.filter(
+          (partyRefId) => !existingPartyRefIds.has(partyRefId),
+        );
 
-          try {
-            const invitation = await manager.save(
-              PurchaseRfqInvitation,
-              manager.create(PurchaseRfqInvitation, {
+        if (partyRefIdsToInsert.length > 0) {
+          const invitedAt = rfq.status === PurchaseRfqStatus.DRAFT ? null : new Date();
+
+          // P0-3b: sin SAVEPOINT ni try/catch de carrera — ON CONFLICT DO NOTHING resuelve
+          // la invitación duplicada dentro del propio INSERT, evitando que un 23505 deje la
+          // transacción abortada (25P02) antes de reintentar con otro findOne.
+          await manager
+            .createQueryBuilder()
+            .insert()
+            .into(PurchaseRfqInvitation)
+            .values(
+              partyRefIdsToInsert.map((partyRefId) => ({
                 tenantId,
                 rfqId,
                 partyRefId,
                 status: PurchaseRfqInvitationStatus.INVITED,
-                invitedAt: rfq.status === PurchaseRfqStatus.DRAFT ? null : new Date(),
+                invitedAt,
                 invitedByUserId: actor.sub,
-              }),
-            );
-            created.push(invitation);
-          } catch (error) {
-            if (isPostgresUniqueViolation(error, 'uq_purchase_rfq_invitations_rfq_party')) {
-              const raced = await manager.findOne(PurchaseRfqInvitation, {
-                where: { tenantId, rfqId, partyRefId },
-              });
-
-              if (raced) {
-                created.push(raced);
-                continue;
-              }
-            }
-
-            throw error;
-          }
+              })),
+            )
+            .orIgnore()
+            .execute();
         }
 
-        return created;
+        const allInvitations = await manager.find(PurchaseRfqInvitation, {
+          where: { tenantId, rfqId, partyRefId: In(validated.partyRefIds) },
+        });
+        const invitationByPartyRefId = new Map(
+          allInvitations.map((invitation) => [invitation.partyRefId, invitation]),
+        );
+
+        // Preserva el orden de negocio que ya exponía el método (orden del body deduplicado).
+        return validated.partyRefIds
+          .map((partyRefId) => invitationByPartyRefId.get(partyRefId))
+          .filter((invitation): invitation is PurchaseRfqInvitation => invitation !== undefined);
       }),
     );
   }
@@ -324,8 +346,16 @@ export class RfqService {
           }
         }
 
-        request.status = PurchaseRequestStatus.PENDING_APPROVAL;
-        await manager.save(PurchaseRequest, request);
+        // Defensa: no retroceder una solicitud ya avanzada (p. ej. APPROVED/CONVERTED_TO_PO)
+        // al cerrar una ronda tardía. Solo se avanza a PENDING_APPROVAL desde los estados que
+        // esta ronda pudo haber dejado pendientes (mismo criterio que send()).
+        if (
+          request.status === PurchaseRequestStatus.PENDING_QUOTES ||
+          request.status === PurchaseRequestStatus.DRAFT
+        ) {
+          request.status = PurchaseRequestStatus.PENDING_APPROVAL;
+          await manager.save(PurchaseRequest, request);
+        }
 
         return rfq;
       }),
@@ -375,6 +405,10 @@ export class RfqService {
     }
 
     const rfq = await this.requireRfq(manager, tenantId, invitation.rfqId);
+
+    if (rfq.purchaseRequestId !== input.quote.purchaseRequestId) {
+      throw new BadRequestException('La cotización no corresponde a la solicitud de esta ronda.');
+    }
 
     if (![PurchaseRfqStatus.SENT, PurchaseRfqStatus.RECEIVING].includes(rfq.status)) {
       throw new BadRequestException('La ronda de cotización no está recibiendo respuestas.');

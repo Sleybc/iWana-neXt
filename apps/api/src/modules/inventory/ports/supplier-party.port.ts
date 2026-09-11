@@ -50,6 +50,12 @@ export abstract class SupplierPartyPort {
   abstract getSupplierSummariesBatch(
     partyRefIds: string[],
   ): Promise<Map<string, SupplierPartySummary>>;
+  /**
+   * Resuelve, en una sola consulta, qué referencias corresponden a terceros existentes con rol
+   * SUPPLIER activo en MOD08. Guarda de invitación: un `partyRefId` arbitrario no puede convertirse
+   * en proveedor invitado solo por ser un UUID bien formado.
+   */
+  abstract filterActiveSupplierRefs(partyRefIds: string[]): Promise<Set<string>>;
   abstract searchSuppliers(
     query?: string,
     page?: number,
@@ -101,6 +107,15 @@ export class SupplierPartyPortAdapter extends SupplierPartyPort {
       );
     }
     return result;
+  }
+
+  async filterActiveSupplierRefs(partyRefIds: string[]): Promise<Set<string>> {
+    if (partyRefIds.length === 0) return new Set();
+    const resolved = await this.partyReadPort.filterPartyIdsByActiveRole(
+      PartyRoleType.SUPPLIER,
+      partyRefIds,
+    );
+    return new Set(resolved);
   }
 
   summaryFromIdentity(identity: PartyIdentitySnapshot): SupplierPartySummary {

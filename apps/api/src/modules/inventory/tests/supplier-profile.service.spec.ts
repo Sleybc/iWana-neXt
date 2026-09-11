@@ -388,13 +388,13 @@ describe('SupplierProfileService', () => {
     expect(idempotent.status).toBe(SupplierProfileStatus.BLOCKED);
   });
 
-  it('assertEligibleForPurchasing permite ACTIVE y party sin perfil', async () => {
+  it('assertNotBlockedForPurchasing permite ACTIVE y party sin perfil', async () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
     } as unknown as EntityManager;
 
     await expect(
-      service.assertEligibleForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
+      service.assertNotBlockedForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
     ).resolves.toBeUndefined();
 
     (manager.findOne as jest.Mock).mockResolvedValue({
@@ -402,24 +402,83 @@ describe('SupplierProfileService', () => {
     });
 
     await expect(
-      service.assertEligibleForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
+      service.assertNotBlockedForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
     ).resolves.toBeUndefined();
   });
 
-  it('assertEligibleForPurchasing rechaza proveedor bloqueado o inactivo', async () => {
+  it('assertNotBlockedForPurchasing rechaza proveedor bloqueado o inactivo', async () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue({ status: SupplierProfileStatus.BLOCKED }),
     } as unknown as EntityManager;
 
     await expect(
-      service.assertEligibleForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
+      service.assertNotBlockedForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
     ).rejects.toThrow('bloqueado');
 
     (manager.findOne as jest.Mock).mockResolvedValue({ status: SupplierProfileStatus.INACTIVE });
 
     await expect(
-      service.assertEligibleForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
+      service.assertNotBlockedForPurchasing(manager, 'tenant-001', PARTY_REF_ID),
     ).rejects.toThrow('inactivo');
+  });
+
+  describe('assertNotBlockedForPurchasingBatch', () => {
+    const OTHER_PARTY_REF_ID = '77777777-7777-4777-8777-777777777777';
+
+    it('resuelve en una sola consulta (find con In) para todo el lote', async () => {
+      const find = jest.fn().mockResolvedValue([]);
+      const manager = { find } as unknown as EntityManager;
+
+      await expect(
+        service.assertNotBlockedForPurchasingBatch(manager, 'tenant-001', [
+          PARTY_REF_ID,
+          OTHER_PARTY_REF_ID,
+        ]),
+      ).resolves.toBeUndefined();
+
+      expect(find).toHaveBeenCalledTimes(1);
+    });
+
+    it('pasa si todos los perfiles están ACTIVE o sin perfil comercial', async () => {
+      const manager = {
+        find: jest
+          .fn()
+          .mockResolvedValue([{ partyRefId: PARTY_REF_ID, status: SupplierProfileStatus.ACTIVE }]),
+      } as unknown as EntityManager;
+
+      await expect(
+        service.assertNotBlockedForPurchasingBatch(manager, 'tenant-001', [
+          PARTY_REF_ID,
+          OTHER_PARTY_REF_ID,
+        ]),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rechaza si cualquiera del lote está bloqueado o inactivo', async () => {
+      const manager = {
+        find: jest.fn().mockResolvedValue([
+          { partyRefId: PARTY_REF_ID, status: SupplierProfileStatus.ACTIVE },
+          { partyRefId: OTHER_PARTY_REF_ID, status: SupplierProfileStatus.BLOCKED },
+        ]),
+      } as unknown as EntityManager;
+
+      await expect(
+        service.assertNotBlockedForPurchasingBatch(manager, 'tenant-001', [
+          PARTY_REF_ID,
+          OTHER_PARTY_REF_ID,
+        ]),
+      ).rejects.toThrow('bloqueado');
+    });
+
+    it('no consulta cuando el lote está vacío', async () => {
+      const find = jest.fn();
+      const manager = { find } as unknown as EntityManager;
+
+      await expect(
+        service.assertNotBlockedForPurchasingBatch(manager, 'tenant-001', []),
+      ).resolves.toBeUndefined();
+      expect(find).not.toHaveBeenCalled();
+    });
   });
 
   it('update lanza error de validacion si el body esta vacio (B2)', async () => {

@@ -95,6 +95,30 @@ export class PartyReadAdapter extends IPartyReadPort {
     });
   }
 
+  async filterPartyIdsByActiveRole(role: PartyRoleType, partyIds: string[]): Promise<string[]> {
+    if (partyIds.length === 0) return [];
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = await qr.manager
+        .createQueryBuilder(Party, 'p')
+        .select('p.id', 'id')
+        .innerJoin(
+          PartyRole,
+          'pr',
+          'pr.party_id = p.id AND pr.role = :role AND pr.status = :status',
+          {
+            role,
+            status: PartyRoleStatus.ACTIVE,
+          },
+        )
+        .where('p.id IN (:...partyIds)', { partyIds })
+        .andWhere('p.deleted_at IS NULL')
+        .getRawMany<{ id: string }>();
+
+      return rows.map((row) => row.id);
+    });
+  }
+
   async listRoles(partyId: string): Promise<PartyRoleSnapshot[]> {
     const { schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
