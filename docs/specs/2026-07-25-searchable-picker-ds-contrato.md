@@ -1,8 +1,8 @@
 # Contrato DS — `SearchablePicker` / `SearchableMultiPicker`
 
-**Versión:** 1.0  
-**Estado:** **Vigente** — congela API + estados + tokens para E-4 (fase 3 del plan)  
-**Fecha:** 2026-07-25  
+**Versión:** 1.1  
+**Estado:** **Vigente** — congela API + estados + tokens para E-4 (fase 3 del plan); enmienda v1.1 (§11) vigente desde 2026-09-09  
+**Fecha:** 2026-07-25 · Enmienda v1.1: 2026-09-09  
 **Autor:** AI-DS-OWNER  
 **Aprobación:** carril rápido DS (componente + estados; sin alcance UX nuevo, sin contrato de datos HTTP, sin boundary de módulo, **cero tokens nuevos**)  
 **Relaciona:** [spec UX](2026-07-25-picker-typeahead-servidor-ux.md) (CA-PICK-01…16, S0–S6) · [plan remediación](../plans/2026-07-24-pickers-softcap-remediacion.md) · [ADR-065](../adrs/ADR-065-Paginacion-Numerada-Tablas-Operativas.md) §Excepciones · [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §2  
@@ -66,7 +66,7 @@ SearchablePicker (single)
 SearchableMultiPicker
 ├── Chips de selección (Badge + quitar)
 ├── Combobox field (búsqueda; se limpia tras añadir)
-├── Listbox (misma gramática; permanece abierta tras añadir)
+├── Listbox (misma gramática; se cierra tras añadir — ver excepción v1.1 en §11)
 └── Live region
 ```
 
@@ -321,7 +321,7 @@ Contraste: texto de fila `gray-700` / dark `gray-200`; sublabel `gray-500` (≥4
 | 12 | Superficie <md no tapa el ítem activo bajo teclado virtual |
 | 14 | API sin `items[]` prefetch |
 | 15 | `resource` noun obligatorio |
-| 16 | Multi no cierra tras añadir; quitar chip explícito |
+| 16 | Multi se cierra tras añadir y reabre al tipar (v1.1, §11); quitar chip explícito |
 
 CA-PICK-13 es de integración (tenant > soft-cap) — SR-QA + FE; el contrato solo garantiza el mecanismo (typeahead + S6).
 
@@ -336,3 +336,15 @@ CA-PICK-13 es de integración (tenant > soft-cap) — SR-QA + FE; el contrato so
 5. Notificar a DS-OWNER si la implementación exige una prop nueva: se versiona este documento (v1.1+) antes de mergear API divergente.
 
 **Veredicto carril rápido:** aprobado — API + estados + receta de tokens existentes; no toca marca, stack ni alcance UX congelado.
+
+---
+
+## 11. Enmienda v1.1 (2026-09-09) — cierra la tensión DS v1.0 §3 vs. spec UX §5.2
+
+**Emitida por:** AI-DS-OWNER (Track T2, Fase 28) · **Causa:** `INFORME-MOD12-COMPRAS-RFQ-ENVIO-BLOQUEO-v1.0.md:37`.
+
+La v1.0 §3 exigía «la lista permanece abierta tras añadir» mientras la spec UX §5.2 permitía cerrarla; la implementación adoptó la lectura UX (cerrar tras añadir, reabrir al tipar) porque el overlay S1 tapaba la botonera hermana «Invitar seleccionados / Enviar solicitud». No se dejan ambas lecturas vigentes: **la v1.1 sustituye a la v1.0 en este punto**.
+
+**Regla v1.1:** el multi se **cierra** tras añadir (aborta la búsqueda pendiente y resetea S2/S5); la segunda búsqueda sigue siendo inmediata porque al tipar se reabre. `onFocus` solo abre si `query.trim().length >= minChars`. La fila CA-PICK-16 de §9 queda redactada en consecuencia.
+
+**Veredicto de carril rápido Fase 28 — GO.** Alojar `SupplierMultiPicker` dentro del formulario de creación de ronda («Crear e invitar», spec Fase 28 §2/§5) no crea componente nuevo ni variante nueva ni token nuevo: es composición del primitive vigente con el contrato de datos congelado (`InviteSuppliersDto.partyRefIds`). Sin impacto en alcance, boundary, tokens de marca ni contrato HTTP. No requiere ADR ni CTO.

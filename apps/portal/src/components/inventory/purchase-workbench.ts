@@ -117,13 +117,23 @@ export function resolveTabForPurchaseWorkbenchPhase(
   return tabs[0] ?? 'summary';
 }
 
-/** Matriz D3 — bloque primario expandido en Cotizar. */
+/**
+ * Matriz D3 + escalón Fase 28 — bloque primario expandido en Cotizar.
+ * `canStartRfq` (sin ronda y sin cotizaciones) rinde la ronda como camino
+ * primario, inmediatamente después de `hasActiveRfq` y antes de la
+ * comparación, que conserva la prioridad con cotizaciones registradas
+ * (CA-24-06 intacto).
+ */
 export function getCotizarPrimarySection(input: {
   hasActiveRfq: boolean;
+  canStartRfq: boolean;
   quotesCount: number;
   canAddQuote: boolean;
 }): CotizarPrimarySection {
   if (input.hasActiveRfq) {
+    return 'invitations';
+  }
+  if (input.canStartRfq) {
     return 'invitations';
   }
   if (input.quotesCount > 0) {

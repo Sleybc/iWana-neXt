@@ -114,9 +114,9 @@ async function addCatalogProductToDraft(
   await page.getByRole('option', { name: optionPattern }).click();
 }
 
-/** Expande el disclosure «Ronda de cotización» cuando la sección primaria es cotización manual. */
+/** Expande el disclosure «Ronda de cotización» cuando no es la sección primaria. */
 async function openRfqRoundSection(workbench: import('@playwright/test').Locator) {
-  const createButton = workbench.getByRole('button', { name: 'Crear solicitud de cotización' });
+  const createButton = workbench.getByRole('button', { name: 'Crear e invitar' });
   if (await createButton.isVisible().catch(() => false)) {
     return;
   }
@@ -4230,17 +4230,29 @@ test.describe('Portal Inventario / SCM', () => {
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
     await workbench.getByRole('tab', { name: 'Cotizar' }).click();
     await openRfqRoundSection(workbench);
-    await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
-    await expect(workbench.getByText('RFQ-000001')).toBeVisible();
-    await expect(workbench.getByText('Borrador')).toBeVisible();
 
-    await workbench.getByRole('combobox', { name: 'Invitar proveedores' }).fill('Demo');
+    // CA-28-01/03: el selector es visible sin clic previo y exige selección.
+    await expect(workbench.getByRole('combobox', { name: 'Proveedores a invitar' })).toBeVisible();
+    const createAndInvite = workbench.getByRole('button', { name: 'Crear e invitar' });
+    await expect(createAndInvite).toBeDisabled();
+    await expect(
+      workbench.getByText('Selecciona al menos un proveedor para abrir la ronda.'),
+    ).toBeVisible();
+
+    // CA-28-02: crear e invitar en un solo acto.
+    await workbench.getByRole('combobox', { name: 'Proveedores a invitar' }).fill('Demo');
     await page
       .getByRole('listbox')
       .getByRole('option', { name: /Proveedor Demo/i })
       .click();
     await dismissOpenListbox(page);
-    await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
+    await expect(createAndInvite).toBeEnabled();
+    await createAndInvite.click();
+    // El refresh del drawer desmonta el panel (hueco preexistente: los avisos
+    // transitorios no sobreviven en navegador; el contrato del mensaje vive en
+    // RTL CA-28-02). Aquí se verifica el estado resultante en un solo acto.
+    await expect(workbench.getByText('RFQ-000001')).toBeVisible();
+    await expect(workbench.getByText('Borrador')).toBeVisible();
     await expect(workbench.getByText('Proveedor Demo')).toBeVisible();
     await expect(workbench.getByText('Invitado', { exact: true })).toBeVisible();
 
@@ -4279,21 +4291,25 @@ test.describe('Portal Inventario / SCM', () => {
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
     await workbench.getByRole('tab', { name: 'Cotizar' }).click();
     await openRfqRoundSection(workbench);
-    await workbench.getByRole('button', { name: 'Crear solicitud de cotización' }).click();
-    await expect(workbench.getByText('RFQ-000001')).toBeVisible();
 
-    await workbench.getByRole('combobox', { name: 'Invitar proveedores' }).fill('Demo');
+    // CA-28-04: el fallo parcial deja la ronda creada sin invitación y sin
+    // reintento ciego de creación (el contrato del mensaje vive en RTL: el
+    // refresh del drawer desmonta el panel y los avisos no sobreviven en
+    // navegador — hueco preexistente registrado en el informe de fase).
+    await workbench.getByRole('combobox', { name: 'Proveedores a invitar' }).fill('Demo');
     await page
       .getByRole('listbox')
       .getByRole('option', { name: /Proveedor Demo/i })
       .click();
     await dismissOpenListbox(page);
-    await workbench.getByRole('button', { name: 'Invitar seleccionados' }).click();
+    await workbench.getByRole('button', { name: 'Crear e invitar' }).click();
 
-    // El backend (mock, con paridad de enforcement) rechaza al proveedor bloqueado.
-    await expect(workbench.getByText(/está bloqueado y no puede usarse/i)).toBeVisible();
-    // No se registro la invitacion.
+    await expect(workbench.getByText('RFQ-000001')).toBeVisible();
+    await expect(workbench.getByText('Sin invitaciones')).toBeVisible();
+    // No se registro la invitacion (el backend rechazó al proveedor bloqueado).
     expect(state.purchaseRfqInvitations).toHaveLength(0);
+    // La vía de recuperación es invitar sobre la ronda existente, no recrear.
+    await expect(workbench.getByRole('button', { name: 'Invitar seleccionados' })).toBeVisible();
   });
 
   test('rechaza emitir OC a un proveedor BLOCKED (RF-PROV-08)', async ({ page }) => {

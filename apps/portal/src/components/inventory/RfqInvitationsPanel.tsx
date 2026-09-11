@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Badge, Button, Input, Select } from '@iwana/ui';
 import {
   PurchaseRfqInvitationStatus,
@@ -141,6 +141,7 @@ export function RfqInvitationsPanel({
   disabled = false,
   onRefresh,
 }: RfqInvitationsPanelProps) {
+  const panelInstanceId = useId();
   const awardedQuoteIdSet = useMemo(() => new Set(awardedQuoteIds), [awardedQuoteIds]);
   const [selectedSuppliers, setSelectedSuppliers] = useState<SupplierMultiSelection[]>([]);
   const [responseDeadline, setResponseDeadline] = useState('');
@@ -165,7 +166,10 @@ export function RfqInvitationsPanel({
   const invitations = rfqDetail?.invitations ?? [];
   const rfqStatus = rfq?.status as PurchaseRfqStatus | undefined;
 
-  const canStartRfq = !rfq && requestStatus === PurchaseRequestStatus.DRAFT;
+  const canStartRfq =
+    !rfq &&
+    (requestStatus === PurchaseRequestStatus.DRAFT ||
+      requestStatus === PurchaseRequestStatus.PENDING_QUOTES);
   const panelDisabled = disabled || isBusy;
   const hasInvitations = invitations.length > 0;
   const hasPendingSelection = selectedSuppliers.length > 0;
@@ -183,6 +187,9 @@ export function RfqInvitationsPanel({
             ? 'Tienes proveedores seleccionados sin invitar. Invítalos o quítalos antes de enviar.'
             : null;
   const sendDisabled = panelDisabled || sendBlockedReason !== null;
+  // Un <button disabled> no dispara tooltip nativo ni recibe foco: el motivo se
+  // expone como texto visible asociado por aria-describedby.
+  const sendBlockedReasonId = `${panelInstanceId}-send-blocked-reason`;
   const usesQuoteLines = requestLines.length > 0;
   const quoteLinesPayload = buildQuoteLinesPayload(quoteUnitCosts, requestLines);
   const quoteAmountTouched = quoteAmount.trim().length > 0;
@@ -222,34 +229,65 @@ export function RfqInvitationsPanel({
     return counts;
   }, [invitations]);
 
+  // El refresco vive fuera del try de la acción: si la escritura ya persistió,
+  // un GET fallido no puede presentarse como fallo de la acción (el operador
+  // reintentaría sobre un estado terminal y recibiría un 400 opaco).
   async function runAction(action: () => Promise<void>, successMessage: string) {
     setIsBusy(true);
     setError(null);
     setSuccess(null);
     try {
       await action();
-      await onRefresh();
-      setSuccess(successMessage);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'No fue posible completar la acción.';
       setError(message);
+      setIsBusy(false);
+      return;
+    }
+
+    setSuccess(successMessage);
+
+    try {
+      await onRefresh();
+    } catch {
+      setError(
+        'El cambio quedó guardado, pero no se pudo actualizar la vista. Vuelve a abrir la solicitud para ver el estado actual; no repitas la acción.',
+      );
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleCreateRfq() {
+  async function handleCreateAndInvite() {
+    if (selectedSuppliers.length === 0) {
+      return;
+    }
+
     const payload: CreateRfqDto = {
       currency: rfqCurrency,
       ...(responseDeadline.trim() ? { responseDeadline: responseDeadline.trim() } : {}),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
+    const partyRefIds = selectedSuppliers.map((entry) => entry.partyRefId);
 
     await runAction(async () => {
-      await purchasingApi.createRfq(purchaseRequestId, payload);
+      const created = await purchasingApi.createRfq(purchaseRequestId, payload);
+      try {
+        await purchasingApi.inviteSuppliers(created.id, { partyRefIds });
+      } catch {
+        // Fallo parcial: la ronda ya quedó creada en el servidor (createRfq no
+        // es idempotente: una segunda ronda activa se rechaza). Refrescar para
+        // caer al modo «ronda existente» con la selección conservada y
+        // «Invitar seleccionados» disponible, en vez de un reintento ciego que
+        // produciría un 400 opaco.
+        await onRefresh().catch(() => undefined);
+        throw new Error(
+          'La ronda quedó creada, solo falta invitar. Revisa la selección y pulsa Invitar seleccionados.',
+        );
+      }
       setSelectedSuppliers([]);
-    }, 'Solicitud de cotización creada.');
+    }, 'Ronda de cotización creada y proveedores invitados.');
   }
 
   async function handleInvite() {
@@ -431,9 +469,13 @@ export function RfqInvitationsPanel({
   return (
     <div className="space-y-4">
       <PortalSectionHeader
-        eyebrow="Invitar proveedores"
-        title="Solicitud de cotización"
-        description="Selecciona proveedores, pulsa Invitar seleccionados y luego Envía la ronda para pedir cotizaciones."
+        eyebrow="Ronda de cotización"
+        title="Invitar proveedores"
+        description={
+          rfq
+            ? 'Selecciona proveedores, pulsa Invitar seleccionados y luego Envía la ronda para pedir cotizaciones.'
+            : 'Selecciona proveedores y pulsa Crear e invitar para abrir la ronda con las invitaciones listas.'
+        }
       />
 
       {error ? <PortalAlert variant="error" title="Cotización" description={error} /> : null}
@@ -442,8 +484,14 @@ export function RfqInvitationsPanel({
       {canStartRfq ? (
         <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            Crea una ronda formal de cotización antes de registrar respuestas de proveedores.
+            Elige primero a quién invitar; luego completa moneda, fecha límite y notas internas.
           </p>
+          <SupplierMultiPicker
+            label="Proveedores a invitar"
+            value={selectedSuppliers}
+            disabled={panelDisabled}
+            onChange={setSelectedSuppliers}
+          />
           <Select
             label="Moneda"
             value={rfqCurrency}
@@ -475,9 +523,18 @@ export function RfqInvitationsPanel({
               onChange={(event) => setNotes(event.target.value)}
             />
           </label>
-          <Button type="button" disabled={panelDisabled} onClick={() => void handleCreateRfq()}>
-            Crear solicitud de cotización
+          <Button
+            type="button"
+            disabled={panelDisabled || selectedSuppliers.length === 0}
+            onClick={() => void handleCreateAndInvite()}
+          >
+            Crear e invitar
           </Button>
+          {selectedSuppliers.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Selecciona al menos un proveedor para abrir la ronda.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -530,7 +587,7 @@ export function RfqInvitationsPanel({
               <Button
                 type="button"
                 disabled={sendDisabled}
-                title={sendBlockedReason ?? undefined}
+                aria-describedby={sendBlockedReason ? sendBlockedReasonId : undefined}
                 onClick={() => void handleSend()}
               >
                 Enviar solicitud
@@ -549,7 +606,9 @@ export function RfqInvitationsPanel({
           </div>
 
           {rfqStatus && canSend(rfqStatus) && sendBlockedReason ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400">{sendBlockedReason}</p>
+            <p id={sendBlockedReasonId} className="text-xs text-gray-500 dark:text-gray-400">
+              {sendBlockedReason}
+            </p>
           ) : null}
 
           {invitationSummary.size > 0 ? (
@@ -622,8 +681,14 @@ export function RfqInvitationsPanel({
                           </p>
                           {linkedQuote ? (
                             <p className="mt-1 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                              {/* La ronda admite COP, USD y EUR: el importe se formatea en la
+                                  moneda de la cotización y el código va visible al lado. */}
                               Cotización:{' '}
-                              {formatInventoryMoney(resolveQuotePayableAmount(linkedQuote))}
+                              {formatInventoryMoney(
+                                resolveQuotePayableAmount(linkedQuote),
+                                linkedQuote.currency,
+                              )}{' '}
+                              {toQuoteCurrency(linkedQuote.currency)}
                             </p>
                           ) : null}
                         </div>

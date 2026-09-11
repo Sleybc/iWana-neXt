@@ -31,7 +31,30 @@ jest.mock('@/lib/api-client', () => ({
 }));
 
 jest.mock('./SupplierMultiPicker', () => ({
-  SupplierMultiPicker: () => <div data-testid="supplier-multi-picker" />,
+  SupplierMultiPicker: ({
+    value,
+    onChange,
+    label,
+  }: {
+    value: Array<{ partyRefId: string; displayName: string }>;
+    onChange: (next: Array<{ partyRefId: string; displayName: string }>) => void;
+    label?: string;
+  }) => (
+    <div data-testid="supplier-multi-picker">
+      {label ? <span>{label}</span> : null}
+      {value.map((entry) => (
+        <span key={entry.partyRefId}>{entry.displayName}</span>
+      ))}
+      <button
+        type="button"
+        onClick={() =>
+          onChange([...value, { partyRefId: 'party-1', displayName: 'Proveedor Alfa' }])
+        }
+      >
+        Elegir Proveedor Alfa
+      </button>
+    </div>
+  ),
 }));
 
 const purchasingApiMock = purchasingApi as jest.Mocked<typeof purchasingApi>;
@@ -344,7 +367,7 @@ describe('RfqInvitationsPanel', () => {
     expect(
       screen.getByText((_content, element) => {
         const text = element?.textContent?.replace(/\u00a0/g, ' ') ?? '';
-        const expected = `Cotización: ${formatInventoryMoney(quote.amount)}`.replace(
+        const expected = `Cotización: ${formatInventoryMoney(quote.amount, 'COP')} COP`.replace(
           /\u00a0/g,
           ' ',
         );
@@ -739,5 +762,241 @@ describe('RfqInvitationsPanel', () => {
         }),
       );
     });
+  });
+
+  it('CA-28-01/03: DRAFT sin ronda muestra el selector y exige selección', () => {
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={null}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.getByTestId('supplier-multi-picker')).toBeInTheDocument();
+    expect(screen.getByText('Proveedores a invitar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear e invitar' })).toBeDisabled();
+    expect(
+      screen.getByText('Selecciona al menos un proveedor para abrir la ronda.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Crear solicitud de cotización' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('CA-28-02: Crear e invitar encadena createRfq e inviteSuppliers en un acto', async () => {
+    const user = userEvent.setup();
+    purchasingApiMock.createRfq.mockResolvedValue(
+      buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT } }).rfq,
+    );
+    purchasingApiMock.inviteSuppliers.mockResolvedValue([]);
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={null}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Elegir Proveedor Alfa' }));
+    expect(screen.getByRole('button', { name: 'Crear e invitar' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Crear e invitar' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.createRfq).toHaveBeenCalledWith(
+        'req-1',
+        expect.objectContaining({ currency: 'COP' }),
+      );
+    });
+    expect(purchasingApiMock.inviteSuppliers).toHaveBeenCalledWith('rfq-1', {
+      partyRefIds: ['party-1'],
+    });
+    expect(onRefresh).toHaveBeenCalled();
+    expect(
+      screen.getByText('Ronda de cotización creada y proveedores invitados.'),
+    ).toBeInTheDocument();
+  });
+
+  it('CA-28-04: fallo parcial conserva la selección y ofrece Invitar seleccionados', async () => {
+    const user = userEvent.setup();
+    purchasingApiMock.createRfq.mockResolvedValue(
+      buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT } }).rfq,
+    );
+    purchasingApiMock.inviteSuppliers.mockRejectedValueOnce(new Error('fallo de red'));
+
+    const { rerender } = render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={null}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Elegir Proveedor Alfa' }));
+    await user.click(screen.getByRole('button', { name: 'Crear e invitar' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.inviteSuppliers).toHaveBeenCalledTimes(1);
+    });
+    expect(purchasingApiMock.createRfq).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Proveedor Alfa')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'La ronda quedó creada, solo falta invitar. Revisa la selección y pulsa Invitar seleccionados.',
+      ),
+    ).toBeInTheDocument();
+    expect(onRefresh).toHaveBeenCalled();
+
+    // Tras el refresh la ronda existe: el modo «ronda existente» ofrece
+    // invitar sin volver a crear (ningún reintento produce un 400 opaco).
+    rerender(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT }, invitations: [] })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Invitar seleccionados' })).toBeEnabled();
+    expect(purchasingApiMock.createRfq).toHaveBeenCalledTimes(1);
+  });
+
+  it('CA-28-05: PENDING_QUOTES sin ronda ofrece el formulario de crear e invitar', () => {
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_QUOTES}
+        rfqDetail={null}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.getByTestId('supplier-multi-picker')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear e invitar' })).toBeDisabled();
+  });
+
+  it('CA-28-08: en PENDING_APPROVAL no aparece el formulario de crear ronda', () => {
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_APPROVAL}
+        rfqDetail={null}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Crear e invitar' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('supplier-multi-picker')).not.toBeInTheDocument();
+    expect(screen.getByText('Cotización sin ronda formal')).toBeInTheDocument();
+  });
+});
+
+describe('RfqInvitationsPanel — hallazgos de auditoría Fase 28', () => {
+  const onRefresh = jest.fn().mockResolvedValue(undefined);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    onRefresh.mockResolvedValue(undefined);
+    URL.createObjectURL = jest.fn(() => 'blob:mock');
+    URL.revokeObjectURL = jest.fn();
+  });
+
+  it('FE-ALTO-1: si el refresco falla tras una escritura exitosa, no se reporta como fallo de la acción', async () => {
+    const user = userEvent.setup();
+    purchasingApiMock.sendRfq.mockResolvedValue(undefined as never);
+    onRefresh.mockRejectedValue(new Error('GET 503'));
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT } })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Enviar solicitud' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Solicitud de cotización enviada.')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/El cambio quedó guardado/i)).toBeInTheDocument();
+    expect(screen.getByText(/no repitas la acción/i)).toBeInTheDocument();
+    expect(purchasingApiMock.sendRfq).toHaveBeenCalledTimes(1);
+  });
+
+  it('FE-ALTO-1: un fallo real de la escritura no muestra mensaje de éxito', async () => {
+    const user = userEvent.setup();
+    purchasingApiMock.sendRfq.mockRejectedValue(new Error('La ronda ya fue enviada.'));
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT } })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Enviar solicitud' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('La ronda ya fue enviada.')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Solicitud de cotización enviada.')).not.toBeInTheDocument();
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it('FE-ALTO-2: una cotización en USD no se pinta en formato COP', () => {
+    const quote = buildQuote({ amount: '1200', currency: 'USD', rfqInvitationId: 'inv-1' });
+
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.PENDING_QUOTES}
+        rfqDetail={buildRfqDetail()}
+        quotes={[quote]}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    const expected = `Cotización: ${formatInventoryMoney('1200', 'USD')} USD`.replace(/ /g, ' ');
+    expect(
+      screen.getByText((_content, element) => {
+        const text = element?.textContent?.replace(/ /g, ' ') ?? '';
+        return element?.tagName === 'P' && text === expected;
+      }),
+    ).toBeInTheDocument();
+    // El importe COP y el USD no pueden compartir renderizado.
+    expect(expected).not.toBe(
+      `Cotización: ${formatInventoryMoney('1200', 'COP')} COP`.replace(/ /g, ' '),
+    );
+  });
+
+  it('FE-ALTO-4: el motivo de bloqueo del envío se expone por aria-describedby, no por title', () => {
+    render(
+      <RfqInvitationsPanel
+        purchaseRequestId="req-1"
+        requestStatus={PurchaseRequestStatus.DRAFT}
+        rfqDetail={buildRfqDetail({ rfq: { status: PurchaseRfqStatus.DRAFT }, invitations: [] })}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    const sendButton = screen.getByRole('button', { name: 'Enviar solicitud' });
+    expect(sendButton).toBeDisabled();
+    expect(sendButton).not.toHaveAttribute('title');
+
+    const describedBy = sendButton.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    const reason = document.getElementById(describedBy as string);
+    expect(reason).not.toBeNull();
+    expect(reason).toHaveTextContent('Invita al menos un proveedor antes de enviar la solicitud.');
   });
 });

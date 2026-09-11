@@ -331,16 +331,69 @@ describe('purchase-workbench', () => {
 
   it('CA-24: matriz Cotizar progressive disclosure', () => {
     expect(
-      getCotizarPrimarySection({ hasActiveRfq: true, quotesCount: 2, canAddQuote: false }),
+      getCotizarPrimarySection({
+        hasActiveRfq: true,
+        canStartRfq: false,
+        quotesCount: 2,
+        canAddQuote: false,
+      }),
     ).toBe('invitations');
     expect(
-      getCotizarPrimarySection({ hasActiveRfq: false, quotesCount: 2, canAddQuote: true }),
+      getCotizarPrimarySection({
+        hasActiveRfq: false,
+        canStartRfq: false,
+        quotesCount: 2,
+        canAddQuote: true,
+      }),
     ).toBe('comparison');
     expect(
-      getCotizarPrimarySection({ hasActiveRfq: false, quotesCount: 0, canAddQuote: true }),
+      getCotizarPrimarySection({
+        hasActiveRfq: false,
+        canStartRfq: false,
+        quotesCount: 0,
+        canAddQuote: true,
+      }),
     ).toBe('manual');
     expect(
-      getCotizarPrimarySection({ hasActiveRfq: false, quotesCount: 0, canAddQuote: false }),
+      getCotizarPrimarySection({
+        hasActiveRfq: false,
+        canStartRfq: false,
+        quotesCount: 0,
+        canAddQuote: false,
+      }),
+    ).toBe('invitations');
+  });
+
+  it('CA-28: la ronda es primaria cuando se puede crear, sin romper CA-24-06', () => {
+    // Sin ronda ni cotizaciones pero con apertura posible → ronda (CA-28-01).
+    expect(
+      getCotizarPrimarySection({
+        hasActiveRfq: false,
+        canStartRfq: true,
+        quotesCount: 0,
+        canAddQuote: true,
+      }),
+    ).toBe('invitations');
+    // Con cotizaciones registradas la comparación conserva la prioridad
+    // (CA-28-06). El contrato de la función evalúa `canStartRfq` antes que
+    // `quotesCount`, así que es el llamador quien neutraliza la apertura de
+    // ronda cuando ya hay cotizaciones; aquí se verifica esa entrada real.
+    expect(
+      getCotizarPrimarySection({
+        hasActiveRfq: false,
+        canStartRfq: false,
+        quotesCount: 2,
+        canAddQuote: true,
+      }),
+    ).toBe('comparison');
+    // La ronda activa conserva la prioridad máxima (CA-24-05 intacto).
+    expect(
+      getCotizarPrimarySection({
+        hasActiveRfq: true,
+        canStartRfq: false,
+        quotesCount: 0,
+        canAddQuote: false,
+      }),
     ).toBe('invitations');
   });
 });

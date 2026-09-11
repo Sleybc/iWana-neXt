@@ -718,12 +718,23 @@ export function formatInventoryCurrency(value: string | number | null | undefine
   }).format(Number.isFinite(numeric) ? numeric : 0);
 }
 
-/** Dos decimales COP. Solo superficies de cotización (subtotales, tributos, neto). */
-export function formatInventoryMoney(value: string | number | null | undefined): string {
+/**
+ * Dos decimales. Solo superficies de cotización (subtotales, tributos, neto).
+ * `currency` es opcional y por defecto COP: los llamantes que solo manejan pesos
+ * conservan el formato previo. Una moneda no ISO-4217 cae a COP en vez de lanzar.
+ */
+export function formatInventoryMoney(
+  value: string | number | null | undefined,
+  currency: string | null | undefined = 'COP',
+): string {
   const numeric = typeof value === 'number' ? value : Number.parseFloat(value ?? '0');
+  const code =
+    typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency.trim())
+      ? currency.trim().toUpperCase()
+      : 'COP';
   return new Intl.NumberFormat('es-CO', {
     style: 'currency',
-    currency: 'COP',
+    currency: code,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(numeric) ? numeric : 0);

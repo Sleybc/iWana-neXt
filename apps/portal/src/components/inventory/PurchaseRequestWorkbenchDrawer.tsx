@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import {
   Badge,
@@ -110,6 +110,7 @@ import {
   areQuoteTaxesValid,
   buildQuoteTaxesPayload,
   createInitialQuoteTaxState,
+  QUOTE_TAX_CODES,
   type QuoteTaxState,
 } from './quote-tax-calc';
 import { SupplierPicker } from './SupplierPicker';
@@ -245,6 +246,13 @@ function CotizarDisclosureSection({
         {children}
       </div>
     </details>
+  );
+}
+
+/** Igualdad estructural de las tasas: distingue «sembrado» de «tocado por el operador». */
+function isSameQuoteTaxState(a: QuoteTaxState, b: QuoteTaxState): boolean {
+  return QUOTE_TAX_CODES.every(
+    (code) => a[code].applies === b[code].applies && a[code].rate === b[code].rate,
   );
 }
 
@@ -393,6 +401,25 @@ export function PurchaseRequestWorkbenchDrawer({
     setLinesValidationError(null);
     setEditingQuoteId(null);
   }, [detail?.request.id]);
+
+  // El drawer se monta con `detail === null`, así que la siembra perezosa del
+  // useState usa las tasas por defecto del código, no las del tenant. Cuando el
+  // detalle trae los presets hay que re-sembrar, pero solo si el operador aún no
+  // tocó ninguna fila: de lo contrario se le pisaría lo que escribió.
+  const purchaseTaxPresets = detail?.purchaseTaxPresets;
+  const purchaseTaxPresetsSignature = JSON.stringify(purchaseTaxPresets ?? null);
+  const seededQuoteTaxesRef = useRef<QuoteTaxState>(quoteTaxes);
+
+  useEffect(() => {
+    const reseeded = createInitialQuoteTaxState(purchaseTaxPresets);
+    setQuoteTaxes((current) =>
+      isSameQuoteTaxState(current, seededQuoteTaxesRef.current) ? reseeded : current,
+    );
+    seededQuoteTaxesRef.current = reseeded;
+    // La dependencia es la firma serializada: el detalle se rehidrata con arrays
+    // de identidad nueva pero contenido equivalente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchaseTaxPresetsSignature]);
 
   const request = detail?.request;
   // Estado visible combinando ciclo administrativo y abastecimiento.
@@ -597,13 +624,30 @@ export function PurchaseRequestWorkbenchDrawer({
     });
   }
 
+  // La ronda se puede abrir si no existe y la solicitud está en DRAFT o
+  // PENDING_QUOTES (el backend nunca impuso la restricción a DRAFT).
+  const canStartRfq =
+    !detail?.rfq &&
+    (request?.status === PurchaseRequestStatus.DRAFT ||
+      request?.status === PurchaseRequestStatus.PENDING_QUOTES);
+  const quotesCount = detail?.quotes.length ?? 0;
+  // `getCotizarPrimarySection` evalúa `canStartRfq` antes que las cotizaciones
+  // (contrato de la función). El llamador neutraliza la apertura de ronda en
+  // cuanto hay cotizaciones registradas para que la comparación conserve la
+  // prioridad (CA-24-06/CA-28-06). No se toca `canStartRfq` en sí: la sección
+  // «Ronda» sigue ofreciendo el formulario de apertura.
   const cotizarPrimary = getCotizarPrimarySection({
     hasActiveRfq,
-    quotesCount: detail?.quotes.length ?? 0,
+    canStartRfq: canStartRfq && quotesCount === 0,
+    quotesCount,
     canAddQuote: Boolean(canAddQuote),
   });
-  // Solo mostrar «Ronda» si existe o se puede crear (DRAFT). Evita accordion vacío «sin ronda formal».
-  const showRondaSection = Boolean(detail?.rfq) || request?.status === PurchaseRequestStatus.DRAFT;
+  // Mostrar «Ronda» si existe o se puede crear. En ambos estados canStartRfq
+  // rinde el formulario, de modo que el acordeón nunca queda vacío.
+  const showRondaSection =
+    Boolean(detail?.rfq) ||
+    request?.status === PurchaseRequestStatus.DRAFT ||
+    request?.status === PurchaseRequestStatus.PENDING_QUOTES;
 
   async function handleSaveLines() {
     if (!linesDraft || linesDraft.lines.length === 0) {
@@ -1058,13 +1102,6 @@ export function PurchaseRequestWorkbenchDrawer({
                     <PortalSectionHeader eyebrow="Órdenes" title="Órdenes de compra derivadas" />
                     {cancelOrderMode ? (
                       <div className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
-                        {cancelOrderError ? (
-                          <PortalAlert
-                            variant="error"
-                            title="No se pudo cancelar"
-                            description={cancelOrderError}
-                          />
-                        ) : null}
                         <label className="block space-y-1 text-sm">
                           <span className="font-medium text-gray-900 dark:text-white">
                             Motivo de cancelación de la orden
@@ -1108,6 +1145,15 @@ export function PurchaseRequestWorkbenchDrawer({
                           </Button>
                         </div>
                       </div>
+                    ) : null}
+                    {/* El formulario de cancelación se desmonta al confirmar, incluso si la
+                        cancelación falló: el error vive fuera para seguir visible. */}
+                    {cancelOrderError ? (
+                      <PortalAlert
+                        variant="error"
+                        title="No se pudo cancelar la orden"
+                        description={cancelOrderError}
+                      />
                     ) : null}
                     {approveOrderError ? (
                       <PortalAlert
@@ -1240,7 +1286,9 @@ export function PurchaseRequestWorkbenchDrawer({
 
           {request && !isLoading ? (
             <div className="space-y-3 border-t border-gray-200 bg-iwana-surface-soft px-6 py-4 dark:border-dark-border dark:bg-dark-surface-3">
-              {resolutionMode ? (
+              {/* Tras un rechazo o cancelación exitosos la solicitud queda en estado
+                  terminal: el formulario desaparece y no se puede emitir un segundo POST. */}
+              {resolutionMode && (canReject || canCancel) ? (
                 <div className="space-y-3">
                   {(resolutionMode === 'reject' ? rejectError : cancelError) ? (
                     <PortalAlert

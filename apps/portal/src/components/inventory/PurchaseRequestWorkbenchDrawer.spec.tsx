@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import {
   InventoryItemCategory,
   InventoryItemKind,
+  PurchaseOrderStatus,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
@@ -12,8 +13,10 @@ import {
 import type {
   InventoryCatalogOptionRecord,
   InventoryItemRecord,
+  PurchaseOrderRecord,
   PurchaseRequestDetailRecord,
   PurchaseRfqDetailRecord,
+  PurchaseTaxPresetRecord,
   SupplierQuoteRecord,
 } from '@/lib/api-client';
 import { PurchaseRequestWorkbenchDrawer } from './PurchaseRequestWorkbenchDrawer';
@@ -65,7 +68,10 @@ function buildActiveRfqDetail(
 function buildDetail(
   overrides: Partial<PurchaseRequestDetailRecord['request']> = {},
   extras: Partial<
-    Pick<PurchaseRequestDetailRecord, 'lines' | 'awards' | 'orders' | 'quotes' | 'rfq'>
+    Pick<
+      PurchaseRequestDetailRecord,
+      'lines' | 'awards' | 'orders' | 'quotes' | 'rfq' | 'purchaseTaxPresets'
+    >
   > = {},
 ): PurchaseRequestDetailRecord {
   return {
@@ -118,6 +124,25 @@ function buildDetail(
       approvalLevel: 'MANAGER',
     },
     rfq: extras.rfq ?? null,
+    ...(extras.purchaseTaxPresets ? { purchaseTaxPresets: extras.purchaseTaxPresets } : {}),
+  };
+}
+
+function buildQuote(overrides: Partial<SupplierQuoteRecord> = {}): SupplierQuoteRecord {
+  return {
+    id: 'quote-1',
+    tenantId: 'tenant-1',
+    purchaseRequestId: 'req-1',
+    partyRefId: 'supplier-1',
+    quoteNumber: 'COT-1',
+    amount: '1000',
+    shippingCost: '0',
+    currency: 'COP',
+    validUntil: null,
+    notes: null,
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -268,7 +293,7 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
     expect(screen.getByRole('tab', { name: 'Aprobación' })).toBeInTheDocument();
   });
 
-  it('muestra progressive disclosure y permite nueva cotización en DRAFT', () => {
+  it('CA-28-01: en DRAFT sin ronda la Ronda nace expandida con Crear e invitar', () => {
     const props = {
       ...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
       activeTab: 'cotizar' as const,
@@ -277,10 +302,11 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
     render(<PurchaseRequestWorkbenchDrawer {...props} />);
 
     expect(screen.getByRole('tab', { name: 'Cotizar' })).toBeInTheDocument();
-    // Primario = manual: ronda colapsada, nueva cotización expandida
+    // Primario = ronda: selector visible sin clic previo, manual colapsado
+    expect(screen.getByRole('region', { name: 'Invitar proveedores' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear e invitar' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Nueva cotización' })).not.toBeInTheDocument();
     expect(screen.getByText('Ronda de cotización')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Nueva cotización' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Registrar cotización' })).toBeInTheDocument();
   });
 
   it('CA-25-14: nueva cotización muestra tributos apagados y copy de no-factura', () => {
@@ -291,18 +317,23 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
 
     render(<PurchaseRequestWorkbenchDrawer {...props} />);
 
-    expect(screen.getByRole('region', { name: 'Nueva cotización' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'IVA' })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Retención en la fuente' })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Rete ICA' })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Rete IVA' })).not.toBeChecked();
+    // Fase 28: la ronda es el bloque primario y el manual nace colapsado,
+    // pero montado con los mismos valores por defecto.
+    expect(screen.queryByRole('region', { name: 'Nueva cotización' })).not.toBeInTheDocument();
+    expect(screen.getByText('Nueva cotización')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'IVA', hidden: true })).not.toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: 'Retención en la fuente', hidden: true }),
+    ).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Rete ICA', hidden: true })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Rete IVA', hidden: true })).not.toBeChecked();
     expect(screen.getByText(/No son una factura electrónica/i)).toBeInTheDocument();
     expect(screen.getByText(/No se guarda como perfil del proveedor/i)).toBeInTheDocument();
     expect(screen.queryByText('IVA_19')).not.toBeInTheDocument();
     expect(screen.getAllByText('Sin IVA').length).toBeGreaterThan(0);
   });
 
-  it('oculta el bloque Ronda cuando no hay ronda ni se puede crear (PENDING_QUOTES)', () => {
+  it('CA-28-05: en PENDING_QUOTES sin ronda la sección Ronda existe y ofrece Crear e invitar', () => {
     const props = {
       ...buildProps(buildDetail({ status: PurchaseRequestStatus.PENDING_QUOTES })),
       activeTab: 'cotizar' as const,
@@ -310,8 +341,8 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
 
     render(<PurchaseRequestWorkbenchDrawer {...props} />);
 
-    expect(screen.queryByText('Ronda de cotización')).not.toBeInTheDocument();
-    expect(screen.queryByText('Cotización sin ronda formal')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Invitar proveedores' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear e invitar' })).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Crear solicitud de cotización' }),
     ).not.toBeInTheDocument();
@@ -430,5 +461,180 @@ describe('PurchaseRequestWorkbenchDrawer — pestaña Cotizar', () => {
         lines: [{ purchaseRequestLineId: 'line-1', unitCost: 1500 }],
       }),
     );
+  });
+});
+
+describe('PurchaseRequestWorkbenchDrawer — regresiones Fase 28 (auditoría)', () => {
+  function buildOrder(overrides: Partial<PurchaseOrderRecord> = {}): PurchaseOrderRecord {
+    return {
+      id: 'order-1',
+      tenantId: 'tenant-1',
+      orderNumber: 'OC-001',
+      purchaseRequestId: 'req-1',
+      partyRefId: 'supplier-1',
+      status: PurchaseOrderStatus.APPROVED,
+      expectedDeliveryDate: null,
+      approvedByUserId: null,
+      cancellationReason: null,
+      cancelledByUserId: null,
+      closedByUserId: null,
+      notes: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('A4 · CA-28-06: en PENDING_QUOTES con cotizaciones y sin ronda, la comparación nace expandida', () => {
+    const detail = buildDetail(
+      { status: PurchaseRequestStatus.PENDING_QUOTES },
+      {
+        quotes: [
+          buildQuote({ id: 'quote-1', quoteNumber: 'COT-1', amount: '1000' }),
+          buildQuote({ id: 'quote-2', quoteNumber: 'COT-2', amount: '1200' }),
+        ],
+      },
+    );
+
+    render(<PurchaseRequestWorkbenchDrawer {...buildProps(detail)} activeTab="cotizar" />);
+
+    // Sección expandida = <section role="region">; colapsada = <details> con <div>.
+    expect(screen.getByRole('region', { name: 'Cotizaciones' })).toBeInTheDocument();
+    // La ronda existe pero queda replegada dentro de su <details>.
+    expect(screen.queryByRole('region', { name: 'Invitar proveedores' })).not.toBeInTheDocument();
+    const rondaSummary = Array.from(document.querySelectorAll('summary')).find((element) =>
+      (element.textContent ?? '').includes('Ronda de cotización'),
+    );
+    expect(rondaSummary).toBeDefined();
+    expect(rondaSummary?.closest('details')).not.toHaveAttribute('open');
+  });
+
+  it('C1: el error de cancelación de orden sigue visible tras cerrarse el formulario', () => {
+    const detail = buildDetail(
+      { status: PurchaseRequestStatus.APPROVED },
+      { orders: [buildOrder()] },
+    );
+
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(detail)}
+        activeTab="orders"
+        cancelOrderError="La orden ya fue recibida parcialmente."
+      />,
+    );
+
+    // El formulario de motivo está cerrado (cancelOrderMode === null).
+    expect(screen.queryByLabelText('Motivo de cancelación de la orden')).not.toBeInTheDocument();
+    expect(screen.getByText('No se pudo cancelar la orden')).toBeInTheDocument();
+    expect(screen.getByText('La orden ya fue recibida parcialmente.')).toBeInTheDocument();
+  });
+
+  it('C2: tras rechazar, el formulario de resolución desaparece en estado terminal', async () => {
+    const user = userEvent.setup();
+    const onReject = jest.fn().mockResolvedValue(undefined);
+    const props = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.PENDING_QUOTES })),
+      activeTab: 'summary' as const,
+      onReject,
+    };
+
+    const { rerender } = render(<PurchaseRequestWorkbenchDrawer {...props} />);
+
+    await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+    await user.type(
+      screen.getByLabelText('Motivo del rechazo'),
+      'Presupuesto no disponible este trimestre',
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirmar rechazo' }));
+
+    expect(onReject).toHaveBeenCalledTimes(1);
+
+    // El backend ya movió la solicitud a estado terminal.
+    rerender(
+      <PurchaseRequestWorkbenchDrawer
+        {...props}
+        detail={buildDetail({ status: PurchaseRequestStatus.REJECTED })}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Confirmar rechazo' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Motivo del rechazo')).not.toBeInTheDocument();
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it('A1: aplica la tasa del preset del tenant cuando los presets llegan tras el montaje', async () => {
+    const user = userEvent.setup();
+    const presets: PurchaseTaxPresetRecord[] = [
+      {
+        code: 'RETE_ICA',
+        name: 'Rete ICA',
+        category: 'WITHHOLDING',
+        baseRate: 0.966,
+        treatment: 'WITHHOLD',
+        context: 'PURCHASE',
+      },
+    ];
+
+    // El drawer se monta con detail === null (PurchaseWorkspace lo monta siempre).
+    const baseProps = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
+      activeTab: 'cotizar' as const,
+    };
+
+    const { rerender } = render(<PurchaseRequestWorkbenchDrawer {...baseProps} detail={null} />);
+
+    rerender(
+      <PurchaseRequestWorkbenchDrawer
+        {...baseProps}
+        detail={buildDetail(
+          { status: PurchaseRequestStatus.DRAFT },
+          { purchaseTaxPresets: presets },
+        )}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: 'Rete ICA', hidden: true }));
+
+    expect(
+      screen.getByRole('spinbutton', { name: 'Tasa de Rete ICA (%)', hidden: true }),
+    ).toHaveValue(0.966);
+  });
+
+  it('A1: no pisa la tasa que el operador ya editó cuando llegan los presets', async () => {
+    const user = userEvent.setup();
+    const presets: PurchaseTaxPresetRecord[] = [
+      {
+        code: 'RETE_ICA',
+        name: 'Rete ICA',
+        category: 'WITHHOLDING',
+        baseRate: 0.966,
+        treatment: 'WITHHOLD',
+        context: 'PURCHASE',
+      },
+    ];
+    const baseProps = {
+      ...buildProps(buildDetail({ status: PurchaseRequestStatus.DRAFT })),
+      activeTab: 'cotizar' as const,
+    };
+
+    const { rerender } = render(<PurchaseRequestWorkbenchDrawer {...baseProps} />);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Rete ICA', hidden: true }));
+
+    rerender(
+      <PurchaseRequestWorkbenchDrawer
+        {...baseProps}
+        detail={buildDetail(
+          { status: PurchaseRequestStatus.DRAFT },
+          { purchaseTaxPresets: presets },
+        )}
+      />,
+    );
+
+    // La fila ya estaba marcada por el operador: se respeta su estado.
+    expect(screen.getByRole('checkbox', { name: 'Rete ICA', hidden: true })).toBeChecked();
+    expect(
+      screen.getByRole('spinbutton', { name: 'Tasa de Rete ICA (%)', hidden: true }),
+    ).toHaveValue(0.414);
   });
 });
