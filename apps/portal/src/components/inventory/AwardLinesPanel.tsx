@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Badge, Input, Select, cn } from '@iwana/ui';
 import {
   PurchaseRequestLineStatus,
@@ -95,6 +96,54 @@ function isLineFullyAwarded(
   return awardedQty >= requestedQty;
 }
 
+function getQuoteUnitPriceForLine(
+  quote: SupplierQuoteRecord,
+  purchaseRequestLineId: string,
+): number {
+  const quoteLine = quote.lines?.find(
+    (entry) => entry.purchaseRequestLineId === purchaseRequestLineId,
+  );
+  const raw = quoteLine ? quoteLine.unitCost : quote.amount;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
+}
+
+function formatQuoteUnitLabel(quote: SupplierQuoteRecord, purchaseRequestLineId: string): string {
+  const quoteLine = quote.lines?.find(
+    (entry) => entry.purchaseRequestLineId === purchaseRequestLineId,
+  );
+  const amount = quoteLine
+    ? `${formatInventoryMoney(quoteLine.unitCost, quote.currency)} / u.`
+    : formatInventoryMoney(quote.amount, quote.currency);
+  // La moneda es por cotización (COP/USD/EUR): sin el código, dos cifras similares en
+  // monedas distintas se leen como comparables cuando no lo son.
+  return `${amount} ${quote.currency}`;
+}
+
+function buildQuoteOptionLabel(quote: SupplierQuoteRecord, purchaseRequestLineId: string): string {
+  return `${quote.quoteNumber} · ${formatQuoteUnitLabel(quote, purchaseRequestLineId)}`;
+}
+
+function sortQuotesByUnitPriceForLine(
+  quotes: SupplierQuoteRecord[],
+  purchaseRequestLineId: string,
+): SupplierQuoteRecord[] {
+  return [...quotes].sort(
+    (a, b) =>
+      getQuoteUnitPriceForLine(a, purchaseRequestLineId) -
+      getQuoteUnitPriceForLine(b, purchaseRequestLineId),
+  );
+}
+
+/**
+ * Ordenar y marcar «más barato» solo tiene sentido si todas las cotizaciones comparadas
+ * usan la misma moneda: no hay conversión de cambio en este módulo, así que comparar un
+ * monto en USD contra uno en COP por su valor numérico induciría una recomendación falsa.
+ */
+function quotesShareCurrency(quotes: SupplierQuoteRecord[]): boolean {
+  return new Set(quotes.map((quote) => quote.currency)).size <= 1;
+}
+
 export function AwardLinesPanel({
   detail,
   items,
@@ -125,6 +174,20 @@ export function AwardLinesPanel({
       return next;
     });
   }, [awardableLines]);
+
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+
+  function toggleLineCollapsed(lineId: string) {
+    setCollapsedIds((current) => {
+      const next = new Set(current);
+      if (next.has(lineId)) {
+        next.delete(lineId);
+      } else {
+        next.add(lineId);
+      }
+      return next;
+    });
+  }
 
   const canEdit = !disabled && detail.request.status === PurchaseRequestStatus.APPROVED;
 
@@ -232,9 +295,24 @@ export function AwardLinesPanel({
           );
           const fullyAwarded = isLineFullyAwarded(line, detail.awards);
           const draft = drafts[line.id] ?? buildInitialDraft(line);
-          const partyQuotes = detail.quotes.filter(
+          const partyQuotesRaw = detail.quotes.filter(
             (quote) => quote.partyRefId === draft.awardedPartyRefId,
           );
+          const partyQuotes = quotesShareCurrency(partyQuotesRaw)
+            ? sortQuotesByUnitPriceForLine(partyQuotesRaw, line.id)
+            : partyQuotesRaw;
+          // Sin mezclar monedas en la comparación: con una sola moneda se ordena de más
+          // barata a más cara y se marca la primera; con monedas mixtas se conserva el
+          // orden original y ninguna se marca «más barata» (no hay tasa de cambio aquí).
+          const sameCurrency = quotesShareCurrency(detail.quotes);
+          const sortedQuotes = sameCurrency
+            ? sortQuotesByUnitPriceForLine(detail.quotes, line.id)
+            : detail.quotes;
+          const cheapestQuoteId = sameCurrency ? (sortedQuotes[0]?.id ?? null) : null;
+          const isCollapsed = collapsedIds.has(line.id);
+          const headerId = `award-line-header-${line.id}`;
+          const panelId = `award-line-panel-${line.id}`;
+          const lineLabel = getLineDisplayLabel(line, items);
 
           return (
             <div
@@ -242,13 +320,37 @@ export function AwardLinesPanel({
               className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-white">
-                    {getLineDisplayLabel(line, items)}
-                  </p>
-                  <p className="mt-1 text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                    Solicitado: {line.quantityRequested} {line.unitOfMeasure}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <button
+                    id={headerId}
+                    type="button"
+                    aria-expanded={!isCollapsed}
+                    aria-controls={panelId}
+                    onClick={() => toggleLineCollapsed(line.id)}
+                    className={cn(
+                      'flex min-h-11 w-full items-center justify-between gap-2 rounded-xl text-left',
+                      interactiveFocusClassName,
+                    )}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-gray-900 dark:text-white">
+                        {lineLabel}
+                      </span>
+                      <span className="mt-1 block text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                        Solicitado: {line.quantityRequested} {line.unitOfMeasure}
+                        {isCollapsed && draft.awardedPartyLabel
+                          ? ` · ${draft.awardedPartyLabel}`
+                          : ''}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn(
+                        'h-4 w-4 shrink-0 text-gray-400 transition-transform',
+                        !isCollapsed && 'rotate-180',
+                      )}
+                    />
+                  </button>
                 </div>
                 <Badge
                   variant={
@@ -259,140 +361,139 @@ export function AwardLinesPanel({
                 </Badge>
               </div>
 
-              {lineAwards.length > 0 ? (
-                <div className="space-y-2 rounded-2xl bg-iwana-surface-soft p-3 dark:bg-dark-surface-3">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">
-                    Adjudicaciones registradas
-                  </p>
-                  {lineAwards.map((award) => (
-                    <p
-                      key={award.id}
-                      className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400"
-                    >
-                      {supplierLabels[award.awardedPartyRefId] ?? 'Proveedor adjudicado'} ·{' '}
-                      {award.awardedQuantity} {line.unitOfMeasure}
-                      {award.awardNotes ? ` · ${award.awardNotes}` : ''}
+              <div
+                id={panelId}
+                role="region"
+                aria-labelledby={headerId}
+                hidden={isCollapsed}
+                className="space-y-3"
+              >
+                {lineAwards.length > 0 ? (
+                  <div className="space-y-2 rounded-2xl bg-iwana-surface-soft p-3 dark:bg-dark-surface-3">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      Adjudicaciones registradas
                     </p>
-                  ))}
-                </div>
-              ) : null}
+                    {lineAwards.map((award) => (
+                      <p
+                        key={award.id}
+                        className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                      >
+                        {supplierLabels[award.awardedPartyRefId] ?? 'Proveedor adjudicado'} ·{' '}
+                        {award.awardedQuantity} {line.unitOfMeasure}
+                        {award.awardNotes ? ` · ${award.awardNotes}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
 
-              {fullyAwarded ? (
-                <p className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  Esta línea ya está adjudicada por completo.
-                </p>
-              ) : canEdit ? (
-                <div className="space-y-3">
-                  {detail.quotes.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {detail.quotes.map((quote) => {
-                        const quoteLine = quote.lines?.find(
-                          (entry) => entry.purchaseRequestLineId === line.id,
-                        );
-                        return (
-                          <button
-                            key={quote.id}
-                            type="button"
-                            className={cn(
-                              'min-h-11 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-iwana-primary hover:bg-iwana-primary/5 dark:border-dark-border',
-                              interactiveFocusClassName,
-                            )}
-                            onClick={() => applyQuote(line.id, quote)}
-                          >
-                            Usar {quote.quoteNumber} (
-                            {quoteLine
-                              ? `${formatInventoryMoney(quoteLine.unitCost)} / u.`
-                              : formatInventoryMoney(quote.amount)}
-                            )
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                {fullyAwarded ? (
+                  <p className="text-sm text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                    Esta línea ya está adjudicada por completo.
+                  </p>
+                ) : canEdit ? (
+                  <div className="space-y-3">
+                    {sortedQuotes.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {sortedQuotes.map((quote) => {
+                          const isCheapest =
+                            quote.id === cheapestQuoteId && sortedQuotes.length > 1;
+                          return (
+                            <button
+                              key={quote.id}
+                              type="button"
+                              title={isCheapest ? 'Opción más barata' : undefined}
+                              className={cn(
+                                'min-h-11 rounded-full border px-3 py-1 text-xs font-medium text-iwana-primary hover:bg-iwana-primary/5 dark:border-dark-border',
+                                isCheapest ? 'border-iwana-secondary-700' : 'border-gray-200',
+                                interactiveFocusClassName,
+                              )}
+                              onClick={() => applyQuote(line.id, quote)}
+                            >
+                              {`Usar ${quote.quoteNumber} (${formatQuoteUnitLabel(quote, line.id)})${isCheapest ? ' · Más barato' : ''}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
 
-                  <SupplierPicker
-                    label="Proveedor adjudicado"
-                    value={draft.awardedPartyRefId}
-                    selectedLabel={draft.awardedPartyLabel}
-                    disabled={disabled}
-                    onChange={(partyRefId, displayName) =>
-                      updateDraft(line.id, {
-                        awardedPartyRefId: partyRefId,
-                        awardedPartyLabel: displayName,
-                        supplierQuoteId:
-                          draft.supplierQuoteId &&
-                          detail.quotes.find((quote) => quote.id === draft.supplierQuoteId)
-                            ?.partyRefId === partyRefId
-                            ? draft.supplierQuoteId
-                            : null,
-                      })
-                    }
-                  />
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Input
-                      label="Cantidad adjudicada"
-                      type="number"
-                      inputMode="decimal"
-                      min="0.01"
-                      step="0.01"
-                      value={lockQuantity ? line.quantityRequested : draft.awardedQuantity}
-                      disabled={disabled || lockQuantity}
-                      onChange={(event) =>
-                        updateDraft(line.id, { awardedQuantity: event.target.value })
-                      }
-                      helperText={
-                        lockQuantity
-                          ? 'En este tipo de compra la adjudicación cubre la cantidad total.'
-                          : undefined
-                      }
-                    />
-
-                    <Select
-                      label="Cotización vinculada (opcional)"
-                      value={draft.supplierQuoteId ?? ''}
-                      disabled={disabled || !draft.awardedPartyRefId}
-                      onChange={(event) =>
+                    <SupplierPicker
+                      label="Proveedor adjudicado"
+                      value={draft.awardedPartyRefId}
+                      selectedLabel={draft.awardedPartyLabel}
+                      disabled={disabled}
+                      onChange={(partyRefId, displayName) =>
                         updateDraft(line.id, {
-                          supplierQuoteId: event.target.value || null,
+                          awardedPartyRefId: partyRefId,
+                          awardedPartyLabel: displayName,
+                          supplierQuoteId:
+                            draft.supplierQuoteId &&
+                            detail.quotes.find((quote) => quote.id === draft.supplierQuoteId)
+                              ?.partyRefId === partyRefId
+                              ? draft.supplierQuoteId
+                              : null,
                         })
                       }
-                    >
-                      <option value="">Sin cotización vinculada</option>
-                      {partyQuotes.map((quote) => {
-                        const quoteLine = quote.lines?.find(
-                          (entry) => entry.purchaseRequestLineId === line.id,
-                        );
-                        return (
-                          <option key={quote.id} value={quote.id}>
-                            {quote.quoteNumber} ·{' '}
-                            {quoteLine
-                              ? `${formatInventoryMoney(quoteLine.unitCost)} / u.`
-                              : formatInventoryMoney(quote.amount)}
-                          </option>
-                        );
-                      })}
-                    </Select>
-                  </div>
-
-                  <label className="block space-y-1 text-sm">
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      Notas de adjudicación
-                    </span>
-                    <textarea
-                      aria-label={`Notas de adjudicación para ${getLineDisplayLabel(line, items)}`}
-                      className={cn(
-                        'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white',
-                        interactiveFocusClassName,
-                      )}
-                      rows={2}
-                      value={draft.awardNotes}
-                      disabled={disabled}
-                      onChange={(event) => updateDraft(line.id, { awardNotes: event.target.value })}
                     />
-                  </label>
-                </div>
-              ) : null}
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Input
+                        label="Cantidad adjudicada"
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value={lockQuantity ? line.quantityRequested : draft.awardedQuantity}
+                        disabled={disabled || lockQuantity}
+                        onChange={(event) =>
+                          updateDraft(line.id, { awardedQuantity: event.target.value })
+                        }
+                        helperText={
+                          lockQuantity
+                            ? 'En este tipo de compra la adjudicación cubre la cantidad total.'
+                            : undefined
+                        }
+                      />
+
+                      <Select
+                        label="Cotización vinculada (opcional)"
+                        value={draft.supplierQuoteId ?? ''}
+                        disabled={disabled || !draft.awardedPartyRefId}
+                        options={[
+                          { value: '', label: 'Sin cotización vinculada' },
+                          ...partyQuotes.map((quote) => ({
+                            value: quote.id,
+                            label: buildQuoteOptionLabel(quote, line.id),
+                          })),
+                        ]}
+                        onChange={(event) =>
+                          updateDraft(line.id, {
+                            supplierQuoteId: event.target.value || null,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <label className="block space-y-1 text-sm">
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        Notas de adjudicación
+                      </span>
+                      <textarea
+                        aria-label={`Notas de adjudicación para ${lineLabel}`}
+                        className={cn(
+                          'w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white',
+                          interactiveFocusClassName,
+                        )}
+                        rows={2}
+                        value={draft.awardNotes}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          updateDraft(line.id, { awardNotes: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
             </div>
           );
         })}

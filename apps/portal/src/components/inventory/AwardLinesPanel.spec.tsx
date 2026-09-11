@@ -219,4 +219,220 @@ describe('AwardLinesPanel', () => {
     expect(screen.getByText('Esta línea ya está adjudicada por completo.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Cantidad adjudicada')).not.toBeInTheDocument();
   });
+
+  it('ordena las cotizaciones de más barata a más cara por línea', () => {
+    const detail = buildDetail({
+      quotes: [
+        {
+          id: 'quote-cara',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'req-1',
+          partyRefId: 'supplier-1',
+          quoteNumber: 'COT-001',
+          amount: '29000',
+          shippingCost: '0',
+          currency: 'COP',
+          validUntil: null,
+          notes: null,
+          lines: [
+            {
+              id: 'ql-1',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-cara',
+              purchaseRequestLineId: 'line-1',
+              quantity: '10',
+              unitCost: '2900',
+              lineAmount: '29000',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+        {
+          id: 'quote-barata',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'req-1',
+          partyRefId: 'supplier-2',
+          quoteNumber: 'COT-002',
+          amount: '26280',
+          shippingCost: '0',
+          currency: 'COP',
+          validUntil: null,
+          notes: null,
+          lines: [
+            {
+              id: 'ql-2',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-barata',
+              purchaseRequestLineId: 'line-1',
+              quantity: '10',
+              unitCost: '2628.10',
+              lineAmount: '26281',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    render(<AwardLinesPanel detail={detail} items={items} onDraftsChange={jest.fn()} />);
+
+    const usarButtons = screen.getAllByRole('button', { name: /Usar COT-/i });
+    expect(usarButtons).toHaveLength(2);
+    expect(usarButtons[0]).toHaveTextContent(/COT-002/);
+    expect(usarButtons[0]).toHaveTextContent(/Más barato/);
+    expect(usarButtons[1]).toHaveTextContent(/COT-001/);
+    for (const button of usarButtons) {
+      expect(button.textContent ?? '').not.toMatch(/, · ,/);
+    }
+  });
+
+  it('no marca «más barata» ni ordena por precio cuando las cotizaciones están en monedas distintas', () => {
+    // Sin tasa de cambio en el módulo, comparar 50 USD contra 200.000 COP por su valor
+    // numérico induciría una recomendación falsa: 50 < 200000 no significa más barato.
+    const detail = buildDetail({
+      quotes: [
+        {
+          id: 'quote-cop',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'req-1',
+          partyRefId: 'supplier-1',
+          quoteNumber: 'COT-COP',
+          amount: '200000',
+          shippingCost: '0',
+          currency: 'COP',
+          validUntil: null,
+          notes: null,
+          lines: [
+            {
+              id: 'ql-cop',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-cop',
+              purchaseRequestLineId: 'line-1',
+              quantity: '10',
+              unitCost: '20000',
+              lineAmount: '200000',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+        {
+          id: 'quote-usd',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'req-1',
+          partyRefId: 'supplier-2',
+          quoteNumber: 'COT-USD',
+          amount: '50',
+          shippingCost: '0',
+          currency: 'USD',
+          validUntil: null,
+          notes: null,
+          lines: [
+            {
+              id: 'ql-usd',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-usd',
+              purchaseRequestLineId: 'line-1',
+              quantity: '10',
+              unitCost: '5',
+              lineAmount: '50',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    render(<AwardLinesPanel detail={detail} items={items} onDraftsChange={jest.fn()} />);
+
+    const usarButtons = screen.getAllByRole('button', { name: /Usar COT-/i });
+    expect(usarButtons).toHaveLength(2);
+    // Ninguna se marca «más barata»: la numérica USD (5/u.) es menor que la COP
+    // (20.000/u.) sin que eso implique nada sobre el costo real.
+    for (const button of usarButtons) {
+      expect(button.textContent ?? '').not.toMatch(/Más barato/);
+    }
+    // El orden original se conserva (no se reordena sin base de comparación común).
+    expect(usarButtons[0]).toHaveTextContent(/COT-COP/);
+    expect(usarButtons[1]).toHaveTextContent(/COT-USD/);
+    // El código de moneda queda visible junto al importe de cada oferta.
+    expect(usarButtons[0]).toHaveTextContent(/COP/);
+    expect(usarButtons[1]).toHaveTextContent(/USD/);
+  });
+
+  it('cada producto es replegable con botón accesible', () => {
+    render(<AwardLinesPanel detail={buildDetail()} items={items} onDraftsChange={jest.fn()} />);
+
+    const header = screen.getByRole('button', { name: /ONT-001/i });
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Cantidad adjudicada')).toBeVisible();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('Cantidad adjudicada')).not.toBeVisible();
+
+    fireEvent.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Cantidad adjudicada')).toBeVisible();
+  });
+
+  it('la cotización vinculada muestra etiqueta limpia sin comas espurias', () => {
+    const detail = buildDetail({
+      quotes: [
+        {
+          id: 'quote-1',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'req-1',
+          partyRefId: 'supplier-1',
+          quoteNumber: '25987',
+          amount: '168067.23',
+          shippingCost: '0',
+          currency: 'COP',
+          validUntil: null,
+          notes: null,
+          lines: [
+            {
+              id: 'ql-1',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-1',
+              purchaseRequestLineId: 'line-1',
+              quantity: '20',
+              unitCost: '168067.23',
+              lineAmount: '3361344.60',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    render(
+      <AwardLinesPanel
+        detail={detail}
+        items={items}
+        supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
+        onDraftsChange={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Usar 25987/i }));
+
+    const trigger = screen.getByRole('combobox', { name: /Cotización vinculada/i });
+    expect(trigger.textContent ?? '').not.toMatch(/, · ,/);
+    expect(trigger.textContent ?? '').toMatch(/25987 · /);
+  });
 });
