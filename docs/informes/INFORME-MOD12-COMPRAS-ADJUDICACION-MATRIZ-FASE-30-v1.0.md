@@ -322,7 +322,30 @@ La corrida Linux **no requiere un entorno Linux local**: los runners de `.github
   Producción **no** se toca: sus `MINIO_IMAGE`/`MINIO_MC_IMAGE` siguen bajo
   aprobación del CTO según `.env.production.example`.
 
-- **Cero skips**: hay 15 skips vivos en `apps/api` y 1 en el portal, guardados por disponibilidad de base de datos real. Deberán resolverse o justificarse ante el gate.
+- **Cero skips**: la exigencia de ADR-069 recae sobre el **job E2E**, no sobre las suites unitarias. El job reporta `E2E_PLAYWRIGHT_SKIPPED=0`, así que está cumplida. *(Corrección: una lectura anterior de esta sección contaba los 15 skips de `apps/api` y 1 del portal como bloqueantes de G6.5; esos son `describe.skip` guardados por disponibilidad de base de datos real en las suites unitarias y quedan fuera del texto del ADR.)*
+
+### 13.6 Estado de G6.5 sobre `4075da5a` — corrida verde, cleanup no confirmado
+
+La corrida de CI **34705133933** sobre `4075da5a` cierra en **success** los cuatro jobs, incluidos los dos que ADR-069 nombra:
+
+| Requisito de ADR-069 | Evidencia | ¿Cumple? |
+| --- | --- | --- |
+| Corrida Linux identificada por SHA | `4075da5a`, runner `ubuntu-24.04`, run `34705133933` | Sí |
+| `production-images` verde | success | Sí |
+| `execution-orders-e2e` verde | success | Sí |
+| Setup demostrado | `E2E_SETUP=OK` | Sí |
+| Conteo mínimo de pruebas | `E2E_PLAYWRIGHT_PASSED=30` | Sí |
+| Cero fallos | `E2E_PLAYWRIGHT_FAILED=0` | Sí |
+| Cero skips | `E2E_PLAYWRIGHT_SKIPPED=0`, `DID_NOT_RUN=0`, `FLAKY=0` | Sí |
+| **Cleanup confirmado** | `E2E_API_CLEANUP=FAILED\|e2e-r1-r41-…` | **No** |
+
+Duración del E2E: 139.300 ms. El tenant de aislamiento (`e2e-tenant-b-…`) sí se elimina; falla solo el que los tests poblaron con datos.
+
+**G6.5 no se otorga**: siete de los ocho requisitos están cumplidos con evidencia, pero el octavo es explícito en el ADR y no se cumple. El gate del workflow no lo detiene porque solo evalúa `passed/failed/skipped/did-not-run/flaky`, de modo que un cleanup fallido pasa inadvertido y va dejando tenants huérfanos en la base de CI.
+
+La causa concreta se desconocía porque el `catch` del cleanup descartaba el error (`scripts/e2e-provision-operational.mjs`): el marcador decía *que* falló, no *por qué*. Se corrige registrando el motivo —el mensaje que compone `api()` lleva solo método, ruta y status, nunca el cuerpo, así que es seguro en el log—. La próxima corrida dirá la causa.
+
+Dueño: **AI-PLAT-OPS (R)**, **AI-EM-ARCH (A)**, **AI-SR-QA (C)** — fila *Infraestructura, CI/CD* de la RACI.
 
 ### 13.5 Avance de CI en este ciclo
 

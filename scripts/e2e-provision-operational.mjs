@@ -1738,8 +1738,13 @@ try {
               [204],
             );
           }
-        } catch {
-          console.error(`E2E_API_CLEANUP=FAILED|${slug}`);
+        } catch (error) {
+          // El motivo se registra: sin él, `E2E_API_CLEANUP=FAILED` decía QUE
+          // falló pero no POR QUÉ, y G6.5 exige cleanup confirmado. El mensaje
+          // que compone `api()` lleva solo método, ruta y status —nunca el
+          // cuerpo—, así que es seguro publicarlo en el log de CI.
+          const detail = error instanceof Error ? error.message : String(error);
+          console.error(`E2E_API_CLEANUP=FAILED|${slug}|${detail}`);
         }
       }
     }
