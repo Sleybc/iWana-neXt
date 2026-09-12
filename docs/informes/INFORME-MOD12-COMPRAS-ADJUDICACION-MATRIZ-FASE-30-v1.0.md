@@ -301,17 +301,26 @@ La corrida Linux **no requiere un entorno Linux local**: los runners de `.github
   E2E_SETUP=FAILED|Arranque de dependencias E2E: terminó con código 1.
   ```
 
-  Causa raíz: el tag fijado en `scripts/e2e-provision-operational.mjs:282`
-  (`minio/minio:RELEASE.2025-09-07T16-13-09Z`) ya no está publicado, y tampoco
-  lo está `minio/minio:latest` — el proveedor retiró su repositorio público de
-  Docker Hub. Es un fallo de cadena de suministro externo, **preexistente**: la
-  corrida de `f9f42b33`, anterior a este ciclo de revisión, ya fallaba igual.
+  Causa raíz, verificada contra el registry v2 con token anónimo válido:
+  `minio/minio` y `minio/mc` **dejaron de permitir pulls anónimos en Docker
+  Hub** — devuelven `UNAUTHORIZED: authentication required`, no «no existe».
+  Es un cambio de política del proveedor, **preexistente**: la corrida de
+  `f9f42b33`, anterior a este ciclo de revisión, ya fallaba igual.
 
-  Resolverlo exige decidir registry y versión (p. ej. `quay.io/minio/minio`, un
-  espejo interno, o autenticación en Docker Hub), con implicaciones de licencia
-  —MinIO cambió a AGPL y recortó funcionalidad en releases recientes— y de
-  cadena de suministro. Dueño: **AI-PLAT-OPS (R)**, **AI-EM-ARCH (A)**,
-  **CTO (A\*)**, fila *Infraestructura, CI/CD, backups/DR* de la RACI.
+  *(Corrección: una versión anterior de esta sección atribuía el fallo a que el
+  tag hubiera sido retirado, leyendo el `object not found` de la API de
+  hub.docker.com. La consulta al registry v2 lo desmiente: el repositorio
+  existe y exige autenticación.)*
+
+  **Resuelto (2026-09-12).** Ambas imágenes se descargan ahora de `quay.io`,
+  registry oficial de MinIO, que sirve **exactamente los mismos tags** de forma
+  anónima: no cambia la versión desplegada, solo su procedencia. Se fijan como
+  `tag@sha256:…`, la misma doctrina que ya exige `.env.production.example` — el
+  tag documenta la versión y el digest la hace inmutable y verificable. Puntos
+  actualizados: `scripts/e2e-provision-operational.mjs`, `.env.example` y el
+  `.env` local. Verificado con `docker pull` real de ambas referencias.
+  Producción **no** se toca: sus `MINIO_IMAGE`/`MINIO_MC_IMAGE` siguen bajo
+  aprobación del CTO según `.env.production.example`.
 
 - **Cero skips**: hay 15 skips vivos en `apps/api` y 1 en el portal, guardados por disponibilidad de base de datos real. Deberán resolverse o justificarse ante el gate.
 

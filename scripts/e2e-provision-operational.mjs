@@ -279,8 +279,23 @@ setRuntimeDefault('S3_REGION', 'us-east-1');
 setRuntimeDefault('S3_FORCE_PATH_STYLE', 'true');
 setRuntimeDefault('TYPESENSE_API_KEY', randomRuntimeValue('e2e-typesense'));
 setRuntimeDefault('PGBOUNCER_IMAGE', 'edoburu/pgbouncer:v1.24.1-p1');
-setRuntimeDefault('MINIO_IMAGE', 'minio/minio:RELEASE.2025-09-07T16-13-09Z');
-setRuntimeDefault('MINIO_MC_IMAGE', 'minio/mc:RELEASE.2025-08-13T08-35-41Z');
+// MinIO se descarga de quay.io, NO de Docker Hub: `minio/minio` y `minio/mc`
+// dejaron de permitir pulls anónimos allí y el arranque de dependencias E2E
+// abortaba en CI con «pull access denied ... may require 'docker login'».
+// quay.io es el registry oficial de MinIO y sirve EXACTAMENTE los mismos tags
+// de forma anónima, así que el cambio no altera la versión desplegada.
+// Se fija `tag@sha256:...` —misma doctrina que `.env.production.example`—: el
+// tag documenta qué versión es y el digest la hace inmutable y verificable.
+// Al subir de versión hay que actualizar AMBOS; el digest se obtiene con
+// `docker buildx imagetools inspect quay.io/minio/minio:<TAG>`.
+setRuntimeDefault(
+  'MINIO_IMAGE',
+  'quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e',
+);
+setRuntimeDefault(
+  'MINIO_MC_IMAGE',
+  'quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727',
+);
 setRuntimeDefault('NGINX_IMAGE', 'nginx:1.31.2-alpine');
 process.env.MINIO_API_PORT = process.env.E2E_MINIO_API_PORT;
 process.env.MINIO_CONSOLE_PORT = process.env.E2E_MINIO_CONSOLE_PORT;
