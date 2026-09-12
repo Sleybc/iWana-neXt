@@ -357,3 +357,39 @@ Dueño: **AI-PLAT-OPS (R)**, **AI-EM-ARCH (A)**, **AI-SR-QA (C)** — fila *Infr
 | `84c68a91` | **success** | success | success | failure |
 
 Dos defectos corregidos en el camino, ninguno visible desde una verificación local acotada al módulo: el provider de DI que faltaba en `common/pagination` (`f99c35cc`) y la suite del portal acoplada a la zona horaria del runner (`84c68a91`). Queda solo el E2E, por la causa externa descrita arriba.
+
+
+### 13.7 Evidencia de G6.5 sobre `63f3546f` — los ocho requisitos cumplidos
+
+Corrida **34706464854**, runner `ubuntu-24.04`, los cuatro jobs en `success`.
+
+| Requisito de ADR-069 | Marcador | Valor |
+| --- | --- | --- |
+| Corrida Linux por SHA | — | `63f3546f` · run `34706464854` |
+| `production-images` verde | — | success |
+| `execution-orders-e2e` verde | — | success |
+| Setup demostrado | `E2E_SETUP` | `OK` |
+| Conteo mínimo de pruebas | `E2E_PLAYWRIGHT_PASSED` | `30` |
+| Cero fallos | `E2E_PLAYWRIGHT_FAILED` | `0` |
+| Cero skips | `E2E_PLAYWRIGHT_SKIPPED` / `DID_NOT_RUN` / `FLAKY` | `0` / `0` / `0` |
+| Cleanup confirmado | `E2E_CLEANUP` | `OK` |
+
+Duración del E2E: 133.233 ms. El cleanup se acredita con marcador **positivo**, no por ausencia del `E2E_API_CLEANUP=FAILED` de las corridas previas.
+
+La evidencia archivada contiene solo conteos, SHA, plataforma, duración y cleanup, conforme al apartado de credenciales efímeras del ADR.
+
+**Esto es evidencia, no el gate.** G6.5 lo verifica AI-PLAT-OPS y lo consolida AI-EM-ARCH (protocolo §3); queda a su registro formal. Se hace constar para no repetir el error de §13.2, donde un mensaje de commit dio por aprobado un gate antes de que su aprobador lo emitiera.
+
+### 13.8 Defectos cerrados para llegar a esta corrida
+
+Ninguno era de MOD12: todos vivían ocultos tras el fallo de infraestructura que impedía que el E2E llegara a ejecutarse.
+
+| # | Defecto | Commit |
+| --- | --- | --- |
+| 1 | `PurchaseOrderPdfService` sin declarar en `common/pagination` — invisible a una verificación acotada al módulo | `f99c35cc` |
+| 2 | Suite del portal acoplada a la zona horaria del runner (literal válido solo por debajo de UTC) | `84c68a91` |
+| 3 | `minio/minio` y `minio/mc` dejaron de permitir pulls anónimos en Docker Hub | `b18a86c5` |
+| 4 | `ThrottlerGuard` global (100/min) volvía inalcanzable la cuota de 120/min de lecturas de OT | `4075da5a` |
+| 5 | Cleanup de tenants abandonaba ante un `fetch failed` transitorio | `63f3546f` |
+
+El defecto 4 no era un test flaky sino de producto: el contrato publicado de 120 req/min era letra muerta. Y su corrección estuvo a punto de ser inefectiva en silencio — `@SkipThrottle()` sin argumentos marca el throttler `default`, mientras `ThrottlerModule.forRoot` lo declara como `global`; hay un test que ancla la clave exacta.
