@@ -100,7 +100,7 @@ La variable se bakea en tiempo de build, así que el rename toca toda la cadena:
   1. El API responde JSON; la CSP de helmet en respuestas JSON no protege contenido que el navegador renderice como documento (excepto Swagger en no-prod).
   2. Alinear la CSP del API implicaría tocar `apps/api/src/main.ts`, superficie de backend **fuera del alcance del Track 3** (y del congelamiento del contrato).
   3. Riesgo bajo y pre-existente; no bloquea C-1…C-9.
-  - **Re-evaluación programada:** con la habilitación del dominio productivo (ADR-070/078) o en la siguiente ventana que toque `main.ts`. Registrada como deuda con dueño AI-PLAT-OPS y revisión en la misma fecha.
+  - **Re-evaluación programada:** con la habilitación del dominio productivo (ADR-070 (superado)/078) o en la siguiente ventana que toque `main.ts`. Registrada como deuda con dueño AI-PLAT-OPS y revisión en la misma fecha.
 - **Nota:** la instrucción del encargo exige "NO implementes el cambio de CSP sin emitir la decisión documentada". Esta decisión queda emitida aquí con fecha; no se implementa en esta fase porque tocaría backend.
 
 ### 5.2 Deuda: hardening de CSP con nonces (`proxy.ts` + renderizado dinámico)
@@ -134,7 +134,7 @@ Ningún archivo del Track 3 introduce errores de lint o typecheck.
 
 ## 8. Riesgos / notas operativas
 
-- **Rollback por digest (ADR-070, riesgo 3):** el runbook §5.2 quedó actualizado a las dos variables por aplicación. Cada digest de `web-prod`/`portal-prod` lleva grabada su propia variable de API.
+- **Rollback por digest (ADR-070 (superado), riesgo 3):** el runbook §5.2 quedó actualizado a las dos variables por aplicación. Cada digest de `web-prod`/`portal-prod` lleva grabada su propia variable de API.
 - **Acoplamiento de interpolación de Compose (R1):** las dos variables nuevas son requisito global `${VAR:?}` igual que la antigua; el prompt operativo de restauración del perfil dev fue actualizado para que la lista siga siendo operativa.
 - **CSP en nginx:** no se duplica (orden C-8); la emiten las apps. La nota de no-duplicación queda intacta y verificada.
 

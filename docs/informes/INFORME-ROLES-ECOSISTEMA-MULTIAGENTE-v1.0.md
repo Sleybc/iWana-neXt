@@ -2,8 +2,8 @@
 
 **Versión:** 1.6
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070: 2026-08-02**, ver §9)
-**Sin pendientes de gobernanza abiertos.** El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)) — ver §9.
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9)
+**Sin pendientes de gobernanza abiertos.** El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
 
@@ -241,11 +241,11 @@ Regla clave: **quien recibe el handoff verifica su propio DoR**, no quien lo emi
 
 Al cerrar §8 quedaba señalado un último asunto, ajeno a estas auditorías: `INFORME-MOD11-FLOW-CABLEADO` §15.8 registraba **QA-34/TLS bloqueando G7**, con AI-PLAT-OPS como responsable *"cuando dominio definido"* — un input del CTO, no trabajo de ingeniería.
 
-**Resuelto el mismo día por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** (Aprobado, CTO 2026-08-02): se difiere formalmente la definición del dominio productivo hasta que se cumpla un disparador de reactivación. Ver §9.
+**Resuelto el mismo día por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)** (Aprobado, CTO 2026-08-02): se difiere formalmente la definición del dominio productivo hasta que se cumpla un disparador de reactivación. Ver §9.
 
-## 9. Decisión del CTO 2026-08-02 — diferimiento del dominio productivo (ADR-070)
+## 9. Decisión del CTO 2026-08-02 — diferimiento del dominio productivo (ADR-070, superado)
 
-Documento emitido: **[ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)**, Aprobado. Registro aquí conforme al protocolo §9.
+Documento emitido: **[ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)**, Aprobado. Registro aquí conforme al protocolo §9.
 
 ### 9.1 Por qué hacía falta una decisión y no bastaba con posponerlo
 
@@ -283,7 +283,7 @@ Registra además **seis riesgos congelados**, de los cuales dos son defectos lat
 
 ### 9.5 Documentos reencuadrados
 
-Ocho superficies pasan de *bloqueado/pendiente* a *diferido por ADR-070*, sin borrar un solo análisis: `RUNBOOK-RELEASE-ROLLBACK` → **v1.1** (§1.2, §8.5, §8.6 y §10), `CHECKLIST-MOD09-MOD11-OT-INSTALACION` (QA-34 y su tally), `INFORME-MOD11-FLOW-CABLEADO` (§15.8 reclasificada en *diferidos por decisión* vs *deuda viva*, y §15.13), `INFORME-PLAT-OPS-R3.4-EVIDENCIA` (seis filas), el plan `2026-08-01-mod11-g7-cierre-produccion` (**suspendido, no descartado** — sus Tasks 2–5 se retoman tal cual), `INFORME-ROLES-AUDITORIA-PROTOCOLO` y este informe, más el comentario del gate R3.5 en `ci.yml`, cuya lógica **no cambia**.
+Ocho superficies pasan de *bloqueado/pendiente* a *diferido por ADR-070 (superado)*, sin borrar un solo análisis: `RUNBOOK-RELEASE-ROLLBACK` → **v1.1** (§1.2, §8.5, §8.6 y §10), `CHECKLIST-MOD09-MOD11-OT-INSTALACION` (QA-34 y su tally), `INFORME-MOD11-FLOW-CABLEADO` (§15.8 reclasificada en *diferidos por decisión* vs *deuda viva*, y §15.13), `INFORME-PLAT-OPS-R3.4-EVIDENCIA` (seis filas), el plan `2026-08-01-mod11-g7-cierre-produccion` (**suspendido, no descartado** — sus Tasks 2–5 se retoman tal cual), `INFORME-ROLES-AUDITORIA-PROTOCOLO` y este informe, más el comentario del gate R3.5 en `ci.yml`, cuya lógica **no cambia**.
 
 ### 9.6 Estado del ecosistema
 

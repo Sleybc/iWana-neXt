@@ -26,7 +26,7 @@ cadena de arranque, las configuraciones auxiliares montadas (nginx, init de
 Postgres, bootstrap de MinIO), las plantillas de entorno y la superficie de CI.
 Se auditan desarrollo y producción; los hallazgos de producción se registran sin
 alterar el estado **G7 diferido** por
-[ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md).
+[ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado).
 
 **Nota de gobernanza.** El perfil AI-EM-ARCH prohíbe generar código *en modo
 Orquestador*, que solo se activa con
@@ -81,7 +81,7 @@ seguridad · **C** calidad de build · **D** deriva documental.
 | D2 | `INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md` afirmaba "un deadline total de 60 segundos" y "7 pruebas aprobadas"; en el corte histórico de ese informe eran 90 s de compilación más 90 s de readiness, y 20 pruebas. | **Corregido** con nota de vigencia |
 | D3 | `PROMPT-PLAT-OPS-RESTAURACION-PERFIL-DEV-v1.0.md` §3.1 describía Adminer "con sus `profiles` actuales", superado desde el 2026-08-02. | **Corregido** con nota de vigencia |
 | D4 | `proxy_pass http://api/` en desarrollo (con barra: strippea el prefijo) frente a `http://api` en producción (sin barra: lo preserva). El routing del proxy difiere entre entornos. | **Cerrado en G6.5** por CI #30937447358 sobre `c83316de`: `60f41885` conserva `/api/v1` y enruta `/health` al endpoint real `/api/v1/health`; `scripts/nginx-config.test.mjs` lo protege y la sintaxis de Nginx fue validada local y remotamente. |
-| D5 | `nginx.prod.conf` sin `server_tokens off`, sin `Permissions-Policy`, con `X-Forwarded-For` inconsistente entre vhosts, con `Connection: upgrade` incondicional y con `listen ... http2` deprecado desde nginx 1.25.1. Aparte, conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`, HSTS `max-age=300` y ausencia de CSP y `limit_req`. | **Parcial**: lo corregible sin decidir dominio, hecho; CSP, HSTS, dominio y `limit_req` quedan **diferidos por ADR-070 y G7** |
+| D5 | `nginx.prod.conf` sin `server_tokens off`, sin `Permissions-Policy`, con `X-Forwarded-For` inconsistente entre vhosts, con `Connection: upgrade` incondicional y con `listen ... http2` deprecado desde nginx 1.25.1. Aparte, conserva `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN`, HSTS `max-age=300` y ausencia de CSP y `limit_req`. | **Parcial**: lo corregible sin decidir dominio, hecho; CSP, HSTS, dominio y `limit_req` quedan **diferidos por ADR-070 (superado) y G7** |
 | D6 | `free-dev-ports.mjs` mata por `taskkill /F /T` cualquier PID que escuche en 3000/3001/3002, sea o no del repo. | **Cerrado en G6.5** por CI #30937447358 sobre `c83316de`: el rango inclusivo `a592b61e^..dd5e865c` implementa ownership, revalidación, exclusión de PIDs externos, diagnóstico fail-closed y ausencia de `/T`; la suite enfocada local y remota está en **47/47**. |
 
 ### 2.5 Corrección de un hallazgo preliminar
@@ -192,7 +192,7 @@ $connection_upgrade` en lugar del `Connection: upgrade` incondicional, y
 
 **No se tocaron** CSP (exige inventariar los orígenes reales de web y portal),
 el `max-age` de HSTS, el placeholder de dominio ni `limit_req`: son decisiones
-atadas al corte productivo que ADR-070 mantiene diferido. AI-PLAT-OPS queda como
+atadas al corte productivo que ADR-070 (superado) mantiene diferido. AI-PLAT-OPS queda como
 dueño de implementación cuando se reactive; AI-SEC-ENG define y audita los
 controles de seguridad, AI-EM-ARCH consolida la recomendación y el CTO decide
 dominio, TLS y límites como parte de G7.
@@ -390,7 +390,7 @@ requieren decisión del CTO antes de ejecutarse.
     el repositorio.
 22. **TLS entre API/worker y MinIO** — riesgo residual §5.4, exigido por
     [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), bloqueado por el
-    diferimiento de G7 en ADR-070.
+    diferimiento de G7 en ADR-070 (superado).
 
 ## 7. Deuda registrada y decisiones requeridas
 
@@ -406,7 +406,7 @@ requieren decisión del CTO antes de ejecutarse.
 | Media | A4 — límites de recursos y segmentación de redes | **Abierto** | AI-PLAT-OPS, con medición previa |
 | Baja | D4 — `proxy_pass` divergente entre dev y prod | **Cerrado en G6.5** — CI #30937447358 verde sobre `c83316de`; `nginx-config.test.mjs` incluido en la validación | AI-PLAT-OPS |
 | Baja | D6 — `free-dev-ports.mjs` mata procesos ajenos | **Cerrado en G6.5** — CI #30937447358 verde sobre `c83316de`; suite enfocada 47/47 | AI-PLAT-OPS |
-| Condicionada a producción | D5 — CSP, HSTS, dominio productivo y `limit_req` restantes | **Diferido por ADR-070 y G7**; no se considera corregido ni cerrado en esta auditoría | AI-PLAT-OPS implementa al reactivar; AI-SEC-ENG define/audita; AI-EM-ARCH recomienda y el CTO decide dominio, TLS y límites en G7 |
+| Condicionada a producción | D5 — CSP, HSTS, dominio productivo y `limit_req` restantes | **Diferido por ADR-070 (superado) y G7**; no se considera corregido ni cerrado en esta auditoría | AI-PLAT-OPS implementa al reactivar; AI-SEC-ENG define/audita; AI-EM-ARCH recomienda y el CTO decide dominio, TLS y límites en G7 |
 
 Ninguno de estos ítems es **deuda crítica abierta al cierre de un módulo**, así
 que no dispara la escalación de la §3.3 del perfil. A1 y A8 sí deben entrar en el
@@ -423,8 +423,8 @@ Cierre explícito del bucle abierto por
 | 1. Dockerfiles en Node 25, EOL 2026-06-01 | **Implementación local/configuración: corregida**: cinco imágenes y CI usan Node 24.13.1 mediante ADR-071; G6.5 de la convergencia Node quedó certificado en la corrida previa `30835001419` / SHA `1a95415a`, que no valida A2, D4 ni D6 |
 | 2. Secretos por `environment`; Typesense con API key en argv | **Parcialmente cerrado**: Typesense corregido y verificado. `minio-init` y el mecanismo general de secretos siguen abiertos (propuesta 17) |
 | 3. Migrator single-stage y sin `USER` no-root | **Cerrado en G6.5**; el rango inclusivo `7354aa31^..dd46de11` implementa multi-stage con salida de producción podada, guards de Node 24.13.1/digests, runner no-root uid 1000 y smoke posterior al prune del CLI TypeORM, datasource y runner de tenants. CI #30937447358 sobre `c83316de` lo verificó en Linux. No se ejecutaron migraciones reales contra una base de datos. |
-| 4. TLS API/worker ↔ MinIO en producción | **Abierto**, sin cambio. Bloqueado por el diferimiento de G7 en ADR-070 |
-| 4b. D5 — CSP, HSTS, dominio productivo y `limit_req` | **Diferido por ADR-070 y G7**, sin implementación ni afirmación de cierre. Se reactiva con los disparadores de ADR-070; AI-PLAT-OPS implementa, AI-SEC-ENG define/audita, AI-EM-ARCH recomienda y el CTO decide en G7 |
+| 4. TLS API/worker ↔ MinIO en producción | **Abierto**, sin cambio. Bloqueado por el diferimiento de G7 en ADR-070 (superado) |
+| 4b. D5 — CSP, HSTS, dominio productivo y `limit_req` | **Diferido por ADR-070 (superado) y G7**, sin implementación ni afirmación de cierre. Se reactiva con los disparadores de ADR-070; AI-PLAT-OPS implementa, AI-SEC-ENG define/audita, AI-EM-ARCH recomienda y el CTO decide en G7 |
 | 5. Sin escaneo CVE, SBOM, firma ni attestation | **Abierto**, sin cambio. Requiere ADR (propuesta 7) |
 | 6. Caché BuildKit vacío; próximos builds completos | **Cerrado para los Dockerfiles**: cache mounts sobre `/pnpm/store`; caché final purgado por CA-15 |
 
@@ -434,7 +434,7 @@ Cierre explícito del bucle abierto por
 El cierre remoto queda respaldado por la corrida autenticada del PR indicada en §9.1.
 
 **D5 permanece diferido, no omitido:** CSP, el `max-age` de HSTS, el dominio
-productivo y `limit_req` siguen sin implementación. ADR-070 define el disparador
+productivo y `limit_req` siguen sin implementación. ADR-070 (superado) define el disparador
 de reactivación y mantiene G7 diferido; al reactivarse, AI-PLAT-OPS ejecuta la
 configuración, AI-SEC-ENG define y audita los controles, AI-EM-ARCH recomienda y
 el CTO decide dominio, TLS y límites dentro de G7.
@@ -466,7 +466,7 @@ despliegue productivo.
 | --- | --- | --- | --- |
 | **G6** | **GO** para esta remediación de bajo riesgo | Suites, lint, typecheck, Compose, smoke de imágenes y validaciones de plataforma locales; A2, D4 y D6 están implementados y verificados localmente | La calidad local queda respaldada por G6.5 remoto |
 | **G6.5** | **GO para el PR actual** | CI #30937447358, [run Linux](https://github.com/SleyiW/iWana-neXt/actions/runs/30937447358) sobre `c83316deeb61ce5ab0f6ab23522b8183adaf2052`: `production-images`, `ci`, `adr-citations` y E2E operativo R4.1 verdes; incluye build de cinco imágenes y smoke del migrator | A2, D4 y D6 quedan cerrados para merge; no autoriza despliegue productivo |
-| **G7** | **Diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** | No hay dominio productivo, TLS/CA, rollback ni restore de release verificados en este alcance | No se formula claim de dominio productivo ni de procesamiento de PII real; no se autoriza producción |
+| **G7** | **Diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)** | No hay dominio productivo, TLS/CA, rollback ni restore de release verificados en este alcance | No se formula claim de dominio productivo ni de procesamiento de PII real; no se autoriza producción |
 
 La implementación local/configuración de A7 y la cobertura del bloque CI de
 cinco imágenes se verifican en este informe como fuente/configuración y
@@ -478,11 +478,11 @@ de A2, D4 y D6.
 Permanecen abiertos **B4, A1, A3, A4 (recursos y redes), A8 y A9**. A2, D4 y
 D6 quedan cerrados para merge por el CI verde #30937447358, identificado por
 SHA, sin extender ese cierre a las deudas fuera de alcance. **Esta auditoría no
-cambia el estado G7 definido por ADR-070**:
+cambia el estado G7 definido por ADR-070 (superado)**:
 nada de lo aplicado presupone dominio productivo, CA emitida ni procesamiento de
 PII real.
 
-**D5 permanece diferido por ADR-070/G7.** CSP, HSTS, el dominio productivo y
+**D5 permanece diferido por ADR-070 (superado)/G7.** CSP, HSTS, el dominio productivo y
 `limit_req` no son deuda cerrada de esta fase. La ruta de decisión es: AI-SEC-ENG
 define y audita los controles; AI-PLAT-OPS implementa tras la reactivación; AI-EM-ARCH
 recomienda; y el CTO decide dominio, TLS y límites al autorizar G7.
@@ -511,5 +511,5 @@ convergencia Node documentada en el informe de fase enlazado arriba.
 - [Perfil_IA_EM_Architect_Unificado_v2.md](../roles/Perfil_IA_EM_Architect_Unificado_v2.md) (v2.3)
 - [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md)
 - [INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md](INFORME-PLATAFORMA-ARRANQUE-LOCAL-v1.0.md)
-- [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)
+- [ADR-035](../adrs/ADR-035-Storage-MinIO-StoragePort.md), [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado), [ADR-071](../adrs/ADR-071-Convergencia-Runtime-Node-24-LTS.md)
 - [RUNBOOK-MEDIA-MINIO-v1.0.md](../runbooks/RUNBOOK-MEDIA-MINIO-v1.0.md), [RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md](../runbooks/RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)

@@ -114,7 +114,7 @@ Con la suite E2E en verde (159/159) se retiró el soporte de lectura de tokens d
 
 | Deuda | Dueño | Decisión registrada (2026-08-09) |
 | --- | --- | --- |
-| CSP del API vía `helmet` no alineada con el baseline de las apps | AI-PLAT-OPS | **DIFERIR** — el API sirve JSON (única HTML: Swagger solo en no-prod); alinear implicaría tocar `main.ts` (backend, fuera de alcance); riesgo bajo pre-existente. Re-evaluación programada con la habilitación del dominio productivo (ADR-070/078). Detalle: [INFORME-PLAT-OPS-OLA1B-TRACK3-CONFIGURACION-v1.0.md](INFORME-PLAT-OPS-OLA1B-TRACK3-CONFIGURACION-v1.0.md) §5.1 |
+| CSP del API vía `helmet` no alineada con el baseline de las apps | AI-PLAT-OPS | **DIFERIR** — el API sirve JSON (única HTML: Swagger solo en no-prod); alinear implicaría tocar `main.ts` (backend, fuera de alcance); riesgo bajo pre-existente. Re-evaluación programada con la habilitación del dominio productivo (ADR-070 (superado)/078). Detalle: [INFORME-PLAT-OPS-OLA1B-TRACK3-CONFIGURACION-v1.0.md](INFORME-PLAT-OPS-OLA1B-TRACK3-CONFIGURACION-v1.0.md) §5.1 |
 | Hardening de CSP con nonces (`proxy.ts` + renderizado dinámico) | AI-FE-PLATFORM | **DIFERIR al paso 2** de la migración de ADR-081 (exige `proxy.ts` + renderizado dinámico). Estado verificado: CSP baseline emitida vía `async headers()`; `'unsafe-inline'` documentado como requerido por Next sin `proxy.ts`; cero `dangerouslySetInnerHTML`. Detalle: [INFORME-OLA1B-E2E-SESION-COOKIE-v1.0.md](INFORME-OLA1B-E2E-SESION-COOKIE-v1.0.md) §8 |
 
 ---

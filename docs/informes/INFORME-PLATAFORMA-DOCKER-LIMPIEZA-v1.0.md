@@ -134,7 +134,7 @@ una fase específica:
 4. TLS entre API/worker y MinIO en producción permanece pendiente de la
    reactivación del dominio productivo. La decisión aprobada en
    `docs/adrs/ADR-035-Storage-MinIO-StoragePort.md` exige TLS en staging y
-   producción; `docs/adrs/ADR-070-Diferimiento-Dominio-Productivo.md` mantiene
+   producción; `docs/adrs/ADR-070-Diferimiento-Dominio-Productivo.md (superado)` mantiene
    G7 diferido mientras no exista entorno externo ni procesamiento de PII real.
 5. No se ejecutó escaneo CVE, SBOM, firma ni attestation de imágenes.
 6. El caché BuildKit quedó vacío; los siguientes builds serán completos y
@@ -148,4 +148,4 @@ para uso explícito, sin contenedor Adminer activo y sin eliminación de datos
 persistentes.
 
 La preparación de producción continúa fuera de alcance y no cambia el estado
-G7 definido por `docs/adrs/ADR-070-Diferimiento-Dominio-Productivo.md`.
+G7 definido por `docs/adrs/ADR-070-Diferimiento-Dominio-Productivo.md (superado)`.

@@ -92,6 +92,8 @@ Viven en `docs/prompts/` como el resto, con el subtipo `PROMPT-OPERATIVO-` que l
 | Migraciones schema public | `pnpm --filter @iwana/db migration:run` |
 | Migraciones schemas tenant | `pnpm --filter @iwana/db migration:tenant:run` |
 | Revertir ultima migracion public | `pnpm --filter @iwana/db migration:revert` |
+| Backup por tenant | `pnpm db:backup:tenant --tenant <uuid\|slug>` |
+| Restore por tenant | `pnpm db:restore:tenant --file <ruta.dump> --into <base-destino>` |
 | Jest backend individual | `pnpm --filter @iwana/api exec jest src/modules/auth/auth.service.spec.ts` |
 | Playwright individual | `pnpm exec playwright test e2e/tests/web-auth-dashboard.spec.ts` |
 

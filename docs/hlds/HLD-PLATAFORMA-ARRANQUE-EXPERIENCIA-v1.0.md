@@ -168,7 +168,7 @@ Hoy `docker-compose.prod.yml` hace depender `nginx-prod` de `api-prod`, `web-pro
 
 > **Artefacto previo que queda superado.** El comentario que acompaña a esa condición en `docker-compose.prod.yml` justifica el endurecimiento con estas palabras: *"`service_started` solo garantizaba que el contenedor se hubiera creado: nginx aceptaba tráfico y devolvía 502 hasta que Next.js abría su puerto."* Esa razón era correcta y **queda satisfecha por otra vía**: el 502 deja de existir porque `error_page 502 503 504 = @boot` lo sustituye por la pantalla de arranque. No es una regresión, es una sustitución de mecanismo — y por eso debe registrarse en el ADR y reescribirse el comentario en el mismo acto. Revertir la condición sin tocar el comentario dejaría dos razones contradictorias vigentes.
 
-> **Aprobada con ejecución diferida (2026-08-09).** El CTO aprobó ADR-079 con esta decisión atada al disparador de reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md): hoy no existe entorno donde observar sus tres criterios críticos, y ejecutarla obligaría a declararlos cumplidos sin verlos. Por eso la fase se parte en **F4a** (desarrollo, ejecutable) y **F4b** (producción, cerrada). Detalle en ADR-079 §Consecuencias → *"Por qué la Decisión 4 se difiere"*.
+> **Aprobada con ejecución diferida (2026-08-09).** El CTO aprobó ADR-079 con esta decisión atada al disparador de reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado): hoy no existe entorno donde observar sus tres criterios críticos, y ejecutarla obligaría a declararlos cumplidos sin verlos. Por eso la fase se parte en **F4a** (desarrollo, ejecutable) y **F4b** (producción, cerrada). Detalle en ADR-079 §Consecuencias → *"Por qué la Decisión 4 se difiere"*.
 
 Esta decisión arrastra dos obligaciones técnicas inseparables, que el prompt de F4b debe exigir juntas:
 
@@ -298,7 +298,7 @@ Registrado en [DECISION-BLOQUEO-ADMIN-BOOTSTRAP-PRODUCCION-v1.0.md](../quality/D
 | F2 | API de estado de arranque | AI-SR-FULL | C1 |
 | F3 | Pantalla de arranque | AI-FE-PLATFORM · AI-DS-OWNER · AI-PROD-UX | C1, C3 |
 | F4a | Cableado de proxy en **desarrollo** | AI-PLAT-OPS | F3 (esqueleto) |
-| **F4b** | Cableado de proxy en **producción** — Decisión 4 | AI-PLAT-OPS | **Cerrada.** Disparador de ADR-070 |
+| **F4b** | Cableado de proxy en **producción** — Decisión 4 | AI-PLAT-OPS | **Cerrada.** Disparador de ADR-070 (superado) |
 | F5 | Instalador on-premise | AI-PLAT-OPS · AI-SEC-ENG | Este HLD + ADR-079 |
 | F6 | Calidad y evidencia | AI-SR-QA | F1–F5 |
 | F7 | Consolidación, G6.5 y cierre | AI-EM-ARCH | F6 |

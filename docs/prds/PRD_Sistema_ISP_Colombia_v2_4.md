@@ -7,7 +7,7 @@
 **Autor:** AI-EM-ARCH  
 **Clasificación:** Confidencial — Uso interno  
 **Versión anterior:** 2.4 (2026-05-19, Aprobada)  
-**Changelog v2.5:** incorpora **ADR-040 a ADR-079**; corrige el estado real de ejecución (nada está en producción — ADR-070); añade MOD00, MOD04, MOD11 y MOD12 al roadmap; adopta la taxonomía de gates **G6 / G6.5 / G7**; incorpora las políticas de seguridad de audiencias JWT, PII en listados, credenciales iniciales y cifrado — detalle en [Historial de Cambios](#historial-de-cambios)  
+**Changelog v2.5:** incorpora **ADR-040 a ADR-079**; corrige el estado real de ejecución (nada está en producción — ADR-070 (superado)); añade MOD00, MOD04, MOD11 y MOD12 al roadmap; adopta la taxonomía de gates **G6 / G6.5 / G7**; incorpora las políticas de seguridad de audiencias JWT, PII en listados, credenciales iniciales y cifrado — detalle en [Historial de Cambios](#historial-de-cambios)  
 **Nombre de archivo:** el sufijo `_v2_4` del nombre es un **identificador estable**, no la versión del contenido. La versión autoritativa es el campo `Version` de esta cabecera. *(Misma convención que `Protocolo_Colaboracion_Multiagente_v1.md`. Renombrar el archivo rompería 46 documentos que lo citan; el corpus ya arrastra una cita colgante a `PRD_Sistema_ISP_Colombia_v2_3.md` por haberlo hecho antes.)*  
 **Stack validado:** [Stack_Tecnologico.md](Stack_Tecnologico.md)  
 **Gobernanza:** [AGENTS.md](../../AGENTS.md) · [Protocolo multiagente](../roles/Protocolo_Colaboracion_Multiagente_v1.md)
@@ -20,7 +20,7 @@
 >
 > **Qué motivó la revisión.** La v2.4 se fechó el 2026-05-19 y su changelog llegaba hasta ADR-039. Entre esa fecha y hoy se aprobaron **37 ADRs nuevos** (ADR-040…ADR-079, menos los cuatro aún propuestos), cerraron dos módulos con informe firmado, nacieron dos bounded contexts y se formalizó la taxonomía de gates. La §14.2 se titulaba *"Estado Real"* y llevaba **82 días** sin reflejar la realidad.
 >
-> **La corrección más grave.** La v2.4 declaraba MOD01 y MOD02 *"✅ Producción"*. **Nada de este sistema está desplegado en producción.** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado por el CTO el 2026-08-02) lo dice sin ambigüedad y difiere formalmente el dominio productivo; **G7 permanece NO-GO por diseño**. Leer el PRD anterior podía llevar a creer que había un sistema vivo con suscriptores reales.
+> **La corrección más grave.** La v2.4 declaraba MOD01 y MOD02 *"✅ Producción"*. **Nada de este sistema está desplegado en producción.** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) (Aprobado por el CTO el 2026-08-02) lo dice sin ambigüedad y difiere formalmente el dominio productivo; **G7 permanece NO-GO por diseño**. Leer el PRD anterior podía llevar a creer que había un sistema vivo con suscriptores reales.
 >
 > **Qué NO cambia esta versión.** Ninguna decisión de producto aprobada: arquitectura Modulith, multi-tenancy por schema, despliegue on-premise, stack, alcance funcional del MVP y objetivos de negocio se conservan. Lo que cambia es el **estado**, las **decisiones nuevas ya aprobadas por ADR** y la **gobernanza de cierre**.
 >
@@ -120,7 +120,7 @@ ISPs colombianos con 500–50,000 suscriptores, redes GPON multi-marca (Huawei �
 | Tablas operativas | **Paginación numerada en servidor** por defecto; la degradación la declara el servidor | Ninguna pantalla materializa el universo de datos del tenant en memoria. Ref: [ADR-064](../adrs/ADR-064-Paginacion-Tablas-Operativas-Portal.md), [ADR-065](../adrs/ADR-065-Paginacion-Numerada-Tablas-Operativas.md) |
 | Consultas de listado | **Ninguna consulta carga el conjunto completo de una entidad para filtrar o paginar en memoria** | Regla normativa verificable en revisión, con bloqueo en G5. Ref: [ADR-060](../adrs/ADR-060-Control-Bajas-y-Consultas-Operativas-Inventario.md) |
 | Superposición visual | Escala semántica de tokens `--z-*` de siete capas; prohibido escribir valores de z literales | Un componente que no encaja propone una capa, no inventa un número. Ref: [ADR-075](../adrs/ADR-075-Contrato-Capas-Z-Portal.md) |
-| Dominio productivo | **Diferido formalmente** hasta el cierre del roadmap modular; G7 NO-GO por diseño | Definir topología productiva hoy congelaría opciones que dependen de módulos que aún no existen. Ref: [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) · reapertura en curso: [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* |
+| Dominio productivo | **Diferido formalmente** hasta el cierre del roadmap modular; G7 NO-GO por diseño | Definir topología productiva hoy congelaría opciones que dependen de módulos que aún no existen. Ref: [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) · reapertura en curso: [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* |
 | Experiencia de arranque | Contrato único de estado con dos productores; la pantalla la sirve el proxy, no el framework | El operador debe ver qué se descarga y qué se levanta, en terminal y navegador. Ref: [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) |
 
 ### 1.5 Riesgos clave
@@ -136,7 +136,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 
 **Estado de construcción al 2026-08-09.**
 
-> **Ningún módulo está desplegado en producción.** "Construido" significa código entregado y aceptado en calidad; **no** significa que exista una instancia productiva atendiendo suscriptores reales. El gate que autoriza despliegue es **G7**, y está **NO-GO por diseño** ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), aprobado). La distinción entre construido, mergeable y desplegable es la taxonomía de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) — ver §12.3.
+> **Ningún módulo está desplegado en producción.** "Construido" significa código entregado y aceptado en calidad; **no** significa que exista una instancia productiva atendiendo suscriptores reales. El gate que autoriza despliegue es **G7**, y está **NO-GO por diseño** ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado), aprobado). La distinción entre construido, mergeable y desplegable es la taxonomía de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) — ver §12.3.
 
 | Módulo | Código | Construido | Gate más avanzado alcanzado | Evidencia |
 |--------|--------|-----------|------------------------------|-----------|
@@ -206,7 +206,7 @@ Auth + RBAC multi-tenant (14 roles RBAC iniciales agrupados en 8 categorías de 
 | C07 | Cada módulo va a producción cuando Backend + Frontend + BD + Tests están completos. No big bang                                                                                | Calidad sobre velocidad de despliegue                    |
 | C08 | Módulos anteriores no pueden requerir refactorización mayor al agregar nuevos                                                                                                  | Diseñar para extensibilidad desde el inicio              |
 | C09 | Si un módulo queda técnicamente bloqueado, el equipo debe detener avance, documentar causa raíz, opciones y recomendación, y escalar decisión antes de continuar o repriorizar | Evita ocultar bloqueos y mover deuda crítica aguas abajo |
-| **C10** | **El dominio productivo está formalmente diferido** hasta el cierre del roadmap modular: no se decide FQDN, hosting, autoridad certificadora ni método de emisión de certificados, ventana operativa ni objetivos de recuperación. Ref: [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) | **G7 permanece NO-GO por diseño, no por defecto.** Ningún módulo se despliega. Prohibido producir evidencia de despliegue que no exista: los marcadores de dominio y de imagen pendientes de aprobación se conservan intactos, y la integración continua bloquea un archivo de entorno productivo que aún los contenga |
+| **C10** | **El dominio productivo está formalmente diferido** hasta el cierre del roadmap modular: no se decide FQDN, hosting, autoridad certificadora ni método de emisión de certificados, ventana operativa ni objetivos de recuperación. Ref: [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) | **G7 permanece NO-GO por diseño, no por defecto.** Ningún módulo se despliega. Prohibido producir evidencia de despliegue que no exista: los marcadores de dominio y de imagen pendientes de aprobación se conservan intactos, y la integración continua bloquea un archivo de entorno productivo que aún los contenga |
 | **C11** | **No existe entorno de staging.** El programa opera con desarrollo local y verificación en integración continua | Los criterios de Done que exigen staging (§14.3, S12) no son evaluables hoy |
 | **C12** | El sistema **procesa datos personales reales** aunque no esté en producción | Obliga a tratar la protección de PII como control activo y no como requisito de despliegue. Expediente de reapertura en curso: [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* |
 
@@ -1444,7 +1444,7 @@ class OltAdapterFactory {
 
 El sistema se despliega **on-premise en servidores del ISP**. No se asumen servicios cloud. Todo el stack funciona en servidores físicos o VMs del ISP con Docker. Ref: ADR-013.
 
-> **Estado al 2026-08-09 — no hay despliegue.** La decisión on-premise se mantiene íntegra, pero **su ejecución está diferida**: no se ha definido dominio, hosting, autoridad certificadora ni objetivos de recuperación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), restricción C10). Esta sección describe la **arquitectura objetivo**, no una instalación existente.
+> **Estado al 2026-08-09 — no hay despliegue.** La decisión on-premise se mantiene íntegra, pero **su ejecución está diferida**: no se ha definido dominio, hosting, autoridad certificadora ni objetivos de recuperación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado), restricción C10). Esta sección describe la **arquitectura objetivo**, no una instalación existente.
 >
 > **Lo que sí está en construcción** es la experiencia de instalación y primer arranque, que hasta la v2.4 **no estaba definida en ningún artefacto del corpus** — ni en este PRD ni en un HLD. [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) la formaliza:
 >
@@ -1670,7 +1670,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 3. Base de datos versionada, migrada y validada para el módulo.
 4. Tests unitarios, integración y E2E en verde según el gate del módulo.
 5. Documentación de fase, runbooks y evidencias archivadas en `docs/`.
-6. Despliegue realizado y validado en producción con datos de operación o consultas reales según corresponda al módulo. — **Criterio del cierre en producción, no del cierre en construcción.** Diferido mientras ADR-070 esté vigente; ver §12.3.3.
+6. Despliegue realizado y validado en producción con datos de operación o consultas reales según corresponda al módulo. — **Criterio del cierre en producción, no del cierre en construcción.** Diferido mientras ADR-070 (superado) esté vigente; ver §12.3.3.
 
 > **Estados de módulo (ADR-080, aprobado 2026-08-09).** Un módulo está en uno de estos tres, y el estado se declara explícitamente:
 >
@@ -1682,7 +1682,7 @@ Un módulo se considera cerrado únicamente cuando cumple simultáneamente:
 
 #### 12.3.3 Taxonomía de gates de cierre — G6 · G6.5 · G7 (v2.5)
 
-El criterio 6 de §12.3.2 **exige un despliegue productivo que hoy ningún módulo puede realizar**, porque el dominio productivo está formalmente diferido ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), aprobado por el CTO). Leído sin esta sección, ese criterio convertía a todo módulo en "no cerrado" o —peor— invitaba a declarar producción donde no la hay, que es exactamente el error que arrastraba la v2.4.
+El criterio 6 de §12.3.2 **exige un despliegue productivo que hoy ningún módulo puede realizar**, porque el dominio productivo está formalmente diferido ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado), aprobado por el CTO). Leído sin esta sección, ese criterio convertía a todo módulo en "no cerrado" o —peor— invitaba a declarar producción donde no la hay, que es exactamente el error que arrastraba la v2.4.
 
 [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) resuelve la ambigüedad separando tres preguntas distintas. **Ninguna se obtiene por cumplir la anterior:**
 
@@ -1692,16 +1692,16 @@ El criterio 6 de §12.3.2 **exige un despliegue productivo que hoy ningún módu
 | **G6.5** | ¿Se puede **mergear**? | AI-EM-ARCH consolida; la ejecuta plataforma | **El merge. Nunca el despliegue.** Exige corrida de integración continua en Linux identificada **por SHA**, con artefacto resumen sanitizado — conteos, plataforma, duración, limpieza; **nunca tokens ni payloads** |
 | **G7** | ¿Se puede **desplegar**? | AI-EM-ARCH recomienda, **el CTO aprueba** | El despliegue productivo. Exige dominio productivo, TLS de autoridad reconocida, rollback por componente ensayado, y restauración global y por tenant |
 
-**Consecuencia para el criterio 6 de §12.3.2.** Mientras ADR-070 esté vigente, **el criterio 6 no es exigible** y su ausencia **no constituye deuda**: es el estado correcto y deliberado del programa. Todo informe de cierre debe registrar **G6, G6.5 y G7 por separado**, y decir cuál no aplica y por qué.
+**Consecuencia para el criterio 6 de §12.3.2.** Mientras ADR-070 (superado) esté vigente, **el criterio 6 no es exigible** y su ausencia **no constituye deuda**: es el estado correcto y deliberado del programa. Todo informe de cierre debe registrar **G6, G6.5 y G7 por separado**, y decir cuál no aplica y por qué.
 
 **Los dos tipos de cierre.** [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) separa lo que ADR-022 §Decisión 3 mezclaba:
 
 | Cierre | Qué exige | Aprueba | Habilita |
 | --- | --- | --- | --- |
 | **En construcción** | Backend, frontend, datos, pruebas y documentación completos, con **G6 y G6.5** | AI-EM-ARCH | **Abrir el módulo siguiente.** Es el cierre exigible hoy |
-| **En producción** | Lo anterior más **G7** | **CTO** | El despliegue. **Diferido** por ADR-070; su ausencia no es deuda |
+| **En producción** | Lo anterior más **G7** | **CTO** | El despliegue. **Diferido** por ADR-070 (superado); su ausencia no es deuda |
 
-**La Regla de Completitud se satisface con el cierre en construcción.** No se relaja: se hace alcanzable. ADR-022 §Decisión 3 exige *"despliegue en producción validados"* mientras ADR-070 lo prohíbe — **dos ADRs aprobados en contradicción**. Exigir lo imposible no es rigor: una regla incumplible se ignora, y eso es peor que no tenerla.
+**La Regla de Completitud se satisface con el cierre en construcción.** No se relaja: se hace alcanzable. ADR-022 §Decisión 3 exige *"despliegue en producción validados"* mientras ADR-070 (superado) lo prohíbe — **dos ADRs aprobados en contradicción**. Exigir lo imposible no es rigor: una regla incumplible se ignora, y eso es peor que no tenerla.
 
 **Estado del programa al 2026-08-09:** ningún módulo tiene G7 de despliegue. **G7 está NO-GO por diseño en todo el programa.** El único G7 registrado —MOD12, 2026-07-21— es un **G7 técnico de módulo en alcance MVP** aprobado por el CTO, y el propio informe de cierre precisa que **no constituye cierre en producción**.
 
@@ -1861,7 +1861,7 @@ Eso **no es repriorización** —que se decide antes de abrir el módulo, y ya e
 
 ### 14.2 Tabla de implementación — Estado real (v2.5, corte 2026-08-09)
 
-> **Cómo leer esta tabla.** La columna **Construido** dice si el código existe y fue aceptado en calidad. La columna **Gate** dice hasta dónde llegó en la taxonomía de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md): **G6** calidad aceptable · **G6.5** mergeable · **G7** desplegable. **Ninguna fila alcanza despliegue productivo**: G7 está NO-GO por diseño en todo el programa ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)).
+> **Cómo leer esta tabla.** La columna **Construido** dice si el código existe y fue aceptado en calidad. La columna **Gate** dice hasta dónde llegó en la taxonomía de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md): **G6** calidad aceptable · **G6.5** mergeable · **G7** desplegable. **Ninguna fila alcanza despliegue productivo**: G7 está NO-GO por diseño en todo el programa ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)).
 >
 > El **Orden** es el del roadmap planificado y **se conserva a propósito**, aunque el orden realmente ejecutado fue otro (§14.3bis). Conservarlo hace visible la divergencia en vez de esconderla reescribiendo el plan.
 >
@@ -2725,11 +2725,11 @@ Incorporación ADR-025 a ADR-039 (aprobados por CTO):
 
 **Correcciones de hecho** — el texto anterior contradecía ADRs ya aprobados, que prevalecían por precedencia:
 
-- **§1.6 y §14.2:** se retira la declaración *"✅ Producción"* de MOD01 y MOD02. **Nada está desplegado**; G7 es NO-GO por diseño (ADR-070). Es la corrección más grave de esta versión.
+- **§1.6 y §14.2:** se retira la declaración *"✅ Producción"* de MOD01 y MOD02. **Nada está desplegado**; G7 es NO-GO por diseño (ADR-070, superado). Es la corrección más grave de esta versión.
 - **§14.2:** MOD12 pasa de *"en roadmap"* a **construido con G7 técnico de módulo**; se incorporan MOD00, MOD04 y MOD11, ausentes de la tabla pese a estar construidos.
 - **§1.6:** se elimina la fila *"NMS / Provisioning / Billing — MOD03–05"*, cuya codificación era errónea: MOD03 es Configuración (legacy) y MOD05 es CRM, ambos ya declarados en la misma tabla.
 - **§12.3:** la Regla de Completitud se reancla a **ADR-022**; la v2.4 la atribuía a ADR-016, que es el cierre de MOD01 y no establece política.
-- **§12.3.2 criterio 6:** el despliegue productivo deja de ser exigible mientras ADR-070 esté vigente; su ausencia no es deuda.
+- **§12.3.2 criterio 6:** el despliegue productivo deja de ser exigible mientras ADR-070 (superado) esté vigente; su ausencia no es deuda.
 
 **Incorporaciones normativas:**
 

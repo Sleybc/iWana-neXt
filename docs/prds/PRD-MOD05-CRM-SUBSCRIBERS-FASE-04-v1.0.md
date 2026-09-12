@@ -11,7 +11,7 @@
 **PRD Fase 02:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-02-v1.0.md *(superado por este documento — ver §9.3)*
 **PRD Fase 03:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-03-v1.0.md *(vigente salvo RF-S360-11, RF-S360-14, §3.2 y CA-S360-08 — ver §9.3)*
 **HLD relacionado:** docs/hlds/HLD-MOD05-ARQUITECTURA-v2.0.md *(requiere corrección — ver §9.6)*
-**ADRs aplicables:** ADR-022 (ejecución modular, enmendado por ADR-080), ADR-024, ADR-025, ADR-026, ADR-027, ADR-038 (boundary Assurance), ADR-048 (boundary Inventario/SCM), ADR-058, ADR-065 (paginación y orden), ADR-066, ADR-067 (proyección PII), ADR-070, ADR-080, ADR-083 (RBAC granular)
+**ADRs aplicables:** ADR-022 (ejecución modular, enmendado por ADR-080), ADR-024, ADR-025, ADR-026, ADR-027, ADR-038 (boundary Assurance), ADR-048 (boundary Inventario/SCM), ADR-058, ADR-065 (paginación y orden), ADR-066, ADR-067 (proyección PII), ADR-070 (superado), ADR-080, ADR-083 (RBAC granular)
 **ADR nuevo requerido:** ninguno. Esta fase opera dentro de boundaries ya aprobados
 **Identidad corporativa:** docs/identity/Manual_Implementacion_Identidad_Iwana.md — obligatorio
 
@@ -383,5 +383,5 @@ Por tanto esta fase **retira el anuncio** y nada más. Tres razones cierran tamb
 - [ ] Checklist de salida de esta fase en `docs/quality/`
 - [ ] Los cuatro criterios abiertos de ADR-067 cerrados, en particular el registro de acceso masivo
 - [ ] `pnpm audit:adr-citations` en `BLOQUEANTE: 0`
-- [ ] `INFORME-MOD05-CIERRE-MODULO-v1.0.md` con **G6 y G6.5 registrados por separado**; G7 diferido por ADR-070
+- [ ] `INFORME-MOD05-CIERRE-MODULO-v1.0.md` con **G6 y G6.5 registrados por separado**; G7 diferido por ADR-070 (superado)
 - [ ] Deuda residual declarada por severidad, con el hallazgo S-3 de ADR-078 (propuesto) explícitamente registrado

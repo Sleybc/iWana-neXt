@@ -82,7 +82,7 @@ con el loop detenido, y lo hace sin abrir un puerto HTTP de administración.
 - **Informe de origen:** [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) §2.1 B4, §6 propuesta 16
 - **Código:** `apps/worker/src/main.ts`, `apps/worker/src/worker.module.ts`, `apps/worker/src/processors/`
 - **Infraestructura:** `docker-compose.prod.yml:240-262`, `docker-compose.e2e.yml:88-98`, `apps/worker/Dockerfile`
-- **Restricción vigente:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) — G7 diferido; nada de esta fase presupone entorno productivo
+- **Restricción vigente:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — G7 diferido; nada de esta fase presupone entorno productivo
 - **Skills:** `bullmq-specialist`, `nestjs-expert`, `testing-patterns`
 
 **Artefacto faltante detectado:** `apps/worker/src` no tiene módulo de salud

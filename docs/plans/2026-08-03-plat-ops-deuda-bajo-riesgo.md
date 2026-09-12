@@ -344,7 +344,7 @@ replace the closing sentence with:
 ```text
 Quedan abiertas B4, A1, A3, A4 (recursos y redes), A8 y A9, con los
 destinatarios y decisiones indicados en §7. A2, D4 y D6 quedan cerrados por
-esta remediación; el cierre no altera el estado G7 definido por ADR-070.
+esta remediación; el cierre no altera el estado G7 definido por ADR-070 (superado).
 ```
 
 - [ ] **Step 2: Run focused and repository validation**

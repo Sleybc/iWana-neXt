@@ -367,7 +367,7 @@ Un `[BLOQUEO]` se emite **antes de cerrar la sesión**, con: qué, por qué, qu�
 | **Gate Ola B** | Criterios restantes de §8 del PRD · guardián de OpenAPI en verde · migración aplicada y revertida | AI-EM-ARCH |
 | **G6** | Ambas olas cerradas + checklist de Fase 02 ejecutado (hoy 0 de 50) + checklist de salida de la fase | AI-EM-ARCH |
 | **G6.5** | Corrida Linux de CI **por SHA** + artefacto resumen sanitizado (conteos, plataforma, duración) | AI-EM-ARCH |
-| **G7** | **Diferido por ADR-070.** Su ausencia **no es deuda** | CTO |
+| **G7** | **Diferido por ADR-070 (superado).** Su ausencia **no es deuda** | CTO |
 
 **El aprobador de un gate nunca es el productor del artefacto.**
 

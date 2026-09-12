@@ -7,7 +7,7 @@
 **Autor:** AI-EM-ARCH
 **Aprobación:** CTO Humano — 2026-08-03 (v1.0) · **ratificación del criterio 1 el 2026-08-03 (v1.1)**
 **Módulos:** Plataforma transversal — imágenes de API, worker, web, portal y migrator
-**Relacionado:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (primer ADR de infraestructura) · [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) §2.2 A7 · [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md) §5.1
+**Relacionado:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) (primer ADR de infraestructura) · [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) §2.2 A7 · [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md) §5.1
 
 ---
 
@@ -88,7 +88,7 @@ Optimizar los Dockerfiles antes de fijar la base es trabajo que se tira. Esta es
 | **Multi-tenant** | **Sin impacto.** No toca el aislamiento por schema, la resolución de tenant ni `search_path` |
 | **Seguridad** | **Positivo y directo.** Cuatro imágenes dejan de construirse sobre una base sin parches desde 2026-06-01. Es el motivo principal de urgencia |
 | **Escala** | **Sin impacto** en el modelo de escala. Node 24 es la línea LTS con la que el proyecto ya valida |
-| **Regulación** | **Sin impacto directo.** Ninguna obligación de CRC, DIAN, MinTIC ni Ley 1581 fija versión de runtime. Indirectamente, correr sobre software sin soporte de seguridad es difícil de sostener ante un tratamiento de datos personales bajo Ley 1581 — lo que conecta con el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) |
+| **Regulación** | **Sin impacto directo.** Ninguna obligación de CRC, DIAN, MinTIC ni Ley 1581 fija versión de runtime. Indirectamente, correr sobre software sin soporte de seguridad es difícil de sostener ante un tratamiento de datos personales bajo Ley 1581 — lo que conecta con el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) |
 | **Autoridad** | Cambio de versión de stack: **decisión del CTO**, conforme a §5 de la matriz del perfil AI-EM-ARCH |
 
 ## Riesgo y mitigación

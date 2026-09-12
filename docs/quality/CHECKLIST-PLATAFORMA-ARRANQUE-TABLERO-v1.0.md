@@ -28,7 +28,7 @@
 | **F2** API de estado | AI-SR-FULL | Abierta | [F2](CHECKLIST-PLATAFORMA-ARRANQUE-F2-v1.0.md) | pendiente | F0 (C1) | 2026-08-09 |
 | **F3** pantalla | AI-FE-PLATFORM · AI-DS-OWNER · AI-PROD-UX | Abierta | [F3](CHECKLIST-PLATAFORMA-ARRANQUE-F3-v1.0.md) | pendiente | F0 (C1, C3, C4) | 2026-08-09 |
 | **F4a** proxy desarrollo | AI-PLAT-OPS | Abierta | [F4a](CHECKLIST-PLATAFORMA-ARRANQUE-F4A-v1.0.md) | pendiente | F3 | 2026-08-09 |
-| **F4b** proxy producción | AI-PLAT-OPS | **Cerrada — diferida** | [F4b](CHECKLIST-PLATAFORMA-ARRANQUE-F4B-v1.0.md) | no aplica | Disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) | 2026-08-09 |
+| **F4b** proxy producción | AI-PLAT-OPS | **Cerrada — diferida** | [F4b](CHECKLIST-PLATAFORMA-ARRANQUE-F4B-v1.0.md) | no aplica | Disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) | 2026-08-09 |
 | **F5** instalador | AI-PLAT-OPS · AI-SEC-ENG | **Bloqueada** | [F5](CHECKLIST-PLATAFORMA-ARRANQUE-F5-v1.0.md) | pendiente | Bloqueo B-01 (cierre) | 2026-08-09 |
 | **F6** calidad | AI-SR-QA | Abierta | [F6](CHECKLIST-PLATAFORMA-ARRANQUE-F6-v1.0.md) | pendiente | F1–F5 | 2026-08-09 |
 | **F7** cierre | AI-EM-ARCH | Abierta | — | consolidado | F6 | 2026-08-09 |
@@ -65,7 +65,7 @@ Los tres gates de cierre **no son grados de lo mismo**: ninguno se obtiene por c
 | **G5** | ¿Los gates técnicos pasan? | AI-EM-ARCH | Pendiente | Informes F1, F2, F3, F4a, F5 |
 | **G6** | ¿La calidad es aceptable? | AI-EM-ARCH | Pendiente | Informe F6 |
 | **G6.5** | ¿Se puede mergear? | AI-EM-ARCH consolida, AI-PLAT-OPS ejecuta | Pendiente | Corrida de CI en Linux **por SHA** |
-| **G7** | ¿Se puede desplegar? | AI-EM-ARCH recomienda, **CTO aprueba** | **No aplica** | El dominio productivo sigue diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) |
+| **G7** | ¿Se puede desplegar? | AI-EM-ARCH recomienda, **CTO aprueba** | **No aplica** | El dominio productivo sigue diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) |
 
 **G1 se cumplió con alcance declarado:** el CTO aprobó seis decisiones con vigencia inmediata y la Decisión 4 con **ejecución diferida**. G5 y G6 se evalúan sobre el alcance abierto —F4b queda fuera— y el cierre del frente declarará **entrega parcial por diferimiento aprobado**, que no es deuda.
 
@@ -77,7 +77,7 @@ Los tres gates de cierre **no son grados de lo mismo**: ninguno se obtiene por c
 | --- | --- | --- | --- | --- | --- | --- |
 | **B-01** | `[ESCALACION AL CTO]` | AI-EM-ARCH → CTO | Creación del primer administrador de plataforma en producción — [detalle](DECISION-BLOQUEO-ADMIN-BOOTSTRAP-PRODUCCION-v1.0.md) | Cierre de **F5** únicamente | 2026-08-09 | **Abierto** |
 | **DES-01** | `[DESEMPATE]` | AI-EM-ARCH | Medio de la marca de vida del worker: **caché**, no archivo local. Cierra la elección que [PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md](../prompts/PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md) dejó abierta, porque F2 debe leerla desde otro contenedor | Nada — desbloquea F2 | 2026-08-09 | **Resuelto** |
-| **DIF-01** | Diferimiento aprobado | CTO → frente | **Decisión 4 de ADR-079 con ejecución diferida** al disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md): hoy no hay entorno donde observar CA-F4B-01, 02 y 03 | Solo **F4b** | 2026-08-09 | **Vigente** |
+| **DIF-01** | Diferimiento aprobado | CTO → frente | **Decisión 4 de ADR-079 con ejecución diferida** al disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado): hoy no hay entorno donde observar CA-F4B-01, 02 y 03 | Solo **F4b** | 2026-08-09 | **Vigente** |
 
 **Regla:** un marcador emitido y no atendido **no caduca: escala**. Si B-01 no se resuelve en la sesión siguiente a su emisión, sube al CTO como escalación con la opción recomendada.
 
@@ -125,5 +125,5 @@ Se repiten aquí porque son las que más probablemente se erosionen bajo presió
 | Fecha | Quién | Cambio |
 | --- | --- | --- |
 | 2026-08-09 | AI-EM-ARCH | Apertura del frente. HLD, ADR-079, 7 prompts, 7 checklists y este tablero emitidos. G4 cumplido. B-01 escalado al CTO |
-| 2026-08-09 | CTO + AI-EM-ARCH | **G1 CUMPLIDO — ADR-079 Aprobado** con la Decisión 4 de ejecución diferida al disparador de ADR-070. Motivo: `docker-compose.e2e.yml` no incluye proxy ni aplicaciones, y los marcadores de dominio deben conservarse intactos, así que tres criterios de la fase no son observables hoy. **F4 se parte en F4a (abierta) y F4b (cerrada).** Retirados los artefactos F4 unificados, recuperables desde `89c44ad4`. Retirado el marcador `(propuesto)` de las citas a ADR-079 en todo el corpus. Fechas corregidas a 2026-08-09. **F0 queda desbloqueada** |
+| 2026-08-09 | CTO + AI-EM-ARCH | **G1 CUMPLIDO — ADR-079 Aprobado** con la Decisión 4 de ejecución diferida al disparador de ADR-070 (superado). Motivo: `docker-compose.e2e.yml` no incluye proxy ni aplicaciones, y los marcadores de dominio deben conservarse intactos, así que tres criterios de la fase no son observables hoy. **F4 se parte en F4a (abierta) y F4b (cerrada).** Retirados los artefactos F4 unificados, recuperables desde `89c44ad4`. Retirado el marcador `(propuesto)` de las citas a ADR-079 en todo el corpus. Fechas corregidas a 2026-08-09. **F0 queda desbloqueada** |
 | 2026-08-09 | AI-EM-ARCH | **DES-01 resuelto.** Detectado que el latido del worker ya estaba encargado a `PROMPT-SR-FULL-WORKER-HEARTBEAT-v1.0.md`: F2 pasa de definirlo a consumirlo, y se cierra la elección de medio a favor de la caché. Corregidos HLD §5 y §7.2, ADR-079 §Consecuencias, prompt y checklist de F2, y deuda D-02 |

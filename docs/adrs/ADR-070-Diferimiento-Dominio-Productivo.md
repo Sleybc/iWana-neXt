@@ -1,7 +1,8 @@
 # ADR-070: Diferimiento de la definición del dominio productivo hasta el cierre del roadmap modular
 
 **Versión:** 1.0
-**Estado:** **Superado** por [ADR-078](ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) — 2026-09-12. El CTO confirmó que existe PII de personas reales, lo que activa el disparador 3 de este mismo ADR («no negociable»). El diferimiento queda sin efecto: **G7 deja de ser NO-GO por diseño** y el expediente de dominio productivo pasa a estar abierto.
+**Estado:** Superado
+**Superado por:** [ADR-078](ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) — 2026-09-12. El CTO confirmó que existe PII de personas reales, lo que activa el disparador 3 de este mismo ADR («no negociable»). El diferimiento queda sin efecto: **G7 deja de ser NO-GO por diseño** y el expediente de dominio productivo pasa a estar abierto.
 **Estado original:** Aprobado
 **Fecha:** 2026-08-02
 **Modo activo:** Architect + EM

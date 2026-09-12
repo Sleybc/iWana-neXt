@@ -10,9 +10,9 @@
 
 ## 1. Bloqueo de gobernanza previo a las cinco condiciones
 
-**[BLOQUEO] ADR-078 está en estado `Propuesto`** (`docs/adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md:4`). ADR-078 declara que sucede a ADR-070 y que este «se marcará `Superado` **solo** cuando este ADR quede aprobado». ADR-070 sigue marcado `Aprobado` (`docs/adrs/ADR-070-Diferimiento-Dominio-Productivo.md:4`) y no contiene marca de superación.
+**[BLOQUEO] ADR-078 está en estado `Propuesto`** (`docs/adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md:4`). ADR-078 declara que sucede a ADR-070 (superado) y que este «se marcará `Superado` **solo** cuando este ADR quede aprobado». ADR-070 sigue marcado `Aprobado` (`docs/adrs/ADR-070-Diferimiento-Dominio-Productivo.md:4`) y no contiene marca de superación.
 
-Consecuencia operativa: **la norma vigente del repositorio sigue difiriendo formalmente cuatro de las cinco condiciones** (ADR-070 §Decisión 4 difiere explícitamente restore global, restore por tenant y rollback por digest; §8.5 del runbook marca TLS `DIFERIDO`). Ejecutar hoy los ensayos contradice un ADR aprobado. La aprobación de ADR-078 por el CTO no es un trámite: es el acto que reabre el expediente y habilita a AI-PLAT-OPS a producir evidencia sin violar la gobernanza.
+Consecuencia operativa: **la norma vigente del repositorio sigue difiriendo formalmente cuatro de las cinco condiciones** (ADR-070 (superado) §Decisión 4 difiere explícitamente restore global, restore por tenant y rollback por digest; §8.5 del runbook marca TLS `DIFERIDO`). Ejecutar hoy los ensayos contradice un ADR aprobado. La aprobación de ADR-078 por el CTO no es un trámite: es el acto que reabre el expediente y habilita a AI-PLAT-OPS a producir evidencia sin violar la gobernanza.
 
 Esto **no** es un pendiente de ingeniería y **no** lo desbloquea ningún agente.
 
@@ -41,7 +41,7 @@ Ninguna de las cinco está en **CUMPLE**. G7 es **NO-GO** y ningún agente puede
 - `nginx/nginx.prod.conf:143` — `server_name portal.REPLACE_ME_PRODUCTION_DOMAIN;` (vhost del portal, único parametrizado).
 - `nginx/nginx.prod.conf:45` y `:55` — `server_name _;` en el redirect HTTP y en el vhost HTTPS principal. **El FQDN principal no está parametrizado**: es un `default_server` comodín, no un nombre. Al definir el dominio hay que sustituir dos placeholders y además convertir dos comodines en nombres reales.
 - `.env.production.example:118,119,127,128` — `NEXT_PUBLIC_WEB_API_URL`, `NEXT_PUBLIC_PORTAL_API_URL`, `CORS_ORIGIN`, `FRONTEND_URL`, todas sobre `REPLACE_ME_PRODUCTION_DOMAIN`.
-- `.env.production.example:60-63` — cuatro referencias `invalid/…:approval-required` (`PGBOUNCER_IMAGE`, `MINIO_IMAGE`, `MINIO_MC_IMAGE`, `NGINX_IMAGE`). **Sí exigen aprobación del CTO**: son el riesgo 6 de ADR-070, inventariado en `.env.production.example:43`.
+- `.env.production.example:60-63` — cuatro referencias `invalid/…:approval-required` (`PGBOUNCER_IMAGE`, `MINIO_IMAGE`, `MINIO_MC_IMAGE`, `NGINX_IMAGE`). **Sí exigen aprobación del CTO**: son el riesgo 6 de ADR-070 (superado), inventariado en `.env.production.example:43`.
 - `.github/workflows/ci.yml:177-188` — gate `Block unresolved production prerequisites (R3.5)`: si existe un `.env.production` con `REPLACE_ME`/`approval-required` en línea no comentada, el job falla. Intacto.
 - `apps/api/src/app.config.production-urls.spec.ts` — con `NODE_ENV=production` la API exige `FRONTEND_URL` y `CORS_ORIGIN` y rechaza `localhost`/`127.0.0.1`/`0.0.0.0`/`::1`. `api-prod` no arranca sin FQDN real. Es el cierre de la Fase 1 de G7 (`INFORME-PLAT-OPS-G7-FASE-01-v1.0.md` §2).
 
@@ -73,7 +73,7 @@ getent hosts <FQDN> && getent hosts portal.<FQDN>
 - `nginx/nginx.prod.conf:53-64` — `listen 443 ssl`, `http2 on`, `ssl_protocols TLSv1.3`, `ssl_certificate /etc/nginx/tls/fullchain.pem` y `privkey.pem`.
 - `nginx/nginx.prod.conf:44-46` — redirect 301 HTTP→HTTPS incondicional.
 - `docker-compose.prod.yml:66-71` — monta `./nginx/nginx.prod.conf` y `./secrets:/etc/nginx/tls:ro`. `secrets/` contiene **solo** `.gitkeep`: no hay ni debe haber material de CA en el repo.
-- `nginx/nginx.prod.conf:90` y `:161` — HSTS `max-age=300` en ambos vhosts, valor de preflight deliberado (riesgo 4 de ADR-070).
+- `nginx/nginx.prod.conf:90` y `:161` — HSTS `max-age=300` en ambos vhosts, valor de preflight deliberado (riesgo 4 de ADR-070 (superado)).
 - `apps/api/src/main.ts:58` — `helmet({...})` con solo `crossOriginResourcePolicy` configurado.
 - `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md` §8.1–§8.4 — emisión, validación, renovación, recarga y procedimiento de certificado caducado, con comandos exactos. §8.5 declara el estado: **DIFERIDO**, sin emisión, renovación ni handshake.
 - `docs/plans/2026-08-01-mod11-g7-cierre-produccion.md` Task 2 Step 2 — script de verificación TLS ya escrito y nunca ejecutado (valida redirect 3xx, `Location` al FQDN, health HTTPS 200 y `Verify return code: 0 (ok)` con `-verify_hostname`).
@@ -81,7 +81,7 @@ getent hosts <FQDN> && getent hosts portal.<FQDN>
 **(b) Qué falta.**
 
 1. **Ningún certificado ni CA.** Requisito raíz: decisión de hosting y método ACME.
-2. **No existe el camino de emisión.** No hay servicio `certbot` en `docker-compose.prod.yml` ni `location /.well-known/acme-challenge/` **antes** del `return 301` en `nginx.prod.conf`. Con HTTP-01, el challenge sería redirigido a HTTPS y fallaría. Es el riesgo 5 de ADR-070, aún abierto.
+2. **No existe el camino de emisión.** No hay servicio `certbot` en `docker-compose.prod.yml` ni `location /.well-known/acme-challenge/` **antes** del `return 301` en `nginx.prod.conf`. Con HTTP-01, el challenge sería redirigido a HTTPS y fallaría. Es el riesgo 5 de ADR-070 (superado), aún abierto.
 3. **No hay renovación**: ningún scheduler, servicio ni volumen compartido.
 4. **Doble fuente de HSTS — a verificar antes de emitir.** Helmet no recibe configuración de `strictTransportSecurity` (`apps/api/src/main.ts:58-63`), por lo que la API emite su HSTS por defecto (mucho mayor que 300 s), y `nginx.prod.conf:77` documenta que no se usa `proxy_hide_header` ni `headers-more`. Las respuestas de `location /api/` podrían llevar dos cabeceras HSTS con `max-age` divergentes, anulando el preflight corto. **No es una afirmación de defecto: es una comprobación obligatoria antes del primer handshake**, porque HSTS no es reversible en el navegador.
 5. `scripts/generate-certs.ps1` es autofirmado de desarrollo y **no** satisface esta condición en ningún caso (runbook §8.1).
@@ -121,7 +121,7 @@ Sobre migraciones: `packages/database/src/migrations/tenant/revert.ts` y `packag
 **(b) Qué falta.**
 
 1. **El ensayo reproducible de §7.2 está PENDIENTE** y el propio runbook lo declara: §7.3 línea 477. No hay un solo rollback de imagen ejecutado.
-2. **No existe registro de imágenes.** `ADR-073-Cadena-de-Suministro-de-Imagenes.md:68` dice literalmente que hoy no lo hay. Sin registro no hay digests inmutables que registrar como punto de rollback: CI construye las imágenes (`.github/workflows/ci.yml:56` job `production-images`) pero no las publica. **El rollback por digest no es ejecutable hoy por ausencia de registro, no por falta de procedimiento.** Esto convierte la condición 3 en dependiente de una decisión de infraestructura que ADR-073 deja abierta.
+2. **No existe registro de imágenes.** `ADR-073-Cadena-de-Suministro-de-Imagenes.md:68` (propuesto) dice literalmente que hoy no lo hay. Sin registro no hay digests inmutables que registrar como punto de rollback: CI construye las imágenes (`.github/workflows/ci.yml:56` job `production-images`) pero no las publica. **El rollback por digest no es ejecutable hoy por ausencia de registro, no por falta de procedimiento.** Esto convierte la condición 3 en dependiente de una decisión de infraestructura que ADR-073 deja abierta.
 3. No existe acta de release (el runbook §2 la exige fuera del repositorio, y por diseño no está aquí).
 
 **(c) Verificación ejecutable.** Por componente, con digest origen/destino registrados:
@@ -163,7 +163,7 @@ pnpm --filter @iwana/db migration:tenant:revert --schema=<tenant_schema> --dry-r
 2. **No hay evidencia archivada en el formato de ADR-069.** Existen dumps en `.backups/` (los más antiguos del 2026-08-08) pero un dump no es evidencia de restore.
 3. **MinIO: no hay procedimiento de restore.** `RUNBOOK-MEDIA-MINIO-v1.0.md` §Backup de bucket contiene una sola línea `mc mirror s3-prod/… s3-backup/…` hacia un alias `s3-backup` que no está definido en ninguna parte, sin dirección inversa, sin verificación de referencias de `media_assets` y sin checksum. Un restore global de PostgreSQL sin los objetos de MinIO deja `media_assets` apuntando a ficheros inexistentes.
 4. **Redis: no hay backup.** `docker-compose.yml:82` — `redis-server --save 60 1`, snapshot RDB sin AOF; ningún procedimiento copia o restaura ese volumen. El runbook §5.6 solo dice «restaurar solo si el plan aprobado cubre pérdida de estado»: **ese plan no existe**.
-5. **No hay RPO/RTO declarados en ningún ADR.** Verificado: las únicas apariciones (`ADR-070:16,18,39,106`, `ADR-078:105,106`) los nombran como decisión **pendiente del CTO**. Sin targets aprobados, el plan G7 Task 5 Step 4 marca la condición como NO-GO por definición.
+5. **No hay RPO/RTO declarados en ningún ADR.** Verificado: las únicas apariciones (`ADR-070 (superado):16,18,39,106`, `ADR-078:105,106`) los nombran como decisión **pendiente del CTO**. Sin targets aprobados, el plan G7 Task 5 Step 4 marca la condición como NO-GO por definición.
 
 **(c) Verificación ejecutable.** Drill completo sobre base desechable:
 
@@ -231,7 +231,7 @@ El ensayo solo cuenta si la base de origen tiene **al menos dos** schemas tenant
 
 | # | Hallazgo | Ubicación | Severidad |
 |---|---|---|---|
-| H-1 | **Sin registro de imágenes**: el rollback por digest carece de sustrato | `ADR-073-Cadena-de-Suministro-de-Imagenes.md:68` | Alta — bloquea la condición 3 |
+| H-1 | **Sin registro de imágenes**: el rollback por digest carece de sustrato | `ADR-073-Cadena-de-Suministro-de-Imagenes.md:68` (propuesto) | Alta — bloquea la condición 3 |
 | H-2 | `RUNBOOK-MEDIA-MINIO-v1.0.md` §Rotación de credenciales prescribe `kubectl rollout restart deployment/iwana-api`. **Kubernetes está fuera del baseline Compose sin ADR** (runbook release §1, línea 40) | `docs/runbooks/RUNBOOK-MEDIA-MINIO-v1.0.md` | Media — runbook inejecutable en el baseline real |
 | H-3 | Posible doble cabecera HSTS (helmet por defecto + `add_header` de Nginx) con `max-age` divergentes | `apps/api/src/main.ts:58` · `nginx/nginx.prod.conf:77,90,161` | Media — verificar **antes** del primer handshake |
 | H-4 | `FRONTEND_URL` es un valor único para dos frontends | `.env.production.example:128` · `INFORME-PLAT-OPS-G7-FASE-01-v1.0.md` §4 | Media |
@@ -263,7 +263,7 @@ Y el destino del informe ya está nombrado por el plan suspendido: `docs/informe
 |---|---|---|---|
 | **P0** | Aprobar o rechazar **ADR-078** | **CTO** | Las cinco condiciones |
 | **P1** | Las seis decisiones de F0.2: FQDN, hosting, CA/ACME, propietario DNS, ventana, **targets RPO/RTO** | **CTO** (PLAT-OPS propone) | 1, 2 y el criterio de PASS de 4 y 5 |
-| **P2** | Decidir el **registro de imágenes** (ADR-073 capa 3) | CTO vía EM-ARCH | 3 |
+| **P2** | Decidir el **registro de imágenes** (ADR-073 (propuesto) capa 3) | CTO vía EM-ARCH | 3 |
 | **P3** | **Construir la capacidad de restore por tenant**: `--schema` en `backup.mjs`/`restore.mjs` o script hermano, + procedimiento de reinyección de `public.tenants` | PLAT-OPS, revisión SEC-ENG | 5 |
 | **P4** | Procedimiento de **backup/restore de MinIO** (alias, dirección inversa, checksum, verificación contra `media_assets`) y corrección de H-2 | PLAT-OPS | 4 |
 | **P5** | Política de **Redis**: backup del RDB o declaración aprobada de pérdida de estado aceptable | PLAT-OPS propone, CTO aprueba | 4, RPO |
@@ -301,7 +301,7 @@ P0  ADR-078 aprobado (CTO)
 
 **Dependencias duras que no admiten atajo:**
 
-1. **P1 antes que P6, P7 y P12.** Sin hosting no se sabe si HTTP-01 es viable; cablear ACME antes de esa decisión puede ser trabajo tirado (y si se adopta subdominio por tenant, el método cambia obligatoriamente a DNS-01 con wildcard — dependencia registrada en ADR-070 §Insumos).
+1. **P1 antes que P6, P7 y P12.** Sin hosting no se sabe si HTTP-01 es viable; cablear ACME antes de esa decisión puede ser trabajo tirado (y si se adopta subdominio por tenant, el método cambia obligatoriamente a DNS-01 con wildcard — dependencia registrada en ADR-070 (superado) §Insumos).
 2. **P1 antes de cerrar P8 y P10.** Los ensayos se pueden *correr* sin RPO/RTO, pero no se pueden *declarar PASS*: el criterio de aceptación es la comparación contra targets aprobados (plan G7 Task 5 Step 4).
 3. **P2 antes que P9.** Sin registro no hay digest que restaurar; un «rollback» sin digest inmutable no es evidencia.
 4. **P3 antes que P10.** No se ensaya una capacidad que no existe.
@@ -314,15 +314,15 @@ P0  ADR-078 aprobado (CTO)
 
 ## 8. Bloqueos declarados
 
-- **[BLOQUEO] ADR-078 en `Propuesto`.** Ningún trabajo de las cinco condiciones es legítimo mientras ADR-070 siga vigente y sin marca de superación. Requiere acto del CTO.
+- **[BLOQUEO] ADR-078 en `Propuesto`.** Ningún trabajo de las cinco condiciones es legítimo mientras ADR-070 (superado) siga vigente y sin marca de superación. Requiere acto del CTO.
 - **[BLOQUEO] Seis decisiones de F0.2 sin tomar.** Condiciones 1 y 2 no tienen ruta de verificación sin ellas; 4 y 5 no tienen criterio de PASS.
-- **[BLOQUEO] Sin registro de imágenes (ADR-073 capa 3).** La condición 3 no es verificable por digest hoy. Es cambio de alcance de infraestructura: escala al orquestador con consulta a AI-SEC-ENG.
+- **[BLOQUEO] Sin registro de imágenes (ADR-073 (propuesto) capa 3).** La condición 3 no es verificable por digest hoy. Es cambio de alcance de infraestructura: escala al orquestador con consulta a AI-SEC-ENG.
 
 ---
 
 ## 9. Referencias
 
-- `docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md` · `ADR-070` · `ADR-073` · `ADR-078`
+- `docs/adrs/ADR-069-Gates-G6.5-Merge-Readiness.md` · `ADR-070 (superado)` · `ADR-073 (propuesto)` · `ADR-078`
 - `docs/runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md` §5, §6, §7.3, §8, §10
 - `docs/runbooks/RUNBOOK-SEC-P1-VENTANA-EXPAND-CONTRACT-v1.0.md` §0.2, §4.3
 - `docs/runbooks/RUNBOOK-MEDIA-MINIO-v1.0.md`

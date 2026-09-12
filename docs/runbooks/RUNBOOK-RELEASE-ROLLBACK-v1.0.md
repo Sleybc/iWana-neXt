@@ -2,14 +2,16 @@
 
 **Tipo:** Runbook operativo
 **Módulo:** TRANSVERSAL — Plataforma / release / recuperación
-**Versión:** 1.2
-**Fecha:** 2026-08-08 (v1.1: 2026-08-02; v1.0: 2026-07-30)
+**Versión:** 1.4
+**Fecha:** 2026-09-12 (v1.3: 2026-09-12; v1.2: 2026-08-08; v1.1: 2026-08-02; v1.0: 2026-07-30)
 **Autor:** AI-PLAT-OPS
-**Estado:** Documentado; **no autoriza producción**. Desde 2026-08-01 existe evidencia ejecutada de **reversibilidad de migraciones** (revert public 020 y revert tenant 099 con re-aplicación, ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md)). El ensayo de rollback por componente/imagen y las pruebas de restore global/tenant siguen pendientes.
-**Cambio v1.0 → v1.1 (2026-08-02):** reencuadre por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md). El expediente de dominio productivo y TLS pasa de **`BLOQUEADO — STOP/NO-GO`** a **`DIFERIDO — sin trabajo en curso`**: no hay decisión detenida esperando al CTO, hay una decisión tomada de no abordarlo hasta que se cumpla el disparador de reactivación. **Ningún procedimiento cambia** — §5, §6 y §8 se conservan íntegros como insumo de la reactivación.
+**Estado:** Documentado; **no autoriza producción**. Desde 2026-08-01 existe evidencia ejecutada de **reversibilidad de migraciones** (revert public 020 y revert tenant 099 con re-aplicación, ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md)). El ensayo de rollback por componente/imagen y las pruebas de restore global/tenant siguen pendientes; la capacidad de backup/restore por tenant existe desde 2026-09-12 (§6.2–§6.3), su ensayo de aceptación fue cerrado por AI-SR-QA el 2026-09-12 (**GO-CON-ENMIENDAS**) y el hallazgo H-1 —grants de runtime al schema restaurado— queda documentado como paso obligatorio en §6.3.
+**Cambio v1.0 → v1.1 (2026-08-02):** reencuadre por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado). El expediente de dominio productivo y TLS pasa de **`BLOQUEADO — STOP/NO-GO`** a **`DIFERIDO — sin trabajo en curso`**: no hay decisión detenida esperando al CTO, hay una decisión tomada de no abordarlo hasta que se cumpla el disparador de reactivación. **Ningún procedimiento cambia** — §5, §6 y §8 se conservan íntegros como insumo de la reactivación.
 **Cambio v1.1 → v1.2 (2026-08-08):** el overlay productivo inyecta explícitamente las variables ya consumidas por API, worker y migrator. `api-prod` y `worker-prod` esperan tanto `migrator-prod` como el bootstrap one-shot `minio-init`; el procedimiento incorpora esa espera sin cambiar la topología Compose.
+**Cambio v1.2 → v1.3 (2026-09-12):** §6.2 y §6.3 citan los comandos versionados `pnpm db:backup:tenant` / `pnpm db:restore:tenant` ([SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0](../specs/SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0.md), contrato congelado) y declaran el sidecar `.tenant.json` como parte del artefacto de backup por tenant. Ningún otro procedimiento cambia.
+**Cambio v1.3 → v1.4 (2026-09-12):** cierra el hallazgo H-1 del ensayo de aceptación T2 (GO-CON-ENMIENDAS) del [plan de restore por tenant](../plans/2026-09-12-plat-ops-restore-por-tenant.md): §6.3 añade el paso obligatorio post-restore de re-aplicación de grants de runtime al schema restaurado y §6.2 advierte que el dump no transporta ACLs. El contrato de la herramienta ([SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0](../specs/SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0.md)) no cambia.
 
-> **Cómo leer este runbook hoy.** Todos sus procedimientos son correctos y ejecutables, pero **ninguno está planificado**: el programa está en construcción modular y no va a producción ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)). Lo que aquí figura como "pendiente" es **condición de un release futuro**, no trabajo atrasado. Se reactiva con el disparador de ADR-070 — en particular, y sin excepción, si se procesa PII de personas reales aunque el entorno no se llame producción.
+> **Cómo leer este runbook hoy.** Todos sus procedimientos son correctos y ejecutables, pero **ninguno está planificado**: el programa está en construcción modular y no va a producción ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)). Lo que aquí figura como "pendiente" es **condición de un release futuro**, no trabajo atrasado. Se reactiva con el disparador de ADR-070 — en particular, y sin excepción, si se procesa PII de personas reales aunque el entorno no se llame producción.
 **R3:** R3.4
 **Referencias:** [Plan de remediación G6, R3.1–R3.5](../plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md) · [Protocolo de colaboración §2, §4 y §6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) · [Stack tecnológico](../prds/Stack_Tecnologico.md) · [Migraciones DB](RUNBOOK-DB-MIGRATIONS-v1.1.md) · [Least privilege](RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)
 
@@ -55,7 +57,7 @@ Un release sin go de G7, sin rollback declarado o sin backup/restore verificable
 
 ### 1.2 Condiciones pendientes de un release aún no planificado
 
-> **Reencuadre v1.1 ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)):** estos cuatro puntos se listaban como *"bloqueos conocidos"*. No bloquean nada hoy — son **condiciones de entrada de un release que no está planificado**. Permanecen visibles porque deben cumplirse antes del primer despliegue, no porque haya trabajo detenido.
+> **Reencuadre v1.1 ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)):** estos cuatro puntos se listaban como *"bloqueos conocidos"*. No bloquean nada hoy — son **condiciones de entrada de un release que no está planificado**. Permanecen visibles porque deben cumplirse antes del primer despliegue, no porque haya trabajo detenido.
 
 Estos puntos no se resuelven en este commit y deben permanecer visibles en el registro de release:
 
@@ -107,7 +109,7 @@ El segundo comando solo registra el SHA en el acta; no registrar el contenido de
 - `config --quiet` termina con código `0`.
 - Todos los secretos son inyectados por el mecanismo operativo aprobado; no están en imágenes, Compose, workflows ni logs.
 - El dominio productivo y el certificado de CA reconocida están definidos/provisionados para R3.5. El autofirmado de `scripts/generate-certs.ps1` solo es válido para desarrollo o staging cerrado.
-- `CORS_ORIGIN` y `FRONTEND_URL` están definidas en `.env.production` con el FQDN aprobado. Con `NODE_ENV=production` la API las exige y rechaza cualquier valor `localhost`/`127.0.0.1`: **`api-prod` no arranca sin ellas**, por diseño (riesgos 1 y 2 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)). El fallo es explícito en el log de arranque, no silencioso.
+- `CORS_ORIGIN` y `FRONTEND_URL` están definidas en `.env.production` con el FQDN aprobado. Con `NODE_ENV=production` la API las exige y rechaza cualquier valor `localhost`/`127.0.0.1`: **`api-prod` no arranca sin ellas**, por diseño (riesgos 1 y 2 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)). El fallo es explícito en el log de arranque, no silencioso.
 - Las variables requeridas están completas en el mecanismo de inyección aprobado: `DB_BOOTSTRAP_*`/`DB_APP_*`/`DB_MIGRATOR_*`, `MINIO_ROOT_*`, `S3_*`, `TYPESENSE_*`, `JWT_*`, `PII_HASH_KEY`, `MFA_ENCRYPTION_KEY`, `EXECUTION_ORDER_IDEMPOTENCY_SECRET` y, si se entrega correo real, `SMTP_*`. Durante una rotación de cifrado, incluir temporalmente `MFA_ENCRYPTION_KEY_PREVIOUS`; retirarla al verificar el recifrado. Nunca registrar sus valores.
 - Existe un backup previo con checksum y restore verificado. Si no existe la evidencia, declarar **NO-GO**.
 - El rollback es compatible con el estado de datos. Una migración irreversible o no probada impide avanzar.
@@ -285,7 +287,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
 
 4. Verificar carga por Nginx y smoke de QA. No borrar volúmenes.
 
-> **Interacción entre las variables de URL del API por aplicación y el rollback por digest** (riesgo 3 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)).
+> **Interacción entre las variables de URL del API por aplicación y el rollback por digest** (riesgo 3 de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)).
 >
 > `NEXT_PUBLIC_WEB_API_URL` y `NEXT_PUBLIC_PORTAL_API_URL` **no son variables de runtime de web/portal**: cada una se bakea en el bundle de su aplicación en tiempo de build (`ARG NEXT_PUBLIC_WEB_API_URL` en `apps/web/Dockerfile` y `ARG NEXT_PUBLIC_PORTAL_API_URL` en `apps/portal/Dockerfile`, alimentados por `build.args` en `docker-compose.prod.yml`). El contenedor solo recibe `NODE_ENV` en `environment`. Consecuencias operativas al ejecutar este paso:
 >
@@ -396,7 +398,18 @@ La existencia del dump, su checksum y `pg_restore --list` **no equivalen** a un 
 
 ### 6.2 Backup por tenant
 
-Obtener el schema desde `public.tenants`; nunca derivarlo de un slug recibido directamente ni concatenar input sin validación:
+Ruta canónica: el comando versionado `pnpm db:backup:tenant --tenant <uuid|slug>` ([SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0](../specs/SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0.md) §3.1). El comando resuelve el schema consultando `public.tenants` por uuid o slug — **nunca** lo deriva del argumento ni concatena input sin validar — y lo valida contra `^tenant_[a-z][a-z0-9_]{0,54}$` reutilizando el validador de `@iwana/db` (requiere `pnpm --filter @iwana/db build` previo). Ante tenant inexistente, identificador ambiguo o schema que no valida, aborta sin generar artefactos. No filtra por estado del tenant: un tenant suspendido o marcado para eliminación también se puede respaldar (el sidecar conserva su `status`).
+
+Genera dos artefactos correlacionados en `BACKUP_DIR` (default `<repo>/.backups`, ignorado por git):
+
+- `<schema_name>-<utc>.dump` — `pg_dump --schema=<resuelto> --format=custom --no-owner --no-privileges`;
+- `<schema_name>-<utc>.tenant.json` — **sidecar** con la fila de `public.tenants` del tenant.
+
+El dump se genera con `--no-owner --no-privileges`: no transporta ACLs de runtime. Tras un restore en la base destino hay que re-aplicarlas antes de declararlo operativo — ver el paso post-restore de §6.3.
+
+**El sidecar es parte del artefacto.** Un backup tenant no contiene por sí solo la fila de `public.tenants`, ni garantiza objetos globales requeridos por la aplicación: sin el sidecar, el dump restaurado queda como schema huérfano, la aplicación no puede resolver el tenant y el `TenantMiddleware` lo rechaza. `db:restore:tenant` rechaza un dump sin sidecar; `pg_dump` en `0` no convierte el backup en completo si el sidecar no se escribió. Conservar dump + sidecar juntos, con su checksum. Recuperar un tenant completo requiere, además, el backup global compatible.
+
+Equivalente manual (solo como referencia de lo que ejecuta el comando; el sidecar debe generarse a partir de la misma fila):
 
 ```sql
 SELECT id, slug, schema_name, status
@@ -404,8 +417,6 @@ FROM public.tenants
 WHERE id = '<tenant-id-ya-autorizado>'
   AND status = 'ACTIVE';
 ```
-
-El valor debe cumplir el contrato de schemas tenant `^tenant_[a-z][a-z0-9_]{0,54}$`. Con el `schema_name` verificado por el operador, ejecutar:
 
 ```bash
 pg_dump \
@@ -415,8 +426,6 @@ pg_dump \
   --format=custom --no-owner --no-privileges \
   --file="/secure-backups/<release-id>/<schema_name_verificado>-<utc>.dump"
 ```
-
-Un backup tenant no contiene por sí solo la fila de `public.tenants`, ni garantiza objetos globales requeridos por la aplicación. Para recuperar un tenant completo se deben conservar ambos: el backup tenant y el backup global compatible.
 
 ### 6.3 Restore y criterios de evidencia
 
@@ -433,7 +442,24 @@ pg_restore --exit-on-error --no-owner --no-privileges \
   "/secure-backups/<release-id>/postgres-global-<utc>.dump"
 ```
 
-**Restore tenant de ensayo:** restaurar el dump en una base aislada y comprobar que existe únicamente el schema objetivo. En una base productiva, un reemplazo de schema requiere ventana, bloqueo de escrituras del tenant, backup previo y autorización CTO; `DROP SCHEMA ... CASCADE` nunca se ejecuta como atajo.
+**Restore tenant de ensayo:** `pnpm db:restore:tenant --file <ruta.dump> --into <base-destino>` exige el dump y su sidecar juntos. Por defecto opera en modo ensayo: la base destino debe ser distinta de `DB_NAME`; restaurar sobre la base de origen exige `--force-same-database` y confirmación interactiva tecleando el schema. El comando:
+
+1. toma el schema del dump **y** del sidecar (nunca de un argumento), verifica que ambos coincidan y que validen `^tenant_[a-z][a-z0-9_]{0,54}$`;
+2. reinyecta la fila de `public.tenants` desde el sidecar cuando la base destino tiene el registro de la plataforma; sin sidecar — o con checksum que no corresponde al dump — aborta con mensaje accionable en vez de dejar un schema huérfano;
+3. si el schema ya existe en destino, aborta e indica el procedimiento con ventana de esta misma sección: no elimina schemas ni ejecuta un reemplazo destructivo;
+4. emite un resumen sanitizado: duración, sha256 del dump, base destino, schema restaurado y conteo de tablas, sin filas de negocio.
+
+En una base productiva, un reemplazo de schema requiere ventana, bloqueo de escrituras del tenant, backup previo y autorización CTO; `DROP SCHEMA ... CASCADE` nunca se ejecuta como atajo, y el nombre del schema debe liberarse bajo ese procedimiento antes de reintentar el restore.
+
+**Paso obligatorio post-restore — grants de runtime al schema restaurado (hallazgo H-1 del ensayo T2, 2026-09-12).** El dump es `--no-owner --no-privileges`: el schema restaurado no hereda ACLs y `iwana_app` conecta pero falla con `permission denied for schema <schema>`. Antes de declarar el restore operativo o verificado, re-aplicar least privilege en la base destino:
+
+```bash
+DB_NAME="<base-destino>" pnpm db:apply-least-privilege
+```
+
+Aplica el bloque SEC-04 (`scripts/db/apply-least-privilege.sql`, idempotente) sobre `public` y todos los schemas `tenant_%` de esa base: ownership DDL para `iwana_migrator`, `USAGE` y DML/secuencias para `iwana_app`, y harden de `audit_logs`. Es el mismo contenido que el provisioning aplica por schema nuevo vía `grantTenantSchemaAppPrivileges` de `@iwana/db` (`packages/database/src/tenant-schema-app-grants.ts`); este comando es la vía operativa para un schema restaurado. Los roles son de cluster: en staging/producción deben existir con passwords propios ([RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md](RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md) — Staging / producción).
+
+Verificación mínima con `DB_APP_USER`/`DB_APP_PASSWORD`: `has_schema_privilege(current_user,'<schema>','USAGE')` = `true`, `has_schema_privilege(current_user,'<schema>','CREATE')` = `false` y `SELECT`/DML sobre una tabla del schema. Sin este paso, el criterio «se conecta la API con el usuario de runtime» falla aunque `pg_restore` haya terminado en `0` y el schema exista.
 
 **Criterios de PASS del restore:**
 
@@ -442,6 +468,7 @@ pg_restore --exit-on-error --no-owner --no-privileges \
 - `public.tenants` conserva el inventario esperado en el restore global;
 - las tablas de migraciones y el estado esperado están presentes;
 - se conecta la API con el usuario de runtime sin privilegios de migración;
+- los grants de runtime del schema restaurado fueron re-aplicados y verificados (paso post-restore);
 - una transacción tenant aplica `SET LOCAL search_path` al schema aprobado y se revierte al fallar;
 - healthcheck y smoke funcionan sin cruzar tenants;
 - se registra duración, checksum, base destino no productiva y operador, sin datos de negocio.
@@ -554,17 +581,17 @@ El `dry-run` solo es evidencia de la ruta de renovación del cliente ACME; no pr
 
 ### 8.5 Estado R3.5
 
-**DIFERIDO** por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado, CTO 2026-08-02). Siguen sin cubrir dominio/proveedor, emisión, renovación ensayada, reload evidenciado y handshake público — y así deben permanecer hasta la reactivación. La presencia de un archivo autofirmado local, si existiera, no satisface R3.5 en ningún caso.
+**DIFERIDO** por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) (Aprobado, CTO 2026-08-02). Siguen sin cubrir dominio/proveedor, emisión, renovación ensayada, reload evidenciado y handshake público — y así deben permanecer hasta la reactivación. La presencia de un archivo autofirmado local, si existiera, no satisface R3.5 en ningún caso.
 
 ### 8.6 Expediente TLS — diferido, con insumos conservados
 
-**Estado:** **DIFERIDO POR [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) — sin trabajo en curso.**
+**Estado:** **DIFERIDO POR [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — sin trabajo en curso.**
 
-> **Reencuadre v1.1 (2026-08-02).** Esta sección estaba marcada `BLOQUEADO — STOP/NO-GO`, un estado de emergencia operativa que se leía como trabajo detenido esperando al CTO. **No lo hay.** El CTO decidió el 2026-08-02 no abordar la definición del dominio productivo hasta que se cumpla el disparador de reactivación de ADR-070: cierre del roadmap modular, necesidad de un entorno externo, o —sin excepción— procesamiento de PII de personas reales. Todo el análisis de abajo se **conserva íntegro** como insumo de esa reactivación; nada de esto caduca.
+> **Reencuadre v1.1 (2026-08-02).** Esta sección estaba marcada `BLOQUEADO — STOP/NO-GO`, un estado de emergencia operativa que se leía como trabajo detenido esperando al CTO. **No lo hay.** El CTO decidió el 2026-08-02 no abordar la definición del dominio productivo hasta que se cumpla el disparador de reactivación de ADR-070 (superado): cierre del roadmap modular, necesidad de un entorno externo, o —sin excepción— procesamiento de PII de personas reales. Todo el análisis de abajo se **conserva íntegro** como insumo de esa reactivación; nada de esto caduca.
 
 **Al reactivar, la primera pregunta es el hosting**, no el dominio: ACME HTTP-01 exige el puerto 80 alcanzable desde Internet, y esa condición determina cuál de las tres opciones es viable. El CTO ya declaró disponer de un dominio de marca en uso para marketing, así que la opción por defecto es un subdominio de ese dominio (`app.…`, `portal.…`) y no hay paso de registro.
 
-> **Registro histórico — decisión del CTO del 2026-07-31** *(superada en su forma por ADR-070, vigente en su contenido técnico)*: el CTO autorizó diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. QA-34/TLS no bloquea G6 ni G6.5; **bloquea G7** hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado. QA-34 queda en el checklist de calidad como `DIFERIDO`.
+> **Registro histórico — decisión del CTO del 2026-07-31** *(superada en su forma por ADR-070 (superado), vigente en su contenido técnico)*: el CTO autorizó diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. QA-34/TLS no bloquea G6 ni G6.5; **bloquea G7** hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado. QA-34 queda en el checklist de calidad como `DIFERIDO`.
 
 #### Opciones evaluadas (insumo de reactivación)
 
@@ -614,7 +641,7 @@ Escalar inmediatamente a AI-EM-ARCH y, si toca seguridad, a AI-SEC-ENG cuando ha
 
 ## 10. Checklist de go/no-go
 
-> **No aplica hasta la reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md).** Las casillas sin marcar no son deuda atrasada: son las condiciones de un release que aún no se planifica. La única marcada —reversibilidad de migraciones, 2026-08-01— se conserva como evidencia válida. Cuando se reactive, este checklist se recorre entero desde cero.
+> **No aplica hasta la reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado).** Las casillas sin marcar no son deuda atrasada: son las condiciones de un release que aún no se planifica. La única marcada —reversibilidad de migraciones, 2026-08-01— se conserva como evidencia válida. Cuando se reactive, este checklist se recorre entero desde cero.
 
 - [ ] G7: recomendación de AI-EM-ARCH y aprobación CTO registradas.
 - [ ] SHA/digests y rollback por componente registrados.

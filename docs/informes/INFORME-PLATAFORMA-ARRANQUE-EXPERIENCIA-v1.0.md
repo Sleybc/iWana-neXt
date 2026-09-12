@@ -76,7 +76,7 @@ Detalle completo en el HLD §4 y en ADR-079. Resumen para lectura rápida:
 | D1 | Un shape de estado, dos productores | Terminal y navegador muestran el mismo progreso por construcción, no por convención |
 | D2 | La pantalla la sirve el proxy, no el framework | Una ruta del framework no puede renderizar su propia ausencia |
 | D3 | El defecto de proxy en desarrollo se evita, no se corrige | Corregirlo exige reexponer PII — prohibido por [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* |
-| D4 | El proxy de producción deja de esperar a que todo esté sano — **aprobada, ejecución diferida** | Hoy no arranca hasta después de las migraciones, que es justo lo que hay que mostrar. Pero tampoco hay entorno donde comprobarlo: se difiere al disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) |
+| D4 | El proxy de producción deja de esperar a que todo esté sano — **aprobada, ejecución diferida** | Hoy no arranca hasta después de las migraciones, que es justo lo que hay que mostrar. Pero tampoco hay entorno donde comprobarlo: se difiere al disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) |
 | D5 | La superficie de estado se diseña como hostil | Es pre-autenticación: silencio en régimen estable, vocabulario genérico, nada de reconocimiento |
 | D6 | El instalador no puede cerrar con credenciales | Bloqueo real derivado del invariante de [ADR-057](../adrs/ADR-057-Credenciales-Iniciales-Por-Tenant.md) |
 
@@ -143,9 +143,9 @@ Opciones, recomendación y decisión requerida: [DECISION-BLOQUEO-ADMIN-BOOTSTRA
 
 ### G1 — cumplido el 2026-08-09
 
-El CTO aprobó **ADR-079** con alcance declarado: **seis decisiones vigentes de inmediato y la Decisión 4 con ejecución diferida** al disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md).
+El CTO aprobó **ADR-079** con alcance declarado: **seis decisiones vigentes de inmediato y la Decisión 4 con ejecución diferida** al disparador de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado).
 
-**Motivo del diferimiento**, verificado antes de la firma: `docker-compose.e2e.yml` no incluye proxy ni contenedores de aplicación, y los marcadores de dominio de la configuración de producción deben conservarse intactos por ADR-070 §Decisión 2. En consecuencia, tres criterios de la fase —que el proxy arranque sin upstreams, que la raíz responda durante las migraciones y que el contenedor no se declare sano antes de tiempo— **no son observables hoy**. Ejecutar la decisión obligaría a declararlos cumplidos sin verlos: evidencia ficticia.
+**Motivo del diferimiento**, verificado antes de la firma: `docker-compose.e2e.yml` no incluye proxy ni contenedores de aplicación, y los marcadores de dominio de la configuración de producción deben conservarse intactos por ADR-070 (superado) §Decisión 2. En consecuencia, tres criterios de la fase —que el proxy arranque sin upstreams, que la raíz responda durante las migraciones y que el contenedor no se declare sano antes de tiempo— **no son observables hoy**. Ejecutar la decisión obligaría a declararlos cumplidos sin verlos: evidencia ficticia.
 
 **Efecto operativo:** la fase F4 se parte en **F4a** (desarrollo, abierta) y **F4b** (producción, cerrada hasta el disparador). **Las demás fases quedan habilitadas y F0 puede arrancar.**
 
@@ -155,7 +155,7 @@ El CTO aprobó **ADR-079** con alcance declarado: **seis decisiones vigentes de 
 | --- | --- |
 | Alcance | Decisión 4 de ADR-079 · fase F4b |
 | Naturaleza | **Decisión de secuencia aprobada por el CTO. No es bloqueo ni deuda** |
-| Condición de apertura | Disparador de reactivación de ADR-070 — no calendario |
+| Condición de apertura | Disparador de reactivación de ADR-070 (superado) — no calendario |
 | Quién abre | AI-EM-ARCH, de forma explícita, actualizando encabezado de F4b, tablero e informe |
 | Impacto en el cierre | El frente alcanza G6 y G6.5 sin F4b, declarando **entrega parcial por diferimiento aprobado**. G7 no aplica |
 

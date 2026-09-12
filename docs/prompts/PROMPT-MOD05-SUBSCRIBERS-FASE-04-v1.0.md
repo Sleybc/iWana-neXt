@@ -254,4 +254,4 @@ Cada informe registra: entregables, evidencia de gates, **cobertura con conteo r
 
 **GO — Ola B cierra cuando:** se cumplen los criterios restantes de §8 del PRD, el spec guardián de OpenAPI está en verde y la migración aplicó y revirtió limpiamente sobre un schema de tenant.
 
-**GO — cierre de módulo:** DoD §10 del PRD completo, con **G6 y G6.5 registrados por separado**. G7 permanece diferido por ADR-070; su ausencia **no es deuda**.
+**GO — cierre de módulo:** DoD §10 del PRD completo, con **G6 y G6.5 registrados por separado**. G7 permanece diferido por ADR-070 (superado); su ausencia **no es deuda**.

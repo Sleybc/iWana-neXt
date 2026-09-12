@@ -128,7 +128,7 @@ el schema del tenant por transacción, con o sin pooler.
 **Opción A**, con la validación bajo carga como condición de entrada y no como
 trabajo posterior. El motivo es de secuencia, no de preferencia: consumir el
 pooler es reversible y el momento de menor coste es ahora, con el programa aún
-sin producción ([ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) mantiene G7
+sin producción ([ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) mantiene G7
 diferido). Retirarlo también es reversible, pero su reintroducción caería en el
 peor momento posible — con carga real y datos de tenants reales.
 
@@ -173,4 +173,4 @@ Si el CTO elige B, la reescritura de la justificación en `AGENTS.md` y
 - `docker-compose.yml:78-99` — definición del servicio
 - `docker-compose.prod.yml:100`, `:229`, `:280` — los tres consumidores que lo esquivan
 - `AGENTS.md:124`, `:254` · `CLAUDE.md:111` — la premisa a corregir
-- [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) — G7 diferido; hoy no hay producción que interrumpir
+- [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — G7 diferido; hoy no hay producción que interrumpir

@@ -3,12 +3,12 @@
 **Versión:** 1.0
 **Estado:** Aprobado
 **Fecha:** 2026-08-05
-**Aprobado por:** CTO Humano — 2026-09-12, sin cambios de contenido. El CTO confirmó que existe PII de personas reales en el entorno, que es el disparador 3 de ADR-070 («no negociable»). Con esta aprobación, ADR-070 queda **Superado** y su diferimiento sin efecto.
+**Aprobado por:** CTO Humano — 2026-09-12, sin cambios de contenido. El CTO confirmó que existe PII de personas reales en el entorno, que es el disparador 3 de ADR-070 (superado) («no negociable»). Con esta aprobación, ADR-070 queda **Superado** y su diferimiento sin efecto.
 **Modo activo:** Architect + EM
 **Autor:** AI-EM-ARCH
 **Aprobación requerida:** CTO
 **Módulos:** Plataforma transversal · MOD05 CRM · MOD09 · MOD11
-**Sucede a:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) — se marcará `Superado` **solo** cuando este ADR quede aprobado
+**Sucede a:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — se marcará `Superado` **solo** cuando este ADR quede aprobado
 **Relacionado:** [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía de gates) · [ADR-058](ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) (cifrado PII/MFA)
 **Evidencia:** [INFORME-PLAT-OPS-G7-FASE-01-v1.0.md](../informes/INFORME-PLAT-OPS-G7-FASE-01-v1.0.md) §6
 
@@ -16,7 +16,7 @@
 
 ## Contexto
 
-ADR-070 difirió formalmente la definición del dominio productivo y fijó tres disparadores
+ADR-070 (superado) difirió formalmente la definición del dominio productivo y fijó tres disparadores
 de reactivación. El tercero es **no negociable**: *"Se procesa PII de personas reales,
 aunque el entorno no se llame producción"*.
 
@@ -27,7 +27,7 @@ identificable**.
 ### El disparador 3 está activo
 
 Con esa determinación, la reapertura deja de ser una decisión de calendario y pasa a ser
-una condición ya cumplida del propio ADR-070. No requiere que el roadmap modular termine
+una condición ya cumplida del propio ADR-070 (superado). No requiere que el roadmap modular termine
 ni que exista un entorno externo: los disparadores son independientes entre sí.
 
 ### Hechos técnicos verificados (dictamen AI-SEC-ENG, 2026-08-05)
@@ -55,7 +55,7 @@ requiere sofisticación para explotarse.
 | S-2 | PII en `audit_logs` **append-only por trigger**: nombre del titular por llamada directa que evade el interceptor, y `latitude`/`longitude` ausentes de la denylist, con escritura del 2026-08-03. **No es borrable por la vía normal** | **Alta** |
 | S-3 | Identidad, domicilio, fecha de nacimiento y geolocalización sin cifrar; `subscribers.nit` en claro bajo columna `VARCHAR(500)` que aparenta ser cifrada | Media |
 | S-4 | ADR-058 fase 2 (`PII_ENCRYPTION_KEY` separada de `MFA_ENCRYPTION_KEY`) aprobada y sin ejecutar | Media |
-| S-5 | `rejectUnauthorized: false` en TLS hacia la base — **séptimo riesgo congelado que ADR-070 no registra** | Media (Alta al reactivar) |
+| S-5 | `rejectUnauthorized: false` en TLS hacia la base — **séptimo riesgo congelado que ADR-070 (superado) no registra** | Media (Alta al reactivar) |
 
 ### Base legal del tratamiento — declaración del CTO
 
@@ -79,7 +79,7 @@ emite juicio legal.
 ## Decisión
 
 **Se reabre el expediente de dominio productivo** por activación del disparador 3 de
-ADR-070. El diferimiento queda sin efecto **al aprobarse este ADR**, no antes.
+ADR-070 (superado). El diferimiento queda sin efecto **al aprobarse este ADR**, no antes.
 
 ### D1. TLS deja de ser prerrequisito de release y pasa a ser control de protección
 
@@ -128,16 +128,16 @@ sido verificado con fuente oficial.
 decisión pendiente, y S-2 empeora con el tiempo porque `audit_logs` es inmutable — cada
 sesión de trabajo añade filas que no podrán borrarse.
 
-### D4. Los ensayos diferidos por ADR-070 §4 se reactivan
+### D4. Los ensayos diferidos por ADR-070 (superado) §4 se reactivan
 
-ADR-070 difirió restore global, restore por tenant y rollback por digest con el argumento
+ADR-070 (superado) difirió restore global, restore por tenant y rollback por digest con el argumento
 de que su evidencia caducaría antes de usarse. **Ese argumento deja de aplicar**: existe un
 titular real cuyo dato no es reproducible, y hoy no hay backup ni restore ensayado. Un
 fallo del volumen `iwana_postgres_data_dev` lo destruiría sin recuperación.
 
 ### D5. Se registra S-5 como riesgo congelado omitido
 
-ADR-070 §Riesgos congelados enumera seis. `rejectUnauthorized: false` en
+ADR-070 (superado) §Riesgos congelados enumera seis. `rejectUnauthorized: false` en
 `packages/database/src/data-source.ts` es el séptimo y no figuraba. Queda incorporado aquí
 para que la reapertura no lo pierda.
 
@@ -193,7 +193,7 @@ el único estado que no es defendible ante una reclamación.
 **Positivas**
 
 - El disparador 3 cumple su función: convirtió una omisión potencial en una decisión
-  explícita, que es exactamente para lo que ADR-070 lo creó.
+  explícita, que es exactamente para lo que ADR-070 (superado) lo creó.
 - La prioridad queda ordenada por riesgo real y no por secuencia de roadmap.
 - S-1 y S-2 salen a la luz antes de que el volumen de datos crezca.
 
@@ -202,7 +202,7 @@ el único estado que no es defendible ante una reclamación.
 - El foco del programa se desvía parcialmente del roadmap modular, contra la cadencia de
   ADR-022. Es consecuencia aceptada de una obligación que no admite calendario.
 - Las seis decisiones de infraestructura se toman antes de que el producto esté completo,
-  que es justo lo que ADR-070 quería evitar. El disparador 3 tiene precedencia sobre esa
+  que es justo lo que ADR-070 (superado) quería evitar. El disparador 3 tiene precedencia sobre esa
   preferencia.
 
 **Riesgos**
@@ -245,7 +245,7 @@ el único estado que no es defendible ante una reclamación.
 
 | Alternativa | Motivo |
 | --- | --- |
-| **Mantener el diferimiento** | El disparador 3 ya se cumplió. Mantenerlo sería desactivar un control que el propio ADR-070 declaró no negociable |
+| **Mantener el diferimiento** | El disparador 3 ya se cumplió. Mantenerlo sería desactivar un control que el propio ADR-070 (superado) declaró no negociable |
 | **Apagar el entorno hasta tener TLS** | Desproporcionado: la exposición es intermitente y condicional al segmento de red. P0 obtiene la mayor parte de la reducción a coste casi nulo |
 | **Priorizar la infraestructura antes que S-1 y S-2** | S-1 y S-2 no dependen de ninguna decisión pendiente y S-2 empeora cada día por la inmutabilidad de `audit_logs` |
 | **Purgar el dato del titular para desactivar el disparador** | No es decisión de arquitectura, es del CTO y del titular; y no resolvería S-1 ni S-2 para el siguiente registro |
@@ -255,7 +255,7 @@ el único estado que no es defendible ante una reclamación.
 ## Referencias
 
 - AGENTS.md
-- [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) · [ADR-058](ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md)
+- [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) · [ADR-058](ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md)
 - [INFORME-PLAT-OPS-G7-FASE-01-v1.0.md](../informes/INFORME-PLAT-OPS-G7-FASE-01-v1.0.md)
 - [PROMPT-PLAT-OPS-G7-AUTORIZACION-PRODUCCION-v1.0.md](../prompts/PROMPT-PLAT-OPS-G7-AUTORIZACION-PRODUCCION-v1.0.md)
 - [RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md](../runbooks/RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md)

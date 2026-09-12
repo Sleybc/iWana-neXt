@@ -6,7 +6,7 @@
 **Modo activo:** EM + Product Architect
 **Autor:** AI-EM-ARCH
 **Ejecuta:** paso 4 del plan de migración de [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) (Aprobado por el CTO, 2026-08-09)
-**Relacionado:** [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md) (enmendado) · [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)
+**Relacionado:** [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md) (enmendado) · [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)
 **PRD:** [PRD_Sistema_ISP_Colombia_v2_4.md](../prds/PRD_Sistema_ISP_Colombia_v2_4.md) §12.3.2, §14.1bis, §14.2
 
 ---
@@ -173,7 +173,7 @@ El cierre formal de C-8 y C-10 ([INFORME-TRANSVERSAL §8](../informes/INFORME-TR
 
 | Deuda | Severidad | Dueño | Fecha de revisión |
 | --- | --- | --- | --- |
-| **CSP del API vía `helmet` no alineada** con la CSP de las apps — `helmet()` protege solo las respuestas del API (JSON) y su política no incluye `frame-ancestors 'none'` ni el baseline emitido por las apps en su HTML | Media — pre-existente, no bloqueante | **AI-PLAT-OPS** | **REVISADA el 2026-08-09 en la ejecución de OLA1-b** → decisión registrada: **DIFERIR** (el API sirve JSON; alinear implicaría tocar `main.ts`, fuera de alcance; riesgo bajo pre-existente). Re-evaluación programada con la habilitación del dominio productivo (ADR-070/078). Detalle: [INFORME-OLA1B-FASE-SESION-COOKIE-v1.0.md](../informes/INFORME-OLA1B-FASE-SESION-COOKIE-v1.0.md) §6 |
+| **CSP del API vía `helmet` no alineada** con la CSP de las apps — `helmet()` protege solo las respuestas del API (JSON) y su política no incluye `frame-ancestors 'none'` ni el baseline emitido por las apps en su HTML | Media — pre-existente, no bloqueante | **AI-PLAT-OPS** | **REVISADA el 2026-08-09 en la ejecución de OLA1-b** → decisión registrada: **DIFERIR** (el API sirve JSON; alinear implicaría tocar `main.ts`, fuera de alcance; riesgo bajo pre-existente). Re-evaluación programada con la habilitación del dominio productivo (ADR-070 (superado)/078). Detalle: [INFORME-OLA1B-FASE-SESION-COOKIE-v1.0.md](../informes/INFORME-OLA1B-FASE-SESION-COOKIE-v1.0.md) §6 |
 | Hardening de CSP con nonces (`proxy.ts` + renderizado dinámico) | Media — mejora futura habilitada por ADR-081 | AI-FE-PLATFORM | **REVISADA el 2026-08-09 en la ejecución de OLA1-b** → decisión registrada: **DIFERIR al paso 2** de la migración en dos pasos de ADR-081 (exige `proxy.ts` + renderizado dinámico). Detalle: informe de fase §6 |
 | Revisión de CSP ante CDN futuro | Baja | AI-PLAT-OPS | Ante cualquier cambio de topología que introduzca CDN |
 

@@ -14,13 +14,13 @@
 
 **Esta fase no está abierta.** El CTO aprobó [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) el 2026-08-09 con la **Decisión 4 de ejecución diferida**. Este prompt existe para que el trabajo esté definido y listo, no para que se ejecute hoy.
 
-**Condición de apertura — una sola, y no es de calendario:** que se active el **disparador de reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)**. Cuando eso ocurra, AI-EM-ARCH abre esta fase explícitamente, actualiza su fila en el tablero y lo registra en el informe consolidado.
+**Condición de apertura — una sola, y no es de calendario:** que se active el **disparador de reactivación de [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)**. Cuando eso ocurra, AI-EM-ARCH abre esta fase explícitamente, actualiza su fila en el tablero y lo registra en el informe consolidado.
 
 **Por qué está diferida** (detalle en ADR-079 §Consecuencias → *"Por qué la Decisión 4 se difiere"*):
 
 1. `docker-compose.e2e.yml` **no incluye proxy ni contenedores de aplicación** — no existe entorno donde observar el arranque del proxy sin sus upstreams.
-2. `nginx/nginx.prod.conf` conserva los marcadores de dominio que **ADR-070 §Decisión 2 ordena mantener intactos**, y el gate de prerrequisitos de producción hace fallar un archivo de entorno productivo que aún los contenga. Resolverlos para poder probar sería *elegir dominio*, justo lo que ADR-070 difiere.
-3. En consecuencia, tres criterios de aceptación de esta fase **no son verificables hoy**. Ejecutarla obligaría a declararlos cumplidos sin observarlos: **evidencia ficticia**, prohibida por ADR-070 §Decisión 2.
+2. `nginx/nginx.prod.conf` conserva los marcadores de dominio que **ADR-070 (superado) §Decisión 2 ordena mantener intactos**, y el gate de prerrequisitos de producción hace fallar un archivo de entorno productivo que aún los contenga. Resolverlos para poder probar sería *elegir dominio*, justo lo que ADR-070 difiere.
+3. En consecuencia, tres criterios de aceptación de esta fase **no son verificables hoy**. Ejecutarla obligaría a declararlos cumplidos sin observarlos: **evidencia ficticia**, prohibida por ADR-070 (superado) §Decisión 2.
 
 **Nadie adelanta esta fase "porque la decisión ya está aprobada".** La decisión está aprobada; su ejecución no. Aplicar la relajación de dependencia sin poder comprobar la sustitución es la única forma en que esta decisión sí sería una regresión real de disponibilidad — riesgo **R8** de ADR-079.
 
@@ -50,7 +50,7 @@ Más: interceptado de errores de upstream con ubicación con nombre que sirve la
 
 **Lo que no entra:**
 
-- Definir dominio, hosting, autoridad certificadora, método de emisión de certificados, ventana operativa u objetivos de recuperación. **Eso es ADR-070 y sigue siendo del CTO.**
+- Definir dominio, hosting, autoridad certificadora, método de emisión de certificados, ventana operativa u objetivos de recuperación. **Eso es ADR-070 (superado) y sigue siendo del CTO.**
 - Terminación TLS, certificados o renovación.
 - Cambiar cualquier otra condición de dependencia.
 - Tocar el proxy de desarrollo — es F4a, ya cerrada.
@@ -61,7 +61,7 @@ Más: interceptado de errores de upstream con ubicación con nombre que sirve la
 
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §4.4, §7.1 R2 y R7
 - **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — **Decisión 4 completa con sus tres obligaciones**, §Estado de adopción por decisión, y §Consecuencias → *"Razón técnica que queda sustituida"*
-- **ADR:** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) — su disparador es la condición de apertura de esta fase
+- **ADR:** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — su disparador es la condición de apertura de esta fase
 - **Informes de F3 y F4a**, ambas cerradas
 - **Código vigente:** `nginx/nginx.prod.conf`, `docker-compose.prod.yml`, `scripts/nginx-config.test.mjs`
 
@@ -77,16 +77,16 @@ Más: interceptado de errores de upstream con ubicación con nombre que sirve la
 6. **Reescribir el comentario que justificaba la condición anterior**, en el mismo cambio. El comentario vigente explica que la condición se endureció porque el proxy devolvía error hasta que la aplicación abría su puerto. Esa razón queda **sustituida**, no invalidada: el error deja de ser observable porque se sirve la pantalla en su lugar. El comentario nuevo debe decir exactamente eso y citar ADR-079. **Relajar la condición dejando el comentario intacto es defecto bloqueante**: deja dos razones contradictorias vigentes en el mismo archivo.
 7. Montar el directorio de la pantalla en solo lectura en el proxy de producción.
 8. Ampliar `scripts/nginx-config.test.mjs`: la configuración de producción define la ubicación con nombre de la pantalla, el respaldo de estado y el resolutor; y el probe del contenedor de proxy **no** apunta a la raíz.
-9. **Conservar intactos los marcadores de dominio** de la configuración de producción. Esta fase no los resuelve ni siquiera temporalmente para probar: si al abrirse la fase el dominio ya está definido por ADR-070, se usará lo que ese ADR determine.
+9. **Conservar intactos los marcadores de dominio** de la configuración de producción. Esta fase no los resuelve ni siquiera temporalmente para probar: si al abrirse la fase el dominio ya está definido por ADR-070 (superado), se usará lo que ese ADR determine.
 
 ---
 
 ## 4. Restricciones no negociables
 
-1. **No ejecutar sin apertura explícita de AI-EM-ARCH** tras el disparador de ADR-070.
+1. **No ejecutar sin apertura explícita de AI-EM-ARCH** tras el disparador de ADR-070 (superado).
 2. **Las tres obligaciones son inseparables:** dependencia relajada, upstreams dinámicos y probe corregido. Entregar la primera sin la tercera es una **regresión real de disponibilidad**.
 3. **El comentario sustituido se reescribe en el mismo commit** que relaja la condición.
-4. **No definir dominio, hosting, autoridad certificadora ni objetivos de recuperación.** Es del CTO vía ADR-070.
+4. **No definir dominio, hosting, autoridad certificadora ni objetivos de recuperación.** Es del CTO vía ADR-070 (superado).
 5. **No cambiar ninguna otra condición de dependencia** de ninguna otra composición.
 6. **No añadir puertos publicados nuevos.**
 7. **Validar la composición de producción de forma silenciosa**, sin volcar su contenido: contiene secretos.
@@ -123,7 +123,7 @@ Los tres primeros son **los que hoy no se pueden verificar** y motivan el diferi
 - **CA-F4B-07** — El comentario sustituido está reescrito, cita ADR-079 y su texto anterior consta en el informe.
 - **CA-F4B-08** — La pantalla **deja** de servirse una vez el sistema está listo; no queda pegada.
 - **CA-F4B-09** — La validación de la composición de producción pasa sin imprimir secretos.
-- **CA-F4B-10** — Los marcadores de dominio siguen intactos, o resueltos conforme a lo que determine ADR-070.
+- **CA-F4B-10** — Los marcadores de dominio siguen intactos, o resueltos conforme a lo que determine ADR-070 (superado).
 - **CA-F4B-11** — Evidencia de suites con **`Cached: 0`**.
 
 ---
@@ -132,7 +132,7 @@ Los tres primeros son **los que hoy no se pueden verificar** y motivan el diferi
 
 **Detenerse inmediatamente si:**
 
-- La fase se abre sin que el disparador de ADR-070 se haya activado.
+- La fase se abre sin que el disparador de ADR-070 (superado) se haya activado.
 - La resolución dinámica de upstreams no consigue conservar el URI original → afecta a todas las rutas de API; **no se entrega una versión parcial**.
 - El probe no puede apuntar a la ruta de salud → **entonces la relajación de dependencia tampoco se entrega**.
 - Sigue sin existir un entorno donde observar CA-F4B-01, 02 y 03 → **la fase vuelve a cerrarse**; no se declaran cumplidos sin observarlos.
@@ -143,7 +143,7 @@ Los tres primeros son **los que hoy no se pueden verificar** y motivan el diferi
 
 ## 9. Criterio de salida de la fase
 
-- [ ] Disparador de ADR-070 activado y fase abierta por AI-EM-ARCH
+- [ ] Disparador de ADR-070 (superado) activado y fase abierta por AI-EM-ARCH
 - [ ] Las tres obligaciones entregadas en el mismo cambio
 - [ ] CA-F4B-01, 02 y 03 **observados**, no inferidos
 - [ ] Comentario sustituido reescrito, con texto anterior transcrito en el informe

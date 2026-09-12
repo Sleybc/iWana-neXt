@@ -8,7 +8,7 @@
 **Agentes destinatarios:** AI-PLAT-OPS (infraestructura, CI/CD, ensayos), AI-SR-FULL (defectos de configuración), AI-SEC-ENG (revisión TLS y exposición)
 **Revisor obligatorio:** AI-SR-QA
 **Autoridad de aprobación:** **CTO — exclusiva e indelegable** ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md))
-**ADRs de referencia:** [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) · [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)
+**ADRs de referencia:** [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) · [ADR-022](../adrs/ADR-022-Politica-Ejecucion-Modular-Por-Fases.md)
 **Insumos conservados:** [RUNBOOK-RELEASE-ROLLBACK-v1.0.md](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md) §5, §6, §8 · [plan suspendido](../plans/2026-08-01-mod11-g7-cierre-produccion.md)
 
 ---
@@ -22,11 +22,11 @@ authorization*: AI-EM-ARCH **recomienda** y el **CTO aprueba**. Ningún agente �
 AI-EM-ARCH— puede marcarlo GO. Este plan produce la evidencia que sostiene esa
 recomendación; la firma es del CTO.
 
-**ADR-070 está vigente y difiere estos prerrequisitos.** Trabajar contra él sin
+**ADR-070 (superado) está vigente y difiere estos prerrequisitos.** Trabajar contra él sin
 reabrirlo formalmente es una violación de gobernanza. Por eso la Fase 0 es bloqueante:
 sin ese ADR de reapertura, **este plan no arranca**.
 
-**ADR-070 §2 prohíbe la evidencia ficticia.** No inventes dominio, no registres nada,
+**ADR-070 (superado) §2 prohíbe la evidencia ficticia.** No inventes dominio, no registres nada,
 no emitas certificado, no decidas hosting, no cablees `certbot` "de ejemplo". Los
 placeholders `REPLACE_ME_PRODUCTION_DOMAIN` y `approval-required` se conservan hasta que
 exista decisión real. El gate `Block unresolved production prerequisites (R3.5)` de
@@ -73,10 +73,10 @@ Redactar un ADR nuevo con el **siguiente número libre** de `docs/adrs/` (hoy el
 ocupado es el 077; **no escribas un número que aún no exista como archivo o romperás el
 gate de integridad de citas**). Contenido mínimo:
 
-- Declara qué disparador de ADR-070 se activó (1 roadmap cerrado, 2 entorno externo,
+- Declara qué disparador de ADR-070 (superado) se activó (1 roadmap cerrado, 2 entorno externo,
   3 PII real) o, si es una reapertura por decisión directa del CTO, lo dice así con esas
   palabras.
-- Deja ADR-070 en estado `Superado` **solo cuando el nuevo ADR esté aprobado**, y lo cita
+- Deja ADR-070 (superado) en estado `Superado` **solo cuando el nuevo ADR esté aprobado**, y lo cita
   como genealogía con el marcador correspondiente.
 - Recoge las seis decisiones de F0.2 ya resueltas. Un ADR de reapertura sin ellas no
   sirve para nada.
@@ -85,7 +85,7 @@ gate de integridad de citas**). Contenido mínimo:
 
 Se recogen como insumo, no se infieren ni se proponen por defecto:
 
-| # | Decisión | Insumo ya disponible (ADR-070 §Insumos) |
+| # | Decisión | Insumo ya disponible (ADR-070 (superado) §Insumos) |
 | --- | --- | --- |
 | 1 | **FQDN** | El CTO dispone de dominio de marca en uso; la opción por defecto es subdominio (`app.…`, `portal.…`). Bastan **dos** FQDN: la resolución de tenant va por JWT y `X-Tenant-Slug`, nunca por hostname |
 | 2 | **Hosting** | **Sin decidir.** Es la primera pregunta: determina si ACME HTTP-01 es viable (exige puerto 80 público) |
@@ -100,7 +100,7 @@ Se recogen como insumo, no se infieren ni se proponen por defecto:
 correo poblados** (columnas `_encrypted`). Debe determinarse si corresponde a una
 **persona real**.
 
-- Si lo es: el disparador 3 de ADR-070 está activo, la reapertura es **obligación
+- Si lo es: el disparador 3 de ADR-070 (superado) está activo, la reapertura es **obligación
   regulatoria** (Ley 1581) y no una decisión de calendario. TLS pasa a ser prioridad
   sobre el resto del roadmap.
 - Si es dato de prueba: se registra como verificado y la reapertura se sostiene en el
@@ -113,7 +113,7 @@ el disparador 3 dictaminado. Sin esto, **detente y escala**.
 
 ## 3. Fase 1 — Defectos latentes de configuración (no dependen del dominio)
 
-**Rol:** AI-SR-FULL. Son los riesgos 1–6 registrados en ADR-070 §Riesgos congelados.
+**Rol:** AI-SR-FULL. Son los riesgos 1–6 registrados en ADR-070 (superado) §Riesgos congelados.
 **Esta fase sí puede ejecutarse en paralelo a F0**, porque no depende de ninguna decisión.
 
 | # | Defecto | Ubicación | Severidad |
@@ -138,7 +138,7 @@ explícito; con ellas, arranca. Test que lo demuestre.
 
 | # | Alcance |
 | --- | --- |
-| F2.1 | `location /.well-known/acme-challenge/` **antes** del `return 301` en `nginx/nginx.prod.conf` (riesgo 5 de ADR-070) |
+| F2.1 | `location /.well-known/acme-challenge/` **antes** del `return 301` en `nginx/nginx.prod.conf` (riesgo 5 de ADR-070 (superado)) |
 | F2.2 | Servicio `certbot` en `docker-compose.prod.yml` con sus dos volúmenes compartidos, **sin credenciales ni dominio reales** |
 | F2.3 | HSTS permanece en `max-age=300`. **Se sube a un año solo en F5**, tras verificar el primer handshake con la CA aprobada — nunca antes (riesgo 4) |
 | F2.4 | Procedimiento de renovación automática documentado y probado en seco |
@@ -226,7 +226,7 @@ G6.5.
 
 1. **No fabricar evidencia.** Un procedimiento documentado no es un procedimiento
    verificado. Un placeholder sustituido por un valor inventado es una violación de
-   ADR-070 §2.
+   ADR-070 (superado) §2.
 2. **No tocar el gate R3.5** de `.github/workflows/ci.yml`.
 3. **No decidir por el CTO** ninguna de las seis decisiones de F0.2.
 4. **No marcar G7 como GO.** Ningún agente tiene esa autoridad.

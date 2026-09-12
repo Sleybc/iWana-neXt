@@ -78,7 +78,7 @@ Es el mismo defecto corregido en el perfil AI-EM-ARCH, y **el protocolo es su or
 3. ~~**Definition of ready** (X-02).~~ **Implementada y acotada** a las entradas de etapa 2 y etapa 5 (§3.1) — las dos transiciones donde nace el retrabajo que el KPI *"Fases sin regresar a etapa 1–2"* mide. No siete DoR.
 4. ~~**`.cursor/` sin versionar.**~~ **Retirado, no versionado**: `AGENTS.md` no declara a Cursor entre los cuatro asistentes activos.
 
-~~**Sigue abierto y no es de gobernanza:** la definición del dominio productivo (QA-34/TLS), que mantiene G7 en NO-GO.~~ **Cerrado el mismo día por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)**: diferimiento formal con disparador de reactivación. G7 sigue NO-GO, ahora **por diseño y con causa declarada**, no como pendiente esperando decisión. Ver [informe vivo §9](INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md).
+~~**Sigue abierto y no es de gobernanza:** la definición del dominio productivo (QA-34/TLS), que mantiene G7 en NO-GO.~~ **Cerrado el mismo día por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)**: diferimiento formal con disparador de reactivación. G7 sigue NO-GO, ahora **por diseño y con causa declarada**, no como pendiente esperando decisión. Ver [informe vivo §9](INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md).
 
 ## 7. Verificación de la remediación
 

@@ -1,7 +1,7 @@
 # INFORME — Flujo operativo cableado MOD10 + MOD11 + MOD09 + MOD12
 
 **Versión:** 2.1
-**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad**, **G6.5 GO de merge readiness verificado en CI Linux sobre `1343d6b8`**, **G7 NO-GO para producción — diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** (CTO 2026-08-02), no pendiente de resolución. Ver §15.8 y §15.13.
+**Estado:** Consolidado — R0–R4 remediados y verificados (2026-08-01). Estado vigente: **G6 GO de calidad**, **G6.5 GO de merge readiness verificado en CI Linux sobre `1343d6b8`**, **G7 NO-GO para producción — diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)** (CTO 2026-08-02), no pendiente de resolución. Ver §15.8 y §15.13.
 **Fecha:** 2026-07-31  
 **Fecha de cierre de remediación:** 2026-07-31  
 **Verificación registrada:** QA/SEC/DS/PROD-UX y carriles técnicos (G6), AI-SR-QA (re-gate G6), AI-SEC-ENG (evidencia estática cruzada en v1.1), AI-DATA-ENG (datos), AI-SR-FULL (backend), AI-PLAT-OPS (plataforma); AI-EM-ARCH consolida y recomienda; CTO aprueba finalmente G7. [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) fue **aprobado por el CTO el 2026-08-02**, sin cambios de contenido: la taxonomía G6 / G6.5 / G7 es norma vigente.
@@ -668,7 +668,7 @@ como parte del re-registro de gate.
 
 Se clasifican en dos grupos que no deben leerse igual. Los del grupo A **no son trabajo atrasado**: son prerrequisitos de un release que no está planificado y que quedó diferido por decisión aprobada. Los del grupo B sí son deuda viva.
 
-**Grupo A — diferidos por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado, CTO 2026-08-02).** Prerrequisitos de G7. Se reactivan con el disparador del ADR —cierre del roadmap modular, necesidad de un entorno externo, o procesamiento de PII real— y no antes. Ejecutarlos ahora produciría evidencia que caduca antes de usarse.
+**Grupo A — diferidos por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) (Aprobado, CTO 2026-08-02).** Prerrequisitos de G7. Se reactivan con el disparador del ADR —cierre del roadmap modular, necesidad de un entorno externo, o procesamiento de PII real— y no antes. Ejecutarlos ahora produciría evidencia que caduca antes de usarse.
 
 | Dependencia | Estado | Responsable al reactivar |
 | --- | --- | --- |
@@ -752,4 +752,4 @@ El registro formal queda separado por gate: G6 queda registrado como GO de calid
 | --------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | G6 Quality acceptance       | **GO**        | Checklist 45/4/0, AppSec v1.1, lint/typecheck, suites focalizadas y migraciones verificadas.                                             |
 | G6.5 Merge readiness        | **GO**        | CI #112, [run Linux sobre `1343d6b8`](https://github.com/SleyiW/iWana-neXt/actions/runs/30752126012): `production-images` y `execution-orders-e2e` verdes; R4.1 `29/0/0/0/0`, exit 0, flaky 0 y cleanup OK. |
-| G7 Production authorization | **NO-GO por diseño** | **Diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md)** (Aprobado, CTO 2026-08-02): el programa está en construcción modular y no va a producción, así que sus prerrequisitos —dominio, TLS efectivo, rollback por componente, restore global/tenant y targets RPO/RTO— no se abordan hasta el disparador de reactivación. **No es un fallo ni trabajo detenido: es el estado correcto.** Al reactivar, AI-EM-ARCH recomienda y el CTO aprueba. |
+| G7 Production authorization | **NO-GO por diseño** | **Diferido por [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)** (Aprobado, CTO 2026-08-02): el programa está en construcción modular y no va a producción, así que sus prerrequisitos —dominio, TLS efectivo, rollback por componente, restore global/tenant y targets RPO/RTO— no se abordan hasta el disparador de reactivación. **No es un fallo ni trabajo detenido: es el estado correcto.** Al reactivar, AI-EM-ARCH recomienda y el CTO aprueba. |

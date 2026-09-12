@@ -69,7 +69,7 @@ duplicado que hoy los hace lentos.
 - Cambiar la variante de base de web y portal (`-alpine`) por `-bookworm` ni
   viceversa. La mezcla actual es preexistente y su unificación no está decidida.
 - Cualquier cambio en `nginx.prod.conf`, dominio, TLS o HSTS: bloqueado por
-  [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md).
+  [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado).
 
 ## 2. Artefactos de entrada obligatorios
 
@@ -77,7 +77,7 @@ duplicado que hoy los hace lentos.
 - **Informe de origen:** [INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-AUDITORIA-v1.0.md) §2.2, §2.3, §6
 - **Antecedente:** [INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md](../informes/INFORME-PLATAFORMA-DOCKER-LIMPIEZA-v1.0.md) §5.1 y §5.6
 - **Stack:** `docs/prds/Stack_Tecnologico.md`
-- **Restricción vigente:** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) — G7 diferido; nada de esta fase presupone entorno productivo
+- **Restricción vigente:** [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — G7 diferido; nada de esta fase presupone entorno productivo
 - **Perfil:** `docs/roles/Perfil_IA_Platform_Ops_Engineer_v1.md`
 - **Skills:** `.agents/skills/INDEX.md` → dispatch de infraestructura y CI
 
@@ -141,7 +141,7 @@ rebuild.
 - **No borrar volúmenes ni datos.** El rebuild no requiere tocar
   `iwana_*_data_*`.
 - **No modificar** `nginx.prod.conf`, `.env.production.example` ni ningún
-  placeholder `REPLACE_ME_*` / `approval-required`: ADR-070 los conserva intactos.
+  placeholder `REPLACE_ME_*` / `approval-required`: ADR-070 (superado) los conserva intactos.
 - **No exponer secretos** en `ARG`, `ENV` ni argumentos de proceso.
 
 ## 5. Entregables técnicos obligatorios

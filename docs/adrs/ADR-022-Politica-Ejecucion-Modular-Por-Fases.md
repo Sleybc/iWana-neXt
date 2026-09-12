@@ -14,11 +14,11 @@
 >
 > ### §Decisión punto 3 — "Cierre real solo en producción"
 >
-> **Enmendado por contradicción con un ADR posterior.** Este punto exige *"despliegue en producción validados"* para cerrar un módulo. [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (Aprobado, 2026-08-02) **difiere formalmente la producción** y deja G7 NO-GO por diseño. Leídos juntos y sin enmienda, ningún módulo del programa podía cerrarse nunca.
+> **Enmendado por contradicción con un ADR posterior.** Este punto exige *"despliegue en producción validados"* para cerrar un módulo. [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) (Aprobado, 2026-08-02) **difiere formalmente la producción** y deja G7 NO-GO por diseño. Leídos juntos y sin enmienda, ningún módulo del programa podía cerrarse nunca.
 >
 > ADR-080 §Decisión 5 separa **cierre en construcción** —backend, frontend, datos, pruebas y documentación completos, con **G6 y G6.5** ([ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md)), lo aprueba AI-EM-ARCH y **habilita abrir el módulo siguiente**— de **cierre en producción**, que añade **G7**, lo aprueba el CTO y permanece diferido.
 >
-> **La Regla de Completitud de este ADR no se relaja: se satisface con el cierre en construcción.** Su ausencia de G7 **no constituye deuda** mientras ADR-070 esté vigente.
+> **La Regla de Completitud de este ADR no se relaja: se satisface con el cierre en construcción.** Su ausencia de G7 **no constituye deuda** mientras ADR-070 (superado) esté vigente.
 >
 > ### §Decisión punto 4 — "Repriorización controlada"
 >

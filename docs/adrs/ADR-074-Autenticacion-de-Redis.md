@@ -93,7 +93,7 @@ esa clase de verificación es imposible.
 | --- | --- |
 | **A — Solo en producción, dejar desarrollo sin contraseña** | El camino de propagación de la credencial no se ejercita nunca hasta el despliegue. Es el patrón que produce incidentes de configuración en el primer entorno externo |
 | **B — Confiar en la segmentación de redes (A4) en lugar de autenticar** | La segmentación no existe todavía y es una decisión abierta. Además son controles complementarios, no sustitutos: defensa en profundidad significa que la red no sea la única barrera |
-| **C — Mantener el estado actual con el riesgo declarado** | Es lo que hay hoy. El propio `.env.example` pide que se cierre "antes de exponerlo", y el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) puede activarse sin previo aviso el día que un tenant real cargue datos |
+| **C — Mantener el estado actual con el riesgo declarado** | Es lo que hay hoy. El propio `.env.example` pide que se cierre "antes de exponerlo", y el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) puede activarse sin previo aviso el día que un tenant real cargue datos |
 
 ## Impacto declarado
 
@@ -102,7 +102,7 @@ esa clase de verificación es imposible.
 | **Multi-tenant** | **Indirecto pero real.** Los payloads de BullMQ transportan identificadores de tenant; el acceso no autenticado permitiría inyectar jobs dirigidos a un tenant arbitrario |
 | **Seguridad** | **Es el objeto de la decisión.** Cierra el último servicio de datos sin autenticación y añade defensa en profundidad frente a la ausencia de segmentación de redes (A4) |
 | **Escala** | Sin impacto. `requirepass` no tiene coste apreciable |
-| **Regulación** | Ley 1581: los payloads de jobs pueden contener identificadores asociados a personas. Con datos reales, un Redis sin autenticación es difícil de sostener — enlaza con el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) |
+| **Regulación** | Ley 1581: los payloads de jobs pueden contener identificadores asociados a personas. Con datos reales, un Redis sin autenticación es difícil de sostener — enlaza con el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) |
 | **Autoridad** | Levanta una excepción de seguridad vigente y declarada: **decisión del CTO** |
 
 ## Consecuencias
@@ -145,4 +145,4 @@ esa clase de verificación es imposible.
 - `docker-compose.e2e.yml:56` — único consumidor actual, y opcional
 - `.env.example:90-93` — riesgo residual declarado que este ADR cierra
 - `scripts/e2e-redis-fault.mjs` — QA-33, comportamiento fail-closed del rate limiter
-- [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) — disparador 3, tratamiento de datos reales
+- [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — disparador 3, tratamiento de datos reales

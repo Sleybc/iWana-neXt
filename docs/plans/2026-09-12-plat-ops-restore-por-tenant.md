@@ -1,7 +1,7 @@
 # Plan de fase — Capacidad de backup y restore por tenant
 
 **Versión:** 1.0
-**Estado:** Vigente
+**Estado:** Ejecutado — GO de fase (2026-09-12), visto en [INFORME-PLAT-OPS-RESTORE-TENANT-FASE-01-v1.0.md](../informes/INFORME-PLAT-OPS-RESTORE-TENANT-FASE-01-v1.0.md). G6.5 pendiente de la corrida Linux por SHA al merge
 **Fecha:** 2026-09-12
 **Modo activo:** EM + Orchestrator
 **Autor:** AI-EM-ARCH

@@ -58,7 +58,7 @@ Los fragmentos llegan crudos desde el motor de búsqueda: `apps/api/src/modules/
 
 ## 3. Contexto de exposición
 
-El programa **no está en producción** ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md), Aprobado) pero **sí procesa PII real** ([ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)*). La exposición actual es acotada, y esa es exactamente la razón para corregirlo ahora: el coste es una función de escapado, y crece con cada módulo que se construya encima.
+El programa **no está en producción** ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado), Aprobado) pero **sí procesa PII real** ([ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)*). La exposición actual es acotada, y esa es exactamente la razón para corregirlo ahora: el coste es una función de escapado, y crece con cada módulo que se construya encima.
 
 ---
 

@@ -47,7 +47,7 @@ Depende de que F3 haya entregado los archivos de la pantalla, aunque sea en esqu
 - **HLD:** [HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md](../hlds/HLD-PLATAFORMA-ARRANQUE-EXPERIENCIA-v1.0.md) §4.2, §4.3, §7.1 R2 y R6
 - **ADR:** [ADR-079](../adrs/ADR-079-Superficie-Publica-Estado-Arranque.md) — Decisiones 2 y 3 vigentes; **§Estado de adopción por decisión** explica por qué la Decisión 4 no entra aquí
 - **ADR:** [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) *(propuesto)* — por qué el defecto de desarrollo no se toca
-- **ADR:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) — el diferimiento que motiva el corte
+- **ADR:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) — el diferimiento que motiva el corte
 - **Código vigente:** `nginx/nginx.dev.conf`, `docker-compose.yml`, `scripts/nginx-config.test.mjs`
 - **Entregables de F3:** `nginx/boot/`
 

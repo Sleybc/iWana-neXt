@@ -6,14 +6,14 @@
 **Autor:** AI-EM-ARCH
 **Agentes ejecutores:** AI-SR-FULL (Fase 1) · AI-SEC-ENG (dictamen de riesgo, consulta)
 **Plan ejecutado:** [PROMPT-PLAT-OPS-G7-AUTORIZACION-PRODUCCION-v1.0.md](../prompts/PROMPT-PLAT-OPS-G7-AUTORIZACION-PRODUCCION-v1.0.md)
-**ADRs de referencia:** [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md)
-**Estado:** Fase 1 **GO** · Puerta 0 **abierta** · G7 **NO-GO** (ADR-070 vigente)
+**ADRs de referencia:** [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md)
+**Estado:** Fase 1 **GO** · Puerta 0 **abierta** · G7 **NO-GO** (ADR-070 (superado) vigente)
 
 ---
 
 ## 1. Alcance ejecutado y no ejecutado
 
-La **Puerta 0 del plan no está cerrada**: no existe ADR de reapertura, ADR-070 sigue
+La **Puerta 0 del plan no está cerrada**: no existe ADR de reapertura, ADR-070 (superado) sigue
 `Aprobado` y vigente, las seis decisiones del CTO no se han tomado y el disparador 3 no
 tiene dictamen. Conforme al §10 del propio plan, **solo se autorizó la Fase 1**.
 
@@ -22,7 +22,7 @@ tiene dictamen. Conforme al §10 del propio plan, **solo se autorizó la Fase 1*
 | F0 — Reapertura y decisiones del CTO | **No ejecutada** | Requiere actos del CTO. Es la escalación de §5 |
 | F1 — Defectos latentes | **Ejecutada — GO** | No depende de decisiones pendientes |
 | F2 — Preparación TLS | No ejecutada | Bloqueada por Puerta 0 |
-| F3 — Ensayos rollback/restore | No ejecutada | Bloqueada por Puerta 0 (ADR-070 §4 los difiere) |
+| F3 — Ensayos rollback/restore | No ejecutada | Bloqueada por Puerta 0 (ADR-070 (superado) §4 los difiere) |
 | F4 — RPO/RTO | No ejecutada | Depende de F3 |
 | F5 — Emisión TLS | No ejecutada | Requiere infraestructura real |
 | F6 — Recomendación | No ejecutada | Requiere F0–F5 y G6.5 de MOD09 consolidado |
@@ -40,7 +40,7 @@ tiene dictamen. Conforme al §10 del propio plan, **solo se autorizó la Fase 1*
 
 **Decisión de alcance del ejecutor, revisada y aprobada:** AI-SR-FULL endureció más allá
 de "exigir presencia", rechazando también valores localhost escritos a mano. Es correcto:
-exigir presencia sola no impedía reproducir el riesgo 1 de ADR-070.
+exigir presencia sola no impedía reproducir el riesgo 1 de ADR-070 (superado).
 
 **Dos desviaciones declaradas por el ejecutor, ambas aprobadas:**
 
@@ -78,7 +78,7 @@ variables, con mensaje explícito; fuera de producción el comportamiento no cam
 | **Alta** | PII en `audit_logs` **append-only**: nombre del titular por llamada directa que evade el interceptor, y `latitude`/`longitude` ausentes de la denylist — con escritura del 2026-08-03 | SEC-ENG §A.5 |
 | **Media** | Identidad, domicilio, fecha de nacimiento y geolocalización **sin cifrar**; `subscribers.nit` en claro bajo columna `VARCHAR(500)` que aparenta ser cifrada | SEC-ENG §A.4 |
 | **Media** | ADR-058 fase 2 (`PII_ENCRYPTION_KEY` separada de `MFA_ENCRYPTION_KEY`) **aprobada y sin ejecutar** | SEC-ENG §A.2 |
-| **Media** | `rejectUnauthorized: false` en TLS hacia la base — **séptimo riesgo congelado no registrado en ADR-070** | SEC-ENG §B.3 |
+| **Media** | `rejectUnauthorized: false` en TLS hacia la base — **séptimo riesgo congelado no registrado en ADR-070 (superado)** | SEC-ENG §B.3 |
 | **Media** | `FRONTEND_URL` es un valor único, pero el despliegue tiene **dos** frontends. Los enlaces de reset y verificación usarían el dominio de consola también para usuarios de portal | SR-FULL |
 | Baja | `staging` queda fuera del endurecimiento, coherente con el resto de variables endurecidas. Ampliarlo sería decisión de alcance | SR-FULL |
 
@@ -94,7 +94,7 @@ cualquier operación con datos reales — ver §5.
 1. **Determinación del disparador 3** — la pregunta de una sola respuesta (ver §6).
 2. **Las seis decisiones de F0.2** — FQDN, hosting, CA y método ACME, propietario de la
    zona DNS, ventana operativa, targets RPO/RTO.
-3. **ADR de reapertura** de ADR-070, que solo el CTO aprueba.
+3. **ADR de reapertura** de ADR-070 (superado), que solo el CTO aprueba.
 4. **Destrabar G6.5 de MOD09** — hoy suspendido por orden del CTO, rama sin mergear. Es
    prerrequisito de F6: G7 no se autoriza sobre trabajo no integrado.
 
@@ -131,12 +131,12 @@ de desarrollo". La lectura de AI-SEC-ENG, que comparto, es la segunda.
 | --- | --- |
 | **G6** (calidad, Fase 1) | **GO** — evidencia §3 |
 | **G6.5** (merge readiness) | **No evaluado** en esta fase; sin corrida Linux de CI por SHA |
-| **G7** (autorización de producción) | **NO-GO** — ADR-070 vigente. Ningún agente lo marca; es competencia exclusiva del CTO (ADR-069) |
+| **G7** (autorización de producción) | **NO-GO** — ADR-070 (superado) vigente. Ningún agente lo marca; es competencia exclusiva del CTO (ADR-069) |
 
 ---
 
 ## 8. Referencias
 
 - [PROMPT-PLAT-OPS-G7-AUTORIZACION-PRODUCCION-v1.0.md](../prompts/PROMPT-PLAT-OPS-G7-AUTORIZACION-PRODUCCION-v1.0.md)
-- [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md)
+- [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) · [ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md)
 - [RUNBOOK-RELEASE-ROLLBACK-v1.0.md](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md) §2.2, §5.2

@@ -9,7 +9,7 @@
 **Módulos:** Todos — política de ejecución del programa
 **Complementa y enmienda:** [ADR-022](ADR-022-Politica-Ejecucion-Modular-Por-Fases.md) §Decisión puntos 3 y 4 — enmienda **marcada en ADR-022 el 2026-08-09**
 **Ejecución del plan de migración:** pasos 2, 3 y 4 completados el 2026-08-09; ver [INFORME-PROGRAMA-REGULARIZACION-MODULOS-v1.0.md](../informes/INFORME-PROGRAMA-REGULARIZACION-MODULOS-v1.0.md)
-**Relacionado:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (diferimiento productivo) · [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía de gates) · [ADR-049](ADR-049-Split-Design-Layer-Frontend-Platform.md) (ejecución paralela contract-first)
+**Relacionado:** [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) (diferimiento productivo) · [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía de gates) · [ADR-049](ADR-049-Split-Design-Layer-Frontend-Platform.md) (ejecución paralela contract-first)
 **PRD:** [PRD_Sistema_ISP_Colombia_v2_4.md](../prds/PRD_Sistema_ISP_Colombia_v2_4.md) §14.1, §14.1bis, §14.3bis
 
 ---
@@ -30,7 +30,7 @@ La observación es correcta y el propio programa la demuestra: **MOD00, MOD04, M
 
 **Hueco 1 — la repriorización no es lo mismo que la interrupción.** La repriorización controlada de ADR-022 supone que se decide **antes de abrir** el módulo. El caso que describe el CTO ocurre **dentro** de un módulo ya abierto: se está construyendo N, se descubre que N no puede avanzar sin M, y M no existe. Eso no es reordenar una cola: es **suspender N para abrir M**. ADR-022 no nombra ese acto, y lo que no se nombra no se gobierna.
 
-**Hueco 2 — el criterio de cierre es hoy inalcanzable.** ADR-022 §Decisión punto 3 exige *"despliegue en producción validados"* para cerrar un módulo. [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md), aprobado después, **difiere formalmente la producción** y deja G7 NO-GO por diseño. **Dos ADRs aprobados se contradicen**: bajo el 022 ningún módulo puede cerrarse jamás, y bajo el 070 eso es el estado correcto del programa. La consecuencia práctica ya se ve en el corpus.
+**Hueco 2 — el criterio de cierre es hoy inalcanzable.** ADR-022 §Decisión punto 3 exige *"despliegue en producción validados"* para cerrar un módulo. [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado), aprobado después, **difiere formalmente la producción** y deja G7 NO-GO por diseño. **Dos ADRs aprobados se contradicen**: bajo el 022 ningún módulo puede cerrarse jamás, y bajo el 070 eso es el estado correcto del programa. La consecuencia práctica ya se ve en el corpus.
 
 ### El costo observable de no haberlo gobernado
 
@@ -87,12 +87,12 @@ La cota no es un número arbitrario: dos es lo que permite una interrupción leg
 
 ### 5. Se separa **cierre en construcción** de **cierre en producción**
 
-Enmienda a ADR-022 §Decisión punto 3, que hoy contradice a ADR-070:
+Enmienda a ADR-022 §Decisión punto 3, que hoy contradice a ADR-070 (superado):
 
 | Cierre | Qué exige | Quién aprueba | Vigencia |
 | --- | --- | --- | --- |
 | **Cierre en construcción** | Backend, frontend, base de datos, pruebas y documentación completos, con **G6 y G6.5** ([ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md)) | AI-EM-ARCH | **Es el cierre exigible hoy.** Habilita abrir el módulo siguiente |
-| **Cierre en producción** | Lo anterior más **G7**: dominio productivo, TLS de autoridad reconocida, rollback por componente ensayado, restauración global y por tenant | **CTO** | **Diferido** mientras ADR-070 esté vigente. Su ausencia **no es deuda** |
+| **Cierre en producción** | Lo anterior más **G7**: dominio productivo, TLS de autoridad reconocida, rollback por componente ensayado, restauración global y por tenant | **CTO** | **Diferido** mientras ADR-070 (superado) esté vigente. Su ausencia **no es deuda** |
 
 **La Regla de Completitud de ADR-022 se satisface con el cierre en construcción.** No se relaja: se hace alcanzable. Exigir un despliegue que una decisión aprobada prohíbe no es rigor, es una regla imposible de cumplir — y una regla imposible de cumplir se ignora, que es peor que no tenerla.
 
@@ -154,6 +154,6 @@ La cota entra en vigor **hacia adelante**. El estado actual la excede y se regul
 | 4 | Regularizar los seis módulos abiertos: cada uno declara `Suspendido` o `Cerrado en construcción` con evidencia | AI-EM-ARCH, con el agente de cada módulo |
 | 5 | Resolver la escalación de secuencia del PRD §14.3ter con el mapa de estados ya regularizado | CTO |
 
-**Reversible:** sí. Es política de proceso; revertirla restaura ADR-022 sin enmienda — y con ella su contradicción con ADR-070, que habría que resolver por otra vía.
+**Reversible:** sí. Es política de proceso; revertirla restaura ADR-022 sin enmienda — y con ella su contradicción con ADR-070 (superado), que habría que resolver por otra vía.
 
 **Sin punto de no retorno.**

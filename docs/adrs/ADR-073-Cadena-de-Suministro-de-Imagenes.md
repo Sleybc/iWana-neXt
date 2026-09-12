@@ -85,7 +85,7 @@ bloquea y con qué umbral**.
 | Alternativa | Motivo del descarte |
 | --- | --- |
 | **A — Encender el gate directamente en `HIGH`** | Un gate que bloquea todos los merges desde el primer día se desactiva en una semana. El umbral escalonado es el que sobrevive |
-| **B — Escanear solo en releases** | El programa no publica releases todavía ([ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) difiere G7). Un control atado a un evento que no ocurre no es un control |
+| **B — Escanear solo en releases** | El programa no publica releases todavía ([ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) difiere G7). Un control atado a un evento que no ocurre no es un control |
 | **C — Confiar en `pnpm audit` y los `overrides` manuales** | Es el estado actual. Cubre dependencias de npm, no el sistema operativo base de las imágenes — que es exactamente donde vivía el problema de Node 25 EOL |
 | **D — Esperar a tener registro para hacerlo todo junto** | Las capas 1 y 2 aportan valor hoy y no dependen del registro. Solo la capa 3 lo necesita |
 
@@ -96,7 +96,7 @@ bloquea y con qué umbral**.
 | **Multi-tenant** | **Sin impacto.** No toca aislamiento, resolución de tenant ni acceso a datos |
 | **Seguridad** | **Es el objeto de la decisión.** Convierte "no critical vulns" de declaración a control verificable, y da capacidad de respuesta ante un CVE nuevo mediante el SBOM |
 | **Escala** | Sin impacto funcional. Coste operativo: minutos añadidos por corrida de CI, acotables con caché del escáner |
-| **Regulación** | Sin obligación directa. Bajo Ley 1581, la diligencia sobre software sin parches es difícil de sostener una vez que se traten datos personales reales — lo que conecta con el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) |
+| **Regulación** | Sin obligación directa. Bajo Ley 1581, la diligencia sobre software sin parches es difícil de sostener una vez que se traten datos personales reales — lo que conecta con el disparador 3 de [ADR-070](ADR-070-Diferimiento-Dominio-Productivo.md) (superado) |
 | **Autoridad** | Herramientas nuevas en el pipeline y gate de merge adicional: **decisión del CTO** |
 
 ## Consecuencias
