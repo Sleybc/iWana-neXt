@@ -73,10 +73,31 @@ import { ExecutionOrderInventoryReconciliationService } from './services/executi
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { ExecutionOrderTenantScoped } from './guards/execution-order-tenant-scoped.decorator';
+import { SkipThrottle } from '@nestjs/throttler';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
 
 @ApiTags('tasks-execution-orders')
+/**
+ * Las rutas operativas quedan fuera del `ThrottlerGuard` global (100 req/min) y
+ * su autoridad de cuota es `TenantAwareThrottlerGuard`.
+ *
+ * Los guards globales corren ANTES que los de controlador, así que el techo de
+ * 100 cortaba en la petición 101 y volvía inalcanzable el contrato de 120
+ * req/min de `eo-lightweight-read`: un cliente con cuota de 120 recibía 429 a
+ * partir de la 101, y ese 429 llegaba sin las cabeceras `X-RateLimit-*` porque
+ * las emite el guard específico, que ya no se ejecutaba.
+ *
+ * Saltarse el global aquí NO deja hueco: `resolveBucket` clasifica toda
+ * petición de estos controladores en uno de los tres buckets —evidencia (10),
+ * comando sensible (20) o lectura ligera (120)—, los tres con límite definido,
+ * y el guard falla cerrado si Redis no responde. La protección resultante es
+ * más estricta y más fina que la global, no menos.
+ */
+// El nombre importa: `ThrottlerModule.forRoot` declara el throttler como
+// `global`, y el guard busca el metadato `THROTTLER:SKIP` + ese nombre. Un
+// `@SkipThrottle()` sin argumentos marca `default` y NO surtiría efecto.
+@SkipThrottle({ global: true })
 @ApiBearerAuth('access-token')
 @UseGuards(
   JwtAuthGuard,

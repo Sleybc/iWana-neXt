@@ -19,6 +19,7 @@ import { Permissions } from '../access-control/decorators/permissions.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
+import { SkipThrottle } from '@nestjs/throttler';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -29,6 +30,12 @@ import {
 } from './services/execution-order-templates.service';
 
 @ApiTags('tasks-execution-orders')
+// Misma razón que en `execution-orders.controller.ts`: la autoridad de cuota
+// de las rutas operativas es `TenantAwareThrottlerGuard`, no el global.
+// El nombre importa: `ThrottlerModule.forRoot` declara el throttler como
+// `global`, y el guard busca el metadato `THROTTLER:SKIP` + ese nombre. Un
+// `@SkipThrottle()` sin argumentos marca `default` y NO surtiría efecto.
+@SkipThrottle({ global: true })
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, TenantAwareThrottlerGuard, RolesGuard, PermissionsGuard)
 @UseInterceptors(ExecutionOrderResponseHeadersInterceptor)

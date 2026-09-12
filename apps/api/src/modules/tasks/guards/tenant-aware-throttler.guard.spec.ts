@@ -6,6 +6,21 @@ import {
 import { TenantContext } from '@iwana/db';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { TenantAwareThrottlerGuard } from './tenant-aware-throttler.guard';
+import { ExecutionOrdersController } from '../execution-orders.controller';
+import { ExecutionOrderTemplatesController } from '../execution-order-templates.controller';
+
+/** Clave de metadato de `@SkipThrottle()` (no se exporta desde el índice). */
+// El guard de @nestjs/throttler busca `THROTTLER:SKIP` + el NOMBRE del
+// throttler, y `ThrottlerModule.forRoot` lo declara como `global`. Con
+// `default` el salto sería silenciosamente inefectivo.
+const THROTTLER_SKIP_GLOBAL = 'THROTTLER:SKIPglobal';
+
+/** Espejo de `BUCKET_LIMITS` del guard: los tres buckets con límite definido. */
+const BUCKET_LIMITS_FOR_TEST: Record<string, number> = {
+  'eo-lightweight-read': 120,
+  'eo-sensitive-command': 20,
+  'eo-evidence-media': 10,
+};
 
 describe('TenantAwareThrottlerGuard', () => {
   it('rechaza antes de Redis cuando falta TenantContext', async () => {
@@ -192,5 +207,39 @@ describe('TenantAwareThrottlerGuard', () => {
       );
       expect(setHeader).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('Autoridad de cuota en rutas operativas', () => {
+  // Regresión: el `ThrottlerGuard` global (100 req/min) corre ANTES que este
+  // guard y cortaba en la petición 101, con lo que el contrato de 120 req/min
+  // de `eo-lightweight-read` era inalcanzable y el 429 llegaba sin cabeceras
+  // `X-RateLimit-*`. Los controladores operativos se marcan con
+  // `@SkipThrottle()` para que la autoridad sea este guard. Quitar esa marca
+  // devuelve el defecto: el E2E `4a. Ráfaga de requests` vuelve a romperse.
+  it.each([
+    ['ExecutionOrdersController', ExecutionOrdersController],
+    ['ExecutionOrderTemplatesController', ExecutionOrderTemplatesController],
+  ])('%s se salta el throttler global', (_name, controller) => {
+    expect(Reflect.getMetadata(THROTTLER_SKIP_GLOBAL, controller)).toBe(true);
+  });
+
+  it('todo bucket resuelto tiene límite: saltarse el global no deja hueco', () => {
+    const guard = new TenantAwareThrottlerGuard();
+    const resolve = (
+      guard as unknown as { resolveBucket: (req: { url?: string; method?: string }) => string }
+    ).resolveBucket.bind(guard);
+
+    const casos = [
+      { url: '/tasks/execution-orders/1', method: 'GET' },
+      { url: '/tasks/execution-orders/1/start', method: 'POST' },
+      { url: '/tasks/execution-orders/1/evidence-assets', method: 'POST' },
+      { url: '/tasks/execution-order-templates', method: 'GET' },
+      { url: '/tasks/execution-orders/1', method: 'DELETE' },
+    ];
+
+    for (const caso of casos) {
+      expect(BUCKET_LIMITS_FOR_TEST[resolve(caso)]).toBeGreaterThan(0);
+    }
   });
 });
