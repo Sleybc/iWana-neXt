@@ -1,8 +1,9 @@
 # ADR-078: Reapertura del expediente de dominio productivo por procesamiento de PII real
 
 **Versión:** 1.0
-**Estado:** Propuesto
+**Estado:** Aprobado
 **Fecha:** 2026-08-05
+**Aprobado por:** CTO Humano — 2026-09-12, sin cambios de contenido. El CTO confirmó que existe PII de personas reales en el entorno, que es el disparador 3 de ADR-070 («no negociable»). Con esta aprobación, ADR-070 queda **Superado** y su diferimiento sin efecto.
 **Modo activo:** Architect + EM
 **Autor:** AI-EM-ARCH
 **Aprobación requerida:** CTO
@@ -100,11 +101,28 @@ se revierte con una línea. **No sustituye a TLS**: reduce la ventana mientras s
 
 | # | Acción | Depende de |
 | --- | --- | --- |
-| **P0** | Binding a loopback (D2) | Nadie — ejecutable ya |
+| **P0** | Binding a loopback (D2) | ✅ **CUMPLIDO** el 2026-08-05 en `5edd004e` — ver nota abajo |
 | **P1** | Cerrar S-1 y S-2 | Nadie — son defectos de código, no de infraestructura |
 | **P2** | Las seis decisiones de F0.2 del plan G7 (FQDN, hosting, CA/ACME, propietario DNS, ventana, RPO/RTO) | **CTO** |
 | **P3** | Fases 2 a 5 del plan G7 (preparación TLS, ensayos de rollback y restore, RPO/RTO, emisión) | P2 |
 | **P4** | S-3, S-4, S-5 y procedimiento de derechos del titular | P1 |
+
+**Nota sobre P0 (2026-09-12).** La redacción de D2 describe el binding a loopback como
+pendiente, pero se implementó el mismo día que se redactó este ADR (`5edd004e`,
+«feat(security): fase 1 G7, reapertura por PII real y binding a loopback»). Verificado en
+código y en ejecución: `apps/api/src/main.ts:23` usa `BIND_HOST ?? 127.0.0.1` y reserva
+`0.0.0.0` a `NODE_ENV=production`; `scripts/next-dev.mjs:27` fija
+`DEFAULT_BIND_HOST = '127.0.0.1'` para web y portal. Los seis puertos del stack —API, web,
+portal, PostgreSQL, Redis y MinIO— escuchan en `127.0.0.1`. La mitigación está activa y solo
+se revierte de forma explícita con `BIND_HOST`.
+
+**Decisión del CTO sobre la consulta a Legal (2026-09-12).** Se preguntó si la IP registrada
+como evidencia del consentimiento —hallazgo de `X-Forwarded-For` falsificable— debía
+verificarse con Legal por su posible valor probatorio bajo Ley 1581. **El CTO resolvió no
+elevar la consulta.** La corrección de la cadena de IP se ejecuta igualmente, por su impacto
+en el rate limiting y en el no repudio del audit trail, pero se clasifica como **importante**
+y no como bloqueante regulatorio. Queda registrado que el valor probatorio de esa IP no ha
+sido verificado con fuente oficial.
 
 **S-1 y S-2 van antes que la infraestructura** deliberadamente: no dependen de ninguna
 decisión pendiente, y S-2 empeora con el tiempo porque `audit_logs` es inmutable — cada

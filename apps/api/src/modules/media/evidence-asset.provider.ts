@@ -9,6 +9,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { createHash, randomUUID } from 'node:crypto';
+import { validateMagicBytes } from './magic-bytes';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
@@ -27,45 +28,6 @@ export interface EvidenceAnalysisJobData {
   tenantSchema: string;
   mediaAssetId: string;
   correlationId: string;
-}
-
-/**
- * Magic bytes para validación de MIME types sin depender de la extensión.
- * Cada entrada: [offset, bytes] donde bytes es un array de hex values esperados.
- */
-const MAGIC_BYTES: Array<{ mime: string; offset: number; bytes: number[] }> = [
-  { mime: 'image/jpeg', offset: 0, bytes: [0xff, 0xd8, 0xff] },
-  { mime: 'image/png', offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47] },
-  { mime: 'image/gif', offset: 0, bytes: [0x47, 0x49, 0x46, 0x38] },
-  { mime: 'image/webp', offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] },
-  { mime: 'application/pdf', offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] },
-];
-
-/**
- * Valida el MIME type real de un buffer usando magic bytes.
- * Retorna true si alguno de los patrones coincide.
- */
-function validateMagicBytes(buffer: Buffer, declaredMime: string): boolean {
-  if (buffer.length < 12) return false;
-
-  for (const pattern of MAGIC_BYTES) {
-    if (pattern.mime !== declaredMime) continue;
-    if (buffer.length < pattern.offset + pattern.bytes.length) continue;
-
-    const matches = pattern.bytes.every((byte, i) => buffer[pattern.offset + i] === byte);
-
-    if (matches) {
-      // Para WebP, además verificar que empiece con RIFF
-      if (declaredMime === 'image/webp') {
-        const riff =
-          buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46;
-        if (!riff) return false;
-      }
-      return true;
-    }
-  }
-
-  return false;
 }
 
 /**

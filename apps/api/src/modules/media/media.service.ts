@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import { imageSize } from 'image-size';
+import { validateMagicBytes } from './magic-bytes';
 import type { UploadMediaDto } from './dto/upload-media.dto';
 import type { MediaAssetResponseDto } from './dto/media-asset-response.dto';
 
@@ -286,6 +287,17 @@ export class MediaService {
         `MIME type '${file.mimetype}' no permitido para usage '${usage}'. ` +
           `Permitidos: ${constraints.allowedMimes.join(', ')}.`,
       );
+    }
+
+    // El allowlist de arriba compara contra `file.mimetype`, que lo DECLARA el
+    // cliente en el multipart. Sin esta segunda comprobación bastaba con decir
+    // `image/png` y enviar bytes de otro formato: `validateImageDimensions`
+    // entrega ese buffer a `image-size`, que elige su parser por el contenido
+    // real y arrastra avisos de DoS sin versión parcheada. La validación por
+    // contenido es la defensa aplicable, porque no existe versión a la que
+    // actualizar. `evidence-asset.provider.ts` ya lo hacía; esta ruta no.
+    if (!validateMagicBytes(file.buffer, file.mimetype)) {
+      throw new BadRequestException('El contenido del archivo no coincide con el tipo declarado.');
     }
 
     if (file.size > constraints.maxBytes) {

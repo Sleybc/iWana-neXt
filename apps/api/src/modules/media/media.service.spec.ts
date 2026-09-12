@@ -50,6 +50,18 @@ type MockMulterFile = {
 };
 
 /**
+ * Cabecera PNG real. El fixture usaba `Buffer.from('fake-image-bytes')`, que
+ * bastaba mientras la subida solo validaba el `mimetype` declarado por el
+ * cliente. Desde que también se valida el contenido —un `image/png` declarado
+ * con bytes de otro formato hacía que `image-size` eligiese otro parser—, un
+ * buffer arbitrario ya no representa una subida válida.
+ */
+const PNG_HEADER = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.alloc(8),
+]);
+
+/**
  * Factoría de archivo simulado para pruebas de upload.
  */
 function buildMulterFile(overrides: Partial<MockMulterFile> = {}): Express.Multer.File {
@@ -58,7 +70,7 @@ function buildMulterFile(overrides: Partial<MockMulterFile> = {}): Express.Multe
     originalname: 'logo.png',
     encoding: '7bit',
     mimetype: 'image/png',
-    buffer: Buffer.from('fake-image-bytes'),
+    buffer: PNG_HEADER,
     size: 16,
     stream: null as unknown as NodeJS.ReadableStream,
     destination: '',
@@ -208,6 +220,23 @@ describe('MediaService', () => {
 
     it('debe lanzar BadRequestException si el MIME type no es permitido para el uso', async () => {
       const file = buildMulterFile({ mimetype: 'application/pdf' });
+
+      await expect(
+        service.upload('tenant_test_isp', { usage: MediaUsage.LOGO }, file, 'user-001'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar el contenido que no corresponde al MIME declarado', async () => {
+      // El allowlist compara contra `mimetype`, que lo declara el cliente en el
+      // multipart. Declarando `image/png` con bytes de otro formato se llegaba a
+      // `image-size`, que elige su parser por el contenido real y arrastra
+      // avisos de DoS sin versión parcheada. Debe cortarse antes.
+      const file = buildMulterFile({
+        mimetype: 'image/png',
+        buffer: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(12)]),
+      });
 
       await expect(
         service.upload('tenant_test_isp', { usage: MediaUsage.LOGO }, file, 'user-001'),

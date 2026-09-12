@@ -83,9 +83,17 @@ async function bootstrap(): Promise<void> {
     next();
   });
 
-  // Confiar en nginx como unico reverse proxy para que req.ip devuelva la IP real del cliente.
-  // Debe emparejarse con nginx sobrescribiendo X-Forwarded-For via $remote_addr.
-  app.set('trust proxy', true);
+  // Confiar en nginx como unico reverse proxy para que req.ip devuelva la IP real
+  // del cliente. El emparejamiento con nginx (`proxy_set_header X-Forwarded-For
+  // $remote_addr`, que SOBRESCRIBE la cabecera) es ahora efectivo: hasta el
+  // 2026-09-12 nginx usaba `$proxy_add_x_forwarded_for`, que anexa al valor del
+  // cliente, y esta linea daba por supuesta una precondicion que no se cumplia.
+  //
+  // El valor es el numero de saltos de confianza, no `true`. Con `true` Express
+  // recorre toda la cadena XFF y acepta cualquier entrada que el cliente haya
+  // inyectado; con `1` toma exactamente el salto que anade nginx. Si algun dia se
+  // antepone otro proxy (CDN, balanceador), este numero sube — no vuelve a `true`.
+  app.set('trust proxy', 1);
 
   // Habilitar lectura de cookies (refresh token llega como cookie httpOnly)
   app.use(cookieParser());
