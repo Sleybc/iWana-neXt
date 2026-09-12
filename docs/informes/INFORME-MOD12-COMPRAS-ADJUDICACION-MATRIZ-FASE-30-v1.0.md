@@ -293,5 +293,35 @@ La corrida Linux **no requiere un entorno Linux local**: los runners de `.github
 
 - `production-images` e `adr-citations`: **success** en `59aa5e44`.
 - `Lint + Typecheck + Build + Unit tests`: **failure** en `59aa5e44` por el mismo defecto de DI (`PurchaseOrderPdfService` no declarado) en `src/common/pagination/clamp-page-endpoints.controller.http.spec.ts`, fuera de `modules/inventory` y por eso no detectado en las verificaciones locales acotadas al módulo. **Corregido en esta entrega.**
-- `execution-orders-e2e`: **failure** en `59aa5e44`, pendiente de diagnóstico; es condición de G6.5.
+- `execution-orders-e2e`: **failure**, y es condición de G6.5. **Diagnosticado (2026-09-12): no falla por código.** El arranque de dependencias aborta al descargar la imagen de MinIO:
+
+  ```
+  minio Error pull access denied for minio/minio, repository does not exist
+  or may require 'docker login'
+  E2E_SETUP=FAILED|Arranque de dependencias E2E: terminó con código 1.
+  ```
+
+  Causa raíz: el tag fijado en `scripts/e2e-provision-operational.mjs:282`
+  (`minio/minio:RELEASE.2025-09-07T16-13-09Z`) ya no está publicado, y tampoco
+  lo está `minio/minio:latest` — el proveedor retiró su repositorio público de
+  Docker Hub. Es un fallo de cadena de suministro externo, **preexistente**: la
+  corrida de `f9f42b33`, anterior a este ciclo de revisión, ya fallaba igual.
+
+  Resolverlo exige decidir registry y versión (p. ej. `quay.io/minio/minio`, un
+  espejo interno, o autenticación en Docker Hub), con implicaciones de licencia
+  —MinIO cambió a AGPL y recortó funcionalidad en releases recientes— y de
+  cadena de suministro. Dueño: **AI-PLAT-OPS (R)**, **AI-EM-ARCH (A)**,
+  **CTO (A\*)**, fila *Infraestructura, CI/CD, backups/DR* de la RACI.
+
 - **Cero skips**: hay 15 skips vivos en `apps/api` y 1 en el portal, guardados por disponibilidad de base de datos real. Deberán resolverse o justificarse ante el gate.
+
+### 13.5 Avance de CI en este ciclo
+
+| SHA | Unit tests | production-images | adr-citations | execution-orders-e2e |
+| --- | --- | --- | --- | --- |
+| `f9f42b33` (previo al ciclo) | failure | success | success | failure |
+| `59aa5e44` | failure | success | success | failure |
+| `f99c35cc` | failure | success | success | failure |
+| `84c68a91` | **success** | success | success | failure |
+
+Dos defectos corregidos en el camino, ninguno visible desde una verificación local acotada al módulo: el provider de DI que faltaba en `common/pagination` (`f99c35cc`) y la suite del portal acoplada a la zona horaria del runner (`84c68a91`). Queda solo el E2E, por la causa externa descrita arriba.
