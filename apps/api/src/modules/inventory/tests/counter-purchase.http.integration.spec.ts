@@ -12,6 +12,7 @@ import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 import { StockIssuePickingService } from '../services/stock-issue-picking.service';
@@ -76,6 +77,19 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
         return true;
       }
 
+      if (authHeader === 'Bearer technician-token') {
+        req.user = {
+          sub: 'technician-001',
+          email: 'technician@example.test',
+          role: UserRole.TECHNICIAN,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-technician',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+
       return false;
     }
   },
@@ -135,6 +149,7 @@ describe('Counter purchase HTTP integration', () => {
         { provide: GoodsReceiptService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: RfqPdfService, useValue: {} },
+        { provide: PurchaseOrderPdfService, useValue: {} },
         { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
@@ -248,6 +263,15 @@ describe('Counter purchase HTTP integration', () => {
   it('tax-presets rejects unauthenticated callers', async () => {
     // El JwtAuthGuard simulado responde false sin token → 403 del framework.
     await request(app.getHttpServer()).get('/api/v1/purchasing/tax-presets').expect(403);
+  });
+
+  it('tax-presets rejects roles without purchasing read permission', async () => {
+    // TECHNICIAN no tiene INVENTORY_PURCHASING_READ ni rol del @Roles() del
+    // endpoint → 403 del RolesGuard (PermissionsGuard simulado como permiso).
+    await request(app.getHttpServer())
+      .get('/api/v1/purchasing/tax-presets')
+      .set('Authorization', 'Bearer technician-token')
+      .expect(403);
   });
 
   it('tax-presets lists purchase presets for support role', async () => {

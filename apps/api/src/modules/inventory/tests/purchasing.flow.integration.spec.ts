@@ -4,6 +4,7 @@ import {
   GoodsReceiptStatus,
   InventoryTrackingMode,
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestPriority,
@@ -139,7 +140,12 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
             return state.requestLines[existingIndex];
           }
 
-          const saved = { id: `line-${state.requestLines.length + 1}`, ...payload };
+          // UUID válido: AddSupplierQuoteLineSchema exige uuid para referenciar
+          // la línea desde una cotización.
+          const saved = {
+            id: `77777777-7777-4777-8777-${String(state.requestLines.length + 1).padStart(12, '0')}`,
+            ...payload,
+          };
           state.requestLines.push(saved);
           return saved;
         }
@@ -233,6 +239,14 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
         if (entity?.name === 'PurchaseRequestLineAward' && options?.where?.purchaseRequestLineId) {
           return state.awards.filter(
             (award) => award.purchaseRequestLineId === options.where.purchaseRequestLineId,
+          );
+        }
+
+        // Fase 30 BE-2: createLineAwards recalcula la cobertura con las líneas
+        // vigentes de la solicitud al cerrar el lote.
+        if (entity?.name === 'PurchaseRequestLine' && options?.where?.purchaseRequestId) {
+          return state.requestLines.filter(
+            (line) => line.purchaseRequestId === options.where.purchaseRequestId,
           );
         }
 
@@ -333,13 +347,18 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
     expect(createdRequest.status).toBe(PurchaseRequestStatus.DRAFT);
     expect(state.requestLines).toHaveLength(2);
 
+    // El harness ahora resuelve las líneas de la solicitud: la cotización debe
+    // registrar precio por producto y el monto se deriva en servidor.
     await purchasingService.addSupplierQuote(
       createdRequest.id as string,
       {
         partyRefId: 'party-001',
         quoteNumber: 'Q-001',
-        amount: 900000,
         currency: 'cop',
+        lines: [
+          { purchaseRequestLineId: state.requestLines[0]?.id as string, unitCost: 100000 },
+          { purchaseRequestLineId: state.requestLines[1]?.id as string, unitCost: 120000 },
+        ],
       },
       actor,
     );
@@ -354,6 +373,8 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
     const lineOneId = state.requestLines[0]?.id as string;
     const lineTwoId = state.requestLines[1]?.id as string;
 
+    // Contrato congelado (Fase 30): cantidades como cadena decimal y la
+    // respuesta trae `{ awards, coverage }`.
     const awards = await purchasingService.createLineAwards(
       createdRequest.id as string,
       {
@@ -361,19 +382,20 @@ describe('Purchasing flow integration (tenant-aware mock)', () => {
           {
             purchaseRequestLineId: lineOneId,
             awardedPartyRefId: 'party-001',
-            awardedQuantity: 5,
+            awardedQuantity: '5.00',
           },
           {
             purchaseRequestLineId: lineTwoId,
             awardedPartyRefId: 'party-002',
-            awardedQuantity: 2,
+            awardedQuantity: '2.00',
           },
         ],
       },
       actor,
     );
 
-    expect(awards).toHaveLength(2);
+    expect(awards.awards).toHaveLength(2);
+    expect(awards.coverage).toBe(PurchaseRequestAwardCoverage.FULLY_AWARDED);
     expect(state.awards).toHaveLength(2);
 
     const orderResult = await purchasingService.createPurchaseOrderFromRequest(

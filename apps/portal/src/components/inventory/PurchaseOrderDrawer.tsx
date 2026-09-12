@@ -20,6 +20,8 @@ import type {
   PurchaseRequestDetailRecord,
   PurchaseRequestRecord,
 } from '@/lib/api-client';
+import { purchasingApi } from '@/lib/api-client';
+import { triggerBlobDownload } from '@/lib/blob-download';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -54,7 +56,8 @@ interface PurchaseOrderDrawerProps {
   createError: string | null;
   isSubmittingOrder: boolean;
   onClose: () => void;
-  onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<void>;
+  /** Devuelve las órdenes creadas: habilita la descarga inmediata del PDF (Fase 31). */
+  onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<PurchaseOrderRecord[]>;
   onOrderCreated?: () => void;
 }
 
@@ -123,11 +126,29 @@ export function PurchaseOrderDrawer({
   const [showOrderSuccess, setShowOrderSuccess] = useState(false);
   const [unitCostOverrides, setUnitCostOverrides] = useState<Record<string, number>>({});
   const [createdOrderCount, setCreatedOrderCount] = useState(0);
+  const [createdOrderIds, setCreatedOrderIds] = useState<string[]>([]);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | null>(null);
+  /**
+   * Foto del preview emitido (DEF-AWD-002): tras generar el batch el refetch
+   * deja las líneas en ORDERED y el preview filtrado quedaría vacío, lo que
+   * cambiaría el título del diálogo y ocultaría el resumen de lo emitido. Se
+   * congela lo enviado para la vista de éxito; al reabrir se recalcula.
+   */
+  const [committedPreviews, setCommittedPreviews] = useState<AwardOrderPreview[] | null>(null);
 
-  const batchMode = Boolean(detail && canGenerateOrdersFromAwards(detail));
+  const batchMode = Boolean(
+    detail && (committedPreviews !== null || canGenerateOrdersFromAwards(detail)),
+  );
 
   const previews: AwardOrderPreview[] = useMemo(() => {
-    if (!detail || !batchMode) {
+    if (!detail) {
+      return [];
+    }
+    if (committedPreviews) {
+      return committedPreviews;
+    }
+    if (!batchMode) {
       return [];
     }
     return buildOrdersFromAwards(detail, {
@@ -135,7 +156,7 @@ export function PurchaseOrderDrawer({
       lineLabels: buildLineLabels(detail, items),
       unitCostOverrides,
     });
-  }, [batchMode, detail, items, supplierLabels, unitCostOverrides]);
+  }, [batchMode, committedPreviews, detail, items, supplierLabels, unitCostOverrides]);
 
   const orderJustCreated = showOrderSuccess && Boolean(request);
 
@@ -149,6 +170,10 @@ export function PurchaseOrderDrawer({
       setShowOrderSuccess(false);
       setUnitCostOverrides({});
       setCreatedOrderCount(0);
+      setCreatedOrderIds([]);
+      setIsDownloadingPdf(false);
+      setPdfDownloadError(null);
+      setCommittedPreviews(null);
       return;
     }
 
@@ -171,13 +196,16 @@ export function PurchaseOrderDrawer({
     }
 
     try {
-      await onCreateOrder(
-        previewsToCreateOrderDto(request.id, previews, {
-          expectedDeliveryDate: deliveryDate,
-          notes: notes.trim() || null,
-        }),
-      );
-      setCreatedOrderCount(previews.length);
+      const created =
+        (await onCreateOrder(
+          previewsToCreateOrderDto(request.id, previews, {
+            expectedDeliveryDate: deliveryDate,
+            notes: notes.trim() || null,
+          }),
+        )) ?? [];
+      setCreatedOrderCount(created.length > 0 ? created.length : previews.length);
+      setCreatedOrderIds(created.map((order) => order.id));
+      setCommittedPreviews(previews);
       setShowOrderSuccess(true);
     } catch {
       // El padre deja createError; no cerrar ni navegar (CA-22-01).
@@ -195,24 +223,49 @@ export function PurchaseOrderDrawer({
     }
 
     try {
-      await onCreateOrder({
-        purchaseRequestId: request.id,
-        partyRefId,
-        expectedDeliveryDate: deliveryDate,
-        notes: notes.trim() || null,
-        status: PurchaseOrderStatus.APPROVED,
-        lines: lines
-          .filter((line) => line.itemId)
-          .map((line) => ({
-            itemId: line.itemId,
-            quantity: Number(line.quantity || '0'),
-            unitCost: Number(line.unitCost || '0'),
-          })),
-      });
-      setCreatedOrderCount(1);
+      const created =
+        (await onCreateOrder({
+          purchaseRequestId: request.id,
+          partyRefId,
+          expectedDeliveryDate: deliveryDate,
+          notes: notes.trim() || null,
+          status: PurchaseOrderStatus.APPROVED,
+          lines: lines
+            .filter((line) => line.itemId)
+            .map((line) => ({
+              itemId: line.itemId,
+              quantity: Number(line.quantity || '0'),
+              unitCost: Number(line.unitCost || '0'),
+            })),
+        })) ?? [];
+      setCreatedOrderCount(created.length > 0 ? created.length : 1);
+      setCreatedOrderIds(created.map((order) => order.id));
       setShowOrderSuccess(true);
     } catch {
       // El padre deja createError; no cerrar ni navegar (CA-22-01).
+    }
+  }
+
+  /** PDF de lo recién generado: orden única directa; ZIP por solicitud si fueron varias. */
+  async function handleDownloadCreatedOrdersPdf() {
+    if (!request || createdOrderIds.length === 0) {
+      return;
+    }
+    setIsDownloadingPdf(true);
+    setPdfDownloadError(null);
+    try {
+      const [singleOrderId] = createdOrderIds;
+      const { blob, filename } =
+        singleOrderId !== undefined && createdOrderIds.length === 1
+          ? await purchasingApi.downloadPurchaseOrderPdf(singleOrderId)
+          : await purchasingApi.downloadRequestOrdersZip(request.id);
+      triggerBlobDownload(blob, filename);
+    } catch {
+      setPdfDownloadError(
+        'No fue posible descargar el PDF. Inténtalo de nuevo desde la pestaña Órdenes.',
+      );
+    } finally {
+      setIsDownloadingPdf(false);
     }
   }
 
@@ -257,27 +310,49 @@ export function PurchaseOrderDrawer({
             </div>
 
             {orderJustCreated ? (
-              <PortalAlert
-                variant="success"
-                title={
-                  createdOrderCount > 1
-                    ? `${createdOrderCount} órdenes de compra generadas`
-                    : latestOrder
-                      ? `Orden de compra ${latestOrder.orderNumber} generada`
-                      : 'Orden de compra generada'
-                }
-                description="Continúa a Recepciones para registrar la mercancía de cada orden."
-                action={
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleContinueAfterSuccess}
-                  >
-                    Ir a recepciones
-                  </Button>
-                }
-              />
+              <>
+                <PortalAlert
+                  variant="success"
+                  title={
+                    createdOrderCount > 1
+                      ? `${createdOrderCount} órdenes de compra generadas`
+                      : latestOrder
+                        ? `Orden de compra ${latestOrder.orderNumber} generada`
+                        : 'Orden de compra generada'
+                  }
+                  description="Descarga el PDF para enviarlo al proveedor y continúa a Recepciones para registrar la mercancía."
+                  action={
+                    <span className="flex flex-wrap gap-2">
+                      {createdOrderIds.length > 0 ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          loading={isDownloadingPdf}
+                          onClick={() => void handleDownloadCreatedOrdersPdf()}
+                        >
+                          {createdOrderIds.length > 1 ? 'Descargar todos (ZIP)' : 'Descargar PDF'}
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleContinueAfterSuccess}
+                      >
+                        Ir a recepciones
+                      </Button>
+                    </span>
+                  }
+                />
+                {pdfDownloadError ? (
+                  <PortalAlert
+                    variant="error"
+                    title="No se pudo descargar el PDF"
+                    description={pdfDownloadError}
+                  />
+                ) : null}
+              </>
             ) : null}
 
             {batchMode ? (

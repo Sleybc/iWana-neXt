@@ -32,3 +32,4 @@ export * from './incoterm-code.enum';
 export * from './tax-quote-effect.enum';
 export * from './quote-shipping-arrangement.enum';
 export * from './purchase-request-fulfillment-status.enum';
+export * from './purchase-request-award-coverage.enum';

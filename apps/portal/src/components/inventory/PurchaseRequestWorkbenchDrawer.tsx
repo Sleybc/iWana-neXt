@@ -23,11 +23,11 @@ import {
   PurchaseRequestStatus,
   PurchaseRfqStatus,
 } from '@iwana/shared';
+import type { PurchaseRequestLineAwardInput as ContractAwardInput } from '@iwana/shared';
 import type {
   AddSupplierQuoteDto,
   CancelPurchaseOrderDto,
   CancelPurchaseRequestDto,
-  CreatePurchaseRequestAwardsDto,
   CreatePurchaseRequestLineDto,
   GoodsReceiptResultRecord,
   InventoryCatalogOptionRecord,
@@ -35,7 +35,6 @@ import type {
   PurchaseOrderLineRecord,
   PurchaseOrderRecord,
   PurchaseRequestDetailRecord,
-  PurchaseRequestLineAwardInput,
   PurchaseRequestLineRecord,
   ReceivePurchaseOrderDto,
   RejectPurchaseRequestDto,
@@ -66,7 +65,7 @@ import {
   type PurchaseCurrencyOption,
 } from './inventory-labels';
 import { ApprovalDecisionPanel } from './ApprovalDecisionPanel';
-import { AwardLinesPanel } from './AwardLinesPanel';
+import { AwardMatrixPanel } from './AwardMatrixPanel';
 import { GoodsReceiptPanel } from './GoodsReceiptPanel';
 import { PurchaseLinesEditor } from './PurchaseLinesEditor';
 import { purchaseRequestLinesToDraft, type PurchaseDraftState } from './purchase-request-draft';
@@ -160,7 +159,9 @@ interface PurchaseRequestWorkbenchDrawerProps {
   onAddQuote: (payload: AddSupplierQuoteDto) => Promise<void>;
   onUpdateQuote: (quoteId: string, payload: UpdateSupplierQuoteDto) => Promise<boolean>;
   onApprove: (payload?: { exceptionReason?: string; notes?: string }) => Promise<void>;
-  onCreateAwards: (payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
+  /** Drafts en el modelo del contrato (cantidades string); el cliente mapea a número. */
+  onCreateAwards: (awards: ContractAwardInput[]) => Promise<void>;
+  onRevokeAward: (awardId: string) => Promise<boolean>;
   onReject: (payload: RejectPurchaseRequestDto) => Promise<void>;
   onCancel: (payload: CancelPurchaseRequestDto) => Promise<void>;
   onLoadSupplier: (partyRefId: string) => void;
@@ -172,6 +173,11 @@ interface PurchaseRequestWorkbenchDrawerProps {
   onApproveOrder: (orderId: string) => Promise<void>;
   onCancelOrder: (orderId: string, payload: CancelPurchaseOrderDto) => Promise<void>;
   onCloseOrder: (orderId: string) => Promise<void>;
+  /**
+   * Descarga el PDF de la orden para enviarla al proveedor (Fase 31); resuelve
+   * el éxito para que el drawer muestre el error sin duplicarlo.
+   */
+  onDownloadOrderPdf?: ((orderId: string) => Promise<boolean>) | undefined;
 }
 
 function isOrderReceivable(status: PurchaseOrderStatus): boolean {
@@ -335,6 +341,7 @@ export function PurchaseRequestWorkbenchDrawer({
   onUpdateQuote,
   onApprove,
   onCreateAwards,
+  onRevokeAward,
   onReject,
   onCancel,
   onLoadSupplier,
@@ -346,6 +353,7 @@ export function PurchaseRequestWorkbenchDrawer({
   onApproveOrder,
   onCancelOrder,
   onCloseOrder,
+  onDownloadOrderPdf,
 }: PurchaseRequestWorkbenchDrawerProps) {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [selectedSupplierName, setSelectedSupplierName] = useState<string | null>(null);
@@ -359,10 +367,34 @@ export function PurchaseRequestWorkbenchDrawer({
   const [quoteCurrency, setQuoteCurrency] = useState<PurchaseCurrencyOption>('COP');
   const [exceptionReason, setExceptionReason] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
-  const [awardDrafts, setAwardDrafts] = useState<PurchaseRequestLineAwardInput[]>([]);
+  // Drafts en el modelo del contrato congelado (cantidades como cadena
+  // decimal, `@iwana/shared`); el mapeo string→number al DTO del api-client
+  // vive en los handlers de envío de este drawer (punto de integración FE-3).
+  const [awardDrafts, setAwardDrafts] = useState<ContractAwardInput[]>([]);
+  const [focusedAwardQuoteId, setFocusedAwardQuoteId] = useState<string | null>(null);
   const [resolutionMode, setResolutionMode] = useState<'reject' | 'cancel' | null>(null);
   const [resolutionReason, setResolutionReason] = useState('');
   const [cancelOrderMode, setCancelOrderMode] = useState<string | null>(null);
+  const [downloadingOrderPdfId, setDownloadingOrderPdfId] = useState<string | null>(null);
+  const [orderPdfError, setOrderPdfError] = useState<string | null>(null);
+
+  async function handleDownloadOrderPdf(orderId: string) {
+    if (!onDownloadOrderPdf) {
+      return;
+    }
+    setDownloadingOrderPdfId(orderId);
+    setOrderPdfError(null);
+    try {
+      const ok = await onDownloadOrderPdf(orderId);
+      if (!ok) {
+        setOrderPdfError('No fue posible descargar el PDF de la orden.');
+      }
+    } catch {
+      setOrderPdfError('No fue posible descargar el PDF de la orden.');
+    } finally {
+      setDownloadingOrderPdfId(null);
+    }
+  }
   const [cancelOrderReason, setCancelOrderReason] = useState('');
   const [isEditingLines, setIsEditingLines] = useState(false);
   const [linesDraft, setLinesDraft] = useState<PurchaseDraftState | null>(null);
@@ -392,6 +424,7 @@ export function PurchaseRequestWorkbenchDrawer({
       setLinesValidationError(null);
       setDiscardLinesConfirmOpen(false);
       setEditingQuoteId(null);
+      setFocusedAwardQuoteId(null);
     }
   }, [open]);
 
@@ -663,6 +696,34 @@ export function PurchaseRequestWorkbenchDrawer({
     }
   }
 
+  /** «Adjudicar y continuar»: persiste el draft de la matriz y abre el flujo de órdenes. */
+  async function handleSubmitAwards(drafts: ContractAwardInput[]) {
+    if (drafts.length === 0) {
+      return;
+    }
+    await onCreateAwards(drafts);
+    onOpenOrderFlow();
+  }
+
+  /** «Guardar adjudicación»: persiste el draft de la matriz sin avanzar. */
+  async function handleSaveAwardsOnly(drafts: ContractAwardInput[]) {
+    if (drafts.length === 0) {
+      return;
+    }
+    await onCreateAwards(drafts);
+  }
+
+  /** Escotilla §7: adjudicación directa con costo obligatorio aportado. */
+  async function handleDirectAward(draft: ContractAwardInput) {
+    await onCreateAwards([draft]);
+  }
+
+  /** Salto desde la comparación: abre la matriz con esa columna enfocada. */
+  function handleAwardQuoteFromComparison(quoteId: string) {
+    setFocusedAwardQuoteId(quoteId);
+    onActiveTabChange('awards');
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -932,6 +993,9 @@ export function PurchaseRequestWorkbenchDrawer({
                       <QuoteComparisonPanel
                         quotes={detail?.quotes ?? []}
                         supplierLabels={supplierLabels}
+                        requestLines={detail?.lines ?? []}
+                        items={items}
+                        onAwardQuote={handleAwardQuoteFromComparison}
                         {...(canModifyManualQuotes
                           ? {
                               onEditQuote: (quoteId: string) => {
@@ -1086,16 +1150,26 @@ export function PurchaseRequestWorkbenchDrawer({
                   </TabsContent>
 
                   <TabsContent value="awards" className="mt-4 space-y-3">
-                    {detail ? (
-                      <AwardLinesPanel
+                    {isLoading || !detail ? (
+                      <PortalSkeletonBlock className="h-48 rounded-2xl" />
+                    ) : (
+                      <AwardMatrixPanel
                         detail={detail}
                         items={items}
                         supplierLabels={supplierLabels}
                         disabled={isSubmittingAwards}
                         error={awardsError}
+                        submitting={isSubmittingAwards}
                         onDraftsChange={setAwardDrafts}
+                        onSubmit={handleSubmitAwards}
+                        onSaveOnly={handleSaveAwardsOnly}
+                        onRevokeAward={onRevokeAward}
+                        onDirectAward={handleDirectAward}
+                        onGoToQuotes={() => onActiveTabChange('cotizar')}
+                        focusedQuoteId={focusedAwardQuoteId}
+                        onFocusedQuoteConsumed={() => setFocusedAwardQuoteId(null)}
                       />
-                    ) : null}
+                    )}
                   </TabsContent>
 
                   <TabsContent value="orders" className="mt-4 space-y-3">
@@ -1169,6 +1243,13 @@ export function PurchaseRequestWorkbenchDrawer({
                         description={closeOrderError}
                       />
                     ) : null}
+                    {orderPdfError ? (
+                      <PortalAlert
+                        variant="error"
+                        title="No se pudo descargar el PDF"
+                        description={orderPdfError}
+                      />
+                    ) : null}
                     {detail?.orders.length ? (
                       <div className="space-y-2">
                         {detail.orders.map((order) => (
@@ -1186,6 +1267,17 @@ export function PurchaseRequestWorkbenchDrawer({
                               {getPurchaseOrderStatusLabel(order.status)}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2">
+                              {onDownloadOrderPdf ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  loading={downloadingOrderPdfId === order.id}
+                                  onClick={() => void handleDownloadOrderPdf(order.id)}
+                                >
+                                  Descargar PDF
+                                </Button>
+                              ) : null}
                               {isOrderReceivable(order.status) ? (
                                 <Button
                                   type="button"
@@ -1415,13 +1507,10 @@ export function PurchaseRequestWorkbenchDrawer({
                       </Button>
                     ) : null}
                     {activeTab === 'awards' && awardDrafts.length > 0 ? (
-                      <Button
-                        type="button"
-                        disabled={isSubmittingAwards}
-                        onClick={() => void onCreateAwards({ awards: awardDrafts })}
-                      >
-                        Adjudicar líneas
-                      </Button>
+                      <p className="text-sm text-iwana-secondary-700 dark:text-gray-300">
+                        Usa «Adjudicar y continuar» o «Guardar adjudicación» en la matriz para
+                        persistir la selección.
+                      </p>
                     ) : null}
                     {activeTab === 'orders' && canCreateOrder ? (
                       <Button type="button" onClick={onOpenOrderFlow}>

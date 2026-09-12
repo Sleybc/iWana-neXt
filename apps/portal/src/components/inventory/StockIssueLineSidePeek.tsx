@@ -98,9 +98,12 @@ export function StockIssueLineSidePeek({
     const withStock = listAvailableConditionsForDraftLine(line.availability);
     return withStock.includes(line.condition) ? withStock : [line.condition, ...withStock];
   }, [line]);
+  // El lote aplica también a las líneas serializadas: su saldo vive en la misma
+  // tupla (ítem, lote, condición) contra la que reservan la salida y el
+  // despacho. Ver `applySingleLotPreselectionToDraftLines`.
   const lotOptions = useMemo(
-    () => (line && !serialized ? listLotOptionsFromPickableLots(line.lots, condition) : []),
-    [line, serialized, condition],
+    () => (line ? listLotOptionsFromPickableLots(line.lots, condition) : []),
+    [line, condition],
   );
 
   const availableQty = useMemo(() => {
@@ -120,8 +123,10 @@ export function StockIssueLineSidePeek({
   }, [line, serialized, condition, lotId]);
 
   // Pista explícita (S2.1 C3): con lotes en la condición y ninguno elegido, el
-  // disponible es 0 por falta de elección — no por falta de material.
-  const showLotHint = !serialized && lotId.trim() === '' && lotOptions.length > 0;
+  // disponible es 0 por falta de elección — no por falta de material. Aplica
+  // igual a las serializadas: sin lote la salida reserva contra una tupla que
+  // no existe y el API la rechaza por disponible 0.
+  const showLotHint = lotId.trim() === '' && lotOptions.length > 0;
 
   const exceedsAvailable =
     availableQty != null &&
@@ -159,8 +164,7 @@ export function StockIssueLineSidePeek({
     }
     onConfirm({
       condition,
-      // La línea serializada no participa de la tupla de lote (S1).
-      lotId: serialized ? '' : lotId,
+      lotId,
       serializedAssetIds: serials.map((item) => item.id),
       serializedAssetLabels: Object.fromEntries(serials.map((item) => [item.id, item.label])),
       requestedQty: effectiveQty,
@@ -275,7 +279,7 @@ export function StockIssueLineSidePeek({
           />
         )}
 
-        {!serialized && lotOptions.length > 0 ? (
+        {lotOptions.length > 0 ? (
           <Select
             label="Lote"
             value={lotId}
@@ -305,7 +309,9 @@ export function StockIssueLineSidePeek({
 
         {showLotHint ? (
           <p className="text-xs text-gray-600 dark:text-gray-300">
-            Elige un lote para ver el disponible de la línea.
+            {serialized
+              ? 'Elige el lote del que salen estos seriales.'
+              : 'Elige un lote para ver el disponible de la línea.'}
           </p>
         ) : null}
 

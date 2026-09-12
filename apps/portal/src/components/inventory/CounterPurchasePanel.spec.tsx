@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InventoryItemCategory, InventoryItemKind } from '@iwana/shared';
 import type {
@@ -136,6 +136,30 @@ describe('CounterPurchasePanel', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('volver sin tocar nada no pide confirmación', async () => {
+    const user = userEvent.setup();
+    jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const onBack = jest.fn();
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+        onBack={onBack}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Volver al listado/i }));
+
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(onBack).toHaveBeenCalled();
+  });
+
   it('agrega producto desde búsqueda y permite registrar', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn().mockResolvedValue(undefined);
@@ -184,7 +208,8 @@ describe('CounterPurchasePanel', () => {
     });
   });
 
-  it('muestra la sección de tributos de la compra con IVA aplicado por defecto', () => {
+  it('muestra la sección de tributos de la compra con IVA aplicado por defecto', async () => {
+    const user = userEvent.setup();
     render(
       <CounterPurchasePanel
         items={items}
@@ -198,6 +223,10 @@ describe('CounterPurchasePanel', () => {
     );
 
     expect(screen.getByText('Tributos de esta compra (según factura)')).toBeInTheDocument();
+    // Colapsada por defecto para optimizar espacio (Fase 29).
+    expect(screen.queryByRole('checkbox', { name: 'IVA' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
     expect(
       screen.getByText(
         'Informativo: sirve para estimar el pago según la factura. No es un cálculo tributario ni un documento DIAN.',
@@ -236,6 +265,34 @@ describe('CounterPurchasePanel', () => {
     });
   });
 
+  it('no envía taxes cuando ninguna fila aplica', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
+    await user.click(screen.getByRole('checkbox', { name: 'IVA' }));
+
+    await fillValidCounterPurchaseForm(user);
+    await user.click(screen.getByRole('button', { name: /Registrar ingreso directo/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('taxes');
+  });
+
   it('usa la tasa del preset para el IVA por defecto cuando llegan presets', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn().mockResolvedValue(undefined);
@@ -263,6 +320,8 @@ describe('CounterPurchasePanel', () => {
       />,
     );
 
+    expect(screen.getByText('Tributos de esta compra (según factura)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
     expect(screen.getByLabelText(/Tasa de IVA/i)).toHaveValue(10);
 
     await fillValidCounterPurchaseForm(user);
@@ -320,6 +379,7 @@ describe('CounterPurchasePanel', () => {
 
     await fillValidCounterPurchaseForm(user);
 
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
     const rateInput = screen.getByLabelText(/Tasa de IVA/i);
     await user.clear(rateInput);
     await user.type(rateInput, '200');
@@ -380,5 +440,134 @@ describe('CounterPurchasePanel', () => {
     expect(screen.getByText(/Se creó el movimiento MOV-9/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Registrar otro ingreso/i }));
     expect(onDismissSuccess).toHaveBeenCalled();
+  });
+
+  it('muestra el resumen y la acción en el aside lateral (Fase 27)', () => {
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    const aside = screen.getByRole('complementary', { name: 'Resumen del ingreso' });
+    expect(aside).toBeInTheDocument();
+    expect(
+      within(aside).getByRole('button', { name: /Registrar ingreso directo/i }),
+    ).toBeInTheDocument();
+    expect(within(aside).getByText('Tributos de esta compra (según factura)')).toBeInTheDocument();
+    expect(within(aside).getByText('Total estimado con tributos')).toBeInTheDocument();
+  });
+
+  it('colapsa las notas por defecto y conserva el contenido (Fase 27)', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText('Notas')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Agregar notas \(opcional\)/i }));
+    const notesField = screen.getByLabelText('Notas');
+    await user.type(notesField, 'Entrega parcial');
+
+    await user.click(screen.getByRole('button', { name: /Ocultar notas/i }));
+    expect(screen.queryByLabelText('Notas')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Agregar notas \(opcional\)/i }));
+    expect(screen.getByLabelText('Notas')).toHaveValue('Entrega parcial');
+  });
+
+  it('enfoca la cantidad al agregar un producto (Fase 27)', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    const searchInput = screen.getByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cantidad de ONT WiFi 6')).toHaveFocus();
+    });
+  });
+
+  it('enfoca la factura al validar sin ella (Fase 27)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn();
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Seleccionar Proveedor/i }));
+    await user.click(screen.getByRole('button', { name: /Registrar ingreso directo/i }));
+
+    expect(await screen.findByText(/Indica la factura o soporte/i)).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Factura o soporte/i)).toHaveFocus();
+    });
+  });
+
+  it('no pide lote: la columna no existe y el payload no lo envía (el sistema lo genera)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <CounterPurchasePanel
+        items={items}
+        catalogOptions={catalogOptions}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastResult={null}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await fillValidCounterPurchaseForm(user);
+
+    expect(screen.queryByRole('columnheader', { name: /Lote/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/El lote se genera solo desde la factura/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Registrar ingreso directo/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+    expect(onSubmit.mock.calls[0][0].lines[0]).not.toHaveProperty('lotNumber');
   });
 });

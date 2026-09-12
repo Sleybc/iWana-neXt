@@ -71,6 +71,12 @@ const USEFUL_LIFE_ALERT_TERMINAL_STATUSES: SerializedAssetStatus[] = [
 interface CreateReceivedAssetInput {
   tenantId: string;
   inventoryItemId: string;
+  /**
+   * Lote de origen del ingreso (migración 129). La recepción crea un
+   * `StockLot` para todo ingreso, también serializado: persistirlo aquí es lo
+   * que permite después validar que un serial pertenece al lote de la línea.
+   */
+  lotId?: string | null;
   serialNumber?: string | null;
   macAddress?: string | null;
   assetTag?: string | null;
@@ -493,6 +499,7 @@ export class SerializedAssetService {
       manager.create(SerializedAsset, {
         tenantId: input.tenantId,
         inventoryItemId: input.inventoryItemId,
+        lotId: input.lotId ?? null,
         serialNumber: input.serialNumber?.trim() ?? null,
         normalizedSerialNumber: normalizedSerial,
         macAddress: input.macAddress?.trim() ?? null,

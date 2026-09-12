@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
-import { StockBalance } from '@iwana/db';
+import { StockBalance, StockLot, TenantContext, runInTenantSchema } from '@iwana/db';
 import { StockBalanceCondition } from '@iwana/shared';
 import {
   StockBalanceService,
@@ -9,6 +9,18 @@ import {
   computeAvailable,
   formatInsufficientAvailableMessage,
 } from '../services/stock-balance.service';
+
+jest.mock('@iwana/db', () => ({
+  StockBalance: class StockBalance {},
+  StockLot: class StockLot {},
+  TenantContext: {
+    getOrThrow: jest.fn().mockReturnValue({
+      tenantId: 'tenant-001',
+      schemaName: 'tenant_001',
+    }),
+  },
+  runInTenantSchema: jest.fn(),
+}));
 
 describe('StockBalanceService', () => {
   describe('computeAvailable', () => {
@@ -308,6 +320,128 @@ describe('StockBalanceService', () => {
       expect(buildReservationAvailabilityKey(base)).not.toBe(
         buildReservationAvailabilityKey({ ...base, condition: StockBalanceCondition.DAMAGED }),
       );
+    });
+  });
+
+  describe('list (lotNumber legible)', () => {
+    function buildListManager(
+      rows: Array<Partial<StockBalance> & { updatedAt: Date }>,
+      lots: Array<{ id: string; lotNumber: string }>,
+    ) {
+      const getMany = jest.fn().mockResolvedValue(rows);
+      const take = jest.fn().mockReturnThis();
+      const addOrderBy = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const getCount = jest.fn().mockResolvedValue(rows.length);
+      const clone = jest.fn(() => ({ getCount }));
+      const andWhere = jest.fn().mockReturnThis();
+      const where = jest.fn().mockReturnThis();
+      const find = jest
+        .fn()
+        .mockImplementation(async (entity: unknown) => (entity === StockLot ? lots : []));
+      const manager = {
+        createQueryBuilder: jest.fn(() => ({
+          where,
+          andWhere,
+          clone,
+          orderBy,
+          addOrderBy,
+          take,
+          getMany,
+        })),
+        find,
+      } as unknown as EntityManager;
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+
+      return { manager, find };
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
+        tenantId: 'tenant-001',
+        schemaName: 'tenant_001',
+      });
+    });
+
+    it('resuelve el número de lote capturado al registrar la compra', async () => {
+      const { find } = buildListManager(
+        [
+          {
+            id: 'bal-001',
+            tenantId: 'tenant-001',
+            itemId: 'item-001',
+            locationId: 'loc-001',
+            lotId: 'lot-001',
+            condition: StockBalanceCondition.NEW,
+            quantityOnHand: '300.00',
+            quantityReserved: '0.00',
+            updatedAt: new Date('2026-09-09T10:00:00.000Z'),
+          },
+        ],
+        [{ id: 'lot-001', lotNumber: '09092026' }],
+      );
+
+      const service = new StockBalanceService({} as DataSource);
+      const result = await service.list({});
+
+      expect(find).toHaveBeenCalledWith(StockLot, {
+        where: { tenantId: 'tenant-001', id: expect.anything() },
+      });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toMatchObject({ lotId: 'lot-001', lotNumber: '09092026' });
+    });
+
+    it('sin lote → lotNumber null y sin consulta a stock_lots', async () => {
+      const { find } = buildListManager(
+        [
+          {
+            id: 'bal-002',
+            tenantId: 'tenant-001',
+            itemId: 'item-001',
+            locationId: 'loc-001',
+            lotId: null,
+            condition: StockBalanceCondition.NEW,
+            quantityOnHand: '5.00',
+            quantityReserved: '0.00',
+            updatedAt: new Date('2026-09-09T10:00:00.000Z'),
+          },
+        ],
+        [],
+      );
+
+      const service = new StockBalanceService({} as DataSource);
+      const result = await service.list({});
+
+      expect(find).not.toHaveBeenCalled();
+      expect(result.data[0]).toMatchObject({ lotId: null, lotNumber: null });
+    });
+
+    it('lote huérfano → lotNumber null (el cliente degrada)', async () => {
+      buildListManager(
+        [
+          {
+            id: 'bal-003',
+            tenantId: 'tenant-001',
+            itemId: 'item-001',
+            locationId: 'loc-001',
+            lotId: 'lot-ghost',
+            condition: StockBalanceCondition.NEW,
+            quantityOnHand: '1.00',
+            quantityReserved: '0.00',
+            updatedAt: new Date('2026-09-09T10:00:00.000Z'),
+          },
+        ],
+        [],
+      );
+
+      const service = new StockBalanceService({} as DataSource);
+      const result = await service.list({});
+
+      expect(result.data[0]).toMatchObject({ lotId: 'lot-ghost', lotNumber: null });
     });
   });
 });

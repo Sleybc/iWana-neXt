@@ -1,9 +1,16 @@
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
+  GoodsReceipt,
+  GoodsReceiptLine,
+  InventoryItem,
+  PurchaseOrder,
+  PurchaseOrderLine,
   PurchaseRequest,
   PurchaseRequestLine,
   PurchaseRequestLineAward,
   PurchaseRfq,
+  StockLot,
   SupplierQuote,
   SupplierQuoteLine,
   SupplierQuoteTax,
@@ -14,6 +21,7 @@ import {
   InventoryTrackingMode,
   PartyStatus,
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestPriority,
@@ -143,6 +151,68 @@ describe('PurchasingPolicyService', () => {
 
     expect(result.canApprove).toBe(false);
     expect(result.blockingReason).toContain('justificación');
+  });
+
+  // ===== Test-guarda de `validateLineAward` (CA-310) =====
+  // CONGELA el comportamiento exacto de la política de adjudicación por línea:
+  // es test-guarda por decisión del CTO (Fase 30, prompt §1). Cualquier cambio
+  // de reglas o de mensajes debe ser una decisión explícita, no un accidente.
+
+  it('CA-310: bloquea la adjudicación que excede lo solicitado con mensaje exacto', () => {
+    const blockingReason = service.validateLineAward({
+      requestType: PurchaseRequestType.REPLENISHMENT,
+      requestedQuantity: 2,
+      existingAwardedQuantity: 0,
+      newAwardedQuantity: 3,
+    });
+
+    expect(blockingReason).toBe('La adjudicación excede la cantidad solicitada en la línea.');
+  });
+
+  it('CA-310: bloquea adjudicación parcial en tipos no PROJECT con mensaje exacto', () => {
+    const blockingReason = service.validateLineAward({
+      requestType: PurchaseRequestType.REPLENISHMENT,
+      requestedQuantity: 2,
+      existingAwardedQuantity: 0,
+      newAwardedQuantity: 1,
+    });
+
+    expect(blockingReason).toBe(
+      'Solo las solicitudes de proyecto permiten adjudicaciones parciales por línea.',
+    );
+  });
+
+  it('CA-310: no-PROJECT con adjudicación exacta devuelve null', () => {
+    expect(
+      service.validateLineAward({
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        requestedQuantity: 2,
+        existingAwardedQuantity: 0,
+        newAwardedQuantity: 2,
+      }),
+    ).toBeNull();
+  });
+
+  it('CA-310: PROJECT admite adjudicación parcial por línea', () => {
+    expect(
+      service.validateLineAward({
+        requestType: PurchaseRequestType.PROJECT,
+        requestedQuantity: 2,
+        existingAwardedQuantity: 0,
+        newAwardedQuantity: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it('CA-310: PROJECT también se bloquea al exceder lo solicitado', () => {
+    expect(
+      service.validateLineAward({
+        requestType: PurchaseRequestType.PROJECT,
+        requestedQuantity: 2,
+        existingAwardedQuantity: 1.5,
+        newAwardedQuantity: 1,
+      }),
+    ).toBe('La adjudicación excede la cantidad solicitada en la línea.');
   });
 });
 
@@ -347,7 +417,7 @@ describe('PurchasingService', () => {
             {
               purchaseRequestLineId: 'line-001',
               awardedPartyRefId: 'party-001',
-              awardedQuantity: 1,
+              awardedQuantity: '1.00',
             },
           ],
         },
@@ -371,18 +441,45 @@ describe('PurchasingService', () => {
       quantityRequested: '2.00',
       lineStatus: PurchaseRequestLineStatus.OPEN,
     };
+    const quote = {
+      id: 'quote-001',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-001',
+      partyRefId: 'party-001',
+      currency: 'COP',
+    };
+    const quoteLine = {
+      id: 'ql-001',
+      tenantId: 'tenant-001',
+      supplierQuoteId: 'quote-001',
+      purchaseRequestLineId: 'line-001',
+      unitCost: '150.00',
+    };
     const manager = {
       transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       findOne: jest.fn().mockImplementation(async (_entity, options) => {
-        if (options?.where?.id === 'pr-001') {
+        const where = options?.where ?? {};
+        if (where.id === 'pr-001') {
           return requestRecord;
         }
-        if (options?.where?.id === 'line-001') {
+        if (where.id === 'line-001') {
           return line;
+        }
+        if (where.id === 'quote-001' && where.purchaseRequestId === 'pr-001') {
+          return quote;
+        }
+        if (where.supplierQuoteId === 'quote-001' && where.purchaseRequestLineId === 'line-001') {
+          return quoteLine;
         }
         return null;
       }),
-      find: jest.fn().mockResolvedValue([]),
+      find: jest.fn().mockImplementation(async (_entity, options) => {
+        const where = options?.where ?? {};
+        if ('purchaseRequestLineId' in where) {
+          return [];
+        }
+        return [line];
+      }),
       create: jest.fn((_entity, payload) => payload),
       save: jest.fn().mockImplementation(async (_entity, payload) => ({
         id: payload.id ?? 'award-001',
@@ -401,6 +498,7 @@ describe('PurchasingService', () => {
       emptyTaxCatalogPort,
     );
 
+    // Contrato congelado: la cantidad viaja como cadena decimal.
     const result = await service.createLineAwards(
       'pr-001',
       {
@@ -408,7 +506,7 @@ describe('PurchasingService', () => {
           {
             purchaseRequestLineId: 'line-001',
             awardedPartyRefId: 'party-001',
-            awardedQuantity: 2,
+            awardedQuantity: '2.00',
             supplierQuoteId: 'quote-001',
           },
         ],
@@ -416,14 +514,18 @@ describe('PurchasingService', () => {
       actor,
     );
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual(
+    expect(result.awards).toHaveLength(1);
+    expect(result.awards[0]).toEqual(
       expect.objectContaining({
         purchaseRequestLineId: 'line-001',
         awardedPartyRefId: 'party-001',
         supplierQuoteId: 'quote-001',
+        // Snapshot económico congelado desde supplier_quote_lines.
+        unitCost: '150.00',
+        currency: 'COP',
       }),
     );
+    expect(result.coverage).toBe(PurchaseRequestAwardCoverage.FULLY_AWARDED);
     expect(line.lineStatus).toBe(PurchaseRequestLineStatus.AWARDED);
   });
 
@@ -910,6 +1012,283 @@ describe('PurchasingService', () => {
     expect(result.status).toBe(PurchaseOrderStatus.CANCELLED);
     expect(result.cancellationReason).toBe('Proveedor no disponible');
     expect(result.cancelledByUserId).toBe(actor.sub);
+  });
+
+  it('cancel reverts derived state: line to AWARDED and request to APPROVED when nothing live remains', async () => {
+    const orderRecord = {
+      id: 'po-cancel-100',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-001',
+      orderNumber: 'PO-000100',
+      status: PurchaseOrderStatus.APPROVED,
+      cancellationReason: null as string | null,
+      cancelledByUserId: null as string | null,
+      updatedAt: new Date(),
+    };
+    const requestRecord = {
+      id: 'pr-001',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+    };
+    const lineRecord = {
+      id: 'line-1',
+      tenantId: 'tenant-001',
+      lineStatus: PurchaseRequestLineStatus.ORDERED,
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation((entity, criteria) => {
+        if (entity === PurchaseOrder) {
+          return Promise.resolve(orderRecord);
+        }
+        if (entity === PurchaseRequest) {
+          return Promise.resolve(requestRecord);
+        }
+        if (entity === PurchaseRequestLine) {
+          return Promise.resolve(criteria.where.id === 'line-1' ? lineRecord : null);
+        }
+        return Promise.resolve(null);
+      }),
+      find: jest.fn().mockImplementation((entity, criteria) => {
+        if (entity === PurchaseOrderLine) {
+          // Orden cancelada → su línea; línea de solicitud → órdenes vivas que la cubren.
+          if (criteria.where.purchaseOrderId === 'po-cancel-100') {
+            return Promise.resolve([
+              {
+                id: 'pol-1',
+                purchaseOrderId: 'po-cancel-100',
+                purchaseRequestLineId: 'line-1',
+                quantity: '1.00',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        }
+        if (entity === PurchaseRequestLineAward) {
+          return Promise.resolve([{ awardedQuantity: '1.00' }]);
+        }
+        if (entity === PurchaseOrder) {
+          return Promise.resolve([]);
+        }
+        if (entity === PurchaseRequestLine) {
+          return Promise.resolve([lineRecord]);
+        }
+        return Promise.resolve([]);
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    const result = await service.cancelPurchaseOrder(
+      'po-cancel-100',
+      { reason: 'Proveedor no disponible' },
+      actor,
+    );
+
+    expect(result.status).toBe(PurchaseOrderStatus.CANCELLED);
+    expect(lineRecord.lineStatus).toBe(PurchaseRequestLineStatus.AWARDED);
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.APPROVED);
+    expect(manager.save).toHaveBeenCalledWith(PurchaseRequestLine, lineRecord);
+    expect(manager.save).toHaveBeenCalledWith(PurchaseRequest, requestRecord);
+  });
+
+  it('cancel keeps line ORDERED and request CONVERTED when another live order covers the award', async () => {
+    const orderRecord = {
+      id: 'po-cancel-101',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-001',
+      orderNumber: 'PO-000101',
+      status: PurchaseOrderStatus.APPROVED,
+      cancellationReason: null as string | null,
+      cancelledByUserId: null as string | null,
+      updatedAt: new Date(),
+    };
+    const requestRecord = {
+      id: 'pr-001',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+    };
+    const lineRecord = {
+      id: 'line-1',
+      tenantId: 'tenant-001',
+      lineStatus: PurchaseRequestLineStatus.ORDERED,
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation((entity, criteria) => {
+        if (entity === PurchaseOrder) {
+          return Promise.resolve(orderRecord);
+        }
+        if (entity === PurchaseRequest) {
+          return Promise.resolve(requestRecord);
+        }
+        if (entity === PurchaseRequestLine) {
+          return Promise.resolve(criteria.where.id === 'line-1' ? lineRecord : null);
+        }
+        return Promise.resolve(null);
+      }),
+      find: jest.fn().mockImplementation((entity, criteria) => {
+        if (entity === PurchaseOrderLine) {
+          if (criteria.where.purchaseOrderId === 'po-cancel-101') {
+            return Promise.resolve([
+              {
+                id: 'pol-1',
+                purchaseOrderId: 'po-cancel-101',
+                purchaseRequestLineId: 'line-1',
+                quantity: '1.00',
+              },
+            ]);
+          }
+          // Otra orden viva sigue cubriendo la línea completa.
+          return Promise.resolve([
+            {
+              id: 'pol-2',
+              purchaseOrderId: 'po-live-1',
+              purchaseRequestLineId: 'line-1',
+              quantity: '1.00',
+            },
+          ]);
+        }
+        if (entity === PurchaseRequestLineAward) {
+          return Promise.resolve([{ awardedQuantity: '1.00' }]);
+        }
+        if (entity === PurchaseOrder) {
+          return Promise.resolve([
+            {
+              id: 'po-live-1',
+              tenantId: 'tenant-001',
+              purchaseRequestId: 'pr-001',
+              status: PurchaseOrderStatus.APPROVED,
+            },
+          ]);
+        }
+        if (entity === PurchaseRequestLine) {
+          return Promise.resolve([lineRecord]);
+        }
+        return Promise.resolve([]);
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    await service.cancelPurchaseOrder('po-cancel-101', { reason: 'Duplicada' }, actor);
+
+    expect(lineRecord.lineStatus).toBe(PurchaseRequestLineStatus.ORDERED);
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.CONVERTED_TO_PO);
+    expect(manager.save).not.toHaveBeenCalledWith(PurchaseRequestLine, expect.anything());
+    expect(manager.save).not.toHaveBeenCalledWith(PurchaseRequest, expect.anything());
+  });
+
+  it('cancel never degrades received lines', async () => {
+    const orderRecord = {
+      id: 'po-cancel-102',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-001',
+      orderNumber: 'PO-000102',
+      status: PurchaseOrderStatus.APPROVED,
+      cancellationReason: null as string | null,
+      cancelledByUserId: null as string | null,
+      updatedAt: new Date(),
+    };
+    const requestRecord = {
+      id: 'pr-001',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.CONVERTED_TO_PO,
+    };
+    const receivedLine = {
+      id: 'line-1',
+      tenantId: 'tenant-001',
+      lineStatus: PurchaseRequestLineStatus.PARTIALLY_RECEIVED,
+    };
+    const manager = {
+      transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      findOne: jest.fn().mockImplementation((entity, criteria) => {
+        if (entity === PurchaseOrder) {
+          return Promise.resolve(orderRecord);
+        }
+        if (entity === PurchaseRequest) {
+          return Promise.resolve(requestRecord);
+        }
+        if (entity === PurchaseRequestLine) {
+          return Promise.resolve(criteria.where.id === 'line-1' ? receivedLine : null);
+        }
+        return Promise.resolve(null);
+      }),
+      find: jest.fn().mockImplementation((entity, criteria) => {
+        if (entity === PurchaseOrderLine) {
+          if (criteria.where.purchaseOrderId === 'po-cancel-102') {
+            return Promise.resolve([
+              {
+                id: 'pol-1',
+                purchaseOrderId: 'po-cancel-102',
+                purchaseRequestLineId: 'line-1',
+                quantity: '1.00',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        }
+        if (entity === PurchaseRequestLineAward) {
+          return Promise.resolve([{ awardedQuantity: '1.00' }]);
+        }
+        if (entity === PurchaseOrder) {
+          return Promise.resolve([]);
+        }
+        if (entity === PurchaseRequestLine) {
+          return Promise.resolve([receivedLine]);
+        }
+        return Promise.resolve([]);
+      }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+    };
+
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    const service = new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+
+    await service.cancelPurchaseOrder('po-cancel-102', { reason: 'Sin efecto' }, actor);
+
+    expect(receivedLine.lineStatus).toBe(PurchaseRequestLineStatus.PARTIALLY_RECEIVED);
+    // La línea sigue en grupo «ordenada/recibida»: la solicitud sigue convertida.
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.CONVERTED_TO_PO);
+    expect(manager.save).not.toHaveBeenCalledWith(PurchaseRequestLine, expect.anything());
+    expect(manager.save).not.toHaveBeenCalledWith(PurchaseRequest, expect.anything());
   });
 
   it('blocks cancelPurchaseOrder when order has received items', async () => {
@@ -1969,6 +2348,1147 @@ describe('PurchasingService', () => {
       ),
     ).rejects.toThrow('La cotización no existe en esta solicitud.');
     expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  // ===== Fase 30 BE-1 — regresión del defecto «solicitud varada» =====
+
+  /**
+   * Manager en memoria que acumula órdenes y líneas de OC entre llamadas, para
+   * simular la conversión por etapas de una misma solicitud (el double del
+   * DataSource refleja lo ya persistido en la transacción). Fase 30 BE-2:
+   * también persiste awards (create/revoke) y resuelve cotización y su línea
+   * para CA-304/307/308; `quoteCount` alimenta el recálculo OPEN/PENDING_QUOTE
+   * de la revocación.
+   */
+  function createOrderingHarness(params: {
+    request: Record<string, unknown>;
+    lines: Array<Record<string, unknown>>;
+    awards: Array<Record<string, unknown>>;
+    quote?: Record<string, unknown>;
+    quoteLine?: Record<string, unknown>;
+    quoteCount?: number;
+  }) {
+    const orders: Array<Record<string, unknown>> = [];
+    const orderLines: Array<Record<string, unknown>> = [];
+
+    const manager = {
+      transaction: jest
+        .fn()
+        .mockImplementation(async (work: (m: unknown) => unknown) => work(manager)),
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          async (entity: unknown, options?: { where?: Record<string, unknown> }) => {
+            const where = options?.where ?? {};
+            const id = where.id;
+            if (entity === PurchaseRequest && id === params.request.id) {
+              return params.request;
+            }
+            if (entity === SupplierQuote) {
+              return params.quote &&
+                params.quote.id === id &&
+                params.quote.purchaseRequestId === where.purchaseRequestId
+                ? params.quote
+                : null;
+            }
+            if (entity === SupplierQuoteLine) {
+              return params.quoteLine &&
+                params.quoteLine.supplierQuoteId === where.supplierQuoteId &&
+                params.quoteLine.purchaseRequestLineId === where.purchaseRequestLineId
+                ? params.quoteLine
+                : null;
+            }
+            if (entity === PurchaseRequestLineAward) {
+              return params.awards.find((award) => award.id === id) ?? null;
+            }
+            return params.lines.find((line) => line.id === id) ?? null;
+          },
+        ),
+      find: jest
+        .fn()
+        .mockImplementation(
+          async (entity: unknown, options?: { where?: Record<string, unknown> }) => {
+            const where = options?.where ?? {};
+            if (entity === PurchaseRequestLineAward) {
+              return params.awards.filter(
+                (award) => award.purchaseRequestLineId === where.purchaseRequestLineId,
+              );
+            }
+            if (entity === PurchaseOrder) {
+              return orders.filter((order) => order.purchaseRequestId === where.purchaseRequestId);
+            }
+            if (entity === PurchaseOrderLine) {
+              return orderLines.filter(
+                (orderLine) => orderLine.purchaseRequestLineId === where.purchaseRequestLineId,
+              );
+            }
+            if (entity === PurchaseRequestLine) {
+              return params.lines.filter(
+                (line) => line.purchaseRequestId === where.purchaseRequestId,
+              );
+            }
+            return [];
+          },
+        ),
+      createQueryBuilder: jest
+        .fn()
+        .mockImplementation(() =>
+          createNumberQueryBuilder(`PO-${String(40 + orders.length).padStart(6, '0')}`),
+        ),
+      create: jest.fn((_entity: unknown, payload: Record<string, unknown>) => payload),
+      save: jest
+        .fn()
+        .mockImplementation(async (entity: unknown, payload: Record<string, unknown>) => {
+          if (entity === PurchaseOrder && 'orderNumber' in payload) {
+            const order = { id: `po-${orders.length + 1}`, status: 'APPROVED', ...payload };
+            orders.push(order);
+            return order;
+          }
+          if (entity === PurchaseOrderLine && 'purchaseOrderId' in payload) {
+            const orderLine = { id: `pol-${orderLines.length + 1}`, ...payload };
+            orderLines.push(orderLine);
+            return orderLine;
+          }
+          if (entity === PurchaseRequestLineAward) {
+            if (payload.id) {
+              const awardIndex = params.awards.findIndex((award) => award.id === payload.id);
+              if (awardIndex >= 0) {
+                params.awards[awardIndex] = { ...params.awards[awardIndex], ...payload };
+                return params.awards[awardIndex];
+              }
+            }
+            const savedAward = { id: `award-${params.awards.length + 1}`, ...payload };
+            params.awards.push(savedAward);
+            return savedAward;
+          }
+          return payload;
+        }),
+      delete: jest.fn().mockImplementation(async (entity: unknown, criteria?: { id?: string }) => {
+        if (entity === PurchaseRequestLineAward && criteria?.id) {
+          const awardIndex = params.awards.findIndex((award) => award.id === criteria.id);
+          if (awardIndex >= 0) {
+            params.awards.splice(awardIndex, 1);
+          }
+        }
+      }),
+      count: jest
+        .fn()
+        .mockImplementation(
+          async (entity: unknown, _options?: { where?: Record<string, unknown> }) => {
+            if (entity === SupplierQuote) {
+              return params.quoteCount ?? 0;
+            }
+            return 0;
+          },
+        ),
+    };
+
+    return { manager, orders, orderLines };
+  }
+
+  function createRegressionService(manager: Record<string, jest.Mock>): PurchasingService {
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    return new PurchasingService(
+      {} as DataSource,
+      new PurchasingPolicyService(),
+      { applyQuoteToInvitation: jest.fn() } as unknown as RfqService,
+      supplierProfileServiceMock,
+      emptyTaxCatalogPort,
+    );
+  }
+
+  it('R1: orden batch parcial deja la solicitud en APPROVED; al cubrir las 4 líneas queda CONVERTED_TO_PO', async () => {
+    const requestRecord = {
+      id: 'pr-r1',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.APPROVED,
+      neededByDate: null as string | null,
+    };
+    const makeLine = (id: string) => ({
+      id,
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-r1',
+      inventoryItemId: `item-${id}`,
+      quantityRequested: '2.00',
+      lineStatus: PurchaseRequestLineStatus.AWARDED,
+    });
+    const lines = [makeLine('line-1'), makeLine('line-2'), makeLine('line-3'), makeLine('line-4')];
+    const awards = [
+      {
+        id: 'award-1',
+        purchaseRequestLineId: 'line-1',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '2.00',
+      },
+      {
+        id: 'award-2',
+        purchaseRequestLineId: 'line-2',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '2.00',
+      },
+      {
+        id: 'award-3',
+        purchaseRequestLineId: 'line-3',
+        awardedPartyRefId: 'party-002',
+        awardedQuantity: '2.00',
+      },
+      {
+        id: 'award-4',
+        purchaseRequestLineId: 'line-4',
+        awardedPartyRefId: 'party-002',
+        awardedQuantity: '2.00',
+      },
+    ].map((award) => ({ tenantId: 'tenant-001', ...award }));
+
+    const { manager } = createOrderingHarness({ request: requestRecord, lines, awards });
+    const service = createRegressionService(manager);
+
+    // Primera tanda: solo las 2 líneas del proveedor 001.
+    const first = await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-r1',
+        status: PurchaseOrderStatus.APPROVED,
+        orders: [
+          {
+            partyRefId: 'party-001',
+            lines: [
+              {
+                purchaseRequestLineId: 'line-1',
+                itemId: 'item-line-1',
+                quantity: 2,
+                unitCost: 100,
+              },
+              {
+                purchaseRequestLineId: 'line-2',
+                itemId: 'item-line-2',
+                quantity: 2,
+                unitCost: 100,
+              },
+            ],
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect('orders' in first).toBe(true);
+    // Defecto corregido: la orden parcial NO varar la solicitud en CONVERTED_TO_PO.
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.APPROVED);
+    expect(lines.map((line) => line.lineStatus)).toEqual([
+      PurchaseRequestLineStatus.ORDERED,
+      PurchaseRequestLineStatus.ORDERED,
+      PurchaseRequestLineStatus.AWARDED,
+      PurchaseRequestLineStatus.AWARDED,
+    ]);
+
+    // Segunda tanda: las 2 líneas restantes del proveedor 002.
+    const second = await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-r1',
+        status: PurchaseOrderStatus.APPROVED,
+        orders: [
+          {
+            partyRefId: 'party-002',
+            lines: [
+              {
+                purchaseRequestLineId: 'line-3',
+                itemId: 'item-line-3',
+                quantity: 2,
+                unitCost: 100,
+              },
+              {
+                purchaseRequestLineId: 'line-4',
+                itemId: 'item-line-4',
+                quantity: 2,
+                unitCost: 100,
+              },
+            ],
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect('orders' in second).toBe(true);
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.CONVERTED_TO_PO);
+  });
+
+  it('R2: rechaza con código ORDER_EXCEEDS_AWARD cuando las órdenes acumuladas superan lo adjudicado', async () => {
+    const requestRecord = {
+      id: 'pr-r2',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.APPROVED,
+      neededByDate: null as string | null,
+    };
+    const lineOne = {
+      id: 'line-1',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-r2',
+      inventoryItemId: 'item-1',
+      quantityRequested: '2.00',
+      lineStatus: PurchaseRequestLineStatus.AWARDED,
+    };
+    const awards = [
+      {
+        id: 'award-1',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-1',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '2.00',
+      },
+    ];
+
+    const { manager } = createOrderingHarness({ request: requestRecord, lines: [lineOne], awards });
+    const service = createRegressionService(manager);
+
+    // Primera orden parcial legítima: 1.5 de 2.00 adjudicadas.
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-r2',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [{ purchaseRequestLineId: 'line-1', itemId: 'item-1', quantity: 1.5, unitCost: 50 }],
+      },
+      actor,
+    );
+
+    // Segunda orden con 1.00 más: acumulado 2.50 > 2.00 → 400 ORDER_EXCEEDS_AWARD.
+    await expect(
+      service.createPurchaseOrderFromRequest(
+        {
+          purchaseRequestId: 'pr-r2',
+          partyRefId: 'party-001',
+          status: PurchaseOrderStatus.APPROVED,
+          lines: [{ purchaseRequestLineId: 'line-1', itemId: 'item-1', quantity: 1, unitCost: 50 }],
+        },
+        actor,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ORDER_EXCEEDS_AWARD' } });
+    expect(lineOne.lineStatus).toBe(PurchaseRequestLineStatus.AWARDED);
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.APPROVED);
+  });
+
+  it('R3: orden parcial deja la línea en AWARDED; al completar la cantidad adjudicada queda ORDERED', async () => {
+    const requestRecord = {
+      id: 'pr-r3',
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.APPROVED,
+      neededByDate: null as string | null,
+    };
+    const lineOne = {
+      id: 'line-1',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-r3',
+      inventoryItemId: 'item-1',
+      quantityRequested: '2.00',
+      lineStatus: PurchaseRequestLineStatus.AWARDED,
+    };
+    const awards = [
+      {
+        id: 'award-1',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-1',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '2.00',
+      },
+    ];
+
+    const { manager } = createOrderingHarness({ request: requestRecord, lines: [lineOne], awards });
+    const service = createRegressionService(manager);
+
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-r3',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [{ purchaseRequestLineId: 'line-1', itemId: 'item-1', quantity: 1, unitCost: 50 }],
+      },
+      actor,
+    );
+
+    // Orden parcial: la línea permanece AWARDED (no ORDERED prematuro).
+    expect(lineOne.lineStatus).toBe(PurchaseRequestLineStatus.AWARDED);
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.APPROVED);
+
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-r3',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [{ purchaseRequestLineId: 'line-1', itemId: 'item-1', quantity: 1, unitCost: 50 }],
+      },
+      actor,
+    );
+
+    // Adjudicación completada: ORDERED y, siendo la única línea, CONVERTED_TO_PO.
+    expect(lineOne.lineStatus).toBe(PurchaseRequestLineStatus.ORDERED);
+    expect(requestRecord.status).toBe(PurchaseRequestStatus.CONVERTED_TO_PO);
+  });
+
+  // ===== Fase 30 BE-2 — contrato de adjudicación (matriz, ADR-087 propuesto) =====
+
+  function createAwardTestRequest(id: string, requestType: PurchaseRequestType) {
+    return {
+      id,
+      tenantId: 'tenant-001',
+      status: PurchaseRequestStatus.APPROVED,
+      requestType,
+    };
+  }
+
+  function createAwardTestLine(
+    id: string,
+    purchaseRequestId: string,
+    lineStatus: PurchaseRequestLineStatus,
+  ) {
+    return {
+      id,
+      tenantId: 'tenant-001',
+      purchaseRequestId,
+      inventoryItemId: `item-${id}`,
+      quantityRequested: '4.00',
+      lineStatus,
+    };
+  }
+
+  it('CA-304: cotización de otra solicitud responde 400 AWARD_QUOTE_MISMATCH', async () => {
+    const request = createAwardTestRequest('pr-304a', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-304a', 'pr-304a', PurchaseRequestLineStatus.OPEN);
+    const quote = {
+      id: 'quote-otra',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-otra',
+      partyRefId: 'party-001',
+      currency: 'COP',
+    };
+    const awards: Array<Record<string, unknown>> = [];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards, quote });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .createLineAwards(
+        'pr-304a',
+        {
+          awards: [
+            {
+              purchaseRequestLineId: 'line-304a',
+              awardedPartyRefId: 'party-001',
+              awardedQuantity: '2.00',
+              supplierQuoteId: 'quote-otra',
+            },
+          ],
+        },
+        actor,
+      )
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.getResponse()).toMatchObject({ code: 'AWARD_QUOTE_MISMATCH' });
+    expect(awards).toHaveLength(0);
+  });
+
+  it('CA-304: cotización de otro proveedor responde 400 AWARD_SUPPLIER_MISMATCH', async () => {
+    const request = createAwardTestRequest('pr-304b', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-304b', 'pr-304b', PurchaseRequestLineStatus.OPEN);
+    const quote = {
+      id: 'quote-304b',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-304b',
+      partyRefId: 'party-999',
+      currency: 'COP',
+    };
+    const awards: Array<Record<string, unknown>> = [];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards, quote });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .createLineAwards(
+        'pr-304b',
+        {
+          awards: [
+            {
+              purchaseRequestLineId: 'line-304b',
+              awardedPartyRefId: 'party-001',
+              awardedQuantity: '2.00',
+              supplierQuoteId: 'quote-304b',
+            },
+          ],
+        },
+        actor,
+      )
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.getResponse()).toMatchObject({ code: 'AWARD_SUPPLIER_MISMATCH' });
+    expect(awards).toHaveLength(0);
+  });
+
+  it('CA-304: cotización sin línea para el producto responde 400 AWARD_QUOTE_LINE_MISSING', async () => {
+    const request = createAwardTestRequest('pr-304c', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-304c', 'pr-304c', PurchaseRequestLineStatus.OPEN);
+    const quote = {
+      id: 'quote-304c',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-304c',
+      partyRefId: 'party-001',
+      currency: 'COP',
+    };
+    const awards: Array<Record<string, unknown>> = [];
+    // Sin quoteLine en el harness: la cotización no cubre el producto.
+    const { manager } = createOrderingHarness({ request, lines: [line], awards, quote });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .createLineAwards(
+        'pr-304c',
+        {
+          awards: [
+            {
+              purchaseRequestLineId: 'line-304c',
+              awardedPartyRefId: 'party-001',
+              awardedQuantity: '2.00',
+              supplierQuoteId: 'quote-304c',
+            },
+          ],
+        },
+        actor,
+      )
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.getResponse()).toMatchObject({ code: 'AWARD_QUOTE_LINE_MISSING' });
+    expect(awards).toHaveLength(0);
+  });
+
+  it('CA-303: proveedor distinto sobre línea adjudicada en no-PROJECT responde 409 AWARD_PARTY_CONFLICT', async () => {
+    const request = createAwardTestRequest('pr-303', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-303', 'pr-303', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-303',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-303',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+      },
+    ];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .createLineAwards(
+        'pr-303',
+        {
+          awards: [
+            {
+              purchaseRequestLineId: 'line-303',
+              awardedPartyRefId: 'party-002',
+              awardedQuantity: '2.00',
+            },
+          ],
+        },
+        actor,
+      )
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toMatchObject({ code: 'AWARD_PARTY_CONFLICT' });
+    expect(awards).toHaveLength(1);
+    expect(awards[0]?.awardedPartyRefId).toBe('party-001');
+  });
+
+  it('CA-303: en PROJECT un proveedor distinto con cantidad restante es legítimo', async () => {
+    const request = createAwardTestRequest('pr-303b', PurchaseRequestType.PROJECT);
+    const line = createAwardTestLine('line-303b', 'pr-303b', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-303b',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-303b',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '2.00',
+      },
+    ];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    const result = await service.createLineAwards(
+      'pr-303b',
+      {
+        awards: [
+          {
+            purchaseRequestLineId: 'line-303b',
+            awardedPartyRefId: 'party-002',
+            awardedQuantity: '2.00',
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(result.awards).toHaveLength(1);
+    expect(result.awards[0]).toEqual(
+      expect.objectContaining({ awardedPartyRefId: 'party-002', awardedQuantity: '2.00' }),
+    );
+    expect(result.coverage).toBe(PurchaseRequestAwardCoverage.FULLY_AWARDED);
+    expect(awards).toHaveLength(2);
+    // La línea ya estaba AWARDED y no se degrada ni re-triuga.
+    expect(line.lineStatus).toBe(PurchaseRequestLineStatus.AWARDED);
+  });
+
+  it('CA-306: reenviar el mismo payload es un NO-OP idempotente (un solo award)', async () => {
+    const request = createAwardTestRequest('pr-306', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-306', 'pr-306', PurchaseRequestLineStatus.OPEN);
+    const awards: Array<Record<string, unknown>> = [];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+    const payload = {
+      awards: [
+        {
+          purchaseRequestLineId: 'line-306',
+          awardedPartyRefId: 'party-001',
+          awardedQuantity: '4.00',
+        },
+      ],
+    };
+
+    const first = await service.createLineAwards('pr-306', payload, actor);
+    expect(first.awards).toHaveLength(1);
+    expect(first.coverage).toBe(PurchaseRequestAwardCoverage.FULLY_AWARDED);
+
+    const second = await service.createLineAwards('pr-306', payload, actor);
+
+    expect(second.awards).toHaveLength(1);
+    expect(second.awards[0]?.id).toBe(first.awards[0]?.id);
+    expect(second.coverage).toBe(PurchaseRequestAwardCoverage.FULLY_AWARDED);
+    expect(awards).toHaveLength(1);
+  });
+
+  it('CA-306: misma cantidad y cotización con notas distintas actualiza solo las notas', async () => {
+    const request = createAwardTestRequest('pr-306b', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-306b', 'pr-306b', PurchaseRequestLineStatus.OPEN);
+    const awards: Array<Record<string, unknown>> = [];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    await service.createLineAwards(
+      'pr-306b',
+      {
+        awards: [
+          {
+            purchaseRequestLineId: 'line-306b',
+            awardedPartyRefId: 'party-001',
+            awardedQuantity: '4.00',
+            awardNotes: 'Nota original',
+          },
+        ],
+      },
+      actor,
+    );
+
+    const second = await service.createLineAwards(
+      'pr-306b',
+      {
+        awards: [
+          {
+            purchaseRequestLineId: 'line-306b',
+            awardedPartyRefId: 'party-001',
+            awardedQuantity: '4.00',
+            awardNotes: 'Nota corregida',
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(second.awards).toHaveLength(1);
+    expect(awards).toHaveLength(1);
+    expect(awards[0]?.awardNotes).toBe('Nota corregida');
+    expect(awards[0]?.awardedQuantity).toBe('4.00');
+  });
+
+  it('CA-307: revoca sin orden viva y con cotizaciones reabre la línea en PENDING_QUOTE', async () => {
+    const request = createAwardTestRequest('pr-307a', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-307a', 'pr-307a', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-307a',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-307a',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+      },
+    ];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards, quoteCount: 2 });
+    const service = createRegressionService(manager);
+
+    const result = await service.revokeLineAward('pr-307a', 'award-307a', actor);
+
+    expect(result).toEqual({
+      awardId: 'award-307a',
+      lineStatusAfter: PurchaseRequestLineStatus.PENDING_QUOTE,
+      coverage: PurchaseRequestAwardCoverage.NOT_AWARDED,
+    });
+    expect(awards).toHaveLength(0);
+    expect(line.lineStatus).toBe(PurchaseRequestLineStatus.PENDING_QUOTE);
+  });
+
+  it('CA-307: sin cotizaciones la línea reabre en OPEN aunque solo haya órdenes canceladas', async () => {
+    const request = createAwardTestRequest('pr-307b', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-307b', 'pr-307b', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-307b',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-307b',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+      },
+    ];
+    const { manager, orders, orderLines } = createOrderingHarness({
+      request,
+      lines: [line],
+      awards,
+      quoteCount: 0,
+    });
+    // Una orden CANCELLED no es orden viva: no bloquea la revocación.
+    orders.push({
+      id: 'po-cancelled',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-307b',
+      partyRefId: 'party-001',
+      status: PurchaseOrderStatus.CANCELLED,
+    });
+    orderLines.push({
+      id: 'pol-cancelled',
+      tenantId: 'tenant-001',
+      purchaseOrderId: 'po-cancelled',
+      purchaseRequestLineId: 'line-307b',
+      quantity: '2.00',
+    });
+    const service = createRegressionService(manager);
+
+    const result = await service.revokeLineAward('pr-307b', 'award-307b', actor);
+
+    expect(result).toEqual({
+      awardId: 'award-307b',
+      lineStatusAfter: PurchaseRequestLineStatus.OPEN,
+      coverage: PurchaseRequestAwardCoverage.NOT_AWARDED,
+    });
+    expect(line.lineStatus).toBe(PurchaseRequestLineStatus.OPEN);
+  });
+
+  it('CA-307: con orden de compra viva responde 409 AWARD_ALREADY_ORDERED y no borra', async () => {
+    const request = createAwardTestRequest('pr-307c', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-307c', 'pr-307c', PurchaseRequestLineStatus.ORDERED);
+    const awards = [
+      {
+        id: 'award-307c',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-307c',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+      },
+    ];
+    const { manager, orders, orderLines } = createOrderingHarness({
+      request,
+      lines: [line],
+      awards,
+    });
+    orders.push({
+      id: 'po-live',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-307c',
+      partyRefId: 'party-001',
+      status: PurchaseOrderStatus.APPROVED,
+    });
+    orderLines.push({
+      id: 'pol-live',
+      tenantId: 'tenant-001',
+      purchaseOrderId: 'po-live',
+      purchaseRequestLineId: 'line-307c',
+      quantity: '1.00',
+    });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .revokeLineAward('pr-307c', 'award-307c', actor)
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toMatchObject({ code: 'AWARD_ALREADY_ORDERED' });
+    expect(awards).toHaveLength(1);
+    expect(line.lineStatus).toBe(PurchaseRequestLineStatus.ORDERED);
+  });
+
+  it('CA-307: revocar un award de reparto PROJECT conserva la línea AWARDED si quedan otros awards', async () => {
+    const request = createAwardTestRequest('pr-307d', PurchaseRequestType.PROJECT);
+    const line = createAwardTestLine('line-307d', 'pr-307d', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-307d-1',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-307d',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '2.00',
+      },
+      {
+        id: 'award-307d-2',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-307d',
+        awardedPartyRefId: 'party-002',
+        awardedQuantity: '2.00',
+      },
+    ];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    const result = await service.revokeLineAward('pr-307d', 'award-307d-1', actor);
+
+    expect(result).toEqual({
+      awardId: 'award-307d-1',
+      lineStatusAfter: PurchaseRequestLineStatus.AWARDED,
+      coverage: PurchaseRequestAwardCoverage.FULLY_AWARDED,
+    });
+    expect(awards).toHaveLength(1);
+    expect(line.lineStatus).toBe(PurchaseRequestLineStatus.AWARDED);
+  });
+
+  it('CA-308: el costo congelado del award prevalece y se aplica a la línea de la OC', async () => {
+    const request = createAwardTestRequest('pr-308a', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-308a', 'pr-308a', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-308a',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-308a',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+        supplierQuoteId: null,
+        unitCost: '150.00',
+        currency: 'COP',
+      },
+    ];
+    const { manager, orderLines } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-308a',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [
+          {
+            purchaseRequestLineId: 'line-308a',
+            itemId: 'item-line-308a',
+            quantity: 2,
+            unitCost: 150,
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(orderLines[0]?.unitCost).toBe('150.00');
+  });
+
+  it('CA-308: sin snapshot el costo deriva de la línea de cotización del award', async () => {
+    const request = createAwardTestRequest('pr-308b', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-308b', 'pr-308b', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-308b',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-308b',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+        supplierQuoteId: 'quote-308b',
+        unitCost: null,
+        currency: null,
+      },
+    ];
+    const quoteLine = {
+      id: 'ql-308b',
+      tenantId: 'tenant-001',
+      supplierQuoteId: 'quote-308b',
+      purchaseRequestLineId: 'line-308b',
+      unitCost: '77.50',
+      lineAmount: '310.00',
+    };
+    const { manager, orderLines } = createOrderingHarness({
+      request,
+      lines: [line],
+      awards,
+      quoteLine,
+    });
+    const service = createRegressionService(manager);
+
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-308b',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [
+          {
+            purchaseRequestLineId: 'line-308b',
+            itemId: 'item-line-308b',
+            quantity: 2,
+            unitCost: 77.5,
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(orderLines[0]?.unitCost).toBe('77.50');
+  });
+
+  it('CA-308: divergencia del cliente mayor a un céntimo responde 400 UNIT_COST_MISMATCH', async () => {
+    const request = createAwardTestRequest('pr-308c', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-308c', 'pr-308c', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-308c',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-308c',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+        supplierQuoteId: null,
+        unitCost: '150.00',
+        currency: 'COP',
+      },
+    ];
+    const { manager, orderLines } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .createPurchaseOrderFromRequest(
+        {
+          purchaseRequestId: 'pr-308c',
+          partyRefId: 'party-001',
+          status: PurchaseOrderStatus.APPROVED,
+          lines: [
+            {
+              purchaseRequestLineId: 'line-308c',
+              itemId: 'item-line-308c',
+              quantity: 1,
+              unitCost: 151,
+            },
+          ],
+        },
+        actor,
+      )
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.getResponse()).toMatchObject({ code: 'UNIT_COST_MISMATCH' });
+    expect(orderLines).toHaveLength(0);
+  });
+
+  it('CA-308: la escotilla sin cotización acepta el costo que envía el cliente', async () => {
+    const request = createAwardTestRequest('pr-308d', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-308d', 'pr-308d', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-308d',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-308d',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+        supplierQuoteId: null,
+        unitCost: null,
+        currency: null,
+      },
+    ];
+    const { manager, orderLines } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-308d',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [
+          {
+            purchaseRequestLineId: 'line-308d',
+            itemId: 'item-line-308d',
+            quantity: 1,
+            unitCost: 80,
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(orderLines[0]?.unitCost).toBe('80.00');
+  });
+
+  it('CA-308: sin costo congelado, sin cotización y sin valor del cliente no crea línea con costo 0', async () => {
+    const request = createAwardTestRequest('pr-308e', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-308e', 'pr-308e', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-308e',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-308e',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+        supplierQuoteId: null,
+        unitCost: null,
+        currency: null,
+      },
+    ];
+    const { manager, orderLines } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    await expect(
+      service.createPurchaseOrderFromRequest(
+        {
+          purchaseRequestId: 'pr-308e',
+          partyRefId: 'party-001',
+          status: PurchaseOrderStatus.APPROVED,
+          lines: [{ purchaseRequestLineId: 'line-308e', itemId: 'item-line-308e', quantity: 1 }],
+        },
+        actor,
+      ),
+    ).rejects.toThrow('indica el costo unitario');
+    expect(orderLines).toHaveLength(0);
+  });
+
+  it('adenda §12.5: la escotilla congela el costo aportado como snapshot del award', async () => {
+    const request = createAwardTestRequest('pr-309', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-309', 'pr-309', PurchaseRequestLineStatus.OPEN);
+    const awards: Array<Record<string, unknown>> = [];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    const result = await service.createLineAwards(
+      'pr-309',
+      {
+        awards: [
+          {
+            purchaseRequestLineId: 'line-309',
+            awardedPartyRefId: 'party-001',
+            awardedQuantity: '4.00',
+            unitCost: '150.00',
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(result.awards[0]).toMatchObject({
+      unitCost: '150.00',
+      currency: null,
+      supplierQuoteId: null,
+    });
+    expect(awards[0]).toMatchObject({ unitCost: '150.00' });
+  });
+
+  it('adenda §12.5: reenvío de escotilla con costo corregido actualiza el snapshot (no es no-op)', async () => {
+    const request = createAwardTestRequest('pr-309b', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-309b', 'pr-309b', PurchaseRequestLineStatus.OPEN);
+    const awards: Array<Record<string, unknown>> = [];
+    const { manager } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+    const base = {
+      purchaseRequestLineId: 'line-309b',
+      awardedPartyRefId: 'party-001',
+      awardedQuantity: '4.00',
+    };
+
+    await service.createLineAwards('pr-309b', { awards: [{ ...base, unitCost: '150.00' }] }, actor);
+    const second = await service.createLineAwards(
+      'pr-309b',
+      { awards: [{ ...base, unitCost: '160.00' }] },
+      actor,
+    );
+
+    expect(second.awards).toHaveLength(1);
+    expect(second.awards[0]?.unitCost).toBe('160.00');
+    expect(awards).toHaveLength(1);
+  });
+
+  it('adenda §12.5: award con cotización y costo del cliente divergente responde 400 UNIT_COST_MISMATCH', async () => {
+    const request = createAwardTestRequest('pr-309c', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-309c', 'pr-309c', PurchaseRequestLineStatus.OPEN);
+    const quote = {
+      id: 'quote-309c',
+      tenantId: 'tenant-001',
+      purchaseRequestId: 'pr-309c',
+      partyRefId: 'party-001',
+      currency: 'COP',
+    };
+    const quoteLine = {
+      id: 'ql-309c',
+      tenantId: 'tenant-001',
+      supplierQuoteId: 'quote-309c',
+      purchaseRequestLineId: 'line-309c',
+      unitCost: '77.50',
+      lineAmount: '310.00',
+    };
+    const { manager } = createOrderingHarness({
+      request,
+      lines: [line],
+      awards: [],
+      quote,
+      quoteLine,
+    });
+    const service = createRegressionService(manager);
+
+    const error = await service
+      .createLineAwards(
+        'pr-309c',
+        {
+          awards: [
+            {
+              purchaseRequestLineId: 'line-309c',
+              supplierQuoteId: 'quote-309c',
+              awardedPartyRefId: 'party-001',
+              awardedQuantity: '4.00',
+              unitCost: '80.00',
+            },
+          ],
+        },
+        actor,
+      )
+      .catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(error.getResponse()).toMatchObject({ code: 'UNIT_COST_MISMATCH' });
+  });
+
+  it('adenda §12.5: la orden desde un award de escotilla usa el snapshot sin exigir costo del cliente', async () => {
+    const request = createAwardTestRequest('pr-309d', PurchaseRequestType.REPLENISHMENT);
+    const line = createAwardTestLine('line-309d', 'pr-309d', PurchaseRequestLineStatus.AWARDED);
+    const awards = [
+      {
+        id: 'award-309d',
+        tenantId: 'tenant-001',
+        purchaseRequestLineId: 'line-309d',
+        awardedPartyRefId: 'party-001',
+        awardedQuantity: '4.00',
+        supplierQuoteId: null,
+        unitCost: '150.00',
+        currency: null,
+      },
+    ];
+    const { manager, orderLines } = createOrderingHarness({ request, lines: [line], awards });
+    const service = createRegressionService(manager);
+
+    await service.createPurchaseOrderFromRequest(
+      {
+        purchaseRequestId: 'pr-309d',
+        partyRefId: 'party-001',
+        status: PurchaseOrderStatus.APPROVED,
+        lines: [{ purchaseRequestLineId: 'line-309d', itemId: 'item-line-309d', quantity: 2 }],
+      },
+      actor,
+    );
+
+    expect(orderLines[0]?.unitCost).toBe('150.00');
   });
 });
 

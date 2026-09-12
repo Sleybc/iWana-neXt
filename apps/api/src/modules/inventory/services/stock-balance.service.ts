@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
-import { StockBalance, TenantContext, runInTenantSchema } from '@iwana/db';
+import { DataSource, EntityManager, In } from 'typeorm';
+import { StockBalance, StockLot, TenantContext, runInTenantSchema } from '@iwana/db';
 import { StockBalanceCondition } from '@iwana/shared';
 import { ListStockBalancesQueryInput, ListStockBalancesQuerySchema } from '../dto';
 import {
@@ -37,6 +37,9 @@ export interface StockAvailabilityQuery {
   lotId?: string | null;
   condition?: StockBalanceCondition;
 }
+
+/** Balance con número de lote legible (enriquecido en lectura, no persistido). */
+export type StockBalanceWithLotNumber = StockBalance & { lotNumber: string | null };
 
 /** Clave de reserva por tupla (ítem × lote × condición) para el batch de disponible. */
 export interface ReservationAvailabilityKey {
@@ -116,7 +119,9 @@ export function formatInvariantViolationMessage(onHand: number, reserved: number
 export class StockBalanceService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async list(query: ListStockBalancesQueryInput): Promise<InventoryPaginatedResult<StockBalance>> {
+  async list(
+    query: ListStockBalancesQueryInput,
+  ): Promise<InventoryPaginatedResult<StockBalanceWithLotNumber>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListStockBalancesQuerySchema.parse(query);
     const limit = clampInventoryLimit(validated.limit);
@@ -154,8 +159,33 @@ export class StockBalanceService {
         .getMany();
 
       const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.updatedAt);
-      return { data, meta: { nextCursor, total } };
+      return {
+        data: await this.withLotNumbers(qr.manager, tenantId, data),
+        meta: { nextCursor, total },
+      };
     });
+  }
+
+  /**
+   * Número de lote legible en saldos (lote capturado al registrar la compra).
+   * Mismo patrón batch que picking/kardex: un solo `find(StockLot)` por los
+   * `lotId` distintos; lote huérfano o ausente → `null` (el cliente degrada).
+   */
+  private async withLotNumbers(
+    manager: EntityManager,
+    tenantId: string,
+    rows: StockBalance[],
+  ): Promise<StockBalanceWithLotNumber[]> {
+    const lotIds = [...new Set(rows.map((row) => row.lotId).filter((id): id is string => !!id))];
+    if (lotIds.length === 0) {
+      return rows.map((row) => ({ ...row, lotNumber: null }));
+    }
+    const lots = await manager.find(StockLot, { where: { tenantId, id: In(lotIds) } });
+    const lotById = new Map(lots.map((lot) => [lot.id, lot]));
+    return rows.map((row) => ({
+      ...row,
+      lotNumber: row.lotId ? (lotById.get(row.lotId)?.lotNumber ?? null) : null,
+    }));
   }
 
   /**

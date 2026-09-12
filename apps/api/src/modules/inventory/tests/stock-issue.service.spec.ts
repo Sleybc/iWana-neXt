@@ -9,6 +9,7 @@ import {
   StockIssue,
   StockIssueLine,
   StockLocation,
+  StockLot,
 } from '@iwana/db';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import {
@@ -25,6 +26,7 @@ jest.mock('@iwana/db', () => ({
   StockIssueLine: class StockIssueLine {},
   StockIssueLineSerial: class StockIssueLineSerial {},
   StockLocation: class StockLocation {},
+  StockLot: class StockLot {},
   TenantContext: {
     getOrThrow: jest.fn().mockReturnValue({
       tenantId: 'tenant-001',
@@ -1490,5 +1492,48 @@ describe('StockIssueService', () => {
     );
     expect(stockLedgerServiceMock.recordStockIssueSaleWithManager).toHaveBeenCalled();
     expect(dispatched.stockMovementId).toBe('mov-own');
+  });
+
+  describe('getById (lotNumber legible)', () => {
+    function buildGetByIdManager() {
+      const issue = { id: 'issue-001', tenantId: 'tenant-001' };
+      const lines = [
+        { id: 'line-001', issueId: 'issue-001', tenantId: 'tenant-001', lotId: 'lot-001' },
+        { id: 'line-002', issueId: 'issue-001', tenantId: 'tenant-001', lotId: null },
+        { id: 'line-003', issueId: 'issue-001', tenantId: 'tenant-001', lotId: 'lot-ghost' },
+      ];
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockImplementation(async (entity: unknown) => (entity === StockIssue ? issue : null)),
+        find: jest.fn().mockImplementation(async (entity: unknown) => {
+          if (entity === StockIssueLine) {
+            return lines;
+          }
+          if (entity === StockLot) {
+            return [{ id: 'lot-001', lotNumber: '09092026' }];
+          }
+          return [];
+        }),
+      };
+
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager }),
+      );
+
+      return { manager };
+    }
+
+    it('resuelve el número de lote; huérfano y ausente → null', async () => {
+      buildGetByIdManager();
+
+      const service = createService();
+      const detail = await service.getById('issue-001');
+
+      expect(detail.lines).toHaveLength(3);
+      expect(detail.lines[0]).toMatchObject({ lotId: 'lot-001', lotNumber: '09092026' });
+      expect(detail.lines[1]).toMatchObject({ lotId: null, lotNumber: null });
+      expect(detail.lines[2]).toMatchObject({ lotId: 'lot-ghost', lotNumber: null });
+    });
   });
 });

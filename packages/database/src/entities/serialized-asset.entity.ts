@@ -23,6 +23,11 @@ import { InventoryResponsibleType, SerializedAssetStatus } from '@iwana/shared';
   'currentResponsibleType',
   'currentResponsibleRefId',
 ])
+// Parcial (migración 129): el patrón de consulta es «seriales de este lote» al
+// validar una salida; los activos sin lote no participan de esa consulta.
+@Index('idx_serialized_assets_tenant_lot', ['tenantId', 'lotId'], {
+  where: `"lot_id" IS NOT NULL`,
+})
 @Entity({ name: 'serialized_assets' })
 export class SerializedAsset {
   @PrimaryGeneratedColumn('uuid')
@@ -33,6 +38,14 @@ export class SerializedAsset {
 
   @Column({ name: 'inventory_item_id', type: 'uuid' })
   inventoryItemId: string;
+
+  /**
+   * Lote de origen del activo (migración 129). Nullable: hay activos legítimos
+   * sin lote (altas manuales, seriales previos al kardex). La recepción lo
+   * escribe con el `stock_lots` que crea para el ingreso.
+   */
+  @Column({ name: 'lot_id', type: 'uuid', nullable: true })
+  lotId: string | null;
 
   @Column({ name: 'serial_number', type: 'varchar', length: 160, nullable: true })
   serialNumber: string | null;

@@ -1,6 +1,6 @@
 # INFORME — MOD12 Compras · Tributos informativos en Compra de Mostrador — Fase 26
 
-**Versión:** 1.0
+**Versión:** 1.1 (v1.0: implementación verificada · v1.1: review de segunda capa + refactor, mismo día)
 **Estado:** Implementado — pendiente G6 formal / G7 CTO
 **Fecha:** 2026-09-09
 **Módulo:** MOD12 Inventario / SCM — Compras / Ingreso directo (Compra de mostrador)
@@ -70,10 +70,10 @@ No se ejecutó E2E Playwright (mismo estado que Fase 25; sin fixture estable par
 
 ## Tests añadidos (solo cobertura de CA; sin lógica de producto)
 
-- `counter-purchase.service.spec.ts` — bloque Fase 26 (11 casos).
-- `counter-purchase.http.integration.spec.ts` — payload con taxes + RBAC presets.
+- `counter-purchase.service.spec.ts` — bloque Fase 26 (11 casos; aserción de duplicados actualizada en v1.1).
+- `counter-purchase.http.integration.spec.ts` — payload con taxes + RBAC presets (+ 403 rol sin permiso en v1.1).
 - `127_add_stock_movement_taxes.spec.ts` — patrón spec 124.
-- `CounterPurchasePanel.spec.tsx` — 6 casos Fase 26.
+- `CounterPurchasePanel.spec.tsx` — 6 casos Fase 26 (+ 2 en v1.1: confirm no espuria, payload sin taxes).
 - `counter-purchase-uom-conversion.spec.ts` — extensión mínima (6.º arg mock de catálogo).
 
 ## Stop/go G6
@@ -84,6 +84,41 @@ Los 13 CA tienen test que pasa. Boundary Inventory→Taxation (backend y portal)
 
 G6 formal y G7 CTO permanecen pendientes (mismo estado que Fase 25; no se autofirma G7 del CTO). No commit en esta sesión.
 
+## Update v1.1 — Review de segunda capa y refactor (2026-09-09)
+
+**Modo activo:** Architect (AI-EM-ARCH). Review de la implementación consolidada en `f9f42b33` contra el contrato congelado de la spec. **Veredicto: implementación fiel al contrato** — boundary Inventory→Taxation intacto, migración reversible con spec, snapshot en la misma transacción, costing sobre base neta, idempotencia con taxes en la clave derivada — con **1 bug de UX, 3 inconsistencias y 3 puntos de pulido**, corregidos por un agente ejecutor (prompt de ejecución con lista cerrada) y verificados de forma independiente por el orquestador.
+
+### Hallazgos → correcciones (7 archivos, +100/−8)
+
+| # | Hallazgo | Corrección |
+| --- | --- | --- |
+| 1 | **Bug UX:** `isDirty` contaba el IVA 19 aplicado por defecto como edición → confirmación espuria de "cambios sin registrar" al volver sin tocar nada | Dirty-check de tributos contra baseline del estado inicial (`initialTaxesRef`), refrescado en `resetForm` y en la rehidratación async de presets |
+| 2 | Subtotal del footer con `formatInventoryCurrency` (0 decimales) vs el mismo dato en la sección de tributos con `formatInventoryMoney` (2 decimales) | Unificado a `formatInventoryMoney`; import sin uso eliminado |
+| 3 | Título "Resumen previo al registro" duplicado (sección de tributos + footer) | Sección renombrada a "Tributos y total estimado" |
+| 4 | Error 400 de duplicados con copy heredado: "…en la cotización" en flujo de mostrador | "…en el ingreso directo"; aserción del service spec actualizada |
+| 5 | Rama inalcanzable `unitCost === ''` en `computeCounterPurchaseBase` (numeric de PG nunca entrega cadena vacía) | Coerción simplificada (`== null` cubre null/undefined → 0) |
+| 6 | `loadCounterPurchaseTaxPresets` refetchea en cada apertura del modo mostrador | Guard: no refetch si hay presets efectivos cargados |
+| 7 | Cobertura: sin 403 de `tax-presets` para rol sin permiso; sin caso de payload sin `taxes` | 3 tests nuevos (403 TECHNICIAN, confirm no espuria, payload sin `taxes`) |
+
+### No-acciones deliberadas
+
+- Fallback defensivo de `mapPersistedCounterTax` (efect → WITHHOLD): patrón compartido con `mapPersistedQuoteTax` de Fase 25; limpiar una sola copia crearía inconsistencia entre hermanos.
+- Patrón `returnFullResponse: true` de `purchasingApi.getTaxPresets()`: auditado contra la convención del repo (sin envelope global en la API; endpoints planos exigen el flag, igual que `createCounterPurchase`) — correcto, no es defecto.
+
+### Verificación del ciclo (independiente del ejecutor)
+
+| Comando | Resultado |
+| --- | --- |
+| `pnpm --filter @iwana/api exec jest` (counter-purchase.service + http.integration) | **23/23 pass** (2 suites) |
+| `pnpm --filter @iwana/portal exec jest` (CounterPurchasePanel + boundary + QuoteTaxFields) | **15/15 pass** (3 suites; guardias boundary sin edición) |
+| `tsc --noEmit` (api + portal) · ESLint sobre los 7 archivos | **Limpios** (reporte del ejecutor) |
+
+### Estado tras el update
+
+- Deuda del ciclo: **cero** (los 7 hallazgos cerrados con test cuando aplica).
+- El refactor queda en working copy **sin commit** (el cierre de rama es del usuario), junto a las líneas ajenas ya declaradas en Deuda #3.
+- Gates: sin cambio — G6 formal pendiente de firma (evidencia reforzada), G7 CTO pendiente.
+
 ## Protocolo
 
 | Gate | Estado |
@@ -91,5 +126,6 @@ G6 formal y G7 CTO permanecen pendientes (mismo estado que Fase 25; no se autofi
 | G4 spec | Cumplido (`2026-09-09-mod12-compras-mostrador-impuestos-design.md` congelado primero) |
 | G5 Track A (DB+API) ∥ Track B (portal) | Implementado (verificado por tests) |
 | G5 consolidación | Lint + typecheck + suites objetivo en verde (esta sesión) |
-| G6 QA | Informe emitido — pendiente firma formal |
+| G5 review de segunda capa | Cumplido (v1.1: hallazgos cerrados, suites re-verificadas) |
+| G6 QA | Informe emitido (v1.1) — pendiente firma formal |
 | G7 CTO | Pendiente |

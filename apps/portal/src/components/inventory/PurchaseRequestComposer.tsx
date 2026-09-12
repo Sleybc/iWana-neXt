@@ -28,6 +28,7 @@ import {
 import { toDateFromLocalDateValue, toLocalDateValue } from './inventory-date';
 import { createEmptyPurchaseDraft, purchaseRequestLinesToDraft } from './purchase-request-draft';
 import { buildCatalogUnitCostMap, estimatePurchaseDraftTotal } from './purchase-draft-estimate';
+import { focusElementById, focusFirstMatchingInput } from './line-focus';
 import {
   buildCreatePurchaseRequestPayload,
   mapDraftLinesToUpdatePayload,
@@ -109,6 +110,14 @@ export function PurchaseRequestComposer({
   );
   const [validationError, setValidationError] = useState<string | null>(null);
   const [mobileStep, setMobileStep] = useState<'capture' | 'review'>('capture');
+  /**
+   * Preferencia explícita del disclosure de justificación (Fase 27).
+   * `null` = auto: colapsada si está vacía, expandida con contenido.
+   */
+  const [justificationPreference, setJustificationPreference] = useState<boolean | null>(null);
+  const justificationId = 'purchase-justification';
+  /** Justificación colapsable (Fase 27): cerrada por defecto si está vacía. */
+  const justificationExpanded = justificationPreference ?? justification.trim().length > 0;
   const isDesktopLayout = useMinWidth(768);
   const isCreateMode = presentation === 'create-mode';
   const isMobileCreateFlow = isCreateMode && !isDesktopLayout;
@@ -121,6 +130,7 @@ export function PurchaseRequestComposer({
     supplierLabels,
     isCatalogSearching,
     isSubmitting,
+    searchInputId: 'purchase-composer-product-search',
     onLineAdded: () => {
       if (isMobileCreateFlow) {
         setMobileStep('review');
@@ -169,16 +179,40 @@ export function PurchaseRequestComposer({
     setTitle('');
     setRequestingArea('');
     setJustification('');
+    setJustificationPreference(null);
     setNeededByDate('');
     setDraft(createEmptyPurchaseDraft());
     setValidationError(null);
     setMobileStep('capture');
   }
 
+  /** Fase 27: el alert resume el error y el foco va al campo a corregir. */
+  function focusSubmitError(target: 'title' | 'area' | 'justification' | 'lines' | 'lineDetail') {
+    switch (target) {
+      case 'title':
+        focusElementById('purchase-title');
+        break;
+      case 'area':
+        focusElementById('purchase-area');
+        break;
+      case 'justification':
+        setJustificationPreference(true);
+        focusElementById(justificationId);
+        break;
+      case 'lines':
+        focusElementById('purchase-composer-product-search');
+        break;
+      case 'lineDetail':
+        focusFirstMatchingInput('purchase-draft-qty-');
+        break;
+    }
+  }
+
   async function handleSubmit() {
     if (onUpdate) {
       if (draft.lines.length === 0) {
         setValidationError('La solicitud debe tener al menos una línea.');
+        focusSubmitError('lines');
         return;
       }
       const updatePayload: UpdatePurchaseRequestDto = {
@@ -218,6 +252,17 @@ export function PurchaseRequestComposer({
 
     if (!result.payload) {
       setValidationError(result.error);
+      if (result.error === 'Indica un título para la solicitud.') {
+        focusSubmitError('title');
+      } else if (result.error === 'Indica el área solicitante.') {
+        focusSubmitError('area');
+      } else if (result.error === 'La justificación debe tener al menos 10 caracteres.') {
+        focusSubmitError('justification');
+      } else if (result.error === 'Agrega al menos una línea a la solicitud.') {
+        focusSubmitError('lines');
+      } else {
+        focusSubmitError('lineDetail');
+      }
       return;
     }
 
@@ -286,16 +331,31 @@ export function PurchaseRequestComposer({
         eyebrow="Control"
         title="Justificación"
         description="Explica la necesidad que respalda la solicitud."
+        actions={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-expanded={justificationExpanded}
+            aria-controls={justificationId}
+            onClick={() => setJustificationPreference(!justificationExpanded)}
+          >
+            {justificationExpanded ? 'Ocultar justificación' : 'Agregar justificación (opcional)'}
+          </Button>
+        }
       />
-      <label className="block space-y-1 text-sm">
-        <span className="font-medium text-gray-900 dark:text-white">Justificación</span>
-        <textarea
-          className={portalTextareaClassName}
-          rows={3}
-          value={justification}
-          onChange={(event) => setJustification(event.target.value)}
-        />
-      </label>
+      {justificationExpanded ? (
+        <label className="block space-y-1 text-sm" htmlFor={justificationId}>
+          <span className="font-medium text-gray-900 dark:text-white">Justificación</span>
+          <textarea
+            id={justificationId}
+            className={portalTextareaClassName}
+            rows={3}
+            value={justification}
+            onChange={(event) => setJustification(event.target.value)}
+          />
+        </label>
+      ) : null}
     </section>
   );
 
@@ -351,15 +411,41 @@ export function PurchaseRequestComposer({
           )}
         </div>
       ) : isCreateMode ? (
-        <>
-          {requestContextSection}
-          <div className="sticky top-4 z-10 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)] lg:items-start">
+          <div className="min-w-0 space-y-6">
+            {requestContextSection}
             {captureSection}
+            {draftSection}
           </div>
-          {draftSection}
-          {justificationSection}
-          {summaryFooter}
-        </>
+          <aside
+            aria-label="Resumen de la solicitud"
+            className="space-y-4 rounded-2xl border border-gray-200 p-4 dark:border-dark-border lg:sticky lg:top-2"
+          >
+            {justificationSection}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Resumen de la solicitud
+              </p>
+              <dl className="space-y-1 rounded-2xl border border-gray-200 p-3 text-sm dark:border-dark-border">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">Líneas</dt>
+                  <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
+                    {draft.lines.length}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2 border-t border-gray-100 pt-2 dark:border-dark-border">
+                  <dt className="font-medium text-gray-900 dark:text-white">Total estimado</dt>
+                  <dd className="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {draftEstimate.coveredLines > 0
+                      ? formatInventoryCurrency(draftEstimate.total)
+                      : '—'}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            {summaryFooter}
+          </aside>
+        </div>
       ) : (
         <>
           {requestContextSection}

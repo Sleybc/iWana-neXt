@@ -1,5 +1,6 @@
 import {
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
@@ -219,6 +220,94 @@ describe('purchase-workbench', () => {
     );
 
     expect(action?.suggestedTab).toBe('orders');
+  });
+
+  it('con órdenes parciales indica cuántos productos quedan por adjudicar (FE-3, spec §9)', () => {
+    function buildLine(id: string, lineStatus: PurchaseRequestLineStatus) {
+      return {
+        id,
+        tenantId: 'tenant-1',
+        purchaseRequestId: 'req-1',
+        sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+        inventoryItemId: `item-${id}`,
+        freeTextDescription: null,
+        quantityRequested: '10',
+        unitOfMeasure: 'unidad',
+        suggestedPartyRefId: null,
+        lineStatus,
+        notes: null,
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-01T00:00:00.000Z',
+      };
+    }
+
+    const action = getPurchaseNextAction(
+      buildDetail(
+        {
+          status: PurchaseRequestStatus.APPROVED,
+          awardCoverage: PurchaseRequestAwardCoverage.PARTIALLY_ORDERED,
+        },
+        {
+          lines: [
+            buildLine('line-1', PurchaseRequestLineStatus.ORDERED),
+            buildLine('line-2', PurchaseRequestLineStatus.OPEN),
+            buildLine('line-3', PurchaseRequestLineStatus.OPEN),
+          ],
+          awards: [
+            {
+              id: 'award-1',
+              tenantId: 'tenant-1',
+              purchaseRequestLineId: 'line-1',
+              supplierQuoteId: null,
+              awardedPartyRefId: 'supplier-1',
+              awardedQuantity: '10',
+              awardNotes: null,
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+        },
+      ),
+    );
+
+    expect(action).toEqual({
+      message: 'Ya hay órdenes parciales: quedan 2 productos por adjudicar.',
+      suggestedTab: 'awards',
+    });
+  });
+
+  it('sin cobertura derivada conserva la guía previa de adjudicación', () => {
+    const action = getPurchaseNextAction(
+      buildDetail(
+        {
+          status: PurchaseRequestStatus.APPROVED,
+        },
+        {
+          lines: [
+            {
+              id: 'line-1',
+              tenantId: 'tenant-1',
+              purchaseRequestId: 'req-1',
+              sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+              inventoryItemId: 'item-1',
+              freeTextDescription: null,
+              quantityRequested: '10',
+              unitOfMeasure: 'unidad',
+              suggestedPartyRefId: null,
+              lineStatus: PurchaseRequestLineStatus.OPEN,
+              notes: null,
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+        },
+      ),
+    );
+
+    expect(action).toEqual({
+      message: 'Adjudica las líneas aprobadas antes de generar la orden.',
+      suggestedTab: 'awards',
+    });
   });
 
   it('sugiere generar OC cuando las líneas awardables ya están adjudicadas', () => {

@@ -16,7 +16,9 @@ import {
 } from '@iwana/db';
 import {
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestFulfillmentStatus,
+  PurchaseRequestLineStatus,
   PurchaseRfqStatus,
   PurchaseRequestPriority,
   PurchaseRequestStatus,
@@ -29,6 +31,7 @@ import {
 } from '../../taxation/ports/tax-catalog-read.port';
 import { type SupplierQuoteTaxApiSnapshot } from '../utils/quote-tax-calc';
 import { resolvePurchaseRequestFulfillment } from '../utils/purchase-request-fulfillment';
+import { resolveAwardCoverage } from '../utils/purchase-request-award-coverage';
 import {
   ListPurchaseRequestsQueryInput,
   ListPurchaseRequestsQuerySchema,
@@ -124,11 +127,13 @@ function toDateOnlyString(value: string | Date | null | undefined): string | nul
 }
 
 /**
- * Fila de listado: la entidad tal cual más el eje derivado de abastecimiento.
- * `fulfillmentStatus` no se persiste (ver `resolvePurchaseRequestFulfillment`).
+ * Fila de listado: la entidad tal cual más los ejes derivados de abastecimiento
+ * y de cobertura de adjudicación. Ninguno se persiste (ver
+ * `resolvePurchaseRequestFulfillment` y `resolveAwardCoverage`).
  */
 export type PurchaseRequestListRow = PurchaseRequest & {
   fulfillmentStatus: PurchaseRequestFulfillmentStatus;
+  awardCoverage: PurchaseRequestAwardCoverage;
 };
 
 const ACTIVE_RFQ_STATUSES = [
@@ -185,22 +190,73 @@ export class PurchasingQueryService {
     return fulfillmentByRequestId;
   }
 
-  /** Adjunta el eje derivado sin alterar la forma del resto de la entidad. */
-  private async attachFulfillmentStatus(
+  /**
+   * Resuelve el eje de cobertura de adjudicación (ADR-087, propuesto, D1) de
+   * una página de solicitudes con UNA SOLA consulta agregada sobre
+   * `purchase_request_lines` — nunca una consulta por solicitud
+   * (Impacto/Escala). Agrupa por solicitud + estado de línea, bucketiza en Map
+   * y resuelve con `resolveAwardCoverage` (el agrupado reduce las filas al
+   * mínimo que el resolutor necesita).
+   */
+  private async resolveAwardCoverageByRequestId(
+    manager: EntityManager,
+    tenantId: string,
+    requestIds: readonly string[],
+  ): Promise<Map<string, PurchaseRequestAwardCoverage>> {
+    if (requestIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await manager
+      .createQueryBuilder(PurchaseRequestLine, 'line')
+      .select('line.purchase_request_id', 'purchaseRequestId')
+      .addSelect('line.line_status', 'lineStatus')
+      .where('line.tenant_id = :tenantId', { tenantId })
+      .andWhere('line.purchase_request_id IN (:...requestIds)', { requestIds })
+      .groupBy('line.purchase_request_id')
+      .addGroupBy('line.line_status')
+      .getRawMany<{ purchaseRequestId: string; lineStatus: PurchaseRequestLineStatus }>();
+
+    const statusesByRequestId = new Map<string, PurchaseRequestLineStatus[]>();
+    for (const row of rows) {
+      const bucket = statusesByRequestId.get(row.purchaseRequestId) ?? [];
+      bucket.push(row.lineStatus);
+      statusesByRequestId.set(row.purchaseRequestId, bucket);
+    }
+
+    const coverageByRequestId = new Map<string, PurchaseRequestAwardCoverage>();
+    for (const [requestId, lineStatuses] of statusesByRequestId) {
+      coverageByRequestId.set(
+        requestId,
+        resolveAwardCoverage(lineStatuses.map((lineStatus) => ({ lineStatus }))),
+      );
+    }
+
+    return coverageByRequestId;
+  }
+
+  /**
+   * Adjunta AMBOS ejes derivados (abastecimiento + cobertura de adjudicación)
+   * con dos consultas agregadas por página, sin alterar la forma del resto de
+   * la entidad.
+   */
+  private async attachDerivedAxes(
     manager: EntityManager,
     tenantId: string,
     requests: PurchaseRequest[],
   ): Promise<PurchaseRequestListRow[]> {
-    const fulfillmentByRequestId = await this.resolveFulfillmentByRequestId(
-      manager,
-      tenantId,
-      requests.map((request) => request.id),
-    );
+    const requestIds = requests.map((request) => request.id);
+    const [fulfillmentByRequestId, coverageByRequestId] = await Promise.all([
+      this.resolveFulfillmentByRequestId(manager, tenantId, requestIds),
+      this.resolveAwardCoverageByRequestId(manager, tenantId, requestIds),
+    ]);
 
     return requests.map((request) =>
       Object.assign(request, {
         fulfillmentStatus:
           fulfillmentByRequestId.get(request.id) ?? PurchaseRequestFulfillmentStatus.NOT_ORDERED,
+        awardCoverage:
+          coverageByRequestId.get(request.id) ?? PurchaseRequestAwardCoverage.NOT_AWARDED,
       }),
     );
   }
@@ -305,7 +361,7 @@ export class PurchasingQueryService {
           .take(limit)
           .getMany();
         return {
-          data: await this.attachFulfillmentStatus(qr.manager, tenantId, rows),
+          data: await this.attachDerivedAxes(qr.manager, tenantId, rows),
           meta: buildPageMeta({
             total,
             page,
@@ -326,7 +382,7 @@ export class PurchasingQueryService {
       const rows = await qb.take(limit + 1).getMany();
       const { data, nextCursor } = sliceDateIdDescPage(rows, limit, (row) => row.createdAt);
       return {
-        data: await this.attachFulfillmentStatus(qr.manager, tenantId, data),
+        data: await this.attachDerivedAxes(qr.manager, tenantId, data),
         meta: buildCursorMeta({
           nextCursor,
           total,
@@ -445,13 +501,15 @@ export class PurchasingQueryService {
 
       const requestNeededBy = toDateOnlyString(request.neededByDate);
 
-      // Mismo eje derivado que el listado, resuelto con las órdenes ya cargadas.
-      const requestWithFulfillment: PurchaseRequestListRow = Object.assign(request, {
+      // Mismos ejes derivados que el listado, resueltos con los datos ya
+      // cargados de esta solicitud (sin consultas extra).
+      const requestWithAxes: PurchaseRequestListRow = Object.assign(request, {
         fulfillmentStatus: resolvePurchaseRequestFulfillment(orders.map((order) => order.status)),
+        awardCoverage: resolveAwardCoverage(lines),
       });
 
       return {
-        request: requestWithFulfillment,
+        request: requestWithAxes,
         lines,
         quotes: quotesWithLines,
         awards,
@@ -462,6 +520,7 @@ export class PurchasingQueryService {
         estimatedAmount,
         approvalPolicy,
         purchaseTaxPresets,
+        awardCoverage: requestWithAxes.awardCoverage,
         rfq: activeRfq
           ? {
               rfq: activeRfq,

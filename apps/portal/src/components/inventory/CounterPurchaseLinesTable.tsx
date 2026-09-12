@@ -16,7 +16,6 @@ export interface CounterPurchaseLineDraft {
   name: string;
   quantityReceived: string;
   unitCost: string;
-  lotNumber: string;
   serialNumbers: string;
   requiresSerials: boolean;
 }
@@ -25,7 +24,6 @@ interface CounterPurchaseLinesTableProps {
   lines: CounterPurchaseLineDraft[];
   onQuantityChange: (lineId: string, value: string) => void;
   onUnitCostChange: (lineId: string, value: string) => void;
-  onLotNumberChange: (lineId: string, value: string) => void;
   onSerialNumbersChange: (lineId: string, value: string) => void;
   onRemove: (lineId: string) => void;
 }
@@ -34,7 +32,6 @@ export function CounterPurchaseLinesTable({
   lines,
   onQuantityChange,
   onUnitCostChange,
-  onLotNumberChange,
   onSerialNumbersChange,
   onRemove,
 }: CounterPurchaseLinesTableProps) {
@@ -47,7 +44,6 @@ export function CounterPurchaseLinesTable({
               <th className={portalDataTableHeadClassName}>Producto</th>
               <th className={portalDataTableHeadClassName}>Cantidad</th>
               <th className={portalDataTableHeadClassName}>Costo unitario (sin impuestos)</th>
-              <th className={portalDataTableHeadClassName}>Lote</th>
               <th className={portalDataTableHeadClassName}>Seriales</th>
               <th className={`${portalDataTableHeadClassName} w-24`}>
                 <span className="sr-only">Acción</span>
@@ -65,6 +61,7 @@ export function CounterPurchaseLinesTable({
                 </td>
                 <td className={portalDataTableCellClassName}>
                   <Input
+                    id={`counter-line-qty-${line.id}`}
                     aria-label={`Cantidad de ${line.name}`}
                     type="number"
                     min="0.01"
@@ -86,17 +83,9 @@ export function CounterPurchaseLinesTable({
                   />
                 </td>
                 <td className={portalDataTableCellClassName}>
-                  <Input
-                    aria-label={`Lote de ${line.name}`}
-                    value={line.lotNumber}
-                    onChange={(event) => onLotNumberChange(line.id, event.target.value)}
-                    placeholder="Opcional"
-                    containerClassName="min-w-[8rem]"
-                  />
-                </td>
-                <td className={portalDataTableCellClassName}>
                   {line.requiresSerials ? (
                     <Input
+                      id={`counter-line-serials-${line.id}`}
                       aria-label={`Seriales de ${line.name}`}
                       value={line.serialNumbers}
                       onChange={(event) => onSerialNumbersChange(line.id, event.target.value)}

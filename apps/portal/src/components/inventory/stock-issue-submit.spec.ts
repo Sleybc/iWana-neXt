@@ -357,4 +357,147 @@ describe('stock-issue-submit', () => {
     expect(result.payload).toBeNull();
     expect(result.error).toMatch(/referencia comercial/i);
   });
+
+  // Paridad con optionalTrimmedString del API (incidente 2026-09-12): los
+  // inputs de cabecera no tienen maxLength y un texto largo llegaba al 400 con
+  // mensaje en inglés del schema, sin valla previa en el builder.
+  it('bloquea una referencia comercial que supera 160 caracteres con mensaje en español', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.SALE_DISPATCH,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: '',
+      commercialRefId: 'R'.repeat(161),
+      originRefId: '',
+      costCenter: '',
+      reason: '',
+      itemsById,
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-1',
+          requestedQty: '1',
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toBe('La referencia comercial no puede superar 160 caracteres.');
+  });
+
+  it('bloquea un origen de venta que supera 160 caracteres con mensaje en español', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.SALE_DISPATCH,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: '',
+      commercialRefId: '',
+      originRefId: 'O'.repeat(161),
+      costCenter: '',
+      reason: '',
+      itemsById,
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-1',
+          requestedQty: '1',
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toBe('El origen de la venta no puede superar 160 caracteres.');
+  });
+
+  it('bloquea un centro de costo que supera 80 caracteres con mensaje en español', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.INTERNAL_CONSUMPTION,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: '',
+      commercialRefId: '',
+      originRefId: '',
+      costCenter: 'C'.repeat(81),
+      reason: 'Consumo de obra',
+      itemsById,
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-1',
+          requestedQty: '1',
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toBe('El centro de costo no puede superar 80 caracteres.');
+  });
+
+  it('bloquea un motivo que supera 2000 caracteres con mensaje en español', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.INTERNAL_CONSUMPTION,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: '',
+      commercialRefId: '',
+      originRefId: '',
+      costCenter: 'CC-01',
+      reason: 'M'.repeat(2001),
+      itemsById,
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-1',
+          requestedQty: '1',
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toBe('El motivo de la salida no puede superar 2000 caracteres.');
+  });
+
+  it('acepta textos de cabecera exactamente en el límite del API', () => {
+    const result = buildCreateStockIssuePayload({
+      type: StockIssueType.INTERNAL_CONSUMPTION,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: '',
+      commercialRefId: 'R'.repeat(160),
+      originRefId: 'O'.repeat(160),
+      costCenter: 'C'.repeat(80),
+      reason: 'M'.repeat(2000),
+      itemsById,
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-1',
+          requestedQty: '1',
+        },
+      ],
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.payload?.commercialRefId).toHaveLength(160);
+    expect(result.payload?.costCenter).toHaveLength(80);
+    expect(result.payload?.reason).toHaveLength(2000);
+  });
+
+  it('el payload de edición aplica las mismas longitudes de cabecera', () => {
+    const result = buildUpdateStockIssuePayload({
+      type: StockIssueType.SALE_DISPATCH,
+      sourceLocationId: 'loc-1',
+      destinationLocationId: '',
+      commercialRefId: '',
+      originRefId: 'O'.repeat(161),
+      costCenter: '',
+      reason: '',
+      itemsById,
+      lines: [
+        {
+          ...baseLine,
+          itemId: 'item-1',
+          requestedQty: '1',
+        },
+      ],
+    });
+
+    expect(result.payload).toBeNull();
+    expect(result.error).toBe('El origen de la venta no puede superar 160 caracteres.');
+  });
 });

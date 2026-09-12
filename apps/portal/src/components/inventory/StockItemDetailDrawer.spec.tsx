@@ -4,8 +4,9 @@ import {
   InventoryItemKind,
   InventoryItemStatus,
   InventoryTrackingMode,
+  StockBalanceCondition,
 } from '@iwana/shared';
-import { inventoryApi, type InventoryItemRecord } from '@/lib/api-client';
+import { inventoryApi, type InventoryItemRecord, type StockBalanceRecord } from '@/lib/api-client';
 import { StockItemDetailDrawer } from './StockItemDetailDrawer';
 import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
 import {
@@ -207,5 +208,87 @@ describe('StockItemDetailDrawer · costos F4 / G6 P2', () => {
     await waitFor(() => {
       expect(screen.getByText('Sin movimientos')).toBeInTheDocument();
     });
+  });
+});
+
+describe('StockItemDetailDrawer · lote legible en saldos por bodega', () => {
+  const lotBalances: StockBalanceRecord[] = [
+    {
+      id: 'bal-1',
+      tenantId: 'tenant-1',
+      itemId: 'item-1',
+      locationId: 'loc-1',
+      lotId: 'a4bf078e-1111-4111-8111-111111111111',
+      lotNumber: '09092026',
+      condition: StockBalanceCondition.NEW,
+      quantityOnHand: '300.00',
+      quantityReserved: '0.00',
+      createdAt: '2026-09-09T10:00:00.000Z',
+      updatedAt: '2026-09-09T10:00:00.000Z',
+    },
+    {
+      id: 'bal-2',
+      tenantId: 'tenant-1',
+      itemId: 'item-1',
+      locationId: 'loc-1',
+      lotId: 'b5cf189f-2222-4222-8222-222222222222',
+      condition: StockBalanceCondition.NEW,
+      quantityOnHand: '10.00',
+      quantityReserved: '0.00',
+      createdAt: '2026-09-09T10:00:00.000Z',
+      updatedAt: '2026-09-09T10:00:00.000Z',
+    },
+    {
+      id: 'bal-3',
+      tenantId: 'tenant-1',
+      itemId: 'item-1',
+      locationId: 'loc-1',
+      lotId: null,
+      condition: StockBalanceCondition.NEW,
+      quantityOnHand: '5.00',
+      quantityReserved: '0.00',
+      createdAt: '2026-09-09T10:00:00.000Z',
+      updatedAt: '2026-09-09T10:00:00.000Z',
+    },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    listMovementsMock.mockResolvedValue({ data: [], total: 0, page: 1, limit: 10 });
+  });
+
+  it('muestra el número de lote capturado al registrar la compra', async () => {
+    render(
+      <StockItemDetailDrawer
+        open
+        item={item}
+        balances={lotBalances}
+        locations={[]}
+        onClose={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('09092026')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Lote a4bf078e/i)).not.toBeInTheDocument();
+  });
+
+  it('degrada a UUID corto sin lotNumber y a Sin lote sin lotId', async () => {
+    render(
+      <StockItemDetailDrawer
+        open
+        item={item}
+        balances={lotBalances}
+        locations={[]}
+        onClose={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('09092026')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Lote b5cf189f')).toBeInTheDocument();
+    expect(screen.getByText('Sin lote')).toBeInTheDocument();
   });
 });

@@ -43,6 +43,7 @@ import { StockIssuePickingService } from '../services/stock-issue-picking.servic
 import { AssetLoanService } from '../services/asset-loan.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { ReplenishmentService } from '../services/replenishment.service';
 import { CycleCountService } from '../services/cycle-count.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
@@ -346,6 +347,16 @@ describe('InventoryController HTTP', () => {
       filename: 'RFQ-000001-cotizaciones.zip',
     }),
   };
+  const purchaseOrderPdfServiceMock = {
+    renderForOrder: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('%PDF-1.4\n'),
+      filename: 'OC-000001.pdf',
+    }),
+    renderRequestOrdersZip: jest.fn().mockResolvedValue({
+      buffer: Buffer.from('PK'),
+      filename: 'SOL-000001-ordenes.zip',
+    }),
+  };
   const stockIssueServiceMock = {
     list: jest.fn().mockResolvedValue({ data: [], meta: { nextCursor: null, total: 0 } }),
     create: jest.fn().mockResolvedValue({ id: 'issue-001' }),
@@ -407,6 +418,7 @@ describe('InventoryController HTTP', () => {
         { provide: CounterPurchaseService, useValue: counterPurchaseServiceMock },
         { provide: RfqService, useValue: rfqServiceMock },
         { provide: RfqPdfService, useValue: rfqPdfServiceMock },
+        { provide: PurchaseOrderPdfService, useValue: purchaseOrderPdfServiceMock },
         { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,

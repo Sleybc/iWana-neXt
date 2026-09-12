@@ -40,6 +40,16 @@ export interface StockIssueSubmitValidationResult<T> {
   error: string | null;
 }
 
+/**
+ * Topes del API para los campos de texto de la cabecera (`optionalTrimmedString`
+ * en el schema de salidas). El composer no pone `maxLength` en esos inputs, así
+ * que esta es la única valla antes del 400: sin ella el API rechaza con el
+ * mensaje por defecto de zod (en inglés) y el operador no identifica la causa.
+ */
+const MAX_REF_LENGTH = 160;
+const MAX_COST_CENTER_LENGTH = 80;
+const MAX_REASON_LENGTH = 2000;
+
 function validateHeaderFields(input: {
   type: StockIssueType;
   sourceLocationId: string;
@@ -80,6 +90,21 @@ function validateHeaderFields(input: {
     if (!input.reason.trim()) {
       return 'Indica el motivo del consumo interno.';
     }
+  }
+
+  // Paridad de longitudes con el API: aplica a cualquier tipo porque el payload
+  // siempre viaja con estos campos (vacíos → null) y el schema los valida igual.
+  if (input.commercialRefId.trim().length > MAX_REF_LENGTH) {
+    return 'La referencia comercial no puede superar 160 caracteres.';
+  }
+  if (input.originRefId.trim().length > MAX_REF_LENGTH) {
+    return 'El origen de la venta no puede superar 160 caracteres.';
+  }
+  if (input.costCenter.trim().length > MAX_COST_CENTER_LENGTH) {
+    return 'El centro de costo no puede superar 80 caracteres.';
+  }
+  if (input.reason.trim().length > MAX_REASON_LENGTH) {
+    return 'El motivo de la salida no puede superar 2000 caracteres.';
   }
 
   return null;

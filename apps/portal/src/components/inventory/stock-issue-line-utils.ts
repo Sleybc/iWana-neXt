@@ -91,8 +91,14 @@ export function resolveSingleLotIdFromLots(
 
 /**
  * Aplica la preselección de lote único a las líneas indicadas (o a todas si no
- * se acota) usando los `lots[]` de cada línea. Nunca pisa un lote ya elegido ni
- * una línea serializada.
+ * se acota) usando los `lots[]` de cada línea. Nunca pisa un lote ya elegido.
+ *
+ * Incluye las líneas serializadas: el saldo de un ítem con seriales también
+ * vive por lote (la recepción crea un `StockLot` para todo ingreso, serializado
+ * o no), y tanto la reserva como el despacho descuentan de la tupla
+ * (ítem, lote, condición) que trae la línea. Excluirlas hacía que la salida
+ * reservara contra `lot_id = NULL`, tupla que no existe, y el API respondía
+ * «No hay disponible suficiente: 0.00 en existencia» con material de sobra.
  */
 export function applySingleLotPreselectionToDraftLines(
   lines: StockIssueDraftLine[],
@@ -108,12 +114,7 @@ export function applySingleLotPreselectionToDraftLines(
       return line;
     }
 
-    if (
-      !line.itemId.trim() ||
-      line.lotId.trim() ||
-      resolveLineSerializedAssetIds(line).length > 0 ||
-      isSerializedTrackingMode(line.trackingMode)
-    ) {
+    if (!line.itemId.trim() || line.lotId.trim()) {
       return line;
     }
 
@@ -236,18 +237,6 @@ export function formatSerializedAssetLabel(asset: SerializedAssetRecord): string
 /** Etiqueta corta del serial elegido cuando aún no se resolvió su rótulo. */
 export function fallbackSerializedAssetLabel(assetId: string): string {
   return assetId.slice(0, 8).toUpperCase();
-}
-
-/**
- * Suma un paso (±1) a la cantidad tecleada de una línea del borrador, con dos
- * decimales máximos (numeric(12,2) del contrato). Vacío o no numérico cuenta
- * como cero. El llamador deshabilita el paso negativo cuando el valor es ≤ 1:
- * el envío exige cantidad > 0 y el tipeo libre sigue siendo la vía decimal.
- */
-export function stepDraftQuantity(value: string, delta: number): string {
-  const parsed = Number.parseFloat(value);
-  const current = Number.isFinite(parsed) ? parsed : 0;
-  return (Math.round((current + delta) * 100) / 100).toString();
 }
 
 /**

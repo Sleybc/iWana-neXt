@@ -61,6 +61,7 @@ import {
   InventoryTrackingMode,
   PartyStatus,
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestFulfillmentStatus,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
@@ -7549,6 +7550,11 @@ export interface StockBalanceRecord {
   itemId: string;
   locationId: string;
   lotId: string | null;
+  /**
+   * Número de lote legible (lote capturado al registrar la compra).
+   * Opcional: ausente = sin lote o lote huérfano.
+   */
+  lotNumber?: string | null;
   condition: StockBalanceCondition;
   quantityOnHand: string;
   quantityReserved: string;
@@ -7696,6 +7702,12 @@ export interface PurchaseRequestRecord {
    * comportamiento previo (CONVERTED_TO_PO se asume PENDING_RECEIPT).
    */
   fulfillmentStatus?: PurchaseRequestFulfillmentStatus;
+  /**
+   * Eje de cobertura de adjudicación derivado en servidor (Fase 30,
+   * ADR-087 propuesto): responde «¿cuánto de ella está adjudicado u
+   * ordenado?». Opcional a propósito: un API aún sin desplegar no lo emite.
+   */
+  awardCoverage?: PurchaseRequestAwardCoverage;
   requestType: PurchaseRequestType;
   priority: PurchaseRequestPriority;
   requestedByUserId: string;
@@ -7736,6 +7748,14 @@ export interface PurchaseRequestLineAwardRecord {
   supplierQuoteId: string | null;
   awardedPartyRefId: string;
   awardedQuantity: string;
+  /**
+   * Costo unitario congelado como snapshot del award (adenda Fase 30 §12.5):
+   * derivado de la línea de cotización o aportado por la escotilla §7.
+   * Ausente/null en awards anteriores a la adenda.
+   */
+  unitCost?: string | null;
+  /** Moneda del snapshot; null en awards de escotilla (no declaran moneda). */
+  currency?: string | null;
   awardNotes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -7768,6 +7788,12 @@ export interface PurchaseRequestDetailRecord {
   rfq: PurchaseRfqDetailRecord | null;
   /** Presets PURCHASE para el formulario de cotización. Ausente si el GET aún no los emite. */
   purchaseTaxPresets?: PurchaseTaxPresetRecord[];
+  /**
+   * Eje de cobertura de adjudicación derivado en servidor (Fase 30,
+   * ADR-087 propuesto): raíz del detalle y `request.awardCoverage` llevan el
+   * mismo valor. Ausente si el GET aún no lo emite.
+   */
+  awardCoverage?: PurchaseRequestAwardCoverage;
 }
 
 export interface PurchaseRfqRecord {
@@ -8461,6 +8487,11 @@ export interface StockIssueLineRecord {
   requestedQty: string;
   dispatchedQty: string | null;
   lotId: string | null;
+  /**
+   * Número de lote legible (lote capturado al registrar la compra).
+   * Opcional: ausente = sin lote o lote huérfano.
+   */
+  lotNumber?: string | null;
   serializedAssetId: string | null;
   /**
    * Grupo de seriales de la línea (lectura v2.1, MOD12 S2 §5.5, contrato
@@ -8603,7 +8634,8 @@ export interface CreatePurchaseRequestDto {
   requestType: PurchaseRequestType;
   priority?: PurchaseRequestPriority;
   requestingArea: string;
-  justification: string;
+  /** Opcional. Si se envía, mínimo 10 caracteres. */
+  justification?: string;
   operationalRefType?: string | null;
   operationalRefId?: string | null;
   neededByDate?: string | null;
@@ -8695,6 +8727,24 @@ export interface PurchaseRequestLineAwardInput {
   awardedQuantity: number;
   supplierQuoteId?: string | null;
   awardNotes?: string | null;
+  /**
+   * Costo unitario aportado por el cliente. SOLO viaja por la escotilla de
+   * proveedor sin cotización (spec §7): en los demás casos lo deriva el
+   * servidor y un valor divergente se rechaza con `UNIT_COST_MISMATCH`.
+   */
+  unitCost?: number | null;
+}
+
+/**
+ * Respuesta de revocación de una adjudicación
+ * (`DELETE /purchasing/requests/:id/awards/:awardId`, contrato
+ * `RevokeAwardResponse` de Fase 30): estado de la línea tras eliminar la
+ * adjudicación y cobertura derivada resultante.
+ */
+export interface RevokeAwardResponse {
+  awardId: string;
+  lineStatusAfter: PurchaseRequestLineStatus;
+  coverage: PurchaseRequestAwardCoverage;
 }
 
 export interface CreatePurchaseRequestAwardsDto {
@@ -9413,6 +9463,19 @@ export const purchasingApi = {
       tenantSlug,
     ),
 
+  /**
+   * Revoca una adjudicación sin orden viva (Fase 30, spec §6.5): el servidor
+   * es la autoridad y responde 409 `AWARD_ALREADY_ORDERED` si hay línea de
+   * orden viva. Nunca importa nada de `apps/api`: la forma vive en el
+   * contrato congelado `purchase-award-matrix.contract.ts`.
+   */
+  revokeAward: (id: string, awardId: string, tenantSlug?: string) =>
+    request<RevokeAwardResponse>(
+      `/purchasing/requests/${id}/awards/${awardId}`,
+      { method: 'DELETE', returnFullResponse: true },
+      tenantSlug,
+    ),
+
   getProviderSummary: (partyRefId: string, tenantSlug?: string) =>
     request<SupplierSummaryRecord>(
       `/purchasing/providers/${partyRefId}/summary`,
@@ -9646,6 +9709,72 @@ export const purchasingApi = {
     return {
       blob,
       filename: filenameMatch?.[1] ?? `RFQ-${rfqId}-${invitationId}.pdf`,
+    };
+  },
+
+  /**
+   * PDF de una orden de compra (Fase 31): documento para enviar al proveedor
+   * por el canal habitual. Mismo contrato binario que las descargas de RFQ.
+   */
+  downloadPurchaseOrderPdf: async (purchaseOrderId: string, tenantSlug?: string) => {
+    const resolvedTenantSlug = getTenantSlug(tenantSlug);
+    const headers = new Headers();
+    headers.set('X-Tenant-Slug', resolvedTenantSlug);
+
+    const res = await fetch(`${resolveApiBase()}/purchasing/orders/${purchaseOrderId}/pdf`, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new ApiError(
+        res.status,
+        typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+        typeof body['message'] === 'string' ? body['message'] : 'Error del servidor',
+        body['details'],
+      );
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filenameMatch = disposition.match(/filename="([^"]+)"/);
+    return {
+      blob,
+      filename: filenameMatch?.[1] ?? `orden-${purchaseOrderId}.pdf`,
+    };
+  },
+
+  /**
+   * ZIP con el PDF de cada orden viva de la solicitud (Fase 31): una descarga
+   * cuando la adjudicación generó N órdenes (una por proveedor).
+   */
+  downloadRequestOrdersZip: async (requestId: string, tenantSlug?: string) => {
+    const resolvedTenantSlug = getTenantSlug(tenantSlug);
+    const headers = new Headers();
+    headers.set('X-Tenant-Slug', resolvedTenantSlug);
+
+    const res = await fetch(`${resolveApiBase()}/purchasing/requests/${requestId}/orders/pdf.zip`, {
+      headers,
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new ApiError(
+        res.status,
+        typeof body['code'] === 'string' ? body['code'] : 'UNKNOWN',
+        typeof body['message'] === 'string' ? body['message'] : 'Error del servidor',
+        body['details'],
+      );
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filenameMatch = disposition.match(/filename="([^"]+)"/);
+    return {
+      blob,
+      filename: filenameMatch?.[1] ?? `solicitud-${requestId}-ordenes.zip`,
     };
   },
 };

@@ -34,6 +34,7 @@ import { AssetLoanService } from '../services/asset-loan.service';
 import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { CounterPurchaseService } from '../services/counter-purchase.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { InventoryDashboardService } from '../services/inventory-dashboard.service';
 import { ReplenishmentService } from '../services/replenishment.service';
@@ -91,6 +92,7 @@ describe('InventoryModule', () => {
         CounterPurchaseService,
         RfqService,
         RfqPdfService,
+        PurchaseOrderPdfService,
         SupplierProfileService,
         AssetLifecycleService,
         AssetLoanService,

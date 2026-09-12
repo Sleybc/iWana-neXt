@@ -61,4 +61,30 @@ describe('purchase-request-submit', () => {
     expect(result.payload).toBeNull();
     expect(result.error).toMatch(/10 caracteres/i);
   });
+
+  it('permite crear sin justificación: se omite del payload (opcional)', () => {
+    const result = buildCreatePurchaseRequestPayload({
+      title: 'Reposicion ONT',
+      requestType: PurchaseRequestType.REPLENISHMENT,
+      priority: PurchaseRequestPriority.NORMAL,
+      requestingArea: 'Operaciones',
+      justification: '   ',
+      neededByDate: '',
+      lines: [
+        {
+          sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+          inventoryItemId: 'item-1',
+          productLabel: 'ONT-001 - ONT WiFi 6',
+          freeTextDescription: '',
+          quantityRequested: '1',
+          unitOfMeasure: 'caja',
+          suggestedPartyRefId: '',
+          notes: '',
+        },
+      ],
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.payload).not.toHaveProperty('justification');
+  });
 });

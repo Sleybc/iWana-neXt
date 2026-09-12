@@ -83,6 +83,9 @@ import { AddInventoryItemBarcode1230000000000 } from './123_add_inventory_item_b
 import { AddSupplierQuoteTaxes1240000000000 } from './124_add_supplier_quote_taxes';
 import { AddSupplierQuoteShippingArrangement1250000000000 } from './125_add_supplier_quote_shipping_arrangement';
 import { CreateStockIssueLineSerials1260000000000 } from './126_create_stock_issue_line_serials';
+import { AddStockMovementTaxes1270000000000 } from './127_add_stock_movement_taxes';
+import { HardenPurchaseRequestLineAwards1280000000000 } from './128_harden_purchase_request_line_awards';
+import { AddSerializedAssetLot1290000000000 } from './129_add_serialized_asset_lot';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -246,6 +249,9 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddSupplierQuoteTaxes1240000000000,
   AddSupplierQuoteShippingArrangement1250000000000,
   CreateStockIssueLineSerials1260000000000,
+  AddStockMovementTaxes1270000000000,
+  HardenPurchaseRequestLineAwards1280000000000,
+  AddSerializedAssetLot1290000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

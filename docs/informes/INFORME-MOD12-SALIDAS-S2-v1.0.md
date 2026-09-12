@@ -377,3 +377,17 @@ La cola secuencial del alta (`addFlowActive`/`addFlowQueue`/`pendingDuplicateLin
 - Suite del composer reescrita al camino nuevo: **30/30**; regresión portal inventory **78 suites / 553 tests**; `tsc --noEmit` limpio; ESLint 0 errores; `audit-ui.mjs` sin hallazgos. Spec del diseño: `docs/specs/2026-09-08-composer-buscar-y-agregar-design.md`.
 - E2E `portal-inventory-scm.spec.ts`: helper reescrito (búsqueda → resultado → panel → confirmar, con serial cuando el ítem lo exige) y `waitForIssueSourceMaterial` adaptado; **pendiente de corrida CI** (pila completa), igual que la verificación visual con sesión.
 - Limpieza futura declarada: `usePickableScope` conserva la maquinaria de dos ámbitos (ahora solo se usa `catalog`) y la paginación del listado vive en estado de componente (desviación conocida de ADR-065 §9).
+
+## 18. La cantidad se edita por tipeo, sin stepper −/+ (2026-09-12) — §17 anatomía actualizada
+
+Reporte del operador: en «Líneas seleccionadas» los botones −/+ eran grandes (44 px) y la cantidad «no se veía». Diagnóstico verificado: el `Input` del DS es `w-full` sin `min-width`; entre dos botones `shrink-0` de 44 px absorbía todo el encogimiento de la celda y colapsaba a casi cero en columnas angostas (P1 de usabilidad). Era además el único stepper del portal y el único input de cantidad colapsable (compras `w-20`, conteos `w-28`, reposición `w-24`, adjudicación `w-24` — todos fijos).
+
+Decisión aprobada por el solicitante entre tres opciones (compactar / quitar botones / pill unificada): **quitar el stepper y dejar input de ancho fijo `w-16` centrado `tabular-nums`**, paridad con el borrador de compras. `stepDraftQuantity` eliminado por quedar sin uso. Serializadas sin cambio (texto de solo lectura; la cantidad la fija el grupo de seriales). Sin cambio de validaciones, vocabulario («Cantidad», «Unidad», «Modificar», «Quitar»), edición masiva ni estados. Spec del cambio: `docs/specs/2026-09-12-salidas-cantidad-sin-stepper-design.md`.
+
+Evidencia: `StockIssueDraftLinesTable.spec` 3 casos nuevos (edición por tipeo sin botones, busy, serializada como texto) + 4 de stepper retirados con su helper · `stock-issue-line-utils.spec` sin `stepDraftQuantity` · composer 59 tests OK en corrida afectada · suite inventory portal completa, `tsc` y lint en §18.1.
+
+### 18.1 Evidencia y pendientes
+
+- Regresión portal inventory: **88 suites / 743 tests** · `tsc --noEmit` portal limpio · ESLint 0 errores (46 advertencias preexistentes, ninguna en archivos tocados).
+- `audit-ui.mjs` sobre `StockIssueDraftLinesTable.tsx` y `stock-issue-line-utils.ts`: sin hallazgos.
+- Pendiente de corrida E2E CI (pila completa), heredado de §17.

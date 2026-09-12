@@ -1,3 +1,4 @@
+import { PurchaseOrderStatus, PurchaseRequestLineStatus } from '@iwana/shared';
 import type {
   CreatePurchaseOrderDto,
   PurchaseOrderBatchOrderInput,
@@ -13,7 +14,16 @@ export interface AwardOrderPreviewLine {
   itemId: string;
   quantity: number;
   unitCost: number;
-  unitCostSource: 'quote' | 'missing';
+  /**
+   * Origen del costo: `override` (capturado por el operador al emitir),
+   * `award` (snapshot congelado en la adjudicación — línea de cotización o
+   * escotilla §7, adenda Fase 30 §12.5), `quote` (línea de cotización, para
+   * awards anteriores al snapshot) o `missing` (sin dato: la orden NO se
+   * puede emitir, el operador debe capturar el costo en el drawer).
+   */
+  unitCostSource: 'quote' | 'override' | 'award' | 'missing';
+  /** Moneda de la cotización origen; null cuando no hay cotización vinculada. */
+  currency: string | null;
   label: string;
 }
 
@@ -49,8 +59,39 @@ function findQuoteLine(
   );
 }
 
+function findQuoteCurrency(
+  quotes: SupplierQuoteRecord[],
+  award: PurchaseRequestLineAwardRecord,
+): string | null {
+  if (!award.supplierQuoteId) {
+    return null;
+  }
+  const quote = quotes.find((entry) => entry.id === award.supplierQuoteId);
+  const currency = quote?.currency?.trim();
+  return currency ? currency : null;
+}
+
 function resolveLineItemId(line: PurchaseRequestLineRecord | undefined): string | null {
   return line?.inventoryItemId ?? null;
+}
+
+/**
+ * Líneas con ciclo de orden ya cubierto: el servidor marcó ORDERED (o
+ * recepción posterior) y existe una orden viva del proveedor en el detalle.
+ * Mismo criterio que `award-matrix.ts` (paridad con `resolveAwardCoverage` y
+ * `ORDER_TERMINAL_LINE_STATUSES` del backend): viva = no cancelada. Las
+ * órdenes canceladas no consumen adjudicación y la línea se vuelve a ofertar.
+ */
+const ORDERED_LINE_STATUSES: ReadonlySet<PurchaseRequestLineStatus> = new Set([
+  PurchaseRequestLineStatus.ORDERED,
+  PurchaseRequestLineStatus.PARTIALLY_RECEIVED,
+  PurchaseRequestLineStatus.RECEIVED,
+]);
+
+function hasLiveOrderForParty(detail: PurchaseRequestDetailRecord, partyRefId: string): boolean {
+  return detail.orders.some(
+    (order) => order.status !== PurchaseOrderStatus.CANCELLED && order.partyRefId === partyRefId,
+  );
 }
 
 /**
@@ -79,14 +120,42 @@ export function buildOrdersFromAwards(
       continue;
     }
 
+    // Segunda tanda (DEF-AWD-002): lo ya ordenado y cubierto por una orden
+    // viva no se re-oferta; re-emitirlo haría que el servidor responda 400
+    // ORDER_EXCEEDS_AWARD (tope de `createSingleOrder`). Sin orden viva (p.
+    // ej. todo cancelado) la línea se vuelve a ofertar.
+    if (
+      requestLine &&
+      ORDERED_LINE_STATUSES.has(requestLine.lineStatus) &&
+      hasLiveOrderForParty(detail, award.awardedPartyRefId)
+    ) {
+      continue;
+    }
+
     const quoteLine = findQuoteLine(detail.quotes, award);
     const overrideKey = `${award.awardedPartyRefId}:${award.purchaseRequestLineId}`;
     const override = options?.unitCostOverrides?.[overrideKey];
-    const hasResolvedCost = override !== undefined || Boolean(quoteLine);
-    const unitCost = hasResolvedCost ? (override ?? toNumeric(quoteLine?.unitCost)) : 0;
-    const unitCostSource: AwardOrderPreviewLine['unitCostSource'] = hasResolvedCost
-      ? 'quote'
-      : 'missing';
+    // Precedencia del costo (spec §6.4, adenda informe §12.5): capturado por
+    // el operador al emitir → snapshot congelado del award (cotización o
+    // escotilla) → línea de cotización (awards anteriores al snapshot) → sin
+    // dato. El caso sin dato conserva `unitCost: 0` SOLO como marcador de
+    // visualización (el drawer muestra el campo vacío y exige capturarlo);
+    // `previewsToCreateOrderDto` rechaza emitir la orden en ese estado.
+    const awardUnitCostRaw = award.unitCost?.trim();
+    const awardUnitCost =
+      awardUnitCostRaw != null && awardUnitCostRaw !== '' ? toNumeric(awardUnitCostRaw) : null;
+    const unitCostSource: AwardOrderPreviewLine['unitCostSource'] =
+      override !== undefined
+        ? 'override'
+        : awardUnitCost != null
+          ? 'award'
+          : quoteLine
+            ? 'quote'
+            : 'missing';
+    const unitCost =
+      override !== undefined
+        ? override
+        : (awardUnitCost ?? (quoteLine ? toNumeric(quoteLine.unitCost) : 0));
 
     const existing = groups.get(award.awardedPartyRefId);
     const previewLine: AwardOrderPreviewLine = {
@@ -95,6 +164,7 @@ export function buildOrdersFromAwards(
       quantity: toNumeric(award.awardedQuantity),
       unitCost,
       unitCostSource,
+      currency: findQuoteCurrency(detail.quotes, award),
       label:
         options?.lineLabels?.[award.purchaseRequestLineId] ??
         requestLine?.freeTextDescription?.trim() ??
@@ -118,6 +188,14 @@ export function buildOrdersFromAwards(
   return Array.from(groups.values());
 }
 
+/**
+ * Guarda de emisión (CA-308): una orden NUNCA se crea con costo cero por
+ * falta de dato. Si alguna línea sigue en `missing` o con costo no positivo,
+ * lanza un error explícito que nombra la línea; si un proveedor mezcla
+ * monedas entre sus líneas, lanza por mezcla de monedas. El drawer bloquea
+ * el envío antes (`hasMissingUnitCosts`), esta guarda es la última línea de
+ * defensa programática.
+ */
 export function previewsToCreateOrderDto(
   purchaseRequestId: string,
   previews: AwardOrderPreview[],
@@ -126,6 +204,30 @@ export function previewsToCreateOrderDto(
     notes?: string | null;
   },
 ): CreatePurchaseOrderDto {
+  for (const preview of previews) {
+    for (const line of preview.lines) {
+      if (
+        line.unitCostSource === 'missing' ||
+        !Number.isFinite(line.unitCost) ||
+        line.unitCost <= 0
+      ) {
+        throw new Error(
+          `Falta el costo unitario de ${line.label}: indícalo antes de generar la orden de ${preview.partyLabel}.`,
+        );
+      }
+    }
+    const currencies = new Set(
+      preview.lines
+        .map((line) => line.currency?.trim().toUpperCase())
+        .filter((currency): currency is string => Boolean(currency)),
+    );
+    if (currencies.size > 1) {
+      throw new Error(
+        `Las líneas de ${preview.partyLabel} están en monedas distintas: genera una orden por moneda.`,
+      );
+    }
+  }
+
   const orders: PurchaseOrderBatchOrderInput[] = previews.map((preview) => ({
     partyRefId: preview.partyRefId,
     expectedDeliveryDate: options?.expectedDeliveryDate ?? null,
@@ -150,6 +252,9 @@ export function canGenerateOrdersFromAwards(detail: PurchaseRequestDetailRecord)
 
 export function hasMissingUnitCosts(previews: AwardOrderPreview[]): boolean {
   return previews.some((preview) =>
-    preview.lines.some((line) => line.unitCostSource === 'missing' || line.unitCost <= 0),
+    preview.lines.some(
+      (line) =>
+        line.unitCostSource === 'missing' || !Number.isFinite(line.unitCost) || line.unitCost <= 0,
+    ),
   );
 }

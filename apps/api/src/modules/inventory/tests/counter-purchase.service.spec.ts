@@ -770,7 +770,7 @@ describe('CounterPurchaseService', () => {
           }),
           actor,
         ),
-      ).rejects.toThrow('Hay códigos de tributo duplicados en la cotización.');
+      ).rejects.toThrow('Hay códigos de tributo duplicados en el ingreso directo.');
     });
 
     it('rechaza tributo inactivo o fuera del contexto de compra', async () => {

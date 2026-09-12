@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, DatePicker, Input, Select } from '@iwana/ui';
 import {
   GoodsReceiptStatus,
+  InventoryTrackingMode,
   areInventoryUnitsDimensionallyCompatible,
   convertPurchaseQuantityToBase,
   formatUomEquivalence,
@@ -90,6 +91,66 @@ function resolveItemLabel(items: InventoryItemRecord[], itemId: string): string 
 }
 
 /**
+ * El backend solo exige seriales para items con unidad trazable
+ * (SERIALIZED | FIXED_ASSET, un serial por unidad base); en consumibles el
+ * dato se ignora por completo, así que el formulario no lo pide.
+ */
+function isSerialTrackedItem(item: InventoryItemRecord | undefined): boolean {
+  return (
+    item?.trackingMode === InventoryTrackingMode.SERIALIZED ||
+    item?.trackingMode === InventoryTrackingMode.FIXED_ASSET
+  );
+}
+
+/** Seriales no vacíos que escribió el operador (separados por coma). */
+function countSerials(value: string): number {
+  return value
+    .split(',')
+    .map((serial) => serial.trim())
+    .filter(Boolean).length;
+}
+
+/**
+ * Seriales esperados para la cantidad a recibir (paridad con el backend):
+ * un serial por unidad BASE — con unidad de compra distinta se convierte con
+ * el mismo criterio de `resolveLineEquivalence` (2 cajas × 100 = 200
+ * seriales). null = no aplica o no es computable (el backend valida igual).
+ */
+function resolveExpectedSerialCount(
+  items: InventoryItemRecord[],
+  itemId: string,
+  purchaseQuantity: number,
+): number | null {
+  if (!(purchaseQuantity > 0)) {
+    return null;
+  }
+
+  const item = items.find((entry) => entry.id === itemId);
+  if (!item || !isSerialTrackedItem(item)) {
+    return null;
+  }
+
+  const purchaseCode = item.purchaseUnitOfMeasure?.trim() || null;
+  const baseCode = item.unitOfMeasure?.trim() || null;
+  const factor = item.purchaseToBaseUomFactor == null ? NaN : Number(item.purchaseToBaseUomFactor);
+
+  if (!purchaseCode || !baseCode || purchaseCode === baseCode) {
+    return Number.isInteger(purchaseQuantity) ? purchaseQuantity : null;
+  }
+
+  if (!areInventoryUnitsDimensionallyCompatible(baseCode, purchaseCode)) {
+    return null;
+  }
+
+  if (!Number.isFinite(factor) || factor <= 0) {
+    return null;
+  }
+
+  const baseQuantity = convertPurchaseQuantityToBase(purchaseQuantity, factor);
+  return Number.isInteger(baseQuantity) && baseQuantity > 0 ? baseQuantity : null;
+}
+
+/**
  * Equivalencia compra → base para mostrar ANTES de confirmar (ADR-085 D3 ·
  * F5b, CA-F5B-10). Guía visual: la conversión autoritativa ocurre en el
  * backend; si el backend rechaza (dimensión o factor), su mensaje en español
@@ -163,6 +224,23 @@ export function GoodsReceiptPanel({
   const hasPendingLines = useMemo(
     () => orderLines.some((line) => pendingQuantity(line) > 0),
     [orderLines],
+  );
+
+  /**
+   * Guarda cliente en paridad con el backend (un serial por unidad base):
+   * bloquea el registro con el motivo visible en el campo, antes del 400.
+   */
+  const hasSerialMismatch = useMemo(
+    () =>
+      lines.some((line) => {
+        const expected = resolveExpectedSerialCount(
+          items,
+          line.itemId,
+          Number(line.quantityReceived) || 0,
+        );
+        return expected !== null && countSerials(line.serialNumbers) !== expected;
+      }),
+    [lines, items],
   );
 
   const receiptForOrder =
@@ -463,6 +541,16 @@ export function GoodsReceiptPanel({
                 Number(line.quantityReceived) || 0,
               );
               const isLocated = locatedLineId === line.purchaseOrderLineId;
+              const serialTracked = isSerialTrackedItem(
+                items.find((entry) => entry.id === line.itemId),
+              );
+              const expectedSerials = resolveExpectedSerialCount(
+                items,
+                line.itemId,
+                Number(line.quantityReceived) || 0,
+              );
+              const filledSerials = countSerials(line.serialNumbers);
+              const serialsMismatch = expectedSerials !== null && filledSerials !== expectedSerials;
 
               return (
                 <div
@@ -516,22 +604,30 @@ export function GoodsReceiptPanel({
                         ),
                       )
                     }
+                    helperText="Opcional: si se deja vacío se genera uno automático."
                   />
-                  <Input
-                    label="Seriales"
-                    value={line.serialNumbers}
-                    onChange={(event) =>
-                      setLines((current) =>
-                        current.map((entry, entryIndex) =>
-                          entryIndex === index
-                            ? { ...entry, serialNumbers: event.target.value }
-                            : entry,
-                        ),
-                      )
-                    }
-                    helperText="Separa varios seriales por coma."
-                    className="xl:col-span-2"
-                  />
+                  {serialTracked ? (
+                    <Input
+                      label="Seriales"
+                      value={line.serialNumbers}
+                      onChange={(event) =>
+                        setLines((current) =>
+                          current.map((entry, entryIndex) =>
+                            entryIndex === index
+                              ? { ...entry, serialNumbers: event.target.value }
+                              : entry,
+                          ),
+                        )
+                      }
+                      helperText="Un serial por cada unidad base. Separa varios por coma."
+                      error={
+                        serialsMismatch && expectedSerials !== null
+                          ? `Se esperaban ${expectedSerials} seriales; hay ${filledSerials}.`
+                          : undefined
+                      }
+                      className="xl:col-span-2"
+                    />
+                  ) : null}
                 </div>
               );
             })}
@@ -554,7 +650,8 @@ export function GoodsReceiptPanel({
             disabled={
               !destinationLocationId ||
               !toDateFromLocalDateValue(receivedAt) ||
-              lines.every((line) => !line.purchaseOrderLineId)
+              lines.every((line) => !line.purchaseOrderLineId) ||
+              hasSerialMismatch
             }
             onPrimaryClick={() => void handleSubmit()}
           />

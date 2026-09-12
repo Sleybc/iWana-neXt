@@ -80,6 +80,29 @@ El objetivo de este PRD es convertir Compras en una mesa operativa usable sin sa
 | RF-CMP-12 | Exponer trazabilidad desde solicitud hasta recepcion por cabecera y por linea. | MVP |
 | RF-CMP-13 | Preparar estructura de proveedor para evolucion futura a evaluacion y scoring. | Fase 2 |
 
+### Adenda 2026-09-11 — eje de selección de RF-CMP-06 y RF-CMP-08 (Fase 30)
+
+Esta adenda **precisa** dos requisitos aprobados; no los modifica ni amplía su alcance. Emitida por
+AI-EM-ARCH tras la decisión del CTO del 2026-09-11.
+
+**Eje de la adjudicación.** RF-CMP-06 dice *qué* debe ser posible (adjudicación total o parcial por
+línea) pero no fija *cómo* se selecciona. La Fase 20 lo implementó con eje **línea → cotización**: una
+tarjeta por línea de solicitud y, dentro, la elección de proveedor. La operación real del comprador
+recorre el camino inverso —revisa una cotización y decide qué productos de ella le sirven—, de modo
+que el eje canónico pasa a ser **cotización → productos**, resuelto como matriz productos ×
+cotizaciones. Ver [SPEC Fase 30](../specs/2026-09-11-mod12-compras-adjudicacion-matriz-design.md).
+
+**Un producto, un proveedor.** Decisión del CTO del 2026-09-11: dentro de una solicitud, cada producto
+se adjudica íntegro a un solo proveedor; lo que se reparte entre proveedores son productos distintos.
+La regla de parcialidad de **cantidad** de RF-06-01 del PRD de cierre de flujo —solo las solicitudes de
+tipo `PROJECT` admiten repartir la cantidad de una misma línea— **se mantiene intacta**.
+
+**La solicitud sobrevive a la conversión parcial.** RF-CMP-08 («generar una o varias órdenes de compra
+desde líneas adjudicadas») se precisa así: emitir órdenes para parte de las líneas **no** cierra la
+solicitud. Permanece en `APPROVED` y admite tandas posteriores hasta que toda línea viva esté ordenada.
+El eje de cobertura que lo expone es derivado, no persistido —
+[ADR-087 (aprobado)](../adrs/ADR-087-Cobertura-Adjudicacion-Derivada-Compras.md), G1 GO del CTO el 2026-09-11 (opción 1).
+
 ## 5. Requerimientos no funcionales
 
 | ID | Requerimiento | Criterio |

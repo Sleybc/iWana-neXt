@@ -213,7 +213,9 @@ export function StockItemDetailDrawer({
                         {locationById.get(balance.locationId)?.name ?? balance.locationId}
                       </td>
                       <td className={portalDataTableCellClassName}>
-                        {balance.lotId ? `Lote ${balance.lotId.slice(0, 8)}` : 'Sin lote'}
+                        {balance.lotId
+                          ? (balance.lotNumber ?? `Lote ${balance.lotId.slice(0, 8)}`)
+                          : 'Sin lote'}
                       </td>
                       <td className={portalDataTableCellClassName}>
                         <Badge variant="neutral">

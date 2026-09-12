@@ -88,9 +88,10 @@ function entry(
   itemId: string,
   requestedQty: number,
   serializedAssetIds: string[],
+  lotId?: string | null,
 ): SerializedGroupEntry {
   return {
-    line: { itemId, requestedQty, serializedAssetIds },
+    line: { itemId, requestedQty, serializedAssetIds, lotId: lotId ?? null },
     item: {
       id: itemId,
       sku: `SKU-${itemId.slice(0, 4)}`,
@@ -233,6 +234,61 @@ describe('SerializedGroupValidator (MOD12 S2.1 · B2)', () => {
           SOURCE_ID,
         ),
       ).not.toThrow();
+    });
+
+    describe('coherencia serial ↔ lote', () => {
+      const LOT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const LOT_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+      it('rechaza el serial que pertenece a otro lote', () => {
+        // Sin esta regla la salida reservaba y descontaba de la tupla del lote
+        // de la línea, que no contiene ese serial.
+        const assetById = new Map([[ASSET_A, buildAsset({ lotId: LOT_B })]]);
+
+        expect(() =>
+          validator.assertAssetsEligible(
+            [entry(ITEM_ID, 1, [ASSET_A], LOT_A)],
+            assetById as never,
+            SOURCE_ID,
+          ),
+        ).toThrow('pertenece a otro lote');
+      });
+
+      it('acepta el serial del mismo lote de la línea', () => {
+        const assetById = new Map([[ASSET_A, buildAsset({ lotId: LOT_A })]]);
+
+        expect(() =>
+          validator.assertAssetsEligible(
+            [entry(ITEM_ID, 1, [ASSET_A], LOT_A)],
+            assetById as never,
+            SOURCE_ID,
+          ),
+        ).not.toThrow();
+      });
+
+      it('acepta el activo sin lote: el backfill de la 129 no inventa valores', () => {
+        const assetById = new Map([[ASSET_A, buildAsset({ lotId: null })]]);
+
+        expect(() =>
+          validator.assertAssetsEligible(
+            [entry(ITEM_ID, 1, [ASSET_A], LOT_A)],
+            assetById as never,
+            SOURCE_ID,
+          ),
+        ).not.toThrow();
+      });
+
+      it('no exige lote cuando la línea sale sin lote específico', () => {
+        const assetById = new Map([[ASSET_A, buildAsset({ lotId: LOT_B })]]);
+
+        expect(() =>
+          validator.assertAssetsEligible(
+            [entry(ITEM_ID, 1, [ASSET_A], null)],
+            assetById as never,
+            SOURCE_ID,
+          ),
+        ).not.toThrow();
+      });
     });
   });
 

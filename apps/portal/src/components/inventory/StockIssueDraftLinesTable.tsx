@@ -1,7 +1,6 @@
 'use client';
 
 import { memo } from 'react';
-import { Minus, Plus } from 'lucide-react';
 import { getInventoryUnitOfMeasureLabel } from '@iwana/shared';
 import type { StockIssuePickableItem } from '@iwana/shared';
 import { Badge, Button, Input } from '@iwana/ui';
@@ -24,7 +23,6 @@ import {
   formatLotOptionLabel,
   getAvailableQtyForDraftLine,
   isSerializedTrackingMode,
-  stepDraftQuantity,
   stockConditionBadgeVariant,
 } from './stock-issue-line-utils';
 import { StockIssueBulkEditBar } from './StockIssueBulkEditBar';
@@ -143,9 +141,6 @@ const StockIssueDraftLineRow = memo(function StockIssueDraftLineRow({
       : null;
   const exceedsAvailable =
     availableQty != null && isRequestedQtyExceedingAvailable(line.requestedQty, availableQty);
-  // El envío exige cantidad > 0: el paso negativo se apaga en 1 (y en vacío);
-  // el tipeo libre sigue siendo la vía para decimales.
-  const canStepDown = (Number.parseFloat(line.requestedQty) || 0) > 1;
 
   return (
     <tr className={portalTableRowHoverClassName}>
@@ -276,39 +271,15 @@ const StockIssueDraftLineRow = memo(function StockIssueDraftLineRow({
           <span className="tabular-nums text-gray-900 dark:text-white">{line.requestedQty}</span>
         ) : (
           <div className="space-y-1">
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="h-11 w-11 shrink-0 p-0"
-                aria-label={`Menos unidades de ${line.productLabel || 'manual'}`}
-                disabled={busy || !canStepDown}
-                onClick={() => onQuantityChange(line.id, stepDraftQuantity(line.requestedQty, -1))}
-              >
-                <Minus className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <Input
-                id={qtyControlId}
-                aria-label={`Cantidad ${line.productLabel || 'manual'}`}
-                className="text-center tabular-nums"
-                inputMode="decimal"
-                value={line.requestedQty}
-                disabled={busy}
-                onChange={(event) => onQuantityChange(line.id, event.target.value)}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="h-11 w-11 shrink-0 p-0"
-                aria-label={`Más unidades de ${line.productLabel || 'manual'}`}
-                disabled={busy}
-                onClick={() => onQuantityChange(line.id, stepDraftQuantity(line.requestedQty, 1))}
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
+            <Input
+              id={qtyControlId}
+              aria-label={`Cantidad ${line.productLabel || 'manual'}`}
+              className="w-16 text-center tabular-nums"
+              inputMode="decimal"
+              value={line.requestedQty}
+              disabled={busy}
+              onChange={(event) => onQuantityChange(line.id, event.target.value)}
+            />
             {exceedsAvailable ? (
               <p className="text-xs text-error-700 dark:text-error-400">
                 Supera el material disponible en origen. No podrás crear la salida hasta ajustar la
@@ -354,6 +325,9 @@ const StockIssueDraftLineRow = memo(function StockIssueDraftLineRow({
  * Lista revisable del borrador (MOD12 S2 §6.3): sin controles inline de
  * condición, lote ni serial — la configuración vive en el panel y la fila
  * muestra el detalle como dato, con Modificar y Quitar siempre visibles.
+ * La cantidad se edita por tipeo en un input de ancho fijo (decisión
+ * 2026-09-12: sin stepper −/+, paridad con el borrador de compras); en
+ * serializadas la cantidad es texto y la fija el grupo de seriales.
  */
 export function StockIssueDraftLinesTable({
   lines,

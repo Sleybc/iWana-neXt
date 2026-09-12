@@ -176,6 +176,7 @@ jest.mock('@/lib/api-client', () => ({
     rejectRequest: jest.fn(),
     cancelRequest: jest.fn(),
     createAwards: jest.fn(),
+    revokeAward: jest.fn(),
     getProviderSummary: jest.fn(),
     searchSuppliers: jest.fn(),
     createSupplier: jest.fn(),
@@ -1366,6 +1367,7 @@ describe('InventoryClient', () => {
     fireEvent.change(screen.getByLabelText(/[ÁA]rea solicitante/i), {
       target: { value: 'Operaciones' },
     });
+    fireEvent.click(screen.getByRole('button', { name: /Agregar justificación \(opcional\)/i }));
     fireEvent.change(screen.getByLabelText(/Justificaci[oó]n/i), {
       target: { value: 'Reposicion programada por consumo de campo en zona norte' },
     });
@@ -1459,6 +1461,7 @@ describe('InventoryClient', () => {
     fireEvent.change(screen.getByLabelText(/[ÁA]rea solicitante/i), {
       target: { value: 'Operaciones' },
     });
+    fireEvent.click(screen.getByRole('button', { name: /Agregar justificación \(opcional\)/i }));
     fireEvent.change(screen.getByLabelText(/Justificaci[oó]n/i), {
       target: { value: 'Reposicion programada' },
     });
@@ -1619,6 +1622,19 @@ describe('InventoryClient', () => {
           currency: 'COP',
           validUntil: null,
           notes: null,
+          lines: [
+            {
+              id: 'ql-1',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-1',
+              purchaseRequestLineId: 'line-1',
+              quantity: '5',
+              unitCost: '180000',
+              lineAmount: '900000',
+              createdAt: '2026-06-25T12:00:00.000Z',
+              updatedAt: '2026-06-25T12:00:00.000Z',
+            },
+          ],
           createdAt: '2026-06-25T12:00:00.000Z',
           updatedAt: '2026-06-25T12:00:00.000Z',
         },
@@ -1650,8 +1666,10 @@ describe('InventoryClient', () => {
     });
 
     fireEvent.click(screen.getByRole('tab', { name: 'Adjudicación' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Usar COT-100/i }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Adjudicar líneas' }));
+    const radios = await screen.findAllByRole('radio');
+    expect(radios).toHaveLength(1);
+    fireEvent.click(radios[0] as HTMLElement);
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar adjudicación' }));
 
     await waitFor(() => {
       expect(purchasingApiMock.createAwards).toHaveBeenCalledWith(
@@ -1667,6 +1685,143 @@ describe('InventoryClient', () => {
           ],
         }),
       );
+    });
+  });
+
+  it('revoca una adjudicación con confirmación y refresca el detalle', async () => {
+    const user = userEvent.setup();
+    purchasingApiMock.getRequestDetail.mockResolvedValue({
+      request: {
+        id: 'pr-1',
+        tenantId: 'tenant-1',
+        requestNumber: 'PR-000001',
+        title: 'Reposición de ONT',
+        status: PurchaseRequestStatus.APPROVED,
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestedByUserId: 'user-1',
+        requestingArea: 'Operaciones',
+        justification: 'Reposición por consumo de campo',
+        operationalRefType: null,
+        operationalRefId: null,
+        exceptionReason: null,
+        approvedByUserId: 'user-1',
+        neededByDate: '2026-06-30',
+        notes: null,
+        createdAt: '2026-06-25T12:00:00.000Z',
+        updatedAt: '2026-06-25T12:00:00.000Z',
+      },
+      lines: [
+        {
+          id: 'line-1',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'pr-1',
+          sourceKind: 'INVENTORY_ITEM' as never,
+          inventoryItemId: 'item-1',
+          freeTextDescription: null,
+          quantityRequested: '5',
+          unitOfMeasure: 'unidad',
+          suggestedPartyRefId: null,
+          lineStatus: 'AWARDED' as never,
+          notes: null,
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-25T12:00:00.000Z',
+        },
+        {
+          id: 'line-2',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'pr-1',
+          sourceKind: 'INVENTORY_ITEM' as never,
+          inventoryItemId: 'item-1',
+          freeTextDescription: null,
+          quantityRequested: '3',
+          unitOfMeasure: 'unidad',
+          suggestedPartyRefId: null,
+          lineStatus: 'OPEN' as never,
+          notes: null,
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-25T12:00:00.000Z',
+        },
+      ],
+      quotes: [
+        {
+          id: 'quote-1',
+          tenantId: 'tenant-1',
+          purchaseRequestId: 'pr-1',
+          partyRefId: 'supplier-1',
+          quoteNumber: 'COT-100',
+          amount: '900000',
+          shippingCost: '0',
+          currency: 'COP',
+          validUntil: null,
+          notes: null,
+          lines: [
+            {
+              id: 'ql-1',
+              tenantId: 'tenant-1',
+              supplierQuoteId: 'quote-1',
+              purchaseRequestLineId: 'line-1',
+              quantity: '5',
+              unitCost: '180000',
+              lineAmount: '900000',
+              createdAt: '2026-06-25T12:00:00.000Z',
+              updatedAt: '2026-06-25T12:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-25T12:00:00.000Z',
+        },
+      ],
+      awards: [
+        {
+          id: 'award-1',
+          tenantId: 'tenant-1',
+          purchaseRequestLineId: 'line-1',
+          supplierQuoteId: 'quote-1',
+          awardedPartyRefId: 'supplier-1',
+          awardedQuantity: '5',
+          awardNotes: null,
+          createdAt: '2026-06-25T12:00:00.000Z',
+          updatedAt: '2026-06-25T12:00:00.000Z',
+        },
+      ],
+      orders: [],
+      estimatedAmount: 900000,
+      approvalPolicy: {
+        canApprove: false,
+        requiresException: false,
+        blockingReason: null,
+        approvalLevel: 'MANAGER',
+      },
+      rfq: null,
+    });
+    purchasingApiMock.revokeAward.mockResolvedValue({
+      awardId: 'award-1',
+      lineStatusAfter: 'PENDING_QUOTE' as never,
+      coverage: 'NOT_AWARDED' as never,
+    });
+
+    render(<InventoryClient />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Productos catalogados')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compras' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Abrir' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Trabajar solicitud')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Adjudicación' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Revocar adjudicación de ONT WiFi 6' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Revocar adjudicación' }));
+
+    await waitFor(() => {
+      expect(purchasingApiMock.revokeAward).toHaveBeenCalledWith('pr-1', 'award-1');
     });
   });
 

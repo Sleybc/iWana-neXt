@@ -175,6 +175,7 @@ function buildHarness(options: HarnessOptions = {}) {
     savedPayloads,
     stockLedgerServiceMock,
     inventoryCostingServiceMock,
+    serializedAssetServiceMock,
   };
 }
 
@@ -383,5 +384,71 @@ describe('GoodsReceiptService — conversión compra → base (F5b)', () => {
       harness.savedEntities.includes(db.StockMovement) ||
         harness.savedEntities.includes(db.StockBalance),
     ).toBe(false);
+  });
+});
+
+/**
+ * Lote de origen del activo serializado (migración 129).
+ *
+ * La recepción crea SIEMPRE un `StockLot`, también para ítems SERIALIZED, y
+ * empuja el movimiento con ese `lotId`. Hasta la 129 ese vínculo no se
+ * persistía en el activo: sin él, la salida no puede verificar que el serial
+ * elegido pertenezca al lote de la línea. Estos casos dejan comprometido que
+ * la recepción lo escriba, y que sea el MISMO lote que va al kardex.
+ */
+describe('GoodsReceiptService — lote de origen del activo serializado (129)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('persiste en el activo el lote creado por la recepción', async () => {
+    const harness = buildHarness({
+      item: {
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+        purchaseUnitOfMeasure: null,
+        purchaseToBaseUomFactor: null,
+      },
+    });
+
+    await harness.service.receivePurchaseOrder(
+      'po-001',
+      receiveInput({
+        lines: [{ ...receiveInput().lines[0], quantityReceived: 2, serialNumbers: ['S-1', 'S-2'] }],
+      }),
+      actor,
+    );
+
+    const llamadas = harness.serializedAssetServiceMock.createReceivedAssetWithManager.mock.calls;
+    expect(llamadas).toHaveLength(2);
+    for (const llamada of llamadas) {
+      expect(llamada[1]).toEqual(expect.objectContaining({ lotId: 'lot-001' }));
+    }
+  });
+
+  it('el lote del activo es el mismo que viaja al kardex (sin él no hay nada que conciliar)', async () => {
+    const harness = buildHarness({
+      item: {
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+        purchaseUnitOfMeasure: null,
+        purchaseToBaseUomFactor: null,
+      },
+    });
+
+    await harness.service.receivePurchaseOrder(
+      'po-001',
+      receiveInput({
+        lines: [{ ...receiveInput().lines[0], quantityReceived: 1, serialNumbers: ['S-1'] }],
+      }),
+      actor,
+    );
+
+    const enActivo = harness.serializedAssetServiceMock.createReceivedAssetWithManager.mock
+      .calls[0]?.[1] as { lotId: string };
+    const enKardex = harness.stockLedgerServiceMock.recordMovementWithManager.mock
+      .calls[0]?.[2] as {
+      lines: Array<{ lotId: string; serializedAssetId: string }>;
+    };
+
+    expect(enActivo.lotId).toBe(enKardex.lines[0]?.lotId);
   });
 });

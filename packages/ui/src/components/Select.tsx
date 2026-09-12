@@ -31,6 +31,21 @@ interface NormalizedOption {
   disabled?: boolean | undefined;
 }
 
+function optionChildrenToLabel(children: React.ReactNode): string {
+  return React.Children.toArray(children)
+    .map((part) => {
+      if (typeof part === 'string' || typeof part === 'number') {
+        return String(part);
+      }
+      if (React.isValidElement(part)) {
+        const element = part as React.ReactElement<{ children?: React.ReactNode }>;
+        return optionChildrenToLabel(element.props.children);
+      }
+      return '';
+    })
+    .join('');
+}
+
 function normalizeChildOptions(children: React.ReactNode): NormalizedOption[] {
   return React.Children.toArray(children)
     .filter(React.isValidElement)
@@ -45,10 +60,7 @@ function normalizeChildOptions(children: React.ReactNode): NormalizedOption[] {
       return [
         {
           value: String(optionChild.props.value ?? ''),
-          label:
-            typeof optionChild.props.children === 'string'
-              ? optionChild.props.children
-              : String(optionChild.props.children ?? ''),
+          label: optionChildrenToLabel(optionChild.props.children ?? ''),
           disabled: optionChild.props.disabled,
         },
       ];

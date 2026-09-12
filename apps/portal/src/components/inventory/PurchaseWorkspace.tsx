@@ -1,14 +1,17 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PurchaseOrderStatus, type ListMeta } from '@iwana/shared';
+import {
+  PurchaseOrderStatus,
+  type ListMeta,
+  type PurchaseRequestLineAwardInput as ContractAwardInput,
+} from '@iwana/shared';
 import { Badge } from '@iwana/ui';
 import type {
   AddSupplierQuoteDto,
   CancelPurchaseOrderDto,
   CancelPurchaseRequestDto,
   CreatePurchaseOrderDto,
-  CreatePurchaseRequestAwardsDto,
   CreatePurchaseRequestDto,
   CreatePurchaseRequestLineDto,
   GoodsReceiptResultRecord,
@@ -147,11 +150,16 @@ interface PurchaseWorkspaceProps {
     requestId: string,
     payload?: { exceptionReason?: string; notes?: string },
   ) => Promise<void>;
-  onCreateAwards: (requestId: string, payload: CreatePurchaseRequestAwardsDto) => Promise<void>;
+  /** Awards en el modelo del contrato (cantidades string); el cliente mapea a número. */
+  onCreateAwards: (requestId: string, awards: ContractAwardInput[]) => Promise<void>;
+  onRevokeAward: (requestId: string, awardId: string) => Promise<boolean>;
   onRejectRequest: (requestId: string, payload: RejectPurchaseRequestDto) => Promise<void>;
   onCancelRequest: (requestId: string, payload: CancelPurchaseRequestDto) => Promise<void>;
   onUpdateRequest: (requestId: string, payload: UpdatePurchaseRequestDto) => Promise<void>;
-  onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<void>;
+  /** Devuelve las órdenes creadas: habilita la descarga inmediata del PDF (Fase 31). */
+  onCreateOrder: (payload: CreatePurchaseOrderDto) => Promise<PurchaseOrderRecord[]>;
+  /** Descarga el PDF de una orden (Fase 31); resuelve el éxito para que la vista decida. */
+  onDownloadOrderPdf: (orderId: string) => Promise<boolean>;
   onReceiveOrder: (purchaseOrderId: string, payload: ReceivePurchaseOrderDto) => Promise<void>;
   onApproveOrder: (orderId: string) => Promise<void>;
   onCancelOrder: (orderId: string, payload: CancelPurchaseOrderDto) => Promise<void>;
@@ -213,10 +221,12 @@ function PurchaseWorkspaceInner({
   onUpdateQuote,
   onApproveRequest,
   onCreateAwards,
+  onRevokeAward,
   onRejectRequest,
   onCancelRequest,
   onUpdateRequest,
   onCreateOrder,
+  onDownloadOrderPdf,
   onReceiveOrder,
   onApproveOrder,
   onCancelOrder,
@@ -549,6 +559,10 @@ function PurchaseWorkspaceInner({
     counterPurchaseTaxPresets ?? fetchedCounterPurchaseTaxPresets;
 
   async function loadCounterPurchaseTaxPresets() {
+    // Presets efectivos ya cargados (prop inyectada o fetch previo): no refetch.
+    if (counterPurchaseTaxPresets || fetchedCounterPurchaseTaxPresets) {
+      return;
+    }
     try {
       const presets = await purchasingApi.getTaxPresets();
       setFetchedCounterPurchaseTaxPresets(presets);
@@ -832,11 +846,18 @@ function PurchaseWorkspaceInner({
           await loadDetail(selectedRequestId);
           await onRefresh();
         }}
-        onCreateAwards={async (payload) => {
+        onCreateAwards={async (awards) => {
           if (!selectedRequestId) return;
-          await onCreateAwards(selectedRequestId, payload);
+          await onCreateAwards(selectedRequestId, awards);
           await loadDetail(selectedRequestId);
           await onRefresh();
+        }}
+        onRevokeAward={async (awardId) => {
+          if (!selectedRequestId) return false;
+          const ok = await onRevokeAward(selectedRequestId, awardId);
+          await loadDetail(selectedRequestId);
+          await onRefresh();
+          return ok;
         }}
         onReject={async (payload) => {
           if (!selectedRequestId) return;
@@ -869,6 +890,7 @@ function PurchaseWorkspaceInner({
           if (selectedRequestId) await loadDetail(selectedRequestId);
           await onRefresh();
         }}
+        onDownloadOrderPdf={onDownloadOrderPdf}
         onLoadSupplier={(partyRefId) => void handleLoadSupplier(partyRefId)}
         onOpenOrderFlow={async () => {
           if (!selectedRequestId) return;
@@ -909,12 +931,13 @@ function PurchaseWorkspaceInner({
           setWorkbenchTab('orders');
         }}
         onCreateOrder={async (payload) => {
-          await onCreateOrder(payload);
+          const created = await onCreateOrder(payload);
           if (selectedRequestId) {
             await loadDetail(selectedRequestId);
           }
           await onRefresh();
           await loadPage({ soft: true });
+          return created;
         }}
         onOrderCreated={() => {
           setOrderDrawerOpen(false);

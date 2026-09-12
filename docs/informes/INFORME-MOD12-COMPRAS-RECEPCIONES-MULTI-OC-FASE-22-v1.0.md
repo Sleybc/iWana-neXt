@@ -44,3 +44,25 @@ Fase 20 genera N OCs; el portal solo operaba `orders[0]` en recepción y un crea
 | --- | --- |
 | G4 / G5 | Cumplido |
 | G6 / G7 | Pendiente |
+
+## Adenda — el formulario de recepción pide lote y seriales según trazabilidad (2026-09-12)
+
+Reporte del operador: «Mercancía recibida» pedía Lote y Seriales para cualquier producto, aunque el
+lote se genera automático y el producto no fuera serializado. Diagnóstico: el panel renderizaba ambos
+campos incondicionalmente, mientras el backend (`goods-receipt.service`) ya los trataba
+correctamente — el lote es OPCIONAL (vacío → genera `LOT-{recibo}-{n}`) y los seriales solo aplican a
+`SERIALIZED | FIXED_ASSET` con un serial por unidad base; en consumibles el dato se ignora.
+
+Corrección en `GoodsReceiptPanel` (sin cambio de DTO ni de backend):
+
+1. **Seriales** solo se piden en items `SERIALIZED | FIXED_ASSET`, con helper «Un serial por cada
+   unidad base» y conteo esperado calculado en cliente con la misma conversión compra→base del panel
+   (`resolveExpectedSerialCount`): faltantes o sobrantes muestran error en el campo y deshabilitan
+   «Registrar recepción» antes del 400 del servidor (paridad con la guarda `serialNumbers.length ===
+   baseQuantity`).
+2. **Lote** se mantiene en todas las líneas (el operador puede registrar el lote del proveedor) con
+   helper explícito «Opcional: si se deja vacío se genera uno automático.»
+
+Validación: `GoodsReceiptPanel.spec` 15 tests OK (2 nuevos: consumible sin seriales + lote opcional;
+serializado exige N seriales y habilita el envío al completarlos — el test de envío genérico pasa a
+fixture consumible) · portal inventory 88 suites / 743 tests OK · `tsc` portal OK · lint 0 errores.

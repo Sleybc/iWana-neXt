@@ -16,6 +16,7 @@ import type {
   SupplierQuoteRecord,
 } from '@/lib/api-client';
 import { purchasingApi } from '@/lib/api-client';
+import { triggerBlobDownload } from '@/lib/blob-download';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -415,15 +416,6 @@ export function RfqInvitationsPanel({
       },
       editingQuoteId ? 'Cotización actualizada.' : 'Cotización registrada.',
     );
-  }
-
-  function triggerBlobDownload(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   async function handleDownloadInvitation(invitation: PurchaseRfqInvitationRecord) {

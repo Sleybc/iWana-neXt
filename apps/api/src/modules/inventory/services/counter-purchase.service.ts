@@ -98,7 +98,7 @@ function computeCounterPurchaseBase(
   for (const line of lines) {
     const quantity = typeof line.quantity === 'number' ? line.quantity : Number(line.quantity);
     const unitCost =
-      line.unitCost == null || line.unitCost === ''
+      line.unitCost == null
         ? 0
         : typeof line.unitCost === 'number'
           ? line.unitCost
@@ -312,6 +312,10 @@ export class CounterPurchaseService {
                 {
                   tenantId,
                   inventoryItemId: line.itemId,
+                  // Mismo criterio que la recepción de orden de compra: el
+                  // lote del ingreso queda persistido en el activo
+                  // (migración 129).
+                  lotId: stockLot.id,
                   serialNumber,
                   purchaseOrderRef: validated.invoiceNumber.trim(),
                   purchaseDate,

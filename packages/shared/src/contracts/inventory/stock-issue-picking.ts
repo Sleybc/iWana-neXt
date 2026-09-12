@@ -113,6 +113,12 @@ export interface StockIssueLineRecord {
   dispatchedQty: string | null;
   lotId: string | null;
   /**
+   * Número de lote legible (enriquecido en lectura por el API con batch sobre
+   * `stock_lots`; lote capturado al registrar la compra). Opcional durante el
+   * despliegue: ausente = sin lote o lote huérfano; el cliente degrada.
+   */
+  lotNumber?: string | null;
+  /**
    * Serial de transición S1: la persistencia lo alimenta con el primer serial
    * del grupo para no romper lecturas ni reportes existentes.
    */

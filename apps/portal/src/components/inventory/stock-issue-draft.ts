@@ -292,6 +292,12 @@ export function updateDraftLineItem(
             lotId: '',
             serializedAssetId: '',
             serializedAssetLabel: '',
+            // El grupo pertenece al ítem anterior: conservarlo enviaba seriales
+            // de otro artículo con la cantidad recién forzada a 1, y el API
+            // rechazaba la salida por cantidad ≠ número de seriales (o por
+            // «el activo pertenece a otro artículo» cuando el grupo era de uno).
+            // Misma limpieza que hace `invalidateDraftStockContext`.
+            serializedAssetIds: [],
             requestedQty: '1',
           }
         : line,

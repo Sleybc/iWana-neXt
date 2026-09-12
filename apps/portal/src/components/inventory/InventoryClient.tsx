@@ -27,7 +27,9 @@ import {
   WriteOffReason,
   WriteOffStatus,
   StockMovementOrigin,
+  type PurchaseRequestLineAwardInput as ContractAwardInput,
 } from '@iwana/shared';
+import { mapContractAwardsToApiDto } from './purchase-award-submit';
 import { Lock, Package, Tags } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePermissions } from '@/components/access-control/permissions-context';
@@ -42,7 +44,6 @@ import {
   type CreateInventoryItemDto,
   type CreateInventoryCategoryDto,
   type CreatePurchaseOrderDto,
-  type CreatePurchaseRequestAwardsDto,
   type CreatePurchaseRequestDto,
   type CreateSupplierDto,
   type CreateCounterPurchaseDto,
@@ -84,6 +85,7 @@ import {
   type UpdateInventoryCategoryDto,
   type UpdateSupplierDto,
 } from '@/lib/api-client';
+import { triggerBlobDownload } from '@/lib/blob-download';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { buildUserLabelMap, loadTenantUsers } from '@/lib/portal-user-options';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -1855,14 +1857,41 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
     }
   }
 
-  async function handleCreateAwards(requestId: string, payload: CreatePurchaseRequestAwardsDto) {
+  /**
+   * Punto de integración FE-3: recibe drafts en el modelo del contrato
+   * congelado (cantidades string, `toCreateAwardsDto`) y los mapea a número
+   * antes de publicar (`purchase-award-submit.ts`). Incluye el costo aportado
+   * de la escotilla §7; el servidor valida `UNIT_COST_MISMATCH`.
+   */
+  async function handleCreateAwards(requestId: string, awards: ContractAwardInput[]) {
     setIsSubmittingAwards(true);
     setAwardsError(null);
     try {
-      await purchasingApi.createAwards(requestId, payload);
+      await purchasingApi.createAwards(requestId, mapContractAwardsToApiDto(awards));
       await loadData(true);
     } catch (submitError) {
       setAwardsError(mapInventoryError(submitError));
+    } finally {
+      setIsSubmittingAwards(false);
+    }
+  }
+
+  /**
+   * Revocación con confirmación previa en el diálogo del panel (spec §6.5) y
+   * refresco de listado + detalle (el detalle lo recarga el workspace tras
+   * resolver). Devuelve el éxito para que el panel decida cerrar o mostrar
+   * el error sin duplicar la confirmación aquí.
+   */
+  async function handleRevokeAward(requestId: string, awardId: string): Promise<boolean> {
+    setIsSubmittingAwards(true);
+    setAwardsError(null);
+    try {
+      await purchasingApi.revokeAward(requestId, awardId);
+      await loadData(true);
+      return true;
+    } catch (submitError) {
+      setAwardsError(mapInventoryError(submitError));
+      return false;
     } finally {
       setIsSubmittingAwards(false);
     }
@@ -1989,7 +2018,9 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
     [loadOrderDetail],
   );
 
-  async function handleCreateOrder(payload: CreatePurchaseOrderDto) {
+  async function handleCreateOrder(
+    payload: CreatePurchaseOrderDto,
+  ): Promise<PurchaseOrderRecord[]> {
     setIsSubmittingOrder(true);
     setOrderError(null);
     try {
@@ -2017,11 +2048,27 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
         setLatestOrderLines([]);
       }
       await loadData(true);
+      return createdOrders;
     } catch (submitError) {
       setOrderError(mapInventoryError(submitError));
       throw submitError;
     } finally {
       setIsSubmittingOrder(false);
+    }
+  }
+
+  /**
+   * PDF de una orden de compra (Fase 31): descarga en el navegador; el
+   * operador lo envía al proveedor por su canal habitual.
+   */
+  async function handleDownloadOrderPdf(orderId: string): Promise<boolean> {
+    try {
+      const { blob, filename } = await purchasingApi.downloadPurchaseOrderPdf(orderId);
+      triggerBlobDownload(blob, filename);
+      return true;
+    } catch (downloadError) {
+      setOrderError(mapInventoryError(downloadError));
+      return false;
     }
   }
 
@@ -2751,10 +2798,12 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
               onUpdateQuote={handleUpdateQuote}
               onApproveRequest={handleApproveRequest}
               onCreateAwards={handleCreateAwards}
+              onRevokeAward={handleRevokeAward}
               onRejectRequest={handleRejectRequest}
               onCancelRequest={handleCancelRequest}
               onUpdateRequest={handleUpdateRequest}
               onCreateOrder={handleCreateOrder}
+              onDownloadOrderPdf={handleDownloadOrderPdf}
               onReceiveOrder={handleReceiveOrder}
               onApproveOrder={handleApproveOrder}
               onCancelOrder={handleCancelOrder}

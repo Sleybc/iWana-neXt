@@ -4,11 +4,13 @@ import { PurchaseOrderStatus, PurchaseRequestFulfillmentStatus } from '@iwana/sh
  * Eje de abastecimiento derivado de una solicitud de compra.
  *
  * `PurchaseRequestStatus` describe el ciclo administrativo y se detiene en
- * `CONVERTED_TO_PO`: una vez emitida la orden, la solicitud queda con ese
- * estado para siempre, aunque la mercancía ya haya entrado a inventario. Este
- * resolutor responde el eje complementario —«¿la mercancía ya llegó?»— a
- * partir de las órdenes de compra asociadas, sin persistir nada ni ampliar el
- * enum `purchase_request_status`.
+ * `CONVERTED_TO_PO`: emitida(s) la(s) orden(es) con cobertura completa, la
+ * solicitud queda en ese estado aunque la mercancía ya haya entrado a
+ * inventario; solo la cancelación de órdenes la devuelve a `APPROVED` cuando
+ * quedó trabajo pendiente (ADR-087 D3/D6). Este resolutor responde el eje
+ * complementario —«¿la mercancía ya llegó?»— a partir de las órdenes de
+ * compra asociadas, sin persistir nada ni ampliar el enum
+ * `purchase_request_status`.
  *
  * Reglas (ÚNICA fuente de verdad del eje; deben mantenerse alineadas con el
  * filtro `kpiPreset=pendingReceipt` de `PurchasingQueryService.listRequests` y

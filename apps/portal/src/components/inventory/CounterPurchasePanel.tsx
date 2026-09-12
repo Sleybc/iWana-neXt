@@ -18,7 +18,8 @@ import {
   PortalSectionHeader,
   portalTextareaClassName,
 } from '@/components/shared/portal-ui';
-import { formatInventoryCurrency, formatInventoryMoney } from './inventory-labels';
+import { focusElementById, focusFirstVisibleTaxRateInput } from './line-focus';
+import { formatInventoryMoney } from './inventory-labels';
 import { QuoteTaxFields } from './QuoteTaxFields';
 import {
   QUOTE_TAX_CODES,
@@ -114,7 +115,6 @@ function buildLineFromCatalog(
     name: option.name,
     quantityReceived: '1',
     unitCost: option.standardCost || '0',
-    lotNumber: '',
     serialNumbers: '',
     requiresSerials: requiresSerialsForItem(items, catalogOptions, option.id),
   };
@@ -143,6 +143,12 @@ export function CounterPurchasePanel({
   const [destinationLocationId, setDestinationLocationId] = useState('');
   const [destinationLocationLabel, setDestinationLocationLabel] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  /**
+   * Preferencia explícita del disclosure de notas (Fase 27). `null` = auto:
+   * colapsado si está vacío, expandido si tiene contenido. El toggle del
+   * usuario siempre gana sobre el auto.
+   */
+  const [notesPreference, setNotesPreference] = useState<boolean | null>(null);
   const [lines, setLines] = useState<CounterPurchaseLineDraft[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [taxes, setTaxes] = useState<QuoteTaxState>(() =>
@@ -154,6 +160,11 @@ export function CounterPurchasePanel({
    * ediciones del usuario.
    */
   const touchedTaxRowsRef = useRef<Set<QuoteTaxCode>>(new Set());
+  /**
+   * Baseline de tributos para el dirty-check: el estado inicial ya trae IVA
+   * aplicado, así que "alguna fila aplica" no es señal de edición del usuario.
+   */
+  const initialTaxesRef = useRef<QuoteTaxState>(buildInitialCounterPurchaseTaxes(taxPresets));
 
   function handleTaxesChange(next: QuoteTaxState) {
     setTaxes((previous) => {
@@ -170,6 +181,9 @@ export function CounterPurchasePanel({
   }
 
   useEffect(() => {
+    // La rehidratación por presets async no cuenta como edición del usuario:
+    // refrescar también el baseline del dirty antes de actualizar las tasas.
+    initialTaxesRef.current = buildInitialCounterPurchaseTaxes(taxPresets);
     setTaxes((previous) => {
       let changed = false;
       const next: QuoteTaxState = { ...previous };
@@ -194,13 +208,18 @@ export function CounterPurchasePanel({
   );
 
   const isDirty = useMemo(() => {
+    const taxesDirty = QUOTE_TAX_CODES.some(
+      (code) =>
+        taxes[code].applies !== initialTaxesRef.current[code].applies ||
+        taxes[code].rate !== initialTaxesRef.current[code].rate,
+    );
     return (
       Boolean(partyRefId) ||
       invoiceNumber.trim().length > 0 ||
       notes.trim().length > 0 ||
       lines.length > 0 ||
       Boolean(destinationLocationId) ||
-      Object.values(taxes).some((row) => row.applies)
+      taxesDirty
     );
   }, [destinationLocationId, invoiceNumber, lines.length, notes, partyRefId, taxes]);
 
@@ -224,6 +243,9 @@ export function CounterPurchasePanel({
   );
   const taxesPayload = useMemo(() => buildQuoteTaxesPayload(taxes), [taxes]);
 
+  /** Notas colapsables (Fase 27): cerradas por defecto si están vacías. */
+  const notesExpanded = notesPreference ?? notes.trim().length > 0;
+
   function resetForm() {
     setPartyRefId(null);
     setSupplierLabel(null);
@@ -232,10 +254,13 @@ export function CounterPurchasePanel({
     setDestinationLocationId('');
     setDestinationLocationLabel(null);
     setNotes('');
+    setNotesPreference(null);
     setLines([]);
     setValidationError(null);
     touchedTaxRowsRef.current.clear();
-    setTaxes(buildInitialCounterPurchaseTaxes(taxPresets));
+    const nextTaxes = buildInitialCounterPurchaseTaxes(taxPresets);
+    setTaxes(nextTaxes);
+    initialTaxesRef.current = nextTaxes;
   }
 
   function handleRegisterAnother() {
@@ -256,31 +281,32 @@ export function CounterPurchasePanel({
   }
 
   function handleAddProduct(option: InventoryCatalogOptionRecord) {
-    setLines((current) => {
-      const existing = current.find((line) => line.itemId === option.id);
-      if (existing) {
-        return current.map((line) =>
+    const existing = lines.find((line) => line.itemId === option.id);
+    if (existing) {
+      setLines((current) =>
+        current.map((line) =>
           line.id === existing.id
             ? {
                 ...line,
                 quantityReceived: String(Number.parseFloat(line.quantityReceived || '0') + 1),
               }
             : line,
-        );
-      }
-
-      return [...current, buildLineFromCatalog(option, items, catalogOptions)];
-    });
+        ),
+      );
+      // Fase 27: el foco sigue al producto agregado (cantidad de la línea).
+      focusElementById(`counter-line-qty-${existing.id}`);
+    } else {
+      const draft = buildLineFromCatalog(option, items, catalogOptions);
+      setLines((current) => [...current, draft]);
+      focusElementById(`counter-line-qty-${draft.id}`);
+    }
     setValidationError(null);
   }
 
   function updateLine(
     lineId: string,
     patch: Partial<
-      Pick<
-        CounterPurchaseLineDraft,
-        'quantityReceived' | 'unitCost' | 'lotNumber' | 'serialNumbers'
-      >
+      Pick<CounterPurchaseLineDraft, 'quantityReceived' | 'unitCost' | 'serialNumbers'>
     >,
   ) {
     setLines((current) =>
@@ -291,21 +317,25 @@ export function CounterPurchasePanel({
   async function handleSubmit() {
     if (!partyRefId) {
       setValidationError('Selecciona un proveedor.');
+      focusElementById('counter-purchase-supplier');
       return;
     }
 
     if (!invoiceNumber.trim()) {
       setValidationError('Indica la factura o soporte.');
+      focusElementById('counter-purchase-invoice');
       return;
     }
 
     if (!destinationLocationId) {
       setValidationError('Selecciona una bodega destino.');
+      focusElementById('counter-purchase-destination');
       return;
     }
 
     if (activeLines.length === 0) {
       setValidationError('Agrega al menos un producto con cantidad mayor a cero.');
+      focusElementById('counter-purchase-product-search');
       return;
     }
 
@@ -325,11 +355,13 @@ export function CounterPurchasePanel({
       setValidationError(
         `En «${missingSerials.name}» la cantidad de seriales debe coincidir con la cantidad recibida.`,
       );
+      focusElementById(`counter-line-serials-${missingSerials.id}`);
       return;
     }
 
     if (!taxPreview.valid) {
       setValidationError(QUOTE_TAX_RATE_ERROR);
+      focusFirstVisibleTaxRateInput();
       return;
     }
 
@@ -346,7 +378,6 @@ export function CounterPurchasePanel({
         itemId: line.itemId,
         quantityReceived: Number.parseFloat(line.quantityReceived),
         unitCost: Number.parseFloat(line.unitCost || '0'),
-        lotNumber: line.lotNumber.trim() || null,
         serialNumbers: line.serialNumbers
           .split(',')
           .map((value) => value.trim())
@@ -397,157 +428,184 @@ export function CounterPurchasePanel({
           />
         ) : null}
 
-        <section className="space-y-4">
-          <PortalSectionHeader
-            title="Datos del ingreso"
-            description="Proveedor, soporte documental y bodega de destino."
-          />
-          <div className="grid gap-4 md:grid-cols-2">
-            <SupplierPicker
-              value={partyRefId}
-              selectedLabel={supplierLabel}
-              onChange={(nextPartyRefId, displayName) => {
-                setPartyRefId(nextPartyRefId);
-                setSupplierLabel(displayName);
-                setValidationError(null);
-              }}
-            />
-            <Input
-              id="counter-purchase-invoice"
-              label="Factura o soporte"
-              value={invoiceNumber}
-              onChange={(event) => {
-                setInvoiceNumber(event.target.value);
-                setValidationError(null);
-              }}
-              placeholder="Número de factura"
-            />
-            <DatePicker
-              id="counter-purchase-date"
-              label="Fecha de compra"
-              value={toDateFromLocalDateValue(purchaseDate)}
-              onChange={(date) => setPurchaseDate(toLocalDateValue(date))}
-            />
-            <InventoryLocationPicker
-              id="counter-purchase-destination"
-              label="Bodega destino"
-              value={destinationLocationId || null}
-              selectedLabel={destinationLocationLabel}
-              onChange={(nextId, item) => {
-                setDestinationLocationId(nextId ?? '');
-                setDestinationLocationLabel(item ? item.label : null);
-                setValidationError(null);
-              }}
-            />
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <PortalSectionHeader
-            title="Líneas de ingreso"
-            description="Busca productos del catálogo y ajusta cantidades, costos y seriales."
-          />
-          <PurchaseProductSearch
-            catalogOptions={catalogOptions}
-            supplierLabels={supplierLabels}
-            isSearching={isCatalogSearching}
-            {...(onCatalogSearch ? { onSearchChange: onCatalogSearch } : {})}
-            onSelect={handleAddProduct}
-          />
-
-          {lines.length === 0 ? (
-            <PortalEmptyState
-              title="Sin líneas"
-              description="Busca un producto del catálogo para comenzar el ingreso."
-            />
-          ) : (
-            <CounterPurchaseLinesTable
-              lines={lines}
-              onQuantityChange={(lineId, value) => updateLine(lineId, { quantityReceived: value })}
-              onUnitCostChange={(lineId, value) => updateLine(lineId, { unitCost: value })}
-              onLotNumberChange={(lineId, value) => updateLine(lineId, { lotNumber: value })}
-              onSerialNumbersChange={(lineId, value) =>
-                updateLine(lineId, { serialNumbers: value })
-              }
-              onRemove={(lineId) =>
-                setLines((current) => current.filter((line) => line.id !== lineId))
-              }
-            />
-          )}
-        </section>
-
-        <section className="space-y-4">
-          <QuoteTaxFields
-            value={taxes}
-            onChange={handleTaxesChange}
-            presets={taxPresets}
-            title={COUNTER_PURCHASE_TAX_TITLE}
-            hint={COUNTER_PURCHASE_TAX_HINT}
-          />
-        </section>
-
-        <section className="space-y-4">
-          <PortalSectionHeader title="Notas" description="Observaciones opcionales del ingreso." />
-          <label className="flex w-full flex-col gap-1.5 text-sm" htmlFor={notesId}>
-            <span className="font-medium text-gray-700 dark:text-gray-300">Notas</span>
-            <textarea
-              id={notesId}
-              rows={3}
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              className={portalTextareaClassName}
-            />
-          </label>
-        </section>
-
-        <section aria-label="Resumen de tributos" className="space-y-4">
-          <PortalSectionHeader
-            title="Resumen previo al registro"
-            description="Subtotal neto de líneas más tributos informativos de la factura."
-          />
-          <dl className="space-y-1 rounded-2xl border border-gray-200 p-3 text-sm dark:border-dark-border">
-            <div className="flex justify-between gap-2">
-              <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                Subtotal (neto)
-              </dt>
-              <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
-                {formatInventoryMoney(estimatedTotal)}
-              </dd>
-            </div>
-            {taxPreview.lines.map((line) => (
-              <div key={line.code} className="flex justify-between gap-2">
-                <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
-                  {getQuoteTaxVisibleLabel({ code: line.code, name: line.label })}
-                </dt>
-                <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
-                  {line.effect === 'ADD'
-                    ? formatInventoryMoney(line.taxAmount)
-                    : `− ${formatInventoryMoney(line.taxAmount)}`}
-                </dd>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)] lg:items-start">
+          <div className="min-w-0 space-y-6">
+            <section className="space-y-4">
+              <PortalSectionHeader
+                title="Datos del ingreso"
+                description="Proveedor, soporte documental y bodega de destino."
+              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <SupplierPicker
+                  id="counter-purchase-supplier"
+                  value={partyRefId}
+                  selectedLabel={supplierLabel}
+                  onChange={(nextPartyRefId, displayName) => {
+                    setPartyRefId(nextPartyRefId);
+                    setSupplierLabel(displayName);
+                    setValidationError(null);
+                  }}
+                />
+                <Input
+                  id="counter-purchase-invoice"
+                  label="Factura o soporte"
+                  value={invoiceNumber}
+                  onChange={(event) => {
+                    setInvoiceNumber(event.target.value);
+                    setValidationError(null);
+                  }}
+                  placeholder="Número de factura"
+                />
+                <DatePicker
+                  id="counter-purchase-date"
+                  label="Fecha de compra"
+                  value={toDateFromLocalDateValue(purchaseDate)}
+                  onChange={(date) => setPurchaseDate(toLocalDateValue(date))}
+                />
+                <InventoryLocationPicker
+                  id="counter-purchase-destination"
+                  label="Bodega destino"
+                  value={destinationLocationId || null}
+                  selectedLabel={destinationLocationLabel}
+                  onChange={(nextId, item) => {
+                    setDestinationLocationId(nextId ?? '');
+                    setDestinationLocationLabel(item ? item.label : null);
+                    setValidationError(null);
+                  }}
+                />
               </div>
-            ))}
-            <div className="flex items-baseline justify-between gap-2 border-t border-gray-100 pt-2 dark:border-dark-border">
-              <dt className="font-medium text-gray-900 dark:text-white">
-                Total estimado con tributos
-              </dt>
-              <dd className="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
-                {taxPreview.valid && taxPreview.payable !== null
-                  ? formatInventoryMoney(taxPreview.payable)
-                  : '—'}
-              </dd>
-            </div>
-          </dl>
-        </section>
+            </section>
 
-        <CreateModeSummaryFooter
-          title="Resumen previo al registro"
-          summary={`${summaryLabel} · Subtotal (neto): ${formatInventoryCurrency(String(estimatedTotal))} · Total estimado con tributos: ${taxPreview.valid && taxPreview.payable !== null ? formatInventoryMoney(taxPreview.payable) : '—'}`}
-          primaryLabel="Registrar ingreso directo"
-          primaryLoadingLabel="Registrando ingreso…"
-          loading={isSubmitting}
-          disabled={isSubmitting}
-          onPrimaryClick={() => void handleSubmit()}
-        />
+            <section className="space-y-4">
+              <PortalSectionHeader
+                title="Líneas de ingreso"
+                description="Busca productos del catálogo y ajusta cantidades, costos y seriales. El lote se genera solo desde la factura."
+              />
+              <PurchaseProductSearch
+                id="counter-purchase-product-search"
+                catalogOptions={catalogOptions}
+                supplierLabels={supplierLabels}
+                isSearching={isCatalogSearching}
+                {...(onCatalogSearch ? { onSearchChange: onCatalogSearch } : {})}
+                onSelect={handleAddProduct}
+              />
+
+              {lines.length === 0 ? (
+                <PortalEmptyState
+                  title="Sin líneas"
+                  description="Busca un producto del catálogo para comenzar el ingreso."
+                />
+              ) : (
+                <CounterPurchaseLinesTable
+                  lines={lines}
+                  onQuantityChange={(lineId, value) =>
+                    updateLine(lineId, { quantityReceived: value })
+                  }
+                  onUnitCostChange={(lineId, value) => updateLine(lineId, { unitCost: value })}
+                  onSerialNumbersChange={(lineId, value) =>
+                    updateLine(lineId, { serialNumbers: value })
+                  }
+                  onRemove={(lineId) =>
+                    setLines((current) => current.filter((line) => line.id !== lineId))
+                  }
+                />
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <PortalSectionHeader
+                title="Notas"
+                description="Observaciones opcionales del ingreso."
+                actions={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-expanded={notesExpanded}
+                    aria-controls={notesId}
+                    onClick={() => setNotesPreference(!notesExpanded)}
+                  >
+                    {notesExpanded ? 'Ocultar notas' : 'Agregar notas (opcional)'}
+                  </Button>
+                }
+              />
+              {notesExpanded ? (
+                <label className="flex w-full flex-col gap-1.5 text-sm" htmlFor={notesId}>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Notas</span>
+                  <textarea
+                    id={notesId}
+                    rows={3}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    className={portalTextareaClassName}
+                  />
+                </label>
+              ) : null}
+            </section>
+          </div>
+          <aside
+            aria-label="Resumen del ingreso"
+            className="space-y-4 rounded-2xl border border-gray-200 p-4 dark:border-dark-border lg:sticky lg:top-2"
+          >
+            <QuoteTaxFields
+              value={taxes}
+              onChange={handleTaxesChange}
+              presets={taxPresets}
+              title={COUNTER_PURCHASE_TAX_TITLE}
+              hint={COUNTER_PURCHASE_TAX_HINT}
+              collapsible
+              defaultExpanded={false}
+            />
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Resumen del ingreso
+              </p>
+              <dl className="space-y-1 rounded-2xl border border-gray-200 p-3 text-sm dark:border-dark-border">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                    Subtotal (neto)
+                  </dt>
+                  <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
+                    {formatInventoryMoney(estimatedTotal)}
+                  </dd>
+                </div>
+                {taxPreview.lines.map((line) => (
+                  <div key={line.code} className="flex justify-between gap-2">
+                    <dt className="text-iwana-secondary-700 dark:text-iwana-secondary-400">
+                      {getQuoteTaxVisibleLabel({ code: line.code, name: line.label })}
+                    </dt>
+                    <dd className="font-medium tabular-nums text-gray-900 dark:text-white">
+                      {line.effect === 'ADD'
+                        ? formatInventoryMoney(line.taxAmount)
+                        : `− ${formatInventoryMoney(line.taxAmount)}`}
+                    </dd>
+                  </div>
+                ))}
+                <div className="flex items-baseline justify-between gap-2 border-t border-gray-100 pt-2 dark:border-dark-border">
+                  <dt className="font-medium text-gray-900 dark:text-white">
+                    Total estimado con tributos
+                  </dt>
+                  <dd className="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
+                    {taxPreview.valid && taxPreview.payable !== null
+                      ? formatInventoryMoney(taxPreview.payable)
+                      : '—'}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <CreateModeSummaryFooter
+              title="Resumen previo al registro"
+              summary={`${summaryLabel} · Subtotal (neto): ${formatInventoryMoney(estimatedTotal)} · Total estimado con tributos: ${taxPreview.valid && taxPreview.payable !== null ? formatInventoryMoney(taxPreview.payable) : '—'}`}
+              primaryLabel="Registrar ingreso directo"
+              primaryLoadingLabel="Registrando ingreso…"
+              loading={isSubmitting}
+              disabled={isSubmitting}
+              onPrimaryClick={() => void handleSubmit()}
+            />
+          </aside>
+        </div>
       </div>
     </PurchaseCreateModeShell>
   );

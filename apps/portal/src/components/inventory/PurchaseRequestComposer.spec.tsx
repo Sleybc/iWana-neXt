@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InventoryItemCategory, InventoryItemKind } from '@iwana/shared';
 import type { InventoryCatalogOptionRecord } from '@/lib/api-client';
@@ -132,5 +132,92 @@ describe('PurchaseRequestComposer', () => {
     );
 
     expect(screen.getByText('Paso 1 de 2')).toBeInTheDocument();
+  });
+
+  function mockDesktopMatchMedia() {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: jest.fn().mockImplementation(() => ({
+        matches: true,
+        media: '',
+        onchange: null,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      })),
+    });
+  }
+
+  function renderDesktopCreateMode() {
+    mockDesktopMatchMedia();
+    render(
+      <PurchaseRequestComposer
+        catalogOptions={catalogOptions}
+        supplierLabels={{ 'supplier-1': 'Proveedor Alfa' }}
+        isSubmitting={false}
+        error={null}
+        layout="embedded"
+        presentation="create-mode"
+        onSubmit={submitResult}
+      />,
+    );
+  }
+
+  it('muestra el resumen y la acción en el aside en create-mode desktop (Fase 27)', async () => {
+    renderDesktopCreateMode();
+
+    const aside = await screen.findByRole('complementary', { name: 'Resumen de la solicitud' });
+    expect(aside).toBeInTheDocument();
+    expect(within(aside).getByRole('button', { name: /Crear solicitud/i })).toBeInTheDocument();
+    expect(within(aside).getByText('Total estimado')).toBeInTheDocument();
+  });
+
+  it('colapsa la justificación por defecto y conserva el contenido (Fase 27)', async () => {
+    const user = userEvent.setup();
+    renderDesktopCreateMode();
+
+    expect(await screen.findByText('Datos de la solicitud')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Justificación')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Agregar justificación \(opcional\)/i }));
+    const justificationField = screen.getByLabelText('Justificación');
+    await user.type(justificationField, 'Reposición urgente del nodo norte');
+
+    await user.click(screen.getByRole('button', { name: /Ocultar justificación/i }));
+    expect(screen.queryByLabelText('Justificación')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Agregar justificación \(opcional\)/i }));
+    expect(screen.getByLabelText('Justificación')).toHaveValue('Reposición urgente del nodo norte');
+  });
+
+  it('enfoca el título al validar sin él (Fase 27)', async () => {
+    const user = userEvent.setup();
+    renderDesktopCreateMode();
+
+    // El CTA exige al menos una línea: se agrega una para habilitarlo.
+    const searchInput = await screen.findByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001 - ONT WiFi 6/i }));
+
+    await user.click(screen.getByRole('button', { name: /Crear solicitud/i }));
+
+    expect(await screen.findByText(/Indica un título para la solicitud/i)).toBeInTheDocument();
+    expect(submitResult).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByLabelText('Título')).toHaveFocus();
+    });
+  });
+
+  it('enfoca la cantidad al agregar un producto del catálogo (Fase 27)', async () => {
+    const user = userEvent.setup();
+    renderDesktopCreateMode();
+
+    const searchInput = await screen.findByRole('combobox', { name: /Buscar producto/i });
+    await user.type(searchInput, 'ONT');
+    await user.click(await screen.findByRole('option', { name: /ONT-001 - ONT WiFi 6/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cantidad ONT-001 - ONT WiFi 6')).toHaveFocus();
+    });
   });
 });

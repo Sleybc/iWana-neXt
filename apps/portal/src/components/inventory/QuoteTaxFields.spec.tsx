@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QuoteTaxFields } from './QuoteTaxFields';
 import {
@@ -48,6 +48,19 @@ function Harness() {
   return <QuoteTaxFields value={value} onChange={setValue} presets={PRESETS} />;
 }
 
+function HarnessCollapsible() {
+  const [value, setValue] = useState<QuoteTaxState>(createInitialQuoteTaxState(PRESETS));
+  return (
+    <QuoteTaxFields
+      value={value}
+      onChange={setValue}
+      presets={PRESETS}
+      collapsible
+      defaultExpanded={false}
+    />
+  );
+}
+
 describe('QuoteTaxFields', () => {
   it('CA-25-03: arranca con los cuatro tributos apagados y sin tasas visibles', () => {
     render(<Harness />);
@@ -73,5 +86,55 @@ describe('QuoteTaxFields', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Rete ICA' }));
     expect(screen.getByLabelText('Tasa de Rete ICA (%)')).toHaveValue(0.414);
+  });
+
+  it('Fase 28: el nombre no se repite y la tasa vive en la misma línea', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('checkbox', { name: 'IVA' }));
+
+    // El nombre aparece una sola vez como texto visible (el input usa aria-label).
+    expect(screen.getAllByText('IVA')).toHaveLength(1);
+    expect(screen.queryByText('Tasa de IVA (%)')).not.toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox', { name: 'IVA' });
+    const rateInput = screen.getByLabelText('Tasa de IVA (%)');
+    expect(checkbox.closest('div')).toContainElement(rateInput);
+    expect(within(checkbox.closest('div') as HTMLElement).getByText('%')).toBeInTheDocument();
+  });
+
+  it('Fase 29: colapsa y expande preservando el estado', async () => {
+    const user = userEvent.setup();
+    render(<HarnessCollapsible />);
+
+    expect(screen.queryByRole('checkbox', { name: 'IVA' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
+    const checkbox = screen.getByRole('checkbox', { name: 'IVA' });
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+    expect(screen.getByLabelText('Tasa de IVA (%)')).toHaveValue(19);
+
+    await user.click(screen.getByRole('button', { name: 'Ocultar' }));
+    expect(screen.queryByRole('checkbox', { name: 'IVA' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
+    expect(screen.getByRole('checkbox', { name: 'IVA' })).toBeChecked();
+  });
+
+  it('Fase 29: se auto-expande ante tasa inválida', async () => {
+    const user = userEvent.setup();
+    render(<HarnessCollapsible />);
+
+    await user.click(screen.getByRole('button', { name: 'Mostrar' }));
+    await user.click(screen.getByRole('checkbox', { name: 'IVA' }));
+    const rateInput = screen.getByLabelText('Tasa de IVA (%)');
+    await user.clear(rateInput);
+    await user.type(rateInput, '200');
+    await user.click(screen.getByRole('button', { name: 'Ocultar' }));
+
+    // La tasa inválida fuerza la expansión para permitir la corrección.
+    expect(screen.getByRole('checkbox', { name: 'IVA' })).toBeInTheDocument();
   });
 });

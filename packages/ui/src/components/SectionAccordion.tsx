@@ -173,7 +173,7 @@ function SectionAccordion({
                           'px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shrink-0',
                           isComplete
                             ? 'bg-[#EDF8CC] text-[#48531D] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
-                            : 'bg-gray-100 text-gray-500 dark:bg-dark-surface-3 dark:text-gray-400',
+                            : 'bg-gray-100 text-iwana-secondary-800 dark:bg-dark-surface-3 dark:text-gray-300',
                         )}
                       >
                         {isComplete && <CheckIcon className="h-3 w-3" />}
@@ -246,7 +246,7 @@ function SectionAccordion({
                           'px-2 py-0.5 rounded-full text-[11px] font-semibold',
                           isComplete
                             ? 'bg-[#EDF8CC] text-[#48531D] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
-                            : 'bg-gray-100 text-gray-400 dark:bg-dark-surface-3 dark:text-gray-400',
+                            : 'bg-gray-100 text-iwana-secondary-800 dark:bg-dark-surface-3 dark:text-gray-300',
                         )}
                       >
                         {isComplete && <CheckIcon className="h-2.5 w-2.5 inline mr-0.5" />}
@@ -349,7 +349,9 @@ function SectionAccordion({
                   <span
                     className={cn(
                       'px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1',
-                      isComplete ? 'bg-[#EDF8CC] text-[#48531D]' : 'bg-gray-100 text-gray-500',
+                      isComplete
+                        ? 'bg-[#EDF8CC] text-[#48531D]'
+                        : 'bg-gray-100 text-iwana-secondary-800',
                     )}
                   >
                     {isComplete && <CheckIcon className="h-3 w-3" />}

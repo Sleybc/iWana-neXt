@@ -122,7 +122,7 @@ function buildService(manager: ReturnType<typeof buildManager>) {
     { listByContext: jest.fn().mockResolvedValue([]) } as never,
   );
 
-  return { service, stockLedgerServiceMock };
+  return { service, stockLedgerServiceMock, serializedAssetServiceMock };
 }
 
 function counterInput(overrides: Record<string, unknown> = {}) {
@@ -234,5 +234,48 @@ describe('CounterPurchaseService — conversión compra → base (F5b)', () => {
       lines: Array<{ quantity: number }>;
     };
     expect(input.lines).toHaveLength(4);
+  });
+});
+
+/**
+ * Lote de origen del activo serializado en compra de mostrador (migración 129).
+ *
+ * La compra de mostrador es la segunda entrada de mercancía y crea su propio
+ * `StockLot`: si no persistiera el vínculo, los seriales ingresados por este
+ * camino quedarían sin lote y la validación de salida no tendría qué comparar.
+ */
+describe('CounterPurchaseService — lote de origen del activo serializado (129)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (TenantContext.getOrThrow as jest.Mock).mockReturnValue({
+      tenantId: 'tenant-001',
+      schemaName: 'tenant_001',
+    });
+  });
+
+  it('persiste en el activo el mismo lote que viaja al kardex', async () => {
+    const manager = buildManager({
+      trackingMode: InventoryTrackingMode.SERIALIZED,
+      purchaseUnitOfMeasure: null,
+      purchaseToBaseUomFactor: null,
+    });
+    const { service, stockLedgerServiceMock, serializedAssetServiceMock } = buildService(manager);
+
+    await service.record(
+      counterInput({
+        lines: [{ ...counterInput().lines[0], quantityReceived: 2, serialNumbers: ['S-1', 'S-2'] }],
+      }),
+      actor,
+    );
+
+    const llamadas = serializedAssetServiceMock.createReceivedAssetWithManager.mock.calls;
+    expect(llamadas).toHaveLength(2);
+
+    const enKardex = stockLedgerServiceMock.recordMovementWithManager.mock.calls[0]?.[2] as {
+      lines: Array<{ lotId: string }>;
+    };
+    for (const llamada of llamadas) {
+      expect(llamada[1]).toEqual(expect.objectContaining({ lotId: enKardex.lines[0]?.lotId }));
+    }
   });
 });

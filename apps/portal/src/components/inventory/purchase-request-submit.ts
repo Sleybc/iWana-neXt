@@ -90,7 +90,7 @@ export function buildCreatePurchaseRequestPayload(input: {
     return { payload: null, error: 'Indica el área solicitante.' };
   }
 
-  if (justification.length < 10) {
+  if (justification.length > 0 && justification.length < 10) {
     return {
       payload: null,
       error: 'La justificación debe tener al menos 10 caracteres.',
@@ -128,7 +128,7 @@ export function buildCreatePurchaseRequestPayload(input: {
       requestType: input.requestType,
       priority: input.priority,
       requestingArea,
-      justification,
+      ...(justification ? { justification } : {}),
       neededByDate: input.neededByDate || null,
       lines: mappedLines,
     },

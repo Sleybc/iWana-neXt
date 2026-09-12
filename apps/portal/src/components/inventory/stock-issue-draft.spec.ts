@@ -215,6 +215,32 @@ describe('stock-issue-draft', () => {
     });
   });
 
+  it('updateDraftLineItem descarta el grupo de seriales del ítem anterior', () => {
+    // El singular sí se limpiaba, pero el grupo sobrevivía al cambio de ítem y
+    // la cantidad quedaba forzada a 1: la salida viajaba con seriales de otro
+    // artículo y el API la rechazaba con un 400 que la UI no sabía explicar.
+    const initial = addCatalogSelectionToDraft(createEmptyStockIssueDraft(), [
+      { id: 'item-1', sku: 'ONT-001', name: 'ONT WiFi 6', unitOfMeasure: 'unidad' },
+    ]);
+    const lineId = initial.draft.lines[0]!.id;
+    const withSerials: { lines: StockIssueDraftLine[] } = {
+      lines: initial.draft.lines.map((line) => ({
+        ...line,
+        requestedQty: '2',
+        serializedAssetId: 'asset-1',
+        serializedAssetLabel: 'SN-001',
+        serializedAssetIds: ['asset-1', 'asset-2'],
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+      })),
+    };
+
+    const next = updateDraftLineItem(withSerials, lineId, 'item-9', 'Cable drop', 'METER');
+
+    expect(next.lines[0]?.serializedAssetIds).toEqual([]);
+    expect(next.lines[0]?.serializedAssetId).toBe('');
+    expect(next.lines[0]?.requestedQty).toBe('1');
+  });
+
   describe('buildDraftProductLabel', () => {
     it('muestra nombre y modelo sin el código', () => {
       expect(buildDraftProductLabel('Router Onu Gpon', 'XC220')).toBe('Router Onu Gpon · XC220');

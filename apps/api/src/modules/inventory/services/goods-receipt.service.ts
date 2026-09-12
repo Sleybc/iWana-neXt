@@ -250,6 +250,10 @@ export class GoodsReceiptService {
                     {
                       tenantId,
                       inventoryItemId: line.itemId,
+                      // El lote del ingreso queda persistido en el activo: sin
+                      // él, la salida no puede verificar que el serial
+                      // pertenezca al lote elegido (migración 129).
+                      lotId: stockLot.id,
                       serialNumber,
                       purchaseOrderRef: purchaseOrder.orderNumber,
                       purchaseDate: receipt.receivedAt.toISOString().slice(0, 10),

@@ -8,6 +8,7 @@ import { GoodsReceiptService } from './services/goods-receipt.service';
 import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from './services/purchase-order-pdf.service';
 import { RfqService } from './services/rfq.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
 import { PurchasingController } from './purchasing.controller';
@@ -35,6 +36,7 @@ describe('PurchasingController Swagger', () => {
         { provide: GoodsReceiptService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: RfqPdfService, useValue: {} },
+        { provide: PurchaseOrderPdfService, useValue: {} },
         { provide: SupplierProfileService, useValue: {} },
       ],
     })
@@ -229,5 +231,58 @@ describe('PurchasingController Swagger', () => {
     expect(schemas?.UpdateSupplierQuoteDto).toBeDefined();
     expect(document.paths['/purchasing/quotes/{id}']?.patch).toBeUndefined();
     expect(document.paths['/purchasing/quotes/{id}']?.put).toBeUndefined();
+  });
+
+  it('Fase 30: documenta POST/DELETE de adjudicaciones y el eje awardCoverage', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Purchasing Test').setVersion('1.0').build(),
+    );
+
+    const createAwards = document.paths['/purchasing/requests/{id}/awards']?.post;
+    expect(createAwards?.summary).toBe('Registrar adjudicaciones por línea');
+    expect(createAwards?.description).toContain('AWARD_QUOTE_MISMATCH');
+    expect(createAwards?.description).toContain('AWARD_PARTY_CONFLICT');
+    expect(createAwards?.description).toContain('NO-OP idempotente');
+    const createAwardsOk = createAwards?.responses?.['201'] as { description?: string } | undefined;
+    expect(createAwardsOk?.description).toContain('coverage');
+    expect(createAwards?.responses?.['409']).toBeDefined();
+
+    const revokeAward = document.paths['/purchasing/requests/{id}/awards/{awardId}']?.delete;
+    expect(revokeAward?.summary).toBe('Revocar una adjudicación de línea');
+    expect(revokeAward?.description).toContain('AWARD_ALREADY_ORDERED');
+    const revokeOk = revokeAward?.responses?.['200'] as { description?: string } | undefined;
+    expect(revokeOk?.description).toContain('lineStatusAfter');
+    expect(revokeAward?.responses?.['409']).toBeDefined();
+
+    const listRequests = document.paths['/purchasing/requests']?.get;
+    expect(listRequests?.description).toContain('awardCoverage');
+    const listOk = listRequests?.responses?.['200'] as { description?: string } | undefined;
+    expect(listOk?.description).toContain('awardCoverage');
+
+    const getDetail = document.paths['/purchasing/requests/{id}']?.get;
+    expect(getDetail?.description).toContain('awardCoverage');
+
+    const schemas = document.components?.schemas as
+      | Record<string, { properties?: Record<string, unknown>; enum?: string[] }>
+      | undefined;
+    const coverageProperty = schemas?.PurchaseRequestAwardCoverageDto?.properties?.awardCoverage as
+      | { enum?: string[]; allOf?: unknown }
+      | undefined;
+    expect(coverageProperty).toBeDefined();
+    // Con enumName el valor se documenta como $ref al enum con nombre.
+    const coverageEnumSchema = schemas?.PurchaseRequestAwardCoverage as
+      | { enum?: string[] }
+      | undefined;
+    const documentedCoverage = coverageProperty?.enum ?? coverageEnumSchema?.enum ?? [];
+    expect(documentedCoverage).toEqual(
+      expect.arrayContaining([
+        'NOT_AWARDED',
+        'PARTIALLY_AWARDED',
+        'FULLY_AWARDED',
+        'PARTIALLY_ORDERED',
+        'FULLY_ORDERED',
+      ]),
+    );
   });
 });

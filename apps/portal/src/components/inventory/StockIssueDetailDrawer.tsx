@@ -163,7 +163,9 @@ export function StockIssueDetailDrawer({
         : line.serializedAssetId.slice(0, 8).toUpperCase();
     }
     if (line.lotId) {
-      return `Lote ${line.lotId.slice(0, 8).toUpperCase()}`;
+      return line.lotNumber
+        ? `Lote ${line.lotNumber}`
+        : `Lote ${line.lotId.slice(0, 8).toUpperCase()}`;
     }
     return '—';
   }

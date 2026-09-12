@@ -52,6 +52,48 @@ describe('SerializedAssetService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  // Migración 129: el lote de origen llega desde la recepción y debe quedar
+  // persistido en el activo; sin él la salida no puede validar que el serial
+  // pertenezca al lote de la línea.
+  it('persiste el lote de origen recibido en el alta del activo', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn((_entity, payload) => ({ id: 'asset-001', ...payload })),
+    };
+
+    await service.createReceivedAssetWithManager(manager as never, {
+      tenantId: 'tenant-001',
+      inventoryItemId: 'item-001',
+      lotId: 'lot-001',
+      serialNumber: 'ser-001',
+    });
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lotId: 'lot-001' }),
+    );
+  });
+
+  it('deja el lote en null cuando el alta no lo aporta (activos sin lote de origen)', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn((_entity, payload) => ({ id: 'asset-002', ...payload })),
+    };
+
+    await service.createReceivedAssetWithManager(manager as never, {
+      tenantId: 'tenant-001',
+      inventoryItemId: 'item-001',
+      serialNumber: 'ser-002',
+    });
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ lotId: null }),
+    );
+  });
+
   it('blocks invalid serialized asset transitions', async () => {
     const asset = {
       id: 'asset-001',

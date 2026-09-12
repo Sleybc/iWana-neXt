@@ -189,6 +189,7 @@ function buildProps(detail: PurchaseRequestDetailRecord) {
     onUpdateQuote: jest.fn().mockResolvedValue(true),
     onApprove: jest.fn(),
     onCreateAwards: jest.fn(),
+    onRevokeAward: jest.fn().mockResolvedValue(true),
     onReject: jest.fn(),
     onCancel: jest.fn(),
     onLoadSupplier: jest.fn(),
@@ -636,5 +637,160 @@ describe('PurchaseRequestWorkbenchDrawer — regresiones Fase 28 (auditoría)', 
     expect(
       screen.getByRole('spinbutton', { name: 'Tasa de Rete ICA (%)', hidden: true }),
     ).toHaveValue(0.414);
+  });
+});
+
+describe('PurchaseRequestWorkbenchDrawer — adjudicación FE-3', () => {
+  const STAMP = '2026-06-01T00:00:00.000Z';
+
+  function buildAwardableDetail(): PurchaseRequestDetailRecord {
+    return buildDetail(
+      { status: PurchaseRequestStatus.APPROVED },
+      {
+        lines: [
+          {
+            id: 'line-1',
+            tenantId: 'tenant-1',
+            purchaseRequestId: 'req-1',
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: 'item-active',
+            freeTextDescription: null,
+            quantityRequested: '2',
+            unitOfMeasure: 'unidad',
+            suggestedPartyRefId: null,
+            lineStatus: PurchaseRequestLineStatus.OPEN,
+            notes: null,
+            createdAt: STAMP,
+            updatedAt: STAMP,
+          },
+        ],
+        quotes: [
+          {
+            ...buildQuote({ id: 'quote-1', partyRefId: 'supplier-1' }),
+            lines: [
+              {
+                id: 'ql-1',
+                tenantId: 'tenant-1',
+                supplierQuoteId: 'quote-1',
+                purchaseRequestLineId: 'line-1',
+                quantity: '2',
+                unitCost: '5000',
+                lineAmount: '10000',
+                createdAt: STAMP,
+                updatedAt: STAMP,
+              },
+            ],
+          },
+        ],
+      },
+    );
+  }
+
+  it('el tab Adjudicación renderiza la matriz (no el panel anterior)', () => {
+    render(
+      <PurchaseRequestWorkbenchDrawer {...buildProps(buildAwardableDetail())} activeTab="awards" />,
+    );
+
+    expect(screen.getByText('Adjudicar productos a proveedores')).toBeInTheDocument();
+    expect(screen.queryByText('Asignar proveedores por línea')).not.toBeInTheDocument();
+  });
+
+  it('el tab Adjudicación muestra carga cuando el detalle aún no llega', () => {
+    const props = { ...buildProps(buildAwardableDetail()), activeTab: 'awards' as const };
+    render(<PurchaseRequestWorkbenchDrawer {...props} detail={null} isLoading />);
+
+    // El diálogo vive en un portal fuera del contenedor de render.
+    expect(document.body.querySelector('[aria-hidden="true"].animate-pulse')).toBeTruthy();
+    expect(screen.queryByText('Adjudicar productos a proveedores')).not.toBeInTheDocument();
+  });
+
+  it('«Adjudicar y continuar» emite el draft del contrato y abre el flujo de órdenes', async () => {
+    const user = userEvent.setup();
+    const onCreateAwards = jest.fn().mockResolvedValue(undefined);
+    const onOpenOrderFlow = jest.fn();
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(buildAwardableDetail())}
+        activeTab="awards"
+        onCreateAwards={onCreateAwards}
+        onOpenOrderFlow={onOpenOrderFlow}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('radio', { name: 'Adjudicar Sin nombre a Proveedor no identificado' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Adjudicar y continuar' }));
+
+    expect(onCreateAwards).toHaveBeenCalledWith([
+      expect.objectContaining({
+        purchaseRequestLineId: 'line-1',
+        supplierQuoteId: 'quote-1',
+        awardedPartyRefId: 'supplier-1',
+        awardedQuantity: '2.00',
+      }),
+    ]);
+    expect(onOpenOrderFlow).toHaveBeenCalledTimes(1);
+  });
+
+  it('«Guardar adjudicación» persiste sin abrir el flujo de órdenes', async () => {
+    const user = userEvent.setup();
+    const onCreateAwards = jest.fn().mockResolvedValue(undefined);
+    const onOpenOrderFlow = jest.fn();
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(buildAwardableDetail())}
+        activeTab="awards"
+        onCreateAwards={onCreateAwards}
+        onOpenOrderFlow={onOpenOrderFlow}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('radio', { name: 'Adjudicar Sin nombre a Proveedor no identificado' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Guardar adjudicación' }));
+
+    expect(onCreateAwards).toHaveBeenCalledTimes(1);
+    expect(onOpenOrderFlow).not.toHaveBeenCalled();
+  });
+
+  it('«Sin cotizaciones» ofrece ir al tab Cotizar', async () => {
+    const user = userEvent.setup();
+    const onActiveTabChange = jest.fn();
+    const detail = buildDetail({ status: PurchaseRequestStatus.APPROVED });
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(detail)}
+        activeTab="awards"
+        onActiveTabChange={onActiveTabChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Ir a cotizar' }));
+    expect(onActiveTabChange).toHaveBeenCalledWith('cotizar');
+  });
+
+  it('la comparación salta a la matriz con la columna enfocada', async () => {
+    const user = userEvent.setup();
+    const onActiveTabChange = jest.fn();
+    const detail = buildDetail(
+      { status: PurchaseRequestStatus.APPROVED },
+      { quotes: [buildQuote()] },
+    );
+    render(
+      <PurchaseRequestWorkbenchDrawer
+        {...buildProps(detail)}
+        activeTab="cotizar"
+        onActiveTabChange={onActiveTabChange}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Adjudicar productos de la cotización de Proveedor no identificado',
+      }),
+    );
+    expect(onActiveTabChange).toHaveBeenCalledWith('awards');
   });
 });

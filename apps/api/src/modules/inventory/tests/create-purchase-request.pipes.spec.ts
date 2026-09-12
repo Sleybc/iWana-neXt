@@ -81,4 +81,30 @@ describe('CreatePurchaseRequest ValidationPipe + Zod pipe', () => {
       lines: [expect.objectContaining({ quantityRequested: 1 })],
     });
   });
+
+  it('acepta la solicitud sin justificación (opcional), pero exige 10 caracteres si se envía', async () => {
+    const base = {
+      title: 'Compra de prueba',
+      requestType: PurchaseRequestType.REPLENISHMENT,
+      requestingArea: 'Operaciones',
+      neededByDate: null,
+      lines: [
+        {
+          sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+          inventoryItemId: '11111111-1111-4111-8111-111111111111',
+          quantityRequested: 1,
+          unitOfMeasure: 'unidad',
+        },
+      ],
+    };
+
+    const parsed = await runPipes(base);
+    // Zod conserva la clave con undefined (viene del DTO instanciado);
+    // el servicio la normaliza a null. Lo que importa: no exige el campo.
+    expect(parsed.justification).toBeUndefined();
+    await expect(runPipes({ ...base, justification: 'Corta' })).rejects.toThrow();
+    await expect(
+      runPipes({ ...base, justification: 'Reposicion programada de campo.' }),
+    ).resolves.toMatchObject({ justification: 'Reposicion programada de campo.' });
+  });
 });

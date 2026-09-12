@@ -28,6 +28,7 @@ import { TenantContext, runInTenantSchema } from '@iwana/db';
 jest.mock('@iwana/db', () => ({
   PurchaseRequest: class PurchaseRequest {},
   PurchaseOrder: class PurchaseOrder {},
+  PurchaseRequestLine: class PurchaseRequestLine {},
   StockIssue: class StockIssue {},
   StockIssueLine: class StockIssueLine {},
   StockLocation: class StockLocation {},
@@ -299,11 +300,16 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
     function mockManager(
       requestQb: ReturnType<typeof chainableQb>,
       orderQb?: ReturnType<typeof chainableQb>,
+      lineQb?: ReturnType<typeof chainableQb>,
     ) {
+      // Fase 30 BE-2: además del agregado de órdenes (fulfillment), el eje de
+      // cobertura de adjudicación agrega purchase_request_lines con SU PROPIA
+      // consulta (3 createQueryBuilder en total: request + po + line).
       const createQueryBuilder = jest
         .fn()
         .mockReturnValueOnce(requestQb)
-        .mockReturnValue(orderQb ?? chainableQb());
+        .mockReturnValueOnce(orderQb ?? chainableQb())
+        .mockReturnValue(lineQb ?? chainableQb());
       (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
         work({ manager: { createQueryBuilder } }),
       );
@@ -325,12 +331,21 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
           { purchaseRequestId: 'pr-2', status: 'FULLY_RECEIVED' },
         ]),
       });
-      const createQueryBuilder = mockManager(requestQb, orderQb);
+      const lineQb = chainableQb({
+        getRawMany: jest.fn().mockResolvedValue([
+          { purchaseRequestId: 'pr-1', lineStatus: 'ORDERED' },
+          { purchaseRequestId: 'pr-2', lineStatus: 'AWARDED' },
+          { purchaseRequestId: 'pr-3', lineStatus: 'OPEN' },
+        ]),
+      });
+      const createQueryBuilder = mockManager(requestQb, orderQb, lineQb);
 
       const result = await buildService().listRequests({ limit: 20 });
 
-      expect(createQueryBuilder).toHaveBeenCalledTimes(2);
+      // 1 consulta de solicitudes + 2 agregadas (una por eje derivado).
+      expect(createQueryBuilder).toHaveBeenCalledTimes(3);
       expect(orderQb.getRawMany).toHaveBeenCalledTimes(1);
+      expect(lineQb.getRawMany).toHaveBeenCalledTimes(1);
       expect(orderQb.where).toHaveBeenCalledWith('po.tenant_id = :tenantId', {
         tenantId: 'tenant-001',
       });
@@ -341,6 +356,11 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
         'RECEIVED',
         'PENDING_RECEIPT',
         'NOT_ORDERED',
+      ]);
+      expect(result.data.map((row) => row.awardCoverage)).toEqual([
+        'FULLY_ORDERED',
+        'FULLY_AWARDED',
+        'NOT_AWARDED',
       ]);
     });
 
@@ -399,6 +419,123 @@ describe('ADR-065 Ola 6 · filtros servidor (inventory/purchasing)', () => {
         'PARTIALLY_RECEIVED',
       ]);
       expect(result.data.every((row) => row.fulfillmentStatus !== 'RECEIVED')).toBe(true);
+    });
+  });
+
+  describe('PurchasingQueryService.listRequests · awardCoverage derivado (ADR-087, propuesto)', () => {
+    function buildService() {
+      return new PurchasingQueryService(
+        {} as DataSource,
+        {} as never,
+        new PurchasingPolicyService(),
+        {
+          listByContext: jest.fn().mockResolvedValue([]),
+          findActiveByCode: jest.fn(),
+          resolveSystemPreset: jest.fn(),
+          findById: jest.fn(),
+        } as never,
+      );
+    }
+
+    function mockManager(
+      requestQb: ReturnType<typeof chainableQb>,
+      lineQb: ReturnType<typeof chainableQb>,
+    ) {
+      const createQueryBuilder = jest
+        .fn()
+        .mockReturnValueOnce(requestQb)
+        .mockReturnValueOnce(chainableQb()) // agregado de órdenes (fulfillment)
+        .mockReturnValue(lineQb); // agregado de líneas (cobertura)
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_ds, _schema, work) =>
+        work({ manager: { createQueryBuilder } }),
+      );
+      return createQueryBuilder;
+    }
+
+    it('resuelve la cobertura de toda la página con UNA consulta agregada sobre purchase_request_lines', async () => {
+      const requestQb = chainableQb({
+        getMany: jest.fn().mockResolvedValue([
+          { id: 'pr-a', createdAt: new Date('2026-09-01T10:00:00Z') },
+          { id: 'pr-b', createdAt: new Date('2026-09-01T09:00:00Z') },
+          { id: 'pr-c', createdAt: new Date('2026-09-01T08:00:00Z') },
+        ]),
+      });
+      const lineQb = chainableQb({
+        getRawMany: jest.fn().mockResolvedValue([
+          { purchaseRequestId: 'pr-a', lineStatus: 'AWARDED' },
+          { purchaseRequestId: 'pr-a', lineStatus: 'PENDING_QUOTE' },
+          { purchaseRequestId: 'pr-b', lineStatus: 'AWARDED' },
+          { purchaseRequestId: 'pr-b', lineStatus: 'CANCELLED' },
+          { purchaseRequestId: 'pr-c', lineStatus: 'RECEIVED' },
+          { purchaseRequestId: 'pr-c', lineStatus: 'OPEN' },
+        ]),
+      });
+      const createQueryBuilder = mockManager(requestQb, lineQb);
+
+      const result = await buildService().listRequests({ limit: 20 });
+
+      expect(createQueryBuilder).toHaveBeenCalledTimes(3);
+      expect(lineQb.getRawMany).toHaveBeenCalledTimes(1);
+      expect(lineQb.where).toHaveBeenCalledWith('line.tenant_id = :tenantId', {
+        tenantId: 'tenant-001',
+      });
+      expect(lineQb.andWhere).toHaveBeenCalledWith('line.purchase_request_id IN (:...requestIds)', {
+        requestIds: ['pr-a', 'pr-b', 'pr-c'],
+      });
+      // El agrupado reduce las filas al mínimo que el resolutor necesita.
+      expect(lineQb.groupBy).toHaveBeenCalledWith('line.purchase_request_id');
+      expect(lineQb.addGroupBy).toHaveBeenCalledWith('line.line_status');
+
+      // pr-a: adjudicada + pendiente → parcial. pr-b: la CANCELLED se excluye,
+      // la AWARDED cubre todo lo elegible → completa. pr-c: ordenada + abierta
+      // → conversión en curso.
+      expect(result.data.map((row) => row.awardCoverage)).toEqual([
+        'PARTIALLY_AWARDED',
+        'FULLY_AWARDED',
+        'PARTIALLY_ORDERED',
+      ]);
+    });
+
+    it('modo page también expone awardCoverage', async () => {
+      const requestQb = chainableQb({
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue([{ id: 'pr-9', createdAt: new Date() }]),
+      });
+      const lineQb = chainableQb({
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([{ purchaseRequestId: 'pr-9', lineStatus: 'ORDERED' }]),
+      });
+      mockManager(requestQb, lineQb);
+
+      const result = await buildService().listRequests({ page: 1, limit: 10 });
+
+      expect(result.meta.mode).toBe('page');
+      expect(result.data[0]?.awardCoverage).toBe('FULLY_ORDERED');
+    });
+
+    it('no consulta purchase_request_lines cuando la página viene vacía', async () => {
+      const requestQb = chainableQb();
+      const lineQb = chainableQb();
+      const createQueryBuilder = mockManager(requestQb, lineQb);
+
+      const result = await buildService().listRequests({ limit: 20 });
+
+      expect(result.data).toEqual([]);
+      expect(createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(lineQb.getRawMany).not.toHaveBeenCalled();
+    });
+
+    it('una solicitud sin filas de líneas resuelve NOT_AWARDED por defecto', async () => {
+      const requestQb = chainableQb({
+        getMany: jest.fn().mockResolvedValue([{ id: 'pr-vacia', createdAt: new Date() }]),
+      });
+      const lineQb = chainableQb({ getRawMany: jest.fn().mockResolvedValue([]) });
+      mockManager(requestQb, lineQb);
+
+      const result = await buildService().listRequests({ limit: 20 });
+
+      expect(result.data[0]?.awardCoverage).toBe('NOT_AWARDED');
     });
   });
 

@@ -14,6 +14,7 @@ import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 
@@ -108,6 +109,7 @@ describe('PurchasingController Fase 2 — doble guard', () => {
         { provide: GoodsReceiptService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: RfqPdfService, useValue: {} },
+        { provide: PurchaseOrderPdfService, useValue: {} },
         { provide: SupplierProfileService, useValue: {} },
         { provide: EffectivePermissionsService, useValue: effectivePermissionsMock },
         Reflector,

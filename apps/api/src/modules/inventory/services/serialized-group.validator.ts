@@ -12,6 +12,12 @@ export interface SerializedGroupLineInput {
   itemId: string;
   requestedQty: string | number;
   serializedAssetIds: string[];
+  /**
+   * Lote de la línea. Participa de la tupla (ítem, lote, condición) contra la
+   * que reservan y descuentan la salida y el despacho, así que debe ser el
+   * lote al que pertenecen los seriales del grupo.
+   */
+  lotId?: string | null;
 }
 
 export interface SerializedGroupEntry {
@@ -146,6 +152,18 @@ export class SerializedGroupValidator {
         if (!SERIAL_DISPATCHABLE_STATUSES.includes(asset.currentStatus)) {
           throw new BadRequestException(
             `${assetLabel(assetId)} no está disponible para salida (estado ${asset.currentStatus}).`,
+          );
+        }
+        // Coherencia serial ↔ lote: la línea reserva y descuenta de la tupla
+        // (ítem, lote, condición), de modo que un serial de otro lote haría
+        // caer el saldo equivocado. Solo se contrasta cuando ambos lados
+        // tienen lote: un activo con `lotId` nulo es un ingreso cuyo
+        // movimiento de entrada no llevaba lote (el backfill de la migración
+        // 129 no inventa valores) y no hay nada contra lo que compararlo.
+        const lineLotId = line.lotId ?? null;
+        if (lineLotId && asset.lotId && asset.lotId !== lineLotId) {
+          throw new BadRequestException(
+            `${assetLabel(assetId)} pertenece a otro lote y no puede salir en esta línea.`,
           );
         }
       }

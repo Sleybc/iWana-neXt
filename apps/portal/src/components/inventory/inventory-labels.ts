@@ -12,6 +12,7 @@ import {
   InventoryTrackingMode,
   PartyStatus,
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestLineSourceKind,
   PurchaseRequestLineStatus,
   PurchaseRequestPriority,
@@ -589,6 +590,25 @@ export function getPurchaseRequestPriorityLabel(value: PurchaseRequestPriority):
 
 export function getPurchaseRequestLineStatusLabel(value: PurchaseRequestLineStatus): string {
   return resolveLabel(value, PURCHASE_REQUEST_LINE_STATUS_LABELS);
+}
+
+/* ————————————————————————————————————————————————————————————————
+ * Eje de cobertura de adjudicación (MOD12 Compras, Fase 30 · spec
+ * 2026-09-11 §9, ADR-087). Español, sentence case, sin enums crudos.
+ * PENDIENTE de revisión con la skill `system-vocabulary-review` (G6).
+ * ———————————————————————————————————————————————————————————————— */
+
+export const PURCHASE_REQUEST_AWARD_COVERAGE_LABELS: Record<PurchaseRequestAwardCoverage, string> =
+  {
+    [PurchaseRequestAwardCoverage.NOT_AWARDED]: 'Sin adjudicar',
+    [PurchaseRequestAwardCoverage.PARTIALLY_AWARDED]: 'Adjudicación parcial',
+    [PurchaseRequestAwardCoverage.FULLY_AWARDED]: 'Adjudicada',
+    [PurchaseRequestAwardCoverage.PARTIALLY_ORDERED]: 'Órdenes parciales',
+    [PurchaseRequestAwardCoverage.FULLY_ORDERED]: 'Órdenes generadas',
+  };
+
+export function getPurchaseRequestAwardCoverageLabel(value: PurchaseRequestAwardCoverage): string {
+  return resolveLabel(value, PURCHASE_REQUEST_AWARD_COVERAGE_LABELS);
 }
 
 export function getPurchaseRequestLineSourceLabel(value: PurchaseRequestLineSourceKind): string {

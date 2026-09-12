@@ -218,6 +218,109 @@ describe('QuoteComparisonPanel', () => {
     );
   });
 
+  it('muestra nombre y SKU cuando recibe líneas e ítems (FE-3, spec §10)', () => {
+    render(
+      <QuoteComparisonPanel
+        quotes={[
+          buildQuote({
+            lines: [
+              {
+                id: 'ql-1',
+                tenantId: 'tenant-1',
+                supplierQuoteId: 'quote-1',
+                purchaseRequestLineId: 'line-1',
+                quantity: '10',
+                unitCost: '1500',
+                lineAmount: '15000',
+                createdAt: '2026-07-01T00:00:00.000Z',
+                updatedAt: '2026-07-01T00:00:00.000Z',
+              },
+            ],
+          }),
+        ]}
+        supplierLabels={{ 'party-1': 'Proveedor Alfa' }}
+        requestLines={
+          [
+            {
+              id: 'line-1',
+              tenantId: 'tenant-1',
+              purchaseRequestId: 'req-1',
+              sourceKind: 'INVENTORY_ITEM',
+              inventoryItemId: 'item-1',
+              freeTextDescription: null,
+              quantityRequested: '10',
+              unitOfMeasure: 'unidad',
+              suggestedPartyRefId: null,
+              lineStatus: 'OPEN',
+              notes: null,
+              createdAt: '2026-07-01T00:00:00.000Z',
+              updatedAt: '2026-07-01T00:00:00.000Z',
+            },
+          ] as never
+        }
+        items={
+          [
+            {
+              id: 'item-1',
+              tenantId: 'tenant-1',
+              sku: 'ONT-001',
+              name: 'ONT WiFi 6',
+            },
+          ] as never
+        }
+      />,
+    );
+
+    expect(screen.getByText(/ONT WiFi 6 · ONT-001/)).toBeInTheDocument();
+  });
+
+  it('sin líneas ni ítems conserva el render anterior (compatibilidad hacia atrás)', () => {
+    render(
+      <QuoteComparisonPanel
+        quotes={[
+          buildQuote({
+            lines: [
+              {
+                id: 'ql-1',
+                tenantId: 'tenant-1',
+                supplierQuoteId: 'quote-1',
+                purchaseRequestLineId: 'line-1',
+                quantity: '10',
+                unitCost: '1500',
+                lineAmount: '15000',
+                createdAt: '2026-07-01T00:00:00.000Z',
+                updatedAt: '2026-07-01T00:00:00.000Z',
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/Cantidad 10/)).toBeInTheDocument();
+    expect(screen.queryByText(/ONT/)).not.toBeInTheDocument();
+  });
+
+  it('la CTA salta a la matriz con la columna enfocada', async () => {
+    const user = userEvent.setup();
+    const onAwardQuote = jest.fn();
+
+    render(
+      <QuoteComparisonPanel
+        quotes={[buildQuote()]}
+        supplierLabels={{ 'party-1': 'Proveedor Alfa' }}
+        onAwardQuote={onAwardQuote}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Adjudicar productos de la cotización de Proveedor Alfa',
+      }),
+    );
+    expect(onAwardQuote).toHaveBeenCalledWith('quote-1');
+  });
+
   it('muestra modificar cotización cuando el padre lo habilita', async () => {
     const user = userEvent.setup();
     const onEditQuote = jest.fn();

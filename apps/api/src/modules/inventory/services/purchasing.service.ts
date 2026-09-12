@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
 import {
@@ -16,12 +22,17 @@ import {
 } from '@iwana/db';
 import {
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestLineStatus,
   PurchaseRequestStatus,
+  PurchaseRequestType,
   PurchaseRfqStatus,
   QuoteShippingArrangement,
   TaxContext,
+  type CreateAwardsResponse,
   type ListResponse,
+  type PurchaseRequestLineAwardRecord,
+  type RevokeAwardResponse,
 } from '@iwana/shared';
 import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
 import {
@@ -35,6 +46,10 @@ import {
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { generateSequentialNumber } from '../utils/sequential-number';
+import {
+  resolveAwardCoverage,
+  resolvePurchaseRequestConversion,
+} from '../utils/purchase-request-award-coverage';
 import {
   AddSupplierQuoteInput,
   AddSupplierQuoteSchema,
@@ -95,6 +110,50 @@ function toNumeric(value: string | number | null | undefined): number {
   return Number.parseFloat(value ?? '0');
 }
 
+/** Cantidad en centavos: comparación exacta de decimales sin deriva flotante. */
+function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
+/**
+ * Estados de línea que ya reflejan una orden viva (o mercancía recibida):
+ * marcar ORDERED no debe degradarlos ni re-triugarlos.
+ */
+const ORDER_TERMINAL_LINE_STATUSES: ReadonlySet<PurchaseRequestLineStatus> = new Set([
+  PurchaseRequestLineStatus.ORDERED,
+  PurchaseRequestLineStatus.PARTIALLY_RECEIVED,
+  PurchaseRequestLineStatus.RECEIVED,
+]);
+
+/** Estados de línea que aún admiten recibir la marca AWARDED. */
+const AWARD_ELIGIBLE_LINE_STATUSES: ReadonlySet<PurchaseRequestLineStatus> = new Set([
+  PurchaseRequestLineStatus.OPEN,
+  PurchaseRequestLineStatus.PENDING_QUOTE,
+]);
+
+/**
+ * Eco de un award en la forma del contrato congelado
+ * (`purchase-award-matrix.contract.ts`): decimales como cadena y los campos
+ * opcionales nullable distinguiendo «sin dato» de «omitido». El snapshot
+ * `unitCost`/`currency` solo viaja cuando existe (award con cotización).
+ */
+function toAwardRecord(award: PurchaseRequestLineAward): PurchaseRequestLineAwardRecord {
+  const record: PurchaseRequestLineAwardRecord = {
+    id: award.id,
+    purchaseRequestLineId: award.purchaseRequestLineId,
+    awardedPartyRefId: award.awardedPartyRefId,
+    awardedQuantity: award.awardedQuantity,
+    unitCost: award.unitCost,
+    currency: award.currency,
+    supplierQuoteId: award.supplierQuoteId,
+    awardNotes: award.awardNotes,
+  };
+  if (award.createdAt) {
+    record.createdAt = award.createdAt.toISOString();
+  }
+  return record;
+}
+
 @Injectable()
 export class PurchasingService {
   constructor(
@@ -131,7 +190,7 @@ export class PurchasingService {
             requestType: validated.requestType,
             priority: validated.priority,
             requestingArea: validated.requestingArea,
-            justification: validated.justification,
+            justification: validated.justification ?? null,
             operationalRefType: validated.operationalRefType ?? null,
             operationalRefId: validated.operationalRefId ?? null,
             status: PurchaseRequestStatus.DRAFT,
@@ -754,11 +813,38 @@ export class PurchasingService {
     );
   }
 
+  /**
+   * Registra adjudicaciones en lote y responde según el contrato congelado
+   * (`CreateAwardsResponse`): eco de los awards persistidos con su snapshot
+   * económico y cobertura derivada resultante (ADR-087, propuesto, D1).
+   *
+   * Reglas por award (Fase 30 BE-2):
+   * - CA-304: con `supplierQuoteId`, la cotización debe pertenecer a ESTA
+   *   solicitud (`AWARD_QUOTE_MISMATCH`), ser del proveedor adjudicado
+   *   (`AWARD_SUPPLIER_MISMATCH`) y tener línea para el producto
+   *   (`AWARD_QUOTE_LINE_MISSING`); en ese caso se congela `unitCost`/
+   *   `currency` desde `supplier_quote_lines` y un `unitCost` del cliente
+   *   divergente responde 400 `UNIT_COST_MISMATCH`. Los awards de escotilla
+   *   (sin cotización, spec §7) congelan el costo aportado por el operador
+   *   como snapshot: la orden lo pre-rellena (adenda del informe §12.5).
+   * - CA-303: proveedor distinto sobre una línea ya adjudicada → 409
+   *   `AWARD_PARTY_CONFLICT` salvo `requestType === PROJECT` (reparto entre
+   *   proveedores, gobernado por `validateLineAward`).
+   * - CA-306 idempotencia: mismo proveedor + misma cantidad + misma cotización
+   *   + mismo costo → NO-OP con éxito (solo actualiza `awardNotes` si cambió);
+   *   para el MISMO proveedor, una cantidad, cotización o costo distinto es
+   *   re-adjudicación (reemplaza su award, no acumula) y se valida con
+   *   `validateLineAward`; un proveedor DISTINTO sobre línea adjudicada sigue
+   *   gobernado por `AWARD_PARTY_CONFLICT` arriba.
+   * - La línea se marca AWARDED SOLO desde OPEN|PENDING_QUOTE; nunca se
+   *   degrada AWARDED ni estados de orden/recepción (hallazgo del review de
+   *   BE-1: el marcado era incondicional).
+   */
   async createLineAwards(
     purchaseRequestId: string,
     input: CreatePurchaseRequestAwardsInput,
     actor: JwtPayload,
-  ): Promise<PurchaseRequestLineAward[]> {
+  ): Promise<CreateAwardsResponse> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = CreatePurchaseRequestAwardsSchema.parse(input);
 
@@ -772,7 +858,7 @@ export class PurchasingService {
           );
         }
 
-        const createdAwards: PurchaseRequestLineAward[] = [];
+        const resultAwards: PurchaseRequestLineAward[] = [];
 
         for (const awardInput of validated.awards) {
           const line = await this.requirePurchaseRequestLine(
@@ -786,17 +872,77 @@ export class PurchasingService {
             );
           }
 
+          const { quote, quoteLine } = await this.requireAwardQuoteContext(
+            manager,
+            tenantId,
+            purchaseRequestId,
+            line.id,
+            awardInput,
+          );
+
           const lineAwards = await manager.find(PurchaseRequestLineAward, {
             where: { tenantId, purchaseRequestLineId: line.id },
           });
+          const samePartyAward =
+            lineAwards.find(
+              (existingAward) => existingAward.awardedPartyRefId === awardInput.awardedPartyRefId,
+            ) ?? null;
+
+          if (
+            !samePartyAward &&
+            lineAwards.length > 0 &&
+            request.requestType !== PurchaseRequestType.PROJECT
+          ) {
+            throw new ConflictException({
+              code: 'AWARD_PARTY_CONFLICT',
+              message:
+                'El producto ya está adjudicado a otro proveedor; solo las solicitudes de proyecto permiten repartirlo entre proveedores.',
+            });
+          }
+
+          // CA-306: sin opinión nueva de costo (payload sin `unitCost`, la vía
+          // habitual con cotización) el reenvío idempotente compara solo
+          // cantidad y cotización.
+          const sameUnitCost =
+            awardInput.unitCost === undefined ||
+            (samePartyAward?.unitCost != null &&
+              toCents(toNumeric(samePartyAward.unitCost)) ===
+                toCents(toNumeric(awardInput.unitCost)));
+
+          const isNoOp =
+            samePartyAward !== null &&
+            toCents(toNumeric(samePartyAward.awardedQuantity)) ===
+              toCents(toNumeric(awardInput.awardedQuantity)) &&
+            (samePartyAward.supplierQuoteId ?? null) === (awardInput.supplierQuoteId ?? null) &&
+            sameUnitCost;
+
+          if (isNoOp && samePartyAward) {
+            // CA-306: reenvío del mismo payload → NO-OP con éxito (el UNIQUE de
+            // tres columnas lo impediría). Actualizar las notas en sitio es el
+            // único cambio tolerado: corrige documentación sin tocar la
+            // adjudicación (decisión documentada en el informe de fase).
+            if ((samePartyAward.awardNotes ?? null) !== (awardInput.awardNotes ?? null)) {
+              samePartyAward.awardNotes = awardInput.awardNotes ?? null;
+              await manager.save(PurchaseRequestLineAward, samePartyAward);
+            }
+            await this.ensureLineAwarded(manager, line);
+            resultAwards.push(samePartyAward);
+            continue;
+          }
+
+          // Política de tope/parcialidad. Al re-adjudicar el award del mismo
+          // proveedor se excluye del acumulado para no doble-contar su
+          // cantidad previa (la nueva cantidad lo REEMPLAZA, no se suma).
+          const otherAwardedQuantity = lineAwards
+            .filter(
+              (existingAward) => existingAward.awardedPartyRefId !== awardInput.awardedPartyRefId,
+            )
+            .reduce((total, existingAward) => total + toNumeric(existingAward.awardedQuantity), 0);
           const blockingReason = this.purchasingPolicyService.validateLineAward({
             requestType: request.requestType,
             requestedQuantity: toNumeric(line.quantityRequested),
-            existingAwardedQuantity: lineAwards.reduce(
-              (total, currentAward) => total + toNumeric(currentAward.awardedQuantity),
-              0,
-            ),
-            newAwardedQuantity: awardInput.awardedQuantity,
+            existingAwardedQuantity: otherAwardedQuantity,
+            newAwardedQuantity: toNumeric(awardInput.awardedQuantity),
           });
 
           if (blockingReason) {
@@ -809,25 +955,219 @@ export class PurchasingService {
             awardInput.awardedPartyRefId,
           );
 
-          const award = await manager.save(
-            PurchaseRequestLineAward,
-            manager.create(PurchaseRequestLineAward, {
-              tenantId,
-              purchaseRequestLineId: line.id,
-              supplierQuoteId: awardInput.supplierQuoteId ?? null,
-              awardedPartyRefId: awardInput.awardedPartyRefId,
-              awardedQuantity: toQuantity(awardInput.awardedQuantity),
-              awardNotes: awardInput.awardNotes ?? null,
-            }),
-          );
+          // Snapshot económico (ADR-087, propuesto; adenda del informe de fase
+          // §12.5): con cotización se congela desde la línea de la cotización y
+          // un `unitCost` del cliente que difiera se rechaza
+          // (UNIT_COST_MISMATCH). Por la escotilla (sin cotización, spec §7) el
+          // costo aportado por el operador ES el snapshot: la orden lo
+          // pre-rellena y el servidor nunca crea la línea con costo cero.
+          if (quoteLine && awardInput.unitCost !== undefined) {
+            const quoteCostCents = toCents(toNumeric(quoteLine.unitCost));
+            if (toCents(toNumeric(awardInput.unitCost)) !== quoteCostCents) {
+              throw new BadRequestException({
+                code: 'UNIT_COST_MISMATCH',
+                message: 'El costo unitario aportado difiere del costo de la línea de cotización.',
+              });
+            }
+          }
+          const snapshot =
+            quoteLine && quote
+              ? { unitCost: quoteLine.unitCost, currency: quote.currency }
+              : {
+                  unitCost:
+                    awardInput.unitCost != null ? toQuantity(toNumeric(awardInput.unitCost)) : null,
+                  currency: null,
+                };
 
-          line.lineStatus = PurchaseRequestLineStatus.AWARDED;
-          await manager.save(PurchaseRequestLine, line);
-          createdAwards.push(award);
+          let award: PurchaseRequestLineAward;
+          if (samePartyAward) {
+            samePartyAward.awardedQuantity = toQuantity(toNumeric(awardInput.awardedQuantity));
+            samePartyAward.supplierQuoteId = awardInput.supplierQuoteId ?? null;
+            samePartyAward.unitCost = snapshot.unitCost;
+            samePartyAward.currency = snapshot.currency;
+            samePartyAward.awardNotes = awardInput.awardNotes ?? null;
+            award = await manager.save(PurchaseRequestLineAward, samePartyAward);
+          } else {
+            award = await manager.save(
+              PurchaseRequestLineAward,
+              manager.create(PurchaseRequestLineAward, {
+                tenantId,
+                purchaseRequestLineId: line.id,
+                supplierQuoteId: awardInput.supplierQuoteId ?? null,
+                awardedPartyRefId: awardInput.awardedPartyRefId,
+                awardedQuantity: toQuantity(toNumeric(awardInput.awardedQuantity)),
+                awardNotes: awardInput.awardNotes ?? null,
+                unitCost: snapshot.unitCost,
+                currency: snapshot.currency,
+              }),
+            );
+          }
+
+          await this.ensureLineAwarded(manager, line);
+          resultAwards.push(award);
         }
 
+        // Cobertura derivada de TODAS las líneas vigentes de la solicitud
+        // (recargadas tras las marcas AWARDED de este lote).
+        const lines = await manager.find(PurchaseRequestLine, {
+          where: { tenantId, purchaseRequestId },
+        });
+
         void actor;
-        return createdAwards;
+        return {
+          awards: resultAwards.map(toAwardRecord),
+          coverage: resolveAwardCoverage(lines),
+        };
+      }),
+    );
+  }
+
+  /**
+   * Valida el contexto de cotización de un award (CA-304) y devuelve la
+   * cotización y su línea para el producto cuando aplican. Sin
+   * `supplierQuoteId` (escotilla, spec §7) devuelve par nulo.
+   */
+  private async requireAwardQuoteContext(
+    manager: EntityManager,
+    tenantId: string,
+    purchaseRequestId: string,
+    purchaseRequestLineId: string,
+    awardInput: { supplierQuoteId?: string | undefined; awardedPartyRefId: string },
+  ): Promise<{ quote: SupplierQuote | null; quoteLine: SupplierQuoteLine | null }> {
+    if (!awardInput.supplierQuoteId) {
+      return { quote: null, quoteLine: null };
+    }
+
+    const quote = await manager.findOne(SupplierQuote, {
+      where: { id: awardInput.supplierQuoteId, tenantId, purchaseRequestId },
+    });
+    if (!quote) {
+      throw new BadRequestException({
+        code: 'AWARD_QUOTE_MISMATCH',
+        message: 'La cotización indicada no pertenece a esta solicitud de compra.',
+      });
+    }
+
+    if (quote.partyRefId !== awardInput.awardedPartyRefId) {
+      throw new BadRequestException({
+        code: 'AWARD_SUPPLIER_MISMATCH',
+        message:
+          'La cotización pertenece a otro proveedor: no se puede adjudicar en nombre del proveedor indicado.',
+      });
+    }
+
+    const quoteLine = await manager.findOne(SupplierQuoteLine, {
+      where: { tenantId, supplierQuoteId: quote.id, purchaseRequestLineId },
+    });
+    if (!quoteLine) {
+      throw new BadRequestException({
+        code: 'AWARD_QUOTE_LINE_MISSING',
+        message:
+          'La cotización no tiene línea para este producto: la celda estaría sin cotizar y no admite adjudicación.',
+      });
+    }
+
+    return { quote, quoteLine };
+  }
+
+  /**
+   * Marca AWARDED una línea SOLO si sigue elegible (OPEN | PENDING_QUOTE).
+   * Nunca degrada AWARDED ni estados posteriores de orden/recepción.
+   */
+  private async ensureLineAwarded(
+    manager: EntityManager,
+    line: PurchaseRequestLine,
+  ): Promise<void> {
+    if (AWARD_ELIGIBLE_LINE_STATUSES.has(line.lineStatus)) {
+      line.lineStatus = PurchaseRequestLineStatus.AWARDED;
+      await manager.save(PurchaseRequestLine, line);
+    }
+  }
+
+  /**
+   * Revoca una adjudicación de línea (DELETE de awards, spec §6.5). El
+   * servidor es la autoridad: con línea de orden viva para ese producto y
+   * proveedor responde 409 `AWARD_ALREADY_ORDERED`; si no, borra el award,
+   * recalcula el estado de la línea y devuelve la respuesta del contrato
+   * congelado (`RevokeAwardResponse`).
+   */
+  async revokeLineAward(
+    purchaseRequestId: string,
+    awardId: string,
+    actor: JwtPayload,
+  ): Promise<RevokeAwardResponse> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      withTransaction(qr.manager, async (manager) => {
+        await this.requirePurchaseRequest(manager, tenantId, purchaseRequestId);
+
+        const award = await manager.findOne(PurchaseRequestLineAward, {
+          where: { id: awardId, tenantId },
+        });
+        // 404 (no 403) también cuando el award pertenece a otra solicitud: no
+        // se filtra su existencia (revisión de seguridad del track BE-2).
+        if (!award) {
+          throw new NotFoundException('La adjudicación no existe.');
+        }
+        const line = await this.requirePurchaseRequestLine(
+          manager,
+          tenantId,
+          award.purchaseRequestLineId,
+        );
+        if (line.purchaseRequestId !== purchaseRequestId) {
+          throw new NotFoundException('La adjudicación no pertenece a esta solicitud de compra.');
+        }
+
+        const liveOrderedQuantity = await this.getLiveOrderedQuantity(
+          manager,
+          tenantId,
+          purchaseRequestId,
+          award.awardedPartyRefId,
+          line.id,
+        );
+        if (toCents(liveOrderedQuantity) > 0) {
+          throw new ConflictException({
+            code: 'AWARD_ALREADY_ORDERED',
+            message:
+              'La adjudicación tiene una orden de compra viva para este producto y proveedor: no se puede revocar.',
+          });
+        }
+
+        await manager.delete(PurchaseRequestLineAward, { id: award.id, tenantId });
+
+        // Recálculo del estado de la línea tras la revocación (decisión
+        // documentada):
+        // 1. La línea SOLO se reabre (PENDING_QUOTE con cotizaciones
+        //    registradas, OPEN sin ellas) desde AWARDED y sin OTROS awards
+        //    vigentes: reabrir una línea adjudicada borra trabajo del usuario.
+        // 2. Con otros awards vigentes (reparto PROJECT) permanece como esté:
+        //    AWARDED, o ORDERED si otro proveedor del reparto ya tiene orden
+        //    viva — no se degrada nunca un estado de orden/recepción.
+        const remainingAwards = await manager.find(PurchaseRequestLineAward, {
+          where: { tenantId, purchaseRequestLineId: line.id },
+        });
+        if (remainingAwards.length === 0 && line.lineStatus === PurchaseRequestLineStatus.AWARDED) {
+          const quoteCount = await manager.count(SupplierQuote, {
+            where: { tenantId, purchaseRequestId },
+          });
+          line.lineStatus =
+            quoteCount > 0
+              ? PurchaseRequestLineStatus.PENDING_QUOTE
+              : PurchaseRequestLineStatus.OPEN;
+          await manager.save(PurchaseRequestLine, line);
+        }
+
+        const lines = await manager.find(PurchaseRequestLine, {
+          where: { tenantId, purchaseRequestId },
+        });
+
+        void actor;
+        return {
+          awardId: award.id,
+          lineStatusAfter: line.lineStatus,
+          coverage: resolveAwardCoverage(lines),
+        };
       }),
     );
   }
@@ -975,9 +1315,81 @@ export class PurchasingService {
         order.cancellationReason = validated.reason;
         order.cancelledByUserId = actor.sub;
         order.updatedAt = new Date();
-        return manager.save(PurchaseOrder, order);
+        const saved = await manager.save(PurchaseOrder, order);
+
+        // La cancelación es el espejo de la creación (ADR-087 D3 extendido):
+        // los derivados deben volver a reflejar las órdenes vivas, igual que
+        // `syncRequestConversionAfterOrders` los avanza al crear.
+        await this.revertDerivedStateAfterOrderCancellation(manager, tenantId, saved);
+
+        return saved;
       }),
     );
+  }
+
+  /**
+   * Revierte el estado derivado tras cancelar una orden (ADR-087 D3
+   * extendido, 2026-09-12). Reglas:
+   * 1. Líneas: solo degrada `ORDERED` → `AWARDED`, y solo cuando las órdenes
+   *    vivas restantes ya no cubren lo adjudicado (paridad con el tope de
+   *    creación y con el marcado `completesAward`). Nunca toca
+   *    `PARTIALLY_RECEIVED`/`RECEIVED`: la mercancía entró y no retrocede.
+   * 2. Solicitud: sale de `CONVERTED_TO_PO` → `APPROVED` solo cuando ya no
+   *    toda línea elegible está ordenada/recibida (mismo criterio BE-1 de
+   *    Fase 30: una cancelación no la vara en «convertida» si quedó trabajo
+   *    pendiente). Cualquier otro estado no se toca.
+   */
+  private async revertDerivedStateAfterOrderCancellation(
+    manager: EntityManager,
+    tenantId: string,
+    order: PurchaseOrder,
+  ): Promise<void> {
+    if (!order.purchaseRequestId) {
+      return;
+    }
+    const request = await this.requirePurchaseRequest(manager, tenantId, order.purchaseRequestId);
+
+    const orderLines = await manager.find(PurchaseOrderLine, {
+      where: { tenantId, purchaseOrderId: order.id },
+    });
+    const affectedLineIds = new Set<string>();
+    for (const orderLine of orderLines) {
+      if (orderLine.purchaseRequestLineId) {
+        affectedLineIds.add(orderLine.purchaseRequestLineId);
+      }
+    }
+
+    for (const lineId of affectedLineIds) {
+      const line = await this.requirePurchaseRequestLine(manager, tenantId, lineId);
+      if (line.lineStatus !== PurchaseRequestLineStatus.ORDERED) {
+        continue;
+      }
+      const lineAwards = await manager.find(PurchaseRequestLineAward, {
+        where: { tenantId, purchaseRequestLineId: lineId },
+      });
+      const awardedCents = lineAwards.reduce(
+        (total, award) => total + toCents(toNumeric(award.awardedQuantity)),
+        0,
+      );
+      const liveCents = toCents(
+        await this.getLiveOrderedQuantityForLine(manager, tenantId, request.id, lineId),
+      );
+      if (awardedCents > 0 && liveCents >= awardedCents) {
+        continue;
+      }
+      line.lineStatus = PurchaseRequestLineStatus.AWARDED;
+      await manager.save(PurchaseRequestLine, line);
+    }
+
+    if (request.status === PurchaseRequestStatus.CONVERTED_TO_PO) {
+      const lines = await manager.find(PurchaseRequestLine, {
+        where: { tenantId, purchaseRequestId: request.id },
+      });
+      if (!resolvePurchaseRequestConversion(lines)) {
+        request.status = PurchaseRequestStatus.APPROVED;
+        await manager.save(PurchaseRequest, request);
+      }
+    }
   }
 
   async closePurchaseOrder(purchaseOrderId: string, actor: JwtPayload): Promise<PurchaseOrder> {
@@ -1043,8 +1455,7 @@ export class PurchasingService {
             orders.push(order);
           }
 
-          request.status = PurchaseRequestStatus.CONVERTED_TO_PO;
-          await manager.save(PurchaseRequest, request);
+          await this.syncRequestConversionAfterOrders(manager, tenantId, request);
           return { orders };
         }
 
@@ -1062,12 +1473,35 @@ export class PurchasingService {
           actor,
         );
 
-        request.status = PurchaseRequestStatus.CONVERTED_TO_PO;
-        await manager.save(PurchaseRequest, request);
+        await this.syncRequestConversionAfterOrders(manager, tenantId, request);
 
         return order;
       }),
     );
+  }
+
+  /**
+   * Decide el estado de la solicitud tras crear orden(es), dentro de la misma
+   * transacción: solo cuando TODAS sus líneas vivas quedaron ordenadas (o ya
+   * recibidas) se marca `CONVERTED_TO_PO` (ADR-087 propuesto, D3). En caso
+   * contrario la solicitud PERMANECE en `APPROVED` — una orden parcial no debe
+   * vararla en «convertida» para siempre (defecto corregido en Fase 30 BE-1).
+   */
+  private async syncRequestConversionAfterOrders(
+    manager: EntityManager,
+    tenantId: string,
+    request: PurchaseRequest,
+  ): Promise<void> {
+    const lines = await manager.find(PurchaseRequestLine, {
+      where: { tenantId, purchaseRequestId: request.id },
+    });
+
+    if (!resolvePurchaseRequestConversion(lines)) {
+      return;
+    }
+
+    request.status = PurchaseRequestStatus.CONVERTED_TO_PO;
+    await manager.save(PurchaseRequest, request);
   }
 
   async requirePurchaseOrder(
@@ -1098,7 +1532,7 @@ export class PurchasingService {
         purchaseRequestLineId?: string | null | undefined;
         itemId: string;
         quantity: number;
-        unitCost: number;
+        unitCost?: number | undefined;
       }>;
     },
     actor: JwtPayload,
@@ -1132,6 +1566,8 @@ export class PurchasingService {
     );
 
     for (const line of input.lines) {
+      let award: PurchaseRequestLineAward | null = null;
+
       if (line.purchaseRequestLineId) {
         const requestLine = await this.requirePurchaseRequestLine(
           manager,
@@ -1154,7 +1590,7 @@ export class PurchasingService {
           where: { tenantId, purchaseRequestLineId: requestLine.id },
         });
         const matchingAwards = lineAwards.filter(
-          (award) => award.awardedPartyRefId === input.partyRefId,
+          (existingAward) => existingAward.awardedPartyRefId === input.partyRefId,
         );
 
         if (matchingAwards.length === 0) {
@@ -1162,10 +1598,46 @@ export class PurchasingService {
             'La línea seleccionada no tiene adjudicación para el proveedor indicado.',
           );
         }
+        // UNIQUE (tenant, línea, proveedor): hay a lo sumo un award por
+        // proveedor y línea; es la fuente del costo y del tope.
+        award = matchingAwards[0] ?? null;
 
-        requestLine.lineStatus = PurchaseRequestLineStatus.ORDERED;
-        await manager.save(PurchaseRequestLine, requestLine);
+        // Tope de conversión a OC (ADR-087 propuesto): lo ya ordenado y vivo
+        // para (línea, proveedor) más esta orden no puede superar lo
+        // adjudicado. Comparación en centavos para evitar deriva de coma
+        // flotante entre decimales.
+        const awardedQuantity = matchingAwards.reduce(
+          (total, currentAward) => total + toNumeric(currentAward.awardedQuantity),
+          0,
+        );
+        const alreadyOrderedQuantity = await this.getLiveOrderedQuantity(
+          manager,
+          tenantId,
+          request.id,
+          input.partyRefId,
+          requestLine.id,
+        );
+        const totalOrderedCents = toCents(alreadyOrderedQuantity + line.quantity);
+
+        if (totalOrderedCents > toCents(awardedQuantity)) {
+          throw new BadRequestException({
+            code: 'ORDER_EXCEEDS_AWARD',
+            message:
+              'La cantidad de la orden supera la cantidad adjudicada a este proveedor para la línea.',
+          });
+        }
+
+        // ORDERED solo al cubrir la adjudicación completa: una orden parcial
+        // deja la línea en AWARDED para permitir seguir convirtiendo (reparto
+        // PROJECT). No se degrada un ORDERED previo ni estados posteriores.
+        const completesAward = totalOrderedCents >= toCents(awardedQuantity);
+        if (completesAward && !ORDER_TERMINAL_LINE_STATUSES.has(requestLine.lineStatus)) {
+          requestLine.lineStatus = PurchaseRequestLineStatus.ORDERED;
+          await manager.save(PurchaseRequestLine, requestLine);
+        }
       }
+
+      const unitCost = await this.resolveOrderLineUnitCost(manager, tenantId, line, award);
 
       await manager.save(
         PurchaseOrderLine,
@@ -1175,13 +1647,153 @@ export class PurchasingService {
           itemId: line.itemId,
           purchaseRequestLineId: line.purchaseRequestLineId ?? null,
           quantity: toQuantity(line.quantity),
-          unitCost: toQuantity(line.unitCost),
+          unitCost,
           receivedQuantity: '0.00',
         }),
       );
     }
 
     return order;
+  }
+
+  /**
+   * Precedencia OBLIGATORIA del costo unitario de la línea de OC (spec §6.4,
+   * CA-308): (1) snapshot congelado del award; (2) línea de cotización del
+   * award; (3) SOLO por la escotilla de proveedor sin cotización, el valor que
+   * envía el cliente. Un valor del cliente que difiere del resuelto en más de
+   * un céntimo → 400 `UNIT_COST_MISMATCH`; y NINGUNA orden se crea con costo
+   * cero por falta de dato — sin costo resuelto ni aportado hay error
+   * explícito, nunca 0 silencioso.
+   *
+   * Moneda (decisión documentada): la orden de compra no declara moneda en el
+   * DTO ni en `purchase_orders`/`purchase_order_lines`, así que no hay un valor
+   * del cliente con qué contrastar; la moneda del award (o de su cotización)
+   * queda como autoridad implícita del costo de la línea. Si el DTO llegara a
+   * declarar moneda, la comparación se añade aquí.
+   */
+  private async resolveOrderLineUnitCost(
+    manager: EntityManager,
+    tenantId: string,
+    line: { unitCost?: number | undefined },
+    award: PurchaseRequestLineAward | null,
+  ): Promise<string> {
+    const clientUnitCost = typeof line.unitCost === 'number' ? line.unitCost : null;
+
+    // 1) Snapshot económico congelado en el award.
+    if (award?.unitCost != null && String(award.unitCost).trim() !== '') {
+      return this.assertClientCostMatchesServer(toNumeric(award.unitCost), clientUnitCost);
+    }
+
+    // 2) Línea de cotización vinculada al award.
+    if (award?.supplierQuoteId) {
+      const quoteLine = await manager.findOne(SupplierQuoteLine, {
+        where: {
+          tenantId,
+          supplierQuoteId: award.supplierQuoteId,
+          purchaseRequestLineId: award.purchaseRequestLineId,
+        },
+      });
+      if (!quoteLine) {
+        throw new BadRequestException({
+          code: 'AWARD_QUOTE_LINE_MISSING',
+          message:
+            'La cotización de la adjudicación no tiene línea para este producto: no hay costo en servidor para la orden.',
+        });
+      }
+      return this.assertClientCostMatchesServer(toNumeric(quoteLine.unitCost), clientUnitCost);
+    }
+
+    // 3) Escotilla sin cotización (o línea libre): el cliente aporta el costo.
+    if (clientUnitCost == null) {
+      throw new BadRequestException(
+        'La línea no tiene costo congelado ni cotización vinculada: indica el costo unitario de la orden.',
+      );
+    }
+    return toQuantity(clientUnitCost);
+  }
+
+  /** Compara el costo del cliente contra el del servidor en centavos. */
+  private assertClientCostMatchesServer(
+    serverUnitCost: number,
+    clientUnitCost: number | null,
+  ): string {
+    if (clientUnitCost != null && toCents(clientUnitCost) !== toCents(serverUnitCost)) {
+      throw new BadRequestException({
+        code: 'UNIT_COST_MISMATCH',
+        message:
+          'El costo unitario enviado difiere del costo resuelto en servidor en más de un céntimo.',
+      });
+    }
+    return toQuantity(serverUnitCost);
+  }
+
+  /**
+   * Cantidad ya ordenada y viva para (línea de solicitud, proveedor): suma de
+   * las líneas de OC de esa solicitud cuyo proveedor coincide y cuya orden no
+   * está cancelada — las órdenes canceladas no consumen adjudicación.
+   */
+  private async getLiveOrderedQuantity(
+    manager: EntityManager,
+    tenantId: string,
+    purchaseRequestId: string,
+    partyRefId: string,
+    purchaseRequestLineId: string,
+  ): Promise<number> {
+    const requestOrders = await manager.find(PurchaseOrder, {
+      where: { tenantId, purchaseRequestId },
+    });
+    const liveOrderIds = requestOrders
+      .filter(
+        (order) =>
+          order.partyRefId === partyRefId && order.status !== PurchaseOrderStatus.CANCELLED,
+      )
+      .map((order) => order.id);
+
+    if (liveOrderIds.length === 0) {
+      return 0;
+    }
+
+    const liveOrderIdSet = new Set(liveOrderIds);
+    const orderLines = await manager.find(PurchaseOrderLine, {
+      where: { tenantId, purchaseRequestLineId },
+    });
+
+    return orderLines
+      .filter((orderLine) => liveOrderIdSet.has(orderLine.purchaseOrderId))
+      .reduce((total, orderLine) => total + toNumeric(orderLine.quantity), 0);
+  }
+
+  /**
+   * Cantidad viva ordenada para una línea de solicitud a través de TODOS los
+   * proveedores: misma regla de `getLiveOrderedQuantity` sin el filtro de
+   * proveedor. La usa la reversión post-cancelación para decidir si la línea
+   * sigue cubierta por órdenes vivas (reparto entre proveedores incluido).
+   */
+  private async getLiveOrderedQuantityForLine(
+    manager: EntityManager,
+    tenantId: string,
+    purchaseRequestId: string,
+    purchaseRequestLineId: string,
+  ): Promise<number> {
+    const requestOrders = await manager.find(PurchaseOrder, {
+      where: { tenantId, purchaseRequestId },
+    });
+    const liveOrderIds = requestOrders
+      .filter((order) => order.status !== PurchaseOrderStatus.CANCELLED)
+      .map((order) => order.id);
+
+    if (liveOrderIds.length === 0) {
+      return 0;
+    }
+
+    const liveOrderIdSet = new Set(liveOrderIds);
+    const orderLines = await manager.find(PurchaseOrderLine, {
+      where: { tenantId, purchaseRequestLineId },
+    });
+
+    return orderLines
+      .filter((orderLine) => liveOrderIdSet.has(orderLine.purchaseOrderId))
+      .reduce((total, orderLine) => total + toNumeric(orderLine.quantity), 0);
   }
 
   private async requirePurchaseRequest(

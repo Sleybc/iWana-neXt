@@ -2,10 +2,16 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PurchaseRequestStatus, PurchaseRequestType } from '@iwana/shared';
 import type { PurchaseRequestDetailRecord } from '@/lib/api-client';
+import { purchasingApi } from '@/lib/api-client';
+import { triggerBlobDownload } from '@/lib/blob-download';
 import { PurchaseOrderDrawer } from './PurchaseOrderDrawer';
 
 jest.mock('./SupplierPicker', () => ({
   SupplierPicker: () => <div>SupplierPicker</div>,
+}));
+
+jest.mock('@/lib/blob-download', () => ({
+  triggerBlobDownload: jest.fn(),
 }));
 
 function buildDetail(): PurchaseRequestDetailRecord {
@@ -217,6 +223,86 @@ describe('PurchaseOrderDrawer', () => {
     );
     expect(onOrderCreated).not.toHaveBeenCalled();
     expect(await screen.findByText(/2 órdenes de compra generadas/i)).toBeInTheDocument();
+  });
+
+  it('tras generar ofrece la descarga del PDF de la orden única (Fase 31)', async () => {
+    const user = userEvent.setup();
+    const single = buildDetail();
+    single.lines = [single.lines[0]!];
+    single.quotes = [single.quotes[0]!];
+    single.awards = [single.awards[0]!];
+    const onCreateOrder = jest
+      .fn()
+      .mockResolvedValue([{ id: 'po-001', orderNumber: 'PO-000001', status: 'APPROVED' }]);
+    const downloadPdf = jest
+      .spyOn(purchasingApi, 'downloadPurchaseOrderPdf')
+      .mockResolvedValue({ blob: new Blob(['%PDF']), filename: 'PO-000001-orden-compra.pdf' });
+
+    render(
+      <PurchaseOrderDrawer
+        open
+        request={single.request}
+        detail={single}
+        items={[{ id: 'item-a', sku: 'SKU-A', name: 'Cable' } as never]}
+        supplierLabels={{ 'party-a': 'Proveedor A' }}
+        latestOrder={null}
+        createError={null}
+        isSubmittingOrder={false}
+        onClose={jest.fn()}
+        onCreateOrder={onCreateOrder}
+        onOrderCreated={jest.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Generar 1 orden/i }));
+    const downloadButton = await screen.findByRole('button', { name: 'Descargar PDF' });
+    await user.click(downloadButton);
+
+    expect(downloadPdf).toHaveBeenCalledWith('po-001');
+    expect(triggerBlobDownload).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'PO-000001-orden-compra.pdf',
+    );
+    downloadPdf.mockRestore();
+  });
+
+  it('tras generar varias órdenes ofrece la descarga en ZIP por solicitud (Fase 31)', async () => {
+    const user = userEvent.setup();
+    const detail = buildDetail();
+    const onCreateOrder = jest.fn().mockResolvedValue([
+      { id: 'po-001', orderNumber: 'PO-000001', status: 'APPROVED' },
+      { id: 'po-002', orderNumber: 'PO-000002', status: 'APPROVED' },
+    ]);
+    const downloadZip = jest
+      .spyOn(purchasingApi, 'downloadRequestOrdersZip')
+      .mockResolvedValue({ blob: new Blob(['PK']), filename: 'PR-1-ordenes.zip' });
+
+    render(
+      <PurchaseOrderDrawer
+        open
+        request={detail.request}
+        detail={detail}
+        items={[
+          { id: 'item-a', sku: 'SKU-A', name: 'Cable' } as never,
+          { id: 'item-b', sku: 'SKU-B', name: 'Switch' } as never,
+        ]}
+        supplierLabels={{ 'party-a': 'Proveedor A', 'party-b': 'Proveedor B' }}
+        latestOrder={null}
+        createError={null}
+        isSubmittingOrder={false}
+        onClose={jest.fn()}
+        onCreateOrder={onCreateOrder}
+        onOrderCreated={jest.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Generar 2 órdenes/i }));
+    const downloadButton = await screen.findByRole('button', { name: 'Descargar todos (ZIP)' });
+    await user.click(downloadButton);
+
+    expect(downloadZip).toHaveBeenCalledWith('pr-001');
+    expect(triggerBlobDownload).toHaveBeenCalledWith(expect.any(Blob), 'PR-1-ordenes.zip');
+    downloadZip.mockRestore();
   });
 
   it('precarga entrega esperada desde la fecha requerida de la solicitud', () => {

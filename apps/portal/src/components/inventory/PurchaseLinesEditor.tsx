@@ -5,6 +5,7 @@ import { Button } from '@iwana/ui';
 import { PurchaseRequestLineSourceKind } from '@iwana/shared';
 import type { InventoryCatalogOptionRecord } from '@/lib/api-client';
 import { PortalAlert, PortalEmptyState, PortalSectionHeader } from '@/components/shared/portal-ui';
+import { focusLastMatchingInput } from './line-focus';
 import {
   addCatalogSelectionToDraft,
   applyBulkQuantityToDraftLines,
@@ -27,6 +28,8 @@ export interface PurchaseLinesEditorProps {
   isCatalogSearching?: boolean;
   onCatalogSearch?: (search: string) => void;
   isSubmitting?: boolean;
+  /** Id estable del buscador de productos (foco ante error de validación). */
+  searchInputId?: string;
   /** Se invoca tras agregar una línea (búsqueda o manual), para flujos con pasos (ej. mobile). */
   onLineAdded?: () => void;
 }
@@ -83,6 +86,7 @@ export function usePurchaseLinesEditorSections({
   isCatalogSearching = false,
   onCatalogSearch,
   isSubmitting = false,
+  searchInputId,
   onLineAdded,
 }: PurchaseLinesEditorProps): PurchaseLinesEditorSections {
   const [selectedDraftLineIds, setSelectedDraftLineIds] = useState<string[]>([]);
@@ -116,6 +120,8 @@ export function usePurchaseLinesEditorSections({
         PurchaseRequestLineSourceKind.INVENTORY_ITEM,
       ),
     );
+    // Fase 27: el foco sigue a la cantidad de la línea recién agregada.
+    focusLastMatchingInput('purchase-draft-qty-');
     onLineAdded?.();
   }
 
@@ -123,6 +129,7 @@ export function usePurchaseLinesEditorSections({
     onDraftChange((current) => ({
       lines: [...current.lines, createManualDraftLine()],
     }));
+    focusLastMatchingInput('purchase-draft-label-');
     onLineAdded?.();
   }
 
@@ -179,6 +186,7 @@ export function usePurchaseLinesEditorSections({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1">
           <PurchaseProductSearch
+            {...(searchInputId ? { id: searchInputId } : {})}
             catalogOptions={catalogOptions}
             supplierLabels={supplierLabels}
             isSearching={isCatalogSearching}

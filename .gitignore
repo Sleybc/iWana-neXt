@@ -83,6 +83,10 @@ out/
 # Worktrees
 .worktrees/
 
+# Planes de sesion de herramientas locales (efimeros, nombrados por sesion).
+# Los planes del proyecto se versionan en docs/plans/.
+.zcode/
+
 # Artefactos de compilacion que no deben contaminar src/ (el build va a dist/)
 packages/database/src/**/*.js
 packages/database/src/**/*.js.map

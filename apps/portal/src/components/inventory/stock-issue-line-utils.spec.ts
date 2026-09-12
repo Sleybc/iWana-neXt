@@ -21,7 +21,6 @@ import {
   listSerializedAssetsForItemAtLocation,
   resolveSingleLotIdFromLots,
   searchPickableSerializedAssets,
-  stepDraftQuantity,
 } from './stock-issue-line-utils';
 import type { StockIssueDraftLine } from './stock-issue-draft';
 
@@ -97,27 +96,6 @@ describe('stock-issue-line-utils', () => {
     expect(isSerializedTrackingMode(InventoryTrackingMode.FIXED_ASSET)).toBe(true);
     expect(isSerializedTrackingMode(InventoryTrackingMode.CONSUMABLE)).toBe(false);
     expect(isSerializedTrackingMode(undefined)).toBe(false);
-  });
-
-  describe('stepDraftQuantity', () => {
-    it('suma y resta un paso entero desde un valor entero', () => {
-      expect(stepDraftQuantity('2', 1)).toBe('3');
-      expect(stepDraftQuantity('2', -1)).toBe('1');
-    });
-
-    it('conserva los decimales al desplazar', () => {
-      expect(stepDraftQuantity('1.5', 1)).toBe('2.5');
-      expect(stepDraftQuantity('2.5', -1)).toBe('1.5');
-    });
-
-    it('trata vacío o no numérico como cero al sumar', () => {
-      expect(stepDraftQuantity('', 1)).toBe('1');
-      expect(stepDraftQuantity('abc', 1)).toBe('1');
-    });
-
-    it('evita el ruido de coma flotante con dos decimales', () => {
-      expect(stepDraftQuantity('0.7', 1)).toBe('1.7');
-    });
   });
 
   it('lista lotes con número real y solo con disponible en la condición', () => {
@@ -291,21 +269,32 @@ describe('stock-issue-line-utils', () => {
       expect(lines[1]?.lotId).toBe('');
     });
 
-    it('no pisa un lote ya elegido, una línea serializada ni una línea sin producto', () => {
+    it('no pisa un lote ya elegido ni toca una línea sin producto', () => {
       const original = [
         buildDraftLine({ id: 'line-1', lotId: 'lote-z', lots: singleLot }),
-        buildDraftLine({
-          id: 'line-2',
-          serializedAssetId: 'asset-1',
-          trackingMode: InventoryTrackingMode.SERIALIZED,
-          lots: singleLot,
-        }),
         buildDraftLine({ id: 'line-3', itemId: '', isManual: true }),
       ];
 
       const lines = applySingleLotPreselectionToDraftLines(original);
 
       expect(lines).toBe(original);
+    });
+
+    it('preselecciona el lote único también en una línea serializada', () => {
+      // El saldo de un ítem con seriales vive igualmente en la tupla
+      // (ítem, lote, condición). Al excluirlas, la salida reservaba contra
+      // lot_id nulo y el API la rechazaba por disponible 0 con material de
+      // sobra en la bodega.
+      const lines = applySingleLotPreselectionToDraftLines([
+        buildDraftLine({
+          id: 'line-2',
+          serializedAssetId: 'asset-1',
+          trackingMode: InventoryTrackingMode.SERIALIZED,
+          lots: singleLot,
+        }),
+      ]);
+
+      expect(lines[0]?.lotId).toBe('lot-a');
     });
   });
 

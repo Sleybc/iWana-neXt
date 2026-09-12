@@ -1,6 +1,12 @@
 'use client';
 
-import { PurchaseOrderStatus, PurchaseRequestStatus, PurchaseRfqStatus } from '@iwana/shared';
+import {
+  PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
+  PurchaseRequestLineStatus,
+  PurchaseRequestStatus,
+  PurchaseRfqStatus,
+} from '@iwana/shared';
 import type { PurchaseRequestDetailRecord } from '@/lib/api-client';
 
 export type PurchaseWorkbenchTab =
@@ -188,9 +194,42 @@ export function normalizePurchaseWorkbenchTab(tab: string): PurchaseWorkbenchTab
   return 'summary';
 }
 
+/**
+ * Líneas fuera del cálculo de cobertura: su ciclo terminó por decisión
+ * administrativa (mismo criterio que `resolveAwardCoverage`, ADR-087
+ * propuesto). No cuentan como pendientes.
+ */
+const EXCLUDED_COVERAGE_LINE_STATUSES: ReadonlySet<PurchaseRequestLineStatus> = new Set([
+  PurchaseRequestLineStatus.CANCELLED,
+  PurchaseRequestLineStatus.REJECTED,
+]);
+
+/** Eje de cobertura derivado: raíz del detalle, luego `request` (ambos opcionales). */
+function resolveDetailAwardCoverage(
+  detail: PurchaseRequestDetailRecord,
+): PurchaseRequestAwardCoverage | null {
+  return detail.awardCoverage ?? detail.request.awardCoverage ?? null;
+}
+
 function hasPendingAwardableLines(detail: PurchaseRequestDetailRecord): boolean {
   const awardedLineIds = new Set(detail.awards.map((award) => award.purchaseRequestLineId));
-  return detail.lines.some((line) => Boolean(line.inventoryItemId) && !awardedLineIds.has(line.id));
+  return detail.lines.some(
+    (line) =>
+      Boolean(line.inventoryItemId) &&
+      !EXCLUDED_COVERAGE_LINE_STATUSES.has(line.lineStatus) &&
+      !awardedLineIds.has(line.id),
+  );
+}
+
+/** Productos elegibles aún sin adjudicar (sin award vigente, sin ciclo terminado). */
+function countPendingAwardLines(detail: PurchaseRequestDetailRecord): number {
+  const awardedLineIds = new Set(detail.awards.map((award) => award.purchaseRequestLineId));
+  return detail.lines.filter(
+    (line) =>
+      Boolean(line.inventoryItemId) &&
+      !EXCLUDED_COVERAGE_LINE_STATUSES.has(line.lineStatus) &&
+      !awardedLineIds.has(line.id),
+  ).length;
 }
 
 export function getPurchaseNextAction(
@@ -275,6 +314,17 @@ export function getPurchaseNextAction(
 
   if (request.status === PurchaseRequestStatus.APPROVED) {
     if (hasPendingAwardableLines(detail)) {
+      // Con órdenes parciales ya emitidas, la guía indica cuántos productos
+      // quedan por adjudicar (spec §9: `PARTIALLY_ORDERED` = «Órdenes parciales»).
+      if (resolveDetailAwardCoverage(detail) === PurchaseRequestAwardCoverage.PARTIALLY_ORDERED) {
+        const pending = countPendingAwardLines(detail);
+        const productWord = pending === 1 ? 'producto' : 'productos';
+        return {
+          message: `Ya hay órdenes parciales: quedan ${pending} ${productWord} por adjudicar.`,
+          suggestedTab: 'awards',
+        };
+      }
+
       return {
         message: 'Adjudica las líneas aprobadas antes de generar la orden.',
         suggestedTab: 'awards',

@@ -72,6 +72,7 @@ import { CycleCountService } from './services/cycle-count.service';
 import { CounterPurchaseService } from './services/counter-purchase.service';
 import { InventoryCostingService } from './services/inventory-costing.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from './services/purchase-order-pdf.service';
 import { RfqService } from './services/rfq.service';
 import { StockLocationService } from './services/stock-location.service';
 import { WriteOffService } from './services/write-off.service';
@@ -143,6 +144,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     CounterPurchaseService,
     RfqService,
     RfqPdfService,
+    PurchaseOrderPdfService,
     AssetLifecycleService,
     AssetLoanService,
     InventoryDashboardService,

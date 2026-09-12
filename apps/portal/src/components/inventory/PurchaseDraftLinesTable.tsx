@@ -94,6 +94,7 @@ export function PurchaseDraftLinesTable({
                     <div className="flex flex-col gap-1.5">
                       {line.sourceKind === PurchaseRequestLineSourceKind.FREE_TEXT ? (
                         <Input
+                          id={`purchase-draft-label-${line.id}`}
                           aria-label="Descripción manual"
                           value={line.productLabel}
                           onChange={(event) => onLabelChange(line.id, event.target.value)}
@@ -113,6 +114,7 @@ export function PurchaseDraftLinesTable({
                   <td className={portalDataTableCellClassName}>
                     <div className="flex items-center gap-2">
                       <Input
+                        id={`purchase-draft-qty-${line.id}`}
                         aria-label={`Cantidad ${line.productLabel}`}
                         className="w-20 tabular-nums"
                         value={line.quantityRequested}

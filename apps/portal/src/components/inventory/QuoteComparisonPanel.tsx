@@ -1,6 +1,10 @@
 'use client';
 
-import type { SupplierQuoteRecord } from '@/lib/api-client';
+import type {
+  InventoryItemRecord,
+  PurchaseRequestLineRecord,
+  SupplierQuoteRecord,
+} from '@/lib/api-client';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { cn, Button } from '@iwana/ui';
 import {
@@ -26,6 +30,41 @@ interface QuoteComparisonPanelProps {
   onSelectQuote?: (quoteId: string) => void;
   onEditQuote?: (quoteId: string) => void;
   canEditQuote?: (quoteId: string) => boolean;
+  /**
+   * Líneas de la solicitud + catálogo (opcionales, compatibles hacia atrás):
+   * con ambas, cada línea de cotización muestra nombre y SKU del producto
+   * (spec §10: hoy lista precios sin decir de qué producto son).
+   */
+  requestLines?: PurchaseRequestLineRecord[];
+  items?: InventoryItemRecord[];
+  /**
+   * Salto a la matriz con esa columna enfocada (spec §10, patrón
+   * `line-focus.ts`): el padre cambia al tab Adjudicación y enfoca el
+   * control de columna de la cotización.
+   */
+  onAwardQuote?: (quoteId: string) => void;
+}
+
+/** Nombre y SKU del producto de una línea de cotización, sin ids crudos. */
+function getQuoteLineProductLabel(
+  purchaseRequestLineId: string,
+  requestLines: PurchaseRequestLineRecord[] | undefined,
+  items: InventoryItemRecord[] | undefined,
+): string | null {
+  const requestLine = requestLines?.find((line) => line.id === purchaseRequestLineId);
+  if (!requestLine) {
+    return null;
+  }
+  if (requestLine.freeTextDescription?.trim()) {
+    return requestLine.freeTextDescription.trim();
+  }
+  if (requestLine.inventoryItemId) {
+    const item = items?.find((entry) => entry.id === requestLine.inventoryItemId);
+    if (item) {
+      return `${item.name} · ${item.sku}`;
+    }
+  }
+  return 'Producto de la solicitud';
 }
 
 function toNumeric(value: string | number | null | undefined): number {
@@ -42,6 +81,9 @@ export function QuoteComparisonPanel({
   onSelectQuote,
   onEditQuote,
   canEditQuote,
+  requestLines,
+  items,
+  onAwardQuote,
 }: QuoteComparisonPanelProps) {
   if (quotes.length === 0) {
     return (
@@ -134,17 +176,27 @@ export function QuoteComparisonPanel({
             </dl>
             {quote.lines && quote.lines.length > 0 ? (
               <ul className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs text-iwana-secondary-700 dark:text-iwana-secondary-400 dark:border-dark-border">
-                {quote.lines.map((line) => (
-                  <li key={line.id} className="flex flex-wrap justify-between gap-2">
-                    <span>
-                      Cantidad {line.quantity} · Costo unitario{' '}
-                      <span className="tabular-nums">{formatInventoryMoney(line.unitCost)}</span>
-                    </span>
-                    <span className="font-medium tabular-nums text-gray-900 dark:text-white">
-                      {formatInventoryMoney(line.lineAmount)}
-                    </span>
-                  </li>
-                ))}
+                {quote.lines.map((line) => {
+                  const productLabel = getQuoteLineProductLabel(
+                    line.purchaseRequestLineId,
+                    requestLines,
+                    items,
+                  );
+                  return (
+                    <li key={line.id} className="flex flex-wrap justify-between gap-2">
+                      <span>
+                        {productLabel ? (
+                          <span className="font-medium">{productLabel} · </span>
+                        ) : null}
+                        Cantidad {line.quantity} · Costo unitario{' '}
+                        <span className="tabular-nums">{formatInventoryMoney(line.unitCost)}</span>
+                      </span>
+                      <span className="font-medium tabular-nums text-gray-900 dark:text-white">
+                        {formatInventoryMoney(line.lineAmount)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             {onSelectQuote ? (
@@ -169,6 +221,18 @@ export function QuoteComparisonPanel({
                 onClick={() => onEditQuote(quote.id)}
               >
                 Modificar cotización
+              </Button>
+            ) : null}
+            {onAwardQuote ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="mt-3 ml-2"
+                aria-label={`Adjudicar productos de la cotización de ${supplierName}`}
+                onClick={() => onAwardQuote(quote.id)}
+              >
+                Adjudicar productos de esta cotización
               </Button>
             ) : null}
           </div>

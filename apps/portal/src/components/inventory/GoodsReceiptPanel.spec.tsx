@@ -97,6 +97,22 @@ const items = [
   },
 ] as never;
 
+const consumableItems = [
+  {
+    id: 'item-1',
+    tenantId: 'tenant-1',
+    sku: 'FIB-100',
+    name: 'Fibra drop',
+    trackingMode: 'CONSUMABLE',
+    unitOfMeasure: 'unidad',
+    baseCost: '9000',
+    minimumStock: '10',
+    status: 'ACTIVE',
+    createdAt: '2026-06-25T12:00:00.000Z',
+    updatedAt: '2026-06-25T12:00:00.000Z',
+  },
+] as never;
+
 const locations = [
   {
     id: 'loc-1',
@@ -299,7 +315,7 @@ describe('GoodsReceiptPanel', () => {
       <GoodsReceiptPanel
         order={order}
         orderLines={orderLines}
-        items={items}
+        items={consumableItems}
         locations={locations}
         isSubmitting={false}
         error={null}
@@ -326,6 +342,69 @@ describe('GoodsReceiptPanel', () => {
             purchaseOrderLineId: 'pol-1',
             itemId: 'item-1',
             quantityReceived: 5,
+            lotNumber: null,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('producto consumible: no pide seriales y el lote es opcional con generación automática', () => {
+    render(
+      <GoodsReceiptPanel
+        order={order}
+        orderLines={orderLines}
+        items={consumableItems}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastReceipt={null}
+        onSubmit={jest.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(screen.queryByLabelText('Seriales')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Lote')).toBeInTheDocument();
+    expect(
+      screen.getByText('Opcional: si se deja vacío se genera uno automático.'),
+    ).toBeInTheDocument();
+  });
+
+  it('producto serializado: pide un serial por unidad y bloquea el registro hasta completarlos', async () => {
+    const user = userEvent.setup();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <GoodsReceiptPanel
+        order={order}
+        orderLines={orderLines}
+        items={items}
+        locations={locations}
+        isSubmitting={false}
+        error={null}
+        lastReceipt={null}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Ubicación destino' }));
+
+    const submit = screen.getByRole('button', { name: 'Registrar recepción' });
+    expect(screen.getByLabelText('Seriales')).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+    expect(screen.getByText('Se esperaban 5 seriales; hay 0.')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Seriales'), 'SN-1, SN-2, SN-3, SN-4, SN-5');
+    expect(screen.queryByText('Se esperaban 5 seriales; hay 0.')).not.toBeInTheDocument();
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lines: [
+          expect.objectContaining({
+            quantityReceived: 5,
+            serialNumbers: ['SN-1', 'SN-2', 'SN-3', 'SN-4', 'SN-5'],
           }),
         ],
       }),

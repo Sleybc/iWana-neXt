@@ -7,6 +7,7 @@ import {
   PartyStatus,
   PurchaseOrderStatus,
   PurchaseRequestLineSourceKind,
+  PurchaseRequestLineStatus,
   PurchaseRequestPriority,
   PurchaseRequestStatus,
   PurchaseRequestType,
@@ -27,6 +28,7 @@ import { PurchasingPolicyService } from '../services/purchasing-policy.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 
@@ -44,6 +46,7 @@ jest.mock('@iwana/db', () => ({
   SupplierQuoteTax: class SupplierQuoteTax {},
   PurchaseOrder: class PurchaseOrder {},
   PurchaseOrderLine: class PurchaseOrderLine {},
+  PurchaseRequestLineAward: class PurchaseRequestLineAward {},
   GoodsReceipt: class GoodsReceipt {},
   GoodsReceiptLine: class GoodsReceiptLine {},
   InventoryItem: class InventoryItem {},
@@ -75,8 +78,9 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
       }
 
       const req = context.switchToHttp().getRequest();
-      if (req.headers.authorization === 'Bearer support-token') {
-        req.user = {
+      // Fase 30 BE-2: token de AUDITOR para probar autorización MANAGE (403).
+      const tokens: Record<string, JwtPayload> = {
+        'Bearer support-token': {
           sub: 'support-001',
           email: 'support@example.test',
           role: UserRole.SUPPORT,
@@ -84,7 +88,20 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
           schemaName: 'tenant_001',
           jti: 'jti-support',
           type: 'tenant',
-        } as JwtPayload;
+        },
+        'Bearer auditor-token': {
+          sub: 'auditor-001',
+          email: 'auditor@example.test',
+          role: UserRole.AUDITOR,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          jti: 'jti-auditor',
+          type: 'tenant',
+        },
+      };
+      const user = tokens[req.headers.authorization ?? ''];
+      if (user) {
+        req.user = user;
         return true;
       }
 
@@ -132,6 +149,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     requests: [] as Array<Record<string, unknown>>,
     requestLines: [] as Array<Record<string, unknown>>,
     quotes: [] as Array<Record<string, unknown>>,
+    awards: [] as Array<Record<string, unknown>>,
     orders: [] as Array<Record<string, unknown>>,
     orderLines: [] as Array<Record<string, unknown>>,
     rfqs: [] as Array<Record<string, unknown>>,
@@ -139,6 +157,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     nextRequest: 1,
     nextRequestLine: 1,
     nextQuote: 1,
+    nextAward: 1,
     nextOrder: 1,
     nextLine: 1,
   };
@@ -198,6 +217,11 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     return `77777777-7777-4777-8777-${suffix}`;
   }
 
+  function nextAwardId(): string {
+    const suffix = String(state.nextAward++).padStart(12, '0');
+    return `88888888-8888-4888-8888-${suffix}`;
+  }
+
   function nextLineId(): string {
     const suffix = String(state.nextLine++).padStart(12, '0');
     return `33333333-3333-4333-8333-${suffix}`;
@@ -238,7 +262,24 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
           }),
         };
       }),
-      count: jest.fn().mockResolvedValue(0),
+      count: jest.fn().mockImplementation(async (entity, options) => {
+        // La revocación decide OPEN/PENDING_QUOTE contando cotizaciones.
+        if (entity?.name === 'SupplierQuote' && options?.where?.purchaseRequestId) {
+          return state.quotes.filter(
+            (quote) => quote.purchaseRequestId === options.where.purchaseRequestId,
+          ).length;
+        }
+        return 0;
+      }),
+      delete: jest.fn().mockImplementation(async (entity, criteria) => {
+        const awardId = typeof criteria === 'string' ? criteria : criteria?.id;
+        if (entity?.name === 'PurchaseRequestLineAward' && awardId) {
+          const awardIndex = state.awards.findIndex((award) => award.id === awardId);
+          if (awardIndex >= 0) {
+            state.awards.splice(awardIndex, 1);
+          }
+        }
+      }),
       remove: jest.fn().mockImplementation(async (_entity, records: Array<{ id: string }>) => {
         for (const record of records) {
           const lineIndex = state.requestLines.findIndex((entry) => entry.id === record.id);
@@ -261,6 +302,22 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
             state.requests[requestIndex] = { ...state.requests[requestIndex], ...payload };
             return state.requests[requestIndex];
           }
+        }
+
+        // Fase 30 BE-2: awards persistidos (creación, no-op con notas y
+        // re-adjudicación). Antes del genérico `payload.id`, que busca en
+        // requestLines.
+        if (payload.purchaseRequestLineId && payload.awardedPartyRefId) {
+          if (payload.id) {
+            const awardIndex = state.awards.findIndex((award) => award.id === payload.id);
+            if (awardIndex >= 0) {
+              state.awards[awardIndex] = { ...state.awards[awardIndex], ...payload };
+              return state.awards[awardIndex];
+            }
+          }
+          const savedAward = { id: nextAwardId(), ...payload };
+          state.awards.push(savedAward);
+          return savedAward;
         }
 
         if (payload.id) {
@@ -310,6 +367,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
           state.requests.find((entry) => entry.id === id) ??
           state.requestLines.find((entry) => entry.id === id) ??
           state.orders.find((entry) => entry.id === id) ??
+          state.awards.find((award) => award.id === id) ??
           null
         );
       }),
@@ -332,6 +390,20 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
               (order) => order.purchaseRequestId === options.where.purchaseRequestId,
             );
           }
+
+          return [];
+        }
+
+        // Fase 30 BE-2: awards por línea y órdenes vivas por línea (revocación).
+        if (options?.where?.purchaseRequestLineId && entity?.name === 'PurchaseRequestLineAward') {
+          return state.awards.filter(
+            (award) => award.purchaseRequestLineId === options.where.purchaseRequestLineId,
+          );
+        }
+        if (options?.where?.purchaseRequestLineId && entity?.name === 'PurchaseOrderLine') {
+          return state.orderLines.filter(
+            (line) => line.purchaseRequestLineId === options.where.purchaseRequestLineId,
+          );
         }
         if (options?.where?.purchaseOrderId) {
           return state.orderLines.filter(
@@ -359,6 +431,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
           useValue: { applyQuoteToInvitation: jest.fn(), cancelActiveForRequest },
         },
         { provide: RfqPdfService, useValue: { renderAllInvitationsZip: jest.fn() } },
+        { provide: PurchaseOrderPdfService, useValue: {} },
         {
           provide: SupplierProfileService,
           useValue: { assertNotBlockedForPurchasing: jest.fn().mockResolvedValue(undefined) },
@@ -419,6 +492,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     state.requests = [];
     state.requestLines = [];
     state.quotes = [];
+    state.awards = [];
     state.orders = [];
     state.orderLines = [];
     state.rfqs = [];
@@ -426,6 +500,7 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     state.nextRequest = 1;
     state.nextRequestLine = 1;
     state.nextQuote = 1;
+    state.nextAward = 1;
     state.nextOrder = 1;
     state.nextLine = 1;
     jest.clearAllMocks();
@@ -872,12 +947,35 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
   });
 
   it('cancela una orden en APPROVED con motivo', async () => {
+    // La cancelación revierte el estado derivado de la solicitud origen
+    // (ADR-087 D3 extendido), así que la orden debe apuntar a una solicitud
+    // que exista realmente en el fixture.
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Solicitud para OC a cancelar',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestingArea: 'Operaciones',
+        justification: 'Prueba de cancelación de OC Fase 07.',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 2,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
     const cancelOrderId = '22222222-2222-4222-8222-000000000081';
     state.orders.push({
       id: cancelOrderId,
       tenantId: 'tenant-001',
       orderNumber: 'PO-000081',
-      purchaseRequestId: '11111111-1111-4111-8111-000000000001',
+      purchaseRequestId: created.body.id as string,
       partyRefId: '55555555-5555-4555-8555-555555555555',
       status: PurchaseOrderStatus.APPROVED,
       cancellationReason: null,
@@ -959,5 +1057,137 @@ describe('Purchasing HTTP integration (tenant-aware)', () => {
     expect(response.body.message).toEqual(
       expect.stringContaining('no está en un estado que permita cancelarla'),
     );
+  });
+
+  // ===== Fase 30 BE-2 — revocación de adjudicaciones (DELETE awards) =====
+
+  async function createApprovedRequestWithAward() {
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/purchasing/requests')
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        title: 'Reposición para matriz de adjudicación',
+        requestType: PurchaseRequestType.REPLENISHMENT,
+        priority: PurchaseRequestPriority.NORMAL,
+        requestingArea: 'Operaciones',
+        justification: 'Ciclo de adjudicación y revocación de la Fase 30.',
+        neededByDate: '2026-10-01',
+        lines: [
+          {
+            sourceKind: PurchaseRequestLineSourceKind.INVENTORY_ITEM,
+            inventoryItemId: '44444444-4444-4444-8444-444444444444',
+            quantityRequested: 4,
+            unitOfMeasure: 'unidad',
+          },
+        ],
+      })
+      .expect(201);
+
+    const requestId = created.body.id as string;
+    const requestIndex = state.requests.findIndex((entry) => entry.id === requestId);
+    state.requests[requestIndex] = {
+      ...state.requests[requestIndex],
+      status: PurchaseRequestStatus.APPROVED,
+    };
+
+    const detail = await request(app.getHttpServer())
+      .get(`/api/v1/purchasing/requests/${requestId}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    const awardsResponse = await request(app.getHttpServer())
+      .post(`/api/v1/purchasing/requests/${requestId}/awards`)
+      .set('Authorization', 'Bearer support-token')
+      .send({
+        awards: [
+          {
+            purchaseRequestLineId: detail.body.lines[0].id,
+            awardedPartyRefId: '55555555-5555-4555-8555-555555555555',
+            awardedQuantity: '4.00',
+          },
+        ],
+      })
+      .expect(201);
+
+    return {
+      requestId,
+      requestLineId: detail.body.lines[0].id as string,
+      awardId: awardsResponse.body.awards[0].id as string,
+    };
+  }
+
+  it('DELETE awards: revoca sin orden viva, reabre la línea y responde el contrato RevokeAwardResponse', async () => {
+    const { requestId, requestLineId, awardId } = await createApprovedRequestWithAward();
+
+    // Autorización: el rol AUDITOR es de solo lectura y el endpoint es MANAGE.
+    await request(app.getHttpServer())
+      .delete(`/api/v1/purchasing/requests/${requestId}/awards/${awardId}`)
+      .set('Authorization', 'Bearer auditor-token')
+      .expect(403);
+
+    // Cotización registrada: la línea debe reabrirse en PENDING_QUOTE.
+    state.quotes.push({
+      id: nextQuoteId(),
+      tenantId: 'tenant-001',
+      purchaseRequestId: requestId,
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      quoteNumber: 'Q-REVOKE',
+    });
+
+    const revoked = await request(app.getHttpServer())
+      .delete(`/api/v1/purchasing/requests/${requestId}/awards/${awardId}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(revoked.body).toEqual({
+      awardId,
+      lineStatusAfter: PurchaseRequestLineStatus.PENDING_QUOTE,
+      coverage: 'NOT_AWARDED',
+    });
+    expect(state.awards).toHaveLength(0);
+    expect(state.requestLines.find((line) => line.id === requestLineId)?.lineStatus).toBe(
+      PurchaseRequestLineStatus.PENDING_QUOTE,
+    );
+  });
+
+  it('DELETE awards: responde 404 para un award que no existe o no pertenece a la solicitud', async () => {
+    const { requestId } = await createApprovedRequestWithAward();
+
+    await request(app.getHttpServer())
+      .delete(
+        `/api/v1/purchasing/requests/${requestId}/awards/99999999-9999-4999-8999-999999999999`,
+      )
+      .set('Authorization', 'Bearer support-token')
+      .expect(404);
+  });
+
+  it('DELETE awards: bloquea la revocación con orden de compra viva (409 AWARD_ALREADY_ORDERED)', async () => {
+    const { requestId, requestLineId, awardId } = await createApprovedRequestWithAward();
+
+    state.orders.push({
+      id: nextOrderId(),
+      tenantId: 'tenant-001',
+      orderNumber: 'PO-000090',
+      purchaseRequestId: requestId,
+      partyRefId: '55555555-5555-4555-8555-555555555555',
+      status: PurchaseOrderStatus.APPROVED,
+    });
+    state.orderLines.push({
+      id: nextLineId(),
+      tenantId: 'tenant-001',
+      purchaseOrderId: state.orders[0]?.id,
+      purchaseRequestLineId: requestLineId,
+      itemId: '44444444-4444-4444-8444-444444444444',
+      quantity: '2.00',
+      receivedQuantity: '0.00',
+    });
+
+    const revoked = await request(app.getHttpServer())
+      .delete(`/api/v1/purchasing/requests/${requestId}/awards/${awardId}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(409);
+
+    expect(revoked.body).toMatchObject({ code: 'AWARD_ALREADY_ORDERED' });
+    expect(state.awards).toHaveLength(1);
   });
 });

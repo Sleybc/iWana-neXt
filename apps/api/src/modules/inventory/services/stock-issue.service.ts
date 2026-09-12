@@ -18,6 +18,7 @@ import {
   StockIssueLine,
   StockIssueLineSerial,
   StockLocation,
+  StockLot,
   TenantContext,
   runInTenantSchema,
 } from '@iwana/db';
@@ -62,6 +63,8 @@ export interface StockIssueLineSerialRef {
 /** Línea del detalle de una salida: entidad + grupo de seriales legible. */
 export type StockIssueDetailLine = StockIssueLine & {
   serializedAssets: StockIssueLineSerialRef[];
+  /** Número de lote legible (enriquecido en lectura; ausente = sin lote o lote huérfano). */
+  lotNumber?: string | null;
 };
 
 export type StockIssueDetail = StockIssue & { lines: StockIssueDetailLine[] };
@@ -312,6 +315,7 @@ export class StockIssueService {
       itemId: string;
       requestedQty: string | number;
       serializedAssetIds: string[];
+      lotId?: string | null;
     }>,
     sourceLocationId: string,
     excludeIssueId?: string,
@@ -470,6 +474,28 @@ export class StockIssueService {
     viewsByLine: Map<string, StockIssueLineSerialRef[]>,
   ): StockIssueDetailLine[] {
     return lines.map((line) => ({ ...line, serializedAssets: viewsByLine.get(line.id) ?? [] }));
+  }
+
+  /**
+   * Número de lote legible en líneas de detalle (lote capturado al registrar
+   * la compra). Mismo patrón batch que picking/kardex/saldos: un solo
+   * `find(StockLot)` por los `lotId` distintos; huérfano o ausente → `null`.
+   */
+  private async withLotNumbers(
+    manager: EntityManager,
+    tenantId: string,
+    lines: StockIssueDetailLine[],
+  ): Promise<StockIssueDetailLine[]> {
+    const lotIds = [...new Set(lines.map((line) => line.lotId).filter((id): id is string => !!id))];
+    if (lotIds.length === 0) {
+      return lines;
+    }
+    const lots = await manager.find(StockLot, { where: { tenantId, id: In(lotIds) } });
+    const lotById = new Map(lots.map((lot) => [lot.id, lot]));
+    return lines.map((line) => ({
+      ...line,
+      lotNumber: line.lotId ? (lotById.get(line.lotId)?.lotNumber ?? null) : null,
+    }));
   }
 
   /**
@@ -650,6 +676,7 @@ export class StockIssueService {
             itemId: line.itemId,
             requestedQty: line.requestedQty,
             serializedAssetIds: normalizeSerialGroup(line) ?? [],
+            lotId: line.lotId ?? null,
           })),
           validated.sourceLocationId,
         );
@@ -724,7 +751,14 @@ export class StockIssueService {
           ),
         );
 
-        return { ...issue, lines: this.withSerialAssets(lines, new Map()) };
+        return {
+          ...issue,
+          lines: await this.withLotNumbers(
+            manager,
+            tenantId,
+            this.withSerialAssets(lines, new Map()),
+          ),
+        };
       }),
     );
 
@@ -856,7 +890,14 @@ export class StockIssueService {
       const issueSerials = await this.loadIssueSerials(qr.manager, tenantId, id);
       const viewsByLine = await this.buildLineSerialViews(qr.manager, tenantId, issueSerials);
 
-      return { ...issue, lines: this.withSerialAssets(lines, viewsByLine) };
+      return {
+        ...issue,
+        lines: await this.withLotNumbers(
+          qr.manager,
+          tenantId,
+          this.withSerialAssets(lines, viewsByLine),
+        ),
+      };
     });
   }
 
@@ -909,7 +950,11 @@ export class StockIssueService {
             return {
               detail: {
                 ...issue,
-                lines: this.withSerialAssets(existingLines, replayViews),
+                lines: await this.withLotNumbers(
+                  manager,
+                  tenantId,
+                  this.withSerialAssets(existingLines, replayViews),
+                ),
                 stockMovementId: issue.stockMovementId,
               },
               movementResult: null,
@@ -1100,7 +1145,11 @@ export class StockIssueService {
           return {
             detail: {
               ...savedIssue,
-              lines: this.withSerialAssets(finalLines, viewsByLine),
+              lines: await this.withLotNumbers(
+                manager,
+                tenantId,
+                this.withSerialAssets(finalLines, viewsByLine),
+              ),
               stockMovementId: savedIssue.stockMovementId!,
             },
             movementResult: movement,
@@ -1222,6 +1271,7 @@ export class StockIssueService {
               itemId: line.itemId,
               requestedQty: line.requestedQty,
               serializedAssetIds: normalizeSerialGroup(line) ?? [],
+              lotId: line.lotId ?? null,
             })),
             saved.sourceLocationId,
             id,
@@ -1345,7 +1395,14 @@ export class StockIssueService {
 
         // S2.1 · B2: la autoría no se fabrica (sin `?? actor.sub`): viaja en
         // el evento post-commit.
-        return { ...saved, lines: this.withSerialAssets(lines, viewsByLine) };
+        return {
+          ...saved,
+          lines: await this.withLotNumbers(
+            manager,
+            tenantId,
+            this.withSerialAssets(lines, viewsByLine),
+          ),
+        };
       }),
     );
 

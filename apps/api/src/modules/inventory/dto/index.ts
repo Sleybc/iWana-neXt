@@ -13,6 +13,7 @@ import {
   InventoryItemStatus,
   InventoryTrackingMode,
   PurchaseOrderStatus,
+  PurchaseRequestAwardCoverage,
   PurchaseRequestFulfillmentStatus,
   PurchaseRequestLineSourceKind,
   PurchaseRequestStatus,
@@ -45,6 +46,10 @@ import {
   INVENTORY_ITEM_KIND_TRACKING_MISMATCH_MESSAGE,
 } from '@iwana/shared';
 import type { InventoryUnitOfMeasureCode } from '@iwana/shared';
+import type {
+  CreateAwardsRequest,
+  PurchaseRequestLineAwardInput as PurchaseRequestLineAwardContractInput,
+} from '@iwana/shared';
 import {
   INVENTORY_LIST_DEFAULT_LIMIT,
   INVENTORY_LIST_MAX_LIMIT,
@@ -1313,11 +1318,21 @@ export class ListExecutorCustodyQueryDto {
 
 /** Grupo de seriales de una línea (MOD12 S2 · D2): uuids, no vacío y sin repetidos. */
 const serializedAssetIdsSchema = z
-  .array(z.string().uuid())
+  .array(z.string().uuid('Hay un serial no válido en el grupo de seriales de la línea.'))
   .min(1, 'Si se envía serializedAssetIds debe incluir al menos un serial.')
   .refine((ids) => new Set(ids).size === ids.length, {
     message: 'Los seriales no deben repetirse dentro de la línea.',
   });
+
+/**
+ * Cantidad de línea de salida: misma coerción que `positiveNumber` (número o
+ * cadena decimal) pero con mensajes en español para que el 400 del borde sea
+ * accionable desde el portal (el mensaje por defecto de zod viaja en inglés y
+ * el operador no identificaba la causa del rechazo).
+ */
+const stockIssueRequestedQty = z.coerce
+  .number({ invalid_type_error: 'La cantidad solicitada debe ser un número válido.' })
+  .positive({ message: 'La cantidad solicitada debe ser mayor a cero.' });
 
 /**
  * Línea de salida (MOD12 S2 · D2): acepta `serializedAssetIds` como grupo de
@@ -1327,10 +1342,18 @@ const serializedAssetIdsSchema = z
  */
 const StockIssueLineSchema = z
   .object({
-    itemId: z.string().uuid(),
-    requestedQty: positiveNumber,
-    lotId: z.string().uuid().optional().nullable(),
-    serializedAssetId: z.string().uuid().optional().nullable(),
+    itemId: z.string().uuid('El ítem de la línea no es válido. Vuelve a seleccionarlo.'),
+    requestedQty: stockIssueRequestedQty,
+    lotId: z
+      .string()
+      .uuid('El lote de la línea no es válido. Vuelve a seleccionarlo.')
+      .optional()
+      .nullable(),
+    serializedAssetId: z
+      .string()
+      .uuid('El serial de la línea no es válido. Vuelve a seleccionarlo.')
+      .optional()
+      .nullable(),
     serializedAssetIds: serializedAssetIdsSchema.optional(),
     condition: z.nativeEnum(StockBalanceCondition).optional().default(StockBalanceCondition.NEW),
   })
@@ -1371,9 +1394,18 @@ const StockIssueLineSchema = z
       }
     }
   })
+  // La normalización descarta el singular en vez de conservarlo junto al
+  // arreglo: así el esquema es idempotente y volver a parsear su propia salida
+  // da el mismo resultado. Con el singular retenido, la salida quedaba con los
+  // dos campos poblados y un segundo `parse()` sobre ella disparaba el
+  // `superRefine` de arriba («envíe solo uno de los dos campos»); como los
+  // controllers re-parsean el body ya validado por el pipe, cualquier cliente
+  // que usara el campo de compatibilidad S1 documentado en Swagger recibía un
+  // error interno. `normalizeSerialGroup` da prioridad al arreglo, así que
+  // ningún consumidor depende del singular después del borde.
   .transform((line) =>
     line.serializedAssetIds === undefined && line.serializedAssetId
-      ? { ...line, serializedAssetIds: [line.serializedAssetId] }
+      ? { ...line, serializedAssetId: undefined, serializedAssetIds: [line.serializedAssetId] }
       : line,
   );
 
@@ -1431,8 +1463,12 @@ function refineStockIssueDestinationRules(
 export const CreateStockIssueSchema = z
   .object({
     type: z.nativeEnum(StockIssueType),
-    sourceLocationId: z.string().uuid(),
-    destinationLocationId: z.string().uuid().optional().nullable(),
+    sourceLocationId: z.string().uuid('La bodega de origen no es válida. Vuelve a seleccionarla.'),
+    destinationLocationId: z
+      .string()
+      .uuid('La ubicación de destino no es válida. Vuelve a seleccionarla.')
+      .optional()
+      .nullable(),
     destinationRefId: optionalTrimmedString(160),
     originRefId: optionalTrimmedString(160),
     commercialRefId: optionalTrimmedString(160),
@@ -1575,8 +1611,15 @@ export const UpdateStockIssueSchema = z
             'No se puede establecer un estado terminal por este endpoint. Use el despacho o cancelación.',
         },
       ),
-    sourceLocationId: z.string().uuid().optional(),
-    destinationLocationId: z.string().uuid().optional().nullable(),
+    sourceLocationId: z
+      .string()
+      .uuid('La bodega de origen no es válida. Vuelve a seleccionarla.')
+      .optional(),
+    destinationLocationId: z
+      .string()
+      .uuid('La ubicación de destino no es válida. Vuelve a seleccionarla.')
+      .optional()
+      .nullable(),
     destinationRefId: optionalTrimmedString(160),
     originRefId: optionalTrimmedString(160),
     commercialRefId: optionalTrimmedString(160),
@@ -2079,7 +2122,7 @@ export const CreatePurchaseRequestSchema = z.object({
     .optional()
     .default(PurchaseRequestPriority.NORMAL),
   requestingArea: z.string().trim().min(1).max(120),
-  justification: z.string().trim().min(10).max(4000),
+  justification: z.string().trim().min(10).max(4000).optional(),
   operationalRefType: z.string().trim().min(1).max(60).optional().nullable(),
   operationalRefId: z.string().trim().min(1).max(160).optional().nullable(),
   neededByDate: optionalDateString,
@@ -2106,9 +2149,11 @@ export class CreatePurchaseRequestDto {
   @Allow()
   requestingArea!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'Opcional. Si se envía, mínimo 10 caracteres.',
+  })
   @Allow()
-  justification!: string;
+  justification?: string;
 
   @ApiPropertyOptional()
   @Allow()
@@ -2330,6 +2375,26 @@ export class PurchaseRequestFulfillmentDto {
       'si no, RECEIVED con alguna FULLY_RECEIVED o CLOSED; en cualquier otro caso NOT_ORDERED.',
   })
   fulfillmentStatus!: PurchaseRequestFulfillmentStatus;
+}
+
+/**
+ * Eje derivado de cobertura de adjudicación (ADR-087, propuesto, D1). Igual
+ * que fulfillmentStatus, no se persiste: se calcula en servidor desde los
+ * `lineStatus` de las líneas no canceladas ni rechazadas y viaja embebido en
+ * cada fila del listado y en el request del detalle. Complementa a
+ * `PurchaseRequestStatus` sin ampliar ese enum (D2).
+ */
+export class PurchaseRequestAwardCoverageDto {
+  @ApiProperty({
+    enum: PurchaseRequestAwardCoverage,
+    enumName: 'PurchaseRequestAwardCoverage',
+    description:
+      'Cobertura de adjudicación derivada en servidor: NOT_AWARDED (sin adjudicar), ' +
+      'PARTIALLY_AWARDED / FULLY_AWARDED (adjudicación pendiente de convertir a OC) y ' +
+      'PARTIALLY_ORDERED / FULLY_ORDERED (líneas con orden de compra viva o recibidas). ' +
+      'Las líneas CANCELLED y REJECTED se excluyen del cálculo.',
+  })
+  awardCoverage!: PurchaseRequestAwardCoverage;
 }
 
 export class AddSupplierQuoteDto {
@@ -2615,10 +2680,43 @@ export const PurchaseOrderLineSchema = z.object({
   purchaseRequestLineId: optionalUuidLike(),
   itemId: z.string().trim().min(1).max(160),
   quantity: positiveNumber,
-  unitCost: nonNegativeNumber,
+  // MOD12 Fase 30 (spec §6.4, CA-308): el costo unitario puede omitirse cuando
+  // la línea viene de una adjudicación — lo deriva el servidor desde el
+  // snapshot del award o la línea de cotización. Solo la escotilla de
+  // proveedor sin cotización lo exige del cliente.
+  unitCost: nonNegativeNumber.optional(),
 });
 
 export type PurchaseOrderLineInput = z.infer<typeof PurchaseOrderLineSchema>;
+
+/**
+ * Una misma línea de solicitud no puede viajar dos veces en UNA orden: la
+ * segunda iteración del servidor re-consultaría el estado intermedio que la
+ * primera guardó y el tope ORDER_EXCEEDS_AWARD dependería del orden del
+ * payload. El reparto entre proveedores es entre ORDENES distintas (modo
+ * batch), nunca dos líneas de la misma orden (Fase 30, adenda informe §12.5).
+ */
+const noDuplicateRequestLines = z
+  .array(PurchaseOrderLineSchema)
+  .min(1)
+  .refine(
+    (lines) => {
+      const seen = new Set<string>();
+      for (const line of lines) {
+        if (line.purchaseRequestLineId == null) {
+          continue;
+        }
+        if (seen.has(line.purchaseRequestLineId)) {
+          return false;
+        }
+        seen.add(line.purchaseRequestLineId);
+      }
+      return true;
+    },
+    {
+      message: 'Hay líneas duplicadas para la misma línea de solicitud dentro de la orden.',
+    },
+  );
 
 export class PurchaseOrderLineDto {
   @ApiPropertyOptional()
@@ -2633,16 +2731,16 @@ export class PurchaseOrderLineDto {
   @Allow()
   quantity!: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   @Allow()
-  unitCost!: number;
+  unitCost?: number;
 }
 
 export const PurchaseOrderBatchSchema = z.object({
   partyRefId: z.string().trim().min(1).max(160),
   expectedDeliveryDate: optionalDateString,
   notes: optionalTrimmedString(4000),
-  lines: z.array(PurchaseOrderLineSchema).min(1),
+  lines: noDuplicateRequestLines,
 });
 
 export type PurchaseOrderBatchInput = z.infer<typeof PurchaseOrderBatchSchema>;
@@ -2673,7 +2771,7 @@ export const CreatePurchaseOrderSchema = z
     partyRefId: z.string().trim().min(1).max(160).optional(),
     expectedDeliveryDate: optionalDateString,
     notes: optionalTrimmedString(4000),
-    lines: z.array(PurchaseOrderLineSchema).min(1).optional(),
+    lines: noDuplicateRequestLines.optional(),
     orders: z.array(PurchaseOrderBatchSchema).min(1).optional(),
     status: z
       .enum([PurchaseOrderStatus.APPROVED, PurchaseOrderStatus.PENDING_APPROVAL] as [
@@ -2733,13 +2831,72 @@ export class CreatePurchaseOrderDto {
   status?: PurchaseOrderStatus;
 }
 
-export const PurchaseRequestLineAwardSchema = z.object({
-  purchaseRequestLineId: z.string().trim().min(1).max(160),
-  supplierQuoteId: optionalUuidLike(),
-  awardedPartyRefId: z.string().trim().min(1).max(160),
-  awardedQuantity: positiveNumber,
-  awardNotes: optionalTrimmedString(4000),
-});
+/**
+ * Cantidad adjudicada positiva normalizada a cadena decimal. El contrato
+ * congelado `purchase-award-matrix.contract.ts` viaja con decimales como
+ * cadena (columnas `numeric`); el portal legado (FE-3 pendiente) aún envía
+ * número, así que `z.coerce` acepta ambos y el transform emite siempre la
+ * forma de salida `string` con 2 decimales.
+ */
+const positiveDecimalString = z.coerce
+  .number()
+  .positive()
+  .transform((value) => value.toFixed(2));
+
+/**
+ * Costo unitario opcional del payload de adjudicación (escotilla de proveedor
+ * sin cotización, spec §7): misma coerción número|cadena que
+ * `positiveDecimalString`; `''`/`null` se leen como ausencia y el tipo de
+ * salida es `string | undefined` para satisfacer el contrato congelado.
+ */
+const optionalPositiveDecimalString = z.preprocess(
+  emptyStringToNull,
+  z.coerce
+    .number()
+    .positive()
+    .nullable()
+    .optional()
+    .transform((value) => (value == null ? undefined : value.toFixed(2))),
+);
+
+/**
+ * Esquema de adjudicación por línea afirmado con `satisfies` contra el
+ * contrato de API CONGELADO (plan T0, Fase 30): el TIPO DE SALIDA debe seguir
+ * siendo assignable a `PurchaseRequestLineAwardInput` del contrato — un cambio
+ * de forma aquí rompe la compilación, no la matriz en runtime.
+ *
+ * El transform final construye el objeto exacto del contrato (opcionales solo
+ * cuando traen valor): el repo compila con `exactOptionalPropertyTypes`, así
+ * que un `prop?: string | undefined` inferido de Zod NO satisfaría el shape.
+ * El portal legado sigue pudiendo enviar números: `z.coerce` los acepta y
+ * FE-3 migrará el payload al contrato después.
+ */
+export const PurchaseRequestLineAwardSchema = z
+  .object({
+    purchaseRequestLineId: z.string().trim().min(1).max(160),
+    supplierQuoteId: optionalUuidLike(),
+    awardedPartyRefId: z.string().trim().min(1).max(160),
+    awardedQuantity: positiveDecimalString,
+    awardNotes: optionalTrimmedString(4000),
+    unitCost: optionalPositiveDecimalString,
+  })
+  .transform((value): PurchaseRequestLineAwardContractInput => {
+    const award: PurchaseRequestLineAwardContractInput = {
+      purchaseRequestLineId: value.purchaseRequestLineId,
+      awardedPartyRefId: value.awardedPartyRefId,
+      awardedQuantity: value.awardedQuantity,
+    };
+    if (value.supplierQuoteId != null) {
+      award.supplierQuoteId = value.supplierQuoteId;
+    }
+    if (value.awardNotes != null) {
+      award.awardNotes = value.awardNotes;
+    }
+    if (value.unitCost != null) {
+      award.unitCost = value.unitCost;
+    }
+    return award;
+  }) satisfies z.ZodType<PurchaseRequestLineAwardContractInput, z.ZodTypeDef, unknown>;
 
 export type PurchaseRequestLineAwardInput = z.infer<typeof PurchaseRequestLineAwardSchema>;
 
@@ -2756,18 +2913,33 @@ export class PurchaseRequestLineAwardDto {
   @Allow()
   awardedPartyRefId!: string;
 
-  @ApiProperty()
+  /** Contrato congelado: cadena decimal; se acepta número del portal legado. */
+  @ApiProperty({ oneOf: [{ type: 'string' }, { type: 'number' }] })
   @Allow()
-  awardedQuantity!: number;
+  awardedQuantity!: number | string;
 
   @ApiPropertyOptional()
   @Allow()
   awardNotes?: string | null;
+
+  /**
+   * Escotilla de proveedor sin cotización (spec §7): obligatorio ahí y se
+   * persiste como snapshot del award (adenda del informe §12.5); la orden lo
+   * pre-rellena. Con cotización, un valor divergente del resuelto responde
+   * 400 UNIT_COST_MISMATCH.
+   */
+  @ApiPropertyOptional({
+    oneOf: [{ type: 'string' }, { type: 'number' }],
+    description:
+      'Solo para adjudicación sin cotización: costo unitario que se congela como snapshot del award. Con cotización, si difiere del costo de la línea de cotización se rechaza.',
+  })
+  @Allow()
+  unitCost?: number | string;
 }
 
 export const CreatePurchaseRequestAwardsSchema = z.object({
   awards: z.array(PurchaseRequestLineAwardSchema).min(1),
-});
+}) satisfies z.ZodType<CreateAwardsRequest, z.ZodTypeDef, unknown>;
 
 export type CreatePurchaseRequestAwardsInput = z.infer<typeof CreatePurchaseRequestAwardsSchema>;
 
@@ -3236,7 +3408,7 @@ export const CreateCounterPurchaseSchema = z
       if (seenCodes.has(tax.code)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Hay códigos de tributo duplicados en la cotización.',
+          message: 'Hay códigos de tributo duplicados en el ingreso directo.',
           path: ['taxes', index, 'code'],
         });
       }

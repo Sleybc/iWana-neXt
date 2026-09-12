@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -31,6 +32,7 @@ import {
   UpdateSupplierQuoteDto,
   UpdateSupplierQuoteSchema,
   PurchaseRequestFulfillmentDto,
+  PurchaseRequestAwardCoverageDto,
   PurchaseTaxPresetDto,
   SupplierQuoteTaxSnapshotDto,
   ApprovePurchaseRequestDto,
@@ -78,6 +80,7 @@ import {
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { PurchasingQueryService } from './services/purchasing-query.service';
 import { PurchasingService } from './services/purchasing.service';
+import { PurchaseOrderPdfService } from './services/purchase-order-pdf.service';
 import { RfqPdfService } from './services/rfq-pdf.service';
 import { RfqService } from './services/rfq.service';
 import { SupplierProfileService } from './services/supplier-profile.service';
@@ -90,6 +93,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
   SupplierQuoteTaxSnapshotDto,
   PurchaseTaxPresetDto,
   PurchaseRequestFulfillmentDto,
+  PurchaseRequestAwardCoverageDto,
 )
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -101,6 +105,7 @@ export class PurchasingController {
     private readonly goodsReceiptService: GoodsReceiptService,
     private readonly rfqService: RfqService,
     private readonly rfqPdfService: RfqPdfService,
+    private readonly purchaseOrderPdfService: PurchaseOrderPdfService,
     private readonly supplierProfileService: SupplierProfileService,
   ) {}
 
@@ -127,13 +132,15 @@ export class PurchasingController {
       'Filtros Ola 6: search, kpiPreset, status, requestType, priority. Orden: createdAt DESC, id DESC. ' +
       'Cada fila incluye fulfillmentStatus: eje de abastecimiento derivado en servidor de las ' +
       'órdenes de compra vivas, que distingue mercancía en tránsito de mercancía ya recibida ' +
-      'cuando status se queda en CONVERTED_TO_PO.',
+      'cuando status se queda en CONVERTED_TO_PO. Incluye también awardCoverage: eje derivado de ' +
+      'cobertura de adjudicación (ADR-087, propuesto) calculado desde los lineStatus de las líneas.',
   })
   @ApiResponse({
     status: 200,
     description:
       'Lista paginada `{ data, meta }` (ListMeta: mode page|cursor). ' +
-      'Cada elemento de `data` agrega `fulfillmentStatus` (PurchaseRequestFulfillmentStatus).',
+      'Cada elemento de `data` agrega `fulfillmentStatus` (PurchaseRequestFulfillmentStatus) y ' +
+      '`awardCoverage` (PurchaseRequestAwardCoverage).',
   })
   listRequests(
     @Query(new ZodValidationPipe(ListPurchaseRequestsQuerySchema))
@@ -149,7 +156,9 @@ export class PurchasingController {
     summary: 'Obtener detalle completo de una solicitud de compra',
     description:
       'Incluye cotizaciones con payableAmount y taxes, y purchaseTaxPresets del catálogo PURCHASE. ' +
-      'request.fulfillmentStatus expone el eje de abastecimiento derivado de las órdenes de compra.',
+      'request.fulfillmentStatus expone el eje de abastecimiento derivado de las órdenes de compra y ' +
+      'request.awardCoverage el eje de cobertura de adjudicación (ADR-087, propuesto); el mismo ' +
+      'valor awardCoverage viaja en la raíz de la respuesta.',
   })
   getRequest(@Param('id', ParseUUIDPipe) id: string) {
     return this.purchasingQueryService.getRequestDetail(id);
@@ -336,7 +345,28 @@ export class PurchasingController {
   @Post('requests/:id/awards')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
-  @ApiOperation({ summary: 'Registrar adjudicaciones por línea' })
+  @ApiOperation({
+    summary: 'Registrar adjudicaciones por línea',
+    description:
+      'Creación en lote contra el contrato congelado purchase-award-matrix (Fase 30). Con ' +
+      'supplierQuoteId el servidor valida pertenencia (400 AWARD_QUOTE_MISMATCH), proveedor ' +
+      '(400 AWARD_SUPPLIER_MISMATCH) y línea de cotización (400 AWARD_QUOTE_LINE_MISSING), y congela ' +
+      'el snapshot unitCost/currency desde supplier_quote_lines. Un producto queda en un solo ' +
+      'proveedor salvo PROJECT: conflicto → 409 AWARD_PARTY_CONFLICT. Reenviar el mismo payload es ' +
+      'un NO-OP idempotente (CA-306). La respuesta trae los awards persistidos y la cobertura ' +
+      'derivada resultante (ADR-087, propuesto).',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'CreateAwardsResponse `{ awards: PurchaseRequestLineAwardRecord[], coverage }`: awards con ' +
+      'snapshot económico cuando derivan de cotización, y cobertura de la solicitud tras el lote.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'AWARD_PARTY_CONFLICT: producto ya adjudicado a otro proveedor en un tipo no PROJECT.',
+  })
   createAwards(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(CreatePurchaseRequestAwardsSchema))
@@ -348,6 +378,36 @@ export class PurchasingController {
       CreatePurchaseRequestAwardsSchema.parse(body),
       actor,
     );
+  }
+
+  @Delete('requests/:id/awards/:awardId')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
+  @ApiOperation({
+    summary: 'Revocar una adjudicación de línea',
+    description:
+      'Elimina la adjudicación indicada (spec §6.5; el servidor es la autoridad). Si existe una ' +
+      'línea de orden de compra viva para ese producto y proveedor responde 409 ' +
+      'AWARD_ALREADY_ORDERED. La línea se reabre — PENDING_QUOTE con cotizaciones registradas, ' +
+      'OPEN sin ellas — solo desde AWARDED; si conserva otros awards vigentes (reparto PROJECT) ' +
+      'permanece en su estado actual. awardId que no existe o pertenece a otra solicitud → 404.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'RevokeAwardResponse `{ awardId, lineStatusAfter, coverage }` con la cobertura derivada ' +
+      'resultante para la solicitud (ADR-087, propuesto).',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'AWARD_ALREADY_ORDERED: hay orden de compra viva que consume la adjudicación.',
+  })
+  revokeAward(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('awardId', ParseUUIDPipe) awardId: string,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.purchasingService.revokeLineAward(id, awardId, actor);
   }
 
   @Get('orders')
@@ -475,7 +535,15 @@ export class PurchasingController {
   @Post('orders')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_MANAGE)
-  @ApiOperation({ summary: 'Crear orden de compra desde solicitud aprobada' })
+  @ApiOperation({
+    summary: 'Crear orden de compra desde solicitud aprobada',
+    description:
+      'Para líneas con adjudicación, el costo unitario lo deriva el servidor (spec §6.4): primero ' +
+      'el snapshot del award, si no la línea de su cotización; solo la escotilla de proveedor sin ' +
+      'cotización toma el valor del cliente, y un valor divergente del resuelto en más de un ' +
+      'céntimo responde 400 UNIT_COST_MISMATCH (CA-308). Ninguna orden se crea con costo cero por ' +
+      'falta de dato.',
+  })
   createOrder(
     @Body(new ZodValidationPipe(CreatePurchaseOrderSchema)) body: CreatePurchaseOrderDto,
     @CurrentUser() actor: JwtPayload,
@@ -579,6 +647,58 @@ export class PurchasingController {
     const { buffer, filename } = await this.rfqPdfService.renderForInvitation(rfqId, invitationId);
     response.set({
       'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
+  }
+
+  @Get('orders/:purchaseOrderId/pdf')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
+  @ApiOperation({
+    summary: 'Descargar el PDF de una orden de compra',
+    description:
+      'Documento para enviar al proveedor por el canal habitual (Fase 31): membrete iWana, ' +
+      'datos de la orden, proveedor, líneas con costo e importe, subtotal y contacto del tenant. ' +
+      '404 si la orden no existe o pertenece a otro tenant.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Binario `application/pdf` con `Content-Disposition: attachment`.',
+  })
+  async downloadPurchaseOrderPdf(
+    @Param('purchaseOrderId', ParseUUIDPipe) purchaseOrderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.purchaseOrderPdfService.renderForOrder(purchaseOrderId);
+    response.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
+  }
+
+  @Get('requests/:requestId/orders/pdf.zip')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.INVENTORY_PURCHASING_READ)
+  @ApiOperation({
+    summary: 'Descargar un ZIP con el PDF de cada orden viva de la solicitud',
+    description:
+      'Un PDF por orden no cancelada de la solicitud (Fase 31). 404 si la solicitud no tiene ' +
+      'órdenes vivas.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Binario `application/zip` con `Content-Disposition: attachment`.',
+  })
+  async downloadRequestOrdersZip(
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } =
+      await this.purchaseOrderPdfService.renderRequestOrdersZip(requestId);
+    response.set({
+      'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${filename}"`,
     });
     return new StreamableFile(buffer);

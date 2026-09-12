@@ -15,6 +15,7 @@ import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 import { SupplierPartyPortAdapter } from '../ports/supplier-party.port';
@@ -135,6 +136,7 @@ describe('Supplier profile HTTP integration (service + adapter + DB en memoria)'
         { provide: GoodsReceiptService, useValue: {} },
         { provide: RfqService, useValue: {} },
         { provide: RfqPdfService, useValue: {} },
+        { provide: PurchaseOrderPdfService, useValue: {} },
         { provide: SupplierProfileService, useValue: supplierProfileService },
         JwtAuthGuard,
         RolesGuard,

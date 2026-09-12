@@ -12,6 +12,7 @@ import { GoodsReceiptService } from '../services/goods-receipt.service';
 import { PurchasingQueryService } from '../services/purchasing-query.service';
 import { PurchasingService } from '../services/purchasing.service';
 import { RfqPdfService } from '../services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
 import { RfqService } from '../services/rfq.service';
 import { SupplierProfileService } from '../services/supplier-profile.service';
 
@@ -98,6 +99,7 @@ describe('RFQ HTTP integration', () => {
         { provide: GoodsReceiptService, useValue: { receivePurchaseOrder: jest.fn() } },
         { provide: RfqService, useValue: rfqServiceMock },
         { provide: RfqPdfService, useValue: rfqPdfServiceMock },
+        { provide: PurchaseOrderPdfService, useValue: {} },
         { provide: SupplierProfileService, useValue: {} },
         JwtAuthGuard,
         RolesGuard,
