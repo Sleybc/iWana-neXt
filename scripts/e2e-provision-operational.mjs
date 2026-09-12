@@ -737,6 +737,12 @@ function stopProcess(child) {
   }
 }
 
+/** Reintentos del cleanup de tenants ante cortes transitorios de conexión. */
+const CLEANUP_ATTEMPTS = 3;
+const CLEANUP_RETRY_DELAY_MS = 1000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function api(path, options = {}, expectedStatuses = [200]) {
   const response = await fetch(`${API_PREFIX}${path}`, options);
   const body = await readJson(response);
@@ -1723,28 +1729,46 @@ try {
   if (createdTenants && cleanupEnabled) {
     if (platformToken) {
       for (const slug of tenantSlugs) {
-        try {
-          const list = await api(`/tenants?search=${encodeURIComponent(slug)}&limit=100`, {
-            headers: authHeaders(platformToken),
-          });
-          const tenants = Array.isArray(list.data) ? list.data : [];
-          const match = tenants.find(
-            (candidate) => candidate && typeof candidate === 'object' && candidate.slug === slug,
-          );
-          if (typeof match?.id === 'string') {
-            await api(
-              `/tenants/${match.id}`,
-              { method: 'DELETE', headers: authHeaders(platformToken) },
-              [204],
+        // Con reintentos: la suite sacude la infraestructura a propósito —el
+        // caso 4e pausa y reanuda Redis, y el de rate limiting dispara ráfagas
+        // de 121 peticiones—, así que el primer intento del cleanup puede
+        // toparse con una conexión aún inestable. El fallo observado era
+        // `fetch failed` (conexión, no HTTP) en el primer tenant, mientras el
+        // segundo se borraba sin problema. Abandonar por un corte transitorio
+        // dejaba tenants huérfanos en la base de CI y, por el requisito de
+        // «cleanup confirmado» de ADR-069, bloqueaba G6.5.
+        let lastError;
+        for (let attempt = 1; attempt <= CLEANUP_ATTEMPTS; attempt += 1) {
+          try {
+            const list = await api(`/tenants?search=${encodeURIComponent(slug)}&limit=100`, {
+              headers: authHeaders(platformToken),
+            });
+            const tenants = Array.isArray(list.data) ? list.data : [];
+            const match = tenants.find(
+              (candidate) => candidate && typeof candidate === 'object' && candidate.slug === slug,
             );
+            if (typeof match?.id === 'string') {
+              await api(
+                `/tenants/${match.id}`,
+                { method: 'DELETE', headers: authHeaders(platformToken) },
+                [204],
+              );
+            }
+            lastError = undefined;
+            break;
+          } catch (error) {
+            lastError = error;
+            if (attempt < CLEANUP_ATTEMPTS) {
+              await sleep(CLEANUP_RETRY_DELAY_MS * attempt);
+            }
           }
-        } catch (error) {
+        }
+        if (lastError) {
           // El motivo se registra: sin él, `E2E_API_CLEANUP=FAILED` decía QUE
-          // falló pero no POR QUÉ, y G6.5 exige cleanup confirmado. El mensaje
-          // que compone `api()` lleva solo método, ruta y status —nunca el
-          // cuerpo—, así que es seguro publicarlo en el log de CI.
-          const detail = error instanceof Error ? error.message : String(error);
-          console.error(`E2E_API_CLEANUP=FAILED|${slug}|${detail}`);
+          // falló pero no POR QUÉ. El mensaje que compone `api()` lleva solo
+          // método, ruta y status —nunca el cuerpo—, así que es seguro en CI.
+          const detail = lastError instanceof Error ? lastError.message : String(lastError);
+          console.error(`E2E_API_CLEANUP=FAILED|${slug}|${detail}|intentos=${CLEANUP_ATTEMPTS}`);
         }
       }
     }
