@@ -38,6 +38,7 @@ import { PurchasingPolicyService } from '../../modules/inventory/services/purcha
 import { GoodsReceiptService } from '../../modules/inventory/services/goods-receipt.service';
 import { RfqService } from '../../modules/inventory/services/rfq.service';
 import { RfqPdfService } from '../../modules/inventory/services/rfq-pdf.service';
+import { PurchaseOrderPdfService } from '../../modules/inventory/services/purchase-order-pdf.service';
 import { SupplierProfileService } from '../../modules/inventory/services/supplier-profile.service';
 import { SupplierPartyPort } from '../../modules/inventory/ports/supplier-party.port';
 import { TaxCatalogReadPort } from '../../modules/taxation/ports/tax-catalog-read.port';
@@ -306,6 +307,7 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
         { provide: GoodsReceiptService, useValue: stubProvider() },
         { provide: RfqService, useValue: stubProvider() },
         { provide: RfqPdfService, useValue: stubProvider() },
+        { provide: PurchaseOrderPdfService, useValue: stubProvider() },
         { provide: SupplierProfileService, useValue: stubProvider() },
         { provide: SupplierPartyPort, useValue: stubProvider() },
         { provide: TaxCatalogReadPort, useValue: stubProvider() },

@@ -42,6 +42,7 @@ function captureDrawnRows(draw: (doc: PDFKit.PDFDocument, startY: number) => voi
   drawn: DrawnText[];
   pageCount: number;
   marginTop: number;
+  pageBottom: number;
 } {
   const doc = new PDFDocument({
     size: 'A4',
@@ -77,7 +78,7 @@ function captureDrawnRows(draw: (doc: PDFKit.PDFDocument, startY: number) => voi
 
   draw(doc, 200);
 
-  return { drawn, pageCount: pageIndex + 1, marginTop: 96 };
+  return { drawn, pageCount: pageIndex + 1, marginTop: 96, pageBottom: doc.page.height - 56 };
 }
 
 /**
@@ -103,7 +104,12 @@ function assertHeaderOnEveryPage(drawn: DrawnText[], pageCount: number): void {
  * primera versión de este test afirmaba `y >= marginTop` y pasaba en verde con
  * el defecto reintroducido; se corrigió tras comprobarlo por mutación.
  */
-function assertRowsFlowDownwards(drawn: DrawnText[], pageCount: number): void {
+function assertRowsFlowDownwards(
+  drawn: DrawnText[],
+  pageCount: number,
+  marginTop: number,
+  pageBottom: number,
+): void {
   // Si no hubo salto, el test no probaría nada: la guarda es parte del test.
   expect(pageCount).toBeGreaterThanOrEqual(2);
 
@@ -118,6 +124,15 @@ function assertRowsFlowDownwards(drawn: DrawnText[], pageCount: number): void {
   }
 
   expect(regressions).toEqual([]);
+
+  // Monotonía Y rango: ninguna sola basta. La monotonía ancla el ORDEN, pero es
+  // ciega a un desplazamiento uniforme — mover el origen de cada página nueva
+  // por encima del membrete mantiene la secuencia creciente y pasaría. El rango
+  // ancla que ese orden ocurra DENTRO del área útil, y además vuelve al test
+  // indiferente a que el salto caiga en la última fila del fixture, caso en el
+  // que no habría par de coordenadas que comparar.
+  const outOfRange = drawn.filter((entry) => entry.y < marginTop || entry.y > pageBottom);
+  expect(outOfRange).toEqual([]);
 }
 
 describe('Paginación de las tablas de PDF (invariante compartido)', () => {
@@ -145,11 +160,11 @@ describe('Paginación de las tablas de PDF (invariante compartido)', () => {
       contact: null,
     };
 
-    const { drawn, pageCount } = captureDrawnRows((doc, startY) => {
+    const { drawn, pageCount, marginTop, pageBottom } = captureDrawnRows((doc, startY) => {
       drawPurchaseOrderLines(doc, input, startY);
     });
 
-    assertRowsFlowDownwards(drawn, pageCount);
+    assertRowsFlowDownwards(drawn, pageCount, marginTop, pageBottom);
     assertHeaderOnEveryPage(drawn, pageCount);
   });
 
@@ -174,11 +189,11 @@ describe('Paginación de las tablas de PDF (invariante compartido)', () => {
       contact: null,
     };
 
-    const { drawn, pageCount } = captureDrawnRows((doc, startY) => {
+    const { drawn, pageCount, marginTop, pageBottom } = captureDrawnRows((doc, startY) => {
       drawRfqLines(doc, input, startY);
     });
 
-    assertRowsFlowDownwards(drawn, pageCount);
+    assertRowsFlowDownwards(drawn, pageCount, marginTop, pageBottom);
     // Sin `assertHeaderOnEveryPage`: el layout de RFQ NO repite la cabecera
     // todavía (deuda registrada). Afirmarlo aquí fijaría el comportamiento
     // defectuoso; afirmar lo contrario daría falsa sensación de paridad.

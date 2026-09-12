@@ -246,3 +246,52 @@ Deuda registrada en la misma revisión, sin dueño asignado todavía:
 1. **Cabecera de tabla en el PDF de RFQ.** `purchase-order-pdf.layout.ts` repite la cabecera en cada página; `rfq-pdf.layout.ts` no, así que una RFQ larga deja las columnas sin rótulo desde la página 2. No lo afirma ningún test, para no fijar el comportamiento defectuoso.
 2. **Cota de órdenes del ZIP de órdenes de compra.** `renderRequestOrdersZip` genera los PDF en serie (~546 ms/orden medidos) y no tiene cota superior ni en test ni en producción; el techo aplicable es el timeout HTTP.
 3. **Alcance de `extractPdfSearchableText`.** El helper de los specs de PDF solo alcanza los metadatos del documento (`Title`, `Subject`, `Keywords`): con fuentes TTF embebidas el cuerpo va como códigos de glifo. Un PDF con el cuerpo en blanco y metadatos correctos pasaría esos tests. El invariante de paginación se verifica aparte, espiando `doc.text` (`tests/pdf-layout-pagination.spec.ts`).
+
+---
+
+## 13. Cierre del ciclo de revisión — G6 GO (2026-09-12)
+
+**Gate G6 (quality acceptance): GO**, emitido por **AI-SR-QA** en auditoría independiente sobre el commit `59aa5e44`, tras tres rondas. El aprobador fue distinto del productor en todas ellas, conforme al protocolo §3.
+
+### 13.1 Por qué hicieron falta tres rondas
+
+Queda registrado porque el mecanismo de fallo es más instructivo que el defecto:
+
+1. **Ronda 1 — NO-GO.** La corrección de `rowTop` en `rfq-pdf.layout.ts` se declaró aplicada a los dos layouts pero solo estaba en el de orden de compra: el parche se perdió al reescribirse ese archivo para los metadatos, y se afirmó sin volver a verificarlo en disco. Ningún test lo delató porque ninguno entraba en `addPage()`.
+2. **Ronda 2 — GO-CON-ENMIENDAS.** El primer test de paginación no cubría el defecto: vivía en el spec de la orden de compra mientras el defecto era del RFQ. QA lo demostró reintroduciendo el bloqueante con la suite entera en verde.
+3. **Ronda 3 — GO.** El invariante correcto resultó ser **monotonía por página más rango**, no «ninguna fila por encima del margen»: al heredarse, `rowTop` conserva el valor *grande* de la página anterior, así que la fila cae demasiado abajo, no arriba. Anclado por mutación en ambos layouts.
+
+El patrón común de las tres: **declarar verificado lo que aún no se había verificado**. Es el mismo mecanismo en el parche perdido, en el test que no cubría y en el invariante mal formulado.
+
+### 13.2 Estado de los gates
+
+| Gate | Estado | Evidencia |
+| --- | --- | --- |
+| **G6** — quality acceptance | **GO** | AI-SR-QA sobre `59aa5e44`; mutaciones M1/M2/M3/M5 en rojo; lint, typecheck y suites en verde |
+| **G6.5** — merge readiness | **PENDIENTE** | Requiere corrida Linux de GitHub Actions por SHA con cero fallos y cero skips ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md)). Ver §13.4 |
+| **G7** — production authorization | **NO SOLICITADO** | Recomienda AI-EM-ARCH, aprueba el CTO |
+
+**Nota de proceso.** El mensaje del commit `59aa5e44` afirmaba «Gate G6 aprobado por AI-SR-QA» cuando el veredicto vigente era GO-CON-ENMIENDAS; la frase quedó cierta retroactivamente al emitirse el GO, pero se escribió antes de que el aprobador la emitiera. Y ese commit entró en `main` sin G6.5, que es el gate que autoriza el merge. Ambas cosas quedan registradas; no se reinterpretan como cumplidas.
+
+### 13.3 Deuda viva con dueño asignado
+
+Dueños según la RACI del protocolo §2. `R` ejecuta, `A` responde por el resultado, `C` se consulta.
+
+| # | Deuda | R | A | C | Fila de la RACI |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Cabecera de tabla del PDF de RFQ: no se repite por página; una RFQ larga deja las columnas sin rótulo desde la página 2 | **AI-SR-FULL** | AI-EM-ARCH | AI-DS-OWNER | APIs y contratos |
+| 2 | Cota de órdenes del ZIP: `renderRequestOrdersZip` genera en serie (~546 ms/orden) sin techo salvo el timeout HTTP | **AI-SR-FULL** | AI-EM-ARCH | AI-PLAT-OPS | Performance (backend y frontend) |
+| 3 | Alcance de `extractPdfSearchableText`: solo alcanza metadatos; un PDF con el cuerpo en blanco pasaría los specs de servicio | **AI-SR-FULL** | AI-EM-ARCH | AI-SR-QA | Testing (unit/integración) |
+| 4 | Adenda a spec §5.3 por `setLineQuantity` y `getAwardMatrixProgress`, que se conservan | **AI-FE-PLATFORM** | AI-EM-ARCH | AI-DS-OWNER | Documentación y trazabilidad |
+| 5 | Marca `@internal` en las dos `drawLinesTable` exportadas para observación | **AI-SR-FULL** | AI-EM-ARCH | — | Documentación y trazabilidad |
+
+Los puntos 1 y 3 tienen la misma raíz —la verificación de los PDF no observa el cuerpo dibujado— y conviene abordarlos juntos: el patrón de `pdf-layout-pagination.spec.ts` (espiar `doc.text` en lugar de leer el documento) ya es aplicable a ambos.
+
+### 13.4 Qué falta para G6.5
+
+La corrida Linux **no requiere un entorno Linux local**: los runners de `.github/workflows/ci.yml` ya son `ubuntu-24.04` / `ubuntu-latest`, y los dos jobs que ADR-069 exige —`production-images` y `execution-orders-e2e`— se disparan en cada push a `main`. Lo que falta es que esa corrida esté verde:
+
+- `production-images` e `adr-citations`: **success** en `59aa5e44`.
+- `Lint + Typecheck + Build + Unit tests`: **failure** en `59aa5e44` por el mismo defecto de DI (`PurchaseOrderPdfService` no declarado) en `src/common/pagination/clamp-page-endpoints.controller.http.spec.ts`, fuera de `modules/inventory` y por eso no detectado en las verificaciones locales acotadas al módulo. **Corregido en esta entrega.**
+- `execution-orders-e2e`: **failure** en `59aa5e44`, pendiente de diagnóstico; es condición de G6.5.
+- **Cero skips**: hay 15 skips vivos en `apps/api` y 1 en el portal, guardados por disponibilidad de base de datos real. Deberán resolverse o justificarse ante el gate.
