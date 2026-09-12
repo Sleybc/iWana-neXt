@@ -1,4 +1,13 @@
-import { BadRequestException, Controller, Get, INestApplication } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  HttpException,
+  HttpStatus,
+  INestApplication,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { APP_FILTER } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -21,6 +30,18 @@ class DiagnosticsController {
   @Get('boom')
   boom(): never {
     throw new Error('fallo inesperado con ruta C:/appiw/apps/api/src/secreto.ts');
+  }
+
+  @Get('rate-limited')
+  rateLimited(@Res({ passthrough: true }) response: Response): never {
+    // Reproduce al `TenantAwareThrottlerGuard`: fija las cabeceras de cuota y
+    // DESPUÉS lanza el 429.
+    response.setHeader('X-RateLimit-Limit', '120');
+    response.setHeader('X-RateLimit-Remaining', '0');
+    throw new HttpException(
+      { code: 'RATE_LIMIT_EXCEEDED', message: 'Demasiadas solicitudes.' },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 
   @Get('tenant-missing')
@@ -67,6 +88,19 @@ describe('TenantContextMissingFilter', () => {
       message: 'No hay disponible suficiente: 0.00 en existencia.',
     });
     expect(response.text).not.toContain('<!DOCTYPE html>');
+  });
+
+  it('conserva las cabeceras fijadas antes de lanzar la excepción', async () => {
+    // El filtro es `@Catch()`: toda excepción pasa por él. Cuando relanzaba con
+    // `throw`, la respuesta la componía el `finalhandler` de Express, que BORRA
+    // las cabeceras ya fijadas — y con ellas la cuota que el guard de rate
+    // limit había puesto antes del 429. Este caso fija que delegar en
+    // `super.catch()` las preserva.
+    const response = await request(app.getHttpServer()).get('/diag/rate-limited').expect(429);
+
+    expect(response.headers['x-ratelimit-limit']).toBe('120');
+    expect(response.headers['x-ratelimit-remaining']).toBe('0');
+    expect(response.body).toMatchObject({ code: 'RATE_LIMIT_EXCEEDED' });
   });
 
   it('convierte un error no controlado en 500 JSON sin filtrar el stack trace', async () => {
