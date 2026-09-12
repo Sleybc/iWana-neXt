@@ -1,6 +1,8 @@
 /** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: 'jsdom',
+  // Zona horaria determinista para toda la suite (ver jest.global-setup.js).
+  globalSetup: '<rootDir>/../jest.global-setup.js',
   rootDir: 'src',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testRegex: '.*\\.spec\\.tsx?$',
