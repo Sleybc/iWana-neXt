@@ -25,7 +25,6 @@ import {
   getAwardColumnControlId,
   getAwardEmptySelectionNotice,
   getAwardMatrixProgress,
-  isCurrencyMixed,
   setLineQuantity,
   summarizeBySupplier,
   toCreateAwardsDto,
@@ -100,6 +99,25 @@ function buildPanelState(
   });
 }
 
+/**
+ * Campos del formulario de la escotilla (adjudicación sin cotización).
+ *
+ * Van juntos en un solo estado a propósito: cuando eran cuatro `useState`
+ * sueltos, `closeHatch` limpiaba solo dos y `openHatch` repoblaba línea y
+ * cantidad únicamente si la línea estaba vacía. Cancelar la escotilla de un
+ * proveedor y abrirla en otro arrastraba el costo unitario y las notas del
+ * intento anterior, atribuyéndoselos al proveedor nuevo. Con un único objeto,
+ * reabrir siempre parte de `EMPTY_HATCH_FORM` y el reset no puede divergir.
+ */
+interface HatchFormState {
+  lineId: string;
+  quantity: string;
+  unitCost: string;
+  notes: string;
+}
+
+const EMPTY_HATCH_FORM: HatchFormState = { lineId: '', quantity: '', unitCost: '', notes: '' };
+
 export function AwardMatrixPanel({
   detail,
   items,
@@ -127,10 +145,7 @@ export function AwardMatrixPanel({
   const [hatchOpen, setHatchOpen] = useState(false);
   const [hatchSupplierId, setHatchSupplierId] = useState<string | null>(null);
   const [hatchSupplierLabel, setHatchSupplierLabel] = useState<string | null>(null);
-  const [hatchLineId, setHatchLineId] = useState('');
-  const [hatchQuantity, setHatchQuantity] = useState('');
-  const [hatchUnitCost, setHatchUnitCost] = useState('');
-  const [hatchNotes, setHatchNotes] = useState('');
+  const [hatchForm, setHatchForm] = useState<HatchFormState>(EMPTY_HATCH_FORM);
   const [hatchError, setHatchError] = useState<string | null>(null);
   const [hatchSubmitting, setHatchSubmitting] = useState(false);
 
@@ -251,7 +266,7 @@ export function AwardMatrixPanel({
 
   const summaries = useMemo(() => summarizeBySupplier(matrixState), [matrixState]);
   const progress = useMemo(() => getAwardMatrixProgress(matrixState), [matrixState]);
-  const currencyMixed = isCurrencyMixed(matrixState);
+  const currencyMixed = matrixState.currencyMixed;
   const quantityEditable = matrixState.requestType === PurchaseRequestType.PROJECT;
   const approved = detail.request.status === PurchaseRequestStatus.APPROVED;
   const converted = detail.request.status === PurchaseRequestStatus.CONVERTED_TO_PO;
@@ -267,17 +282,34 @@ export function AwardMatrixPanel({
     [matrixState.rows, matrixState.locks],
   );
   const hatchLocksQuantity = detail.request.requestType !== PurchaseRequestType.PROJECT;
-  const hatchSelectedRow = hatchFreeRows.find((row) => row.purchaseRequestLineId === hatchLineId);
+  const hatchSelectedRow = hatchFreeRows.find(
+    (row) => row.purchaseRequestLineId === hatchForm.lineId,
+  );
+
+  const setHatchField = useCallback(
+    <K extends keyof HatchFormState>(key: K, value: HatchFormState[K]): void => {
+      setHatchForm((current) => ({ ...current, [key]: value }));
+    },
+    [],
+  );
+
+  /** Formulario limpio con la primera línea libre preseleccionada, si la hay. */
+  function buildInitialHatchForm(): HatchFormState {
+    const first = hatchFreeRows[0];
+    return first
+      ? {
+          ...EMPTY_HATCH_FORM,
+          lineId: first.purchaseRequestLineId,
+          quantity: first.quantityRequested,
+        }
+      : EMPTY_HATCH_FORM;
+  }
 
   function openHatch(): void {
     setHatchError(null);
-    if (!hatchLineId && hatchFreeRows.length > 0) {
-      const first = hatchFreeRows[0];
-      if (first) {
-        setHatchLineId(first.purchaseRequestLineId);
-        setHatchQuantity(first.quantityRequested);
-      }
-    }
+    // Cada apertura parte de cero: el proveedor puede ser otro y los importes
+    // del intento anterior no le pertenecen.
+    setHatchForm(buildInitialHatchForm());
     setHatchOpen(true);
   }
 
@@ -287,21 +319,25 @@ export function AwardMatrixPanel({
     }
     setHatchOpen(false);
     setHatchError(null);
+    setHatchForm(EMPTY_HATCH_FORM);
+    setHatchSupplierId(null);
+    setHatchSupplierLabel(null);
   }
 
   function handleHatchLineChange(lineId: string): void {
-    setHatchLineId(lineId);
     const row = hatchFreeRows.find((entry) => entry.purchaseRequestLineId === lineId);
-    if (row) {
-      setHatchQuantity(row.quantityRequested);
-    }
+    setHatchForm((current) => ({
+      ...current,
+      lineId,
+      quantity: row ? row.quantityRequested : current.quantity,
+    }));
   }
 
   const hatchQuantityError = (() => {
     if (!hatchSelectedRow) {
       return null;
     }
-    const parsed = Number(hatchQuantity);
+    const parsed = Number(hatchForm.quantity);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return 'Indica una cantidad válida mayor que cero.';
     }
@@ -312,7 +348,7 @@ export function AwardMatrixPanel({
   })();
 
   const hatchUnitCostError = (() => {
-    const parsed = Number(hatchUnitCost);
+    const parsed = Number(hatchForm.unitCost);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return 'Indica el costo unitario: es obligatorio en la adjudicación sin cotización.';
     }
@@ -335,22 +371,19 @@ export function AwardMatrixPanel({
     try {
       const quantity = hatchLocksQuantity
         ? hatchSelectedRow.quantityRequested
-        : Number(hatchQuantity).toFixed(2);
+        : Number(hatchForm.quantity).toFixed(2);
       const draft: PurchaseRequestLineAwardInput = {
         purchaseRequestLineId: hatchSelectedRow.purchaseRequestLineId,
         awardedPartyRefId: hatchSupplierId,
         awardedQuantity: Number(quantity).toFixed(2),
-        unitCost: Number(hatchUnitCost).toFixed(2),
-        ...(hatchNotes.trim() ? { awardNotes: hatchNotes.trim() } : {}),
+        unitCost: Number(hatchForm.unitCost).toFixed(2),
+        ...(hatchForm.notes.trim() ? { awardNotes: hatchForm.notes.trim() } : {}),
       };
       await onDirectAward(draft);
       setHatchOpen(false);
       setHatchSupplierId(null);
       setHatchSupplierLabel(null);
-      setHatchLineId('');
-      setHatchQuantity('');
-      setHatchUnitCost('');
-      setHatchNotes('');
+      setHatchForm(EMPTY_HATCH_FORM);
     } catch {
       // Sin PII ni detalle técnico: el padre deja el error de red en awardsError.
       setHatchError(
@@ -359,16 +392,7 @@ export function AwardMatrixPanel({
     } finally {
       setHatchSubmitting(false);
     }
-  }, [
-    hatchReady,
-    hatchSupplierId,
-    hatchSelectedRow,
-    hatchLocksQuantity,
-    hatchQuantity,
-    hatchUnitCost,
-    hatchNotes,
-    onDirectAward,
-  ]);
+  }, [hatchReady, hatchSupplierId, hatchSelectedRow, hatchLocksQuantity, hatchForm, onDirectAward]);
 
   const autoAccordion = matrixState.columns.length > 3 || narrowViewport;
   const view: AwardMatrixView = viewOverride ?? (autoAccordion ? 'accordion' : 'matrix');
@@ -583,7 +607,7 @@ export function AwardMatrixPanel({
               />
               <Select
                 label="Producto"
-                value={hatchLineId}
+                value={hatchForm.lineId}
                 disabled={hatchSubmitting}
                 options={hatchFreeRows.map((row) => ({
                   value: row.purchaseRequestLineId,
@@ -598,9 +622,9 @@ export function AwardMatrixPanel({
                   inputMode="decimal"
                   min="0.01"
                   step="0.01"
-                  value={hatchQuantity}
+                  value={hatchForm.quantity}
                   disabled={hatchSubmitting || hatchLocksQuantity}
-                  onChange={(event) => setHatchQuantity(event.target.value)}
+                  onChange={(event) => setHatchField('quantity', event.target.value)}
                   error={hatchQuantityError ?? undefined}
                   helperText={
                     hatchLocksQuantity
@@ -615,11 +639,11 @@ export function AwardMatrixPanel({
                   min="0.01"
                   step="0.01"
                   requiredIndicator
-                  value={hatchUnitCost}
+                  value={hatchForm.unitCost}
                   disabled={hatchSubmitting}
-                  onChange={(event) => setHatchUnitCost(event.target.value)}
+                  onChange={(event) => setHatchField('unitCost', event.target.value)}
                   error={
-                    hatchUnitCostError && hatchUnitCost.trim() ? hatchUnitCostError : undefined
+                    hatchUnitCostError && hatchForm.unitCost.trim() ? hatchUnitCostError : undefined
                   }
                 />
               </div>
@@ -631,9 +655,9 @@ export function AwardMatrixPanel({
                   aria-label="Notas de la adjudicación directa"
                   className="w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
                   rows={2}
-                  value={hatchNotes}
+                  value={hatchForm.notes}
                   disabled={hatchSubmitting}
-                  onChange={(event) => setHatchNotes(event.target.value)}
+                  onChange={(event) => setHatchField('notes', event.target.value)}
                 />
               </label>
             </div>

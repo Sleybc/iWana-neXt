@@ -434,6 +434,17 @@ export function buildAwardMatrix(
  * locks + selections y la cantidad efectiva de quantityByLine. Los datos
  * fijos de cada fila (nombre, sku, solicitada, unidad) nunca cambian y se
  * conservan del estado anterior.
+ *
+ * Recálculo COMPLETO a propósito (revisión Fase 30): recorre todas las filas y
+ * recalcula `computeCells` de todas las columnas en cada interacción. Se evaluó
+ * recalcular solo las filas cuya selección, lock o cantidad cambió y se
+ * descartó: medido, un toggle cuesta 0,09 ms con 50 filas × 5 cotizaciones y
+ * 0,5 ms con 200 × 8 — tamaños que ya superan cualquier solicitud real, y muy
+ * por debajo del fotograma de 16,7 ms. Incluso en un caso absurdo de 1000 × 10
+ * son 3,1 ms. El coste real de una interacción es el re-render de la tabla, no
+ * esta aritmética. A cambio, el recálculo total hace `finalizeState`
+ * trivialmente correcta: no existe celda obsoleta posible, y añadir una entrada
+ * a `computeCells` no obliga a revisar ninguna condición de invalidación.
  */
 function finalizeState(
   state: AwardMatrixState,
@@ -453,8 +464,15 @@ function finalizeState(
         ? lock.awardedQuantity
         : (quantityByLine[row.purchaseRequestLineId] ?? row.quantityRequested);
 
-    const nextRow: AwardMatrixRow = {
-      ...row,
+    // Las claves de adjudicación se COMPONEN desde el lock en vez de heredarse
+    // del spread y borrarse después: sin lock no deben existir (`moveAwardToQuote`
+    // desbloquea la fila y el spread conservaría el proveedor revocado), y
+    // `delete` sobre un objeto recién creado fuerza a V8 a degradarlo a modo
+    // diccionario en un camino que corre por cada fila y cada interacción.
+    const { awardedPartyRefId: _ignoredParty, awardedQuoteId: _ignoredQuote, ...baseRow } = row;
+
+    return {
+      ...baseRow,
       awardedQuantity: effectiveQuantity,
       cells: computeCells({
         lineId: row.purchaseRequestLineId,
@@ -463,22 +481,9 @@ function finalizeState(
         selectedQuoteId: selections[row.purchaseRequestLineId],
         currencyMixed: state.currencyMixed,
       }),
+      ...(lock ? { awardedPartyRefId: lock.awardedPartyRefId } : {}),
+      ...(lock && lock.awardedQuoteId !== undefined ? { awardedQuoteId: lock.awardedQuoteId } : {}),
     };
-    if (lock) {
-      nextRow.awardedPartyRefId = lock.awardedPartyRefId;
-      if (lock.awardedQuoteId !== undefined) {
-        nextRow.awardedQuoteId = lock.awardedQuoteId;
-      } else {
-        delete nextRow.awardedQuoteId;
-      }
-    } else {
-      // Sin lock vigente las claves de adjudicación NO se heredan del estado
-      // anterior: `moveAwardToQuote` desbloquea la fila y el spread base
-      // conservaría el proveedor/cotización de la adjudicación revocada.
-      delete nextRow.awardedPartyRefId;
-      delete nextRow.awardedQuoteId;
-    }
-    return nextRow;
   });
 
   return { ...state, rows, selections, quantityByLine, pendingRevokes, locks };
@@ -640,14 +645,27 @@ export function setLineQuantity(
  * monedas distintas (§6.3, CA-UX-04). El número de resúmenes es el número de
  * órdenes que se generarán.
  */
-export function summarizeBySupplier(state: AwardMatrixState): AwardSupplierSummary[] {
-  // `totals` acumula en CÉNTIMOS enteros por moneda: sumar importes con
-  // `parseFloat` y redondear al final introducía drift binario (0.1 + 0.2 ≠ 0.3).
+/**
+ * Recorre las filas con una cotización marcada y resuelve su columna y su línea
+ * de cotización. `summarizeBySupplier` y `toCreateAwardsDto` hacían este mismo
+ * preámbulo —índice por quoteId, salto de filas sin marca y descarte de la
+ * selección sin cobertura— con una copia cada uno; el invariante de «una fila
+ * aparece como máximo una vez» vive ahora en un solo sitio.
+ *
+ * Una selección sin columna o sin línea cubierta se descarta en silencio: no
+ * debería poder construirse (todas las rutas de selección exigen cobertura) y
+ * la escotilla sin cotización no pasa por aquí, la compone el panel (spec §7).
+ */
+function forEachSelectedAward(
+  state: AwardMatrixState,
+  visit: (entry: {
+    row: AwardMatrixRow;
+    quoteId: string;
+    column: AwardMatrixQuoteColumn;
+    quoteLine: AwardMatrixQuoteLine;
+  }) => void,
+): void {
   const columnByQuoteId = new Map(state.columns.map((column) => [column.quoteId, column]));
-  const summaries = new Map<
-    string,
-    { label: string; productCount: number; totals: Map<string, number> }
-  >();
 
   for (const row of state.rows) {
     const quoteId = state.selections[row.purchaseRequestLineId];
@@ -659,7 +677,19 @@ export function summarizeBySupplier(state: AwardMatrixState): AwardSupplierSumma
     if (!column || !quoteLine) {
       continue;
     }
+    visit({ row, quoteId, column, quoteLine });
+  }
+}
 
+export function summarizeBySupplier(state: AwardMatrixState): AwardSupplierSummary[] {
+  // `totals` acumula en CÉNTIMOS enteros por moneda: sumar importes con
+  // `parseFloat` y redondear al final introducía drift binario (0.1 + 0.2 ≠ 0.3).
+  const summaries = new Map<
+    string,
+    { label: string; productCount: number; totals: Map<string, number> }
+  >();
+
+  forEachSelectedAward(state, ({ column, quoteLine }) => {
     let summary = summaries.get(column.supplierPartyRefId);
     if (!summary) {
       summary = { label: column.supplierLabel, productCount: 0, totals: new Map<string, number>() };
@@ -671,7 +701,7 @@ export function summarizeBySupplier(state: AwardMatrixState): AwardSupplierSumma
       column.currency,
       (summary.totals.get(column.currency) ?? 0) + decimalStringToCents(quoteLine.lineAmount),
     );
-  }
+  });
 
   return Array.from(summaries.entries()).map(([supplierPartyRefId, summary]) => ({
     supplierPartyRefId,
@@ -717,6 +747,23 @@ export function getAwardEmptySelectionNotice(state: AwardMatrixState): string {
 }
 
 /**
+ * Códigos INFORMATIVOS: se muestran al usuario pero no impiden adjudicar.
+ * Adjudicar con cotizaciones en monedas distintas es una operación válida; el
+ * aviso solo explica que la comparación de precios queda desactivada (§6.3).
+ *
+ * El conjunto enumera las EXCEPCIONES, no los bloqueantes, a propósito: así un
+ * código de validación nuevo bloquea por defecto y solo deja de hacerlo si
+ * alguien lo añade aquí de forma deliberada.
+ */
+const ADVISORY_VALIDATION_CODES: ReadonlySet<AwardMatrixValidationCode> = new Set([
+  'CURRENCY_MIXED',
+]);
+
+function isBlockingIssue(issue: AwardMatrixValidationIssue): boolean {
+  return !ADVISORY_VALIDATION_CODES.has(issue.code);
+}
+
+/**
  * Valida la selección para habilitar CTAs y explicar su deshabilitación
  * (spec §4.4, CA-UX-07). `CURRENCY_MIXED` es un AVISO: no bloquea la
  * adjudicación, solo desactiva la comparación de precios (§6.3).
@@ -757,10 +804,11 @@ export function validateMatrixSelection(state: AwardMatrixState): AwardMatrixVal
     });
   }
 
-  return {
-    ok: !issues.some((issue) => issue.code !== 'CURRENCY_MIXED'),
-    issues,
-  };
+  // La CTA se habilita cuando NINGUNA incidencia bloquea; los avisos viajan
+  // igualmente en `issues` para que la barra los muestre.
+  const hasBlockingIssue = issues.some(isBlockingIssue);
+
+  return { ok: !hasBlockingIssue, issues };
 }
 
 /**
@@ -775,22 +823,8 @@ export function validateMatrixSelection(state: AwardMatrixState): AwardMatrixVal
  */
 export function toCreateAwardsDto(state: AwardMatrixState): CreateAwardsRequest {
   const awards: PurchaseRequestLineAwardInput[] = [];
-  const columnByQuoteId = new Map(state.columns.map((column) => [column.quoteId, column]));
 
-  for (const row of state.rows) {
-    const quoteId = state.selections[row.purchaseRequestLineId];
-    if (!quoteId) {
-      continue;
-    }
-    const column = columnByQuoteId.get(quoteId);
-    const quoteLine = column?.lines[row.purchaseRequestLineId];
-    if (!column || !quoteLine) {
-      // Selección inválida (no debería poder construirse: todas las rutas de
-      // selección exigen cobertura). La escotilla sin cotización no pasa por
-      // aquí: la compone el panel (spec §7).
-      continue;
-    }
-
+  forEachSelectedAward(state, ({ row, quoteId, column }) => {
     const rawQuantity =
       state.requestType === PurchaseRequestType.PROJECT
         ? (state.quantityByLine[row.purchaseRequestLineId] ?? row.quantityRequested)
@@ -802,14 +836,9 @@ export function toCreateAwardsDto(state: AwardMatrixState): CreateAwardsRequest 
       awardedPartyRefId: column.supplierPartyRefId,
       awardedQuantity: formatDecimal2(parseQuantity(rawQuantity)),
     });
-  }
+  });
 
   return { awards };
-}
-
-/** El panel puede editar la matriz (solicitud aprobada, no deshabilitado). */
-export function isAwardMatrixEditable(state: AwardMatrixState): boolean {
-  return state.canEdit;
 }
 
 /**
@@ -820,11 +849,6 @@ export function isAwardMatrixEditable(state: AwardMatrixState): boolean {
  */
 export function getAwardColumnControlId(quoteId: string): string {
   return `award-column-${quoteId}`;
-}
-
-/** Detección de monedas mixtas para el alert informativo (spec §4.5, §6.3). */
-export function isCurrencyMixed(state: AwardMatrixState): boolean {
-  return state.currencyMixed;
 }
 
 /**

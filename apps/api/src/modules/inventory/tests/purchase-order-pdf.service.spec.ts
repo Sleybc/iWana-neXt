@@ -221,6 +221,41 @@ describe('PurchaseOrderPdfService', () => {
     expect(pageCount).toBe(1);
   });
 
+  it('renderForOrder pagina sin descolocar la primera fila de la página nueva', async () => {
+    // Regresión: `rowTop` se calculaba ANTES del salto de página y no se
+    // recalculaba, así que tras `addPage()` la primera fila se dibujaba con la
+    // coordenada de la página anterior, encabalgada sobre el membrete. Ningún
+    // test ejercitaba `addPage()`: los existentes afirman `pageCount === 1`.
+    const manyLines = Array.from({ length: 60 }, (_, index) => ({
+      id: `pol-${index}`,
+      purchaseOrderId: 'po-001',
+      itemId: 'item-001',
+      purchaseRequestLineId: `line-${index}`,
+      quantity: '2.00',
+      unitCost: '1500.00',
+      receivedQuantity: '0.00',
+    }));
+    purchasingServiceMock.getOrderById = jest
+      .fn()
+      .mockResolvedValue(buildOrderDetail({ lines: manyLines }));
+    const service = createService();
+
+    const result = await service.renderForOrder('po-001');
+    const raw = result.buffer.toString('latin1');
+    const pageCount = (raw.match(/\/Type\s*\/Page\b/g) || []).length;
+    const text = extractPdfSearchableText(result.buffer);
+    // Desborda de verdad: sin varias páginas el test no ejercitaría `addPage()`.
+    // Qué cubre y qué NO: esto recorre la ruta de paginación, que hasta ahora
+    // ningún test tocaba (los existentes afirman `pageCount === 1`). NO verifica
+    // la coordenada con que se dibuja cada fila: con las fuentes TTF embebidas
+    // el texto del cuerpo va como códigos de glifo, no como ASCII legible — la
+    // única aparición de «Costo unitario» en el texto extraíble proviene de los
+    // metadatos `Keywords`, no de la cabecera de la tabla. Fijar la posición
+    // exigiría exponer `drawLinesTable`; queda registrado como deuda.
+    expect(pageCount).toBeGreaterThanOrEqual(2);
+    expect(text).toContain('PO-000001');
+  });
+
   it('renderForOrder lanza 404 en español si la orden no existe', async () => {
     purchasingServiceMock.getOrderById = jest
       .fn()
@@ -244,6 +279,11 @@ describe('PurchaseOrderPdfService', () => {
     const result = await service.renderRequestOrdersZip('pr-001');
 
     expect(result.filename).toBe('SC-000001-ordenes.zip');
+    // El contacto del tenant es invariante dentro del ZIP y se lee UNA vez, no
+    // una por orden. Sin esta aserción la optimización no estaba protegida: una
+    // regresión que volviera a leerlo por documento pasaba en verde.
+    expect(tenantContactPortMock.getContactInfo).toHaveBeenCalledTimes(1);
+
     // La orden cancelada no se consulta ni entra al ZIP.
     expect(purchasingServiceMock.getOrderById).not.toHaveBeenCalledWith('po-002');
 

@@ -6,6 +6,7 @@ import {
   drawBrandFooter,
   drawBrandHeader,
   registerBrandFonts,
+  toAsciiMetadata,
 } from './pdf-branding';
 
 /** Alias histórico: el spec de servicio referencia los tokens por este nombre. */
@@ -67,6 +68,14 @@ function lineLabel(line: RfqPdfLineInput, itemLabels: Map<string, string>): stri
   );
 }
 
+/**
+ * Metadatos buscables de la RFQ: se normalizan a ASCII con el
+ * `toAsciiMetadata` compartido de `pdf-branding.ts`, igual que el PDF de orden
+ * de compra. El contenido visible conserva los acentos; solo
+ * Title/Subject/Keywords los pierden. La normalización se aplica sobre la
+ * cadena ya compuesta (el condicional de `Subject`, el `join` de `Keywords`)
+ * para no alterar cómo se arman.
+ */
 function applySearchableMetadata(doc: PDFKit.PDFDocument, input: RfqPdfDocumentInput): void {
   const directed = input.directedToName?.trim() || '';
   const suppliers = input.supplierNames.join(';');
@@ -78,28 +87,35 @@ function applySearchableMetadata(doc: PDFKit.PDFDocument, input: RfqPdfDocumentI
     .filter(Boolean)
     .join(';');
 
-  doc.info.Title = `Solicitud de cotizacion ${input.rfqNumber}`;
+  doc.info.Title = toAsciiMetadata(`Solicitud de cotizacion ${input.rfqNumber}`);
   doc.info.Author = 'iWana neXt';
-  doc.info.Subject = directed
-    ? `Cotizacion dirigida a: ${directed}`
-    : `Solicitud de cotizacion ${input.rfqNumber}`;
-  doc.info.Keywords = [
-    'Destinatario',
-    suppliers,
-    directed,
-    'Descripcion',
-    'Cantidad',
-    'UdM',
-    contactBits,
-    'Documento generado por iWana neXt',
-    input.rfqNumber,
-    getRfqStatusLabel(input.status),
-  ]
-    .filter(Boolean)
-    .join(';');
+  doc.info.Subject = toAsciiMetadata(
+    directed ? `Cotizacion dirigida a: ${directed}` : `Solicitud de cotizacion ${input.rfqNumber}`,
+  );
+  doc.info.Keywords = toAsciiMetadata(
+    [
+      'Destinatario',
+      suppliers,
+      directed,
+      'Descripcion',
+      'Cantidad',
+      'UdM',
+      contactBits,
+      'Documento generado por iWana neXt',
+      input.rfqNumber,
+      getRfqStatusLabel(input.status),
+    ]
+      .filter(Boolean)
+      .join(';'),
+  );
 }
 
-function drawLinesTable(
+/**
+ * Exportada para test por el mismo motivo que su gemela de orden de compra:
+ * el invariante de paginación (ninguna fila después de un salto se dibuja con
+ * la coordenada de la página anterior) solo es observable espiando `doc.text`.
+ */
+export function drawLinesTable(
   doc: PDFKit.PDFDocument,
   input: RfqPdfDocumentInput,
   startY: number,
@@ -144,7 +160,6 @@ function drawLinesTable(
 
   for (const line of input.lines) {
     const label = lineLabel(line, input.itemLabels);
-    const rowTop = y + 4;
     doc.font(PDF_FONT.regular).fontSize(9).fillColor(PDF_BRAND_TOKENS.primary);
     const labelHeight = doc.heightOfString(label, { width: colDesc - 12 });
     const rowHeight = Math.max(18, labelHeight + 8);
@@ -153,6 +168,16 @@ function drawLinesTable(
       doc.addPage();
       y = doc.page.margins.top;
     }
+
+    // `rowTop` se deriva DESPUÉS del posible salto de página. Calculado antes,
+    // conservaba la coordenada de la página anterior y la primera fila de cada
+    // página nueva se dibujaba encabalgada sobre el membrete.
+    //
+    // La paridad con `purchase-order-pdf.layout.ts` alcanza SOLO a esta regla:
+    // aquel repite además la cabecera en cada página y este no, así que una
+    // tabla de RFQ partida deja las columnas sin rótulo a partir de la página 2
+    // (deuda conocida, no la afirma ningún test para no fijarla como correcta).
+    const rowTop = y + 4;
 
     doc
       .font(PDF_FONT.regular)

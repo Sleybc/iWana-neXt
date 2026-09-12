@@ -34,8 +34,6 @@ import {
   buildAwardMatrix,
   getAwardEmptySelectionNotice,
   getAwardMatrixProgress,
-  isAwardMatrixEditable,
-  isCurrencyMixed,
   moveAwardToQuote,
   setLineQuantity,
   summarizeBySupplier,
@@ -1082,6 +1080,20 @@ describe('validateMatrixSelection', () => {
     ]);
   });
 
+  it('el aviso de monedas mixtas no cancela un bloqueante que coincida con él', () => {
+    const detail = buildCanonicalDetail({
+      quotes: [
+        makeQuote('quote-1', 'party-1', 'COT-1', 'COP', { 'line-p1': '100.00' }),
+        makeQuote('quote-2', 'party-2', 'COT-2', 'USD', { 'line-p1': '0.02' }),
+      ],
+    });
+    // Sin selección: conviven EMPTY_SELECTION (bloquea) y CURRENCY_MIXED (avisa).
+    const result = validateMatrixSelection(buildAwardMatrix(detail, buildItems(detail)));
+
+    expect(result.issues.map((issue) => issue.code)).toEqual(['EMPTY_SELECTION', 'CURRENCY_MIXED']);
+    expect(result.ok).toBe(false);
+  });
+
   it('rechaza cantidades inválidas en PROJECT (cero, vacía o superior a la solicitada)', () => {
     const detail = buildCanonicalDetail({ request: { requestType: PurchaseRequestType.PROJECT } });
     const base = buildAwardMatrix(detail, buildItems(detail));
@@ -1202,22 +1214,20 @@ describe('toCreateAwardsDto', () => {
 });
 
 describe('helpers de la barra de selección', () => {
-  it('isAwardMatrixEditable e isCurrencyMixed exponen los flags derivados', () => {
+  it('buildAwardMatrix deriva canEdit y currencyMixed en el estado', () => {
     const detail = buildCanonicalDetail();
-    expect(isAwardMatrixEditable(buildAwardMatrix(detail, buildItems(detail)))).toBe(true);
-    expect(isCurrencyMixed(buildAwardMatrix(detail, buildItems(detail)))).toBe(false);
+    expect(buildAwardMatrix(detail, buildItems(detail)).canEdit).toBe(true);
+    expect(buildAwardMatrix(detail, buildItems(detail)).currencyMixed).toBe(false);
     expect(
-      isCurrencyMixed(
-        buildAwardMatrix(
-          buildCanonicalDetail({
-            quotes: [
-              makeQuote('quote-1', 'party-1', 'COT-1', 'COP', { 'line-p1': '100.00' }),
-              makeQuote('quote-2', 'party-2', 'COT-2', 'USD', { 'line-p1': '0.02' }),
-            ],
-          }),
-          buildItems(detail),
-        ),
-      ),
+      buildAwardMatrix(
+        buildCanonicalDetail({
+          quotes: [
+            makeQuote('quote-1', 'party-1', 'COT-1', 'COP', { 'line-p1': '100.00' }),
+            makeQuote('quote-2', 'party-2', 'COT-2', 'USD', { 'line-p1': '0.02' }),
+          ],
+        }),
+        buildItems(detail),
+      ).currencyMixed,
     ).toBe(true);
   });
 

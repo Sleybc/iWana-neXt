@@ -31,6 +31,24 @@ export const PDF_FONT = {
   mono: FONT_MONO,
 } as const;
 
+/**
+ * PDFKit serializa una cadena de metadatos como UTF-16 en cuanto contiene un
+ * carácter fuera de ASCII —el umbral real es `charCodeAt(i) > 0x7F`, no
+ * latin1—, y entonces TODA la cadena deja de ser buscable como texto. El matiz
+ * importa: `á` (U+00E1) y `ñ` (U+00F1) SÍ son latin1 y aun así disparan la
+ * conversión, que es justamente por lo que esta normalización hace falta. Por eso los metadatos del documento (`Title`, `Subject`, `Keywords`)
+ * se normalizan a ASCII sin diacríticos: el contenido visible del PDF conserva
+ * los acentos, solo los metadatos los pierden.
+ *
+ * Lo aplican los dos PDF del módulo de compras (`rfq-pdf.layout.ts` y
+ * `purchase-order-pdf.layout.ts`); vive aquí para que no vuelvan a divergir.
+ * Normalizar siempre el resultado final ya compuesto —no cada fragmento— para
+ * no alterar la composición de la cadena.
+ */
+export function toAsciiMetadata(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 export function resolveApiAssetsRoot(): string {
   // Desde src|dist/modules/inventory/services → apps/api
   return join(__dirname, '../../../../assets');

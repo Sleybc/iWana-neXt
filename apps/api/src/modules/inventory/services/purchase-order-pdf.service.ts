@@ -42,11 +42,6 @@ function formatCentsAsDecimal2(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-/** Suma exacta de importes de línea en céntimos (enteros, sin deriva flotante). */
-function sumLineAmountCents(lines: PurchaseOrderLine[]): number {
-  return lines.reduce((total, line) => total + lineAmountCents(line), 0);
-}
-
 @Injectable()
 export class PurchaseOrderPdfService {
   constructor(
@@ -57,15 +52,32 @@ export class PurchaseOrderPdfService {
   ) {}
 
   async renderForOrder(purchaseOrderId: string): Promise<{ buffer: Buffer; filename: string }> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const contact = await this.tenantContactPort.getContactInfo(tenantId);
+    return this.renderOrderWithContact(purchaseOrderId, contact);
+  }
+
+  /**
+   * Render de una orden con el contacto del tenant ya resuelto.
+   *
+   * El contacto es el mismo para todas las órdenes de la misma petición, así
+   * que se recibe en vez de releerlo: el ZIP lo cargaba una vez por orden.
+   */
+  private async renderOrderWithContact(
+    purchaseOrderId: string,
+    contact: TenantContactInfo,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     // 404 en español (y aislamiento por tenant) delegados a getOrderById.
     const order = await this.purchasingService.getOrderById(purchaseOrderId);
-    const { tenantId } = TenantContext.getOrThrow();
 
-    const [context, contact, supplierSummary] = await Promise.all([
+    const [context, supplierSummary] = await Promise.all([
       this.loadDocumentContext(order),
-      this.tenantContactPort.getContactInfo(tenantId),
       this.supplierPartyPort.getSupplierSummary(order.partyRefId),
     ]);
+
+    // Un solo cálculo por línea: el subtotal y el importe impreso salen del
+    // mismo arreglo de céntimos en vez de recorrer `lineAmountCents` dos veces.
+    const lineCents = order.lines.map(lineAmountCents);
 
     const buffer = await buildPurchaseOrderPdfDocument({
       orderNumber: order.orderNumber,
@@ -74,7 +86,7 @@ export class PurchaseOrderPdfService {
       expectedDeliveryDate: order.expectedDeliveryDate ?? null,
       status: order.status,
       currency: context.currency,
-      subtotalCents: sumLineAmountCents(order.lines),
+      subtotalCents: lineCents.reduce((total, cents) => total + cents, 0),
       supplier: {
         displayName: supplierSummary?.displayName?.trim() || 'Proveedor adjudicado',
         primaryContact: supplierSummary?.primaryContact ?? null,
@@ -82,11 +94,11 @@ export class PurchaseOrderPdfService {
         city: supplierSummary?.city ?? null,
       },
       notes: order.notes ?? null,
-      lines: order.lines.map((line) => ({
+      lines: order.lines.map((line, index) => ({
         label: context.lineLabels.get(line.itemId) ?? 'Ítem de inventario',
         quantity: line.quantity,
         unitCost: line.unitCost,
-        lineAmount: formatCentsAsDecimal2(lineAmountCents(line)),
+        lineAmount: formatCentsAsDecimal2(lineCents[index] ?? 0),
       })),
       contact,
     });
@@ -124,7 +136,17 @@ export class PurchaseOrderPdfService {
       throw new NotFoundException('No hay órdenes de compra vivas para generar PDFs.');
     }
 
-    const documents = await Promise.all(orders.map((order) => this.renderForOrder(order.id)));
+    // El contacto del tenant es invariante dentro del ZIP: una sola lectura.
+    const contact = await this.tenantContactPort.getContactInfo(tenantId);
+
+    // En serie, no con `Promise.all`: cada render abre su propio QueryRunner
+    // con `runInTenantSchema`, así que N órdenes en paralelo reservaban N
+    // conexiones del pool a la vez. El render en sí es CPU-bound sobre el
+    // mismo hilo de Node, de modo que el paralelismo no acortaba el trabajo.
+    const documents: Array<{ buffer: Buffer; filename: string }> = [];
+    for (const order of orders) {
+      documents.push(await this.renderOrderWithContact(order.id, contact));
+    }
 
     const zip = new JSZip();
     const usedNames = new Set<string>();
@@ -178,7 +200,7 @@ export class PurchaseOrderPdfService {
         qr.manager.find(InventoryItem, {
           where: { tenantId, id: In([...itemIds]) },
         }),
-        [...requestLineIds].length > 0
+        requestLineIds.size > 0
           ? qr.manager.find(PurchaseRequestLineAward, {
               where: {
                 tenantId,

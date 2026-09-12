@@ -153,6 +153,34 @@ describe('RfqPdfService', () => {
     expect(raw).toContain(hexToPdfRgbSnippet(RFQ_PDF_TOKENS.accent));
   });
 
+  it('renderForInvitation normaliza a ASCII los metadatos con acentos (siguen buscables)', async () => {
+    // PDFKit serializa TODA la cadena de metadatos como UTF-16 en cuanto lleva
+    // un carácter fuera de ASCII (> 0x7F; `ñ` y `á` son latin1 y aun así lo
+    // disparan), y deja de ser buscable como texto. Por eso
+    // Title/Subject/Keywords van sin diacríticos: no es una aserción debilitada,
+    // es el comportamiento correcto. El contenido visible sí conserva acentos.
+    supplierPartyPortMock.getSupplierSummary = jest.fn().mockImplementation(async (partyRefId) => {
+      if (partyRefId === 'party-001') {
+        return { displayName: 'Distribuciones Ñandú Ávila' };
+      }
+      return { displayName: 'Proveedor Beta' };
+    });
+    tenantContactPortMock.getContactInfo = jest.fn().mockResolvedValue({
+      contactEmail: 'compras@tenant.example',
+      phone: '+57 300 000 0000',
+      legalName: 'Fibra Óptica del Pacífico SAS',
+    });
+
+    const service = createService();
+    const result = await service.renderForInvitation('rfq-001', 'inv-001');
+    const text = extractPdfSearchableText(result.buffer);
+
+    expect(text).toContain('Distribuciones Nandu Avila');
+    expect(text).toContain('Fibra Optica del Pacifico SAS');
+    expect(text).not.toContain('Ñandú');
+    expect(text).not.toContain('Óptica');
+  });
+
   it('renderForInvitation no genera páginas vacías para una RFQ corta', async () => {
     const service = createService();
     const result = await service.renderForInvitation('rfq-001', 'inv-001');

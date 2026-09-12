@@ -357,6 +357,33 @@ describe('AwardMatrixPanel', () => {
     expect(onDirectAward.mock.calls[0]?.[0]).not.toHaveProperty('supplierQuoteId');
   });
 
+  it('la escotilla no arrastra el costo del intento cancelado al reabrirla', async () => {
+    // Regresión: con los campos en `useState` sueltos, `closeHatch` limpiaba
+    // solo el error y el flag de apertura. El costo unitario tecleado para un
+    // proveedor sobrevivía a Cancelar y reaparecía atribuido al siguiente.
+    const user = userEvent.setup();
+    const onDirectAward = jest.fn().mockResolvedValue(undefined);
+    renderPanel({ onDirectAward });
+
+    const openHatch = async (): Promise<void> => {
+      await user.click(screen.getByRole('button', { name: 'Acciones' }));
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Adjudicar a proveedor sin cotización' }),
+      );
+    };
+
+    await openHatch();
+    const first = within(screen.getByRole('dialog'));
+    await user.type(first.getByLabelText(/Costo unitario/), '999999');
+    await user.type(first.getByLabelText(/Notas de adjudicación/), 'nota del intento anterior');
+    await user.click(first.getByRole('button', { name: 'Cancelar' }));
+
+    await openHatch();
+    const reopened = within(screen.getByRole('dialog'));
+    expect(reopened.getByLabelText(/Costo unitario/)).toHaveValue(null);
+    expect(reopened.getByLabelText(/Notas de adjudicación/)).toHaveValue('');
+  });
+
   it('el envío conecta la barra con el padre (FE-3): guardar y continuar emiten el draft', async () => {
     const user = userEvent.setup();
     const onSubmit = jest.fn().mockResolvedValue(undefined);

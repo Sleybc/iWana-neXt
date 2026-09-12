@@ -229,3 +229,20 @@ Comportamiento vigente (`cancelPurchaseOrder`, misma transacción):
 Documentación: ADR-087 nueva decisión **D6**; docstring del eje de abastecimiento deja de afirmar «para siempre». Nota de datos legados: el backfill de la migración 128 (D4) no cubre el subcaso «CONVERTED_TO_PO + líneas ORDERED + todas las OC canceladas» (anterior a esta corrección); en dev se repara con corrección puntual, no existe producción con ese estado.
 
 Validación: `purchasing.service.spec` 79 tests OK (3 nuevos: reversión total, cobertura viva parcial [split] conserva ORDERED/CONVERTED, líneas recibidas intactas) · `purchasing.flow.integration` 80 tests OK junto con swagger (8) · typecheck api OK · lint api 0 errores (7 advertencias preexistentes en archivos ajenos, mismo conteo sin el cambio). Las 4 suites que fallan en inventory del API (`inventory.module`, `inventory.controller.http`, `purchasing.http.integration`, `counter-purchase.http.integration`) fallan idénticamente SIN este cambio (verificado por stash): es el defecto preexistente de compilación DI del WIP Fase 30, no una regresión de esta adenda.
+
+### 12.8 Adenda — se retiran dos de los cuatro helpers extra de FE-1 (2026-09-12)
+
+La §3 de este informe registró cuatro extensiones no contradictorias de `award-matrix.ts` sobre las siete funciones de la spec §5.3 (`setLineQuantity`, `isAwardMatrixEditable`, `isCurrencyMixed`, `getAwardMatrixProgress`) y proponía **adenda menor a la spec o aceptación como helpers de consumo de FE-2**. La revisión de código posterior resolvió la disyuntiva en sentido contrario para dos de ellos: **se eliminan**, y la spec §5.3 no necesita adenda por su causa.
+
+- `isAwardMatrixEditable(state)` devolvía `state.canEdit` y **no tenía ningún llamador productivo**: solo lo ejercitaba su propio test, mientras el panel leía `matrixState.canEdit` directamente en tres puntos.
+- `isCurrencyMixed(state)` devolvía `state.currencyMixed`, con un único llamador. La indirección no protegía ninguna derivación futura: `currencyMixed` se calcula una sola vez en `buildAwardMatrix` (`!quotesShareCurrency(...)`) y se almacena en el estado, así que cualquier cambio de derivación ocurriría allí, no en el getter.
+
+Ambos campos —`canEdit` (spec §5.1 línea 173) y `currencyMixed` (línea 184)— son **campos declarados del estado**: leerlos directamente *es* el contrato congelado. El test que ejercitaba los envoltorios se reorientó a afirmar la derivación real (`buildAwardMatrix(...).canEdit` / `.currencyMixed`), conservando las mismas aserciones y valores esperados sobre los mismos fixtures.
+
+`setLineQuantity` y `getAwardMatrixProgress` **se conservan**: ambos tienen llamadores productivos y lógica propia. Para ellos sigue en pie la propuesta original de adenda a la spec §5.3.
+
+Deuda registrada en la misma revisión, sin dueño asignado todavía:
+
+1. **Cabecera de tabla en el PDF de RFQ.** `purchase-order-pdf.layout.ts` repite la cabecera en cada página; `rfq-pdf.layout.ts` no, así que una RFQ larga deja las columnas sin rótulo desde la página 2. No lo afirma ningún test, para no fijar el comportamiento defectuoso.
+2. **Cota de órdenes del ZIP de órdenes de compra.** `renderRequestOrdersZip` genera los PDF en serie (~546 ms/orden medidos) y no tiene cota superior ni en test ni en producción; el techo aplicable es el timeout HTTP.
+3. **Alcance de `extractPdfSearchableText`.** El helper de los specs de PDF solo alcanza los metadatos del documento (`Title`, `Subject`, `Keywords`): con fuentes TTF embebidas el cuerpo va como códigos de glifo. Un PDF con el cuerpo en blanco y metadatos correctos pasaría esos tests. El invariante de paginación se verifica aparte, espiando `doc.text` (`tests/pdf-layout-pagination.spec.ts`).

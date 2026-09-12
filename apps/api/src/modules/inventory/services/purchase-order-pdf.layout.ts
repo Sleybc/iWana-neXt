@@ -6,6 +6,7 @@ import {
   drawBrandFooter,
   drawBrandHeader,
   registerBrandFonts,
+  toAsciiMetadata,
 } from './pdf-branding';
 
 /**
@@ -90,16 +91,11 @@ function formatDateOnly(value: string | null): string {
 }
 
 /**
- * PDFKit serializa una cadena de metadatos como UTF-16 en cuanto contiene un
- * carácter no latino1, y toda la cadena deja de ser buscable como texto. Los
- * metadatos del documento se normalizan a ASCII (sin diacríticos), mismo
- * criterio del PDF de RFQ: el contenido visible conserva los acentos, los
- * metadatos los pierden.
+ * Metadatos buscables de la orden: se normalizan a ASCII con el
+ * `toAsciiMetadata` compartido de `pdf-branding.ts` (misma normalización que
+ * el PDF de RFQ desde la unificación). El contenido visible conserva los
+ * acentos; solo Title/Subject/Keywords los pierden.
  */
-function toAsciiMetadata(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-
 function applySearchableMetadata(
   doc: PDFKit.PDFDocument,
   input: PurchaseOrderPdfDocumentInput,
@@ -144,7 +140,14 @@ function applySearchableMetadata(
   );
 }
 
-function drawLinesTable(
+/**
+ * Exportada para test: la paginación de la tabla solo se puede verificar
+ * espiando las coordenadas con que se dibuja cada fila. El texto del PDF ya
+ * renderizado no sirve —con fuentes TTF embebidas el cuerpo va como códigos de
+ * glifo— y `extractPdfSearchableText` de los specs solo alcanza los metadatos.
+ * No la consume nadie fuera de este módulo y de su spec.
+ */
+export function drawLinesTable(
   doc: PDFKit.PDFDocument,
   input: PurchaseOrderPdfDocumentInput,
   startY: number,
@@ -165,26 +168,32 @@ function drawLinesTable(
   y = doc.y + 8;
 
   const headerH = 18;
-  doc.save();
-  doc.rect(margin, y, contentWidth, headerH).fill(PDF_BRAND_TOKENS.primary);
-  doc.restore();
 
-  doc
-    .fillColor(PDF_BRAND_TOKENS.white)
-    .font(PDF_FONT.semibold)
-    .fontSize(9)
-    .text('Descripción', margin + 6, y + 4, { width: colDesc - 12 })
-    .text('Cantidad', margin + colDesc, y + 4, { width: colQty - 6, align: 'right' })
-    .text('Costo unitario', margin + colDesc + colQty, y + 4, {
-      width: colCost - 6,
-      align: 'right',
-    })
-    .text('Importe', margin + colDesc + colQty + colCost, y + 4, {
-      width: colAmount - 6,
-      align: 'right',
-    });
+  /** Dibuja la franja de encabezado en `top` y devuelve la Y de la primera fila. */
+  const drawTableHeader = (top: number): number => {
+    doc.save();
+    doc.rect(margin, top, contentWidth, headerH).fill(PDF_BRAND_TOKENS.primary);
+    doc.restore();
 
-  y += headerH;
+    doc
+      .fillColor(PDF_BRAND_TOKENS.white)
+      .font(PDF_FONT.semibold)
+      .fontSize(9)
+      .text('Descripción', margin + 6, top + 4, { width: colDesc - 12 })
+      .text('Cantidad', margin + colDesc, top + 4, { width: colQty - 6, align: 'right' })
+      .text('Costo unitario', margin + colDesc + colQty, top + 4, {
+        width: colCost - 6,
+        align: 'right',
+      })
+      .text('Importe', margin + colDesc + colQty + colCost, top + 4, {
+        width: colAmount - 6,
+        align: 'right',
+      });
+
+    return top + headerH;
+  };
+
+  y = drawTableHeader(y);
 
   if (input.lines.length === 0) {
     doc
@@ -196,7 +205,6 @@ function drawLinesTable(
   }
 
   for (const line of input.lines) {
-    const rowTop = y + 4;
     doc.font(PDF_FONT.regular).fontSize(9).fillColor(PDF_BRAND_TOKENS.primary);
     const labelHeight = doc.heightOfString(line.label, { width: colDesc - 12 });
     const rowHeight = Math.max(18, labelHeight + 8);
@@ -204,7 +212,15 @@ function drawLinesTable(
     if (y + rowHeight > doc.page.height - 72) {
       doc.addPage();
       y = doc.page.margins.top;
+      // La cabecera se repite en cada página: una tabla partida sin encabezado
+      // deja columnas de cifras sin rótulo.
+      y = drawTableHeader(y);
     }
+
+    // `rowTop` se deriva DESPUÉS del posible salto de página. Calculado antes,
+    // conservaba la coordenada de la página anterior y la primera fila de cada
+    // página nueva se dibujaba fuera de sitio, encabalgada sobre el membrete.
+    const rowTop = y + 4;
 
     doc
       .font(PDF_FONT.regular)
