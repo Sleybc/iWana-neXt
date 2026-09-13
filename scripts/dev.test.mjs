@@ -300,39 +300,45 @@ test('E7 mantiene Node derivado de useNodeVersion en imágenes y CI', () => {
     'el contrato de digests del migrator solo soporta Node 24.13.1',
   );
 
-  const expectedMigratorDigestArgs = {
-    NODE_BOOKWORM_DIGEST: supportedMigratorDigests[`${workspaceVersion}-bookworm`],
-    NODE_BOOKWORM_SLIM_DIGEST: supportedMigratorDigests[`${workspaceVersion}-bookworm-slim`],
-  };
-  const migratorDigestArgs = [
-    ...migratorSource.matchAll(/^ARG\s+(NODE_[A-Z0-9_]+_DIGEST)=(sha256:[0-9a-f]{64})$/gm),
-  ].map((match) => [match[1], match[2]]);
-  assert.deepEqual(
-    migratorDigestArgs,
-    Object.entries(expectedMigratorDigestArgs),
-    'el migrator debe mantener los dos pins de digest esperados',
+  // Qué variantes de Node use el migrator es una decisión de build —hoy sus dos
+  // stages comparten `bookworm-slim`, porque la instalacion corre con
+  // --ignore-scripts y el toolchain de la variante completa no se ejecuta—. Lo
+  // que el contrato fija es que CADA `FROM node:` consuma un ARG de digest de
+  // la tabla vetada, que ese ARG traiga el digest correcto y que no sobren ARG
+  // de digest sin FROM que los use.
+  const migratorDigestArgs = new Map(
+    [...migratorSource.matchAll(/^ARG\s+(NODE_[A-Z0-9_]+_DIGEST)=(sha256:[0-9a-f]{64})$/gm)].map(
+      (match) => [match[1], match[2]],
+    ),
   );
-
   const migratorNodePins = [
     ...migratorSource.matchAll(
       /^FROM\s+node:\$\{NODE_VERSION\}-(bookworm(?:-slim)?)@\$\{(NODE_[A-Z0-9_]+_DIGEST)\}\s+AS\s+\w+\s*$/gm,
     ),
   ].map((match) => [`${workspaceVersion}-${match[1]}`, match[2]]);
-  const expectedMigratorDigestRefs = {
-    [`${workspaceVersion}-bookworm`]: 'NODE_BOOKWORM_DIGEST',
-    [`${workspaceVersion}-bookworm-slim`]: 'NODE_BOOKWORM_SLIM_DIGEST',
-  };
+
+  assert.ok(
+    migratorNodePins.length >= 2,
+    'el migrator debe fijar por digest tanto el stage de build como el de runtime',
+  );
+  for (const [variant, digestArg] of migratorNodePins) {
+    assert.equal(
+      migratorDigestArgs.get(digestArg),
+      supportedMigratorDigests[variant],
+      `${digestArg} debe fijar el digest vetado de node:${variant}`,
+    );
+  }
   assert.deepEqual(
-    migratorNodePins,
-    Object.entries(expectedMigratorDigestRefs),
-    'las dos variantes del migrator deben consumir sus ARG de digest correspondientes',
+    [...migratorDigestArgs.keys()].sort(),
+    [...new Set(migratorNodePins.map(([, digestArg]) => digestArg))].sort(),
+    'el migrator no debe declarar ARG de digest que ningún FROM consuma',
   );
   assert.match(
     migratorSource,
     new RegExp(`test "\\$NODE_VERSION" = "${supportedMigratorNodeVersion}"`),
     'el build del migrator debe rechazar una version Node fuera del contrato',
   );
-  for (const digest of Object.values(supportedMigratorDigests)) {
+  for (const digest of new Set(migratorDigestArgs.values())) {
     assert.match(
       migratorSource,
       new RegExp(`test "\\$[A-Z_]+" = "${digest}"`),

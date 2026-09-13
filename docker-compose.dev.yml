@@ -34,3 +34,9 @@ services:
   typesense:
     ports:
       - '127.0.0.1:${TYPESENSE_PORT:-8108}:8108'
+    environment:
+      # El archivo base deja CORS desactivado (solo la API consume Typesense).
+      # En desarrollo el puerto sí queda publicado en 127.0.0.1 y se consulta
+      # desde el navegador contra el dashboard local, así que se reactiva aquí
+      # y únicamente aquí: producción nunca carga este overlay.
+      TYPESENSE_ENABLE_CORS: ${TYPESENSE_ENABLE_CORS:-true}

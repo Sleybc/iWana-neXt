@@ -4,9 +4,15 @@ node_modules
 .vscode
 .idea
 .worktrees
+
+# Superficies de asistentes de IA: documentación y configuración local, sin
+# ningún papel en el build, pero entran al contexto por el `COPY` del builder.
 .opencode
 .claude
 .agents
+.codex
+.kilo
+.zcode
 
 .env
 .env.*
@@ -35,6 +41,7 @@ login-request.json
 
 **/node_modules
 **/.next
+**/.turbo
 **/dist
 **/coverage
 **/test-results

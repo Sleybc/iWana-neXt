@@ -25,6 +25,17 @@ x-logging: &default-logging
 x-security-opt: &default-security-opt
   - no-new-privileges:true
 
+x-cap-drop: &default-cap-drop
+  - ALL
+
+# Límites de recursos: se declaran por servicio y NO con un ancla compartida.
+# Compose normaliza `pids_limit` dentro de `deploy.resources.limits.pids`, y un
+# alias YAML es el mismo nodo para todos los servicios que lo referencian, así
+# que dos valores distintos de pids sobre el mismo ancla rompen la validación.
+# Sin límites, una fuga en cualquier servicio consume la RAM del host y el OOM
+# killer del kernel elige la víctima —normalmente Postgres, el proceso más
+# grande—. `pids_limit` acota además el fork bomb accidental de un job.
+
 services:
   # Los servicios de datos comparten la definición base, pero producción usa
   # nombres de contenedor y volúmenes propios para no tocar el estado de dev.
@@ -83,14 +94,30 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+      start_interval: 2s
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      # Termina 80 y 443, ambos privilegiados.
+      - NET_BIND_SERVICE
+    # El borde no toca la red de datos: no resuelve postgres, redis ni minio.
+    networks:
+      - edge
 
   api-prod:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    # Nombre explícito de imagen: sin él, compose etiqueta con un nombre
+    # derivado del proyecto y no hay forma de referenciar el artefacto exacto
+    # que se desplegó (ni de promoverlo entre entornos sin reconstruirlo).
+    image: ${IMAGE_REPOSITORY:-iwana}/api:${IMAGE_TAG:-local}
     container_name: iwana_api_prod
     profiles:
       - production
@@ -164,10 +191,25 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     init: true
     logging: *default-logging
     security_opt: *default-security-opt
+    # La imagen corre como nestjs (uid 1001) y no ejecuta ninguna operación
+    # privilegiada: no necesita conservar ninguna capability.
+    cap_drop: *default-cap-drop
+    deploy:
+      resources:
+        limits:
+          memory: ${API_MEM_LIMIT:-1g}
+          cpus: '${API_CPU_LIMIT:-2}'
+          pids: 512
+    # Único servicio junto al worker que cruza la frontera: lo alcanzan nginx y
+    # los frontends por `edge`, y él alcanza el almacenamiento por `data`.
+    networks:
+      - edge
+      - data
 
   web-prod:
     build:
@@ -176,6 +218,7 @@ services:
       args:
         # C-4 (ADR-081): cada aplicacion bakea su propia variable de URL del API.
         NEXT_PUBLIC_WEB_API_URL: ${NEXT_PUBLIC_WEB_API_URL:?NEXT_PUBLIC_WEB_API_URL is required}
+    image: ${IMAGE_REPOSITORY:-iwana}/web:${IMAGE_TAG:-local}
     container_name: iwana_web_prod
     profiles:
       - production
@@ -201,10 +244,21 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+      start_interval: 2s
     restart: unless-stopped
     init: true
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    deploy:
+      resources:
+        limits:
+          memory: ${WEB_MEM_LIMIT:-768m}
+          cpus: '${WEB_CPU_LIMIT:-1}'
+          pids: 256
+    # Solo habla con nginx y con la API: no tiene por qué resolver la red de datos.
+    networks:
+      - edge
 
   portal-prod:
     build:
@@ -213,6 +267,7 @@ services:
       args:
         # C-4 (ADR-081): cada aplicacion bakea su propia variable de URL del API.
         NEXT_PUBLIC_PORTAL_API_URL: ${NEXT_PUBLIC_PORTAL_API_URL:?NEXT_PUBLIC_PORTAL_API_URL is required}
+    image: ${IMAGE_REPOSITORY:-iwana}/portal:${IMAGE_TAG:-local}
     container_name: iwana_portal_prod
     profiles:
       - production
@@ -235,15 +290,26 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+      start_interval: 2s
     restart: unless-stopped
     init: true
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    deploy:
+      resources:
+        limits:
+          memory: ${PORTAL_MEM_LIMIT:-768m}
+          cpus: '${PORTAL_CPU_LIMIT:-1}'
+          pids: 256
+    networks:
+      - edge
 
   worker-prod:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
+    image: ${IMAGE_REPOSITORY:-iwana}/worker:${IMAGE_TAG:-local}
     container_name: iwana_worker_prod
     profiles:
       - production
@@ -287,6 +353,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+      start_interval: 3s
     depends_on:
       redis:
         condition: service_healthy
@@ -302,13 +369,28 @@ services:
       typesense:
         condition: service_healthy
     restart: unless-stopped
+    # BullMQ necesita margen para cerrar los jobs en vuelo al recibir SIGTERM.
+    # Con los 10 s por defecto de Docker, un job largo recibía SIGKILL y volvía
+    # a la cola como stalled en el siguiente arranque.
+    stop_grace_period: 30s
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    deploy:
+      resources:
+        limits:
+          memory: ${WORKER_MEM_LIMIT:-1g}
+          cpus: '${WORKER_CPU_LIMIT:-2}'
+          pids: 512
+    # El worker no recibe tráfico entrante: solo necesita la red de datos.
+    networks:
+      - data
 
   migrator-prod:
     build:
       context: .
       dockerfile: packages/database/Dockerfile.migrator
+    image: ${IMAGE_REPOSITORY:-iwana}/migrator:${IMAGE_TAG:-local}
     container_name: iwana_migrator_prod
     profiles:
       - production
@@ -335,6 +417,9 @@ services:
     restart: 'no'
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    networks:
+      - data
 
 volumes:
   iwana_postgres_data_prod:

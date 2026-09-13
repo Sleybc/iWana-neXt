@@ -1,40 +1,50 @@
 # syntax=docker/dockerfile:1.7
+# packages/database/Dockerfile.migrator — runner de migraciones TypeORM (@iwana/db)
+
 ARG NODE_VERSION=24.13.1
-# Manifest-list digests resolved with `docker buildx imagetools inspect` for
-# the exact Node patch and Debian variants used by this image.
-ARG NODE_BOOKWORM_DIGEST=sha256:00e9195ebd49985a6da8921f419978d85dfe354589755192dc090425ce4da2f7
+# Debe coincidir con `packageManager` del package.json raíz.
+ARG PNPM_VERSION=10.32.1
+# Digest de la manifest-list resuelto con `docker buildx imagetools inspect`
+# para el parche exacto de Node. Build y runtime comparten la MISMA variante
+# `bookworm-slim`: la instalación corre con --ignore-scripts, así que nada
+# compila con node-gyp y el toolchain de `node:*-bookworm` (≈1,1 GB adicionales
+# que había que descargar en cada agente de CI en frío) nunca se usaba.
 ARG NODE_BOOKWORM_SLIM_DIGEST=sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2
 
-FROM node:${NODE_VERSION}-bookworm@${NODE_BOOKWORM_DIGEST} AS base
+FROM node:${NODE_VERSION}-bookworm-slim@${NODE_BOOKWORM_SLIM_DIGEST} AS base
 ARG NODE_VERSION
-ARG NODE_BOOKWORM_DIGEST
+ARG PNPM_VERSION
 ARG NODE_BOOKWORM_SLIM_DIGEST
+# El digest fija la imagen con independencia del tag, así que un
+# `--build-arg NODE_VERSION=<otro>` quedaría silenciosamente ignorado. Esta
+# aserción convierte esa divergencia en un fallo de build explícito.
 RUN test "$NODE_VERSION" = "24.13.1" \
-    && test "$NODE_BOOKWORM_DIGEST" = "sha256:00e9195ebd49985a6da8921f419978d85dfe354589755192dc090425ce4da2f7" \
     && test "$NODE_BOOKWORM_SLIM_DIGEST" = "sha256:a81a03dd965b4052269a57fac857004022b522a4bf06e7a739e25e18bce45af2"
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
+# corepack en vez de `npm install -g pnpm`: evita dejar la caché de npm en la
+# capa y usa el mismo mecanismo que ya declara `packageManager` en el repo.
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /app
-RUN npm install -g pnpm@10.32.1
 
+# ── deps ────────────────────────────────────────────────────────────────────
 FROM base AS deps
 COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 COPY packages/database/package.json ./packages/database/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/config/package.json ./packages/config/
+COPY packages/shared/package.json   ./packages/shared/
+COPY packages/config/package.json   ./packages/config/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --ignore-scripts
+    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile \
+      --prod=false --ignore-scripts
 
-FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
-COPY packages/database/package.json ./packages/database/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/config/package.json ./packages/config/
+# ── builder ─────────────────────────────────────────────────────────────────
+# Deriva de `deps` en vez de recopiar node_modules stage a stage: la lista
+# explícita de `COPY --from=deps <ws>/node_modules` había que mantenerla a mano
+# por cada workspace nuevo.
+FROM deps AS builder
+COPY packages/config   ./packages/config
+COPY packages/shared   ./packages/shared
 COPY packages/database ./packages/database
-COPY packages/shared ./packages/shared
-COPY packages/config ./packages/config
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json
 RUN CI=true HUSKY=0 pnpm --filter @iwana/db deploy --prod --legacy --ignore-scripts /output
@@ -83,9 +93,14 @@ RUN cd /output && \
     test -f ./dist/cli/tenant-migrate.js && \
     node --input-type=module -e "import { accessSync } from 'node:fs'; const { AppDataSource } = await import('./dist/data-source.js'); await import('./dist/migrations/tenant/runner.js'); if (AppDataSource.isInitialized) throw new Error('DataSource must not connect during the build smoke test'); accessSync('./dist/cli/tenant-migrate.js');"
 
+# ── runner ──────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim@${NODE_BOOKWORM_SLIM_DIGEST} AS runner
 WORKDIR /app
-ENV NODE_ENV=production HOME=/home/node
-COPY --from=builder --chown=node:node /output ./
+ENV NODE_ENV=production \
+    HOME=/home/node \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
+# --link crea una capa independiente del padre; con --link el chown es numérico
+# (1000:1000 = node:node, el usuario sin privilegios que trae la imagen base).
+COPY --from=builder --link --chown=1000:1000 /output ./
 USER node
 CMD ["sh", "-ec", "node node_modules/typeorm/cli.js migration:run -d dist/data-source.js && node dist/cli/tenant-migrate.js"]

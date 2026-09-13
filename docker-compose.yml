@@ -25,6 +25,23 @@ x-logging: &default-logging
 x-security-opt: &default-security-opt
   - no-new-privileges:true
 
+# Docker concede por defecto ~14 capabilities a cada contenedor (entre ellas
+# CHOWN, SETUID, MKNOD y NET_RAW). `no-new-privileges` impide *escalar*, pero no
+# retira lo ya concedido: NET_RAW, por ejemplo, habilita sockets crudos y por
+# tanto suplantación de tráfico dentro de la red del stack. Se parte de cero y
+# cada servicio vuelve a pedir solo lo que su entrypoint necesita.
+x-cap-drop: &default-cap-drop
+  - ALL
+
+# Entrypoints que arrancan como root, ajustan la propiedad de su volumen y
+# bajan a su usuario sin privilegios (gosu / su-exec / setpriv).
+x-cap-privdrop: &cap-privdrop
+  - CHOWN
+  - DAC_OVERRIDE
+  - FOWNER
+  - SETGID
+  - SETUID
+
 services:
   # Postgres local. POSTGRES_USER es el superusuario de bootstrap del volumen y
   # sale de DB_BOOTSTRAP_USER (default 'iwana') — NUNCA de DB_USER.
@@ -59,6 +76,10 @@ services:
       - iwana_postgres_data_dev:/var/lib/postgresql
       # Init scripts: solo en datadir vacío. Volúmenes existentes → scripts/db/apply-least-privilege.sql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    # /dev/shm son 64 MB por defecto. Postgres coloca ahí los segmentos de
+    # memoria compartida de las consultas paralelas y de los hash join; agotarlo
+    # produce «could not resize shared memory segment» en consultas grandes.
+    shm_size: 256mb
     healthcheck:
       test:
         [
@@ -69,9 +90,17 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+      # Durante `start_period` se sondea cada 2 s en vez de esperar `interval`
+      # completo: `pnpm dev` arranca con `up --wait` y pagaba el intervalo
+      # estable aunque el servicio ya respondiera.
+      start_interval: 2s
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    cap_add: *cap-privdrop
+    networks:
+      - data
 
   redis:
     image: ${REDIS_IMAGE:-redis:8.6-alpine}
@@ -79,7 +108,10 @@ services:
     profiles:
       - development
       - production
-    command: redis-server --save 60 1 --loglevel warning
+    # `--maxmemory-policy noeviction` es explícito y no decorativo: BullMQ exige
+    # que Redis NO desaloje claves. Con cualquier política `allkeys-*`, un pico
+    # de memoria descarta jobs encolados sin dejar rastro en los logs.
+    command: redis-server --save 60 1 --loglevel warning --maxmemory-policy noeviction
     expose:
       - '6379'
     volumes:
@@ -90,9 +122,14 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+      start_interval: 2s
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    cap_add: *cap-privdrop
+    networks:
+      - data
 
   pgbouncer:
     image: ${PGBOUNCER_IMAGE:?PGBOUNCER_IMAGE is required}
@@ -118,6 +155,10 @@ services:
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    cap_add: *cap-privdrop
+    networks:
+      - data
 
   minio:
     image: ${MINIO_IMAGE:?MINIO_IMAGE is required}
@@ -143,9 +184,13 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    networks:
+      - data
 
   minio-init:
     image: ${MINIO_MC_IMAGE:?MINIO_MC_IMAGE is required}
@@ -157,6 +202,12 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       S3_BUCKET: ${S3_BUCKET:-iwana-media}
+      # `mc` escribe su configuración en $HOME/.mc, y en esta imagen /root es
+      # dr-xr-x--- (0550): ni siquiera su propietario tiene el bit de escritura.
+      # Que funcionara dependía de CAP_DAC_OVERRIDE, que es justo lo que retira
+      # `cap_drop: ALL`. Reubicar la configuración en /tmp resuelve la causa sin
+      # devolverle ninguna capability al contenedor.
+      MC_CONFIG_DIR: /tmp/.mc
     entrypoint:
       - /bin/sh
       - -c
@@ -170,6 +221,9 @@ services:
     restart: 'no'
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    networks:
+      - data
 
   typesense:
     image: ${TYPESENSE_IMAGE:-typesense/typesense:28.0}
@@ -183,7 +237,12 @@ services:
     environment:
       TYPESENSE_DATA_DIR: /data
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
-      TYPESENSE_ENABLE_CORS: 'true'
+      # CORS desactivado por defecto. Typesense solo se consume desde el
+      # servidor (la API custodia la key); dejar CORS abierto convertía el
+      # índice en consultable desde cualquier origen en cuanto el puerto
+      # quedara accesible a un navegador. `docker-compose.dev.yml` lo reactiva
+      # para el trabajo local.
+      TYPESENSE_ENABLE_CORS: ${TYPESENSE_ENABLE_CORS:-false}
     expose:
       - '8108'
     volumes:
@@ -194,9 +253,13 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+      start_interval: 2s
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    networks:
+      - data
 
   nginx:
     image: ${NGINX_IMAGE:?NGINX_IMAGE is required}
@@ -215,9 +278,22 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+      start_interval: 2s
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      # nginx escucha en el puerto 80 dentro del contenedor.
+      - NET_BIND_SERVICE
+    # El proxy de desarrollo solo enruta hacia el host; no tiene por qué
+    # alcanzar Postgres, Redis ni MinIO, así que queda fuera de la red `data`.
+    networks:
+      - edge
 
   adminer:
     image: ${ADMINER_IMAGE:-adminer:5.4.2}
@@ -234,6 +310,28 @@ services:
     restart: unless-stopped
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    cap_add:
+      - SETGID
+      - SETUID
+    networks:
+      - data
+
+# Segmentación de red. Antes todos los servicios compartían la red por defecto
+# del proyecto: cualquier contenedor comprometido —empezando por el proxy, que
+# es la única superficie publicada— podía resolver y alcanzar `postgres:5432`
+# directamente. `edge` queda para lo que mira al exterior y `data` para el
+# almacenamiento; el overlay de producción conecta API y worker a ambas, que son
+# los únicos que legítimamente cruzan la frontera.
+#
+# A diferencia de los volúmenes, estas redes NO llevan `name:` fijo: se dejan
+# prefijar por el nombre del proyecto. Un nombre global las compartiría entre
+# invocaciones (dev, e2e, production), y como los tres reutilizan los mismos
+# nombres de servicio —`postgres`, `redis`— dos stacks simultáneos colisionarían
+# en el DNS de la red.
+networks:
+  edge:
+  data:
 
 volumes:
   iwana_postgres_data_dev:

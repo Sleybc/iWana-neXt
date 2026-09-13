@@ -1,15 +1,26 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_VERSION=24.13.1
-FROM node:${NODE_VERSION}-bookworm AS base
+# apps/worker/Dockerfile — build multi-stage del worker BullMQ (@iwana/worker)
+#
+# Mismos invariantes que apps/api/Dockerfile: build sobre la variante slim, el
+# stage `builder` solo recibe los workspaces de este subgrafo y la imagen final
+# no contiene pnpm, devDependencies, fuentes TypeScript, sourcemaps ni
+# declaraciones.
 
+ARG NODE_VERSION=24.13.1
+# Debe coincidir con `packageManager` del package.json raíz.
+ARG PNPM_VERSION=10.32.1
+
+# ── base: toolchain mínimo compartido por deps y builder ────────────────────
+FROM node:${NODE_VERSION}-bookworm-slim AS base
+ARG PNPM_VERSION
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /app
 
-RUN npm install -g pnpm@10.32.1
-
-# ── deps: instalar dependencias con contexto completo del monorepo ──────────
+# ── deps: grafo de dependencias del monorepo ────────────────────────────────
 FROM base AS deps
 
-# Copiar manifiestos de todos los workspaces para que pnpm resuelva el grafo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json          apps/api/
 COPY apps/portal/package.json       apps/portal/
@@ -21,29 +32,25 @@ COPY packages/shared/package.json   packages/shared/
 COPY packages/storage/package.json  packages/storage/
 COPY packages/ui/package.json       packages/ui/
 
-# HUSKY=0 evita que el hook "prepare" falle por ausencia de .git
+# HUSKY=0 evita que el hook "prepare" falle por ausencia de .git en Docker.
+# El filtro materializa el subgrafo del worker más el workspace raíz (typescript
+# y turbo). `--frozen-lockfile` sigue validando el lockfile completo.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile --prod=false --ignore-scripts
+    CI=true HUSKY=0 pnpm install --store-dir=/pnpm/store --frozen-lockfile \
+      --prod=false --ignore-scripts \
+      --filter "@iwana/worker..." --filter "iwana-next"
 
 # ── builder: compilar el worker ─────────────────────────────────────────────
-FROM base AS builder
+FROM deps AS builder
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/config/node_modules ./packages/config/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
-COPY --from=deps /app/packages/storage/node_modules ./packages/storage/node_modules
-COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY packages/config   packages/config
+COPY packages/shared   packages/shared
+COPY packages/storage  packages/storage
+COPY packages/database packages/database
+COPY apps/worker       apps/worker
 
-# Se copia el repo completo para preservar los links/junctions de workspace que usa pnpm.
-COPY . .
-
-# Los node_modules de deps incluyen los enlaces de todos los workspaces. Tras
-# COPY . . se conservan porque .dockerignore excluye los node_modules del contexto.
-# Este builder se valida sin una segunda instalación para evitar trabajo duplicado.
-
-# El worker depende de artefactos compilados de @iwana/shared y @iwana/db.
-# `pnpm exec` resuelve el binario real dentro de `.pnpm` sin depender de rutas fijas.
+# El worker depende de artefactos compilados de @iwana/shared, @iwana/storage y
+# @iwana/db. `pnpm exec` resuelve el binario real dentro de `.pnpm`.
 RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
     pnpm exec tsc --project packages/storage/tsconfig.json && \
     pnpm exec tsc --project packages/database/tsconfig.json && \
@@ -53,20 +60,59 @@ RUN pnpm exec tsc --project packages/shared/tsconfig.json && \
 # dependencias de desarrollo, después de producir los artefactos dist.
 RUN pnpm --filter @iwana/worker deploy --prod --legacy /output
 
-# ── runner: imagen mínima de producción ────────────────────────────────────
+# Poda de artefactos de build. Se aplica SOLO a /output y a los workspaces
+# propios (@iwana/*); nunca se podan nombres coincidentes dentro de paquetes de
+# terceros. Mismo criterio que packages/database/Dockerfile.migrator.
+#   - .map y .d.ts: Node no los carga (los .map solo los leen depuradores y los
+#     .d.ts solo tsc) y además exponen la estructura del código fuente.
+#   - src/, test/, tsconfig*.json, jest.config*.js, Dockerfile*: `pnpm deploy`
+#     copia el directorio del paquete completo, de modo que las fuentes
+#     TypeScript y hasta el propio Dockerfile viajaban a producción.
+# Los LICENSE y README de terceros NO se tocan: conservarlos es obligación de
+# las licencias de redistribución, no peso prescindible.
+RUN set -eu; \
+    find /output -type f \( -name '*.map' -o -name '*.d.ts' \) -delete; \
+    for iwana_dir in $(find /output/node_modules -type d -name '@iwana'); do \
+      for pkg_dir in "$iwana_dir"/*; do \
+        [ -d "$pkg_dir" ] || continue; \
+        rm -rf -- "$pkg_dir/src" "$pkg_dir/test" "$pkg_dir/tsconfig.json" \
+          "$pkg_dir/tsconfig.typecheck.json" "$pkg_dir/tsconfig.test.json" \
+          "$pkg_dir/jest.config.js" "$pkg_dir/jest.integration.config.js" \
+          "$pkg_dir/Dockerfile.migrator"; \
+      done; \
+    done; \
+    rm -rf -- /output/src /output/test /output/coverage /output/tsconfig.json \
+      /output/tsconfig.typecheck.json /output/tsconfig.test.json \
+      /output/jest.config.js /output/jest.integration.config.js /output/Dockerfile; \
+    test -f /output/dist/main.js; \
+    test ! -e /output/src; \
+    test -z "$(find /output -type f \( -name '*.map' -o -name '*.d.ts' \) -print -quit)"
+
+# Smoke test del cierre de dependencias tras la poda: carga el grafo pesado sin
+# abrir conexiones a Redis ni a Postgres. Si la poda rompiera un paquete, el
+# build falla aquí y no en producción.
+RUN cd /output && node -e "require('reflect-metadata');require('@nestjs/core');require('bullmq');require('typeorm');require('@iwana/db');require('@iwana/storage');require('@iwana/shared');"
+
+# ── runner: imagen mínima de producción ─────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 WORKDIR /app
+ENV NODE_ENV=production \
+    HOME=/home/worker \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
 
-ENV NODE_ENV=production
-
+# --ingroup: antes el usuario quedaba en `nogroup` mientras los archivos se
+# copiaban con grupo `nodejs`.
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 worker
+    adduser --system --uid 1001 --ingroup nodejs --home /home/worker worker
 
-# `deploy --prod` deja fuera pnpm global, toolchain y devDependencies. La
-# configuración sigue llegando por variables de entorno, no desde el workspace.
-COPY --from=builder --chown=worker:nodejs /output ./
+# --link crea una capa independiente del padre; con --link el chown es numérico.
+COPY --from=builder --link --chown=1001:1001 /output ./
 
 USER worker
+
+# El worker consume colas BullMQ: SIGTERM debe llegar al proceso Node para que
+# cierre los jobs en vuelo. `init: true` en compose mantiene el reaper de PID 1.
+STOPSIGNAL SIGTERM
 
 CMD ["node", "dist/main.js"]

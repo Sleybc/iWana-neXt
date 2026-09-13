@@ -13,6 +13,9 @@ x-logging: &default-logging
 x-security-opt: &default-security-opt
   - no-new-privileges:true
 
+x-cap-drop: &default-cap-drop
+  - ALL
+
 services:
   postgres:
     container_name: iwana_postgres_e2e
@@ -99,8 +102,13 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+      start_interval: 3s
     logging: *default-logging
     security_opt: *default-security-opt
+    cap_drop: *default-cap-drop
+    # El worker de E2E solo consume Postgres, Redis, MinIO y Typesense.
+    networks:
+      - data
 
 volumes:
   iwana_postgres_data_e2e:
