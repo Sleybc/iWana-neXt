@@ -105,11 +105,23 @@ export function StockIssueDetailDrawer({
     const dest = issue.destinationLocationId
       ? locationsById.get(issue.destinationLocationId)
       : null;
+    const sourceCode = issue.sourceLocationCode?.trim() || source?.code?.trim() || '';
+    const sourceName = issue.sourceLocationName?.trim() || source?.name?.trim() || '';
+    const sourceLabel =
+      sourceCode && sourceName
+        ? `${sourceCode} · ${sourceName}`
+        : sourceCode || sourceName || 'Ubicación no disponible';
+    const destCode = issue.destinationLocationCode?.trim() || dest?.code?.trim() || '';
+    const destName = issue.destinationLocationName?.trim() || dest?.name?.trim() || '';
+    const destinationLabel =
+      destCode && destName
+        ? `${destCode} · ${destName}`
+        : destCode || destName || (issue.destinationRefId ?? 'Sin destino');
     return {
-      sourceLabel: source ? `${source.code} · ${source.name}` : issue.sourceLocationId,
-      destinationLabel: dest
-        ? `${dest.code} · ${dest.name}`
-        : (issue.destinationRefId ?? 'Sin destino'),
+      sourceLabel,
+      sourceIsFallback: !sourceCode && !sourceName,
+      sourceTitle: !sourceCode && !sourceName ? issue.sourceLocationId : undefined,
+      destinationLabel,
       movementLabel: issue.stockMovementId ? 'Registrado' : 'Pendiente de despacho',
       handoffLabel: issue.handoffMethod
         ? getStockIssueHandoffMethodLabel(issue.handoffMethod)
@@ -156,6 +168,24 @@ export function StockIssueDetailDrawer({
   }
 
   function formatLineTrackingLabel(line: StockIssueDetailRecord['lines'][number]): string {
+    const group = Array.isArray(line.serializedAssets) ? line.serializedAssets : [];
+    if (group.length > 0) {
+      const labels = group.map((entry) => {
+        const serial = entry.serialNumber?.trim();
+        if (serial) {
+          return serial;
+        }
+        const asset = assetsById.get(entry.id);
+        if (asset) {
+          return formatSerializedAssetLabel(asset);
+        }
+        return entry.id.slice(0, 8).toUpperCase();
+      });
+      const unique = [...new Set(labels.filter((label) => label.length > 0))];
+      if (unique.length > 0) {
+        return unique.join(', ');
+      }
+    }
     if (line.serializedAssetId) {
       const asset = assetsById.get(line.serializedAssetId);
       return asset
@@ -163,8 +193,8 @@ export function StockIssueDetailDrawer({
         : line.serializedAssetId.slice(0, 8).toUpperCase();
     }
     if (line.lotId) {
-      return line.lotNumber
-        ? `Lote ${line.lotNumber}`
+      return line.lotNumber?.trim()
+        ? `Lote ${line.lotNumber.trim()}`
         : `Lote ${line.lotId.slice(0, 8).toUpperCase()}`;
     }
     return '—';
@@ -266,8 +296,14 @@ export function StockIssueDetailDrawer({
             <div className="grid gap-4 rounded-2xl border border-gray-200 bg-iwana-surface-soft p-4 dark:border-dark-border dark:bg-dark-surface-3 sm:grid-cols-2">
               <dl className="text-sm">
                 <dt className="portal-eyebrow-muted">Origen</dt>
-                <dd className="mt-1 font-medium text-gray-900 dark:text-white">
+                <dd
+                  className="mt-1 font-medium text-gray-900 dark:text-white"
+                  title={header.sourceTitle ?? header.sourceLabel}
+                >
                   {header.sourceLabel}
+                  {header.sourceIsFallback && header.sourceTitle ? (
+                    <span className="sr-only">{`Código ${header.sourceTitle}`}</span>
+                  ) : null}
                 </dd>
               </dl>
               <dl className="text-sm">
@@ -336,13 +372,52 @@ export function StockIssueDetailDrawer({
                     <tbody>
                       {issue.lines.map((line) => {
                         const item = itemsById.get(line.itemId);
+                        const resolvedName = line.itemName?.trim() || item?.name?.trim() || '';
+                        const resolvedSku = line.itemSku?.trim() || item?.sku?.trim() || '';
+                        const resolvedBrandModel = [
+                          line.itemBrand?.trim() || item?.brand?.trim() || '',
+                          line.itemModel?.trim() || item?.model?.trim() || '',
+                        ]
+                          .filter((part) => part.length > 0)
+                          .join(' · ');
+                        const brandModel = resolvedBrandModel;
+                        const accessibleLabel = resolvedName
+                          ? `${resolvedName}${brandModel ? ` · ${brandModel}` : ''}${resolvedSku ? ` · Código ${resolvedSku}` : ''}`
+                          : 'Producto no disponible';
                         return (
                           <tr
                             key={line.id}
                             className={`border-b border-gray-100 dark:border-dark-border ${portalTableRowHoverClassName}`}
                           >
                             <td className={portalDataTableCellClassName}>
-                              {item ? `${item.sku} · ${item.name}` : line.itemId}
+                              {resolvedName ? (
+                                <span className="block min-w-0">
+                                  <span
+                                    className="block truncate font-medium text-gray-900 dark:text-white"
+                                    title={accessibleLabel}
+                                  >
+                                    {resolvedName}
+                                  </span>
+                                  {brandModel ? (
+                                    <span
+                                      className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400"
+                                      title={brandModel}
+                                    >
+                                      {brandModel}
+                                    </span>
+                                  ) : null}
+                                  {resolvedSku ? (
+                                    <span className="sr-only">{`Código ${resolvedSku}`}</span>
+                                  ) : null}
+                                </span>
+                              ) : (
+                                <span
+                                  className="block truncate font-medium text-gray-900 dark:text-white"
+                                  title={accessibleLabel}
+                                >
+                                  Producto no disponible
+                                </span>
+                              )}
                             </td>
                             <td className={portalDataTableCellClassName}>
                               {getStockBalanceConditionLabel(line.condition)}

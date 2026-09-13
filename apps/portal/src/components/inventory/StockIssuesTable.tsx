@@ -136,9 +136,20 @@ export function StockIssuesTable({
             const destination = issue.destinationLocationId
               ? locationMap.get(issue.destinationLocationId)
               : null;
-            const destinationLabel = destination
-              ? `${destination.code} · ${destination.name}`
-              : (issue.destinationRefId ?? '—');
+            const sourceCode = issue.sourceLocationCode?.trim() || source?.code?.trim() || '';
+            const sourceName = issue.sourceLocationName?.trim() || source?.name?.trim() || '';
+            const sourceLabel =
+              sourceCode && sourceName
+                ? `${sourceCode} · ${sourceName}`
+                : sourceCode || sourceName || 'Ubicación no disponible';
+            const destCode =
+              issue.destinationLocationCode?.trim() || destination?.code?.trim() || '';
+            const destName =
+              issue.destinationLocationName?.trim() || destination?.name?.trim() || '';
+            const destinationLabel =
+              destCode && destName
+                ? `${destCode} · ${destName}`
+                : destCode || destName || (issue.destinationRefId ?? '—');
             const ref = issue.commercialRefId ?? issue.originRefId ?? issue.costCenter ?? '—';
             const canDispatch = DISPATCHABLE_STATUSES.has(issue.status);
             const linesCount = (issue as StockIssueRecord & { linesCount?: number }).linesCount;
@@ -164,8 +175,11 @@ export function StockIssuesTable({
                     {getStockIssueStatusLabel(issue.status)}
                   </Badge>
                 </td>
-                <td className={`${portalDataTableCellClassName} hidden lg:table-cell`}>
-                  {source ? `${source.code} · ${source.name}` : issue.sourceLocationId}
+                <td
+                  className={`${portalDataTableCellClassName} hidden lg:table-cell`}
+                  title={sourceCode || sourceName ? sourceLabel : issue.sourceLocationId}
+                >
+                  {sourceLabel}
                 </td>
                 <td className={portalDataTableCellClassName}>
                   <span className="block">{destinationLabel}</span>

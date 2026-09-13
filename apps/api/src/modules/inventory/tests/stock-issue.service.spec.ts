@@ -755,7 +755,17 @@ describe('StockIssueService', () => {
 
     expect(result.stockMovementId).toBe('movement-001');
     // MOD12 S2: las líneas del detalle llevan el grupo de seriales (vacío si no aplica).
-    expect(result.lines).toEqual(existingLines.map((line) => ({ ...line, serializedAssets: [] })));
+    // Enriquecido: producto legible (null = huérfano en el mock sin InventoryItem).
+    expect(result.lines).toEqual(
+      existingLines.map((line) => ({
+        ...line,
+        serializedAssets: [],
+        itemSku: null,
+        itemName: null,
+        itemBrand: null,
+        itemModel: null,
+      })),
+    );
     expect(manager.save).not.toHaveBeenCalled();
     expect(ledger.recordStockIssueTransferWithManager).not.toHaveBeenCalled();
     expect(ledger.recordStockIssueSaleWithManager).not.toHaveBeenCalled();

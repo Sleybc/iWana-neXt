@@ -13,6 +13,7 @@ import {
 } from '@iwana/shared';
 import { DataSource, EntityManager, In } from 'typeorm';
 import {
+  InventoryItem,
   SerializedAsset,
   StockIssue,
   StockIssueLine,
@@ -65,9 +66,31 @@ export type StockIssueDetailLine = StockIssueLine & {
   serializedAssets: StockIssueLineSerialRef[];
   /** Número de lote legible (enriquecido en lectura; ausente = sin lote o lote huérfano). */
   lotNumber?: string | null;
+  /** Producto legible (enriquecido en lectura; ausente = ítem huérfano). */
+  itemSku?: string | null;
+  itemName?: string | null;
+  itemBrand?: string | null;
+  itemModel?: string | null;
 };
 
-export type StockIssueDetail = StockIssue & { lines: StockIssueDetailLine[] };
+export type StockIssueDetail = StockIssue & {
+  lines: StockIssueDetailLine[];
+  /** Origen legible (enriquecido en lectura; ausente = ubicación huérfana). */
+  sourceLocationCode?: string | null;
+  sourceLocationName?: string | null;
+  destinationLocationCode?: string | null;
+  destinationLocationName?: string | null;
+};
+
+/** Ítem del listado de salidas: entidad + conteo + origen/destino legibles. */
+export type StockIssueListItem = StockIssue & {
+  linesCount?: number;
+  /** Origen legible (enriquecido en lectura; ausente = ubicación huérfana). */
+  sourceLocationCode?: string | null;
+  sourceLocationName?: string | null;
+  destinationLocationCode?: string | null;
+  destinationLocationName?: string | null;
+};
 
 interface DispatchLedgerLine {
   itemId: string;
@@ -499,6 +522,144 @@ export class StockIssueService {
   }
 
   /**
+   * Producto legible en líneas de detalle (nombre + marca + modelo para la
+   * columna Producto del drawer). Mismo patrón batch que lotes: un solo
+   * `find(InventoryItem)` por los `itemId` distintos; huérfano → `null` y el
+   * cliente degrada a "Producto no disponible".
+   */
+  private async withItemViews(
+    manager: EntityManager,
+    tenantId: string,
+    lines: StockIssueDetailLine[],
+  ): Promise<StockIssueDetailLine[]> {
+    const itemIds = [
+      ...new Set(lines.map((line) => line.itemId).filter((id): id is string => !!id)),
+    ];
+    if (itemIds.length === 0) {
+      return lines;
+    }
+    const items = await manager.find(InventoryItem, { where: { tenantId, id: In(itemIds) } });
+    const itemById = new Map(items.map((item) => [item.id, item]));
+    return lines.map((line) => {
+      const item = itemById.get(line.itemId);
+      return {
+        ...line,
+        itemSku: item?.sku ?? null,
+        itemName: item?.name ?? null,
+        itemBrand: item?.brand ?? null,
+        itemModel: item?.model ?? null,
+      };
+    });
+  }
+
+  /**
+   * Origen y destino legibles del detalle (código + nombre para la tarjeta
+   * Origen/Destino del drawer). Un solo `find(StockLocation)` por los ids
+   * distintos; huérfano o ausente → `null` y el cliente degrada sin UUID.
+   */
+  private async withLocationViews(
+    manager: EntityManager,
+    tenantId: string,
+    issue: StockIssue,
+  ): Promise<
+    Pick<
+      StockIssueDetail,
+      | 'sourceLocationCode'
+      | 'sourceLocationName'
+      | 'destinationLocationCode'
+      | 'destinationLocationName'
+    >
+  > {
+    const ids = [issue.sourceLocationId, issue.destinationLocationId].filter(
+      (id): id is string => !!id,
+    );
+    if (ids.length === 0) {
+      return {
+        sourceLocationCode: null,
+        sourceLocationName: null,
+        destinationLocationCode: null,
+        destinationLocationName: null,
+      };
+    }
+    const locations = await manager.find(StockLocation, { where: { tenantId, id: In(ids) } });
+    const locationById = new Map(locations.map((location) => [location.id, location]));
+    const source = locationById.get(issue.sourceLocationId);
+    const destination = issue.destinationLocationId
+      ? locationById.get(issue.destinationLocationId)
+      : undefined;
+    return {
+      sourceLocationCode: source?.code ?? null,
+      sourceLocationName: source?.name ?? null,
+      destinationLocationCode: destination?.code ?? null,
+      destinationLocationName: destination?.name ?? null,
+    };
+  }
+
+  /**
+   * Detalle enriquecido completo (seriales + lote + producto + ubicaciones).
+   * Fuente única para create/getById/dispatch/update: mismo batch, mismo
+   * fallback `null`, sin N+1.
+   */
+  private async toEnrichedDetail(
+    manager: EntityManager,
+    tenantId: string,
+    issue: StockIssue,
+    lines: StockIssueLine[],
+    viewsByLine: Map<string, StockIssueLineSerialRef[]>,
+  ): Promise<StockIssueDetail> {
+    const withLots = await this.withLotNumbers(
+      manager,
+      tenantId,
+      this.withSerialAssets(lines, viewsByLine),
+    );
+    const withItems = await this.withItemViews(manager, tenantId, withLots);
+    const locationViews = await this.withLocationViews(manager, tenantId, issue);
+    return { ...issue, ...locationViews, lines: withItems };
+  }
+
+  /**
+   * Origen y destino legibles para el listado (misma fuente que el detalle).
+   * Un solo `find(StockLocation)` por los ids distintos de la página; huérfano
+   * o ausente → `null` y el cliente degrada sin exponer el UUID.
+   */
+  private async withLocationViewsForList(
+    manager: EntityManager,
+    tenantId: string,
+    issues: StockIssue[],
+  ): Promise<StockIssueListItem[]> {
+    if (issues.length === 0) {
+      return [];
+    }
+    const ids = [
+      ...new Set(
+        issues.flatMap((issue) =>
+          [issue.sourceLocationId, issue.destinationLocationId].filter((id): id is string => !!id),
+        ),
+      ),
+    ];
+    const locationById = new Map<string, StockLocation>();
+    if (ids.length > 0) {
+      const locations = await manager.find(StockLocation, { where: { tenantId, id: In(ids) } });
+      for (const location of locations) {
+        locationById.set(location.id, location);
+      }
+    }
+    return issues.map((issue) => {
+      const source = locationById.get(issue.sourceLocationId);
+      const destination = issue.destinationLocationId
+        ? locationById.get(issue.destinationLocationId)
+        : undefined;
+      return {
+        ...issue,
+        sourceLocationCode: source?.code ?? null,
+        sourceLocationName: source?.name ?? null,
+        destinationLocationCode: destination?.code ?? null,
+        destinationLocationName: destination?.name ?? null,
+      };
+    });
+  }
+
+  /**
    * MOD12 S2 · B4 (ajuste G1), S2.1 · B2: el grupo de seriales explota en N
    * inputs de kardex (uno por serial, cantidad 1, con su número de serie
    * legible) y una línea por cada salida no serializada. Preserva la
@@ -751,14 +912,7 @@ export class StockIssueService {
           ),
         );
 
-        return {
-          ...issue,
-          lines: await this.withLotNumbers(
-            manager,
-            tenantId,
-            this.withSerialAssets(lines, new Map()),
-          ),
-        };
+        return this.toEnrichedDetail(manager, tenantId, issue, lines, new Map());
       }),
     );
 
@@ -770,7 +924,7 @@ export class StockIssueService {
     return created;
   }
 
-  async list(query: ListStockIssuesQueryInput): Promise<ListResponse<StockIssue>> {
+  async list(query: ListStockIssuesQueryInput): Promise<ListResponse<StockIssueListItem>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListStockIssuesQuerySchema.parse(query);
     assertExclusivePageCursor(validated);
@@ -820,12 +974,13 @@ export class StockIssueService {
           .skip((page - 1) * limit)
           .take(limit)
           .getRawAndEntities();
-        const data = entities.map((entity, index) => {
+        const withCount = entities.map((entity, index) => {
           const count = raw[index]?.lines_count;
           (entity as unknown as { linesCount?: number }).linesCount =
             typeof count === 'string' ? Number.parseInt(count, 10) : Number(count ?? 0);
           return entity;
         });
+        const data = await this.withLocationViewsForList(qr.manager, tenantId, withCount);
         return {
           data,
           meta: buildPageMeta({
@@ -853,11 +1008,12 @@ export class StockIssueService {
         return entity;
       });
 
-      const { data, nextCursor } = sliceDateIdDescPage(
+      const { data: pageData, nextCursor } = sliceDateIdDescPage(
         entitiesWithCount,
         limit,
         (row) => row.createdAt,
       );
+      const data = await this.withLocationViewsForList(qr.manager, tenantId, pageData);
       return {
         data,
         meta: buildCursorMeta({
@@ -890,14 +1046,7 @@ export class StockIssueService {
       const issueSerials = await this.loadIssueSerials(qr.manager, tenantId, id);
       const viewsByLine = await this.buildLineSerialViews(qr.manager, tenantId, issueSerials);
 
-      return {
-        ...issue,
-        lines: await this.withLotNumbers(
-          qr.manager,
-          tenantId,
-          this.withSerialAssets(lines, viewsByLine),
-        ),
-      };
+      return this.toEnrichedDetail(qr.manager, tenantId, issue, lines, viewsByLine);
     });
   }
 
@@ -947,14 +1096,16 @@ export class StockIssueService {
             });
             const replaySerials = await this.loadIssueSerials(manager, tenantId, id);
             const replayViews = await this.buildLineSerialViews(manager, tenantId, replaySerials);
+            const replayDetail = await this.toEnrichedDetail(
+              manager,
+              tenantId,
+              issue,
+              existingLines,
+              replayViews,
+            );
             return {
               detail: {
-                ...issue,
-                lines: await this.withLotNumbers(
-                  manager,
-                  tenantId,
-                  this.withSerialAssets(existingLines, replayViews),
-                ),
+                ...replayDetail,
                 stockMovementId: issue.stockMovementId,
               },
               movementResult: null,
@@ -1141,15 +1292,17 @@ export class StockIssueService {
             order: { createdAt: 'ASC' },
           });
           const viewsByLine = await this.buildLineSerialViews(manager, tenantId, issueSerials);
+          const freshDetail = await this.toEnrichedDetail(
+            manager,
+            tenantId,
+            savedIssue,
+            finalLines,
+            viewsByLine,
+          );
 
           return {
             detail: {
-              ...savedIssue,
-              lines: await this.withLotNumbers(
-                manager,
-                tenantId,
-                this.withSerialAssets(finalLines, viewsByLine),
-              ),
+              ...freshDetail,
               stockMovementId: savedIssue.stockMovementId!,
             },
             movementResult: movement,
@@ -1395,14 +1548,7 @@ export class StockIssueService {
 
         // S2.1 · B2: la autoría no se fabrica (sin `?? actor.sub`): viaja en
         // el evento post-commit.
-        return {
-          ...saved,
-          lines: await this.withLotNumbers(
-            manager,
-            tenantId,
-            this.withSerialAssets(lines, viewsByLine),
-          ),
-        };
+        return this.toEnrichedDetail(manager, tenantId, saved, lines, viewsByLine);
       }),
     );
 

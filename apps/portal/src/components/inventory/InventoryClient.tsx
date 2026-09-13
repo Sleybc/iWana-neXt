@@ -2957,6 +2957,9 @@ export function InventoryClient({ initialTab, federatedMode = false }: Inventory
             className="space-y-6"
           >
             <StockIssuesWorkspace
+              items={items}
+              assets={assets}
+              locations={locations}
               error={error}
               listRevision={issuesListRevision}
               onCreate={handleCreateIssue}

@@ -133,12 +133,56 @@ function StockIssuesWorkspaceInner({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const locationMap = useMemo(
-    () => new Map(locations.map((location) => [location.id, location])),
-    [locations],
+  const [enrichedItems, setEnrichedItems] = useState<Map<string, InventoryItemRecord>>(
+    () => new Map(),
   );
-  const itemMap = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
-  const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
+  const [enrichedLocations, setEnrichedLocations] = useState<Map<string, StockLocationRecord>>(
+    () => new Map(),
+  );
+  const [enrichedAssets, setEnrichedAssets] = useState<Map<string, SerializedAssetRecord>>(
+    () => new Map(),
+  );
+  const resolvedItemIdsRef = useRef<Set<string>>(new Set());
+  const resolvedLocationIdsRef = useRef<Set<string>>(new Set());
+  const resolvedAssetIdsRef = useRef<Set<string>>(new Set());
+  const locationsFetchedRef = useRef(false);
+
+  const locationMap = useMemo(() => {
+    const merged = new Map<string, StockLocationRecord>();
+    for (const location of locations) {
+      merged.set(location.id, location);
+    }
+    for (const [id, location] of enrichedLocations) {
+      if (!merged.has(id)) {
+        merged.set(id, location);
+      }
+    }
+    return merged;
+  }, [locations, enrichedLocations]);
+  const itemMap = useMemo(() => {
+    const merged = new Map<string, InventoryItemRecord>();
+    for (const item of items) {
+      merged.set(item.id, item);
+    }
+    for (const [id, item] of enrichedItems) {
+      if (!merged.has(id)) {
+        merged.set(id, item);
+      }
+    }
+    return merged;
+  }, [items, enrichedItems]);
+  const assetsById = useMemo(() => {
+    const merged = new Map<string, SerializedAssetRecord>();
+    for (const asset of assets) {
+      merged.set(asset.id, asset);
+    }
+    for (const [id, asset] of enrichedAssets) {
+      if (!merged.has(id)) {
+        merged.set(id, asset);
+      }
+    }
+    return merged;
+  }, [assets, enrichedAssets]);
 
   const loadPage = useCallback(
     async (opts?: { soft?: boolean }) => {
@@ -209,6 +253,179 @@ function StockIssuesWorkspaceInner({
       }
     }
   }, [page]);
+
+  // Enriquecimiento bajo demanda para el detalle y la tabla: el workspace es
+  // self-fetch (Ola 6) y el padre ya no garantiza items/ubicaciones/activos.
+  // Sin esto el drawer cae a UUIDs (origen/producto) y a códigos cortos (lote/serial).
+  useEffect(() => {
+    const missing = new Set<string>();
+    for (const issue of issues) {
+      if (issue.sourceLocationId && !locationMap.has(issue.sourceLocationId)) {
+        missing.add(issue.sourceLocationId);
+      }
+      if (issue.destinationLocationId && !locationMap.has(issue.destinationLocationId)) {
+        missing.add(issue.destinationLocationId);
+      }
+    }
+    if (detail) {
+      if (detail.sourceLocationId && !locationMap.has(detail.sourceLocationId)) {
+        missing.add(detail.sourceLocationId);
+      }
+      if (detail.destinationLocationId && !locationMap.has(detail.destinationLocationId)) {
+        missing.add(detail.destinationLocationId);
+      }
+    }
+    const pending = [...missing].filter((id) => !resolvedLocationIdsRef.current.has(id));
+    if (pending.length === 0) {
+      return;
+    }
+    if (locationsFetchedRef.current) {
+      for (const id of pending) {
+        resolvedLocationIdsRef.current.add(id);
+      }
+      return;
+    }
+    let cancelled = false;
+    locationsFetchedRef.current = true;
+    void inventoryApi
+      .listLocations({ limit: 100 })
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        const found = new Map<string, StockLocationRecord>();
+        for (const location of response.data) {
+          found.set(location.id, location);
+        }
+        if (found.size > 0) {
+          setEnrichedLocations((current) => {
+            const next = new Map(current);
+            for (const [id, location] of found) {
+              if (!next.has(id)) {
+                next.set(id, location);
+              }
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {
+        // Degrada al id: la tabla y el drawer ya muestran el fallback.
+      })
+      .finally(() => {
+        if (!cancelled) {
+          for (const id of pending) {
+            resolvedLocationIdsRef.current.add(id);
+          }
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [issues, detail, locationMap]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+    const missingItemIds = [
+      ...new Set(
+        detail.lines
+          .map((line) => line.itemId)
+          .filter((id) => id && !itemMap.has(id) && !resolvedItemIdsRef.current.has(id)),
+      ),
+    ];
+    if (missingItemIds.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      missingItemIds.map((itemId) => inventoryApi.getItem(itemId).catch(() => null)),
+    ).then((resolved) => {
+      if (cancelled) {
+        return;
+      }
+      const found = new Map<string, InventoryItemRecord>();
+      for (const item of resolved) {
+        if (item) {
+          found.set(item.id, item);
+        }
+      }
+      if (found.size > 0) {
+        setEnrichedItems((current) => {
+          const next = new Map(current);
+          for (const [id, item] of found) {
+            if (!next.has(id)) {
+              next.set(id, item);
+            }
+          }
+          return next;
+        });
+      }
+      for (const id of missingItemIds) {
+        resolvedItemIdsRef.current.add(id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, itemMap]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+    const wanted = new Set<string>();
+    for (const line of detail.lines) {
+      if (line.serializedAssetId) {
+        wanted.add(line.serializedAssetId);
+      }
+      if (Array.isArray(line.serializedAssets)) {
+        for (const entry of line.serializedAssets) {
+          if (entry?.id) {
+            wanted.add(entry.id);
+          }
+        }
+      }
+    }
+    const missingAssetIds = [...wanted].filter(
+      (id) => !assetsById.has(id) && !resolvedAssetIdsRef.current.has(id),
+    );
+    if (missingAssetIds.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      missingAssetIds.map((assetId) => inventoryApi.getAsset(assetId).catch(() => null)),
+    ).then((resolved) => {
+      if (cancelled) {
+        return;
+      }
+      const found = new Map<string, SerializedAssetRecord>();
+      for (const asset of resolved) {
+        if (asset) {
+          found.set(asset.id, asset);
+        }
+      }
+      if (found.size > 0) {
+        setEnrichedAssets((current) => {
+          const next = new Map(current);
+          for (const [id, asset] of found) {
+            if (!next.has(id)) {
+              next.set(id, asset);
+            }
+          }
+          return next;
+        });
+      }
+      for (const id of missingAssetIds) {
+        resolvedAssetIdsRef.current.add(id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, assetsById]);
 
   const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
   const effectivePage = meta.page ?? page;

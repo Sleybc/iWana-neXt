@@ -119,6 +119,15 @@ export interface StockIssueLineRecord {
    */
   lotNumber?: string | null;
   /**
+   * Producto legible (enriquecido en lectura por el API con batch sobre
+   * `inventory_items`). Opcional: ausente = ítem huérfano; el cliente degrada
+   * a "Producto no disponible" sin exponer el UUID.
+   */
+  itemSku?: string | null;
+  itemName?: string | null;
+  itemBrand?: string | null;
+  itemModel?: string | null;
+  /**
    * Serial de transición S1: la persistencia lo alimenta con el primer serial
    * del grupo para no romper lecturas ni reportes existentes.
    */
