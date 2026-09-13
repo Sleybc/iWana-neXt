@@ -1,10 +1,11 @@
 # Plan de orquestación — MOD11 Operaciones: sub-rutas y bandeja de OT
 
-**Versión:** 2.0
+**Versión:** 2.1
 **Estado:** **Aprobado por el CTO (2026-09-13)** — vigente y ejecutable. Spec aprobada el mismo día; contratos de §2 congelados en firme.
 **Fecha:** 2026-09-13
+**Cambio v2.0 → v2.1:** el CTO adoptó formalmente el [protocolo multiagente](../roles/Protocolo_Colaboracion_Multiagente_v1.md) v1.5 como marco de ejecución. Al mapear las fases contra el workflow §3 apareció un defecto de secuencia propio: **el plan despachaba implementación con G2 y G3 abiertos**, que es justo lo que §3.1 obliga a devolver. Esta versión añade §3.3 (mapeo a etapas y gates del protocolo) y reordena las fases en **olas** (§3.4): la congelación de contratos y los dictámenes de factibilidad van primero, la implementación después. Las fases F0–F6 no cambian de alcance; cambia **cuándo** se despacha cada una.
 **Emitido por:** AI-EM-ARCH
-**Cambio v1.0 → v2.0:** la v1.0 se emitió como plan condicionado a la aprobación de la spec. Esta v2.0 la **supera** y añade lo que la ejecución necesitaba: dispatch de skills por fase y paso (§4), matriz RACI (§3.3), protocolo de arranque y cierre de sesión por agente (§5), contrato de handoff entre fases (§6) y comandos de verificación reales (§8). La v1.0 queda superada; no ejecutar desde ella.
+**Cambio v1.0 → v2.0:** la v1.0 se emitió como plan condicionado a la aprobación de la spec. Esta v2.0 la **supera** y añade lo que la ejecución necesitaba: dispatch de skills por fase y paso (§4), matriz RACI (§3.5), protocolo de arranque y cierre de sesión por agente (§5), contrato de handoff entre fases (§6) y comandos de verificación reales (§8). La v1.0 queda superada; no ejecutar desde ella.
 
 **Spec que ejecuta:** `docs/specs/2026-09-13-mod11-operaciones-subrutas-bandeja-ot-design.md` v1.0 (**Aprobado**)
 **Prompts de ejecución:**
@@ -37,14 +38,24 @@ Congelados desde la aprobación de la spec (perfil AI-EM-ARCH §3.5). Los tracks
 ### 3.1 Grafo de dependencias
 
 ```
-F0 ─┬─> F1 ──────────────┬─> F5 ──> F6
-    ├─> F2 ──────────────┤
-    └─> F3 ──────────────┘
-        F4 (sin dependencia técnica; converge antes de F5)
+OLA 1 — congelación y factibilidad (todo en paralelo)
+  F0  contrato de API            SR-FULL
+  F3  contrato de componente     DS-OWNER
+  F4  UX spec                    PROD-UX
+  --  dictámenes de factibilidad SR-FULL + FE-PLATFORM
+                    │
+              [G2] + [G3]  ← AI-EM-ARCH aprueba
+                    │
+OLA 2 — implementación (paralelo por superficie)
+  F1  backend        apps/api/ + packages/database/
+  F2  rutas y split  apps/portal/
+                    │
+OLA 3 — F5 integración  →  OLA 4 — F6 verificación
 ```
 
 **Camino crítico:** F0 → F1 (la migración del índice es lo más lento) → F5 → F6.
-**Fuera del camino crítico:** F2, F3 y F4. **F2 no espera al endpoint**: desarrolla contra el tipo congelado con MSW o flag.
+
+F3 y F4 **no dependen de F0**: el contrato de componente y la UX spec no necesitan el contrato de API. Van en la ola 1 porque son artefactos de congelación, no porque estén esperando a nadie. F2 tampoco espera al endpoint: desarrolla contra el tipo congelado con MSW o flag.
 
 ### 3.2 Fases
 
@@ -52,13 +63,101 @@ F0 ─┬─> F1 ──────────────┬─> F5 ──> F6
 | --- | --- | --- | --- | --- |
 | **F0** | Contratos en `@iwana/shared`; tabla de finalidad ADR-067 | AI-EM-ARCH + AI-SR-FULL | — | F0-F1 |
 | **F1** | Índice, `list()` con scoping por actor, `@Get()`, `responsibleLabel` | AI-SR-FULL | F0 | F0-F1 |
-| **F2** | Rutas, layout, despachador, pestañas, split (refactor puro), emisores | AI-FE-PLATFORM | F0 | F2-F3 |
-| **F3** | Contrato de props de las dos tablas | AI-DS-OWNER | F0 | F2-F3 |
-| **F4** | Etiquetas de pestañas, copy de vacíos, CTA vs pestaña | AI-PROD-UX | — | consulta |
+| **F2** | Rutas, layout, despachador, pestañas, split (refactor puro), emisores | AI-FE-PLATFORM | F0 · G2 · G3 | F2-F3 |
+| **F3** | Contrato de props de las dos tablas | AI-DS-OWNER | — *(ola 1)* | F2-F3 |
+| **F4** | Etiquetas de pestañas, copy de vacíos, CTA vs pestaña | AI-PROD-UX | — *(ola 1)* | consulta |
 | **F5** | Cableado, filtros, fin del crawl, columna "Vence" | AI-FE-PLATFORM | F1 ∧ F2 ∧ F3 | F5-F6 |
 | **F6** | Reparto de specs, tests nuevos, e2e, trazabilidad | AI-SR-QA | F5 | F5-F6 |
 
-### 3.3 Matriz RACI
+### 3.3 Mapeo al workflow del protocolo (§3) y estado de gates
+
+Las fases F0–F6 son unidades de trabajo de este plan; el protocolo razona en **etapas y gates**. Este es el mapeo, y el estado real de cada gate al 2026-09-13:
+
+| Etapa del protocolo | Fase de este plan | Gate | Estado |
+| --- | --- | --- | --- |
+| 1 · Definición de objetivo | spec de diseño | **G1** | ✅ **Cerrado** — spec aprobada por el CTO el 2026-09-13 (aprobador ≠ productor) |
+| 2 · Solución UX/UI | **F4** (UX spec) + **F3** (contrato de componente) | **G2** | ⬜ **Abierto** — los artefactos no existen todavía en `docs/specs/` |
+| 3 · Validación de factibilidad | dictámenes de SR-FULL y FE-PLATFORM | **G3** | ⬜ **Abierto** — no se emitió dictamen formal |
+| 4 · Aprobación de diseño | los tres prompts de ejecución | **G4** | ⚠️ **Emitido, condicionado** — los prompts existen y citan contratos por ruta y versión, pero G4 llega después de G3 |
+| 5 · Implementación | **F0**, **F1**, **F2**, **F5** | **G5** | ✅ **Cerrado** — F0–F5 cerradas y verificadas; H1–H6 aceptados (ola 3: [consolidación OLA 3](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA3-CONSOLIDACION-v1.0.md)) |
+| 6 · Review de experiencia y calidad | **F6** + review de PROD-UX/DS-OWNER | **G6** | ✅ **Cerrado** — calidad aceptable, con correcciones 4.1 ([consolidación OLA 4](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA4-CONSOLIDACION-v1.0.md)) |
+| — · Merge readiness | consolidación de CI | **G6.5** | ⬜ No iniciada |
+| 7 · Validación final y cierre | informe de cierre | **G7** | ⬜ No iniciada |
+
+**Defecto corregido en esta versión.** La v2.0 ponía F0/F1/F2 (etapa 5) en la primera ola, con G2 y G3 abiertos. El DoR de entrada a etapa 5 (§3.1) exige *"UX spec y contrato de componente localizables en `docs/specs/`; dictamen de factibilidad de G3 resuelto, no pendiente"*, y quien **recibe** el handoff verifica su propio DoR: SR-FULL y FE-PLATFORM habrían emitido `[BLOQUEO]` antes de escribir una línea, con razón. Se reordena.
+
+**Precisión de alcance del DoR, decidida por AI-EM-ARCH.** El contrato de componente es un artefacto de UI: condiciona el track **frontend**, no el backend. Para F0/F1 el DoR aplicable es *contrato de API congelado + factibilidad backend resuelta*. Se declara aquí de forma explícita porque §3.1 prohíbe negociar un DoR dentro de la etapa; esta es la interpretación del Accountable, no una excepción concedida por el receptor.
+
+### 3.4 Olas de despacho
+
+Una **ola** agrupa encargos que pueden correr a la vez porque ninguno depende de la salida de otro (§3bis: los contratos se congelan primero; después todo lo que dependa de ellos corre en paralelo).
+
+| Ola | Encargos | Agentes | Cierra | Estado |
+| --- | --- | --- | --- | --- |
+| **1 · Congelación y factibilidad** | **F0** (contrato de API) · **F3** (contrato de componente) · **F4** (UX spec) · dictámenes de factibilidad backend y frontend | AI-SR-FULL, AI-DS-OWNER, AI-PROD-UX, AI-FE-PLATFORM | **G2** y **G3** | ✅ **Cerrada 2026-09-13** — [consolidación](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA1-CONSOLIDACION-v1.0.md) |
+| **2 · Implementación** | **F1** (backend) · **F2** (rutas y split) | AI-SR-FULL, AI-FE-PLATFORM | **G5** parcial | ✅ **Cerrada 2026-09-13** — [consolidación](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA2-CONSOLIDACION-v1.0.md) |
+| **3 · Integración** | **F5** | AI-FE-PLATFORM | **G5** | ✅ **Cerrada 2026-09-13** — [consolidación](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA3-CONSOLIDACION-v1.0.md) |
+| **4 · Verificación** | **F6** + review de experiencia y contrato | AI-SR-QA, AI-PROD-UX, AI-DS-OWNER, AI-SEC-ENG | **G6** | ✅ **Cerrada 2026-09-13** — [consolidación OLA 4](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA4-CONSOLIDACION-v1.0.md), con ola correctiva 4.1 incorporada |
+| **5 · Merge readiness** | Corrida Linux de CI por SHA | AI-PLAT-OPS | **G6.5** | 🟡 Despachada — **bloqueada por el commit** (§3.4) |
+
+**La ola 5 no estaba en el plan original.** La v2.1 terminaba en la ola 4 porque G6.5 no es una etapa del workflow, sino un gate intercalado ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md)). Se añade aquí como ola propia porque tiene ejecutor (AI-PLAT-OPS), entregable (corrida por SHA + artefacto sanitizado) y gate que cerrar, igual que las anteriores.
+
+Entre olas, AI-EM-ARCH aprueba el gate correspondiente. **No es trámite:** es donde se detecta que un artefacto no sirve antes de que otros construyan sobre él.
+
+**Órdenes de despacho de la ola 1.** Cada agente tiene su encargo acotado; no se lanza a nadie con "lee el plan y ejecuta", que deja al agente eligiendo alcance. Los cuatro remiten al prompt de fase sin reescribirlo:
+
+| Agente | Orden de despacho | Alcance acotado |
+| --- | --- | --- |
+| `sr-backend` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA1-SR-FULL-v1.0.md` | F0 + dictamen backend · **sin F1** |
+| `ds-owner` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA1-DS-OWNER-v1.0.md` | F3 · **sin F2** |
+| `prod-ux` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA1-PROD-UX-v1.0.md` | F4 (UX spec) |
+| `fe-platform` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA1-FE-PLATFORM-v1.0.md` | dictamen frontend · **sin implementar F2** |
+
+**Órdenes de despacho de la ola 2.** Emitidas tras el cierre de G2 y G3, con las resoluciones de la [consolidación de la ola 1](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA1-CONSOLIDACION-v1.0.md) §4 incorporadas como **directrices vinculantes**:
+
+| Agente | Orden de despacho | Alcance acotado |
+| --- | --- | --- |
+| `sr-backend` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA2-SR-FULL-v1.0.md` | F1 · superficie `apps/api/` + `packages/database/` · directrices D1–D3 |
+| `fe-platform` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA2-FE-PLATFORM-v1.0.md` | F2 · superficie `apps/portal/` · directrices D-A1…D-A8 |
+
+Tres ajustes de G3 **ampliaron el alcance declarado de F2** y por eso viajan en su orden, no como descubrimiento en ejecución: la migración de `ExecutionOrderMissingRequirement` (sin ella el typecheck rompe), el re-apuntado de los 11 casos de montaje (sin él la suite de `main` queda roja entre F2 y F6) y el redirect post-alta (única excepción autorizada al refactor puro).
+
+**Orden de despacho de la ola 3.** Emitida tras el cierre de G5 parcial, con las resoluciones de la [consolidación de la ola 2](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA2-CONSOLIDACION-v1.0.md) §8 incorporadas:
+
+| Agente | Orden de despacho | Alcance acotado |
+| --- | --- | --- |
+| `fe-platform` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA3-FE-PLATFORM-v1.0.md` | F5 · superficie `apps/portal/` · directrices **D-P1** (picker NOC/SUPPORT) y **D-P2** (`executionOrderId` no existe en el contrato) |
+
+Es la ola del **punto de integración** del §3bis: FE-PLATFORM deja los mocks y consume el API real. Las dos directrices existen porque son las dos vías por las que esta fase podría degradar en silencio — entregar un 403 invisible, o inventar un campo de contrato en el frontend.
+
+**Órdenes de despacho de la ola 4.** Emitidas tras el cierre de G5 completo, con la deuda de la [consolidación de la ola 3](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA3-CONSOLIDACION-v1.0.md) §7 repartida por dueño:
+
+| Agente | Orden de despacho | Alcance acotado |
+| --- | --- | --- |
+| `sr-qa` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA4-SR-QA-v1.0.md` | F6 · **único que escribe código** (tests) · absorbe D-2 y SEC-D1, cierra H7 |
+| `prod-ux` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA4-PROD-UX-v1.0.md` | Review de experiencia · **puede bloquear G6** · resuelve D-1, D-4, D-5 |
+| `ds-owner` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA4-DS-OWNER-v1.0.md` | Review de contrato e identidad · **puede bloquear G6** · composición de vacíos y `order.number` |
+| `sec-eng` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA4-SEC-ENG-v1.0.md` | Re-verificación AppSec · SEC-O2 y SEC-D1 |
+
+**Tres de estas órdenes no tienen prompt de fase que las respalde** — el prompt F5-F6 cubre integración y QA, no el review de experiencia, el de contrato ni la re-verificación AppSec. Por eso son autosuficientes y no remiten a un encargo formal previo. Es el hueco que el propio plan anotó al emitir la ola 1.
+
+**Reparto de esta ola:** solo AI-SR-QA escribe (archivos de test). Los otros tres producen informes en `docs/informes/`. Sin colisión de superficie, y ningún revisor corrige lo que reporta — el arreglo tiene dueño distinto del hallazgo.
+
+**Orden de despacho de la ola 5.** Emitida tras el cierre de G6:
+
+| Agente | Orden de despacho | Alcance acotado |
+| --- | --- | --- |
+| `plat-ops` | `docs/prompts/PROMPT-MOD11-OPERACIONES-SUBRUTAS-OLA5-PLAT-OPS-v1.0.md` | Corrida Linux por SHA de `production-images` y `execution-orders-e2e` (`ci.yml:56` y `:559`) · artefacto resumen sanitizado · cierre de ENV-E2E-CREDS y PROVISIONER-TECH2 |
+
+**Precondición que la ola 5 no controla:** G6.5 exige una corrida **identificada por SHA**, y al emitirse esta orden el árbol tiene **141 archivos sin commitear** con `HEAD` en `7314c208` (solo documentación). El trabajo de las olas 1–4 no está versionado. **Sin commit no hay SHA, y sin SHA no hay G6.5.** El commit es decisión del CTO, sobre `main` (§4.5). La orden instruye a AI-PLAT-OPS a emitir `[BLOQUEO]` y detenerse si el árbol sigue sucio: correr CI sobre un árbol sin versionar produce evidencia que no identifica nada.
+
+**Después de G6.5 — G7, que no lleva orden de despacho.** El cierre es entregable de AI-EM-ARCH (informe de cierre de módulo con G6, G6.5 y G7 registrados por separado) y la aprobación es del CTO. Además, G7 de este módulo topa con la deuda transversal de §13.4: ADR-078 (Aprobado 2026-09-12) superó a ADR-070 (superado) y nadie propagó el cambio, de modo que QA-34/TLS, ensayo de rollback, restore verificado y targets RPO/RTO pasaron de deuda diferida a **deuda activa**. Esa deuda se escala al CTO al abrir el expediente de cierre; no la absorbe este plan.
+
+El procedimiento que las gobierna está en `docs/prompts/PROMPT-OPERATIVO-DESPACHO-MULTIAGENTE-v1.0.md`.
+
+Reparto de superficies en la ola 2, que es la única con dos agentes escribiendo código a la vez sobre `main` (§4.5): AI-SR-FULL toca `apps/api/` y `packages/database/`; AI-FE-PLATFORM toca `apps/portal/`. Ningún archivo cae en ambos alcances.
+
+### 3.5 Matriz RACI
 
 | Actividad | R | A | C | I |
 | --- | --- | --- | --- | --- |
@@ -252,8 +351,8 @@ Cada fase alimenta los campos contables del informe de fase (perfil §11): reesc
 
 Se resuelven **dentro** de la ejecución; ninguna bloquea el arranque.
 
-1. **Rol del picker de usuarios (F5).** `GET /users/search` exige `@Roles(ADMIN, SYSTEM_ADMIN)`; NOC y SUPPORT reciben 403. Hoy el crawl ya se degrada en silencio para esos roles. Opciones: ampliar `@Roles`, o declarar la degradación visiblemente. Llega como `[CONSULTA]` bloqueante desde F5 con recomendación. **No se hereda la degradación silenciosa.**
-2. **`executionOrderId` en `OperationalTaskRecord` (F5).** Hoy no existe, así que la bandeja de tareas no puede enlazar su OT derivada. Si F5 lo necesita, es cambio de contrato y sube a AI-EM-ARCH; **no se resuelve en el frontend**.
+1. **Rol del picker de usuarios (F5).** `GET /users/search` exige `@Roles(ADMIN, SYSTEM_ADMIN)`; NOC y SUPPORT reciben 403. Hoy el crawl ya se degrada en silencio para esos roles. Opciones: ampliar `@Roles`, o declarar la degradación visiblemente. Llega como `[CONSULTA]` bloqueante desde F5 con recomendación. **No se hereda la degradación silenciosa.** **Resuelto 2026-09-13 (OLA 3):** consulta emitida por F5 y respondida en la misma sesión — **Salida 2, degradación visible** ratificada por AI-EM-ARCH (guard del swap equivalente al crawl, verificado; sin nueva superficie de seguridad; copy accionable en `OperationsUserPicker`). La ampliación de `@Roles` queda como decisión de producto/seguridad fuera de este plan. ([Consolidación OLA 3](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA3-CONSOLIDACION-v1.0.md) §5.1)
+2. **`executionOrderId` en `OperationalTaskRecord` (F5).** Hoy no existe, así que la bandeja de tareas no puede enlazar su OT derivada. Si F5 lo necesita, es cambio de contrato y sube a AI-EM-ARCH; **no se resuelve en el frontend**. **Resuelto 2026-09-13 (OLA 3):** F5 verificó que ningún CA ni flujo F1–F5 exige el enlace; no se implementó ni se inventó el campo. Queda como mejora futura sujeta a cambio de contrato si Producto lo pide.
 3. **Tramo de `sortableFields` (posterior).** Requiere medición de p95 de AI-PLAT-OPS antes de publicar `plannedWindowStartAt`, `executionOrderNumber` y `status`. Sin medición no hay tramo (ADR-065 §22-bis).
 4. **"Crear tarea": CTA o pestaña (F4).** El supuesto de la spec es CTA del header. AI-PROD-UX ratifica o corrige; F2 avanza con el supuesto registrado.
 
