@@ -1,8 +1,10 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.3
+**Version:** 1.4
 **Estado:** Aprobado
-**Fecha:** 2026-07-09
+**Fecha:** 2026-09-13
+
+**Cambio v1.3 → v1.4 (2026-09-13):** baja de `using-git-worktrees` del catalogo activo. El proyecto trabaja **siempre sobre `main`**, sin ramas de trabajo paralelas ni worktrees, asi que la skill no tenia caso de uso recurrente en el repo (criterio de rechazo: "existe solo por amplitud de catalogo"). El directorio ya no existe en disco; esta version cierra la divergencia entre catalogo y filesystem. `coreCount` pasa de 47 a 46.
 
 ## Proposito
 
@@ -127,7 +129,6 @@ Estados admitidos:
 - skill-creator
 - subagent-driven-development
 - systematic-debugging
-- using-git-worktrees
 - verification-before-completion
 - writing-plans
 - writing-skills
@@ -189,8 +190,17 @@ Toda alta o restauracion debe cumplir ademas estas reglas operativas:
 
 Sin entradas vigentes tras la restauracion ejecutada el 2026-03-12.
 
+## Skills dadas de baja
+
+Una baja no es un archivado: la skill sale del catalogo y del disco porque **no tiene caso de uso en este repo**, no porque se reserve para despues. Reincorporarla exige la politica de admision estricta de este indice, igual que un alta nueva.
+
+| Skill | Fecha | Motivo |
+| --- | --- | --- |
+| `using-git-worktrees` | 2026-09-13 | El proyecto trabaja siempre sobre `main`, sin ramas de trabajo paralelas ni worktrees. Sin caso de uso recurrente y verificable en el repo. |
+
 ## Notas operativas
 
+- **El proyecto trabaja sobre `main`.** No hay flujo de ramas de trabajo paralelas ni worktrees; toda skill, prompt o plan que asuma ese flujo queda fuera del catalogo o debe declarar explicitamente que no aplica aqui.
 - El repo ya no mantiene un directorio fisico `.agents/skills-archive/`.
 - Las decisiones historicas sobre skills no activas se conservan en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.
 - Toda reincorporacion debe hacerse por alta controlada en `.agents/skills/` y sincronizacion de `skills-lock.json` cuando aplique.

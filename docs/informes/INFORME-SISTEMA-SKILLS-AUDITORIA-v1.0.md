@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.3
+**Version:** 1.4
 **Estado:** Aprobado
-**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`, ver change-log)
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; **v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46**; ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -654,3 +654,46 @@ La v1 potencializada (2026-07-10) era una buena disciplina de **review**, pero d
 
 - La skill mantiene nombre, categoría y prioridad; INDEX/MANIFEST sin cambios de catálogo.
 - Pendientes de evolución: evals comparativas según `skill-creator` (heredado de la v1), y revalidación por sprint de `references/trends-2026.md`.
+
+## Actualizacion 2026-09-13 — Baja de using-git-worktrees (47 -> 46)
+
+**Modo activo:** EM · **Autor:** AI-EM-ARCH · **Decision del CTO:** 2026-09-13
+
+### Hallazgo
+
+Durante la preparacion del plan de orquestacion de MOD11 (`docs/plans/2026-09-13-mod11-operaciones-subrutas-bandeja-ot.md`) se verificaron contra el disco las 31 skills que el plan pensaba citar. `using-git-worktrees` figuraba en `INDEX.md` v1.3 y en `MANIFEST.json` v1.3, pero **el directorio no existia en el filesystem**: sin `SKILL.md`, sin contenido.
+
+Por la regla de precedencia del propio indice (el repo real manda sobre el catalogo), el plan no la cito como disponible y registro la divergencia como deuda de catalogo.
+
+### Decision ejecutada
+
+El CTO confirmo el 2026-09-13 que la skill fue eliminada a proposito y que **el proyecto trabaja siempre sobre `main`**, sin ramas de trabajo paralelas ni worktrees. Con eso, la skill cae por el criterio de rechazo inmediato del indice: *"existe solo por amplitud de catalogo, no por necesidad del proyecto"*. No hay caso de uso recurrente y verificable en el repo.
+
+Se ejecuta **baja**, no archivado: la skill sale del catalogo y del disco porque no aplica a este proyecto, no porque se reserve para un disparador futuro. Su reincorporacion exigiria la politica de admision estricta completa, igual que un alta nueva.
+
+### Archivos actualizados
+
+- `.agents/skills/INDEX.md` — v1.3 -> **v1.4**; retirada de la lista de flujos de trabajo; nueva seccion "Skills dadas de baja"; nota operativa que fija el trabajo sobre `main` como regla del repo.
+- `.agents/skills/MANIFEST.json` — v1.3 -> **v1.4**; retirada de `core.workflow` y de `usagePriority.specializedOnDemand`; `summary.coreCount` 47 -> **46**.
+- `.agents/skills/README.md` — v1.3 -> **v1.4**.
+- `docs/plans/2026-09-13-mod11-operaciones-subrutas-bandeja-ot.md` — la divergencia deja de ser deuda abierta y pasa a resuelta.
+
+### Verificacion
+
+Comparacion programatica entre `MANIFEST.core` y los directorios del filesystem tras el cambio:
+
+- skills unicas en `MANIFEST.core`: **46**
+- directorios con `SKILL.md` en `.agents/skills/`: **46**
+- `summary.coreCount`: **46**
+- divergencias en ambos sentidos: **ninguna**
+
+`MANIFEST.json` revalidado como JSON bien formado. El diff se mantuvo semantico: no se reformatearon arrays ni se altero el estilo del archivo.
+
+### Observaciones registradas, no ejecutadas
+
+1. **`finishing-a-development-branch` sigue en el catalogo.** Con el trabajo centrado en `main`, conviene revisar si su caso de uso persiste. No es analoga a `using-git-worktrees`: parte de su contenido (verificacion de cierre, limpieza previa a entregar) puede seguir aplicando sin ramas de feature. **Requiere decision del CTO**; no se toca en este acto.
+2. **Asimetria preexistente entre INDEX y MANIFEST.** La seccion "Especializadas por necesidad" de `INDEX.md` lista 17 entradas, mientras `usagePriority.specializedOnDemand` del manifiesto incluye ademas las skills de flujo de trabajo (30 entradas). La divergencia es anterior a este cambio y no afecta a la resolucion de skills; se deja anotada para una reconciliacion posterior del catalogo.
+
+### Estado posterior
+
+Catalogo y filesystem alineados. Catalogo activo: **46 skills core**, 0 candidatas, 6 revisadas archivadas, 3 en hold, **1 dada de baja**.
