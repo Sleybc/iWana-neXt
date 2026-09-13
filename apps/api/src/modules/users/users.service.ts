@@ -14,7 +14,7 @@ import { Queue } from 'bullmq';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import Redis from 'ioredis';
-import { DataSource, FindOptionsWhere, MoreThan } from 'typeorm';
+import { DataSource, FindOptionsWhere, In, MoreThan } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { User } from '@iwana/db';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
@@ -543,6 +543,42 @@ export class UsersService {
       this.assertCanReadUser(id, actorUserId, actorRole);
     }
     return this.findUserDtoById(id);
+  }
+
+  /**
+   * Resuelve etiquetas legibles (nombre completo o email) para un lote de IDs
+   * de usuario del tenant. Llamada interna del modulith (MOD11 F1,
+   * `responsibleLabel` en `TasksService.list()`): una sola query por página,
+   * no por fila.
+   *
+   * - Solo acepta UUIDs: `responsible_ref_id` es varchar(160) y puede traer
+   *   valores legacy no-UUID; filtrarlos evita `invalid input syntax for uuid`.
+   * - Sin actor (caller interno del tenant ya autenticado). No expone PII de
+   *   suscriptor: nombre o email del usuario interno (finalidad ADR-067
+   *   declarada en spec §4.7.4).
+   * - IDs sin usuario (eliminados por soft-delete o inexistentes) quedan
+   *   ausentes del mapa; el caller proyecta null.
+   */
+  async findDisplayLabelsByIds(ids: string[]): Promise<Map<string, string>> {
+    const uuidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const distinct = [...new Set(ids.filter((id) => uuidPattern.test(id)))];
+    if (distinct.length === 0) {
+      return new Map();
+    }
+    const { schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const users = await qr.manager.find(User, {
+        where: { id: In(distinct) },
+        select: ['id', 'firstName', 'lastName', 'email'],
+      });
+      const labels = new Map<string, string>();
+      for (const user of users) {
+        const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+        labels.set(user.id, fullName || user.email);
+      }
+      return labels;
+    });
   }
 
   /**

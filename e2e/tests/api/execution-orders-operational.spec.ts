@@ -2122,4 +2122,215 @@ test.describe('Execution Orders — flujo operativo E2E (P1-2)', () => {
       expect(sequences[1] - sequences[0]).toBe(1);
     });
   });
+
+  // ─── 9. Bandeja de OT — listado paginado y BOLA por actor (MOD11 F1) ───────
+  //
+  // GET /tasks/execution-orders (spec 2026-09-13 §4.7.1, ADR-065). El scoping
+  // por actor vive en el WHERE del servicio (directriz D1: réplica de la
+  // lectura del detalle — asignada al técnico o pool sin asignar ≠ CREATED);
+  // el decorador @ExecutionOrderTenantScoped() desactiva el ABAC del guard, así
+  // que el BOLA del listado se verifica aquí contra el API real (R1).
+
+  type ExecutionOrderListRow = {
+    id: string;
+    number: string;
+    status: string;
+    result?: string;
+    workType: string;
+    schedule: { eventId: string; window: { startAt: string; endAt: string } };
+    assignee?: { type: string; id: string };
+    customerDisplayLabel: string;
+    municipality: string | null;
+    ticketId: string | null;
+    taskId: string | null;
+    visitRequestId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+
+  type ExecutionOrderListMeta = {
+    total: number;
+    page: number;
+    limit: number;
+    mode: string;
+    capabilities: { randomAccess: boolean; sortableFields: string[] };
+    sort: { by: string; dir: string } | null;
+  };
+
+  const listExecutionOrders = async (
+    page: Page,
+    token: string,
+    queryString = '',
+  ): Promise<{ status: number; rows: ExecutionOrderListRow[]; meta: ExecutionOrderListMeta }> => {
+    const res = await authedGet(
+      page,
+      `/tasks/execution-orders${queryString ? `?${queryString}` : ''}`,
+      token,
+    );
+    const body = (await res.json().catch(() => ({}))) as {
+      data?: ExecutionOrderListRow[];
+      meta?: ExecutionOrderListMeta;
+    };
+    return {
+      status: res.status(),
+      rows: body.data ?? [],
+      meta:
+        body.meta ??
+        ({
+          total: -1,
+          page: -1,
+          limit: -1,
+          mode: '',
+          capabilities: { randomAccess: false, sortableFields: [] },
+          sort: null,
+        } as ExecutionOrderListMeta),
+    };
+  };
+
+  test.describe('9. Bandeja de OT — listado paginado y BOLA por actor (MOD11 F1)', () => {
+    // Los listados caen en el bucket eo-lightweight-read (120/min por actor);
+    // este bloque consume ~6 lecturas NOC y ~2 del técnico: muy bajo el tope y
+    // sin tocar los buckets que 4a/4c agotan deliberadamente (coordinador RO).
+
+    test('9a. NOC lista con paginación y meta completo ADR-065 (proyección mínima)', async ({
+      page,
+    }) => {
+      const { status, rows, meta } = await listExecutionOrders(
+        page,
+        ctx.nocToken,
+        'page=1&limit=5',
+      );
+      expect(status).toBe(200);
+      expect(Array.isArray(rows)).toBe(true);
+      expect(rows.length).toBeLessThanOrEqual(5);
+
+      // Meta completo: randomAccess sin cursor, lista blanca vacía conforme.
+      expect(meta.mode).toBe('page');
+      expect(meta.capabilities).toEqual({ randomAccess: true, sortableFields: [] });
+      expect(meta.sort).toBeNull();
+      expect(meta.page).toBe(1);
+      expect(meta.limit).toBe(5);
+      expect(meta.total).toBeGreaterThanOrEqual(rows.length);
+
+      // Proyección mínima ADR-067: sin campos del detalle ni contacto.
+      for (const row of rows) {
+        expect(row.id).toMatch(UUID_PATTERN);
+        expect(row.number).toBeTruthy();
+        expect(row.schedule?.window?.startAt).toBeTruthy();
+        expect(row).not.toHaveProperty('serviceAddress');
+        expect(row).not.toHaveProperty('workInstructions');
+        expect(row).not.toHaveProperty('completion');
+        expect(row).not.toHaveProperty('syncState');
+        expect(row).not.toHaveProperty('inventoryReconciliation');
+        expect(row).not.toHaveProperty('cursor');
+      }
+    });
+
+    test('9b. Orden por defecto: ventana planificada DESC con desempate por id', async ({
+      page,
+    }) => {
+      const { status, rows } = await listExecutionOrders(page, ctx.nocToken, 'page=1&limit=100');
+      expect(status).toBe(200);
+      if (rows.length >= 2) {
+        for (let index = 1; index < rows.length; index++) {
+          const previous = new Date(rows[index - 1].schedule.window.startAt).getTime();
+          const current = new Date(rows[index].schedule.window.startAt).getTime();
+          expect(
+            previous >= current,
+            `Fila ${index - 1} (${rows[index - 1].id}) con ventana anterior a la fila ${index} (${rows[index].id})`,
+          ).toBe(true);
+        }
+      }
+    });
+
+    test('9c. Filtros: por asignado incluye la OT del técnico; ticket inexistente no devuelve filas', async ({
+      page,
+    }) => {
+      expect(ctx.executionOrderId).toBeTruthy();
+      expect(ctx.techUserId).toBeTruthy();
+
+      const scoped = await listExecutionOrders(
+        page,
+        ctx.nocToken,
+        `assigneeId=${ctx.techUserId}&page=1&limit=100`,
+      );
+      expect(scoped.status).toBe(200);
+      expect(scoped.rows.map((row) => row.id)).toContain(ctx.executionOrderId);
+
+      const noTicket = await listExecutionOrders(
+        page,
+        ctx.nocToken,
+        'ticketId=E2E-SIN-TICKET-0001&page=1&limit=20',
+      );
+      expect(noTicket.status).toBe(200);
+      expect(noTicket.rows).toHaveLength(0);
+      expect(noTicket.meta.total).toBe(0);
+    });
+
+    test('9d. page*limit sobre el tope → 400', async ({ page }) => {
+      const res = await authedGet(page, '/tasks/execution-orders?page=101&limit=100', ctx.nocToken);
+      expect(res.status()).toBe(400);
+    });
+
+    test('9e. limit > 100 → 400 y cursor no se acepta (exclusivo con page, ADR-065 §10)', async ({
+      page,
+    }) => {
+      const limitRes = await authedGet(page, '/tasks/execution-orders?limit=101', ctx.nocToken);
+      expect(limitRes.status()).toBe(400);
+
+      const cursorRes = await authedGet(page, '/tasks/execution-orders?cursor=abc', ctx.nocToken);
+      expect(cursorRes.status()).toBe(400);
+    });
+
+    test('9f. BOLA: técnico solo ve sus OT y el pool; el total del pie no revela el total del tenant (ADR-065 §15)', async ({
+      page,
+    }) => {
+      expect(ctx.executionOrderId).toBeTruthy();
+
+      const techView = await listExecutionOrders(page, ctx.techToken, 'page=1&limit=100');
+      expect(techView.status).toBe(200);
+
+      // Toda fila del técnico es suya o pool sin asignar (D1); nunca de otro técnico.
+      for (const row of techView.rows) {
+        const isOwn = row.assignee?.type === 'TECHNICIAN' && row.assignee.id === ctx.techUserId;
+        const isPool = row.assignee === undefined;
+        expect(isOwn || isPool).toBe(true);
+      }
+
+      // La OT asignada al técnico en el happy path sí aparece (consistencia bandeja↔detalle).
+      expect(techView.rows.map((row) => row.id)).toContain(ctx.executionOrderId);
+
+      // ADR-065 §15: el total del técnico refleja su alcance, no el del tenant.
+      const nocView = await listExecutionOrders(page, ctx.nocToken, 'page=1&limit=1');
+      expect(nocView.status).toBe(200);
+      expect(techView.meta.total).toBeLessThanOrEqual(nocView.meta.total);
+      expect(techView.meta.total).toBeGreaterThan(0);
+    });
+
+    test('9g. BOLA: un segundo técnico no ve la OT asignada al primero', async ({ page }) => {
+      expect(ctx.executionOrderId).toBeTruthy();
+
+      const tech2Email = process.env.E2E_TECH2_EMAIL || '';
+      const tech2Password = process.env.E2E_TECH2_PASSWORD || 'Password123!';
+      if (!tech2Email) {
+        throw new Error(
+          'Configure E2E_TECH2_EMAIL/E2E_TECH2_PASSWORD con un segundo usuario TECHNICIAN del tenant para probar el BOLA del listado (scoping D1).',
+        );
+      }
+      const tech2Login = await tenantLogin(page, tech2Email, tech2Password, TENANT_SLUG);
+
+      const tech2View = await listExecutionOrders(page, tech2Login.token, 'page=1&limit=100');
+      expect(tech2View.status).toBe(200);
+
+      // La OT del técnico 1 (asignada en 1a) no aparece para el técnico 2: ni
+      // en filas propias ni como pool (está asignada, no es pool).
+      expect(tech2View.rows.map((row) => row.id)).not.toContain(ctx.executionOrderId);
+      // Y todo lo que ve cumple su propio alcance.
+      for (const row of tech2View.rows) {
+        const isOwn = row.assignee?.type === 'TECHNICIAN' && row.assignee.id === tech2Login.sub;
+        const isPool = row.assignee === undefined;
+        expect(isOwn || isPool).toBe(true);
+      }
+    });
+  });
 });

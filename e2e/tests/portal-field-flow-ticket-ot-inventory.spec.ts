@@ -574,6 +574,52 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       return;
     }
 
+    if (pathname.endsWith('/tasks/execution-orders') && method === 'GET') {
+      // Bandeja de OT (F5): la página canónica pide el listado al montar.
+      // Proyección mínima del contrato `execution-orders-list.ts` v1.
+      const order = state.executionOrder;
+      const schedule = order.schedule as { eventId?: string; window?: unknown } | undefined;
+      await fulfillJson(route, {
+        data: [
+          {
+            id: order.id,
+            number: order.number,
+            status: order.status,
+            result: order.result ?? null,
+            workType: order.workType,
+            schedule: {
+              eventId: schedule?.eventId ?? SCHEDULE_EVENT_ID,
+              window: schedule?.window,
+            },
+            assignee: order.assignee,
+            customerDisplayLabel: 'Cliente campo 001',
+            municipality: 'Bogotá',
+            ticketId: null,
+            taskId: null,
+            visitRequestId: null,
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+        meta: {
+          nextCursor: null,
+          total: 1,
+          totalIsEstimate: false,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasMore: false,
+          mode: 'page',
+          capabilities: { randomAccess: true, sortableFields: [] },
+          sort: null,
+        },
+      });
+      return;
+    }
+
     if (pathname.endsWith(`/tasks/execution-orders/${EXECUTION_ORDER_ID}`) && method === 'GET') {
       await fulfillJson(route, state.executionOrder);
       return;
@@ -852,6 +898,33 @@ async function setupTask8Mocks(page: import('@playwright/test').Page, state: Flo
       return;
     }
 
+    // Permisos efectivos del usuario de campo: los gates por sub-ruta de F2
+    // (`operations/execution-orders` y `scheduling`) los exigen. El usuario es
+    // SUPPORT: lectura de OT, tareas y agenda — sin permisos de gestión.
+    if (pathname.endsWith('/access-control/me/effective-permissions') && method === 'GET') {
+      await fulfillJson(route, {
+        data: {
+          userId: SUPPORT_USER_ID,
+          role: 'SUPPORT',
+          effectivePermissions: [
+            'operations.tasks.read',
+            'operations.execution_orders.read',
+            'wfm.schedule.read',
+            'inventory.stock.read',
+          ],
+          recoveryPermissions: [],
+          profileSources: [],
+        },
+      });
+      return;
+    }
+
+    // Catálogo de sedes de la toolbar de OT (contrato `{ data, meta }`).
+    if (pathname.endsWith('/organization/sites') && method === 'GET') {
+      await fulfillJson(route, { data: [], meta: { page: 1, limit: 100, total: 0 } });
+      return;
+    }
+
     await fulfillJson(route, { data: null });
   });
 }
@@ -955,12 +1028,40 @@ test('agenda abre el resumen de la OT y conserva una sola CTA hacia ejecución',
   });
   await expect(eventDialog).toBeVisible();
   await expect(eventDialog.getByText('Orden vinculada — qué aporta')).toBeVisible();
-  await expect(eventDialog.getByLabelText('Resumen de la orden de trabajo')).toBeVisible();
+  await expect(eventDialog.getByLabel('Resumen de la orden de trabajo')).toBeVisible();
   await expect(eventDialog.getByRole('button', { name: 'Abrir orden de trabajo' })).toHaveCount(1);
 
   await eventDialog.getByRole('button', { name: 'Abrir orden de trabajo' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/operations\?executionOrderId=eo-field-001/);
+  // F2 actualizó el emisor a la URL canónica: el enlace nuevo no paga el
+  // despachador de la raíz (sin doble salto visible). El legado sigue vivo y
+  // se verifica en las líneas 876/975, intactas.
+  await expect(page).toHaveURL(
+    /\/dashboard\/operations\/execution-orders\?executionOrderId=eo-field-001/,
+  );
   await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
+});
+
+test('operaciones — la URL canónica abre la OT por deep link sin rebotar al legado', async ({
+  page,
+}) => {
+  const state = createFlowState();
+  await setupTask8Mocks(page, state);
+  await seedPortalSession(page);
+
+  // Caso añadido en F6: entrada directa por la URL canónica (los enlaces
+  // nuevos de Programación y Mesa de ayuda ya la emiten). El caso legado
+  // `?executionOrderId=` sobre la raíz se conserva intacto en las líneas
+  // 876/975 de este archivo.
+  await gotoAuthedDashboard(
+    page,
+    `/dashboard/operations/execution-orders?executionOrderId=${EXECUTION_ORDER_ID}`,
+  );
+
+  await expect(page.getByRole('heading', { name: 'Operaciones' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
+  await expect(page).toHaveURL(
+    /\/dashboard\/operations\/execution-orders\?executionOrderId=eo-field-001/,
+  );
 });
 
 test('operaciones pre-inicio — bloques 3/4/5 en solo lectura con hints y única CTA de inicio', async ({

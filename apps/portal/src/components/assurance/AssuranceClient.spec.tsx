@@ -235,7 +235,9 @@ describe('AssuranceClient', () => {
     await user.click(await screen.findByRole('button', { name: 'Crear tarea vinculada' }));
 
     expect(mockRouterPush).toHaveBeenCalledWith(
-      '/dashboard/operations?ticketId=ticket-123&fromAssurance=1',
+      // URL canónica desde F2 (spec 2026-09-13 §4.2): el despachador de la
+      // raíz mantiene vivo el deep link legado con redirect 307.
+      '/dashboard/operations/tasks/new?ticketId=ticket-123&fromAssurance=1',
     );
   });
 

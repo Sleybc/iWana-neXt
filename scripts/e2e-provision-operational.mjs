@@ -377,6 +377,11 @@ const techEmail = process.env.E2E_TECH_EMAIL ?? `tech@${tenantSlug}.invalid`;
 const coordinatorEmail = process.env.E2E_COORDINATOR_RO_EMAIL ?? `coord-ro@${tenantSlug}.invalid`;
 const nocPassword = process.env.E2E_NOC_PASSWORD ?? `E2eNoc-${suffix}!`;
 const techPassword = process.env.E2E_TECH_PASSWORD ?? `E2eTech-${suffix}!`;
+// Segundo técnico (D-2 / bloque 9g): el BOLA del listado de OT exige dos
+// usuarios TECHNICIAN distintos en el mismo tenant. Sin este fixture la suite
+// aborta en 9g con «Configure E2E_TECH2_EMAIL…» y el bloque 9 no cierra.
+const tech2Email = process.env.E2E_TECH2_EMAIL ?? `tech2@${tenantSlug}.invalid`;
+const tech2Password = process.env.E2E_TECH2_PASSWORD ?? `E2eTech2-${suffix}!`;
 const coordinatorPassword = process.env.E2E_COORDINATOR_RO_PASSWORD ?? `E2eCoord-${suffix}!`;
 const auditorEmail = `auditor-${suffix}@example.invalid`;
 const auditorPassword = `E2eAuditor-${suffix}!`;
@@ -1613,6 +1618,15 @@ try {
     jobTitle: 'E2E technician',
     isOperationalResource: true,
   });
+  const technician2 = await createUser(tenantAdmin.token, {
+    email: tech2Email,
+    role: 'TECHNICIAN',
+    password: tech2Password,
+    firstName: 'E2E',
+    lastName: 'Technician 2',
+    jobTitle: 'E2E technician 2',
+    isOperationalResource: true,
+  });
   const coordinator = await createUser(tenantAdmin.token, {
     email: coordinatorEmail,
     role: 'NOC',
@@ -1633,6 +1647,7 @@ try {
   if (
     typeof noc.id !== 'string' ||
     typeof technician.id !== 'string' ||
+    typeof technician2.id !== 'string' ||
     typeof coordinator.id !== 'string' ||
     typeof auditor.id !== 'string'
   ) {
@@ -1641,11 +1656,13 @@ try {
 
   await activateUser(tenantAdmin.token, noc.id);
   await activateUser(tenantAdmin.token, technician.id);
+  await activateUser(tenantAdmin.token, technician2.id);
   await activateUser(tenantAdmin.token, coordinator.id);
   await activateUser(tenantAdmin.token, auditor.id);
   await assignProfiles(tenantAdmin.token, [
     { userId: noc.id, role: 'NOC' },
     { userId: technician.id, role: 'TECHNICIAN' },
+    { userId: technician2.id, role: 'TECHNICIAN' },
     { userId: coordinator.id, role: 'NOC' },
     { userId: auditor.id, role: 'AUDITOR' },
     { userId: tenantAdmin.userId, role: 'ADMIN' },
@@ -1712,6 +1729,8 @@ try {
     E2E_NOC_PASSWORD: nocPassword,
     E2E_TECH_EMAIL: techEmail,
     E2E_TECH_PASSWORD: techPassword,
+    E2E_TECH2_EMAIL: tech2Email,
+    E2E_TECH2_PASSWORD: tech2Password,
     E2E_COORDINATOR_RO_EMAIL: coordinatorEmail,
     E2E_COORDINATOR_RO_PASSWORD: coordinatorPassword,
     E2E_AUDITOR_EMAIL: auditorEmail,

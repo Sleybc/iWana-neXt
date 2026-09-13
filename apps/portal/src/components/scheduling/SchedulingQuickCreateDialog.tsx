@@ -11,9 +11,8 @@ interface SchedulingQuickCreateDialogProps {
   open: boolean;
   initialValues: ScheduleEventFormInitialValues | null;
   technicians: InternalUser[];
-  responsibleOptions: Array<{ value: string; label: string }>;
   internalAreaOptions: Array<{ value: string; label: string }>;
-  internalUserOptions: Array<{ value: string; label: string }>;
+  responsibleLabelById?: Map<string, string> | undefined;
   isSubmitting: boolean;
   error: string | null;
   onOpenChange: (open: boolean) => void;
@@ -24,9 +23,8 @@ export function SchedulingQuickCreateDialog({
   open,
   initialValues,
   technicians,
-  responsibleOptions,
   internalAreaOptions,
-  internalUserOptions,
+  responsibleLabelById,
   isSubmitting,
   error,
   onOpenChange,
@@ -42,9 +40,8 @@ export function SchedulingQuickCreateDialog({
       contextTitle="Crear tarea con agenda sugerida"
       initialValues={initialValues}
       technicians={technicians}
-      responsibleOptions={responsibleOptions}
       internalAreaOptions={internalAreaOptions}
-      internalUserOptions={internalUserOptions}
+      responsibleLabelById={responsibleLabelById}
       error={error}
       isSubmitting={isSubmitting}
       onOpenChange={onOpenChange}

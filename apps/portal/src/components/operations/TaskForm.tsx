@@ -25,12 +25,12 @@ export interface TaskFormSubmitOptions {
 }
 
 export interface TaskFormProps {
-  responsibleOptions: Array<{ value: string; label: string }>;
   internalAreaOptions: Array<{ value: string; label: string }>;
-  internalUserOptions: Array<{ value: string; label: string }>;
   initialTicketId?: string | null;
   initialOriginContext?: TaskOriginContext;
   onSubmit: (payload: CreateOperationalTaskDto, options?: TaskFormSubmitOptions) => Promise<void>;
+  /** Salida secundaria del pie de creación (UX spec §4.6/§5.4.3). */
+  onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
 }
@@ -54,12 +54,11 @@ function buildDefaultValues() {
 }
 
 export function TaskForm({
-  responsibleOptions,
   internalAreaOptions,
-  internalUserOptions,
   initialTicketId,
   initialOriginContext,
   onSubmit,
+  onCancel,
   isSubmitting,
   error,
 }: TaskFormProps) {
@@ -78,15 +77,16 @@ export function TaskForm({
   });
 
   const executionMode = watch('executionMode');
-  const recipientType = watch('recipientType');
-
-  const currentRecipientOptions =
-    recipientType === 'INTERNAL_USER' ? internalUserOptions : internalAreaOptions;
 
   const submit = handleSubmit(async (values) => {
-    const selectedInternalRecipientLabel =
-      currentRecipientOptions.find((option) => option.value === values.recipientRefId)?.label ??
-      null;
+    // El destinatario interno de área mantiene el catálogo estático; el de
+    // usuario interno fija su etiqueta en el picker (TaskCoreFields).
+    const recipientLabel = INTERNAL_RECIPIENT_TYPES.includes(values.recipientType)
+      ? values.recipientType === TaskRecipientType.INTERNAL_USER
+        ? values.recipientLabel?.trim() || null
+        : (internalAreaOptions.find((option) => option.value === values.recipientRefId)?.label ??
+          null)
+      : values.recipientLabel?.trim() || null;
 
     await onSubmit(
       {
@@ -100,9 +100,7 @@ export function TaskForm({
         responsibleRefId: values.responsibleRefId,
         recipientType: values.recipientType,
         recipientRefId: values.recipientRefId?.trim() ? values.recipientRefId.trim() : null,
-        recipientLabel: INTERNAL_RECIPIENT_TYPES.includes(values.recipientType)
-          ? selectedInternalRecipientLabel
-          : values.recipientLabel?.trim() || null,
+        recipientLabel,
         executionMode: values.executionMode,
         dueAt: values.dueAt ? new Date(values.dueAt).toISOString() : null,
         scheduledRequired: getScheduledRequired(values.executionMode),
@@ -122,9 +120,7 @@ export function TaskForm({
         watch={watch}
         setValue={setValue}
         errors={errors}
-        responsibleOptions={responsibleOptions}
         internalAreaOptions={internalAreaOptions}
-        internalUserOptions={internalUserOptions}
         disabled={isSubmitting}
       />
 
@@ -166,7 +162,12 @@ export function TaskForm({
         }
       />
 
-      <div className="flex justify-end">
+      {/* Pie de creación: dos acciones visibles — «Cancelar» (secundaria) y
+          «Crear tarea» (primaria, con estado de envío) — (UX spec §4.6). */}
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="secondary" disabled={isSubmitting} onClick={onCancel}>
+          Cancelar
+        </Button>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Creando...' : 'Crear tarea'}
         </Button>

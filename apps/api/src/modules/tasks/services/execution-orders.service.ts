@@ -40,13 +40,17 @@ import {
   type ExecutionOrderEvidence as ExecutionOrderEvidenceContract,
   type ExecutionOrderActivity as ExecutionOrderActivityContract,
   type ExecutionOrderItemUsage as ExecutionOrderItemUsageContract,
+  type ExecutionOrderListItem,
+  type ListExecutionOrdersResponse,
   type Page,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { buildPageMeta, clampPage } from '../../../common/pagination';
+import { applySort, buildPageMeta, clampPage } from '../../../common/pagination';
 import {
   CloseExecutionOrderInput,
   CloseExecutionOrderSchema,
+  ListExecutionOrdersQueryInput,
+  ListExecutionOrdersQuerySchema,
   RegisterExecutionOrderItemUsageInput,
   RegisterExecutionOrderItemUsageSchema,
   RegisterFieldWorkInput,
@@ -63,6 +67,7 @@ import {
   AssuranceExecutionOrderNotifierPort,
 } from '../ports/assurance-execution-order-notifier.port';
 import { TasksService } from './tasks.service';
+import { UsersService } from '../../users/users.service';
 import type {
   ExecutionOrderCommandContext,
   IdempotencyReceipt,
@@ -82,6 +87,22 @@ const EXECUTION_ORDER_UNIQUE_CONSTRAINTS = new Set([
   'uq_execution_orders_tenant_number',
   'uq_execution_orders_tenant_schedule_event',
 ]);
+/**
+ * Roles con alcance restringido en el listado de OT (réplica de
+ * `RESTRICTED_ROLES` de `TasksService.list()`).
+ */
+const LIST_RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
+
+/**
+ * Campos ordenables del listado de OT. Vacío en v1 (ADR-065 §22-bis punto 1:
+ * la lista vacía es estado conforme); poblarla exige medición de p95 y
+ * autorización de AI-EM-ARCH. Con la lista vacía, `applySort` ignora
+ * `sortBy`/`sortDir` y se conserva el orden por defecto.
+ */
+const EXECUTION_ORDER_LIST_SORTABLE_FIELDS: string[] = [];
+
+const EXECUTION_ORDER_LIST_DEFAULT_LIMIT = 20;
+
 /** ADR-068 §Eventos mínimos: solo eventos cuyo owner es MOD11 son redriveables. */
 const REDRIVE_ALLOWED_EVENT_TYPES = new Set<OperationalEventTypeV1>([
   'ExecutionOrderStartedV1',
@@ -207,6 +228,12 @@ export class ExecutionOrdersService {
     @Optional()
     @Inject(OrganizationOperationalAccessPort)
     private readonly organizationOperationalAccessPort?: OrganizationOperationalAccessPort,
+    // SEC-D4: etiqueta del técnico asignado en la bandeja. Opcional para los
+    // specs que construyen el servicio sin el módulo de usuarios; con el
+    // provider real disponible (TasksModule importa UsersModule) se resuelve
+    // con un lookup batch por página.
+    @Optional()
+    private readonly usersService?: UsersService,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -458,6 +485,151 @@ export class ExecutionOrdersService {
         sortableFields: [],
       }),
     };
+  }
+
+  /**
+   * Bandeja de OT de ejecución (MOD11 F1, spec §4.7.1).
+   *
+   * - Una sola query + count sobre el QB ya scopeado: el `total` del pie
+   *   refleja el alcance del actor (ADR-065 §15).
+   * - Orden por defecto `planned_window_start_at DESC, id DESC`; el desempate
+   *   por `id` es obligatorio (ADR-065 §12). Índice 130.
+   * - Proyección mínima ADR-067: NUNCA invoca `getCompletion`, `getSyncState`
+   *   ni `getInventoryReconciliation` (N+1 por fila; causa de rechazo).
+   * - Scoping D1 (v1 sin cuadrilla): réplica exacta de la semántica de lectura
+   *   de `assertActorAccess` — asignada al técnico o pool sin asignar distinto
+   *   de `CREATED`. Ninguna fila listada da 404 al abrirse.
+   * - SEC-D4: `assignee.displayLabel` (opcional en el contrato v1) se resuelve
+   *   con UN lookup batch por página sobre los IDs de técnicos de la página,
+   *   nunca por fila (mismo patrón que `responsibleLabel` en `TasksService`).
+   */
+  async list(
+    query: ListExecutionOrdersQueryInput,
+    actor: JwtPayload,
+  ): Promise<ListExecutionOrdersResponse> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = ListExecutionOrdersQuerySchema.parse(query);
+    const { page, limit } = clampPage(
+      validated.page ?? 1,
+      validated.limit ?? EXECUTION_ORDER_LIST_DEFAULT_LIMIT,
+    );
+
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const qb = qr.manager
+        .createQueryBuilder(ExecutionOrder, 'order')
+        .where('order.tenant_id = :tenantId', { tenantId })
+        // DEF-1: orden por defecto + desempate por id para offset estable.
+        .orderBy('order.planned_window_start_at', 'DESC')
+        .addOrderBy('order.id', 'DESC');
+
+      if (LIST_RESTRICTED_ROLES.includes(actor.role as UserRole)) {
+        qb.andWhere(
+          '(order.assigned_technician_id = :actorSub OR ' +
+            '(order.assigned_technician_id IS NULL AND order.assigned_crew_id IS NULL ' +
+            'AND order.status <> :poolExcludedStatus))',
+          { actorSub: actor.sub, poolExcludedStatus: ExecutionOrderStatus.CREATED },
+        );
+      }
+
+      if (validated.status) {
+        qb.andWhere('order.status = :status', { status: validated.status });
+      }
+      if (validated.result) {
+        qb.andWhere('order.result = :result', { result: validated.result });
+      }
+      if (validated.workType) {
+        qb.andWhere('order.work_type = :workType', { workType: validated.workType });
+      }
+      if (validated.assigneeId) {
+        qb.andWhere(
+          '(order.assigned_technician_id = :assigneeId OR order.assigned_crew_id = :assigneeId)',
+          { assigneeId: validated.assigneeId },
+        );
+      }
+      if (validated.organizationSiteId) {
+        qb.andWhere('order.organization_site_id = :organizationSiteId', {
+          organizationSiteId: validated.organizationSiteId,
+        });
+      }
+      if (validated.ticketId) {
+        qb.andWhere('order.ticket_id = :ticketId', { ticketId: validated.ticketId });
+      }
+      if (validated.taskId) {
+        qb.andWhere('order.task_id = :taskId', { taskId: validated.taskId });
+      }
+      if (validated.visitRequestId) {
+        qb.andWhere('order.visit_request_id = :visitRequestId', {
+          visitRequestId: validated.visitRequestId,
+        });
+      }
+      if (validated.windowFrom) {
+        qb.andWhere('order.planned_window_start_at >= :windowFrom', {
+          windowFrom: validated.windowFrom,
+        });
+      }
+      if (validated.windowTo) {
+        qb.andWhere('order.planned_window_start_at <= :windowTo', {
+          windowTo: validated.windowTo,
+        });
+      }
+
+      qb.skip((page - 1) * limit).take(limit);
+
+      // Orden dinámico tras el default; con la lista blanca vacía conserva el
+      // default y reporta sort null (ADR-065 §22-bis).
+      const sortResult = applySort(
+        qb,
+        EXECUTION_ORDER_LIST_SORTABLE_FIELDS,
+        validated.sortBy,
+        validated.sortDir,
+      );
+
+      const [orders, total] = await qb.getManyAndCount();
+      return { orders, total, sortResult };
+    });
+
+    // SEC-D4: una sola query de etiquetas por página (nunca una por fila).
+    const assigneeLabels = await this.resolveAssigneeLabels(result.orders);
+
+    return {
+      data: result.orders.map((order) => this.toListItem(order, assigneeLabels)),
+      meta: buildPageMeta({
+        total: result.total,
+        page,
+        limit,
+        randomAccess: true,
+        sortableFields: EXECUTION_ORDER_LIST_SORTABLE_FIELDS,
+        sortBy: result.sortResult.appliedSortBy ?? undefined,
+        sortDir: result.sortResult.appliedSortDir ?? undefined,
+      }),
+    };
+  }
+
+  /**
+   * Lookup batch de etiquetas de los técnicos asignados de la página (SEC-D4).
+   *
+   * - Solo IDs de técnicos: los IDs de cuadrilla pertenecen a WFM y no son
+   *   usuarios del directorio; su fila queda sin `displayLabel`.
+   * - Una única query por página vía `UsersService.findDisplayLabelsByIds`
+   *   (servicio del módulo de usuarios ya importado por TasksModule), que
+   *   además filtra IDs no-UUID legacy. Nunca una query por fila.
+   * - Sin `UsersService` inyectado (specs aislados) el mapa queda vacío y el
+   *   campo opcional se omite; el listado no depende de este lookup.
+   */
+  private async resolveAssigneeLabels(orders: ExecutionOrder[]): Promise<Map<string, string>> {
+    const technicianIds = [
+      ...new Set(
+        orders
+          .map((order) => order.assignedTechnicianId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    ];
+
+    if (technicianIds.length === 0 || !this.usersService) {
+      return new Map();
+    }
+
+    return this.usersService.findDisplayLabelsByIds(technicianIds);
   }
 
   async createFromScheduling(
@@ -2236,6 +2408,57 @@ export class ExecutionOrdersService {
         actorUserId: actor.sub,
       }),
     );
+  }
+
+  /**
+   * Proyección exacta de spec §4.7.1 (`ExecutionOrderListItem`).
+   *
+   * Solo columnas directas de `execution_orders`, sin joins ni sub-queries.
+   * `assignee.displayLabel` llega resuelto en lote por página desde `list()`
+   * (SEC-D4); el campo es opcional en el contrato y se omite cuando el ID no
+   * resuelve o cuando el asignado es una cuadrilla (sin usuario asociado en
+   * el directorio).
+   */
+  private toListItem(
+    order: ExecutionOrder,
+    assigneeLabels: Map<string, string>,
+  ): ExecutionOrderListItem {
+    const toIso = (value: Date | string): string =>
+      value instanceof Date ? value.toISOString() : String(value);
+    const technicianId = order.assignedTechnicianId;
+    const technicianLabel = technicianId ? assigneeLabels.get(technicianId) : undefined;
+    return {
+      id: order.id,
+      number: order.executionOrderNumber,
+      status: order.status,
+      ...(order.result ? { result: order.result } : {}),
+      workType: order.workType,
+      schedule: {
+        eventId: order.scheduleEventId,
+        window: {
+          startAt: toIso(order.plannedWindowStartAt),
+          endAt: toIso(order.plannedWindowEndAt),
+        },
+      },
+      ...(technicianId
+        ? {
+            assignee: {
+              type: 'TECHNICIAN' as const,
+              id: technicianId,
+              ...(technicianLabel ? { displayLabel: technicianLabel } : {}),
+            },
+          }
+        : order.assignedCrewId
+          ? { assignee: { type: 'CREW' as const, id: order.assignedCrewId } }
+          : {}),
+      customerDisplayLabel: order.customerDisplayLabel,
+      municipality: order.municipality,
+      ticketId: order.ticketId,
+      taskId: order.taskId,
+      visitRequestId: order.visitRequestId,
+      createdAt: toIso(order.createdAt),
+      updatedAt: toIso(order.updatedAt),
+    };
   }
 
   private toEvidenceContract(evidence: ExecutionOrderEvidence): ExecutionOrderEvidenceContract {

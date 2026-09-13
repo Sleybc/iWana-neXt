@@ -175,9 +175,9 @@ export interface CreateTaskSchedulingDialogProps {
   onOpenChange: (open: boolean) => void;
   initialValues: any | null;
   technicians: any[];
-  responsibleOptions: Array<{ value: string; label: string }>;
   internalAreaOptions: Array<{ value: string; label: string }>;
-  internalUserOptions: Array<{ value: string; label: string }>;
+  /** Etiquetas de responsables precargados (opcional; CA-08: no es directorio). */
+  responsibleLabelById?: Map<string, string> | undefined;
   onSubmit: (values: CreateTaskSchedulingValues) => Promise<void>;
   isSubmitting: boolean;
   error: string | null;
@@ -221,9 +221,8 @@ export function CreateTaskSchedulingDialog({
   onOpenChange,
   initialValues,
   technicians,
-  responsibleOptions,
   internalAreaOptions,
-  internalUserOptions,
+  responsibleLabelById,
   onSubmit,
   isSubmitting,
   error,
@@ -332,9 +331,8 @@ export function CreateTaskSchedulingDialog({
           {step === 1 && (
             <TaskSchedulingStep
               form={form}
-              responsibleOptions={responsibleOptions}
               internalAreaOptions={internalAreaOptions}
-              internalUserOptions={internalUserOptions}
+              responsibleLabelById={responsibleLabelById}
               disabled={isSubmitting}
             />
           )}

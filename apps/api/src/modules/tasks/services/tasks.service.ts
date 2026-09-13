@@ -277,8 +277,19 @@ export class TasksService {
       return { data, total, page, limit, sortResult };
     });
 
+    // F1 (spec §4.7.4): etiqueta de responsable aditiva y opcional, resuelta
+    // con un lookup batch por página (una query, no por fila). Los IDs no
+    // resolubles proyectan null; la forma base no cambia.
+    const responsibleLabels = await this.resolveResponsibleLabels(result.data);
+
     return {
-      data: result.data,
+      data: result.data.map((task) => ({
+        ...task,
+        responsibleLabel:
+          task.responsibleType === TaskResponsibleType.USER
+            ? (responsibleLabels.get(task.responsibleRefId) ?? null)
+            : null,
+      })),
       total: result.total,
       page: result.page,
       limit: result.limit,
@@ -292,6 +303,26 @@ export class TasksService {
         sortDir: result.sortResult.appliedSortDir ?? undefined,
       }),
     };
+  }
+
+  /**
+   * Lookup batch de etiquetas de responsable (una query por página).
+   * Solo se consultan responsables de tipo USER con IDs distintos; el resto
+   * proyecta null en el caller. Nunca lanza por IDs legacy no-UUID
+   * (`findDisplayLabelsByIds` los filtra).
+   */
+  private async resolveResponsibleLabels(tasks: OperationalTask[]): Promise<Map<string, string>> {
+    const ids = [
+      ...new Set(
+        tasks
+          .filter((task) => task.responsibleType === TaskResponsibleType.USER)
+          .map((task) => task.responsibleRefId),
+      ),
+    ];
+    if (ids.length === 0) {
+      return new Map();
+    }
+    return this.usersService.findDisplayLabelsByIds(ids);
   }
 
   async getById(id: string, actor: JwtPayload): Promise<OperationalTask> {

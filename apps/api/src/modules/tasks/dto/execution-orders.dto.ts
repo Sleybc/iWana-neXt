@@ -601,3 +601,196 @@ export class RedriveExecutionOrderEventDto {
   @Allow()
   ticketId!: string;
 }
+
+// ─── F1 — Listado de OT (spec §4.7.1, ADR-065) ─────────────────────────────
+
+/**
+ * Query de `GET /tasks/execution-orders` (spec §4.7.1, ADR-065 §10).
+ *
+ * - `limit` default 20, tope 100; `page * limit <= 10_000` vía `clampPage`.
+ * - `cursor` NO se acepta: `page` y `cursor` son excluyentes (ADR-065 §10) y
+ *   el recurso declara `randomAccess: true`.
+ * - `sortBy`/`sortDir` se aceptan por el pipeline uniforme de ADR-065 §17,
+ *   pero con `sortableFields: []` el servicio los ignora (orden por defecto)
+ *   y OpenAPI NO los anuncia (ADR-065 §22-bis punto 3). Poblar la lista
+ *   blanca exige medición de p95 y autorización de AI-EM-ARCH.
+ */
+export const ListExecutionOrdersQuerySchema = z
+  .object({
+    status: z.nativeEnum(ExecutionOrderStatus).optional(),
+    result: z.nativeEnum(ExecutionOrderResult).optional(),
+    workType: z.nativeEnum(WfmWorkType).optional(),
+    assigneeId: z.string().uuid().optional(),
+    organizationSiteId: z.string().uuid().optional(),
+    ticketId: z.string().trim().max(160).optional(),
+    taskId: z.string().trim().max(160).optional(),
+    visitRequestId: z.string().trim().max(160).optional(),
+    windowFrom: z.string().datetime().optional(),
+    windowTo: z.string().datetime().optional(),
+    page: z.coerce.number().int().min(1).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional().default(20),
+    sortBy: z.string().optional(),
+    sortDir: z.enum(['asc', 'desc']).optional(),
+  })
+  .strict();
+
+export type ListExecutionOrdersQueryInput = z.input<typeof ListExecutionOrdersQuerySchema>;
+
+export class ListExecutionOrdersQueryDto {
+  @ApiPropertyOptional({ enum: ExecutionOrderStatus })
+  @Allow()
+  status?: ExecutionOrderStatus;
+
+  @ApiPropertyOptional({ enum: ExecutionOrderResult })
+  @Allow()
+  result?: ExecutionOrderResult;
+
+  @ApiPropertyOptional({ enum: WfmWorkType })
+  @Allow()
+  workType?: WfmWorkType;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Técnico o cuadrilla.' })
+  @Allow()
+  assigneeId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  organizationSiteId?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  ticketId?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  taskId?: string;
+
+  @ApiPropertyOptional()
+  @Allow()
+  visitRequestId?: string;
+
+  @ApiPropertyOptional({
+    format: 'date-time',
+    description: 'Desde (inclusive) sobre la ventana planificada.',
+  })
+  @Allow()
+  windowFrom?: string;
+
+  @ApiPropertyOptional({
+    format: 'date-time',
+    description: 'Hasta (inclusive) sobre la ventana planificada.',
+  })
+  @Allow()
+  windowTo?: string;
+
+  @ApiPropertyOptional({ minimum: 1, default: 1, description: 'Número de página (1-based).' })
+  @Allow()
+  page?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: MAX_LIMIT,
+    default: 20,
+    description: 'Número máximo de registros por página.',
+  })
+  @Allow()
+  limit?: number;
+
+  /**
+   * Aceptados por `ListExecutionOrdersQuerySchema` (pipeline ADR-065 §17) pero
+   * INTENCIONALMENTE sin `@ApiProperty`: con la lista blanca vacía el servidor
+   * los ignora y OpenAPI no debe anunciarlos (ADR-065 §22-bis punto 3).
+   * No añadir decorador Swagger aquí sin medición de p95 y autorización de
+   * AI-EM-ARCH — el test `tasks.swagger.spec.ts` lo bloquea.
+   */
+  @Allow()
+  sortBy?: string;
+
+  @Allow()
+  sortDir?: 'asc' | 'desc';
+}
+
+export class ExecutionOrderListWindowDto {
+  @ApiProperty({ format: 'date-time' })
+  startAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  endAt!: string;
+}
+
+export class ExecutionOrderListScheduleDto {
+  @ApiProperty({ format: 'uuid' })
+  eventId!: string;
+
+  @ApiProperty({ type: ExecutionOrderListWindowDto })
+  window!: ExecutionOrderListWindowDto;
+}
+
+export class ExecutionOrderListAssigneeDto {
+  @ApiProperty({ enum: ['TECHNICIAN', 'CREW'] })
+  type!: 'TECHNICIAN' | 'CREW';
+
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiPropertyOptional()
+  displayLabel?: string;
+}
+
+/**
+ * Fila de la bandeja (`ExecutionOrderListItem`, contrato
+ * `execution-orders-list.ts` v1). Proyección mínima ADR-067: sin `completion`,
+ * `syncState`, `inventoryReconciliation` (N+1 por fila), sin `serviceAddress`,
+ * `workInstructions` ni contacto, sin `template*`.
+ */
+export class ExecutionOrderListItemDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  number!: string;
+
+  @ApiProperty({ enum: ExecutionOrderStatus })
+  status!: ExecutionOrderStatus;
+
+  @ApiPropertyOptional({ enum: ExecutionOrderResult })
+  result?: ExecutionOrderResult;
+
+  @ApiProperty({ enum: WfmWorkType })
+  workType!: WfmWorkType;
+
+  @ApiProperty({ type: ExecutionOrderListScheduleDto })
+  schedule!: ExecutionOrderListScheduleDto;
+
+  @ApiPropertyOptional({ type: ExecutionOrderListAssigneeDto })
+  assignee?: ExecutionOrderListAssigneeDto;
+
+  @ApiProperty()
+  customerDisplayLabel!: string;
+
+  @ApiProperty({ nullable: true })
+  municipality!: string | null;
+
+  @ApiProperty({ nullable: true })
+  ticketId!: string | null;
+
+  @ApiProperty({ nullable: true })
+  taskId!: string | null;
+
+  @ApiProperty({ nullable: true })
+  visitRequestId!: string | null;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
+}
+
+export class ExecutionOrderListPageDto {
+  @ApiProperty({ type: [ExecutionOrderListItemDto] })
+  data!: ExecutionOrderListItemDto[];
+
+  @ApiProperty({ type: ListMetaDto })
+  meta!: ListMetaDto;
+}

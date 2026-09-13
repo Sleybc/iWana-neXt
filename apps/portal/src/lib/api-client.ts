@@ -6696,93 +6696,48 @@ export const contractsApi = {
 
 // ─── MOD11 — Ejecución Operativa / Tareas ────────────────────────────────────
 
-export interface OperationalTaskRecord {
-  id: string;
-  tenantId: string;
-  taskNumber: string;
-  type: TaskType;
-  status: TaskStatus;
-  priority: TaskPriority;
-  title: string;
-  description: string | null;
-  originContext: TaskOriginContext;
-  originRefId: string | null;
-  ticketId: string | null;
-  responsibleType: TaskResponsibleType;
-  responsibleRefId: string;
-  recipientType: TaskRecipientType;
-  recipientRefId: string | null;
-  recipientLabel: string | null;
-  queueName: string | null;
-  executionMode: TaskExecutionMode;
-  dueAt: string | null;
-  scheduledRequired: boolean;
-  scheduleEventId: string | null;
-  workOrderId: string | null;
-  createdByUserId: string | null;
-  resolvedAt: string | null;
-  closedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+// Los nueve tipos de tareas operativas viven en `@iwana/shared` desde F0
+// (contrato congelado v1: packages/shared/src/contracts/operations/
+// operational-tasks.ts, spec 2026-09-13 §4.7.3). Este re-export type-only
+// mantiene los imports de consumidores en '@/lib/api-client': NINGÚN import
+// de consumidor cambió por la migración (restricción 4 del despacho OLA2).
+export type {
+  OperationalTaskRecord,
+  ListOperationalTasksParams,
+  ListOperationalTasksResponse,
+  CreateOperationalTaskDto,
+  AssignOperationalTaskDto,
+  UpdateOperationalTaskDto,
+  TransitionOperationalTaskDto,
+  OperationalTaskTimelineEvent,
+  OperationalTaskAssignmentHistoryRecord,
+} from '@iwana/shared';
 
-export interface ListOperationalTasksParams {
-  status?: TaskStatus;
-  type?: TaskType;
-  responsibleRefId?: string;
-  ticketId?: string;
-  page?: number;
-  limit?: number;
-}
+// Los tipos del listado de OT viven en @iwana/shared desde F0 (contrato
+// congelado v1: packages/shared/src/contracts/operations/execution-orders-list.ts,
+// spec 2026-09-13 §4.7.1). Mismo criterio que las tareas: re-export type-only
+// para que los consumidores sigan importando desde '@/lib/api-client'.
+export type {
+  ExecutionOrderListItem,
+  ListExecutionOrdersQuery,
+  ListExecutionOrdersResponse,
+} from '@iwana/shared';
 
-export interface ListOperationalTasksResponse {
-  data: OperationalTaskRecord[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
-export interface CreateOperationalTaskDto {
-  type: TaskType;
-  priority?: TaskPriority;
-  title: string;
-  description?: string | null;
-  originContext: TaskOriginContext;
-  originRefId?: string | null;
-  ticketId?: string | null;
-  responsibleType: TaskResponsibleType;
-  responsibleRefId: string;
-  recipientType: TaskRecipientType;
-  recipientRefId?: string | null;
-  recipientLabel?: string | null;
-  queueName?: string | null;
-  executionMode: TaskExecutionMode;
-  dueAt?: string | null;
-  scheduledRequired: boolean;
-}
-
-export interface AssignOperationalTaskDto {
-  responsibleType: TaskResponsibleType;
-  responsibleRefId: string;
-  reason?: string | null;
-}
-
-export interface UpdateOperationalTaskDto {
-  title?: string;
-  description?: string | null;
-  priority?: TaskPriority;
-  recipientType?: TaskRecipientType;
-  recipientRefId?: string | null;
-  recipientLabel?: string | null;
-  queueName?: string | null;
-  dueAt?: string | null;
-  scheduledRequired?: boolean;
-}
-
-export interface TransitionOperationalTaskDto {
-  status: TaskStatus;
-  notes?: string | null;
-}
+// Uso local del api-client: los mismos tipos, importados como binding local.
+import type {
+  OperationalTaskRecord,
+  ListOperationalTasksParams,
+  ListOperationalTasksResponse,
+  CreateOperationalTaskDto,
+  AssignOperationalTaskDto,
+  UpdateOperationalTaskDto,
+  TransitionOperationalTaskDto,
+  OperationalTaskTimelineEvent,
+  OperationalTaskAssignmentHistoryRecord,
+  ExecutionOrderListItem,
+  ListExecutionOrdersQuery,
+  ListExecutionOrdersResponse,
+} from '@iwana/shared';
 
 export interface LinkTaskScheduleEventDto {
   scheduleEventId: string;
@@ -6790,29 +6745,6 @@ export interface LinkTaskScheduleEventDto {
 
 export interface LinkTaskWorkOrderDto {
   workOrderId: string;
-}
-
-export interface OperationalTaskTimelineEvent {
-  id: string;
-  taskId: string;
-  tenantId: string;
-  eventType: TaskTimelineEventType;
-  payload: Record<string, unknown>;
-  actorUserId: string | null;
-  occurredAt: string;
-}
-
-export interface OperationalTaskAssignmentHistoryRecord {
-  id: string;
-  tenantId: string;
-  taskId: string;
-  previousResponsibleType: TaskResponsibleType;
-  previousResponsibleRefId: string;
-  newResponsibleType: TaskResponsibleType;
-  newResponsibleRefId: string;
-  reason: string | null;
-  actorUserId: string | null;
-  createdAt: string;
 }
 
 export interface ExecutionOrderRecord {
@@ -6987,6 +6919,37 @@ export const tasksApi = {
     ),
 
   executionOrders: {
+    /**
+     * Bandeja de OT — `GET /tasks/execution-orders` (F5, contrato congelado
+     * `execution-orders-list.ts` v1). `sortBy`/`sortDir` NO se serializan:
+     * con `meta.capabilities.sortableFields` vacío el servidor los ignora y
+     * OpenAPI no los anuncia (ADR-065 §22-bis; restricción 4 de F5). El
+     * `cursor` no existe en este recurso (ADR-065 §10).
+     */
+    list: (params?: ListExecutionOrdersQuery, tenantSlug?: string) => {
+      const searchParams = new URLSearchParams();
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.result) searchParams.set('result', params.result);
+      if (params?.workType) searchParams.set('workType', params.workType);
+      if (params?.assigneeId) searchParams.set('assigneeId', params.assigneeId);
+      if (params?.organizationSiteId) {
+        searchParams.set('organizationSiteId', params.organizationSiteId);
+      }
+      if (params?.ticketId) searchParams.set('ticketId', params.ticketId);
+      if (params?.taskId) searchParams.set('taskId', params.taskId);
+      if (params?.visitRequestId) searchParams.set('visitRequestId', params.visitRequestId);
+      if (params?.windowFrom) searchParams.set('windowFrom', params.windowFrom);
+      if (params?.windowTo) searchParams.set('windowTo', params.windowTo);
+      if (params?.page) searchParams.set('page', String(params.page));
+      if (params?.limit) searchParams.set('limit', String(params.limit));
+      const query = searchParams.toString();
+      return request<ListExecutionOrdersResponse>(
+        `/tasks/execution-orders${query ? `?${query}` : ''}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      );
+    },
+
     get: (id: string, tenantSlug?: string) =>
       request<ExecutionOrderDetailResponse>(
         `/tasks/execution-orders/${id}`,
@@ -8492,6 +8455,13 @@ export interface StockIssueLineRecord {
    * Opcional: ausente = sin lote o lote huérfano.
    */
   lotNumber?: string | null;
+  /**
+   * Producto legible (enriquecido por el API; ausente = ítem huérfano).
+   */
+  itemSku?: string | null;
+  itemName?: string | null;
+  itemBrand?: string | null;
+  itemModel?: string | null;
   serializedAssetId: string | null;
   /**
    * Grupo de seriales de la línea (lectura v2.1, MOD12 S2 §5.5, contrato
@@ -8525,12 +8495,27 @@ export interface StockIssueRecord {
   closedAt: string | null;
   stockMovementId: string | null;
   linesCount?: number;
+  /**
+   * Origen y destino legibles (enriquecidos por el API en lista y detalle;
+   * ausente = ubicación huérfana, el cliente degrada sin exponer el UUID).
+   */
+  sourceLocationCode?: string | null;
+  sourceLocationName?: string | null;
+  destinationLocationCode?: string | null;
+  destinationLocationName?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface StockIssueDetailRecord extends StockIssueRecord {
   lines: StockIssueLineRecord[];
+  /**
+   * Origen y destino legibles (enriquecidos por el API; ausente = huérfano).
+   */
+  sourceLocationCode?: string | null;
+  sourceLocationName?: string | null;
+  destinationLocationCode?: string | null;
+  destinationLocationName?: string | null;
 }
 
 export interface ListStockCountsParams {

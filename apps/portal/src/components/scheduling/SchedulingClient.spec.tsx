@@ -584,7 +584,9 @@ describe('SchedulingClient', () => {
       expect(await screen.findByText('Crear tarea con agenda sugerida')).toBeInTheDocument();
       const dialog = screen.getByRole('dialog');
       expect(within(dialog).getByText(/Paso 1 de 3/)).toBeInTheDocument();
-      expect(within(dialog).getByRole('combobox', { name: 'Responsable' })).toHaveTextContent(
+      // F5: el responsable es un combobox typeahead; el valor precargado
+      // muestra la etiqueta del técnico de la franja.
+      expect(within(dialog).getByRole('combobox', { name: 'Responsable' })).toHaveValue(
         'Luisa Campos',
       );
 
@@ -810,7 +812,11 @@ describe('SchedulingClient', () => {
     const openButton = screen.getByRole('button', { name: 'Abrir orden de trabajo' });
     expect(openButton).toBeInTheDocument();
     fireEvent.click(openButton);
-    expect(pushMock).toHaveBeenCalledWith('/dashboard/operations?executionOrderId=eo-001');
+    // URL canónica desde F2 (spec 2026-09-13 §4.2); la raíz mantiene vivo el
+    // deep link legado con redirect 307.
+    expect(pushMock).toHaveBeenCalledWith(
+      '/dashboard/operations/execution-orders?executionOrderId=eo-001',
+    );
   });
 
   it('abre una solicitud pendiente fijada desde query y conserva la vista diaria', async () => {

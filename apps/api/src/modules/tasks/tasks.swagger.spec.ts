@@ -197,6 +197,89 @@ describe('TasksController Swagger', () => {
   });
 });
 
+describe('ExecutionOrders list Swagger (MOD11 F1)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [TasksController, ExecutionOrdersController],
+      providers: [
+        { provide: TasksService, useValue: {} },
+        { provide: TaskAssignmentService, useValue: {} },
+        { provide: TaskTimelineService, useValue: {} },
+        { provide: ExecutionOrdersService, useValue: {} },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn() },
+        },
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: {
+            verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }),
+            reconcileOrder: jest.fn(),
+            getRelayHealth: jest.fn(),
+          },
+        },
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+        { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+        { provide: TenantAwareThrottlerGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: { eval: jest.fn().mockResolvedValue(1) } },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('documenta GET /tasks/execution-orders sin sortBy/sortDir (ADR-065 §22-bis punto 3)', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('Swagger Tasks Test').setVersion('1.0').build(),
+    );
+
+    const listOrders = document.paths['/tasks/execution-orders']?.get as
+      | { parameters?: Array<{ name?: string }> }
+      | undefined;
+    expect(listOrders).toBeDefined();
+
+    const paramNames = (listOrders?.parameters ?? []).map((parameter) => parameter.name);
+    // Filtros y paginación anunciados…
+    for (const expected of [
+      'status',
+      'result',
+      'workType',
+      'assigneeId',
+      'organizationSiteId',
+      'ticketId',
+      'taskId',
+      'visitRequestId',
+      'windowFrom',
+      'windowTo',
+      'page',
+      'limit',
+    ]) {
+      expect(paramNames).toContain(expected);
+    }
+    // …pero el orden NO, con la lista blanca vacía.
+    expect(paramNames).not.toContain('sortBy');
+    expect(paramNames).not.toContain('sortDir');
+    expect(paramNames).not.toContain('cursor');
+  });
+
+  it('no altera el contrato máquina-legible congelado tasks-execution-orders.v1.json', () => {
+    const published = require('../../../openapi/tasks-execution-orders.v1.json') as {
+      paths: Record<string, Record<string, unknown>>;
+    };
+    // El JSON v1 congela detalle y comandos; el listado vive en los tipos
+    // `execution-orders-list.ts` v1 + decoradores vivos (precedente MOD12).
+    expect(published.paths['/tasks/execution-orders']).toBeUndefined();
+  });
+});
+
 describe('Tasks guard order', () => {
   it('ejecuta throttling antes de permisos en Tasks y Templates', () => {
     for (const controller of [TasksController, ExecutionOrderTemplatesController]) {

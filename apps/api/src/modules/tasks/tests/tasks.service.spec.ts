@@ -37,7 +37,7 @@ describe('TasksService', () => {
   let service: TasksService;
   let mockRunInTenantSchema: jest.MockedFunction<typeof runInTenantSchema>;
   let timelineService: jest.Mocked<TaskTimelineService>;
-  let usersService: jest.Mocked<Pick<UsersService, 'findOne'>>;
+  let usersService: jest.Mocked<Pick<UsersService, 'findOne' | 'findDisplayLabelsByIds'>>;
 
   const actor: JwtPayload = {
     sub: 'support-001',
@@ -63,6 +63,7 @@ describe('TasksService', () => {
         status: UserStatus.ACTIVE,
         isOperationalResource: false,
       }),
+      findDisplayLabelsByIds: jest.fn().mockResolvedValue(new Map()),
     };
 
     service = new TasksService(
@@ -926,5 +927,81 @@ describe('TasksService', () => {
     expect(andWhere).toHaveBeenCalledWith('task.ticket_id = :ticketId', {
       ticketId: 'ticket-123',
     });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // list — responsibleLabel aditivo (MOD11 F1, spec §4.7.4)
+  // ═══════════════════════════════════════════════════════════════════
+  const buildListQb = (rows: Array<Record<string, unknown>>) => ({
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getManyAndCount: jest.fn().mockResolvedValue([rows, rows.length]),
+  });
+
+  it('proyecta responsibleLabel con un solo lookup batch por página', async () => {
+    const qb = buildListQb([
+      {
+        id: 'task-001',
+        responsibleType: TaskResponsibleType.USER,
+        responsibleRefId: '11111111-1111-4111-8111-111111111111',
+      },
+      {
+        id: 'task-002',
+        responsibleType: TaskResponsibleType.USER,
+        responsibleRefId: '22222222-2222-4222-8222-222222222222',
+      },
+    ]);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager: { createQueryBuilder: jest.fn().mockReturnValue(qb) } } as never),
+    );
+    usersService.findDisplayLabelsByIds.mockResolvedValue(
+      new Map([['11111111-1111-4111-8111-111111111111', 'Ana Torres']]),
+    );
+
+    const result = await service.list({}, actor);
+
+    // Una sola llamada batch con los IDs distintos de la página.
+    expect(usersService.findDisplayLabelsByIds).toHaveBeenCalledTimes(1);
+    expect(usersService.findDisplayLabelsByIds).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+      ]),
+    );
+    expect(result.data).toEqual([
+      expect.objectContaining({
+        id: 'task-001',
+        responsibleLabel: 'Ana Torres',
+      }),
+      expect.objectContaining({
+        id: 'task-002',
+        // Sin usuario resoluble → null, no omisión ni error.
+        responsibleLabel: null,
+      }),
+    ]);
+  });
+
+  it('proyecta responsibleLabel null para responsables no USER sin consultar usuarios', async () => {
+    const qb = buildListQb([
+      {
+        id: 'task-003',
+        responsibleType: TaskResponsibleType.QUEUE,
+        responsibleRefId: 'cola-noc',
+      },
+    ]);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
+      fn({ manager: { createQueryBuilder: jest.fn().mockReturnValue(qb) } } as never),
+    );
+
+    const result = await service.list({}, actor);
+
+    expect(usersService.findDisplayLabelsByIds).not.toHaveBeenCalled();
+    expect(result.data).toEqual([
+      expect.objectContaining({ id: 'task-003', responsibleLabel: null }),
+    ]);
   });
 });

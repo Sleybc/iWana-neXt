@@ -86,6 +86,7 @@ import { CreateStockIssueLineSerials1260000000000 } from './126_create_stock_iss
 import { AddStockMovementTaxes1270000000000 } from './127_add_stock_movement_taxes';
 import { HardenPurchaseRequestLineAwards1280000000000 } from './128_harden_purchase_request_line_awards';
 import { AddSerializedAssetLot1290000000000 } from './129_add_serialized_asset_lot';
+import { ExecutionOrdersListOrdering1300000000000 } from './130_execution_orders_list_ordering';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -252,6 +253,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddStockMovementTaxes1270000000000,
   HardenPurchaseRequestLineAwards1280000000000,
   AddSerializedAssetLot1290000000000,
+  ExecutionOrdersListOrdering1300000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

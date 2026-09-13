@@ -6,6 +6,14 @@ import { crmApi, subscribersApi } from '@/lib/api-client';
 import { TaskForm } from './TaskForm';
 
 jest.mock('@/lib/api-client', () => ({
+  // Typeahead de personas (F5): el responsable ya no llega de un directorio;
+  // el picker consulta `GET /users/search` al escribir.
+  usersApi: {
+    searchForPicker: jest.fn().mockResolvedValue({
+      data: [{ id: 'user-123', label: 'Laura Ruiz', sublabel: 'laura@demo.co' }],
+      total: 1,
+    }),
+  },
   crmApi: {
     listExpedientes: jest.fn().mockResolvedValue({
       data: [
@@ -85,17 +93,18 @@ describe('TaskForm', () => {
 
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         onSubmit={onSubmit}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
     );
 
     await user.type(screen.getByLabelText('Titulo'), 'Validar equipo retirado');
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    // Picker de responsable (typeahead F5): escribir y elegir una persona.
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
@@ -118,10 +127,9 @@ describe('TaskForm', () => {
 
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         onSubmit={onSubmit}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
@@ -132,7 +140,9 @@ describe('TaskForm', () => {
       screen.getByLabelText('Modo de ejecucion'),
       TaskExecutionMode.DUE_DATE,
     );
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    // Picker de responsable (typeahead F5): escribir y elegir una persona.
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
@@ -148,17 +158,18 @@ describe('TaskForm', () => {
 
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         onSubmit={onSubmit}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
     );
 
     await user.type(screen.getByLabelText('Titulo'), 'Llamar nuevo lead');
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    // Picker de responsable (typeahead F5): escribir y elegir una persona.
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(
       screen.getByLabelText('Tipo de destinatario'),
       TaskRecipientType.PROSPECT,
@@ -195,17 +206,18 @@ describe('TaskForm', () => {
 
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         onSubmit={onSubmit}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
     );
 
     await user.type(screen.getByLabelText('Titulo'), 'Confirmar visita tecnica');
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    // Picker de responsable (typeahead F5): escribir y elegir una persona.
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(
       screen.getByLabelText('Tipo de destinatario'),
       TaskRecipientType.SUBSCRIBER,
@@ -241,10 +253,9 @@ describe('TaskForm', () => {
 
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         onSubmit={jest.fn()}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
@@ -262,10 +273,9 @@ describe('TaskForm', () => {
   it('shows execution mode before any scheduling fields and keeps responsible and recipient separated', async () => {
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         onSubmit={jest.fn()}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
@@ -283,19 +293,20 @@ describe('TaskForm', () => {
 
     render(
       <TaskForm
-        responsibleOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
-        internalUserOptions={[{ value: 'user-123', label: 'Laura Ruiz' }]}
         initialTicketId="ticket-123"
         initialOriginContext={TaskOriginContext.ASSURANCE}
         onSubmit={onSubmit}
+        onCancel={jest.fn()}
         isSubmitting={false}
         error={null}
       />,
     );
 
     await user.type(screen.getByLabelText('Titulo'), 'Escalar revisión de avería');
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    // Picker de responsable (typeahead F5): escribir y elegir una persona.
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
@@ -311,5 +322,41 @@ describe('TaskForm', () => {
         undefined,
       );
     });
+  });
+
+  it('ofrece «Cancelar» (secundaria) en el pie de creación y delega en onCancel', async () => {
+    const onCancel = jest.fn();
+    const user = userEvent.setup();
+
+    render(
+      <TaskForm
+        internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
+        onSubmit={jest.fn()}
+        onCancel={onCancel}
+        isSubmitting={false}
+        error={null}
+      />,
+    );
+
+    const cancel = screen.getByRole('button', { name: 'Cancelar' });
+    expect(cancel).toBeEnabled();
+    await user.click(cancel);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    // La primaria sigue visible y no dispara el envío al cancelar.
+    expect(screen.getByRole('button', { name: 'Crear tarea' })).toBeInTheDocument();
+  });
+
+  it('deshabilita «Cancelar» mientras el alta está en envío', () => {
+    render(
+      <TaskForm
+        internalAreaOptions={[{ value: 'operations-area', label: 'Operaciones' }]}
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+        isSubmitting={true}
+        error={null}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
   });
 });

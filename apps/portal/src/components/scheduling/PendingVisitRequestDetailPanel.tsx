@@ -513,8 +513,9 @@ export function PendingVisitRequestDetailPanel({
 
           {selectedVisitRequest.executionOrderId ? (
             <Button asChild type="button" variant="secondary">
+              {/* Emisor actualizado a la URL canónica (F2, spec 2026-09-13 §4.2). */}
               <Link
-                href={`/dashboard/operations?executionOrderId=${selectedVisitRequest.executionOrderId}`}
+                href={`/dashboard/operations/execution-orders?executionOrderId=${selectedVisitRequest.executionOrderId}`}
               >
                 Abrir orden en Operaciones
               </Link>

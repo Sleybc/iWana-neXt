@@ -72,7 +72,16 @@ import { TasksService } from './services/tasks.service';
       ExecutionOrderAuditIntent,
     ]),
   ],
-  controllers: [TasksController, ExecutionOrdersController, ExecutionOrderTemplatesController],
+  /**
+   * El orden importa (DEF-F6-01, OLA 4.1): Express resuelve en orden de
+   * registro y `TasksController` declara `@Get(':id')` (un segmento), que
+   * captura las rutas estáticas hermanas de un solo segmento
+   * (`tasks/execution-orders` y `tasks/execution-order-templates`) y el
+   * `ParseUUIDPipe` las convierte en 400 si este controlador se registra
+   * primero. Los controladores de rutas estáticas van antes; la regresión
+   * vive en `tests/tasks-routing.spec.ts`.
+   */
+  controllers: [ExecutionOrdersController, ExecutionOrderTemplatesController, TasksController],
   providers: [
     TasksService,
     TaskTimelineService,

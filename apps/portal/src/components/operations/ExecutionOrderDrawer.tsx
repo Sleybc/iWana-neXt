@@ -35,7 +35,10 @@ import type {
   SerializedAssetRecord,
   StockBalanceRecord,
 } from '@/lib/api-client';
-import type { ExecutionOrderMissingRequirement } from './OperationsClient';
+// D-A1 (split F2, spec 2026-09-13 §4.5): la interface vive ahora en
+// `execution-order-requirements.ts`; el drawer no se mueve — solo re-punta su
+// import type (había dos importadores del monolito, no uno).
+import type { ExecutionOrderMissingRequirement } from './execution-order-requirements';
 import {
   PortalAlert,
   PortalEmptyState,

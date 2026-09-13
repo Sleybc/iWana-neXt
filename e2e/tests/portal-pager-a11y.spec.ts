@@ -412,6 +412,129 @@ async function setupMocks(page: Page, opts: MockOptions = {}) {
       return;
     }
 
+    // Permisos efectivos (endpoint real del portal: `/access-control/me/...`).
+    // Incluye los permisos de Operaciones que exigen los gates de las dos
+    // bandejas nuevas (CA-05 de la spec 2026-09-13).
+    if (url.includes('/access-control/me/effective-permissions') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            userId: 'user-admin-uuid-pager-a11y',
+            role: 'ADMIN',
+            effectivePermissions: [
+              'settings.read',
+              'crm.subscribers.read',
+              'operations.tasks.read',
+              'operations.tasks.manage',
+              'operations.execution_orders.read',
+            ],
+            recoveryPermissions: [],
+            profileSources: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    // ── Operaciones: bandeja de tareas (TasksTable · pager numerado) ──
+    if (new URL(url).pathname.endsWith('/tasks') && method === 'GET') {
+      const parsed = new URL(url);
+      const pageNum = Number.parseInt(parsed.searchParams.get('page') ?? '1', 10) || 1;
+      const limit = Number.parseInt(parsed.searchParams.get('limit') ?? '20', 10) || 20;
+      const total = 45;
+      const data = Array.from({ length: pageNum === 3 ? 5 : 20 }, (_, index) => ({
+        id: `task-p${pageNum}-${index}`,
+        taskNumber: `TSK-P${pageNum}-${index}`,
+        type: 'INTERNAL_OPERATION',
+        status: 'OPEN',
+        priority: 'NORMAL',
+        title: `Tarea P${pageNum}-${index}`,
+        responsibleRefId: 'user-admin-uuid-pager-a11y',
+        responsibleLabel: 'Ana Foco',
+        recipientType: 'INTERNAL_AREA',
+        recipientRefId: 'operations-area',
+        recipientLabel: 'Operaciones',
+        executionMode: 'IMMEDIATE',
+        scheduledRequired: false,
+        dueAt: '2026-10-20T14:00:00.000Z',
+        createdAt: '2026-09-13T10:00:00.000Z',
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data,
+          total,
+          page: pageNum,
+          limit,
+          meta: pageEnvelopeMeta(pageNum, limit, total),
+        }),
+      });
+      return;
+    }
+
+    // ── Operaciones: bandeja de órdenes de ejecución (pager numerado) ──
+    if (new URL(url).pathname.endsWith('/tasks/execution-orders') && method === 'GET') {
+      const parsed = new URL(url);
+      const pageNum = Number.parseInt(parsed.searchParams.get('page') ?? '1', 10) || 1;
+      const limit = Number.parseInt(parsed.searchParams.get('limit') ?? '20', 10) || 20;
+      const total = 45;
+      const data = Array.from({ length: pageNum === 3 ? 5 : 20 }, (_, index) => ({
+        id: `eo-p${pageNum}-${index}`,
+        number: `OT-P${pageNum}-${index}`,
+        status: 'ASSIGNED',
+        result: null,
+        workType: 'INSTALLATION',
+        schedule: {
+          eventId: `event-p${pageNum}-${index}`,
+          window: {
+            startAt: '2026-09-14T14:00:00.000Z',
+            endAt: '2026-09-14T16:00:00.000Z',
+          },
+        },
+        assignee: { type: 'TECHNICIAN', id: `tech-${index}`, displayLabel: `Técnico ${index}` },
+        customerDisplayLabel: `Cliente ${index}`,
+        municipality: 'Bogotá',
+        ticketId: null,
+        taskId: null,
+        visitRequestId: null,
+        createdAt: '2026-09-13T10:00:00.000Z',
+        updatedAt: '2026-09-13T10:00:00.000Z',
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data,
+          total,
+          page: pageNum,
+          limit,
+          meta: pageEnvelopeMeta(pageNum, limit, total),
+        }),
+      });
+      return;
+    }
+
+    if (url.includes('/organization/sites') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], meta: { page: 1, limit: 100, total: 0 } }),
+      });
+      return;
+    }
+
+    if (url.includes('/users/search') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], total: 0 }),
+      });
+      return;
+    }
+
     // Fallback
     await route.fulfill({
       status: 200,
@@ -419,6 +542,23 @@ async function setupMocks(page: Page, opts: MockOptions = {}) {
       body: JSON.stringify({ data: null }),
     });
   });
+}
+
+/** `meta` ADR-065 completo para las bandejas de Operaciones. */
+function pageEnvelopeMeta(page: number, limit: number, total: number) {
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  return {
+    nextCursor: null,
+    total,
+    totalIsEstimate: false,
+    page,
+    limit,
+    totalPages,
+    hasMore: page < totalPages,
+    mode: 'page',
+    capabilities: { randomAccess: true, sortableFields: [] },
+    sort: null,
+  };
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -933,5 +1073,59 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     logAxeEvidence('AXE_V2_34_DARK', darkResult.violations);
     expect(darkResult.violations).toEqual([]);
+  });
+
+  // ── Operaciones (MOD11 OLA4): las dos bandejas nuevas ──
+
+  /**
+   * Las bandejas de Operaciones adoptaron ADR-065 en F5 (TasksTable y
+   * ExecutionOrdersTable). Este bloque las incorpora a la regresión a11y del
+   * pager: auditoría axe sin violaciones y el invariante de un solo pie
+   * (CA-05 de la spec 2026-09-13) en su montaje real por URL.
+   */
+  test('v2-34: axe-core no reporta violaciones en la bandeja de tareas de Operaciones', async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await setupMocks(page);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/dashboard/operations/tasks');
+
+    await expect(page.getByText('Tarea P1-0')).toBeVisible();
+    await expect(visiblePagerCount(page, 'Mostrando 1–20 de 45 tareas')).toBeVisible();
+    await expect(page.locator('nav[aria-label*="Paginación"]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Cargar más' })).toHaveCount(0);
+    await page.waitForLoadState('networkidle');
+    await waitForTableSettled(page);
+
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+
+    logAxeEvidence('AXE_OPERACIONES_TAREAS', result.violations);
+    expect(result.violations).toEqual([]);
+  });
+
+  test('v2-34: axe-core no reporta violaciones en la bandeja de órdenes de ejecución', async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await setupMocks(page);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/dashboard/operations/execution-orders');
+
+    await expect(page.getByRole('button', { name: 'OT-P1-0' })).toBeVisible();
+    await expect(
+      visiblePagerCount(page, 'Mostrando 1–20 de 45 órdenes de ejecución'),
+    ).toBeVisible();
+    await expect(page.locator('nav[aria-label*="Paginación"]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Cargar más' })).toHaveCount(0);
+    await page.waitForLoadState('networkidle');
+    await waitForTableSettled(page);
+
+    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+
+    logAxeEvidence('AXE_OPERACIONES_OT', result.violations);
+    expect(result.violations).toEqual([]);
   });
 });

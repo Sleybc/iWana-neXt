@@ -19,7 +19,11 @@ jest.mock('../services/tasks.service', () => ({
   TasksService: class TasksService {},
 }));
 
+// requireActual conserva el resto de exports reales de @iwana/db: la cadena de
+// imports del servicio consume entidades y enums (p. ej. MediaUsage vía
+// UsersService) que un mock parcial deja undefined y rompe la carga del spec.
 jest.mock('@iwana/db', () => ({
+  ...jest.requireActual('@iwana/db'),
   TenantContext: {
     getOrThrow: jest.fn().mockReturnValue({
       tenantId: 'tenant-001',

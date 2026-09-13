@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -55,8 +56,23 @@ export function TaskDetailDrawer({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{task.title}</DialogTitle>
+        <DialogHeader className="flex items-start justify-between gap-3 space-y-0">
+          <DialogTitle className="min-w-0">{task.title}</DialogTitle>
+          {/* PROD-UX #1 (OLA 4.1): mecanismo de cierre visible con la
+              primitive del sistema, objetivo ≥44 px (UX spec §8.2/§11.3). */}
+          <DialogClose asChild={true}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="min-h-11 min-w-11 shrink-0"
+              aria-label="Cerrar"
+            >
+              <span aria-hidden="true" className="text-lg leading-none">
+                ×
+              </span>
+            </Button>
+          </DialogClose>
         </DialogHeader>
 
         <div className="space-y-4">

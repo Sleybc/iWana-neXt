@@ -742,7 +742,8 @@ function AssuranceClientInner() {
           setActionError(null);
           setActionFeedback(null);
           router.push(
-            `/dashboard/operations?ticketId=${encodeURIComponent(selectedTicket.id)}&fromAssurance=1`,
+            // Emisor actualizado a la URL canónica (F2, spec 2026-09-13 §4.2).
+            `/dashboard/operations/tasks/new?ticketId=${encodeURIComponent(selectedTicket.id)}&fromAssurance=1`,
           );
         }}
         onClose={() => {

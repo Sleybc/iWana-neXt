@@ -70,7 +70,7 @@ import { useDailyDisplayOperatingWindow } from './useOperatingWindow';
 import {
   buildSchedulingRangeForView,
   buildDefaultSchedulingFilters,
-  buildTechnicianOptions,
+  getTechnicianDisplayName,
   canManageScheduling,
   canViewScheduling,
   filterRecommendationCandidateUsers,
@@ -275,6 +275,15 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
       selectedEvent,
     });
   const operationalUsers = useMemo(() => filterOperationalTechnicians(technicians), [technicians]);
+  // Etiquetas para precargar el responsable del wizard (del catálogo de
+  // técnicos ya cargado por la agenda; CA-08: no es un directorio nuevo).
+  const schedulingResponsibleLabelById = useMemo(
+    () =>
+      new Map(
+        technicians.map((technician) => [technician.id, getTechnicianDisplayName(technician)]),
+      ),
+    [technicians],
+  );
   const visibleTechnicians = useMemo(() => {
     if (!filters.technicianId) {
       return operationalUsers;
@@ -283,14 +292,6 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
     const selectedUser = technicians.find((technician) => technician.id === filters.technicianId);
     return selectedUser ? [selectedUser] : [];
   }, [filters.technicianId, operationalUsers, technicians]);
-  const schedulingResponsibleOptions = useMemo(
-    () => buildTechnicianOptions(operationalUsers),
-    [operationalUsers],
-  );
-  const schedulingInternalUserOptions = useMemo(
-    () => buildTechnicianOptions(technicians),
-    [technicians],
-  );
   const dailyDisplayDateLocal = filters.view === 'day' ? filters.fromDate : null;
   const dailyDisplaySiteId =
     dailyDraft?.organizationSiteId ?? selectedPendingVisitRequest?.organizationSiteId ?? null;
@@ -1442,9 +1443,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         contextTitle={createContextLabel ?? 'Solicitud manual de visita'}
         initialValues={createInitialValues ?? null}
         technicians={technicians}
-        responsibleOptions={schedulingResponsibleOptions}
         internalAreaOptions={INTERNAL_AREA_OPTIONS}
-        internalUserOptions={schedulingInternalUserOptions}
+        responsibleLabelById={schedulingResponsibleLabelById}
         error={createError}
         isSubmitting={isCreateSubmitting}
         onOpenChange={(open) => {
@@ -1469,9 +1469,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
         open={isQuickCreateOpen}
         initialValues={quickCreateInitialValues}
         technicians={visibleTechnicians}
-        responsibleOptions={schedulingResponsibleOptions}
         internalAreaOptions={INTERNAL_AREA_OPTIONS}
-        internalUserOptions={schedulingInternalUserOptions}
+        responsibleLabelById={schedulingResponsibleLabelById}
         error={quickCreateError}
         isSubmitting={isQuickCreateSubmitting}
         onOpenChange={(open) => {
@@ -1529,7 +1528,8 @@ export function SchedulingClient({ surface = 'agenda' }: SchedulingClientProps) 
           ? {
               onOpenExecutionOrder: () =>
                 router.push(
-                  `/dashboard/operations?executionOrderId=${selectedEvent.executionOrderId}`,
+                  // Emisor actualizado a la URL canónica (F2, spec 2026-09-13 §4.2).
+                  `/dashboard/operations/execution-orders?executionOrderId=${selectedEvent.executionOrderId}`,
                 ),
             }
           : {})}

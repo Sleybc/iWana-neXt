@@ -1,8 +1,12 @@
 import {
+  Controller,
   ForbiddenException,
+  Get,
   INestApplication,
+  ModuleMetadata,
   NotFoundException,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -24,6 +28,9 @@ import { TenantAwareThrottlerGuard } from '../guards/tenant-aware-throttler.guar
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { ExecutionOrderResponseHeadersInterceptor } from '../interceptors/execution-order-response-headers.interceptor';
 import { ExecutionOrderProjectionConvergenceService } from '../services/execution-order-projection-convergence.service';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { buildPageMeta, clampPage } from '../../../common/pagination';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { createVerifiedTenantContextMiddleware } from './tenant-context-test.middleware';
 
@@ -1488,5 +1495,212 @@ describe('ExecutionOrdersController HTTP — health/relay (fail-closed)', () => 
     await request(app.getHttpServer())
       .get('/api/v1/tasks/execution-orders/health/relay')
       .expect(401);
+  });
+});
+
+// ─── F1: GET /tasks/execution-orders — decorador, meta y tope ─────────────
+
+/**
+ * Ruta espejo SIN `@ExecutionOrderTenantScoped()`: reproduce el
+ * deny-by-default del guard en rutas sin `:id` (R1). El `@Get()` real sí lo
+ * declara; ambos casos corren con el `ExecutionOrderAccessGuard` REAL.
+ */
+@Controller('tasks/execution-orders-probe')
+@UseGuards(
+  JwtAuthGuard,
+  TenantAwareThrottlerGuard,
+  RolesGuard,
+  PermissionsGuard,
+  // Mismo orden de guards que el controlador real: sin este guard atado a la
+  // ruta, el deny-by-default de las rutas sin `:id` nunca dispara y la sonda
+  // respondería 200, invalidando el caso 403-sin-decorador (R1).
+  ExecutionOrderAccessGuard,
+)
+class UndecoratedListProbeController {
+  @Get('open')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
+  probe(): { ok: boolean } {
+    return { ok: true };
+  }
+}
+
+describe('ExecutionOrdersController HTTP — GET /tasks/execution-orders (F1)', () => {
+  let app: INestApplication;
+  let probeApp: INestApplication;
+
+  const LIST_ROWS = [
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      number: 'OTE-20260913-001',
+      status: ExecutionOrderStatus.ASSIGNED,
+      workType: 'INSTALLATION',
+      schedule: {
+        eventId: '33333333-3333-4333-8333-333333333333',
+        window: { startAt: '2026-09-13T14:00:00.000Z', endAt: '2026-09-13T16:00:00.000Z' },
+      },
+      customerDisplayLabel: 'Cliente ejemplo',
+      municipality: 'Bogotá',
+      ticketId: null,
+      taskId: null,
+      visitRequestId: null,
+      createdAt: '2026-09-13T10:00:00.000Z',
+      updatedAt: '2026-09-13T10:00:00.000Z',
+    },
+  ];
+
+  /**
+   * Mock de `list()` que honra los guards reales de paginación
+   * (`clampPage` + `buildPageMeta`): el 400 por tope y el `meta` completo
+   * se ejercitan de extremo a extremo con datos fijos.
+   */
+  const buildListServiceMock = () => ({
+    assertActorAccess: jest.fn().mockResolvedValue(undefined),
+    assertActorCanRedrive: jest.fn().mockResolvedValue(undefined),
+    list: jest.fn().mockImplementation((query: { page?: number; limit?: number }) => {
+      const { page, limit } = clampPage(query.page ?? 1, query.limit ?? 20);
+      return {
+        data: LIST_ROWS,
+        meta: buildPageMeta({
+          total: LIST_ROWS.length,
+          page,
+          limit,
+          randomAccess: true,
+          sortableFields: [],
+        }),
+      };
+    }),
+  });
+
+  const buildModule = async (metadata: ModuleMetadata): Promise<INestApplication> => {
+    const moduleRef: TestingModule = await Test.createTestingModule(metadata).compile();
+    const nestApp = moduleRef.createNestApplication();
+    nestApp.setGlobalPrefix('api/v1');
+    nestApp.use(createVerifiedTenantContextMiddleware());
+    await nestApp.init();
+    return nestApp;
+  };
+
+  beforeAll(async () => {
+    app = await buildModule({
+      controllers: [ExecutionOrdersController],
+      providers: [
+        { provide: ExecutionOrdersService, useFactory: buildListServiceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ]),
+          },
+        },
+        PermissionsGuard,
+        // Guard ABAC real: con el decorador pasa sin ABAC; el scoping vive
+        // en el servicio (R1). Aquí solo se verifica el paso del guard.
+        ExecutionOrderAccessGuard,
+        TenantAwareThrottlerGuard,
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
+        JwtAuthGuard,
+        RolesGuard,
+        ExecutionOrderResponseHeadersInterceptor,
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+        },
+      ],
+    });
+
+    probeApp = await buildModule({
+      controllers: [UndecoratedListProbeController],
+      providers: [
+        { provide: ExecutionOrdersService, useFactory: buildListServiceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ]),
+          },
+        },
+        PermissionsGuard,
+        ExecutionOrderAccessGuard,
+        TenantAwareThrottlerGuard,
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
+        JwtAuthGuard,
+        RolesGuard,
+      ],
+    });
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await probeApp.close();
+  });
+
+  it('responde 403 en ruta sin recurso y sin @ExecutionOrderTenantScoped()', async () => {
+    const response = await request(probeApp.getHttpServer())
+      .get('/api/v1/tasks/execution-orders-probe/open')
+      .set('Authorization', 'Bearer support-token')
+      .expect(403);
+
+    expect(response.body).toEqual(expect.objectContaining({ code: 'FORBIDDEN' }));
+  });
+
+  it('responde 200 con el decorador y `meta` completo ADR-065', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.meta).toEqual({
+      nextCursor: null,
+      total: 1,
+      totalIsEstimate: false,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+      hasMore: false,
+      mode: 'page',
+      capabilities: { randomAccess: true, sortableFields: [] },
+      sort: null,
+    });
+  });
+
+  it('clasifica el listado en el bucket de lectura ligera (D3: límite 120)', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    // `resolveBucket`: GET sin `/evidence` → `eo-lightweight-read` (120/min).
+    expect(response.headers['x-ratelimit-limit']).toBe('120');
+  });
+
+  it('devuelve 400 cuando page*limit supera el tope', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders?page=101&limit=100')
+      .set('Authorization', 'Bearer support-token')
+      .expect(400);
+  });
+
+  it('devuelve 400 cuando limit supera el máximo contractual', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders?limit=101')
+      .set('Authorization', 'Bearer support-token')
+      .expect(400);
+  });
+
+  it('ignora sortBy con la lista blanca vacía y conserva meta.sort null', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders?sortBy=status&sortDir=asc')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(response.body.meta.sort).toBeNull();
+  });
+
+  it('retorna 401 sin token', async () => {
+    await request(app.getHttpServer()).get('/api/v1/tasks/execution-orders').expect(401);
   });
 });

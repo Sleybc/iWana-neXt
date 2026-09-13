@@ -21,6 +21,7 @@ import type { ExpedienteRecord, SubscriberRecord } from '@/lib/api-client';
 import { crmApi, subscribersApi } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
+import { OperationsUserPicker } from './OperationsUserPicker';
 import {
   TASK_EXECUTION_MODE_LABELS,
   TASK_PRIORITY_LABELS,
@@ -36,9 +37,13 @@ export interface TaskCoreFieldsProps {
   watch: UseFormWatch<TaskIntakeValues>;
   setValue: UseFormSetValue<TaskIntakeValues>;
   errors: FieldErrors<TaskIntakeValues>;
-  responsibleOptions: Array<{ value: string; label: string }>;
   internalAreaOptions: Array<{ value: string; label: string }>;
-  internalUserOptions: Array<{ value: string; label: string }>;
+  /**
+   * Etiquetas conocidas de responsables (opcional): solo alimenta la etiqueta
+   * del valor precargado (p. ej. el wizard de Programación con el técnico de
+   * la franja); NO es un directorio y no dispara ninguna carga (CA-08).
+   */
+  responsibleLabelById?: Map<string, string> | undefined;
   disabled?: boolean;
 }
 
@@ -96,9 +101,8 @@ export function TaskCoreFields({
   watch,
   setValue,
   errors,
-  responsibleOptions,
   internalAreaOptions,
-  internalUserOptions,
+  responsibleLabelById,
   disabled = false,
 }: TaskCoreFieldsProps) {
   const executionMode = watch('executionMode');
@@ -112,9 +116,18 @@ export function TaskCoreFields({
   > | null>(
     selectedRecipientRefId && selectedRecipientLabel ? { label: selectedRecipientLabel } : null,
   );
-
-  const currentRecipientOptions =
-    recipientType === TaskRecipientType.INTERNAL_USER ? internalUserOptions : internalAreaOptions;
+  const initialResponsibleRefId = watch('responsibleRefId');
+  const [selectedResponsibleItem, setSelectedResponsibleItem] = useState<Pick<
+    SearchablePickerItem,
+    'label' | 'sublabel'
+  > | null>(() => {
+    if (!initialResponsibleRefId) {
+      return null;
+    }
+    return {
+      label: responsibleLabelById?.get(initialResponsibleRefId) ?? initialResponsibleRefId,
+    };
+  });
 
   const usesRemoteRecipientLookup = useMemo(
     () => CATALOG_RECIPIENT_TYPES.includes(recipientType),
@@ -227,17 +240,22 @@ export function TaskCoreFields({
         control={control}
         name="responsibleRefId"
         render={({ field }) => (
-          <Select
+          <OperationsUserPicker
             id="task-responsible"
             label="Responsable"
-            value={field.value}
-            onChange={field.onChange}
-            options={responsibleOptions}
-            placeholder="Selecciona responsable"
+            value={field.value || null}
+            selectedItem={selectedResponsibleItem}
+            onChange={(item) => {
+              field.onChange(item ? item.id : '');
+              setSelectedResponsibleItem(
+                item ? { label: item.label, sublabel: item.sublabel ?? null } : null,
+              );
+            }}
             disabled={disabled}
-            {...(errors.responsibleRefId?.message
-              ? { error: errors.responsibleRefId.message }
-              : {})}
+            placeholder="Busca por nombre o correo"
+            unavailableTitle="No puedes buscar personas"
+            unavailableDescription="Tu perfil no tiene acceso al buscador de personas. Pide a un administrador de tu empresa que cree o asigne esta tarea."
+            error={errors.responsibleRefId?.message}
           />
         )}
       />
@@ -272,22 +290,59 @@ export function TaskCoreFields({
       />
 
       {INTERNAL_RECIPIENT_TYPES.includes(recipientType) ? (
-        <Controller
-          control={control}
-          name="recipientRefId"
-          render={({ field }) => (
-            <Select
-              id="task-recipient"
-              label="Destinatario"
-              value={field.value}
-              onChange={field.onChange}
-              options={currentRecipientOptions}
-              placeholder="Selecciona destinatario"
-              disabled={disabled}
-              {...(errors.recipientRefId?.message ? { error: errors.recipientRefId.message } : {})}
-            />
-          )}
-        />
+        recipientType === TaskRecipientType.INTERNAL_USER ? (
+          <Controller
+            control={control}
+            name="recipientRefId"
+            render={({ field }) => (
+              <OperationsUserPicker
+                id="task-recipient"
+                label="Destinatario"
+                value={field.value || null}
+                selectedItem={selectedRecipientItem}
+                onChange={(item) => {
+                  if (!item) {
+                    clearRecipient();
+                    return;
+                  }
+                  setValue('recipientRefId', item.id, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setValue('recipientLabel', item.label, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setSelectedRecipientItem({ label: item.label, sublabel: item.sublabel ?? null });
+                }}
+                disabled={disabled}
+                placeholder="Busca por nombre o correo"
+                unavailableTitle="No puedes buscar personas"
+                unavailableDescription="Tu perfil no tiene acceso al buscador de personas. Pide a un administrador de tu empresa que registre esta tarea con el destinatario interno correspondiente."
+                error={errors.recipientRefId?.message}
+              />
+            )}
+          />
+        ) : (
+          <Controller
+            control={control}
+            name="recipientRefId"
+            render={({ field }) => (
+              <Select
+                id="task-recipient"
+                label="Destinatario"
+                value={field.value}
+                onChange={field.onChange}
+                options={internalAreaOptions}
+                placeholder="Selecciona destinatario"
+                disabled={disabled}
+                {...(errors.recipientRefId?.message
+                  ? { error: errors.recipientRefId.message }
+                  : {})}
+              />
+            )}
+          />
+        )
       ) : usesRemoteRecipientLookup ? (
         <div className="space-y-3 md:col-span-2">
           <SearchablePicker

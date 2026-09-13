@@ -23,7 +23,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  ExecutionOrderResult,
+  ExecutionOrderStatus,
+  UserRole,
+  WfmWorkType,
+} from '@iwana/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -63,6 +69,9 @@ import {
   UpdateFieldWorkSchema,
   RegisterExecutionOrderItemUsageSchema,
   CloseExecutionOrderSchema,
+  ListExecutionOrdersQueryDto,
+  ListExecutionOrdersQuerySchema,
+  ExecutionOrderListPageDto,
 } from './dto/execution-orders.dto';
 import type { ExecutionOrderCommandContext } from './services/execution-order-reliability.service';
 import {
@@ -117,6 +126,63 @@ export class ExecutionOrdersController {
     @Optional()
     private readonly inventoryReconciliationService?: ExecutionOrderInventoryReconciliationService,
   ) {}
+
+  /**
+   * Bandeja de OT de ejecución (MOD11 F1, spec §4.7.1).
+   *
+   * Declarado ANTES de las rutas `:id/*` por convención del archivo. Exige
+   * `@ExecutionOrderTenantScoped()`: sin él, `ExecutionOrderAccessGuard` es
+   * deny-by-default en rutas sin `:id` (403). Con él, el guard no hace ABAC y
+   * el scoping por actor vive en el `WHERE` de `ExecutionOrdersService.list()`
+   * (directriz D1, réplica de la lectura del detalle).
+   *
+   * Bucket de throttling (directriz D3): GET sin `/evidence` →
+   * `eo-lightweight-read` (120 req/min) en `TenantAwareThrottlerGuard`.
+   *
+   * Con `sortableFields: []`, OpenAPI NO anuncia `sortBy`/`sortDir`
+   * (ADR-065 §22-bis punto 3): el schema Zod los acepta, el servicio los
+   * ignora y aquí no se declaran como `@ApiQuery`.
+   */
+  @Get()
+  @ExecutionOrderTenantScoped()
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
+  @ApiOperation({ summary: 'Listar OT de ejecución del tenant (bandeja)' })
+  @ApiQuery({ name: 'status', required: false, enum: ExecutionOrderStatus })
+  @ApiQuery({ name: 'result', required: false, enum: ExecutionOrderResult })
+  @ApiQuery({ name: 'workType', required: false, enum: WfmWorkType })
+  @ApiQuery({
+    name: 'assigneeId',
+    required: false,
+    type: String,
+    description: 'Técnico o cuadrilla.',
+  })
+  @ApiQuery({ name: 'organizationSiteId', required: false, type: String })
+  @ApiQuery({ name: 'ticketId', required: false, type: String })
+  @ApiQuery({ name: 'taskId', required: false, type: String })
+  @ApiQuery({ name: 'visitRequestId', required: false, type: String })
+  @ApiQuery({
+    name: 'windowFrom',
+    required: false,
+    type: String,
+    description: 'ISO 8601, sobre la ventana planificada.',
+  })
+  @ApiQuery({
+    name: 'windowTo',
+    required: false,
+    type: String,
+    description: 'ISO 8601, sobre la ventana planificada.',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, minimum: 1, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100, example: 20 })
+  @ApiOkResponse({ type: ExecutionOrderListPageDto })
+  async list(
+    @Query(new ZodValidationPipe(ListExecutionOrdersQuerySchema))
+    query: ListExecutionOrdersQueryDto,
+    @CurrentUser() actor: JwtPayload,
+  ) {
+    return this.executionOrdersService.list(query, actor);
+  }
 
   @Get(':id/evidences')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)

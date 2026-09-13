@@ -6,17 +6,16 @@ import type { TaskIntakeValues } from '../operations/task-intake-schema';
 
 export interface TaskSchedulingStepProps {
   form: UseFormReturn<any>; // Tipado genérico para soportar la unión de esquemas
-  responsibleOptions: Array<{ value: string; label: string }>;
   internalAreaOptions: Array<{ value: string; label: string }>;
-  internalUserOptions: Array<{ value: string; label: string }>;
+  /** Etiquetas de responsables precargados (del catálogo de técnicos ya cargado). */
+  responsibleLabelById?: Map<string, string> | undefined;
   disabled?: boolean;
 }
 
 export function TaskSchedulingStep({
   form,
-  responsibleOptions,
   internalAreaOptions,
-  internalUserOptions,
+  responsibleLabelById,
   disabled = false,
 }: TaskSchedulingStepProps) {
   const {
@@ -38,15 +37,17 @@ export function TaskSchedulingStep({
         </p>
       </div>
 
+      {/* F5 (spec de diseño §4.8): responsable y destinatario interno usan el
+      typeahead `GET /users/search` dentro de TaskCoreFields; el directorio
+      precargado desaparece de toda la cadena de creación de tareas. */}
       <TaskCoreFields
         control={control}
         register={register}
         watch={watch}
         setValue={setValue}
         errors={errors}
-        responsibleOptions={responsibleOptions}
         internalAreaOptions={internalAreaOptions}
-        internalUserOptions={internalUserOptions}
+        responsibleLabelById={responsibleLabelById}
         disabled={disabled}
       />
     </div>

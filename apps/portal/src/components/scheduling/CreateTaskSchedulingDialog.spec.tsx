@@ -3,6 +3,22 @@ import userEvent from '@testing-library/user-event';
 import { CreateTaskSchedulingDialog } from './CreateTaskSchedulingDialog';
 import { TaskExecutionMode, TaskRecipientType, TaskType } from '@iwana/shared';
 
+// F5 (spec de diseño §4.8): el responsable se elige con el typeahead
+// `GET /users/search`; el resto del api-client real no se invoca aquí.
+jest.mock('@/lib/api-client', () => {
+  const actual = jest.requireActual('@/lib/api-client');
+  return {
+    ...actual,
+    usersApi: {
+      ...actual.usersApi,
+      searchForPicker: jest.fn().mockResolvedValue({
+        data: [{ id: 'user-123', label: 'Laura Ruiz', sublabel: 'laura@demo.co' }],
+        total: 1,
+      }),
+    },
+  };
+});
+
 jest.mock('@iwana/ui', () => {
   const actual = jest.requireActual('@iwana/ui');
   return {
@@ -41,9 +57,7 @@ describe('CreateTaskSchedulingDialog', () => {
     onOpenChange: jest.fn(),
     initialValues: null,
     technicians: [],
-    responsibleOptions: [{ value: 'user-123', label: 'Laura Ruiz' }],
     internalAreaOptions: [{ value: 'operations-area', label: 'Operaciones' }],
-    internalUserOptions: [{ value: 'user-123', label: 'Laura Ruiz' }],
     onSubmit: jest.fn(),
     isSubmitting: false,
     error: null,
@@ -64,7 +78,8 @@ describe('CreateTaskSchedulingDialog', () => {
 
     // Completar Paso 1
     await user.type(screen.getByLabelText('Titulo'), 'Instalacion de servicio');
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
 
     // Click Continuar para ir al Paso 2 (Agenda)
@@ -93,7 +108,8 @@ describe('CreateTaskSchedulingDialog', () => {
 
     // Completar Paso 1
     await user.type(screen.getByLabelText('Titulo'), 'Tarea Inmediata');
-    await user.selectOptions(screen.getByLabelText('Responsable'), 'user-123');
+    await user.type(screen.getByLabelText('Responsable'), 'Lau');
+    await user.click(await screen.findByRole('option', { name: /Laura Ruiz/ }));
     await user.selectOptions(screen.getByLabelText('Destinatario'), 'operations-area');
 
     // Click Continuar para ir al Paso 2 (OT)
