@@ -81,7 +81,7 @@ Las fases F0–F6 son unidades de trabajo de este plan; el protocolo razona en *
 | 4 · Aprobación de diseño | los tres prompts de ejecución | **G4** | ⚠️ **Emitido, condicionado** — los prompts existen y citan contratos por ruta y versión, pero G4 llega después de G3 |
 | 5 · Implementación | **F0**, **F1**, **F2**, **F5** | **G5** | ✅ **Cerrado** — F0–F5 cerradas y verificadas; H1–H6 aceptados (ola 3: [consolidación OLA 3](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA3-CONSOLIDACION-v1.0.md)) |
 | 6 · Review de experiencia y calidad | **F6** + review de PROD-UX/DS-OWNER | **G6** | ✅ **Cerrado** — calidad aceptable, con correcciones 4.1 ([consolidación OLA 4](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA4-CONSOLIDACION-v1.0.md)) |
-| — · Merge readiness | consolidación de CI | **G6.5** | ⬜ No iniciada |
+| — · Merge readiness | consolidación de CI | **G6.5** | ✅ **Cerrado — GO (merge readiness)** — corrida Linux por SHA `d211f403` con `production-images`, `execution-orders-e2e` y `ci` en verde; autoriza merge, no despliegue ([consolidación OLA 5](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA5-CONSOLIDACION-v1.0.md)) |
 | 7 · Validación final y cierre | informe de cierre | **G7** | ⬜ No iniciada |
 
 **Defecto corregido en esta versión.** La v2.0 ponía F0/F1/F2 (etapa 5) en la primera ola, con G2 y G3 abiertos. El DoR de entrada a etapa 5 (§3.1) exige *"UX spec y contrato de componente localizables en `docs/specs/`; dictamen de factibilidad de G3 resuelto, no pendiente"*, y quien **recibe** el handoff verifica su propio DoR: SR-FULL y FE-PLATFORM habrían emitido `[BLOQUEO]` antes de escribir una línea, con razón. Se reordena.
@@ -98,7 +98,7 @@ Una **ola** agrupa encargos que pueden correr a la vez porque ninguno depende de
 | **2 · Implementación** | **F1** (backend) · **F2** (rutas y split) | AI-SR-FULL, AI-FE-PLATFORM | **G5** parcial | ✅ **Cerrada 2026-09-13** — [consolidación](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA2-CONSOLIDACION-v1.0.md) |
 | **3 · Integración** | **F5** | AI-FE-PLATFORM | **G5** | ✅ **Cerrada 2026-09-13** — [consolidación](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA3-CONSOLIDACION-v1.0.md) |
 | **4 · Verificación** | **F6** + review de experiencia y contrato | AI-SR-QA, AI-PROD-UX, AI-DS-OWNER, AI-SEC-ENG | **G6** | ✅ **Cerrada 2026-09-13** — [consolidación OLA 4](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA4-CONSOLIDACION-v1.0.md), con ola correctiva 4.1 incorporada |
-| **5 · Merge readiness** | Corrida Linux de CI por SHA | AI-PLAT-OPS | **G6.5** | 🟡 Despachada — **bloqueada por el commit** (§3.4) |
+| **5 · Merge readiness** | Corrida Linux de CI por SHA | AI-PLAT-OPS | **G6.5** | ✅ **Cerrada 2026-09-13 — G6.5 GO** — [consolidación OLA 5](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA5-CONSOLIDACION-v1.0.md) · [informe PLAT-OPS](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-OLA5-PLAT-OPS-v1.0.md) (run `34791789744` sobre `d211f403`; precondición del commit resuelta por el CTO antes del despacho) |
 
 **La ola 5 no estaba en el plan original.** La v2.1 terminaba en la ola 4 porque G6.5 no es una etapa del workflow, sino un gate intercalado ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md)). Se añade aquí como ola propia porque tiene ejecutor (AI-PLAT-OPS), entregable (corrida por SHA + artefacto sanitizado) y gate que cerrar, igual que las anteriores.
 
