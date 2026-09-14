@@ -53,6 +53,7 @@ export * from './contracts/users-bulk-create.contract';
 export * from './contracts/operations/execution-orders';
 export * from './contracts/operations/execution-orders-completion';
 export * from './contracts/operations/execution-orders-list';
+export * from './contracts/operations/execution-order-transitions';
 export * from './contracts/operations/operational-tasks';
 export * from './contracts/configuration/settings-priority.contract';
 export * from './contracts/inventory/executor-custody';

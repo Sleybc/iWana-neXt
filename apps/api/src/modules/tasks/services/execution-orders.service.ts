@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
+import { DataSource, DeepPartial, EntityManager, QueryFailedError } from 'typeorm';
 import {
   ExecutionOrder,
   ExecutionOrderActivity,
@@ -21,6 +21,7 @@ import {
   ExecutionOrderInboxEvent,
   ExecutionOrderItemUsage,
   ExecutionOrderOutboxEvent,
+  ExecutionOrderStatusTransition,
   ExecutionOrderTemplateRequirement as DbTemplateRequirement,
   TenantContext,
   runInTenantSchema,
@@ -843,13 +844,26 @@ export class ExecutionOrdersService {
       });
     }
 
+    const fromStatus = order.status;
+    const now = new Date();
     order.status = ExecutionOrderStatus.CANCELLED;
     order.closeNotes = reason;
-    order.closedAt = new Date();
+    order.closedAt = now;
     order.updatedByUserId = actor.sub ?? null;
     (order as { version: number }).version = (order.version ?? 0) + 1;
 
     const saved = await manager.save(ExecutionOrder, order);
+
+    // MOD11 T1 B1 (ADR-089 §D1): el asiento vive en la misma transacción que
+    // el cambio; fuera de ella podría divergir del estado real.
+    await this.recordStatusTransition(manager, tenantId, {
+      executionOrderId: order.id,
+      fromStatus,
+      toStatus: ExecutionOrderStatus.CANCELLED,
+      changedAt: now,
+      actorUserId: actor.sub,
+      reason,
+    });
 
     this.logger.log(
       `OT ${saved.id} cancelada desde agenda. Evento: ${scheduleEventId}. Razón: ${reason.slice(0, 100)}${reason.length > 100 ? '…' : ''}. Actor: ${actor.sub}`,
@@ -882,11 +896,24 @@ export class ExecutionOrdersService {
       this.assertMutable(order);
 
       const expectedVersion = order.version ?? 1;
+      const fromStatus = order.status;
       order.status = ExecutionOrderStatus.IN_PROGRESS;
       order.version = expectedVersion + 1;
-      order.startedAt = order.startedAt ?? new Date();
+      // MOD11 T1 B1 (CA-05): `startedAt` conserva su semántica idempotente y
+      // el asiento comparte el MISMO instante (sin sesgo de milisegundos).
+      const now = order.startedAt ?? new Date();
+      order.startedAt = now;
       order.updatedByUserId = actor.sub;
       const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+
+      await this.recordStatusTransition(qr.manager, tenantId, {
+        executionOrderId: order.id,
+        fromStatus,
+        toStatus: ExecutionOrderStatus.IN_PROGRESS,
+        changedAt: now,
+        actorUserId: actor.sub,
+        reason: validated.note,
+      });
 
       if (validated.note) {
         await qr.manager.save(
@@ -1252,13 +1279,26 @@ export class ExecutionOrdersService {
       }
 
       const expectedVersion = order.version ?? 1;
+      const fromStatus = order.status;
+      // MOD11 T1 B1 (CA-05): `closedAt` conserva su comportamiento y el
+      // asiento comparte el MISMO instante (sin sesgo de milisegundos).
+      const now = new Date();
       order.result = validated.result;
       order.status = this.mapResultToStatus(validated.result);
       order.version = expectedVersion + 1;
-      order.closedAt = new Date();
+      order.closedAt = now;
       order.closeNotes = validated.closeNotes ?? validated.summary ?? null;
       order.updatedByUserId = actor.sub;
       const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+
+      await this.recordStatusTransition(qr.manager, tenantId, {
+        executionOrderId: order.id,
+        fromStatus,
+        toStatus: order.status,
+        changedAt: now,
+        actorUserId: actor.sub,
+        reason: validated.summary ?? validated.result,
+      });
 
       if (acceptanceRef) {
         await this.createEvidenceWithManager(
@@ -1344,12 +1384,22 @@ export class ExecutionOrdersService {
       this.assertVersion(order, context?.ifMatch);
       this.assertMutable(order);
       const expectedVersion = order.version ?? 1;
+      const fromStatus = order.status;
       if (input.assigneeType === 'TECHNICIAN') order.assignedTechnicianId = input.assigneeId;
       else order.assignedCrewId = input.assigneeId;
       order.status = ExecutionOrderStatus.ASSIGNED;
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
       const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+      // MOD11 T1 B1 (CA-01): la asignación es una transición y deja asiento
+      // en la misma transacción que el cambio.
+      await this.recordStatusTransition(qr.manager, tenantId, {
+        executionOrderId: order.id,
+        fromStatus,
+        toStatus: ExecutionOrderStatus.ASSIGNED,
+        actorUserId: actor.sub,
+        reason: input.reason,
+      });
       await this.finishCommand(
         qr.manager,
         tenantId,
@@ -1398,6 +1448,75 @@ export class ExecutionOrdersService {
       input,
       'ExecutionOrderStartedV1',
     );
+  }
+
+  /**
+   * Corrección aditiva de un asiento de transición (MOD11 T1 B2, ADR-089 §D3,
+   * spec §4.3, CA-04).
+   *
+   * Un asiento nunca se edita ni se borra: la corrección es un asiento NUEVO
+   * que referencia al corregido con `correctionOfId`, con su actor
+   * (`changedBy`) y su motivo (`reason`). El original permanece visible.
+   *
+   * Decisiones de alcance T1:
+   * - No muta la OT (sin cambio de estado, versión, `startedAt`/`closedAt`):
+   *   la corrección documenta el hecho, no re-ejecuta la transición (CA-05).
+   * - El asiento nuevo repite el destino del corregido como auto-transición
+   *   (`fromStatus = toStatus = original.toStatus`): es neutro para la
+   *   derivación de tiempos (ADR-089 §D2) y conserva el contexto del hecho
+   *   corregido. La referencia vive en `correctionOfId`, nunca en `reason`
+   *   (dictamen B3 §2: `reason` mantiene finalidad operativa).
+   * - Sin recibo de comando ni evento de outbox: no hay cambio de estado que
+   *   idempotar ni que publicar; el asiento es el hecho auditable.
+   * - Sin superficie HTTP en T1: no se amplían `@Roles` ni `@Permissions`;
+   *   la consulta paginada es T3 con dictamen sec-eng.
+   */
+  async correctStatusTransition(
+    executionOrderId: string,
+    transitionId: string,
+    input: { reason: string },
+    actor: JwtPayload,
+  ): Promise<ExecutionOrderStatusTransition> {
+    if (!UUID_PATTERN.test(transitionId)) {
+      throw new BadRequestException({
+        code: 'TRANSITION_CORRECTION_INVALID_ID',
+        message: 'El identificador del asiento a corregir no es válido.',
+      });
+    }
+    const motive = this.toTransitionReason(input?.reason);
+    if (!motive) {
+      throw new BadRequestException({
+        code: 'TRANSITION_CORRECTION_REASON_REQUIRED',
+        message: 'La corrección exige el motivo de la enmienda.',
+      });
+    }
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.requireOrder(qr.manager, tenantId, executionOrderId);
+      const original = await qr.manager.findOne(ExecutionOrderStatusTransition, {
+        where: { id: transitionId, executionOrderId, tenantId },
+      });
+      if (!original) {
+        throw new NotFoundException('Asiento de transición no encontrado');
+      }
+      const seat: DeepPartial<ExecutionOrderStatusTransition> = {
+        tenantId,
+        executionOrderId,
+        fromStatus: original.toStatus,
+        toStatus: original.toStatus,
+        changedAt: new Date(),
+        changedBy: actor.sub,
+        reason: motive,
+        correctionOfId: original.id,
+      };
+      const saved = await qr.manager.save(ExecutionOrderStatusTransition, seat);
+      // B3 §3.4: el log lleva identificadores operativos, nunca `reason` en
+      // claro ni volcado del asiento.
+      this.logger.log(
+        `OT ${executionOrderId} asiento ${original.id} corregido con asiento ${saved.id}. Actor: ${actor.sub}`,
+      );
+      return saved;
+    });
   }
 
   async registerEvidence(
@@ -2187,10 +2306,20 @@ export class ExecutionOrdersService {
       this.assertMutable(order);
 
       const expectedVersion = order.version ?? 1;
+      const fromStatus = order.status;
       order.status = status;
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
       const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+      // MOD11 T1 B1 (CA-02): bloqueo y reanudación dejan asiento cada vez;
+      // varios ciclos en la misma OT quedan todos registrados (A1 descartada).
+      await this.recordStatusTransition(qr.manager, tenantId, {
+        executionOrderId: order.id,
+        fromStatus,
+        toStatus: status,
+        actorUserId: actor.sub,
+        reason: input.reasonCode ?? input.resolutionCode ?? input.note,
+      });
       const payload =
         eventType === 'ExecutionOrderBlockedV1'
           ? { reasonCode: input.reasonCode ?? 'UNSPECIFIED' }
@@ -2818,6 +2947,55 @@ export class ExecutionOrdersService {
         message: 'Inicia la ejecución antes de registrar información en esta orden de trabajo.',
       });
     }
+  }
+
+  /**
+   * Persiste el asiento de transición DENTRO de la misma transacción que el
+   * cambio de estado (MOD11 T1 B1, ADR-089 §D1). El caller aporta el manager
+   * transaccional activo (`qr.manager` o el de agenda en cancelación): un
+   * asiento fuera de esa transacción podría divergir del estado real y
+   * vaciaría de valor el registro.
+   *
+   * Solo hechos (origen, destino, instante, actor, motivo): nunca duraciones
+   * calculadas (ADR-089 §D2/R5) ni lecturas de otros módulos (A3).
+   */
+  private async recordStatusTransition(
+    manager: EntityManager,
+    tenantId: string,
+    input: {
+      executionOrderId: string;
+      fromStatus: ExecutionOrderStatus;
+      toStatus: ExecutionOrderStatus;
+      changedAt?: Date;
+      actorUserId: string;
+      reason?: string | null | undefined;
+    },
+  ): Promise<void> {
+    const seat: DeepPartial<ExecutionOrderStatusTransition> = {
+      tenantId,
+      executionOrderId: input.executionOrderId,
+      fromStatus: input.fromStatus,
+      toStatus: input.toStatus,
+      changedAt: input.changedAt ?? new Date(),
+      changedBy: input.actorUserId,
+      reason: this.toTransitionReason(input.reason),
+      // Adenda B1c (spec §4.3): el registro B1 es siempre asiento original,
+      // nunca corrección. La lógica de corrección aditiva es B2.
+      correctionOfId: null,
+    };
+    await manager.save(ExecutionOrderStatusTransition, seat);
+  }
+
+  /**
+   * Normaliza el motivo del asiento a la columna `reason` (varchar 255,
+   * nullable): texto recortado o `null` cuando no hay motivo. Nunca inventa
+   * un motivo (spec §4.5): ausente es ausente.
+   */
+  private toTransitionReason(value: string | null | undefined): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return null;
+    return trimmed.slice(0, 255);
   }
 
   /** UPDATE condicional para que dos cierres concurrentes no produzcan dos terminales. */

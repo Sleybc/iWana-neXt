@@ -450,6 +450,9 @@ describe('ExecutionOrdersService', () => {
           ticketId: null,
           templateRequirementsSnapshot: materialSnapshot,
         }),
+        // MOD11 T1 B1 (ADR-089 §D1): el cierre deja su asiento en el mismo
+        // manager transaccional; el mock lo tolera como escritura adicional.
+        save: jest.fn().mockImplementation(async (_entity, payload) => ({ ...payload })),
         createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>

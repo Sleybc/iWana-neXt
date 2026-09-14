@@ -88,6 +88,8 @@ import { HardenPurchaseRequestLineAwards1280000000000 } from './128_harden_purch
 import { AddSerializedAssetLot1290000000000 } from './129_add_serialized_asset_lot';
 import { ExecutionOrdersListOrdering1300000000000 } from './130_execution_orders_list_ordering';
 import { PublishInstalacionEstandarV2131000000000 } from './131_publish_instalacion_estandar_v2';
+import { CreateExecutionOrderStatusTransitions1320000000000 } from './132_create_execution_order_status_transitions';
+import { AddExecutionOrderTransitionCorrectionOf1330000000000 } from './133_add_execution_order_transition_correction_of';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -256,6 +258,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddSerializedAssetLot1290000000000,
   ExecutionOrdersListOrdering1300000000000,
   PublishInstalacionEstandarV2131000000000,
+  CreateExecutionOrderStatusTransitions1320000000000,
+  AddExecutionOrderTransitionCorrectionOf1330000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

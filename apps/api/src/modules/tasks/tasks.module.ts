@@ -16,6 +16,7 @@ import {
   ExecutionOrderInboxEvent,
   ExecutionOrderIdempotencyRecord,
   ExecutionOrderAuditIntent,
+  ExecutionOrderStatusTransition,
 } from '@iwana/db';
 import { AccessControlModule } from '../access-control/access-control.module';
 import { InventoryModule } from '../inventory/inventory.module';
@@ -70,6 +71,8 @@ import { TasksService } from './services/tasks.service';
       ExecutionOrderInboxEvent,
       ExecutionOrderIdempotencyRecord,
       ExecutionOrderAuditIntent,
+      // MOD11 T1 B1 (ADR-089 §D1): asientos de transición de la OT.
+      ExecutionOrderStatusTransition,
     ]),
   ],
   /**

@@ -71,6 +71,7 @@ export { ExecutionOrderAuditIntent } from './execution-order-audit-intent.entity
 export { ExecutionOrderTemplate } from './execution-order-template.entity';
 export { ExecutionOrderTemplateVersion } from './execution-order-template-version.entity';
 export { ExecutionOrderTemplateRequirement } from './execution-order-template-requirement.entity';
+export { ExecutionOrderStatusTransition } from './execution-order-status-transition.entity';
 
 // MOD12 — Inventario / SCM
 export { InventoryCategory } from './inventory-category.entity';
