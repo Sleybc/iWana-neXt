@@ -15,7 +15,8 @@ Despacha los agentes ejecutores de un plan de orquestacion ya aprobado.
 2. [`docs/roles/Protocolo_Colaboracion_Multiagente_v1.md`](../roles/Protocolo_Colaboracion_Multiagente_v1.md) — **v1.5 vigente**. Secciones que gobiernan el despacho: §2 RACI, §3 workflow de 7 etapas y 8 gates, **§3.1 definition of ready**, §3bis ejecucion paralela y contratos congelados, §6 red de consulta, §6.3 vocabulario de marcadores.
 3. El **plan de orquestacion** del trabajo (`docs/plans/`) y la **spec** que ejecuta.
 4. Los **prompts de ejecucion por fase** (`docs/prompts/`), que son el encargo real de cada agente.
-5. [`.agents/skills/INDEX.md`](../../.agents/skills/INDEX.md) — catalogo activo; verificar contra disco antes de citar una skill.
+5. El **prompt corto de lanzamiento** de la ola (`PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`) y la **matriz de dispatch** del plan: traen ya resueltos el agente y las skills de cada bloque. *(Añadido el 2026-09-14 con el perfil v2.5 §3.6.)* Si el plan no los trae, el despacho no arranca: se emiten primero con [`PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`](PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md). Derivarlos aqui sobre la marcha es rehacer con menos contexto un trabajo que pertenece al cierre de la definicion.
+6. [`.agents/skills/INDEX.md`](../../.agents/skills/INDEX.md) — catalogo activo; verificar contra disco antes de citar una skill.
 
 ## Procedimiento
 
@@ -51,7 +52,7 @@ Cada despacho lleva **exactamente** estos siete elementos. Un encargo al que le 
 
 1. **Rol:** el subagente de `.claude/agents/` que corresponde al perfil (`sr-backend`, `fe-platform`, `ds-owner`, `prod-ux`, `sr-qa`, `sec-eng`, `data-eng`, `plat-ops`). **AI-EM-ARCH no es subagente** (protocolo §33): es el agente padre que despacha.
 2. **Encargo:** el prompt de ejecucion por ruta, y **que fase de ese prompt le toca** cuando el documento cubre varias o sirve a varios agentes.
-3. **Skills obligatorias:** las de su fase segun el plan, con la instruccion de **leerlas antes de escribir codigo**. `AGENTS.md`: Claude Code aplica el dispatch leyendo el `SKILL.md`, no invocandolo como tool.
+3. **Skills:** las **obligatorias** de su bloque segun la matriz de dispatch del plan, con la instruccion de **leerlas antes de escribir codigo**; las **de apoyo** con su condicion de activacion; y las **descartadas con su motivo**, que es lo que impide que el agente las abra por su cuenta y amplie alcance. `AGENTS.md`: Claude Code aplica el dispatch leyendo el `SKILL.md`, no invocandolo como tool.
 4. **Contratos congelados** que consume o produce, citados por ruta y version (§3bis regla 1).
 5. **DoR:** que debe verificar antes de empezar, y que hacer si falta (emitir `[BLOQUEO]`, no arrancar igual).
 6. **Stop/go:** las condiciones bajo las que su fase no cierra.

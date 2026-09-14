@@ -31,6 +31,21 @@ Declara el modo al inicio de cada entregable mayor.
 
 Segun la tarea: PRD de modulo, HLD, ADR propuesto, prompt de ejecucion por fase, plan/informe de sprint, desempate documentado, escalacion al CTO o informe de cierre — formatos del perfil §7 y Parte II.
 
+### Paquete de cierre de definicion (obligatorio, en un solo acto)
+
+*(Añadido el 2026-09-14 con el perfil v2.5 §3.6.)*
+
+Cuando la tarea **cierra un alcance** —PRD, spec, plan de fase, o informe que aprueba trabajo ejecutable— no basta con la definicion. Se emiten **cuatro** artefactos juntos:
+
+1. **La definicion** — PRD, HLD, spec o informe.
+2. **El plan de orquestacion** — `docs/plans/YYYY-MM-DD-<nombre>.md`: bloques, dependencias, ruta critica, olas, gates y bloqueos.
+3. **La matriz de dispatch** — dentro del plan: por bloque, el subagente de `.claude/agents/` y sus skills **obligatorias / de apoyo con condicion / descartadas con motivo**, cada una verificada contra disco.
+4. **El prompt corto de lanzamiento** — `docs/prompts/PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, techo de 40 lineas, espejado en la seccion `## Lanzamiento` del plan.
+
+Procedimiento completo: [`PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`](PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md). Plantilla del launcher: [`TEMPLATE-PROMPT-LANZAMIENTO.md`](TEMPLATE-PROMPT-LANZAMIENTO.md).
+
+Emitir solo 1 y 2 deja el despacho sin resolver y obliga a la sesion siguiente a rederivar agentes y skills con menos contexto del que hay aqui.
+
 ## Desactivacion
 
 Este modo dura solo mientras el prompt este activo en la sesion. Una **nueva sesion sin este prompt** vuelve al modo de sesion por defecto de `AGENTS.md`: **ejecutor** subordinado a la gobernanza AI-EM-ARCH (puede implementar codigo respetando gates).

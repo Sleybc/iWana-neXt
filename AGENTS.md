@@ -54,7 +54,7 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 | Capacidad | Fuente principal | Regla operativa |
 | --- | --- | --- |
 | Skills | `.agents/skills/INDEX.md` + `.agents/skills/MANIFEST.json` | Reutilizables por cualquier asistente que soporte skills del workspace; no crear catalogos paralelos por cliente. Claude Code no tiene `skills.paths`: aplica el dispatch leyendo `SKILL.md` como documentacion, no invocandolo como tool nativa. |
-| Prompts | `docs/prompts/` | **Unica carpeta de prompts del repo.** Aplica a los dos tipos, sin excepcion: prompts de **ejecucion por fase** (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, un solo encargo, versionados) y prompts **operativos reutilizables** (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`, agnosticos de proveedor). Todos deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. **Depositar un prompt fuera de `docs/prompts/` es defecto bloqueante**, no cuestion de estilo. |
+| Prompts | `docs/prompts/` | **Unica carpeta de prompts del repo.** Aplica a los tres tipos, sin excepcion: prompts de **ejecucion por fase** (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, un solo encargo, versionados), prompts de **lanzamiento** (`PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, max. 40 lineas, lanzan una ola sin repetir el encargo) y prompts **operativos reutilizables** (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`, agnosticos de proveedor). Todos deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. **Depositar un prompt fuera de `docs/prompts/` es defecto bloqueante**, no cuestion de estilo. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan a `AGENTS.md`; aplican por `applyTo`, no reemplazan la gobernanza global. |
 | MCP | `.opencode/opencode.json` para OpenCode | Los MCP son cliente-dependientes: OpenCode los declara en config versionada; en Codex dependen de la sesion activa y no de un archivo ficticio del repo. |
 | Agentes / subagentes | Skills de workflow existentes | Preferir `brainstorming`, `writing-plans`, `architect-review` y `subagent-driven-development` antes que inventar agentes custom paralelos del repo. |
@@ -64,6 +64,8 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 Viven en `docs/prompts/` como el resto, con el subtipo `PROMPT-OPERATIVO-` que los distingue de los prompts de ejecucion por fase: no tienen modulo ni fase porque son reutilizables.
 
 - `docs/prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md` — activar modo Orquestador AI-EM-ARCH (define/delega; sin codigo productivo).
+- `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md` — al cerrar una definicion: derivar el agente ejecutor y las skills de cada bloque, y emitir el prompt corto de lanzamiento.
+- `docs/prompts/PROMPT-OPERATIVO-DESPACHO-MULTIAGENTE-v1.0.md` — despachar los agentes de un plan aprobado: gates, olas, encargo de siete elementos, consolidacion.
 - `docs/prompts/PROMPT-OPERATIVO-ACTUALIZAR-INFORME-VIVO-v1.0.md` — actualizar el informe vivo relacionado sin duplicarlo.
 - `docs/prompts/PROMPT-OPERATIVO-REVISAR-BOUNDARY-MODULITH-v1.0.md` — revisar boundaries Modulith, accesos cruzados y riesgos de arquitectura.
 
@@ -222,6 +224,8 @@ Arquitectura, docs y flujo de trabajo:
 
 Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritativa vigente).
 
+**Este mapa se resuelve por bloque, no por modulo.** Al cerrar la definicion de una fase, AI-EM-ARCH emite la **matriz de dispatch** dentro del plan de orquestacion (perfil v2.5 §3.6): una fila por bloque con su subagente de `.claude/agents/` y tres listas de skills — **obligatorias** (leer antes de escribir codigo), **de apoyo** con su condicion, y **descartadas con su motivo**. Cada skill se verifica contra disco (`ls .agents/skills/<nombre>/SKILL.md`) antes de citarse: el `INDEX.md` puede ir por delante del filesystem. Procedimiento: `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`.
+
 ---
 
 ## Project Structure
@@ -282,7 +286,7 @@ Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritati
   | HLD | `docs/hlds/` | — |
   | ADR | `docs/adrs/` | Estado del vocabulario canonico: `Aprobado` · `En revision` · `Propuesto` · `Superado` |
   | INFORME | `docs/informes/` | — |
-  | **PROMPT** | **`docs/prompts/`** | **Sin excepcion.** Cubre los dos subtipos: ejecucion por fase (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`) y operativo reutilizable (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`) |
+  | **PROMPT** | **`docs/prompts/`** | **Sin excepcion.** Cubre los tres subtipos: ejecucion por fase (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`), lanzamiento corto (`PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, max. 40 lineas) y operativo reutilizable (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`) |
   | Spec UX / contrato DS | `docs/specs/` | `YYYY-MM-DD-<nombre>.md` |
   | Plan | `docs/plans/` | `YYYY-MM-DD-<nombre>.md` |
 
