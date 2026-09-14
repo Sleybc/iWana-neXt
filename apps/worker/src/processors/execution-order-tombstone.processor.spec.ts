@@ -144,4 +144,138 @@ describe('ExecutionOrderTombstoneProcessor', () => {
 
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
+
+  it('una corrida con conteos distintos de cero loguea los seis y el tenant procesado', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    try {
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+        .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
+        .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL
+        .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE tombstone
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              idempotency_records_deleted: '3',
+              outbox_events_deleted: '2',
+              inbox_events_deleted: 1,
+              audit_intents_deleted: '0',
+              evidence_upload_intents_deleted: '4',
+              status_transitions_anonymized: '7',
+            },
+          ],
+        }) // SELECT purge: una sola fila con seis conteos
+        .mockResolvedValue({ rowCount: 1 }); // COMMIT
+
+      const processor = buildProcessor();
+      await processor.process({} as never);
+
+      expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('schema=tenant_isp_co'));
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringContaining('status_transitions_anonymized=7'),
+      );
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Purga completada'));
+      const summary = logSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(summary).toContain('1 tenant(s) procesados');
+      for (const fragment of [
+        'idempotency_records_deleted=3',
+        'outbox_events_deleted=2',
+        'inbox_events_deleted=1',
+        'audit_intents_deleted=0',
+        'evidence_upload_intents_deleted=4',
+        'status_transitions_anonymized=7',
+      ]) {
+        expect(summary).toContain(fragment);
+      }
+      expect(mockClient.release).toHaveBeenCalledTimes(1);
+    } finally {
+      logSpy.mockRestore();
+      debugSpy.mockRestore();
+    }
+  });
+
+  it('una corrida con todos los conteos en cero también emite la línea de resumen', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    try {
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+        .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
+        .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL
+        .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE tombstone
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              idempotency_records_deleted: '0',
+              outbox_events_deleted: '0',
+              inbox_events_deleted: '0',
+              audit_intents_deleted: '0',
+              evidence_upload_intents_deleted: '0',
+              status_transitions_anonymized: '0',
+            },
+          ],
+        })
+        .mockResolvedValue({ rowCount: 1 }); // COMMIT
+
+      const processor = buildProcessor();
+      await processor.process({} as never);
+
+      // Cero no equivale a silencio: la línea distingue «no purgó nada» de «no corrió»
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Purga completada'));
+      const summary = logSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(summary).toContain('1 tenant(s) procesados');
+      for (const key of [
+        'idempotency_records_deleted',
+        'outbox_events_deleted',
+        'inbox_events_deleted',
+        'audit_intents_deleted',
+        'evidence_upload_intents_deleted',
+        'status_transitions_anonymized',
+      ]) {
+        expect(summary).toContain(`${key}=0`);
+      }
+      expect(mockClient.release).toHaveBeenCalledTimes(1);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('el texto emitido no contiene PII: solo identificadores operativos y conteos', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    try {
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_isp_co' }] })
+        .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
+        .mockResolvedValueOnce({ rowCount: 1 }) // SET LOCAL
+        .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE tombstone
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              idempotency_records_deleted: '1',
+              outbox_events_deleted: '1',
+              inbox_events_deleted: '1',
+              audit_intents_deleted: '1',
+              evidence_upload_intents_deleted: '1',
+              status_transitions_anonymized: '5',
+            },
+          ],
+        })
+        .mockResolvedValue({ rowCount: 1 }); // COMMIT
+
+      const processor = buildProcessor();
+      await processor.process({} as never);
+
+      // Verificación sobre el texto emitido, no por inspección visual
+      const emitted = [...logSpy.mock.calls, ...debugSpy.mock.calls]
+        .map((call) => String(call[0]))
+        .join('\n');
+      expect(emitted).toContain('schema=tenant_isp_co');
+      expect(emitted).not.toMatch(/reason|changed_by|actor/i);
+      expect(mockClient.release).toHaveBeenCalledTimes(1);
+    } finally {
+      logSpy.mockRestore();
+      debugSpy.mockRestore();
+    }
+  });
 });
