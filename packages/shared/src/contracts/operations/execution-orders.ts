@@ -6,6 +6,7 @@ import {
 import { InventoryDisposition } from '../../enums/inventory';
 import { WfmWorkType } from '../../enums/wfm';
 import { ListMeta } from '../../dto/pagination.dto';
+import type { ExecutionOrderRequirementStatus } from './execution-orders-completion';
 
 /**
  * Contrato de API tipado congelado de MOD11 — OT de ejecución.
@@ -14,8 +15,14 @@ import { ListMeta } from '../../dto/pagination.dto';
  * - ADR-068: Sincronización de OT de ejecución y proyecciones operativas.
  * - Spec API: docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md
  *
- * Este archivo es la fuente de verdad del contrato v1. Los DTOs del controlador
+ * Este archivo es la fuente de verdad del contrato v1.1. Los DTOs del controlador
  * y el OpenAPI máquina-legible se derivan de aquí. No modificar sin versionar.
+ *
+ * Historial:
+ * - v1: congelado inicial.
+ * - v1.1 (2026-09-14, E2 aprobada por el CTO, spec §7): `ExecutionOrderCompletionView`
+ *   gana el campo opcional y aditivo `requirements` (tipo en el archivo hermano
+ *   `execution-orders-completion.ts`). Ningún campo existente cambia ni pasa a requerido.
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -119,6 +126,12 @@ export interface ExecutionOrderCompletionView {
   completed?: number;
   /** Cantidad total de requisitos requeridos; no es un porcentaje. El backend siempre lo publica. */
   total?: number;
+  /**
+   * Estado por requisito, publicado por `getCompletion` desde `evaluation.allEvaluations`.
+   * Aditivo v1.1 (E2 aprobada, spec §7): opcional y retrocompatible — las OT sin
+   * snapshot (legacy) lo omiten y ningún consumidor actual se rompe.
+   */
+  requirements?: ExecutionOrderRequirementStatus[];
   startedAt?: string;
   closedAt?: string;
 }

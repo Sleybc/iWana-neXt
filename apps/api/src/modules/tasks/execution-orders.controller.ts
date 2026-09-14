@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Logger,
   Optional,
   Param,
   ParseUUIDPipe,
@@ -82,6 +83,7 @@ import { ExecutionOrderInventoryReconciliationService } from './services/executi
 import { ExecutionOrderProjectionConvergenceService } from './services/execution-order-projection-convergence.service';
 import { ExecutionOrderAccessGuard } from './guards/execution-order-access.guard';
 import { ExecutionOrderTenantScoped } from './guards/execution-order-tenant-scoped.decorator';
+import { UsersService } from '../users/users.service';
 import { SkipThrottle } from '@nestjs/throttler';
 import { TenantAwareThrottlerGuard } from './guards/tenant-aware-throttler.guard';
 import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/execution-order-response-headers.interceptor';
@@ -120,11 +122,18 @@ import { ExecutionOrderResponseHeadersInterceptor } from './interceptors/executi
 @UseInterceptors(ExecutionOrderResponseHeadersInterceptor)
 @Controller('tasks/execution-orders')
 export class ExecutionOrdersController {
+  private readonly logger = new Logger(ExecutionOrdersController.name);
+
   constructor(
     private readonly executionOrdersService: ExecutionOrdersService,
     private readonly projectionConvergenceService: ExecutionOrderProjectionConvergenceService,
     @Optional()
     private readonly inventoryReconciliationService?: ExecutionOrderInventoryReconciliationService,
+    // SEC-D4 (C1): el detalle resuelve `displayLabel` con el mismo lookup del
+    // listado. Opcional para no romper los specs que construyen el controlador
+    // sin el módulo de usuarios; sin él, el assignee se emite con su id.
+    @Optional()
+    private readonly usersService?: UsersService,
   ) {}
 
   /**
@@ -245,14 +254,13 @@ export class ExecutionOrdersController {
           endAt: this.dateOrString(order.plannedWindowEndAt) ?? '',
         },
       },
-      ...(order.assignedTechnicianId
-        ? { assignee: { type: 'TECHNICIAN' as const, id: order.assignedTechnicianId } }
-        : {}),
+      ...(await this.buildAssigneeView(order)),
       site: { id: order.id, label: order.municipality ?? order.customerDisplayLabel },
       completion: {
         progress: completion.progress,
         completed: completion.completed ?? 0,
         total: completion.total ?? 0,
+        ...(completion.requirements ? { requirements: completion.requirements } : {}),
         ...(startedAt ? { startedAt } : {}),
         ...(closedAt ? { closedAt } : {}),
       },
@@ -627,6 +635,55 @@ export class ExecutionOrdersController {
   @ApiOperation({ summary: 'Verificar convergencia de proyecciones de la OT' })
   async reconcileOrder(@Param('id', ParseUUIDPipe) id: string) {
     return this.projectionConvergenceService.reconcileOrder(id);
+  }
+
+  /**
+   * C1 (spec §2.1 A1/A2): el detalle resuelve `displayLabel` con el mismo
+   * lookup batch del listado (`UsersService.findDisplayLabelsByIds`, una sola
+   * resolución por petición de detalle) y emite la rama CREW que hoy falta.
+   * Si la etiqueta no se puede resolver, el assignee se emite igualmente con
+   * su id: degradar a "sin responsable" es el defecto que esta fase corrige.
+   */
+  private async buildAssigneeView(order: {
+    assignedTechnicianId: string | null;
+    assignedCrewId: string | null;
+  }): Promise<Pick<ExecutionOrderDetailResponseDto, 'assignee'>> {
+    const technicianId = order.assignedTechnicianId;
+    if (technicianId) {
+      const displayLabel = await this.resolveTechnicianDisplayLabel(technicianId);
+      return {
+        assignee: {
+          type: 'TECHNICIAN',
+          id: technicianId,
+          ...(displayLabel ? { displayLabel } : {}),
+        },
+      };
+    }
+    if (order.assignedCrewId) {
+      return { assignee: { type: 'CREW', id: order.assignedCrewId } };
+    }
+    return {};
+  }
+
+  private async resolveTechnicianDisplayLabel(technicianId: string): Promise<string | undefined> {
+    if (!this.usersService) {
+      // P2: el directorio de usuarios no está disponible en el módulo. La
+      // etiqueta es enriquecimiento, no núcleo: se degrada al id sin romper
+      // el detalle, pero con señal para no reintroducir A1 en silencio.
+      this.logger.warn(
+        'Directorio de usuarios no disponible en el módulo: el detalle emite el assignee sin displayLabel.',
+      );
+      return undefined;
+    }
+    try {
+      const labels = await this.usersService.findDisplayLabelsByIds([technicianId]);
+      return labels.get(technicianId);
+    } catch {
+      // La etiqueta es enriquecimiento, no núcleo: un fallo del directorio no
+      // puede convertir el detalle en 500 ni en "sin responsable".
+      this.logger.warn('No se pudo resolver la etiqueta del responsable del detalle.');
+      return undefined;
+    }
   }
 
   private commandContext(

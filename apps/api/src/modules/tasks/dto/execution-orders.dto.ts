@@ -484,6 +484,24 @@ export class ExecutionOrderSiteResponseDto {
   address?: string;
 }
 
+/** Ítem de estado por requisito (`ExecutionOrderRequirementStatus`, contrato v1.1). */
+export class ExecutionOrderRequirementStatusResponseDto {
+  @ApiProperty()
+  requirementId!: string;
+
+  @ApiProperty()
+  label!: string;
+
+  @ApiProperty()
+  kind!: string;
+
+  @ApiProperty()
+  satisfied!: boolean;
+
+  @ApiPropertyOptional()
+  reason?: string | undefined;
+}
+
 export class ExecutionOrderCompletionResponseDto {
   @ApiProperty({ minimum: 0, maximum: 100, type: Number })
   progress!: number;
@@ -493,6 +511,13 @@ export class ExecutionOrderCompletionResponseDto {
 
   @ApiProperty({ minimum: 0, type: Number })
   total!: number;
+
+  /**
+   * Estado por requisito (aditivo v1.1 del contrato, E2 aprobada spec §7).
+   * Opcional y retrocompatible: se omite cuando la OT no tiene snapshot.
+   */
+  @ApiPropertyOptional({ type: [ExecutionOrderRequirementStatusResponseDto] })
+  requirements?: ExecutionOrderRequirementStatusResponseDto[];
 
   @ApiPropertyOptional({ format: 'date-time' })
   startedAt?: string;

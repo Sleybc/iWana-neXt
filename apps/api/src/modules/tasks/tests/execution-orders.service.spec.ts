@@ -286,6 +286,7 @@ describe('ExecutionOrdersService', () => {
       progress: 40,
       completed: 2,
       total: 5,
+      requirements: [],
     });
     expect(closureGateEvaluator.evaluate).toHaveBeenCalledWith(
       expect.any(Array),

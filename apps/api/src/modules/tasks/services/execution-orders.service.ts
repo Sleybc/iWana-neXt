@@ -35,6 +35,7 @@ import {
   OperationalEventTypeV1,
   type ExecutionOrderAllowedAction,
   type ExecutionOrderCompletionView,
+  type ExecutionOrderRequirementStatus,
   type ExecutionOrderTemplateRequirement,
   type EvidenceAssetReceipt,
   type ExecutionOrderEvidence as ExecutionOrderEvidenceContract,
@@ -273,7 +274,7 @@ export class ExecutionOrdersService {
           .getMany(),
         qr.manager
           .createQueryBuilder(ExecutionOrderEvidence, 'evidence')
-          .select(['evidence.evidenceType', 'evidence.requirementKey'])
+          .select(['evidence.evidenceType', 'evidence.requirementKey', 'evidence.assetStatus'])
           .where('evidence.execution_order_id = :executionOrderId', { executionOrderId })
           .andWhere('evidence.tenant_id = :tenantId', { tenantId })
           .getMany(),
@@ -292,12 +293,42 @@ export class ExecutionOrdersService {
           requirementKey: evidence.requirementKey ?? '',
         })),
         itemUsages: await this.buildMaterialEvaluationUsages(snapshot, itemUsages),
+        // A4-bis (spec §2.1): el contexto se completa con todo lo persistido.
+        // `fieldData` y `measurements` no tienen fuente persistida —deuda activa
+        // spec §10.1/§10.2 (`RegisterFieldWorkSchema` es estricto y la actividad
+        // no guarda mediciones)—: se pasan vacíos para que FIELD/MEASUREMENT
+        // muestren su estado real (pendiente + razón) en vez de indeterminado.
+        fieldData: {},
+        measurements: [],
+        // La misma fuente que el cierre considera aceptación válida
+        // (`assertCustomerAcceptanceArtifactLinked`): evidencia SIGNATURE con
+        // requirementKey CUSTOMER_SIGNATURE y assetStatus AVAILABLE vinculada
+        // a la OT. La comparación estricta contra 'AVAILABLE' es fail-closed
+        // (assetStatus puede ser null): coincide con el cierre.
+        hasCustomerAcceptance: evidences.some(
+          (evidence) =>
+            evidence.evidenceType === 'SIGNATURE' &&
+            (evidence.requirementKey ?? '') === CUSTOMER_SIGNATURE_REQUIREMENT_KEY &&
+            evidence.assetStatus === 'AVAILABLE',
+        ),
+        // Sin fuente persistida de artefactos de política; el evaluador lo
+        // trata como ausente (COMPLIANCE puede satisfacerse vía aceptación).
+        complianceArtifacts: [],
       });
       const total = evaluation.totalRequired;
       const completed = evaluation.satisfiedRequired;
       const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+      const requirements: ExecutionOrderRequirementStatus[] = evaluation.allEvaluations.map(
+        (item) => ({
+          requirementId: item.requirementId,
+          label: item.label,
+          kind: item.kind,
+          satisfied: item.satisfied,
+          ...(item.reason !== undefined ? { reason: item.reason } : {}),
+        }),
+      );
 
-      return { progress, completed, total };
+      return { progress, completed, total, requirements };
     });
   }
 
