@@ -63,8 +63,20 @@ export class ExecutionOrderStatusTransition {
   @Column({ name: 'changed_at', type: 'timestamptz' })
   changedAt: Date;
 
-  @Column({ name: 'changed_by', type: 'uuid' })
-  changedBy: string;
+  /**
+   * Actor del asiento. Anulable desde la migración 134 (retención MOD11,
+   * dictamen B3 exigencia 3, spec §4.3):
+   * - UUID real = asiento vigente con autoría.
+   * - `00000000-0000-0000-0000-000000000000` (centinela) = anonimizado por
+   *   vencimiento (24 meses post-cierre); irreversible.
+   * - NULL = nunca se registró (reservado a vías futuras; la purga nunca
+   *   escribe NULL ni toca filas NULL, CA-07).
+   *
+   * La escritura T1 sigue exigiendo actor siempre (el servicio no acepta
+   * ausente); la nulabilidad es mecanismo de retención, no permiso de omisión.
+   */
+  @Column({ name: 'changed_by', type: 'uuid', nullable: true })
+  changedBy: string | null;
 
   @Column({ name: 'reason', type: 'varchar', length: 255, nullable: true })
   reason: string | null;

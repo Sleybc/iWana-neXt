@@ -98,6 +98,12 @@ Todas verificadas contra disco con `ls .agents/skills/<nombre>/SKILL.md` (perfil
 | R4 | El registro se añade solo en `start()` y `close()`, y los bloqueos quedan fuera | CA-02 lo cubre explícitamente: es donde está el valor del tramo |
 | R5 | Se reconstruye historial retroactivo para «no tener huecos» | Prohibido por spec §4.5: inventar transiciones que nadie registró es peor que no tenerlas |
 
+## 7bis. G6.5 — diferido por decisión del CTO (2026-09-14)
+
+**G6 GO** quedó consolidado con el tramo T1 (SHA `c6dd1596`). **G6.5 no se aborda todavía**: el CTO lo difirió hasta disponer de un entorno Linux, porque ADR-069 exige una corrida de GitHub Actions identificada por SHA y correr los gates en local satisface G6 pero **no** G6.5.
+
+No es deuda ni fallo: es el estado correcto y deliberado del tramo. Se registra aquí para que nadie lo lea como un gate olvidado, y para que la reanudación no tenga que redescubrir por qué está abierto. Mientras tanto, lo entregado está **mergeado en `main` sin evidencia de merge readiness**, que es la consecuencia que el diferimiento acepta.
+
 ## 8. Bloqueos abiertos
 
 **Ninguno de gobierno.** G1 cerrado el 2026-09-14. Queda la **restricción de secuencia** del riesgo R3: no despachar en paralelo con el tramo de acta de instalación.
