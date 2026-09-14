@@ -834,3 +834,158 @@ jobs:
             --profile development \
             --profile e2e \
             down --remove-orphans --volumes --timeout 30 2>/dev/null || true
+
+  # ── E2E-PORTAL-DEBT: conteo de la deuda E2E portal (informativo) ─────────
+  # La suite E2E portal completa (36 specs, 232 casos) arrastra fallos
+  # PREEXISTENTES — specs sin mock de `me/effective-permissions` desde
+  # d5db6239, 98 fallos al 2026-09-13 — ajenos a los módulos en curso.
+  # Este job corre la suite completa en Linux SOLO PARA CONTAR: publica
+  # passed/failed/skipped/flaky en el resumen del run y avisa si la deuda
+  # crece respecto al baseline. NO es un gate: continue-on-error mantiene el
+  # run verde mientras la deuda exista (un contador de deuda no puede ser la
+  # razón de un rojo, ni su ruido puede tapar los gates reales). Cuando la
+  # deuda se pague: actualizar el baseline hacia abajo y retirar el
+  # continue-on-error para convertir este conteo en compuerta.
+  # No se archivan reportes crudos (contienen payloads de error): solo los
+  # conteos publicados aquí.
+  e2e-portal-debt-counter:
+    name: Conteo deuda E2E portal (informativo, no bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    continue-on-error: true
+
+    env:
+      CI: true
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_PORTAL_DEBT_BASELINE: '98'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive Node.js version
+        id: node-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^useNodeVersion:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' pnpm-workspace.yaml)"
+          [[ "$version" =~ ^24\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid useNodeVersion: $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node-version.outputs.version }}
+
+      - name: Setup pnpm 10
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Suite completa con reporte list (legible en el log) + JSON a archivo
+      # temporal (solo para contar). El exit code de la suite se tolera a
+      # propósito: los fallos preexistentes son la deuda que se está midiendo.
+      - name: Ejecutar suite E2E portal completa (solo conteo)
+        shell: bash
+        run: |
+          set -o pipefail
+          PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/portal-e2e-report.json \
+            pnpm test:e2e:portal --reporter=list,json || true
+
+      # Convierte el reporte JSON en conteos y los publica. Sin volcar
+      # errores, payloads ni rutas de test-results al log ni al resumen.
+      - name: Publicar conteo de deuda E2E portal (resumen sanitizado)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            // Ruta sobreescrible para testear el parser fuera de Linux.
+            const report = process.env.E2E_PORTAL_REPORT_PATH ?? "/tmp/portal-e2e-report.json";
+            const baseline = Number(process.env.E2E_PORTAL_DEBT_BASELINE ?? "0");
+
+            let stats = null;
+            if (fs.existsSync(report)) {
+              try {
+                const parsed = JSON.parse(fs.readFileSync(report, "utf8"));
+                if (parsed && parsed.stats) {
+                  const s = parsed.stats;
+                  const passed = Number(s.expected ?? 0);
+                  const failed = Number(s.unexpected ?? 0);
+                  const flaky = Number(s.flaky ?? 0);
+                  const skipped = Number(s.skipped ?? 0);
+                  stats = {
+                    // El reporter JSON no publica «total»: se deriva de los cuatro outcomes.
+                    total: passed + failed + flaky + skipped,
+                    passed,
+                    failed,
+                    flaky,
+                    skipped,
+                    durationMs: Number(s.duration ?? 0),
+                  };
+                }
+              } catch {
+                stats = null;
+              }
+            }
+
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            const lines = [];
+
+            if (!stats) {
+              lines.push("### Deuda E2E portal (E2E-PORTAL-DEBT)", "", "La suite no produjo reporte conteable (arranque de webServer fallido o suite interrumpida). Revisar el paso anterior.");
+              if (summary) fs.appendFileSync(summary, lines.join("\n") + "\n");
+              console.log("::warning title=Deuda E2E portal::Sin reporte conteable — la suite no llegó a publicar estadísticas.");
+              process.exit(0);
+            }
+
+            console.log(`E2E_PORTAL_DEBT_TOTAL=${stats.total}`);
+            console.log(`E2E_PORTAL_DEBT_PASSED=${stats.passed}`);
+            console.log(`E2E_PORTAL_DEBT_FAILED=${stats.failed}`);
+            console.log(`E2E_PORTAL_DEBT_SKIPPED=${stats.skipped}`);
+            console.log(`E2E_PORTAL_DEBT_FLAKY=${stats.flaky}`);
+            console.log(`E2E_PORTAL_DEBT_BASELINE=${baseline}`);
+            console.log(`E2E_PORTAL_DEBT_DURATION_MS=${stats.durationMs}`);
+
+            lines.push(
+              "### Deuda E2E portal (conteo en CI, no bloqueante)",
+              "",
+              "| total | passed | failed | skipped | flaky | baseline | duración (s) |",
+              "| --- | --- | --- | --- | --- | --- | --- |",
+              `| ${stats.total} | ${stats.passed} | ${stats.failed} | ${stats.skipped} | ${stats.flaky} | ${baseline} | ${Math.round(stats.durationMs / 1000)} |`,
+              "",
+            );
+
+            if (stats.failed > baseline) {
+              lines.push(`⚠️ La deuda CRECIÓ: ${stats.failed} fallos vs baseline ${baseline}. Posible regresión nueva en specs portal — no es deuda preexistente.`);
+              console.log(`::warning title=Deuda E2E portal creció::${stats.failed} fallos vs baseline ${baseline}. Revisar specs portal nuevas.`);
+            } else if (stats.failed < baseline) {
+              lines.push(`✅ La deuda bajó: ${stats.failed} fallos vs baseline ${baseline}. Actualizar E2E_PORTAL_DEBT_BASELINE en ci.yml.`);
+              console.log(`::notice title=Deuda E2E portal bajó::${stats.failed} fallos vs baseline ${baseline} — actualizar el baseline del workflow.`);
+            } else {
+              lines.push(`Deuda estable en el baseline (${baseline} fallos).`);
+            }
+
+            if (summary) fs.appendFileSync(summary, lines.join("\n") + "\n");
+          '
