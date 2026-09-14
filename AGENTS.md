@@ -224,7 +224,7 @@ Arquitectura, docs y flujo de trabajo:
 
 Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritativa vigente).
 
-**Este mapa se resuelve por bloque, no por modulo.** Al cerrar la definicion de una fase, AI-EM-ARCH emite la **matriz de dispatch** dentro del plan de orquestacion (perfil v2.5 §3.6): una fila por bloque con su subagente de `.claude/agents/` y tres listas de skills — **obligatorias** (leer antes de escribir codigo), **de apoyo** con su condicion, y **descartadas con su motivo**. Cada skill se verifica contra disco (`ls .agents/skills/<nombre>/SKILL.md`) antes de citarse: el `INDEX.md` puede ir por delante del filesystem. Procedimiento: `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`.
+**Este mapa se resuelve por bloque, no por modulo.** Al cerrar la definicion de una fase, AI-EM-ARCH emite la **matriz de dispatch** dentro del plan de orquestacion (perfil v2.5 §3.6): una fila por bloque con su subagente de `.claude/agents/` y tres listas de skills — **obligatorias** (leer antes de escribir codigo), **de apoyo** con su condicion, y **descartadas con su motivo**. **El mapa de arriba es un atajo por dominio, no el limite de lo citable:** la matriz puede asignar cualquier skill del catalogo de `.agents/skills/INDEX.md`, que es la lista autoritativa. Cada skill se verifica contra disco (`ls .agents/skills/<nombre>/SKILL.md`) antes de citarse: el `INDEX.md` puede ir por delante del filesystem. Procedimiento: `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`.
 
 ---
 

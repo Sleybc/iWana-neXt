@@ -58,7 +58,7 @@ Para cada bloque, tres listas. Las tres son obligatorias — **la tercera tambie
 
 | Lista | Que contiene |
 | --- | --- |
-| **Obligatorias** | Las que el agente **lee antes de escribir codigo**. Salen del mapa dominio → skill de `AGENTS.md` → Skills Dispatch. Rara vez mas de tres por bloque. |
+| **Obligatorias** | Las que el agente **lee antes de escribir codigo**. Primera parada: el mapa dominio → skill de `AGENTS.md` → Skills Dispatch. **Ese mapa es un atajo por dominio, no la lista de lo citable:** para todo lo que no cubre, el catalogo completo de `.agents/skills/INDEX.md` esta disponible — es lo que el propio `AGENTS.md` ordena ("para dominios no listados, consultar `.agents/skills/INDEX.md`"). Rara vez mas de tres por bloque: un agente al que se le mandan ocho no lee ninguna bien. |
 | **De apoyo** | Se consultan si aparece el caso que cubren. Se citan con su condicion (*si el bloque toca formularios*), nunca sueltas. |
 | **Descartadas con motivo** | Las que el dominio sugiere pero **no** aplican, y por que. Es la lista que evita que el agente las abra por su cuenta y amplie alcance. |
 
