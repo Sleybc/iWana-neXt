@@ -1,7 +1,8 @@
 # Diseño — MOD11 Operaciones: separación en sub-rutas y bandeja propia de OT de ejecución
 
-**Version:** 1.0
-**Estado:** **Aprobado por el CTO (2026-09-13)** — contratos de §7 congelados desde esta aprobación
+**Version:** 1.1
+**Estado:** **Aprobado por el CTO (2026-09-13)** — contratos de §7 congelados desde esta aprobación. **v1.0 superada por esta v1.1 en el mismo acto**; no leer la v1.0 como vigente.
+**Cambio v1.0 → v1.1 (2026-09-13):** reconciliación con la implementación entregada, tras la [auditoría de ejecución](../informes/INFORME-MOD11-OPERACIONES-SUBRUTAS-AUDITORIA-EJECUCION-v1.0.md). La arquitectura **no cambia**: la v1.0 describía en cuatro puntos un estado que la ejecución superó con decisiones tomadas en gates y registradas en consolidaciones, y el artefacto normativo se había quedado atrás. Correcciones: **§4.5** refleja el conjunto real de archivos —`use-operational-users.ts` no llegó a existir y aparecen tres archivos derivados de decisiones de gate—; **§4.6** corrige la afirmación de que `TaskDetailDrawer.tsx` no cambia; **§4.8** describe el mecanismo realmente implementado y declara la directriz D-A6 **sin objeto**; las referencias al e2e de flujo de campo pasan de número de línea a contenido. Sin cambios en alcance, contratos, boundaries ni criterios de aceptación.
 **Fecha:** 2026-09-13
 **Modo activo:** Mixto (Product Architect + Architect + Orchestrator)
 **Autor:** AI-EM-ARCH
@@ -128,7 +129,9 @@ Pestañas: **Tareas** y **Órdenes de ejecución**.
 
 Las pestañas se filtran por permiso con `hasAnyPermission`. Una pestaña que el usuario no puede abrir **no se pinta**; no se pinta deshabilitada (un control deshabilitado sin explicación es peor que su ausencia).
 
-El `PageHeader title="Operaciones"` sube de `OperationsClient.tsx:1121` al `layout.tsx`. Esto preserva la aserción e2e `getByRole('heading', { name: 'Operaciones' })` de `e2e/tests/portal-field-flow-ticket-ot-inventory.spec.ts:877` sin tocar el test.
+El `PageHeader title="Operaciones"` sube de `OperationsClient.tsx:1121` al `layout.tsx`. Esto preserva la aserción e2e `getByRole('heading', { name: 'Operaciones' })` de `e2e/tests/portal-field-flow-ticket-ot-inventory.spec.ts` sin tocar el test.
+
+*(v1.1 — regla de citación.)* Las aserciones protegidas de ese fichero se citan **por contenido**, nunca por número de línea: los dos casos que entran por el deep link legado son los que invocan `gotoAuthedDashboard(page, '/dashboard/operations?executionOrderId=…')`. La v1.0 y las órdenes de despacho los fijaban como «líneas 876 y 975», y hoy viven en 949 y 1076 tras eliminaciones ajenas en el mismo fichero: la regla se cumplió, la referencia no sobrevivió.
 
 ### 4.4 Mitigación de la fragmentación
 
@@ -156,17 +159,23 @@ El archivo son tres módulos cosidos: intake (~200 líneas), bandeja (~150), con
 | `use-execution-order-console.ts` | Los ~25 `useState` y 12 handlers de OT, **extraídos verbatim** | `:393-448, 553-725, 804-1117, 1236-1312` |
 | `execution-order-collections.ts` | `normalizeExecutionOrderEvidence`, `collectExecutionOrderCollectionPages`, `normalizeExecutionOrderCollection`, `loadMoreExecutionOrderCollection` | `:57-130, 273-305` |
 | `execution-order-requirements.ts` | `getMissingRequirements`, `productRequirementLabel`, `REQUIREMENT_KIND_LABELS`, `deriveTemplateFromDetail`, `isValidFutureEvidenceExpiry` | `:142-271, 307-337` |
-| `use-operational-users.ts` | Sustituye el crawl (§4.8) | reescribe `:339-352` |
+| `OperationsUserPicker.tsx` | Picker de responsable por typeahead, con degradación **visible** del 403 para NOC/SUPPORT (§4.8) | reemplaza el crawl de `:339-352` |
+| `OperationsCreateTaskAction.tsx` | CTA «Crear tarea» del `PageHeader` | derivado del veredicto D2 de AI-PROD-UX (§4.3) |
+| `operations-table-pagination.ts` | Unión discriminada sobre `randomAccess` que hace **imposible** montar los dos pies | derivado del contrato de componente (§4.10) |
+
+*(v1.1) La v1.0 listaba aquí `use-operational-users.ts`, un hook con memo de módulo del directorio. **No llegó a existir y no debe crearse:** al retirar el crawl por completo (§4.8) el directorio dejó de necesitar memoria. Los tres archivos de arriba no estaban previstos en la v1.0 y derivan de decisiones tomadas en gates, no de improvisación.*
 
 `OperationsClient.tsx` **se elimina, sin shim de re-exports**: sería código muerto con consumidor cero, porque su único importador desaparece en el mismo commit.
 
 **No se mueven, deliberadamente:** `ExecutionOrderDrawer.tsx` (87 KB) y su spec (69 KB) — 156 KB de diff sin un solo cambio semántico, que además borra el `git blame`; y `ExecutionOrderSummary.tsx`, que lo importa `apps/portal/src/components/scheduling/ScheduleEventDrawer.tsx:13`.
 
-**Estado compartido.** El directorio de usuarios es lo único transversal. **No** se sube a un provider en el layout: el layout es Server Component y meter un provider cliente ahí obliga a hidratar el módulo entero. Se resuelve en `use-operational-users.ts` con memo a nivel de módulo de la promesa, de modo que navegar Tareas → Crear tarea no refetchea.
+**Estado compartido.** *(Corregido en v1.1.)* La v1.0 daba por supuesto que el directorio de usuarios seguiría siendo estado transversal y lo resolvía con un memo de módulo en `use-operational-users.ts`. **No hay tal estado compartido:** al sustituir el crawl por typeahead bajo demanda (§4.8), cada consumidor pide lo que necesita cuando lo necesita y no queda directorio que memorizar. Sigue vigente el motivo por el que no se sube a un provider en el layout: el layout es Server Component y meter un provider cliente ahí obliga a hidratar el módulo entero.
 
 ### 4.6 Deep link del detalle de tarea y cierre no destructivo
 
-`TaskDetailDrawer` pasa a abrirse por `?taskId=` en `/dashboard/operations/tasks`, con la misma gramática que la OT. `TaskDetailDrawer.tsx` **no cambia**: sigue controlado por props; cambia quién calcula `open`.
+`TaskDetailDrawer` pasa a abrirse por `?taskId=` en `/dashboard/operations/tasks`, con la misma gramática que la OT. **El componente sigue controlado por props**: lo que cambia es quién calcula `open`.
+
+*(Corregido en v1.1.)* La v1.0 afirmaba que `TaskDetailDrawer.tsx` **no cambia**, y no se cumplió: la etapa 6 añadió un `DialogClose` con objetivo de ≥44 px al resolver el bloqueante **PROD-UX #1** de la ola 4.1 (mecanismo de cierre visible, UX spec §8.2/§11.3). El cambio está autorizado por ese gate y trazado en el propio código; lo que era inexacto es la promesa de inmutabilidad del archivo, no el diseño.
 
 El cierre de ambos drawers usa `mergeUrlSearchParams` (`apps/portal/src/lib/merge-url-search-params.ts`, que existe exactamente para esto) para retirar **solo** su parámetro, preservando filtros, página y orden. Sustituye al `router.replace('/dashboard/operations')` de `OperationsClient.tsx:1303`.
 
@@ -268,7 +277,11 @@ Finalidad ADR-067: nombre de usuario interno, no PII de suscriptor. Se declara i
 2. **Etiqueta de responsable** → `responsibleLabel` proyectado (§4.7.4).
 3. **Áreas internas** → `INTERNAL_AREA_OPTIONS` sigue hardcodeada; ver §10.
 
-**Frontera verificada que exige decisión.** `GET /users/search` exige `@Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)`: un NOC o SUPPORT recibe 403. Hoy el crawl usa `usersApi.list` (que exige `USERS_READ`) y el `.catch()` de `OperationsClient.tsx:348` se lo traga en silencio — **el formulario ya se degrada hoy a lista vacía para esos roles sin decirlo**. Se resuelve en F5, por decisión de AI-EM-ARCH, en una de dos direcciones: ampliar `@Roles` del picker a NOC/SUPPORT, o declarar la degradación de forma visible. **No se deja silenciosa.**
+**Frontera verificada que exigía decisión — resuelta.** `GET /users/search` exige `@Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)`: un NOC o SUPPORT recibe 403. El crawl usaba `usersApi.list` con guard equivalente y un `.catch()` que se lo tragaba en silencio, de modo que el formulario **ya se degradaba** para esos roles sin decirlo.
+
+*(Resuelto en v1.1, directriz D-P1 de la ola 3.)* Se adoptó la **Salida 2**: el swap no cambia quién está autorizado —el guard es el mismo—, solo vuelve visible un fallo que era invisible. `OperationsUserPicker` mapea el 403 a un aviso explícito y accionable. La **Salida 1** (ampliar `@Roles`) queda registrada como decisión de producto y seguridad fuera de este plan. La degradación silenciosa **no se heredó**.
+
+**Consecuencia estructural, y por qué D-A6 queda sin objeto.** Con typeahead bajo demanda no hay directorio que memorizar: desaparece el hook de memo que la v1.0 preveía (§4.5) y con él el riesgo que la directriz **D-A6** de la ola 2 mitigaba —fugar el directorio de un tenant a la sesión siguiente—. **D-A6 se declara sin objeto**: no es un requisito incumplido, es un requisito que el diseño final volvió innecesario.
 
 ### 4.9 Sidebar
 
