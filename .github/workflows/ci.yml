@@ -781,6 +781,11 @@ jobs:
       # cleanup. Comandos puros del shell, sin volcar envs ni tokens.
       - name: Generate E2E R4.1 summary (sanitized)
         if: always()
+        # gh necesita token para listar el estado de los jobs del run; sin él
+        # el paso cae a su fallback local (no bloquea, pero el artefacto pierde
+        # la sección de estado de jobs).
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
