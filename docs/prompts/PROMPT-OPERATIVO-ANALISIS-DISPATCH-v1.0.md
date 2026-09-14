@@ -89,6 +89,7 @@ El **launcher** es el artefacto que arranca la ejecucion: un bloque copiar-pegar
 - **Espejo en el plan:** el plan cierra con una seccion **Lanzamiento** que reproduce el bloque y declara, en una linea, que el archivo `-LAUNCH` es la fuente y prevalece si divergen.
 - **Techo de tamaño: 40 lineas.** Si no cabe, el alcance de la ola esta mal cortado, o el launcher esta absorbiendo contenido que pertenece al prompt de ejecucion.
 - **No repite el encargo:** lo referencia por ruta. El launcher dice *a quien se llama, en que orden y leyendo que*; el prompt de ejecucion dice *que hacer*.
+- **Se entrega, no solo se archiva** (perfil v2.6 §3.6): el bloque copiar-pegar va en la respuesta al CTO en el mismo acto, con el estado real al arrancar —que esta cerrado y no debe re-despacharse— y la restriccion de secuencia si dos tramos comparten superficie. El archivo es la fuente y prevalece; la respuesta es la entrega. Un launcher archivado y no entregado obliga a pedirlo: el artefacto existe y no llega a quien va a lanzarlo.
 
 ---
 

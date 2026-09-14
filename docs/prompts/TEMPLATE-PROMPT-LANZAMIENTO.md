@@ -1,7 +1,8 @@
 # TEMPLATE — Prompt corto de lanzamiento
 
-**Version:** 1.0
+**Version:** 1.1
 **Estado:** Aprobado
+**Cambio v1.0 → v1.1 (2026-09-14):** regla 5 — el bloque copiar-pegar se entrega en la respuesta, no solo se archiva (perfil v2.6 §3.6).
 **Fecha:** 2026-09-14
 **Emitido por:** AI-EM-ARCH
 
@@ -18,6 +19,7 @@
 2. **Espejo en el plan:** el plan de orquestacion cierra con una seccion `## Lanzamiento` que reproduce el bloque copiar-pegar y declara que **este archivo es la fuente y prevalece si divergen**.
 3. **Cero duplicacion de encargo.** Solo rutas, orden y skills. El *que hacer* vive en el prompt de ejecucion.
 4. **Una ola por launcher.** La ola siguiente se lanza con su propio archivo cuando su gate cierra.
+5. **El bloque se entrega, no solo se archiva.** Quien emite el launcher pega el bloque copiar-pegar en su respuesta al CTO, en el mismo acto, con el estado real al arrancar —qué esta cerrado y no debe re-despacharse— y la restriccion de secuencia si dos tramos comparten superficie. El archivo es la fuente y prevalece; la respuesta es la entrega. Un launcher archivado y no entregado obliga a pedirlo, que es el defecto que la v2.6 del perfil corrige.
 
 ---
 

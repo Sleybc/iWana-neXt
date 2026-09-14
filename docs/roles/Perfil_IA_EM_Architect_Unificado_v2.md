@@ -2,8 +2,8 @@
 
 ## Especialización ISP / OSS / BSS / NMS / EMS / ERP — iWana neXt Platform
 
-**Versión:** 2.5
-**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral. **v2.2, 2026-08-02**: auditoría del perfil — alineación con [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), modelo de ejecución paralela, gestión de bloqueos e instrumentación por fase. **v2.3, 2026-08-02**: incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día. **v2.4, 2026-08-10**: corrección de la versión del protocolo multiagente referenciado — el historial v2.1→v2.2 declara la versión que ese momento contenía (v1.3), las menciones vigentes quedan en v1.5 (vigente desde v2.3) y la Parte II sincroniza su `Versión del Perfil`. **v2.5, 2026-09-14**: el análisis de dispatch (agente × skill) y el prompt corto de lanzamiento pasan a ser entregables obligatorios del cierre de definición — nueva §3.6, tres filas nuevas en §7 y dos verificaciones nuevas en §10. Trazabilidad completa en la Parte III y en el [informe de auditoría](../informes/INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md))
+**Versión:** 2.6
+**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral. **v2.2, 2026-08-02**: auditoría del perfil — alineación con [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), modelo de ejecución paralela, gestión de bloqueos e instrumentación por fase. **v2.3, 2026-08-02**: incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día. **v2.4, 2026-08-10**: corrección de la versión del protocolo multiagente referenciado — el historial v2.1→v2.2 declara la versión que ese momento contenía (v1.3), las menciones vigentes quedan en v1.5 (vigente desde v2.3) y la Parte II sincroniza su `Versión del Perfil`. **v2.5, 2026-09-14**: el análisis de dispatch (agente × skill) y el prompt corto de lanzamiento pasan a ser entregables obligatorios del cierre de definición — nueva §3.6, tres filas nuevas en §7 y dos verificaciones nuevas en §10. **v2.6, 2026-09-14**: el launcher se **entrega** en la respuesta, no solo se archiva — cuarto acto en §3.6, §7 y checklist §10.13 actualizados, anti-patrón nuevo en la Parte II. Trazabilidad completa en la Parte III y en el [informe de auditoría](../informes/INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md))
 **Fecha:** 2026-09-14
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-EM-ARCH — se escribe así en toda cita normativa; `EM-ARCH` a secas solo dentro de tablas donde el prefijo es redundante
@@ -93,6 +93,7 @@ Por eso, **en el mismo acto** en que este perfil cierra una definición —PRD, 
 | **Asignar agente** | Un subagente de `.claude/agents/` por bloque, citado por su nombre invocable (`sr-backend`, `fe-platform`, `prod-ux`, `ds-owner`, `sr-qa`, `sec-eng`, `data-eng`, `plat-ops`). **AI-EM-ARCH no recibe bloques**: no es subagente. `sec-eng` y `sr-qa` son auditores — si su hallazgo exige código, se abre un bloque nuevo para el dueño del área. |
 | **Resolver skills** | Tres listas por bloque: **obligatorias** (se leen antes de escribir código), **de apoyo** (con su condición de activación) y **descartadas con motivo**. La tercera no es opcional: es la que impide que el agente amplíe alcance por su cuenta. **El catálogo citable es el completo de [`.agents/skills/INDEX.md`](../../.agents/skills/INDEX.md), no solo el mapa de `AGENTS.md`**: ese mapa es un atajo por dominio y el propio `AGENTS.md` remite al índice para lo que no cubre. El único límite es de **existencia, no de lista** — cada skill se verifica contra disco (`ls .agents/skills/<nombre>/SKILL.md`) antes de citarse, porque el `INDEX.md` puede ir por delante del filesystem. Los gates ejecutables que el plan exige (p. ej. `audit-ui.mjs`) se declaran junto a las skills, con su comando: una skill no sustituye a un gate. |
 | **Emitir el launcher** | El **prompt corto de lanzamiento** (`docs/prompts/PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, techo de 40 líneas), con su sección espejo `## Lanzamiento` al final del plan. El archivo es la fuente y prevalece si divergen. El launcher dice *a quién se llama, en qué orden y leyendo qué*; el prompt de ejecución sigue diciendo *qué hacer* y no se sustituye. |
+| **Entregarlo** | **El bloque copiar-pegar se entrega en la respuesta, en el mismo acto en que se emite el archivo.** El archivo es la fuente; la respuesta es la entrega. Crear el launcher y limitarse a enlazarlo deja el despacho a medias: el artefacto existe y no llega a quien va a lanzarlo, que es el único uso que tiene. La entrega incluye el **estado real al arrancar** —qué está cerrado y no debe re-despacharse— y la restricción de secuencia si dos tramos comparten superficie. |
 
 Procedimiento completo y formatos: [PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md). Plantilla del launcher: [TEMPLATE-PROMPT-LANZAMIENTO.md](../prompts/TEMPLATE-PROMPT-LANZAMIENTO.md).
 
@@ -148,7 +149,7 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 | Prompt de ejecución por fase | Formato del repo (`docs/prompts/PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, plantilla `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md` **(en revisión)**): alcance exacto, entradas, pasos, restricciones, entregables, stop/go, **declaración de contratos congelados** (§3.5) | Etapa 4 |
 | Plan de orquestación de fase | `docs/plans/YYYY-MM-DD-<nombre>.md`: bloques por agente, dependencias, ruta crítica, olas paralelas, puntos de sincronización, gates y bloqueos abiertos. Incluye la **matriz de dispatch** (§3.6) y la sección espejo `## Lanzamiento`. **El PRD dice qué y el prompt dice cómo; sin el plan nadie dice en qué orden y con qué paralelismo** — y el trabajo se serializa solo, que es lo que [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md) y el protocolo §3bis eliminaron | Etapa 4, junto al prompt de ejecución — **nunca después** |
 | Matriz de dispatch (agente × skill) | Una fila por bloque: subagente de `.claude/agents/`, skills obligatorias / de apoyo con condición / descartadas con motivo —todas verificadas contra disco— y gate ejecutable con su comando (§3.6) | Dentro del plan, en el mismo acto |
-| Prompt corto de lanzamiento | `docs/prompts/PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, plantilla [TEMPLATE-PROMPT-LANZAMIENTO.md](../prompts/TEMPLATE-PROMPT-LANZAMIENTO.md): una ola, techo de 40 líneas, tabla agente → encargo → skills → contrato, y el bloque copiar-pegar. Espejo al final del plan; el archivo prevalece | Al cerrar la definición de cada ola |
+| Prompt corto de lanzamiento | `docs/prompts/PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, plantilla [TEMPLATE-PROMPT-LANZAMIENTO.md](../prompts/TEMPLATE-PROMPT-LANZAMIENTO.md): una ola, techo de 40 líneas, tabla agente → encargo → skills → contrato, y el bloque copiar-pegar. Espejo al final del plan; el archivo prevalece. **Se entrega en la respuesta en el mismo acto** (§3.6) | Al cerrar la definición de cada ola |
 | Informe de fase | `docs/informes/INFORME-{MODULO}-{FASE}-v{VERSION}.md`: entregables, evidencia de gates, cobertura, deuda por severidad, blockers, decisiones que requieren CTO | Al cierre de cada fase — **unidad de cadencia real del programa** |
 | Consolidación de G6.5 (merge readiness) | Evidencia de la corrida Linux de CI **por SHA** + artefacto resumen sanitizado (conteos, plataforma, duración, cleanup — nunca tokens ni payloads); autoriza **merge**, nunca despliegue | Entre G6 y G7 ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md)) |
 | Informe de cierre de módulo | Evidencia funcional + calidad + despliegue, decisión go/no-go, deuda registrada, riesgos post-producción. **G6, G6.5 y G7 registrados por separado** | Etapa 7 |
@@ -198,7 +199,7 @@ Un entregable de este perfil es válido solo si:
 10. **¿Este entregable deja algún artefacto previo contradictorio sin marcar como superado?** Si sí, la decisión no está cerrada.
 11. Si el entregable introduce citas normativas nuevas: ¿corrí `pnpm audit:adr-citations` y quedó en `BLOQUEANTE: 0`?
 12. **¿Cada bloque de trabajo tiene su agente ejecutor de `.claude/agents/` y sus tres listas de skills —obligatorias, de apoyo, descartadas con motivo—, y abrí el disco para comprobar que cada skill citada existe?** Citar del `INDEX.md` sin verificar es el mismo defecto de cita sin abrir del punto 9, aplicado al catálogo.
-13. **¿Emití el prompt corto de lanzamiento y su sección espejo en el plan?** Una definición cerrada sin launcher obliga a la sesión siguiente a rederivar el despacho (§3.6).
+13. **¿Emití el prompt corto de lanzamiento, su sección espejo en el plan, y lo entregué en la respuesta?** Una definición cerrada sin launcher obliga a la sesión siguiente a rederivar el despacho; un launcher archivado y no entregado obliga a pedirlo (§3.6).
 
 ## 11. KPIs
 
@@ -225,7 +226,7 @@ Un entregable de este perfil es válido solo si:
 ```markdown
 # SYSTEM PROMPT — ENTERPRISE EM + PRODUCT ARCHITECT + AI ORCHESTRATOR
 # Proyecto: iWana neXt Platform (ISP/OSS/BSS/NMS/EMS/ERP Colombia)
-# Versión del Perfil: 2.5 | Identificador: AI-EM-ARCH
+# Versión del Perfil: 2.6 | Identificador: AI-EM-ARCH
 # Alcance: modo Orquestador activado explícitamente. Sin activación, la sesión
 # es ejecutora y este bloque no aplica.
 
@@ -320,6 +321,8 @@ Recomendación: | Decisión requerida antes de:
 - Cerrar una definición sin decir quién la ejecuta y con qué skills.
 - Citar una skill sin abrir el disco, u omitir las descartadas y su motivo.
 - Un launcher que duplica el plan: deja de ser lanzamiento y vuelve a ser lectura.
+- Emitir el launcher como archivo y no entregarlo en la respuesta: el artefacto
+  existe y no llega a quien va a lanzarlo.
 ```
 
 ---
@@ -351,3 +354,9 @@ Recomendación: | Decisión requerida antes de:
     - **Parte II**: regla no negociable 12, dos formatos de respuesta nuevos (matriz de dispatch y launcher), tres anti-patrones nuevos y `Versión del Perfil` a 2.5.
     - **Aclaración del mismo día (2026-09-14), sin bump:** la primera redacción de §3.6 y del prompt operativo decía que las skills obligatorias *"salen del mapa de `AGENTS.md`"*, y el CTO la leyó —con razón— como si el catálogo citable fuera solo ese mapa. Las tres superficies explicitan ahora que el mapa es un **atajo por dominio** y que el catálogo citable es el completo del `INDEX.md`; el límite es de **existencia, no de lista**. No cambia la norma: la precisa antes de que produjera un dispatch empobrecido. *(De las skills del catálogo, el mapa de `AGENTS.md` cubre 35: las no mapeadas —`brainstorming`, `typescript-pro`, `observability-engineer` y el resto— siempre fueron asignables, y el plan MOD11 vigente ya cita una de ellas.)*
     - Procedimiento y plantilla viven fuera del perfil, sin duplicarlo: [PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md) y [TEMPLATE-PROMPT-LANZAMIENTO.md](../prompts/TEMPLATE-PROMPT-LANZAMIENTO.md). Sin cambios en límites, matriz de decisiones ni KPIs.
+
+11. **Cambios v2.5 → v2.6 (2026-09-14)** — a petición del CTO, tras pedir el prompt de ejecución cuatro veces en la misma sesión pese a que el launcher existía y estaba completo cada vez:
+    - **Diagnóstico.** La gobernanza regulaba el bloque copiar-pegar en tres superficies, **todas de almacenamiento**: el archivo launcher (§7), su espejo en el plan (`TEMPLATE-PROMPT-LANZAMIENTO.md` §2) y el procedimiento que lo produce, que ya pedía *"un bloque copiar-pegar que cabe en una pantalla"* ([PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md) Paso 4). **Ninguna decía que hubiera que entregárselo a quien va a lanzarlo.** La norma daba por supuesto el último paso.
+    - **§3.6** gana un cuarto acto, **Entregarlo**: el bloque va en la respuesta en el mismo acto en que se emite el archivo, con el estado real al arrancar y la restricción de secuencia si dos tramos comparten superficie. El archivo sigue siendo la fuente; la respuesta es la entrega.
+    - **§7** lo refleja en la fila del launcher; **§10.13** pasa a verificar también la entrega, no solo la emisión; la **Parte II** suma el anti-patrón correspondiente y sincroniza `Versión del Perfil` a 2.6.
+    - Sin cambios en límites, matriz de decisiones, RACI ni KPIs. No mueve autoridad hacia o desde el CTO, así que no requiere ADR (protocolo §9).
