@@ -863,7 +863,13 @@ jobs:
       CI: true
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: '1'
-      E2E_PORTAL_DEBT_BASELINE: '98'
+      # Baseline del trinquete: ÚLTIMA MEDICIÓN ESTABLE DEL CONTADOR EN CI
+      # (Linux). La primera medición (run 34791789744) dio 100 fallos / 257
+      # casos, flaky=0, skipped=0; el baseline local previo (98, Windows,
+      # OLA 4) disparaba un falso aviso de crecimiento por diferencia de
+      # plataforma. Si la deuda baja, el propio job emite ::notice para
+      # actualizar este número hacia abajo.
+      E2E_PORTAL_DEBT_BASELINE: '100'
 
     steps:
       - name: Checkout
