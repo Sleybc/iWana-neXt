@@ -15,7 +15,7 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  * - ADR-068: Sincronización de OT de ejecución y proyecciones operativas.
  * - Spec API: docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md
  *
- * Este archivo es la fuente de verdad del contrato v1.1. Los DTOs del controlador
+ * Este archivo es la fuente de verdad del contrato v1.2. Los DTOs del controlador
  * y el OpenAPI máquina-legible se derivan de aquí. No modificar sin versionar.
  *
  * Historial:
@@ -23,6 +23,11 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  * - v1.1 (2026-09-14, E2 aprobada por el CTO, spec §7): `ExecutionOrderCompletionView`
  *   gana el campo opcional y aditivo `requirements` (tipo en el archivo hermano
  *   `execution-orders-completion.ts`). Ningún campo existente cambia ni pasa a requerido.
+ * - v1.2 (2026-09-14, MOD11 T1 B1, ADR-088 + spec §4.3): la variante `MATERIAL` de
+ *   `ExecutionOrderTemplateRequirement` gana el campo opcional y aditivo
+ *   `finalDisposition` (disposición final exigida al consumo). Un requisito que no
+ *   la declara se comporta exactamente como en v1.1. Ningún campo existente cambia
+ *   ni pasa a requerido.
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -92,6 +97,13 @@ export type ExecutionOrderTemplateRequirement =
   | (ExecutionOrderTemplateRequirementBase & {
       kind: 'MATERIAL';
       itemCategory: string;
+      /**
+       * Disposición final exigida al consumo (aditivo v1.2, MOD11 T1 B1,
+       * ADR-088 + spec §4.3). Opcional: cuando se declara, el consumo debe
+       * coincidir además en `finalDisposition`; cuando se omite, el requisito
+       * se comporta exactamente como en v1.1.
+       */
+      finalDisposition?: InventoryDisposition;
     })
   | (ExecutionOrderTemplateRequirementBase & {
       kind: 'COMPLIANCE';

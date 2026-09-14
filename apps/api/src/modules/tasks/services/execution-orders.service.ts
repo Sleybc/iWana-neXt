@@ -149,8 +149,19 @@ function isTemplateRequirement(value: unknown): value is ExecutionOrderTemplateR
       );
     case 'EVIDENCE':
       return isOneOf(value.evidenceType, ['PHOTO', 'DOCUMENT', 'SIGNATURE'] as const);
-    case 'MATERIAL':
-      return isNonEmptyString(value.itemCategory);
+    case 'MATERIAL': {
+      if (!isNonEmptyString(value.itemCategory)) return false;
+      // Aditivo v1.2 (MOD11 T1 B1, spec §4.3): la disposición declarada es
+      // opcional. Si está presente debe ser un valor conocido del enum; un
+      // valor desconocido invalida el requisito y el snapshot entero se
+      // rechaza (fail-closed: la OT queda incerrable, nunca mal cerrable).
+      // Ausente = comportamiento v1.1 (retrocompatible).
+      if (value.finalDisposition === undefined) return true;
+      return (
+        typeof value.finalDisposition === 'string' &&
+        (Object.values(InventoryDisposition) as string[]).includes(value.finalDisposition)
+      );
+    }
     case 'COMPLIANCE':
       return isNonEmptyString(value.policyKey);
     default:
@@ -280,7 +291,11 @@ export class ExecutionOrdersService {
           .getMany(),
         qr.manager
           .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
-          .select(['usage.itemId'])
+          // Proyección explícita (MOD11 T1 B1, trampa §3): `finalDisposition`
+          // debe viajar al contexto del evaluador; sin ella el predicado de
+          // disposición sería siempre falso y el requisito quedaría
+          // permanentemente pendiente (defecto invertido).
+          .select(['usage.itemId', 'usage.finalDisposition'])
           .where('usage.execution_order_id = :executionOrderId', { executionOrderId })
           .andWhere('usage.tenant_id = :tenantId', { tenantId })
           .getMany(),
@@ -2378,12 +2393,32 @@ export class ExecutionOrdersService {
           }
           return { ...base, kind: 'EVIDENCE' as const, evidenceType };
         }
-        case 'MATERIAL':
+        case 'MATERIAL': {
+          const itemCategory = requireString(config, 'itemCategory');
+          // Aditivo v1.2 (MOD11 T1 B1, spec §4.3): la disposición viaja en el
+          // config de la fila de plantilla. Ausente = v1.1 (retrocompatible);
+          // presente pero desconocida = plantilla inválida (fail-closed).
+          const finalDisposition = config.finalDisposition;
+          if (finalDisposition !== undefined) {
+            if (
+              typeof finalDisposition !== 'string' ||
+              !(Object.values(InventoryDisposition) as string[]).includes(finalDisposition)
+            ) {
+              return invalidTemplate();
+            }
+            return {
+              ...base,
+              kind: 'MATERIAL' as const,
+              itemCategory,
+              finalDisposition: finalDisposition as InventoryDisposition,
+            };
+          }
           return {
             ...base,
             kind: 'MATERIAL' as const,
-            itemCategory: requireString(config, 'itemCategory'),
+            itemCategory,
           };
+        }
         case 'COMPLIANCE':
           return {
             ...base,
@@ -2644,28 +2679,39 @@ export class ExecutionOrdersService {
   private async buildMaterialEvaluationUsages(
     requirements: ExecutionOrderTemplateRequirement[],
     usages: ExecutionOrderItemUsage[],
-  ): Promise<Array<{ itemId: string; itemCategory?: string }>> {
+  ): Promise<
+    Array<{ itemId: string; itemCategory?: string; finalDisposition?: InventoryDisposition }>
+  > {
     const hasMaterialRequirement = requirements.some(
       (requirement) => requirement.kind === 'MATERIAL',
     );
+    // La disposición viaja siempre al contexto (MOD11 T1 B1, spec §4.3): es el
+    // evaluador quien decide si la exige, según lo declarado por el requisito.
     if (!hasMaterialRequirement) {
-      return usages.map((usage) => ({ itemId: usage.itemId }));
+      return usages.map((usage) => ({
+        itemId: usage.itemId,
+        ...(usage.finalDisposition === undefined
+          ? {}
+          : { finalDisposition: usage.finalDisposition }),
+      }));
     }
 
     return Promise.all(
       usages.map(async (usage) => {
+        const disposition =
+          usage.finalDisposition === undefined ? {} : { finalDisposition: usage.finalDisposition };
         if (!this.inventoryService) {
-          return { itemId: usage.itemId };
+          return { itemId: usage.itemId, ...disposition };
         }
 
         try {
           const receipt = await this.inventoryService.getItemCategoryReceipt(usage.itemId);
           const categoryCode = receipt.categoryCode.trim();
           return categoryCode.length > 0
-            ? { itemId: usage.itemId, itemCategory: categoryCode }
-            : { itemId: usage.itemId };
+            ? { itemId: usage.itemId, itemCategory: categoryCode, ...disposition }
+            : { itemId: usage.itemId, ...disposition };
         } catch {
-          return { itemId: usage.itemId };
+          return { itemId: usage.itemId, ...disposition };
         }
       }),
     );
@@ -2673,7 +2719,20 @@ export class ExecutionOrdersService {
 
   private assertVersion(order: ExecutionOrder, ifMatch?: string): void {
     if (!ifMatch) return;
-    const expected = Number.parseInt(ifMatch.replace(/^W\//u, '').replace(/^"|"$/gu, ''), 10);
+    // `If-Match` es el número de versión de la orden, NO el ETag. Tras retirar
+    // el prefijo débil `W/` y las comillas, debe quedar un entero completo:
+    // `Number.parseInt('1.1-7', 10)` devuelve 1 sin error, así que un parseo
+    // tolerante convertiría un ETag devuelto como `If-Match` en un
+    // `VERSION_CONFLICT` engañoso. El formato inválido es 400 (validación),
+    // distinto del 409 de conflicto real (MOD11 hallazgo ETag 2026-09-14).
+    const unquoted = ifMatch.replace(/^W\//u, '').replace(/^"|"$/gu, '');
+    if (!/^\d+$/u.test(unquoted)) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'El encabezado If-Match debe contener únicamente el número de versión de la OT.',
+      });
+    }
+    const expected = Number.parseInt(unquoted, 10);
     if (!Number.isInteger(expected) || expected !== (order.version ?? 1)) {
       throw new ConflictException({
         code: 'VERSION_CONFLICT',

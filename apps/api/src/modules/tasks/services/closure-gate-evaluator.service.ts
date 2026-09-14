@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { ExecutionOrderTemplateRequirement as TemplateRequirement } from '@iwana/shared';
+import type {
+  ExecutionOrderTemplateRequirement as TemplateRequirement,
+  InventoryDisposition,
+} from '@iwana/shared';
 
 type FieldRequirement = Extract<TemplateRequirement, { kind: 'FIELD' }>;
 type ActivityRequirement = Extract<TemplateRequirement, { kind: 'ACTIVITY' }>;
@@ -50,7 +53,17 @@ export interface OrderEvaluationContext {
    * está presente, el requisito falla cerrado; el evaluador no infiere una
    * categoría a partir del identificador del item.
    */
-  itemUsages?: Array<{ itemId: string; itemCategory?: string; requirementKey?: string }>;
+  itemUsages?: Array<{
+    itemId: string;
+    itemCategory?: string;
+    requirementKey?: string;
+    /**
+     * Disposición final del consumo (MOD11 T1 B1, spec §4.3). El contexto debe
+     * transportarla en los dos call-sites (progreso y cierre); si falta cuando
+     * el requisito la declara, el requisito falla cerrado.
+     */
+    finalDisposition?: InventoryDisposition;
+  }>;
   /** Artefactos de aceptación del cliente (para COMPLIANCE). */
   complianceArtifacts?: Array<{ policyKey?: string }>;
   /** Si la OT tiene aceptación del cliente registrada. */
@@ -168,7 +181,12 @@ export class ClosureGateEvaluatorService {
       (usage) =>
         usage.itemId.trim().length > 0 &&
         usage.itemCategory === req.itemCategory &&
-        (usage.requirementKey === undefined || usage.requirementKey === req.key),
+        (usage.requirementKey === undefined || usage.requirementKey === req.key) &&
+        // Aditivo v1.2 (spec §4.3): la disposición solo se exige cuando el
+        // requisito la declara. Sin declaración, el comportamiento es el de
+        // v1.1 (retrocompatible). Con declaración, un consumo sin disposición
+        // (undefined) no satisface: fail-closed.
+        (req.finalDisposition === undefined || usage.finalDisposition === req.finalDisposition),
     );
   }
 
