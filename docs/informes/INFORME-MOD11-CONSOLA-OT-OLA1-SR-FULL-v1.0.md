@@ -5,7 +5,10 @@
 **Agente:** AI-SR-FULL (sr-backend)
 **Prompt ejecutado:** `docs/prompts/PROMPT-MOD11-CONSOLA-OT-OLA1-SR-FULL-v1.0.md` (C0, C1, C2, pasos 1-12)
 **Spec:** `docs/specs/2026-09-14-mod11-consola-ot-requisito-como-eje-design.md` v1.1
-**Estado:** GO (todos los criterios aplicables a backend en verde; sin [BLOQUEO], sin [CONSULTA])
+
+> **SUPERADO por [INFORME-MOD11-CONSOLA-OT-OLA1-SR-FULL-v1.1.md](INFORME-MOD11-CONSOLA-OT-OLA1-SR-FULL-v1.1.md)** — marcado por AI-EM-ARCH el 2026-09-14 en la consolidación de gate. **No leer su veredicto como vigente.** El `GO` que declara abajo es el estado previo a la auditoría de consolidación, que encontró dos hallazgos —P1 bloqueante (criterio de aceptación divergente del cierre) y P2 menor— y convirtió ese GO en **GO condicionado**. Ambos quedaron cerrados en la v1.1. Este archivo se conserva como registro histórico de la entrega A.1; el veredicto vigente de la fase es el de la v1.1.
+
+**Estado:** ~~GO~~ **Superado** — GO condicionado tras la auditoría; ver v1.1.
 
 ---
 

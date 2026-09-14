@@ -48,6 +48,19 @@ import { getSerializedAssetStatusLabel } from '@/components/inventory/inventory-
 import { ExecutionOrderSummary, type ExecutionOrderSyncState } from './ExecutionOrderSummary';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
 import {
+  START_ALERT_TITLE,
+  getBlockedCopy,
+  getInProgressHelp,
+  getPreStartHelp,
+  getStartAlertDescription,
+  getTerminalHelp,
+  shouldRenderStartAlert,
+} from './execution-order-commitment-copy';
+import {
+  getRequirementChecklistItems,
+  getRequirementStateText,
+} from './execution-order-requirement-status';
+import {
   EXECUTION_ORDER_RESULT_LABELS,
   EXECUTION_ORDER_RESULT_VARIANTS,
   EXECUTION_ORDER_STATUS_LABELS,
@@ -389,6 +402,41 @@ export function ExecutionOrderDrawer({
   const isChecklistActive = hasStarted || terminal;
   const isPreStart = order != null && !hasStarted && !terminal;
   const completion = getExecutionOrderCompletionDisplay(order?.completion);
+  // C3/C4 (OLA1): lente de rol derivada solo de `allowedActions` + copy por
+  // rol/estado (tabla AI-PROD-UX) + checklist con `completion.requirements[]`.
+  const commitmentContext =
+    order !== null
+      ? {
+          status: order.status,
+          allowedActions: order.allowedActions,
+          assigneePresent: order.assignee != null,
+        }
+      : null;
+  const showStartAlert =
+    order !== null &&
+    canInteract &&
+    commitmentContext !== null &&
+    shouldRenderStartAlert(commitmentContext);
+  const preStartHelp =
+    isPreStart && commitmentContext !== null ? getPreStartHelp(commitmentContext) : null;
+  const blockedCopy =
+    order !== null && order.status === ExecutionOrderStatus.BLOCKED && commitmentContext !== null
+      ? getBlockedCopy(commitmentContext)
+      : null;
+  const inProgressHelp =
+    order !== null &&
+    order.status === ExecutionOrderStatus.IN_PROGRESS &&
+    commitmentContext !== null
+      ? getInProgressHelp(commitmentContext)
+      : null;
+  const terminalHelp =
+    terminal && commitmentContext !== null ? getTerminalHelp(commitmentContext) : null;
+  const checklistItems = getRequirementChecklistItems(
+    template?.requirements ?? [],
+    order?.completion.requirements,
+    requirementLabel,
+  );
+  const requirementsDegraded = (order?.completion.requirements ?? null) === null;
   const evidenceRequirementKey =
     template?.requirements
       .find((requirement) => requirement.kind === 'EVIDENCE' && requirement.key.trim().length > 0)
@@ -897,31 +945,40 @@ export function ExecutionOrderDrawer({
                 </div>
               )}
             </div>
-            {/* Start button */}
-            {canInteract && canStart ? (
-              <Button
-                type="button"
-                className="mt-4"
-                disabled={isSubmitting}
-                loading={isSubmitting}
-                onClick={() => void onStart('Inicio de ejecución en campo')}
-              >
-                Iniciar ejecución
-              </Button>
-            ) : canInteract &&
-              !terminal &&
-              !canStart &&
-              order.status !== ExecutionOrderStatus.BLOCKED ? (
+            {/* Aviso de bloqueo por rol (tabla AI-PROD-UX, celda Bloqueada) */}
+            {blockedCopy ? (
               <PortalAlert
                 variant="info"
                 className="mt-4"
-                title="No puedes iniciar esta orden"
-                description={
-                  !order.assignee
-                    ? 'La orden no tiene técnico asignado. Un supervisor debe asignarla o cualquier técnico del pool puede reclamarla al iniciar.'
-                    : 'Solo el técnico asignado puede iniciar la ejecución cuando la orden está sincronizada.'
-                }
+                title={blockedCopy.title}
+                description={blockedCopy.description}
               />
+            ) : null}
+            {/* Start button */}
+            {canInteract && canStart ? (
+              <>
+                <Button
+                  type="button"
+                  className="mt-4"
+                  disabled={isSubmitting}
+                  loading={isSubmitting}
+                  onClick={() => void onStart('Inicio de ejecución en campo')}
+                >
+                  Iniciar ejecución
+                </Button>
+                {preStartHelp ? (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{preStartHelp}</p>
+                ) : null}
+              </>
+            ) : showStartAlert ? (
+              <PortalAlert
+                variant="info"
+                className="mt-4"
+                title={START_ALERT_TITLE}
+                description={getStartAlertDescription(order.assignee != null)}
+              />
+            ) : canInteract && preStartHelp ? (
+              <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">{preStartHelp}</p>
             ) : null}
             {/* Block/Unblock */}
             {canInteract && canUnblock && onUnblock && (
@@ -955,6 +1012,9 @@ export function ExecutionOrderDrawer({
             >
               Checklist de instalación
             </h3>
+            {inProgressHelp ? (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{inProgressHelp}</p>
+            ) : null}
             {!isChecklistActive && (
               <PortalAlert
                 variant="info"
@@ -975,24 +1035,59 @@ export function ExecutionOrderDrawer({
               <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
                 Completados: {completion.label}
               </p>
+              {requirementsDegraded && template && template.requirements.length > 0 && (
+                <PortalAlert
+                  variant="warning"
+                  className="mt-3"
+                  title="Estado de requisitos no disponible"
+                  description="La orden no trae el estado por requisito; se muestra la lista básica de la plantilla."
+                />
+              )}
               {template && template.requirements.length > 0 && (
-                <ul className="mt-4 space-y-1.5" role="list">
-                  {template.requirements.map((req) => (
-                    <li
-                      key={req.key}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm"
-                    >
-                      {requirementIcon(req.kind)}
-                      <span className="text-gray-700 dark:text-gray-200">
-                        {requirementLabel(req)}
-                      </span>
-                      {req.required && (
-                        <Badge variant="warning" className="ml-auto shrink-0 text-xs">
-                          Requerido
-                        </Badge>
-                      )}
-                    </li>
-                  ))}
+                <ul className="mt-4 space-y-1.5" role="list" aria-label="Requisitos de instalación">
+                  {checklistItems.map((item) => {
+                    const stateText = getRequirementStateText(item);
+                    const templateRequirement = template.requirements.find(
+                      (req) => req.key === item.key,
+                    );
+                    const iconKind = (templateRequirement?.kind ??
+                      item.kind) as ExecutionOrderTemplateRequirement['kind'];
+                    return (
+                      <li
+                        key={item.key}
+                        aria-label={stateText ? `${item.label}: ${stateText}` : item.label}
+                        className="rounded-lg px-2 py-1.5 text-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          {item.state === 'satisfied' ? (
+                            <CheckCircle2
+                              className="h-4 w-4 shrink-0 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            requirementIcon(iconKind)
+                          )}
+                          <span className="text-gray-700 dark:text-gray-200">{item.label}</span>
+                          {item.required && (
+                            <Badge variant="warning" className="ml-auto shrink-0 text-xs">
+                              Requerido
+                            </Badge>
+                          )}
+                        </div>
+                        {stateText ? (
+                          <p
+                            className={
+                              item.state === 'satisfied'
+                                ? 'mt-0.5 pl-6 text-xs font-medium text-iwana-secondary-700 dark:text-iwana-secondary-400'
+                                : 'mt-0.5 pl-6 text-xs text-gray-500 dark:text-gray-400'
+                            }
+                          >
+                            {stateText}
+                          </p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {!template && (
@@ -1810,6 +1905,9 @@ export function ExecutionOrderDrawer({
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   La OT está cerrada y solo puede consultarse.
                 </p>
+                {terminalHelp ? (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{terminalHelp}</p>
+                ) : null}
                 {order.result && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Badge variant={EXECUTION_ORDER_RESULT_VARIANTS[order.result]}>
