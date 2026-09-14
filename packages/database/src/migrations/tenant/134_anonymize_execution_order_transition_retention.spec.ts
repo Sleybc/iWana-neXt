@@ -73,6 +73,9 @@ describe('AnonymizeExecutionOrderTransitionRetention134', () => {
     expect(statement).toContain('UPDATE execution_order_status_transitions target');
     expect(statement).toContain('reason = NULL');
     expect(statement).not.toContain('DELETE FROM execution_order_status_transitions');
+    // PostgreSQL no admite UPDATE...USING (sintaxis MySQL): el paso 6 une con FROM.
+    expect(statement).toContain('FROM victims');
+    expect(statement).not.toMatch(/UPDATE[\s\S]*?USING victims/);
     // La forma temporal no aparece en el SET: sobrevive.
     const setClause = statement.slice(
       statement.indexOf('UPDATE execution_order_status_transitions'),
@@ -183,5 +186,39 @@ describe('AnonymizeExecutionOrderTransitionRetention134', () => {
     const all = queries.join(' ');
     expect(all).not.toMatch(/cron|pg_cron|schedule/i);
     expect(all).not.toContain('shared');
+  });
+
+  it('up emite DROP FUNCTION antes del CREATE: cambiar el retorno (5→6 columnas) con OR REPLACE falla con 42P13', async () => {
+    const queries = await captureSql((queryRunner) =>
+      new AnonymizeExecutionOrderTransitionRetention1340000000000().up(queryRunner),
+    );
+
+    const dropIndex = queries.findIndex((sql) =>
+      normalize(sql).includes(
+        'DROP FUNCTION IF EXISTS purge_execution_order_retention_batch(INTEGER)',
+      ),
+    );
+    const createIndex = queries.findIndex((sql) => sql.includes('CREATE OR REPLACE FUNCTION'));
+    expect(dropIndex).toBeGreaterThanOrEqual(0);
+    expect(createIndex).toBeGreaterThanOrEqual(0);
+    expect(dropIndex).toBeLessThan(createIndex);
+  });
+
+  it('down emite DROP FUNCTION antes de restaurar la 101: volver (6→5 columnas) también cambia el retorno', async () => {
+    const queries = await captureSql(
+      (queryRunner) =>
+        new AnonymizeExecutionOrderTransitionRetention1340000000000().down(queryRunner),
+      0,
+    );
+
+    const dropIndex = queries.findIndex((sql) =>
+      normalize(sql).includes(
+        'DROP FUNCTION IF EXISTS purge_execution_order_retention_batch(INTEGER)',
+      ),
+    );
+    const createIndex = queries.findIndex((sql) => sql.includes('CREATE OR REPLACE FUNCTION'));
+    expect(dropIndex).toBeGreaterThanOrEqual(0);
+    expect(createIndex).toBeGreaterThanOrEqual(0);
+    expect(dropIndex).toBeLessThan(createIndex);
   });
 });

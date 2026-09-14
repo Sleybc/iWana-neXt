@@ -172,6 +172,14 @@ export class AnonymizeExecutionOrderTransitionRetention1340000000000 implements 
           AND changed_by <> '${TRANSITION_RETENTION_ANONYMIZED_SENTINEL}'::uuid
     `);
 
+    // PostgreSQL (42P13) prohíbe cambiar el tipo de retorno con
+    // CREATE OR REPLACE: añadir la 6ª columna exige DROP previo.
+    // Patrón ya usado en la 095. Transaccional: si el CREATE falla,
+    // todo revierte y el schema conserva la función de la 101.
+    await queryRunner.query(`
+      DROP FUNCTION IF EXISTS purge_execution_order_retention_batch(INTEGER)
+    `);
+
     await queryRunner.query(`
       CREATE OR REPLACE FUNCTION purge_execution_order_retention_batch(batch_size INTEGER DEFAULT 500)
        RETURNS TABLE (
@@ -300,11 +308,11 @@ export class AnonymizeExecutionOrderTransitionRetention1340000000000 implements 
            ORDER BY t.changed_at, t.id
            LIMIT batch_size
          )
-         UPDATE execution_order_status_transitions target
-         SET changed_by = '${TRANSITION_RETENTION_ANONYMIZED_SENTINEL}'::uuid,
-             reason = NULL
-         USING victims
-         WHERE target.id = victims.id;
+          UPDATE execution_order_status_transitions target
+          SET changed_by = '${TRANSITION_RETENTION_ANONYMIZED_SENTINEL}'::uuid,
+              reason = NULL
+          FROM victims
+          WHERE target.id = victims.id;
          GET DIAGNOSTICS deleted_count = ROW_COUNT;
          transitions_anonymized := deleted_count;
 
@@ -334,6 +342,11 @@ export class AnonymizeExecutionOrderTransitionRetention1340000000000 implements 
 
     // Restaura el literal exacto de la 101 (los datos anonimizados NO se
     // recuperan: la anonimización es irreversible por diseño, CA-05).
+    // DROP previo por el mismo 42P13 del up(): volver de 6 a 5 columnas
+    // también cambia el tipo de retorno.
+    await queryRunner.query(
+      `DROP FUNCTION IF EXISTS purge_execution_order_retention_batch(INTEGER)`,
+    );
     await queryRunner.query(PRE_134_PURGE_FUNCTION_SQL);
     await queryRunner.query(
       `DROP INDEX IF EXISTS idx_execution_order_status_transitions_retention`,
