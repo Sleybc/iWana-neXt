@@ -7,7 +7,7 @@ import { Observable, tap } from 'rxjs';
  * emitida por `ExecutionOrdersController`.
  *
  * Fuente normativa: `packages/shared/src/contracts/operations/execution-orders.ts`
- * v1.1 (cerrado — este archivo la duplica como constante local, no la redefine:
+ * v1.3 (cerrado — este archivo la duplica como constante local, no la redefine:
  * si el contrato se versiona, esta constante se actualiza al mismo tiempo para
  * invalidar toda caché HTTP existente).
  *
@@ -16,7 +16,7 @@ import { Observable, tap } from 'rxjs';
  * cambiado de versión (MOD11 hallazgo de campo 2026-09-14). La concurrencia
  * optimista sigue usando `If-Match` con el número de versión, sin cambios.
  */
-export const EXECUTION_ORDER_CONTRACT_VERSION = '1.1';
+export const EXECUTION_ORDER_CONTRACT_VERSION = '1.3';
 
 /**
  * Compone el ETag de una representación de OT: `"<contrato>-<versión>"`.

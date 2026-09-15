@@ -112,7 +112,10 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
   });
 
   it('la versión del contrato sale de la constante declarada, no de un literal', () => {
-    expect(EXECUTION_ORDER_CONTRACT_VERSION).toBe('1.1');
+    // MOD11 E2: el contrato shared pasa a v1.3 (schedule nulable). La constante
+    // sigue la regla de su propio comentario: versionar el contrato invalida
+    // toda caché HTTP existente.
+    expect(EXECUTION_ORDER_CONTRACT_VERSION).toBe('1.3');
     expect(buildExecutionOrderETag(7)).toBe(`"${EXECUTION_ORDER_CONTRACT_VERSION}-7"`);
   });
 
@@ -123,7 +126,7 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
       version: 4,
       status: ExecutionOrderStatus.ASSIGNED,
     });
-    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.1-4"');
+    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.3-4"');
   });
 
   it('el interceptor emite el ETag ligado a la representación en la entidad de un comando', async () => {
@@ -133,7 +136,7 @@ describe('ETag de la OT identifica la representación (paso 5)', () => {
       version: 5,
       status: ExecutionOrderStatus.IN_PROGRESS,
     });
-    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.1-5"');
+    expect(setHeader).toHaveBeenCalledWith('ETag', '"1.3-5"');
   });
 
   it('las vistas de plantillas conservan el ETag heredado (otro dominio de representación)', async () => {
@@ -253,7 +256,7 @@ describe('If-Match mal formado da error de formato, no conflicto (paso 7)', () =
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
   }
 
-  it.each([['"1.1-7"'], ['W/"1.1-7"'], ['1.1-7']])(
+  it.each([['"1.3-7"'], ['W/"1.3-7"'], ['1.3-7']])(
     'el ETag completo %s como If-Match ⇒ 400 VALIDATION_ERROR',
     async (ifMatch) => {
       const service = new ExecutionOrdersService({} as DataSource);

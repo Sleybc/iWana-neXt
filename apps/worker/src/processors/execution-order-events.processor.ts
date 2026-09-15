@@ -188,6 +188,20 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           return Promise.resolve();
         },
         ExecutionOrderClosedV1: (e) => this.applyExecutionOrderClosed(client, tenantId, e),
+        // MOD11 T2 (CA-13): cancelación y anulación son hechos de dominio
+        // cuyos efectos ya aplicó sincrónicamente la transacción emisora
+        // (la agenda actualizó evento/solicitud; la anulación no proyecta
+        // nada porque la OT no debió existir). El handler acusa recibo para
+        // que el hecho durable no envenene la cola; no propaga estado (T1
+        // sigue siendo dueño de la propagación agenda → OT).
+        ExecutionOrderCancelledV1: (event) => {
+          this.assertPayload(event, true);
+          return Promise.resolve();
+        },
+        ExecutionOrderAnnulledV1: (event) => {
+          this.assertPayload(event, true);
+          return Promise.resolve();
+        },
         ExecutionOrderFollowUpRequiredV1: (e) =>
           this.applyExecutionOrderFollowUp(client, tenantId, e),
         InventoryMovementConfirmedV1: (e) =>

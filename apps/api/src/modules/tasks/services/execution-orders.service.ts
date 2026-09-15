@@ -32,8 +32,10 @@ import {
   InventoryDisposition,
   TaskStatus,
   WfmWorkType,
+  WorkOrderSourceContext,
   UserRole,
   OperationalEventTypeV1,
+  type DispatchExecutionOrderReceipt,
   type ExecutionOrderAllowedAction,
   type ExecutionOrderCompletionView,
   type ExecutionOrderRequirementStatus,
@@ -51,6 +53,7 @@ import { applySort, buildPageMeta, clampPage } from '../../../common/pagination'
 import {
   CloseExecutionOrderInput,
   CloseExecutionOrderSchema,
+  DispatchExecutionOrderInput,
   ListExecutionOrdersQueryInput,
   ListExecutionOrdersQuerySchema,
   RegisterExecutionOrderItemUsageInput,
@@ -90,6 +93,30 @@ const EXECUTION_ORDER_UNIQUE_CONSTRAINTS = new Set([
   'uq_execution_orders_tenant_schedule_event',
 ]);
 /**
+ * MOD11 E1 (ADR-091 §D2 / ADR-076 §D1): la unicidad activa por eje de origen
+ * vive en `uq_execution_orders_active_origin_unique` (migración 135), réplica
+ * del patrón `idx_visit_requests_active_origin_unique` (035). Se mantiene
+ * FUERA de `EXECUTION_ORDER_UNIQUE_CONSTRAINTS` a propósito: una violación de
+ * este índice nunca es una colisión de consecutivo y jamás debe entrar al
+ * reintento de número de `createFromScheduling` — es un 409 de trabajo
+ * duplicado con su propio camino (`isExecutionOrderOriginUniqueViolation`).
+ */
+const EXECUTION_ORDER_ACTIVE_ORIGIN_UNIQUE = 'uq_execution_orders_active_origin_unique';
+
+/**
+ * MOD11 E1: estados que la guarda de origen considera terminales. Es el mismo
+ * conjunto del predicado del índice parcial de la migración 135: una OT en
+ * cualquiera de ellos libera su tupla de origen para trabajo futuro
+ * (reinstalación tras cancelar/cerrar, ADR-076 regla 9). BLOCKED es trabajo
+ * vivo —se puede desbloquear— y sigue deduplicando.
+ */
+const TERMINAL_ORIGIN_STATUSES = new Set([
+  ExecutionOrderStatus.CANCELLED,
+  ExecutionOrderStatus.COMPLETED,
+  ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
+  ExecutionOrderStatus.NOT_EXECUTED,
+]);
+/**
  * Roles con alcance restringido en el listado de OT (réplica de
  * `RESTRICTED_ROLES` de `TasksService.list()`).
  */
@@ -111,6 +138,10 @@ const REDRIVE_ALLOWED_EVENT_TYPES = new Set<OperationalEventTypeV1>([
   'ExecutionOrderBlockedV1',
   'InventoryConsumptionRequestedV1',
   'ExecutionOrderClosedV1',
+  // MOD11 T2: cancelación y anulación son de la misma familia que el cierre
+  // (hechos terminales de MOD11 con idempotencia por inbox del consumidor).
+  'ExecutionOrderCancelledV1',
+  'ExecutionOrderAnnulledV1',
   'ExecutionOrderFollowUpRequiredV1',
 ]);
 
@@ -193,9 +224,37 @@ function isExecutionOrderUniqueViolation(error: unknown): boolean {
   );
 }
 
+/**
+ * MOD11 E1: detecta la violación del índice único parcial de origen
+ * (`uq_execution_orders_active_origin_unique`, migración 135) en cualquiera
+ * de las dos formas en que TypeORM la expone —`error.code/constraint` o
+ * `error.driverError.code/constraint`—, igual que `createVisitRequest` lo
+ * hace con `idx_visit_requests_active_origin_unique`.
+ */
+function isExecutionOrderOriginUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as { code?: string; constraint?: string; driverError?: unknown };
+  const driverError = candidate.driverError as { code?: string; constraint?: string } | undefined;
+
+  return (
+    (candidate.code === '23505' || driverError?.code === '23505') &&
+    (candidate.constraint === EXECUTION_ORDER_ACTIVE_ORIGIN_UNIQUE ||
+      driverError?.constraint === EXECUTION_ORDER_ACTIVE_ORIGIN_UNIQUE)
+  );
+}
+
 export interface CreateExecutionOrderFromSchedulingInput {
   visitRequestId?: string | null;
-  scheduleEventId: string;
+  /**
+   * MOD11 E2: el vínculo de agenda deja de ser obligatorio en el input del
+   * puerto. El camino de agenda sigue pasándolo siempre (comportamiento
+   * intacto, incluida la idempotencia por evento); el despacho pasa nulo y la
+   * deduplicación vive solo en la guarda de origen.
+   */
+  scheduleEventId?: string | null;
   organizationSiteId?: string | null;
   assignedTechnicianId?: string | null;
   assignedCrewId?: string | null;
@@ -211,8 +270,8 @@ export interface CreateExecutionOrderFromSchedulingInput {
   workType: WfmWorkType;
   workSummary: string;
   workInstructions?: string | null;
-  plannedWindowStartAt: string;
-  plannedWindowEndAt: string;
+  plannedWindowStartAt?: string | null;
+  plannedWindowEndAt?: string | null;
 }
 
 @Injectable()
@@ -578,6 +637,12 @@ export class ExecutionOrdersService {
         );
       }
 
+      // MOD11 T2 (ADR-090 §D3): la OT anulada sale de la bandeja operativa
+      // para todos los roles y permanece consultable por id. No es scoping
+      // del pool reclamable (que ya la excluía por estado): es la salida
+      // de bandeja de un registro que no debió existir.
+      qb.andWhere('order.is_annulled = :annulledExcluded', { annulledExcluded: false });
+
       if (validated.status) {
         qb.andWhere('order.status = :status', { status: validated.status });
       }
@@ -691,6 +756,17 @@ export class ExecutionOrdersService {
           this.createFromSchedulingWithManager(qr.manager, tenantId, input, actor),
         );
       } catch (error) {
+        // MOD11 E1: una violación del índice de origen que escape hasta aquí
+        // (escritura directa en base evadiendo la guarda de servicio) nunca es
+        // colisión de consecutivo: se traduce a 409 de trabajo duplicado y no
+        // entra al reintento de número. El ConflictException de la guarda
+        // interna pasa intacto (no es QueryFailedError).
+        if (isExecutionOrderOriginUniqueViolation(error)) {
+          throw new ConflictException({
+            error: 'DUPLICATE_ACTIVE_WORK',
+            message: 'Ya existe una OT activa para el mismo origen y tipo de trabajo.',
+          });
+        }
         // Una violación única deja la transacción abortada en PostgreSQL. El
         // reintento vuelve a entrar por runInTenantSchema para obtener un
         // QueryRunner y un search_path nuevos.
@@ -715,6 +791,126 @@ export class ExecutionOrdersService {
     });
   }
 
+  /**
+   * MOD11 E2 — puerta de despacho (ADR-091 §D1, spec §3.1/§3.6.1/§3.8).
+   *
+   * La OT nace de origen + tipo de trabajo + sitio, sin cita ni técnico, en
+   * `CREATED`. Delega en `createFromSchedulingWithManager` con evento y
+   * ventana nulos: despacho y agenda comparten núcleo, guarda de unicidad y
+   * orden de locks (número → origen). No crea `ScheduleEvent` ni reserva
+   * capacidad —el chequeo de conflicto de MOD09 corre en E3, sin excepción—.
+   *
+   * Defensa en el boundary HTTP (`DispatchExecutionOrderSchema`, strict):
+   * ventana, evento y responsable no existen en el input del despacho, así
+   * que el despacho no puede usarse como agenda por otra puerta (riesgo R1).
+   *
+   * Decisiones §3.8 (ver informe E2):
+   * - `PROVISIONING` se retira: sin camino, se rechaza con
+   *   `ORIGIN_WITHOUT_PATH`. El valor sigue en el enum por compatibilidad
+   *   (sin DDL en E2); su baja del enum y de la UI es deuda de producto.
+   * - Salto `BILLING`/`SYSTEM`→`TASKS`: se acepta la pérdida a un salto. La
+   *   trazabilidad vive en `taskId` (= `originRefId` cuando el origen es
+   *   `TASKS`) hacia la tarea, que conserva su propio `originContext` de
+   *   primer nivel. Extender el enum de origen habría exigido DDL y reabierto
+   *   ADR-076 sin necesidad operativa: la unidad de deduplicación del campo
+   *   es la tarea, no el documento aguas arriba.
+   *
+   * MOD11 H1 — alcance de supervisión (spec §3.6.1, ADR-091 §D6 c.3): el
+   * despacho valida con `assertSupervisionScope` que el actor supervisa la
+   * sede declarada, con el mismo mecanismo fail-closed (404) de los otros
+   * comandos de coordinación. La comprobación corre ANTES de delegar en el
+   * núcleo: un rechazo nunca inserta, así que el origen nunca queda quemado
+   * (el índice de E1 no lleva sede y un inserto denegado bloquearía el
+   * despacho legítimo con `DUPLICATE_ACTIVE_WORK`).
+   */
+  async dispatchFromCoordination(
+    input: DispatchExecutionOrderInput,
+    actor: JwtPayload,
+  ): Promise<DispatchExecutionOrderReceipt> {
+    // Cinturón además del schema: el servicio nunca despacha un origen sin
+    // camino aunque el boundary se eluda en llamadas internas. El cast cubre
+    // al llamante interno que eluda el schema con un contexto fuera de vía.
+    const declaredContext = input.originContext as WorkOrderSourceContext;
+    if (declaredContext === WorkOrderSourceContext.PROVISIONING) {
+      throw new BadRequestException({
+        code: 'ORIGIN_WITHOUT_PATH',
+        message:
+          'PROVISIONING no tiene camino de despacho: retire la etiqueta o abra consulta de producto (MOD11-ORIGEN-OT §3.8).',
+      });
+    }
+    if (input.originContext !== WorkOrderSourceContext.MANUAL) {
+      const ref = input.originRefId?.trim() ?? '';
+      if (!ref) {
+        throw new BadRequestException({
+          code: 'ORIGIN_REF_REQUIRED',
+          message: `El origen ${input.originContext} exige originRefId: sin referencia la trazabilidad se pierde.`,
+        });
+      }
+    }
+
+    // MOD11 H1: la sede la aporta el cliente y la ruta no lleva `:id`, así
+    // que el guard no comprueba nada (retorna por `@ExecutionOrderTenantScoped`).
+    // El servicio valida el alcance aquí, antes de insertar: sin alcance (o
+    // sin puerto que lo acredite) se rechaza con el mismo 404 fail-closed de
+    // `assign`/`follow-ups`/reconciliación —uniformidad y mínima información
+    // sobre la topología de alcances—. La OT aún no existe, así que la
+    // comprobación se hace sobre la sede declarada, no sobre una fila.
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.assertSupervisionScope(
+        qr.manager,
+        tenantId,
+        { organizationSiteId: input.organizationSiteId } as ExecutionOrder,
+        actor,
+      );
+    });
+
+    const normalizedRef = input.originRefId?.trim() ? input.originRefId.trim() : null;
+    const order = await this.createFromScheduling(
+      {
+        visitRequestId: null,
+        scheduleEventId: null,
+        organizationSiteId: input.organizationSiteId,
+        assignedTechnicianId: null,
+        assignedCrewId: null,
+        originContext: input.originContext,
+        originRefId: normalizedRef,
+        // Precedente del camino por agenda (visit-requests/schedule-events):
+        // con origen TASKS, `task_id` espeja la referencia de la tarea.
+        taskId:
+          input.originContext === WorkOrderSourceContext.TASKS
+            ? normalizedRef
+            : (input.taskId?.trim() ?? null),
+        ticketId: input.ticketId?.trim() ?? null,
+        subscriberId: input.subscriberId ?? null,
+        customerDisplayLabel: input.customerDisplayLabel.trim(),
+        serviceAddress: input.serviceAddress?.trim() ?? null,
+        municipality: input.municipality?.trim() ?? null,
+        sector: input.sector?.trim() ?? null,
+        workType: input.workType,
+        workSummary: input.workSummary.trim(),
+        workInstructions: input.workInstructions?.trim() ?? null,
+        plannedWindowStartAt: null,
+        plannedWindowEndAt: null,
+      },
+      actor,
+    );
+
+    const toIso = (value: Date | string): string =>
+      value instanceof Date ? value.toISOString() : String(value);
+    return {
+      id: order.id,
+      number: order.executionOrderNumber,
+      status: order.status,
+      originContext: order.originContext as WorkOrderSourceContext,
+      originRefId: order.originRefId ?? null,
+      workType: order.workType,
+      organizationSiteId: order.organizationSiteId as string,
+      createdAt: toIso(order.createdAt),
+      updatedAt: toIso(order.updatedAt),
+    };
+  }
+
   async createFromSchedulingWithManager(
     manager: EntityManager,
     tenantId: string,
@@ -726,15 +922,59 @@ export class ExecutionOrdersService {
     // el mismo consecutivo o por la unicidad de la visita.
     await this.acquireExecutionOrderNumberLock(manager, tenantId);
 
-    const existing = await manager.findOne(ExecutionOrder, {
-      where: {
-        tenantId,
-        scheduleEventId: input.scheduleEventId,
-      },
-    });
+    // MOD11 E1 (ADR-091 §D2): guarda única de unicidad por eje de origen
+    // (tenant_id, origin_context, origin_ref, work_type), réplica de lo que
+    // `createVisitRequest` hace: advisory lock con clave derivada de la tupla
+    // al inicio, `origin_ref` normalizado con trim antes de comparar y de
+    // persistir. `origin_ref IS NULL` (o vacío tras trim) queda fuera de
+    // deduplicación por ADR-076 §D4, sin ampliar la excepción. Ambos caminos
+    // de nacimiento —agenda (aquí) y despacho (E2)— pasan por esta guarda vía
+    // `findActiveExecutionOrderByOrigin`; E2 la reutiliza sin duplicarla.
+    // Orden de locks fijo (número → origen): el despacho futuro debe tomarlos
+    // en el mismo orden para no invertir la jerarquía.
+    const normalizedOriginRefId =
+      typeof input.originRefId === 'string' && input.originRefId.trim().length > 0
+        ? input.originRefId.trim()
+        : null;
 
-    if (existing) {
-      return existing;
+    if (normalizedOriginRefId) {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `execution-order-origin:${tenantId}|${input.originContext}|${normalizedOriginRefId}|${input.workType}`,
+      ]);
+
+      const duplicateOrigin = await this.findActiveExecutionOrderByOrigin(
+        manager,
+        tenantId,
+        input.originContext,
+        normalizedOriginRefId,
+        input.workType,
+      );
+
+      if (duplicateOrigin) {
+        throw new ConflictException({
+          error: 'DUPLICATE_ACTIVE_WORK',
+          originRef: normalizedOriginRefId,
+          activeExecutionOrderId: duplicateOrigin.id,
+          executionOrderNumber: duplicateOrigin.executionOrderNumber,
+        });
+      }
+    }
+
+    // MOD11 E2: sin evento no hay idempotencia por evento que evaluar. Cada
+    // despacho con `origin_ref` pasa por la guarda de origen de arriba; con
+    // `origin_ref` nulo (MANUAL sin referencia, ADR-076 §D4) cada despacho es
+    // una OT nueva, igual que cada evento de agenda era una OT nueva.
+    if (input.scheduleEventId) {
+      const existing = await manager.findOne(ExecutionOrder, {
+        where: {
+          tenantId,
+          scheduleEventId: input.scheduleEventId,
+        },
+      });
+
+      if (existing) {
+        return existing;
+      }
     }
 
     // Look up active template version for the work type
@@ -771,12 +1011,15 @@ export class ExecutionOrdersService {
       tenantId,
       executionOrderNumber,
       visitRequestId: input.visitRequestId ?? null,
-      scheduleEventId: input.scheduleEventId,
+      scheduleEventId: input.scheduleEventId ?? null,
       organizationSiteId: input.organizationSiteId ?? null,
       assignedTechnicianId: input.assignedTechnicianId ?? null,
       assignedCrewId: input.assignedCrewId ?? null,
       originContext: input.originContext,
-      originRefId: input.originRefId ?? null,
+      // MOD11 E1: persistir el ref normalizado (trim), igual que la guarda
+      // compara. Sin esto, 'ABC ' y 'ABC' serían la misma unidad con filas
+      // distintas bajo el índice.
+      originRefId: normalizedOriginRefId,
       taskId: input.taskId ?? null,
       ticketId: input.ticketId ?? null,
       subscriberId: input.subscriberId ?? null,
@@ -787,8 +1030,10 @@ export class ExecutionOrdersService {
       workType: input.workType,
       workSummary: input.workSummary,
       workInstructions: input.workInstructions ?? null,
-      plannedWindowStartAt: new Date(input.plannedWindowStartAt),
-      plannedWindowEndAt: new Date(input.plannedWindowEndAt),
+      plannedWindowStartAt: input.plannedWindowStartAt
+        ? new Date(input.plannedWindowStartAt)
+        : null,
+      plannedWindowEndAt: input.plannedWindowEndAt ? new Date(input.plannedWindowEndAt) : null,
       status:
         input.assignedTechnicianId || input.assignedCrewId
           ? ExecutionOrderStatus.ASSIGNED
@@ -808,7 +1053,56 @@ export class ExecutionOrdersService {
       updatedByUserId: actor.sub,
     });
 
-    return manager.save(ExecutionOrder, entity);
+    try {
+      return await manager.save(ExecutionOrder, entity);
+    } catch (error) {
+      // Safety net: el índice único de BD detectó una carrera residual (o una
+      // escritura directa que evadió la guarda). Con el advisory lock esto no
+      // debería ocurrir; se traduce a 409 igual que `createVisitRequest` hace
+      // con su constraint. Sin re-lookup aquí: la violación deja la
+      // transacción abortada en PostgreSQL y el SELECT fallaría.
+      if (isExecutionOrderOriginUniqueViolation(error)) {
+        throw new ConflictException({
+          error: 'DUPLICATE_ACTIVE_WORK',
+          originRef: normalizedOriginRefId,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * MOD11 E1: busca la OT activa para la misma unidad de origen. Guarda común
+   * a los dos caminos de nacimiento (agenda hoy, despacho en E2): E2 la llama
+   * antes de crear, sin reimplementar el predicado.
+   *
+   * Activo = estado no terminal (mismo conjunto que el índice parcial de la
+   * migración 135). `origin_ref` nulo o vacío tras trim no es comparable y
+   * retorna null —fuera de deduplicación, ADR-076 §D4—.
+   */
+  private async findActiveExecutionOrderByOrigin(
+    manager: EntityManager,
+    tenantId: string,
+    originContext: string,
+    originRefId: string | null,
+    workType: WfmWorkType,
+  ): Promise<ExecutionOrder | null> {
+    const normalizedRef = originRefId?.trim();
+    if (!normalizedRef) {
+      return null;
+    }
+
+    return manager
+      .createQueryBuilder(ExecutionOrder, 'eo')
+      .where('eo.tenant_id = :tenantId', { tenantId })
+      .andWhere('eo.origin_context = :originContext', { originContext })
+      .andWhere('TRIM(eo.origin_ref_id) = :originRef', { originRef: normalizedRef })
+      .andWhere('eo.work_type = :workType', { workType })
+      .andWhere('eo.status NOT IN (:...activeOriginTerminalStatuses)', {
+        activeOriginTerminalStatuses: Array.from(TERMINAL_ORIGIN_STATUSES),
+      })
+      .orderBy('eo.created_at', 'DESC')
+      .getOne();
   }
 
   /**
@@ -844,6 +1138,10 @@ export class ExecutionOrdersService {
       });
     }
 
+    // MOD11 T2 (CA-12): la cancelación no reescribe un cierre. Sin esta
+    // guarda, una OT COMPLETED podía pasar a CANCELLED pisando su resultado.
+    this.assertMutable(order);
+
     const fromStatus = order.status;
     const now = new Date();
     order.status = ExecutionOrderStatus.CANCELLED;
@@ -864,6 +1162,32 @@ export class ExecutionOrdersService {
       actorUserId: actor.sub,
       reason,
     });
+
+    // MOD11 T2 (CA-13): la cancelación emite hecho de dominio. Este camino
+    // corre dentro de la transacción de WFM sin contexto de comando, así que
+    // el outbox se inserta directo (mismos campos que `appendOutbox`): la
+    // alternativa sería no emitir, que es el defecto que se cierra.
+    await manager.save(
+      ExecutionOrderOutboxEvent,
+      manager.create(ExecutionOrderOutboxEvent, {
+        eventId: randomUUID(),
+        tenantId,
+        aggregateId: order.id,
+        aggregateVersion: saved.version,
+        eventType: 'ExecutionOrderCancelledV1',
+        payload: {
+          executionOrderId: order.id,
+          reason: reason.slice(0, 255),
+        },
+        correlationId: randomUUID(),
+        attemptCount: 0,
+        occurredAt: now,
+        availableAt: now,
+        leaseUntil: null,
+        publishedAt: null,
+        lastError: null,
+      }),
+    );
 
     this.logger.log(
       `OT ${saved.id} cancelada desde agenda. Evento: ${scheduleEventId}. Razón: ${reason.slice(0, 100)}${reason.length > 100 ? '…' : ''}. Actor: ${actor.sub}`,
@@ -1160,6 +1484,21 @@ export class ExecutionOrdersService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = CloseExecutionOrderSchema.parse(input);
 
+    // MOD11 T2 (CA-11): `close` con `result = CANCELLED` deja de ser vía de
+    // cancelación. Era puerta trasera abierta al campo que además dejaba la
+    // tarea vinculada sin transicionar (`mapCloseResultToTaskStatus` devuelve
+    // null para CANCELLED). Vías honestas: anulación por error (supervisión +
+    // motivo, `POST :id/annul`) o cancelación desde la agenda. Falla antes de
+    // abrir transacción o recibo: no hay nada que idempotar en un camino
+    // que ya no existe.
+    if (validated.result === ExecutionOrderResult.CANCELLED) {
+      throw new UnprocessableEntityException({
+        code: 'CLOSE_RESULT_CANCELLED_REMOVED',
+        message:
+          'Cerrar con resultado CANCELLED ya no cancela la OT. Para un error de creación use la anulación por error (supervisión + motivo); para deshacer trabajo comprometido, cancele desde la agenda.',
+      });
+    }
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const order = await this.requireOrder(qr.manager, tenantId, id);
       const receipt = await this.beginCommand(
@@ -1390,7 +1729,12 @@ export class ExecutionOrdersService {
       order.status = ExecutionOrderStatus.ASSIGNED;
       order.version = expectedVersion + 1;
       order.updatedByUserId = actor.sub;
-      const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
+      // T0 (CA-01): la asignación se declara como campo persistible. Sin esta
+      // declaración el UPDATE escribía solo el núcleo y la base conservaba el
+      // técnico anterior mientras la respuesta mostraba el nuevo.
+      const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion, {
+        assignment: true,
+      });
       // MOD11 T1 B1 (CA-01): la asignación es una transición y deja asiento
       // en la misma transacción que el cambio.
       await this.recordStatusTransition(qr.manager, tenantId, {
@@ -1412,6 +1756,97 @@ export class ExecutionOrdersService {
         'VisitResourceChangedV1',
         { resourceType: 'TECHNICIAN', resourceId: input.assigneeId },
       );
+      return saved;
+    });
+  }
+
+  /**
+   * MOD11 T2 — anulación por error (ADR-090 §D3, CA-09/CA-10).
+   *
+   * Mecanismo (ver informe T2): `status = CANCELLED` + `is_annulled = true`
+   * (migración 136), sin estado terminal nuevo. De ahí sale todo lo demás
+   * sin tocar ninguna lista de terminalidad: la anulada libera su origen
+   * (135, por estado), entra en la purga de retención (134, por estado),
+   * sale del pool y de la bandeja, y ningún comando de ejecución la toca
+   * (`assertMutable` ya rechaza `CANCELLED`).
+   *
+   * - Exige motivo no vacío y rol de supervisión (el guard lo impone por
+   *   `@Roles` + `SUPERVISE`; aquí se revalida el alcance como en
+   *   `createFollowUp`, para que el servicio sea seguro ante llamantes
+   *   internos).
+   * - Alcanza a la OT despachada sin cita: no exige evento ni asignación.
+   * - No destruye rastro (D5): la fila permanece, con asiento de transición
+   *   y hecho de dominio `ExecutionOrderAnnulledV1`.
+   * - `result` queda intacto (normalmente null): la anulación no es un
+   *   desenlace de ejecución y no debe alimentar lecturas de resultado.
+   */
+  async annul(
+    id: string,
+    input: { reason: string },
+    actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
+  ): Promise<ExecutionOrder> {
+    const motive = typeof input?.reason === 'string' ? input.reason.trim() : '';
+    if (!motive) {
+      throw new BadRequestException({
+        code: 'ANNULMENT_REASON_REQUIRED',
+        message: 'La anulación por error exige el motivo.',
+      });
+    }
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, id);
+      await this.assertSupervisionScope(qr.manager, tenantId, order, actor);
+      const receipt = await this.beginCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.annul',
+        { executionOrderId: id, input: { reason: motive } },
+        context,
+      );
+      if (receipt?.replay) return order;
+      this.assertVersion(order, context?.ifMatch);
+      // Terminal (incluida una OT ya cancelada o ya anulada) no se anula:
+      // reescribir un cierre es el defecto CA-12 en otra puerta.
+      this.assertMutable(order);
+      const expectedVersion = order.version ?? 1;
+      const fromStatus = order.status;
+      const now = new Date();
+      order.status = ExecutionOrderStatus.CANCELLED;
+      order.isAnnulled = true;
+      order.closedAt = now;
+      order.closeNotes = motive;
+      order.version = expectedVersion + 1;
+      order.updatedByUserId = actor.sub;
+      // T0 (doctrina opt-in): la anulación declara su columna; ningún otro
+      // comando la persiste.
+      const saved = await this.persistOrderOptimistically(qr.manager, order, expectedVersion, {
+        annulment: true,
+      });
+      // MOD11 T1 B1 (CA-01): la anulación es una transición y deja asiento
+      // en la misma transacción que el cambio (D5: sin excepción al rastro).
+      await this.recordStatusTransition(qr.manager, tenantId, {
+        executionOrderId: order.id,
+        fromStatus,
+        toStatus: ExecutionOrderStatus.CANCELLED,
+        changedAt: now,
+        actorUserId: actor.sub,
+        reason: motive,
+      });
+      await this.finishCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.annul',
+        id,
+        saved.version,
+        context,
+        receipt,
+        'ExecutionOrderAnnulledV1',
+        { reason: motive },
+      );
+      this.logger.log(`OT ${id} anulada por error. Motivo registrado. Actor: ${actor.sub}`);
       return saved;
     });
   }
@@ -2004,6 +2439,15 @@ export class ExecutionOrdersService {
           message: 'La OT solo admite seguimiento cuando está bloqueada o cerrada.',
         });
       }
+      // MOD11 T2: la OT anulada es inerte —no debió existir y no admite
+      // seguimiento— aunque su estado sea terminal. Sin esto, el supervisor
+      // podría abrir rastro nuevo sobre un registro muerto.
+      if (order.isAnnulled === true) {
+        throw new ConflictException({
+          code: 'FOLLOW_UP_NOT_ALLOWED',
+          message: 'La OT anulada por error no admite seguimiento.',
+        });
+      }
 
       const followUpId = randomUUID();
       const expectedVersion = order.version ?? 1;
@@ -2177,7 +2621,8 @@ export class ExecutionOrdersService {
 
     // ── Estados terminales: solo supervisión puede crear seguimiento ────
     if (isTerminal) {
-      if (isSupervisor) {
+      // MOD11 T2: la anulada no ofrece ni seguimiento (ver `createFollowUp`).
+      if (isSupervisor && order.isAnnulled !== true) {
         actions.push('CREATE_FOLLOW_UP');
       }
       return actions;
@@ -2618,6 +3063,11 @@ export class ExecutionOrdersService {
     order: ExecutionOrder,
     assigneeLabels: Map<string, string>,
   ): ExecutionOrderListItem {
+    // MOD11 E2 (contrato shared v1.3): la fila tolera la OT sin cita. Sin
+    // vínculo de agenda se emite `eventId: null` y `window: null` y la fila se
+    // lista igual (200); la presentación «sin ventana» es de E4. La ventana
+    // solo se emite cuando ambos extremos existen: a medio vínculo (dato
+    // corrupto) se degrada a nulo antes que romper la consola entera.
     const toIso = (value: Date | string): string =>
       value instanceof Date ? value.toISOString() : String(value);
     const technicianId = order.assignedTechnicianId;
@@ -2629,11 +3079,14 @@ export class ExecutionOrdersService {
       ...(order.result ? { result: order.result } : {}),
       workType: order.workType,
       schedule: {
-        eventId: order.scheduleEventId,
-        window: {
-          startAt: toIso(order.plannedWindowStartAt),
-          endAt: toIso(order.plannedWindowEndAt),
-        },
+        eventId: order.scheduleEventId ?? null,
+        window:
+          order.plannedWindowStartAt != null && order.plannedWindowEndAt != null
+            ? {
+                startAt: toIso(order.plannedWindowStartAt),
+                endAt: toIso(order.plannedWindowEndAt),
+              }
+            : null,
       },
       ...(technicianId
         ? {
@@ -2651,6 +3104,10 @@ export class ExecutionOrdersService {
       ticketId: order.ticketId,
       taskId: order.taskId,
       visitRequestId: order.visitRequestId,
+      // MOD11 T2 (CA-09): el discriminador viaja en la fila para que ningún
+      // consumidor confunda anulación con cancelación. En la bandeja siempre
+      // es false (el WHERE excluye anuladas); en el detalle puede ser true.
+      annulled: order.isAnnulled ?? false,
       createdAt: toIso(order.createdAt),
       updatedAt: toIso(order.updatedAt),
     };
@@ -2998,11 +3455,22 @@ export class ExecutionOrdersService {
     return trimmed.slice(0, 255);
   }
 
-  /** UPDATE condicional para que dos cierres concurrentes no produzcan dos terminales. */
+  /**
+   * UPDATE condicional para que dos cierres concurrentes no produzcan dos terminales.
+   *
+   * T0 (CA-01/CA-03): el UPDATE escribe el núcleo que todo comando declara
+   * (estado, resultado, versión, instantes, notas y actor) y SOLO además los
+   * campos que el comando llamador declara explícitamente en `options`.
+   * Ampliar el `.set()` a «todos los campos» sin criterio haría que cualquier
+   * mutación accidental en memoria llegara a la base; el mecanismo opt-in por
+   * comando conserva la protección del conjunto acotado y hace visible en cada
+   * llamada qué persiste. `assignment: true` lo declara únicamente `assign()`.
+   */
   private async persistOrderOptimistically(
     manager: EntityManager,
     order: ExecutionOrder,
     expectedVersion: number,
+    options?: { assignment?: boolean; annulment?: boolean },
   ): Promise<ExecutionOrder> {
     if (typeof manager.createQueryBuilder !== 'function') {
       return manager.save(ExecutionOrder, order);
@@ -3021,6 +3489,21 @@ export class ExecutionOrdersService {
         closedAt: order.closedAt,
         closeNotes: order.closeNotes,
         updatedByUserId: order.updatedByUserId,
+        // Solo el comando que declara la asignación la persiste. Ningún otro
+        // comando muta estas columnas, así que su valor en memoria es siempre
+        // el ya persistido y este spread es neutro para ellos incluso si algún
+        // día lo incluyeran por error de llamada: la declaración vive en el
+        // llamador, no en el mecanismo.
+        ...(options?.assignment === true
+          ? {
+              assignedTechnicianId: order.assignedTechnicianId,
+              assignedCrewId: order.assignedCrewId,
+            }
+          : {}),
+        // MOD11 T2: `annulment: true` lo declara únicamente `annul()`. Misma
+        // doctrina que la asignación: la columna discriminadora no viaja en
+        // ningún otro UPDATE.
+        ...(options?.annulment === true ? { isAnnulled: order.isAnnulled } : {}),
       })
       .where('id = :id AND tenant_id = :tenantId AND version = :expectedVersion', {
         id: order.id,

@@ -113,9 +113,7 @@ export class ScheduleEventsService {
     ): number;
   };
   nonRealizationCausesService?: {
-    getById(
-      id: string,
-    ): Promise<{
+    getById(id: string): Promise<{
       category: NonRealizationCauseCategory;
       label: string;
       requiresEvidence: boolean;
@@ -712,12 +710,19 @@ export class ScheduleEventsService {
       const eoId = visitRequest.executionOrderId ?? event.executionOrderId;
       if (eoId) {
         const eoPort = this.assertExecutionOrderPort();
+        // MOD11 T2 (CA-14): el motivo lleva la causa de la taxonomía cuando
+        // existe —dato estructurado `[código] etiqueta`—, no solo el texto
+        // libre ni el literal fijo. El copy visible es de AI-PROD-UX; aquí
+        // viaja el dato que lo soporta.
+        const cancelReason = nonRealizationCause
+          ? `[${nonRealizationCause.code}] ${nonRealizationCause.label}`
+          : (validated.failureReason ?? 'Intento fallido — evento cerrado desde agenda');
         await eoPort.cancelFromSchedulingWithManager(
           qr.manager,
           tenantId,
           eoId,
           id,
-          validated.failureReason ?? 'Intento fallido — evento cerrado desde agenda',
+          cancelReason,
           actor,
         );
       }
@@ -928,14 +933,17 @@ export class ScheduleEventsService {
     const eoId = visitRequest.executionOrderId ?? event.executionOrderId;
     if (eoId) {
       const eoPort = this.assertExecutionOrderPort();
+      // MOD11 T2 (CA-14): la vía dice lo que hace —el motivo registra la
+      // causa reclasificada (`[código] etiqueta` de la taxonomía) y la
+      // decisión, en vez del literal fijo que ocultaba la reclasificación.
+      const decisionLabel =
+        decision === 'CLOSE_CASE' ? 'Cierre por decisión del coordinador' : 'Reprogramación';
       await eoPort.cancelFromSchedulingWithManager(
         manager,
         tenantId,
         eoId,
         event.id,
-        decision === 'CLOSE_CASE'
-          ? 'Cierre por decisión del coordinador tras visita no realizada'
-          : 'Reprogramación tras visita no realizada / vencida',
+        `${decisionLabel} tras visita no realizada / vencida — causa [${cause.code}] ${cause.label}`,
         actor,
       );
     }

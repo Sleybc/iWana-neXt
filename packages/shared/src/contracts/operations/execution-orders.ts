@@ -4,7 +4,7 @@ import {
   ExecutionOrderStatus,
 } from '../../enums/operations';
 import { InventoryDisposition } from '../../enums/inventory';
-import { WfmWorkType } from '../../enums/wfm';
+import { WfmWorkType, WorkOrderSourceContext } from '../../enums/wfm';
 import { ListMeta } from '../../dto/pagination.dto';
 import type { ExecutionOrderRequirementStatus } from './execution-orders-completion';
 
@@ -28,6 +28,16 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  *   `finalDisposition` (disposición final exigida al consumo). Un requisito que no
  *   la declara se comporta exactamente como en v1.1. Ningún campo existente cambia
  *   ni pasa a requerido.
+ * - v1.3 (2026-09-15, MOD11 E2, ADR-091 §D1/D5): `ExecutionOrderScheduleView`
+ *   admite OT sin cita —`eventId` y `window` pasan a nulables—. Una OT en
+ *   `CREATED` despachada sin ventana emite `eventId: null` y `window: null`;
+ *   ningún lector debe asumirlos presentes. Nace `DispatchExecutionOrderCommand`
+ *   / `DispatchExecutionOrderReceipt` (puerta de despacho, sin ventana).
+ * - v1.4 (2026-09-15, MOD11 T2, ADR-090 §D3): la anulación por error viaja
+ *   sobre `status = CANCELLED` + discriminador `annulled` (migración 136),
+ *   sin estado terminal nuevo. Nacen `ExecutionOrderCancelledV1` y
+ *   `ExecutionOrderAnnulledV1` (hechos de dominio; la cancelación ya no es
+ *   silenciosa). Ningún campo existente cambia ni pasa a requerido.
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -58,9 +68,51 @@ export interface ExecutionOrderTemplateReference {
 }
 
 export interface ExecutionOrderScheduleView {
-  eventId: string;
-  window: { startAt: string; endAt: string };
+  /**
+   * Vínculo de agenda, no identidad (ADR-091 §D1). Nulo en OT despachadas sin
+   * cita (MOD11 E2): la ventana llega después (E3). Los lectores deben tolerar
+   * el nulo y responder 200; E4 decide la presentación «sin ventana».
+   */
+  eventId: string | null;
+  /** Ventana planificada; nula hasta que la OT se agenda (E3). */
+  window: { startAt: string; endAt: string } | null;
   plannedResource?: { type: 'TECHNICIAN' | 'CREW'; id: string };
+}
+
+/**
+ * Puerta de despacho (MOD11 E2, ADR-091 §D1): la OT nace de la necesidad —
+ * origen explícito, tipo de trabajo y sitio obligatorio—, sin cita ni técnico.
+ * Sin `scheduleEventId`, sin ventana y sin responsable: esos llegan después
+ * (asignación supervisada, agenda E3). `originContext` es obligatorio y nunca
+ * hereda el default `MANUAL`; `PROVISIONING` no tiene camino y se rechaza.
+ */
+export interface DispatchExecutionOrderCommand {
+  originContext: WorkOrderSourceContext;
+  originRefId?: string | null;
+  workType: WfmWorkType;
+  organizationSiteId: string;
+  customerDisplayLabel: string;
+  serviceAddress?: string | null;
+  municipality?: string | null;
+  sector?: string | null;
+  workSummary: string;
+  workInstructions?: string | null;
+  ticketId?: string | null;
+  taskId?: string | null;
+  subscriberId?: string | null;
+}
+
+/** Recibo del despacho: la OT nace en `CREATED`, sin vínculo de agenda. */
+export interface DispatchExecutionOrderReceipt {
+  id: string;
+  number: string;
+  status: ExecutionOrderStatus;
+  originContext: WorkOrderSourceContext;
+  originRefId: string | null;
+  workType: WfmWorkType;
+  organizationSiteId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ExecutionOrderAssigneeView {
@@ -153,6 +205,13 @@ export interface ExecutionOrderDetail {
   number: string;
   version: number;
   status: ExecutionOrderStatus;
+  /**
+   * Anulación por error (ADR-090 §D3, migración 136): `status = CANCELLED`
+   * con `annulled = true` es un hecho distinto de la cancelación operativa.
+   * La anulada sale de la bandeja, permanece consultable y se excluye del
+   * cálculo de cancelación.
+   */
+  annulled: boolean;
   result?: ExecutionOrderResult;
   workType: WfmWorkType;
   template: ExecutionOrderTemplateReference | null;
@@ -383,6 +442,8 @@ export type OperationalEventTypeV1 =
   | 'ExecutionOrderBlockedV1'
   | 'InventoryConsumptionRequestedV1'
   | 'ExecutionOrderClosedV1'
+  | 'ExecutionOrderCancelledV1'
+  | 'ExecutionOrderAnnulledV1'
   | 'ExecutionOrderFollowUpRequiredV1'
   | 'InventoryMovementConfirmedV1'
   | 'InventoryMovementRejectedV1';
@@ -437,6 +498,23 @@ export interface ExecutionOrderClosedV1 extends EventPayloadBase {
   closedAt: string;
 }
 
+/**
+ * La cancelación deja constancia como hecho de dominio (MOD11 T2, CA-13).
+ * Antes era silenciosa: `cancelFromSchedulingWithManager` mutaba sin evento.
+ */
+export interface ExecutionOrderCancelledV1 extends EventPayloadBase {
+  reason: string;
+}
+
+/**
+ * La anulación por error es hecho distinto de la cancelación (ADR-090 §D3):
+ * la OT no debió existir. Viaja con su motivo; el discriminador vive en la
+ * fila (`is_annulled`, migración 136), no en el tipo de evento.
+ */
+export interface ExecutionOrderAnnulledV1 extends EventPayloadBase {
+  reason: string;
+}
+
 export interface ExecutionOrderFollowUpRequiredV1 extends EventPayloadBase {
   followUpId: string;
   reasonCode: string;
@@ -461,6 +539,8 @@ export type OperationalEventPayloadV1 =
   | ExecutionOrderBlockedV1
   | InventoryConsumptionRequestedV1
   | ExecutionOrderClosedV1
+  | ExecutionOrderCancelledV1
+  | ExecutionOrderAnnulledV1
   | ExecutionOrderFollowUpRequiredV1
   | InventoryMovementConfirmedV1
   | InventoryMovementRejectedV1;
@@ -474,6 +554,8 @@ interface OperationalEventPayloadByType {
   ExecutionOrderBlockedV1: ExecutionOrderBlockedV1;
   InventoryConsumptionRequestedV1: InventoryConsumptionRequestedV1;
   ExecutionOrderClosedV1: ExecutionOrderClosedV1;
+  ExecutionOrderCancelledV1: ExecutionOrderCancelledV1;
+  ExecutionOrderAnnulledV1: ExecutionOrderAnnulledV1;
   ExecutionOrderFollowUpRequiredV1: ExecutionOrderFollowUpRequiredV1;
   InventoryMovementConfirmedV1: InventoryMovementConfirmedV1;
   InventoryMovementRejectedV1: InventoryMovementRejectedV1;

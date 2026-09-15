@@ -254,6 +254,8 @@ describe('ExecutionOrdersService.list (MOD11 F1)', () => {
         id: '11111111-1111-4111-8111-111111111111',
         number: 'OTE-20260913-001',
         status: ExecutionOrderStatus.ASSIGNED,
+        // MOD11 T2 (contrato v1.4): el discriminador viaja en la fila.
+        annulled: false,
         result: ExecutionOrderResult.EXECUTED,
         workType: WfmWorkType.INSTALLATION,
         schedule: {

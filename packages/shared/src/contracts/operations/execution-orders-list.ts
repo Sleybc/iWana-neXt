@@ -29,13 +29,25 @@ export interface ExecutionOrderListItem {
   /** Número humano de la OT (columna de identificación y búsqueda). */
   number: string;
   status: ExecutionOrderStatus;
+  /**
+   * Anulación por error (ADR-090 §D3): las filas anuladas no se listan —la
+   * bandeja las excluye—; el campo existe para que ningún consumidor confunda
+   * una cancelación operativa con un error de creación si la recibe por otra
+   * vía (detalle por id).
+   */
+  annulled: boolean;
   /** Presente solo cuando la OT está cerrada. */
   result?: ExecutionOrderResult;
   workType: WfmWorkType;
-  /** Ventana planificada; base del orden por defecto de la bandeja. */
+  /**
+   * Ventana planificada; base del orden por defecto de la bandeja.
+   * Nulable desde MOD11 E2 (contrato v1.3): una OT despachada sin cita emite
+   * `eventId: null` y `window: null`. La fila se lista igual (200); E4 decide
+   * la presentación «sin ventana».
+   */
   schedule: {
-    eventId: string;
-    window: { startAt: string; endAt: string };
+    eventId: string | null;
+    window: { startAt: string; endAt: string } | null;
   };
   /** Responsable asignado; ausente cuando la OT está sin asignar. */
   assignee?: ExecutionOrderAssigneeView;

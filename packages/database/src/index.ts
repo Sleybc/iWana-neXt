@@ -46,6 +46,8 @@ export {
   verifyPaginationIndexes,
 } from './migrations/tenant/089_pagination_ordering_indexes';
 export { BACKFILL_TAX_RULE_APPLICATIONS_SQL } from './migrations/tenant/114_backfill_tax_rule_applications';
+export { ExecutionOrderOriginIdentity1350000000000 } from './migrations/tenant/135_execution_order_origin_identity';
+export { ExecutionOrderAnnulmentFlag1360000000000 } from './migrations/tenant/136_execution_order_annulment_flag';
 export {
   DESTRUCTIVE_DOWN_ENV_VAR,
   MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG,

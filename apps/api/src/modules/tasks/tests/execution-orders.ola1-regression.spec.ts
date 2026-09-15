@@ -556,7 +556,7 @@ describe('OLA1 regresión backend — caso 10: BOLA del listado (sin tocar el te
 describe('OLA1 regresión backend — caso 11: política de acceso sin ampliación', () => {
   const CONTROLLER_PATH = join(__dirname, '..', 'execution-orders.controller.ts');
 
-  /** Pares @Roles/@Permissions en orden de aparición (22 rutas, Ola 1). */
+  /** Pares @Roles/@Permissions en orden de aparición (23 rutas: 22 de Ola 1 + despacho E2). */
   const EXPECTED_POLICY: Array<{ roles: string; permission: string }> = [
     {
       roles:
@@ -564,9 +564,11 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
       permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ',
     },
     {
-      roles:
-        'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR',
-      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ',
+      // MOD11 E2 (ADR-091 §D1, plan §2: E2 abre contrato de API nuevo): POST
+      // dispatch — solo coordinación, SUPERVISE, sin campo. Ampliación
+      // aprobada por el encargo, no silenciosa.
+      roles: 'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT',
+      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE',
     },
     {
       roles:
@@ -586,7 +588,7 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
     {
       roles:
         'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR',
-      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
+      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ',
     },
     {
       roles:
@@ -612,6 +614,18 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
       roles:
         'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR',
       permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
+    },
+    {
+      roles:
+        'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR',
+      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
+    },
+    {
+      // MOD11 T2 (ADR-090 §D3, CA-09/CA-10): POST annul — solo coordinación,
+      // SUPERVISE, con motivo obligatorio. Ampliación aprobada por el encargo,
+      // no silenciosa.
+      roles: 'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT',
+      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE',
     },
     {
       roles: 'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT',
@@ -643,7 +657,10 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
       permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
     },
     {
-      roles: 'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN',
+      // H6 (paridad contratista, ADR-091 §D6 condición 2): `unblock` iguala a
+      // `block`. Cambio de política aprobado, no ampliación silenciosa.
+      roles:
+        'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR',
       permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
     },
     {
@@ -675,7 +692,7 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
     return pairs;
   };
 
-  it('R11a: ningún endpoint amplió @Roles ni @Permissions en esta ola (22 pares exactos)', () => {
+  it('R11a: ningún endpoint amplió @Roles ni @Permissions en esta ola (24 pares exactos)', () => {
     expect(readPolicyPairs()).toEqual(EXPECTED_POLICY);
   });
 

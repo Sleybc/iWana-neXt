@@ -1165,5 +1165,46 @@ describe('ScheduleEventsService', () => {
         }),
       );
     });
+
+    it('CA-14: al cancelar la OT por decisión, el motivo lleva la causa reclasificada (no el literal fijo)', async () => {
+      const cause = { ...customerCause, code: 'CLI-AUSENTE', label: 'Cliente ausente' };
+      const eventWithEO = { ...expiredEvent, executionOrderId: 'eo-001' };
+      const vrWithEO = { ...stuckVisitRequest, executionOrderId: 'eo-001' };
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const findOne = jest
+          .fn()
+          .mockResolvedValueOnce(eventWithEO)
+          .mockResolvedValueOnce(cause)
+          .mockResolvedValue(vrWithEO);
+
+        return fn({
+          manager: {
+            findOne,
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
+            query: jest.fn().mockResolvedValue([]),
+          },
+        } as never);
+      });
+
+      await service.reviewNonRealizationCause(
+        'evt-expired-001',
+        { nonRealizationCauseId: cause.id, notes: null, decision: 'CLOSE_CASE' },
+        adminActor as never,
+      );
+
+      expect(mockExecutionOrdersService.cancelFromSchedulingWithManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'tenant-001',
+        'eo-001',
+        'evt-expired-001',
+        expect.stringContaining('[CLI-AUSENTE]'),
+        adminActor,
+      );
+      const reason = String(
+        mockExecutionOrdersService.cancelFromSchedulingWithManager.mock.calls[0]?.[4] ?? '',
+      );
+      expect(reason).toContain('Cliente ausente');
+    });
   });
 });

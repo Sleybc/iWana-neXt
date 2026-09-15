@@ -59,6 +59,8 @@ function detailFactory(
     number: 'OTE-20260727-001',
     version: 1,
     status,
+    // MOD11 T2 (contrato v1.4): el discriminador viaja siempre en el detalle.
+    annulled: false,
     workType: WfmWorkType.INSTALLATION,
     template: {
       id: 'tpl-001',

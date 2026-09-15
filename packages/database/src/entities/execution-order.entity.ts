@@ -28,8 +28,8 @@ export class ExecutionOrder {
   @Column({ name: 'visit_request_id', type: 'uuid', nullable: true })
   visitRequestId: string | null;
 
-  @Column({ name: 'schedule_event_id', type: 'uuid' })
-  scheduleEventId: string;
+  @Column({ name: 'schedule_event_id', type: 'uuid', nullable: true })
+  scheduleEventId: string | null;
 
   /** Alcance organizacional copiado desde WFM al crear la OT. */
   @Column({ name: 'organization_site_id', type: 'uuid', nullable: true })
@@ -77,11 +77,11 @@ export class ExecutionOrder {
   @Column({ name: 'work_instructions', type: 'text', nullable: true })
   workInstructions: string | null;
 
-  @Column({ name: 'planned_window_start_at', type: 'timestamptz' })
-  plannedWindowStartAt: Date;
+  @Column({ name: 'planned_window_start_at', type: 'timestamptz', nullable: true })
+  plannedWindowStartAt: Date | null;
 
-  @Column({ name: 'planned_window_end_at', type: 'timestamptz' })
-  plannedWindowEndAt: Date;
+  @Column({ name: 'planned_window_end_at', type: 'timestamptz', nullable: true })
+  plannedWindowEndAt: Date | null;
 
   @Column({
     type: 'enum',
@@ -98,6 +98,15 @@ export class ExecutionOrder {
     nullable: true,
   })
   result: ExecutionOrderResult | null;
+
+  /**
+   * MOD11 T2 (ADR-090 §D3, migración 136): anulación por error. Solo tiene
+   * sentido con `status = CANCELLED` (CHECK en base). La anulada libera su
+   * origen (135, por estado), entra en la purga de retención (134, por
+   * estado), sale de la bandeja y se excluye del cálculo de cancelación.
+   */
+  @Column({ name: 'is_annulled', type: 'boolean', default: false })
+  isAnnulled: boolean;
 
   /** Control optimista de concurrencia; se incrementa en cada mutación. */
   @Column({ type: 'integer', default: 1 })

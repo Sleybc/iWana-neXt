@@ -139,6 +139,7 @@ describe('ExecutionOrdersService', () => {
 
       const manager = {
         findOne: jest.fn().mockResolvedValue(originalOrder),
+        create: jest.fn((_entity: unknown, payload: unknown) => ({ ...(payload as object) })),
         save: jest
           .fn()
           .mockImplementation(async (_entity, payload) => ({ id: executionOrderId, ...payload })),
@@ -164,6 +165,16 @@ describe('ExecutionOrdersService', () => {
       expect(savedPayload.closedAt).toBeInstanceOf(Date);
       expect(savedPayload.updatedByUserId).toBe(actor.sub);
       expect(savedPayload.version).toBe(4);
+      // MOD11 T2 (CA-13): la cancelación emite hecho de dominio en el outbox
+      // de la misma transacción.
+      const outboxCall = (manager.save as jest.Mock).mock.calls.find(
+        (call) => call[1]?.eventType === 'ExecutionOrderCancelledV1',
+      );
+      expect(outboxCall?.[1]).toMatchObject({
+        aggregateId: executionOrderId,
+        tenantId,
+        payload: { executionOrderId, reason },
+      });
     });
 
     it('lanza NotFoundException si la OT no existe', async () => {
@@ -221,6 +232,7 @@ describe('ExecutionOrdersService', () => {
           status: ExecutionOrderStatus.ASSIGNED,
           version: 1,
         }),
+        create: jest.fn((_entity: unknown, payload: unknown) => ({ ...(payload as object) })),
         save: jest.fn().mockImplementation(async (_entity, payload) => ({ ...payload })),
       };
 
@@ -1489,8 +1501,19 @@ describe('ExecutionOrdersService', () => {
 
       // Segunda OT: simulamos que ya existe la primera
       const manager2 = makeManager();
+      // MOD11 E1: la guarda de origen consume la primera llamada a
+      // createQueryBuilder (sin duplicada activa) y la numeración la segunda
+      // (devuelve la OT anterior). Un único mock para ambas confundiría la
+      // guarda con un duplicado.
+      const originQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
       // El getOne para la consulta de numeración debe devolver la OT anterior
-      (manager2.createQueryBuilder as jest.Mock).mockReturnValue({
+      (manager2.createQueryBuilder as jest.Mock).mockReturnValueOnce(originQb).mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
@@ -1502,7 +1525,16 @@ describe('ExecutionOrdersService', () => {
         fn({ manager: manager2 } as never),
       );
 
-      const ot2 = await service.createFromScheduling(buildSchedulingInput(), actor);
+      // Segundo evento de agenda distinto (otra unidad de origen): dos OTs
+      // para el MISMO origen activo se rechazan por DUPLICATE_ACTIVE_WORK (E1).
+      const ot2 = await service.createFromScheduling(
+        {
+          ...buildSchedulingInput(),
+          scheduleEventId: '33333333-3333-4333-8333-333333333333',
+          originRefId: 'task-002',
+        },
+        actor,
+      );
 
       // Verificar que el segundo número es consecutivo (002)
       expect(ot2.executionOrderNumber).toBe(`${prefix}-002`);

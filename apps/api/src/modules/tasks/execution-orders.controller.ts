@@ -40,7 +40,14 @@ import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
+  AnnulExecutionOrderDto,
+  AnnulExecutionOrderInput,
+  AnnulExecutionOrderSchema,
   CloseExecutionOrderDto,
+  DispatchExecutionOrderDto,
+  DispatchExecutionOrderInput,
+  DispatchExecutionOrderReceiptDto,
+  DispatchExecutionOrderSchema,
   ExecutionOrderDetailResponseDto,
   RegisterExecutionOrderItemUsageDto,
   RegisterFieldWorkDto,
@@ -193,6 +200,34 @@ export class ExecutionOrdersController {
     return this.executionOrdersService.list(query, actor);
   }
 
+  /**
+   * MOD11 E2/H1 — puerta de despacho (ADR-091 §D1, spec §3.1/§3.6.1/§3.8).
+   *
+   * Solo coordinación (supervisión): el técnico/contratista no despacha —una
+   * OT en `CREATED` es invisible para él por dictamen sec-eng y crearía
+   * trabajo que no puede ver—. `@ExecutionOrderTenantScoped()` porque la ruta
+   * no lleva `:id`: sin él el guard es deny-by-default (403); con él, el
+   * guard retorna sin ABAC y el alcance lo valida el servicio con
+   * `assertSupervisionScope` sobre la sede declarada, ANTES de insertar
+   * (fail-closed 404; un rechazo nunca quema el origen). El input es
+   * estricto y sin ventana/evento/responsable: el despacho no es agenda por
+   * otra puerta (riesgo R1 del plan).
+   */
+  @Post('dispatch')
+  @ExecutionOrderTenantScoped()
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Despachar OT de ejecución sin cita (origen + sitio)' })
+  @ApiOkResponse({ type: DispatchExecutionOrderReceiptDto })
+  async dispatch(
+    @Body(new ZodValidationPipe(DispatchExecutionOrderSchema))
+    dto: DispatchExecutionOrderDto & DispatchExecutionOrderInput,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<DispatchExecutionOrderReceiptDto> {
+    return this.executionOrdersService.dispatchFromCoordination(dto, actor);
+  }
+
   @Get(':id/evidences')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ)
@@ -239,20 +274,25 @@ export class ExecutionOrdersController {
     const completion = await this.executionOrdersService.getCompletion(order.id);
     const startedAt = this.dateOrString(order.startedAt);
     const closedAt = this.dateOrString(order.closedAt);
+    // MOD11 E2 (contrato shared v1.3): el detalle tolera la OT sin cita y
+    // responde 200 con `eventId: null` y `window: null`. La presentación «sin
+    // ventana» es de E4; aquí solo se garantiza no romper la pantalla.
+    const windowStartAt = this.dateOrString(order.plannedWindowStartAt);
+    const windowEndAt = this.dateOrString(order.plannedWindowEndAt);
     return {
       id: order.id,
       number: order.executionOrderNumber,
       version: order.version,
       status: order.status,
+      // MOD11 T2 (CA-09): la anulada se distingue aquí de la cancelada.
+      annulled: order.isAnnulled ?? false,
       ...(order.result ? { result: order.result } : {}),
       workType: order.workType,
       template,
       schedule: {
-        eventId: order.scheduleEventId,
-        window: {
-          startAt: this.dateOrString(order.plannedWindowStartAt) ?? '',
-          endAt: this.dateOrString(order.plannedWindowEndAt) ?? '',
-        },
+        eventId: order.scheduleEventId ?? null,
+        window:
+          windowStartAt && windowEndAt ? { startAt: windowStartAt, endAt: windowEndAt } : null,
       },
       ...(await this.buildAssigneeView(order)),
       site: { id: order.id, label: order.municipality ?? order.customerDisplayLabel },
@@ -432,6 +472,38 @@ export class ExecutionOrdersController {
     );
   }
 
+  /**
+   * MOD11 T2 — anulación por error (ADR-090 §D3, CA-09/CA-10).
+   *
+   * Solo supervisión con motivo obligatorio. Alcanza a la OT despachada sin
+   * cita (no exige evento ni asignación) y a cualquier OT no terminal. La
+   * anulada queda en `CANCELLED` + `annulled: true`: libera su origen, sale
+   * de la bandeja y permanece consultable. El guard impone el alcance sobre
+   * la sede vía `SUPERVISE` (mismo camino que `assign`); el servicio lo
+   * revalida como en `createFollowUp`.
+   */
+  @Post(':id/annul')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Anular OT por error de creación (supervisión + motivo)' })
+  annul(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(AnnulExecutionOrderSchema))
+    dto: AnnulExecutionOrderDto & AnnulExecutionOrderInput,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('if-match') ifMatch?: string,
+    @Headers('idempotency-key') key?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.executionOrdersService.annul(
+      id,
+      dto,
+      actor,
+      this.commandContext(ifMatch, key, correlationId),
+    );
+  }
+
   @Post(':id/assign')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)
@@ -554,7 +626,7 @@ export class ExecutionOrdersController {
   }
 
   @Post(':id/unblock')
-  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN)
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
   @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE)
   @HttpCode(HttpStatus.OK)
   unblock(

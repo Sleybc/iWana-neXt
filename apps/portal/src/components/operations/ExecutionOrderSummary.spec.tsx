@@ -102,6 +102,8 @@ describe('ExecutionOrderSummary', () => {
       number: 'OT-001',
       version: 1,
       status: ExecutionOrderStatus.ASSIGNED,
+      // MOD11 T2 (contrato v1.4): el discriminador viaja siempre en el detalle.
+      annulled: false,
       workType: WfmWorkType.INSTALLATION,
       template: null,
       schedule: {
@@ -133,6 +135,8 @@ describe('ExecutionOrderSummary', () => {
       number: 'OT-001',
       version: 1,
       status: ExecutionOrderStatus.ASSIGNED,
+      // MOD11 T2 (contrato v1.4): el discriminador viaja siempre en el detalle.
+      annulled: false,
       workType: WfmWorkType.INSTALLATION,
       template: null,
       schedule: {

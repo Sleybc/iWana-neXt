@@ -7,6 +7,7 @@ import {
   ExecutionOrderStatus,
   InventoryDisposition,
   WfmWorkType,
+  WorkOrderSourceContext,
 } from '@iwana/shared';
 import type { ExecutionOrderAllowedAction, ExecutionOrderTemplateRequirement } from '@iwana/shared';
 import { ListMetaDto, MAX_LIMIT } from '../../../common/pagination';
@@ -203,6 +204,29 @@ export class CloseExecutionOrderDto {
   @ApiPropertyOptional()
   @Allow()
   followUp?: { reasonCode: string; dueAt?: string };
+}
+
+/**
+ * MOD11 T2 — anulación por error (ADR-090 §D3, CA-10): motivo obligatorio.
+ * Sin motivo se rechaza; el copy de los motivos es de AI-PROD-UX (spec §7).
+ */
+export const AnnulExecutionOrderSchema = z
+  .object({
+    // `safeTextField` recorta pero no exige mínimo: el motivo vacío (o solo
+    // espacios) se rechaza aquí, no en el servicio. El servicio conserva su
+    // propio cinturón para llamantes internos que eludan el schema.
+    reason: safeTextField(2000).refine((value) => value.length > 0, {
+      message: 'La anulación por error exige el motivo.',
+    }),
+  })
+  .strict();
+
+export type AnnulExecutionOrderInput = z.infer<typeof AnnulExecutionOrderSchema>;
+
+export class AnnulExecutionOrderDto {
+  @ApiProperty({ maxLength: 2000 })
+  @Allow()
+  reason!: string;
 }
 
 export const AssignExecutionOrderSchema = z
@@ -452,11 +476,15 @@ export class ExecutionOrderTemplateReferenceResponseDto {
 }
 
 export class ExecutionOrderScheduleResponseDto {
-  @ApiProperty({ format: 'uuid' })
-  eventId!: string;
+  /**
+   * Nulable desde MOD11 E2 (contrato shared v1.3): la OT despachada sin cita
+   * no tiene vínculo de agenda hasta E3. Nunca 500 por nulo: se emite null.
+   */
+  @ApiProperty({ format: 'uuid', nullable: true })
+  eventId!: string | null;
 
-  @ApiProperty({ type: Object })
-  window!: { startAt: string; endAt: string };
+  @ApiProperty({ type: Object, nullable: true })
+  window!: { startAt: string; endAt: string } | null;
 
   @ApiPropertyOptional({ type: Object })
   plannedResource?: { type: 'TECHNICIAN' | 'CREW'; id: string };
@@ -539,6 +567,13 @@ export class ExecutionOrderDetailResponseDto {
 
   @ApiProperty({ enum: ExecutionOrderStatus })
   status!: ExecutionOrderStatus;
+
+  /**
+   * MOD11 T2 (CA-09, contrato shared v1.4): distingue la anulación por error
+   * de la cancelación operativa sobre el mismo `status = CANCELLED`.
+   */
+  @ApiProperty()
+  annulled!: boolean;
 
   @ApiPropertyOptional({ enum: ExecutionOrderResult })
   result?: ExecutionOrderResult;
@@ -744,11 +779,11 @@ export class ExecutionOrderListWindowDto {
 }
 
 export class ExecutionOrderListScheduleDto {
-  @ApiProperty({ format: 'uuid' })
-  eventId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true })
+  eventId!: string | null;
 
-  @ApiProperty({ type: ExecutionOrderListWindowDto })
-  window!: ExecutionOrderListWindowDto;
+  @ApiProperty({ type: ExecutionOrderListWindowDto, nullable: true })
+  window!: ExecutionOrderListWindowDto | null;
 }
 
 export class ExecutionOrderListAssigneeDto {
@@ -777,6 +812,14 @@ export class ExecutionOrderListItemDto {
 
   @ApiProperty({ enum: ExecutionOrderStatus })
   status!: ExecutionOrderStatus;
+
+  /**
+   * MOD11 T2 (CA-09): en la bandeja siempre es false (el WHERE excluye
+   * anuladas); existe para que la fila no sea confundible si llega por otra
+   * vía con el discriminador activo.
+   */
+  @ApiProperty()
+  annulled!: boolean;
 
   @ApiPropertyOptional({ enum: ExecutionOrderResult })
   result?: ExecutionOrderResult;
@@ -818,4 +861,146 @@ export class ExecutionOrderListPageDto {
 
   @ApiProperty({ type: ListMetaDto })
   meta!: ListMetaDto;
+}
+
+// ─── E2 — Puerta de despacho (ADR-091 §D1, spec §3.1/§3.6.1/§3.8) ────────────
+
+/**
+ * Orígenes con camino de despacho. `PROVISIONING` no tiene ninguno (spec §3.8,
+ * decisión E2: se retira, no se le inventa uno) y se rechaza en el refine con
+ * `ORIGIN_WITHOUT_PATH`, no con un genérico de enum.
+ */
+const DISPATCHABLE_ORIGIN_CONTEXTS = [
+  WorkOrderSourceContext.CRM,
+  WorkOrderSourceContext.ASSURANCE,
+  WorkOrderSourceContext.TASKS,
+  WorkOrderSourceContext.MANUAL,
+] as const;
+
+export const DispatchExecutionOrderSchema = z
+  .object({
+    // Explícito y sin default: heredar `MANUAL` haría indistinguible «se creó
+    // a mano» de «nadie declaró nada» (spec §3.8). Ausente = 400.
+    originContext: z
+      .nativeEnum(WorkOrderSourceContext)
+      .refine((value) => value !== WorkOrderSourceContext.PROVISIONING, {
+        message:
+          'PROVISIONING no tiene camino de despacho: retire la etiqueta o abra consulta de producto (MOD11-ORIGEN-OT §3.8).',
+        params: { code: 'ORIGIN_WITHOUT_PATH' },
+      }),
+    originRefId: z.string().trim().max(160).optional().nullable(),
+    workType: z.nativeEnum(WfmWorkType),
+    // Obligatoria (spec §3.6.1): sin sede la OT nace muerta —visible pero
+    // inasignable por el fail-closed de `assertSupervisionScope`—.
+    organizationSiteId: z.string().uuid(),
+    customerDisplayLabel: z.string().trim().min(1).max(160),
+    serviceAddress: z.string().trim().max(500).optional().nullable(),
+    municipality: z.string().trim().max(160).optional().nullable(),
+    sector: z.string().trim().max(160).optional().nullable(),
+    workSummary: safeTextField(500),
+    workInstructions: safeTextField(4000).optional().nullable(),
+    ticketId: z.string().trim().max(160).optional().nullable(),
+    taskId: z.string().trim().max(160).optional().nullable(),
+    subscriberId: z.string().uuid().optional().nullable(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    // Trazabilidad (decisión E2 §3.8): quien declara un origen aguas arriba
+    // entrega su referencia; solo MANUAL puede nacer sin ella.
+    if (value.originContext !== WorkOrderSourceContext.MANUAL) {
+      const ref = value.originRefId?.trim() ?? '';
+      if (!ref) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['originRefId'],
+          message: `El origen ${value.originContext} exige originRefId: sin referencia la trazabilidad se pierde.`,
+          params: { code: 'ORIGIN_REF_REQUIRED' },
+        });
+      }
+    }
+  });
+
+export type DispatchExecutionOrderInput = z.infer<typeof DispatchExecutionOrderSchema>;
+
+export class DispatchExecutionOrderDto {
+  @ApiProperty({ enum: WorkOrderSourceContext })
+  @Allow()
+  originContext!: WorkOrderSourceContext;
+
+  @ApiPropertyOptional({ maxLength: 160 })
+  @Allow()
+  originRefId?: string | null;
+
+  @ApiProperty({ enum: WfmWorkType })
+  @Allow()
+  workType!: WfmWorkType;
+
+  @ApiProperty({ format: 'uuid' })
+  @Allow()
+  organizationSiteId!: string;
+
+  @ApiProperty({ maxLength: 160 })
+  @Allow()
+  customerDisplayLabel!: string;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @Allow()
+  serviceAddress?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 160 })
+  @Allow()
+  municipality?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 160 })
+  @Allow()
+  sector?: string | null;
+
+  @ApiProperty({ maxLength: 500 })
+  @Allow()
+  workSummary!: string;
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @Allow()
+  workInstructions?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 160 })
+  @Allow()
+  ticketId?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 160 })
+  @Allow()
+  taskId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  subscriberId?: string | null;
+}
+
+export class DispatchExecutionOrderReceiptDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  number!: string;
+
+  @ApiProperty({ enum: ExecutionOrderStatus })
+  status!: ExecutionOrderStatus;
+
+  @ApiProperty({ enum: WorkOrderSourceContext })
+  originContext!: WorkOrderSourceContext;
+
+  @ApiProperty({ nullable: true })
+  originRefId!: string | null;
+
+  @ApiProperty({ enum: WfmWorkType })
+  workType!: WfmWorkType;
+
+  @ApiProperty({ format: 'uuid' })
+  organizationSiteId!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
 }

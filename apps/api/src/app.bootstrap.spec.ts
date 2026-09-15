@@ -14,10 +14,54 @@ jest.mock('otplib', () => ({
   ScureBase32Plugin: jest.fn(),
 }));
 
+// bullmq abre conexiones ioredis reales al instanciar cada Queue/Worker, con
+// reintento infinito. En este spec solo se necesita EL GRAFO (que el scanner
+// de Nest no lance UndefinedModuleException), no colas que funcionen: una cola
+// real que nunca conecta deja un handle que sobrevive a moduleRef.close() y la
+// suite no termina nunca. El doble sustituye el punto de construccion
+// (new Queue/Worker/FlowProducer dentro de @nestjs/bullmq), asi que cubre las
+// colas de hoy y las que sume el grafo manana sin enumerar nombres via
+// getQueueToken (enumerar envejece mal: cada cola nueva obligaria a editar el
+// spec). Cerrar colas en afterAll tampoco es via: una cola que nunca conecto
+// puede colgarse al cerrarse.
+jest.mock('bullmq', () => {
+  class FakeBullQueue {
+    onApplicationShutdown?: () => Promise<void>;
+    async close(): Promise<void> {}
+    async disconnect(): Promise<void> {}
+    async add(): Promise<Record<string, never>> {
+      return {};
+    }
+    async addBulk(): Promise<unknown[]> {
+      return [];
+    }
+    async obliterate(): Promise<void> {}
+    on(): this {
+      return this;
+    }
+    once(): this {
+      return this;
+    }
+    emit(): boolean {
+      return false;
+    }
+  }
+  class FakeBullWorker extends FakeBullQueue {}
+  class FakeBullFlowProducer extends FakeBullQueue {}
+  class FakeBullQueueEvents extends FakeBullQueue {}
+  return {
+    Queue: FakeBullQueue,
+    Worker: FakeBullWorker,
+    FlowProducer: FakeBullFlowProducer,
+    QueueEvents: FakeBullQueueEvents,
+  };
+});
+
 import { Module } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import { HealthModule } from './modules/health/health.module';
+import { REDIS_CLIENT } from './modules/redis/redis.module';
 import { ExecutionOrderSchedulingModule } from './modules/tasks/execution-order-scheduling.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { WfmModule } from './modules/wfm/wfm.module';
@@ -87,13 +131,22 @@ describe('AppModule bootstrap', () => {
     // Sonda del scanner Nest sobre el camino que fallaba en main.ts.
     // No montamos AppModule completo: TestingModule+TypeORM/Redis es deuda
     // distinta (baseline clamp-page 21), ajena al ciclo de módulos.
+    //
+    // Infraestructura neutralizada (ver jest.mock('bullmq') arriba): el grafo
+    // alcanza colas BullMQ reales y al cliente ioredis de RedisModule; ninguno
+    // debe abrir conexiones. REDIS_CLIENT es un token unico y estable (no una
+    // enumeracion por cola), asi que el doble via overrideProvider no envejece.
+    const redisInfraDouble = {};
     @Module({ imports: [HealthModule] })
     class BootstrapCycleProbeModule {}
 
     try {
       const moduleRef = await Test.createTestingModule({
         imports: [BootstrapCycleProbeModule],
-      }).compile();
+      })
+        .overrideProvider(REDIS_CLIENT)
+        .useValue(redisInfraDouble)
+        .compile();
       await moduleRef.close();
     } catch (error) {
       expect(isUndefinedModuleError(error)).toBe(false);

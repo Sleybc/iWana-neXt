@@ -1704,3 +1704,317 @@ describe('ExecutionOrdersController HTTP — GET /tasks/execution-orders (F1)', 
     await request(app.getHttpServer()).get('/api/v1/tasks/execution-orders').expect(401);
   });
 });
+
+// ─── MOD11 E2 — despacho por HTTP + consola viva ───────────────────────────
+
+describe('ExecutionOrdersController HTTP — puerta de despacho (E2)', () => {
+  let app: INestApplication;
+  let serviceMock: Record<string, jest.Mock>;
+
+  const SITE_ID = '11111111-1111-4111-8111-111111111111';
+  const WINDOWLESS_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+  const windowlessEntity = () => ({
+    id: WINDOWLESS_UUID,
+    executionOrderNumber: 'OTE-20250915-002',
+    version: 1,
+    status: ExecutionOrderStatus.CREATED,
+    result: null,
+    workType: 'SUPPORT',
+    templateId: null,
+    templateKey: null,
+    templateVersionNumber: null,
+    templateLabel: null,
+    templateRequirementsSnapshot: null,
+    scheduleEventId: null,
+    plannedWindowStartAt: null,
+    plannedWindowEndAt: null,
+    assignedTechnicianId: null,
+    assignedCrewId: null,
+    organizationSiteId: SITE_ID,
+    municipality: null,
+    customerDisplayLabel: 'Cliente de prueba E2',
+    startedAt: null,
+    closedAt: null,
+    createdAt: '2026-09-15T10:00:00.000Z',
+    updatedAt: '2026-09-15T10:00:00.000Z',
+  });
+
+  const dispatchBody = () => ({
+    originContext: 'ASSURANCE',
+    originRefId: 'E2-TICKET-001',
+    workType: 'SUPPORT',
+    organizationSiteId: SITE_ID,
+    customerDisplayLabel: 'Cliente de prueba E2',
+    workSummary: 'Soporte despachado sin cita',
+  });
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [ExecutionOrdersController],
+      providers: [
+        {
+          provide: ExecutionOrdersService,
+          useFactory: () => {
+            serviceMock = {
+              // El AccessGuard es real en este archivo (el `useValue` no lo
+              // sustituye): expone el ABAC para que el guard delegue en él.
+              assertActorAccess: jest.fn().mockResolvedValue(undefined),
+              assertActorCanRedrive: jest.fn().mockResolvedValue(undefined),
+              dispatchFromCoordination: jest.fn().mockResolvedValue({
+                id: WINDOWLESS_UUID,
+                number: 'OTE-20250915-002',
+                status: ExecutionOrderStatus.CREATED,
+                originContext: 'ASSURANCE',
+                originRefId: 'E2-TICKET-001',
+                workType: 'SUPPORT',
+                organizationSiteId: SITE_ID,
+                createdAt: '2026-09-15T10:00:00.000Z',
+                updatedAt: '2026-09-15T10:00:00.000Z',
+              }),
+              getById: jest.fn().mockResolvedValue(windowlessEntity()),
+              list: jest.fn().mockImplementation(async () => ({
+                data: [
+                  {
+                    id: WINDOWLESS_UUID,
+                    number: 'OTE-20250915-002',
+                    status: ExecutionOrderStatus.CREATED,
+                    workType: 'SUPPORT',
+                    schedule: { eventId: null, window: null },
+                    customerDisplayLabel: 'Cliente de prueba E2',
+                    municipality: null,
+                    ticketId: null,
+                    taskId: null,
+                    visitRequestId: null,
+                    createdAt: '2026-09-15T10:00:00.000Z',
+                    updatedAt: '2026-09-15T10:00:00.000Z',
+                  },
+                ],
+                meta: {
+                  nextCursor: null,
+                  total: 1,
+                  totalIsEstimate: false,
+                  page: 1,
+                  limit: 20,
+                  totalPages: 1,
+                  hasMore: false,
+                  mode: 'page',
+                  capabilities: { randomAccess: true, sortableFields: [] },
+                  sort: null,
+                },
+              })),
+              getCompletion: jest.fn().mockResolvedValue({ progress: 0, completed: 0, total: 0 }),
+              getSyncState: jest.fn().mockResolvedValue('IN_SYNC' as const),
+              computeAllowedActions: jest.fn().mockReturnValue(['ASSIGN'] as const),
+            };
+            return serviceMock;
+          },
+        },
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+        { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+        TenantAwareThrottlerGuard,
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([
+                AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+                AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+              ]),
+          },
+        },
+        JwtAuthGuard,
+        RolesGuard,
+        ExecutionOrderResponseHeadersInterceptor,
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+        },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.use(createVerifiedTenantContextMiddleware());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('POST /dispatch como coordinación responde 201 con el recibo en CREATED', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/tasks/execution-orders/dispatch')
+      .set('Authorization', 'Bearer coordinator-token')
+      .send(dispatchBody())
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      status: ExecutionOrderStatus.CREATED,
+      originContext: 'ASSURANCE',
+      organizationSiteId: SITE_ID,
+    });
+    expect(serviceMock['dispatchFromCoordination']).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationSiteId: SITE_ID }),
+      expect.objectContaining({ role: UserRole.NOC }),
+    );
+  });
+
+  it('POST /dispatch como técnico responde 403 (el campo no despacha)', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/tasks/execution-orders/dispatch')
+      .set('Authorization', 'Bearer tech-token')
+      .send(dispatchBody())
+      .expect(403);
+  });
+
+  it('POST /dispatch sin sitio responde 400', async () => {
+    const { organizationSiteId: _dropped, ...withoutSite } = dispatchBody();
+    expect(_dropped).toBe(SITE_ID);
+    await request(app.getHttpServer())
+      .post('/api/v1/tasks/execution-orders/dispatch')
+      .set('Authorization', 'Bearer coordinator-token')
+      .send(withoutSite)
+      .expect(400);
+  });
+
+  it('POST /dispatch sin alcance sobre la sede responde 404 (fail-closed del servicio)', async () => {
+    const dispatchMock = serviceMock['dispatchFromCoordination'];
+    if (!dispatchMock) throw new Error('mock de despacho no disponible');
+    dispatchMock.mockRejectedValueOnce(new NotFoundException('OT de ejecución no encontrada'));
+    await request(app.getHttpServer())
+      .post('/api/v1/tasks/execution-orders/dispatch')
+      .set('Authorization', 'Bearer coordinator-token')
+      .send(dispatchBody())
+      .expect(404);
+  });
+
+  it('GET /:id con OT sin ventana responde 200 con schedule nulo (no tripwire)', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/tasks/execution-orders/${WINDOWLESS_UUID}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(response.body.schedule).toEqual({ eventId: null, window: null });
+    expect(response.body.status).toBe(ExecutionOrderStatus.CREATED);
+  });
+
+  it('GET / con OT sin ventana viva responde 200 y la fila trae schedule nulo', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tasks/execution-orders')
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].schedule).toEqual({ eventId: null, window: null });
+  });
+});
+
+// ─── MOD11 T2 — anulación por HTTP ─────────────────────────────────────────
+
+describe('ExecutionOrdersController HTTP — anulación por error (T2)', () => {
+  let app: INestApplication;
+  let serviceMock: Record<string, jest.Mock>;
+
+  const ORDER_UUID = '22222222-2222-4222-8222-222222222222';
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [ExecutionOrdersController],
+      providers: [
+        {
+          provide: ExecutionOrdersService,
+          useFactory: () => {
+            serviceMock = {
+              assertActorAccess: jest.fn().mockResolvedValue(undefined),
+              assertActorCanRedrive: jest.fn().mockResolvedValue(undefined),
+              annul: jest.fn().mockResolvedValue({
+                id: ORDER_UUID,
+                status: ExecutionOrderStatus.CANCELLED,
+                version: 3,
+              }),
+            };
+            return serviceMock;
+          },
+        },
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+        { provide: ExecutionOrderAccessGuard, useValue: { canActivate: () => true } },
+        TenantAwareThrottlerGuard,
+        { provide: REDIS_CLIENT, useValue: unusedRedisClient },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([
+                AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+                AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+              ]),
+          },
+        },
+        JwtAuthGuard,
+        RolesGuard,
+        ExecutionOrderResponseHeadersInterceptor,
+        {
+          provide: ExecutionOrderProjectionConvergenceService,
+          useValue: { verifyConvergence: jest.fn().mockResolvedValue({ status: 'IN_SYNC' }) },
+        },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.use(createVerifiedTenantContextMiddleware());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  // El comando exige If-Match + Idempotency-Key como `assign` (mismo contexto).
+  const commandHeaders = (key: string) => ({
+    'If-Match': '2',
+    'Idempotency-Key': key,
+  });
+
+  it('POST /:id/annul como coordinación responde 200 y propaga motivo + actor', async () => {
+    const annulMock = serviceMock['annul'];
+    if (!annulMock) throw new Error('mock de anulación no disponible');
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/annul`)
+      .set('Authorization', 'Bearer coordinator-token')
+      .set(commandHeaders('annul-key-001'))
+      .send({ reason: 'Sitio equivocado al despachar' })
+      .expect(200);
+
+    expect(annulMock).toHaveBeenCalledWith(
+      ORDER_UUID,
+      expect.objectContaining({ reason: 'Sitio equivocado al despachar' }),
+      expect.objectContaining({ role: UserRole.NOC }),
+      expect.objectContaining({ idempotencyKey: 'annul-key-001' }),
+    );
+  });
+
+  it('POST /:id/annul como técnico responde 403 (CA-10 por negación de rol)', async () => {
+    await request(app.getHttpServer())
+      .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/annul`)
+      .set('Authorization', 'Bearer tech-token')
+      .set(commandHeaders('annul-key-002'))
+      .send({ reason: 'Intento del campo' })
+      .expect(403);
+  });
+
+  it('POST /:id/annul sin motivo responde 400 (CA-10)', async () => {
+    await request(app.getHttpServer())
+      .post(`/api/v1/tasks/execution-orders/${ORDER_UUID}/annul`)
+      .set('Authorization', 'Bearer coordinator-token')
+      .set(commandHeaders('annul-key-003'))
+      .send({ reason: '   ' })
+      .expect(400);
+  });
+});

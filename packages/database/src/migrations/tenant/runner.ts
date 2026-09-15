@@ -91,6 +91,8 @@ import { PublishInstalacionEstandarV2131000000000 } from './131_publish_instalac
 import { CreateExecutionOrderStatusTransitions1320000000000 } from './132_create_execution_order_status_transitions';
 import { AddExecutionOrderTransitionCorrectionOf1330000000000 } from './133_add_execution_order_transition_correction_of';
 import { AnonymizeExecutionOrderTransitionRetention1340000000000 } from './134_anonymize_execution_order_transition_retention';
+import { ExecutionOrderOriginIdentity1350000000000 } from './135_execution_order_origin_identity';
+import { ExecutionOrderAnnulmentFlag1360000000000 } from './136_execution_order_annulment_flag';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -262,6 +264,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateExecutionOrderStatusTransitions1320000000000,
   AddExecutionOrderTransitionCorrectionOf1330000000000,
   AnonymizeExecutionOrderTransitionRetention1340000000000,
+  ExecutionOrderOriginIdentity1350000000000,
+  ExecutionOrderAnnulmentFlag1360000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
