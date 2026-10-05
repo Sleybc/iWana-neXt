@@ -84,6 +84,10 @@ import {
   type IEvidenceAssetPort,
 } from '../ports/evidence-asset.port';
 import { OrganizationOperationalAccessPort } from '../../organization/ports/organization-operational-access.port';
+import type {
+  LinkExecutionOrderToScheduleInput,
+  RescheduleExecutionOrderInput,
+} from '../ports/execution-order-scheduling.port';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
@@ -1103,6 +1107,142 @@ export class ExecutionOrdersService {
       })
       .orderBy('eo.created_at', 'DESC')
       .getOne();
+  }
+
+  /**
+   * MOD11 E3: vincula una OT existente al evento recién creado por MOD09.
+   * La lectura con bloqueo y la escritura usan el manager de la transacción
+   * iniciada por WFM; MOD09 no accede a tablas ni servicios internos de MOD11.
+   */
+  async linkFromSchedulingWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: LinkExecutionOrderToScheduleInput,
+    actor: JwtPayload,
+  ): Promise<{ id: string; status: string }> {
+    const order = await manager.findOne(ExecutionOrder, {
+      where: { id: input.executionOrderId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!order) {
+      throw new NotFoundException({
+        code: 'EXECUTION_ORDER_NOT_FOUND',
+        message: 'La orden de trabajo indicada no existe.',
+      });
+    }
+    if (order.isAnnulled === true) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_ANNULLED',
+        message: 'La orden de trabajo fue anulada y no puede agendarse.',
+      });
+    }
+    this.assertMutable(order);
+    if (order.scheduleEventId) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_ALREADY_SCHEDULED',
+        message: 'La orden de trabajo ya tiene un evento de agenda vinculado.',
+      });
+    }
+    if (order.workType !== input.workType) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_WORK_TYPE_MISMATCH',
+        message: 'El tipo de trabajo del evento no coincide con la orden de trabajo.',
+      });
+    }
+    if (!input.organizationSiteId || order.organizationSiteId !== input.organizationSiteId) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_SITE_MISMATCH',
+        message: 'La sede del evento no coincide con la orden de trabajo.',
+      });
+    }
+    if (order.assignedCrewId) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_CREW_ASSIGNMENT_UNSUPPORTED',
+        message: 'La agenda requiere una persona asignada a la orden de trabajo.',
+      });
+    }
+    if (order.assignedTechnicianId && order.assignedTechnicianId !== input.assignedTechnicianId) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_TECHNICIAN_MISMATCH',
+        message: 'El técnico del evento no coincide con el asignado a la orden de trabajo.',
+      });
+    }
+
+    const expectedVersion = order.version ?? 1;
+    const fromStatus = order.status;
+    order.scheduleEventId = input.scheduleEventId;
+    order.plannedWindowStartAt = new Date(input.plannedWindowStartAt);
+    order.plannedWindowEndAt = new Date(input.plannedWindowEndAt);
+    if (!order.assignedTechnicianId) {
+      order.assignedTechnicianId = input.assignedTechnicianId;
+    }
+    if (order.status === ExecutionOrderStatus.CREATED) {
+      order.status = ExecutionOrderStatus.ASSIGNED;
+    }
+    order.version = expectedVersion + 1;
+    order.updatedByUserId = actor.sub;
+
+    const saved = await this.persistOrderOptimistically(manager, order, expectedVersion, {
+      assignment: true,
+      scheduling: true,
+    });
+
+    if (fromStatus !== saved.status) {
+      await this.recordStatusTransition(manager, tenantId, {
+        executionOrderId: saved.id,
+        fromStatus,
+        toStatus: saved.status,
+        actorUserId: actor.sub,
+        reason: 'Asignada al programar la orden de trabajo.',
+      });
+    }
+
+    return { id: saved.id, status: saved.status };
+  }
+
+  /** Propaga la ventana de MOD09 a una OT sin permitir cambiar su evento dueño. */
+  async rescheduleFromSchedulingWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: RescheduleExecutionOrderInput,
+    actor: JwtPayload,
+  ): Promise<{ id: string; status: string }> {
+    const order = await manager.findOne(ExecutionOrder, {
+      where: { id: input.executionOrderId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!order) {
+      throw new NotFoundException({
+        code: 'EXECUTION_ORDER_NOT_FOUND',
+        message: 'La orden de trabajo indicada no existe.',
+      });
+    }
+    if (order.isAnnulled === true) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_ANNULLED',
+        message: 'La orden de trabajo fue anulada y no puede reagendarse.',
+      });
+    }
+    this.assertMutable(order);
+    if (order.scheduleEventId !== input.scheduleEventId) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_EVENT_MISMATCH',
+        message: 'La orden de trabajo no pertenece al evento de agenda indicado.',
+      });
+    }
+
+    const expectedVersion = order.version ?? 1;
+    order.plannedWindowStartAt = new Date(input.plannedWindowStartAt);
+    order.plannedWindowEndAt = new Date(input.plannedWindowEndAt);
+    order.version = expectedVersion + 1;
+    order.updatedByUserId = actor.sub;
+
+    const saved = await this.persistOrderOptimistically(manager, order, expectedVersion, {
+      scheduling: true,
+    });
+    return { id: saved.id, status: saved.status };
   }
 
   /**
@@ -3470,7 +3610,7 @@ export class ExecutionOrdersService {
     manager: EntityManager,
     order: ExecutionOrder,
     expectedVersion: number,
-    options?: { assignment?: boolean; annulment?: boolean },
+    options?: { assignment?: boolean; annulment?: boolean; scheduling?: boolean },
   ): Promise<ExecutionOrder> {
     if (typeof manager.createQueryBuilder !== 'function') {
       return manager.save(ExecutionOrder, order);
@@ -3504,6 +3644,13 @@ export class ExecutionOrdersService {
         // doctrina que la asignación: la columna discriminadora no viaja en
         // ningún otro UPDATE.
         ...(options?.annulment === true ? { isAnnulled: order.isAnnulled } : {}),
+        ...(options?.scheduling === true
+          ? {
+              scheduleEventId: order.scheduleEventId,
+              plannedWindowStartAt: order.plannedWindowStartAt,
+              plannedWindowEndAt: order.plannedWindowEndAt,
+            }
+          : {}),
       })
       .where('id = :id AND tenant_id = :tenantId AND version = :expectedVersion', {
         id: order.id,

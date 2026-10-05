@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { runInTenantSchema } from '@iwana/db';
 import {
   ExecutionOrderItemAction,
@@ -117,6 +117,150 @@ describe('ExecutionOrdersService', () => {
     expect(result.taskId).toBe('task-uuid');
     expect(result.ticketId).toBe('ticket-uuid');
     expect(result.subscriberId).toBe('sub-uuid');
+  });
+
+  describe('linkFromSchedulingWithManager', () => {
+    const tenantId = 'tenant-001';
+    const input = {
+      executionOrderId: 'eo-dispatched',
+      scheduleEventId: 'event-new',
+      organizationSiteId: 'site-001',
+      assignedTechnicianId: 'tech-001',
+      workType: WfmWorkType.SUPPORT,
+      plannedWindowStartAt: '2030-01-01T10:00:00.000Z',
+      plannedWindowEndAt: '2030-01-01T11:00:00.000Z',
+    };
+
+    it('vincula una OT CREATED, la asigna y registra el cambio de estado', async () => {
+      const order = {
+        id: input.executionOrderId,
+        tenantId,
+        scheduleEventId: null,
+        organizationSiteId: input.organizationSiteId,
+        assignedTechnicianId: null,
+        assignedCrewId: null,
+        plannedWindowStartAt: null as Date | null,
+        plannedWindowEndAt: null as Date | null,
+        workType: WfmWorkType.SUPPORT,
+        status: ExecutionOrderStatus.CREATED,
+        isAnnulled: false,
+        version: 2,
+        updatedByUserId: null as string | null,
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(order),
+        create: jest.fn((_entity: unknown, payload: unknown) => ({ ...(payload as object) })),
+        save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      };
+
+      const result = await service.linkFromSchedulingWithManager(
+        manager as never,
+        tenantId,
+        input,
+        actor,
+      );
+
+      expect(result).toEqual({ id: input.executionOrderId, status: ExecutionOrderStatus.ASSIGNED });
+      expect(manager.findOne).toHaveBeenCalledWith(expect.any(Function), {
+        where: { id: input.executionOrderId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(order).toMatchObject({
+        scheduleEventId: input.scheduleEventId,
+        assignedTechnicianId: input.assignedTechnicianId,
+        status: ExecutionOrderStatus.ASSIGNED,
+        version: 3,
+        updatedByUserId: actor.sub,
+      });
+      expect(order.plannedWindowStartAt).toEqual(new Date(input.plannedWindowStartAt));
+      expect(order.plannedWindowEndAt).toEqual(new Date(input.plannedWindowEndAt));
+      expect(manager.save).toHaveBeenCalledTimes(2);
+      expect(manager.save.mock.calls[1]?.[1]).toMatchObject({
+        fromStatus: ExecutionOrderStatus.CREATED,
+        toStatus: ExecutionOrderStatus.ASSIGNED,
+        changedBy: actor.sub,
+      });
+    });
+
+    it('rechaza una OT ya vinculada en vez de cambiar su evento en silencio', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: input.executionOrderId,
+          tenantId,
+          scheduleEventId: 'event-old',
+          status: ExecutionOrderStatus.ASSIGNED,
+          isAnnulled: false,
+        }),
+        save: jest.fn(),
+      };
+
+      await expect(
+        service.linkFromSchedulingWithManager(manager as never, tenantId, input, actor),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'EXECUTION_ORDER_ALREADY_SCHEDULED' }),
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['terminal', ExecutionOrderStatus.CANCELLED, false],
+      ['annulada', ExecutionOrderStatus.CANCELLED, true],
+    ])('rechaza una OT %s', async (_label, status, isAnnulled) => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: input.executionOrderId,
+          tenantId,
+          scheduleEventId: null,
+          status,
+          isAnnulled,
+        }),
+        save: jest.fn(),
+      };
+
+      await expect(
+        service.linkFromSchedulingWithManager(manager as never, tenantId, input, actor),
+      ).rejects.toThrow(ConflictException);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rescheduleFromSchedulingWithManager', () => {
+    const tenantId = 'tenant-001';
+    it('propaga la ventana solo cuando el evento pertenece a la OT', async () => {
+      const order = {
+        id: 'eo-001',
+        tenantId,
+        scheduleEventId: 'event-001',
+        plannedWindowStartAt: new Date('2030-01-01T10:00:00.000Z'),
+        plannedWindowEndAt: new Date('2030-01-01T11:00:00.000Z'),
+        status: ExecutionOrderStatus.ASSIGNED,
+        isAnnulled: false,
+        version: 4,
+        updatedByUserId: null as string | null,
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(order),
+        save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      };
+
+      await service.rescheduleFromSchedulingWithManager(
+        manager as never,
+        tenantId,
+        {
+          executionOrderId: order.id,
+          scheduleEventId: order.scheduleEventId,
+          plannedWindowStartAt: '2030-01-02T10:00:00.000Z',
+          plannedWindowEndAt: '2030-01-02T11:00:00.000Z',
+        },
+        actor,
+      );
+
+      expect(order.plannedWindowStartAt).toEqual(new Date('2030-01-02T10:00:00.000Z'));
+      expect(order.plannedWindowEndAt).toEqual(new Date('2030-01-02T11:00:00.000Z'));
+      expect(order.version).toBe(5);
+      expect(order.updatedByUserId).toBe(actor.sub);
+      expect(manager.save).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('cancelFromSchedulingWithManager', () => {

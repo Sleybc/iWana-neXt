@@ -30,26 +30,37 @@ export const CreateWorkOrderEmbeddedSchema = z.object({
 });
 
 /** Schema Zod para la creacion de un evento de agenda. SPEC-MOD09 §10. */
-export const CreateScheduleEventSchema = z.object({
-  type: z.nativeEnum(WfmWorkType),
-  title: z.string().min(1).max(160),
-  description: z.string().optional().nullable(),
-  scheduledStartAt: z.string().datetime({ offset: true }),
-  scheduledEndAt: z.string().datetime({ offset: true }),
-  assignedUserId: z.string().uuid(),
-  operatingSiteId: z.string().uuid().optional().nullable(),
-  organizationSiteId: z.string().uuid().optional().nullable(),
-  address: z.string().max(255).optional().nullable(),
-  municipality: z.string().max(120).optional().nullable(),
-  sector: z.string().max(120).optional().nullable(),
-  latitude: z.number().min(-90).max(90).optional().nullable(),
-  longitude: z.number().min(-180).max(180).optional().nullable(),
-  expedienteId: z.string().uuid().optional().nullable(),
-  subscriberId: z.string().uuid().optional().nullable(),
-  ticketId: z.string().max(160).optional().nullable(),
-  contractId: z.string().uuid().optional().nullable(),
-  workOrder: CreateWorkOrderEmbeddedSchema.optional(),
-});
+export const CreateScheduleEventSchema = z
+  .object({
+    type: z.nativeEnum(WfmWorkType),
+    title: z.string().min(1).max(160),
+    description: z.string().optional().nullable(),
+    scheduledStartAt: z.string().datetime({ offset: true }),
+    scheduledEndAt: z.string().datetime({ offset: true }),
+    assignedUserId: z.string().uuid(),
+    operatingSiteId: z.string().uuid().optional().nullable(),
+    organizationSiteId: z.string().uuid().optional().nullable(),
+    address: z.string().max(255).optional().nullable(),
+    municipality: z.string().max(120).optional().nullable(),
+    sector: z.string().max(120).optional().nullable(),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
+    expedienteId: z.string().uuid().optional().nullable(),
+    subscriberId: z.string().uuid().optional().nullable(),
+    ticketId: z.string().max(160).optional().nullable(),
+    contractId: z.string().uuid().optional().nullable(),
+    executionOrderId: z.string().uuid().optional(),
+    workOrder: CreateWorkOrderEmbeddedSchema.optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.executionOrderId && input.workOrder) {
+      context.addIssue({
+        code: 'custom',
+        path: ['workOrder'],
+        message: 'No se puede crear una orden de trabajo al agendar una OT existente.',
+      });
+    }
+  });
 
 export type CreateScheduleEventInput = z.infer<typeof CreateScheduleEventSchema>;
 export type CreateWorkOrderEmbeddedInput = z.infer<typeof CreateWorkOrderEmbeddedSchema>;
@@ -139,6 +150,14 @@ export class CreateScheduleEventDto {
   })
   @IsUUID()
   assignedUserId: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Vincula el evento a una orden de trabajo MOD11 ya despachada, sin crear otra.',
+  })
+  @IsOptional()
+  @IsUUID()
+  executionOrderId?: string;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Sede operativa WFM asociada al evento' })
   @IsOptional()

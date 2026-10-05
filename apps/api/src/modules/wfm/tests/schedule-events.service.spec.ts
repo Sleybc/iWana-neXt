@@ -52,6 +52,8 @@ describe('ScheduleEventsService', () => {
 
   let mockExecutionOrdersService: {
     createFromSchedulingWithManager: jest.Mock;
+    linkFromSchedulingWithManager: jest.Mock;
+    rescheduleFromSchedulingWithManager: jest.Mock;
     cancelFromSchedulingWithManager: jest.Mock;
   };
 
@@ -137,6 +139,12 @@ describe('ScheduleEventsService', () => {
 
     mockExecutionOrdersService = {
       createFromSchedulingWithManager: jest.fn(),
+      linkFromSchedulingWithManager: jest
+        .fn()
+        .mockResolvedValue({ id: 'eo-linked', status: 'ASSIGNED' }),
+      rescheduleFromSchedulingWithManager: jest
+        .fn()
+        .mockResolvedValue({ id: 'eo-linked', status: 'ASSIGNED' }),
       cancelFromSchedulingWithManager: jest
         .fn()
         .mockResolvedValue({ id: 'eo-test', status: 'CANCELLED' }),
@@ -198,6 +206,135 @@ describe('ScheduleEventsService', () => {
       await expect(service.create(validCreateInput, adminActor as any)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('CA-09: checks conflicts before linking a dispatched order and never creates a second one', async () => {
+      const input = {
+        ...validCreateInput,
+        organizationSiteId: '99999999-9999-4999-8999-999999999999',
+        executionOrderId: '88888888-8888-4888-8888-888888888888',
+      };
+      mockConflictService.hasConflictWithManager.mockResolvedValue(true);
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager } as any),
+      );
+
+      await expect(service.create(input, adminActor as any)).rejects.toThrow(BadRequestException);
+
+      expect(mockConflictService.hasConflictWithManager).toHaveBeenCalledTimes(1);
+      expect(mockConflictService.hasConflictWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          assignedUserId: input.assignedUserId,
+          scheduledStartAt: input.scheduledStartAt,
+          scheduledEndAt: input.scheduledEndAt,
+        }),
+      );
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(mockExecutionOrdersService.linkFromSchedulingWithManager).not.toHaveBeenCalled();
+      expect(mockExecutionOrdersService.createFromSchedulingWithManager).not.toHaveBeenCalled();
+    });
+
+    it('links an existing order through MOD11 without creating a new order', async () => {
+      const input = {
+        ...validCreateInput,
+        organizationSiteId: '99999999-9999-4999-8999-999999999999',
+        executionOrderId: '88888888-8888-4888-8888-888888888888',
+      };
+      const event = { id: 'evt-existing-order', ...input, executionOrderId: null };
+      const linkedEvent = { ...event, executionOrderId: 'eo-linked', updatedBy: adminActor.sub };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockReturnValue(event),
+        save: jest.fn().mockResolvedValueOnce(event).mockResolvedValueOnce(linkedEvent),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager } as any),
+      );
+
+      const result = await service.create(input, adminActor as any);
+
+      expect(result.executionOrderId).toBe('eo-linked');
+      expect(mockExecutionOrdersService.linkFromSchedulingWithManager).toHaveBeenCalledWith(
+        manager,
+        adminActor.tenantId,
+        expect.objectContaining({
+          executionOrderId: input.executionOrderId,
+          scheduleEventId: event.id,
+          assignedTechnicianId: input.assignedUserId,
+          organizationSiteId: input.organizationSiteId,
+        }),
+        adminActor,
+      );
+      expect(mockExecutionOrdersService.createFromSchedulingWithManager).not.toHaveBeenCalled();
+    });
+
+    it('replays the same executionOrderId and payload after rechecking other conflicts', async () => {
+      const canonicalAssignedUserId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+      const canonicalOrganizationSiteId = '012345ab-cdef-4abc-8def-abcdefabcdef';
+      const canonicalExpedienteId = '123456ab-cdef-4abc-8def-abcdefabcdef';
+      const canonicalSubscriberId = '234567ab-cdef-4abc-8def-abcdefabcdef';
+      const canonicalContractId = '345678ab-cdef-4abc-8def-abcdefabcdef';
+      const input = {
+        ...validCreateInput,
+        assignedUserId: canonicalAssignedUserId.toUpperCase(),
+        organizationSiteId: canonicalOrganizationSiteId.toUpperCase(),
+        expedienteId: canonicalExpedienteId.toUpperCase(),
+        subscriberId: canonicalSubscriberId.toUpperCase(),
+        contractId: canonicalContractId.toUpperCase(),
+        latitude: 4.71123456,
+        longitude: -74.0721,
+        ticketId: 'Ticket-Case-Sensitive',
+        executionOrderId: '88888888-8888-4888-8888-888888888888',
+      };
+      const existingEvent = {
+        id: 'evt-existing-order',
+        tenantId: adminActor.tenantId,
+        executionOrderId: input.executionOrderId,
+        type: input.type,
+        title: input.title,
+        description: null,
+        scheduledStartAt: new Date(input.scheduledStartAt),
+        scheduledEndAt: new Date(input.scheduledEndAt),
+        assignedUserId: canonicalAssignedUserId,
+        organizationSiteId: canonicalOrganizationSiteId,
+        address: null,
+        municipality: null,
+        sector: null,
+        latitude: '4.7112346',
+        longitude: '-74.0721000',
+        expedienteId: canonicalExpedienteId,
+        subscriberId: canonicalSubscriberId,
+        ticketId: 'Ticket-Case-Sensitive',
+        contractId: canonicalContractId,
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(existingEvent),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({ manager } as any),
+      );
+
+      const result = await service.create(input, adminActor as any);
+
+      expect(result).toBe(existingEvent);
+      expect(mockConflictService.hasConflictWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          assignedUserId: input.assignedUserId,
+          excludeEventId: existingEvent.id,
+        }),
+      );
+      expect(manager.create).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(mockExecutionOrdersService.linkFromSchedulingWithManager).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException for event duration < 15 minutes', async () => {
@@ -536,6 +673,7 @@ describe('ScheduleEventsService', () => {
       const existingEvent = {
         id: 'evt-001',
         tenantId: 'tenant-001',
+        executionOrderId: 'eo-200',
         assignedUserId: 'tech-001',
         scheduledStartAt: new Date('2026-06-01T09:00:00Z'),
         scheduledEndAt: new Date('2026-06-01T11:00:00Z'),
@@ -544,19 +682,22 @@ describe('ScheduleEventsService', () => {
 
       let logSaved = false;
 
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(existingEvent),
+        create: jest.fn().mockImplementation((_entity, data) => data),
+        save: jest.fn().mockImplementation((_entity, data) => Promise.resolve(data)),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
         const mockQr = {
-          manager: {
-            findOne: jest.fn().mockResolvedValue(existingEvent),
-            create: jest.fn().mockImplementation((_entity, data) => data),
-            save: jest.fn().mockImplementation((_entity, data) => {
-              logSaved = true;
-              return Promise.resolve(data);
-            }),
-            update: jest.fn().mockResolvedValue({ affected: 1 }),
-          },
+          manager,
         };
         return fn(mockQr as any);
+      });
+
+      manager.save.mockImplementation((_entity, data) => {
+        logSaved = true;
+        return Promise.resolve(data);
       });
 
       const result = await service.reschedule(
@@ -571,14 +712,25 @@ describe('ScheduleEventsService', () => {
 
       expect(logSaved).toBe(true);
       expect(result.status).toBe(ScheduleEventStatus.RESCHEDULED);
-      expect(mockConflictService.hasConflict).toHaveBeenCalledTimes(1);
-      expect(mockConflictService.hasConflict).toHaveBeenCalledWith({
+      expect(mockConflictService.hasConflictWithManager).toHaveBeenCalledTimes(1);
+      expect(mockConflictService.hasConflictWithManager).toHaveBeenCalledWith(manager, {
         tenantId: adminActor.tenantId,
         assignedUserId: existingEvent.assignedUserId,
         scheduledStartAt: '2026-06-02T14:00:00Z',
         scheduledEndAt: '2026-06-02T16:00:00Z',
         excludeEventId: 'evt-001',
       });
+      expect(mockExecutionOrdersService.rescheduleFromSchedulingWithManager).toHaveBeenCalledWith(
+        manager,
+        adminActor.tenantId,
+        expect.objectContaining({
+          executionOrderId: 'eo-200',
+          scheduleEventId: 'evt-001',
+          plannedWindowStartAt: '2026-06-02T14:00:00Z',
+          plannedWindowEndAt: '2026-06-02T16:00:00Z',
+        }),
+        adminActor,
+      );
     });
 
     it('should reject installation reschedules outside tenant business hours', async () => {

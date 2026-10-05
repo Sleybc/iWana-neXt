@@ -78,6 +78,52 @@ const MOVE_TO_PENDING_ALLOWED_STATUSES = new Set<ScheduleEventStatus>([
 /** Duracion minima del evento: 15 minutos en milisegundos. */
 const MIN_DURATION_MS = 15 * 60 * 1000;
 
+/**
+ * `executionOrderId` es la clave natural del acto E3: repetir el mismo vínculo
+ * con el mismo contenido devuelve el evento dueño, sin crear otro.
+ */
+function isSameExecutionOrderSchedule(
+  event: ScheduleEvent,
+  input: CreateScheduleEventInput,
+): boolean {
+  const sameNullableCoordinate = (
+    persisted: string | null,
+    requested: number | null | undefined,
+  ): boolean => {
+    if (persisted === null || requested === null || requested === undefined) {
+      return persisted === null && (requested === null || requested === undefined);
+    }
+
+    const persistedNumber = Number(persisted);
+    return (
+      Number.isFinite(persistedNumber) &&
+      Number.isFinite(requested) &&
+      persistedNumber.toFixed(7) === requested.toFixed(7)
+    );
+  };
+  const nullableUuid = (value: string | null | undefined): string | null =>
+    value === undefined || value === null ? null : value.toLowerCase();
+
+  return (
+    event.type === input.type &&
+    event.title === input.title &&
+    event.description === (input.description ?? null) &&
+    event.scheduledStartAt.getTime() === new Date(input.scheduledStartAt).getTime() &&
+    event.scheduledEndAt.getTime() === new Date(input.scheduledEndAt).getTime() &&
+    event.assignedUserId === nullableUuid(input.assignedUserId) &&
+    event.organizationSiteId === nullableUuid(input.organizationSiteId) &&
+    event.address === (input.address ?? null) &&
+    event.municipality === (input.municipality ?? null) &&
+    event.sector === (input.sector ?? null) &&
+    sameNullableCoordinate(event.latitude, input.latitude) &&
+    sameNullableCoordinate(event.longitude, input.longitude) &&
+    event.expedienteId === nullableUuid(input.expedienteId) &&
+    event.subscriberId === nullableUuid(input.subscriberId) &&
+    event.ticketId === (input.ticketId ?? null) &&
+    event.contractId === nullableUuid(input.contractId)
+  );
+}
+
 @Injectable()
 export class ScheduleEventsService {
   constructor(
@@ -236,16 +282,30 @@ export class ScheduleEventsService {
     );
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const existingExecutionOrderEvent = validated.executionOrderId
+        ? await qr.manager.findOne(ScheduleEvent, {
+            where: { tenantId, executionOrderId: validated.executionOrderId },
+          })
+        : null;
+      const exactExecutionOrderReplay =
+        existingExecutionOrderEvent !== null &&
+        isSameExecutionOrderSchedule(existingExecutionOrderEvent, validated);
+
       const hasConflict = await this.conflictService.hasConflictWithManager(qr.manager, {
         tenantId,
         assignedUserId: validated.assignedUserId,
         scheduledStartAt: validated.scheduledStartAt,
         scheduledEndAt: validated.scheduledEndAt,
+        ...(exactExecutionOrderReplay ? { excludeEventId: existingExecutionOrderEvent.id } : {}),
       });
       if (hasConflict) {
         throw new BadRequestException(
           'La persona asignada ya tiene un evento activo en ese rango horario',
         );
+      }
+
+      if (exactExecutionOrderReplay) {
+        return existingExecutionOrderEvent;
       }
 
       const event = qr.manager.create(ScheduleEvent, {
@@ -274,6 +334,27 @@ export class ScheduleEventsService {
       });
 
       const savedEvent = await qr.manager.save(ScheduleEvent, event);
+
+      if (validated.executionOrderId) {
+        const executionOrder = await this.assertExecutionOrderPort().linkFromSchedulingWithManager(
+          qr.manager,
+          tenantId,
+          {
+            executionOrderId: validated.executionOrderId,
+            scheduleEventId: savedEvent.id,
+            organizationSiteId: savedEvent.organizationSiteId,
+            assignedTechnicianId: validated.assignedUserId,
+            workType: savedEvent.type,
+            plannedWindowStartAt: validated.scheduledStartAt,
+            plannedWindowEndAt: validated.scheduledEndAt,
+          },
+          actor,
+        );
+
+        savedEvent.executionOrderId = executionOrder.id;
+        savedEvent.updatedBy = actor.sub;
+        return qr.manager.save(ScheduleEvent, savedEvent);
+      }
 
       if (!validated.workOrder) {
         if (!this.executionOrdersService) {
@@ -539,7 +620,7 @@ export class ScheduleEventsService {
       );
 
       // Verificar conflicto real con el usuario asignado
-      const hasConflict = await this.conflictService.hasConflict({
+      const hasConflict = await this.conflictService.hasConflictWithManager(qr.manager, {
         tenantId,
         assignedUserId: event.assignedUserId,
         scheduledStartAt: validated.scheduledStartAt,
@@ -575,6 +656,19 @@ export class ScheduleEventsService {
       };
 
       await qr.manager.update(ScheduleEvent, { id, tenantId }, updates);
+      if (event.executionOrderId) {
+        await this.assertExecutionOrderPort().rescheduleFromSchedulingWithManager(
+          qr.manager,
+          tenantId,
+          {
+            executionOrderId: event.executionOrderId,
+            scheduleEventId: id,
+            plannedWindowStartAt: validated.scheduledStartAt,
+            plannedWindowEndAt: validated.scheduledEndAt,
+          },
+          actor,
+        );
+      }
       return { ...event, ...updates } as ScheduleEvent;
     });
   }
