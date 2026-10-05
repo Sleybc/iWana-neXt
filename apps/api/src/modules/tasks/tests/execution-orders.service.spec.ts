@@ -202,6 +202,84 @@ describe('ExecutionOrdersService', () => {
       expect(manager.save).not.toHaveBeenCalled();
     });
 
+    it.each([ExecutionOrderStatus.IN_PROGRESS, ExecutionOrderStatus.BLOCKED])(
+      'rechaza vincular una OT en estado %s y conserva sus datos de agenda',
+      async (status) => {
+        const originalStart = new Date('2030-01-01T10:00:00.000Z');
+        const originalEnd = new Date('2030-01-01T11:00:00.000Z');
+        const order = {
+          id: input.executionOrderId,
+          tenantId,
+          scheduleEventId: null,
+          organizationSiteId: input.organizationSiteId,
+          assignedTechnicianId: input.assignedTechnicianId,
+          assignedCrewId: null,
+          plannedWindowStartAt: originalStart,
+          plannedWindowEndAt: originalEnd,
+          workType: input.workType,
+          status,
+          isAnnulled: false,
+          version: 4,
+          updatedByUserId: null as string | null,
+        };
+        const manager = {
+          findOne: jest.fn().mockResolvedValue(order),
+          save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        };
+
+        await expect(
+          service.linkFromSchedulingWithManager(manager as never, tenantId, input, actor),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EXECUTION_ORDER_IN_EXECUTION' }),
+        });
+
+        expect(order).toMatchObject({
+          scheduleEventId: null,
+          plannedWindowStartAt: originalStart,
+          plannedWindowEndAt: originalEnd,
+          status,
+          version: 4,
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([ExecutionOrderStatus.ASSIGNED, ExecutionOrderStatus.EN_ROUTE])(
+      'permite vincular una OT antes del inicio en estado %s',
+      async (status) => {
+        const order = {
+          id: input.executionOrderId,
+          tenantId,
+          scheduleEventId: null,
+          organizationSiteId: input.organizationSiteId,
+          assignedTechnicianId: input.assignedTechnicianId,
+          assignedCrewId: null,
+          plannedWindowStartAt: null as Date | null,
+          plannedWindowEndAt: null as Date | null,
+          workType: input.workType,
+          status,
+          isAnnulled: false,
+          version: 2,
+          updatedByUserId: null as string | null,
+        };
+        const manager = {
+          findOne: jest.fn().mockResolvedValue(order),
+          save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        };
+
+        const result = await service.linkFromSchedulingWithManager(
+          manager as never,
+          tenantId,
+          input,
+          actor,
+        );
+
+        expect(result).toEqual({ id: input.executionOrderId, status });
+        expect(order.scheduleEventId).toBe(input.scheduleEventId);
+        expect(manager.save).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it.each([
       ['terminal', ExecutionOrderStatus.CANCELLED, false],
       ['annulada', ExecutionOrderStatus.CANCELLED, true],
@@ -261,6 +339,53 @@ describe('ExecutionOrdersService', () => {
       expect(order.updatedByUserId).toBe(actor.sub);
       expect(manager.save).toHaveBeenCalledTimes(1);
     });
+
+    it.each([ExecutionOrderStatus.IN_PROGRESS, ExecutionOrderStatus.BLOCKED])(
+      'rechaza reprogramar una OT %s y conserva su ventana',
+      async (status) => {
+        const originalStart = new Date('2030-01-01T10:00:00.000Z');
+        const originalEnd = new Date('2030-01-01T11:00:00.000Z');
+        const order = {
+          id: 'eo-001',
+          tenantId,
+          scheduleEventId: 'event-001',
+          plannedWindowStartAt: originalStart,
+          plannedWindowEndAt: originalEnd,
+          status,
+          isAnnulled: false,
+          version: 4,
+          updatedByUserId: null as string | null,
+        };
+        const manager = {
+          findOne: jest.fn().mockResolvedValue(order),
+          save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+        };
+
+        await expect(
+          service.rescheduleFromSchedulingWithManager(
+            manager as never,
+            tenantId,
+            {
+              executionOrderId: order.id,
+              scheduleEventId: order.scheduleEventId,
+              plannedWindowStartAt: '2030-01-02T10:00:00.000Z',
+              plannedWindowEndAt: '2030-01-02T11:00:00.000Z',
+            },
+            actor,
+          ),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EXECUTION_ORDER_IN_EXECUTION' }),
+        });
+
+        expect(order).toMatchObject({
+          plannedWindowStartAt: originalStart,
+          plannedWindowEndAt: originalEnd,
+          status,
+          version: 4,
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('cancelFromSchedulingWithManager', () => {

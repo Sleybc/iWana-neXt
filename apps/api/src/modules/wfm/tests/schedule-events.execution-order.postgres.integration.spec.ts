@@ -96,6 +96,46 @@ describeWithDb('MOD11 E3 — vinculación de OT desde agenda en PostgreSQL real'
       }),
     );
 
+  const readEvent = async (eventId: string) =>
+    TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        const rows = (await qr.query(
+          `SELECT id, status, scheduled_start_at, scheduled_end_at
+             FROM schedule_events
+            WHERE id = $1 AND tenant_id = $2`,
+          [eventId, tenantId],
+        )) as Array<Record<string, unknown>>;
+        if (rows.length !== 1) throw new Error(`No se encontró el evento ${eventId}.`);
+        return rows[0]!;
+      }),
+    );
+
+  const countRescheduleLogs = async (eventId: string) =>
+    TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        const rows = (await qr.query(
+          `SELECT COUNT(*)::int AS total
+             FROM schedule_reschedule_logs
+            WHERE schedule_event_id = $1`,
+          [eventId],
+        )) as Array<{ total: number }>;
+        return rows[0]?.total ?? 0;
+      }),
+    );
+
+  const countEventsForOrder = async (orderId: string) =>
+    TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        const rows = (await qr.query(
+          `SELECT COUNT(*)::int AS total
+             FROM schedule_events
+            WHERE execution_order_id = $1 AND tenant_id = $2`,
+          [orderId, tenantId],
+        )) as Array<{ total: number }>;
+        return rows[0]?.total ?? 0;
+      }),
+    );
+
   beforeAll(async () => {
     dataSource = new DataSource({
       ...dataSourceOptions,
@@ -393,4 +433,123 @@ describeWithDb('MOD11 E3 — vinculación de OT desde agenda en PostgreSQL real'
     )) as Array<{ total: number }>;
     expect(originRows[0]?.total).toBe(1);
   });
+
+  it.each([ExecutionOrderStatus.IN_PROGRESS, ExecutionOrderStatus.BLOCKED])(
+    'rechaza reprogramar una OT %s y revierte evento, ventana y log en PostgreSQL',
+    async (targetStatus) => {
+      const siteId = randomUUID();
+      const technicianId = randomUUID();
+      const originRefId = `E3-REMEDIACION-${randomUUID()}`;
+      const order = await TenantContext.run(tenantContext(), () =>
+        executionOrders.dispatchFromCoordination(buildDispatch(siteId, originRefId), actor),
+      );
+      createdOrderIds.push(order.id);
+
+      const scheduledWindow = futureWindow(3);
+      const event = await TenantContext.run(tenantContext(), () =>
+        scheduleEvents.create(
+          {
+            type: WfmWorkType.SUPPORT,
+            title: 'OT de remediación E3',
+            scheduledStartAt: scheduledWindow.start,
+            scheduledEndAt: scheduledWindow.end,
+            assignedUserId: technicianId,
+            organizationSiteId: siteId,
+            executionOrderId: order.id,
+          },
+          actor,
+        ),
+      );
+      createdEventIds.push(event.id);
+
+      await TenantContext.run(tenantContext(), () => executionOrders.start(order.id, {}, actor));
+      if (targetStatus === ExecutionOrderStatus.BLOCKED) {
+        await TenantContext.run(tenantContext(), () =>
+          executionOrders.block(order.id, { reasonCode: 'E3_TEST' }, actor),
+        );
+      }
+
+      const eventBefore = await readEvent(event.id);
+      const orderBefore = await readOrder(order.id);
+      const rescheduleLogsBefore = await countRescheduleLogs(event.id);
+      const movedWindow = futureWindow(5);
+      const rejection = await TenantContext.run(tenantContext(), () =>
+        scheduleEvents
+          .reschedule(
+            event.id,
+            {
+              scheduledStartAt: movedWindow.start,
+              scheduledEndAt: movedWindow.end,
+              reason: 'Coordinación de agenda E3',
+            },
+            actor,
+          )
+          .then(
+            () => null,
+            (error: unknown) => error,
+          ),
+      );
+
+      expect(rejection).toBeInstanceOf(ConflictException);
+      expect((rejection as ConflictException).getResponse()).toMatchObject({
+        code: 'EXECUTION_ORDER_IN_EXECUTION',
+      });
+      expect(await readEvent(event.id)).toEqual(eventBefore);
+      expect(await readOrder(order.id)).toEqual(orderBefore);
+      expect(await countRescheduleLogs(event.id)).toBe(rescheduleLogsBefore);
+    },
+  );
+
+  it.each([ExecutionOrderStatus.IN_PROGRESS, ExecutionOrderStatus.BLOCKED])(
+    'rechaza vincular una OT %s y revierte el evento creado en PostgreSQL',
+    async (targetStatus) => {
+      const siteId = randomUUID();
+      const technicianId = randomUUID();
+      const originRefId = `E3-VINCULO-REMEDIACION-${randomUUID()}`;
+      const order = await TenantContext.run(tenantContext(), () =>
+        executionOrders.dispatchFromCoordination(buildDispatch(siteId, originRefId), actor),
+      );
+      createdOrderIds.push(order.id);
+
+      await TenantContext.run(tenantContext(), () => executionOrders.start(order.id, {}, actor));
+      if (targetStatus === ExecutionOrderStatus.BLOCKED) {
+        await TenantContext.run(tenantContext(), () =>
+          executionOrders.block(order.id, { reasonCode: 'E3_TEST' }, actor),
+        );
+      }
+
+      const scheduledWindow = futureWindow(3);
+      const rejection = await TenantContext.run(tenantContext(), () =>
+        scheduleEvents
+          .create(
+            {
+              type: WfmWorkType.SUPPORT,
+              title: 'Vínculo rechazado por ejecución E3',
+              scheduledStartAt: scheduledWindow.start,
+              scheduledEndAt: scheduledWindow.end,
+              assignedUserId: technicianId,
+              organizationSiteId: siteId,
+              executionOrderId: order.id,
+            },
+            actor,
+          )
+          .then(
+            () => null,
+            (error: unknown) => error,
+          ),
+      );
+
+      expect(rejection).toBeInstanceOf(ConflictException);
+      expect((rejection as ConflictException).getResponse()).toMatchObject({
+        code: 'EXECUTION_ORDER_IN_EXECUTION',
+      });
+      expect(await countEventsForOrder(order.id)).toBe(0);
+      expect(await readOrder(order.id)).toMatchObject({
+        status: targetStatus,
+        schedule_event_id: null,
+        planned_window_start_at: null,
+        planned_window_end_at: null,
+      });
+    },
+  );
 });

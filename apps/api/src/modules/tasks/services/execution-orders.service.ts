@@ -1138,6 +1138,18 @@ export class ExecutionOrdersService {
       });
     }
     this.assertMutable(order);
+    if (
+      ![
+        ExecutionOrderStatus.CREATED,
+        ExecutionOrderStatus.ASSIGNED,
+        ExecutionOrderStatus.EN_ROUTE,
+      ].includes(order.status)
+    ) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_IN_EXECUTION',
+        message: 'Coordina con el técnico antes de modificar la agenda de una orden en curso.',
+      });
+    }
     if (order.scheduleEventId) {
       throw new ConflictException({
         code: 'EXECUTION_ORDER_ALREADY_SCHEDULED',
@@ -1226,6 +1238,15 @@ export class ExecutionOrdersService {
       });
     }
     this.assertMutable(order);
+    if (
+      order.status === ExecutionOrderStatus.IN_PROGRESS ||
+      order.status === ExecutionOrderStatus.BLOCKED
+    ) {
+      throw new ConflictException({
+        code: 'EXECUTION_ORDER_IN_EXECUTION',
+        message: 'Coordina con el técnico antes de modificar la agenda de una orden en curso.',
+      });
+    }
     if (order.scheduleEventId !== input.scheduleEventId) {
       throw new ConflictException({
         code: 'EXECUTION_ORDER_EVENT_MISMATCH',
