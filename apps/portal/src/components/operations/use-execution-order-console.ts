@@ -19,6 +19,7 @@ import {
   ExecutionOrderEvidence,
   InventoryItemStatus,
   StockLocationStatus,
+  type EvidenceAssetReceipt,
   type ListMeta,
   type RegisterActivityCommand,
 } from '@iwana/shared';
@@ -47,6 +48,34 @@ import {
 
 /** Tamaño de página por defecto del contrato de custodia del ejecutor (§1). */
 const EXECUTOR_CUSTODY_PAGE_SIZE = 25;
+/** Espera finita para no dejar la carga de evidencia abierta indefinidamente. */
+const EVIDENCE_ANALYSIS_POLL_INTERVAL_MS = 500;
+const EVIDENCE_ANALYSIS_MAX_ATTEMPTS = 6;
+
+async function waitForEvidenceAssetAvailability(
+  executionOrderId: string,
+  mediaAssetId: string,
+): Promise<EvidenceAssetReceipt['status']> {
+  for (let attempt = 0; attempt < EVIDENCE_ANALYSIS_MAX_ATTEMPTS; attempt += 1) {
+    const receipt: EvidenceAssetReceipt = await tasksApi.executionOrders.getEvidenceAsset(
+      executionOrderId,
+      mediaAssetId,
+    );
+
+    if (receipt.status !== 'PENDING_ANALYSIS') {
+      return receipt.status;
+    }
+    if (attempt === EVIDENCE_ANALYSIS_MAX_ATTEMPTS - 1) {
+      return receipt.status;
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, EVIDENCE_ANALYSIS_POLL_INTERVAL_MS);
+    });
+  }
+
+  return 'PENDING_ANALYSIS';
+}
 
 /**
  * Los ~26 estados de OT + `offline` y los 12 handlers de la consola, extraídos
@@ -109,6 +138,7 @@ export function useExecutionOrderConsole() {
   const [executionOrderSuccess, setExecutionOrderSuccess] = useState<string | null>(null);
   const [isLoadingExecutionOrder, setIsLoadingExecutionOrder] = useState(false);
   const [isSubmittingExecutionOrder, setIsSubmittingExecutionOrder] = useState(false);
+  const [isAnalyzingEvidence, setIsAnalyzingEvidence] = useState(false);
   const [offline, setOffline] = useState(false);
   // Contador secuencial: descarta respuestas tardías de aperturas/refresh previos
   // para que no reabran el drawer ni pisen el estado de la OT vigente.
@@ -563,6 +593,7 @@ export function useExecutionOrderConsole() {
       return false;
     }
     setIsSubmittingExecutionOrder(true);
+    setIsAnalyzingEvidence(false);
     setExecutionOrderError(null);
     setExecutionOrderSuccess(null);
     try {
@@ -573,6 +604,30 @@ export function useExecutionOrderConsole() {
       );
       if (!isValidFutureEvidenceExpiry(uploadReceipt.expiresAt)) {
         throw new Error('La evidencia subida no tiene una fecha de expiración válida.');
+      }
+      setIsAnalyzingEvidence(true);
+      const evidenceAssetStatus = await waitForEvidenceAssetAvailability(
+        selectedExecutionOrder.id,
+        uploadReceipt.mediaAssetId,
+      );
+      setIsAnalyzingEvidence(false);
+      if (evidenceAssetStatus === 'REJECTED') {
+        setExecutionOrderError(
+          'El archivo no superó la revisión y no se registró. Selecciona otro archivo para continuar.',
+        );
+        return false;
+      }
+      if (evidenceAssetStatus === 'EXPIRED') {
+        setExecutionOrderError(
+          'El archivo venció antes de completar la revisión y no se registró. Vuelve a seleccionarlo para adjuntarlo.',
+        );
+        return false;
+      }
+      if (evidenceAssetStatus !== 'AVAILABLE') {
+        setExecutionOrderError(
+          'El archivo sigue en revisión y aún no se registró. Puedes volver a intentarlo en unos minutos.',
+        );
+        return false;
       }
       await tasksApi.executionOrders.registerEvidence(
         selectedExecutionOrder.id,
@@ -591,6 +646,7 @@ export function useExecutionOrderConsole() {
       setExecutionOrderError(mapOperationsError(error));
       return false;
     } finally {
+      setIsAnalyzingEvidence(false);
       setIsSubmittingExecutionOrder(false);
     }
   }
@@ -680,6 +736,7 @@ export function useExecutionOrderConsole() {
     executionOrderSuccess,
     isLoadingExecutionOrder,
     isSubmittingExecutionOrder,
+    isAnalyzingEvidence,
     offline,
     openExecutionOrder,
     retryExecutionOrder,

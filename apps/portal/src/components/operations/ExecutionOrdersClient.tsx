@@ -432,6 +432,7 @@ export function ExecutionOrdersClient() {
         missingRequirements={orderConsole.executionOrderMissingRequirements}
         isLoading={orderConsole.isLoadingExecutionOrder}
         isSubmitting={orderConsole.isSubmittingExecutionOrder}
+        isAnalyzingEvidence={orderConsole.isAnalyzingEvidence}
         error={orderConsole.executionOrderError}
         successMessage={orderConsole.executionOrderSuccess}
         offline={orderConsole.offline}

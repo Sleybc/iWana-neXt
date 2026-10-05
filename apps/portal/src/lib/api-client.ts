@@ -7085,6 +7085,13 @@ export const tasksApi = {
       );
     },
 
+    getEvidenceAsset: (id: string, mediaAssetId: string, tenantSlug?: string) =>
+      request<EvidenceAssetReceipt>(
+        `/tasks/execution-orders/${id}/evidence-assets/${mediaAssetId}`,
+        { returnFullResponse: true },
+        tenantSlug,
+      ),
+
     registerEvidence: (
       id: string,
       dto: RegisterExecutionOrderEvidenceDto,

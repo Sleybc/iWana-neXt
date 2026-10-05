@@ -99,6 +99,7 @@ interface ExecutionOrderDrawerProps {
   missingRequirements?: ExecutionOrderMissingRequirement[];
   isLoading: boolean;
   isSubmitting: boolean;
+  isAnalyzingEvidence?: boolean;
   error: string | null;
   successMessage?: string | null;
   offline: boolean;
@@ -354,6 +355,7 @@ export function ExecutionOrderDrawer({
   missingRequirements = [],
   isLoading,
   isSubmitting,
+  isAnalyzingEvidence = false,
   error,
   successMessage = null,
   offline,
@@ -1853,6 +1855,14 @@ export function ExecutionOrderDrawer({
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Arrastra fotos o documentos relacionados con la instalación.
                 </p>
+                {isAnalyzingEvidence ? (
+                  <p
+                    className="mt-2 text-sm text-iwana-secondary-700 dark:text-gray-300"
+                    role="status"
+                  >
+                    Analizando archivo
+                  </p>
+                ) : null}
                 <input
                   ref={evidenceFileRef}
                   type="file"

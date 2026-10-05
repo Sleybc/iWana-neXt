@@ -467,6 +467,34 @@ describe('tasksApi execution order payloads', () => {
     window.localStorage.clear();
   });
 
+  it('consulta el estado de un asset de evidencia en la ruta existente', async () => {
+    const receipt = {
+      intentId: 'intent-001',
+      mediaAssetId: 'asset-001',
+      status: 'AVAILABLE',
+      expiresAt: '2026-08-01T00:00:00.000Z',
+    };
+    const fetchCalls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push([input, init]);
+      return createJsonResponse(200, receipt);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { tasksApi } = await import('./api-client');
+    const response = await tasksApi.executionOrders.getEvidenceAsset(
+      'eo-001',
+      'asset-001',
+      'isp-demo',
+    );
+
+    expect(response).toEqual(receipt);
+    expect(String(fetchCalls[0]?.[0])).toMatch(
+      /\/tasks\/execution-orders\/eo-001\/evidence-assets\/asset-001$/,
+    );
+    expect(new Headers(fetchCalls[0]?.[1]?.headers).get('X-Tenant-Slug')).toBe('isp-demo');
+  });
+
   it('envía las formas exactas del contrato y autoriza multipart', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const evidenceExpiresAt = '2026-08-01T00:00:00.000Z';

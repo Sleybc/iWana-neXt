@@ -795,6 +795,35 @@ describe('ExecutionOrderDrawer', () => {
       expect(onUploadEvidence).toHaveBeenCalledWith(file, 'req-photo-install');
     });
 
+    it('muestra el estado mientras analiza el archivo', () => {
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        isAnalyzingEvidence: true,
+      });
+
+      expect(screen.getByText('Analizando archivo')).toHaveAttribute('role', 'status');
+    });
+
+    it('mantiene el archivo seleccionado y muestra el error si la carga no termina', async () => {
+      const error =
+        'El archivo no superó la revisión y no se registró. Selecciona otro archivo para continuar.';
+      const onUploadEvidence = jest.fn().mockResolvedValue(false);
+      const user = userEvent.setup();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        error,
+        onUploadEvidence,
+      });
+
+      const file = new File(['evidencia'], 'instalacion.pdf', { type: 'application/pdf' });
+      const input = screen.getByLabelText('Adjuntar evidencia') as HTMLInputElement;
+      await user.upload(input, file);
+
+      expect(await screen.findByText(error)).toBeInTheDocument();
+      expect(input.files?.[0]).toBe(file);
+      expect(onUploadEvidence).toHaveBeenCalledWith(file, 'req-photo-install');
+    });
+
     it('muestra Cargar más cuando quedan evidencias y conserva el callback', async () => {
       const onLoadMoreEvidence = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
