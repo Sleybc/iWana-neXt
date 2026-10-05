@@ -129,6 +129,31 @@ describe('ExecutionOrderSummary', () => {
     expect(screen.getByRole('progressbar')).toHaveValue(40);
   });
 
+  it('pinta «—» en la ventana cuando schedule.window es nulo', () => {
+    const order: ExecutionOrderDetailResponse = {
+      id: 'eo-002',
+      number: 'OT-002',
+      version: 1,
+      status: ExecutionOrderStatus.ASSIGNED,
+      annulled: false,
+      workType: WfmWorkType.INSTALLATION,
+      template: null,
+      schedule: { eventId: null, window: null },
+      site: { id: 'site-001', label: 'Sitio autorizado' },
+      completion: { progress: 0 },
+      syncState: 'IN_SYNC',
+      inventoryReconciliation: 'NOT_REQUIRED',
+      allowedActions: [],
+      createdAt: '2026-07-27T12:00:00.000Z',
+      updatedAt: '2026-07-27T12:00:00.000Z',
+    };
+
+    render(<ExecutionOrderSummary order={order} />);
+
+    const windowHeading = screen.getByText('Ventana');
+    expect(windowHeading.parentElement).toHaveTextContent('—');
+  });
+
   it('muestra Sincronizada cuando el estado está mapeado a synced', () => {
     const order = {
       id: 'eo-001',

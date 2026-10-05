@@ -6,7 +6,7 @@
 // y CA-10 (§8.1: encabezados no ordenables mientras `sortableFields` esté
 // vacío; prohibido `PortalDataTableSortableHead`).
 import type { ComponentProps } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
 import type { ExecutionOrderListItem } from '@/lib/api-client';
@@ -109,6 +109,20 @@ describe('ExecutionOrdersTable', () => {
     });
 
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('pinta «—» en la ventana planificada cuando schedule.window es nulo', () => {
+    renderTable({
+      orders: [
+        buildOrder({
+          schedule: { eventId: null, window: null },
+        }),
+      ],
+    });
+
+    const row = screen.getByRole('row', { name: /OT-0001/ });
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[4]).toHaveTextContent('—');
   });
 
   it('sin asignado pinta «Sin asignar» (pool)', () => {

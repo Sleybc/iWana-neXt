@@ -200,9 +200,12 @@ export function ExecutionOrdersTable({
 
 /** Ventana planificada: inicio; con fin distinto, «– fin» (contrato §7.2 col. 5). */
 function formatExecutionOrderWindow(order: ExecutionOrderListItem): string {
-  const start = formatTaskDateTime(order.schedule.window.startAt);
-  const endAt = order.schedule.window.endAt;
-  if (endAt && endAt !== order.schedule.window.startAt) {
+  const window = order.schedule.window;
+  if (!window) return '—';
+
+  const start = formatTaskDateTime(window.startAt);
+  const endAt = window.endAt;
+  if (endAt && endAt !== window.startAt) {
     return `${start} – ${formatTaskDateTime(endAt)}`;
   }
   return start;

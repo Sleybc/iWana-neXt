@@ -256,8 +256,14 @@ export function ExecutionOrderSummary({
           <div>
             <p className="portal-eyebrow-muted">Ventana</p>
             <p className="mt-1 text-gray-700 dark:text-gray-200">
-              {dateFormatter.format(new Date(window.startAt))} –{' '}
-              {dateFormatter.format(new Date(window.endAt))}
+              {window ? (
+                <>
+                  {dateFormatter.format(new Date(window.startAt))} –{' '}
+                  {dateFormatter.format(new Date(window.endAt))}
+                </>
+              ) : (
+                '—'
+              )}
             </p>
           </div>
           <div>
