@@ -1,14 +1,23 @@
 # Plan de orquestación — MOD11: remediación y rediseño de la consola de OT
 
-**Versión:** 1.1
-**Estado:** **Aprobado y ejecutable (2026-09-14).** Las tres escalaciones de la v1.0 están cerradas (§7): **no queda ningún bloqueo de gobierno**. C0 puede despacharse de inmediato.
-**Fecha:** 2026-09-14
+**Versión:** 1.2
+**Estado:** **Aprobado y ejecutable.** La **Ola 1 está cerrada en GO** (C0-C5; `INFORME-MOD11-CONSOLA-OT-OLA1-SR-QA-v1.0.md`, con evidencia en navegador). La **Ola 2a (R0 + UX de E4, y R1) es despachable**: G4 emitido para ambas.
+**Fecha:** 2026-10-05
+**Cambio v1.1 → v1.2 (2026-10-05):**
+1. R0 absorbe la **UX de E4** del plan de origen (`2026-09-14-mod11-origen-ot.md` v1.1), y R1 el estado visual «sin ventana».
+2. R2-R4 incorporan la implementación de portal de E4 y **pasan a depender de E3 de origen en GO**, porque comparten superficie.
+3. Se añaden la matriz de dispatch completa (§4) y la sección `## Lanzamiento`: el plan era anterior a la v2.5 del perfil.
+4. R0 diseña sobre `INSTALACION_ESTANDAR` v2, con cinco requisitos (acta de instalación §4.2), y no sobre la v1 que vio la auditoría.
+
+Alcance de la Ola 1, contratos y escalaciones sin cambio.
 **Cambio v1.0 → v1.1:** el CTO retiró el punto 7 del alcance, por lo que **desaparece la Ola 3 completa**; se aprobó E2 (ampliación aditiva con bump a v1.1) y se retiró E3 por improcedente — ADR-080 §5 la disuelve. Las Olas 1 y 2 no cambian de alcance.
 **Emitido por:** AI-EM-ARCH
 
-**Spec que ejecuta:** `docs/specs/2026-09-14-mod11-consola-ot-requisito-como-eje-design.md` v1.1 (**Aprobado por el CTO, 2026-09-14**)
+**Spec que ejecuta:** `docs/specs/2026-09-14-mod11-consola-ot-requisito-como-eje-design.md` **v1.2** (Aprobado por el CTO, 2026-09-14; la v1.2 del 2026-10-05 corrige la fila *Bloqueada* de §4.2)
 **Prompt de orquestación:** `docs/prompts/PROMPT-MOD11-CONSOLA-OT-ORQUESTACION-v1.0.md` — el despacho concreto de las dos olas sobre los cuatro agentes.
-**Prompts de ejecución (Ola 1):** `PROMPT-MOD11-CONSOLA-OT-OLA1-SR-FULL-v1.0.md` → `sr-backend` · `PROMPT-MOD11-CONSOLA-OT-OLA1-FE-PLATFORM-v1.0.md` → `prod-ux` y `fe-platform` · `PROMPT-MOD11-CONSOLA-OT-OLA1-SR-QA-v1.0.md` → `sr-qa`
+**Siguiente despacho (2026-10-05):** dictamen G3 → `PROMPT-MOD11-CONSOLA-OT-OLA2-G3-FE-PLATFORM-v1.0.md` · E3 de origen → `PROMPT-MOD11-ORIGEN-OT-E3-v1.0.md` · launcher `PROMPT-MOD11-CONSOLA-OT-G3-E3-LAUNCH-v1.0.md`
+**Prompts de ejecución (Ola 2a, cerrada):** `PROMPT-MOD11-CONSOLA-OT-OLA2-R0-PROD-UX-v1.0.md` → `prod-ux` · `PROMPT-MOD11-CONSOLA-OT-OLA2-R1-DS-OWNER-v1.0.md` → `ds-owner`. Launcher: `PROMPT-MOD11-CONSOLA-OT-OLA2A-LAUNCH-v1.0.md`
+**Prompts de ejecución (Ola 1, cerrada):** `PROMPT-MOD11-CONSOLA-OT-OLA1-SR-FULL-v1.0.md` → `sr-backend` · `PROMPT-MOD11-CONSOLA-OT-OLA1-FE-PLATFORM-v1.0.md` → `prod-ux` y `fe-platform` · `PROMPT-MOD11-CONSOLA-OT-OLA1-SR-QA-v1.0.md` → `sr-qa`
 
 **Plan hermano vigente:** `docs/plans/2026-09-13-mod11-operaciones-subrutas-bandeja-ot.md` v2.1 (Aprobado) — este plan **no lo supera**: aquel entregó las sub-rutas y la bandeja; este interviene la consola que aquel excluyó por diseño (spec v1.1 §4.5).
 
@@ -54,7 +63,8 @@ OLA 1 — corrección (C0 primero, luego paralelo)
                      │
 OLA 2 — rediseño
    R0  UX spec        PROD-UX  ─┐
-   R1  contrato comp. DS-OWNER ─┴→ [G2]+[G3] → R2, R3, R4  FE-PLATFORM → R5  SR-QA
+   R1  contrato comp. DS-OWNER ─┴→ [G2]+[G3] ─┐
+   E3 de origen (SR-FULL, backend) ── GO ───────┴→ R2, R3, R4 + E4-portal  FE-PLATFORM → R5  SR-QA
                      │
                   cierre
 ```
@@ -84,12 +94,14 @@ El mapeo de olas a gates replica el del plan aprobado el 2026-09-13 §3.1: conge
 
 | Fase | Alcance | Agente | Stop/go |
 | --- | --- | --- | --- |
-| **R0** | UX spec de la consola por requisito y por momento (spec §4.1, §4.2), con los dos modos de rol de D1. Decide el arrastre de archivos: implementarlo o retirar la promesa del copy. | AI-PROD-UX | G3 |
-| **R1** | Contrato de componente `RequirementChecklist` y `RequirementActionSheet`: tokens, API y estados requeridos. | AI-DS-OWNER | G2 |
+| **R0** | UX spec de la consola por requisito y por momento (spec §4.1, §4.2), con los dos modos de rol de D1, sobre la plantilla v2. Decide el arrastre de archivos: implementarlo o retirar la promesa del copy. **Incluye la UX de E4** (origen §3.5, CA-12): OT sin ventana y orden por defecto de la bandeja. | AI-PROD-UX | G2 |
+| **R1** | Contrato de componente `RequirementChecklist` y `RequirementActionSheet`: tokens, API y estados requeridos. Incluye el veredicto sobre el estado «sin ventana» de E4: o se cita del contrato de tablas operativas v1.1, o se versiona a v1.2. | AI-DS-OWNER | G2 |
 | **R2** | Selector de `requirementKey` y `evidenceType` en el uploader; **captura de firma en navegador**. Respetar el registro automático de `close()` (`:1218-1227`): la captura produce el artefacto, no lo sustituye. | AI-FE-PLATFORM | CA-08, CA-09 |
 | **R3** | Custodia bajo demanda; separación de histórico y captura en "Trabajo realizado", anclada al requisito. | AI-FE-PLATFORM | CA-10, CA-11 |
 | **R4** | Refetch selectivo por mutación (`use-execution-order-console.ts:302-304`). | AI-FE-PLATFORM | CA-12 |
 | **R5** | Tests, accesibilidad y regresión visual. | AI-SR-QA | CA-13 |
+
+**G3 de la Ola 2** lo firma `fe-platform` con un dictamen de factibilidad sobre la UX spec y el contrato. Ese dictamen incluye las necesidades declaradas de R0 y R1; por ejemplo, la librería de lienzo para la firma, que como dependencia nueva requiere decisión. Ese dictamen es la entrada de la Ola 2b. **La Ola 2b, que cubre R2-R4 y el portal de E4, no se lanza sin G2, G3 y E3 en GO.**
 
 ### 3.3 RACI
 
@@ -112,6 +124,15 @@ El aprobador de un gate nunca es el productor del artefacto.
 | C0, C1, C2 | `architect-review` en la revisión de segunda capa |
 | R0 | `brainstorming` ya ejecutada en la sesión de origen; R0 parte de su salida |
 | Todas | `writing-plans` para el desglose interno de cada sesión |
+
+**Matriz de dispatch de la Ola 2** (v1.2). Las skills están verificadas contra disco con `ls .agents/skills/<nombre>/SKILL.md` el 2026-10-05.
+
+| Bloque | Subagente | Obligatorias | Apoyo (condición) | Descartadas y por qué | Gate ejecutable |
+| --- | --- | --- | --- | --- | --- |
+| R0 + E4-UX | `prod-ux` | `brainstorming`, `system-vocabulary-review`, `ui-ux-pro-max` | `iwana-identity-ui-review` (contraste con la Estrella Polar) · `wcag-audit-patterns` (alternativa accesible de la firma) | `core-components`, `senior-ui-systems-designer`: el contrato es de R1 · `frontend-dev-guidelines`, `tailwind-patterns`: no hay código · `playwright-skill`: no hay verificación en navegador | Stop/go §7 del encargo |
+| R1 | `ds-owner` | `core-components`, `senior-ui-systems-designer`, `tailwind-patterns`, `iwana-identity-ui-review`, `wcag-audit-patterns` | `ui-ux-pro-max` (subordinada; densidad del checklist) | `frontend-dev-guidelines`: no hay código · `system-vocabulary-review`: el copy es de R0 · `playwright-skill`: no hay superficie implementada | Stop/go §6 del encargo |
+| R2-R4 + E4-portal | `fe-platform` | *se fijan al emitir su prompt tras G2+G3* | — | — | `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs` |
+| R5 | `sr-qa` | *ídem* | — | — | Conteo real por suite, `Cached: 0` |
 
 ## 5. Protocolo de arranque y cierre de sesión
 
@@ -172,3 +193,23 @@ Evidencia exigida por ola. El criterio transversal es que **un verde sin conteo 
 | R3 | C1 se lee como ampliación de superficie de datos. | Es el mismo dato, mismo recurso, mismos roles y mismo permiso que el listado ya expone. Declarado en spec §6. |
 | R4 | La Ola 2 arranca sobre un contrato que C0 aún no publicó. | R0 y R1 no dependen del contrato de API; R2-R4 sí, y no se despachan hasta que C0 esté en verde. |
 | R6 | El rediseño y la corrección se mezclan en el mismo commit. | C4 cambia contenido, no estructura de secciones; la estructura es R3. |
+
+## Registro de bloqueos — Ola 2
+
+| Fecha | Origen | Bloqueo | Resolución (AI-EM-ARCH) | Registro |
+| --- | --- | --- | --- | --- |
+| 2026-10-05 | `prod-ux`, R0 | La spec §4.2 exige mostrar el motivo y la resolución de una OT bloqueada; `ExecutionOrderDetail` v1.4 no los publica | **Procede, y es un defecto de la spec.** No se versiona el contrato: el motivo no tiene catálogo y su lectura pertenece a T3 de línea de tiempo. La celda *Bloqueada* se diseña sin motivo. Deuda en spec v1.2 §10.12. Se relanza R0 con la adenda A1 | Spec v1.2 · encargo R0, adenda A1 · `INFORME-MOD11-CONSOLA-OT-OLA2-R0-PROD-UX-v1.0.md` |
+| 2026-10-05 | AI-EM-ARCH, auditoría G2 de R0 | La UX spec v1.0 promete un borrador offline que no existe y propone un orden de bandeja que exige DDL. Además, la etiqueta del ítem opcional no es la del snapshot | **GO condicionado de R0.** Cuatro correcciones en la adenda A2, entre ellas el orden `DESC NULLS FIRST` sin DDL. G2 sigue **parcial** hasta que R1 entregue | Encargo R0, adenda A2 |
+| 2026-10-05 | `prod-ux`, `[CONSULTA]` | ¿Qué alternativa a la firma, operable por teclado? | El trazo queda exceptuado por WCAG 2.1 SC 2.1.1; los controles sí deben operarse por teclado. **El nombre escrito no vale como `SIGNATURE`** (ADR-088 §D4). Que un cliente sin puntero no tenga alternativa queda como **deuda** | Encargo R0, adenda A2 punto 4 |
+| 2026-10-05 | AI-EM-ARCH, auditoría | **Defecto vivo:** la bandeja y el resumen del detalle desreferencian `schedule.window`, que es nulable desde E2 (contrato v1.3). Una OT despachada sin cita hace caer la consola | Hotfix inmediato fuera de secuencia, ejecutado por `fe-platform`: pinta `'—'` y no añade copy | `PROMPT-MOD11-CONSOLA-OT-HOTFIX-VENTANA-NULA-v1.0.md` |
+| 2026-10-05 | AI-EM-ARCH, **cierre de G2** | Entregados: UX spec v1.1 (R0), contrato de componente v1.0 (R1), tablas operativas v1.2 (R1) y hotfix GO (los 25 tests de las dos suites tocadas los volvió a ejecutar el orquestador). Las cuatro correcciones A2 están verificadas en la v1.1. Los nombres de acción del contrato R1 coinciden con `ExecutionOrderAllowedAction` | **G2 CERRADO.** Contratos congelados para la Ola 2b: UX spec v1.1, contrato de componente v1.0 y **tablas v1.2**. Este registro es el **re-sync** hacia `fe-platform` y `sr-qa` (protocolo §3bis regla 1). Observaciones no bloqueantes: (a) el hotfix pinta `'—'` y la tabla v1.2 ahora prescribe «Por programar»: la Ola 2b lo sustituye; (b) la baja de `PROVISIONING` (handoff P2 de E2) sigue sin decisión de producto y **no entra** en la Ola 2b | UX spec y contrato R1 con estado Aprobado |
+
+## Lanzamiento
+
+**La fuente vigente es `docs/prompts/PROMPT-MOD11-CONSOLA-OT-G3-E3-LAUNCH-v1.0.md`, del 2026-10-05: dictamen G3 de `fe-platform` y E3 de origen, en paralelo. Si este espejo diverge, prevalece el archivo.** La Ola 2a está cerrada: hotfix GO, R0 y R1 GO, G2 cerrado. La Ola 2b se lanza con su propio archivo cuando G3 y E3 estén en GO. El texto de abajo corresponde al primer lanzamiento de la Ola 2a y se conserva como historial.
+
+**Ola 2a — diseño.** `prod-ux` → R0 + UX de E4 · `ds-owner` → R1, ambos en paralelo. La Ola 1 está cerrada y no se re-despacha. Una vez la Ola 2a cierre en GO, se emiten la aprobación de G2, el dictamen G3 de `fe-platform` y el launcher de la Ola 2b (R2-R4 + portal de E4), que se lanza solo con E3 de origen en GO.
+
+> Actúa como `prod-ux`. Lee `AGENTS.md`, este plan v1.2 y tu encargo `docs/prompts/PROMPT-MOD11-CONSOLA-OT-OLA2-R0-PROD-UX-v1.0.md` completo. Lee antes los `SKILL.md` de `brainstorming`, `system-vocabulary-review` y `ui-ux-pro-max`. Cierras con el §7 del encargo en GO.
+
+> Actúa como `ds-owner`. Lee `AGENTS.md`, este plan v1.2 y tu encargo `docs/prompts/PROMPT-MOD11-CONSOLA-OT-OLA2-R1-DS-OWNER-v1.0.md` completo. Lee antes los `SKILL.md` de `core-components`, `senior-ui-systems-designer`, `tailwind-patterns`, `iwana-identity-ui-review` y `wcag-audit-patterns`. Cierras con el §6 del encargo en GO.

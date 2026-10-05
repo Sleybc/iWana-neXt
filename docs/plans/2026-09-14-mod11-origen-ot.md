@@ -1,8 +1,9 @@
 # Plan de orquestación — MOD11: el origen de la OT
 
-**Versión:** 1.0
-**Estado:** Vigente. G1 cerrado el 2026-09-14. **E1 cerrado en GO el 2026-09-15 y auditado. E2 es despachable.**
-**Fecha:** 2026-09-14
+**Versión:** 1.1
+**Estado:** Vigente. G1 cerrado el 2026-09-14. **E1 y E2 cerrados en GO el 2026-09-15** (`INFORME-MOD11-ORIGEN-OT-E2-v1.0.md`). **E3 es despachable.**
+**Fecha:** 2026-10-05
+**Cambio v1.0 → v1.1 (2026-10-05):** E4 se divide por superficie. La **UX de E4** se fusiona con R0 del plan de consola (`docs/plans/2026-09-14-mod11-consola-ot-remediacion.md` v1.2), y su **implementación de portal** viaja en la misma pasada de `fe-platform` que R2-R4. La **parte de datos de E4** (CA-13) sigue en este plan, con `sr-backend` después de E3. Motivo: E4 y R2-R4 intervienen el mismo drawer, el mismo resumen y la misma bandeja; diseñarlas por separado obliga a rediseñar la consola dos veces. Alcance, criterios y RACI de E4 sin cambio.
 **Emitido por:** AI-EM-ARCH
 
 **Spec que ejecuta:** `docs/specs/2026-09-14-mod11-origen-ot-design.md` v1.0
@@ -41,7 +42,7 @@ El trabajo es **separar el acto de despachar del acto de agendar** sin debilitar
 | **E1** | Nulabilidad de `schedule_event_id` y `planned_window_*`; migración del índice único al eje de origen; guarda de unicidad para ambos caminos | CA-01 a CA-04 |
 | **E2** | Creación por despacho con **sitio y `originContext` obligatorios**; `CREATED` alcanzable y **fuera del pool reclamable**; la regla coherente en los cinco sitios; decide `PROVISIONING` y el salto que pierde el origen real (spec §3.8) | CA-05 a CA-08c |
 | **E3** | Agendar una OT existente: vínculo, chequeo de conflicto sin excepción, propagación intacta | CA-09 a CA-11 |
-| **E4** | Consola que distingue sin ventana de con ventana; handlers y reconciliador ante `NULL` | CA-12, CA-13 |
+| **E4** | Consola que distingue sin ventana de con ventana; handlers y reconciliador ante `NULL`. **Desde la v1.1 se ejecuta en tres partes:** UX → R0 del plan de consola · portal → pasada R2-R4 de `fe-platform` · datos (CA-13) → `sr-backend` aquí, después de E3 | CA-12, CA-13 |
 
 ## 4. Matriz de dispatch (agente × skill)
 
@@ -103,3 +104,5 @@ Verificadas contra disco con `ls .agents/skills/<nombre>/SKILL.md` (perfil §10.
 **Se lanza E2**: `docs/prompts/PROMPT-MOD11-ORIGEN-OT-E2-LAUNCH-v1.0.md` es la fuente y prevalece si un espejo diverge.
 
 E2 se lanza al cerrar E1 **y T0 de la spec hermana**. E3 y E4 con archivo propio en su turno.
+
+**Actualización 2026-10-05 (v1.1).** E2 cerrado en GO. La UX de E4 se lanza con `docs/prompts/PROMPT-MOD11-CONSOLA-OT-OLA2A-LAUNCH-v1.0.md`, junto con R0 y R1 de la consola. E3 sigue sin launcher propio y es el siguiente tramo backend de este plan. La implementación de portal de E4 **no se lanza antes de que E3 cierre en GO**. **Precisión de la auditoría G2 (2026-10-05):** la parte de datos de E4 incluye hacer explícito el orden por defecto `planned_window_start_at DESC NULLS FIRST, id DESC` en `list()`. Lo cubre el índice de la migración 130, así que no necesita DDL (encargo R0, adenda A2 punto 2). **E3 queda emitido (2026-10-05):** encargo `docs/prompts/PROMPT-MOD11-ORIGEN-OT-E3-v1.0.md` y launcher `docs/prompts/PROMPT-MOD11-CONSOLA-OT-G3-E3-LAUNCH-v1.0.md`, compartido con el dictamen G3 de la consola. T1 de corrección se lanza después de E3.

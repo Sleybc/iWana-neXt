@@ -46,7 +46,7 @@ Declaración obligatoria previa al despacho (procedimiento genérico, Paso 1).
 | **G1** — PRD/HLD/spec aprobados | **CERRADO** — spec v1.1 aprobada por el CTO | Cerrado (misma spec) |
 | **G2** — UX spec y contrato de componente | **NO APLICA.** La Ola 1 no crea componentes ni cambia estructura de secciones; solo contenido. El copy de C3 es artefacto de PROD-UX y se despacha dentro de la ola | **ABIERTO** — lo cierran R0 y R1 |
 | **G3** — dictamen de factibilidad | **CUBIERTO por la verificación línea a línea de la spec §2**, a ratificar por cada agente en su DoR. Si un agente discrepa de un hallazgo, emite `[BLOQUEO]` antes de escribir código | **ABIERTO** — se cierra tras R0/R1 |
-| **G4** — prompt de ejecución emitido | **CERRADO** — los tres prompts de §4 existen y citan contratos por ruta y versión | **ABIERTO** — emitir prompts de R0-R5 antes de despachar |
+| **G4** — prompt de ejecución emitido | **CERRADO** — los tres prompts de §4 existen y citan contratos por ruta y versión | **PARCIAL** (2026-10-05) — emitidos R0 y R1 (plan v1.2 §Lanzamiento); R2-R5 tras G2+G3 |
 
 **No despaches la Ola 2 hasta cerrar G2 y G3.** Saltarlos es el error que §3.1 obliga a devolver.
 
@@ -117,7 +117,7 @@ Se despacha **cuando A-bis esté en verde**, A.1 haya entregado C0 y C2, y A.2 l
 
 ### Ola D — rediseño (Ola 2 del plan)
 
-**No despachar sin G2 y G3 cerrados, y sin prompts de ejecución emitidos.** Secuencia:
+**Precisión del 2026-10-05:** R0 y R1 son los **productores** de G2, así que se despachan sin él. Lo que no se despacha sin G2, G3 y E3 de origen en GO es la implementación (R2-R4). El lanzamiento vigente está en `PROMPT-MOD11-CONSOLA-OT-OLA2A-LAUNCH-v1.0.md`. R0 absorbe la UX de E4 (plan v1.2), y la lista de skills de abajo queda sustituida por la matriz del plan v1.2 §4. Secuencia:
 
 1. **Paralelo:** `prod-ux` → R0 (UX spec por requisito y por momento, spec §4.1-4.2, con los dos modos de rol) · `ds-owner` → R1 (contrato de `RequirementChecklist` y `RequirementActionSheet`). Skills: `ui-ux-pro-max`, `senior-ui-systems-designer`, `core-components`, `wcag-audit-patterns`.
 2. **Gate:** el orquestador aprueba G2 y G3.

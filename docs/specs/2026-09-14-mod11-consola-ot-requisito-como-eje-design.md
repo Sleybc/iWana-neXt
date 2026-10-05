@@ -1,12 +1,13 @@
 # Diseño — MOD11: el requisito como eje de la consola de OT de ejecución
 
-**Versión:** 1.1
+**Versión:** 1.2
 **Estado:** **Aprobado por el CTO (2026-09-14)** — contratos de §7 congelados desde esta aprobación.
 **Fecha:** 2026-09-14
 **Cambio v1.0 → v1.1 (2026-09-14), en el mismo acto de aprobación:**
 1. **El punto 7 de la auditoría —subsanación del dato o documento faltante de Oportunidades— queda FUERA DE ALCANCE por decisión del CTO.** Se retira la Ola 3 completa y la escalación E1. El diagnóstico técnico que lo sustentaba se conserva como deuda registrada (§5, §10.9), no como trabajo planificado.
 2. **E2 aprobada:** ampliación aditiva opcional del contrato con bump de v1 a v1.1 (§7).
 3. **E3 retirada por improcedente**, no por decisión: [ADR-080](../adrs/ADR-080-Dependencia-Descubierta-y-Cierre-En-Construccion.md) §5 la disuelve (§9).
+**Cambio v1.1 → v1.2 (2026-10-05)** — resolución del `[BLOQUEO]` de R0 (`docs/informes/INFORME-MOD11-CONSOLA-OT-OLA2-R0-PROD-UX-v1.0.md`). El bloqueo procedía y su causa es un **defecto interno de esta spec**: §4.2 pedía mostrar el motivo y la resolución del bloqueo, mientras §4.6 declaraba que el bloqueo carece de catálogo de motivos. Además, ningún contrato de lectura publica ese dato. Se corrige la fila *Bloqueada* de §4.2 y se registra la deuda en §10.12. Esta corrección no amplía ningún contrato, y los criterios de aceptación no cambian, porque ninguno exigía el motivo.
 **Modo activo:** Mixto (Product Architect + Architect + EM)
 **Autor:** AI-EM-ARCH
 **Origen:** auditoría de la OT `OTE-20260828-001` sobre `/dashboard/operations/execution-orders?executionOrderId=…` (2026-09-14). Siete observaciones de usuario, verificadas una a una contra el código.
@@ -142,7 +143,7 @@ La densidad (observaciones 3 y 5) se resuelve **no montando lo que no aplica**, 
 | --- | --- |
 | **Pre-inicio** (`CREATED`, `ASSIGNED`, `EN_ROUTE`) | Resumen, compromiso y checklist **en lectura**. Nada de captura. |
 | **En progreso** (`IN_PROGRESS`) | Checklist-índice activo, captura por requisito, consumos de la OT e histórico. |
-| **Bloqueada** (`BLOCKED`) | Motivo del bloqueo y su resolución. El resto, en lectura. |
+| **Bloqueada** (`BLOCKED`) | Estado de bloqueo **sin motivo**, y la acción de desbloqueo **solo** si `allowedActions` la ofrece, con su disponibilidad real. El resto, en lectura. *(Corregido en v1.2: el motivo y la resolución no se muestran mientras no exista una fuente de lectura aprobada; ver §10.12.)* |
 | **Cierre y terminales** | Resultado, conformidad y evidencia consolidada, en lectura. |
 
 El gate `hasStarted` ya existe (`ExecutionOrderDrawer.tsx:384-390`) y hoy solo se usa para atenuar el checklist con opacidad. Pasa a gobernar qué se monta.
@@ -290,6 +291,17 @@ Aplicar lo que la v1.0 recomendaba habría causado daño: declarar MOD11 `En cur
 9. **Trazabilidad OT → oportunidad, sin resolver** *(añadida en v1.1 al retirarse el punto 7)*. `ExecutionOrder` no tiene `expedienteId`; el vínculo se adivina con una expresión regular sobre `originLabel`, un campo de display, **duplicada en tres sitios**: `visit-requests.service.ts:1273-1274`, `PendingVisitRequestsView.tsx:171` y `:211`, y `PendingVisitRequestInbox.tsx:121-127`. Es deuda activa **con independencia de este trabajo**: cualquier consumidor que necesite el origen comercial de una OT hoy depende de parsear texto libre.
 10. **El ETag de la OT identifica la versión del negocio, no la representación** *(hallazgo de campo del CTO el 2026-09-14, tras desplegar la Ola 1)*. `ExecutionOrderResponseHeadersInterceptor` emite `ETag: "<order.version>"`; como desplegar no cambia la versión de la orden, el navegador revalidó con `If-None-Match`, recibió **304** y siguió sirviendo el cuerpo anterior —sin `displayLabel` ni `requirements`— con el código nuevo ya cargado. **Cualquier ampliación futura del contrato es invisible para un cliente con la representación cacheada.** En remediación: `docs/prompts/PROMPT-MOD11-CONSOLA-OT-ETAG-REPRESENTACION-v1.0.md`. Incluye endurecer `assertVersion`, cuyo `parseInt` tolerante convierte un `If-Match` mal formado en un `VERSION_CONFLICT` engañoso.
 11. **G7 pasó de deuda diferida a deuda activa sin registrarse.** La cláusula *"su ausencia no es deuda"* de ADR-080 §5 pendía de que ADR-070 (superado) estuviera vigente; [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) lo superó el 2026-09-12. Los prerrequisitos de producción —dominio, TLS, rollback, restore, RPO/RTO— y QA-34 quedaron sin cobertura formal. **No es de esta spec**, y el CTO ya lo excluyó del alcance en la del 2026-09-13; se reitera para que no se pierda en el traspaso.
+12. **El motivo del bloqueo no tiene fuente de lectura** *(añadida en v1.2, 2026-10-05, al resolver el `[BLOQUEO]` de R0)*. El dato **se persiste**: `transitionExecutionOrder` lo escribe como `reason` del asiento de la línea de tiempo (`execution-orders.service.ts:2759-2766`). Pero tiene tres carencias:
+    - **No se proyecta.** `ExecutionOrderDetail` no lo publica (`execution-orders.ts`, v1.4).
+    - **No se puede presentar.** `reasonCode` es un texto libre de hasta 64 caracteres sin catálogo (`dto/execution-orders.dto.ts:253-270`). Mostrarlo sería mostrar códigos crudos.
+    - **Hoy no es alcanzable desde el portal.** `ExecutionOrdersClient` no pasa `onBlock` ni `onUnblock`, y el drawer pinta «Bloqueo no disponible».
+
+    Retomarlo exige, **en este orden**:
+    1. el catálogo de motivos de bloqueo y desbloqueo (§4.6);
+    2. la superficie de consulta de la línea de tiempo (T3 de `docs/plans/2026-09-14-mod11-linea-tiempo-ot.md`), con su condición de GO: mapa campo × rol de `sec-eng`, porque `reason` puede contener la nota libre del trabajador;
+    3. solo entonces, una ampliación aditiva del detalle con su bump de versión.
+
+    **No se versiona el contrato antes**: publicaría un código crudo sin catálogo y abriría una lectura de la línea de tiempo por fuera del tramo que la gobierna.
 
 ## 11. Artefactos que esta spec NO supera
 
