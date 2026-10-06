@@ -2,7 +2,7 @@
 
 **Versión:** 1.3<br>
 **Fecha:** 2026-10-06<br>
-**Estado:** La línea base v1.1 conserva su estado **Aprobado — G2 cerrado por AI-EM-ARCH el 2026-10-05** (registro en el plan v1.2, §Registro de bloqueos — Ola 2). Las adendas de producto v1.2 (§14) y v1.3 (§14.2 y §15) fueron producidas por AI-PROD-UX y están **pendientes de verificación consolidada**; no han sido aprobadas por AI-EM-ARCH.<br>
+**Estado:** **Aprobado.** La línea base v1.1 se aprobó en G2 el 2026-10-05. Las adendas v1.2 (§14) y v1.3 (§14.2 y §15) las **aprobó AI-EM-ARCH a posteriori el 2026-10-06** (plan v1.2, §Registro de bloqueos — Ola 2). **Corrección de §14.1:** la frase «no se cambia el gate de cierre» es inexacta. La API v1.5 hace que un consumo **con** clave satisfaga solo su requisito exacto, aplicando ADR-088 §D4. Para consumos sin clave se conserva el comportamiento anterior.<br>
 **Productora:** AI-PROD-UX (prod-ux)  
 **Alcance:** R0 de la consola + UX de E4 para OT sin ventana; adendas de producto §§14–15 para la deuda del historial de consumos R3 y la ratificación de copy R2.
 

@@ -2,7 +2,7 @@
 
 **Versión:** 1.1
 **Fecha:** 2026-10-06
-**Estado:** La v1.0 conserva su aprobación G2 de AI-EM-ARCH del 2026-10-05. Esta adenda v1.1 fue producida por AI-DS-OWNER y está **pendiente de verificación consolidada**; no ha sido aprobada por AI-EM-ARCH.
+**Estado:** La v1.0 conserva su aprobación G2 de AI-EM-ARCH del 2026-10-05. La adenda v1.1, producida por AI-DS-OWNER, la **aprobó AI-EM-ARCH a posteriori el 2026-10-06** (plan v1.2, §Registro de bloqueos — Ola 2).
 **Responsable:** AI-DS-OWNER  
 **Consumidores:** AI-FE-PLATFORM (R2–R4, visual de E4), AI-SR-QA (criterios de validación)
 
