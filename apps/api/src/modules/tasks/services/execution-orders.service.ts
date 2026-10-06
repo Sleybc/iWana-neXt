@@ -141,6 +141,7 @@ const REDRIVE_ALLOWED_EVENT_TYPES = new Set<OperationalEventTypeV1>([
   'ExecutionOrderStartedV1',
   'ExecutionOrderBlockedV1',
   'InventoryConsumptionRequestedV1',
+  'InventoryConsumptionRequestedV2',
   'ExecutionOrderClosedV1',
   // MOD11 T2: cancelación y anulación son de la misma familia que el cierre
   // (hechos terminales de MOD11 con idempotencia por inbox del consumidor).
@@ -1593,6 +1594,14 @@ export class ExecutionOrdersService {
       this.assertMutable(order);
       this.assertRegistrationActive(order);
 
+      if (order.assignedCrewId) {
+        throw new UnprocessableEntityException({
+          code: 'EXECUTION_ORDER_CREW_ASSIGNMENT_UNSUPPORTED',
+          message:
+            'El consumo de inventario no está disponible cuando la OT está asignada a una cuadrilla.',
+        });
+      }
+
       // ── Custodia: validar que el actor está asignado a la OT ────────
       this.assertCustodyAssignment(order, actor.sub, validated.technicianCustodyId);
       await this.assertMaterialRequirementKey(order, validated.itemId, validated.requirementKey);
@@ -1602,7 +1611,8 @@ export class ExecutionOrdersService {
       order.updatedByUserId = actor.sub;
       await this.persistOrderOptimistically(qr.manager, order, expectedVersion);
 
-      const intentId = receipt?.intentId ?? `${id}-${validated.itemId}-${Date.now()}`;
+      const intentId = receipt?.intentId ?? randomUUID();
+      const requestedAt = new Date();
       const usage = await qr.manager.save(
         ExecutionOrderItemUsage,
         qr.manager.create(ExecutionOrderItemUsage, {
@@ -1618,6 +1628,9 @@ export class ExecutionOrdersService {
           stockMovementId: null,
           inventoryRequestId: intentId,
           movementStatus: 'PENDING',
+          rejectionReasonCode: null,
+          lastRequestedAt: requestedAt,
+          requestAttempts: 1,
           actorUserId: actor.sub,
         }),
       );
@@ -1630,12 +1643,20 @@ export class ExecutionOrdersService {
         order.version ?? 1,
         context,
         receipt,
-        'InventoryConsumptionRequestedV1',
+        'InventoryConsumptionRequestedV2',
         {
           inventoryRequestId: intentId,
           itemId: usage.itemId,
           quantity: Number(usage.quantity),
           ...(usage.serialNumber ? { serial: usage.serialNumber } : {}),
+          technicianCustodyId: usage.technicianCustodyId,
+          action: usage.action,
+          finalDisposition: usage.finalDisposition,
+          subscriberId:
+            usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER
+              ? (order.subscriberId ?? null)
+              : null,
+          actorUserId: actor.sub,
         },
       );
       // MOD12 consume la solicitud desde el outbox; no se hace llamada
@@ -3370,6 +3391,7 @@ export class ExecutionOrdersService {
       // estable de lectura; las nuevas siempre reciben inventoryRequestId.
       inventoryRequestId: usage.inventoryRequestId ?? usage.id,
       movementStatus: usage.movementStatus ?? 'PENDING',
+      rejectionReasonCode: usage.rejectionReasonCode ?? null,
       createdAt: usage.createdAt.toISOString(),
     };
   }

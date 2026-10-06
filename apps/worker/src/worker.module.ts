@@ -14,6 +14,7 @@ import {
   TENANT_PROVISIONING_QUEUE,
   TENANT_SCHEMA_PURGE_QUEUE,
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
+  INVENTORY_EXECUTION_REQUESTS_QUEUE,
   OPERATIONS_EXECUTION_RELAY_QUEUE,
   OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
@@ -32,6 +33,7 @@ import {
   ExecutionOrderRelayService,
   RELAY_SCAN_TIMESTAMP_REDIS,
 } from './services/execution-order-relay.service';
+import { ExecutionOrderInventoryRescanService } from './services/execution-order-inventory-rescan.service';
 import { ExecutionOrderEventsProcessor } from './processors/execution-order-events.processor';
 import { ExecutionOrderRelayProcessor } from './processors/execution-order-relay.processor';
 import { ExecutionOrderTombstoneProcessor } from './processors/execution-order-tombstone.processor';
@@ -207,6 +209,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
       name: ASSURANCE_FIELD_SERVICE_QUEUE,
     }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_EVENTS_QUEUE }),
+    BullModule.registerQueue({ name: INVENTORY_EXECUTION_REQUESTS_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_RELAY_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_TOMBSTONE_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
@@ -244,6 +247,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     SearchTypesenseClient,
     SchedulerService,
     ExecutionOrderRelayService,
+    ExecutionOrderInventoryRescanService,
     ExecutionOrderEventsProcessor,
     ExecutionOrderRelayProcessor,
     ExecutionOrderTombstoneProcessor,

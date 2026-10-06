@@ -1,5 +1,9 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import { ExecutionOrderItemAction, InventoryDisposition } from '@iwana/shared';
+import {
+  ExecutionOrderItemAction,
+  InventoryDisposition,
+  type InventoryConsumptionRejectionReasonCode,
+} from '@iwana/shared';
 
 @Index('idx_execution_order_item_usage_order', ['executionOrderId', 'createdAt'])
 @Index('idx_execution_order_item_usage_inventory_request', ['tenantId', 'inventoryRequestId'])
@@ -60,6 +64,15 @@ export class ExecutionOrderItemUsage {
     nullable: true,
   })
   movementStatus: 'PENDING' | 'CONFIRMED' | 'REJECTED' | null;
+
+  @Column({ name: 'rejection_reason_code', type: 'text', nullable: true })
+  rejectionReasonCode: InventoryConsumptionRejectionReasonCode | null;
+
+  @Column({ name: 'last_requested_at', type: 'timestamptz', nullable: true })
+  lastRequestedAt: Date | null;
+
+  @Column({ name: 'request_attempts', type: 'integer', default: 1 })
+  requestAttempts: number;
 
   @Column({ name: 'actor_user_id', type: 'uuid', nullable: true })
   actorUserId: string | null;

@@ -304,6 +304,7 @@ describe('ExecutionOrdersService — Evidence', () => {
           finalDisposition: 'INTERNAL_CONSUMPTION',
           inventoryRequestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
           movementStatus: 'PENDING',
+          rejectionReasonCode: null,
           createdAt: '2026-07-27T15:01:00.000Z',
         },
       ]);

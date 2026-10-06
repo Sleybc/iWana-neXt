@@ -107,6 +107,14 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
         jobId: 'execution-outbox-scanner',
       },
     );
+    await this.queue.add(
+      'scan-pending-inventory-consumptions',
+      {},
+      {
+        repeat: { every: 60_000 },
+        jobId: 'execution-order-inventory-rescanner',
+      },
+    );
   }
 
   /** Expone estado del relay para el health endpoint. */
@@ -255,6 +263,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
               attempts: 8, // PLAT-P1-02: 8 intentos antes de DLQ
               backoff: { type: 'exponential', delay: 1000 },
               removeOnComplete: true,
+              removeOnFail: 30 * 24 * 60 * 60,
             },
           );
         } catch (error) {

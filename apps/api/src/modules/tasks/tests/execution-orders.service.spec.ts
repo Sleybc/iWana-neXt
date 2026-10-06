@@ -823,6 +823,40 @@ describe('ExecutionOrdersService', () => {
     });
   });
 
+  it('rejects item usage for a CREW assignment before mutating the order', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+        assignedTechnicianId: null,
+        assignedCrewId: 'crew-001',
+        templateRequirementsSnapshot: null,
+      }),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.registerItemUsage(
+        'eo-001',
+        {
+          itemId: 'item-001',
+          technicianCustodyId: 'crew-001',
+          quantity: 1,
+          action: ExecutionOrderItemAction.INSTALL,
+          finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+        },
+        actor,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'EXECUTION_ORDER_CREW_ASSIGNMENT_UNSUPPORTED' }),
+    });
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
   it('registers item usage from technician custody and records stock movement id', async () => {
     const techSub = actor.sub; // 'support-001'
     const manager = {
@@ -833,6 +867,7 @@ describe('ExecutionOrdersService', () => {
         version: 1,
         assignedTechnicianId: techSub, // custody must match assignment
         assignedCrewId: null,
+        subscriberId: 'subscriber-001',
         startedAt: null,
         closedAt: null,
         result: null,
@@ -874,6 +909,9 @@ describe('ExecutionOrdersService', () => {
     expect(result.itemId).toBe('item-001');
     expect(result.stockMovementId).toBeNull();
     expect(result.requirementKey).toBeNull();
+    expect(result.rejectionReasonCode).toBeNull();
+    expect(result.requestAttempts).toBe(1);
+    expect(result.lastRequestedAt).toEqual(expect.any(Date));
   });
 
   it('persists requirementKey only when it matches a MATERIAL snapshot and catalog category', async () => {

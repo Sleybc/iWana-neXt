@@ -2,11 +2,16 @@ import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullm
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
+import { createHmac } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
 import {
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
+  INVENTORY_EXECUTION_REQUESTS_QUEUE,
+  InventoryConsumptionRequestedV2EnvelopeSchema,
+  SignedInventoryExecutionRequestSchema,
+  canonicalizeInventoryExecutionRequest,
   type OperationalEventEnvelopeV1,
   type OperationalEventTypeV1,
 } from '@iwana/shared';
@@ -27,6 +32,40 @@ const SCHEDULE_PROJECTED_EXECUTION_EVENTS: ReadonlySet<OperationalEventTypeV1> =
   'ExecutionOrderFollowUpRequiredV1',
 ]);
 
+const INVENTORY_EVENT_TYPES: ReadonlySet<OperationalEventTypeV1> = new Set([
+  'InventoryConsumptionRequestedV1',
+  'InventoryConsumptionRequestedV2',
+  'InventoryMovementConfirmedV1',
+  'InventoryMovementRejectedV1',
+]);
+const INVENTORY_EVENTS_BYPASSING_AGGREGATE_VERSION: ReadonlySet<OperationalEventTypeV1> = new Set([
+  'InventoryConsumptionRequestedV2',
+  'InventoryMovementConfirmedV1',
+  'InventoryMovementRejectedV1',
+]);
+const DLQ_RETENTION_SECONDS = 30 * 24 * 60 * 60;
+
+interface InventoryDlqJob {
+  tenantId: string;
+  eventId: string;
+  executionOrderId: string;
+  inventoryRequestId: string;
+  failedAt: string;
+  attemptsMade: number;
+  errorType: string;
+}
+
+function safeInventoryErrorType(error: Error): string {
+  const knownTypes = new Set([
+    'Error',
+    'UnrecoverableError',
+    'QueryFailedError',
+    'TimeoutError',
+    'AbortError',
+  ]);
+  return knownTypes.has(error.name) ? error.name : 'INVENTORY_EVENT_FAILURE';
+}
+
 /**
  * Procesador de eventos operativos de MOD11.
  *
@@ -42,17 +81,19 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
   private readonly pool: Pool;
 
   constructor(
-    config: ConfigService,
+    private readonly config: ConfigService,
     @InjectQueue(OPERATIONS_EXECUTION_DLQ)
     private readonly dlqQueue: Queue,
+    @InjectQueue(INVENTORY_EXECUTION_REQUESTS_QUEUE)
+    private readonly inventoryRequestsQueue: Queue,
   ) {
     super();
     this.pool = new Pool({
-      host: config.get<string>('DB_HOST', 'localhost'),
-      port: config.get<number>('DB_PORT', 5432),
-      user: config.get<string>('DB_USER', 'iwana'),
-      password: config.get<string>('DB_PASSWORD', ''),
-      database: config.get<string>('DB_NAME', 'iwana'),
+      host: this.config.get<string>('DB_HOST', 'localhost'),
+      port: this.config.get<number>('DB_PORT', 5432),
+      user: this.config.get<string>('DB_USER', 'iwana'),
+      password: this.config.get<string>('DB_PASSWORD', ''),
+      database: this.config.get<string>('DB_NAME', 'iwana'),
       max: 10,
       idleTimeoutMillis: 30_000,
     });
@@ -65,6 +106,44 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
   @OnWorkerEvent('failed')
   async onFailed(job: Job<ExecutionEventJob>, error: Error): Promise<void> {
     const { tenantId, envelope } = job.data;
+
+    // BullMQ emite `failed` en cada intento. Persistir el diagnóstico solo al
+    // agotar el retry evita DLQ duplicadas para fallos técnicos recuperables.
+    if (
+      (job.attemptsMade ?? 0) < (job.opts.attempts ?? 1) &&
+      !(error instanceof UnrecoverableError)
+    ) {
+      return;
+    }
+
+    if (INVENTORY_EVENT_TYPES.has(envelope.eventType)) {
+      const payload = envelope.payload as {
+        executionOrderId?: string;
+        inventoryRequestId?: string;
+      };
+      const diagnostic: InventoryDlqJob = {
+        tenantId,
+        eventId: envelope.eventId,
+        executionOrderId: payload.executionOrderId ?? envelope.aggregateId,
+        inventoryRequestId: payload.inventoryRequestId ?? envelope.eventId,
+        failedAt: new Date().toISOString(),
+        attemptsMade: job.attemptsMade,
+        errorType: safeInventoryErrorType(error),
+      };
+
+      this.logger.error(
+        `[execution-events] inventory_event_dlq event=${diagnostic.eventId} ` +
+          `tenant=${diagnostic.tenantId} ot=${diagnostic.executionOrderId} ` +
+          `inventory_request=${diagnostic.inventoryRequestId} ` +
+          `attempts=${diagnostic.attemptsMade} error_type=${diagnostic.errorType}`,
+      );
+      await this.dlqQueue.add('failed-inventory-execution-event', diagnostic, {
+        jobId: `dlq-${envelope.eventId}`,
+        removeOnComplete: true,
+        removeOnFail: DLQ_RETENTION_SECONDS,
+      });
+      return;
+    }
 
     this.logger.error(
       `[execution-events] DLQ event_id=${envelope.eventId} ` +
@@ -133,7 +212,10 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       const latestVersion = current.rows[0]?.aggregate_version ?? 0;
 
       // Eventos fuera de orden (versión antigua después de nueva): NO revierten
-      if (envelope.aggregateVersion <= latestVersion) {
+      const bypassAggregateVersion = INVENTORY_EVENTS_BYPASSING_AGGREGATE_VERSION.has(
+        envelope.eventType,
+      );
+      if (!bypassAggregateVersion && envelope.aggregateVersion <= latestVersion) {
         await client.query('COMMIT');
         this.logger.debug(
           `[execution-events] skip out-of-order event_id=${envelope.eventId} ` +
@@ -225,6 +307,11 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           // porque es el emisor, no el consumidor.
           return Promise.resolve();
         },
+        InventoryConsumptionRequestedV2: (event) =>
+          this.enqueueSignedInventoryRequest(
+            tenantId,
+            InventoryConsumptionRequestedV2EnvelopeSchema.parse(event),
+          ),
         ExecutionOrderClosedV1: (e) =>
           this.applyExecutionOrderClosed(client, tenantId, e, scheduleEventId),
         // MOD11 T2 (CA-13): cancelación y anulación son hechos de dominio
@@ -275,6 +362,39 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     } finally {
       client.release();
     }
+  }
+
+  private async enqueueSignedInventoryRequest(tenantId: string, candidate: unknown): Promise<void> {
+    const envelope = InventoryConsumptionRequestedV2EnvelopeSchema.parse(candidate);
+    const activeKey = this.configValue('INTERNAL_QUEUE_SIGNING_KEY');
+    const secret = Buffer.from(activeKey, 'base64');
+    if (secret.byteLength < 32 || secret.toString('base64') !== activeKey) {
+      throw new UnrecoverableError('INTERNAL_QUEUE_SIGNING_KEY inválida.');
+    }
+
+    const signature = createHmac('sha256', secret)
+      .update(canonicalizeInventoryExecutionRequest(tenantId, envelope))
+      .digest('hex');
+    const signed = SignedInventoryExecutionRequestSchema.parse({
+      tenantId,
+      envelope,
+      signature,
+    });
+
+    await this.inventoryRequestsQueue.add('process-inventory-execution-request', signed, {
+      // El contrato de cola usa el eventId del evento de solicitud.
+      jobId: envelope.eventId,
+      attempts: 8,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: true,
+      removeOnFail: DLQ_RETENTION_SECONDS,
+    });
+  }
+
+  private configValue(name: string): string {
+    const value = this.config.get<string>(name)?.trim();
+    if (!value) throw new UnrecoverableError(`${name} ausente.`);
+    return value;
   }
 
   // ── Proyección: ExecutionOrderStartedV1 ─────────────────────────────────
@@ -479,48 +599,38 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       inventoryRequestId: string;
       stockMovementId: string;
     };
+    const transitioned = await client.query(
+      `UPDATE execution_order_item_usage
+       SET movement_status = 'CONFIRMED',
+           stock_movement_id = $3,
+           rejection_reason_code = NULL
+       WHERE tenant_id = $1
+         AND inventory_request_id = $2
+         AND movement_status = 'PENDING'
+       RETURNING id`,
+      [tenantId, payload.inventoryRequestId, payload.stockMovementId],
+    );
+    if ((transitioned.rowCount ?? 0) > 0) return;
 
-    // Idempotencia: si ya está CONFIRMED con el mismo stockMovementId, skip.
     const current = await client.query<{
-      movement_status: string;
+      movement_status: string | null;
       stock_movement_id: string | null;
     }>(
       `SELECT movement_status, stock_movement_id
        FROM execution_order_item_usage
-       WHERE tenant_id = $1
-         AND inventory_request_id = $2`,
+       WHERE tenant_id = $1 AND inventory_request_id = $2`,
       [tenantId, payload.inventoryRequestId],
     );
+    if (!current.rows[0]) throw new Error('Inventory request is not available yet.');
 
-    if (current.rows.length === 0) {
-      // Race condition: la confirmación llegó antes que el registro de
-      // consumo. Lanzamos error para que el inbox reintente.
-      throw new Error(
-        `ItemUsage no encontrado para inventoryRequestId=${payload.inventoryRequestId}. Reintentando.`,
-      );
-    }
-
-    const row = current.rows[0]!;
+    const row = current.rows[0];
     if (row.movement_status === 'CONFIRMED' && row.stock_movement_id === payload.stockMovementId) {
-      this.logger.debug(
-        `[execution-events] Duplicado idempotente InventoryMovementConfirmedV1 ` +
-          `inventoryRequestId=${payload.inventoryRequestId}`,
-      );
       return;
     }
-
-    await client.query(
-      `UPDATE execution_order_item_usage
-       SET movement_status = 'CONFIRMED',
-           stock_movement_id = $3
-       WHERE tenant_id = $1
-         AND inventory_request_id = $2`,
-      [tenantId, payload.inventoryRequestId, payload.stockMovementId],
-    );
-
-    this.logger.log(
-      `[execution-events] Consumo confirmado: inventoryRequestId=${payload.inventoryRequestId} ` +
-        `stockMovementId=${payload.stockMovementId}`,
+    this.logger.warn(
+      `[execution-events] inventory_result_anomaly code=CONTRADICTORY_INVENTORY_RESULT ` +
+        `event=${event.eventId} tenant=${tenantId} ot=${payload.executionOrderId} ` +
+        `inventory_request=${payload.inventoryRequestId}`,
     );
   }
 
@@ -537,40 +647,38 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       inventoryRequestId: string;
       reasonCode: string;
     };
-
-    // Idempotencia: si ya está REJECTED, skip.
-    const current = await client.query<{ movement_status: string }>(
-      `SELECT movement_status
-       FROM execution_order_item_usage
+    const transitioned = await client.query(
+      `UPDATE execution_order_item_usage
+       SET movement_status = 'REJECTED',
+           stock_movement_id = NULL,
+           rejection_reason_code = $3
        WHERE tenant_id = $1
-         AND inventory_request_id = $2`,
+         AND inventory_request_id = $2
+         AND movement_status = 'PENDING'
+       RETURNING id`,
+      [tenantId, payload.inventoryRequestId, payload.reasonCode],
+    );
+    if ((transitioned.rowCount ?? 0) > 0) return;
+
+    const current = await client.query<{
+      movement_status: string | null;
+      rejection_reason_code: string | null;
+    }>(
+      `SELECT movement_status, rejection_reason_code
+       FROM execution_order_item_usage
+       WHERE tenant_id = $1 AND inventory_request_id = $2`,
       [tenantId, payload.inventoryRequestId],
     );
+    if (!current.rows[0]) throw new Error('Inventory request is not available yet.');
 
-    if (current.rows.length === 0) {
-      throw new Error(
-        `ItemUsage no encontrado para inventoryRequestId=${payload.inventoryRequestId}. Reintentando.`,
-      );
-    }
-
-    if (current.rows[0]!.movement_status === 'REJECTED') {
-      this.logger.debug(
-        `[execution-events] Rechazo duplicado ignorado para inventoryRequestId=${payload.inventoryRequestId}`,
-      );
+    const row = current.rows[0];
+    if (row.movement_status === 'REJECTED' && row.rejection_reason_code === payload.reasonCode) {
       return;
     }
-
-    await client.query(
-      `UPDATE execution_order_item_usage
-       SET movement_status = 'REJECTED'
-       WHERE tenant_id = $1
-         AND inventory_request_id = $2`,
-      [tenantId, payload.inventoryRequestId],
-    );
-
-    this.logger.log(
-      `[execution-events] Consumo rechazado: inventoryRequestId=${payload.inventoryRequestId} ` +
-        `reasonCode=${payload.reasonCode}`,
+    this.logger.warn(
+      `[execution-events] inventory_result_anomaly code=CONTRADICTORY_INVENTORY_RESULT ` +
+        `event=${event.eventId} tenant=${tenantId} ot=${payload.executionOrderId} ` +
+        `inventory_request=${payload.inventoryRequestId}`,
     );
   }
 

@@ -7,6 +7,7 @@ import { InventoryDisposition } from '../../enums/inventory';
 import { WfmWorkType, WorkOrderSourceContext } from '../../enums/wfm';
 import { ListMeta } from '../../dto/pagination.dto';
 import type { ExecutionOrderRequirementStatus } from './execution-orders-completion';
+import { z } from 'zod';
 
 /**
  * Contrato de API tipado congelado de MOD11 — OT de ejecución.
@@ -15,7 +16,7 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  * - ADR-068: Sincronización de OT de ejecución y proyecciones operativas.
  * - Spec API: docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md
  *
- * Este archivo es la fuente de verdad del contrato v1.5. Los DTOs del controlador
+ * Este archivo es la fuente de verdad del contrato v1.6. Los DTOs del controlador
  * y el OpenAPI máquina-legible se derivan de aquí. No modificar sin versionar.
  *
  * Historial:
@@ -42,6 +43,9 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  *   acepta `requirementKey` opcional y `ExecutionOrderItemUsage` devuelve
  *   `requirementKey: string | null`. Los registros anteriores quedan nulos;
  *   no se les atribuye una clave retroactivamente.
+ * - v1.6 (2026-10-06, MOD11 ↔ MOD12 consumo de OT): nace
+ *   `InventoryConsumptionRequestedV2` con contexto completo, esquema Zod runtime
+ *   y motivo tipado de rechazo. Los eventos V1 permanecen sin cambios.
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -354,6 +358,7 @@ export interface ExecutionOrderItemUsage {
   finalDisposition: InventoryDisposition;
   inventoryRequestId: string;
   movementStatus: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+  rejectionReasonCode?: InventoryConsumptionRejectionReasonCode | null;
   createdAt: string;
 }
 
@@ -449,6 +454,7 @@ export type OperationalEventTypeV1 =
   | 'ExecutionOrderStartedV1'
   | 'ExecutionOrderBlockedV1'
   | 'InventoryConsumptionRequestedV1'
+  | 'InventoryConsumptionRequestedV2'
   | 'ExecutionOrderClosedV1'
   | 'ExecutionOrderCancelledV1'
   | 'ExecutionOrderAnnulledV1'
@@ -501,6 +507,20 @@ export interface InventoryConsumptionRequestedV1 extends EventPayloadBase {
   serial?: string;
 }
 
+/** Solicitud de consumo con contexto completo; V1 permanece congelado. */
+export interface InventoryConsumptionRequestedV2 extends EventPayloadBase {
+  eventId?: string;
+  inventoryRequestId: string;
+  itemId: string;
+  quantity: number;
+  serial?: string;
+  technicianCustodyId: string;
+  action: ExecutionOrderItemAction;
+  finalDisposition: InventoryDisposition;
+  subscriberId: string | null;
+  actorUserId: string;
+}
+
 export interface ExecutionOrderClosedV1 extends EventPayloadBase {
   result: ExecutionOrderResult;
   closedAt: string;
@@ -535,7 +555,125 @@ export interface InventoryMovementConfirmedV1 extends EventPayloadBase {
 
 export interface InventoryMovementRejectedV1 extends EventPayloadBase {
   inventoryRequestId: string;
-  reasonCode: string;
+  reasonCode: InventoryConsumptionRejectionReasonCode;
+}
+
+export const INVENTORY_CONSUMPTION_REJECTION_REASON_CODES = [
+  'CUSTODY_INSUFFICIENT',
+  'SERIAL_NOT_IN_CUSTODY',
+  'SUBSCRIBER_REQUIRED',
+  'ITEM_INACTIVE',
+] as const;
+
+export type InventoryConsumptionRejectionReasonCode =
+  (typeof INVENTORY_CONSUMPTION_REJECTION_REASON_CODES)[number];
+
+/** Payload validado en runtime al cruzar el límite Redis/API. */
+export const InventoryConsumptionRequestedV2Schema = z
+  .object({
+    executionOrderId: z.string().uuid(),
+    eventId: z.string().uuid().optional(),
+    intentId: z.string().optional(),
+    inventoryRequestId: z.string().uuid(),
+    itemId: z.string().trim().min(1).max(160),
+    quantity: z.number().finite().positive(),
+    serial: z.string().trim().min(1).max(160).optional(),
+    technicianCustodyId: z.string().trim().min(1).max(160),
+    action: z.nativeEnum(ExecutionOrderItemAction),
+    finalDisposition: z.nativeEnum(InventoryDisposition),
+    subscriberId: z.string().trim().min(1).max(160).nullable(),
+    actorUserId: z.string().uuid(),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (payload.serial !== undefined && payload.quantity !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['quantity'],
+        message: 'Una solicitud con serial debe tener cantidad 1.',
+      });
+    }
+
+    if (
+      payload.finalDisposition !== InventoryDisposition.INSTALLED_AT_CUSTOMER &&
+      payload.subscriberId !== null
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['subscriberId'],
+        message: 'subscriberId solo corresponde a una instalación en cliente.',
+      });
+    }
+  });
+
+/** Envelope V2 validado antes de seleccionar tenant o invocar el ledger. */
+export const InventoryConsumptionRequestedV2EnvelopeSchema = z
+  .object({
+    eventId: z.string().uuid(),
+    eventType: z.literal('InventoryConsumptionRequestedV2'),
+    tenantId: z.string().uuid(),
+    aggregateId: z.string().uuid(),
+    aggregateVersion: z.number().int().positive(),
+    occurredAt: z.string().datetime({ offset: true }),
+    correlationId: z.string().uuid(),
+    payload: InventoryConsumptionRequestedV2Schema,
+  })
+  .strict()
+  .superRefine((envelope, context) => {
+    if (envelope.aggregateId !== envelope.payload.executionOrderId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['aggregateId'],
+        message: 'aggregateId debe coincidir con executionOrderId.',
+      });
+    }
+    if (envelope.payload.eventId !== undefined && envelope.payload.eventId !== envelope.eventId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['payload', 'eventId'],
+        message: 'El eventId del payload debe coincidir con el envelope.',
+      });
+    }
+  });
+
+/** Job interno firmado que cruza Redis; el HMAC cubre tenantId y envelope. */
+export const SignedInventoryExecutionRequestSchema = z
+  .object({
+    tenantId: z.string().uuid(),
+    envelope: InventoryConsumptionRequestedV2EnvelopeSchema,
+    signature: z.string().regex(/^[a-f0-9]{64}$/iu),
+  })
+  .strict()
+  .superRefine((job, context) => {
+    if (job.tenantId !== job.envelope.tenantId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['tenantId'],
+        message: 'tenantId externo debe coincidir con el del envelope.',
+      });
+    }
+  });
+
+export type SignedInventoryExecutionRequest = z.infer<typeof SignedInventoryExecutionRequestSchema>;
+
+function sortJsonKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonKeys);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([key, item]) => [key, sortJsonKeys(item)]),
+    );
+  }
+  return value;
+}
+
+/** Canonical JSON compartido por el firmante worker y el verificador API. */
+export function canonicalizeInventoryExecutionRequest(
+  tenantId: unknown,
+  envelope: unknown,
+): string {
+  return JSON.stringify(sortJsonKeys({ tenantId, envelope }));
 }
 
 export type OperationalEventPayloadV1 =
@@ -546,6 +684,7 @@ export type OperationalEventPayloadV1 =
   | ExecutionOrderStartedV1
   | ExecutionOrderBlockedV1
   | InventoryConsumptionRequestedV1
+  | InventoryConsumptionRequestedV2
   | ExecutionOrderClosedV1
   | ExecutionOrderCancelledV1
   | ExecutionOrderAnnulledV1
@@ -561,6 +700,7 @@ interface OperationalEventPayloadByType {
   ExecutionOrderStartedV1: ExecutionOrderStartedV1;
   ExecutionOrderBlockedV1: ExecutionOrderBlockedV1;
   InventoryConsumptionRequestedV1: InventoryConsumptionRequestedV1;
+  InventoryConsumptionRequestedV2: InventoryConsumptionRequestedV2;
   ExecutionOrderClosedV1: ExecutionOrderClosedV1;
   ExecutionOrderCancelledV1: ExecutionOrderCancelledV1;
   ExecutionOrderAnnulledV1: ExecutionOrderAnnulledV1;

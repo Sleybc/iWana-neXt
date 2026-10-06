@@ -94,6 +94,7 @@ import { AnonymizeExecutionOrderTransitionRetention1340000000000 } from './134_a
 import { ExecutionOrderOriginIdentity1350000000000 } from './135_execution_order_origin_identity';
 import { ExecutionOrderAnnulmentFlag1360000000000 } from './136_execution_order_annulment_flag';
 import { ExecutionOrderItemUsageRequirementKey1370000000000 } from './137_execution_order_item_usage_requirement_key';
+import { ExecutionOrderInventoryRequestRecovery1380000000000 } from './138_execution_order_inventory_request_recovery';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
@@ -268,6 +269,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ExecutionOrderOriginIdentity1350000000000,
   ExecutionOrderAnnulmentFlag1360000000000,
   ExecutionOrderItemUsageRequirementKey1370000000000,
+  ExecutionOrderInventoryRequestRecovery1380000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

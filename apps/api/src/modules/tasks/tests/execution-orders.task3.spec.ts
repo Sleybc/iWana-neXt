@@ -687,7 +687,7 @@ describe('ExecutionOrdersService — guarda de registro pre-inicio (remediación
         expect(reliabilityService.appendOutbox).not.toHaveBeenCalled();
       });
 
-      it(`registerItemUsage tiene éxito en ${status} y solo emite InventoryConsumptionRequestedV1`, async () => {
+      it(`registerItemUsage tiene éxito en ${status} y solo emite InventoryConsumptionRequestedV2`, async () => {
         const { manager, order, persisted } = buildManager(status);
         mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) =>
           fn({ manager } as never),
@@ -716,7 +716,7 @@ describe('ExecutionOrdersService — guarda de registro pre-inicio (remediación
         expect(reliabilityService.appendOutbox).toHaveBeenCalledTimes(1);
         expect(reliabilityService.appendOutbox).toHaveBeenCalledWith(
           expect.anything(),
-          expect.objectContaining({ eventType: 'InventoryConsumptionRequestedV1' }),
+          expect.objectContaining({ eventType: 'InventoryConsumptionRequestedV2' }),
         );
       });
 

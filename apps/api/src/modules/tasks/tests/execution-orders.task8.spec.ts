@@ -54,7 +54,7 @@ const mockConfigService = {
   getOrThrow: jest.fn().mockReturnValue('test-secret'),
 } as never;
 
-// ── 6.1: Consumption request emits InventoryConsumptionRequestedV1 ────────
+// ── 6.1: Consumption request emits InventoryConsumptionRequestedV2 ────────
 
 describe('Task 8.1 — Inventory consumption request', () => {
   let service: ExecutionOrdersService;
@@ -83,6 +83,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
       status: ExecutionOrderStatus.IN_PROGRESS,
       version: 1,
       assignedTechnicianId: 'tech-001',
+      subscriberId: 'subscriber-001',
       taskId: null,
       ticketId: null,
       result: null,
@@ -114,7 +115,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
     };
   }
 
-  it('POST /:id/item-usage emite InventoryConsumptionRequestedV1 via outbox', async () => {
+  it('POST /:id/item-usage emite InventoryConsumptionRequestedV2 via outbox', async () => {
     const manager = setupItemUsageManager();
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
@@ -129,7 +130,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
 
     // Spy en beginIdempotent para que devuelva un receipt nuevo
     jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
-      intentId: 'intent-001',
+      intentId: '00000000-0000-4000-8000-000000000101',
       replay: false,
       resourceRef: null,
       resultStatus: 'PENDING',
@@ -158,11 +159,17 @@ describe('Task 8.1 — Inventory consumption request', () => {
     );
 
     expect(outboxEvent).not.toBeNull();
-    expect(outboxEvent!.eventType).toBe('InventoryConsumptionRequestedV1');
+    expect(outboxEvent!.eventType).toBe('InventoryConsumptionRequestedV2');
     const payload = outboxEvent!.payload as Record<string, unknown>;
+    expect(payload.inventoryRequestId).toBe('00000000-0000-4000-8000-000000000101');
     expect(payload.itemId).toBe('item-001');
     expect(payload.quantity).toBe(1);
     expect(payload.serial).toBe('SER-001');
+    expect(payload.technicianCustodyId).toBe('tech-001');
+    expect(payload.action).toBe(ExecutionOrderItemAction.INSTALL);
+    expect(payload.finalDisposition).toBe(InventoryDisposition.INSTALLED_AT_CUSTOMER);
+    expect(payload.actorUserId).toBe(techActor().sub);
+    expect(payload.subscriberId).toBe('subscriber-001');
   });
 
   it('consumo concurrente con mismo item/serial es idempotente (intentId estable)', async () => {
@@ -176,7 +183,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
       .spyOn(reliabilityService, 'beginIdempotent')
       .mockImplementation(async (mgr, tenantId, op, key, payload) => {
         const result = {
-          intentId: firstIntentId ?? 'intent-concurrent-001',
+          intentId: firstIntentId ?? '00000000-0000-4000-8000-000000000102',
           replay: !!firstIntentId,
           resourceRef: firstIntentId ? 'usage-001' : null,
           resultStatus: firstIntentId ? 'COMPLETED' : 'PENDING',
@@ -235,7 +242,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
     jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
-      intentId: 'intent-002',
+      intentId: '00000000-0000-4000-8000-000000000103',
       replay: false,
       resourceRef: null,
       resultStatus: 'PENDING',
@@ -311,7 +318,7 @@ describe('Task 8.4 — Custody validation', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
     jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
-      intentId: 'intent-004',
+      intentId: '00000000-0000-4000-8000-000000000104',
       replay: false,
       resourceRef: null,
       resultStatus: 'PENDING',
@@ -363,7 +370,7 @@ describe('Task 8.4 — Custody validation', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
     jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
-      intentId: 'intent-005',
+      intentId: '00000000-0000-4000-8000-000000000105',
       replay: false,
       resourceRef: null,
       resultStatus: 'PENDING',
@@ -428,7 +435,7 @@ describe('Task 8.4 — Custody validation', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
     jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
-      intentId: 'intent-006',
+      intentId: '00000000-0000-4000-8000-000000000106',
       replay: false,
       resourceRef: null,
       resultStatus: 'PENDING',
@@ -659,7 +666,7 @@ describe('Task 8.3 — Inventory reconciliation', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
 
     jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
-      intentId: 'intent-close-001',
+      intentId: '00000000-0000-4000-8000-000000000107',
       replay: false,
       resourceRef: null,
       resultStatus: 'PENDING',
@@ -738,7 +745,10 @@ describe('Task 8.5 — Crash-window and atomicity', () => {
       findOne: jest.fn().mockImplementation(async () => stored),
       create: jest.fn((_entity, value) => value),
       save: jest.fn(async (_entity, value) => {
-        stored = { ...value, intentId: stored?.intentId ?? 'intent-crash-001' };
+        stored = {
+          ...value,
+          intentId: stored?.intentId ?? '00000000-0000-4000-8000-000000000108',
+        };
         return stored;
       }),
     } as never;
@@ -797,7 +807,7 @@ describe('Task 8.5 — Crash-window and atomicity', () => {
     jest.clearAllMocks();
     // El siguiente beginIdempotent debe encontrar el registro COMPLETED
     const storedRecord = (stored ?? {
-      intentId: 'intent-crash-001',
+      intentId: '00000000-0000-4000-8000-000000000108',
       payloadHmac: 'abc-hmac',
       resourceRef: 'usage-001',
       resultStatus: 'COMPLETED',
@@ -808,7 +818,7 @@ describe('Task 8.5 — Crash-window and atomicity', () => {
     const replay = await reliabilityService.beginIdempotent(
       {
         findOne: jest.fn().mockResolvedValue({
-          intentId: storedRecord['intentId'] ?? 'intent-crash-001',
+          intentId: storedRecord['intentId'] ?? '00000000-0000-4000-8000-000000000108',
           payloadHmac: storedRecord['payloadHmac'] ?? 'abc-hmac',
           resourceRef: storedRecord['resourceRef'] ?? 'usage-001',
           resultStatus: storedRecord['resultStatus'] ?? 'COMPLETED',
