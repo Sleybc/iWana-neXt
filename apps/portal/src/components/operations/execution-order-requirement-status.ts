@@ -30,38 +30,6 @@ export interface RequirementChecklistItem {
   reason?: string | undefined;
 }
 
-const FALLBACK_PENDING_REASON = 'Completa el requisito pendiente antes de cerrar la orden.';
-
-function statusLabel(status: ExecutionOrderRequirementStatus, fallback: string): string {
-  const label = typeof status.label === 'string' ? status.label.trim() : '';
-  return label || fallback;
-}
-
-function statusReason(
-  status: ExecutionOrderRequirementStatus,
-  kind: string,
-  label: string,
-): string {
-  const reason = typeof status.reason === 'string' ? status.reason.trim() : '';
-  if (reason) return reason;
-  switch (kind) {
-    case 'EVIDENCE':
-      return `Adjunta ${label.toLowerCase()} antes de cerrar la orden.`;
-    case 'MATERIAL':
-      return 'Registra el material o equipo requerido antes de cerrar la orden.';
-    case 'COMPLIANCE':
-      return 'Registra la aceptación del cliente antes de cerrar la orden.';
-    case 'ACTIVITY':
-      return 'Registra la actividad requerida antes de cerrar la orden.';
-    case 'MEASUREMENT':
-      return 'Registra la medición requerida antes de cerrar la orden.';
-    case 'FIELD':
-      return 'Completa la información requerida antes de cerrar la orden.';
-    default:
-      return FALLBACK_PENDING_REASON;
-  }
-}
-
 /**
  * Cruza la plantilla con el estado real por requisito. `requirementId` del
  * contrato es la clave del requisito en el snapshot (`req.key`), según el
@@ -93,16 +61,15 @@ export function getRequirementChecklistItems(
         label: fallback,
         kind: requirement.kind,
         required: requirement.required,
-        state: 'pending' as const,
-        reason: FALLBACK_PENDING_REASON,
+        state: 'unknown' as const,
       };
     }
-    const label = statusLabel(status, fallback);
+    const label = fallback;
     if (status.satisfied) {
       return {
         key: requirement.key,
         label,
-        kind: status.kind || requirement.kind,
+        kind: requirement.kind,
         required: requirement.required,
         state: 'satisfied' as const,
       };
@@ -110,10 +77,10 @@ export function getRequirementChecklistItems(
     return {
       key: requirement.key,
       label,
-      kind: status.kind || requirement.kind,
+      kind: requirement.kind,
       required: requirement.required,
       state: 'pending' as const,
-      reason: statusReason(status, requirement.kind, label),
+      ...(status.reason?.trim() ? { reason: status.reason } : {}),
     };
   });
 }

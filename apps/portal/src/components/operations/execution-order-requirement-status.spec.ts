@@ -80,15 +80,15 @@ describe('getRequirementChecklistItems', () => {
     expect(item?.reason).toBeUndefined();
   });
 
-  it('marca pendiente genérico cuando el requisito no tiene estado publicado', () => {
+  it('marca desconocido sin razón cuando el requisito no tiene estado publicado', () => {
     const [item] = getRequirementChecklistItems(
       [templateRequirement({ key: 'req-nuevo', label: 'Requisito nuevo' })],
       [status()],
       fallback,
     );
 
-    expect(item?.state).toBe('pending');
-    expect(item?.reason).toMatch(/antes de cerrar la orden/);
+    expect(item?.state).toBe('unknown');
+    expect(item?.reason).toBeUndefined();
   });
 
   it('usa la etiqueta de la plantilla cuando el estado no trae etiqueta', () => {

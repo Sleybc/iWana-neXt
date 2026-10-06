@@ -44,6 +44,7 @@ describeWithDb('Execution Orders E2 — despacho contra PostgreSQL real', () => 
   let dataSource: DataSource;
   let tenantId: string;
   let schemaName: string;
+  let migration135AppliedBySuite = false;
   let service: ExecutionOrdersService;
   const createdOrderIds: string[] = [];
   // H1: interruptor del stub de alcance (describe-scope para mutarlo por test).
@@ -147,14 +148,27 @@ describeWithDb('Execution Orders E2 — despacho contra PostgreSQL real', () => 
       scopePort as never,
     );
 
-    // Precedente E1: la 135 se aplica aquí y se revierte al cerrar. No es DDL
-    // nuevo — es la migración de E1, necesaria porque el tenant de
-    // integración conserva el esquema pre-E1 (NOT NULL). Sin ella, el
-    // despacho persiste nulos contra una columna NOT NULL (falla accionable
-    // que esta suite detectó en su primera corrida).
+    // Precedente E1: la 135 se aplica aquí solo si el tenant de integración aún
+    // tiene el esquema pre-E1 (NOT NULL) y únicamente en ese caso se revierte
+    // al cerrar. Si el tenant ya la traía aplicada, la suite no la toca: un
+    // `down` incondicional dejaría el esquema desfasado del registro de
+    // migraciones.
     await TenantContext.run(tenantContext(), () =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
-        await new ExecutionOrderOriginIdentity1350000000000().up(qr);
+        const columns = (await qr.query(
+          `SELECT is_nullable
+             FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = 'execution_orders'
+              AND column_name IN ('schedule_event_id', 'planned_window_start_at', 'planned_window_end_at')`,
+          [schemaName],
+        )) as Array<{ is_nullable: string }>;
+        if (columns.length !== 3) {
+          throw new Error('No se detectó el esquema E1 completo de execution_orders.');
+        }
+        migration135AppliedBySuite = columns.some((column) => column.is_nullable !== 'YES');
+        if (migration135AppliedBySuite) {
+          await new ExecutionOrderOriginIdentity1350000000000().up(qr);
+        }
       }),
     );
   });
@@ -175,8 +189,11 @@ describeWithDb('Execution Orders E2 — despacho contra PostgreSQL real', () => 
             await qr.manager.delete(ExecutionOrder, createdOrderIds);
           }
           // El `down` declara su límite ante OT sin evento: solo procede
-          // porque la limpieza anterior eliminó las filas de esta suite.
-          await new ExecutionOrderOriginIdentity1350000000000().down(qr);
+          // porque la limpieza anterior eliminó las filas de esta suite, y
+          // solo si fue esta suite quien aplicó la 135.
+          if (migration135AppliedBySuite) {
+            await new ExecutionOrderOriginIdentity1350000000000().down(qr);
+          }
         }),
       );
       await dataSource.destroy();
@@ -256,6 +273,72 @@ describeWithDb('Execution Orders E2 — despacho contra PostgreSQL real', () => 
     expect(row['visit_request_id']).toBeNull();
     expect(row['organization_site_id']).toBe(siteId);
     expect(row['origin_context']).toBe(WorkOrderSourceContext.MANUAL);
+  });
+
+  it('E4 CA-12: pagina sin huecos ni duplicados al mezclar OTs con y sin ventana', async () => {
+    const organizationSiteId = randomUUID();
+    const windowStarts = [
+      '2030-01-02T10:00:00.000Z',
+      '2030-01-03T10:00:00.000Z',
+      '2030-01-02T10:00:00.000Z',
+    ];
+    const ids: string[] = [];
+
+    for (const [index, plannedWindowStartAt] of windowStarts.entries()) {
+      const order = await TenantContext.run(tenantContext(), () =>
+        service.createFromScheduling(
+          {
+            scheduleEventId: randomUUID(),
+            organizationSiteId,
+            originContext: 'TEST',
+            originRefId: `e4-list-window-${Date.now()}-${index}`,
+            customerDisplayLabel: 'Cliente de prueba E4',
+            workType: WfmWorkType.SUPPORT,
+            workSummary: `Paginación E4 con ventana ${index}`,
+            plannedWindowStartAt,
+            plannedWindowEndAt: '2030-01-03T11:00:00.000Z',
+          },
+          supervisor,
+        ),
+      );
+      ids.push(order.id);
+    }
+
+    for (let index = 0; index < 3; index += 1) {
+      const order = await TenantContext.run(tenantContext(), () =>
+        service.dispatchFromCoordination(
+          buildDispatch({
+            organizationSiteId,
+            workSummary: `Paginación E4 sin ventana ${index}`,
+          }),
+          supervisor,
+        ),
+      );
+      ids.push(order.id);
+    }
+    createdOrderIds.push(...ids);
+
+    const expected = (await TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) =>
+        qr.query(
+          `SELECT id FROM execution_orders
+           WHERE tenant_id = $1 AND organization_site_id = $2 AND id = ANY($3::uuid[])
+           ORDER BY planned_window_start_at DESC NULLS FIRST, id DESC`,
+          [tenantId, organizationSiteId, ids],
+        ),
+      ),
+    )) as Array<{ id: string }>;
+
+    const actual: string[] = [];
+    for (let page = 1; page <= Math.ceil(ids.length / 2); page += 1) {
+      const response = await TenantContext.run(tenantContext(), () =>
+        service.list({ organizationSiteId, page, limit: 2 }, supervisor),
+      );
+      actual.push(...response.data.map((order) => order.id));
+    }
+
+    expect(actual).toEqual(expected.map((order) => order.id));
+    expect(new Set(actual).size).toBe(ids.length);
   });
 
   it('CA-07: assign() sobre la OT despachada persiste ASSIGNED + técnico en base', async () => {

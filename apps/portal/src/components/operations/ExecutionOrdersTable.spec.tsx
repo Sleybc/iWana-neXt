@@ -6,7 +6,7 @@
 // y CA-10 (§8.1: encabezados no ordenables mientras `sortableFields` esté
 // vacío; prohibido `PortalDataTableSortableHead`).
 import type { ComponentProps } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
 import type { ExecutionOrderListItem } from '@/lib/api-client';
@@ -111,18 +111,98 @@ describe('ExecutionOrdersTable', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('pinta «—» en la ventana planificada cuando schedule.window es nulo', () => {
-    renderTable({
-      orders: [
-        buildOrder({
-          schedule: { eventId: null, window: null },
-        }),
-      ],
+  describe('ventana nula (E4, contrato v1.2 §7.2 col. 5)', () => {
+    function windowCellOf(status: ExecutionOrderStatus): HTMLElement {
+      renderTable({
+        orders: [buildOrder({ status, schedule: { eventId: null, window: null } })],
+      });
+      const row = screen.getByRole('row', { name: /OT-0001/ });
+      return within(row).getAllByRole('cell')[4] as HTMLElement;
+    }
+
+    it.each([
+      ExecutionOrderStatus.CREATED,
+      ExecutionOrderStatus.ASSIGNED,
+      ExecutionOrderStatus.EN_ROUTE,
+      ExecutionOrderStatus.IN_PROGRESS,
+      ExecutionOrderStatus.BLOCKED,
+    ])('estado abierto %s sin ventana pinta «Por programar»', (status) => {
+      const cell = windowCellOf(status);
+
+      expect(cell).toHaveTextContent(/^Por programar$/);
+      expect(cell).not.toHaveTextContent('—');
     });
 
-    const row = screen.getByRole('row', { name: /OT-0001/ });
-    const cells = within(row).getAllByRole('cell');
-    expect(cells[4]).toHaveTextContent('—');
+    it.each([
+      ExecutionOrderStatus.COMPLETED,
+      ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
+      ExecutionOrderStatus.NOT_EXECUTED,
+      ExecutionOrderStatus.CANCELLED,
+    ])('estado terminal %s sin ventana pinta «Sin ventana planificada»', (status) => {
+      const cell = windowCellOf(status);
+
+      expect(cell).toHaveTextContent(/^Sin ventana planificada$/);
+      expect(cell).not.toHaveTextContent('—');
+    });
+
+    it('los estados textuales no usan mono técnico (solo las fechas)', () => {
+      const open = windowCellOf(ExecutionOrderStatus.CREATED);
+      expect(open.className).not.toMatch(/font-mono/);
+      expect(open.className).not.toMatch(/text-xs/);
+
+      cleanup();
+      const terminal = windowCellOf(ExecutionOrderStatus.CANCELLED);
+      expect(terminal.className).not.toMatch(/font-mono/);
+    });
+
+    it('con ventana conserva el intervalo y el mono técnico, sin texto de estado', () => {
+      renderTable({
+        orders: [buildOrder({ status: ExecutionOrderStatus.CREATED })],
+      });
+
+      const row = screen.getByRole('row', { name: /OT-0001/ });
+      const cell = within(row).getAllByRole('cell')[4] as HTMLElement;
+      const fmt = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+      expect(cell).toHaveTextContent(
+        `${fmt.format(new Date('2026-09-13T14:00:00.000Z'))} – ${fmt.format(new Date('2026-09-13T16:00:00.000Z'))}`,
+      );
+      expect(cell.className).toMatch(/font-mono/);
+      expect(cell).not.toHaveTextContent('Por programar');
+      expect(cell).not.toHaveTextContent('Sin ventana planificada');
+    });
+
+    it('pinta el orden recibido del servidor: sin ventana primero, sin reordenar localmente', () => {
+      renderTable({
+        orders: [
+          buildOrder({
+            id: 'eo-a',
+            number: 'OT-A',
+            status: ExecutionOrderStatus.CREATED,
+            schedule: { eventId: null, window: null },
+          }),
+          buildOrder({ id: 'eo-b', number: 'OT-B' }),
+          buildOrder({
+            id: 'eo-c',
+            number: 'OT-C',
+            status: ExecutionOrderStatus.CANCELLED,
+            schedule: { eventId: null, window: null },
+          }),
+          buildOrder({
+            id: 'eo-d',
+            number: 'OT-D',
+            schedule: {
+              eventId: 'event-d',
+              window: { startAt: '2026-01-01T14:00:00.000Z', endAt: '2026-01-01T16:00:00.000Z' },
+            },
+          }),
+        ],
+      });
+
+      const numbers = screen
+        .getAllByRole('button', { name: /^OT-/ })
+        .map((button) => button.textContent);
+      expect(numbers).toEqual(['OT-A', 'OT-B', 'OT-C', 'OT-D']);
+    });
   });
 
   it('sin asignado pinta «Sin asignar» (pool)', () => {

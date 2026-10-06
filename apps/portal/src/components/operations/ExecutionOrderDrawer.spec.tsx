@@ -1,4 +1,4 @@
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ExecutionOrderItemAction,
@@ -78,7 +78,15 @@ function detailFactory(
       displayLabel: 'Carlos López',
     },
     site: { id: 'site-001', label: 'Torre Norte', address: 'Calle 1 # 2 - 3' },
-    completion: { progress: 0 },
+    completion: {
+      progress: 0,
+      requirements: templateFactory().requirements.map((requirement) => ({
+        requirementId: requirement.key,
+        label: requirement.label ?? requirement.key,
+        kind: requirement.kind,
+        satisfied: false,
+      })),
+    },
     syncState: 'IN_SYNC',
     inventoryReconciliation: 'NOT_REQUIRED',
     allowedActions: defaultActionsFor(status),
@@ -169,7 +177,7 @@ function activitiesFactory(): ExecutionOrderActivity[] {
     },
     {
       id: 'act-002',
-      activityType: 'FIELD_NOTE',
+      activityType: 'INSTALLATION',
       description: 'Cableado externo en buen estado',
       occurredAt: '2026-07-27T14:45:00.000Z',
       actorRef: { type: 'USER', id: 'tech-001' },
@@ -330,8 +338,11 @@ describe('ExecutionOrderDrawer', () => {
     expect(executedBadges.some((badge) => badge.className.includes('bg-success-50'))).toBe(true);
   });
 
-  function renderDrawer(props: Partial<Parameters<typeof ExecutionOrderDrawer>[0]> = {}) {
-    return render(
+  function renderDrawer(
+    props: Partial<Parameters<typeof ExecutionOrderDrawer>[0]> = {},
+    action?: 'activity' | 'consumption' | 'evidence',
+  ) {
+    const result = render(
       <ExecutionOrderDrawer
         open={true}
         order={detailFactory()}
@@ -363,6 +374,15 @@ describe('ExecutionOrderDrawer', () => {
         {...props}
       />,
     );
+    if (action) {
+      const names = {
+        activity: 'Registrar actividad',
+        consumption: 'Registrar equipo instalado',
+        evidence: 'Adjuntar evidencia',
+      };
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${names[action]} para `) }));
+    }
+    return result;
   }
 
   // ----------------------------------------------------
@@ -436,14 +456,13 @@ describe('ExecutionOrderDrawer', () => {
       expect(matches.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('renders the 6 blocks', () => {
+    it('monta compromiso e índice por momento', () => {
       renderDrawer({ order: detailFactory({ status }) });
-      // Use headings that exist in sections
       expect(screen.getByText('Compromiso')).toBeInTheDocument();
-      expect(screen.getByText('Checklist de instalación')).toBeInTheDocument();
-      expect(screen.getByText('Trabajo realizado')).toBeInTheDocument();
-      expect(screen.getByText('Equipos y materiales')).toBeInTheDocument();
-      expect(screen.getByText('Evidencia y conformidad')).toBeInTheDocument();
+      expect(screen.getByText('Requisitos')).toBeInTheDocument();
+      const checklist = screen.getByRole('region', { name: 'Requisitos' });
+      expect(within(checklist).getAllByRole('listitem')).toHaveLength(5);
+      expect(document.querySelector('input[type="file"]')).toBeNull();
       expect(screen.getByText('Cierre')).toBeInTheDocument();
     });
 
@@ -487,29 +506,17 @@ describe('ExecutionOrderDrawer', () => {
           expect(screen.getByRole('button', { name: 'Iniciar ejecución' })).toBeInTheDocument();
         }
         if (isPreStartStatus) {
-          expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
-          expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
-          expect(
-            screen.getByText('Inicia la ejecución para registrar el trabajo realizado'),
-          ).toBeInTheDocument();
-          expect(
-            screen.getByText('Inicia la ejecución para registrar equipos y materiales'),
-          ).toBeInTheDocument();
-          expect(
-            screen.getByText('Inicia la ejecución para registrar evidencia'),
-          ).toBeInTheDocument();
+          expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
+          expect(screen.queryByLabelText('Cantidad')).toBeNull();
+          expect(document.querySelector('input[type="file"]')).toBeNull();
         } else {
-          expect(screen.getByRole('button', { name: 'Registrar actividad' })).toBeInTheDocument();
-          expect(screen.getByRole('button', { name: 'Registrar material' })).toBeInTheDocument();
           expect(
-            screen.queryByText('Inicia la ejecución para registrar el trabajo realizado'),
-          ).not.toBeInTheDocument();
+            screen.getByRole('button', { name: /^Registrar actividad para / }),
+          ).toBeInTheDocument();
           expect(
-            screen.queryByText('Inicia la ejecución para registrar equipos y materiales'),
-          ).not.toBeInTheDocument();
-          expect(
-            screen.queryByText('Inicia la ejecución para registrar evidencia'),
-          ).not.toBeInTheDocument();
+            screen.getByRole('button', { name: /^Registrar equipo instalado para / }),
+          ).toBeInTheDocument();
+          expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
         }
       });
     }
@@ -548,7 +555,7 @@ describe('ExecutionOrderDrawer', () => {
           completion: { progress: 60 },
         }),
       });
-      const section = screen.getByRole('region', { name: 'Checklist de instalación' });
+      const section = screen.getByRole('region', { name: 'Requisitos' });
       expect(within(section).getByRole('progressbar')).toBeInTheDocument();
       expect(within(section).getByText('60%')).toBeInTheDocument();
     });
@@ -570,8 +577,8 @@ describe('ExecutionOrderDrawer', () => {
         }),
       });
 
-      const section = screen.getByRole('region', { name: 'Checklist de instalación' });
-      expect(within(section).getByText(/2 de 5/)).toBeInTheDocument();
+      const section = screen.getByRole('region', { name: 'Requisitos' });
+      expect(screen.getByText(/2 de 5/)).toBeInTheDocument();
       expect(within(section).getByRole('progressbar')).toHaveValue(40);
     });
 
@@ -600,23 +607,32 @@ describe('ExecutionOrderDrawer', () => {
   // ----------------------------------------------------
   describe('Block 3 — Trabajo realizado', () => {
     it('shows activity list when activities are available', () => {
-      renderDrawer({ activities: activitiesFactory() });
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        activities: activitiesFactory(),
+      });
       expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
       expect(screen.getByText('Cableado externo en buen estado')).toBeInTheDocument();
     });
 
     it('shows empty message when no activities', () => {
-      renderDrawer({ activities: [] });
-      expect(screen.getByText(/Aún no hay actividades registradas/)).toBeInTheDocument();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        activities: [],
+      });
+      expect(screen.getByText(/Todavía no hay actividades registradas/)).toBeInTheDocument();
     });
 
     it('shows activity registration form when allowed', async () => {
       const onRegisterActivity = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-        onRegisterActivity,
-      });
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          onRegisterActivity,
+        },
+        'activity',
+      );
 
       const textarea = screen.getByRole('textbox', { name: 'Descripción de la actividad' });
       await user.type(textarea, 'Cable tendido hasta el poste');
@@ -627,71 +643,67 @@ describe('ExecutionOrderDrawer', () => {
       );
     });
 
-    it('muestra el toggle replegado cuando ya hay actividades registradas', () => {
+    it('mantiene la captura desmontada cuando hay actividades', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         activities: activitiesFactory(),
       });
-
-      const toggle = screen.getByRole('button', { name: 'Registrar nueva actividad' });
-      expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
-      expect(screen.queryByRole('textbox', { name: 'Descripción de la actividad' })).toBeNull();
+      expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
     });
-
-    it('despliega el formulario al pulsar Registrar nueva actividad', async () => {
+    it('abre y cancela la captura inline desde el requisito', async () => {
       const user = userEvent.setup();
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         activities: activitiesFactory(),
       });
-
-      await user.click(screen.getByRole('button', { name: 'Registrar nueva actividad' }));
-
-      expect(screen.getByRole('button', { name: 'Registrar nueva actividad' })).toHaveAttribute(
-        'aria-expanded',
-        'true',
-      );
-      expect(
-        screen.getByRole('textbox', { name: 'Descripción de la actividad' }),
-      ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Ocultar' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Registrar actividad' })).toBeInTheDocument();
+      const trigger = screen.getByRole('button', { name: /^Registrar actividad para / });
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByLabelText('Descripción de la actividad')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+      expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
+      expect(trigger).toHaveFocus();
     });
-
-    it('repliega el formulario tras registrar una actividad con éxito', async () => {
+    it('cierra la captura tras registrar una actividad con éxito', async () => {
       const onRegisterActivity = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-        activities: activitiesFactory(),
-        onRegisterActivity,
-      });
-
-      await user.click(screen.getByRole('button', { name: 'Registrar nueva actividad' }));
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          activities: activitiesFactory(),
+          onRegisterActivity,
+        },
+        'activity',
+      );
       await user.type(
-        screen.getByRole('textbox', { name: 'Descripción de la actividad' }),
+        screen.getByLabelText('Descripción de la actividad'),
         'Prueba de velocidad completada',
       );
       await user.click(screen.getByRole('button', { name: 'Registrar actividad' }));
-
       expect(onRegisterActivity).toHaveBeenCalledWith(
-        expect.objectContaining({ description: 'Prueba de velocidad completada' }),
+        expect.objectContaining({
+          description: 'Prueba de velocidad completada',
+          activityType: 'INSTALLATION',
+        }),
       );
-      expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
-      expect(screen.getByRole('button', { name: 'Registrar nueva actividad' })).toBeInTheDocument();
-      expect(screen.queryByRole('textbox', { name: 'Descripción de la actividad' })).toBeNull();
+      expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
+      expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
     });
-
-    it('muestra el formulario expandido sin toggle cuando no hay actividades', () => {
-      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
-
-      expect(screen.getByText('Registrar nueva actividad')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Registrar nueva actividad' })).toBeNull();
-      expect(
-        screen.getByRole('textbox', { name: 'Descripción de la actividad' }),
-      ).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Ocultar' })).toBeNull();
+    it('separa historial vacío y captura con tipo preseleccionado', () => {
+      renderDrawer(
+        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        'activity',
+      );
+      expect(screen.getByText('Todavía no hay actividades registradas')).toBeInTheDocument();
+      expect(screen.getByLabelText('Descripción de la actividad')).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Tipo de actividad' })).toBeDisabled();
     });
 
     it('does not show registration form on terminal OT', () => {
@@ -720,10 +732,13 @@ describe('ExecutionOrderDrawer', () => {
     it('envía serialNumber y technicianCustodyId al registrar inventario', async () => {
       const onRegisterItemUsage = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-        onRegisterItemUsage,
-      });
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          onRegisterItemUsage,
+        },
+        'consumption',
+      );
 
       await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
       await user.click(screen.getByRole('option', { name: 'ONT de instalación' }));
@@ -747,7 +762,10 @@ describe('ExecutionOrderDrawer', () => {
     });
 
     it('bloquea el registro hasta seleccionar acción y custodia', () => {
-      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      renderDrawer(
+        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        'consumption',
+      );
 
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
       expect(screen.getByLabelText('Acción')).toBeInTheDocument();
@@ -755,7 +773,10 @@ describe('ExecutionOrderDrawer', () => {
     });
 
     it('no fija una acción ni un destino por defecto', () => {
-      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      renderDrawer(
+        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        'consumption',
+      );
 
       expect(screen.getByRole('combobox', { name: 'Acción' })).toHaveTextContent(
         'Selecciona una acción',
@@ -769,9 +790,12 @@ describe('ExecutionOrderDrawer', () => {
       const { assignee: _assignee, ...orderWithoutAssignee } = detailFactory({
         status: ExecutionOrderStatus.IN_PROGRESS,
       });
-      renderDrawer({
-        order: orderWithoutAssignee,
-      });
+      renderDrawer(
+        {
+          order: orderWithoutAssignee,
+        },
+        'consumption',
+      );
 
       expect(
         screen.getByText('La orden no tiene una custodia técnica o de cuadrilla elegible.'),
@@ -779,55 +803,29 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
     });
 
-    it('conserva el requirementKey real y selecciona un solo archivo al subir evidencia', async () => {
-      const onUploadEvidence = jest.fn().mockResolvedValue(undefined);
-      const user = userEvent.setup();
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-        onUploadEvidence,
-      });
-
-      const file = new File(['evidencia'], 'instalacion.jpg', { type: 'image/jpeg' });
-      const input = screen.getByLabelText('Adjuntar evidencia');
-      await user.upload(input, file);
-
-      expect(input).not.toHaveAttribute('multiple');
-      expect(onUploadEvidence).toHaveBeenCalledWith(file, 'req-photo-install');
-    });
+    // R2: «conserva el requirementKey real y selecciona un solo archivo al subir evidencia»
+    // se movió a ExecutionOrderEvidenceAction.spec.tsx (el slot publica además su evidenceType).
 
     it('muestra el estado mientras analiza el archivo', () => {
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-        isAnalyzingEvidence: true,
-      });
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          isAnalyzingEvidence: true,
+        },
+        'evidence',
+      );
 
       expect(screen.getByText('Analizando archivo')).toHaveAttribute('role', 'status');
     });
 
-    it('mantiene el archivo seleccionado y muestra el error si la carga no termina', async () => {
-      const error =
-        'El archivo no superó la revisión y no se registró. Selecciona otro archivo para continuar.';
-      const onUploadEvidence = jest.fn().mockResolvedValue(false);
-      const user = userEvent.setup();
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-        error,
-        onUploadEvidence,
-      });
-
-      const file = new File(['evidencia'], 'instalacion.pdf', { type: 'application/pdf' });
-      const input = screen.getByLabelText('Adjuntar evidencia') as HTMLInputElement;
-      await user.upload(input, file);
-
-      expect(await screen.findByText(error)).toBeInTheDocument();
-      expect(input.files?.[0]).toBe(file);
-      expect(onUploadEvidence).toHaveBeenCalledWith(file, 'req-photo-install');
-    });
+    // R2: «mantiene el archivo seleccionado y muestra el error si la carga no termina»
+    // se movió a ExecutionOrderEvidenceAction.spec.tsx.
 
     it('muestra Cargar más cuando quedan evidencias y conserva el callback', async () => {
       const onLoadMoreEvidence = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
       renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         evidence: evidenceFactory(),
         evidenceMeta: {
           page: 20,
@@ -1047,14 +1045,22 @@ describe('ExecutionOrderDrawer', () => {
     });
 
     it('shows empty message when no items', () => {
-      renderDrawer({ itemUsage: [] });
-      expect(screen.getByText(/Aún no hay consumos registrados/)).toBeInTheDocument();
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        itemUsage: [],
+      });
+      expect(
+        screen.getByText(/Todavía no hay consumos registrados para este requisito/),
+      ).toBeInTheDocument();
     });
 
     it('shows add item form when allowed', () => {
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-      });
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        },
+        'consumption',
+      );
       expect(screen.getByLabelText('Ítem')).toBeInTheDocument();
       expect(screen.getByLabelText('Cantidad')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Registrar material' })).toBeInTheDocument();
@@ -1062,7 +1068,10 @@ describe('ExecutionOrderDrawer', () => {
 
     it('exige una cantidad positiva y muestra el error junto al campo', async () => {
       const user = userEvent.setup();
-      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      renderDrawer(
+        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        'consumption',
+      );
 
       const quantity = screen.getByLabelText('Cantidad');
       expect(quantity).toHaveAttribute('min', '1');
@@ -1121,94 +1130,110 @@ describe('ExecutionOrderDrawer', () => {
     }
 
     it('muestra custodia, equipos y materiales con datos del contrato', () => {
-      renderDrawer({ ...custodyProps });
+      renderDrawer(
+        { ...custodyProps, order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        'consumption',
+      );
 
       expect(screen.getByText('En custodia del ejecutor')).toBeInTheDocument();
       expect(screen.getByText('Bodega móvil de Carlos López')).toBeInTheDocument();
       expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
       expect(screen.getByText('ONT de instalación · Asignado a técnico')).toBeInTheDocument();
-      expect(screen.getByText('ONT de instalación')).toBeInTheDocument();
+      expect(screen.getAllByText('ONT de instalación')[0]).toBeInTheDocument();
       expect(screen.getByText('Cantidad disponible: 4')).toBeInTheDocument();
       expect(screen.queryByText('Custodia no disponible')).not.toBeInTheDocument();
       expect(
-        screen.queryByText('El ejecutor no tiene equipos ni materiales en custodia'),
+        screen.queryByText('No hay equipos de esta categoría en tu custodia'),
       ).not.toBeInTheDocument();
     });
 
     it('muestra el vacío informativo cuando el ejecutor no tiene custodia', () => {
-      renderDrawer({
-        executorCustodyState: 'available',
-        executorCustodyAssets: [],
-        executorCustodyBalances: [],
-      });
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          executorCustodyState: 'available',
+          executorCustodyAssets: [],
+          executorCustodyBalances: [],
+        },
+        'consumption',
+      );
 
+      // UX §5: la custodia vacía de la categoría se dice con el copy cerrado y no se promete otra cosa.
       expect(
-        screen.getByText('El ejecutor no tiene equipos ni materiales en custodia'),
+        screen.getByText('No hay equipos de esta categoría en tu custodia'),
       ).toBeInTheDocument();
-      expect(screen.getByText('Lo asignado desde inventario aparecerá aquí.')).toBeInTheDocument();
+      expect(
+        screen.getByText('Contacta a supervisión para revisar la disponibilidad.'),
+      ).toBeInTheDocument();
     });
 
-    it('muestra la alerta de no disponible con la acción de actualizar detalle', () => {
+    it('muestra la alerta de no disponible con la acción de reintentar', () => {
       const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
-      renderDrawer({
-        executorCustodyState: 'unavailable',
-        onRefreshDetail,
-      });
+      renderDrawer(
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          executorCustodyState: 'unavailable',
+          onRefreshDetail,
+        },
+        'consumption',
+      );
 
-      const section = materialsSection();
+      const section = screen.getByRole('region', { name: 'Registrar equipo instalado' });
       expect(within(section).getByText('Custodia no disponible')).toBeInTheDocument();
-      within(section).getByRole('button', { name: 'Actualizar detalle' }).click();
+      within(section).getByRole('button', { name: 'Reintentar' }).click();
       expect(onRefreshDetail).toHaveBeenCalledTimes(1);
     });
 
     it('muestra skeleton mientras carga la custodia', () => {
-      renderDrawer({ executorCustodyState: 'loading' });
+      renderDrawer(
+        {
+          executorCustodyState: 'loading',
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+        },
+        'consumption',
+      );
 
-      const section = materialsSection();
+      const section = screen.getByRole('region', { name: 'Registrar equipo instalado' });
       expect(within(section).getByLabelText('Cargando custodia del ejecutor')).toBeInTheDocument();
       expect(within(section).getByText('En custodia del ejecutor')).toBeInTheDocument();
     });
 
     it('expone la paginación compartida vía onLoadMoreExecutorCustody', async () => {
       const onLoadMoreExecutorCustody = jest.fn().mockResolvedValue(undefined);
-      renderDrawer({
-        ...custodyProps,
-        executorCustodyAssetsMeta: custodyMetaFactory({ hasMore: true, total: 3 }),
-        executorCustodyBalancesMeta: custodyMetaFactory(),
-        isLoadingMoreExecutorCustody: false,
-        onLoadMoreExecutorCustody,
-      });
+      renderDrawer(
+        {
+          ...custodyProps,
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          executorCustodyAssetsMeta: custodyMetaFactory({ hasMore: true, total: 3 }),
+          executorCustodyBalancesMeta: custodyMetaFactory(),
+          isLoadingMoreExecutorCustody: false,
+          onLoadMoreExecutorCustody,
+        },
+        'consumption',
+      );
 
-      const section = materialsSection();
+      const section = screen.getByRole('region', { name: 'Registrar equipo instalado' });
       const loadMore = within(section).getByRole('button', { name: 'Cargar más' });
       await userEvent.click(loadMore);
       expect(onLoadMoreExecutorCustody).toHaveBeenCalledTimes(1);
     });
 
-    it('es visible en pre-inicio porque es información de lectura', () => {
-      renderDrawer({
-        ...custodyProps,
-        order: detailFactory({ status: ExecutionOrderStatus.CREATED }),
-      });
-
-      expect(screen.getByText('En custodia del ejecutor')).toBeInTheDocument();
-      expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+    it.each(terminalStatuses)('queda oculta en estado terminal %s', (status) => {
+      renderDrawer({ order: detailFactory({ status }), ...custodyProps });
+      expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
+      expect(screen.queryByLabelText('Cantidad')).toBeNull();
     });
 
-    it.each(terminalStatuses)('queda oculta en estado terminal %s', (status) => {
+    it('no monta custodia en pre-inicio', () => {
       renderDrawer({
-        ...custodyProps,
-        order: detailFactory({ status, result: ExecutionOrderResult.EXECUTED }),
+        order: detailFactory({ status: ExecutionOrderStatus.ASSIGNED }),
+        executorCustodyAssets: [custodyAssetFactory()],
       });
-
-      expect(screen.queryByText('En custodia del ejecutor')).not.toBeInTheDocument();
-      expect(screen.queryByText('ONT-2026-001')).not.toBeInTheDocument();
+      expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
+      expect(screen.queryByText('ONT-CUSTODIA-001')).toBeNull();
     });
   });
 
-  // ----------------------------------------------------
-  // Block 5 — Evidencia y conformidad
-  // ----------------------------------------------------
   describe('Block 5 — Evidencia y conformidad', () => {
     it('normaliza evidencias null y mantiene el estado vacío', () => {
       renderDrawer({
@@ -1216,7 +1241,7 @@ describe('ExecutionOrderDrawer', () => {
         evidence: null,
       });
 
-      expect(screen.getByText('Sin evidencias registradas')).toBeInTheDocument();
+      expect(screen.getByText('Todavía no hay evidencias para este requisito')).toBeInTheDocument();
     });
 
     it('explica honestamente cuando el servicio de evidencias no está disponible', () => {
@@ -1230,7 +1255,9 @@ describe('ExecutionOrderDrawer', () => {
 
       expect(screen.getByText('Evidencias no disponibles')).toBeInTheDocument();
       expect(screen.getByText(/No pudimos consultar las evidencias/)).toBeInTheDocument();
-      expect(screen.queryByText('Sin evidencias registradas')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Todavía no hay evidencias para este requisito'),
+      ).not.toBeInTheDocument();
       screen.getByRole('button', { name: 'Actualizar detalle' }).click();
       expect(onRefreshDetail).toHaveBeenCalledTimes(1);
     });
@@ -1244,17 +1271,12 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getByText('Disponible')).toBeInTheDocument();
     });
 
-    it('shows upload area when allowed', () => {
-      renderDrawer({
-        order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
-      });
-      expect(screen.getByText('Adjuntar evidencia')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Seleccionar archivos' })).toBeInTheDocument();
-    });
+    // R2: «shows upload area when allowed» se movió a ExecutionOrderEvidenceAction.spec.tsx
+    // («muestra el selector de archivo asociado a su requisito…»).
 
     it('shows geo-reference display', () => {
-      renderDrawer();
-      expect(screen.getByText('Calle 1 # 2 - 3')).toBeInTheDocument();
+      renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
+      expect(screen.getAllByText(/Calle 1 # 2 - 3/).length).toBeGreaterThan(0);
     });
 
     it('does not show upload on terminal OT', () => {
@@ -1346,7 +1368,7 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.getAllByText('Plantilla no disponible').length).toBeGreaterThanOrEqual(1);
       expect(screen.queryByLabelText('Adjuntar evidencia')).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Seleccionar archivos' }),
+        screen.queryByRole('button', { name: /^Seleccionar (foto|documento)$/ }),
       ).not.toBeInTheDocument();
       screen.getByRole('button', { name: 'Actualizar detalle' }).click();
       expect(onRefreshDetail).toHaveBeenCalledTimes(1);
@@ -1430,7 +1452,7 @@ describe('ExecutionOrderDrawer', () => {
   // Blocked state
   // ----------------------------------------------------
   describe('Blocked state', () => {
-    it('shows blocked reason and unblock action', () => {
+    it('muestra el estado bloqueado sin motivo y la leyenda de desbloqueo no disponible', () => {
       renderDrawer({
         order: detailFactory({
           status: ExecutionOrderStatus.BLOCKED,
@@ -1445,8 +1467,11 @@ describe('ExecutionOrderDrawer', () => {
       expect(screen.queryByRole('button', { name: 'Desbloquear OT' })).toBeNull();
     });
 
-    it('does not render block or unblock controls without real handlers', () => {
-      renderDrawer({
+    // UX v1.1 §4/§5 (adenda A1): si UNBLOCK está en allowedActions se declara «Desbloqueo no
+    // disponible» aunque el cliente no cablee el handler (en producción nunca se cablea);
+    // si UNBLOCK no se ofrece, la leyenda tampoco aparece. Nunca hay un botón ficticio.
+    it('declara el desbloqueo no disponible solo si UNBLOCK está ofrecido, sin controles ficticios', () => {
+      const { unmount } = renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.BLOCKED, allowedActions: ['UNBLOCK'] }),
         onBlock: undefined as never,
         onUnblock: undefined as never,
@@ -1454,6 +1479,12 @@ describe('ExecutionOrderDrawer', () => {
 
       expect(screen.queryByRole('button', { name: 'Bloquear OT' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Desbloquear OT' })).toBeNull();
+      expect(screen.getByText('Desbloqueo no disponible')).toBeInTheDocument();
+      unmount();
+
+      renderDrawer({
+        order: detailFactory({ status: ExecutionOrderStatus.BLOCKED, allowedActions: [] }),
+      });
       expect(screen.queryByText('Desbloqueo no disponible')).toBeNull();
     });
   });
@@ -1470,14 +1501,7 @@ describe('ExecutionOrderDrawer', () => {
     it('has labelled sections for each block', () => {
       renderDrawer();
       // Each section has an aria-labelledby pointing to its heading
-      const sectionLabels = [
-        'Compromiso',
-        'Checklist de instalación',
-        'Trabajo realizado',
-        'Equipos y materiales',
-        'Evidencia y conformidad',
-        'Cierre',
-      ];
+      const sectionLabels = ['Compromiso', 'Requisitos', 'Cierre'];
       sectionLabels.forEach((label) => {
         expect(screen.getByRole('region', { name: label })).toBeInTheDocument();
       });
@@ -1503,8 +1527,10 @@ describe('ExecutionOrderDrawer', () => {
       const matches = screen.getAllByText(/Sin conexión/);
       expect(matches.length).toBeGreaterThanOrEqual(2);
       expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Registrar actividad' })).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Registrar material' })).toBeNull();
+      expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: /^Registrar equipo instalado para / }),
+      ).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
     });
@@ -1555,12 +1581,13 @@ describe('ExecutionOrderDrawer', () => {
       expect(
         screen.getByText('Inicia la ejecución para habilitar el checklist'),
       ).toBeInTheDocument();
-      const checklistSection = screen.getByRole('region', { name: 'Checklist de instalación' });
+      const checklistSection = screen.getByRole('region', { name: 'Requisitos' });
       expect(within(checklistSection).getByText('Avance de requisitos')).toBeInTheDocument();
       // contenido atenuado y marcado como deshabilitado
       const disabledContainer = checklistSection.querySelector('[aria-disabled="true"]');
-      expect(disabledContainer).not.toBeNull();
-      expect(disabledContainer?.className).toContain('opacity-60');
+      expect(disabledContainer).toBeNull();
+      expect(within(checklistSection).queryByRole('button')).toBeNull();
+      expect(document.querySelector('form')).toBeNull();
       // requisitos pendientes suprimidos antes de iniciar
       expect(
         screen.queryByRole('alert', { name: 'Requisitos pendientes' }),
@@ -1584,7 +1611,7 @@ describe('ExecutionOrderDrawer', () => {
         screen.queryByText('Inicia la ejecución para habilitar el checklist'),
       ).not.toBeInTheDocument();
       expect(screen.getByRole('alert', { name: 'Requisitos pendientes' })).toBeInTheDocument();
-      const checklistSection = screen.getByRole('region', { name: 'Checklist de instalación' });
+      const checklistSection = screen.getByRole('region', { name: 'Requisitos' });
       expect(checklistSection.querySelector('[aria-disabled="true"]')).toBeNull();
     });
 
@@ -1605,75 +1632,38 @@ describe('ExecutionOrderDrawer', () => {
   // ----------------------------------------------------
   // Pre-inicio — bloques 3/4/5 en solo lectura con hint
   // ----------------------------------------------------
-  describe('Pre-inicio — bloques 3/4/5 en solo lectura con hint', () => {
+  describe('Pre-inicio — índice sin captura (CA-10)', () => {
+    it.each(preStartStatuses)('no monta captura ni historiales (%s)', (status) => {
+      renderDrawer({
+        order: detailFactory({ status }),
+        activities: activitiesFactory(),
+        itemUsage: itemUsageFactory(),
+        evidence: evidenceFactory(),
+      });
+      expect(screen.getByText('Requisitos')).toBeInTheDocument();
+      expect(document.querySelector('form')).toBeNull();
+      expect(document.querySelector('input[type="file"]')).toBeNull();
+      expect(screen.queryByLabelText('Cantidad')).toBeNull();
+      expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
+    });
     it.each(preStartStatuses)(
-      'muestra hint por bloque y oculta los formularios de registro (%s)',
-      (status) => {
-        renderDrawer({
-          order: detailFactory({ status }),
-          activities: activitiesFactory(),
-          itemUsage: itemUsageFactory(),
-          evidence: evidenceFactory(),
-        });
-
-        const workSection = screen.getByRole('region', { name: 'Trabajo realizado' });
-        expect(
-          within(workSection).getByText('Inicia la ejecución para registrar el trabajo realizado'),
-        ).toBeInTheDocument();
-        expect(
-          within(workSection).queryByRole('button', { name: 'Registrar actividad' }),
-        ).toBeNull();
-
-        const materialsSection = screen.getByRole('region', { name: 'Equipos y materiales' });
-        expect(
-          within(materialsSection).getByText(
-            'Inicia la ejecución para registrar equipos y materiales',
-          ),
-        ).toBeInTheDocument();
-        expect(
-          within(materialsSection).queryByRole('button', { name: 'Registrar material' }),
-        ).toBeNull();
-
-        const evidenceSection = screen.getByRole('region', { name: 'Evidencia y conformidad' });
-        expect(
-          within(evidenceSection).getByText('Inicia la ejecución para registrar evidencia'),
-        ).toBeInTheDocument();
-        expect(within(evidenceSection).queryByText('Adjuntar evidencia')).toBeNull();
-
-        // La lista (lectura) permanece visible junto al hint.
-        expect(
-          within(workSection).getByText('Se instaló ONU en sala principal'),
-        ).toBeInTheDocument();
-        expect(within(materialsSection).getByText('ONT-2026-001')).toBeInTheDocument();
-        expect(
-          within(evidenceSection).getAllByText(/Foto de instalación/).length,
-        ).toBeGreaterThanOrEqual(1);
-      },
-    );
-
-    it.each(preStartStatuses)(
-      'mantiene los estados vacíos visibles junto al hint pre-inicio (%s)',
+      'conserva todas las filas y no inventa historiales vacíos (%s)',
       (status) => {
         renderDrawer({ order: detailFactory({ status }) });
-
-        expect(screen.getByText('Aún no hay actividades registradas')).toBeInTheDocument();
-        expect(screen.getByText('Aún no hay consumos registrados')).toBeInTheDocument();
-        expect(screen.getByText('Sin evidencias registradas')).toBeInTheDocument();
+        expect(screen.getAllByRole('listitem')).toHaveLength(5);
+        expect(screen.queryByText('Todavía no hay actividades registradas')).toBeNull();
+        expect(
+          screen.queryByText('Todavía no hay consumos registrados para este requisito'),
+        ).toBeNull();
+        expect(screen.queryByText('Todavía no hay evidencias para este requisito')).toBeNull();
       },
     );
-
-    it('no muestra los hints pre-inicio cuando la ejecución ya inició', () => {
+    it('habilita el índice de acciones solo después del inicio', () => {
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
-
       expect(
-        screen.queryByText('Inicia la ejecución para registrar el trabajo realizado'),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText('Inicia la ejecución para registrar equipos y materiales'),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText('Inicia la ejecución para registrar evidencia'),
-      ).not.toBeInTheDocument();
+        screen.getByRole('button', { name: /^Registrar actividad para / }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Inicia la ejecución para habilitar el checklist')).toBeNull();
     });
   });
 
@@ -1735,7 +1725,8 @@ describe('ExecutionOrderDrawer', () => {
       // El detalle se muestra completo (contenido sensible en memoria).
       expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
       expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
-      expect(screen.getByText(/Firma · Evidencia asociada/u)).toBeInTheDocument();
+      expect(screen.getByText('Requisitos')).toBeInTheDocument();
+      expect(screen.queryByText(/Firma · Evidencia asociada/u)).toBeNull();
 
       expectZeroStorageWrites(spies);
     });
@@ -1764,6 +1755,63 @@ describe('ExecutionOrderDrawer', () => {
       await user.click(screen.getByRole('option', { name: 'Firma' }));
 
       expectZeroStorageWrites(spies);
+    });
+  });
+  describe('B0 seam por requisito', () => {
+    it('supervisión sin START no recibe orientación hacia una acción inexistente', () => {
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.ASSIGNED,
+          allowedActions: ['ASSIGN', 'REASSIGN', 'CREATE_FOLLOW_UP'],
+        }),
+      });
+      expect(screen.queryByText(/Pulsa Iniciar ejecución/)).toBeNull();
+      expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
+    });
+    it('dos requisitos del mismo tipo conservan IDs únicos y su historial asociado', async () => {
+      const template = templateFactory();
+      template.requirements = [
+        {
+          key: 'a',
+          label: 'Instalación principal',
+          kind: 'ACTIVITY',
+          required: true,
+          activityType: 'INSTALLATION',
+        },
+        {
+          key: 'b',
+          label: 'Nota de campo',
+          kind: 'ACTIVITY',
+          required: false,
+          activityType: 'FIELD_NOTE',
+        },
+      ];
+      renderDrawer({
+        order: detailFactory({
+          status: ExecutionOrderStatus.IN_PROGRESS,
+          completion: {
+            progress: 0,
+            requirements: template.requirements.map((r) => ({
+              requirementId: r.key,
+              label: r.label ?? r.key,
+              kind: r.kind,
+              satisfied: false,
+            })),
+          },
+        }),
+        template,
+        activities: activitiesFactory(),
+      });
+      const trigger = screen.getByRole('button', {
+        name: 'Registrar actividad para Instalación principal',
+      });
+      await userEvent.setup().click(trigger);
+      const ids = Array.from(document.querySelectorAll('[id]')).map((node) => node.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(screen.getByRole('combobox', { name: 'Tipo de actividad' })).toBeDisabled();
+      expect(screen.getByText('Se instaló ONU en sala principal')).toBeInTheDocument();
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Cancelar' }));
+      expect(trigger).toHaveFocus();
     });
   });
 });

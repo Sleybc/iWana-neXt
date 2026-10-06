@@ -228,7 +228,7 @@ describe('TasksService', () => {
     await expect(service.getById('task-001', techActor)).rejects.toThrow(ForbiddenException);
   });
 
-  it('links schedule event and work order without reading WFM tables', async () => {
+  it('links a task with no prior schedule event and work order without reading WFM tables', async () => {
     const update = jest.fn();
     const findOne = jest
       .fn()

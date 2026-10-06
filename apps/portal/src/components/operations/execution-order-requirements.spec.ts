@@ -12,6 +12,8 @@ import {
   isValidFutureEvidenceExpiry,
   mapOperationsError,
   productRequirementLabel,
+  requirementKindLabel,
+  templateRequirementLabel,
 } from './execution-order-requirements';
 
 describe('execution-order-requirements', () => {
@@ -141,6 +143,41 @@ describe('execution-order-requirements', () => {
       '2026-07-30T12:00:00.000Z',
     ])('rechaza expiresAt inválido o no futuro: %s', (expiresAt) => {
       expect(isValidFutureEvidenceExpiry(expiresAt, now)).toBe(false);
+    });
+  });
+
+  describe('texto de respaldo por tipo (fuente única)', () => {
+    it.each([
+      ['FIELD', 'Información requerida'],
+      ['ACTIVITY', 'Actividad requerida'],
+      ['MEASUREMENT', 'Medición requerida'],
+      ['EVIDENCE', 'Evidencia requerida'],
+      ['MATERIAL', 'Material o equipo requerido'],
+      ['COMPLIANCE', 'Aceptación del cliente'],
+      ['OTHER', 'Requisito pendiente'],
+    ])('%s -> %s', (kind, label) => {
+      expect(requirementKindLabel(kind)).toBe(label);
+    });
+
+    it('un tipo desconocido o heredado de Object.prototype cae en «Requisito pendiente»', () => {
+      for (const kind of ['', 'DESCONOCIDO', 'constructor', 'toString', '__proto__']) {
+        expect(requirementKindLabel(kind)).toBe('Requisito pendiente');
+      }
+    });
+
+    it('la etiqueta del snapshot se conserva literal; el respaldo solo cubre la vacía', () => {
+      const base = { key: 'k', required: true, kind: 'EVIDENCE', evidenceType: 'PHOTO' } as const;
+      expect(templateRequirementLabel({ ...base, label: 'Fotos del trabajo realizado' })).toBe(
+        'Fotos del trabajo realizado',
+      );
+      expect(
+        templateRequirementLabel({
+          ...base,
+          label: 'Registro (NO requerido)',
+        }),
+      ).toBe('Registro (NO requerido)');
+      expect(templateRequirementLabel({ ...base, label: '   ' })).toBe('Evidencia requerida');
+      expect(productRequirementLabel('   ', 'EVIDENCE', 'x-id')).toBe('Evidencia requerida');
     });
   });
 });

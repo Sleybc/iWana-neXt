@@ -57,6 +57,14 @@ export const RELAY_SCAN_TIMESTAMP_REDIS = 'RELAY_SCAN_TIMESTAMP_REDIS';
  * PLAT-P0-03: pool max: 10, idleTimeoutMillis: 30000.
  * Escaneo paralelo de tenants con Promise.allSettled.
  * Lease expirable, reintento con backoff exponencial y crash-window protegido.
+ *
+ * MOD11 E4 (CA-13): el relay es agnóstico a `schedule_event_id`. Solo mueve
+ * filas del outbox (`execution_order_outbox_events`) a BullMQ y nunca lee
+ * `execution_orders`: el envelope viaja opaco y su payload no porta el vínculo
+ * de agenda. Por tanto una OT con `schedule_event_id IS NULL` no puede hacerlo
+ * fallar ni omitir un evento; la decisión de proyectar o no la agenda es del
+ * consumidor (`ExecutionOrderEventsProcessor`). Lo fija el spec con una
+ * aserción sobre las consultas emitidas.
  */
 @Injectable()
 export class ExecutionOrderRelayService implements OnApplicationBootstrap {

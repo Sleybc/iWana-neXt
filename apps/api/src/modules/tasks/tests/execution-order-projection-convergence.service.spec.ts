@@ -74,6 +74,7 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           {
             execution_order_status: 'IN_PROGRESS',
             execution_order_result: null,
+            schedule_event_id: 'event-001',
             schedule_status: 'SCHEDULED',
             visit_status: 'IN_EXECUTION',
             task_status: 'IN_PROGRESS',
@@ -134,9 +135,33 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
           {
             execution_order_status: 'COMPLETED',
             execution_order_result: 'EXECUTED',
+            schedule_event_id: 'event-001',
             schedule_status: 'COMPLETED',
             visit_status: 'CLOSED',
             task_status: 'RESOLVED',
+          },
+        ]);
+
+      const telemetry = await service.getPlatformRelayTelemetry();
+
+      expect(telemetry.reconciliationDiscrepancies).toBe(0);
+    });
+
+    it('no cuenta como discrepancia una proyección de agenda no aplicable a una OT sin evento', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 't0000000-0000-4000-8000-000000000001', schema_name: 'tenant_test001' },
+      ]);
+      queryRunner.query
+        .mockResolvedValueOnce([{ pending_count: '0', oldest_age_seconds: null, dlq_size: '0' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            execution_order_status: 'CREATED',
+            execution_order_result: null,
+            schedule_event_id: null,
+            schedule_status: null,
+            visit_status: 'SCHEDULED',
+            task_status: 'SCHEDULED',
           },
         ]);
 
@@ -222,7 +247,9 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
   describe('reconcileOrder', () => {
     it('detecta discrepancia cuando la proyección no coincide con el estado canónico', async () => {
       queryRunner.query
-        .mockResolvedValueOnce([{ id: 'eo-001', status: 'IN_PROGRESS', result: null }])
+        .mockResolvedValueOnce([
+          { id: 'eo-001', status: 'IN_PROGRESS', result: null, schedule_event_id: 'event-001' },
+        ])
         .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
         .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
         .mockResolvedValueOnce([{ task_id: 'task-001' }])
@@ -239,7 +266,14 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
 
     it('no detecta discrepancia cuando todas las proyecciones están en sync', async () => {
       queryRunner.query
-        .mockResolvedValueOnce([{ id: 'eo-001', status: 'COMPLETED', result: 'EXECUTED' }])
+        .mockResolvedValueOnce([
+          {
+            id: 'eo-001',
+            status: 'COMPLETED',
+            result: 'EXECUTED',
+            schedule_event_id: 'event-001',
+          },
+        ])
         .mockResolvedValueOnce([{ status: 'COMPLETED' }])
         .mockResolvedValueOnce([{ status: 'CLOSED' }])
         .mockResolvedValueOnce([{ task_id: 'task-001' }])
@@ -255,7 +289,9 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
       // permanece en ASSIGNED mientras no ocurra start(); el reconciliador
       // espera SCHEDULED y no hay divergencia inducible por registro.
       queryRunner.query
-        .mockResolvedValueOnce([{ id: 'eo-001', status: 'ASSIGNED', result: null }])
+        .mockResolvedValueOnce([
+          { id: 'eo-001', status: 'ASSIGNED', result: null, schedule_event_id: 'event-001' },
+        ])
         .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
         .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
         .mockResolvedValueOnce([{ task_id: 'task-001' }])
@@ -269,9 +305,35 @@ describe('ExecutionOrderProjectionConvergenceService', () => {
       expect(result.expectedTaskStatus).toBe('SCHEDULED');
     });
 
+    it('omite de forma explícita ScheduleEvent cuando schedule_event_id es NULL', async () => {
+      queryRunner.query
+        .mockResolvedValueOnce([
+          { id: 'eo-001', status: 'CREATED', result: null, schedule_event_id: null },
+        ])
+        .mockResolvedValueOnce([{ status: 'SCHEDULED' }])
+        .mockResolvedValueOnce([{ task_id: 'task-001' }])
+        .mockResolvedValueOnce([{ status: 'SCHEDULED' }]);
+
+      const result = await service.reconcileOrder('eo-001');
+
+      expect(result.hasDiscrepancy).toBe(false);
+      expect(result.scheduleEventStatus).toBeNull();
+      expect(result.expectedScheduleStatus).toBeNull();
+      expect(
+        queryRunner.query.mock.calls.some(([sql]) => String(sql).includes('FROM schedule_events')),
+      ).toBe(false);
+    });
+
     it('maneja OT sin task_id sin error', async () => {
       queryRunner.query
-        .mockResolvedValueOnce([{ id: 'eo-001', status: 'CANCELLED', result: 'CANCELLED' }])
+        .mockResolvedValueOnce([
+          {
+            id: 'eo-001',
+            status: 'CANCELLED',
+            result: 'CANCELLED',
+            schedule_event_id: 'event-001',
+          },
+        ])
         .mockResolvedValueOnce([{ status: 'CANCELLED' }])
         .mockResolvedValueOnce([{ status: 'CANCELLED' }])
         .mockResolvedValueOnce([{ task_id: null }]);

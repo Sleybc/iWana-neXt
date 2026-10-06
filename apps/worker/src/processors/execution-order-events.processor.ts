@@ -20,6 +20,13 @@ interface TenantRow {
   schema_name: string;
 }
 
+const SCHEDULE_PROJECTED_EXECUTION_EVENTS: ReadonlySet<OperationalEventTypeV1> = new Set([
+  'ExecutionOrderStartedV1',
+  'ExecutionOrderBlockedV1',
+  'ExecutionOrderClosedV1',
+  'ExecutionOrderFollowUpRequiredV1',
+]);
+
 /**
  * Procesador de eventos operativos de MOD11.
  *
@@ -157,6 +164,35 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
         return;
       }
 
+      let scheduleEventId: string | null = null;
+      if (SCHEDULE_PROJECTED_EXECUTION_EVENTS.has(envelope.eventType)) {
+        // El lookup de la proyección debe usar el mismo agregado validado en
+        // el payload, antes de consultar cualquier vínculo de agenda.
+        this.assertPayload(envelope, true);
+        const orders = await client.query<{ schedule_event_id: string | null }>(
+          `SELECT schedule_event_id FROM execution_orders
+           WHERE id = $1 AND tenant_id = $2`,
+          [envelope.aggregateId, tenantId],
+        );
+        const order = orders.rows[0];
+        if (!order) {
+          throw new UnrecoverableError('No se encontró la OT para proyectar su evento de agenda.');
+        }
+        scheduleEventId = order.schedule_event_id;
+        if (scheduleEventId === null) {
+          // CA-13: NULL es el estado normal de toda OT despachada sin cita
+          // (ADR-091 §D5), por lo que la omisión es de nivel `debug` y no
+          // `warn` (alertaría en el flujo esperado). Va como clave=valor
+          // estable, con evento, tipo, OT y tenant, para poder correlacionar
+          // "por qué no cambió la agenda" sin abrir la base.
+          this.logger.debug(
+            `[execution-events] schedule_projection_skipped reason=schedule_event_id_null ` +
+              `event=${envelope.eventId} type=${envelope.eventType} ` +
+              `ot=${envelope.aggregateId} tenant=${tenantId}`,
+          );
+        }
+      }
+
       // ── Matriz de convergencia ADR-068 ──────────────────────────────────
       const handlers: Record<
         OperationalEventTypeV1,
@@ -178,8 +214,10 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           this.assertPayload(event, true);
           return Promise.resolve();
         },
-        ExecutionOrderStartedV1: (e) => this.applyExecutionOrderStarted(client, tenantId, e),
-        ExecutionOrderBlockedV1: (e) => this.applyExecutionOrderBlocked(client, tenantId, e),
+        ExecutionOrderStartedV1: (e) =>
+          this.applyExecutionOrderStarted(client, tenantId, e, scheduleEventId),
+        ExecutionOrderBlockedV1: (e) =>
+          this.applyExecutionOrderBlocked(client, tenantId, e, scheduleEventId),
         InventoryConsumptionRequestedV1: (event) => {
           this.assertPayload(event, true);
           // MOD12 consumirá este evento desde el outbox y procesará el
@@ -187,7 +225,8 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           // porque es el emisor, no el consumidor.
           return Promise.resolve();
         },
-        ExecutionOrderClosedV1: (e) => this.applyExecutionOrderClosed(client, tenantId, e),
+        ExecutionOrderClosedV1: (e) =>
+          this.applyExecutionOrderClosed(client, tenantId, e, scheduleEventId),
         // MOD11 T2 (CA-13): cancelación y anulación son hechos de dominio
         // cuyos efectos ya aplicó sincrónicamente la transacción emisora
         // (la agenda actualizó evento/solicitud; la anulación no proyecta
@@ -203,7 +242,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           return Promise.resolve();
         },
         ExecutionOrderFollowUpRequiredV1: (e) =>
-          this.applyExecutionOrderFollowUp(client, tenantId, e),
+          this.applyExecutionOrderFollowUp(client, tenantId, e, scheduleEventId),
         InventoryMovementConfirmedV1: (e) =>
           this.applyInventoryMovementConfirmed(client, tenantId, e),
         InventoryMovementRejectedV1: (e) =>
@@ -245,20 +284,25 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     client: PoolClient,
     tenantId: string,
     event: OperationalEventEnvelopeV1,
+    scheduleEventId: string | null,
   ): Promise<void> {
     const payload = event.payload as {
       executionOrderId: string;
     };
 
-    // ScheduleEvent → IN_PROGRESS (vía execution_order_id FK lógica)
-    await client.query(
-      `UPDATE schedule_events
-       SET status = 'IN_PROGRESS', updated_at = NOW()
-       WHERE tenant_id = $1
-         AND execution_order_id = $2
-         AND status NOT IN ('COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NO_SHOW')`,
-      [tenantId, payload.executionOrderId],
-    );
+    // schedule_event_id NULL se omite en el despacho del handler; no existe
+    // proyección de agenda para esta OT. VisitRequest y Task sí convergen.
+    if (scheduleEventId !== null) {
+      // ScheduleEvent → IN_PROGRESS (vía execution_order_id FK lógica)
+      await client.query(
+        `UPDATE schedule_events
+         SET status = 'IN_PROGRESS', updated_at = NOW()
+         WHERE tenant_id = $1
+           AND execution_order_id = $2
+           AND status NOT IN ('COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NO_SHOW')`,
+        [tenantId, payload.executionOrderId],
+      );
+    }
 
     // VisitRequest → IN_EXECUTION
     await client.query(
@@ -281,18 +325,21 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     client: PoolClient,
     tenantId: string,
     event: OperationalEventEnvelopeV1,
+    scheduleEventId: string | null,
   ): Promise<void> {
     const payload = event.payload as {
       executionOrderId: string;
     };
 
-    // ScheduleEvent → IN_PROGRESS sin cambiar estado (ya lo está; la alerta es UX)
-    await client.query(
-      `UPDATE schedule_events
-       SET updated_at = NOW()
-       WHERE tenant_id = $1 AND execution_order_id = $2`,
-      [tenantId, payload.executionOrderId],
-    );
+    if (scheduleEventId !== null) {
+      // ScheduleEvent → IN_PROGRESS sin cambiar estado (ya lo está; la alerta es UX)
+      await client.query(
+        `UPDATE schedule_events
+         SET updated_at = NOW()
+         WHERE tenant_id = $1 AND execution_order_id = $2`,
+        [tenantId, payload.executionOrderId],
+      );
+    }
 
     // VisitRequest → IN_EXECUTION
     await client.query(
@@ -318,6 +365,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     client: PoolClient,
     tenantId: string,
     event: OperationalEventEnvelopeV1,
+    scheduleEventId: string | null,
   ): Promise<void> {
     const payload = event.payload as {
       executionOrderId: string;
@@ -351,15 +399,17 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
         taskStatus = 'RESOLVED';
     }
 
-    // ScheduleEvent
-    await client.query(
-      `UPDATE schedule_events
-       SET status = $3, updated_at = NOW()
-       WHERE tenant_id = $1
-         AND execution_order_id = $2
-         AND status NOT IN ('COMPLETED', 'CANCELLED')`,
-      [tenantId, payload.executionOrderId, scheduleStatus],
-    );
+    if (scheduleEventId !== null) {
+      // ScheduleEvent
+      await client.query(
+        `UPDATE schedule_events
+         SET status = $3, updated_at = NOW()
+         WHERE tenant_id = $1
+           AND execution_order_id = $2
+           AND status NOT IN ('COMPLETED', 'CANCELLED')`,
+        [tenantId, payload.executionOrderId, scheduleStatus],
+      );
+    }
 
     // VisitRequest
     await client.query(
@@ -384,20 +434,23 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     client: PoolClient,
     tenantId: string,
     event: OperationalEventEnvelopeV1,
+    scheduleEventId: string | null,
   ): Promise<void> {
     const payload = event.payload as {
       executionOrderId: string;
     };
 
-    // ScheduleEvent → COMPLETED
-    await client.query(
-      `UPDATE schedule_events
-       SET status = 'COMPLETED', updated_at = NOW()
-       WHERE tenant_id = $1
-         AND execution_order_id = $2
-         AND status NOT IN ('COMPLETED', 'CANCELLED')`,
-      [tenantId, payload.executionOrderId],
-    );
+    if (scheduleEventId !== null) {
+      // ScheduleEvent → COMPLETED
+      await client.query(
+        `UPDATE schedule_events
+         SET status = 'COMPLETED', updated_at = NOW()
+         WHERE tenant_id = $1
+           AND execution_order_id = $2
+           AND status NOT IN ('COMPLETED', 'CANCELLED')`,
+        [tenantId, payload.executionOrderId],
+      );
+    }
 
     // VisitRequest → REQUIRES_RESCHEDULE
     await client.query(

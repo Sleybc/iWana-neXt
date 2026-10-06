@@ -226,7 +226,7 @@ describe('C4 — checklist con estado real (CA-05)', () => {
       }),
     });
 
-    const checklist = screen.getByRole('region', { name: 'Checklist de instalación' });
+    const checklist = screen.getByRole('region', { name: 'Requisitos' });
     expect(
       within(checklist).getByLabelText('Actividad de instalación: Cumplido'),
     ).toBeInTheDocument();
@@ -236,7 +236,7 @@ describe('C4 — checklist con estado real (CA-05)', () => {
     expect(within(checklist).getByLabelText(/Firma del cliente: Pendiente/)).toBeInTheDocument();
     expect(within(checklist).getByText('Cumplido')).toBeInTheDocument();
     // El badge Requerido se conserva pero ya no es la única información
-    expect(within(checklist).getAllByText('Requerido')).toHaveLength(3);
+    expect(within(checklist).getAllByText('Obligatorio')).toHaveLength(3);
   });
 
   it('sin requirements[] degrada de forma visible sin vaciar la lista (paso 8)', () => {
@@ -247,7 +247,7 @@ describe('C4 — checklist con estado real (CA-05)', () => {
       }),
     });
 
-    const checklist = screen.getByRole('region', { name: 'Checklist de instalación' });
+    const checklist = screen.getByRole('region', { name: 'Requisitos' });
     expect(within(checklist).getByText('Estado de requisitos no disponible')).toBeInTheDocument();
     expect(within(checklist).getByText('Actividad de instalación')).toBeInTheDocument();
     expect(within(checklist).getByText('Evidencia fotográfica')).toBeInTheDocument();

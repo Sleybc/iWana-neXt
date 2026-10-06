@@ -1,5 +1,8 @@
 import type { EntityManager } from 'typeorm';
-import type { EvidenceAssetReceipt } from '@iwana/shared';
+import {
+  EXECUTION_ORDER_EVIDENCE_UPLOAD_CONSTRAINTS,
+  type EvidenceAssetReceipt,
+} from '@iwana/shared';
 
 /**
  * Puerto para la gestión de assets de evidencia desde MOD11 hacia Media/Assets.
@@ -110,10 +113,7 @@ export interface IEvidenceAssetPort {
  * Constantes de validación para assets de evidencia.
  */
 export const EVIDENCE_ASSET_CONSTRAINTS = {
-  /** Tamaño máximo: 25 MB */
-  MAX_BYTES: 25 * 1024 * 1024,
-  /** MIME types permitidos para evidencia (SEC-F04) */
-  ALLOWED_MIMES: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
+  ...EXECUTION_ORDER_EVIDENCE_UPLOAD_CONSTRAINTS,
   /** TTL máximo para signed URL: 15 minutos */
   MAX_SIGNED_URL_TTL_SECONDS: 900,
   /** TTL para assets huérfanos: 24 horas (antes de ser considerados expirados) */

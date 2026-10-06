@@ -146,20 +146,35 @@ describe('copy por rol y estado (verbatim tabla AI-PROD-UX)', () => {
     ).toBeNull();
   });
 
-  it('bloqueada avisa con título único y descripción por lente', () => {
-    const assigned = getBlockedCopy({
+  // UX v1.1 §5 (adenda A1): bloqueada SIN motivo; el copy nombra a quién acudir.
+  it('bloqueada avisa con título único y el copy de UX §5 por lente, sin aludir a un motivo', () => {
+    const executorAssigned = getBlockedCopy({
       status: ExecutionOrderStatus.BLOCKED,
       allowedActions: ['REGISTER_ACTIVITY'],
       assigneePresent: true,
     });
-    expect(assigned.title).toBe(BLOCKED_ALERT_TITLE);
-    expect(assigned.description).toMatch(/retoma la ejecución desde esta pantalla/);
+    expect(executorAssigned.title).toBe(BLOCKED_ALERT_TITLE);
+    expect(executorAssigned.description).toBe(
+      'La orden está bloqueada. Contacta a supervisión para acordar cómo continuar.',
+    );
+    const executorPool = getBlockedCopy({
+      status: ExecutionOrderStatus.BLOCKED,
+      allowedActions: ['START'],
+      assigneePresent: false,
+    });
+    expect(executorPool.description).toBe(executorAssigned.description);
     const supervision = getBlockedCopy({
       status: ExecutionOrderStatus.BLOCKED,
       allowedActions: ['ASSIGN'],
       assigneePresent: true,
     });
-    expect(supervision.description).toMatch(/equipo en campo/);
+    expect(supervision.title).toBe(BLOCKED_ALERT_TITLE);
+    expect(supervision.description).toBe(
+      'La orden está bloqueada. Coordina con el equipo de campo el siguiente paso.',
+    );
+    for (const copy of [executorAssigned, executorPool, supervision]) {
+      expect(`${copy.title} ${copy.description}`).not.toMatch(/motivo/i);
+    }
   });
 
   it('terminal ofrece solo lectura por lente', () => {

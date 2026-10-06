@@ -10,10 +10,16 @@ import {
 } from './operations-labels';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
 import { getExecutionOrderCompletionDisplay } from './execution-order-view';
+import { getExecutionOrderWindowAbsence } from './execution-order-window-copy';
 
 type SummaryOrder = ExecutionOrderDetailResponse | ExecutionOrderRecord;
 export type ExecutionOrderAvailability = 'linked' | 'unlinked' | 'unavailable';
-export type ExecutionOrderSyncState = 'synced' | 'pending' | 'error' | 'stale' | 'conflict';
+export type { ExecutionOrderSyncState } from './execution-order-sync-copy';
+import {
+  syncCopy,
+  toSummarySyncState,
+  type ExecutionOrderSyncState,
+} from './execution-order-sync-copy';
 
 export type ExecutionOrderSummaryVariant = 'full' | 'agenda-compact';
 
@@ -40,35 +46,7 @@ function isDetail(order: SummaryOrder): order is ExecutionOrderDetailResponse {
 function detailSyncState(order: SummaryOrder): ExecutionOrderSyncState | undefined {
   if (!isDetail(order)) return 'synced';
 
-  switch (order.syncState) {
-    case 'IN_SYNC':
-      return 'synced';
-    case 'PENDING':
-      return 'pending';
-    case 'DIVERGED':
-      return 'conflict';
-    case 'FAILED':
-      return 'error';
-    default:
-      return undefined;
-  }
-}
-
-function syncCopy(state: ExecutionOrderSyncState | undefined): string {
-  switch (state) {
-    case 'synced':
-      return 'Sincronizada';
-    case 'pending':
-      return 'Sincronización pendiente';
-    case 'error':
-      return 'No pudimos sincronizar la orden';
-    case 'stale':
-      return 'Actualización pendiente';
-    case 'conflict':
-      return 'La orden cambió; revisa la versión vigente';
-    default:
-      return 'Estado de sincronización no disponible';
-  }
+  return toSummarySyncState(order.syncState);
 }
 
 export function ExecutionOrderSummary({
@@ -193,7 +171,10 @@ export function ExecutionOrderSummary({
   const workType = EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType] ?? 'Trabajo operativo';
   const window = isDetail(order)
     ? order.schedule.window
-    : { startAt: order.plannedWindowStartAt, endAt: order.plannedWindowEndAt };
+    : order.plannedWindowStartAt && order.plannedWindowEndAt
+      ? { startAt: order.plannedWindowStartAt, endAt: order.plannedWindowEndAt }
+      : null;
+  const windowAbsence = getExecutionOrderWindowAbsence(status);
   const site = isDetail(order)
     ? order.site.label || order.site.address
     : order.customerDisplayLabel;
@@ -254,7 +235,7 @@ export function ExecutionOrderSummary({
             </p>
           </div>
           <div>
-            <p className="portal-eyebrow-muted">Ventana</p>
+            <p className="portal-eyebrow-muted">Ventana planificada</p>
             <p className="mt-1 text-gray-700 dark:text-gray-200">
               {window ? (
                 <>
@@ -262,9 +243,12 @@ export function ExecutionOrderSummary({
                   {dateFormatter.format(new Date(window.endAt))}
                 </>
               ) : (
-                '—'
+                windowAbsence.label
               )}
             </p>
+            {!window && windowAbsence.help ? (
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">{windowAbsence.help}</p>
+            ) : null}
           </div>
           <div>
             <p className="portal-eyebrow-muted">Responsable</p>

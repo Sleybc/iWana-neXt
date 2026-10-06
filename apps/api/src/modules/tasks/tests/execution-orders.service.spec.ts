@@ -340,6 +340,41 @@ describe('ExecutionOrdersService', () => {
       expect(manager.save).toHaveBeenCalledTimes(1);
     });
 
+    it('rechaza explícitamente reagendar una OT sin schedule_event_id', async () => {
+      const order = {
+        id: 'eo-001',
+        tenantId,
+        scheduleEventId: null,
+        plannedWindowStartAt: null,
+        plannedWindowEndAt: null,
+        status: ExecutionOrderStatus.CREATED,
+        isAnnulled: false,
+        version: 1,
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(order),
+        save: jest.fn(),
+      };
+
+      await expect(
+        service.rescheduleFromSchedulingWithManager(
+          manager as never,
+          tenantId,
+          {
+            executionOrderId: order.id,
+            scheduleEventId: 'event-001',
+            plannedWindowStartAt: '2030-01-02T10:00:00.000Z',
+            plannedWindowEndAt: '2030-01-02T11:00:00.000Z',
+          },
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'EXECUTION_ORDER_EVENT_MISMATCH' }),
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(order.plannedWindowStartAt).toBeNull();
+    });
+
     it.each([ExecutionOrderStatus.IN_PROGRESS, ExecutionOrderStatus.BLOCKED])(
       'rechaza reprogramar una OT %s y conserva su ventana',
       async (status) => {
@@ -488,6 +523,33 @@ describe('ExecutionOrdersService', () => {
         ),
       ).rejects.toMatchObject({
         message: expect.stringContaining('OT no pertenece'),
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza explícitamente cancelar desde agenda una OT sin schedule_event_id', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: executionOrderId,
+          tenantId,
+          scheduleEventId: null,
+          status: ExecutionOrderStatus.CREATED,
+          version: 1,
+        }),
+        save: jest.fn(),
+      };
+
+      await expect(
+        service.cancelFromSchedulingWithManager(
+          manager as never,
+          tenantId,
+          executionOrderId,
+          scheduleEventId,
+          reason,
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'EXECUTION_ORDER_EVENT_MISMATCH' }),
       });
       expect(manager.save).not.toHaveBeenCalled();
     });

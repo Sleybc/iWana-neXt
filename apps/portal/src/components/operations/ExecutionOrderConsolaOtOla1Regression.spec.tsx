@@ -223,7 +223,7 @@ describe('OLA1 regresión portal — caso 9: degradación visible sin requiremen
       }),
     });
 
-    const checklist = screen.getByRole('region', { name: 'Checklist de instalación' });
+    const checklist = screen.getByRole('region', { name: 'Requisitos' });
     expect(within(checklist).getByText('Estado de requisitos no disponible')).toBeInTheDocument();
     expect(within(checklist).getByText('Actividad de instalación')).toBeInTheDocument();
     expect(within(checklist).getByText('Evidencia fotográfica')).toBeInTheDocument();
@@ -241,7 +241,7 @@ describe('OLA1 regresión portal — OTE-20260828-001: checklist con estado real
       }),
     });
 
-    const checklist = screen.getByRole('region', { name: 'Checklist de instalación' });
+    const checklist = screen.getByRole('region', { name: 'Requisitos' });
     expect(
       within(checklist).getByLabelText('Actividad de instalación: Cumplido'),
     ).toBeInTheDocument();

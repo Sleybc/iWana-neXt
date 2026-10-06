@@ -51,7 +51,7 @@ describe('ExecutionOrderRelayService', () => {
     } as never;
   });
 
-  it('escanea tenants activos y encola eventos pendientes', async () => {
+  it('retransmite el envelope del agregado sin consultar el vínculo de agenda', async () => {
     poolClient.query
       // SELECT tenants
       .mockResolvedValueOnce({
@@ -100,7 +100,11 @@ describe('ExecutionOrderRelayService', () => {
         envelope: expect.objectContaining({
           eventId: 'e0000000-0000-4000-8000-000000000001',
           eventType: 'ExecutionOrderStartedV1',
+          aggregateId: 'a0000000-0000-4000-8000-000000000001',
           correlationId: 'c0000000-0000-4000-8000-000000000001',
+          payload: {
+            executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+          },
         }),
       }),
       expect.objectContaining({
@@ -109,6 +113,9 @@ describe('ExecutionOrderRelayService', () => {
         backoff: expect.objectContaining({ type: 'exponential', delay: 1000 }),
       }),
     );
+    const queries = poolClient.query.mock.calls.map(([sql]) => String(sql));
+    expect(queries.some((sql) => sql.includes('schedule_event_id'))).toBe(false);
+    expect(queries.some((sql) => sql.includes('execution_orders'))).toBe(false);
   });
 
   it('excluye tenants con schema inválido', async () => {

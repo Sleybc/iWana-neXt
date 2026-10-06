@@ -6,11 +6,11 @@
 // de `useSearchParams` usa la instancia estable `searchParamsMock` (patrón
 // AssuranceClient.spec), que el router mockeado reescribe en cada navegación.
 import type { ReactNode } from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserRole, WfmWorkType } from '@iwana/shared';
 import { ExecutionOrdersClient } from './ExecutionOrdersClient';
-import { ApiError, inventoryApi, tasksApi } from '@/lib/api-client';
+import { ApiError, tasksApi } from '@/lib/api-client';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -140,6 +140,15 @@ describe('ExecutionOrdersClient', () => {
         sort: null,
       },
     } as never);
+  });
+
+  it('explica que las órdenes sin ventana aparecen antes que las planificadas', () => {
+    render(<ExecutionOrdersClient />);
+    expect(
+      screen.getByText(
+        'Las órdenes por programar aparecen primero; luego, la ventana planificada más reciente.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('mantiene la OT visible cuando el endpoint de evidencias todavía no está disponible', async () => {
@@ -343,207 +352,8 @@ describe('ExecutionOrdersClient', () => {
     }
   });
 
-  describe('custodia del ejecutor', () => {
-    beforeEach(() => {
-      // El mock del módulo se comparte entre tests: limpia el historial de
-      // llamadas para que los conteos arranquen en cero.
-      jest.mocked(inventoryApi.getExecutorCustody).mockClear();
-    });
-
-    const listMeta = {
-      nextCursor: null,
-      total: 1,
-      totalIsEstimate: false,
-      page: 1,
-      limit: 25,
-      totalPages: 1,
-      hasMore: false,
-      mode: 'page',
-      capabilities: { randomAccess: true, sortableFields: [] },
-      sort: null,
-    };
-
-    function buildCustodyOrder(id: string, number: string, withAssignee: boolean) {
-      return {
-        id,
-        number,
-        version: 1,
-        status: 'IN_PROGRESS',
-        workType: WfmWorkType.INSTALLATION,
-        template: {
-          id: 'tpl-001',
-          key: 'INSTALACION_FIBRA',
-          version: 1,
-          label: 'Instalación fibra',
-        },
-        schedule: {
-          eventId: 'event-001',
-          window: {
-            startAt: '2026-08-31T14:00:00.000Z',
-            endAt: '2026-08-31T16:00:00.000Z',
-          },
-        },
-        ...(withAssignee
-          ? {
-              assignee: { type: 'TECHNICIAN', id: 'tech-001', displayLabel: 'Carlos López' },
-            }
-          : {}),
-        site: { id: 'site-001', label: 'Sitio autorizado' },
-        completion: { progress: 0 },
-        syncState: 'IN_SYNC',
-        inventoryReconciliation: 'NOT_REQUIRED',
-        allowedActions: [],
-        createdAt: '2026-08-31T12:00:00.000Z',
-        updatedAt: '2026-08-31T12:00:00.000Z',
-      } as never;
-    }
-
-    function buildCustodyResponse(locationName: string, serial: string) {
-      return {
-        location: {
-          id: 'loc-mobile-001',
-          name: locationName,
-          type: 'MOBILE_TECHNICIAN',
-          responsibleType: 'TECHNICIAN',
-          responsibleRefId: 'tech-001',
-        },
-        assets: {
-          items: [
-            {
-              id: 'custody-asset-001',
-              inventoryItemId: 'item-001',
-              serialNumber: serial,
-              currentStatus: 'ASSIGNED_TO_TECHNICIAN',
-            },
-          ],
-          meta: listMeta,
-        },
-        balances: {
-          items: [],
-          meta: { ...listMeta, total: 0, totalPages: 0 },
-        },
-      } as never;
-    }
-
-    function mockExecutionOrderCollections() {
-      jest.mocked(tasksApi.executionOrders.listActivities).mockResolvedValue([] as never);
-      jest.mocked(tasksApi.executionOrders.listItemUsage).mockResolvedValue([] as never);
-      jest
-        .mocked(tasksApi.executionOrders.listEvidence)
-        .mockResolvedValue({ data: [], meta: listMeta } as never);
-    }
-
-    it('consulta la custodia con el responsable asignado y la muestra en el drawer', async () => {
-      jest
-        .mocked(tasksApi.executionOrders.get)
-        .mockResolvedValue(buildCustodyOrder('eo-custody-001', 'OT-CUSTODY-001', true));
-      mockExecutionOrderCollections();
-      jest
-        .mocked(inventoryApi.getExecutorCustody)
-        .mockResolvedValue(buildCustodyResponse('Bodega móvil de Carlos López', 'ONT-2026-001'));
-      searchParamsMock = new URLSearchParams({ executionOrderId: 'eo-custody-001' });
-
-      try {
-        render(<ExecutionOrdersClient />);
-
-        expect(await screen.findByText('En custodia del ejecutor')).toBeInTheDocument();
-        expect(inventoryApi.getExecutorCustody).toHaveBeenCalledWith('tech-001', {
-          page: 1,
-          limit: 25,
-        });
-        expect(screen.getByText('Bodega móvil de Carlos López')).toBeInTheDocument();
-        expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
-      } finally {
-        searchParamsMock = new URLSearchParams();
-      }
-    });
-
-    it('descarta la respuesta tardía de una apertura previa sin pisar el drawer vigente', async () => {
-      const user = userEvent.setup();
-      let resolveFirstCustody: (value: never) => void = () => undefined;
-      jest
-        .mocked(tasksApi.executionOrders.get)
-        .mockResolvedValue(buildCustodyOrder('eo-custody-late', 'OT-CUSTODY-LATE', true));
-      mockExecutionOrderCollections();
-      jest.mocked(inventoryApi.getExecutorCustody).mockImplementationOnce(
-        () =>
-          new Promise<never>((resolve) => {
-            resolveFirstCustody = resolve;
-          }),
-      );
-      searchParamsMock = new URLSearchParams({ executionOrderId: 'eo-custody-late' });
-
-      try {
-        render(<ExecutionOrdersClient />);
-
-        await waitFor(() => {
-          expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1);
-        });
-
-        // El usuario cierra el drawer mientras la custodia sigue en vuelo: el
-        // cierre invalida la apertura (seq guard). El velo ya no es un
-        // `<button>` etiquetado: se localiza por `data-portal-veil` sobre
-        // `document.body`, donde vive la capa portalada.
-        const veil = document.body.querySelector<HTMLElement>('[data-portal-veil]');
-        expect(veil).not.toBeNull();
-        await user.click(veil as HTMLElement);
-        expect(screen.queryByText('OT-CUSTODY-LATE')).not.toBeInTheDocument();
-
-        // La respuesta tardía llega después: no reabre el drawer ni pinta datos.
-        await act(async () => {
-          resolveFirstCustody(buildCustodyResponse('Custodia tardía', 'ONT-TARDIO-001'));
-        });
-        expect(screen.queryByText('Custodia tardía')).not.toBeInTheDocument();
-        expect(screen.queryByText('ONT-TARDIO-001')).not.toBeInTheDocument();
-        expect(screen.queryByText('En custodia del ejecutor')).not.toBeInTheDocument();
-      } finally {
-        searchParamsMock = new URLSearchParams();
-      }
-    });
-
-    it('no consulta la custodia cuando la OT no tiene responsable asignado', async () => {
-      jest
-        .mocked(tasksApi.executionOrders.get)
-        .mockResolvedValue(buildCustodyOrder('eo-custody-none', 'OT-SIN-ASSIGNEE', false));
-      mockExecutionOrderCollections();
-      searchParamsMock = new URLSearchParams({ executionOrderId: 'eo-custody-none' });
-
-      try {
-        render(<ExecutionOrdersClient />);
-
-        expect((await screen.findAllByText('OT-SIN-ASSIGNEE')).length).toBeGreaterThanOrEqual(1);
-        expect(inventoryApi.getExecutorCustody).not.toHaveBeenCalled();
-        expect(
-          screen.getByText('El ejecutor no tiene equipos ni materiales en custodia'),
-        ).toBeInTheDocument();
-      } finally {
-        searchParamsMock = new URLSearchParams();
-      }
-    });
-
-    it('mantiene la OT operativa cuando la custodia responde 404 (endpoint pendiente)', async () => {
-      jest
-        .mocked(tasksApi.executionOrders.get)
-        .mockResolvedValue(buildCustodyOrder('eo-custody-404', 'OT-CUSTODY-404', true));
-      mockExecutionOrderCollections();
-      jest
-        .mocked(inventoryApi.getExecutorCustody)
-        .mockRejectedValue(new ApiError(404, 'NOT_FOUND', 'Endpoint no disponible'));
-      searchParamsMock = new URLSearchParams({ executionOrderId: 'eo-custody-404' });
-
-      try {
-        render(<ExecutionOrdersClient />);
-
-        expect((await screen.findAllByText('OT-CUSTODY-404')).length).toBeGreaterThanOrEqual(1);
-        expect(screen.getByText('Custodia no disponible')).toBeInTheDocument();
-        // El resto del drawer sigue operativo: bloques visibles y acción de refresco.
-        expect(screen.getByText('Equipos y materiales')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Actualizar detalle' })).toBeInTheDocument();
-      } finally {
-        searchParamsMock = new URLSearchParams();
-      }
-    });
-  });
+  // Los casos de «custodia del ejecutor» pasaron a `ExecutionOrderMaterialConsole.spec.tsx`:
+  // la custodia ya no se consulta al abrir la OT sino al abrir el acto de consumo (R3, UX §6).
 
   // ADR-065 §15 — «El total refleja el alcance del operador. QA verifica con
   // dos usuarios de alcance distinto que el pie no revela el total global del

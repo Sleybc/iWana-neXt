@@ -8,7 +8,10 @@
 // re-punta su import type a este módulo (hay dos importadores del monolito,
 // no uno: `page.tsx`, que desaparece, y el drawer, que permanece).
 import { ApiError, type ExecutionOrderDetailResponse } from '@/lib/api-client';
-import type { ExecutionOrderTemplateVersion } from '@iwana/shared';
+import type {
+  ExecutionOrderTemplateRequirement,
+  ExecutionOrderTemplateVersion,
+} from '@iwana/shared';
 
 export function mapOperationsError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -75,15 +78,36 @@ export function getMissingRequirements(error: unknown): ExecutionOrderMissingReq
   });
 }
 
-const REQUIREMENT_KIND_LABELS: Record<string, string> = {
-  FIELD: 'Información requerida',
-  ACTIVITY: 'Actividad pendiente',
-  MEASUREMENT: 'Medición pendiente',
-  EVIDENCE: 'Evidencia pendiente',
-  MATERIAL: 'Material pendiente',
-  COMPLIANCE: 'Aceptación del cliente pendiente',
-  OTHER: 'Requisito pendiente',
-};
+/**
+ * Única fuente del texto de respaldo por tipo de requisito (spec base §10.5,
+ * dictamen G3 §7). Solo se usa cuando el snapshot no trae etiqueta propia; el
+ * mapa es privado y todo consumidor pasa por `requirementKindLabel`.
+ */
+const REQUIREMENT_KIND_LABELS: Record<ExecutionOrderTemplateRequirement['kind'] | 'OTHER', string> =
+  {
+    FIELD: 'Información requerida',
+    ACTIVITY: 'Actividad requerida',
+    MEASUREMENT: 'Medición requerida',
+    EVIDENCE: 'Evidencia requerida',
+    MATERIAL: 'Material o equipo requerido',
+    COMPLIANCE: 'Aceptación del cliente',
+    OTHER: 'Requisito pendiente',
+  };
+
+export function requirementKindLabel(kind: string): string {
+  return Object.prototype.hasOwnProperty.call(REQUIREMENT_KIND_LABELS, kind)
+    ? REQUIREMENT_KIND_LABELS[kind as keyof typeof REQUIREMENT_KIND_LABELS]
+    : REQUIREMENT_KIND_LABELS.OTHER;
+}
+
+/**
+ * Etiqueta visible de un requisito del snapshot: la del snapshot, literal, y
+ * solo si viene vacía el texto de respaldo por tipo.
+ */
+export function templateRequirementLabel(requirement: ExecutionOrderTemplateRequirement): string {
+  const label = typeof requirement.label === 'string' ? requirement.label.trim() : '';
+  return label ? requirement.label : requirementKindLabel(requirement.kind);
+}
 
 function containsRawRequirementToken(value: string): boolean {
   return (
@@ -115,7 +139,7 @@ export function productRequirementLabel(
   if (/(?:activity|actividad|install|installation)/u.test(normalizedId)) {
     return 'Actividad requerida';
   }
-  return REQUIREMENT_KIND_LABELS[kind] ?? 'Requisito pendiente';
+  return requirementKindLabel(kind);
 }
 
 function productRequirementReason(reason: string | undefined, kind: string, label: string): string {

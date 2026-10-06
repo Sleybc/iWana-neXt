@@ -108,3 +108,8 @@ export async function loadMoreExecutionOrderCollection<T>(
     },
   };
 }
+
+/** Cuenta visible de una colección paginada: «Mostrando 3 de 9 consumos» o «9 consumos». */
+export function collectionCountLabel(visible: number, total: number, noun: string): string {
+  return visible < total ? `Mostrando ${visible} de ${total} ${noun}` : `${total} ${noun}`;
+}

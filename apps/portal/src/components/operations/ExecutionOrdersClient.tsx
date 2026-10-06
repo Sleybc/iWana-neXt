@@ -331,7 +331,7 @@ export function ExecutionOrdersClient() {
           >
             <PortalSectionHeader
               title="Órdenes de ejecución"
-              description="El orden por defecto muestra primero la ventana planificada más reciente."
+              description="Las órdenes por programar aparecen primero; luego, la ventana planificada más reciente."
             />
           </div>
 
@@ -426,6 +426,7 @@ export function ExecutionOrdersClient() {
         executorCustodyBalancesMeta={orderConsole.executorCustodyBalancesMeta}
         isLoadingMoreExecutorCustody={orderConsole.isLoadingMoreExecutorCustody}
         onLoadMoreExecutorCustody={orderConsole.loadMoreExecutorCustody}
+        onOpenRequirementAction={orderConsole.openRequirementAction}
         template={orderConsole.executionOrderTemplate}
         itemOptions={orderConsole.executionOrderItemOptions}
         custodyOptions={orderConsole.executionOrderCustodyOptions}

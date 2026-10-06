@@ -5,6 +5,7 @@ import {
   dataSourceOptions,
   ExecutionOrder,
   ExecutionOrderOriginIdentity1350000000000,
+  ExecutionOrderOutboxEvent,
   ExecutionOrderStatusTransition,
   TenantContext,
   runInTenantSchema,
@@ -44,6 +45,7 @@ describeWithDb('Execution Orders E1 — unicidad por origen contra PostgreSQL re
   let dataSource: DataSource;
   let tenantId: string;
   let schemaName: string;
+  let migration135AppliedBySuite = false;
   let service: ExecutionOrdersService;
   const createdOrderIds: string[] = [];
 
@@ -97,7 +99,7 @@ describeWithDb('Execution Orders E1 — unicidad por origen contra PostgreSQL re
   beforeAll(async () => {
     dataSource = new DataSource({
       ...dataSourceOptions,
-      entities: [ExecutionOrder, ExecutionOrderStatusTransition],
+      entities: [ExecutionOrder, ExecutionOrderStatusTransition, ExecutionOrderOutboxEvent],
       migrations: [],
       logging: false,
       extra: { ...dataSourceOptions.extra, max: 8, min: 2 },
@@ -117,10 +119,24 @@ describeWithDb('Execution Orders E1 — unicidad por origen contra PostgreSQL re
     actor.schemaName = schemaName;
     service = new ExecutionOrdersService(dataSource);
 
-    // La guarda exige el índice 135: se aplica aquí y se revierte al cerrar.
+    // La guarda exige el índice 135: se aplica aquí solo si el tenant aún está
+    // en el esquema pre-E1 (NOT NULL) y solo entonces se revierte al cerrar.
     await TenantContext.run(tenantContext(), () =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
-        await new ExecutionOrderOriginIdentity1350000000000().up(qr);
+        const columns = (await qr.query(
+          `SELECT is_nullable
+             FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = 'execution_orders'
+              AND column_name IN ('schedule_event_id', 'planned_window_start_at', 'planned_window_end_at')`,
+          [schemaName],
+        )) as Array<{ is_nullable: string }>;
+        if (columns.length !== 3) {
+          throw new Error('No se detectó el esquema E1 completo de execution_orders.');
+        }
+        migration135AppliedBySuite = columns.some((column) => column.is_nullable !== 'YES');
+        if (migration135AppliedBySuite) {
+          await new ExecutionOrderOriginIdentity1350000000000().up(qr);
+        }
       }),
     );
   });
@@ -130,9 +146,15 @@ describeWithDb('Execution Orders E1 — unicidad por origen contra PostgreSQL re
       await TenantContext.run(tenantContext(), () =>
         runInTenantSchema(dataSource, schemaName, async (qr) => {
           if (createdOrderIds.length > 0) {
+            await qr.query(
+              'DELETE FROM execution_order_outbox_events WHERE aggregate_id = ANY($1::uuid[])',
+              [createdOrderIds],
+            );
             await qr.manager.delete(ExecutionOrder, createdOrderIds);
           }
-          await new ExecutionOrderOriginIdentity1350000000000().down(qr);
+          if (migration135AppliedBySuite) {
+            await new ExecutionOrderOriginIdentity1350000000000().down(qr);
+          }
         }),
       );
       await dataSource.destroy();

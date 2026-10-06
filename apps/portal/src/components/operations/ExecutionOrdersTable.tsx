@@ -8,6 +8,10 @@
 // sin PortalPanel ni toolbar (§3.1), encabezados no ordenables mientras
 // `meta.capabilities.sortableFields` esté vacío (§8.1 — prohibido
 // `PortalDataTableSortableHead`).
+// v1.2 (E4-portal, CA-12): con `schedule.window` nulo la columna 5 pinta
+// «Por programar» (estado abierto) o «Sin ventana planificada» (terminal), vía
+// `execution-order-window-copy.ts`; el orden lo publica el servidor, la tabla
+// no ordena (ni siquiera localmente).
 //
 // Nota de anclaje: el contrato §7.2 nombra la columna 1 «executionOrderNumber»,
 // pero el campo del contrato de API congelado `ExecutionOrderListItem` es
@@ -40,6 +44,7 @@ import {
   EXECUTION_ORDER_WORK_TYPE_LABELS,
   formatTaskDateTime,
 } from './operations-labels';
+import { getExecutionOrderWindowAbsence } from './execution-order-window-copy';
 
 const ORDERS_RESOURCE = { singular: 'orden de ejecución', plural: 'órdenes de ejecución' } as const;
 const ORDERS_COLUMN_COUNT = 8;
@@ -147,11 +152,7 @@ export function ExecutionOrdersTable({
                   <td className={portalDataTableCellClassName}>
                     {EXECUTION_ORDER_WORK_TYPE_LABELS[order.workType]}
                   </td>
-                  <td
-                    className={`${portalDataTableCellClassName} font-mono text-xs text-gray-600 dark:text-gray-400`}
-                  >
-                    {formatExecutionOrderWindow(order)}
-                  </td>
+                  <WindowCell order={order} />
                   <td className={portalDataTableCellClassName}>
                     {order.assignee?.displayLabel ?? 'Sin asignar'}
                   </td>
@@ -198,15 +199,32 @@ export function ExecutionOrdersTable({
   );
 }
 
-/** Ventana planificada: inicio; con fin distinto, «– fin» (contrato §7.2 col. 5). */
-function formatExecutionOrderWindow(order: ExecutionOrderListItem): string {
+/**
+ * Ventana planificada (contrato v1.2 §7.2 col. 5). Con ventana: inicio y, si
+ * difiere, «– fin», en mono técnico. Sin ventana: texto del estado publicado
+ * (fuente única `execution-order-window-copy.ts`), sin mono: no es una fecha.
+ */
+function WindowCell({ order }: { order: ExecutionOrderListItem }) {
   const window = order.schedule.window;
-  if (!window) return '—';
+
+  if (!window) {
+    return (
+      <td className={portalDataTableCellClassName}>
+        {getExecutionOrderWindowAbsence(order.status).label}
+      </td>
+    );
+  }
 
   const start = formatTaskDateTime(window.startAt);
   const endAt = window.endAt;
-  if (endAt && endAt !== window.startAt) {
-    return `${start} – ${formatTaskDateTime(endAt)}`;
-  }
-  return start;
+  const interval =
+    endAt && endAt !== window.startAt ? `${start} – ${formatTaskDateTime(endAt)}` : start;
+
+  return (
+    <td
+      className={`${portalDataTableCellClassName} font-mono text-xs text-gray-600 dark:text-gray-400`}
+    >
+      {interval}
+    </td>
+  );
 }

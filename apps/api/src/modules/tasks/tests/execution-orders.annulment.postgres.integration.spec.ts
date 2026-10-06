@@ -43,6 +43,8 @@ describeWithDb('Execution Orders T2 — anulación contra PostgreSQL real', () =
   let dataSource: DataSource;
   let tenantId: string;
   let schemaName: string;
+  let migration135AppliedBySuite = false;
+  let migration136AppliedBySuite = false;
   let service: ExecutionOrdersService;
   const createdOrderIds: string[] = [];
 
@@ -150,8 +152,34 @@ describeWithDb('Execution Orders T2 — anulación contra PostgreSQL real', () =
 
     await TenantContext.run(tenantContext(), () =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
-        await new ExecutionOrderOriginIdentity1350000000000().up(qr);
-        await new ExecutionOrderAnnulmentFlag1360000000000().up(qr);
+        const columns = (await qr.query(
+          `SELECT is_nullable
+             FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = 'execution_orders'
+              AND column_name IN ('schedule_event_id', 'planned_window_start_at', 'planned_window_end_at')`,
+          [schemaName],
+        )) as Array<{ is_nullable: string }>;
+        if (columns.length !== 3) {
+          throw new Error('No se detectó el esquema E1 completo de execution_orders.');
+        }
+        migration135AppliedBySuite = columns.some((column) => column.is_nullable !== 'YES');
+        if (migration135AppliedBySuite) {
+          await new ExecutionOrderOriginIdentity1350000000000().up(qr);
+        }
+        // Guarda de la 136 (mismo patrón que la 135): el tenant de integración por
+        // defecto ya la trae aplicada; la suite solo la aplica —y solo la revierte—
+        // si la columna que crea no existía.
+        const annulledColumn = (await qr.query(
+          `SELECT 1
+             FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = 'execution_orders'
+              AND column_name = 'is_annulled'`,
+          [schemaName],
+        )) as unknown[];
+        migration136AppliedBySuite = annulledColumn.length === 0;
+        if (migration136AppliedBySuite) {
+          await new ExecutionOrderAnnulmentFlag1360000000000().up(qr);
+        }
       }),
     );
   });
@@ -190,10 +218,15 @@ describeWithDb('Execution Orders T2 — anulación contra PostgreSQL real', () =
             );
             await qr.manager.delete(ExecutionOrder, createdOrderIds);
           }
-          // Orden inverso: la 136 declara su límite ante anuladas, pero la
-          // limpieza anterior ya las eliminó; luego la 135.
-          await new ExecutionOrderAnnulmentFlag1360000000000().down(qr);
-          await new ExecutionOrderOriginIdentity1350000000000().down(qr);
+          // Orden inverso, solo de lo que aplicó esta suite: la 136 declara su
+          // límite ante anuladas, pero la limpieza anterior ya las eliminó;
+          // luego la 135. Una migración ajena nunca se revierte.
+          if (migration136AppliedBySuite) {
+            await new ExecutionOrderAnnulmentFlag1360000000000().down(qr);
+          }
+          if (migration135AppliedBySuite) {
+            await new ExecutionOrderOriginIdentity1350000000000().down(qr);
+          }
         }),
       );
       await dataSource.destroy();

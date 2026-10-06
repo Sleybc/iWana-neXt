@@ -79,13 +79,15 @@ const IN_PROGRESS_POOL_HELP =
 const IN_PROGRESS_SUPERVISION_HELP =
   'La ejecución está en curso. Puedes seguir el avance en la lista de requisitos y crear una orden de seguimiento si hace falta.';
 
+// B0 (UX v1.1 §2 y §5, adenda A1): la orden bloqueada se muestra SIN motivo —no hay
+// fuente de lectura aprobada— y el copy nombra a quién acudir, nunca el dato
+// ausente. Sustituye los tres textos de OLA 1 que pedían «revisar el motivo».
+// Ejecutor (con o sin asignación) y supervisión son las dos celdas vigentes.
 export const BLOCKED_ALERT_TITLE = 'Orden bloqueada';
-const BLOCKED_ASSIGNED_DESCRIPTION =
-  'Revisa el motivo del bloqueo. Cuando se resuelva, retoma la ejecución desde esta pantalla.';
-const BLOCKED_POOL_DESCRIPTION =
-  'La orden está bloqueada. Revisa el motivo; cuando se resuelva, puedes retomar la ejecución.';
+const BLOCKED_EXECUTOR_DESCRIPTION =
+  'La orden está bloqueada. Contacta a supervisión para acordar cómo continuar.';
 const BLOCKED_SUPERVISION_DESCRIPTION =
-  'La orden está bloqueada. Revisa el motivo con el equipo en campo y crea una orden de seguimiento si hace falta.';
+  'La orden está bloqueada. Coordina con el equipo de campo el siguiente paso.';
 
 const TERMINAL_ASSIGNED_HELP =
   'La orden está cerrada. Puedes consultar el resumen, los requisitos y el historial.';
@@ -149,12 +151,10 @@ export interface BlockedCopy {
 
 export function getBlockedCopy(context: CommitmentContext): BlockedCopy {
   const lens = getCommitmentLens(context.allowedActions);
-  if (lens === 'supervision') {
-    return { title: BLOCKED_ALERT_TITLE, description: BLOCKED_SUPERVISION_DESCRIPTION };
-  }
   return {
     title: BLOCKED_ALERT_TITLE,
-    description: context.assigneePresent ? BLOCKED_ASSIGNED_DESCRIPTION : BLOCKED_POOL_DESCRIPTION,
+    description:
+      lens === 'supervision' ? BLOCKED_SUPERVISION_DESCRIPTION : BLOCKED_EXECUTOR_DESCRIPTION,
   };
 }
 

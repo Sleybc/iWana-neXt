@@ -120,14 +120,29 @@ describe('ExecutionOrdersService.list (MOD11 F1)', () => {
     });
   });
 
-  it('ordena por ventana planificada DESC con desempate obligatorio por id (ADR-065 §12)', async () => {
+  it('ordena ventana DESC NULLS FIRST con desempate obligatorio por id (ADR-065 §12)', async () => {
     const qb = buildQb([buildOrder()]);
     mockSchema(qb);
 
     await service.list({}, adminActor);
 
-    expect(qb.orderBy).toHaveBeenCalledWith('order.planned_window_start_at', 'DESC');
+    expect(qb.orderBy).toHaveBeenCalledWith('order.planned_window_start_at', 'DESC', 'NULLS FIRST');
     expect(qb.addOrderBy).toHaveBeenCalledWith('order.id', 'DESC');
+  });
+
+  it('serializa explícitamente una OT sin evento ni ventana en la bandeja', async () => {
+    const qb = buildQb([
+      buildOrder({
+        scheduleEventId: null,
+        plannedWindowStartAt: null,
+        plannedWindowEndAt: null,
+      }),
+    ]);
+    mockSchema(qb);
+
+    const result = await service.list({}, adminActor);
+
+    expect(result.data[0]?.schedule).toEqual({ eventId: null, window: null });
   });
 
   it('aplica scoping por actor a técnicos y no a supervisores (D1)', async () => {

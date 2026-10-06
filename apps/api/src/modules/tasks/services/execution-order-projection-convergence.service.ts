@@ -288,11 +288,16 @@ export class ExecutionOrderProjectionConvergenceService {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // Estado canónico de MOD11
       const order = (await qr.query(
-        `SELECT id, status, result::text
+        `SELECT id, status, result::text, schedule_event_id
          FROM execution_orders
          WHERE id = $1 AND tenant_id = $2`,
         [executionOrderId, tenantId],
-      )) as Array<{ id: string; status: string; result: string | null }>;
+      )) as Array<{
+        id: string;
+        status: string;
+        result: string | null;
+        schedule_event_id: string | null;
+      }>;
 
       if (order.length === 0) {
         throw new Error('OT no encontrada');
@@ -301,13 +306,17 @@ export class ExecutionOrderProjectionConvergenceService {
       const eoStatus: string = order[0]!.status;
       const eoResult: string | null = order[0]!.result;
 
-      // Proyección ScheduleEvent
-      const schedule = (await qr.query(
-        `SELECT status FROM schedule_events
-         WHERE execution_order_id = $1 AND tenant_id = $2
-         LIMIT 1`,
-        [executionOrderId, tenantId],
-      )) as Array<{ status: string }>;
+      // CA-13: sin schedule_event_id no existe una proyección de agenda que
+      // reconciliar. Se omite explícitamente su lectura; VisitRequest y Task
+      // siguen comparándose debajo.
+      const schedule = order[0]!.schedule_event_id
+        ? ((await qr.query(
+            `SELECT status FROM schedule_events
+             WHERE execution_order_id = $1 AND tenant_id = $2
+             LIMIT 1`,
+            [executionOrderId, tenantId],
+          )) as Array<{ status: string }>)
+        : [];
 
       // Proyección VisitRequest
       const visit = (await qr.query(
@@ -342,15 +351,18 @@ export class ExecutionOrderProjectionConvergenceService {
         eoResult,
       );
 
+      const expectedScheduleStatus = order[0]!.schedule_event_id ? expectedSchedule : null;
       const hasDiscrepancy =
-        (schedule[0]?.status ?? null) !== expectedSchedule ||
+        (order[0]!.schedule_event_id !== null &&
+          (schedule[0]?.status ?? null) !== expectedSchedule) ||
         (visit[0]?.status ?? null) !== expectedVisit ||
         taskStatus !== expectedTask;
 
       if (hasDiscrepancy) {
         this.logger.warn(
           `[convergence] discrepancia detectada para OT ${executionOrderId}: ` +
-            `Schedule=${schedule[0]?.status ?? 'null'}(esperado=${expectedSchedule}) ` +
+            `Schedule=${order[0]!.schedule_event_id ? (schedule[0]?.status ?? 'null') : 'omitido'} ` +
+            `(esperado=${expectedScheduleStatus ?? 'omitido'}) ` +
             `Visit=${visit[0]?.status ?? 'null'}(esperado=${expectedVisit}) ` +
             `Task=${taskStatus ?? 'null'}(esperado=${expectedTask})`,
         );
@@ -364,7 +376,7 @@ export class ExecutionOrderProjectionConvergenceService {
         scheduleEventStatus: schedule[0]?.status ?? null,
         visitRequestStatus: visit[0]?.status ?? null,
         taskStatus,
-        expectedScheduleStatus: expectedSchedule,
+        expectedScheduleStatus,
         expectedVisitStatus: expectedVisit,
         expectedTaskStatus: expectedTask,
         hasDiscrepancy,
@@ -492,6 +504,7 @@ export class ExecutionOrderProjectionConvergenceService {
     const rows = (await qr.query(
       `SELECT eo.status AS execution_order_status,
               eo.result::text AS execution_order_result,
+              eo.schedule_event_id AS schedule_event_id,
               schedule.status AS schedule_status,
               visit.status AS visit_status,
               task.status AS task_status
@@ -513,6 +526,7 @@ export class ExecutionOrderProjectionConvergenceService {
     )) as Array<{
       execution_order_status: string;
       execution_order_result: string | null;
+      schedule_event_id: string | null;
       schedule_status: string | null;
       visit_status: string | null;
       task_status: string | null;
@@ -523,14 +537,11 @@ export class ExecutionOrderProjectionConvergenceService {
         row.execution_order_status,
         row.execution_order_result,
       );
-      return (
-        count +
-        (row.schedule_status !== expected.expectedSchedule ||
-        row.visit_status !== expected.expectedVisit ||
-        row.task_status !== expected.expectedTask
-          ? 1
-          : 0)
-      );
+      const scheduleDiffers =
+        row.schedule_event_id !== null && row.schedule_status !== expected.expectedSchedule;
+      const otherProjectionDiffers =
+        row.visit_status !== expected.expectedVisit || row.task_status !== expected.expectedTask;
+      return count + (scheduleDiffers || otherProjectionDiffers ? 1 : 0);
     }, 0);
   }
 

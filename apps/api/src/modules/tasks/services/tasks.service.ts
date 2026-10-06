@@ -451,7 +451,10 @@ export class TasksService {
       ) {
         throw new BadRequestException('La tarea no requiere agenda para vincular un evento.');
       }
-      if (task.scheduleEventId && task.scheduleEventId !== validated.scheduleEventId) {
+      // CA-13: `scheduleEventId === null` es el estado esperado antes de la
+      // primera agenda; se permite establecer el vínculo. Un evento distinto
+      // ya asociado se rechaza para no reemplazarlo en silencio.
+      if (task.scheduleEventId != null && task.scheduleEventId !== validated.scheduleEventId) {
         throw new ConflictException('La tarea ya tiene un evento de agenda vinculado.');
       }
 

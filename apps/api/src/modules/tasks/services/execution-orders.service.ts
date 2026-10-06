@@ -602,8 +602,8 @@ export class ExecutionOrdersService {
    *
    * - Una sola query + count sobre el QB ya scopeado: el `total` del pie
    *   refleja el alcance del actor (ADR-065 §15).
-   * - Orden por defecto `planned_window_start_at DESC, id DESC`; el desempate
-   *   por `id` es obligatorio (ADR-065 §12). Índice 130.
+   * - Orden por defecto `planned_window_start_at DESC NULLS FIRST, id DESC`;
+   *   el desempate por `id` es obligatorio (ADR-065 §12). Índice 130.
    * - Proyección mínima ADR-067: NUNCA invoca `getCompletion`, `getSyncState`
    *   ni `getInventoryReconciliation` (N+1 por fila; causa de rechazo).
    * - Scoping D1 (v1 sin cuadrilla): réplica exacta de la semántica de lectura
@@ -629,7 +629,7 @@ export class ExecutionOrdersService {
         .createQueryBuilder(ExecutionOrder, 'order')
         .where('order.tenant_id = :tenantId', { tenantId })
         // DEF-1: orden por defecto + desempate por id para offset estable.
-        .orderBy('order.planned_window_start_at', 'DESC')
+        .orderBy('order.planned_window_start_at', 'DESC', 'NULLS FIRST')
         .addOrderBy('order.id', 'DESC');
 
       if (LIST_RESTRICTED_ROLES.includes(actor.role as UserRole)) {
@@ -1150,6 +1150,8 @@ export class ExecutionOrdersService {
         message: 'Coordina con el técnico antes de modificar la agenda de una orden en curso.',
       });
     }
+    // schedule_event_id NULL significa que aún no se agenda; en ese caso esta
+    // operación establece el primer vínculo. Solo un vínculo existente bloquea.
     if (order.scheduleEventId) {
       throw new ConflictException({
         code: 'EXECUTION_ORDER_ALREADY_SCHEDULED',
@@ -1247,7 +1249,9 @@ export class ExecutionOrdersService {
         message: 'Coordina con el técnico antes de modificar la agenda de una orden en curso.',
       });
     }
-    if (order.scheduleEventId !== input.scheduleEventId) {
+    // Sin evento dueño no existe una cita que reagendar. El NULL se traduce
+    // explícitamente al conflicto de vínculo, sin mutar la ventana ni versión.
+    if (!order.scheduleEventId || order.scheduleEventId !== input.scheduleEventId) {
       throw new ConflictException({
         code: 'EXECUTION_ORDER_EVENT_MISMATCH',
         message: 'La orden de trabajo no pertenece al evento de agenda indicado.',
@@ -1292,7 +1296,8 @@ export class ExecutionOrdersService {
 
     // Integridad: el scheduleEventId debe coincidir con el que se pasa
     // desde WFM para evitar cancelar una OT que fue reasignada a otro evento.
-    if (order.scheduleEventId !== scheduleEventId) {
+    // Una OT sin evento de agenda no puede cancelarse desde esa agenda.
+    if (!order.scheduleEventId || order.scheduleEventId !== scheduleEventId) {
       throw new ConflictException({
         code: 'EXECUTION_ORDER_EVENT_MISMATCH',
         message: 'La OT no pertenece al evento de agenda indicado; ¿fue reasignada mientras tanto?',

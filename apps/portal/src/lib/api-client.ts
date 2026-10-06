@@ -6752,7 +6752,7 @@ export interface ExecutionOrderRecord {
   tenantId: string;
   executionOrderNumber: string;
   visitRequestId: string | null;
-  scheduleEventId: string;
+  scheduleEventId: string | null;
   assignedTechnicianId: string | null;
   assignedCrewId: string | null;
   originContext: string;
@@ -6764,8 +6764,8 @@ export interface ExecutionOrderRecord {
   workType: WfmWorkType;
   workSummary: string;
   workInstructions: string | null;
-  plannedWindowStartAt: string;
-  plannedWindowEndAt: string;
+  plannedWindowStartAt: string | null;
+  plannedWindowEndAt: string | null;
   status: ExecutionOrderStatus;
   result: ExecutionOrderResult | null;
   startedAt: string | null;

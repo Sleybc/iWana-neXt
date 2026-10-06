@@ -37,16 +37,21 @@ function makeConfig(config: Record<string, string> = {}): ConfigService {
  *  2: SET LOCAL → undefined
  *  3: inbox version check → { rows: [] } (no processed events)
  *  4: INSERT inbox → { rows: [{ id }], rowCount: 1 }
- *  5+: definidas por cada test
+ *  5: consulta nullable schedule_event_id
+ *  6+: definidas por cada test
  */
-function setupHappyPath(poolClient: { query: jest.Mock }): jest.Mock {
+function setupHappyPath(
+  poolClient: { query: jest.Mock },
+  scheduleEventId: string | null = 's0000000-0000-4000-8000-000000000001',
+): jest.Mock {
   const schemaName = 'tenant_test001';
   poolClient.query
     .mockResolvedValueOnce({ rows: [{ schema_name: schemaName }] } as never)
     .mockResolvedValueOnce(undefined) // BEGIN
     .mockResolvedValueOnce(undefined) // SET LOCAL
     .mockResolvedValueOnce({ rows: [] }) // inbox check (no prev events)
-    .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 }); // INSERT inbox
+    .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 }) // INSERT inbox
+    .mockResolvedValueOnce({ rows: [{ schedule_event_id: scheduleEventId }] }); // Read OT link
   return poolClient.query;
 }
 
@@ -139,6 +144,141 @@ describe('ExecutionOrderEventsProcessor', () => {
    *   ni en ningún estado de los flujos nuevos (F2–F4).
    */
   describe('matriz de convergencia ADR-068', () => {
+    it.each([
+      ['ExecutionOrderStartedV1', { executionOrderId: 'a0000000-0000-4000-8000-000000000001' }],
+      ['ExecutionOrderBlockedV1', { executionOrderId: 'a0000000-0000-4000-8000-000000000001' }],
+      [
+        'ExecutionOrderClosedV1',
+        { executionOrderId: 'a0000000-0000-4000-8000-000000000001', result: 'EXECUTED' },
+      ],
+      [
+        'ExecutionOrderFollowUpRequiredV1',
+        { executionOrderId: 'a0000000-0000-4000-8000-000000000001' },
+      ],
+    ] as const)(
+      '%s omite ScheduleEvent explícitamente ante schedule_event_id NULL y conserva VisitRequest/Task',
+      async (eventType, payload) => {
+        setupHappyPath(poolClient, null)
+          .mockResolvedValueOnce({ rowCount: 1 }) // Update VisitRequest
+          .mockResolvedValueOnce({ rows: [{ task_id: 'task-001' }] }) // Read linked Task
+          .mockResolvedValueOnce({ rowCount: 1 }) // Update Task
+          .mockResolvedValueOnce({ rowCount: 1 }) // Mark inbox processed
+          .mockResolvedValueOnce(undefined); // COMMIT
+
+        const job = {
+          data: {
+            tenantId: 't0000000-0000-4000-8000-000000000001',
+            envelope: makeEnvelope({ eventType, payload: payload as never }),
+          },
+        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
+
+        const debugSpy = jest.spyOn(
+          (processor as unknown as { logger: { debug: (message: string) => void } }).logger,
+          'debug',
+        );
+
+        await processor.process(job);
+
+        const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
+        expect(queries.some((sql) => sql.includes('UPDATE schedule_events'))).toBe(false);
+        expect(queries.some((sql) => sql.includes('UPDATE visit_requests'))).toBe(true);
+        expect(queries.some((sql) => sql.includes('UPDATE operational_tasks'))).toBe(true);
+        // CA-13: la omisión queda registrada con clave estable y correlación.
+        expect(debugSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            'schedule_projection_skipped reason=schedule_event_id_null ' +
+              'event=e0000000-0000-4000-8000-000000000001 ' +
+              `type=${eventType} ot=a0000000-0000-4000-8000-000000000001 ` +
+              'tenant=t0000000-0000-4000-8000-000000000001',
+          ),
+        );
+      },
+    );
+
+    it('con schedule_event_id presente proyecta ScheduleEvent y no registra la omisión', async () => {
+      setupHappyPath(poolClient)
+        .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE schedule_events
+        .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE visit_requests
+        .mockResolvedValueOnce({ rows: [{ task_id: 'task-001' }] }) // Read linked Task
+        .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE Task
+        .mockResolvedValueOnce({ rowCount: 1 }) // Mark inbox processed
+        .mockResolvedValueOnce(undefined); // COMMIT
+      const debugSpy = jest.spyOn(
+        (processor as unknown as { logger: { debug: (message: string) => void } }).logger,
+        'debug',
+      );
+
+      await processor.process({
+        data: {
+          tenantId: 't0000000-0000-4000-8000-000000000001',
+          envelope: makeEnvelope({ eventType: 'ExecutionOrderStartedV1' }),
+        },
+      } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+      const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
+      expect(queries.some((sql) => sql.includes('UPDATE schedule_events'))).toBe(true);
+      expect(debugSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('schedule_projection_skipped'),
+      );
+    });
+
+    it('OT inexistente al proyectar: falla como no recuperable, revierte y no toca ninguna proyección', async () => {
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // BEGIN
+        .mockResolvedValueOnce(undefined) // SET LOCAL
+        .mockResolvedValueOnce({ rows: [] }) // inbox check
+        .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 }) // INSERT inbox
+        .mockResolvedValueOnce({ rows: [] }) // la OT ya no existe
+        .mockResolvedValueOnce(undefined); // ROLLBACK
+
+      await expect(
+        processor.process({
+          data: {
+            tenantId: 't0000000-0000-4000-8000-000000000001',
+            envelope: makeEnvelope({
+              eventType: 'ExecutionOrderClosedV1',
+              payload: {
+                executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+                result: 'EXECUTED',
+              } as never,
+            }),
+          },
+        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>),
+      ).rejects.toThrow('No se encontró la OT para proyectar su evento de agenda.');
+
+      const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
+      expect(queries).toContain('ROLLBACK');
+      expect(queries).not.toContain('COMMIT');
+      expect(queries.some((sql) => sql.includes('UPDATE '))).toBe(false);
+    });
+
+    it.each(['ExecutionOrderCancelledV1', 'ExecutionOrderAnnulledV1'] as const)(
+      '%s no consulta schedule_event_id: no proyecta agenda y no lo necesita',
+      async (eventType) => {
+        poolClient.query
+          .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+          .mockResolvedValueOnce(undefined) // BEGIN
+          .mockResolvedValueOnce(undefined) // SET LOCAL
+          .mockResolvedValueOnce({ rows: [] }) // inbox check
+          .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 }) // INSERT inbox
+          .mockResolvedValueOnce({ rowCount: 1 }) // Mark inbox processed
+          .mockResolvedValueOnce(undefined); // COMMIT
+
+        await processor.process({
+          data: {
+            tenantId: 't0000000-0000-4000-8000-000000000001',
+            envelope: makeEnvelope({ eventType }),
+          },
+        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+        const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
+        expect(queries.some((sql) => sql.includes('schedule_event_id'))).toBe(false);
+        expect(queries.some((sql) => sql.includes('UPDATE schedule_events'))).toBe(false);
+        expect(queries).toContain('COMMIT');
+      },
+    );
+
     it('ExecutionOrderStartedV1: ScheduleEvent→IN_PROGRESS, VisitRequest→IN_EXECUTION, Task→IN_PROGRESS', async () => {
       setupHappyPath(poolClient)
         // 5: UPDATE schedule_events
@@ -455,6 +595,9 @@ describe('ExecutionOrderEventsProcessor', () => {
           .mockResolvedValueOnce(undefined)
           .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 })
+          .mockResolvedValueOnce({
+            rows: [{ schedule_event_id: 's0000000-0000-4000-8000-000000000001' }],
+          })
           .mockResolvedValueOnce({ rowCount: 1 })
           .mockResolvedValueOnce({ rowCount: 1 })
           .mockResolvedValueOnce({ rows: [{ task_id: 'task-001' }] } as never)
@@ -497,6 +640,34 @@ describe('ExecutionOrderEventsProcessor', () => {
   });
 
   describe('validación de envelope', () => {
+    it('rechaza aggregateId distinto de payload.executionOrderId antes de consultar proyecciones', async () => {
+      poolClient.query.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+      setupHappyPath(poolClient, null);
+
+      const job = {
+        data: {
+          tenantId: 't0000000-0000-4000-8000-000000000001',
+          envelope: makeEnvelope({
+            eventType: 'ExecutionOrderStartedV1',
+            payload: {
+              executionOrderId: 'b0000000-0000-4000-8000-000000000002',
+            } as never,
+          }),
+        },
+      } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
+
+      await expect(processor.process(job)).rejects.toThrow(
+        'Payload fuera del aggregate del evento.',
+      );
+
+      const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
+      expect(queries.some((sql) => sql.includes('SELECT schedule_event_id'))).toBe(false);
+      expect(queries.some((sql) => sql.includes('UPDATE schedule_events'))).toBe(false);
+      expect(queries.some((sql) => sql.includes('UPDATE visit_requests'))).toBe(false);
+      expect(queries.some((sql) => sql.includes('UPDATE operational_tasks'))).toBe(false);
+      expect(queries).toContain('ROLLBACK');
+    });
+
     it('rechaza eventos con tenantId vacío', async () => {
       poolClient.query.mockReset();
 
