@@ -1,4 +1,5 @@
 import * as Joi from 'joi';
+import { Buffer } from 'node:buffer';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import {
@@ -25,6 +26,19 @@ type ApiDataSourceOptions = Pick<
  * y CORS dejaría fuera al frontend real. Riesgos 1 y 2 de ADR-070.
  */
 const DEVELOPMENT_ONLY_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
+
+/** El secreto HMAC se transporta en base64 y debe contener al menos 32 bytes. */
+function isValidInternalQueueSigningKey(value: string): boolean {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)) {
+    return false;
+  }
+
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.byteLength >= 32 && decoded.toString('base64') === value;
+}
+
+const internalQueueSigningKeyValidator: Joi.CustomValidator<string> = (value, helpers) =>
+  isValidInternalQueueSigningKey(value) ? value : helpers.error('any.invalid');
 
 type OriginVerdict = 'ok' | 'not-absolute' | 'development-only';
 
@@ -189,6 +203,36 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       }),
     // Secreto HMAC para idempotencia durable de comandos de órdenes de ejecución.
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: Joi.string().min(32).required(),
+    // D8 (MOD11↔MOD12): la clave de firma de Redis solo se exige en producción.
+    // 32 bytes aleatorios en base64 (openssl rand -base64 32); los marcadores
+    // de las plantillas no son secretos operativos ni válidos para producción.
+    INTERNAL_QUEUE_SIGNING_KEY: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().trim().required().custom(internalQueueSigningKeyValidator).messages({
+        'any.required': 'INTERNAL_QUEUE_SIGNING_KEY es obligatoria con NODE_ENV=production.',
+        'any.invalid':
+          'INTERNAL_QUEUE_SIGNING_KEY debe ser base64 canónico de al menos 32 bytes aleatorios.',
+      }),
+      otherwise: Joi.string().allow('').optional(),
+    }),
+    // Solo aceptación durante una rotación. El consumidor puede aceptar ambas
+    // claves, pero el emisor siempre firma con INTERNAL_QUEUE_SIGNING_KEY.
+    INTERNAL_QUEUE_SIGNING_KEY_PREVIOUS: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string()
+        .allow('')
+        .optional()
+        .custom((value: string, helpers: Joi.CustomHelpers<string>) =>
+          value === '' || isValidInternalQueueSigningKey(value)
+            ? value
+            : helpers.error('any.invalid'),
+        )
+        .messages({
+          'any.invalid':
+            'INTERNAL_QUEUE_SIGNING_KEY_PREVIOUS debe ser base64 canónico de al menos 32 bytes aleatorios.',
+        }),
+      otherwise: Joi.string().allow('').optional(),
+    }),
     // Umbrales operativos del relay: no hay valores por defecto aprobados.
     // Si faltan, health expone la medición con "sin umbral aprobado" y no emite veredicto.
     OUTBOX_RELAY_LAG_DEGRADED_SECONDS: Joi.number().integer().min(0).optional(),
