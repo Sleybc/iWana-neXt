@@ -1,0 +1,101 @@
+{
+  "titulo": "R2 — medición del tiempo de análisis de evidencia (cola evidence-analysis)",
+  "fecha": "2026-10-05",
+  "entorno": "Stack de desarrollo LOCAL (Windows, Node v24.18.0): worker BullMQ real en ejecución, Redis, PostgreSQL y MinIO reales. NO es un entorno compartido ni de producción.",
+  "metodo": [
+    "Se reproducen los tres pasos de EvidenceAssetProvider.createEvidenceAsset: INSERT del asset en public.media_assets como QUARANTINED, PUT del objeto en MinIO y queue.add(analyze-evidence-asset) con las mismas opciones (jobId, 3 intentos, backoff exponencial de 1 s).",
+    "El tiempo se mide desde que queue.add resuelve (el instante en que la API respondería 202) hasta que el worker real deja el asset fuera de QUARANTINED, sondeando la base cada 5 ms.",
+    "No pasa por HTTP ni por la autenticación de la API: no hubo credenciales utilizables en el entorno. Los datos son sintéticos (bytes con firma JPEG/PNG válida) bajo el tenant ficticio tenant_r2_p95_probe y se eliminaron al terminar (filas, objetos y cola verificados en cero).",
+    "Un envío de calentamiento no cuenta. Secuencial: 60 cargas, una a la vez y 300 ms entre ellas, rotando 25 KB PNG, 0,5 MB, 2 MB y 5 MB JPEG. Ráfaga: 5 rondas de 10 cargas simultáneas de 1 MB.",
+    "Complemento: 20 cargas secuenciales del PNG real que exporta canvas.toBlob en Chromium (800x320, 14,5 KB)."
+  ],
+  "resultados_ms": {
+    "secuencial_60": {
+      "n": 60,
+      "p50": 30.2,
+      "p90": 61.6,
+      "p95": 62.4,
+      "p99": 69.5,
+      "max": 69.5,
+      "min": 14,
+      "statuses": {
+        "AVAILABLE": 60
+      }
+    },
+    "por_tamano": {
+      "png-25000": {
+        "n": 15,
+        "p50": 20,
+        "p90": 21,
+        "p95": 30.2,
+        "p99": 30.2,
+        "max": 30.2,
+        "min": 16,
+        "statuses": {
+          "AVAILABLE": 15
+        }
+      },
+      "jpg-500000": {
+        "n": 15,
+        "p50": 28.5,
+        "p90": 33.4,
+        "p95": 61.6,
+        "p99": 61.6,
+        "max": 61.6,
+        "min": 14,
+        "statuses": {
+          "AVAILABLE": 15
+        }
+      },
+      "jpg-2000000": {
+        "n": 15,
+        "p50": 36.2,
+        "p90": 41.6,
+        "p95": 50.3,
+        "p99": 50.3,
+        "max": 50.3,
+        "min": 20.1,
+        "statuses": {
+          "AVAILABLE": 15
+        }
+      },
+      "jpg-5000000": {
+        "n": 15,
+        "p50": 61.1,
+        "p90": 65.9,
+        "p95": 69.5,
+        "p99": 69.5,
+        "max": 69.5,
+        "min": 45.6,
+        "statuses": {
+          "AVAILABLE": 15
+        }
+      }
+    },
+    "rafaga_10x5": {
+      "n": 50,
+      "p50": 107.6,
+      "p90": 161.3,
+      "p95": 167.9,
+      "p99": 192.4,
+      "max": 192.4,
+      "min": 22.7,
+      "statuses": {
+        "AVAILABLE": 50
+      }
+    },
+    "png_real_del_lienzo_20": {
+      "n": 20,
+      "p50": 18.7,
+      "p90": 21.2,
+      "p95": 22.4,
+      "p99": 38.1,
+      "max": 38.1,
+      "min": 10.6,
+      "statuses": {
+        "AVAILABLE": 20
+      }
+    }
+  },
+  "lectura": "El análisis es determinista y corto (lee el objeto, calcula SHA-256 y comprueba los bytes de firma). En local y sin carga el p95 es de 62 ms en secuencial, 168 ms con 10 cargas simultáneas y 22 ms para la firma; el máximo observado fue 192 ms. No hay muestra de un entorno compartido: ese p95 sigue pendiente."
+}
