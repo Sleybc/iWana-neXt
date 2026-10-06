@@ -552,6 +552,7 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
         'eo-registro',
         {
           itemId: 'item-ont',
+          requirementKey: 'installed-equipment',
           technicianCustodyId: 'tech-001',
           quantity: 1,
           serialNumber: 'ONT-2026-001',

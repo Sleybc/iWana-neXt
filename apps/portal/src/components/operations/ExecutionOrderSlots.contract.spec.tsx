@@ -45,6 +45,8 @@ jest.mock('./ExecutionOrderMaterialAction', () => ({
     mockMaterialHistory(props);
     return <p>Doble del historial de consumo</p>;
   },
+  ExecutionOrderMaterialHistoryFooter: () => null,
+  ExecutionOrderMaterialUnattributedHistory: () => null,
 }));
 jest.mock('./ExecutionOrderActivityAction', () => ({
   ExecutionOrderActivityAction: (props: unknown) => {

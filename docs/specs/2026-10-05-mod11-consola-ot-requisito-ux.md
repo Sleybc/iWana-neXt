@@ -1,10 +1,10 @@
 # Spec UX — MOD11: consola de OT por requisito y por momento
 
-**Versión:** 1.1  
-**Fecha:** 2026-10-05  
-**Estado:** **Aprobado — G2 cerrado por AI-EM-ARCH el 2026-10-05** (registro en el plan v1.2, §Registro de bloqueos — Ola 2)  
+**Versión:** 1.3<br>
+**Fecha:** 2026-10-06<br>
+**Estado:** La línea base v1.1 conserva su estado **Aprobado — G2 cerrado por AI-EM-ARCH el 2026-10-05** (registro en el plan v1.2, §Registro de bloqueos — Ola 2). Las adendas de producto v1.2 (§14) y v1.3 (§14.2 y §15) fueron producidas por AI-PROD-UX y están **pendientes de verificación consolidada**; no han sido aprobadas por AI-EM-ARCH.<br>
 **Productora:** AI-PROD-UX (prod-ux)  
-**Alcance:** R0 de la consola + UX de E4 para OT sin ventana.
+**Alcance:** R0 de la consola + UX de E4 para OT sin ventana; adendas de producto §§14–15 para la deuda del historial de consumos R3 y la ratificación de copy R2.
 
 ## Trazabilidad y contratos de entrada
 
@@ -217,8 +217,55 @@ El estado, obligatoriedad y razón se leen en texto para lector de pantalla. Los
 
 **GO para la mitad R0 de G2.** Los seis criterios del encargo están descritos y trazables en §12. No hay dato requerido ausente en los contratos congelados para diseñar R0; por ello no se emite [BLOQUEO]. El contrato de tabla no se cambia. La decisión de accesibilidad de la firma queda resuelta por A2; el único handoff pendiente para R1 es la compatibilidad de «Por programar» con el render de raya del contrato v1.1. G2 permanece parcial hasta la entrega de R1.
 
+## 14. Adenda de producto v1.2 — consumos sin requisito asociado (2026-10-06)
+
+**Estado:** Adenda producida por AI-PROD-UX; pendiente de verificación consolidada. No modifica el estado aprobado de la línea base v1.1 ni constituye aprobación de AI-EM-ARCH.
+
+La revisión R3 detectó que algunos consumos de `ExecutionOrderItemUsage` no guardan la clave del requisito que los originó. Pueden ser registros previos o proceder de un cliente que todavía no envía la clave; la fecha no demuestra su procedencia. Su categoría o disposición no permiten inferirla: varios requisitos MATERIAL pueden compartirlas y la plantilla visible hoy no reconstruye la intención registrada al crear cada consumo. No se atribuye retrospectivamente una clave.
+
+### 14.1 Asociación e historial
+
+- Los registros que incluyan `requirementKey` se muestran una sola vez bajo la fila cuyo `snapshot.requirement.key` coincide exactamente. No se asocian por etiqueta, categoría, acción, disposición ni orden temporal.
+- Los registros con clave nula o ausente se muestran una sola vez en un grupo neutral, al final de las filas del checklist y fuera de cualquier fila de requisito. El grupo aparece solo si hay registros y usa este copy:
+  - Título: **«Consumos sin requisito asociado»**.
+  - Descripción: **«Estos registros no indican a qué requisito corresponden.»**
+- El grupo no es un requisito ficticio, no concede acciones y no se repite bajo cada requisito MATERIAL. Así se conserva el índice por snapshot y no se recuperan los seis bloques planos que R0 retiró.
+- El vacío definido en §5 —«Todavía no hay consumos registrados para este requisito»— sigue aplicando por separado a cada requisito sin registros asociados por clave exacta. Los consumos sin clave no rellenan ni ocultan ese estado.
+- La agrupación visual no recalcula cumplimiento ni progreso. `completion.requirements`, su estado y el progreso publicados por la API siguen siendo la fuente del checklist. El bucket sin atribución no significa que el consumo no pueda contar para el evaluador: se conserva la compatibilidad existente del backend para consumos sin clave. No se cambia el gate de cierre por esta decisión de presentación.
+- Se espera que el contrato de lectura exponga aditivamente `requirementKey: string | null` en cada `ExecutionOrderItemUsage`. El campo de escritura se añade de forma compatible y opcional: si llega, se persiste la clave exacta del snapshot; si se omite, permanece nulo, sin importar la fecha del registro. No se hace backfill ni atribución inferida. Esta UX no fija la versión ni el endpoint del cambio API: corresponden a sr-backend y a la verificación consolidada. Esta adenda tampoco versiona ni modifica por sí misma los contratos API o de componente.
+
+### 14.2 Carga, error y paginación accesibles
+
+- `GET itemUsage` pagina la colección completa de consumos de la OT; no filtra por `requirementKey` (API v1.5, contrato de componente v1.1). Por tanto, solo hay un contador y un pie de paginación global al final del checklist, después de las filas y del grupo neutral si aparece. El contador, `total` y `hasMore` corresponden al conjunto global de consumos; no se derivan ni se inventan metadatos para el grupo sin clave.
+- En las páginas cargadas, cada consumo con clave se muestra bajo la única fila cuyo `requirementKey` coincide exactamente. Cada consumo con clave nula o ausente se muestra en el grupo neutral definido en §14.1. El grupo aparece cuando al menos una fila sin clave ya está en las páginas cargadas; muestra solo esas filas vistas y no implica que el conjunto sin clave esté completo mientras queden páginas globales.
+- El grupo neutral se presenta como una sección identificada por su título y descripción, con los consumos en una lista semántica de lectura. No recibe foco automáticamente ni se convierte en control de acción. Los elementos conservan el orden de respuesta del servidor y se deduplican por identidad.
+- Durante la carga inicial, el historial usa un skeleton con forma de contenido y comunica `aria-busy`; no se anuncia un vacío antes de terminar la consulta. El error de lectura se muestra junto al historial global con la alerta y la acción «Reintentar» previstas en §9. Se conservan los registros válidos ya cargados; el error reemplaza el vacío, no los registros.
+- El pie global anuncia el conteo de la colección en una región viva accesible. «Cargar más» aparece solo si el `hasMore` global lo indica; es un botón con foco visible, operable por teclado y target de al menos 44 px. Durante la petición queda deshabilitado y comunica la carga. El pie no se repite debajo de cada requisito ni del grupo neutral.
+- El vacío por requisito de §5 solo se presenta cuando termina la paginación global y no hay consumos con clave exactamente asociada a esa fila. Si todavía quedan páginas y no se ha visto un consumo asociado, se difiere ese vacío. Los registros sin clave no lo rellenan ni lo ocultan; tampoco reciben estado de carga, error, conteo o paginación propios.
+
+Esta adenda conserva §§1–13 como la definición aprobada de R0, incluido el principio de historial bajo el requisito que explica cada registro. El grupo separado es una excepción limitada a registros cuya procedencia no está persistida, sin importar su fecha; los registros asociados siguen bajo su requisito exacto.
+
+## 15. Ratificación de copy R2 (2026-10-06)
+
+**Estado:** Copy ratificado por AI-PROD-UX como complemento de §5; producido en esta adenda v1.3 y pendiente de verificación consolidada. No constituye aprobación de AI-EM-ARCH.
+
+Se ratifican los textos de captura de evidencia y firma documentados en el [informe R2, §10](../informes/INFORME-MOD11-CONSOLA-OT-OLA2B-R2-FE-PLATFORM-v1.0.md). Se conservan literalmente:
+
+| Contexto | Copy ratificado |
+| --- | --- |
+| Selector de foto y documento | «Selecciona una foto» (ayuda ya fijada en §5) · «Seleccionar foto» · «Seleccionar documento» · «Selecciona un documento en PDF o una imagen.» · «Archivo seleccionado: {nombre}» · «Reintentar registro» |
+| Instrucción complementaria de firma | «Dibuja la firma dentro del recuadro con el dedo, un lápiz o el ratón.» |
+| Estados y nombres accesibles de firma | «Todavía no hay firma dibujada.» · «Firma dibujada. Puedes guardarla o limpiarla.» · «Firma limpiada. Puedes volver a firmar.» · «Dibuja la firma antes de guardarla.» · «Captura de firma del cliente» · «Área de firma» |
+| Firma en revisión | «La firma sigue en revisión y aún no se guardó. Puedes volver a intentarlo en unos minutos.» |
+| Validación del archivo | «Selecciona una foto en formato JPG, PNG, WebP o GIF.» · «Selecciona un documento en PDF o una imagen en formato JPG, PNG, WebP o GIF.» · «El archivo está vacío.» · «El archivo supera el tamaño máximo de 25 MB.» |
+| Vacío del historial de evidencia | «Las fotos que añadas aparecerán aquí.» · «Los documentos que adjuntes aparecerán aquí.» · «La firma del cliente aparecerá aquí cuando se guarde.» |
+
+La base de copy de firma y sus botones permanece como en §5: «Capturar firma del cliente», «Pide al cliente que firme el acta de conformidad.», «Limpiar», «Guardar firma», «Cancelar», «Firma guardada» y «No pudimos guardar la firma. Intenta de nuevo.» La ratificación complementa esos textos sin cambiar el flujo ni los estados aprobados.
+
 ## Registro de cambios
 
 | Versión | Fecha | Cambio |
 | --- | --- | --- |
 | 1.1 | 2026-10-05 | Aplicación de la adenda A2: se elimina la promesa de borrador offline; se fija el orden `planned_window_start_at DESC NULLS FIRST, id DESC` y se aplaza la propuesta de tres tramos; se conserva la etiqueta exacta del snapshot y el estado opcional «Sin registrar»; se resuelve la excepción del trazo de firma por WCAG 2.1.1 y se especifican controles e instrucciones accesibles por teclado. |
+| 1.2 | 2026-10-06 | Adenda de producto §14: historial único para consumos sin clave, copy que explicita su falta de atribución, compatibilidad del evaluador preservada y reglas accesibles de carga, error y paginación. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH. |
+| 1.3 | 2026-10-06 | Se alinea §14.2 con la paginación global de `GET itemUsage` y el contrato de componente v1.1: contador/footer únicos, metadata global y vacío por requisito al final de la paginación. Se ratifica en §15 el copy complementario de R2. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH. |

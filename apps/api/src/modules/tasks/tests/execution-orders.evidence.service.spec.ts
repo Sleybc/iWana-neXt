@@ -257,7 +257,7 @@ describe('ExecutionOrdersService — Evidence', () => {
       expect(result.data[0]).not.toHaveProperty('tenantId');
     });
 
-    it('devuelve consumos paginados con quantity entero y forma de contrato', async () => {
+    it('devuelve el historial global de consumos paginado con claves nulas explícitas', async () => {
       const queryBuilder = {
         select: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
@@ -271,6 +271,7 @@ describe('ExecutionOrdersService — Evidence', () => {
             {
               id: 'usage-001',
               itemId: 'item-001',
+              requirementKey: null,
               quantity: 2,
               serialNumber: null,
               action: 'CONSUME',
@@ -297,6 +298,7 @@ describe('ExecutionOrdersService — Evidence', () => {
         {
           id: 'usage-001',
           itemId: 'item-001',
+          requirementKey: null,
           quantity: 2,
           action: 'CONSUME',
           finalDisposition: 'INTERNAL_CONSUMPTION',
@@ -306,6 +308,17 @@ describe('ExecutionOrdersService — Evidence', () => {
         },
       ]);
       expect(result.meta).toMatchObject({ total: 1, page: 1, limit: 25 });
+      expect(queryBuilder.select).toHaveBeenCalledWith(
+        expect.arrayContaining(['usage.requirementKey']),
+      );
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'usage.execution_order_id = :executionOrderId',
+        { executionOrderId: ORDER_UUID },
+      );
+      expect(queryBuilder.where).not.toHaveBeenCalledWith(
+        expect.stringContaining('requirement_key'),
+        expect.anything(),
+      );
     });
   });
 

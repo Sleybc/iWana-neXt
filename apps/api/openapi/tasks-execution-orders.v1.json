@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "iWana Operations Execution Orders API",
-    "description": "Contrato v1.1.0 para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md. Changelog breaking v1.0.0 → v1.1.0 (2026-07-31): (1) RegisterItemUsageCommand: serial renombrado a serialNumber; custodySelection reemplazado por technicianCustodyId (autorizado R1.4 como excepción de custodia). (2) RegisterEvidenceCommand: expiresAt pasa a ser obligatorio. (3) ExecutionOrderDetail.template pasa de no-nullable a nullable. (4) ExecutionOrderEvidence.capturedAt pasa de opcional a obligatorio nullable. Adiciones no-breaking: ExecutionOrderEvidence.assetStatus opcional, ExecutionOrderCompletionView.completed/total opcionales, RedriveExecutionOrderEventCommand (autorizado redrive).",
-    "version": "1.1.0"
+    "description": "Contrato v1.5.0 aditivo para MOD11 — OT de ejecución. Fuentes: ADR-068 y docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md. v1.5.0 (2026-10-06): RegisterItemUsageCommand acepta requirementKey opcional para consumos nuevos; ExecutionOrderItemUsage responde requirementKey como string nullable explícito. Los consumos históricos permanecen null y no se atribuye procedencia retrospectiva.",
+    "version": "1.5.0"
   },
   "servers": [{ "url": "/api/v1" }],
   "tags": [{ "name": "tasks-execution-orders" }],
@@ -408,6 +408,7 @@
           "quantity": { "type": "integer", "minimum": 1 },
           "serialNumber": { "type": "string", "nullable": true, "maxLength": 160 },
           "technicianCustodyId": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "requirementKey": { "type": "string", "minLength": 1, "maxLength": 128 },
           "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },
           "finalDisposition": {
             "type": "string",
@@ -608,6 +609,7 @@
         "required": [
           "id",
           "itemId",
+          "requirementKey",
           "quantity",
           "action",
           "finalDisposition",
@@ -618,6 +620,7 @@
         "properties": {
           "id": { "type": "string", "format": "uuid" },
           "itemId": { "type": "string" },
+          "requirementKey": { "type": "string", "nullable": true, "maxLength": 128 },
           "quantity": { "type": "integer", "minimum": 1 },
           "serial": { "type": "string" },
           "action": { "type": "string", "enum": ["INSTALL", "CONSUME", "RETURN", "REMOVE"] },

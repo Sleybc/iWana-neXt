@@ -1,7 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ExecutionOrderItemAction, type InventoryDisposition } from '@iwana/shared';
+import {
+  ExecutionOrderItemAction,
+  type ExecutionOrderItemUsage,
+  type InventoryDisposition,
+} from '@iwana/shared';
 import { Badge, Button, Input, Select, SkeletonBlock } from '@iwana/ui';
 import { getSerializedAssetStatusLabel } from '@/components/inventory/inventory-labels';
 import {
@@ -319,6 +323,7 @@ export function ExecutionOrderMaterialAction({
     }
     const payload: RegisterExecutionOrderItemUsageDto = {
       itemId: selectedItemId,
+      requirementKey: requirement.key,
       technicianCustodyId: custodyId,
       quantity,
       action: itemAction,
@@ -455,11 +460,13 @@ export function ExecutionOrderMaterialAction({
 
 /** Historial de consumos bajo el requisito; la disponibilidad en custodia no se confunde con consumo. */
 export function ExecutionOrderMaterialHistory({
-  order,
   requirement,
   context,
 }: ExecutionOrderHistorySlotProps<'MATERIAL'>) {
-  const { itemUsage, itemUsageMeta, isLoadingMoreItemUsage, onLoadMoreItemUsage } = context;
+  const { itemUsage, itemUsageMeta } = context;
+  const requirementUsages = itemUsage.filter((usage) => usage.requirementKey === requirement.key);
+  const usageHistoryComplete =
+    itemUsageMeta !== undefined && itemUsageMeta.hasMore !== true && context.itemUsageError == null;
   return (
     <section
       aria-labelledby={`eo-materials-heading-${requirement.key}-history`}
@@ -472,70 +479,170 @@ export function ExecutionOrderMaterialHistory({
         Equipos y materiales
       </h3>
       <div className="mt-3 space-y-2">
-        {itemUsageMeta && itemUsageMeta.total > 0 ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
-            {collectionCountLabel(
-              itemUsage.length,
-              itemUsageMeta.total,
-              noun(itemUsageMeta.total, 'consumo', 'consumos'),
-            )}
-          </p>
-        ) : null}
-        {itemUsage.length === 0 ? (
+        {requirementUsages.length > 0 ? (
+          <MaterialUsageRecords usages={requirementUsages} />
+        ) : usageHistoryComplete ? (
           <PortalEmptyState
             title="Todavía no hay consumos registrados para este requisito"
             description="Los equipos y materiales registrados aparecerán aquí."
           />
-        ) : (
-          itemUsage.map((usage) => (
-            <article
-              key={usage.id}
-              className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">
-                    {usage.serial ?? 'Material registrado'}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {[
-                      ITEM_ACTION_LABELS[usage.action] ?? 'Movimiento registrado',
-                      `Cantidad: ${usage.quantity}`,
-                      usage.finalDisposition ? DISPOSITION_LABELS[usage.finalDisposition] : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    usage.movementStatus === 'CONFIRMED'
-                      ? 'success'
-                      : usage.movementStatus === 'REJECTED'
-                        ? 'error'
-                        : 'warning'
-                  }
-                >
-                  {MOVEMENT_STATUS_LABELS[usage.movementStatus] ?? 'Pendiente de conciliación'}
-                </Badge>
-              </div>
-            </article>
-          ))
-        )}
-        <PortalTablePagination
-          hasMore={itemUsageMeta?.hasMore === true}
-          onLoadMore={() => void onLoadMoreItemUsage()}
-          loading={isLoadingMoreItemUsage}
-          resourceLabel="consumos"
-          shown={itemUsage.length}
-          total={itemUsageMeta?.total}
-        />
+        ) : null}
       </div>
+    </section>
+  );
+}
+
+/** Historial que no tiene clave de requisito: se presenta fuera de cualquier fila. */
+export function ExecutionOrderMaterialUnattributedHistory({
+  context,
+}: {
+  context: ExecutionOrderHistorySlotProps<'MATERIAL'>['context'];
+}) {
+  const unattributedUsages = context.itemUsage.filter((usage) => usage.requirementKey == null);
+  if (unattributedUsages.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby="eo-materials-unattributed-heading"
+      aria-describedby="eo-materials-unattributed-description"
+      className="space-y-3"
+    >
+      <h3
+        id="eo-materials-unattributed-heading"
+        className="text-sm font-semibold text-gray-900 dark:text-white"
+      >
+        Consumos sin requisito asociado
+      </h3>
+      <p
+        id="eo-materials-unattributed-description"
+        className="text-sm text-gray-500 dark:text-gray-400"
+      >
+        Estos registros no indican a qué requisito corresponden.
+      </p>
+      <MaterialUsageRecords usages={unattributedUsages} />
+    </section>
+  );
+}
+
+/** Conteo y paginador globales: itemUsage es una colección única por OT. */
+export function ExecutionOrderMaterialHistoryFooter({
+  order,
+  context,
+}: {
+  order: ExecutionOrderHistorySlotProps<'MATERIAL'>['order'];
+  context: ExecutionOrderHistorySlotProps<'MATERIAL'>['context'];
+}) {
+  const {
+    itemUsage,
+    itemUsageMeta,
+    itemUsageError,
+    isLoadingMoreItemUsage,
+    onLoadMoreItemUsage,
+    onRetryItemUsage,
+  } = context;
+  const hasCount = itemUsageMeta !== undefined && itemUsageMeta.total > 0;
+  const hasMore = itemUsageMeta?.hasMore === true;
+  const usageCountLabel = hasCount
+    ? materialUsageCountLabel(itemUsage.length, itemUsageMeta.total, itemUsageMeta.totalIsEstimate)
+    : null;
+  if (
+    !hasCount &&
+    !hasMore &&
+    itemUsageError == null &&
+    order.inventoryReconciliation === 'NOT_REQUIRED'
+  ) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-busy={isLoadingMoreItemUsage}
+      className="space-y-2 border-t border-gray-100 pt-3 dark:border-dark-border"
+    >
+      {usageCountLabel ? (
+        <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
+          {usageCountLabel}
+        </p>
+      ) : null}
+      {itemUsageError ? (
+        <PortalAlert
+          variant="error"
+          live="assertive"
+          title="No pudimos consultar los consumos"
+          description={itemUsageError}
+          action={
+            onRetryItemUsage ? (
+              <Button
+                className="min-h-11"
+                disabled={isLoadingMoreItemUsage}
+                loading={isLoadingMoreItemUsage}
+                onClick={() => void onRetryItemUsage()}
+              >
+                Reintentar
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
+      <PortalTablePagination
+        hasMore={itemUsageError == null && hasMore}
+        onLoadMore={() => void onLoadMoreItemUsage()}
+        loading={isLoadingMoreItemUsage}
+        resourceLabel="consumos"
+      />
       {order.inventoryReconciliation !== 'NOT_REQUIRED' && (
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           {DISPOSITION_LABELS[order.inventoryReconciliation] ?? 'Estado de conciliación'}
         </p>
       )}
-    </section>
+    </div>
   );
+}
+
+function MaterialUsageRecords({ usages }: { usages: ExecutionOrderItemUsage[] }) {
+  return (
+    <ul className="space-y-2" aria-label="Registros de consumo">
+      {usages.map((usage) => (
+        <li key={usage.id}>
+          <article className="rounded-xl border border-gray-200 p-3 dark:border-dark-border">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  {usage.serial ?? 'Material registrado'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {[
+                    ITEM_ACTION_LABELS[usage.action] ?? 'Movimiento registrado',
+                    `Cantidad: ${usage.quantity}`,
+                    usage.finalDisposition ? DISPOSITION_LABELS[usage.finalDisposition] : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              </div>
+              <Badge
+                variant={
+                  usage.movementStatus === 'CONFIRMED'
+                    ? 'success'
+                    : usage.movementStatus === 'REJECTED'
+                      ? 'error'
+                      : 'warning'
+                }
+              >
+                {MOVEMENT_STATUS_LABELS[usage.movementStatus] ?? 'Pendiente de conciliación'}
+              </Badge>
+            </div>
+          </article>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function materialUsageCountLabel(visible: number, total: number, isEstimate: boolean): string {
+  const usageNoun = noun(total, 'consumo', 'consumos');
+  if (isEstimate) {
+    return `Mostrando ${visible} de más de ${total.toLocaleString('es-CO')} ${usageNoun}`;
+  }
+  return collectionCountLabel(visible, total, usageNoun);
 }

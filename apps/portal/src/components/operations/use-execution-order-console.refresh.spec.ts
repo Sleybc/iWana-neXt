@@ -290,6 +290,62 @@ describe('consola de OT — refresco selectivo tras cada mutación (R4, CA-12)',
       expect(slot.openAction).not.toHaveBeenCalled();
     });
 
+    it('un fallo inicial de itemUsage se conserva como error local y reintenta solo esa colección', async () => {
+      jest.mocked(api.listItemUsage).mockRejectedValueOnce(new Error('500'));
+      const view = renderHook(() => useExecutionOrderConsole());
+      await act(async () => view.result.current.openExecutionOrder('eo-1'));
+
+      expect(view.result.current.executionOrderItemUsage).toEqual([]);
+      expect(view.result.current.executionOrderItemUsageError).not.toBeNull();
+      expect(view.result.current.executionOrderError).toBeNull();
+
+      jest.mocked(api.get).mockClear();
+      jest.mocked(api.listActivities).mockClear();
+      jest.mocked(api.listItemUsage).mockClear();
+      jest.mocked(api.listEvidence).mockClear();
+      await act(async () => view.result.current.retryExecutionOrderItemUsage());
+
+      expect(readCounts()).toEqual({ detail: 0, activities: 0, itemUsage: 1, evidence: 0 });
+      expect(view.result.current.executionOrderItemUsageError).toBeNull();
+    });
+
+    it('un fallo al cargar una página conserva filas y metadata, y el reintento recarga solo itemUsage', async () => {
+      jest.mocked(api.listItemUsage).mockImplementation(async (_id, params) => {
+        const page = params?.page ?? 1;
+        return {
+          data: [`usage-${page}`],
+          meta: emptyPageListMeta({ page, limit: 1, total: 21, hasMore: true }),
+        } as never;
+      });
+      const view = renderHook(() => useExecutionOrderConsole());
+      await act(async () => view.result.current.openExecutionOrder('eo-1'));
+      const previousRows = view.result.current.executionOrderItemUsage;
+      const previousMeta = view.result.current.executionOrderItemUsageMeta;
+      expect(previousRows).toHaveLength(20);
+      expect(previousMeta.hasMore).toBe(true);
+
+      jest.mocked(api.listItemUsage).mockRejectedValueOnce(new Error('500'));
+      await act(async () => view.result.current.loadMoreExecutionOrderItemUsage());
+
+      expect(view.result.current.executionOrderItemUsage).toEqual(previousRows);
+      expect(view.result.current.executionOrderItemUsageMeta).toEqual(previousMeta);
+      expect(view.result.current.executionOrderItemUsageError).not.toBeNull();
+      expect(view.result.current.executionOrderError).toBeNull();
+
+      jest.mocked(api.get).mockClear();
+      jest.mocked(api.listActivities).mockClear();
+      jest.mocked(api.listItemUsage).mockClear();
+      jest.mocked(api.listEvidence).mockClear();
+      jest
+        .mocked(api.listItemUsage)
+        .mockImplementationOnce(async () => pageOf(['usage-recovered']) as never);
+      await act(async () => view.result.current.retryExecutionOrderItemUsage());
+
+      expect(readCounts()).toEqual({ detail: 0, activities: 0, itemUsage: 1, evidence: 0 });
+      expect(view.result.current.executionOrderItemUsage).toEqual(['usage-recovered']);
+      expect(view.result.current.executionOrderItemUsageError).toBeNull();
+    });
+
     it('registrar una actividad con la hoja de consumo abierta no relee la custodia', async () => {
       const view = await mountOpen();
       act(() => view.result.current.openRequirementAction(consumptionAction));
@@ -369,6 +425,35 @@ describe('consola de OT — refresco selectivo tras cada mutación (R4, CA-12)',
       );
       expect(view.result.current.isLoadingExecutionOrder).toBe(false);
       expect(view.result.current.isSubmittingExecutionOrder).toBe(false);
+    });
+
+    it('si falla el refetch de consumos tras registrar, conserva las filas y usa el reintento local', async () => {
+      server.itemUsage = ['consumo-anterior'];
+      const view = await mountOpen();
+      const previousRows = view.result.current.executionOrderItemUsage;
+      jest.mocked(api.listItemUsage).mockRejectedValueOnce(new Error('500'));
+
+      await act(async () =>
+        view.result.current.handleRegisterExecutionOrderItemUsage({ itemId: 'item-1' } as never),
+      );
+
+      expect(view.result.current.executionOrderItemUsage).toEqual(previousRows);
+      expect(view.result.current.executionOrderItemUsageError).not.toBeNull();
+      expect(view.result.current.executionOrderError).toBeNull();
+      expect(view.result.current.executionOrderSuccess).toBe('El material fue registrado.');
+
+      jest.mocked(api.get).mockClear();
+      jest.mocked(api.listActivities).mockClear();
+      jest.mocked(api.listItemUsage).mockClear();
+      jest.mocked(api.listEvidence).mockClear();
+      jest
+        .mocked(api.listItemUsage)
+        .mockImplementationOnce(async () => pageOf(['consumo-recuperado']) as never);
+      await act(async () => view.result.current.retryExecutionOrderItemUsage());
+
+      expect(readCounts()).toEqual({ detail: 0, activities: 0, itemUsage: 1, evidence: 0 });
+      expect(view.result.current.executionOrderItemUsage).toEqual(['consumo-recuperado']);
+      expect(view.result.current.executionOrderItemUsageError).toBeNull();
     });
 
     it('si falla el detalle, la orden y el historial de evidencias previos no se vacían', async () => {

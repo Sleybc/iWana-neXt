@@ -286,6 +286,36 @@ describe('ClosureGateEvaluatorService', () => {
       expect(result.passed).toBe(true);
     });
 
+    it('preserves the category fallback for legacy usages without requirementKey', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'cpe-equipo',
+        label: 'CPE/Equipo',
+        kind: 'MATERIAL',
+        itemCategory: 'CPE',
+      } as unknown as TemplateRequirement);
+      const result = evaluator.evaluate([req], {
+        itemUsages: [{ itemId: 'legacy-item', itemCategory: 'CPE' }],
+      });
+
+      expect(result.passed).toBe(true);
+    });
+
+    it('requires an exact requirementKey match when a usage has persisted provenance', () => {
+      const req: TemplateRequirement = makeReq({
+        key: 'cpe-equipo',
+        label: 'CPE/Equipo',
+        kind: 'MATERIAL',
+        itemCategory: 'CPE',
+      } as unknown as TemplateRequirement);
+      const result = evaluator.evaluate([req], {
+        itemUsages: [
+          { itemId: 'other-requirement-item', itemCategory: 'CPE', requirementKey: 'cpe-ont' },
+        ],
+      });
+
+      expect(result.passed).toBe(false);
+    });
+
     it('should fail when the consumed item category does not match the requirement', () => {
       const req: TemplateRequirement = makeReq({
         key: 'cpe-equipo',

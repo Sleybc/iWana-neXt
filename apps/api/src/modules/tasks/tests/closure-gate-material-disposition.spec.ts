@@ -218,6 +218,41 @@ const runGetCompletionWithDisposition = async (disposition?: InventoryDispositio
   return { completion, selectArg };
 };
 
+const runCompletionWithUsageProvenance = async (
+  requirements: TemplateRequirement[],
+  usageRow: { itemId: string; requirementKey: string | null },
+) => {
+  const inventoryService = {
+    getItemCategoryReceipt: jest.fn().mockResolvedValue({ categoryCode: 'CPE' }),
+  };
+  const service = new ExecutionOrdersService(
+    {} as DataSource,
+    inventoryService as never,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    new ClosureGateEvaluatorService(),
+  );
+  const itemUsagesQb = buildCompletionQueryBuilder([usageRow]);
+  const manager = {
+    findOne: jest.fn().mockResolvedValue({
+      id: 'eo-001',
+      tenantId: 'tenant-001',
+      templateRequirementsSnapshot: requirements,
+    }),
+    createQueryBuilder: jest
+      .fn()
+      .mockReturnValueOnce(buildCompletionQueryBuilder([]))
+      .mockReturnValueOnce(buildCompletionQueryBuilder([]))
+      .mockReturnValueOnce(itemUsagesQb),
+  };
+  mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+  const completion = await service.getCompletion('eo-001');
+  const selectArg = itemUsagesQb.select.mock.calls[0]?.[0] as string[];
+  return { completion, selectArg };
+};
+
 describe('transporte de la disposición en getCompletion (CA-04, trampa §3)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -229,6 +264,33 @@ describe('transporte de la disposición en getCompletion (CA-04, trampa §3)', (
     );
 
     expect(selectArg).toContain('usage.finalDisposition');
+  });
+
+  it('proyecta requirementKey para que consumos nuevos solo completen su requisito exacto', async () => {
+    const requirements: TemplateRequirement[] = [
+      { ...materialReqLegacy(), key: 'material-ont-a' },
+      { ...materialReqLegacy(), key: 'material-ont-b' },
+    ];
+    const { completion, selectArg } = await runCompletionWithUsageProvenance(requirements, {
+      itemId: 'item-001',
+      requirementKey: 'material-ont-a',
+    });
+
+    expect(selectArg).toContain('usage.requirementKey');
+    expect(completion).toMatchObject({ total: 2, completed: 1, progress: 50 });
+  });
+
+  it('mapea provenance nula a ausencia y mantiene el fallback de consumos legacy', async () => {
+    const requirements: TemplateRequirement[] = [
+      { ...materialReqLegacy(), key: 'material-ont-a' },
+      { ...materialReqLegacy(), key: 'material-ont-b' },
+    ];
+    const { completion } = await runCompletionWithUsageProvenance(requirements, {
+      itemId: 'legacy-item',
+      requirementKey: null,
+    });
+
+    expect(completion).toMatchObject({ total: 2, completed: 2, progress: 100 });
   });
 
   it('CA-02 vía progreso: consumo instalado satisface el requisito', async () => {

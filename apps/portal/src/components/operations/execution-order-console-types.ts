@@ -38,6 +38,10 @@ export interface ExecutionOrderDrawerProps {
   activitiesMeta?: ListMeta;
   itemUsage: ExecutionOrderItemUsage[];
   itemUsageMeta?: ListMeta;
+  /** Error de lectura de la colección global de consumos; no es error de mutación. */
+  itemUsageError?: string | null;
+  /** Reintenta solo la lectura global paginada de consumos de esta OT. */
+  onRetryItemUsage?: () => void | Promise<void>;
   evidence?: ExecutionOrderEvidence[] | null;
   evidenceMeta?: ListMeta;
   evidenceState?: 'loading' | 'available' | 'unavailable';

@@ -15,7 +15,7 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  * - ADR-068: Sincronización de OT de ejecución y proyecciones operativas.
  * - Spec API: docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md
  *
- * Este archivo es la fuente de verdad del contrato v1.2. Los DTOs del controlador
+ * Este archivo es la fuente de verdad del contrato v1.5. Los DTOs del controlador
  * y el OpenAPI máquina-legible se derivan de aquí. No modificar sin versionar.
  *
  * Historial:
@@ -38,6 +38,10 @@ import type { ExecutionOrderRequirementStatus } from './execution-orders-complet
  *   sin estado terminal nuevo. Nacen `ExecutionOrderCancelledV1` y
  *   `ExecutionOrderAnnulledV1` (hechos de dominio; la cancelación ya no es
  *   silenciosa). Ningún campo existente cambia ni pasa a requerido.
+ * - v1.5 (2026-10-06, MOD11 historial MATERIAL): `RegisterItemUsageCommand`
+ *   acepta `requirementKey` opcional y `ExecutionOrderItemUsage` devuelve
+ *   `requirementKey: string | null`. Los registros anteriores quedan nulos;
+ *   no se les atribuye una clave retroactivamente.
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -256,6 +260,8 @@ export interface UpdateActivityCommand {
 export interface RegisterItemUsageCommand {
   itemId: string;
   quantity: number;
+  /** Requisito MATERIAL del snapshot de la OT desde el que se registra. */
+  requirementKey?: string;
   serialNumber?: string | null;
   action: ExecutionOrderItemAction;
   finalDisposition: InventoryDisposition;
@@ -340,6 +346,8 @@ export interface ExecutionOrderActivity {
 export interface ExecutionOrderItemUsage {
   id: string;
   itemId: string;
+  /** `null` identifica registros sin procedencia de requisito almacenada. */
+  requirementKey: string | null;
   quantity: number;
   serial?: string;
   action: ExecutionOrderItemAction;

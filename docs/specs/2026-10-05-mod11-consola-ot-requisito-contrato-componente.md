@@ -1,21 +1,21 @@
 # Contrato de componente — Checklist de requisitos de OT
 
-**Versión:** 1.0  
-**Fecha:** 2026-10-05  
-**Estado:** **Aprobado — G2 cerrado por AI-EM-ARCH el 2026-10-05**. Contrato congelado para la Ola 2b  
+**Versión:** 1.1
+**Fecha:** 2026-10-06
+**Estado:** La v1.0 conserva su aprobación G2 de AI-EM-ARCH del 2026-10-05. Esta adenda v1.1 fue producida por AI-DS-OWNER y está **pendiente de verificación consolidada**; no ha sido aprobada por AI-EM-ARCH.
 **Responsable:** AI-DS-OWNER  
 **Consumidores:** AI-FE-PLATFORM (R2–R4, visual de E4), AI-SR-QA (criterios de validación)
 
 ## 1. Fuentes y alcance
 
-Este contrato define API visual, composición, tokens y estados de `RequirementChecklist` y `RequirementActionSheet` para el expediente de OT. La fuente de flujo y copy es la [spec UX MOD11 v1.1](2026-10-05-mod11-consola-ot-requisito-ux.md), en especial §§3.1–3.2, 4, 5, 6, 7, 9 y 11.1. La decisión para la columna de ventana se integra en el [contrato de tablas operativas v1.2](2026-09-13-mod11-operaciones-tablas-operativas-contrato-componente.md), §7.2.
+Este contrato define API visual, composición, tokens y estados de `RequirementChecklist` y `RequirementActionSheet` para el expediente de OT. La fuente de flujo y copy es la [spec UX MOD11 v1.3](2026-10-05-mod11-consola-ot-requisito-ux.md), en especial §§3.1–3.2, 4, 5, 6, 7, 9, 11.1 y las adendas §§14–15. La decisión para la columna de ventana se integra en el [contrato de tablas operativas v1.2](2026-09-13-mod11-operaciones-tablas-operativas-contrato-componente.md), §7.2. La secuencia y los gates constan en el [plan MOD11 v1.2](../plans/2026-09-14-mod11-consola-ot-remediacion.md).
 
-Fuentes de datos congeladas, sin cambios en R1:
+Fuentes de datos consumidas:
 
-- `packages/shared/src/contracts/operations/execution-orders.ts` v1.4: snapshot de requisitos, `completion.progress`, `completion.requirements`, `allowedActions` y `schedule.window` nulable.
+- `packages/shared/src/contracts/operations/execution-orders.ts` v1.5: snapshot de requisitos, `completion.progress`, `completion.requirements`, `allowedActions`, `schedule.window` nulable y `ExecutionOrderItemUsage.requirementKey: string | null`.
 - `packages/shared/src/contracts/operations/execution-orders-completion.ts` v1: estado evaluado `{ requirementId, label, kind, satisfied, reason? }`.
 
-No define el flujo de producto, no implementa componentes ni agrega endpoints, campos de datos, tokens de marca o dependencias. El contrato describe composites propios de la feature Operations; las primitivas compartidas se consumen desde `@iwana/ui`.
+`listItemUsage` pagina el historial global de una OT y no filtra por `requirementKey`. Por ello el pie de historial refleja una sola vez el conteo y la paginación globales; este contrato no deriva un total ni `hasMore` para un subgrupo. La UX v1.3 §14.2 está alineada con ese alcance. No define el flujo de producto, no implementa componentes ni agrega endpoints, campos de datos, tokens de marca o dependencias. El contrato describe composites propios de la feature Operations; las primitivas compartidas se consumen desde `@iwana/ui`.
 
 ## 2. `RequirementChecklist`
 
@@ -28,7 +28,9 @@ Anatomía:
 1. Encabezado de sección con título «Requisitos» y, si el padre provee `completion.progress`, el indicador agregado opcional.
 2. Lista ordenada de filas, una por requisito del snapshot y en el orden publicado.
 3. En cada fila: etiqueta, «Obligatorio» u «Opcional», estado con texto, razón cuando existe y acción contextual solo si el padre la habilita.
-4. Historial correspondiente debajo de la fila que lo originó; vacíos y registros conservan el copy y forma de la spec UX.
+4. Historial de consumo con `requirementKey` coincidente exactamente, debajo de la fila que lo originó; registros con clave nula o ausente nunca aparecen en una fila de requisito.
+5. Si hay consumos sin clave, un grupo neutral único al final, después de las filas, con el título y la descripción definidos en UX §14.1. No es una fila del checklist.
+6. Un único pie global de historial después de las filas y del grupo neutral; presenta la paginación del conjunto completo de consumos de la OT, sin repetir conteos ni controles dentro de cada fila o del subgrupo neutral.
 
 El componente no recalcula progreso ni cumplimiento, no adivina requisitos, no reorganiza la lista y no decide acceso por rol, responsable o tipo de usuario. `SectionAccordion` no se usa: el índice mantiene visibles sus elementos y no recrea las seis secciones colapsables que R0 retiró.
 
@@ -47,7 +49,7 @@ interface RequirementChecklistItem {
   state: RequirementVisualState;
   reason?: string;              // estado publicado; se conserva mientras la fila siga pendiente
   action?: RequirementActionDescriptor; // descriptor ya autorizado por el contenedor
-  history?: ReactNode;          // registros ya asociados por clave exacta del requisito
+  history?: ReactNode;          // solo registros asociados por requirementKey exacta
 }
 
 interface RequirementChecklistProps {
@@ -58,11 +60,17 @@ interface RequirementChecklistProps {
   refreshing?: boolean;
   offline?: boolean;
   error?: { message: string; onRetry: () => void };
+  unattributedConsumptionHistory?: ReactNode; // grupo único para requirementKey null/ausente; se omite si no hay registros
+  historyFooter?: ReactNode;     // conteo y paginación únicos del historial global por OT
   onSelectRequirement?: (requirementKey: string) => void;
 }
 ```
 
-`action` se omite si no aplica al momento o si `allowedActions` no autoriza una operación. El componente no recibe identidad ni rol. `onSelectRequirement` solo navega dentro del expediente; no concede acción ni altera datos. Historial y acciones no se vinculan por texto de etiqueta: el contenedor debe asociarlos mediante la clave exacta del snapshot.
+`action` se omite si no aplica al momento o si `allowedActions` no autoriza una operación. El componente no recibe identidad ni rol. `onSelectRequirement` solo navega dentro del expediente; no concede acción ni altera datos. El contenedor coloca cada consumo con clave bajo la única fila cuya clave de snapshot coincida exactamente; nunca lo asocia por etiqueta, categoría, acción, disposición u orden temporal. Los consumos con clave nula o ausente se colocan una sola vez en `unattributedConsumptionHistory`, fuera de todas las filas. El slot se omite cuando la consulta termina y no hay registros sin clave. `historyFooter` aparece una sola vez para la colección global paginada y no comunica un total ni `hasMore` exclusivo del grupo neutral.
+
+El grupo neutral usa un encabezado de sección identificable, su descripción asociada y una lista semántica de lectura (`ul`/`li`). No recibe foco automáticamente ni se comporta como acción. Durante la carga inicial se presenta el skeleton del historial con `aria-busy`; no se muestra un vacío antes de completar la consulta. El error de lectura se comunica junto al historial con `Alert` y «Reintentar», preservando los registros válidos y sustituyendo el vacío. El copy y los estados siguen UX §§5, 9 y 14. El estado vacío por requisito solo se muestra cuando se ha recorrido la paginación global completa y no hay registros con clave exacta para esa fila; los registros sin clave no llenan ni ocultan ese vacío.
+
+El pie conserva una única región de estado accesible que anuncia el progreso de carga del conjunto global. «Cargar más» es una acción y se presenta como botón nativo (`type="button"`), no como enlace: funciona con Enter y Espacio, tiene nombre accesible, foco visible y target de al menos 44 px; durante la petición queda `disabled` y comunica la carga. Solo aparece cuando la metadata global indica otra página. Las filas se deduplican por identidad y mantienen el orden estable del servidor. No se sintetizan metadata ni contadores por subgrupo.
 
 ### 2.3 Mapeo de datos y estados
 
@@ -156,10 +164,10 @@ Los composites son específicos del dominio: cruzan snapshot inmutable, estado e
 | Focus | Indicador visible y orden de foco; estado también se anuncia | Foco gestionado al abrir y retorno al disparador al cancelar/cerrar |
 | Active | Acción de navegación/expansión conserva respuesta de control existente | Botón/selector usa estado active existente |
 | Disabled | No se representa una acción no permitida como botón deshabilitado: se omite. Bloqueo temporal por envío/offline sí usa `disabled` real | Envío en curso/offline bloquea escritura; se conserva razón visible según copy UX |
-| Loading | Skeleton con forma de encabezado/filas; `aria-busy` en refresco | Skeleton/formulario pendiente; acciones no duplican envíos |
-| Skeleton | `SkeletonBlock` mantiene jerarquía compacta | `SkeletonBlock` para la forma del formulario, sin spinner como contenido principal |
-| Empty | Copy de vacíos de §5 UX para historial; no se fabrican filas de snapshot | No aplica como formulario abierto sin descriptor; errores/vacíos de selector conservan copy UX |
-| Error | `Alert` próximo al origen, reintento y último dato válido preservado; no co-render vacío y error | Error junto al requisito; error de firma conserva captura para reintentar o cancelar |
+| Loading | Skeleton con forma de encabezado/filas e historial; `aria-busy` en la región de lectura. No expone el grupo neutral vacío durante carga inicial | Skeleton/formulario pendiente; acciones no duplican envíos |
+| Skeleton | `SkeletonBlock` mantiene jerarquía compacta; el historial conserva forma de lista | `SkeletonBlock` para la forma del formulario, sin spinner como contenido principal |
+| Empty | Copy de §5 UX por requisito después de completar la paginación global; se omite el grupo neutral si no hay filas sin clave. No se fabrican filas de snapshot | No aplica como formulario abierto sin descriptor; errores/vacíos de selector conservan copy UX |
+| Error | `Alert` junto al historial global, reintento accesible y último dato válido preservado; el error sustituye al vacío. No se duplican errores, conteos ni paginadores por requisito | Error junto al requisito; error de firma conserva captura para reintentar o cancelar |
 | Success | Estado textual asociado a la evaluación actualizada; no optimizar el cumplimiento localmente | `FormStatus` anuncia resultado y retorno al requisito; la fila cambia con refetch/evaluación del servidor |
 | Readonly | Muestra estado, razón e historial; sin controles de escritura | No se monta; en órdenes terminales el expediente permanece en lectura |
 | Offline | Copy UX «Sin conexión; vuelve a intentar cuando recuperes la red.» y escrituras bloqueadas; sin borrador local | Botones de escritura deshabilitados; no se persiste ni promete recuperar borrador offline |
@@ -178,12 +186,19 @@ Antes de implementar la captura, AI-FE-PLATFORM debe verificar contra el endpoin
 
 Deuda de producto recibida de R0: no existe en v1 una alternativa de firma para quien no puede usar puntero. No se sustituye con nombre escrito ni se improvisa aceptación electrónica; cualquier alternativa requiere revisión posterior y fuente jurídica oficial. También permanece el «NO» en mayúsculas de la etiqueta congelada del snapshot hasta publicar una nueva versión de plantilla. No se selecciona librería de firma.
 
-No hay `[BLOQUEO]` ni `[DESEMPATE]` abierto. El cambio a tablas v1.2 es carril rápido de UI: no altera alcance, contrato de datos, boundary ni tokens de marca. Según protocolo §3bis, el orquestador debe notificar la versión congelada a AI-FE-PLATFORM y AI-SR-QA antes de que la consuman en implementación/validación.
+Esta adenda versiona el contrato de componente después de su congelación inicial. No añade tokens de marca, dependencias, primitives ni cambios de stack. UX §14.2 v1.3 y el contrato API v1.5 comparten la paginación global por OT. Según protocolo §3bis, el orquestador debe notificar la versión 1.1 a AI-FE-PLATFORM y AI-SR-QA antes de que la consuman como contrato verificado de implementación/validación.
 
 ## 8. Fuentes visuales y de accesibilidad
 
 - Tokens vigentes: `packages/ui/src/styles/globals.css`; manual y firma: `docs/specs/2026-07-12-firma-iwana-diseno-visual-design.md` y `docs/identity/`.
 - Primitives revisadas: `packages/ui/src/components/` y exportaciones de `packages/ui/src/index.ts`.
-- UX y copy normativos: [MOD11 consola OT v1.1](2026-10-05-mod11-consola-ot-requisito-ux.md), incluyendo A2 aplicada por R0.
+- UX y copy normativos: [MOD11 consola OT v1.3](2026-10-05-mod11-consola-ot-requisito-ux.md), incluyendo A2 y las adendas §§14–15 de AI-PROD-UX.
 - Firma y teclado: [W3C Understanding SC 2.1.1](https://www.w3.org/WAI/WCAG22/Understanding/keyboard).
+
+## Registro de cambios
+
+| Versión | Fecha | Cambio |
+| --- | --- | --- |
+| 1.0 | 2026-10-05 | Contrato inicial de `RequirementChecklist` y `RequirementActionSheet`, producido por AI-DS-OWNER y aprobado en G2. |
+| 1.1 | 2026-10-06 | Adenda producida por AI-DS-OWNER: asocia historial solo por clave exacta, añade grupo neutral para consumos sin clave y un pie de paginación global única; especifica semántica, carga, vacío, error, reintento y teclado. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH. |
 

@@ -17,6 +17,10 @@ export interface RequirementChecklistItem extends EvaluatedItem {
 }
 export interface RequirementChecklistProps {
   items: readonly RequirementChecklistItem[];
+  /** Historial sin clave, presentado una sola vez fuera de las filas del snapshot. */
+  unattributedConsumptionHistory?: ReactNode;
+  /** Contador y paginación de historial con alcance global a la OT. */
+  historyFooter?: ReactNode;
   progress?: number;
   mode: 'readonly' | 'action';
   loading?: boolean;
@@ -28,6 +32,8 @@ export interface RequirementChecklistProps {
 }
 export function RequirementChecklist({
   items,
+  unattributedConsumptionHistory,
+  historyFooter,
   progress,
   mode,
   loading,
@@ -137,6 +143,8 @@ export function RequirementChecklist({
               );
             })}
           </ul>
+          {unattributedConsumptionHistory}
+          {historyFooter}
         </>
       )}
     </section>

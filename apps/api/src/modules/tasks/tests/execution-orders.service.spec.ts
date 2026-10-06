@@ -873,6 +873,115 @@ describe('ExecutionOrdersService', () => {
     expect(inventoryService.consumeTechnicianCustody).not.toHaveBeenCalled();
     expect(result.itemId).toBe('item-001');
     expect(result.stockMovementId).toBeNull();
+    expect(result.requirementKey).toBeNull();
+  });
+
+  it('persists requirementKey only when it matches a MATERIAL snapshot and catalog category', async () => {
+    const requirementKey = 'material-ont';
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+        assignedTechnicianId: actor.sub,
+        assignedCrewId: null,
+        templateRequirementsSnapshot: [
+          {
+            key: requirementKey,
+            label: 'ONT requerida',
+            required: true,
+            kind: 'MATERIAL',
+            itemCategory: 'CPE',
+          },
+        ],
+      }),
+      save: jest.fn().mockImplementation(async (_entity, payload) => payload),
+      create: jest.fn((_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      }),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    const result = await service.registerItemUsage(
+      'eo-001',
+      {
+        itemId: 'item-001',
+        requirementKey,
+        technicianCustodyId: actor.sub,
+        quantity: 1,
+        action: ExecutionOrderItemAction.INSTALL,
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+      },
+      actor,
+    );
+
+    expect(inventoryService.getItemCategoryReceipt).toHaveBeenCalledWith('item-001');
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ itemId: 'item-001', requirementKey }),
+    );
+    expect(result.requirementKey).toBe(requirementKey);
+  });
+
+  it('rechaza una requirementKey cuyo ítem no coincide con la categoría del snapshot', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'eo-001',
+        tenantId: 'tenant-001',
+        status: ExecutionOrderStatus.IN_PROGRESS,
+        version: 1,
+        assignedTechnicianId: actor.sub,
+        assignedCrewId: null,
+        templateRequirementsSnapshot: [
+          {
+            key: 'material-ont',
+            label: 'ONT requerida',
+            required: true,
+            kind: 'MATERIAL',
+            itemCategory: 'CPE',
+          },
+        ],
+      }),
+      save: jest.fn(),
+      create: jest.fn((_entity, payload) => payload),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
+      }),
+    };
+    inventoryService.getItemCategoryReceipt.mockResolvedValue({
+      itemId: 'item-001',
+      categoryId: 'category-network',
+      categoryCode: 'NETWORKING',
+    });
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    await expect(
+      service.registerItemUsage(
+        'eo-001',
+        {
+          itemId: 'item-001',
+          requirementKey: 'material-ont',
+          technicianCustodyId: actor.sub,
+          quantity: 1,
+          action: ExecutionOrderItemAction.INSTALL,
+          finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+        },
+        actor,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'MATERIAL_REQUIREMENT_CATEGORY_MISMATCH' }),
+    });
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('rejects close without customer signature when installed at customer usage exists', async () => {

@@ -192,6 +192,7 @@ function itemUsageFactory(): ExecutionOrderItemUsage[] {
     {
       id: 'iu-001',
       itemId: 'item-001',
+      requirementKey: null,
       quantity: 1,
       serial: 'ONT-2026-001',
       action: ExecutionOrderItemAction.INSTALL,
@@ -753,6 +754,7 @@ describe('ExecutionOrderDrawer', () => {
 
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
         itemId: 'item-001',
+        requirementKey: 'req-ont-serial',
         technicianCustodyId: 'tech-001',
         quantity: 1,
         serialNumber: 'ONT-2026-001',
@@ -1048,6 +1050,7 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer({
         order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
         itemUsage: [],
+        itemUsageMeta: custodyMetaFactory({ total: 0 }),
       });
       expect(
         screen.getByText(/Todavía no hay consumos registrados para este requisito/),

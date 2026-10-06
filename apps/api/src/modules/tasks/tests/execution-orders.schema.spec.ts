@@ -60,6 +60,27 @@ describe('ExecutionOrders Schema Validation (P1-1)', () => {
       expect(RegisterExecutionOrderItemUsageSchema.parse(validPayload)).toEqual(validPayload);
     });
 
+    it('acepta una requirementKey opcional para identificar el requisito MATERIAL de origen', () => {
+      expect(
+        RegisterExecutionOrderItemUsageSchema.parse({
+          ...validPayload,
+          requirementKey: ' installed-equipment ',
+        }),
+      ).toEqual({ ...validPayload, requirementKey: 'installed-equipment' });
+    });
+
+    it('rechaza una requirementKey vacía cuando se proporciona', () => {
+      expect(() =>
+        RegisterExecutionOrderItemUsageSchema.parse({ ...validPayload, requirementKey: ' ' }),
+      ).toThrow();
+    });
+
+    it('rechaza null en requirementKey para requests; el campo solo se omite o se envía como texto', () => {
+      expect(() =>
+        RegisterExecutionOrderItemUsageSchema.parse({ ...validPayload, requirementKey: null }),
+      ).toThrow();
+    });
+
     it('rechaza custodySelection como alias obsoleto', () => {
       expect(() =>
         RegisterExecutionOrderItemUsageSchema.parse({

@@ -127,10 +127,30 @@ describe('TasksController Swagger', () => {
     // y debe declarar seguridad, headers de concurrencia e idempotencia.
     const published = require('../../../openapi/tasks-execution-orders.v1.json') as {
       openapi: string;
+      info: { version: string };
       paths: Record<string, Record<string, unknown>>;
-      components?: { schemas?: Record<string, Record<string, unknown>> };
+      components?: {
+        schemas?: Record<
+          string,
+          {
+            required?: string[];
+            properties?: Record<string, { type?: string; nullable?: boolean }>;
+          }
+        >;
+      };
     };
     expect(published.openapi).toBe('3.0.3');
+    expect(published.info.version).toBe('1.5.0');
+    const itemUsageCommand = published.components?.schemas?.['RegisterItemUsageCommand'];
+    const itemUsageResponse = published.components?.schemas?.['ExecutionOrderItemUsage'];
+    expect(itemUsageCommand?.required).not.toContain('requirementKey');
+    expect(itemUsageCommand?.properties?.['requirementKey']).toMatchObject({ type: 'string' });
+    expect(itemUsageCommand?.properties?.['requirementKey']?.nullable).not.toBe(true);
+    expect(itemUsageResponse?.required).toContain('requirementKey');
+    expect(itemUsageResponse?.properties?.['requirementKey']).toMatchObject({
+      type: 'string',
+      nullable: true,
+    });
     expect(published.paths['/tasks/execution-orders/{id}/close']?.post).toBeDefined();
     expect(published.paths['/tasks/execution-orders/{id}/activities']?.get).toBeDefined();
     expect(published.paths['/tasks/execution-orders/{id}/item-usage']?.get).toBeDefined();

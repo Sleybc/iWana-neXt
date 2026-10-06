@@ -55,6 +55,7 @@ export interface ExecutionOrderRefreshAdapter {
   setActivitiesMeta: (value: ListMeta) => void;
   setItemUsage: (value: ExecutionOrderItemUsage[]) => void;
   setItemUsageMeta: (value: ListMeta) => void;
+  setItemUsageError: (value: string | null) => void;
   setEvidence: (value: ExecutionOrderEvidence[]) => void;
   setEvidenceMeta: (value: ListMeta) => void;
   requestSequence: { current: number };
@@ -193,8 +194,12 @@ export function useExecutionOrderRefresh(context: ExecutionOrderRefreshAdapter) 
       // Un refresco posterior del mismo recurso ya es dueño de su estado.
       if (generations.current[ticket.resource] !== ticket.generation) return;
       if (result.status === 'rejected') {
-        failures.push(ticket.resource);
-        reasons.push(result.reason);
+        if (ticket.resource === 'itemUsage') {
+          current.setItemUsageError(mapOperationsError(result.reason));
+        } else {
+          failures.push(ticket.resource);
+          reasons.push(result.reason);
+        }
         return;
       }
       const read = result.value;
@@ -209,6 +214,7 @@ export function useExecutionOrderRefresh(context: ExecutionOrderRefreshAdapter) 
         case 'itemUsage':
           current.setItemUsage(read.value.data);
           current.setItemUsageMeta(read.value.meta);
+          current.setItemUsageError(null);
           break;
         case 'evidence':
           current.setEvidence(read.value.data);

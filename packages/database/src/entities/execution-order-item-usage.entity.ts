@@ -17,6 +17,10 @@ export class ExecutionOrderItemUsage {
   @Column({ name: 'item_id', type: 'varchar', length: 160 })
   itemId: string;
 
+  /** Requisito MATERIAL del snapshot de la OT; null en registros heredados. */
+  @Column({ name: 'requirement_key', type: 'varchar', length: 128, nullable: true })
+  requirementKey: string | null;
+
   @Column({ name: 'technician_custody_id', type: 'varchar', length: 160 })
   technicianCustodyId: string;
 

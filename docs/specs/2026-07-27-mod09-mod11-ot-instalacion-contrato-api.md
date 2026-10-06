@@ -1,9 +1,10 @@
 # Contrato API y eventos para OT de instalacion
 
-**Version:** 1.1  
-**Estado:** Congelación arquitectónica G4 — implementación contract-first en curso  
-**Fecha:** 2026-07-27 (v1.1: 2026-08-31)  
-**Cambio v1.0 → v1.1 (re-sync de conformidad):** precondicion de estado explícita para registro de consumo y evidencia (§3), distribución de `allowedActions` pre-inicio reducida a `START` (§14) y prohibición de auto-promoción silenciosa de estado. Sin cambio de forma de DTOs, enums ni paths. Detalle en §14.  
+**Versión:** 1.5 · **Estado:** Aditivo autorizado por AI-EM-ARCH para trazabilidad MATERIAL de MOD11 · **Fecha:** 2026-07-27 (v1.1: 2026-08-31; v1.5: 2026-10-06)
+
+**Cambio v1.0 → v1.1 (re-sync de conformidad):** precondicion de estado explícita para registro de consumo y evidencia (§3), distribución de `allowedActions` pre-inicio reducida a `START` (§14) y prohibición de auto-promoción silenciosa de estado. Sin cambio de forma de DTOs, enums ni paths. Detalle en §14.
+
+**Cambio v1.1 → v1.5 (historial MATERIAL):** `RegisterItemUsageCommand.requirementKey` es opcional y, si se envía, identifica un requisito MATERIAL del snapshot inmutable. `ExecutionOrderItemUsage.requirementKey` es obligatorio en la respuesta y nullable; `null` conserva consumos históricos sin procedencia. No se reconstruye ni se retroasigna esa procedencia. La paginación del historial sigue siendo global por OT.
 **Owner de implementacion:** AI-SR-FULL  
 **Review requerido:** AI-SEC-ENG, AI-SR-QA, AI-DATA-ENG si cambia persistencia  
 **ADR:** `docs/adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md` (Aprobado)
@@ -72,7 +73,8 @@ Administracion de plantillas:
 | `AssignExecutionOrderCommand` | `assigneeType`, `assigneeId`, `reason?` |
 | `StartExecutionOrderCommand` | `startedAt?`, `note?` |
 | `RegisterActivityCommand` | `activityType`, `description`, `occurredAt?`, `measurements?` acotadas por plantilla |
-| `RegisterItemUsageCommand` | `itemId`, `quantity`, `technicianCustodyId`, `serialNumber?`, `action`, `finalDisposition` |
+| `RegisterItemUsageCommand` | `itemId`, `quantity`, `technicianCustodyId`, `serialNumber?`, `requirementKey?`, `action`, `finalDisposition` |
+| `ExecutionOrderItemUsage` | `id`, `itemId`, `requirementKey: string \| null`, `quantity`, `action`, `finalDisposition`, `inventoryRequestId`, `movementStatus`, `createdAt` |
 | `RegisterEvidenceCommand` | `mediaAssetId`, `evidenceType`, `requirementKey`, `capturedAt?` como dato declarado por cliente |
 | `BlockExecutionOrderCommand` | `reasonCode`, `note?` |
 | `UnblockExecutionOrderCommand` | `resolutionCode`, `note?` |
@@ -316,4 +318,12 @@ Remediación de conformidad registrada en `docs/prompts/PROMPT-MOD11-OT-REGISTRO
 1. `allowedActions` pre-inicio (CREATED/ASSIGNED/EN_ROUTE) entrega solo `START` al ejecutor asignado o pool sin asignar; IN_PROGRESS, BLOCKED, terminales y supervisión sin cambio. Sigue siendo ayuda de UI, no reemplazo de autorización (§2, §5.6).
 2. Los comandos Registrar actividad, Registrar consumo y Agregar evidencia exigen OT en progreso/bloqueada; con la OT pre-inicio responden `409 EXECUTION_ORDER_NOT_STARTED` con mensaje accionable.
 3. Ningún comando de registro promueve el estado de la OT ni fija `startedAt`: Iniciar es la única transición a `IN_PROGRESS` y la única emisión de `ExecutionOrderStartedV1`, requerida por la convergencia de proyecciones de ADR-068. En la saga MOD11–MOD12, `InventoryConsumptionRequestedV1` ya no se emite pre-inicio.
-4. Sin cambio de forma: enums, DTOs y paths de este contrato permanecen congelados en v1; esta nota es aclaración de precondiciones y distribución de `allowedActions`, alineada a la precondición ya declarada para Registrar actividad en §3.
+4. En v1.1 no hubo cambio de forma: enums, DTOs y paths permanecieron congelados; la nota solo aclaró precondiciones y distribución de `allowedActions`. La adición de forma posterior y versionada para procedencia MATERIAL se registra en §15.
+
+## 15. Adición v1.5 — procedencia del historial MATERIAL (2026-10-06)
+
+La lista `GET /:id/item-usage` conserva su paginación global por OT; no recibe filtro ni paginación por requisito. Cada entrada devuelve la propiedad `requirementKey` de forma explícita como `string | null`, para distinguir procedencia conocida de histórica sin atribuir claves que la fuente no registró.
+
+`RegisterItemUsageCommand.requirementKey` es opcional para compatibilidad de request. Cuando se envía, la API exige que la clave identifique exactamente un requisito `MATERIAL` del snapshot inmutable de esa OT y que el recibo tipado de Inventario confirme la misma categoría. La solicitud no acepta `null` ni cadena vacía. Sin campo, el consumo sigue registrándose con `requirement_key = NULL`.
+
+La migración tenant 137 añade la columna nullable sin backfill. Las filas históricas siguen aportando al progreso por la regla existente de categoría y disposición; el evaluador recibe su clave como ausente. Las filas con clave persistida requieren coincidencia exacta. Esto mantiene la autoridad de progreso en la API y deja la separación de grupos al cliente.

@@ -196,6 +196,7 @@ async function mockR3(page: Page, options: { emptyCustody?: boolean } = {}): Pro
             {
               id: 'iu-1',
               itemId: 'item-ont',
+              requirementKey: 'installed-equipment',
               quantity: 1,
               serial: 'ONT-INSTALADA-0007',
               action: 'INSTALL',

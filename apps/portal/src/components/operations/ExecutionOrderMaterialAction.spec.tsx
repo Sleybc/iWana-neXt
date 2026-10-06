@@ -136,6 +136,7 @@ const custodyBalance = {
 const usage: ExecutionOrderItemUsage = {
   id: 'iu-001',
   itemId: 'item-ont',
+  requirementKey: 'installed-equipment',
   quantity: 1,
   serial: 'ONT-2026-001',
   action: ExecutionOrderItemAction.INSTALL,
@@ -242,6 +243,23 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       expect(screen.queryByRole('button', { name: /Registrar equipo instalado/ })).toBeNull();
       expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
       expect(screen.queryByLabelText('Cantidad')).toBeNull();
+    });
+
+    it('preinicio omite también el historial neutral y la paginación global', () => {
+      const unattributedUsage: ExecutionOrderItemUsage = {
+        ...usage,
+        requirementKey: null,
+        serial: 'PRESTART-USAGE',
+      };
+      renderDrawer({
+        order: detail({ status: ExecutionOrderStatus.CREATED }),
+        itemUsage: [unattributedUsage],
+        itemUsageMeta: meta({ hasMore: true, total: 2 }),
+      });
+
+      expect(screen.queryByRole('region', { name: 'Consumos sin requisito asociado' })).toBeNull();
+      expect(screen.queryByRole('region', { name: 'Equipos y materiales' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Cargar más' })).toBeNull();
     });
 
     it('en progreso sin REGISTER_ITEM_USAGE no ofrece el acto ni consulta nada', () => {
@@ -437,6 +455,7 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       expect(onRegisterItemUsage).toHaveBeenCalledTimes(1);
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
         itemId: 'item-ont',
+        requirementKey: 'installed-equipment',
         technicianCustodyId: 'tech-001',
         quantity: 1,
         serialNumber: 'ONT-2026-001',
@@ -499,6 +518,7 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
 
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
         itemId: 'item-ont',
+        requirementKey: 'installed-equipment',
         technicianCustodyId: 'tech-001',
         quantity: 1,
         action: 'CONSUME',
@@ -602,7 +622,7 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
     });
 
     it('vacío del historial con el copy del requisito, también con el acto cerrado', () => {
-      renderDrawer({ itemUsage: [] });
+      renderDrawer({ itemUsage: [], itemUsageMeta: meta() });
 
       expect(
         screen.getByText('Todavía no hay consumos registrados para este requisito'),
@@ -621,11 +641,128 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       });
 
       const history = within(screen.getByRole('region', { name: 'Equipos y materiales' }));
-      expect(history.getAllByText('Mostrando 1 de 3 consumos').length).toBeGreaterThanOrEqual(1);
-      await userEvent.click(history.getByRole('button', { name: 'Cargar más' }));
+      expect(screen.getByText('Mostrando 1 de 3 consumos')).toBeInTheDocument();
+      expect(history.getByText('ONT-2026-001')).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Cargar más' })).toHaveLength(1);
+      await userEvent.click(screen.getByRole('button', { name: 'Cargar más' }));
 
       expect(onLoadMoreItemUsage).toHaveBeenCalledTimes(1);
       expect(onLoadMoreExecutorCustody).not.toHaveBeenCalled();
+    });
+
+    it('asocia por clave exacta y presenta los registros sin clave una sola vez fuera de las filas', () => {
+      const multiMaterialTemplate: ExecutionOrderTemplateVersion = {
+        ...template('INSTALLED_AT_CUSTOMER'),
+        requirements: [
+          ...template('INSTALLED_AT_CUSTOMER').requirements,
+          {
+            key: 'router-installation',
+            label: 'Router instalado',
+            required: true,
+            kind: 'MATERIAL',
+            itemCategory: 'CPE',
+          },
+        ],
+      };
+      const keyedForSecondRequirement: ExecutionOrderItemUsage = {
+        ...usage,
+        id: 'iu-router',
+        requirementKey: 'router-installation',
+        serial: 'ROUTER-2026-002',
+      };
+      const unkeyedNull: ExecutionOrderItemUsage = {
+        ...usage,
+        id: 'iu-legacy-null',
+        requirementKey: null,
+        serial: 'LEGACY-NULL',
+      };
+      // La lectura del API v1.4 en runtime puede omitir un campo que v1.5 tipa como nullable.
+      const unkeyedMissing = {
+        ...usage,
+        id: 'iu-legacy-missing',
+        requirementKey: undefined,
+        serial: 'LEGACY-MISSING',
+      } as unknown as ExecutionOrderItemUsage;
+
+      renderDrawer({
+        order: detail({}, multiMaterialTemplate),
+        template: multiMaterialTemplate,
+        itemUsage: [usage, keyedForSecondRequirement, unkeyedNull, unkeyedMissing],
+        itemUsageMeta: meta({ hasMore: true, total: 5 }),
+      });
+
+      const installedRow = screen.getByRole('listitem', {
+        name: /Equipos instalados en el sitio del cliente/,
+      });
+      const routerRow = screen.getByRole('listitem', { name: /Router instalado/ });
+      expect(within(installedRow).getByText('ONT-2026-001')).toBeInTheDocument();
+      expect(within(installedRow).queryByText('ROUTER-2026-002')).toBeNull();
+      expect(within(routerRow).getByText('ROUTER-2026-002')).toBeInTheDocument();
+      expect(within(routerRow).queryByText('ONT-2026-001')).toBeNull();
+
+      const unattributed = screen.getByRole('region', { name: 'Consumos sin requisito asociado' });
+      const requirementList = screen.getByRole('list', { name: 'Requisitos de la orden' });
+      expect(
+        within(requirementList).queryByRole('region', {
+          name: 'Consumos sin requisito asociado',
+        }),
+      ).toBeNull();
+      expect(
+        within(unattributed).getByText('Estos registros no indican a qué requisito corresponden.'),
+      ).toBeInTheDocument();
+      expect(within(unattributed).getByText('LEGACY-NULL')).toBeInTheDocument();
+      expect(within(unattributed).getByText('LEGACY-MISSING')).toBeInTheDocument();
+      expect(screen.getAllByText('LEGACY-NULL')).toHaveLength(1);
+      expect(screen.getAllByText('LEGACY-MISSING')).toHaveLength(1);
+      expect(screen.getByText('Mostrando 4 de 5 consumos')).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Cargar más' })).toHaveLength(1);
+    });
+
+    it('no anuncia vacíos por requisito mientras existan páginas pendientes', () => {
+      renderDrawer({ itemUsage: [], itemUsageMeta: meta({ hasMore: true, total: 2 }) });
+
+      expect(
+        screen.queryByText('Todavía no hay consumos registrados para este requisito'),
+      ).toBeNull();
+      expect(screen.getByRole('button', { name: 'Cargar más' })).toBeInTheDocument();
+    });
+
+    it('omite el vacío mientras no haya metadata completa o exista un error de lectura', () => {
+      const { unmount } = renderDrawer({ itemUsage: [] });
+      expect(
+        screen.queryByText('Todavía no hay consumos registrados para este requisito'),
+      ).toBeNull();
+      unmount();
+
+      renderDrawer({
+        itemUsage: [],
+        itemUsageMeta: meta(),
+        itemUsageError: 'No se pudo leer el historial.',
+      });
+      expect(
+        screen.queryByText('Todavía no hay consumos registrados para este requisito'),
+      ).toBeNull();
+    });
+
+    it('muestra error local y conserva consumos previos con un reintento exclusivo', async () => {
+      const onRetryItemUsage = jest.fn().mockResolvedValue(undefined);
+      renderDrawer({
+        itemUsage: [usage],
+        itemUsageMeta: meta({ hasMore: true, total: 3 }),
+        itemUsageError: 'No se pudo cargar la página de consumos.',
+        onRetryItemUsage,
+      });
+
+      expect(
+        screen.getByText('No pudimos consultar los consumos').closest('[role="alert"]'),
+      ).not.toBeNull();
+      expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Todavía no hay consumos registrados para este requisito'),
+      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Cargar más' })).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+      expect(onRetryItemUsage).toHaveBeenCalledTimes(1);
     });
   });
 });

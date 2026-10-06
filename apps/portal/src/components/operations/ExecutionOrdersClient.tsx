@@ -408,6 +408,8 @@ export function ExecutionOrdersClient() {
         activitiesMeta={orderConsole.executionOrderActivitiesMeta}
         itemUsage={orderConsole.executionOrderItemUsage}
         itemUsageMeta={orderConsole.executionOrderItemUsageMeta}
+        itemUsageError={orderConsole.executionOrderItemUsageError}
+        onRetryItemUsage={orderConsole.retryExecutionOrderItemUsage}
         evidence={orderConsole.executionOrderEvidence}
         evidenceMeta={orderConsole.executionOrderEvidenceMeta}
         isLoadingMoreActivities={orderConsole.isLoadingMoreExecutionOrderActivities}

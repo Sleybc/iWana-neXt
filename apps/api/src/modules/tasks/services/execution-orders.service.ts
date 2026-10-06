@@ -359,7 +359,7 @@ export class ExecutionOrdersService {
           // debe viajar al contexto del evaluador; sin ella el predicado de
           // disposición sería siempre falso y el requisito quedaría
           // permanentemente pendiente (defecto invertido).
-          .select(['usage.itemId', 'usage.finalDisposition'])
+          .select(['usage.itemId', 'usage.finalDisposition', 'usage.requirementKey'])
           .where('usage.execution_order_id = :executionOrderId', { executionOrderId })
           .andWhere('usage.tenant_id = :tenantId', { tenantId })
           .getMany(),
@@ -520,6 +520,7 @@ export class ExecutionOrdersService {
         .select([
           'usage.id',
           'usage.itemId',
+          'usage.requirementKey',
           'usage.quantity',
           'usage.serialNumber',
           'usage.action',
@@ -1594,6 +1595,7 @@ export class ExecutionOrdersService {
 
       // ── Custodia: validar que el actor está asignado a la OT ────────
       this.assertCustodyAssignment(order, actor.sub, validated.technicianCustodyId);
+      await this.assertMaterialRequirementKey(order, validated.itemId, validated.requirementKey);
 
       const expectedVersion = order.version ?? 1;
       order.version = expectedVersion + 1;
@@ -1607,6 +1609,7 @@ export class ExecutionOrdersService {
           executionOrderId: id,
           tenantId,
           itemId: validated.itemId,
+          requirementKey: validated.requirementKey ?? null,
           technicianCustodyId: validated.technicianCustodyId,
           quantity: validated.quantity,
           serialNumber: validated.serialNumber ?? null,
@@ -3358,6 +3361,7 @@ export class ExecutionOrdersService {
     return {
       id: usage.id,
       itemId: usage.itemId,
+      requirementKey: usage.requirementKey ?? null,
       quantity: Number(usage.quantity),
       ...(usage.serialNumber ? { serial: usage.serialNumber } : {}),
       action: usage.action,
@@ -3380,6 +3384,42 @@ export class ExecutionOrdersService {
       throw new NotFoundException('OT de ejecución no encontrada');
     }
     return order;
+  }
+
+  /**
+   * Valida la procedencia declarada contra el snapshot inmutable de la OT y
+   * la categoría autoritativa de Inventario. Nunca reconstruye claves viejas.
+   */
+  private async assertMaterialRequirementKey(
+    order: ExecutionOrder,
+    itemId: string,
+    requirementKey?: string,
+  ): Promise<void> {
+    if (requirementKey === undefined) return;
+
+    const snapshot = readTemplateRequirementsSnapshot(order.templateRequirementsSnapshot);
+    const matches = snapshot?.filter((requirement) => requirement.key === requirementKey) ?? [];
+    if (matches.length !== 1 || matches[0]?.kind !== 'MATERIAL') {
+      throw new UnprocessableEntityException({
+        code: 'MATERIAL_REQUIREMENT_KEY_INVALID',
+        message: 'La clave debe identificar un requisito MATERIAL del snapshot de esta OT.',
+      });
+    }
+
+    if (!this.inventoryService) {
+      throw new ServiceUnavailableException({
+        code: 'INVENTORY_CATALOG_UNAVAILABLE',
+        message: 'La clasificación del artículo no está disponible temporalmente.',
+      });
+    }
+
+    const receipt = await this.inventoryService.getItemCategoryReceipt(itemId);
+    if (receipt.categoryCode.trim() !== matches[0].itemCategory) {
+      throw new UnprocessableEntityException({
+        code: 'MATERIAL_REQUIREMENT_CATEGORY_MISMATCH',
+        message: 'El artículo no pertenece a la categoría del requisito MATERIAL indicado.',
+      });
+    }
   }
 
   /**
@@ -3432,7 +3472,12 @@ export class ExecutionOrdersService {
     requirements: ExecutionOrderTemplateRequirement[],
     usages: ExecutionOrderItemUsage[],
   ): Promise<
-    Array<{ itemId: string; itemCategory?: string; finalDisposition?: InventoryDisposition }>
+    Array<{
+      itemId: string;
+      itemCategory?: string;
+      requirementKey?: string;
+      finalDisposition?: InventoryDisposition;
+    }>
   > {
     const hasMaterialRequirement = requirements.some(
       (requirement) => requirement.kind === 'MATERIAL',
@@ -3442,6 +3487,7 @@ export class ExecutionOrdersService {
     if (!hasMaterialRequirement) {
       return usages.map((usage) => ({
         itemId: usage.itemId,
+        ...(usage.requirementKey == null ? {} : { requirementKey: usage.requirementKey }),
         ...(usage.finalDisposition === undefined
           ? {}
           : { finalDisposition: usage.finalDisposition }),
@@ -3450,20 +3496,29 @@ export class ExecutionOrdersService {
 
     return Promise.all(
       usages.map(async (usage) => {
+        // NULL se omite para que el evaluador conserve el fallback histórico
+        // por categoría/disposición; solo una clave persistida exige match exacto.
+        const requirementKey =
+          usage.requirementKey == null ? {} : { requirementKey: usage.requirementKey };
         const disposition =
           usage.finalDisposition === undefined ? {} : { finalDisposition: usage.finalDisposition };
         if (!this.inventoryService) {
-          return { itemId: usage.itemId, ...disposition };
+          return { itemId: usage.itemId, ...requirementKey, ...disposition };
         }
 
         try {
           const receipt = await this.inventoryService.getItemCategoryReceipt(usage.itemId);
           const categoryCode = receipt.categoryCode.trim();
           return categoryCode.length > 0
-            ? { itemId: usage.itemId, itemCategory: categoryCode, ...disposition }
-            : { itemId: usage.itemId, ...disposition };
+            ? {
+                itemId: usage.itemId,
+                itemCategory: categoryCode,
+                ...requirementKey,
+                ...disposition,
+              }
+            : { itemId: usage.itemId, ...requirementKey, ...disposition };
         } catch {
-          return { itemId: usage.itemId, ...disposition };
+          return { itemId: usage.itemId, ...requirementKey, ...disposition };
         }
       }),
     );

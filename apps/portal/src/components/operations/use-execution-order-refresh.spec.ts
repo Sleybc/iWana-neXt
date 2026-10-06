@@ -70,6 +70,7 @@ function buildContext(
     setActivitiesMeta: jest.fn(),
     setItemUsage: jest.fn(),
     setItemUsageMeta: jest.fn(),
+    setItemUsageError: jest.fn(),
     setEvidence: jest.fn(),
     setEvidenceMeta: jest.fn(),
     requestSequence: { current: 1 },

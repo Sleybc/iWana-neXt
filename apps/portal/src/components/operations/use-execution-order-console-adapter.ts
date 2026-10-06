@@ -75,6 +75,10 @@ export function useExecutionOrderConsoleAdapter() {
   );
   const [executionOrderItemUsageMeta, setExecutionOrderItemUsageMeta] =
     useState<ListMeta>(EMPTY_LIST_META);
+  const [executionOrderItemUsageError, setExecutionOrderItemUsageError] = useState<string | null>(
+    null,
+  );
+  const itemUsageOwnerOrderIdRef = useRef<string | null>(null);
   const [executionOrderEvidence, setExecutionOrderEvidence] = useState<ExecutionOrderEvidence[]>(
     [],
   );
@@ -247,9 +251,15 @@ export function useExecutionOrderConsoleAdapter() {
       if (itemUsageResult.status === 'fulfilled') {
         setExecutionOrderItemUsage(itemUsageResult.value.data);
         setExecutionOrderItemUsageMeta(itemUsageResult.value.meta);
+        setExecutionOrderItemUsageError(null);
+        itemUsageOwnerOrderIdRef.current = executionOrderId;
       } else {
-        setExecutionOrderItemUsage([]);
-        setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
+        if (itemUsageOwnerOrderIdRef.current !== executionOrderId) {
+          setExecutionOrderItemUsage([]);
+          setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
+        }
+        itemUsageOwnerOrderIdRef.current = executionOrderId;
+        setExecutionOrderItemUsageError(mapOperationsError(itemUsageResult.reason));
       }
 
       if (evidenceResult.status === 'fulfilled') {
@@ -284,6 +294,7 @@ export function useExecutionOrderConsoleAdapter() {
     setActivitiesMeta: setExecutionOrderActivitiesMeta,
     setItemUsage: setExecutionOrderItemUsage,
     setItemUsageMeta: setExecutionOrderItemUsageMeta,
+    setItemUsageError: setExecutionOrderItemUsageError,
     setEvidence: setExecutionOrderEvidence,
     setEvidenceMeta: setExecutionOrderEvidenceMeta,
     requestSequence: executionOrderRequestSeqRef,
@@ -334,11 +345,13 @@ export function useExecutionOrderConsoleAdapter() {
     if (
       !executionOrderId ||
       !executionOrderItemUsageMeta.hasMore ||
+      executionOrderItemUsageError !== null ||
       isLoadingMoreExecutionOrderItemUsage
     ) {
       return;
     }
 
+    const requestSeq = executionOrderRequestSeqRef.current;
     setIsLoadingMoreExecutionOrderItemUsage(true);
     try {
       const nextPage = await loadMoreExecutionOrderCollection(
@@ -346,19 +359,73 @@ export function useExecutionOrderConsoleAdapter() {
         executionOrderItemUsageMeta,
         executionOrderItemUsage.length,
       );
+      if (
+        executionOrderRequestSeqRef.current !== requestSeq ||
+        selectedExecutionOrder?.id !== executionOrderId
+      ) {
+        return;
+      }
       setExecutionOrderItemUsage((current) => [...current, ...nextPage.data]);
       setExecutionOrderItemUsageMeta(nextPage.meta);
+      setExecutionOrderItemUsageError(null);
     } catch (loadError) {
-      setExecutionOrderError(mapOperationsError(loadError));
+      if (
+        executionOrderRequestSeqRef.current === requestSeq &&
+        selectedExecutionOrder?.id === executionOrderId
+      ) {
+        setExecutionOrderItemUsageError(mapOperationsError(loadError));
+      }
     } finally {
-      setIsLoadingMoreExecutionOrderItemUsage(false);
+      if (
+        executionOrderRequestSeqRef.current === requestSeq &&
+        selectedExecutionOrder?.id === executionOrderId
+      ) {
+        setIsLoadingMoreExecutionOrderItemUsage(false);
+      }
     }
   }, [
     executionOrderItemUsage,
+    executionOrderItemUsageError,
     executionOrderItemUsageMeta,
     isLoadingMoreExecutionOrderItemUsage,
     selectedExecutionOrder?.id,
   ]);
+
+  const retryExecutionOrderItemUsage = useCallback(async () => {
+    const executionOrderId = selectedExecutionOrder?.id;
+    if (!executionOrderId || isLoadingMoreExecutionOrderItemUsage) return;
+
+    const requestSeq = executionOrderRequestSeqRef.current;
+    setIsLoadingMoreExecutionOrderItemUsage(true);
+    try {
+      const collection = await collectExecutionOrderCollectionPages((page, limit) =>
+        tasksApi.executionOrders.listItemUsage(executionOrderId, { page, limit }),
+      );
+      if (
+        executionOrderRequestSeqRef.current !== requestSeq ||
+        selectedExecutionOrder?.id !== executionOrderId
+      ) {
+        return;
+      }
+      setExecutionOrderItemUsage(collection.data);
+      setExecutionOrderItemUsageMeta(collection.meta);
+      setExecutionOrderItemUsageError(null);
+    } catch (loadError) {
+      if (
+        executionOrderRequestSeqRef.current === requestSeq &&
+        selectedExecutionOrder?.id === executionOrderId
+      ) {
+        setExecutionOrderItemUsageError(mapOperationsError(loadError));
+      }
+    } finally {
+      if (
+        executionOrderRequestSeqRef.current === requestSeq &&
+        selectedExecutionOrder?.id === executionOrderId
+      ) {
+        setIsLoadingMoreExecutionOrderItemUsage(false);
+      }
+    }
+  }, [isLoadingMoreExecutionOrderItemUsage, selectedExecutionOrder?.id]);
 
   const loadMoreExecutionOrderEvidence = useCallback(async () => {
     const executionOrderId = selectedExecutionOrder?.id;
@@ -575,6 +642,8 @@ export function useExecutionOrderConsoleAdapter() {
     setExecutionOrderActivitiesMeta(EMPTY_LIST_META);
     setExecutionOrderItemUsage([]);
     setExecutionOrderItemUsageMeta(EMPTY_LIST_META);
+    setExecutionOrderItemUsageError(null);
+    itemUsageOwnerOrderIdRef.current = null;
     setExecutionOrderEvidence([]);
     setExecutionOrderEvidenceMeta(EMPTY_LIST_META);
     setIsLoadingMoreExecutionOrderActivities(false);
@@ -596,6 +665,7 @@ export function useExecutionOrderConsoleAdapter() {
     executionOrderActivitiesMeta,
     executionOrderItemUsage,
     executionOrderItemUsageMeta,
+    executionOrderItemUsageError,
     executionOrderEvidence,
     executionOrderEvidenceMeta,
     executionOrderEvidenceState,
@@ -624,6 +694,7 @@ export function useExecutionOrderConsoleAdapter() {
     retryExecutionOrder,
     loadMoreExecutionOrderActivities,
     loadMoreExecutionOrderItemUsage,
+    retryExecutionOrderItemUsage,
     loadMoreExecutionOrderEvidence,
     loadMoreExecutorCustody,
     handleStartExecutionOrder,

@@ -116,6 +116,7 @@ export const RegisterExecutionOrderItemUsageSchema = z
     technicianCustodyId: z.string().trim().min(1).max(160),
     quantity: z.coerce.number().int().positive().default(1),
     serialNumber: z.string().trim().max(160).optional().nullable(),
+    requirementKey: z.string().trim().min(1).max(128).optional(),
     action: z.nativeEnum(ExecutionOrderItemAction),
     finalDisposition: z.nativeEnum(InventoryDisposition),
     stockMovementId: z.string().trim().max(160).optional().nullable(),
@@ -138,6 +139,10 @@ export class RegisterExecutionOrderItemUsageDto {
   @ApiPropertyOptional()
   @Allow()
   serialNumber?: string | null;
+
+  @ApiPropertyOptional({ minLength: 1, maxLength: 128 })
+  @Allow()
+  requirementKey?: string;
 
   @ApiProperty()
   @Allow()
@@ -370,6 +375,9 @@ export class ExecutionOrderItemUsageResponseDto {
 
   @ApiProperty()
   itemId!: string;
+
+  @ApiProperty({ type: String, nullable: true, maxLength: 128 })
+  requirementKey!: string | null;
 
   @ApiProperty({ minimum: 1, type: 'integer' })
   quantity!: number;

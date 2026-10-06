@@ -13,7 +13,9 @@ import {
 } from './ExecutionOrderEvidenceAction';
 import {
   ExecutionOrderMaterialAction,
+  ExecutionOrderMaterialHistoryFooter,
   ExecutionOrderMaterialHistory,
+  ExecutionOrderMaterialUnattributedHistory,
 } from './ExecutionOrderMaterialAction';
 import { RequirementActionSheet } from './RequirementActionSheet';
 import { RequirementChecklist } from './RequirementChecklist';
@@ -59,6 +61,14 @@ export function ExecutionOrderRequirementIndex({
     order.completion.requirements,
     templateRequirementLabel,
   );
+  const unattributedHistory =
+    moment !== 'pre-start' && context.itemUsage.some((usage) => usage.requirementKey == null) ? (
+      <ExecutionOrderMaterialUnattributedHistory context={context} />
+    ) : null;
+  const historyFooter =
+    moment !== 'pre-start' ? (
+      <ExecutionOrderMaterialHistoryFooter order={order} context={context} />
+    ) : null;
 
   // La hoja delega el submit nativo en el manejador que registra el slot activo.
   const submitHandler = useRef<ExecutionOrderSubmitHandler | null>(null);
@@ -141,6 +151,8 @@ export function ExecutionOrderRequirementIndex({
         };
       })}
       progress={order.completion.progress}
+      unattributedConsumptionHistory={unattributedHistory}
+      historyFooter={historyFooter}
       mode={moment === 'in-progress' ? 'action' : 'readonly'}
       offline={offline}
       selectedRequirementKey={selectedAction?.requirementKey}
