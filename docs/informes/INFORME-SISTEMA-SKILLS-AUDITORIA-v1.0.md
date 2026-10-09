@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.4
+**Version:** 1.5
 **Estado:** Aprobado
-**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; **v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46**; ver change-log)
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -697,3 +697,40 @@ Comparacion programatica entre `MANIFEST.core` y los directorios del filesystem 
 ### Estado posterior
 
 Catalogo y filesystem alineados. Catalogo activo: **46 skills core**, 0 candidatas, 6 revisadas archivadas, 3 en hold, **1 dada de baja**.
+
+## Actualizacion 2026-10-08 — Alta de tres skills propias del repo (46 -> 49)
+
+**Modo activo:** ejecutor · **Autor:** Claude Code · **Origen:** analisis `claude-code-setup` aprobado por el usuario el 2026-10-08
+
+### Decision ejecutada
+
+Alta de tres skills en `.agents/skills/` bajo la politica de admision estricta del indice. Las tres son **especializadas por necesidad**, complementan skills activas y no reemplazan ninguna:
+
+| Skill | Dominio | Caso de uso recurrente y verificable | Relacion con el catalogo |
+| --- | --- | --- | --- |
+| `iwana-tenant-migration` | backend | 135 migraciones tenant escritas a mano y registradas una a una en `TENANT_MIGRATIONS`; una migracion sin registrar no se aplica nunca | Complementa a `database-migration` (generica) |
+| `iwana-test-evidence` | testing | `pnpm test` pasa por Turbo; cache hit, `--passWithNoTests` e integracion en `describe.skip` producen verdes sin ejecucion | Complementa a `verification-before-completion` |
+| `iwana-cierre-fase` | flujo de trabajo | Cada fase cierra con INFORME + plan con matriz de dispatch + launcher de 40 lineas (`AGENTS.md` → Documentation Rules) | Complementa a `writing-plans` |
+
+Ninguna depende de tooling, MCP o servicios no disponibles: solo usan `pnpm`, Jest, Turbo y los scripts de auditoria del repo.
+
+### Archivos actualizados
+
+- `.agents/skills/iwana-tenant-migration/SKILL.md`, `.agents/skills/iwana-test-evidence/SKILL.md`, `.agents/skills/iwana-cierre-fase/SKILL.md` — nuevas.
+- `.agents/skills/INDEX.md` — v1.4 -> **v1.5**; altas en "Especializadas por necesidad" y en sus categorias.
+- `.agents/skills/MANIFEST.json` — v1.4 -> **v1.5**; altas en `core.backend`, `core.testing`, `core.workflow` y `usagePriority.specializedOnDemand`; `summary.coreCount` 46 -> **49**.
+- `.agents/skills/README.md` — v1.4 -> **v1.5**.
+
+### Verificacion
+
+- skills unicas en `MANIFEST.core`: **49** · directorios con `SKILL.md`: **49** · `summary.coreCount`: **49** · divergencias en ambos sentidos: **ninguna**.
+- `MANIFEST.json` revalidado como JSON bien formado; diff semantico, sin reformateo.
+- El comando de verificacion citado por `iwana-tenant-migration` se ejecuto: `migration-order.spec.ts` → 1 suite, 6 tests, 6 passed.
+
+### Observacion registrada, no ejecutada
+
+Claude Code solo expone como `/comando` los skills de `.claude/skills/`; estos tres se aplican por lectura documental, igual que el resto del catalogo. Decision abierta para AI-EM-ARCH (ver `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`).
+
+### Estado posterior
+
+Catalogo activo: **49 skills core**, 0 candidatas, 6 revisadas archivadas, 3 en hold, 1 dada de baja.

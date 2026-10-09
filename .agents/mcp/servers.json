@@ -1,0 +1,44 @@
+{
+  "$comment": "Fuente única de servidores MCP del repo (ADR-092). Genera .mcp.json (Claude Code) y la clave mcp de .opencode/opencode.json con `pnpm sync:mcp`; nunca editar los generados a mano. `package` = paquete npm ejecutado con pnpm dlx (versión fijada); `command` = comando literal; `{env:VAR}` = variable de entorno.",
+  "servers": {
+    "chrome-devtools": {
+      "description": "Inspección de navegador vía Chrome DevTools.",
+      "clients": ["opencode"],
+      "package": "chrome-devtools-mcp@1.10.1"
+    },
+    "context7": {
+      "description": "Documentación vigente de librerías (Next.js, NestJS, TypeORM, BullMQ, Tailwind).",
+      "clients": ["claude", "opencode"],
+      "package": "@upstash/context7-mcp@4.1.1"
+    },
+    "github": {
+      "description": "GitHub remoto con token propio. Claude Code usa el conector de claude.ai (decisión 2026-10-08).",
+      "clients": ["opencode"],
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "playwright": {
+      "description": "Navegación y snapshots de accesibilidad de web (3001) y portal (3002).",
+      "clients": ["claude", "opencode"],
+      "package": "@playwright/mcp@0.0.82"
+    },
+    "postgres-dev": {
+      "description": "Base de desarrollo en solo lectura con iwana_readonly; credencial generada por `pnpm db:dev:readonly-role`.",
+      "clients": ["claude", "opencode"],
+      "command": [
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "container:iwana_postgres_dev",
+        "--env-file",
+        ".claude/mcp-postgres.local.env",
+        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
+        "--access-mode=restricted"
+      ]
+    }
+  }
+}

@@ -18,8 +18,12 @@ escalar; no sintetizar una solución por conveniencia. Usar exclusivamente `pnpm
 ## Superficies compartidas
 
 - `docs/prompts/` es la única ubicación para prompts.
-- `.agents/skills/` es el catálogo común. Claude Code lo consume leyendo el
-  `SKILL.md` relevante; no crear una copia en `.claude/skills/`.
+- `.agents/skills/` es el catálogo común. `.claude/skills/` contiene **punteros
+  generados** por `pnpm sync:skills` (ADR-092) para que Claude Code descubra cada
+  skill; el puntero remite al `SKILL.md` canónico, que es el que se lee y aplica.
+  No editar `.claude/skills/` a mano ni copiar contenido allí.
+- `.agents/mcp/servers.json` es la fuente única de MCP: `.mcp.json` y la clave
+  `mcp` de `.opencode/opencode.json` se generan con `pnpm sync:mcp`.
 - `.claude/agents/` es la fuente canónica de los subagentes de rol.
   `.opencode/agents/` y `.codex/agents/` son generados: verificar con
   `pnpm sync:agents:check`, no editarlos a mano.

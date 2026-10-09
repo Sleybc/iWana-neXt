@@ -1,7 +1,7 @@
 {
-  "version": "1.4",
+  "version": "1.5",
   "status": "approved",
-  "date": "2026-09-13",
+  "date": "2026-10-08",
   "governance": {
     "precedence": [
       "AGENTS.md",
@@ -13,7 +13,7 @@
     "archiveDirectory": null
   },
   "summary": {
-    "coreCount": 46,
+    "coreCount": 49,
     "archivedItemCount": 0,
     "archivedDirectoryCount": 0,
     "archivedLegacyFileCount": 0,
@@ -74,7 +74,10 @@
       "system-vocabulary-review",
       "ui-ux-pro-max",
       "brainstorming",
-      "skill-creator"
+      "skill-creator",
+      "iwana-tenant-migration",
+      "iwana-test-evidence",
+      "iwana-cierre-fase"
     ]
   },
   "core": {
@@ -92,6 +95,7 @@
       "bullmq-specialist",
       "database-migration",
       "docker-expert",
+      "iwana-tenant-migration",
       "nestjs-expert",
       "openapi-spec-generation",
       "observability-engineer",
@@ -115,6 +119,7 @@
     ],
     "testing": [
       "e2e-testing-patterns",
+      "iwana-test-evidence",
       "playwright-skill",
       "test-driven-development",
       "testing-patterns"
@@ -125,6 +130,7 @@
       "dispatching-parallel-agents",
       "executing-plans",
       "finishing-a-development-branch",
+      "iwana-cierre-fase",
       "receiving-code-review",
       "requesting-code-review",
       "skill-creator",

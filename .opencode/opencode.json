@@ -7,12 +7,12 @@
   "mcp": {
     "chrome-devtools": {
       "type": "local",
-      "command": ["npx", "-y", "chrome-devtools-mcp"],
+      "command": ["pnpm", "dlx", "chrome-devtools-mcp@1.10.1"],
       "enabled": true
     },
     "context7": {
       "type": "local",
-      "command": ["npx", "-y", "@upstash/context7-mcp"],
+      "command": ["pnpm", "dlx", "@upstash/context7-mcp@4.1.1"],
       "enabled": true
     },
     "github": {
@@ -25,7 +25,23 @@
     },
     "playwright": {
       "type": "local",
-      "command": ["npx", "-y", "@playwright/mcp"],
+      "command": ["pnpm", "dlx", "@playwright/mcp@0.0.82"],
+      "enabled": true
+    },
+    "postgres-dev": {
+      "type": "local",
+      "command": [
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "container:iwana_postgres_dev",
+        "--env-file",
+        ".claude/mcp-postgres.local.env",
+        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
+        "--access-mode=restricted"
+      ],
       "enabled": true
     }
   }

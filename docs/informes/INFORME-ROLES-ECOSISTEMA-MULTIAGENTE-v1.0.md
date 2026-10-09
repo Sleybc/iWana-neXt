@@ -1,9 +1,9 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.6
+**Versión:** 1.8
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9)
-**Sin pendientes de gobernanza abiertos.** El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3)
+**Sin pendientes de gobernanza abiertos.** La decisión menor que abrió v1.7 se cerró en v1.8 (§10.3). El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
 
@@ -288,3 +288,35 @@ Ocho superficies pasan de *bloqueado/pendiente* a *diferido por ADR-070 (superad
 ### 9.6 Estado del ecosistema
 
 **Sin pendientes de gobernanza abiertos.** Los cuatro que dejaron las auditorías se cerraron en §8; el quinto, que no era de gobernanza, queda cerrado aquí. Lo que sigue vivo es deuda técnica ordinaria con dueño y curso normal: `EVIDENCE_UPLOAD_EXPIRED` en el contrato público, el derecho de supresión ARCO con Legal, y el umbral de lag QA-37 que se fija sobre datos reales post-release.
+
+## 10. Actualización 2026-10-08 — Tres verificadores auxiliares en `.claude/agents/`
+
+**Origen:** análisis `claude-code-setup` del 2026-10-08, implementación aprobada por el usuario. Detalle completo en [INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0](INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md).
+
+### 10.1 Qué se agregó
+
+| Subagente | Identificador | `readonly` | Modelo (Claude Code) | Cubre |
+| --- | --- | --- | --- | --- |
+| `boundary-reviewer` | AI-BOUNDARY-REV | `true` | sonnet | Gate «No boundary violations» y gotchas de tenancy (SET LOCAL, contexto tenant en BullMQ, `TenantContext.getOrThrow()`) |
+| `gate-verifier` | AI-GATE-VERIFIER | `false` | sonnet | «Gates Before Merge» con comandos y conteos reales |
+| `docs-governance` | AI-DOCS-GOV | `true` | haiku | Lo semántico de «Documentation Rules» que no cubren los scripts de auditoría |
+
+Son **verificadores auxiliares, no roles del protocolo**: no tienen perfil en `docs/roles/`, no entran en la RACI y no sustituyen a `sec-eng` ni a `sr-qa`. `gate-verifier` es `readonly: false` solo porque ejecuta tests y cobertura (escriben `coverage/`); su cuerpo le prohíbe editar código.
+
+### 10.2 Sincronización
+
+`pnpm sync:agents` → 11 agentes generados; `pnpm sync:agents:check` → «OK: 11 agentes sincronizados». El hook `sync-agents` de `.claude/settings.json` regenera los derivados al editar cualquier `.claude/agents/*.md`.
+
+Limitación conocida: en OpenCode, `readonly: true` se traduce a `bash: deny`, así que `boundary-reviewer` y `docs-governance` no pueden correr `git diff` ni los scripts de auditoría allí; el agente padre debe pasarles la lista de archivos.
+
+### 10.3 Decisión cerrada (2026-10-09) — perfiles y categoría propia
+
+El usuario titular del repositorio decidió que los tres verificadores **tienen perfil en `docs/roles/`**:
+
+- [Perfil_IA_Verificador_Boundaries_v1.md](../roles/Perfil_IA_Verificador_Boundaries_v1.md) — AI-BOUNDARY-REV
+- [Perfil_IA_Verificador_Gates_v1.md](../roles/Perfil_IA_Verificador_Gates_v1.md) — AI-GATE-VERIFIER
+- [Perfil_IA_Auditor_Gobernanza_Documental_v1.md](../roles/Perfil_IA_Auditor_Gobernanza_Documental_v1.md) — AI-DOCS-GOV
+
+**Cómo entran al protocolo (decisión de diseño de la implementación, revisable por AI-EM-ARCH):** la regla «añadir un perfil nuevo» de §9 exige columna y fila en la RACI §2 y en la matriz de consulta §6.1. Aplicarla tal cual les daría Responsible/Accountable que no ejercen y los convertiría en destinos de escalación. El [protocolo v1.6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) crea en su lugar la categoría **verificadores auxiliares**: perfil, fila en su cuadro, mención en §1 y subagente, sin RACI ni red de consulta, con una cláusula de salida — si un verificador empieza a decidir o recibir escalaciones, se integra como perfil completo.
+
+Los subagentes remiten ahora a su perfil (`pnpm sync:agents:check` → 11 agentes sincronizados).

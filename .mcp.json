@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "cmd",
+      "args": ["/c", "pnpm", "dlx", "@upstash/context7-mcp@4.1.1"]
+    },
+    "playwright": {
+      "command": "cmd",
+      "args": ["/c", "pnpm", "dlx", "@playwright/mcp@0.0.82"]
+    },
+    "postgres-dev": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "container:iwana_postgres_dev",
+        "--env-file",
+        ".claude/mcp-postgres.local.env",
+        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
+        "--access-mode=restricted"
+      ]
+    }
+  }
+}

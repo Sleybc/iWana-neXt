@@ -271,6 +271,11 @@ jobs:
       - name: Check agentes multi-IDE sincronizados
         run: pnpm sync:agents:check
 
+      - name: Check skills y MCP sincronizados (ADR-092)
+        run: |
+          pnpm sync:skills:check
+          pnpm sync:mcp:check
+
       - name: Lint
         run: pnpm lint
 

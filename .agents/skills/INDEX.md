@@ -1,8 +1,10 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.4
+**Version:** 1.5
 **Estado:** Aprobado
-**Fecha:** 2026-09-13
+**Fecha:** 2026-10-08
+
+**Cambio v1.4 → v1.5 (2026-10-08):** alta de tres skills propias del repo, por la politica de admision estricta: `iwana-tenant-migration` (backend; complementa a `database-migration`, que es generica, con las convenciones de `runner.ts` y `TENANT_MIGRATIONS`), `iwana-test-evidence` (testing; complementa a `verification-before-completion` con las trampas de cache de Turbo, `--passWithNoTests` e integracion en skip) e `iwana-cierre-fase` (flujo de trabajo; empaqueta INFORME + plan con matriz de dispatch + launcher de 40 lineas). Las tres son especializadas por necesidad y no reemplazan a ninguna activa. `coreCount` pasa de 46 a 49. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`.
 
 **Cambio v1.3 → v1.4 (2026-09-13):** baja de `using-git-worktrees` del catalogo activo. El proyecto trabaja **siempre sobre `main`**, sin ramas de trabajo paralelas ni worktrees, asi que la skill no tenia caso de uso recurrente en el repo (criterio de rechazo: "existe solo por amplitud de catalogo"). El directorio ya no existe en disco; esta version cierra la divergencia entre catalogo y filesystem. `coreCount` pasa de 47 a 46.
 
@@ -24,7 +26,7 @@ Estados admitidos:
 3. Este indice
 4. La skill individual
 
-`CLAUDE.md` es superficie activa (reactivada 2026-07-09) y aplica el mismo catalogo por lectura documental, no via `skills.paths`. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex y Claude Code comparten la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
+`CLAUDE.md` es superficie activa (reactivada 2026-07-09) y aplica el mismo catalogo; desde ADR-092 (2026-10-09) Claude Code lo descubre via los punteros generados en `.claude/skills/` (`pnpm sync:skills`), que remiten al `SKILL.md` de este directorio sin copiar su contenido. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex y Claude Code comparten la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
 
 ## Skills core activas
 
@@ -72,6 +74,9 @@ Estados admitidos:
 - iwana-identity-ui-review
 - system-vocabulary-review
 - ui-ux-pro-max
+- iwana-tenant-migration
+- iwana-test-evidence
+- iwana-cierre-fase
 
 ### Arquitectura y gobierno
 
@@ -89,6 +94,7 @@ Estados admitidos:
 - bullmq-specialist
 - database-migration
 - docker-expert
+- iwana-tenant-migration
 - nestjs-expert
 - openapi-spec-generation
 - observability-engineer
@@ -114,6 +120,7 @@ Estados admitidos:
 ### Testing
 
 - e2e-testing-patterns
+- iwana-test-evidence
 - playwright-skill
 - test-driven-development
 - testing-patterns
@@ -124,6 +131,7 @@ Estados admitidos:
 - dispatching-parallel-agents
 - executing-plans
 - finishing-a-development-branch
+- iwana-cierre-fase
 - receiving-code-review
 - requesting-code-review
 - skill-creator
