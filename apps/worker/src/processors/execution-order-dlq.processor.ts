@@ -2,7 +2,7 @@ import { BullRegistrar, InjectQueue, Processor, WorkerHost } from '@nestjs/bullm
 import { Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
 import { OPERATIONS_EXECUTION_DLQ } from '@iwana/shared';
 
@@ -380,9 +380,10 @@ export class ExecutionOrderDlqProcessor
         `aggregate=${aggregateId} attempts=${diagnostic.attemptsMade} ` +
         `error_type=${diagnostic.errorType} failed_at=${diagnostic.failedAt}`,
     );
-    const client = await this.pool.connect();
+    let client: PoolClient | undefined;
     let transactionOpen = false;
     try {
+      client = await this.pool.connect();
       const tenant = await client.query<{ schema_name: string }>(
         `SELECT schema_name FROM public.tenants
          WHERE id = $1 AND deleted_at IS NULL`,
@@ -445,14 +446,14 @@ export class ExecutionOrderDlqProcessor
         `[execution-dlq] execution_event_recorded event=${eventId} tenant=${tenantId}`,
       );
     } catch (error) {
-      if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+      if (transactionOpen && client) await client.query('ROLLBACK').catch(() => undefined);
       const errorType = safeErrorType(error instanceof Error ? error.name : undefined);
       this.logger.error(`[execution-dlq] execution_dlq_persist_failed error_type=${errorType}`);
       // El mensaje fijo mantiene el fallo observable sin persistir el texto crudo;
       // BullMQ lo conserva en la DLQ según la retención de 30 días.
       throw new Error('Execution order DLQ diagnostic persistence failed');
     } finally {
-      client.release();
+      client?.release();
     }
   }
 

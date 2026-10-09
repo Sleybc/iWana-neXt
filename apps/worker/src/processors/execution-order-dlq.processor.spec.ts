@@ -390,6 +390,36 @@ describe('ExecutionOrderDlqProcessor', () => {
   });
 
   describe('fault injection', () => {
+    it('sustituye por un error fijo el rechazo al adquirir la conexión SQL', async () => {
+      const loggerError = jest.spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      );
+      const rawConnectionError = 'RAW_DATABASE_CONNECTION_FAILURE';
+      (processor as unknown as { pool: { connect: jest.Mock } }).pool.connect.mockRejectedValueOnce(
+        new Error(rawConnectionError),
+      );
+
+      const dlqJob = {
+        data: {
+          kind: 'execution-event',
+          tenantId: '10000000-0000-4000-8000-000000000001',
+          eventId: 'e0000000-0000-4000-8000-000000000006',
+          aggregateId: 'a0000000-0000-4000-8000-000000000006',
+          aggregateVersion: 6,
+          failedAt: new Date().toISOString(),
+          attemptsMade: 8,
+          errorType: 'Error',
+        },
+      } as Job;
+
+      await expect(processor.process(dlqJob)).rejects.toThrow(
+        'Execution order DLQ diagnostic persistence failed',
+      );
+      expect(loggerError.mock.calls.flat().join(' ')).not.toContain(rawConnectionError);
+      expect(poolClient.release).not.toHaveBeenCalled();
+    });
+
     it('retiene el diagnóstico sin mensaje crudo si falla su persistencia', async () => {
       const loggerError = jest.spyOn(
         (processor as unknown as { logger: { error: (message: string) => void } }).logger,
