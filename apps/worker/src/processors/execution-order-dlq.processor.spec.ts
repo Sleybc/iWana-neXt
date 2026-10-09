@@ -4,7 +4,8 @@ import type { Job, Queue } from 'bullmq';
 
 const QUEUE_NAME = 'operations-execution-dlq';
 const LEGACY_MARKER_KEY =
-  'bull:operations-execution-dlq:execution-order-dlq-legacy-payload-purge-v1:complete';
+  'bull:operations-execution-dlq:execution-order-dlq-legacy-payload-purge-v2:complete';
+const LEGACY_PENDING_FIELD = 'dlqLegacyPayloadPurgeV2Pending';
 
 function legacyJobData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -47,6 +48,7 @@ describe('ExecutionOrderDlqProcessor', () => {
       type: jest.Mock;
       hget: jest.Mock;
       hset: jest.Mock;
+      hdel: jest.Mock;
       set: jest.Mock;
     }>;
     toKey: jest.Mock;
@@ -64,6 +66,7 @@ describe('ExecutionOrderDlqProcessor', () => {
       type: jest.fn().mockResolvedValue('hash'),
       hget: jest.fn(),
       hset: jest.fn().mockResolvedValue(1),
+      hdel: jest.fn().mockResolvedValue(1),
       set: jest.fn().mockResolvedValue('OK'),
     };
     queue = {
@@ -90,21 +93,72 @@ describe('ExecutionOrderDlqProcessor', () => {
     const legacyKey = `bull:${QUEUE_NAME}:legacy-waiting-job`;
     client.exists.mockResolvedValueOnce(0);
     client.scan.mockResolvedValueOnce(['0', [legacyKey]]);
-    client.hget.mockResolvedValueOnce(JSON.stringify(legacyJobData()));
+    client.hget
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(JSON.stringify(legacyJobData()))
+      .mockResolvedValueOnce(
+        JSON.stringify({ attempts: 4, backoff: { type: 'exponential', delay: 500 } }),
+      );
     queue.getJobState.mockResolvedValueOnce('waiting');
 
     await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(0);
 
-    const [, field, sanitizedJson] = client.hset.mock.calls[0] as [string, string, string];
-    expect(field).toBe('data');
+    const [, dataField, sanitizedJson, optsField, optsJson, markerField, markerValue] = client.hset
+      .mock.calls[0] as [string, string, string, string, string, string, string];
+    expect(dataField).toBe('data');
+    expect(optsField).toBe('opts');
+    expect(markerField).toBe(LEGACY_PENDING_FIELD);
+    expect(markerValue).toBe('1');
+    expect(JSON.parse(optsJson)).toMatchObject({
+      attempts: 4,
+      backoff: { type: 'exponential', delay: 500 },
+      removeOnComplete: true,
+      removeOnFail: { age: 30 * 24 * 60 * 60 },
+    });
     expect(sanitizedJson).toContain('execution-event');
     expect(sanitizedJson).toContain('10000000-0000-4000-8000-000000000001');
     expect(sanitizedJson).not.toContain('envelope');
     expect(sanitizedJson).not.toContain('diagnostic');
     expect(sanitizedJson).not.toContain('RAW_PAYLOAD_SHOULD_NOT_SURVIVE');
     expect(sanitizedJson).not.toContain('RAW_EXCEPTION_SHOULD_NOT_SURVIVE');
+    expect(client.hdel).toHaveBeenCalledWith(legacyKey, LEGACY_PENDING_FIELD);
     expect(queue.remove).not.toHaveBeenCalled();
     expect(client.set).toHaveBeenCalledWith(LEGACY_MARKER_KEY, '1');
+  });
+
+  it('actualiza la retención de jobs ya saneados por una migración anterior', async () => {
+    const client = await queue.client;
+    const legacyKey = `bull:${QUEUE_NAME}:previously-sanitized-job`;
+    const safeData = {
+      kind: 'execution-event',
+      eventId: 'e0000000-0000-4000-8000-000000000001',
+      failedAt: '2026-10-09T00:00:00.000Z',
+      attemptsMade: 8,
+      errorType: 'Error',
+    };
+    client.exists.mockResolvedValueOnce(0);
+    client.scan.mockResolvedValueOnce(['0', [legacyKey]]);
+    client.hget
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(JSON.stringify(safeData))
+      .mockResolvedValueOnce(JSON.stringify({ removeOnComplete: false, removeOnFail: false }));
+    queue.getJobState.mockResolvedValueOnce('waiting');
+
+    await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(0);
+
+    expect(client.hset).toHaveBeenCalledWith(
+      legacyKey,
+      'data',
+      JSON.stringify(safeData),
+      'opts',
+      JSON.stringify({
+        removeOnComplete: true,
+        removeOnFail: { age: 30 * 24 * 60 * 60 },
+      }),
+      LEGACY_PENDING_FIELD,
+      '1',
+    );
+    expect(client.hdel).toHaveBeenCalledWith(legacyKey, LEGACY_PENDING_FIELD);
   });
 
   it('no registra workers antes de completar el barrido de claves Redis', async () => {
@@ -113,7 +167,10 @@ describe('ExecutionOrderDlqProcessor', () => {
     client.exists.mockResolvedValueOnce(0);
     client.scan.mockResolvedValueOnce(['0', [legacyKey]]);
     client.type.mockResolvedValueOnce('hash');
-    client.hget.mockResolvedValueOnce(JSON.stringify(legacyJobData()));
+    client.hget
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(JSON.stringify(legacyJobData()))
+      .mockResolvedValueOnce(JSON.stringify({ removeOnComplete: false, removeOnFail: false }));
     queue.getJobState.mockResolvedValueOnce('completed');
 
     await processor.onModuleInit();
@@ -156,8 +213,12 @@ describe('ExecutionOrderDlqProcessor', () => {
     client.exists.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
     client.scan.mockResolvedValueOnce(['0', [completedKey, failedKey]]);
     client.hget
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(JSON.stringify(legacyJobData()))
-      .mockResolvedValueOnce(JSON.stringify(legacyJobData()));
+      .mockResolvedValueOnce(JSON.stringify({ removeOnComplete: false, removeOnFail: false }))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(JSON.stringify(legacyJobData()))
+      .mockResolvedValueOnce(JSON.stringify({ removeOnComplete: false, removeOnFail: false }));
     queue.getJobState.mockResolvedValueOnce('completed').mockResolvedValueOnce('failed');
 
     await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(2);
@@ -168,6 +229,45 @@ describe('ExecutionOrderDlqProcessor', () => {
     expect(queue.remove).toHaveBeenNthCalledWith(1, 'legacy-completed-job');
     expect(queue.remove).toHaveBeenNthCalledWith(2, 'legacy-failed-job');
     expect(client.hset).toHaveBeenCalledTimes(2);
+  });
+
+  it('reanuda la purga terminal tras interrumpirse después del saneamiento atómico', async () => {
+    const client = await queue.client;
+    const completedKey = `bull:${QUEUE_NAME}:legacy-completed-job`;
+    client.exists.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+    client.scan
+      .mockResolvedValueOnce(['0', [completedKey]])
+      .mockResolvedValueOnce(['0', [completedKey]]);
+    client.hget
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(JSON.stringify(legacyJobData()))
+      .mockResolvedValueOnce(JSON.stringify({ removeOnComplete: false, removeOnFail: false }))
+      .mockResolvedValueOnce('1')
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          kind: 'execution-event',
+          eventId: 'e0000000-0000-4000-8000-000000000001',
+        }),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          removeOnComplete: true,
+          removeOnFail: { age: 30 * 24 * 60 * 60 },
+        }),
+      );
+    queue.getJobState.mockResolvedValue('completed');
+    queue.remove
+      .mockRejectedValueOnce(new Error('temporary Redis failure'))
+      .mockResolvedValueOnce(1);
+
+    await expect(processor.purgeLegacyJobsByRedisKey()).rejects.toThrow('temporary Redis failure');
+    expect(client.set).not.toHaveBeenCalled();
+
+    await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(1);
+
+    expect(queue.remove).toHaveBeenNthCalledWith(2, 'legacy-completed-job');
+    expect(client.hset).toHaveBeenCalledTimes(1);
+    expect(client.set).toHaveBeenCalledWith(LEGACY_MARKER_KEY, '1');
   });
 
   it('programa la limpieza horaria de fallos con una gracia de 30 días', async () => {
@@ -290,7 +390,11 @@ describe('ExecutionOrderDlqProcessor', () => {
   });
 
   describe('fault injection', () => {
-    it('no relanza el error si la consulta DB falla (último eslabón)', async () => {
+    it('retiene el diagnóstico sin mensaje crudo si falla su persistencia', async () => {
+      const loggerError = jest.spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      );
       poolClient.query.mockRejectedValueOnce(new Error('DB connection pool exhausted'));
 
       const dlqJob = {
@@ -306,8 +410,10 @@ describe('ExecutionOrderDlqProcessor', () => {
         },
       } as Job;
 
-      // No debe lanzar: el catch traga el error
-      await expect(processor.process(dlqJob)).resolves.toBeUndefined();
+      await expect(processor.process(dlqJob)).rejects.toThrow(
+        'Execution order DLQ diagnostic persistence failed',
+      );
+      expect(loggerError.mock.calls.flat().join(' ')).not.toContain('DB connection pool exhausted');
     });
 
     it('no falla si la actualización del outbox afecta 0 filas', async () => {

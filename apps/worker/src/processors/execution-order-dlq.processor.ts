@@ -48,7 +48,8 @@ const DLQ_RETENTION_MILLISECONDS = DLQ_RETENTION_SECONDS * 1000;
 const DLQ_CLEANUP_INTERVAL_MILLISECONDS = 60 * 60 * 1000;
 const DLQ_CLEANUP_JOB_NAME = 'clean-expired-execution-order-dlq';
 const DLQ_CLEANUP_JOB_ID = 'execution-order-dlq-cleanup-hourly';
-const LEGACY_PURGE_MARKER = 'execution-order-dlq-legacy-payload-purge-v1:complete';
+const LEGACY_PURGE_MARKER = 'execution-order-dlq-legacy-payload-purge-v2:complete';
+const LEGACY_PURGE_PENDING_FIELD = 'dlqLegacyPayloadPurgeV2Pending';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const SAFE_INVENTORY_ERROR_TYPES = new Set([
@@ -119,6 +120,41 @@ function normalizeExecutionFailure(value: Record<string, unknown>): SafeExecutio
     attemptsMade: safeAttempts(value['attemptsMade']),
     errorType: safeErrorType(value['errorType']),
   };
+}
+
+function parseExecutionDlqJobOptions(value: unknown): Record<string, unknown> {
+  let options: Record<string, unknown> = {};
+  if (typeof value === 'string' && value.length > 0) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      throw new Error('Execution order DLQ legacy job options are invalid');
+    }
+    if (!isRecord(parsed)) {
+      throw new Error('Execution order DLQ legacy job options are invalid');
+    }
+    options = parsed;
+  }
+  return options;
+}
+
+function hasExecutionDlqRetention(value: unknown): boolean {
+  const options = parseExecutionDlqJobOptions(value);
+  return (
+    options['removeOnComplete'] === true &&
+    isRecord(options['removeOnFail']) &&
+    options['removeOnFail']['age'] === DLQ_RETENTION_SECONDS
+  );
+}
+
+function executionDlqRetentionOptions(value: unknown): string {
+  const options = parseExecutionDlqJobOptions(value);
+  return JSON.stringify({
+    ...options,
+    removeOnComplete: true,
+    removeOnFail: { age: DLQ_RETENTION_SECONDS },
+  });
 }
 
 function sanitizeLegacyExecutionFailure(value: Record<string, unknown>): ExecutionEventDlqJob {
@@ -247,22 +283,60 @@ export class ExecutionOrderDlqProcessor
         const jobId = key.slice(jobsPrefix.length);
         if (!jobId || jobId.includes(':') || (await client.type(key)) !== 'hash') continue;
 
+        const pendingPurge = (await client.hget(key, LEGACY_PURGE_PENDING_FIELD)) === '1';
         const rawData = await client.hget(key, 'data');
-        if (typeof rawData !== 'string') continue;
+        if (typeof rawData !== 'string') {
+          if (pendingPurge) {
+            throw new Error('Execution order DLQ legacy job data is invalid');
+          }
+          continue;
+        }
 
         let data: unknown;
         try {
           data = JSON.parse(rawData) as unknown;
         } catch {
+          if (pendingPurge) {
+            throw new Error('Execution order DLQ legacy job data is invalid');
+          }
           continue;
         }
-        if (!isRecord(data) || !Object.prototype.hasOwnProperty.call(data, 'envelope')) continue;
+        if (!isRecord(data)) {
+          if (pendingPurge) {
+            throw new Error('Execution order DLQ legacy job data is invalid');
+          }
+          continue;
+        }
+        const isLegacy = Object.prototype.hasOwnProperty.call(data, 'envelope');
+        const isExecutionEvent = data['kind'] === 'execution-event';
+        if (!isLegacy && !pendingPurge && !isExecutionEvent) continue;
+        const rawOptions = await client.hget(key, 'opts');
+        const needsRetentionUpgrade = isExecutionEvent && !hasExecutionDlqRetention(rawOptions);
+        if (!isLegacy && !pendingPurge && !needsRetentionUpgrade) continue;
 
-        // Nunca se registra ni se devuelve el JSON original; solo se conserva el diagnóstico permitido.
-        await client.hset(key, 'data', JSON.stringify(sanitizeLegacyExecutionFailure(data)));
+        if (isLegacy || needsRetentionUpgrade) {
+          // HSET escribe data, opciones y marcador en una sola operación Redis.
+          // El marcador permite reanudar si el proceso cae antes de quitar un job terminal.
+          await client.hset(
+            key,
+            'data',
+            JSON.stringify(isLegacy ? sanitizeLegacyExecutionFailure(data) : data),
+            'opts',
+            executionDlqRetentionOptions(rawOptions),
+            LEGACY_PURGE_PENDING_FIELD,
+            '1',
+          );
+        }
         const state = await this.queue.getJobState(jobId);
         if (state === 'completed' || state === 'failed') {
-          if ((await this.queue.remove(jobId)) === 1) removed += 1;
+          if ((await this.queue.remove(jobId)) === 1) {
+            removed += 1;
+          } else if ((await client.exists(key)) > 0) {
+            throw new Error('Execution order DLQ legacy terminal job could not be removed');
+          }
+        } else if (isLegacy || pendingPurge || needsRetentionUpgrade) {
+          // Pendientes siguen su curso con data saneada y las opciones de retención nuevas.
+          await client.hdel(key, LEGACY_PURGE_PENDING_FIELD);
         }
       }
     } while (cursor !== '0');
@@ -374,8 +448,9 @@ export class ExecutionOrderDlqProcessor
       if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
       const errorType = safeErrorType(error instanceof Error ? error.name : undefined);
       this.logger.error(`[execution-dlq] execution_dlq_persist_failed error_type=${errorType}`);
-      // No relanzar: este es el último eslabón; si falla la DLQ misma,
-      // el job queda en BullMQ para inspección manual.
+      // El mensaje fijo mantiene el fallo observable sin persistir el texto crudo;
+      // BullMQ lo conserva en la DLQ según la retención de 30 días.
+      throw new Error('Execution order DLQ diagnostic persistence failed');
     } finally {
       client.release();
     }
