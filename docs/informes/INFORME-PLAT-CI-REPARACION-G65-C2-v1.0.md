@@ -31,4 +31,8 @@ El job no necesita credenciales de registro. Los dos digests corresponden a índ
 
 ## Gate remoto
 
-El gate pedido es `E2E_SETUP=OK` en el job de GitHub Actions. No se afirma ese resultado: este bloque no crea commit ni dispara el workflow. Debe comprobarse sobre el SHA combinado de P2, C1, C2 y R-DLQ, tal como exige G6.5. La prueba local cubre acceso anónimo, digest, inicio del servidor y la operación del cliente; no sustituye ese run remoto.
+El gate pedido es `E2E_SETUP=OK` en el job de GitHub Actions. La entrega inicial del bloque C2 dejó el resultado remoto pendiente; el orquestador lo comprueba sobre el SHA combinado de P2, C1, C2 y R-DLQ, tal como exige G6.5. La prueba local cubre acceso anónimo, digest, inicio del servidor y la operación del cliente; no sustituye el run remoto.
+
+### Seguimiento de Compose tras integrar P2
+
+La corrida combinada `37930011124` detectó además que `Validate production Compose configuration` fallaba porque `.env.production.example` deja `REDIS_PASSWORD` vacío deliberadamente y Compose exige un valor no vacío. El workflow ahora inyecta `ci-compose-config-only-placeholder` únicamente en ese paso de interpolación; no se inicia Redis ni se usa una credencial real, y la plantilla conserva el marcador vacío para fallar cerrado al desplegar. La misma invocación `docker compose ... config --quiet` pasó localmente con ese valor sintético. El nuevo run de CI queda pendiente en el SHA de seguimiento.
