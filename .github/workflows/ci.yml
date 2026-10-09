@@ -512,9 +512,12 @@ jobs:
       # exige `E2E_TENANT_SLUG` y el script lleva `--passWithNoTests`; sin el slug
       # emite `describe.skip` y el paso saldría VERDE sin ejercitar nada. En este
       # punto del job el tenant ACTIVE `test` (schema tenant_test) ya existe y está
-      # migrado (paso "Run tenant migrations"), así que la suite corre REAL contra
-      # PostgreSQL. El spec borra en afterAll los ids que crea (tracking interno);
-      # deja fuera de su alcance los eventos outbox generados por createFromScheduling,
+      # migrado (paso "Run tenant migrations"), así que el spec R2.3 debe correr
+      # contra PostgreSQL real. La configuración también descubre dos specs
+      # sintéticos que se omiten correctamente con DB_NAME=test; por eso el gate
+      # comprueba el PASS del spec R2.3 en vez de rechazar cualquier `skipped`.
+      # El spec borra en afterAll los ids que crea (tracking interno); deja fuera
+      # de su alcance los eventos outbox generados por createFromScheduling,
       # residuo de laboratorio en una DB efímera del runner. Gate rojo: sin
       # continue-on-error.
       - name: Integration tests — API R2.3 concurrencia contra PostgreSQL real
@@ -529,14 +532,15 @@ jobs:
             echo "❌ Suite de integración API OMITIDA: PostgreSQL o tenant 'test' no disponibles en CI."
             exit 1
           fi
-          # describe.skip deja "Tests: N skipped, N total"; un run sin tests deja
-          # "0 total". Ninguno de los dos es un run real.
+          # Esta config incluye specs sintéticos que se omiten de forma esperada
+          # con DB_NAME=test. El PASS exacto prueba que la suite real R2.3 corrió;
+          # si se omitió, Jest la reporta como SKIP y esta compuerta falla.
           if grep -qE "^Tests:[[:space:]]+0 total" /tmp/api-integration.log || \
-             grep -qE "skipped" /tmp/api-integration.log; then
-            echo "❌ Suite de integración API no ejecutó tests reales (0 tests o suite skipped)."
+             ! grep -qF "PASS src/modules/tasks/tests/execution-orders.postgres.integration.spec.ts" /tmp/api-integration.log; then
+            echo "❌ Suite de integración API R2.3 no ejecutó tests reales contra PostgreSQL."
             exit 1
           fi
-          echo "✅ Suite de integración API ejecutada contra PostgreSQL real (tenant test)"
+          echo "✅ Suite de integración API R2.3 ejecutada contra PostgreSQL real (tenant test)"
 
       # Integración del worker (R0.3): el spec exige `R0_3_REAL_DB=1` y tira error
       # si no está; crea su propio schema efímero tenant_r03_relay_* y lo limpia en
