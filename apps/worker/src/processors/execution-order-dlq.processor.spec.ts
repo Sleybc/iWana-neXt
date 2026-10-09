@@ -1,6 +1,33 @@
 import { ConfigService } from '@nestjs/config';
 import { ExecutionOrderDlqProcessor } from './execution-order-dlq.processor';
-import type { Job } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
+
+const QUEUE_NAME = 'operations-execution-dlq';
+const LEGACY_MARKER_KEY =
+  'bull:operations-execution-dlq:execution-order-dlq-legacy-payload-purge-v1:complete';
+
+function legacyJobData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    tenantId: '10000000-0000-4000-8000-000000000001',
+    envelope: {
+      eventId: 'e0000000-0000-4000-8000-000000000001',
+      eventType: 'ExecutionOrderStartedV1',
+      tenantId: '10000000-0000-4000-8000-000000000001',
+      aggregateId: 'a0000000-0000-4000-8000-000000000001',
+      aggregateVersion: 1,
+      occurredAt: '2026-10-09T00:00:00.000Z',
+      correlationId: 'c0000000-0000-4000-8000-000000000001',
+      payload: { sensitive: 'RAW_PAYLOAD_SHOULD_NOT_SURVIVE' },
+    },
+    diagnostic: {
+      failedAt: '2026-10-09T00:00:00.000Z',
+      attemptsMade: 8,
+      errorMessage: 'RAW_EXCEPTION_SHOULD_NOT_SURVIVE',
+      errorName: 'Error',
+    },
+    ...overrides,
+  };
+}
 
 function mockConfig(): ConfigService {
   return {
@@ -11,14 +38,162 @@ function mockConfig(): ConfigService {
 
 describe('ExecutionOrderDlqProcessor', () => {
   let processor: ExecutionOrderDlqProcessor;
+  let queue: {
+    add: jest.Mock;
+    clean: jest.Mock;
+    client: Promise<{
+      exists: jest.Mock;
+      scan: jest.Mock;
+      type: jest.Mock;
+      hget: jest.Mock;
+      hset: jest.Mock;
+      set: jest.Mock;
+    }>;
+    toKey: jest.Mock;
+    getJobState: jest.Mock;
+    remove: jest.Mock;
+  };
+  let bullRegistrar: { register: jest.Mock };
   let poolClient: { query: jest.Mock; release: jest.Mock };
 
   beforeEach(() => {
     poolClient = { query: jest.fn(), release: jest.fn() };
-    processor = new ExecutionOrderDlqProcessor(mockConfig());
+    const redisClient = {
+      exists: jest.fn().mockResolvedValue(1),
+      scan: jest.fn().mockResolvedValue(['0', []]),
+      type: jest.fn().mockResolvedValue('hash'),
+      hget: jest.fn(),
+      hset: jest.fn().mockResolvedValue(1),
+      set: jest.fn().mockResolvedValue('OK'),
+    };
+    queue = {
+      add: jest.fn().mockResolvedValue(undefined),
+      clean: jest.fn().mockResolvedValue([]),
+      client: Promise.resolve(redisClient),
+      toKey: jest.fn((key: string) => `bull:${QUEUE_NAME}:${key}`),
+      getJobState: jest.fn().mockResolvedValue('unknown'),
+      remove: jest.fn().mockResolvedValue(1),
+    };
+    bullRegistrar = { register: jest.fn() };
+    processor = new ExecutionOrderDlqProcessor(
+      mockConfig(),
+      queue as unknown as Queue,
+      bullRegistrar as never,
+    );
     (processor as unknown as { pool: { connect: jest.Mock } }).pool = {
       connect: jest.fn().mockResolvedValue(poolClient),
     } as never;
+  });
+
+  it('sanea payloads heredados activos desde el hash Redis, sin completarlos ni registrar su contenido', async () => {
+    const client = await queue.client;
+    const legacyKey = `bull:${QUEUE_NAME}:legacy-waiting-job`;
+    client.exists.mockResolvedValueOnce(0);
+    client.scan.mockResolvedValueOnce(['0', [legacyKey]]);
+    client.hget.mockResolvedValueOnce(JSON.stringify(legacyJobData()));
+    queue.getJobState.mockResolvedValueOnce('waiting');
+
+    await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(0);
+
+    const [, field, sanitizedJson] = client.hset.mock.calls[0] as [string, string, string];
+    expect(field).toBe('data');
+    expect(sanitizedJson).toContain('execution-event');
+    expect(sanitizedJson).toContain('10000000-0000-4000-8000-000000000001');
+    expect(sanitizedJson).not.toContain('envelope');
+    expect(sanitizedJson).not.toContain('diagnostic');
+    expect(sanitizedJson).not.toContain('RAW_PAYLOAD_SHOULD_NOT_SURVIVE');
+    expect(sanitizedJson).not.toContain('RAW_EXCEPTION_SHOULD_NOT_SURVIVE');
+    expect(queue.remove).not.toHaveBeenCalled();
+    expect(client.set).toHaveBeenCalledWith(LEGACY_MARKER_KEY, '1');
+  });
+
+  it('no registra workers antes de completar el barrido de claves Redis', async () => {
+    const client = await queue.client;
+    const legacyKey = `bull:${QUEUE_NAME}:legacy-completed-job`;
+    client.exists.mockResolvedValueOnce(0);
+    client.scan.mockResolvedValueOnce(['0', [legacyKey]]);
+    client.type.mockResolvedValueOnce('hash');
+    client.hget.mockResolvedValueOnce(JSON.stringify(legacyJobData()));
+    queue.getJobState.mockResolvedValueOnce('completed');
+
+    await processor.onModuleInit();
+    expect(bullRegistrar.register).not.toHaveBeenCalled();
+    await processor.onApplicationBootstrap();
+
+    expect(client.hset.mock.invocationCallOrder[0]).toBeLessThan(
+      bullRegistrar.register.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(queue.remove.mock.invocationCallOrder[0]).toBeLessThan(
+      bullRegistrar.register.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(client.set.mock.invocationCallOrder[0]).toBeLessThan(
+      bullRegistrar.register.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+  });
+
+  it('falla cerrado y no registra workers si falla el barrido Redis', async () => {
+    const client = await queue.client;
+    const loggerError = jest.spyOn(
+      (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+      'error',
+    );
+    client.exists.mockResolvedValueOnce(0);
+    client.scan.mockRejectedValueOnce(new Error('RAW_REDIS_FAILURE_DETAIL'));
+
+    await expect(processor.onModuleInit()).rejects.toThrow(
+      'Execution order DLQ legacy payload purge failed',
+    );
+
+    expect(bullRegistrar.register).not.toHaveBeenCalled();
+    expect(loggerError.mock.calls.flat().join(' ')).not.toContain('RAW_REDIS_FAILURE_DETAIL');
+    expect(loggerError.mock.calls.flat().join(' ')).not.toContain(LEGACY_MARKER_KEY);
+  });
+
+  it('purga jobs heredados terminales una sola vez por sus claves Redis', async () => {
+    const client = await queue.client;
+    const completedKey = `bull:${QUEUE_NAME}:legacy-completed-job`;
+    const failedKey = `bull:${QUEUE_NAME}:legacy-failed-job`;
+    client.exists.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    client.scan.mockResolvedValueOnce(['0', [completedKey, failedKey]]);
+    client.hget
+      .mockResolvedValueOnce(JSON.stringify(legacyJobData()))
+      .mockResolvedValueOnce(JSON.stringify(legacyJobData()));
+    queue.getJobState.mockResolvedValueOnce('completed').mockResolvedValueOnce('failed');
+
+    await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(2);
+    await expect(processor.purgeLegacyJobsByRedisKey()).resolves.toBe(0);
+
+    expect(client.scan).toHaveBeenCalledTimes(1);
+    expect(client.scan).toHaveBeenCalledWith('0', 'MATCH', `bull:${QUEUE_NAME}:*`, 'COUNT', 100);
+    expect(queue.remove).toHaveBeenNthCalledWith(1, 'legacy-completed-job');
+    expect(queue.remove).toHaveBeenNthCalledWith(2, 'legacy-failed-job');
+    expect(client.hset).toHaveBeenCalledTimes(2);
+  });
+
+  it('programa la limpieza horaria de fallos con una gracia de 30 días', async () => {
+    await processor.onApplicationBootstrap();
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'clean-expired-execution-order-dlq',
+      { kind: 'execution-order-dlq-cleanup' },
+      expect.objectContaining({
+        repeat: { every: 60 * 60 * 1000 },
+        jobId: 'execution-order-dlq-cleanup-hourly',
+        removeOnComplete: true,
+        removeOnFail: { age: 30 * 24 * 60 * 60 },
+      }),
+    );
+    expect(bullRegistrar.register).toHaveBeenCalledTimes(1);
+  });
+
+  it('limpia fallos diagnósticos de más de 30 días', async () => {
+    queue.clean.mockResolvedValueOnce(['expired-job']);
+
+    await processor.process({
+      data: { kind: 'execution-order-dlq-cleanup' },
+    } as Job);
+
+    expect(queue.clean).toHaveBeenCalledWith(30 * 24 * 60 * 60 * 1000, 1000, 'failed');
   });
 
   it('registra el evento fallido en el outbox con last_error', async () => {
@@ -32,24 +207,14 @@ describe('ExecutionOrderDlqProcessor', () => {
 
     const dlqJob = {
       data: {
+        kind: 'execution-event',
         tenantId: '10000000-0000-4000-8000-000000000001',
-        envelope: {
-          eventId: 'e0000000-0000-4000-8000-000000000001',
-          eventType: 'ExecutionOrderStartedV1' as const,
-          tenantId: '10000000-0000-4000-8000-000000000001',
-          aggregateId: 'a0000000-0000-4000-8000-000000000001',
-          aggregateVersion: 1,
-          occurredAt: new Date().toISOString(),
-          correlationId: 'c0000000-0000-4000-8000-000000000001',
-          payload: {} as never,
-        },
-        diagnostic: {
-          failedAt: new Date().toISOString(),
-          attemptsMade: 8,
-          jobId: 'job-001',
-          errorMessage: 'Connection timeout',
-          errorName: 'Error',
-        },
+        eventId: 'e0000000-0000-4000-8000-000000000001',
+        aggregateId: 'a0000000-0000-4000-8000-000000000001',
+        aggregateVersion: 1,
+        failedAt: new Date().toISOString(),
+        attemptsMade: 8,
+        errorType: 'Error',
       },
     } as Job;
 
@@ -109,23 +274,14 @@ describe('ExecutionOrderDlqProcessor', () => {
 
     const dlqJob = {
       data: {
+        kind: 'execution-event',
         tenantId: '10000000-0000-4000-8000-000000000099',
-        envelope: {
-          eventId: 'e0000000-0000-4000-8000-000000000002',
-          eventType: 'ExecutionOrderClosedV1' as const,
-          tenantId: '10000000-0000-4000-8000-000000000099',
-          aggregateId: 'a0000000-0000-4000-8000-000000000002',
-          aggregateVersion: 2,
-          occurredAt: new Date().toISOString(),
-          correlationId: 'c0000000-0000-4000-8000-000000000002',
-          payload: {} as never,
-        },
-        diagnostic: {
-          failedAt: new Date().toISOString(),
-          attemptsMade: 8,
-          errorMessage: 'Unknown error',
-          errorName: 'Error',
-        },
+        eventId: 'e0000000-0000-4000-8000-000000000002',
+        aggregateId: 'a0000000-0000-4000-8000-000000000002',
+        aggregateVersion: 2,
+        failedAt: new Date().toISOString(),
+        attemptsMade: 8,
+        errorType: 'Error',
       },
     } as Job;
 
@@ -139,23 +295,14 @@ describe('ExecutionOrderDlqProcessor', () => {
 
       const dlqJob = {
         data: {
+          kind: 'execution-event',
           tenantId: '10000000-0000-4000-8000-000000000001',
-          envelope: {
-            eventId: 'e0000000-0000-4000-8000-000000000003',
-            eventType: 'ExecutionOrderStartedV1' as const,
-            tenantId: '10000000-0000-4000-8000-000000000001',
-            aggregateId: 'a0000000-0000-4000-8000-000000000003',
-            aggregateVersion: 3,
-            occurredAt: new Date().toISOString(),
-            correlationId: 'c0000000-0000-4000-8000-000000000003',
-            payload: {} as never,
-          },
-          diagnostic: {
-            failedAt: new Date().toISOString(),
-            attemptsMade: 8,
-            errorMessage: 'Fatal error',
-            errorName: 'Error',
-          },
+          eventId: 'e0000000-0000-4000-8000-000000000003',
+          aggregateId: 'a0000000-0000-4000-8000-000000000003',
+          aggregateVersion: 3,
+          failedAt: new Date().toISOString(),
+          attemptsMade: 8,
+          errorType: 'Error',
         },
       } as Job;
 
@@ -174,23 +321,14 @@ describe('ExecutionOrderDlqProcessor', () => {
 
       const dlqJob = {
         data: {
+          kind: 'execution-event',
           tenantId: '10000000-0000-4000-8000-000000000001',
-          envelope: {
-            eventId: 'e0000000-0000-4000-8000-000000000004',
-            eventType: 'ExecutionOrderStartedV1' as const,
-            tenantId: '10000000-0000-4000-8000-000000000001',
-            aggregateId: 'a0000000-0000-4000-8000-000000000004',
-            aggregateVersion: 4,
-            occurredAt: new Date().toISOString(),
-            correlationId: 'c0000000-0000-4000-8000-000000000004',
-            payload: {} as never,
-          },
-          diagnostic: {
-            failedAt: new Date().toISOString(),
-            attemptsMade: 8,
-            errorMessage: 'Timeout',
-            errorName: 'TimeoutError',
-          },
+          eventId: 'e0000000-0000-4000-8000-000000000004',
+          aggregateId: 'a0000000-0000-4000-8000-000000000004',
+          aggregateVersion: 4,
+          failedAt: new Date().toISOString(),
+          attemptsMade: 8,
+          errorType: 'TimeoutError',
         },
       } as Job;
 

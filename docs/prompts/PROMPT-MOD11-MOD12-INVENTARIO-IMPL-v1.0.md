@@ -260,7 +260,7 @@ CA-01 a CA-11 contra Postgres, Redis, api y worker reales en local, con los dato
 
 S2 v1.2 tiene razón en los dos bloqueos. **La regla «24 horas pase lo que pase» fue mía y era inalcanzable**: ningún limpiador puede borrar nada si la plataforma entera está caída.
 
-**D11 queda así:** *un job fallido en una cola de origen de inventario se elimina en un máximo de 24 horas **mientras al menos un proceso de la plataforma, API o worker, esté activo**. Con la plataforma caída no se procesa ni se retiene nada nuevo. Ese residuo queda cubierto en G7 por ADR-074 (propuesto) y por la monitorización del worker.*
+**D11 queda así:** *un job fallido en una cola de origen de inventario se elimina en un máximo de 24 horas **mientras al menos un proceso de la plataforma, API o worker, esté activo**. Con la plataforma caída no se procesa ni se retiene nada nuevo. Ese residuo queda cubierto en G7 por ADR-074 (Aprobado) y por la monitorización del worker.*
 
 ### R-D11b — `sr-backend`
 

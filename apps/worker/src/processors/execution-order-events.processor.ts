@@ -214,7 +214,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
         await this.dlqQueue.add('failed-inventory-execution-event', diagnostic, {
           jobId: `dlq-${eventId ?? randomUUID()}`,
           removeOnComplete: true,
-          removeOnFail: DLQ_RETENTION_SECONDS,
+          removeOnFail: { age: DLQ_RETENTION_SECONDS },
         });
       } catch (enqueueError) {
         this.logger.error(
@@ -256,8 +256,8 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
 
     await this.dlqQueue.add('failed-execution-event', diagnostic, {
       jobId: `dlq-${eventId ?? randomUUID()}-${Date.now()}`,
-      removeOnComplete: false,
-      removeOnFail: false,
+      removeOnComplete: true,
+      removeOnFail: { age: DLQ_RETENTION_SECONDS },
     });
   }
 

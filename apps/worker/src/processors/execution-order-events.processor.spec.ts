@@ -1049,7 +1049,10 @@ describe('ExecutionOrderEventsProcessor', () => {
         inventoryRequestId: '30000000-0000-4000-8000-000000000001',
         attemptsMade: 8,
       });
-      expect(opts).toMatchObject({ removeOnComplete: true, removeOnFail: 30 * 24 * 60 * 60 });
+      expect(opts).toMatchObject({
+        removeOnComplete: true,
+        removeOnFail: { age: 30 * 24 * 60 * 60 },
+      });
     });
 
     it('omite todos los IDs si uno es inválido y elimina el job tras escribir el diagnóstico', async () => {
@@ -1172,6 +1175,10 @@ describe('ExecutionOrderEventsProcessor', () => {
       expect(diagnostic).not.toHaveProperty('envelope');
       expect(JSON.stringify(diagnostic)).not.toContain(rawValue);
       expect(JSON.stringify(diagnostic)).not.toContain(error.message);
+      expect(dlqQueue.add.mock.calls[0]?.[2]).toMatchObject({
+        removeOnComplete: true,
+        removeOnFail: { age: 30 * 24 * 60 * 60 },
+      });
       expect(loggerError.mock.calls.flat().join(' ')).not.toContain(rawValue);
       expect(loggerError.mock.calls.flat().join(' ')).not.toContain(error.message);
     });

@@ -51,9 +51,9 @@ import { SerializedAssetService } from '../services/serialized-asset.service';
 import { InventoryCostingService } from '../services/inventory-costing.service';
 import { InventoryDomainEventPublisher } from '../services/inventory-domain-event-publisher.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
-import { ExecutionOrderEventsProcessor } from '../../../../../worker/src/processors/execution-order-events.processor';
 import { ExecutionOrderReliabilityService } from '../../tasks/services/execution-order-reliability.service';
 import { ExecutionOrdersService } from '../../tasks/services/execution-orders.service';
+import { signInventoryExecutionRequestForTest } from './helpers/sign-inventory-execution-request';
 
 const SYNTHETIC_DB = 'i4_qa_20261006_a1';
 const REDIS_DB = 15;
@@ -87,17 +87,15 @@ function uuidV5(name: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → proyección', () => {
+describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta', () => {
   let dataSource: DataSource;
   let tenantId: string;
   let schemaName: string;
   let tasksService: ExecutionOrdersService;
-  let eventProcessor: ExecutionOrderEventsProcessor;
   let apiProcessor: InventoryExecutionRequestProcessor;
   let requestQueue: Queue;
   let eventsQueue: Queue;
   let dlqQueue: Queue;
-  let eventsWorker: Worker;
   let apiWorker: Worker;
   let redisPrefix: string;
   let signingKey: string;
@@ -112,7 +110,6 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
   const createdRequestIds: string[] = [];
   const createdSerialNumbers: string[] = [];
   const createdStockLocationIds: string[] = [];
-  const processedJobIds: string[] = [];
 
   const tenantContext = () => ({
     tenantId,
@@ -159,7 +156,7 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
     finalDisposition?: InventoryDisposition;
     action?: ExecutionOrderItemAction;
     subscriberId?: string | null;
-  }): Promise<{ orderId: string; inventoryRequestId: string; actor: JwtPayload }> {
+  }): Promise<{ inventoryRequestId: string; actor: JwtPayload }> {
     const technicianId = randomUUID();
     const actor: JwtPayload = {
       sub: technicianId,
@@ -209,7 +206,7 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
     if (!inventoryRequestId) throw new Error('INVENTORY_REQUEST_ID_MISSING');
     createdIntentIds.push(inventoryRequestId);
     createdRequestIds.push(inventoryRequestId);
-    return { orderId: created.id, inventoryRequestId, actor };
+    return { inventoryRequestId, actor };
   }
 
   async function readRequestOutbox(inventoryRequestId: string): Promise<{
@@ -246,41 +243,37 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
     );
   }
 
-  async function runThroughRealQueues(
-    orderId: string,
-    inventoryRequestId: string,
-  ): Promise<{
-    workerAttempts: number;
+  async function runThroughApiQueue(inventoryRequestId: string): Promise<{
     apiAttempts: number;
-    responseAttempts: number;
     apiErrorClass: string | null;
+    responseEvent: { tenantId: string; envelope: OperationalEventEnvelopeV1 } | null;
   }> {
     const { row, envelope } = await readRequestOutbox(inventoryRequestId);
-    const sourceJobId = `r-ca04-source-${row.event_id}`;
     const responseEventId = uuidV5(inventoryRequestId);
     const responseJobId = `inventory-response-${responseEventId}`;
-    const sourceCompletion = waitCompleted(eventsWorker, sourceJobId);
     const requestCompletion = waitCompleted(apiWorker, row.event_id);
-    const responseCompletion = waitCompleted(eventsWorker, responseJobId);
-    const sourceJob = await eventsQueue.add(
-      'deliver-execution-event',
-      { tenantId, envelope },
-      { jobId: sourceJobId, attempts: 1, removeOnComplete: false, removeOnFail: false },
-    );
-    processedJobIds.push(sourceJob.id!);
+    const signedRequest = signInventoryExecutionRequestForTest(tenantId, envelope, signingKey);
+    await requestQueue.add('process-inventory-execution-request', signedRequest, {
+      jobId: row.event_id,
+      attempts: 1,
+      removeOnComplete: false,
+      removeOnFail: false,
+    });
     let apiErrorClass: string | null = null;
-    const workerAttempts = await sourceCompletion;
     let apiAttempts = 0;
     try {
       apiAttempts = await requestCompletion;
     } catch (error) {
       apiErrorClass = error instanceof Error ? error.message : safeClassName(error);
     }
-    if (apiErrorClass === null) {
-      const responseAttempts = await responseCompletion;
-      return { workerAttempts, apiAttempts, responseAttempts, apiErrorClass };
-    }
-    return { workerAttempts, apiAttempts, responseAttempts: 0, apiErrorClass };
+    const responseJob = apiErrorClass === null ? await eventsQueue.getJob(responseJobId) : null;
+    return {
+      apiAttempts,
+      apiErrorClass,
+      responseEvent: responseJob
+        ? (responseJob.data as { tenantId: string; envelope: OperationalEventEnvelopeV1 })
+        : null,
+    };
   }
 
   async function seedFixtures(): Promise<void> {
@@ -404,30 +397,22 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
     return locationId;
   }
 
-  async function readOutcome(inventoryRequestId: string): Promise<{
+  async function readReceipt(inventoryRequestId: string): Promise<{
     outcome: string;
     reason_code: string | null;
-    movement_status: string | null;
-    rejection_reason_code: string | null;
   }> {
     return TenantContext.run(tenantContext(), () =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
         const rows = (await qr.query(
-          `SELECT receipt.outcome, receipt.reason_code,
-                  usage.movement_status, usage.rejection_reason_code
+          `SELECT receipt.outcome, receipt.reason_code
              FROM inventory_execution_request_receipts receipt
-             JOIN execution_order_item_usage usage
-               ON usage.tenant_id = receipt.tenant_id
-              AND usage.inventory_request_id = receipt.inventory_request_id
             WHERE receipt.tenant_id = $1 AND receipt.inventory_request_id = $2`,
           [tenantId, inventoryRequestId],
         )) as Array<{
           outcome: string;
           reason_code: string | null;
-          movement_status: string | null;
-          rejection_reason_code: string | null;
         }>;
-        if (!rows[0]) throw new Error('INVENTORY_RECEIPT_OR_PROJECTION_MISSING');
+        if (!rows[0]) throw new Error('INVENTORY_RECEIPT_MISSING');
         return rows[0];
       }),
     );
@@ -479,7 +464,12 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
     configValues['DB_NAME'] = SYNTHETIC_DB;
     configValues['INTERNAL_QUEUE_SIGNING_KEY'] = signingKey;
 
-    const connection = { host: '127.0.0.1', port: 6380, db: REDIS_DB };
+    const connection = {
+      host: '127.0.0.1',
+      port: 6380,
+      db: REDIS_DB,
+      password: process.env['REDIS_PASSWORD'],
+    };
     const queueOptions = { connection, prefix: redisPrefix };
     requestQueue = new Queue(INVENTORY_EXECUTION_REQUESTS_QUEUE, queueOptions);
     eventsQueue = new Queue(OPERATIONS_EXECUTION_EVENTS_QUEUE, queueOptions);
@@ -490,7 +480,6 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
       dlqQueue.waitUntilReady(),
     ]);
 
-    eventProcessor = new ExecutionOrderEventsProcessor(config, dlqQueue, requestQueue);
     const stockBalance = new StockBalanceService(dataSource);
     const assetLifecycle = new AssetLifecycleService(dataSource);
     const movementQuery = new StockMovementQueryService(dataSource);
@@ -521,17 +510,12 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
       requestQueue,
     );
 
-    eventsWorker = new Worker(
-      OPERATIONS_EXECUTION_EVENTS_QUEUE,
-      (job) => eventProcessor.process(job as Job),
-      queueOptions,
-    );
     apiWorker = new Worker(
       INVENTORY_EXECUTION_REQUESTS_QUEUE,
       (job) => apiProcessor.process(job as Job<unknown>),
       queueOptions,
     );
-    await Promise.all([eventsWorker.waitUntilReady(), apiWorker.waitUntilReady()]);
+    await apiWorker.waitUntilReady();
 
     const reliability = new ExecutionOrderReliabilityService({
       getOrThrow: () => 'r-ca04-idempotency-secret',
@@ -548,11 +532,6 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
 
   afterAll(async () => {
     if (apiWorker) await apiWorker.close();
-    if (eventsWorker) await eventsWorker.close();
-    if (eventProcessor) {
-      const eventPool = eventProcessor as unknown as { pool?: { end: () => Promise<void> } };
-      await eventPool.pool?.end();
-    }
 
     if (requestQueue && createdEventIds.length > 0) {
       for (const id of createdEventIds) {
@@ -561,10 +540,6 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
       }
     }
     if (eventsQueue) {
-      for (const id of processedJobIds) {
-        const job = await eventsQueue.getJob(id);
-        if (job) await job.remove().catch(() => undefined);
-      }
       for (const requestId of createdRequestIds) {
         const id = `inventory-response-${uuidV5(requestId)}`;
         const job = await eventsQueue.getJob(id);
@@ -653,20 +628,22 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
     await Promise.all([requestQueue?.close(), eventsQueue?.close(), dlqQueue?.close()]);
   });
 
-  it('SUBSCRIBER_REQUIRED llega al recibo y a REJECTED en la proyección sin reintento', async () => {
+  it('SUBSCRIBER_REQUIRED llega al recibo y publica el evento de rechazo sin reintento', async () => {
     const result = await createOrderAndUsage({ itemId: randomUUID() });
-    const processing = runThroughRealQueues(result.orderId, result.inventoryRequestId);
-    const { workerAttempts, apiAttempts, responseAttempts, apiErrorClass } = await processing;
+    const processing = await runThroughApiQueue(result.inventoryRequestId);
+    const { apiAttempts, apiErrorClass, responseEvent } = processing;
     expect(apiErrorClass).toBeNull();
-    expect(workerAttempts).toBe(1);
     expect(apiAttempts).toBe(1);
-    expect(responseAttempts).toBe(1);
-    const outcome = await readOutcome(result.inventoryRequestId);
-    expect(outcome).toMatchObject({
+    expect(responseEvent).toMatchObject({
+      tenantId,
+      envelope: {
+        eventType: 'InventoryMovementRejectedV1',
+        payload: { reasonCode: 'SUBSCRIBER_REQUIRED' },
+      },
+    });
+    expect(await readReceipt(result.inventoryRequestId)).toMatchObject({
       outcome: 'REJECTED',
       reason_code: 'SUBSCRIBER_REQUIRED',
-      movement_status: 'REJECTED',
-      rejection_reason_code: 'SUBSCRIBER_REQUIRED',
     });
   });
 
@@ -676,18 +653,21 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
       subscriberId: randomUUID(),
     });
     await seedActiveMobileCustody(result.actor.sub);
-    const attempts = await runThroughRealQueues(result.orderId, result.inventoryRequestId);
+    const attempts = await runThroughApiQueue(result.inventoryRequestId);
     expect(attempts).toMatchObject({
-      workerAttempts: 1,
       apiAttempts: 1,
-      responseAttempts: 1,
       apiErrorClass: null,
+      responseEvent: {
+        tenantId,
+        envelope: {
+          eventType: 'InventoryMovementRejectedV1',
+          payload: { reasonCode: 'CUSTODY_INSUFFICIENT' },
+        },
+      },
     });
-    expect(await readOutcome(result.inventoryRequestId)).toMatchObject({
+    expect(await readReceipt(result.inventoryRequestId)).toMatchObject({
       outcome: 'REJECTED',
       reason_code: 'CUSTODY_INSUFFICIENT',
-      movement_status: 'REJECTED',
-      rejection_reason_code: 'CUSTODY_INSUFFICIENT',
     });
   });
 
@@ -697,18 +677,21 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
       subscriberId: randomUUID(),
     });
     await seedActiveMobileCustody(result.actor.sub);
-    const attempts = await runThroughRealQueues(result.orderId, result.inventoryRequestId);
+    const attempts = await runThroughApiQueue(result.inventoryRequestId);
     expect(attempts).toMatchObject({
-      workerAttempts: 1,
       apiAttempts: 1,
-      responseAttempts: 1,
       apiErrorClass: null,
+      responseEvent: {
+        tenantId,
+        envelope: {
+          eventType: 'InventoryMovementRejectedV1',
+          payload: { reasonCode: 'ITEM_INACTIVE' },
+        },
+      },
     });
-    expect(await readOutcome(result.inventoryRequestId)).toMatchObject({
+    expect(await readReceipt(result.inventoryRequestId)).toMatchObject({
       outcome: 'REJECTED',
       reason_code: 'ITEM_INACTIVE',
-      movement_status: 'REJECTED',
-      rejection_reason_code: 'ITEM_INACTIVE',
     });
   });
 
@@ -719,18 +702,21 @@ describeWithDb('R-CA04 — recorrido MOD11 → Redis → MOD12 → recibo → pr
       subscriberId: randomUUID(),
     });
     await seedActiveMobileCustody(result.actor.sub);
-    const attempts = await runThroughRealQueues(result.orderId, result.inventoryRequestId);
+    const attempts = await runThroughApiQueue(result.inventoryRequestId);
     expect(attempts).toMatchObject({
-      workerAttempts: 1,
       apiAttempts: 1,
-      responseAttempts: 1,
       apiErrorClass: null,
+      responseEvent: {
+        tenantId,
+        envelope: {
+          eventType: 'InventoryMovementRejectedV1',
+          payload: { reasonCode: 'SERIAL_NOT_IN_CUSTODY' },
+        },
+      },
     });
-    expect(await readOutcome(result.inventoryRequestId)).toMatchObject({
+    expect(await readReceipt(result.inventoryRequestId)).toMatchObject({
       outcome: 'REJECTED',
       reason_code: 'SERIAL_NOT_IN_CUSTODY',
-      movement_status: 'REJECTED',
-      rejection_reason_code: 'SERIAL_NOT_IN_CUSTODY',
     });
   });
 });

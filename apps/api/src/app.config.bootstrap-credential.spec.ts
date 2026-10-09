@@ -32,6 +32,8 @@ function buildProductionEnv(): Record<string, string> {
     DB_NAME: 'iwana_test',
     DB_USER: 'iwana_app_test',
     DB_PASSWORD: 'not-a-real-password',
+    REDIS_PASSWORD: 'test-only-redis-password',
+    INTERNAL_QUEUE_SIGNING_KEY: randomBytes(32).toString('base64'),
     JWT_PRIVATE_KEY: 'test-only-private-key-material',
     JWT_PUBLIC_KEY: 'test-only-public-key-material',
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: randomBytes(32).toString('hex'),
@@ -61,6 +63,7 @@ function buildDevelopmentEnv(): Record<string, string> {
     DB_NAME: 'iwana_dev',
     DB_USER: 'iwana',
     DB_PASSWORD: 'not-a-real-password',
+    REDIS_PASSWORD: 'test-only-redis-password',
     JWT_PRIVATE_KEY: 'test-only-private-key-material',
     JWT_PUBLIC_KEY: 'test-only-public-key-material',
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: randomBytes(32).toString('hex'),
@@ -114,6 +117,17 @@ describe('createAppConfigurationSchema — credencial de arranque de plataforma'
       const { error } = validate(buildProductionEnv());
 
       expect(error).toBeUndefined();
+    });
+
+    it('rechaza el perfil de producción si falta INTERNAL_QUEUE_SIGNING_KEY', () => {
+      const env = buildProductionEnv();
+      delete env['INTERNAL_QUEUE_SIGNING_KEY'];
+
+      const { error } = validate(env);
+
+      expect(error?.details.map(({ path }) => path.join('.'))).toContain(
+        'INTERNAL_QUEUE_SIGNING_KEY',
+      );
     });
 
     it('una variable declarada pero vacía no bloquea el arranque', () => {

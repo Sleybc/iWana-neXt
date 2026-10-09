@@ -95,7 +95,9 @@ function requiredInterpolationVars() {
 function buildEnv() {
   const env = { ...process.env };
   // Placeholders de laboratorio: el comando (stop/start) no usa credenciales;
-  // el compose solo las exige para interpolar la configuración.
+  // el compose solo las exige para interpolar la configuración. REDIS_PASSWORD
+  // no se envía a Redis ni recrea el contenedor: este script solo controla un
+  // servicio E2E ya existente mediante stop/start/status.
   for (const name of requiredInterpolationVars()) {
     if (!env[name]) env[name] = 'lab-redis-fault';
   }

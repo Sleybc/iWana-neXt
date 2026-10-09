@@ -78,6 +78,7 @@ out/
 .claude/worktrees/
 .claude/settings.local.json
 .claude/mcp-postgres.local.env
+.claude/mcp-redis.local.env
 **/__pycache__/
 *.pyc
 

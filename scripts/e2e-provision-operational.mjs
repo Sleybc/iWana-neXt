@@ -263,6 +263,8 @@ setRuntimeDefault('DB_APP_PASSWORD', randomRuntimeValue('e2e-db-app'));
 setRuntimeDefault('DB_MIGRATOR_USER', 'iwana_migrator');
 setRuntimeDefault('DB_MIGRATOR_PASSWORD', randomRuntimeValue('e2e-db-migrator'));
 setRuntimeDefault('REDIS_HOST', 'localhost');
+// La infraestructura E2E usa una clave efímera propia, nunca la del entorno dev.
+process.env.REDIS_PASSWORD = randomRuntimeValue('e2e-redis');
 setRuntimeDefault('E2E_DB_PORT', '15433');
 setRuntimeDefault('E2E_REDIS_PORT', '16380');
 setRuntimeDefault('E2E_MINIO_API_PORT', '19002');

@@ -1,22 +1,10 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { BullRegistrar, InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
+import { Job, Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
-import { OPERATIONS_EXECUTION_DLQ, type OperationalEventEnvelopeV1 } from '@iwana/shared';
-
-interface DlqJob {
-  tenantId: string;
-  envelope: OperationalEventEnvelopeV1;
-  diagnostic: {
-    failedAt: string;
-    attemptsMade: number;
-    jobId?: string;
-    errorMessage: string;
-    errorName: string;
-  };
-}
+import { OPERATIONS_EXECUTION_DLQ } from '@iwana/shared';
 
 interface InventoryDlqJob {
   tenantId: string;
@@ -39,6 +27,10 @@ interface ExecutionEventDlqJob {
   errorType: string;
 }
 
+interface ExecutionOrderDlqCleanupJob {
+  kind: 'execution-order-dlq-cleanup';
+}
+
 interface SafeExecutionFailure {
   tenantId: string;
   eventId: string;
@@ -49,7 +41,14 @@ interface SafeExecutionFailure {
   errorType: string;
 }
 
-type ExecutionOrderDlqJob = DlqJob | InventoryDlqJob | ExecutionEventDlqJob;
+type ExecutionOrderDlqJob = InventoryDlqJob | ExecutionEventDlqJob | ExecutionOrderDlqCleanupJob;
+
+const DLQ_RETENTION_SECONDS = 30 * 24 * 60 * 60;
+const DLQ_RETENTION_MILLISECONDS = DLQ_RETENTION_SECONDS * 1000;
+const DLQ_CLEANUP_INTERVAL_MILLISECONDS = 60 * 60 * 1000;
+const DLQ_CLEANUP_JOB_NAME = 'clean-expired-execution-order-dlq';
+const DLQ_CLEANUP_JOB_ID = 'execution-order-dlq-cleanup-hourly';
+const LEGACY_PURGE_MARKER = 'execution-order-dlq-legacy-payload-purge-v1:complete';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const SAFE_INVENTORY_ERROR_TYPES = new Set([
@@ -122,6 +121,28 @@ function normalizeExecutionFailure(value: Record<string, unknown>): SafeExecutio
   };
 }
 
+function sanitizeLegacyExecutionFailure(value: Record<string, unknown>): ExecutionEventDlqJob {
+  const envelope = isRecord(value['envelope']) ? value['envelope'] : {};
+  const legacyDiagnostic = isRecord(value['diagnostic']) ? value['diagnostic'] : {};
+  const normalized = normalizeExecutionFailure({
+    tenantId: value['tenantId'],
+    eventId: envelope['eventId'],
+    aggregateId: envelope['aggregateId'],
+    aggregateVersion: envelope['aggregateVersion'],
+    failedAt: legacyDiagnostic['failedAt'],
+    attemptsMade: legacyDiagnostic['attemptsMade'],
+    errorType: legacyDiagnostic['errorName'],
+  });
+
+  if (normalized) return { kind: 'execution-event', ...normalized };
+  return {
+    kind: 'execution-event',
+    failedAt: safeFailureTimestamp(legacyDiagnostic['failedAt']),
+    attemptsMade: safeAttempts(legacyDiagnostic['attemptsMade']),
+    errorType: 'EXECUTION_EVENT_FAILURE',
+  };
+}
+
 function normalizeInventoryFailure(value: InventoryDlqJob): InventoryDlqJob | null {
   if (
     !UUID_PATTERN.test(value.tenantId) ||
@@ -156,11 +177,18 @@ function normalizeInventoryFailure(value: InventoryDlqJob): InventoryDlqJob | nu
  */
 @Injectable()
 @Processor(OPERATIONS_EXECUTION_DLQ)
-export class ExecutionOrderDlqProcessor extends WorkerHost {
+export class ExecutionOrderDlqProcessor
+  extends WorkerHost
+  implements OnModuleInit, OnApplicationBootstrap
+{
   private readonly logger = new Logger(ExecutionOrderDlqProcessor.name);
   private readonly pool: Pool;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @InjectQueue(OPERATIONS_EXECUTION_DLQ) private readonly queue: Queue,
+    private readonly bullRegistrar: BullRegistrar,
+  ) {
     super();
     this.pool = new Pool({
       host: config.get<string>('DB_HOST', 'localhost'),
@@ -173,25 +201,83 @@ export class ExecutionOrderDlqProcessor extends WorkerHost {
     });
   }
 
+  async onModuleInit(): Promise<void> {
+    try {
+      const purged = await this.purgeLegacyJobsByRedisKey();
+      this.logger.log(`[execution-dlq] legacy_payload_purge_completed removed=${purged}`);
+    } catch {
+      this.logger.error(
+        '[execution-dlq] legacy_payload_purge_failed error_type=REDIS_OPERATION_FAILED',
+      );
+      throw new Error('Execution order DLQ legacy payload purge failed');
+    }
+  }
+
+  async onApplicationBootstrap(): Promise<void> {
+    await this.queue.add(
+      DLQ_CLEANUP_JOB_NAME,
+      { kind: 'execution-order-dlq-cleanup' },
+      {
+        repeat: { every: DLQ_CLEANUP_INTERVAL_MILLISECONDS },
+        jobId: DLQ_CLEANUP_JOB_ID,
+        removeOnComplete: true,
+        removeOnFail: { age: DLQ_RETENTION_SECONDS },
+      },
+    );
+    this.bullRegistrar.register();
+  }
+
+  /** Reescribe jobs heredados desde su hash Redis y elimina los terminales de forma idempotente. */
+  async purgeLegacyJobsByRedisKey(): Promise<number> {
+    const client = await this.queue.client;
+    const markerKey = this.queue.toKey(LEGACY_PURGE_MARKER);
+    if ((await client.exists(markerKey)) > 0) return 0;
+
+    const jobsPrefix = this.queue.toKey('');
+    const pattern = this.queue.toKey('*');
+    let cursor = '0';
+    let removed = 0;
+
+    do {
+      const [nextCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = nextCursor;
+
+      for (const key of keys) {
+        if (!key.startsWith(jobsPrefix)) continue;
+        const jobId = key.slice(jobsPrefix.length);
+        if (!jobId || jobId.includes(':') || (await client.type(key)) !== 'hash') continue;
+
+        const rawData = await client.hget(key, 'data');
+        if (typeof rawData !== 'string') continue;
+
+        let data: unknown;
+        try {
+          data = JSON.parse(rawData) as unknown;
+        } catch {
+          continue;
+        }
+        if (!isRecord(data) || !Object.prototype.hasOwnProperty.call(data, 'envelope')) continue;
+
+        // Nunca se registra ni se devuelve el JSON original; solo se conserva el diagnóstico permitido.
+        await client.hset(key, 'data', JSON.stringify(sanitizeLegacyExecutionFailure(data)));
+        const state = await this.queue.getJobState(jobId);
+        if (state === 'completed' || state === 'failed') {
+          if ((await this.queue.remove(jobId)) === 1) removed += 1;
+        }
+      }
+    } while (cursor !== '0');
+
+    await client.set(markerKey, '1');
+    return removed;
+  }
+
   async process(job: Job<ExecutionOrderDlqJob>): Promise<void> {
     const data: Record<string, unknown> = isRecord(job.data) ? job.data : {};
-    if (Object.prototype.hasOwnProperty.call(data, 'envelope')) {
-      const envelope = isRecord(data['envelope']) ? data['envelope'] : {};
-      const legacyDiagnostic = isRecord(data['diagnostic']) ? data['diagnostic'] : {};
-      const normalized = normalizeExecutionFailure({
-        tenantId: data['tenantId'],
-        eventId: envelope['eventId'],
-        aggregateId: envelope['aggregateId'],
-        aggregateVersion: envelope['aggregateVersion'],
-        failedAt: legacyDiagnostic['failedAt'],
-        attemptsMade: legacyDiagnostic['attemptsMade'],
-        errorType: legacyDiagnostic['errorName'],
-      });
-      if (!normalized) {
-        this.logger.error('[execution-dlq] execution_dlq_invalid_record error_type=INVALID_RECORD');
-        return;
-      }
-      await this.processExecutionFailure(normalized);
+    if (data['kind'] === 'execution-order-dlq-cleanup') {
+      const removed = await this.queue.clean(DLQ_RETENTION_MILLISECONDS, 1000, 'failed');
+      this.logger.log(
+        `[execution-dlq] failed_diagnostics_cleanup_completed removed=${removed.length}`,
+      );
       return;
     }
 

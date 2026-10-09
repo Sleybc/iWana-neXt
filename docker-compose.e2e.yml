@@ -68,7 +68,7 @@ services:
       DB_NAME: ${DB_NAME:-dbiw}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       REDIS_DB: ${REDIS_DB:-0}
       STORAGE_DRIVER: minio
       S3_ENDPOINT: http://minio:9000

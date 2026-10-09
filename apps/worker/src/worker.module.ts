@@ -1,4 +1,4 @@
-import { BullModule } from '@nestjs/bullmq';
+import { BullModule, BullRegistrar } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -48,6 +48,7 @@ import {
   EvidenceAnalysisProcessor,
   EVIDENCE_ANALYSIS_QUEUE,
 } from './processors/evidence-analysis.processor';
+import { validateWorkerConfiguration } from './worker.config';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const workerDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -146,6 +147,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
       // antes del template versionado .env.development y sin mezclar .env de producción.
       ignoreEnvFile: runtimeEnv === 'production' || runtimeEnv === 'staging',
       ...(workerEnvFilePath ? { envFilePath: workerEnvFilePath } : {}),
+      ...(runtimeEnv !== 'test' ? { validate: validateWorkerConfiguration } : {}),
     }),
 
     // Runtime TypeORM: DB_USER (rol app). DDL de provisioning usa
@@ -175,11 +177,12 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
 
     // Conexion Redis root para BullMQ (compartida entre todas las colas)
     BullModule.forRootAsync({
+      extraOptions: { manualRegistration: true },
       useFactory: (config: ConfigService) => ({
         connection: {
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          password: config.get<string>('REDIS_PASSWORD'),
           db: config.get<number>('REDIS_DB', 0),
         },
       }),
@@ -230,7 +233,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
         new Redis({
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          password: config.get<string>('REDIS_PASSWORD'),
           db: config.get<number>('REDIS_DB', 0),
           connectionName: 'iwana-worker-relay-telemetry',
           lazyConnect: false,

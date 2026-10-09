@@ -47,6 +47,13 @@ for name in MFA_ENCRYPTION_KEY PII_HASH_KEY; do
   fi
 done
 
+if has_value REDIS_PASSWORD; then
+  echo "    · REDIS_PASSWORD ya existe en .env.development.local — no se sobrescribe"
+else
+  append_value REDIS_PASSWORD "$(openssl rand -base64 32)"
+  echo "    ✓ REDIS_PASSWORD agregada a .env.development.local"
+fi
+
 echo ""
 echo "==> Listo. Recuerda:"
 echo "    - NUNCA commitear .env.development.local ni copiar sus valores a .env.example"

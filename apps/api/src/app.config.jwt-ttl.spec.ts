@@ -21,6 +21,7 @@ function buildDevelopmentEnv(): Record<string, string> {
     DB_NAME: 'iwana_test',
     DB_USER: 'iwana_app_test',
     DB_PASSWORD: 'not-a-real-password',
+    REDIS_PASSWORD: 'test-only-redis-password',
     JWT_PRIVATE_KEY: 'test-only-private-key-material',
     JWT_PUBLIC_KEY: 'test-only-public-key-material',
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: randomBytes(32).toString('hex'),

@@ -281,10 +281,10 @@ function expectMutationHeaders(
   if (expectedVersion !== undefined) {
     // MOD11 ETag-representación (2026-09-14, cambio INTENCIONAL declarado en el
     // informe de fase): el ETag identifica la representación —versión del
-    // contrato v1.1 + versión de la orden—, no el contador de concurrencia.
+    // contrato v1.3 + versión de la orden—, no el contador de concurrencia.
     // Subir el contrato invalida toda caché aunque ninguna OT cambie de versión.
     // `If-Match` sigue siendo el número de versión (concurrencia intacta).
-    expect(response.headers()['etag']).toBe(`"1.1-${expectedVersion}"`);
+    expect(response.headers()['etag']).toBe(`"1.3-${expectedVersion}"`);
   }
 }
 

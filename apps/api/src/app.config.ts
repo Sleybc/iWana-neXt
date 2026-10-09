@@ -160,7 +160,11 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // Redis
     REDIS_HOST: Joi.string().default('localhost'),
     REDIS_PORT: Joi.number().default(6379),
-    REDIS_PASSWORD: Joi.string().allow('').optional(),
+    REDIS_PASSWORD: Joi.string().trim().min(1).required().messages({
+      'any.required': 'REDIS_PASSWORD es obligatoria para autenticar Redis.',
+      'string.empty': 'REDIS_PASSWORD no puede estar vacía.',
+      'string.min': 'REDIS_PASSWORD no puede estar vacía.',
+    }),
     REDIS_DB: Joi.number().default(0),
     // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
     JWT_PRIVATE_KEY: Joi.string().required(),

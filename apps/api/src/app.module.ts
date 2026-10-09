@@ -170,7 +170,7 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
         connection: {
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          password: config.get<string>('REDIS_PASSWORD'),
           db: config.get<number>('REDIS_DB', 0),
         },
       }),

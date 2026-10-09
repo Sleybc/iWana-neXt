@@ -1,8 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
 
 describe('AppModule configuration', () => {
   it.each([
+    ['REDIS_PASSWORD', {}],
+    ['REDIS_PASSWORD', { REDIS_PASSWORD: '   ' }],
     ['EXECUTION_ORDER_IDEMPOTENCY_SECRET', {}],
     ['EXECUTION_ORDER_IDEMPOTENCY_SECRET', { EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'short' }],
     ['JWT_PRIVATE_KEY', { EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32) }],
@@ -43,6 +46,8 @@ describe('AppModule configuration', () => {
         DB_NAME: 'dbiw',
         DB_USER: 'iwana_app',
         DB_PASSWORD: 'placeholder',
+        REDIS_PASSWORD: 'test-only-redis-password',
+        INTERNAL_QUEUE_SIGNING_KEY: randomBytes(32).toString('base64'),
         JWT_PRIVATE_KEY: 'not-a-real-key',
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
@@ -72,6 +77,8 @@ describe('AppModule configuration', () => {
         DB_NAME: 'dbiw',
         DB_USER: 'iwana_app',
         DB_PASSWORD: 'test-placeholder',
+        REDIS_PASSWORD: 'test-only-redis-password',
+        INTERNAL_QUEUE_SIGNING_KEY: randomBytes(32).toString('base64'),
         JWT_PRIVATE_KEY: 'not-a-real-key',
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
@@ -96,6 +103,8 @@ describe('AppModule configuration', () => {
         DB_NAME: 'dbiw',
         DB_USER: 'iwana_app',
         DB_PASSWORD: 'test-placeholder',
+        REDIS_PASSWORD: 'test-only-redis-password',
+        INTERNAL_QUEUE_SIGNING_KEY: randomBytes(32).toString('base64'),
         JWT_PRIVATE_KEY: 'not-a-real-key',
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
@@ -126,6 +135,8 @@ describe('AppModule configuration', () => {
         DB_NAME: 'dbiw',
         DB_USER: 'iwana_app',
         DB_PASSWORD: 'test-placeholder',
+        REDIS_PASSWORD: 'test-only-redis-password',
+        INTERNAL_QUEUE_SIGNING_KEY: randomBytes(32).toString('base64'),
         JWT_PRIVATE_KEY: 'not-a-real-key',
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),

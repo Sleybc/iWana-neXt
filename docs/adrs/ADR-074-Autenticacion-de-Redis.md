@@ -1,8 +1,9 @@
 # ADR-074: Autenticación de Redis en todos los entornos
 
-**Versión:** 1.0
-**Estado:** Propuesto
-**Fecha:** 2026-08-03
+**Versión:** 1.1
+**Estado:** Aprobado
+**Fecha:** 2026-08-03 · **Aprobación:** CTO, 2026-10-09
+**Cambio v1.0 → v1.1 (2026-10-09):** el CTO aprueba la decisión sin cambios de contenido. Motivo inmediato: S2 del plan de inventario MOD11↔MOD12 (`docs/plans/2026-10-06-mod11-mod12-consumo-inventario-ot.md` §5) demostró que una cola sin autenticar permite inyectar jobs, y lo dejó como condición de G7. La implementación se encarga en `docs/prompts/PROMPT-PLAT-REDIS-AUTH-DEUDA-G7-v1.0.md` §P2.
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
 **Aprobación requerida:** CTO Humano — excepción de seguridad vigente cuyo levantamiento cambia el baseline (§5 de la matriz de decisiones del perfil AI-EM-ARCH)
@@ -59,7 +60,7 @@ cambie la topología. El propio informe de auditoría registra como deuda abiert
 default, sin separación entre `edge`, `app` y `data`. La única barrera es que
 nadie publique el puerto.
 
-## Decisión propuesta
+## Decisión
 
 **Redis exige autenticación en todos los entornos**, incluido desarrollo.
 

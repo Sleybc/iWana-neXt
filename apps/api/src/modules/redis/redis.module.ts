@@ -18,7 +18,7 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
  * Variables de entorno requeridas:
  *   REDIS_HOST: host del servidor Redis (default: localhost)
  *   REDIS_PORT: puerto Redis (default: 6379)
- *   REDIS_PASSWORD: password Redis (opcional, default: vacio)
+ *   REDIS_PASSWORD: contraseña obligatoria de Redis
  *   REDIS_DB: base de datos Redis (default: 0)
  *
  * HLD-MOD01-ARQUITECTURA-v1.0 Seccion 1 (@iwana/auth — JTI blacklist)
@@ -33,7 +33,7 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
         return new Redis({
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          password: config.get<string>('REDIS_PASSWORD'),
           db: config.get<number>('REDIS_DB', 0),
           // Reconnect automaticamente en caso de desconexion
           retryStrategy: (times: number) => Math.min(times * 100, 3000),

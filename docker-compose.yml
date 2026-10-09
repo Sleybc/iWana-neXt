@@ -111,7 +111,19 @@ services:
     # `--maxmemory-policy noeviction` es explícito y no decorativo: BullMQ exige
     # que Redis NO desaloje claves. Con cualquier política `allkeys-*`, un pico
     # de memoria descarta jobs encolados sin dejar rastro en los logs.
-    command: redis-server --save 60 1 --loglevel warning --maxmemory-policy noeviction
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - --save
+      - '60'
+      - '1'
+      - --loglevel
+      - warning
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     expose:
       - '6379'
     volumes:
