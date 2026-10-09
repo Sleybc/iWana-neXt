@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { ExecutionOrderRelayService } from './execution-order-relay.service';
 import type { Queue } from 'bullmq';
+import { INVENTORY_SOURCE_CLEANUP_INTERVAL_MS } from '@iwana/shared';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 type TestMock = jest.MockedFunction<(...args: never[]) => Promise<unknown>>;
@@ -49,6 +50,63 @@ describe('ExecutionOrderRelayService', () => {
     (relayService as unknown as { pool: { connect: TestMock } }).pool = {
       connect: jest.fn<(...args: never[]) => Promise<unknown>>().mockResolvedValue(poolClient),
     } as never;
+  });
+
+  it('programa la limpieza horaria de colas de inventario desde el worker', async () => {
+    await relayService.onApplicationBootstrap();
+
+    expect(relayQueue.add).toHaveBeenCalledWith(
+      'clean-expired-inventory-source-failures',
+      {},
+      expect.objectContaining({
+        repeat: { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS },
+        jobId: 'execution-order-inventory-source-cleanup-worker',
+      }),
+    );
+  });
+
+  it.each<[string, number | { age: number }]>([
+    ['InventoryConsumptionRequestedV1', { age: 24 * 60 * 60 }],
+    ['InventoryConsumptionRequestedV2', { age: 24 * 60 * 60 }],
+    ['InventoryMovementConfirmedV1', { age: 24 * 60 * 60 }],
+    ['InventoryMovementRejectedV1', { age: 24 * 60 * 60 }],
+    ['ExecutionOrderStartedV1', 30 * 24 * 60 * 60],
+  ])('aplica retención por tipo de evento: %s', async (eventType, expectedRetention) => {
+    const eventId = 'e0000000-0000-4000-8000-000000000001';
+    const tenantId = '10000000-0000-4000-8000-000000000001';
+    const orderId = 'a0000000-0000-4000-8000-000000000001';
+    poolClient.query
+      .mockResolvedValueOnce({ rows: [{ id: tenantId, schema_name: 'tenant_test001' }] } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN lease
+      .mockResolvedValueOnce(undefined) // SET LOCAL lease
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            event_id: eventId,
+            tenant_id: tenantId,
+            aggregate_id: orderId,
+            aggregate_version: 1,
+            event_type: eventType,
+            payload: { executionOrderId: orderId },
+            correlation_id: eventId,
+            occurred_at: new Date().toISOString(),
+            attempt_count: 1,
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce(undefined) // COMMIT lease
+      .mockResolvedValueOnce(undefined) // BEGIN mark
+      .mockResolvedValueOnce(undefined) // SET LOCAL mark
+      .mockResolvedValueOnce(undefined) // UPDATE mark published
+      .mockResolvedValueOnce(undefined); // COMMIT mark
+
+    await relayService.scanAndRelay(100);
+
+    expect(eventsQueue.add).toHaveBeenCalledWith(
+      'deliver-execution-event',
+      expect.any(Object),
+      expect.objectContaining({ removeOnFail: expectedRetention }),
+    );
   });
 
   it('retransmite el envelope del agregado sin consultar el vínculo de agenda', async () => {
@@ -192,6 +250,14 @@ describe('ExecutionOrderRelayService', () => {
   });
 
   it('distingue un fallo de enqueue de un fallo de marcado', async () => {
+    const warnSpy = jest.spyOn(
+      (relayService as unknown as { logger: { warn: (message: string) => void } }).logger,
+      'warn',
+    );
+    const errorSpy = jest.spyOn(
+      (relayService as unknown as { logger: { error: (message: string) => void } }).logger,
+      'error',
+    );
     const row = {
       event_id: 'e0000000-0000-4000-8000-000000000002',
       tenant_id: 't1',
@@ -231,6 +297,10 @@ describe('ExecutionOrderRelayService', () => {
     expect(
       markFailureCalls.some(([sql]) => typeof sql === 'string' && sql.includes('published_at')),
     ).toBe(true);
+    const capturedLogs = [...warnSpy.mock.calls.flat(), ...errorSpy.mock.calls.flat()].join(' ');
+    expect(capturedLogs).not.toContain('enqueue failed');
+    expect(capturedLogs).not.toContain('mark failed');
+    expect(capturedLogs).toContain('error_type=Error');
   });
 
   it('relayStatus devuelve el estado actual', () => {

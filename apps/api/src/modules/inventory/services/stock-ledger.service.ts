@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   InventoryItem,
+  SerializedAsset,
   StockBalance,
   StockLocation,
   StockMovement,
@@ -14,10 +15,12 @@ import {
   AssetLifecycleEventType,
   ExecutionOrderItemAction,
   InventoryDisposition,
+  InventoryItemStatus,
   InventoryResponsibleType,
   InventoryTrackingMode,
   SerializedAssetStatus,
   StockBalanceCondition,
+  StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
   WriteOffReason,
@@ -40,6 +43,9 @@ import { InventoryDomainEventPublisher } from './inventory-domain-event-publishe
 import type { ItemStockThresholdSnapshot } from './inventory-domain-event-publisher.service';
 import { SerializedAssetService } from './serialized-asset.service';
 import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
+import { buildStockBalanceLockKey } from './stock-balance.service';
+import { acquireTransactionAdvisoryLock } from './inventory-postgres.util';
+import { InventoryBusinessRejection } from './inventory-business-rejection';
 
 const MOBILE_TRANSFER_LOCATION_TYPES = new Set<StockLocationType>([
   StockLocationType.MOBILE_TECHNICIAN,
@@ -246,7 +252,7 @@ export class StockLedgerService {
     manager: EntityManager,
     tenantId: string,
     input: RecordStockMovementInput,
-    actor: JwtPayload,
+    actor: Pick<JwtPayload, 'sub'>,
   ): Promise<StockMovementResult> {
     if (input.lines.length === 0) {
       throw new BadRequestException('El movimiento debe incluir al menos una línea.');
@@ -693,6 +699,32 @@ export class StockLedgerService {
     input: ExecutionOrderMovementInput,
     actor: JwtPayload,
   ): Promise<StockMovementResult> {
+    return this.recordExecutionOrderMovementInternal(input, actor, false);
+  }
+
+  /** Camino firmado de MOD11: valida reglas de OT y persiste el recibo junto al ledger. */
+  async recordExecutionOrderMovementForInventoryRequest(
+    input: ExecutionOrderMovementInput,
+    actor: Pick<JwtPayload, 'sub'>,
+    technicianCustodyLocationId: string,
+    persistReceipt: (manager: EntityManager, result: StockMovementResult) => Promise<void>,
+  ): Promise<StockMovementResult> {
+    return this.recordExecutionOrderMovementInternal(
+      input,
+      actor,
+      true,
+      persistReceipt,
+      technicianCustodyLocationId,
+    );
+  }
+
+  private async recordExecutionOrderMovementInternal(
+    input: ExecutionOrderMovementInput,
+    actor: Pick<JwtPayload, 'sub'>,
+    validateInventoryRequest: boolean,
+    persistReceipt?: (manager: EntityManager, result: StockMovementResult) => Promise<void>,
+    resolvedTechnicianCustodyLocationId?: string,
+  ): Promise<StockMovementResult> {
     const quantity = input.serialNumber ? 1 : input.quantity;
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const itemIds = [input.itemId];
@@ -705,6 +737,30 @@ export class StockLedgerService {
       );
 
       const result = await withTransaction(qr.manager, async (manager) => {
+        const technicianCustodyLocationId = validateInventoryRequest
+          ? resolvedTechnicianCustodyLocationId
+          : input.technicianCustodyId;
+
+        if (!technicianCustodyLocationId) {
+          throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
+        }
+
+        if (validateInventoryRequest) {
+          await this.assertActiveTechnicianCustodyLocation(
+            manager,
+            tenantId,
+            input.technicianCustodyId,
+            technicianCustodyLocationId,
+          );
+          await this.validateExecutionOrderInventoryRequest(
+            manager,
+            tenantId,
+            input,
+            technicianCustodyLocationId,
+            quantity,
+          );
+        }
+
         const customerSiteLocationId = await this.resolveExecutionOrderCustomerSiteLocation(
           manager,
           tenantId,
@@ -717,6 +773,7 @@ export class StockLedgerService {
 
         const currentLocationId = this.resolveExecutionOrderCurrentLocationId({
           input,
+          technicianCustodyLocationId,
           customerSiteLocationId,
           mainWarehouseLocationId,
         });
@@ -735,6 +792,7 @@ export class StockLedgerService {
             lines: this.buildExecutionOrderMovementLines(
               input,
               quantity,
+              technicianCustodyLocationId,
               customerSiteLocationId,
               mainWarehouseLocationId,
             ),
@@ -792,6 +850,10 @@ export class StockLedgerService {
           }
         }
 
+        if (persistReceipt) {
+          await persistReceipt(manager, movementResult);
+        }
+
         return movementResult;
       });
 
@@ -806,6 +868,86 @@ export class StockLedgerService {
 
       return result;
     });
+  }
+
+  private async validateExecutionOrderInventoryRequest(
+    manager: EntityManager,
+    tenantId: string,
+    input: ExecutionOrderMovementInput,
+    technicianCustodyLocationId: string,
+    quantity: number,
+  ): Promise<void> {
+    const item = await manager.findOne(InventoryItem, { where: { tenantId, id: input.itemId } });
+    if (!item || item.status !== InventoryItemStatus.ACTIVE) {
+      throw new InventoryBusinessRejection('ITEM_INACTIVE');
+    }
+
+    if (input.serialNumber) {
+      const normalizedSerial = this.serializedAssetService.normalizeSerial(input.serialNumber);
+      const asset = await manager.findOne(SerializedAsset, {
+        where: {
+          tenantId,
+          inventoryItemId: input.itemId,
+          normalizedSerialNumber: normalizedSerial,
+        },
+      });
+      if (
+        !asset ||
+        asset.currentLocationId !== technicianCustodyLocationId ||
+        asset.currentStatus !== SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN ||
+        asset.currentResponsibleType !== InventoryResponsibleType.TECHNICIAN
+      ) {
+        throw new InventoryBusinessRejection('SERIAL_NOT_IN_CUSTODY');
+      }
+    }
+
+    // Serializa la comprobación de saldo con el mismo lock que aplica el delta,
+    // de forma que una concurrencia no transforme un rechazo de negocio en 500.
+    if (input.finalDisposition !== InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK) {
+      await acquireTransactionAdvisoryLock(
+        manager,
+        buildStockBalanceLockKey({
+          tenantId,
+          itemId: input.itemId,
+          locationId: technicianCustodyLocationId,
+          condition: StockBalanceCondition.NEW,
+        }),
+      );
+      const available = await this.stockBalanceService.getAvailableQuantityWithManager(
+        manager,
+        tenantId,
+        {
+          itemId: input.itemId,
+          locationId: technicianCustodyLocationId,
+          condition: StockBalanceCondition.NEW,
+        },
+      );
+      if (available < quantity) {
+        throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
+      }
+    }
+  }
+
+  private async assertActiveTechnicianCustodyLocation(
+    manager: EntityManager,
+    tenantId: string,
+    responsibleRefId: string,
+    locationId: string,
+  ): Promise<void> {
+    const location = await manager.findOne(StockLocation, {
+      where: {
+        tenantId,
+        id: locationId,
+        responsibleRefId,
+        type: StockLocationType.MOBILE_TECHNICIAN,
+        status: StockLocationStatus.ACTIVE,
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!location) {
+      throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
+    }
   }
 
   async recordSale(input: SaleMovementInput, actor: JwtPayload): Promise<StockMovementResult> {
@@ -1367,6 +1509,7 @@ export class StockLedgerService {
 
   private resolveExecutionOrderCurrentLocationId(input: {
     input: ExecutionOrderMovementInput;
+    technicianCustodyLocationId: string;
     customerSiteLocationId: string | null;
     mainWarehouseLocationId: string | null;
   }): string | null {
@@ -1374,7 +1517,7 @@ export class StockLedgerService {
       case InventoryDisposition.INSTALLED_AT_CUSTOMER:
         return input.customerSiteLocationId;
       case InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK:
-        return input.input.technicianCustodyId;
+        return input.technicianCustodyLocationId;
       case InventoryDisposition.RETURNED_TO_WAREHOUSE:
         return input.mainWarehouseLocationId;
       default:
@@ -1417,13 +1560,14 @@ export class StockLedgerService {
   private buildExecutionOrderMovementLines(
     input: ExecutionOrderMovementInput,
     quantity: number,
+    technicianCustodyLocationId: string,
     customerSiteLocationId: string | null,
     mainWarehouseLocationId: string | null,
   ): StockLedgerLineInput[] {
     const lines: StockLedgerLineInput[] = [
       {
         itemId: input.itemId,
-        locationId: input.technicianCustodyId,
+        locationId: technicianCustodyLocationId,
         quantity: -quantity,
         serializedAssetId: null,
         serialNumber: input.serialNumber ?? null,
@@ -1461,7 +1605,7 @@ export class StockLedgerService {
     if (input.finalDisposition === InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK) {
       lines.push({
         itemId: input.itemId,
-        locationId: input.technicianCustodyId,
+        locationId: technicianCustodyLocationId,
         quantity,
         serializedAssetId: null,
         serialNumber: input.serialNumber ?? null,

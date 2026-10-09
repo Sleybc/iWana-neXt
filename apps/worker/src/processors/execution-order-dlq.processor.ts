@@ -28,7 +28,28 @@ interface InventoryDlqJob {
   errorType: string;
 }
 
-type ExecutionOrderDlqJob = DlqJob | InventoryDlqJob;
+interface ExecutionEventDlqJob {
+  kind: 'execution-event';
+  tenantId?: string;
+  eventId?: string;
+  aggregateId?: string;
+  aggregateVersion?: number;
+  failedAt: string;
+  attemptsMade: number;
+  errorType: string;
+}
+
+interface SafeExecutionFailure {
+  tenantId: string;
+  eventId: string;
+  aggregateId: string;
+  aggregateVersion: number;
+  failedAt: string;
+  attemptsMade: number;
+  errorType: string;
+}
+
+type ExecutionOrderDlqJob = DlqJob | InventoryDlqJob | ExecutionEventDlqJob;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const SAFE_INVENTORY_ERROR_TYPES = new Set([
@@ -40,6 +61,66 @@ const SAFE_INVENTORY_ERROR_TYPES = new Set([
   'INVENTORY_EVENT_FAILURE',
   'INVENTORY_DLQ_FAILURE',
 ]);
+const SAFE_EXECUTION_ERROR_TYPES = new Set([
+  'Error',
+  'UnrecoverableError',
+  'QueryFailedError',
+  'TimeoutError',
+  'AbortError',
+  'EXECUTION_EVENT_FAILURE',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function safeUuid(value: unknown): string | null {
+  return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
+}
+
+function safeErrorType(value: unknown): string {
+  return typeof value === 'string' && SAFE_EXECUTION_ERROR_TYPES.has(value)
+    ? value
+    : 'EXECUTION_EVENT_FAILURE';
+}
+
+function safeFailureTimestamp(value: unknown): string {
+  if (typeof value !== 'string') return new Date().toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+function safeAttempts(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? Math.min(value, 1000)
+    : 0;
+}
+
+function normalizeExecutionFailure(value: Record<string, unknown>): SafeExecutionFailure | null {
+  const tenantId = safeUuid(value['tenantId']);
+  const eventId = safeUuid(value['eventId']);
+  const aggregateId = safeUuid(value['aggregateId']);
+  const aggregateVersion = value['aggregateVersion'];
+  if (
+    !tenantId ||
+    !eventId ||
+    !aggregateId ||
+    typeof aggregateVersion !== 'number' ||
+    !Number.isInteger(aggregateVersion) ||
+    aggregateVersion < 1
+  ) {
+    return null;
+  }
+  return {
+    tenantId,
+    eventId,
+    aggregateId,
+    aggregateVersion,
+    failedAt: safeFailureTimestamp(value['failedAt']),
+    attemptsMade: safeAttempts(value['attemptsMade']),
+    errorType: safeErrorType(value['errorType']),
+  };
+}
 
 function normalizeInventoryFailure(value: InventoryDlqJob): InventoryDlqJob | null {
   if (
@@ -70,8 +151,8 @@ function normalizeInventoryFailure(value: InventoryDlqJob): InventoryDlqJob | nu
 /**
  * Procesador de Dead Letter Queue para eventos de MOD11.
  *
- * PLAT-P1-02: Almacena el evento fallido con su diagnóstico completo
- * en el outbox como last_error para trazabilidad del operador.
+ * Registra los metadatos de fallo permitidos en el outbox como last_error,
+ * sin conservar el payload ni mensajes crudos de excepción.
  */
 @Injectable()
 @Processor(OPERATIONS_EXECUTION_DLQ)
@@ -93,26 +174,54 @@ export class ExecutionOrderDlqProcessor extends WorkerHost {
   }
 
   async process(job: Job<ExecutionOrderDlqJob>): Promise<void> {
-    if (!('envelope' in job.data)) {
-      const diagnostic = normalizeInventoryFailure(job.data);
-      if (!diagnostic) {
-        this.logger.error('[execution-dlq] inventory_dlq_invalid_record error_type=INVALID_RECORD');
+    const data: Record<string, unknown> = isRecord(job.data) ? job.data : {};
+    if (Object.prototype.hasOwnProperty.call(data, 'envelope')) {
+      const envelope = isRecord(data['envelope']) ? data['envelope'] : {};
+      const legacyDiagnostic = isRecord(data['diagnostic']) ? data['diagnostic'] : {};
+      const normalized = normalizeExecutionFailure({
+        tenantId: data['tenantId'],
+        eventId: envelope['eventId'],
+        aggregateId: envelope['aggregateId'],
+        aggregateVersion: envelope['aggregateVersion'],
+        failedAt: legacyDiagnostic['failedAt'],
+        attemptsMade: legacyDiagnostic['attemptsMade'],
+        errorType: legacyDiagnostic['errorName'],
+      });
+      if (!normalized) {
+        this.logger.error('[execution-dlq] execution_dlq_invalid_record error_type=INVALID_RECORD');
         return;
       }
-      await this.processInventoryFailure(diagnostic);
+      await this.processExecutionFailure(normalized);
       return;
     }
 
-    const legacyJob = job as Job<DlqJob>;
-    const { tenantId, envelope, diagnostic } = legacyJob.data;
+    if (data['kind'] === 'execution-event') {
+      const diagnostic = normalizeExecutionFailure(data);
+      if (!diagnostic) {
+        this.logger.error('[execution-dlq] execution_dlq_invalid_record error_type=INVALID_RECORD');
+        return;
+      }
+      await this.processExecutionFailure(diagnostic);
+      return;
+    }
 
+    const diagnostic = normalizeInventoryFailure(data as unknown as InventoryDlqJob);
+    if (!diagnostic) {
+      this.logger.error('[execution-dlq] inventory_dlq_invalid_record error_type=INVALID_RECORD');
+      return;
+    }
+    await this.processInventoryFailure(diagnostic);
+  }
+
+  private async processExecutionFailure(diagnostic: SafeExecutionFailure): Promise<void> {
+    const { tenantId, eventId, aggregateId, aggregateVersion } = diagnostic;
     this.logger.error(
-      `[execution-dlq] Evento muerto event_id=${envelope.eventId} ` +
-        `type=${envelope.eventType} tenant=${tenantId} ` +
-        `attempts=${diagnostic.attemptsMade} error=${diagnostic.errorMessage}`,
+      `[execution-dlq] execution_event_failed event=${eventId} tenant=${tenantId} ` +
+        `aggregate=${aggregateId} attempts=${diagnostic.attemptsMade} ` +
+        `error_type=${diagnostic.errorType} failed_at=${diagnostic.failedAt}`,
     );
-
     const client = await this.pool.connect();
+    let transactionOpen = false;
     try {
       const tenant = await client.query<{ schema_name: string }>(
         `SELECT schema_name FROM public.tenants
@@ -122,10 +231,12 @@ export class ExecutionOrderDlqProcessor extends WorkerHost {
 
       const schemaName = tenant.rows[0]?.schema_name;
       if (!schemaName || !isValidSchemaName(schemaName)) {
-        this.logger.error(`[execution-dlq] No se pudo resolver schema para tenant=${tenantId}`);
+        this.logger.error(`[execution-dlq] execution_dlq_tenant_unresolved tenant=${tenantId}`);
         return;
       }
 
+      await client.query('BEGIN');
+      transactionOpen = true;
       await client.query(`SET LOCAL search_path TO "${schemaName}"`);
 
       // Actualizar el outbox con el último error para visibilidad del operador
@@ -134,21 +245,19 @@ export class ExecutionOrderDlqProcessor extends WorkerHost {
          SET last_error = $3
          WHERE event_id = $1 AND tenant_id = $2`,
         [
-          envelope.eventId,
+          eventId,
           tenantId,
           JSON.stringify({
             failedAt: diagnostic.failedAt,
             attemptsMade: diagnostic.attemptsMade,
-            errorName: diagnostic.errorName,
-            errorMessage: String(diagnostic.errorMessage).slice(0, 4000),
-            dlqJobId: job.id,
+            errorType: diagnostic.errorType,
           }),
         ],
       );
 
       if ((updated.rowCount ?? 0) === 0) {
         this.logger.warn(
-          `[execution-dlq] Outbox event ${envelope.eventId} no encontrado en tenant ${tenantId}`,
+          `[execution-dlq] execution_dlq_outbox_missing event=${eventId} tenant=${tenantId}`,
         );
       }
 
@@ -163,21 +272,22 @@ export class ExecutionOrderDlqProcessor extends WorkerHost {
         [
           tenantId,
           'mod11-dlq-terminal',
-          envelope.eventId,
-          envelope.aggregateId,
-          envelope.aggregateVersion,
-          `DLQ: ${diagnostic.errorName} — ${String(diagnostic.errorMessage).slice(0, 500)}`,
+          eventId,
+          aggregateId,
+          aggregateVersion,
+          `DLQ: ${diagnostic.errorType}`,
         ],
       );
 
+      await client.query('COMMIT');
+      transactionOpen = false;
       this.logger.log(
-        `[execution-dlq] Evento ${envelope.eventId} registrado en DLQ para intervención operativa`,
+        `[execution-dlq] execution_event_recorded event=${eventId} tenant=${tenantId}`,
       );
     } catch (error) {
-      this.logger.error(
-        `[execution-dlq] Fallo al procesar DLQ para ${envelope.eventId}: ` +
-          `${error instanceof Error ? error.message : 'unknown'}`,
-      );
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+      const errorType = safeErrorType(error instanceof Error ? error.name : undefined);
+      this.logger.error(`[execution-dlq] execution_dlq_persist_failed error_type=${errorType}`);
       // No relanzar: este es el último eslabón; si falla la DLQ misma,
       // el job queda en BullMQ para inspección manual.
     } finally {

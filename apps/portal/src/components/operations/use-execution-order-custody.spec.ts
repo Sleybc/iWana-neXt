@@ -4,7 +4,7 @@
 // la política es qué se consulta, cuándo y qué se ofrece, no cómo lo implementa.
 import { useRef, useState } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ListMeta } from '@iwana/shared';
+import { INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS, type ListMeta } from '@iwana/shared';
 import type {
   ExecutionOrderDetailResponse,
   SerializedAssetRecord,
@@ -13,7 +13,10 @@ import type {
 import { inventoryApi } from '@/lib/api-client';
 import type { RequirementActionDescriptor } from './execution-order-actions';
 import type { ExecutionOrderCustodyOption } from './execution-order-console-types';
-import { useExecutionOrderCustody } from './use-execution-order-custody';
+import {
+  isProlongedPendingInventoryConsumption,
+  useExecutionOrderCustody,
+} from './use-execution-order-custody';
 
 jest.mock('@/lib/api-client', () => ({
   ApiError: class ApiError extends Error {},
@@ -584,5 +587,19 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
     rerender({ current: { ...order, version: 2 } as ExecutionOrderDetailResponse });
 
     expect(result.current.slot).toBe(first);
+  });
+});
+
+describe('isProlongedPendingInventoryConsumption', () => {
+  it('usa el umbral compartido y admite el instante exacto del corte', () => {
+    const now = Date.parse('2026-10-06T18:00:00.000Z');
+    const createdAt = new Date(now - INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS).toISOString();
+
+    expect(isProlongedPendingInventoryConsumption(createdAt, now)).toBe(true);
+    expect(isProlongedPendingInventoryConsumption(createdAt, now - 1)).toBe(false);
+  });
+
+  it('ignora una fecha inválida en lugar de mostrar una alerta engañosa', () => {
+    expect(isProlongedPendingInventoryConsumption('fecha-inválida', Date.now())).toBe(false);
   });
 });

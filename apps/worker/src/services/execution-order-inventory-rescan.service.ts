@@ -19,7 +19,7 @@ interface PendingUsageRow {
   tenant_id: string;
   execution_order_id: string;
   aggregate_version: number;
-  inventory_request_id: string;
+  inventory_request_id: string | null;
   item_id: string;
   quantity: number | string;
   serial_number: string | null;
@@ -131,9 +131,13 @@ export class ExecutionOrderInventoryRescanService {
         [tenant.id, this.thresholdMinutes, this.maxAttempts, this.batchSize],
       );
 
-      for (const row of pending.rows) {
+      let emitted = 0;
+      let irrecoverable = 0;
+      for (const [index, row] of pending.rows.entries()) {
+        const savepoint = `inventory_request_${index}`;
+        await client.query(`SAVEPOINT ${savepoint}`);
         const eventId = randomUUID();
-        const payload = InventoryConsumptionRequestedV2Schema.parse({
+        const candidatePayload = {
           executionOrderId: row.execution_order_id,
           eventId,
           intentId: row.inventory_request_id,
@@ -149,17 +153,53 @@ export class ExecutionOrderInventoryRescanService {
               ? row.subscriber_id
               : null,
           actorUserId: row.actor_user_id,
-        });
-        const envelope = InventoryConsumptionRequestedV2EnvelopeSchema.parse({
-          eventId,
-          eventType: 'InventoryConsumptionRequestedV2',
-          tenantId: tenant.id,
-          aggregateId: row.execution_order_id,
-          aggregateVersion: row.aggregate_version,
-          occurredAt: new Date().toISOString(),
-          correlationId: row.inventory_request_id,
-          payload,
-        });
+        };
+        const payloadResult = InventoryConsumptionRequestedV2Schema.safeParse(candidatePayload);
+        const envelopeResult = payloadResult.success
+          ? InventoryConsumptionRequestedV2EnvelopeSchema.safeParse({
+              eventId,
+              eventType: 'InventoryConsumptionRequestedV2',
+              tenantId: tenant.id,
+              aggregateId: row.execution_order_id,
+              aggregateVersion: row.aggregate_version,
+              occurredAt: new Date().toISOString(),
+              correlationId: row.inventory_request_id,
+              payload: payloadResult.data,
+            })
+          : { success: false as const };
+
+        const invalidCode =
+          row.inventory_request_id === null
+            ? 'MISSING_REQUEST_ID'
+            : row.actor_user_id === null
+              ? 'MISSING_ACTOR'
+              : !payloadResult.success || !envelopeResult.success
+                ? 'INVALID_PAYLOAD'
+                : null;
+        if (invalidCode) {
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          await client.query(
+            `UPDATE execution_order_item_usage
+                SET request_attempts = $3,
+                    last_requested_at = NOW()
+              WHERE id = $1 AND tenant_id = $2 AND movement_status = 'PENDING'`,
+            [row.id, tenant.id, this.maxAttempts],
+          );
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+          irrecoverable += 1;
+          this.logger.warn(
+            `[inventory-rescan] irrecoverable reason_code=${invalidCode} ` +
+              `event=${eventId} tenant=${tenant.id} ot=${row.execution_order_id} ` +
+              `inventory_request=${row.inventory_request_id ?? 'null'}`,
+          );
+          continue;
+        }
+
+        if (!payloadResult.success || !envelopeResult.success) {
+          throw new Error('Validación de recuperación inconsistente.');
+        }
+
+        const envelope = envelopeResult.data;
 
         await client.query(
           `UPDATE execution_order_item_usage
@@ -183,6 +223,8 @@ export class ExecutionOrderInventoryRescanService {
             envelope.correlationId,
           ],
         );
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        emitted += 1;
       }
 
       const stuck = await client.query<{ count: string }>(
@@ -201,7 +243,12 @@ export class ExecutionOrderInventoryRescanService {
           `[inventory-rescan] metric=prolonged_pending tenant=${tenant.id} value=${stuckCount}`,
         );
       }
-      return pending.rowCount ?? 0;
+      if (irrecoverable > 0) {
+        this.logger.warn(
+          `[inventory-rescan] metric=irrecoverable tenant=${tenant.id} value=${irrecoverable}`,
+        );
+      }
+      return emitted;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;

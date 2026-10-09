@@ -46,6 +46,8 @@ export * from './constants/search-job-names';
 export * from './constants/users-bulk-job-names';
 export * from './constants/profile-phone';
 export * from './constants/user-field-constraints';
+export * from './constants/inventory-consumption';
+export * from './constants/inventory-source-retention';
 
 // Contratos de payload entre procesos (API productor / Worker consumidor)
 export * from './contracts/queue-payloads';

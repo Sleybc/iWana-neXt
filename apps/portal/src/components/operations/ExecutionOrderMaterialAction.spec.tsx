@@ -6,6 +6,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS,
   ExecutionOrderItemAction,
   ExecutionOrderStatus,
   InventoryDisposition,
@@ -619,6 +620,85 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       expect(within(history).queryByText('En custodia del ejecutor')).toBeNull();
       expect(within(capture).getByText('En custodia del ejecutor')).toBeInTheDocument();
       expect(history.contains(capture)).toBe(false);
+    });
+
+    it.each([
+      [
+        'CUSTODY_INSUFFICIENT',
+        'No hay suficientes unidades disponibles en tu inventario asignado.',
+        'Revisa la cantidad solicitada. Si necesitas más unidades, pide a tu supervisor que actualice tu inventario asignado.',
+      ],
+      [
+        'SERIAL_NOT_IN_CUSTODY',
+        'El equipo con ese número de serie no figura en tu inventario asignado.',
+        'Comprueba el número de serie. Si es correcto, pide a tu supervisor que revise la asignación del equipo.',
+      ],
+      [
+        'SUBSCRIBER_REQUIRED',
+        'La orden no indica el cliente o la sede donde se instalará el equipo.',
+        'Pide a tu supervisor que complete esos datos en la orden y vuelve a registrar el consumo.',
+      ],
+      [
+        'ITEM_INACTIVE',
+        'El producto seleccionado ya no está disponible para registrar consumos.',
+        'Elige otro producto disponible. Si necesitas usar este producto, pide a tu supervisor que revise su disponibilidad.',
+      ],
+    ] as const)(
+      'muestra las dos partes del motivo %s en lenguaje de producto',
+      (reasonCode, whatHappened, nextStep) => {
+        renderDrawer({
+          itemUsage: [
+            {
+              ...usage,
+              movementStatus: 'REJECTED',
+              rejectionReasonCode: reasonCode,
+            },
+          ],
+        });
+
+        expect(screen.getByText(whatHappened)).toBeInTheDocument();
+        expect(screen.getByText(nextStep)).toBeInTheDocument();
+        expect(screen.queryByText(reasonCode)).toBeNull();
+      },
+    );
+
+    it('avisa del pendiente prolongado al superar el umbral compartido', () => {
+      renderDrawer({
+        itemUsage: [
+          {
+            ...usage,
+            movementStatus: 'PENDING',
+            createdAt: new Date(
+              Date.now() - INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS - 1,
+            ).toISOString(),
+          },
+        ],
+      });
+
+      expect(
+        screen.getByText('El consumo aún no se ha aplicado al inventario.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'No lo registres de nuevo. Revisa el estado de la orden más tarde; si sigue igual, avisa a tu supervisor.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('no muestra el aviso de pendiente prolongado antes del umbral', () => {
+      renderDrawer({
+        itemUsage: [
+          {
+            ...usage,
+            movementStatus: 'PENDING',
+            createdAt: new Date(
+              Date.now() - INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS + 60_000,
+            ).toISOString(),
+          },
+        ],
+      });
+
+      expect(screen.queryByText('El consumo aún no se ha aplicado al inventario.')).toBeNull();
     });
 
     it('vacío del historial con el copy del requisito, también con el acto cerrado', () => {

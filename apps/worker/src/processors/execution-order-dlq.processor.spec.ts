@@ -24,17 +24,19 @@ describe('ExecutionOrderDlqProcessor', () => {
   it('registra el evento fallido en el outbox con last_error', async () => {
     poolClient.query
       .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN
       .mockResolvedValueOnce(undefined) // SET LOCAL
       .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE outbox
-      .mockResolvedValueOnce({ rowCount: 1 }); // INSERT inbox
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT inbox
+      .mockResolvedValueOnce(undefined); // COMMIT
 
     const dlqJob = {
       data: {
-        tenantId: 't0000000-0000-4000-8000-000000000001',
+        tenantId: '10000000-0000-4000-8000-000000000001',
         envelope: {
           eventId: 'e0000000-0000-4000-8000-000000000001',
           eventType: 'ExecutionOrderStartedV1' as const,
-          tenantId: 't0000000-0000-4000-8000-000000000001',
+          tenantId: '10000000-0000-4000-8000-000000000001',
           aggregateId: 'a0000000-0000-4000-8000-000000000001',
           aggregateVersion: 1,
           occurredAt: new Date().toISOString(),
@@ -61,7 +63,8 @@ describe('ExecutionOrderDlqProcessor', () => {
     const updateParams = updateQuery![1] as unknown[];
     expect(updateParams).toBeDefined();
     expect(updateParams[2]).toContain('attemptsMade');
-    expect(updateParams[2]).toContain('Connection timeout');
+    expect(updateParams[2]).toContain('errorType');
+    expect(updateParams[2]).not.toContain('Connection timeout');
 
     const inboxQuery = poolClient.query.mock.calls.find((call: [string, ...unknown[]]) =>
       (call[0] as string).includes('INSERT INTO execution_order_inbox_events'),
@@ -71,16 +74,46 @@ describe('ExecutionOrderDlqProcessor', () => {
     expect((inboxQuery![1] as unknown[])[5]).toContain('DLQ:');
   });
 
+  it('acepta el diagnóstico genérico nuevo, con IDs validados y sin mensaje crudo', async () => {
+    poolClient.query
+      .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce(undefined) // SET LOCAL
+      .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE outbox
+      .mockResolvedValueOnce({ rowCount: 1 }) // INSERT inbox
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    await processor.process({
+      data: {
+        kind: 'execution-event',
+        tenantId: '10000000-0000-4000-8000-000000000001',
+        eventId: 'e0000000-0000-4000-8000-000000000005',
+        aggregateId: 'a0000000-0000-4000-8000-000000000005',
+        aggregateVersion: 5,
+        failedAt: new Date().toISOString(),
+        attemptsMade: 8,
+        errorType: 'QueryFailedError',
+      },
+    } as Job);
+
+    const updateQuery = poolClient.query.mock.calls.find((call: [string, ...unknown[]]) =>
+      (call[0] as string).includes('UPDATE execution_order_outbox_events'),
+    );
+    expect(updateQuery).toBeDefined();
+    expect((updateQuery![1] as unknown[])[2]).toContain('QueryFailedError');
+    expect((updateQuery![1] as unknown[])[2]).not.toContain('errorMessage');
+  });
+
   it('no lanza error si el tenant no existe', async () => {
     poolClient.query.mockResolvedValueOnce({ rows: [] } as never); // Sin tenant
 
     const dlqJob = {
       data: {
-        tenantId: 't-dead-dead-dead-dead',
+        tenantId: '10000000-0000-4000-8000-000000000099',
         envelope: {
           eventId: 'e0000000-0000-4000-8000-000000000002',
           eventType: 'ExecutionOrderClosedV1' as const,
-          tenantId: 't-dead-dead-dead-dead',
+          tenantId: '10000000-0000-4000-8000-000000000099',
           aggregateId: 'a0000000-0000-4000-8000-000000000002',
           aggregateVersion: 2,
           occurredAt: new Date().toISOString(),
@@ -106,11 +139,11 @@ describe('ExecutionOrderDlqProcessor', () => {
 
       const dlqJob = {
         data: {
-          tenantId: 't0000000-0000-4000-8000-000000000001',
+          tenantId: '10000000-0000-4000-8000-000000000001',
           envelope: {
             eventId: 'e0000000-0000-4000-8000-000000000003',
             eventType: 'ExecutionOrderStartedV1' as const,
-            tenantId: 't0000000-0000-4000-8000-000000000001',
+            tenantId: '10000000-0000-4000-8000-000000000001',
             aggregateId: 'a0000000-0000-4000-8000-000000000003',
             aggregateVersion: 3,
             occurredAt: new Date().toISOString(),
@@ -133,17 +166,19 @@ describe('ExecutionOrderDlqProcessor', () => {
     it('no falla si la actualización del outbox afecta 0 filas', async () => {
       poolClient.query
         .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // BEGIN
         .mockResolvedValueOnce(undefined) // SET LOCAL
         .mockResolvedValueOnce({ rowCount: 0 }) // UPDATE outbox → 0 filas
-        .mockResolvedValueOnce({ rowCount: 1 }); // INSERT inbox
+        .mockResolvedValueOnce({ rowCount: 1 }) // INSERT inbox
+        .mockResolvedValueOnce(undefined); // COMMIT
 
       const dlqJob = {
         data: {
-          tenantId: 't0000000-0000-4000-8000-000000000001',
+          tenantId: '10000000-0000-4000-8000-000000000001',
           envelope: {
             eventId: 'e0000000-0000-4000-8000-000000000004',
             eventType: 'ExecutionOrderStartedV1' as const,
-            tenantId: 't0000000-0000-4000-8000-000000000001',
+            tenantId: '10000000-0000-4000-8000-000000000001',
             aggregateId: 'a0000000-0000-4000-8000-000000000004',
             aggregateVersion: 4,
             occurredAt: new Date().toISOString(),

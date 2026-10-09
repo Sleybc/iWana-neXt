@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import type { ListMeta } from '@iwana/shared';
-import { InventoryItemStatus } from '@iwana/shared';
+import { INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS, InventoryItemStatus } from '@iwana/shared';
 import type {
   ExecutorCustodyResponse,
   SerializedAssetRecord,
@@ -20,6 +20,17 @@ const PAGE_SIZE = 100;
 /** Cotas de seguridad del recorrido: 2.000 filas de custodia y 5.000 ítems/categorías. */
 const MAX_CUSTODY_PAGES = 20;
 const MAX_CATALOG_PAGES = 50;
+
+/** Indica si un consumo pendiente ya supera la ventana compartida de D7. */
+export function isProlongedPendingInventoryConsumption(
+  createdAt: string,
+  now = Date.now(),
+): boolean {
+  const createdAtMs = Date.parse(createdAt);
+  return (
+    Number.isFinite(createdAtMs) && now - createdAtMs >= INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS
+  );
+}
 
 /**
  * Contexto que el adaptador entrega al slot de custodia (R3). Los setters son

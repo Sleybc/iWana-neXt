@@ -707,15 +707,6 @@ describe('ExecutionOrderEventsProcessor', () => {
       const signingKey = Buffer.alloc(32, 7).toString('base64');
       const tenantId = '10000000-0000-4000-8000-000000000001';
       const eventId = 'e0000000-0000-4000-8000-000000000001';
-      poolClient.query
-        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce({ rows: [{ aggregate_version: 12 }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'inbox-1' }], rowCount: 1 })
-        .mockResolvedValueOnce({ rowCount: 1 })
-        .mockResolvedValueOnce(undefined);
-
       const envelope = makeEnvelope({
         eventId,
         tenantId,
@@ -736,6 +727,28 @@ describe('ExecutionOrderEventsProcessor', () => {
           actorUserId: 'f0000000-0000-4000-8000-000000000001',
         } as never,
       });
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // BEGIN
+        .mockResolvedValueOnce(undefined) // SET LOCAL
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              event_id: eventId,
+              tenant_id: tenantId,
+              aggregate_id: envelope.aggregateId,
+              aggregate_version: envelope.aggregateVersion,
+              event_type: envelope.eventType,
+              correlation_id: envelope.correlationId,
+              occurred_at: envelope.occurredAt,
+              payload: envelope.payload,
+            },
+          ],
+        }) // matching durable outbox row
+        .mockResolvedValueOnce({ rows: [{ aggregate_version: 12 }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'inbox-1' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce(undefined);
       const testProcessor = new ExecutionOrderEventsProcessor(
         makeConfig({ INTERNAL_QUEUE_SIGNING_KEY: signingKey }),
         dlqQueue as unknown as Queue,
@@ -757,13 +770,171 @@ describe('ExecutionOrderEventsProcessor', () => {
           envelope,
           signature: expect.stringMatching(/^[a-f0-9]{64}$/),
         }),
-        expect.objectContaining({ jobId: eventId, attempts: 8, removeOnComplete: true }),
+        expect.objectContaining({
+          jobId: eventId,
+          attempts: 8,
+          removeOnComplete: true,
+          removeOnFail: { age: 24 * 60 * 60 },
+        }),
       );
       expect(
         poolClient.query.mock.calls.some(([sql]) =>
           String(sql).includes('UPDATE execution_order_inbox_events'),
         ),
       ).toBe(true);
+      expect(poolClient.query).toHaveBeenCalledWith(
+        expect.stringContaining('FROM execution_order_outbox_events'),
+        [tenantId, eventId],
+      );
+    });
+
+    it('no firma un V2 inyectado sin fila correspondiente en el outbox', async () => {
+      const tenantId = '10000000-0000-4000-8000-000000000001';
+      const envelope = makeEnvelope({
+        eventId: 'e0000000-0000-4000-8000-000000000002',
+        tenantId,
+        eventType: 'InventoryConsumptionRequestedV2',
+        payload: {
+          executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+          eventId: 'e0000000-0000-4000-8000-000000000002',
+          intentId: '30000000-0000-4000-8000-000000000001',
+          inventoryRequestId: '30000000-0000-4000-8000-000000000002',
+          itemId: 'b0000000-0000-4000-8000-000000000001',
+          quantity: 1,
+          serial: 'SERIAL-INJECTED',
+          technicianCustodyId: 'c0000000-0000-4000-8000-000000000001',
+          action: 'INSTALL',
+          finalDisposition: 'INSTALLED_AT_CUSTOMER',
+          subscriberId: 'd0000000-0000-4000-8000-000000000001',
+          actorUserId: 'f0000000-0000-4000-8000-000000000001',
+        } as never,
+      });
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // BEGIN
+        .mockResolvedValueOnce(undefined) // SET LOCAL tenant schema
+        .mockResolvedValueOnce({ rows: [] }) // No existe en outbox
+        .mockResolvedValueOnce(undefined); // ROLLBACK
+
+      await expect(
+        processor.process({ data: { tenantId, envelope }, attemptsMade: 0 } as Job<{
+          tenantId: string;
+          envelope: OperationalEventEnvelopeV1;
+        }>),
+      ).rejects.toThrow('INVENTORY_OUTBOX_EVENT_MISMATCH');
+
+      expect(inventoryRequestsQueue.add).not.toHaveBeenCalled();
+      expect(
+        poolClient.query.mock.calls.some(([sql]) =>
+          String(sql).includes('INSERT INTO execution_order_inbox_events'),
+        ),
+      ).toBe(false);
+      expect(poolClient.query).toHaveBeenLastCalledWith('ROLLBACK');
+    });
+
+    it('no firma un V2 cuyo payload canónico difiere del outbox', async () => {
+      const tenantId = '10000000-0000-4000-8000-000000000001';
+      const envelope = makeEnvelope({
+        eventId: 'e0000000-0000-4000-8000-000000000003',
+        tenantId,
+        eventType: 'InventoryConsumptionRequestedV2',
+        payload: {
+          executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+          eventId: 'e0000000-0000-4000-8000-000000000003',
+          intentId: '30000000-0000-4000-8000-000000000001',
+          inventoryRequestId: '30000000-0000-4000-8000-000000000003',
+          itemId: 'b0000000-0000-4000-8000-000000000001',
+          quantity: 1,
+          serial: 'SERIAL-ALTERED',
+          technicianCustodyId: 'c0000000-0000-4000-8000-000000000001',
+          action: 'INSTALL',
+          finalDisposition: 'INSTALLED_AT_CUSTOMER',
+          subscriberId: 'd0000000-0000-4000-8000-000000000001',
+          actorUserId: 'f0000000-0000-4000-8000-000000000001',
+        } as never,
+      });
+      const originalPayload = { ...envelope.payload, serial: 'SERIAL-ORIGINAL' };
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // BEGIN
+        .mockResolvedValueOnce(undefined) // SET LOCAL tenant schema
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              event_id: envelope.eventId,
+              tenant_id: tenantId,
+              aggregate_id: envelope.aggregateId,
+              aggregate_version: envelope.aggregateVersion,
+              event_type: envelope.eventType,
+              correlation_id: envelope.correlationId,
+              occurred_at: envelope.occurredAt,
+              payload: originalPayload,
+            },
+          ],
+        })
+        .mockResolvedValueOnce(undefined); // ROLLBACK
+
+      await expect(
+        processor.process({ data: { tenantId, envelope }, attemptsMade: 0 } as Job<{
+          tenantId: string;
+          envelope: OperationalEventEnvelopeV1;
+        }>),
+      ).rejects.toThrow('INVENTORY_OUTBOX_EVENT_MISMATCH');
+
+      expect(inventoryRequestsQueue.add).not.toHaveBeenCalled();
+      expect(poolClient.query).toHaveBeenLastCalledWith('ROLLBACK');
+    });
+
+    it('rechaza un V2 cuyo contexto agregado difiere del outbox', async () => {
+      const tenantId = '10000000-0000-4000-8000-000000000001';
+      const envelope = makeEnvelope({
+        eventId: 'e0000000-0000-4000-8000-000000000004',
+        tenantId,
+        eventType: 'InventoryConsumptionRequestedV2',
+        payload: {
+          executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+          eventId: 'e0000000-0000-4000-8000-000000000004',
+          intentId: '30000000-0000-4000-8000-000000000001',
+          inventoryRequestId: '30000000-0000-4000-8000-000000000004',
+          itemId: 'b0000000-0000-4000-8000-000000000001',
+          quantity: 1,
+          serial: 'SERIAL-CONTEXT',
+          technicianCustodyId: 'c0000000-0000-4000-8000-000000000001',
+          action: 'INSTALL',
+          finalDisposition: 'INSTALLED_AT_CUSTOMER',
+          subscriberId: 'd0000000-0000-4000-8000-000000000001',
+          actorUserId: 'f0000000-0000-4000-8000-000000000001',
+        } as never,
+      });
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined) // BEGIN
+        .mockResolvedValueOnce(undefined) // SET LOCAL tenant schema
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              event_id: envelope.eventId,
+              tenant_id: tenantId,
+              aggregate_id: envelope.aggregateId,
+              aggregate_version: envelope.aggregateVersion + 1,
+              event_type: envelope.eventType,
+              correlation_id: envelope.correlationId,
+              occurred_at: envelope.occurredAt,
+              payload: envelope.payload,
+            },
+          ],
+        })
+        .mockResolvedValueOnce(undefined); // ROLLBACK
+
+      await expect(
+        processor.process({ data: { tenantId, envelope }, attemptsMade: 0 } as Job<{
+          tenantId: string;
+          envelope: OperationalEventEnvelopeV1;
+        }>),
+      ).rejects.toThrow('INVENTORY_OUTBOX_EVENT_MISMATCH');
+
+      expect(inventoryRequestsQueue.add).not.toHaveBeenCalled();
+      expect(poolClient.query).toHaveBeenLastCalledWith('ROLLBACK');
     });
 
     it('aplica una confirmación tardía mediante una sola transición condicional desde PENDING', async () => {
@@ -844,12 +1015,13 @@ describe('ExecutionOrderEventsProcessor', () => {
       await processor.onFailed(
         {
           data: {
-            tenantId: 't0000000-0000-4000-8000-000000000001',
+            tenantId: '10000000-0000-4000-8000-000000000001',
             envelope: makeEnvelope({
+              tenantId: '10000000-0000-4000-8000-000000000001',
               eventType: 'InventoryConsumptionRequestedV2',
               payload: {
                 executionOrderId: 'a0000000-0000-4000-8000-000000000001',
-                inventoryRequestId: 'i0000000-0000-4000-8000-000000000001',
+                inventoryRequestId: '30000000-0000-4000-8000-000000000001',
                 actorUserId: 'f0000000-0000-4000-8000-000000000001',
               } as never,
             }),
@@ -857,7 +1029,8 @@ describe('ExecutionOrderEventsProcessor', () => {
           attemptsMade: 8,
           opts: { attempts: 8 },
           id: 'job-1',
-        } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>,
+          remove: jest.fn().mockResolvedValue(undefined),
+        } as unknown as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>,
         error,
       );
 
@@ -871,12 +1044,136 @@ describe('ExecutionOrderEventsProcessor', () => {
       expect(JSON.stringify(data)).not.toContain('payload should never be copied');
       expect(data).toMatchObject({
         eventId: 'e0000000-0000-4000-8000-000000000001',
-        tenantId: 't0000000-0000-4000-8000-000000000001',
+        tenantId: '10000000-0000-4000-8000-000000000001',
         executionOrderId: 'a0000000-0000-4000-8000-000000000001',
-        inventoryRequestId: 'i0000000-0000-4000-8000-000000000001',
+        inventoryRequestId: '30000000-0000-4000-8000-000000000001',
         attemptsMade: 8,
       });
       expect(opts).toMatchObject({ removeOnComplete: true, removeOnFail: 30 * 24 * 60 * 60 });
+    });
+
+    it('omite todos los IDs si uno es inválido y elimina el job tras escribir el diagnóstico', async () => {
+      const remove = jest.fn().mockResolvedValue(undefined);
+      const rawValue = 'UNSAFE_RAW_EVENT_VALUE';
+      const error = new Error('UNSAFE_RAW_EXCEPTION_MESSAGE');
+      const loggerError = jest.spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      );
+
+      await processor.onFailed(
+        {
+          data: {
+            tenantId: '10000000-0000-4000-8000-000000000001',
+            envelope: {
+              ...makeEnvelope({
+                eventId: 'e0000000-0000-4000-8000-000000000001',
+                aggregateId: 'a0000000-0000-4000-8000-000000000001',
+                eventType: 'InventoryConsumptionRequestedV2',
+              }),
+              payload: {
+                executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+                inventoryRequestId: rawValue,
+                actorUserId: rawValue,
+              },
+            },
+          },
+          attemptsMade: 8,
+          opts: { attempts: 8 },
+          id: 'job-unsafe',
+          remove,
+        } as unknown as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>,
+        error,
+      );
+
+      const [, diagnostic] = dlqQueue.add.mock.calls[0] as [string, Record<string, unknown>];
+      expect(diagnostic).toMatchObject({ attemptsMade: 8, errorType: 'Error' });
+      expect(diagnostic).not.toHaveProperty('tenantId');
+      expect(diagnostic).not.toHaveProperty('eventId');
+      expect(diagnostic).not.toHaveProperty('executionOrderId');
+      expect(diagnostic).not.toHaveProperty('inventoryRequestId');
+      expect(Object.keys(diagnostic).sort()).toEqual(['attemptsMade', 'errorType', 'failedAt']);
+      expect(JSON.stringify(diagnostic)).not.toContain(rawValue);
+      expect(JSON.stringify(diagnostic)).not.toContain(error.message);
+      expect(loggerError.mock.calls.flat().join(' ')).not.toContain(rawValue);
+      expect(loggerError.mock.calls.flat().join(' ')).not.toContain(error.message);
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(dlqQueue.add.mock.invocationCallOrder[0]).toBeLessThan(
+        remove.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+      );
+    });
+
+    it('registra errorType catalogado y deja al TTL limpiar si falla el diagnóstico', async () => {
+      const remove = jest.fn().mockResolvedValue(undefined);
+      const loggerError = jest.spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      );
+      dlqQueue.add.mockRejectedValueOnce(new Error('diagnostic queue unavailable'));
+
+      await processor.onFailed(
+        {
+          data: {
+            tenantId: '10000000-0000-4000-8000-000000000001',
+            envelope: makeEnvelope({
+              tenantId: '10000000-0000-4000-8000-000000000001',
+              eventType: 'InventoryConsumptionRequestedV2',
+              payload: {
+                executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+                inventoryRequestId: '30000000-0000-4000-8000-000000000001',
+              } as never,
+            }),
+          },
+          attemptsMade: 8,
+          opts: { attempts: 8 },
+          id: 'job-dlq-unavailable',
+          remove,
+        } as unknown as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>,
+        new Error('processor failure'),
+      );
+
+      const logs = loggerError.mock.calls.flat().join(' ');
+      expect(logs).toContain('inventory_dlq_enqueue_failed');
+      expect(logs).toContain('error_type=Error');
+      expect(logs).not.toContain('diagnostic queue unavailable');
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('sanitiza también el DLQ genérico y no registra mensajes crudos', async () => {
+      const rawValue = 'UNSAFE_GENERIC_VALUE';
+      const error = new Error('UNSAFE_GENERIC_EXCEPTION');
+      const loggerError = jest.spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      );
+      await processor.onFailed(
+        {
+          data: {
+            tenantId: rawValue,
+            envelope: {
+              ...makeEnvelope(),
+              eventId: rawValue,
+              aggregateId: rawValue,
+              payload: { sensitive: rawValue },
+            },
+          },
+          attemptsMade: 8,
+          opts: { attempts: 8 },
+          id: 'job-generic',
+        } as unknown as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>,
+        error,
+      );
+
+      const [, diagnostic] = dlqQueue.add.mock.calls[0] as [string, Record<string, unknown>];
+      expect(diagnostic).toMatchObject({ kind: 'execution-event', errorType: 'Error' });
+      expect(diagnostic).not.toHaveProperty('tenantId');
+      expect(diagnostic).not.toHaveProperty('eventId');
+      expect(diagnostic).not.toHaveProperty('aggregateId');
+      expect(diagnostic).not.toHaveProperty('envelope');
+      expect(JSON.stringify(diagnostic)).not.toContain(rawValue);
+      expect(JSON.stringify(diagnostic)).not.toContain(error.message);
+      expect(loggerError.mock.calls.flat().join(' ')).not.toContain(rawValue);
+      expect(loggerError.mock.calls.flat().join(' ')).not.toContain(error.message);
     });
   });
 });

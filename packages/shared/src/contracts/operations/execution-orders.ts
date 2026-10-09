@@ -514,6 +514,7 @@ export interface InventoryConsumptionRequestedV2 extends EventPayloadBase {
   itemId: string;
   quantity: number;
   serial?: string;
+  /** ID del usuario técnico; MOD12 lo resuelve a su ubicación móvil activa por `responsibleRefId`. */
   technicianCustodyId: string;
   action: ExecutionOrderItemAction;
   finalDisposition: InventoryDisposition;

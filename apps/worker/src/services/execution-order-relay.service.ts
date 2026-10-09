@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 import { Pool } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
 import {
+  INVENTORY_SOURCE_CLEANUP_INTERVAL_MS,
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
   OPERATIONS_EXECUTION_RELAY_QUEUE,
   type OperationalEventEnvelopeV1,
@@ -32,7 +33,7 @@ interface TenantScanResult {
   tenantId: string;
   schemaName: string;
   relayed: number;
-  error?: string;
+  errorType?: string;
 }
 
 interface RelayLagDistribution {
@@ -46,7 +47,23 @@ interface RelayLagDistribution {
 
 const RELAY_POOL_MAX = 10;
 const RELAY_SCAN_CONCURRENCY = RELAY_POOL_MAX - 1;
+const INVENTORY_SOURCE_CLEANUP_JOB = 'clean-expired-inventory-source-failures';
+const INVENTORY_SOURCE_JOB_RETENTION_SECONDS = 24 * 60 * 60;
+const NON_INVENTORY_SOURCE_JOB_RETENTION_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_RELAY_SCAN_TIMESTAMP_KEY = 'iwana:platform:execution-order-relay:last-scan-at';
+const SAFE_RELAY_ERROR_TYPES = new Set(['Error', 'QueryFailedError', 'TimeoutError', 'AbortError']);
+const INVENTORY_OUTBOX_EVENT_TYPES = new Set([
+  'InventoryConsumptionRequestedV1',
+  'InventoryConsumptionRequestedV2',
+  'InventoryMovementConfirmedV1',
+  'InventoryMovementRejectedV1',
+]);
+
+function relayErrorType(error: unknown): string {
+  return error instanceof Error && SAFE_RELAY_ERROR_TYPES.has(error.name)
+    ? error.name
+    : 'RELAY_FAILURE';
+}
 
 /** Cliente Redis dedicado a la señal de estado compartida con la API. */
 export const RELAY_SCAN_TIMESTAMP_REDIS = 'RELAY_SCAN_TIMESTAMP_REDIS';
@@ -115,6 +132,14 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
         jobId: 'execution-order-inventory-rescanner',
       },
     );
+    await this.queue.add(
+      INVENTORY_SOURCE_CLEANUP_JOB,
+      {},
+      {
+        repeat: { every: INVENTORY_SOURCE_CLEANUP_INTERVAL_MS },
+        jobId: 'execution-order-inventory-source-cleanup-worker',
+      },
+    );
   }
 
   /** Expone estado del relay para el health endpoint. */
@@ -160,7 +185,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
         if (result.status === 'fulfilled') {
           totalRelayed += result.value.relayed;
         } else {
-          this.logger.error(`Relay tenant scan falló: ${result.reason?.message ?? 'unknown'}`);
+          this.logger.error(`Relay tenant scan falló error_type=${relayErrorType(result.reason)}`);
         }
       }
     } finally {
@@ -263,14 +288,15 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
               attempts: 8, // PLAT-P1-02: 8 intentos antes de DLQ
               backoff: { type: 'exponential', delay: 1000 },
               removeOnComplete: true,
-              removeOnFail: 30 * 24 * 60 * 60,
+              removeOnFail: INVENTORY_OUTBOX_EVENT_TYPES.has(row.event_type)
+                ? { age: INVENTORY_SOURCE_JOB_RETENTION_SECONDS }
+                : NON_INVENTORY_SOURCE_JOB_RETENTION_SECONDS,
             },
           );
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
           this.logger.warn(
-            `Relay: fallo de enqueue event_id=${row.event_id} tenant=${tenant.id}: ${reason}. ` +
-              `El lease expirará y será reintentado.`,
+            `Relay: fallo de enqueue event_id=${row.event_id} tenant=${tenant.id} ` +
+              `error_type=${relayErrorType(error)}. El lease expirará y será reintentado.`,
           );
           continue;
         }
@@ -289,11 +315,10 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
           await client.query('COMMIT');
           result.relayed += 1;
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
           await client.query('ROLLBACK').catch(() => undefined);
           this.logger.error(
-            `Relay: fallo de marcado event_id=${row.event_id} tenant=${tenant.id}: ${reason}. ` +
-              `El evento quedará elegible para reintento.`,
+            `Relay: fallo de marcado event_id=${row.event_id} tenant=${tenant.id} ` +
+              `error_type=${relayErrorType(error)}. El evento quedará elegible para reintento.`,
           );
         }
       }
@@ -304,8 +329,10 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
       // No se hace en esta transacción para no alargar el lock.
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
-      result.error = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Relay: fallo en tenant ${tenant.schema_name}: ${result.error}`);
+      result.errorType = relayErrorType(error);
+      this.logger.error(
+        `Relay: fallo en tenant ${tenant.schema_name} error_type=${result.errorType}`,
+      );
     } finally {
       client.release();
     }
@@ -392,9 +419,8 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
         } catch (error) {
           await client.query('ROLLBACK').catch(() => undefined);
           this.logger.warn(
-            `Relay: fallo de métricas tenant=${tenant.id}; se omite del reporte: ${
-              error instanceof Error ? error.message : 'unknown'
-            }`,
+            `Relay: fallo de métricas tenant=${tenant.id} ` +
+              `error_type=${relayErrorType(error)}; se omite del reporte`,
           );
         }
       }

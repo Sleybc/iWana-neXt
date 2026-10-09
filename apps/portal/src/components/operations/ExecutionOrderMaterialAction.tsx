@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ExecutionOrderItemAction,
+  type InventoryConsumptionRejectionReasonCode,
   type ExecutionOrderItemUsage,
   type InventoryDisposition,
 } from '@iwana/shared';
@@ -20,6 +21,7 @@ import type {
   ExecutionOrderCaptureSlotProps,
   ExecutionOrderHistorySlotProps,
 } from './execution-order-slots';
+import { isProlongedPendingInventoryConsumption } from './use-execution-order-custody';
 
 // SLOT R3 — consumo y custodia por requisito (propiedad de R3).
 //
@@ -600,6 +602,13 @@ export function ExecutionOrderMaterialHistoryFooter({
 }
 
 function MaterialUsageRecords({ usages }: { usages: ExecutionOrderItemUsage[] }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
     <ul className="space-y-2" aria-label="Registros de consumo">
       {usages.map((usage) => (
@@ -632,10 +641,66 @@ function MaterialUsageRecords({ usages }: { usages: ExecutionOrderItemUsage[] })
                 {MOVEMENT_STATUS_LABELS[usage.movementStatus] ?? 'Pendiente de conciliación'}
               </Badge>
             </div>
+            {usage.movementStatus === 'REJECTED' && usage.rejectionReasonCode ? (
+              <InventoryConsumptionMessage
+                message={INVENTORY_REJECTION_COPY[usage.rejectionReasonCode]}
+              />
+            ) : null}
+            {usage.movementStatus === 'PENDING' &&
+            isProlongedPendingInventoryConsumption(usage.createdAt, now) ? (
+              <InventoryConsumptionMessage message={PROLONGED_PENDING_COPY} />
+            ) : null}
           </article>
         </li>
       ))}
     </ul>
+  );
+}
+
+const INVENTORY_REJECTION_COPY: Record<
+  InventoryConsumptionRejectionReasonCode,
+  { whatHappened: string; nextStep: string }
+> = {
+  CUSTODY_INSUFFICIENT: {
+    whatHappened: 'No hay suficientes unidades disponibles en tu inventario asignado.',
+    nextStep:
+      'Revisa la cantidad solicitada. Si necesitas más unidades, pide a tu supervisor que actualice tu inventario asignado.',
+  },
+  SERIAL_NOT_IN_CUSTODY: {
+    whatHappened: 'El equipo con ese número de serie no figura en tu inventario asignado.',
+    nextStep:
+      'Comprueba el número de serie. Si es correcto, pide a tu supervisor que revise la asignación del equipo.',
+  },
+  SUBSCRIBER_REQUIRED: {
+    whatHappened: 'La orden no indica el cliente o la sede donde se instalará el equipo.',
+    nextStep:
+      'Pide a tu supervisor que complete esos datos en la orden y vuelve a registrar el consumo.',
+  },
+  ITEM_INACTIVE: {
+    whatHappened: 'El producto seleccionado ya no está disponible para registrar consumos.',
+    nextStep:
+      'Elige otro producto disponible. Si necesitas usar este producto, pide a tu supervisor que revise su disponibilidad.',
+  },
+};
+
+const PROLONGED_PENDING_COPY = {
+  whatHappened: 'El consumo aún no se ha aplicado al inventario.',
+  nextStep:
+    'No lo registres de nuevo. Revisa el estado de la orden más tarde; si sigue igual, avisa a tu supervisor.',
+};
+
+function InventoryConsumptionMessage({
+  message,
+}: {
+  message: { whatHappened: string; nextStep: string };
+}) {
+  return (
+    <PortalAlert
+      variant="warning"
+      title={message.whatHappened}
+      description={message.nextStep}
+      className="mt-2"
+    />
   );
 }
 

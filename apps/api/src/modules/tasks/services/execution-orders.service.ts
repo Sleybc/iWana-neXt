@@ -528,6 +528,7 @@ export class ExecutionOrdersService {
           'usage.finalDisposition',
           'usage.inventoryRequestId',
           'usage.movementStatus',
+          'usage.rejectionReasonCode',
           'usage.createdAt',
         ])
         .where('usage.execution_order_id = :executionOrderId', { executionOrderId })

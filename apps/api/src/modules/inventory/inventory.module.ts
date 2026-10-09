@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   AssetLifecycleEvent,
@@ -32,6 +33,11 @@ import {
   SupplierQuoteLine,
   SupplierQuoteTax,
 } from '@iwana/db';
+import {
+  INVENTORY_EXECUTION_REQUESTS_QUEUE,
+  OPERATIONS_EXECUTION_EVENTS_QUEUE,
+  OPERATIONS_EXECUTION_DLQ,
+} from '@iwana/shared';
 import { PartiesModule } from '../parties/parties.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { TenantModule } from '../tenant/tenant.module';
@@ -80,6 +86,7 @@ import { SupplierProfileService } from './services/supplier-profile.service';
 import { InventoryDomainEventPublisher } from './services/inventory-domain-event-publisher.service';
 import { InventoryDomainEventsListener } from './listeners/inventory-domain-events.listener';
 import { AccessControlModule } from '../access-control/access-control.module';
+import { InventoryExecutionRequestProcessor } from './services/inventory-execution-request.processor';
 
 @Module({
   imports: [
@@ -88,6 +95,11 @@ import { AccessControlModule } from '../access-control/access-control.module';
     TenantModule,
     AccessControlModule,
     TaxationModule,
+    BullModule.registerQueue(
+      { name: INVENTORY_EXECUTION_REQUESTS_QUEUE },
+      { name: OPERATIONS_EXECUTION_EVENTS_QUEUE },
+      { name: OPERATIONS_EXECUTION_DLQ },
+    ),
     TypeOrmModule.forFeature([
       InventoryItem,
       InventoryCategory,
@@ -153,6 +165,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     WriteOffService,
     InventoryDomainEventPublisher,
     InventoryDomainEventsListener,
+    InventoryExecutionRequestProcessor,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,

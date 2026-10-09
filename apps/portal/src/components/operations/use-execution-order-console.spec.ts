@@ -7,6 +7,10 @@ import { act, renderHook } from '@testing-library/react';
 import { useExecutionOrderConsole } from './use-execution-order-console';
 import { ApiError, inventoryApi, tasksApi } from '@/lib/api-client';
 
+function futureEvidenceExpiry(): string {
+  return new Date(Date.now() + 60 * 60 * 1000).toISOString();
+}
+
 jest.mock('@/lib/api-client', () => ({
   ApiError: class ApiError extends Error {
     status: number;
@@ -71,7 +75,7 @@ describe('useExecutionOrderConsole — reintento de apertura (OLA 4.1)', () => {
   });
 
   it('espera a que el archivo quede disponible antes de registrar la evidencia', async () => {
-    const expiresAt = '2026-10-06T12:00:00.000Z';
+    const expiresAt = futureEvidenceExpiry();
     const getEvidenceAsset = jest.mocked(tasksApi.executionOrders.getEvidenceAsset);
     const registerEvidenceOrder = tasksApi.executionOrders.registerEvidence;
     const order = { id: 'eo-evidence-001', version: 7 } as never;
@@ -134,18 +138,19 @@ describe('useExecutionOrderConsole — reintento de apertura (OLA 4.1)', () => {
     ],
   ] as const)('muestra un error si el análisis termina en %s', async (status, message) => {
     const order = { id: 'eo-evidence-002', version: 3 } as never;
+    const expiresAt = futureEvidenceExpiry();
     jest.mocked(tasksApi.executionOrders.get).mockResolvedValue(order);
     jest.mocked(tasksApi.executionOrders.uploadEvidenceAsset).mockResolvedValue({
       intentId: 'intent-002',
       mediaAssetId: 'asset-002',
       status: 'PENDING_ANALYSIS',
-      expiresAt: '2026-10-06T12:00:00.000Z',
+      expiresAt,
     });
     jest.mocked(tasksApi.executionOrders.getEvidenceAsset).mockResolvedValue({
       intentId: 'intent-002',
       mediaAssetId: 'asset-002',
       status,
-      expiresAt: '2026-10-06T12:00:00.000Z',
+      expiresAt,
     });
 
     const { result } = renderHook(() => useExecutionOrderConsole());
@@ -167,6 +172,7 @@ describe('useExecutionOrderConsole — reintento de apertura (OLA 4.1)', () => {
   });
 
   it('limita a seis consultas y deja la evidencia sin registrar si sigue en análisis', async () => {
+    const expiresAt = futureEvidenceExpiry();
     jest
       .mocked(tasksApi.executionOrders.get)
       .mockResolvedValue({ id: 'eo-evidence-003', version: 4 } as never);
@@ -174,13 +180,13 @@ describe('useExecutionOrderConsole — reintento de apertura (OLA 4.1)', () => {
       intentId: 'intent-003',
       mediaAssetId: 'asset-003',
       status: 'PENDING_ANALYSIS',
-      expiresAt: '2026-10-06T12:00:00.000Z',
+      expiresAt,
     });
     jest.mocked(tasksApi.executionOrders.getEvidenceAsset).mockResolvedValue({
       intentId: 'intent-003',
       mediaAssetId: 'asset-003',
       status: 'PENDING_ANALYSIS',
-      expiresAt: '2026-10-06T12:00:00.000Z',
+      expiresAt,
     });
 
     const { result } = renderHook(() => useExecutionOrderConsole());

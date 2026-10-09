@@ -2,7 +2,7 @@ import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullm
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
 import {
@@ -44,18 +44,67 @@ const INVENTORY_EVENTS_BYPASSING_AGGREGATE_VERSION: ReadonlySet<OperationalEvent
   'InventoryMovementRejectedV1',
 ]);
 const DLQ_RETENTION_SECONDS = 30 * 24 * 60 * 60;
+const SOURCE_JOB_RETENTION_SECONDS = 24 * 60 * 60;
 
 interface InventoryDlqJob {
-  tenantId: string;
-  eventId: string;
-  executionOrderId: string;
-  inventoryRequestId: string;
+  tenantId?: string;
+  eventId?: string;
+  executionOrderId?: string;
+  inventoryRequestId?: string;
   failedAt: string;
   attemptsMade: number;
   errorType: string;
 }
 
-function safeInventoryErrorType(error: Error): string {
+interface ExecutionEventDlqJob {
+  kind: 'execution-event';
+  tenantId?: string;
+  eventId?: string;
+  aggregateId?: string;
+  aggregateVersion?: number;
+  failedAt: string;
+  attemptsMade: number;
+  errorType: string;
+}
+
+interface InventoryOutboxRow {
+  event_id: string;
+  tenant_id: string;
+  aggregate_id: string;
+  aggregate_version: number;
+  event_type: string;
+  correlation_id: string;
+  occurred_at: Date | string;
+  payload: unknown;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function safeUuid(value: unknown): string | undefined {
+  return typeof value === 'string' && UUID_PATTERN.test(value) ? value : undefined;
+}
+
+function timestampsMatch(left: Date | string, right: string): boolean {
+  const leftTimestamp = new Date(left).getTime();
+  const rightTimestamp = new Date(right).getTime();
+  return (
+    Number.isFinite(leftTimestamp) &&
+    Number.isFinite(rightTimestamp) &&
+    leftTimestamp === rightTimestamp
+  );
+}
+
+function safeAttemptsMade(value: number | undefined): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? Math.min(value, 1000)
+    : 0;
+}
+
+function safeExecutionErrorType(error: unknown): string {
   const knownTypes = new Set([
     'Error',
     'UnrecoverableError',
@@ -63,7 +112,22 @@ function safeInventoryErrorType(error: Error): string {
     'TimeoutError',
     'AbortError',
   ]);
-  return knownTypes.has(error.name) ? error.name : 'INVENTORY_EVENT_FAILURE';
+  return error instanceof Error && knownTypes.has(error.name)
+    ? error.name
+    : 'EXECUTION_EVENT_FAILURE';
+}
+
+function safeInventoryErrorType(error: unknown): string {
+  const knownTypes = new Set([
+    'Error',
+    'UnrecoverableError',
+    'QueryFailedError',
+    'TimeoutError',
+    'AbortError',
+  ]);
+  return error instanceof Error && knownTypes.has(error.name)
+    ? error.name
+    : 'INVENTORY_EVENT_FAILURE';
 }
 
 /**
@@ -105,7 +169,10 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
    */
   @OnWorkerEvent('failed')
   async onFailed(job: Job<ExecutionEventJob>, error: Error): Promise<void> {
-    const { tenantId, envelope } = job.data;
+    const data: Record<string, unknown> = isRecord(job.data) ? job.data : {};
+    const envelope = isRecord(data['envelope']) ? data['envelope'] : {};
+    const payload = isRecord(envelope['payload']) ? envelope['payload'] : {};
+    const eventType = envelope['eventType'];
 
     // BullMQ emite `failed` en cada intento. Persistir el diagnóstico solo al
     // agotar el retry evita DLQ duplicadas para fallos técnicos recuperables.
@@ -116,60 +183,82 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       return;
     }
 
-    if (INVENTORY_EVENT_TYPES.has(envelope.eventType)) {
-      const payload = envelope.payload as {
-        executionOrderId?: string;
-        inventoryRequestId?: string;
-      };
+    const tenantId = safeUuid(data['tenantId']);
+    const eventId = safeUuid(envelope['eventId']);
+    const aggregateId = safeUuid(envelope['aggregateId']);
+    const safePayloadExecutionOrderId = safeUuid(payload['executionOrderId']);
+    const safeInventoryRequestId = safeUuid(payload['inventoryRequestId']);
+    const failedAt = new Date().toISOString();
+    const attemptsMade = safeAttemptsMade(job.attemptsMade);
+
+    if (
+      typeof eventType === 'string' &&
+      INVENTORY_EVENT_TYPES.has(eventType as OperationalEventTypeV1)
+    ) {
+      const identifiers =
+        tenantId && eventId && aggregateId && safePayloadExecutionOrderId && safeInventoryRequestId
+          ? {
+              tenantId,
+              eventId,
+              executionOrderId: safePayloadExecutionOrderId,
+              inventoryRequestId: safeInventoryRequestId,
+            }
+          : {};
       const diagnostic: InventoryDlqJob = {
-        tenantId,
-        eventId: envelope.eventId,
-        executionOrderId: payload.executionOrderId ?? envelope.aggregateId,
-        inventoryRequestId: payload.inventoryRequestId ?? envelope.eventId,
-        failedAt: new Date().toISOString(),
-        attemptsMade: job.attemptsMade,
+        ...identifiers,
+        failedAt,
+        attemptsMade,
         errorType: safeInventoryErrorType(error),
       };
-
-      this.logger.error(
-        `[execution-events] inventory_event_dlq event=${diagnostic.eventId} ` +
-          `tenant=${diagnostic.tenantId} ot=${diagnostic.executionOrderId} ` +
-          `inventory_request=${diagnostic.inventoryRequestId} ` +
-          `attempts=${diagnostic.attemptsMade} error_type=${diagnostic.errorType}`,
-      );
-      await this.dlqQueue.add('failed-inventory-execution-event', diagnostic, {
-        jobId: `dlq-${envelope.eventId}`,
-        removeOnComplete: true,
-        removeOnFail: DLQ_RETENTION_SECONDS,
-      });
+      try {
+        await this.dlqQueue.add('failed-inventory-execution-event', diagnostic, {
+          jobId: `dlq-${eventId ?? randomUUID()}`,
+          removeOnComplete: true,
+          removeOnFail: DLQ_RETENTION_SECONDS,
+        });
+      } catch (enqueueError) {
+        this.logger.error(
+          `[execution-events] inventory_dlq_enqueue_failed ` +
+            `error_type=${safeInventoryErrorType(enqueueError)} attempts=${attemptsMade} failed_at=${failedAt}`,
+        );
+        return;
+      }
+      await job.remove();
       return;
     }
 
+    const aggregateVersion = envelope['aggregateVersion'];
+    const diagnostic: ExecutionEventDlqJob = {
+      kind: 'execution-event',
+      ...(tenantId ? { tenantId } : {}),
+      ...(eventId ? { eventId } : {}),
+      ...(aggregateId ? { aggregateId } : {}),
+      ...(typeof aggregateVersion === 'number' &&
+      Number.isInteger(aggregateVersion) &&
+      aggregateVersion > 0
+        ? { aggregateVersion }
+        : {}),
+      failedAt,
+      attemptsMade,
+      errorType: safeExecutionErrorType(error),
+    };
+    const identifierLog = [
+      tenantId ? `tenant=${tenantId}` : undefined,
+      eventId ? `event=${eventId}` : undefined,
+      aggregateId ? `aggregate=${aggregateId}` : undefined,
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join(' ');
     this.logger.error(
-      `[execution-events] DLQ event_id=${envelope.eventId} ` +
-        `tenant=${tenantId} attempts=${job.attemptsMade}/${job.opts.attempts} ` +
-        `error=${error.message}`,
+      `[execution-events] DLQ ${identifierLog} ` +
+        `attempts=${attemptsMade} error_type=${diagnostic.errorType} failed_at=${failedAt}`,
     );
 
-    await this.dlqQueue.add(
-      'failed-execution-event',
-      {
-        tenantId,
-        envelope,
-        diagnostic: {
-          failedAt: new Date().toISOString(),
-          attemptsMade: job.attemptsMade,
-          jobId: job.id,
-          errorMessage: error.message,
-          errorName: error.name,
-        },
-      },
-      {
-        jobId: `dlq-${envelope.eventId}-${Date.now()}`,
-        removeOnComplete: false,
-        removeOnFail: false,
-      },
-    );
+    await this.dlqQueue.add('failed-execution-event', diagnostic, {
+      jobId: `dlq-${eventId ?? randomUUID()}-${Date.now()}`,
+      removeOnComplete: false,
+      removeOnFail: false,
+    });
   }
 
   async process(job: Job<ExecutionEventJob>): Promise<void> {
@@ -196,6 +285,10 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
 
       await client.query('BEGIN');
       await client.query(`SET LOCAL search_path TO "${schemaName}"`);
+
+      if (envelope.eventType === 'InventoryConsumptionRequestedV2') {
+        await this.assertInventoryEventMatchesOutbox(client, tenantId, envelope);
+      }
 
       // ── Deduplicación por inbox ────────────────────────────────────────
       const current = await client.query<{ aggregate_version: number }>(
@@ -355,8 +448,8 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       this.logger.warn(
-        `[execution-events] retry event=${envelope.eventId} tenant=${tenantId} ` +
-          `attempt=${job.attemptsMade + 1}`,
+        `[execution-events] retry event=${safeUuid(envelope.eventId) ?? 'omitted'} ` +
+          `tenant=${safeUuid(tenantId) ?? 'omitted'} attempt=${job.attemptsMade + 1}`,
       );
       throw error;
     } finally {
@@ -387,8 +480,44 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       attempts: 8,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: true,
-      removeOnFail: DLQ_RETENTION_SECONDS,
+      removeOnFail: { age: SOURCE_JOB_RETENTION_SECONDS },
     });
+  }
+
+  private async assertInventoryEventMatchesOutbox(
+    client: PoolClient,
+    tenantId: string,
+    candidate: unknown,
+  ): Promise<void> {
+    const parsed = InventoryConsumptionRequestedV2EnvelopeSchema.safeParse(candidate);
+    if (!parsed.success || parsed.data.tenantId !== tenantId) {
+      throw new UnrecoverableError('INVENTORY_OUTBOX_EVENT_MISMATCH');
+    }
+
+    const envelope = parsed.data;
+    const result = await client.query<InventoryOutboxRow>(
+      `SELECT event_id, tenant_id, aggregate_id, aggregate_version,
+              event_type, correlation_id, occurred_at, payload
+         FROM execution_order_outbox_events
+        WHERE tenant_id = $1 AND event_id = $2
+        FOR SHARE`,
+      [tenantId, envelope.eventId],
+    );
+    const outbox = result.rows[0];
+    if (
+      !outbox ||
+      outbox.event_id.toLowerCase() !== envelope.eventId.toLowerCase() ||
+      outbox.tenant_id.toLowerCase() !== tenantId.toLowerCase() ||
+      outbox.event_type !== envelope.eventType ||
+      outbox.aggregate_id.toLowerCase() !== envelope.aggregateId.toLowerCase() ||
+      outbox.aggregate_version !== envelope.aggregateVersion ||
+      outbox.correlation_id.toLowerCase() !== envelope.correlationId.toLowerCase() ||
+      !timestampsMatch(outbox.occurred_at, envelope.occurredAt) ||
+      canonicalizeInventoryExecutionRequest(tenantId, outbox.payload) !==
+        canonicalizeInventoryExecutionRequest(tenantId, envelope.payload)
+    ) {
+      throw new UnrecoverableError('INVENTORY_OUTBOX_EVENT_MISMATCH');
+    }
   }
 
   private configValue(name: string): string {

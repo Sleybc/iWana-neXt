@@ -1,23 +1,27 @@
 import { DataSource } from 'typeorm';
-import { runInTenantSchema } from '@iwana/db';
+import { InventoryItem, SerializedAsset, StockLocation, runInTenantSchema } from '@iwana/db';
 import {
   ExecutionOrderItemAction,
   InventoryDisposition,
+  InventoryItemStatus,
   InventoryResponsibleType,
   InventoryTrackingMode,
   SerializedAssetStatus,
   StockAdjustmentReason,
   StockBalanceCondition,
+  StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
   UserRole,
   WriteOffReason,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { InventoryBusinessRejection } from '../services/inventory-business-rejection';
 import { StockLedgerService } from '../services/stock-ledger.service';
 
 jest.mock('@iwana/db', () => ({
   InventoryItem: class InventoryItem {},
+  SerializedAsset: class SerializedAsset {},
   StockBalance: class StockBalance {},
   StockLocation: class StockLocation {},
   StockMovement: class StockMovement {},
@@ -1328,6 +1332,177 @@ describe('StockLedgerService', () => {
       );
 
       expect(result.movement).toBe(existingMovement);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('consumo firmado con custodia móvil de técnico', () => {
+    const technicianId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const custodyLocationId = 'loc-mobile-distinct-from-technician';
+    const itemId = 'item-cpe-001';
+    const serialNumber = 'CPE-TEST-001';
+
+    function makeServiceFixture(withCustody: boolean) {
+      const location = withCustody
+        ? {
+            id: custodyLocationId,
+            tenantId: 'tenant-001',
+            responsibleRefId: technicianId,
+            type: StockLocationType.MOBILE_TECHNICIAN,
+            status: StockLocationStatus.ACTIVE,
+          }
+        : null;
+      const asset = {
+        id: 'asset-cpe-001',
+        inventoryItemId: itemId,
+        normalizedSerialNumber: serialNumber,
+        currentLocationId: custodyLocationId,
+        currentStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+        currentResponsibleType: InventoryResponsibleType.TECHNICIAN,
+        currentResponsibleRefId: technicianId,
+      };
+      const manager = {
+        findOne: jest.fn().mockImplementation(async (entity: unknown) => {
+          if (entity === InventoryItem) {
+            return { id: itemId, status: InventoryItemStatus.ACTIVE };
+          }
+          if (entity === StockLocation) return location;
+          if (entity === SerializedAsset) return asset;
+          return null;
+        }),
+        find: jest.fn().mockResolvedValue([]),
+        query: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn((_entity, payload) => payload),
+        save: jest.fn().mockImplementation(async (_entity, payload) => ({
+          id: 'movementNumber' in payload ? 'movement-cpe-001' : `line-${payload.locationId}`,
+          ...payload,
+        })),
+        transaction: jest.fn().mockImplementation(async (work) => work(manager)),
+      };
+      const stockBalanceService = withAvailability({
+        applyDeltaWithManager: jest.fn().mockResolvedValue(undefined),
+      });
+      const serializedAssetService = {
+        normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
+        resolveForMovementWithManager: jest.fn().mockResolvedValue(asset),
+        transitionAssetWithManager: jest.fn().mockResolvedValue({
+          ...asset,
+          currentStatus: SerializedAssetStatus.INSTALLED_COMODATO,
+          currentLocationId: 'loc-customer-site',
+          currentResponsibleType: InventoryResponsibleType.CUSTOMER,
+          currentResponsibleRefId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        }),
+      };
+      const customerSiteLocationResolver = {
+        resolveOrCreateWithManager: jest.fn().mockResolvedValue('loc-customer-site'),
+      };
+      (runInTenantSchema as jest.Mock).mockImplementation(async (_dataSource, _schemaName, work) =>
+        work({ manager }),
+      );
+
+      return {
+        manager,
+        stockBalanceService,
+        serializedAssetService,
+        service: createStockLedgerService(
+          {} as DataSource,
+          stockBalanceService,
+          serializedAssetService,
+          { recordWithManager: jest.fn() },
+          customerSiteLocationResolver,
+        ),
+      };
+    }
+
+    it('resuelve el ID móvil distinto al técnico y confirma el consumo del serial CPE', async () => {
+      const { manager, stockBalanceService, serializedAssetService, service } =
+        makeServiceFixture(true);
+      const persistReceipt = jest.fn().mockResolvedValue(undefined);
+
+      const result = await service.recordExecutionOrderMovementForInventoryRequest(
+        {
+          executionOrderId: 'eo-cpe-001',
+          itemId,
+          technicianCustodyId: technicianId,
+          quantity: 1,
+          serialNumber,
+          action: ExecutionOrderItemAction.INSTALL,
+          finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          subscriberId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          idempotencyKey: 'inventory-request-cpe-001',
+        },
+        { sub: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' },
+        custodyLocationId,
+        persistReceipt,
+      );
+
+      expect(manager.findOne).toHaveBeenCalledWith(
+        StockLocation,
+        expect.objectContaining({
+          where: {
+            tenantId: 'tenant-001',
+            id: custodyLocationId,
+            responsibleRefId: technicianId,
+            type: StockLocationType.MOBILE_TECHNICIAN,
+            status: StockLocationStatus.ACTIVE,
+          },
+          lock: { mode: 'pessimistic_write' },
+        }),
+      );
+      expect(custodyLocationId).not.toBe(technicianId);
+      expect(result.lines).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ locationId: custodyLocationId, quantity: '-1.00' }),
+          expect.objectContaining({ locationId: 'loc-customer-site', quantity: '1.00' }),
+        ]),
+      );
+      expect(stockBalanceService.getAvailableQuantityWithManager).toHaveBeenCalledWith(
+        manager,
+        'tenant-001',
+        expect.objectContaining({ locationId: custodyLocationId }),
+      );
+      expect(serializedAssetService.transitionAssetWithManager).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({
+          currentLocationId: 'loc-customer-site',
+          currentResponsibleRefId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        }),
+      );
+      expect(persistReceipt).toHaveBeenCalledWith(manager, result);
+    });
+
+    it('rechaza CUSTODY_INSUFFICIENT si la ubicación ya no está activa al abrir la transacción', async () => {
+      const { manager, stockBalanceService, service } = makeServiceFixture(false);
+
+      await expect(
+        service.recordExecutionOrderMovementForInventoryRequest(
+          {
+            executionOrderId: 'eo-cpe-002',
+            itemId,
+            technicianCustodyId: technicianId,
+            quantity: 1,
+            serialNumber,
+            action: ExecutionOrderItemAction.INSTALL,
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+            subscriberId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            idempotencyKey: 'inventory-request-cpe-002',
+          },
+          { sub: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' },
+          custodyLocationId,
+          jest.fn(),
+        ),
+      ).rejects.toMatchObject<Partial<InventoryBusinessRejection>>({
+        name: 'InventoryBusinessRejection',
+        reasonCode: 'CUSTODY_INSUFFICIENT',
+      });
+
+      expect(stockBalanceService.applyDeltaWithManager).not.toHaveBeenCalled();
       expect(manager.save).not.toHaveBeenCalled();
     });
   });

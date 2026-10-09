@@ -46,8 +46,10 @@ describe('ExecutionOrderInventoryRescanService', () => {
         ],
         rowCount: 1,
       })
+      .mockResolvedValueOnce(undefined) // SAVEPOINT
       .mockResolvedValueOnce({ rowCount: 1 }) // increment attempt and timestamp
       .mockResolvedValueOnce({ rowCount: 1 }) // insert new V2 outbox event
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT
       .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged metric
       .mockResolvedValueOnce(undefined); // COMMIT
 
@@ -78,6 +80,139 @@ describe('ExecutionOrderInventoryRescanService', () => {
     expect(tenantClient.query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
     expect(tenantClient.release).toHaveBeenCalled();
     expect(lookupClient.release).toHaveBeenCalled();
+    expect(
+      tenantClient.query.mock.calls.filter(([sql]) => String(sql).startsWith('SAVEPOINT')).length,
+    ).toBe(1);
+  });
+
+  it('aparta una fila envenenada primero y reemite la siguiente dentro del mismo tenant', async () => {
+    const lookupClient = { query: jest.fn(), release: jest.fn() };
+    const tenantClient = { query: jest.fn(), release: jest.fn() };
+    const service = new ExecutionOrderInventoryRescanService(mockConfig());
+    (service as unknown as { pool: { connect: jest.Mock } }).pool = {
+      connect: jest.fn().mockResolvedValueOnce(lookupClient).mockResolvedValueOnce(tenantClient),
+    } as never;
+    lookupClient.query.mockResolvedValueOnce({
+      rows: [{ id: TENANT_ID, schema_name: 'tenant_test001' }],
+    });
+    const poisoned = {
+      id: '40000000-0000-4000-8000-000000000001',
+      tenant_id: TENANT_ID,
+      execution_order_id: ORDER_ID,
+      aggregate_version: 3,
+      inventory_request_id: REQUEST_ID,
+      item_id: '50000000-0000-4000-8000-000000000001',
+      quantity: '1',
+      serial_number: null,
+      technician_custody_id: '60000000-0000-4000-8000-000000000001',
+      action: 'INSTALL',
+      final_disposition: 'INSTALLED_AT_CUSTOMER',
+      subscriber_id: '70000000-0000-4000-8000-000000000001',
+      actor_user_id: null,
+      request_attempts: 1,
+    };
+    const valid = {
+      ...poisoned,
+      id: '40000000-0000-4000-8000-000000000002',
+      inventory_request_id: '30000000-0000-4000-8000-000000000002',
+      actor_user_id: '80000000-0000-4000-8000-000000000001',
+    };
+    tenantClient.query
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce(undefined) // SET LOCAL search_path
+      .mockResolvedValueOnce({ rows: [poisoned, valid], rowCount: 2 })
+      .mockResolvedValueOnce(undefined) // SAVEPOINT poisoned
+      .mockResolvedValueOnce(undefined) // ROLLBACK TO SAVEPOINT poisoned
+      .mockResolvedValueOnce({ rowCount: 1 }) // exhaust poisoned row
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT poisoned
+      .mockResolvedValueOnce(undefined) // SAVEPOINT valid
+      .mockResolvedValueOnce({ rowCount: 1 }) // increment valid row
+      .mockResolvedValueOnce({ rowCount: 1 }) // insert valid outbox row
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT valid
+      .mockResolvedValueOnce({ rows: [{ count: '1' }] }) // prolonged metric
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    await expect(service.scanPendingRequests()).resolves.toBe(1);
+
+    const calls = tenantClient.query.mock.calls.map(([sql, params]) => ({
+      sql: String(sql),
+      params,
+    }));
+    expect(calls.filter(({ sql }) => sql.startsWith('SAVEPOINT '))).toHaveLength(2);
+    expect(calls.some(({ sql }) => sql === 'ROLLBACK TO SAVEPOINT inventory_request_0')).toBe(true);
+    expect(calls.some(({ sql }) => sql === 'RELEASE SAVEPOINT inventory_request_1')).toBe(true);
+    const exhausted = calls.find(({ sql }) => sql.includes('SET request_attempts = $3'));
+    expect(exhausted?.params).toEqual([poisoned.id, TENANT_ID, 10]);
+    const outboxInserts = calls.filter(({ sql }) =>
+      sql.includes('INSERT INTO execution_order_outbox_events'),
+    );
+    expect(outboxInserts).toHaveLength(1);
+    expect((outboxInserts[0]?.params as unknown[])[1]).toBe(TENANT_ID);
+    expect(String(outboxInserts[0]?.params?.[5])).toContain(valid.inventory_request_id);
+    expect(calls.at(-1)?.sql).toBe('COMMIT');
+  });
+
+  it.each([
+    [
+      'MISSING_REQUEST_ID',
+      { inventory_request_id: null, actor_user_id: '80000000-0000-4000-8000-000000000001' },
+    ],
+    ['MISSING_ACTOR', { inventory_request_id: REQUEST_ID, actor_user_id: null }],
+    ['INVALID_PAYLOAD', { inventory_request_id: REQUEST_ID, actor_user_id: 'not-a-uuid' }],
+  ])('marca inválida como agotada con el código %s', async (_code, override) => {
+    const lookupClient = { query: jest.fn(), release: jest.fn() };
+    const tenantClient = { query: jest.fn(), release: jest.fn() };
+    const service = new ExecutionOrderInventoryRescanService(mockConfig());
+    (service as unknown as { pool: { connect: jest.Mock } }).pool = {
+      connect: jest.fn().mockResolvedValueOnce(lookupClient).mockResolvedValueOnce(tenantClient),
+    } as never;
+    lookupClient.query.mockResolvedValueOnce({
+      rows: [{ id: TENANT_ID, schema_name: 'tenant_test001' }],
+    });
+    const invalidRow = Object.assign(
+      {
+        id: '40000000-0000-4000-8000-000000000001',
+        tenant_id: TENANT_ID,
+        execution_order_id: ORDER_ID,
+        aggregate_version: 3,
+        inventory_request_id: REQUEST_ID,
+        item_id: '50000000-0000-4000-8000-000000000001',
+        quantity: '1',
+        serial_number: null,
+        technician_custody_id: '60000000-0000-4000-8000-000000000001',
+        action: 'INSTALL',
+        final_disposition: 'INSTALLED_AT_CUSTOMER',
+        subscriber_id: '70000000-0000-4000-8000-000000000001',
+        actor_user_id: '80000000-0000-4000-8000-000000000001',
+        request_attempts: 1,
+      },
+      override,
+    );
+    tenantClient.query
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        rows: [invalidRow],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      .mockResolvedValueOnce(undefined);
+
+    await expect(service.scanPendingRequests()).resolves.toBe(0);
+    expect(
+      tenantClient.query.mock.calls.some(([sql]) =>
+        String(sql).includes('SET request_attempts = $3'),
+      ),
+    ).toBe(true);
+    expect(
+      tenantClient.query.mock.calls.some(([sql]) =>
+        String(sql).includes('INSERT INTO execution_order_outbox_events'),
+      ),
+    ).toBe(false);
   });
 
   it('usa el umbral y el tope configurados, rechazando valores no positivos', () => {
