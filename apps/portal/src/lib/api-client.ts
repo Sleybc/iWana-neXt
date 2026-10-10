@@ -109,6 +109,7 @@ import {
   type UsersBulkJobStatusResponse,
   type StartExecutionOrderCommand,
   type RegisterItemUsageCommand,
+  type ReverseItemUsageCommand,
   type CloseExecutionOrderCommand,
   type RegisterEvidenceCommand,
   type EvidenceAssetReceipt,
@@ -7061,6 +7062,24 @@ export const tasksApi = {
     ) =>
       request<ExecutionOrderItemUsageRecord>(
         `/tasks/execution-orders/${id}/item-usage`,
+        {
+          method: 'POST',
+          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          body: JSON.stringify(dto),
+          returnFullResponse: true,
+        },
+        tenantSlug,
+      ),
+
+    reverseItemUsage: (
+      id: string,
+      usageId: string,
+      dto: ReverseItemUsageCommand,
+      currentVersion: number,
+      tenantSlug?: string,
+    ) =>
+      request<unknown>(
+        `/tasks/execution-orders/${id}/item-usage/${usageId}/reversal`,
         {
           method: 'POST',
           headers: buildExecutionOrderCommandHeaders(currentVersion),

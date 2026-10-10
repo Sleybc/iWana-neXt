@@ -33,6 +33,7 @@ jest.mock('@/lib/api-client', () => ({
       updateFieldWork: jest.fn(),
       deleteFieldWork: jest.fn(),
       registerItemUsage: jest.fn(),
+      reverseItemUsage: jest.fn(),
       uploadEvidenceAsset: jest.fn(),
       getEvidenceAsset: jest.fn(),
       registerEvidence: jest.fn(),
@@ -123,6 +124,7 @@ describe('consola de OT — refresco selectivo tras cada mutación (R4, CA-12)',
     jest.mocked(api.updateFieldWork).mockImplementation(async () => bump('activities') as never);
     jest.mocked(api.deleteFieldWork).mockImplementation(async () => bump('activities') as never);
     jest.mocked(api.registerItemUsage).mockImplementation(async () => bump('itemUsage') as never);
+    jest.mocked(api.reverseItemUsage).mockImplementation(async () => bump('itemUsage') as never);
     jest.mocked(api.registerEvidence).mockImplementation(async () => bump('evidence') as never);
     jest.mocked(api.close).mockImplementation(async () => void (server.version += 1) as never);
     jest.mocked(api.uploadEvidenceAsset).mockResolvedValue({
@@ -261,6 +263,28 @@ describe('consola de OT — refresco selectivo tras cada mutación (R4, CA-12)',
       expect(view.result.current.executionOrderItemUsage).toEqual([
         `itemUsage-${OPEN_VERSION + 1}`,
       ]);
+    });
+
+    it('solicitar reverso publica el motivo al endpoint y refresca detalle e historial', async () => {
+      const view = await mountOpen();
+
+      await act(async () =>
+        view.result.current.handleReverseExecutionOrderItemUsage('iu-001', {
+          reason: 'Corrección operativa',
+        }),
+      );
+
+      expect(api.reverseItemUsage).toHaveBeenCalledWith(
+        'eo-1',
+        'iu-001',
+        { reason: 'Corrección operativa' },
+        OPEN_VERSION,
+      );
+      expect(readCounts()).toEqual({ detail: 1, activities: 0, itemUsage: 1, evidence: 0 });
+      expect(view.result.current.executionOrderSuccess).toBe(
+        'La solicitud de reverso fue registrada.',
+      );
+      expect(view.result.current.isSubmittingExecutionOrder).toBe(false);
     });
 
     it('con la hoja de consumo abierta además relee la custodia, una vez', async () => {

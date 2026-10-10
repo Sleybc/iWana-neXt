@@ -6,6 +6,7 @@ import {
   INVENTORY_SOURCE_CLEANUP_INTERVAL_MS,
   INVENTORY_SOURCE_MAX_AGE_MS,
   InventoryDisposition,
+  SignedInventoryExecutionReversalRequest,
   SignedInventoryExecutionRequest,
   canonicalizeInventoryExecutionRequest,
 } from '@iwana/shared';
@@ -35,6 +36,8 @@ const ACTOR_ID = '60000000-0000-4000-8000-000000000001';
 const SUBSCRIBER_ID = '70000000-0000-4000-8000-000000000001';
 const REQUEST_EVENT_ID = '80000000-0000-4000-8000-000000000001';
 const MOVEMENT_ID = '90000000-0000-4000-8000-000000000001';
+const ORIGINAL_MOVEMENT_ID = '90000000-0000-4000-8000-000000000002';
+const REVERSAL_REQUEST_ID = '30000000-0000-4000-8000-000000000002';
 const DECIDED_AT = '2026-10-06T12:00:00.000Z';
 const SIGNING_KEY = Buffer.alloc(32, 7);
 
@@ -79,6 +82,33 @@ function makeSignedRequest(
   };
 }
 
+function makeSignedReversalRequest(): SignedInventoryExecutionReversalRequest {
+  const envelope: SignedInventoryExecutionReversalRequest['envelope'] = {
+    eventId: REQUEST_EVENT_ID,
+    eventType: 'InventoryConsumptionReversalRequestedV1',
+    tenantId: TENANT_ID,
+    aggregateId: ORDER_ID,
+    aggregateVersion: 5,
+    occurredAt: DECIDED_AT,
+    correlationId: REVERSAL_REQUEST_ID,
+    payload: {
+      executionOrderId: ORDER_ID,
+      reversalRequestId: REVERSAL_REQUEST_ID,
+      inventoryRequestId: REQUEST_ID,
+      originalStockMovementId: ORIGINAL_MOVEMENT_ID,
+      technicianCustodyId: CUSTODY_ID,
+      actorUserId: ACTOR_ID,
+    },
+  };
+  return {
+    tenantId: TENANT_ID,
+    envelope,
+    signature: createHmac('sha256', SIGNING_KEY)
+      .update(canonicalizeInventoryExecutionRequest(TENANT_ID, envelope))
+      .digest('hex'),
+  };
+}
+
 function makeJob(data: unknown) {
   return {
     data,
@@ -91,7 +121,10 @@ function makeJob(data: unknown) {
 describe('InventoryExecutionRequestProcessor', () => {
   let processor: InventoryExecutionRequestProcessor;
   let dataSource: { query: jest.Mock };
-  let stockLedger: { recordExecutionOrderMovementForInventoryRequest: jest.Mock };
+  let stockLedger: {
+    recordExecutionOrderMovementForInventoryRequest: jest.Mock;
+    reverseExecutionOrderMovementForInventoryRequest: jest.Mock;
+  };
   let responseQueue: { add: jest.Mock; clean: jest.Mock };
   let dlqQueue: { add: jest.Mock };
   let requestQueue: { add: jest.Mock; clean: jest.Mock };
@@ -111,7 +144,7 @@ describe('InventoryExecutionRequestProcessor', () => {
     };
     queryRunner = {
       query: jest.fn(async (sql: string) => {
-        if (sql.includes('SELECT outcome')) {
+        if (sql.includes('SELECT kind, outcome')) {
           receiptReads += 1;
           return receiptReads <= 2 && !receipt ? [] : receipt ? [receipt] : [];
         }
@@ -128,11 +161,13 @@ describe('InventoryExecutionRequestProcessor', () => {
         query: jest.fn(async (sql: string, params: unknown[]) => {
           if (sql.includes('INSERT INTO inventory_execution_request_receipts')) {
             receipt = {
-              outcome: params[5],
-              stock_movement_id: params[6],
-              reason_code: params[7],
-              execution_order_id: params[3],
-              aggregate_version: params[4],
+              kind: params[2],
+              outcome: params[6],
+              stock_movement_id: params[7],
+              original_stock_movement_id: params[8],
+              reason_code: params[9],
+              execution_order_id: params[4],
+              aggregate_version: params[5],
               decided_at: DECIDED_AT,
             };
           }
@@ -158,6 +193,22 @@ describe('InventoryExecutionRequestProcessor', () => {
             movement: { movement: { id: string } },
           ) => Promise<void>,
         ) => persist(queryRunner.manager as never, { movement: { id: MOVEMENT_ID } }),
+      ),
+      reverseExecutionOrderMovementForInventoryRequest: jest.fn(
+        async (
+          _input: unknown,
+          _principal: unknown,
+          persist: (
+            manager: EntityManager,
+            movement: { movement: { id: string } },
+            originalMovementId: string,
+          ) => Promise<void>,
+        ) =>
+          persist(
+            queryRunner.manager as never,
+            { movement: { id: MOVEMENT_ID } },
+            ORIGINAL_MOVEMENT_ID,
+          ),
       ),
     };
     responseQueue = {
@@ -292,6 +343,88 @@ describe('InventoryExecutionRequestProcessor', () => {
     );
   });
 
+  it('procesa el reverso firmado con recibo y respuesta deterministas', async () => {
+    const job = makeJob(makeSignedReversalRequest());
+
+    await processor.process(job);
+    await processor.process(job);
+
+    expect(stockLedger.reverseExecutionOrderMovementForInventoryRequest).toHaveBeenCalledTimes(1);
+    expect(stockLedger.reverseExecutionOrderMovementForInventoryRequest.mock.calls[0]?.[0]).toEqual(
+      {
+        executionOrderId: ORDER_ID,
+        reversalRequestId: REVERSAL_REQUEST_ID,
+        originalStockMovementId: ORIGINAL_MOVEMENT_ID,
+        technicianCustodyId: CUSTODY_ID,
+      },
+    );
+    expect(queryRunner.manager.query).toHaveBeenCalledTimes(1);
+    expect(queryRunner.manager.query.mock.calls[0]?.[1]).toEqual([
+      expect.any(String),
+      TENANT_ID,
+      'REVERSAL',
+      REVERSAL_REQUEST_ID,
+      ORDER_ID,
+      5,
+      'CONFIRMED',
+      MOVEMENT_ID,
+      ORIGINAL_MOVEMENT_ID,
+      null,
+    ]);
+    expect(responseQueue.add).toHaveBeenCalledTimes(2);
+    const first = responseQueue.add.mock.calls[0]?.[1] as {
+      envelope: { eventId: string; eventType: string; payload: Record<string, unknown> };
+    };
+    const second = responseQueue.add.mock.calls[1]?.[1] as typeof first;
+    expect(first.envelope.eventType).toBe('InventoryReversalConfirmedV1');
+    expect(first.envelope.eventId).toBe(second.envelope.eventId);
+    expect(first.envelope.payload).toEqual({
+      executionOrderId: ORDER_ID,
+      reversalRequestId: REVERSAL_REQUEST_ID,
+      stockMovementId: MOVEMENT_ID,
+    });
+  });
+
+  it.each([
+    'REVERSAL_ORIGINAL_NOT_FOUND',
+    'REVERSAL_CUSTODY_INACTIVE',
+    'REVERSAL_ASSET_MOVED',
+    'REVERSAL_LOAN_MISMATCH',
+  ] as const)('persiste el rechazo de reverso %s como decisión terminal', async (reasonCode) => {
+    stockLedger.reverseExecutionOrderMovementForInventoryRequest.mockRejectedValueOnce(
+      new InventoryBusinessRejection(reasonCode),
+    );
+
+    await expect(processor.process(makeJob(makeSignedReversalRequest()))).resolves.toBeUndefined();
+
+    expect(queryRunner.manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO inventory_execution_request_receipts'),
+      [
+        expect.any(String),
+        TENANT_ID,
+        'REVERSAL',
+        REVERSAL_REQUEST_ID,
+        ORDER_ID,
+        5,
+        'REJECTED',
+        null,
+        ORIGINAL_MOVEMENT_ID,
+        reasonCode,
+      ],
+    );
+    const enqueued = responseQueue.add.mock.calls[0]?.[1] as {
+      envelope: { eventType: string; payload: { reversalRequestId: string; reasonCode: string } };
+    };
+    expect(enqueued.envelope.eventType).toBe('InventoryReversalRejectedV1');
+    expect(enqueued.envelope.payload).toEqual({
+      executionOrderId: ORDER_ID,
+      reversalRequestId: REVERSAL_REQUEST_ID,
+      reasonCode,
+    });
+    expect(responseQueue.add).toHaveBeenCalledTimes(1);
+    expect(dlqQueue.add).not.toHaveBeenCalled();
+  });
+
   it('descarta HMAC inválido antes de consultar el tenant', async () => {
     const invalid = { ...makeSignedRequest(), signature: '0'.repeat(64) };
 
@@ -377,7 +510,11 @@ describe('InventoryExecutionRequestProcessor', () => {
         inventoryRequestId: REQUEST_ID,
         errorType: 'INVENTORY_EXECUTION_REQUEST_FAILURE',
       }),
-      expect.any(Object),
+      {
+        jobId: `dlq-${REQUEST_EVENT_ID}`,
+        removeOnComplete: true,
+        removeOnFail: { age: 30 * 24 * 60 * 60 },
+      },
     );
     const diagnostic = dlqQueue.add.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(Object.keys(diagnostic).sort()).toEqual(
@@ -391,6 +528,63 @@ describe('InventoryExecutionRequestProcessor', () => {
         'tenantId',
       ].sort(),
     );
+  });
+
+  it('conserva el identificador del reverso en la DLQ sin incluir el motivo ni el sobre', async () => {
+    const signed = makeSignedReversalRequest();
+    const privateReason = 'Corrección interna que permanece en MOD11';
+    const remove = jest.fn().mockResolvedValue(undefined);
+    const data = {
+      ...signed,
+      envelope: {
+        ...signed.envelope,
+        payload: { ...signed.envelope.payload, reason: privateReason },
+      },
+    };
+
+    await processor.onFailed(
+      { data, attemptsMade: 8, opts: { attempts: 8 }, remove } as never,
+      new Error(privateReason),
+    );
+
+    const diagnostic = dlqQueue.add.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(diagnostic).toEqual({
+      tenantId: TENANT_ID,
+      eventId: REQUEST_EVENT_ID,
+      executionOrderId: ORDER_ID,
+      inventoryRequestId: REQUEST_ID,
+      reversalRequestId: REVERSAL_REQUEST_ID,
+      attemptsMade: 8,
+      failedAt: expect.any(String),
+      errorType: 'INVENTORY_EXECUTION_REQUEST_FAILURE',
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain(privateReason);
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('omite un identificador de reverso inválido del diagnóstico', async () => {
+    const signed = makeSignedReversalRequest();
+    const remove = jest.fn().mockResolvedValue(undefined);
+
+    await processor.onFailed(
+      {
+        data: {
+          ...signed,
+          envelope: {
+            ...signed.envelope,
+            payload: { ...signed.envelope.payload, reversalRequestId: 'not-a-uuid' },
+          },
+        },
+        attemptsMade: 8,
+        opts: { attempts: 8 },
+        remove,
+      } as never,
+      new Error('processor failure'),
+    );
+
+    const diagnostic = dlqQueue.add.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(diagnostic).not.toHaveProperty('reversalRequestId');
+    expect(diagnostic).toHaveProperty('inventoryRequestId', REQUEST_ID);
   });
 
   it('escribe diagnóstico sin IDs inválidos y elimina el job fuente tras aceptarlo', async () => {
@@ -457,7 +651,16 @@ describe('InventoryExecutionRequestProcessor', () => {
 
     expect(queryRunner.manager.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO inventory_execution_request_receipts'),
-      expect.arrayContaining([REQUEST_ID, 'REJECTED', null, reasonCode]),
+      expect.arrayContaining([
+        'CONSUMPTION',
+        REQUEST_ID,
+        ORDER_ID,
+        4,
+        'REJECTED',
+        null,
+        null,
+        reasonCode,
+      ]),
     );
     const enqueued = responseQueue.add.mock.calls[0]?.[1] as {
       envelope: { eventType: string; payload: { reasonCode: string } };

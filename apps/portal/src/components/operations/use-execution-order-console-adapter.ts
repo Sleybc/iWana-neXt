@@ -597,6 +597,35 @@ export function useExecutionOrderConsoleAdapter() {
     }
   }
 
+  async function handleReverseExecutionOrderItemUsage(
+    usageId: string,
+    payload: { reason: string },
+  ) {
+    const context = beginExecutionOrderMutation();
+    if (!context) return false;
+    try {
+      await tasksApi.executionOrders.reverseItemUsage(
+        context.order.id,
+        usageId,
+        payload,
+        context.order.version,
+      );
+      await refreshExecutionOrder(context.order.id, 'consumption');
+      if (isCurrentExecutionOrderMutation(context)) {
+        setExecutionOrderSuccess('La solicitud de reverso fue registrada.');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      if (isCurrentExecutionOrderMutation(context)) {
+        setExecutionOrderError(mapOperationsError(error));
+      }
+      return false;
+    } finally {
+      if (isCurrentExecutionOrderMutation(context)) setIsSubmittingExecutionOrder(false);
+    }
+  }
+
   const handleUploadEvidence = useExecutionOrderEvidence({
     selectedExecutionOrder,
     requestSequence: executionOrderRequestSeqRef,
@@ -702,6 +731,7 @@ export function useExecutionOrderConsoleAdapter() {
     handleUpdateExecutionOrderFieldWork,
     handleDeleteExecutionOrderFieldWork,
     handleRegisterExecutionOrderItemUsage,
+    handleReverseExecutionOrderItemUsage,
     handleUploadEvidence,
     handleCloseExecutionOrder,
     closeExecutionOrder,

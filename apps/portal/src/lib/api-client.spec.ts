@@ -523,7 +523,8 @@ describe('tasksApi execution order payloads', () => {
         .mockReturnValueOnce('command-item-usage-key')
         .mockReturnValueOnce('command-upload-evidence-key')
         .mockReturnValueOnce('command-register-evidence-key')
-        .mockReturnValueOnce('command-close-key'),
+        .mockReturnValueOnce('command-close-key')
+        .mockReturnValueOnce('command-reverse-item-usage-key'),
     });
     const storageSetItem = jest.spyOn(Storage.prototype, 'setItem');
     persistAccessToken('portal-token');
@@ -572,6 +573,13 @@ describe('tasksApi execution order payloads', () => {
       8,
       'isp-demo',
     );
+    await tasksApi.executionOrders.reverseItemUsage(
+      'eo-001',
+      'iu-001',
+      { reason: 'Corrección operativa' },
+      9,
+      'isp-demo',
+    );
 
     const commandHeaders = (index: number) => {
       const headers = new Headers(calls[index]?.init?.headers);
@@ -605,10 +613,15 @@ describe('tasksApi execution order payloads', () => {
       'Idempotency-Key': 'command-close-key',
       'If-Match': '8',
     });
+    expect(commandHeaders(6)).toEqual({
+      'Idempotency-Key': 'command-reverse-item-usage-key',
+      'If-Match': '9',
+    });
     expect(
-      new Set([0, 1, 2, 3, 4, 5].map(commandHeaders).map((headers) => headers['Idempotency-Key']))
-        .size,
-    ).toBe(6);
+      new Set(
+        [0, 1, 2, 3, 4, 5, 6].map(commandHeaders).map((headers) => headers['Idempotency-Key']),
+      ).size,
+    ).toBe(7);
     expect(storageSetItem.mock.calls.length).toBe(writesAfterAuth);
 
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ note: 'Inicio en campo' });
@@ -638,6 +651,11 @@ describe('tasksApi execution order payloads', () => {
       result: 'EXECUTED',
       summary: 'Trabajo completado',
       customerAcceptance: { artifactId: 'firma-001', method: 'SIGNATURE' },
+    });
+    expect(calls[6]?.url).toContain('/tasks/execution-orders/eo-001/item-usage/iu-001/reversal');
+    expect(calls[6]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[6]?.init?.body))).toEqual({
+      reason: 'Corrección operativa',
     });
   });
 

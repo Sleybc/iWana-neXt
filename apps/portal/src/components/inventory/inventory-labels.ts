@@ -247,6 +247,7 @@ export const STOCK_MOVEMENT_ORIGIN_LABELS: Record<StockMovementOrigin, string> =
   [StockMovementOrigin.PURCHASE_RECEIPT]: 'Recepción de compra',
   [StockMovementOrigin.TRANSFER]: 'Transferencia',
   [StockMovementOrigin.EXECUTION_ORDER]: 'Orden de trabajo',
+  [StockMovementOrigin.EXECUTION_ORDER_REVERSAL]: 'Reverso de consumo de OT',
   [StockMovementOrigin.SALE]: 'Venta',
   [StockMovementOrigin.INTERNAL_CONSUMPTION]: 'Consumo interno',
   [StockMovementOrigin.RETURN]: 'Retorno',

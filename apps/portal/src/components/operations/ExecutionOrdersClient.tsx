@@ -466,6 +466,7 @@ export function ExecutionOrdersClient() {
         onUpdateActivity={orderConsole.handleUpdateExecutionOrderFieldWork}
         onDeleteActivity={orderConsole.handleDeleteExecutionOrderFieldWork}
         onRegisterItemUsage={orderConsole.handleRegisterExecutionOrderItemUsage}
+        onReverseItemUsage={orderConsole.handleReverseExecutionOrderItemUsage}
         onUploadEvidence={orderConsole.handleUploadEvidence}
         onCloseOrder={orderConsole.handleCloseExecutionOrder}
       />

@@ -96,7 +96,10 @@ import { ExecutionOrderAnnulmentFlag1360000000000 } from './136_execution_order_
 import { ExecutionOrderItemUsageRequirementKey1370000000000 } from './137_execution_order_item_usage_requirement_key';
 import { ExecutionOrderInventoryRequestRecovery1380000000000 } from './138_execution_order_inventory_request_recovery';
 import { InventoryExecutionRequestReceipts1390000000000 } from './139_inventory_execution_request_receipts';
+import { ExecutionOrderItemUsageReversals1400000000000 } from './140_execution_order_item_usage_reversals';
+import { InventoryExecutionRequestReversalReceipts1410000000000 } from './141_inventory_execution_request_reversal_receipts';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
+import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
 import { InitialTenantSchema1700000000000 } from './000_initial_tenant_schema';
 import { CreateExpedienteRecords1700000000001 } from './001_create_expediente_records';
@@ -272,6 +275,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ExecutionOrderItemUsageRequirementKey1370000000000,
   ExecutionOrderInventoryRequestRecovery1380000000000,
   InventoryExecutionRequestReceipts1390000000000,
+  ExecutionOrderItemUsageReversals1400000000000,
+  InventoryExecutionRequestReversalReceipts1410000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
@@ -551,6 +556,7 @@ export function createTenantDataSource(
     migrations: TENANT_MIGRATIONS,
     synchronize: false,
     logging: ['error'],
+    logger: new SafeTypeOrmLogger(),
     // Fuerza search_path para que las migraciones usen el schema correcto
     // sin necesidad de calificar cada tabla con schema explícito
     extra: { options: `-c search_path="${schemaName}"` },

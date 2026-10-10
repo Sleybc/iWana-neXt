@@ -9,7 +9,11 @@ import {
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
   INVENTORY_EXECUTION_REQUESTS_QUEUE,
+  InventoryConsumptionReversalRequestedV1EnvelopeSchema,
   InventoryConsumptionRequestedV2EnvelopeSchema,
+  InventoryReversalConfirmedV1Schema,
+  InventoryReversalRejectedV1Schema,
+  SignedInventoryExecutionReversalRequestSchema,
   SignedInventoryExecutionRequestSchema,
   canonicalizeInventoryExecutionRequest,
   type OperationalEventEnvelopeV1,
@@ -35,13 +39,19 @@ const SCHEDULE_PROJECTED_EXECUTION_EVENTS: ReadonlySet<OperationalEventTypeV1> =
 const INVENTORY_EVENT_TYPES: ReadonlySet<OperationalEventTypeV1> = new Set([
   'InventoryConsumptionRequestedV1',
   'InventoryConsumptionRequestedV2',
+  'InventoryConsumptionReversalRequestedV1',
   'InventoryMovementConfirmedV1',
   'InventoryMovementRejectedV1',
+  'InventoryReversalConfirmedV1',
+  'InventoryReversalRejectedV1',
 ]);
 const INVENTORY_EVENTS_BYPASSING_AGGREGATE_VERSION: ReadonlySet<OperationalEventTypeV1> = new Set([
   'InventoryConsumptionRequestedV2',
+  'InventoryConsumptionReversalRequestedV1',
   'InventoryMovementConfirmedV1',
   'InventoryMovementRejectedV1',
+  'InventoryReversalConfirmedV1',
+  'InventoryReversalRejectedV1',
 ]);
 const DLQ_RETENTION_SECONDS = 30 * 24 * 60 * 60;
 const SOURCE_JOB_RETENTION_SECONDS = 24 * 60 * 60;
@@ -51,6 +61,7 @@ interface InventoryDlqJob {
   eventId?: string;
   executionOrderId?: string;
   inventoryRequestId?: string;
+  reversalRequestId?: string;
   failedAt: string;
   attemptsMade: number;
   errorType: string;
@@ -188,6 +199,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     const aggregateId = safeUuid(envelope['aggregateId']);
     const safePayloadExecutionOrderId = safeUuid(payload['executionOrderId']);
     const safeInventoryRequestId = safeUuid(payload['inventoryRequestId']);
+    const safeReversalRequestId = safeUuid(payload['reversalRequestId']);
     const failedAt = new Date().toISOString();
     const attemptsMade = safeAttemptsMade(job.attemptsMade);
 
@@ -203,7 +215,18 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
               executionOrderId: safePayloadExecutionOrderId,
               inventoryRequestId: safeInventoryRequestId,
             }
-          : {};
+          : tenantId &&
+              eventId &&
+              aggregateId &&
+              safePayloadExecutionOrderId &&
+              safeReversalRequestId
+            ? {
+                tenantId,
+                eventId,
+                executionOrderId: safePayloadExecutionOrderId,
+                reversalRequestId: safeReversalRequestId,
+              }
+            : {};
       const diagnostic: InventoryDlqJob = {
         ...identifiers,
         failedAt,
@@ -288,6 +311,9 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
 
       if (envelope.eventType === 'InventoryConsumptionRequestedV2') {
         await this.assertInventoryEventMatchesOutbox(client, tenantId, envelope);
+      }
+      if (envelope.eventType === 'InventoryConsumptionReversalRequestedV1') {
+        await this.assertInventoryReversalEventMatchesOutbox(client, tenantId, envelope);
       }
 
       // ── Deduplicación por inbox ────────────────────────────────────────
@@ -405,6 +431,11 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
             tenantId,
             InventoryConsumptionRequestedV2EnvelopeSchema.parse(event),
           ),
+        InventoryConsumptionReversalRequestedV1: (event) =>
+          this.enqueueSignedInventoryReversalRequest(
+            tenantId,
+            InventoryConsumptionReversalRequestedV1EnvelopeSchema.parse(event),
+          ),
         ExecutionOrderClosedV1: (e) =>
           this.applyExecutionOrderClosed(client, tenantId, e, scheduleEventId),
         // MOD11 T2 (CA-13): cancelación y anulación son hechos de dominio
@@ -427,6 +458,10 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           this.applyInventoryMovementConfirmed(client, tenantId, e),
         InventoryMovementRejectedV1: (e) =>
           this.applyInventoryMovementRejected(client, tenantId, e),
+        InventoryReversalConfirmedV1: (e) =>
+          this.applyInventoryReversalConfirmed(client, tenantId, e),
+        InventoryReversalRejectedV1: (e) =>
+          this.applyInventoryReversalRejected(client, tenantId, e),
       };
 
       const handler = handlers[envelope.eventType];
@@ -484,12 +519,77 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     });
   }
 
+  private async enqueueSignedInventoryReversalRequest(
+    tenantId: string,
+    candidate: unknown,
+  ): Promise<void> {
+    const envelope = InventoryConsumptionReversalRequestedV1EnvelopeSchema.parse(candidate);
+    const activeKey = this.configValue('INTERNAL_QUEUE_SIGNING_KEY');
+    const secret = Buffer.from(activeKey, 'base64');
+    if (secret.byteLength < 32 || secret.toString('base64') !== activeKey) {
+      throw new UnrecoverableError('INTERNAL_QUEUE_SIGNING_KEY inválida.');
+    }
+
+    const signature = createHmac('sha256', secret)
+      .update(canonicalizeInventoryExecutionRequest(tenantId, envelope))
+      .digest('hex');
+    const signed = SignedInventoryExecutionReversalRequestSchema.parse({
+      tenantId,
+      envelope,
+      signature,
+    });
+
+    await this.inventoryRequestsQueue.add('process-inventory-execution-request', signed, {
+      jobId: envelope.eventId,
+      attempts: 8,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: true,
+      removeOnFail: { age: SOURCE_JOB_RETENTION_SECONDS },
+    });
+  }
+
   private async assertInventoryEventMatchesOutbox(
     client: PoolClient,
     tenantId: string,
     candidate: unknown,
   ): Promise<void> {
     const parsed = InventoryConsumptionRequestedV2EnvelopeSchema.safeParse(candidate);
+    if (!parsed.success || parsed.data.tenantId !== tenantId) {
+      throw new UnrecoverableError('INVENTORY_OUTBOX_EVENT_MISMATCH');
+    }
+
+    const envelope = parsed.data;
+    const result = await client.query<InventoryOutboxRow>(
+      `SELECT event_id, tenant_id, aggregate_id, aggregate_version,
+              event_type, correlation_id, occurred_at, payload
+         FROM execution_order_outbox_events
+        WHERE tenant_id = $1 AND event_id = $2
+        FOR SHARE`,
+      [tenantId, envelope.eventId],
+    );
+    const outbox = result.rows[0];
+    if (
+      !outbox ||
+      outbox.event_id.toLowerCase() !== envelope.eventId.toLowerCase() ||
+      outbox.tenant_id.toLowerCase() !== tenantId.toLowerCase() ||
+      outbox.event_type !== envelope.eventType ||
+      outbox.aggregate_id.toLowerCase() !== envelope.aggregateId.toLowerCase() ||
+      outbox.aggregate_version !== envelope.aggregateVersion ||
+      outbox.correlation_id.toLowerCase() !== envelope.correlationId.toLowerCase() ||
+      !timestampsMatch(outbox.occurred_at, envelope.occurredAt) ||
+      canonicalizeInventoryExecutionRequest(tenantId, outbox.payload) !==
+        canonicalizeInventoryExecutionRequest(tenantId, envelope.payload)
+    ) {
+      throw new UnrecoverableError('INVENTORY_OUTBOX_EVENT_MISMATCH');
+    }
+  }
+
+  private async assertInventoryReversalEventMatchesOutbox(
+    client: PoolClient,
+    tenantId: string,
+    candidate: unknown,
+  ): Promise<void> {
+    const parsed = InventoryConsumptionReversalRequestedV1EnvelopeSchema.safeParse(candidate);
     if (!parsed.success || parsed.data.tenantId !== tenantId) {
       throw new UnrecoverableError('INVENTORY_OUTBOX_EVENT_MISMATCH');
     }
@@ -808,6 +908,86 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       `[execution-events] inventory_result_anomaly code=CONTRADICTORY_INVENTORY_RESULT ` +
         `event=${event.eventId} tenant=${tenantId} ot=${payload.executionOrderId} ` +
         `inventory_request=${payload.inventoryRequestId}`,
+    );
+  }
+
+  private async applyInventoryReversalConfirmed(
+    client: PoolClient,
+    tenantId: string,
+    event: OperationalEventEnvelopeV1,
+  ): Promise<void> {
+    const payload = InventoryReversalConfirmedV1Schema.parse(event.payload);
+    const transitioned = await client.query(
+      `UPDATE execution_order_item_usage_reversals
+          SET status = 'CONFIRMED',
+              stock_movement_id = $3,
+              rejection_reason_code = NULL,
+              decided_at = NOW()
+        WHERE tenant_id = $1
+          AND reversal_request_id = $2
+          AND status = 'PENDING'
+        RETURNING id`,
+      [tenantId, payload.reversalRequestId, payload.stockMovementId],
+    );
+    if ((transitioned.rowCount ?? 0) > 0) return;
+
+    const current = await client.query<{
+      status: string;
+      stock_movement_id: string | null;
+    }>(
+      `SELECT status, stock_movement_id
+         FROM execution_order_item_usage_reversals
+        WHERE tenant_id = $1 AND reversal_request_id = $2`,
+      [tenantId, payload.reversalRequestId],
+    );
+    const row = current.rows[0];
+    if (!row) throw new Error('Reversal request is not available yet.');
+    if (row.status === 'CONFIRMED' && row.stock_movement_id === payload.stockMovementId) return;
+
+    this.logger.warn(
+      `[execution-events] reversal_result_anomaly code=CONTRADICTORY_REVERSAL_RESULT ` +
+        `event=${event.eventId} tenant=${tenantId} ot=${payload.executionOrderId} ` +
+        `reversal_request=${payload.reversalRequestId}`,
+    );
+  }
+
+  private async applyInventoryReversalRejected(
+    client: PoolClient,
+    tenantId: string,
+    event: OperationalEventEnvelopeV1,
+  ): Promise<void> {
+    const payload = InventoryReversalRejectedV1Schema.parse(event.payload);
+    const transitioned = await client.query(
+      `UPDATE execution_order_item_usage_reversals
+          SET status = 'REJECTED',
+              stock_movement_id = NULL,
+              rejection_reason_code = $3,
+              decided_at = NOW()
+        WHERE tenant_id = $1
+          AND reversal_request_id = $2
+          AND status = 'PENDING'
+        RETURNING id`,
+      [tenantId, payload.reversalRequestId, payload.reasonCode],
+    );
+    if ((transitioned.rowCount ?? 0) > 0) return;
+
+    const current = await client.query<{
+      status: string;
+      rejection_reason_code: string | null;
+    }>(
+      `SELECT status, rejection_reason_code
+         FROM execution_order_item_usage_reversals
+        WHERE tenant_id = $1 AND reversal_request_id = $2`,
+      [tenantId, payload.reversalRequestId],
+    );
+    const row = current.rows[0];
+    if (!row) throw new Error('Reversal request is not available yet.');
+    if (row.status === 'REJECTED' && row.rejection_reason_code === payload.reasonCode) return;
+
+    this.logger.warn(
+      `[execution-events] reversal_result_anomaly code=CONTRADICTORY_REVERSAL_RESULT ` +
+        `event=${event.eventId} tenant=${tenantId} ot=${payload.executionOrderId} ` +
+        `reversal_request=${payload.reversalRequestId}`,
     );
   }
 

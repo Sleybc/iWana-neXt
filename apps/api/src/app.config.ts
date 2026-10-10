@@ -2,6 +2,7 @@ import * as Joi from 'joi';
 import { Buffer } from 'node:buffer';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { SafeTypeOrmLogger } from '@iwana/db';
 import {
   mfaEncryptionKeyJoiSchema,
   mfaEncryptionKeyPreviousJoiSchema,
@@ -132,6 +133,7 @@ export function createApiTypeOrmOptions(
     synchronize: false,
     ssl: false,
     logging: config.get<string>('NODE_ENV') !== 'production' ? ['error', 'migration'] : ['error'],
+    logger: new SafeTypeOrmLogger(),
     extra: sourceOptions.extra,
     autoLoadEntities: true,
   };

@@ -201,6 +201,7 @@ const runGetCompletionWithDisposition = async (disposition?: InventoryDispositio
       : { itemId: 'item-001', finalDisposition: disposition };
   const itemUsagesQb = buildCompletionQueryBuilder([usageRow]);
   const manager = {
+    query: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue({
       id: 'eo-001',
       tenantId: 'tenant-001',
@@ -236,6 +237,7 @@ const runCompletionWithUsageProvenance = async (
   );
   const itemUsagesQb = buildCompletionQueryBuilder([usageRow]);
   const manager = {
+    query: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue({
       id: 'eo-001',
       tenantId: 'tenant-001',

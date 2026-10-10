@@ -29,6 +29,7 @@ jest.mock('@iwana/db', () => ({
   ExecutionOrder: class ExecutionOrder {},
   ExecutionOrderActivity: class ExecutionOrderActivity {},
   ExecutionOrderItemUsage: class ExecutionOrderItemUsage {},
+  ExecutionOrderItemUsageReversal: class ExecutionOrderItemUsageReversal {},
   ExecutionOrderEvidence: class ExecutionOrderEvidence {},
   ExecutionOrderOutboxEvent: class ExecutionOrderOutboxEvent {},
   ExecutionOrderInboxEvent: class ExecutionOrderInboxEvent {},
@@ -273,6 +274,133 @@ describe('Task 8.1 — Inventory consumption request', () => {
     expect(result.inventoryRequestId).toBeDefined();
     expect(result.movementStatus).toBe('PENDING');
   });
+
+  it('solicita el reverso en auditoría y outbox sin filtrar el motivo', async () => {
+    const reason = 'Corrección operativa por registro duplicado.';
+    const orderId = '10000000-0000-4000-8000-000000000201';
+    const usageId = '20000000-0000-4000-8000-000000000201';
+    const stockMovementId = '30000000-0000-4000-8000-000000000201';
+    const inventoryRequestId = '40000000-0000-4000-8000-000000000201';
+    const requestedAt = new Date('2026-10-10T12:00:00.000Z');
+    const usageQuery = {
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({
+        id: usageId,
+        executionOrderId: orderId,
+        tenantId: 'tenant-001',
+        movementStatus: 'CONFIRMED',
+        stockMovementId,
+        inventoryRequestId,
+        technicianCustodyId: '50000000-0000-4000-8000-000000000201',
+      }),
+    };
+    const activeReversalQuery = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    };
+    const order = {
+      id: orderId,
+      tenantId: 'tenant-001',
+      organizationSiteId: '60000000-0000-4000-8000-000000000201',
+      status: ExecutionOrderStatus.COMPLETED,
+      version: 3,
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue(order),
+      createQueryBuilder: jest
+        .fn()
+        .mockReturnValueOnce(usageQuery)
+        .mockReturnValueOnce(activeReversalQuery),
+      create: jest.fn((_entity, payload) => payload),
+      save: jest.fn().mockImplementation(async (_entity, payload) => ({
+        ...payload,
+        id: '70000000-0000-4000-8000-000000000201',
+        requestedAt,
+      })),
+    };
+    const organizationAccess = { canSuperviseExecutionOrder: jest.fn().mockResolvedValue(true) };
+    const supervisor: JwtPayload = {
+      ...techActor('support-201'),
+      role: UserRole.SUPPORT,
+    };
+    service = new ExecutionOrdersService(
+      {} as DataSource,
+      undefined,
+      undefined,
+      undefined,
+      reliabilityService,
+      undefined,
+      undefined,
+      undefined,
+      organizationAccess as never,
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+
+    jest.spyOn(reliabilityService, 'beginIdempotent').mockResolvedValue({
+      intentId: '80000000-0000-4000-8000-000000000201',
+      replay: false,
+      resourceRef: null,
+      evidenceUploadIntentId: null,
+      resultStatus: 'PENDING',
+      resourceVersion: null,
+    });
+    jest.spyOn(reliabilityService, 'completeIdempotency').mockResolvedValue();
+    jest.spyOn(reliabilityService, 'appendAuditIntent').mockResolvedValue();
+    const appendOutbox = jest
+      .spyOn(reliabilityService, 'appendOutbox')
+      .mockResolvedValue(undefined);
+
+    const result = await service.reverseItemUsage(orderId, usageId, { reason }, supervisor, {
+      ifMatch: '3',
+      idempotencyKey: 'item-reversal-request-201',
+      correlationId: '90000000-0000-4000-8000-000000000201',
+    });
+
+    expect(result).toEqual({
+      id: '70000000-0000-4000-8000-000000000201',
+      status: 'PENDING',
+      requestedAt: requestedAt.toISOString(),
+    });
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reason, itemUsageId: usageId, stockMovementId: null }),
+    );
+    expect(appendOutbox).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        eventType: 'InventoryConsumptionReversalRequestedV1',
+        correlationId: '90000000-0000-4000-8000-000000000201',
+        payload: expect.objectContaining({
+          inventoryRequestId,
+          originalStockMovementId: stockMovementId,
+        }),
+      }),
+    );
+    const outboxPayload = appendOutbox.mock.calls[0]?.[1].payload as Record<string, unknown>;
+    expect(outboxPayload).not.toHaveProperty('reason');
+    expect(JSON.stringify(outboxPayload)).not.toContain(reason);
+    expect(reliabilityService.appendAuditIntent).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        actorRef: supervisor.sub,
+        operation: 'execution_order.item_usage.reversal',
+        correlationId: '90000000-0000-4000-8000-000000000201',
+      }),
+    );
+  });
+
+  it.each(['  ', 'Corrección por CC 1234567890'])(
+    'rechaza un motivo vacío o con PII antes de abrir la transacción: %s',
+    async (reason) => {
+      await expect(
+        service.reverseItemUsage('eo-001', 'usage-001', { reason }, techActor()),
+      ).rejects.toThrow();
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // ── 6.4: Custody validation ───────────────────────────────────────────────
@@ -646,6 +774,7 @@ describe('Task 8.3 — Inventory reconciliation', () => {
     };
 
     const manager = {
+      query: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockImplementation((_entity, opts) => {
         if (opts?.where?.inventoryRequestId) return Promise.resolve(pendingUsage);
         return Promise.resolve(order);

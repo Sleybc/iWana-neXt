@@ -50,6 +50,9 @@ import {
   DispatchExecutionOrderSchema,
   ExecutionOrderDetailResponseDto,
   RegisterExecutionOrderItemUsageDto,
+  ReverseExecutionOrderItemUsageDto,
+  ReverseExecutionOrderItemUsageInput,
+  ReverseExecutionOrderItemUsageSchema,
   RegisterFieldWorkDto,
   UpdateFieldWorkDto,
   StartExecutionOrderDto,
@@ -272,6 +275,13 @@ export class ExecutionOrdersController {
           }
         : null;
     const completion = await this.executionOrdersService.getCompletion(order.id);
+    const isSupervisor = [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT].includes(
+      actor.role as UserRole,
+    );
+    const hasReversibleUsage =
+      isSupervisor && typeof this.executionOrdersService.hasReversibleItemUsage === 'function'
+        ? await this.executionOrdersService.hasReversibleItemUsage(order.id)
+        : false;
     const startedAt = this.dateOrString(order.startedAt);
     const closedAt = this.dateOrString(order.closedAt);
     // MOD11 E2 (contrato shared v1.3): el detalle tolera la OT sin cita y
@@ -308,7 +318,11 @@ export class ExecutionOrdersController {
       inventoryReconciliation:
         (await this.inventoryReconciliationService?.getInventoryReconciliation(order.id)) ??
         'NOT_REQUIRED',
-      allowedActions: this.executionOrdersService.computeAllowedActions(order, actor),
+      allowedActions: this.executionOrdersService.computeAllowedActions(
+        order,
+        actor,
+        hasReversibleUsage,
+      ),
       createdAt: this.dateOrString(order.createdAt) ?? '',
       updatedAt: this.dateOrString(order.updatedAt) ?? '',
     };
@@ -446,6 +460,30 @@ export class ExecutionOrdersController {
         technicianCustodyId: dto.technicianCustodyId,
         serialNumber: dto.serialNumber ?? null,
       },
+      actor,
+      this.commandContext(ifMatch, idempotencyKey, correlationId),
+    );
+  }
+
+  @Post(':id/item-usage/:usageId/reversal')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Solicitar el reverso supervisado de un consumo de inventario' })
+  reverseItemUsage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('usageId', ParseUUIDPipe) usageId: string,
+    @Body(new ZodValidationPipe(ReverseExecutionOrderItemUsageSchema))
+    dto: ReverseExecutionOrderItemUsageDto & ReverseExecutionOrderItemUsageInput,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('if-match') ifMatch?: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.executionOrdersService.reverseItemUsage(
+      id,
+      usageId,
+      dto,
       actor,
       this.commandContext(ifMatch, idempotencyKey, correlationId),
     );

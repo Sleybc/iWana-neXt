@@ -20,6 +20,7 @@ import {
   ExecutionOrderEvidenceUploadIntent,
   ExecutionOrderInboxEvent,
   ExecutionOrderItemUsage,
+  ExecutionOrderItemUsageReversal,
   ExecutionOrderOutboxEvent,
   ExecutionOrderStatusTransition,
   ExecutionOrderTemplateRequirement as DbTemplateRequirement,
@@ -44,6 +45,8 @@ import {
   type ExecutionOrderEvidence as ExecutionOrderEvidenceContract,
   type ExecutionOrderActivity as ExecutionOrderActivityContract,
   type ExecutionOrderItemUsage as ExecutionOrderItemUsageContract,
+  type InventoryReversalRejectionReasonCode,
+  type ReverseItemUsageCommand,
   type ExecutionOrderListItem,
   type ListExecutionOrdersResponse,
   type Page,
@@ -58,6 +61,8 @@ import {
   ListExecutionOrdersQuerySchema,
   RegisterExecutionOrderItemUsageInput,
   RegisterExecutionOrderItemUsageSchema,
+  ReverseExecutionOrderItemUsageInput,
+  ReverseExecutionOrderItemUsageSchema,
   RegisterFieldWorkInput,
   RegisterFieldWorkSchema,
   StartExecutionOrderInput,
@@ -279,6 +284,12 @@ export interface CreateExecutionOrderFromSchedulingInput {
   plannedWindowEndAt?: string | null;
 }
 
+export interface ReverseExecutionOrderItemUsageReceipt {
+  id: string;
+  status: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+  requestedAt: string;
+}
+
 @Injectable()
 export class ExecutionOrdersService {
   private readonly logger = new Logger(ExecutionOrdersService.name);
@@ -360,7 +371,7 @@ export class ExecutionOrdersService {
           // debe viajar al contexto del evaluador; sin ella el predicado de
           // disposición sería siempre falso y el requisito quedaría
           // permanentemente pendiente (defecto invertido).
-          .select(['usage.itemId', 'usage.finalDisposition', 'usage.requirementKey'])
+          .select(['usage.id', 'usage.itemId', 'usage.finalDisposition', 'usage.requirementKey'])
           .where('usage.execution_order_id = :executionOrderId', { executionOrderId })
           .andWhere('usage.tenant_id = :tenantId', { tenantId })
           .getMany(),
@@ -372,7 +383,10 @@ export class ExecutionOrdersService {
           evidenceType: evidence.evidenceType,
           requirementKey: evidence.requirementKey ?? '',
         })),
-        itemUsages: await this.buildMaterialEvaluationUsages(snapshot, itemUsages),
+        itemUsages: await this.buildMaterialEvaluationUsages(
+          snapshot,
+          await this.excludeConfirmedReversals(qr.manager, tenantId, executionOrderId, itemUsages),
+        ),
         // A4-bis (spec §2.1): el contexto se completa con todo lo persistido.
         // `fieldData` y `measurements` no tienen fuente persistida —deuda activa
         // spec §10.1/§10.2 (`RegisterFieldWorkSchema` es estricto y la actividad
@@ -539,11 +553,30 @@ export class ExecutionOrdersService {
         .take(limit)
         .getManyAndCount();
 
-      return { usages, total };
+      const reversals = usages.length
+        ? await qr.manager
+            .createQueryBuilder(ExecutionOrderItemUsageReversal, 'reversal')
+            .where('reversal.tenant_id = :tenantId', { tenantId })
+            .andWhere('reversal.item_usage_id IN (:...usageIds)', {
+              usageIds: usages.map((usage) => usage.id),
+            })
+            .orderBy('reversal.requested_at', 'DESC')
+            .addOrderBy('reversal.id', 'DESC')
+            .getMany()
+        : [];
+      const latestByUsage = new Map<string, ExecutionOrderItemUsageReversal>();
+      for (const reversal of reversals) {
+        if (!latestByUsage.has(reversal.itemUsageId))
+          latestByUsage.set(reversal.itemUsageId, reversal);
+      }
+
+      return { usages, total, latestByUsage };
     });
 
     return {
-      data: result.usages.map((usage) => this.toItemUsageContract(usage)),
+      data: result.usages.map((usage) =>
+        this.toItemUsageContract(usage, result.latestByUsage.get(usage.id)),
+      ),
       meta: buildPageMeta({
         total: result.total,
         page,
@@ -1666,6 +1699,126 @@ export class ExecutionOrdersService {
     });
   }
 
+  async reverseItemUsage(
+    executionOrderId: string,
+    itemUsageId: string,
+    input: ReverseItemUsageCommand,
+    actor: JwtPayload,
+    context?: ExecutionOrderCommandContext,
+  ): Promise<ReverseExecutionOrderItemUsageReceipt> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const validated = ReverseExecutionOrderItemUsageSchema.parse(input);
+    if (!context?.idempotencyKey || !context.ifMatch) {
+      throw new BadRequestException({
+        code: !context?.idempotencyKey ? 'IDEMPOTENCY_KEY_REQUIRED' : 'IF_MATCH_REQUIRED',
+      });
+    }
+    if (!this.reliabilityService) {
+      throw new ServiceUnavailableException({ code: 'EXECUTION_ORDER_AUDIT_UNAVAILABLE' });
+    }
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const order = await this.requireOrder(qr.manager, tenantId, executionOrderId);
+      await this.assertSupervisionScope(qr.manager, tenantId, order, actor);
+      const receipt = await this.beginCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.item_usage.reversal',
+        { executionOrderId, itemUsageId, input: validated },
+        context,
+      );
+      if (!receipt)
+        throw new ServiceUnavailableException({ code: 'EXECUTION_ORDER_AUDIT_UNAVAILABLE' });
+      if (receipt.replay) {
+        if (!receipt.resourceRef) {
+          throw new ServiceUnavailableException({ code: 'EXECUTION_ORDER_AUDIT_INCOMPLETE' });
+        }
+        const existing = await qr.manager.findOne(ExecutionOrderItemUsageReversal, {
+          where: { id: receipt.resourceRef, tenantId },
+        });
+        if (!existing) throw new NotFoundException('Solicitud de reverso no encontrada.');
+        return this.toReversalReceipt(existing);
+      }
+
+      this.assertVersion(order, context.ifMatch);
+      const usage = await qr.manager
+        .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
+        .setLock('pessimistic_write')
+        .where('usage.id = :itemUsageId', { itemUsageId })
+        .andWhere('usage.execution_order_id = :executionOrderId', { executionOrderId })
+        .andWhere('usage.tenant_id = :tenantId', { tenantId })
+        .getOne();
+      if (!usage) throw new NotFoundException('Línea de consumo no encontrada para esta OT.');
+      if (
+        usage.movementStatus !== 'CONFIRMED' ||
+        !usage.stockMovementId ||
+        !usage.inventoryRequestId
+      ) {
+        throw new ConflictException({ code: 'ITEM_USAGE_NOT_REVERSIBLE' });
+      }
+
+      const activeReversal = await qr.manager
+        .createQueryBuilder(ExecutionOrderItemUsageReversal, 'reversal')
+        .where('reversal.tenant_id = :tenantId', { tenantId })
+        .andWhere('reversal.item_usage_id = :itemUsageId', { itemUsageId })
+        .andWhere('reversal.status IN (:...statuses)', { statuses: ['PENDING', 'CONFIRMED'] })
+        .getOne();
+      if (activeReversal) {
+        throw new ConflictException({
+          code: 'ITEM_USAGE_REVERSAL_ALREADY_ACTIVE',
+          message: 'La línea ya tiene un reverso pendiente o confirmado.',
+        });
+      }
+
+      const now = new Date();
+      const reversalRequestId = randomUUID();
+      const reversal = await qr.manager.save(
+        ExecutionOrderItemUsageReversal,
+        qr.manager.create(ExecutionOrderItemUsageReversal, {
+          tenantId,
+          executionOrderId,
+          itemUsageId,
+          reversalRequestId,
+          reason: validated.reason,
+          requestedBy: actor.sub,
+          requestedAt: now,
+          status: 'PENDING',
+          stockMovementId: null,
+          rejectionReasonCode: null,
+          decidedAt: null,
+          lastRequestedAt: now,
+          requestAttempts: 1,
+        }),
+      );
+
+      // `finishCommand` escribe el recibo idempotente, el asiento durable y
+      // el outbox dentro de esta transacción. Solo sale contexto permitido:
+      // el motivo vive en la fila MOD11 y nunca cruza a MOD12.
+      await this.finishCommand(
+        qr.manager,
+        tenantId,
+        actor,
+        'execution_order.item_usage.reversal',
+        executionOrderId,
+        order.version ?? 1,
+        context,
+        receipt,
+        'InventoryConsumptionReversalRequestedV1',
+        {
+          reversalRequestId,
+          inventoryRequestId: usage.inventoryRequestId,
+          originalStockMovementId: usage.stockMovementId,
+          technicianCustodyId: usage.technicianCustodyId,
+          actorUserId: actor.sub,
+        },
+        reversal.id,
+      );
+
+      return this.toReversalReceipt(reversal);
+    });
+  }
+
   async close(
     id: string,
     input: CloseExecutionOrderInput,
@@ -1757,11 +1910,17 @@ export class ExecutionOrdersService {
           .andWhere('e.tenant_id = :tenantId', { tenantId })
           .getMany();
 
-        const itemUsages = await qr.manager
+        const persistedItemUsages = await qr.manager
           .createQueryBuilder(ExecutionOrderItemUsage, 'u')
           .where('u.execution_order_id = :executionOrderId', { executionOrderId: id })
           .andWhere('u.tenant_id = :tenantId', { tenantId })
           .getMany();
+        const itemUsages = await this.excludeConfirmedReversals(
+          qr.manager,
+          tenantId,
+          id,
+          persistedItemUsages,
+        );
 
         const evaluation = this.closureGateEvaluator.evaluate(snapshot, {
           activities: activities.map((a) => ({ activityType: a.activityType })),
@@ -1785,12 +1944,18 @@ export class ExecutionOrdersService {
         }
       }
 
-      const itemUsage = await qr.manager
+      const persistedItemUsage = await qr.manager
         .createQueryBuilder(ExecutionOrderItemUsage, 'usage')
         .where('usage.execution_order_id = :executionOrderId', { executionOrderId: id })
         .andWhere('usage.tenant_id = :tenantId', { tenantId })
         .orderBy('usage.created_at', 'ASC')
         .getMany();
+      const itemUsage = await this.excludeConfirmedReversals(
+        qr.manager,
+        tenantId,
+        id,
+        persistedItemUsage,
+      );
 
       const requiresCustomerSignature =
         [ExecutionOrderResult.EXECUTED, ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS].includes(
@@ -2790,7 +2955,11 @@ export class ExecutionOrdersService {
    * Computa las acciones permitidas sobre una OT según estado, rol del actor
    * y asignación. Es política pura; no reemplaza autorización por guardas.
    */
-  computeAllowedActions(order: ExecutionOrder, actor: JwtPayload): ExecutionOrderAllowedAction[] {
+  computeAllowedActions(
+    order: ExecutionOrder,
+    actor: JwtPayload,
+    hasReversibleUsage = false,
+  ): ExecutionOrderAllowedAction[] {
     const isAssigned = order.assignedTechnicianId === actor.sub;
     const isUnassigned = !order.assignedTechnicianId && !order.assignedCrewId;
     const isTechnician = [UserRole.TECHNICIAN, UserRole.CONTRACTOR].includes(
@@ -2809,6 +2978,8 @@ export class ExecutionOrdersService {
     ].includes(order.status);
 
     const actions: ExecutionOrderAllowedAction[] = [];
+
+    if (isSupervisor && hasReversibleUsage) actions.push('REVERSE_ITEM_USAGE');
 
     // ── Estados terminales: solo supervisión puede crear seguimiento ────
     if (isTerminal) {
@@ -2861,6 +3032,32 @@ export class ExecutionOrdersService {
     }
 
     return actions;
+  }
+
+  async hasReversibleItemUsage(executionOrderId: string): Promise<boolean> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.manager.query(
+        `SELECT EXISTS (
+           SELECT 1
+             FROM execution_order_item_usage usage
+            WHERE usage.tenant_id = $1
+              AND usage.execution_order_id = $2
+              AND usage.movement_status = 'CONFIRMED'
+              AND usage.stock_movement_id IS NOT NULL
+              AND usage.inventory_request_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM execution_order_item_usage_reversals reversal
+                 WHERE reversal.tenant_id = usage.tenant_id
+                   AND reversal.item_usage_id = usage.id
+                   AND reversal.status IN ('PENDING', 'CONFIRMED')
+              )
+         ) AS available`,
+        [tenantId, executionOrderId],
+      )) as Array<{ available: boolean }>;
+      return rows[0]?.available === true;
+    });
   }
 
   /**
@@ -3379,7 +3576,10 @@ export class ExecutionOrdersService {
     };
   }
 
-  private toItemUsageContract(usage: ExecutionOrderItemUsage): ExecutionOrderItemUsageContract {
+  private toItemUsageContract(
+    usage: ExecutionOrderItemUsage,
+    reversal?: ExecutionOrderItemUsageReversal,
+  ): ExecutionOrderItemUsageContract {
     return {
       id: usage.id,
       itemId: usage.itemId,
@@ -3393,8 +3593,46 @@ export class ExecutionOrdersService {
       inventoryRequestId: usage.inventoryRequestId ?? usage.id,
       movementStatus: usage.movementStatus ?? 'PENDING',
       rejectionReasonCode: usage.rejectionReasonCode ?? null,
+      ...(reversal
+        ? {
+            reversal: {
+              status: reversal.status,
+              requestedAt: reversal.requestedAt.toISOString(),
+              rejectionReasonCode: reversal.rejectionReasonCode,
+            },
+          }
+        : {}),
       createdAt: usage.createdAt.toISOString(),
     };
+  }
+
+  private toReversalReceipt(
+    reversal: ExecutionOrderItemUsageReversal,
+  ): ReverseExecutionOrderItemUsageReceipt {
+    return {
+      id: reversal.id,
+      status: reversal.status,
+      requestedAt: reversal.requestedAt.toISOString(),
+    };
+  }
+
+  private async excludeConfirmedReversals(
+    manager: EntityManager,
+    tenantId: string,
+    executionOrderId: string,
+    usages: ExecutionOrderItemUsage[],
+  ): Promise<ExecutionOrderItemUsage[]> {
+    if (usages.length === 0) return usages;
+    const reversals = (await manager.query(
+      `SELECT item_usage_id
+         FROM execution_order_item_usage_reversals
+        WHERE tenant_id = $1
+          AND execution_order_id = $2
+          AND status = 'CONFIRMED'`,
+      [tenantId, executionOrderId],
+    )) as Array<{ item_usage_id: string }>;
+    const reversedUsageIds = new Set(reversals.map((reversal) => reversal.item_usage_id));
+    return usages.filter((usage) => !reversedUsageIds.has(usage.id));
   }
 
   private async requireOrder(

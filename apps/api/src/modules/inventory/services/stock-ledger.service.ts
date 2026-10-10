@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   InventoryItem,
+  AssetLifecycleEvent,
   SerializedAsset,
   StockBalance,
   StockLocation,
@@ -81,6 +82,7 @@ export interface StockLedgerAssetTransitionInput {
   subscriberRefId?: string | null;
   contractRefId?: string | null;
   eventType?: AssetLifecycleEventType;
+  allowExecutionOrderReversalRestore?: boolean;
 }
 
 export interface RecordStockMovementInput {
@@ -100,6 +102,13 @@ export interface StockMovementResult {
   lines: StockMovementLine[];
   /** `true` si el movimiento se persistió en esta llamada (no replay de idempotencia). */
   created: boolean;
+}
+
+export interface ReverseExecutionOrderMovementInput {
+  executionOrderId: string;
+  reversalRequestId: string;
+  originalStockMovementId: string;
+  technicianCustodyId: string;
 }
 
 export interface StockIssueTransferLineInput {
@@ -357,6 +366,7 @@ export class StockLedgerService {
         currentResponsibleRefId: transition.currentResponsibleRefId,
         subscriberRefId: transition.subscriberRefId,
         contractRefId: transition.contractRefId,
+        allowExecutionOrderReversalRestore: transition.allowExecutionOrderReversalRestore,
       });
 
       await this.assetLifecycleService.recordWithManager(manager, {
@@ -716,6 +726,189 @@ export class StockLedgerService {
       persistReceipt,
       technicianCustodyLocationId,
     );
+  }
+
+  /** Revierte un movimiento confirmado de OT y guarda el recibo dentro de la misma TX. */
+  async reverseExecutionOrderMovementForInventoryRequest(
+    input: ReverseExecutionOrderMovementInput,
+    actor: Pick<JwtPayload, 'sub'>,
+    persistReceipt: (
+      manager: EntityManager,
+      result: StockMovementResult,
+      originalStockMovementId: string,
+    ) => Promise<void>,
+  ): Promise<StockMovementResult> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const transactionResult = await withTransaction(qr.manager, async (manager) => {
+        const original = await manager.findOne(StockMovement, {
+          where: { tenantId, id: input.originalStockMovementId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (
+          !original ||
+          original.origin !== StockMovementOrigin.EXECUTION_ORDER ||
+          original.originContext !== 'tasks.execution-order' ||
+          original.originRefId !== input.executionOrderId
+        ) {
+          throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+        }
+        if (original.reversedByMovementId) {
+          throw new InventoryBusinessRejection('REVERSAL_ASSET_MOVED');
+        }
+
+        const originalLines = await manager
+          .createQueryBuilder(StockMovementLine, 'line')
+          .where('line.tenant_id = :tenantId', { tenantId })
+          .andWhere('line.movement_id = :movementId', { movementId: original.id })
+          .orderBy('line.created_at', 'ASC')
+          .addOrderBy('line.id', 'ASC')
+          .setLock('pessimistic_write')
+          .getMany();
+        const negativeLines = originalLines.filter((line) => toNumeric(line.quantity) < 0);
+        if (
+          originalLines.length === 0 ||
+          negativeLines.length !== 1 ||
+          originalLines.some((line) => toNumeric(line.quantity) === 0) ||
+          originalLines.some((line) => line.itemId !== negativeLines[0]?.itemId)
+        ) {
+          throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+        }
+
+        const sourceLine = negativeLines[0]!;
+        const sourceLocation = await manager.findOne(StockLocation, {
+          where: { tenantId, id: sourceLine.locationId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (
+          !sourceLocation ||
+          sourceLocation.type !== StockLocationType.MOBILE_TECHNICIAN ||
+          sourceLocation.responsibleRefId !== input.technicianCustodyId
+        ) {
+          throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+        }
+        if (sourceLocation.status !== StockLocationStatus.ACTIVE) {
+          throw new InventoryBusinessRejection('REVERSAL_CUSTODY_INACTIVE');
+        }
+
+        const item = await manager.findOne(InventoryItem, {
+          where: { tenantId, id: sourceLine.itemId },
+        });
+        if (!item) {
+          throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+        }
+
+        const lifecycleEvents = await manager.find(AssetLifecycleEvent, {
+          where: { tenantId, stockMovementId: original.id },
+          order: { createdAt: 'ASC' },
+        });
+        if (lifecycleEvents.length > 1) {
+          throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+        }
+        const lifecycleEvent = lifecycleEvents[0] ?? null;
+        if (item.trackingMode === InventoryTrackingMode.SERIALIZED && !lifecycleEvent) {
+          throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+        }
+
+        let assetTransition: StockLedgerAssetTransitionInput | undefined;
+        let serializedAssetId: string | null = null;
+        if (lifecycleEvent) {
+          if (!lifecycleEvent.toStatus) {
+            throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+          }
+          const asset = await manager.findOne(SerializedAsset, {
+            where: { tenantId, id: lifecycleEvent.serializedAssetId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!asset) {
+            throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
+          }
+          if (
+            asset.currentStatus !== lifecycleEvent.toStatus ||
+            asset.currentLocationId !== lifecycleEvent.locationId ||
+            asset.currentResponsibleRefId !== lifecycleEvent.responsibleRefId
+          ) {
+            throw new InventoryBusinessRejection('REVERSAL_ASSET_MOVED');
+          }
+
+          serializedAssetId = asset.id;
+          assetTransition = {
+            serializedAssetId: asset.id,
+            toStatus: SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+            currentLocationId: sourceLocation.id,
+            currentResponsibleType: InventoryResponsibleType.TECHNICIAN,
+            currentResponsibleRefId: input.technicianCustodyId,
+            subscriberRefId: null,
+            contractRefId: null,
+            eventType: AssetLifecycleEventType.RETURNED,
+            allowExecutionOrderReversalRestore: true,
+          };
+
+          if (lifecycleEvent.toStatus === SerializedAssetStatus.INSTALLED_COMODATO) {
+            const closedLoan = await this.assetLoanService.closeLoanForMovementWithManager(
+              manager,
+              {
+                tenantId,
+                serializedAssetId: asset.id,
+                stockMovementId: original.id,
+                removedAt: new Date(),
+              },
+            );
+            if (!closedLoan) {
+              throw new InventoryBusinessRejection('REVERSAL_LOAN_MISMATCH');
+            }
+          }
+        }
+
+        const itemIds = [...new Set(originalLines.map((line) => line.itemId))];
+        const beforeByItem = await this.domainEventPublisher.captureItemSnapshots(
+          manager,
+          tenantId,
+          itemIds,
+        );
+        const reverseLines = originalLines.map((line) => ({
+          itemId: line.itemId,
+          locationId: line.locationId,
+          quantity: -toNumeric(line.quantity),
+          lotId: line.lotId,
+          serializedAssetId: serializedAssetId ?? line.serializedAssetId,
+          unitCost: line.unitCost === null ? null : toNumeric(line.unitCost),
+          condition: StockBalanceCondition.NEW,
+        }));
+        const result = await this.recordMovementWithManager(
+          manager,
+          tenantId,
+          {
+            origin: StockMovementOrigin.EXECUTION_ORDER_REVERSAL,
+            originContext: 'tasks.execution-order',
+            originRefId: original.id,
+            idempotencyKey: `eo-reversal:${input.reversalRequestId}`,
+            notes: 'Movimiento de reverso originado desde OT.',
+            isReversal: true,
+            lines: reverseLines,
+            ...(assetTransition ? { assetTransitions: [assetTransition] } : {}),
+          },
+          actor,
+        );
+
+        original.reversedByMovementId = result.movement.id;
+        await manager.save(StockMovement, original);
+        await persistReceipt(manager, result, original.id);
+
+        return { result, itemIds, beforeByItem };
+      });
+
+      await this.publishDomainEventsAfterCommit(
+        qr.manager,
+        tenantId,
+        actor.sub,
+        transactionResult.itemIds,
+        transactionResult.beforeByItem,
+        transactionResult.result,
+      );
+      return transactionResult.result;
+    });
   }
 
   private async recordExecutionOrderMovementInternal(

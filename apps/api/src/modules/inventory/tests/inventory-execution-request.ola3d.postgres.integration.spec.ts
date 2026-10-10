@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, createHash, createHmac } from 'node:crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, Worker } from 'bullmq';
@@ -14,10 +14,14 @@ import {
   ExecutionOrderItemUsage,
   ExecutionOrderOutboxEvent,
   ExecutionOrderStatusTransition,
+  AssetLifecycleEvent,
+  AssetLoanAssignment,
   InventoryCategory,
   InventoryItem,
   StockBalance,
   StockLocation,
+  StockMovement,
+  StockMovementLine,
   SerializedAsset,
   PurchaseOrder,
   PurchaseOrderLine,
@@ -34,12 +38,17 @@ import {
   InventoryTrackingMode,
   StockLocationStatus,
   StockLocationType,
+  StockMovementOrigin,
   UserRole,
   WfmWorkType,
   INVENTORY_EXECUTION_REQUESTS_QUEUE,
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
+  InventoryConsumptionReversalRequestedV1EnvelopeSchema,
+  SignedInventoryExecutionReversalRequestSchema,
+  canonicalizeInventoryExecutionRequest,
   type OperationalEventEnvelopeV1,
+  type SignedInventoryExecutionReversalRequest,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { InventoryExecutionRequestProcessor } from '../services/inventory-execution-request.processor';
@@ -108,8 +117,11 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
   const createdIntentIds: string[] = [];
   const createdEventIds: string[] = [];
   const createdRequestIds: string[] = [];
+  const createdReversalRequestIds: string[] = [];
+  const createdResponseJobIds: string[] = [];
   const createdSerialNumbers: string[] = [];
   const createdStockLocationIds: string[] = [];
+  const createdTestMovementIds: string[] = [];
 
   const tenantContext = () => ({
     tenantId,
@@ -251,6 +263,7 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
     const { row, envelope } = await readRequestOutbox(inventoryRequestId);
     const responseEventId = uuidV5(inventoryRequestId);
     const responseJobId = `inventory-response-${responseEventId}`;
+    createdResponseJobIds.push(responseJobId);
     const requestCompletion = waitCompleted(apiWorker, row.event_id);
     const signedRequest = signInventoryExecutionRequestForTest(tenantId, envelope, signingKey);
     await requestQueue.add('process-inventory-execution-request', signedRequest, {
@@ -274,6 +287,236 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         ? (responseJob.data as { tenantId: string; envelope: OperationalEventEnvelopeV1 })
         : null,
     };
+  }
+
+  function signReversal(input: {
+    executionOrderId: string;
+    reversalRequestId: string;
+    inventoryRequestId: string;
+    originalStockMovementId: string;
+    technicianCustodyId: string;
+    actorUserId: string;
+  }): SignedInventoryExecutionReversalRequest {
+    const eventId = randomUUID();
+    const envelope = InventoryConsumptionReversalRequestedV1EnvelopeSchema.parse({
+      eventId,
+      eventType: 'InventoryConsumptionReversalRequestedV1',
+      tenantId,
+      aggregateId: input.executionOrderId,
+      aggregateVersion: 3,
+      occurredAt: new Date().toISOString(),
+      correlationId: input.reversalRequestId,
+      payload: { ...input, eventId },
+    });
+    const signature = createHmac('sha256', Buffer.from(signingKey, 'base64'))
+      .update(canonicalizeInventoryExecutionRequest(tenantId, envelope))
+      .digest('hex');
+    return SignedInventoryExecutionReversalRequestSchema.parse({
+      tenantId,
+      envelope,
+      signature,
+    });
+  }
+
+  async function runThroughReversalApiQueue(
+    request: SignedInventoryExecutionReversalRequest,
+  ): Promise<{
+    apiAttempts: number;
+    apiErrorClass: string | null;
+    responseEvent: { tenantId: string; envelope: OperationalEventEnvelopeV1 } | null;
+  }> {
+    const { envelope } = request;
+    const responseEventId = uuidV5(`reversal:${envelope.payload.reversalRequestId}`);
+    const responseJobId = `inventory-response-${responseEventId}`;
+    createdReversalRequestIds.push(envelope.payload.reversalRequestId);
+    createdResponseJobIds.push(responseJobId);
+    createdEventIds.push(envelope.eventId);
+    const completion = waitCompleted(apiWorker, envelope.eventId);
+    await requestQueue.add('process-inventory-execution-request', request, {
+      jobId: envelope.eventId,
+      attempts: 1,
+      removeOnComplete: false,
+      removeOnFail: false,
+    });
+    try {
+      const apiAttempts = await completion;
+      const responseJob = await eventsQueue.getJob(responseJobId);
+      return {
+        apiAttempts,
+        apiErrorClass: null,
+        responseEvent: responseJob
+          ? (responseJob.data as { tenantId: string; envelope: OperationalEventEnvelopeV1 })
+          : null,
+      };
+    } catch (error) {
+      return {
+        apiAttempts: 0,
+        apiErrorClass: error instanceof Error ? error.message : safeClassName(error),
+        responseEvent: null,
+      };
+    }
+  }
+
+  async function seedOriginalMovement(input: {
+    custodyStatus?: StockLocationStatus;
+    serialized?: 'moved' | 'loan-mismatch';
+    seedDestinationBalance?: boolean;
+  }): Promise<{
+    executionOrderId: string;
+    inventoryRequestId: string;
+    originalStockMovementId: string;
+    technicianCustodyId: string;
+    actorUserId: string;
+  }> {
+    const executionOrderId = randomUUID();
+    const inventoryRequestId = randomUUID();
+    const originalStockMovementId = randomUUID();
+    const technicianCustodyId = randomUUID();
+    const actorUserId = randomUUID();
+    const sourceLocationId = randomUUID();
+    const destinationLocationId = randomUUID();
+    const itemId = input.serialized ? serialItemId : activeItemId;
+    const assetId = input.serialized ? randomUUID() : null;
+    const serialNumber = assetId ? `REV-${randomUUID()}` : null;
+    const customerRefId = randomUUID();
+    createdTestMovementIds.push(originalStockMovementId);
+    createdStockLocationIds.push(sourceLocationId, destinationLocationId);
+    if (assetId && serialNumber) {
+      createdSerialNumbers.push(serialNumber);
+    }
+
+    await TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        await qr.query(
+          `INSERT INTO stock_locations
+             (id, tenant_id, code, name, type, status, responsible_ref_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7), ($8, $2, $9, $10, $11, $12, NULL)`,
+          [
+            sourceLocationId,
+            tenantId,
+            `REV-${randomUUID().slice(0, 8)}`,
+            'Custodia de integración para reverso',
+            StockLocationType.MOBILE_TECHNICIAN,
+            input.custodyStatus ?? StockLocationStatus.ACTIVE,
+            technicianCustodyId,
+            destinationLocationId,
+            `REV-${randomUUID().slice(0, 8)}`,
+            'Destino de integración para reverso',
+            StockLocationType.CUSTOMER_SITE,
+            StockLocationStatus.ACTIVE,
+          ],
+        );
+        if (assetId && serialNumber) {
+          const isMoved = input.serialized === 'moved';
+          await qr.query(
+            `INSERT INTO serialized_assets
+               (id, tenant_id, inventory_item_id, serial_number, normalized_serial_number,
+                current_status, current_location_id, current_responsible_type,
+                current_responsible_ref_id, subscriber_ref_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              assetId,
+              tenantId,
+              serialItemId,
+              serialNumber,
+              serialNumber.toUpperCase(),
+              isMoved ? 'AVAILABLE' : 'INSTALLED_COMODATO',
+              isMoved ? sourceLocationId : destinationLocationId,
+              isMoved ? 'TECHNICIAN' : 'CUSTOMER',
+              isMoved ? technicianCustodyId : customerRefId,
+              customerRefId,
+            ],
+          );
+        }
+        await qr.query(
+          `INSERT INTO stock_movements
+             (id, tenant_id, movement_number, origin, origin_context, origin_ref_id,
+              idempotency_key, actor_user_id, is_reversal)
+           VALUES ($1, $2, $3, $4, 'tasks.execution-order', $5, $6, $7, false)`,
+          [
+            originalStockMovementId,
+            tenantId,
+            `ORIG-${randomUUID().replaceAll('-', '').slice(0, 24)}`,
+            StockMovementOrigin.EXECUTION_ORDER,
+            executionOrderId,
+            `orig-${randomUUID()}`,
+            actorUserId,
+          ],
+        );
+        await qr.query(
+          `INSERT INTO stock_movement_lines
+             (tenant_id, movement_id, item_id, location_id, serialized_asset_id, quantity, unit_cost)
+           VALUES ($1, $2, $3, $4, $5, -1, 1), ($1, $2, $3, $6, $5, 1, 1)`,
+          [
+            tenantId,
+            originalStockMovementId,
+            itemId,
+            sourceLocationId,
+            assetId,
+            destinationLocationId,
+          ],
+        );
+        if (assetId) {
+          await qr.query(
+            `INSERT INTO asset_lifecycle_events
+               (tenant_id, serialized_asset_id, event_type, from_status, to_status,
+                location_id, responsible_ref_id, actor_user_id, stock_movement_id)
+             VALUES ($1, $2, 'INSTALLED', 'ASSIGNED_TO_TECHNICIAN', 'INSTALLED_COMODATO',
+                     $3, $4, $5, $6)`,
+            [
+              tenantId,
+              assetId,
+              destinationLocationId,
+              customerRefId,
+              actorUserId,
+              originalStockMovementId,
+            ],
+          );
+        }
+        if (input.seedDestinationBalance) {
+          await qr.query(
+            `INSERT INTO stock_balances
+               (tenant_id, item_id, location_id, lot_id, condition, quantity_on_hand, quantity_reserved)
+             VALUES ($1, $2, $3, NULL, 'NEW', 1, 0)`,
+            [tenantId, itemId, destinationLocationId],
+          );
+        }
+      }),
+    );
+    return {
+      executionOrderId,
+      inventoryRequestId,
+      originalStockMovementId,
+      technicianCustodyId,
+      actorUserId,
+    };
+  }
+
+  async function readReversalReceipt(reversalRequestId: string): Promise<{
+    kind: string;
+    outcome: string;
+    reason_code: string | null;
+    stock_movement_id: string | null;
+    original_stock_movement_id: string | null;
+  }> {
+    return TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        const rows = (await qr.query(
+          `SELECT kind, outcome, reason_code, stock_movement_id, original_stock_movement_id
+             FROM inventory_execution_request_receipts
+            WHERE tenant_id = $1 AND kind = 'REVERSAL' AND request_id = $2`,
+          [tenantId, reversalRequestId],
+        )) as Array<{
+          kind: string;
+          outcome: string;
+          reason_code: string | null;
+          stock_movement_id: string | null;
+          original_stock_movement_id: string | null;
+        }>;
+        if (!rows[0]) throw new Error('INVENTORY_REVERSAL_RECEIPT_MISSING');
+        return rows[0];
+      }),
+    );
   }
 
   async function seedFixtures(): Promise<void> {
@@ -406,7 +649,8 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         const rows = (await qr.query(
           `SELECT receipt.outcome, receipt.reason_code
              FROM inventory_execution_request_receipts receipt
-            WHERE receipt.tenant_id = $1 AND receipt.inventory_request_id = $2`,
+            WHERE receipt.tenant_id = $1 AND receipt.kind = 'CONSUMPTION'
+              AND receipt.request_id = $2`,
           [tenantId, inventoryRequestId],
         )) as Array<{
           outcome: string;
@@ -429,10 +673,14 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         ExecutionOrderActivity,
         ExecutionOrderItemUsage,
         ExecutionOrderStatusTransition,
+        AssetLifecycleEvent,
+        AssetLoanAssignment,
         InventoryCategory,
         InventoryItem,
         StockBalance,
         StockLocation,
+        StockMovement,
+        StockMovementLine,
         SerializedAsset,
         PurchaseOrder,
         PurchaseOrderLine,
@@ -540,8 +788,7 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
       }
     }
     if (eventsQueue) {
-      for (const requestId of createdRequestIds) {
-        const id = `inventory-response-${uuidV5(requestId)}`;
+      for (const id of createdResponseJobIds) {
         const job = await eventsQueue.getJob(id);
         if (job) await job.remove().catch(() => undefined);
       }
@@ -552,12 +799,45 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         runInTenantSchema(dataSource, schemaName, async (qr) => {
           if (createdRequestIds.length > 0) {
             await qr.query(
-              'DELETE FROM inventory_execution_request_receipts WHERE tenant_id = $1 AND inventory_request_id = ANY($2::uuid[])',
+              `DELETE FROM inventory_execution_request_receipts
+                WHERE tenant_id = $1 AND kind = 'CONSUMPTION' AND request_id = ANY($2::uuid[])`,
               [tenantId, createdRequestIds],
             );
             await qr.query(
               'DELETE FROM execution_order_inbox_events WHERE event_id = ANY($1::uuid[])',
               [createdEventIds],
+            );
+          }
+          if (createdReversalRequestIds.length > 0) {
+            await qr.query(
+              `DELETE FROM inventory_execution_request_receipts
+                WHERE tenant_id = $1 AND kind = 'REVERSAL' AND request_id = ANY($2::uuid[])`,
+              [tenantId, createdReversalRequestIds],
+            );
+          }
+          if (createdTestMovementIds.length > 0) {
+            const movementIds = [...new Set(createdTestMovementIds)];
+            await qr.query('DELETE FROM stock_movement_lines WHERE movement_id = ANY($1::uuid[])', [
+              movementIds,
+            ]);
+            await qr.query(
+              'DELETE FROM asset_lifecycle_events WHERE stock_movement_id = ANY($1::uuid[])',
+              [movementIds],
+            );
+            await qr.query(
+              'DELETE FROM asset_loan_assignments WHERE stock_movement_id = ANY($1::uuid[])',
+              [movementIds],
+            );
+            await qr.query(
+              'UPDATE stock_movements SET reversed_by_movement_id = NULL WHERE id = ANY($1::uuid[]) OR reversed_by_movement_id = ANY($1::uuid[])',
+              [movementIds],
+            );
+            await qr.query('DELETE FROM stock_movements WHERE id = ANY($1::uuid[])', [movementIds]);
+          }
+          if (createdStockLocationIds.length > 0) {
+            await qr.query(
+              'DELETE FROM stock_balances WHERE tenant_id = $1 AND location_id = ANY($2::uuid[])',
+              [tenantId, createdStockLocationIds],
             );
           }
           if (createdOrderIds.length > 0) {
@@ -718,5 +998,91 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
       outcome: 'REJECTED',
       reason_code: 'SERIAL_NOT_IN_CUSTODY',
     });
+  });
+
+  it.each([
+    ['REVERSAL_ORIGINAL_NOT_FOUND', undefined],
+    ['REVERSAL_CUSTODY_INACTIVE', { custodyStatus: StockLocationStatus.INACTIVE }],
+    ['REVERSAL_ASSET_MOVED', { serialized: 'moved' as const }],
+    ['REVERSAL_LOAN_MISMATCH', { serialized: 'loan-mismatch' as const }],
+  ] as const)(
+    '%s atraviesa Redis y persiste la decisión de reverso en PostgreSQL',
+    async (reasonCode, seedOptions) => {
+      const original = seedOptions
+        ? await seedOriginalMovement(seedOptions)
+        : {
+            executionOrderId: randomUUID(),
+            inventoryRequestId: randomUUID(),
+            originalStockMovementId: randomUUID(),
+            technicianCustodyId: randomUUID(),
+            actorUserId: randomUUID(),
+          };
+      const request = signReversal({ ...original, reversalRequestId: randomUUID() });
+      const result = await runThroughReversalApiQueue(request);
+
+      expect(result).toMatchObject({
+        apiAttempts: 1,
+        apiErrorClass: null,
+        responseEvent: {
+          tenantId,
+          envelope: {
+            eventType: 'InventoryReversalRejectedV1',
+            payload: { reasonCode },
+          },
+        },
+      });
+      expect(await readReversalReceipt(request.envelope.payload.reversalRequestId)).toMatchObject({
+        kind: 'REVERSAL',
+        outcome: 'REJECTED',
+        reason_code: reasonCode,
+        stock_movement_id: null,
+        original_stock_movement_id: original.originalStockMovementId,
+      });
+    },
+  );
+
+  it('serializa dos reversos simultáneos del mismo movimiento en PostgreSQL', async () => {
+    const original = await seedOriginalMovement({ seedDestinationBalance: true });
+    const requests = [
+      signReversal({ ...original, reversalRequestId: randomUUID() }),
+      signReversal({ ...original, reversalRequestId: randomUUID() }),
+    ] as const;
+    const results = await Promise.all(
+      requests.map((request) => runThroughReversalApiQueue(request)),
+    );
+    expect(results.every((result) => result.apiErrorClass === null)).toBe(true);
+    expect(results.map((result) => result.apiAttempts)).toEqual([1, 1]);
+
+    const receipts = await Promise.all(
+      requests.map((request) => readReversalReceipt(request.envelope.payload.reversalRequestId)),
+    );
+    expect(receipts.map((receipt) => receipt.outcome).sort()).toEqual(['CONFIRMED', 'REJECTED']);
+    const confirmed = receipts.find((receipt) => receipt.outcome === 'CONFIRMED')!;
+    const rejected = receipts.find((receipt) => receipt.outcome === 'REJECTED')!;
+    expect(confirmed.stock_movement_id).toBeTruthy();
+    expect(confirmed.original_stock_movement_id).toBe(original.originalStockMovementId);
+    expect(rejected.reason_code).toBe('REVERSAL_ASSET_MOVED');
+    if (confirmed.stock_movement_id) createdTestMovementIds.push(confirmed.stock_movement_id);
+
+    for (const result of results) {
+      expect(result.responseEvent?.envelope.eventType).toMatch(
+        /^InventoryReversal(Confirmed|Rejected)V1$/u,
+      );
+    }
+    const reversalCount = await TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        const rows = (await qr.query(
+          `SELECT COUNT(*)::int AS total FROM stock_movements
+            WHERE tenant_id = $1 AND origin = $2 AND origin_ref_id = $3`,
+          [
+            tenantId,
+            StockMovementOrigin.EXECUTION_ORDER_REVERSAL,
+            original.originalStockMovementId,
+          ],
+        )) as Array<{ total: number }>;
+        return rows[0]?.total ?? 0;
+      }),
+    );
+    expect(reversalCount).toBe(1);
   });
 });

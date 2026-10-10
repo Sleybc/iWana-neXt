@@ -65,12 +65,15 @@ describe('ExecutionOrderRelayService', () => {
     );
   });
 
-  it.each<[string, number | { age: number }]>([
+  it.each<[string, { age: number }]>([
     ['InventoryConsumptionRequestedV1', { age: 24 * 60 * 60 }],
     ['InventoryConsumptionRequestedV2', { age: 24 * 60 * 60 }],
+    ['InventoryConsumptionReversalRequestedV1', { age: 24 * 60 * 60 }],
     ['InventoryMovementConfirmedV1', { age: 24 * 60 * 60 }],
     ['InventoryMovementRejectedV1', { age: 24 * 60 * 60 }],
-    ['ExecutionOrderStartedV1', 30 * 24 * 60 * 60],
+    ['InventoryReversalConfirmedV1', { age: 24 * 60 * 60 }],
+    ['InventoryReversalRejectedV1', { age: 24 * 60 * 60 }],
+    ['ExecutionOrderStartedV1', { age: 30 * 24 * 60 * 60 }],
   ])('aplica retención por tipo de evento: %s', async (eventType, expectedRetention) => {
     const eventId = 'e0000000-0000-4000-8000-000000000001';
     const tenantId = '10000000-0000-4000-8000-000000000001';

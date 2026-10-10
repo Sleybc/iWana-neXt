@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { isValidSchemaName } from '@iwana/db';
 import {
+  InventoryConsumptionReversalRequestedV1EnvelopeSchema,
+  InventoryConsumptionReversalRequestedV1Schema,
   InventoryConsumptionRequestedV2EnvelopeSchema,
   InventoryConsumptionRequestedV2Schema,
   InventoryDisposition,
@@ -28,6 +30,19 @@ interface PendingUsageRow {
   final_disposition: string;
   subscriber_id: string | null;
   actor_user_id: string | null;
+  request_attempts: number;
+}
+
+interface PendingReversalRow {
+  id: string;
+  tenant_id: string;
+  execution_order_id: string;
+  aggregate_version: number;
+  reversal_request_id: string;
+  inventory_request_id: string | null;
+  stock_movement_id: string | null;
+  technician_custody_id: string | null;
+  requested_by: string | null;
   request_attempts: number;
 }
 
@@ -227,11 +242,139 @@ export class ExecutionOrderInventoryRescanService {
         emitted += 1;
       }
 
+      const pendingReversals = await client.query<PendingReversalRow>(
+        `SELECT reversal.id,
+                reversal.tenant_id,
+                reversal.execution_order_id,
+                orders.version AS aggregate_version,
+                reversal.reversal_request_id,
+                usage.inventory_request_id,
+                usage.stock_movement_id,
+                usage.technician_custody_id,
+                reversal.requested_by,
+                reversal.request_attempts
+           FROM execution_order_item_usage_reversals AS reversal
+           JOIN execution_orders AS orders
+             ON orders.id = reversal.execution_order_id
+            AND orders.tenant_id = reversal.tenant_id
+           JOIN execution_order_item_usage AS usage
+             ON usage.id = reversal.item_usage_id
+            AND usage.tenant_id = reversal.tenant_id
+          WHERE reversal.tenant_id = $1
+            AND reversal.status = 'PENDING'
+            AND reversal.last_requested_at <= NOW() - ($2::int * INTERVAL '1 minute')
+            AND reversal.request_attempts < $3
+          ORDER BY reversal.last_requested_at, reversal.id
+          FOR UPDATE OF reversal SKIP LOCKED
+          LIMIT $4`,
+        [tenant.id, this.thresholdMinutes, this.maxAttempts, this.batchSize],
+      );
+
+      for (const [index, row] of pendingReversals.rows.entries()) {
+        const savepoint = `inventory_reversal_${index}`;
+        await client.query(`SAVEPOINT ${savepoint}`);
+        const eventId = randomUUID();
+        const candidatePayload = {
+          executionOrderId: row.execution_order_id,
+          eventId,
+          intentId: row.reversal_request_id,
+          reversalRequestId: row.reversal_request_id,
+          inventoryRequestId: row.inventory_request_id,
+          originalStockMovementId: row.stock_movement_id,
+          technicianCustodyId: row.technician_custody_id,
+          actorUserId: row.requested_by,
+        };
+        const payloadResult =
+          InventoryConsumptionReversalRequestedV1Schema.safeParse(candidatePayload);
+        const envelopeResult = payloadResult.success
+          ? InventoryConsumptionReversalRequestedV1EnvelopeSchema.safeParse({
+              eventId,
+              eventType: 'InventoryConsumptionReversalRequestedV1',
+              tenantId: tenant.id,
+              aggregateId: row.execution_order_id,
+              aggregateVersion: row.aggregate_version,
+              occurredAt: new Date().toISOString(),
+              correlationId: row.reversal_request_id,
+              payload: payloadResult.data,
+            })
+          : { success: false as const };
+
+        const invalidCode = !row.reversal_request_id
+          ? 'MISSING_REVERSAL_REQUEST_ID'
+          : !row.inventory_request_id
+            ? 'MISSING_INVENTORY_REQUEST_ID'
+            : !row.stock_movement_id
+              ? 'MISSING_ORIGINAL_MOVEMENT'
+              : !row.technician_custody_id
+                ? 'MISSING_TECHNICIAN_CUSTODY'
+                : !row.requested_by
+                  ? 'MISSING_ACTOR'
+                  : !payloadResult.success || !envelopeResult.success
+                    ? 'INVALID_PAYLOAD'
+                    : null;
+        if (invalidCode) {
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          await client.query(
+            `UPDATE execution_order_item_usage_reversals
+                SET request_attempts = $3,
+                    last_requested_at = NOW()
+              WHERE id = $1 AND tenant_id = $2 AND status = 'PENDING'`,
+            [row.id, tenant.id, this.maxAttempts],
+          );
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+          irrecoverable += 1;
+          this.logger.warn(
+            `[inventory-rescan] irrecoverable reason_code=${invalidCode} ` +
+              `event=${eventId} tenant=${tenant.id} ot=${row.execution_order_id} ` +
+              `reversal_request=${row.reversal_request_id}`,
+          );
+          continue;
+        }
+
+        if (!payloadResult.success || !envelopeResult.success) {
+          throw new Error('Validación de recuperación de reverso inconsistente.');
+        }
+
+        const envelope = envelopeResult.data;
+        await client.query(
+          `UPDATE execution_order_item_usage_reversals
+              SET request_attempts = request_attempts + 1,
+                  last_requested_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 AND status = 'PENDING'`,
+          [row.id, tenant.id],
+        );
+        await client.query(
+          `INSERT INTO execution_order_outbox_events
+             (event_id, tenant_id, aggregate_id, aggregate_version, event_type,
+              payload, correlation_id, occurred_at)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW())`,
+          [
+            envelope.eventId,
+            tenant.id,
+            envelope.aggregateId,
+            envelope.aggregateVersion,
+            envelope.eventType,
+            JSON.stringify(envelope.payload),
+            envelope.correlationId,
+          ],
+        );
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        emitted += 1;
+      }
+
       const stuck = await client.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count
            FROM execution_order_item_usage
           WHERE tenant_id = $2
             AND movement_status = 'PENDING'
+            AND request_attempts >= $1`,
+        [this.maxAttempts, tenant.id],
+      );
+      const stuckReversals = await client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM execution_order_item_usage_reversals
+          WHERE tenant_id = $2
+            AND status = 'PENDING'
             AND request_attempts >= $1`,
         [this.maxAttempts, tenant.id],
       );
@@ -241,6 +384,13 @@ export class ExecutionOrderInventoryRescanService {
       if (stuckCount > 0) {
         this.logger.warn(
           `[inventory-rescan] metric=prolonged_pending tenant=${tenant.id} value=${stuckCount}`,
+        );
+      }
+      const stuckReversalCount = Number.parseInt(stuckReversals.rows[0]?.count ?? '0', 10);
+      if (stuckReversalCount > 0) {
+        this.logger.warn(
+          `[inventory-rescan] metric=prolonged_pending_reversal tenant=${tenant.id} ` +
+            `value=${stuckReversalCount}`,
         );
       }
       if (irrecoverable > 0) {

@@ -22,6 +22,13 @@ export interface CloseOpenLoanWithManagerInput {
   removedAt: Date;
 }
 
+export interface CloseLoanForMovementWithManagerInput {
+  tenantId: string;
+  serializedAssetId: string;
+  stockMovementId: string;
+  removedAt: Date;
+}
+
 @Injectable()
 export class AssetLoanService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
@@ -74,6 +81,27 @@ export class AssetLoanService {
 
     openLoan.removedAt = input.removedAt;
     return manager.save(AssetLoanAssignment, openLoan);
+  }
+
+  /** Cierra exclusivamente el comodato creado por el movimiento especificado. */
+  async closeLoanForMovementWithManager(
+    manager: EntityManager,
+    input: CloseLoanForMovementWithManagerInput,
+  ): Promise<AssetLoanAssignment | null> {
+    const loan = await manager.findOne(AssetLoanAssignment, {
+      where: {
+        tenantId: input.tenantId,
+        serializedAssetId: input.serializedAssetId,
+        stockMovementId: input.stockMovementId,
+        removedAt: IsNull(),
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!loan) return null;
+
+    loan.removedAt = input.removedAt;
+    return manager.save(AssetLoanAssignment, loan);
   }
 
   toRecord(loan: AssetLoanAssignment): AssetLoanRecord {

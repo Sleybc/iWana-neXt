@@ -55,8 +55,11 @@ const SAFE_RELAY_ERROR_TYPES = new Set(['Error', 'QueryFailedError', 'TimeoutErr
 const INVENTORY_OUTBOX_EVENT_TYPES = new Set([
   'InventoryConsumptionRequestedV1',
   'InventoryConsumptionRequestedV2',
+  'InventoryConsumptionReversalRequestedV1',
   'InventoryMovementConfirmedV1',
   'InventoryMovementRejectedV1',
+  'InventoryReversalConfirmedV1',
+  'InventoryReversalRejectedV1',
 ]);
 
 function relayErrorType(error: unknown): string {
@@ -290,7 +293,7 @@ export class ExecutionOrderRelayService implements OnApplicationBootstrap {
               removeOnComplete: true,
               removeOnFail: INVENTORY_OUTBOX_EVENT_TYPES.has(row.event_type)
                 ? { age: INVENTORY_SOURCE_JOB_RETENTION_SECONDS }
-                : NON_INVENTORY_SOURCE_JOB_RETENTION_SECONDS,
+                : { age: NON_INVENTORY_SOURCE_JOB_RETENTION_SECONDS },
             },
           );
         } catch (error) {

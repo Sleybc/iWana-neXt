@@ -12,15 +12,22 @@ import {
   INVENTORY_SOURCE_MAX_AGE_MS,
   OPERATIONS_EXECUTION_DLQ,
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
+  INVENTORY_CONSUMPTION_REJECTION_REASON_CODES,
+  INVENTORY_REVERSAL_REJECTION_REASON_CODES,
   InventoryConsumptionRejectionReasonCode,
   InventoryDisposition,
+  InventoryReversalRejectionReasonCode,
   StockLocationStatus,
   StockLocationType,
+  SignedInventoryExecutionReversalRequestSchema,
   SignedInventoryExecutionRequestSchema,
   canonicalizeInventoryExecutionRequest,
   type InventoryMovementConfirmedV1,
   type InventoryMovementRejectedV1,
+  type InventoryReversalConfirmedV1,
+  type InventoryReversalRejectedV1,
   type OperationalEventEnvelopeV1,
+  type SignedInventoryExecutionReversalRequest,
   type SignedInventoryExecutionRequest,
 } from '@iwana/shared';
 import { ExecutionOrderMovementSchema } from '../dto';
@@ -43,18 +50,22 @@ interface InternalTenantRow {
 }
 
 interface ReceiptRow {
+  kind: 'CONSUMPTION' | 'REVERSAL';
   outcome: 'CONFIRMED' | 'REJECTED';
   stock_movement_id: string | null;
-  reason_code: InventoryConsumptionRejectionReasonCode | null;
+  original_stock_movement_id: string | null;
+  reason_code: string | null;
   execution_order_id: string;
   aggregate_version: number | string;
   decided_at: Date | string;
 }
 
 interface InventoryRequestReceipt {
+  kind: 'CONSUMPTION' | 'REVERSAL';
   outcome: 'CONFIRMED' | 'REJECTED';
   stockMovementId: string | null;
-  reasonCode: InventoryConsumptionRejectionReasonCode | null;
+  originalStockMovementId: string | null;
+  reasonCode: string | null;
   executionOrderId: string;
   aggregateVersion: number;
   decidedAt: string;
@@ -65,6 +76,7 @@ interface InventoryDlqJob {
   eventId?: string;
   executionOrderId?: string;
   inventoryRequestId?: string;
+  reversalRequestId?: string;
   failedAt: string;
   attemptsMade: number;
   errorType: string;
@@ -96,6 +108,14 @@ function safeUuid(value: unknown): string | null {
   return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
 }
 
+function isConsumptionReasonCode(value: string): value is InventoryConsumptionRejectionReasonCode {
+  return (INVENTORY_CONSUMPTION_REJECTION_REASON_CODES as readonly string[]).includes(value);
+}
+
+function isReversalReasonCode(value: string): value is InventoryReversalRejectionReasonCode {
+  return (INVENTORY_REVERSAL_REJECTION_REASON_CODES as readonly string[]).includes(value);
+}
+
 function safeErrorType(error: unknown): string {
   if (!(error instanceof Error)) return 'INVENTORY_EXECUTION_REQUEST_FAILURE';
   const known = new Set([
@@ -115,8 +135,10 @@ function toReceipt(row: ReceiptRow | undefined): InventoryRequestReceipt | null 
     throw new Error('El recibo de inventario tiene una fecha de decisión inválida.');
   }
   return {
+    kind: row.kind,
     outcome: row.outcome,
     stockMovementId: row.stock_movement_id,
+    originalStockMovementId: row.original_stock_movement_id,
     reasonCode: row.reason_code,
     executionOrderId: row.execution_order_id,
     aggregateVersion: Number(row.aggregate_version),
@@ -167,26 +189,34 @@ export class InventoryExecutionRequestProcessor
     }
 
     const signed = this.verifySignatureBeforeValidation(job.data);
+    const envelope = isRecord(signed) ? signed['envelope'] : null;
+    const eventType = isRecord(envelope) ? envelope['eventType'] : null;
+
+    if (eventType === 'InventoryConsumptionReversalRequestedV1') {
+      const parsed = SignedInventoryExecutionReversalRequestSchema.safeParse(signed);
+      if (!parsed.success) throw new UnrecoverableError('Solicitud de reverso firmada inválida.');
+      await this.processReversalRequest(parsed.data);
+      return;
+    }
+
+    if (eventType !== 'InventoryConsumptionRequestedV2') {
+      throw new UnrecoverableError('Tipo de solicitud de inventario desconocido.');
+    }
     const parsed = SignedInventoryExecutionRequestSchema.safeParse(signed);
-    if (!parsed.success) {
-      throw new UnrecoverableError('Solicitud firmada inválida.');
-    }
+    if (!parsed.success) throw new UnrecoverableError('Solicitud firmada inválida.');
+    await this.processConsumptionRequest(parsed.data);
+  }
 
-    const request = parsed.data;
+  private async processConsumptionRequest(request: SignedInventoryExecutionRequest): Promise<void> {
     const payload = request.envelope.payload;
-    const tenant = await this.resolveTenant(request.tenantId);
-    if (tenant.status !== 'ACTIVE') {
-      const deferred = new Error('Tenant aún no está activo.');
-      deferred.name = 'InventoryTenantNotActiveError';
-      throw deferred;
-    }
-
+    const tenant = await this.resolveActiveTenant(request.tenantId);
     await TenantContext.run(
       { tenantId: tenant.id, schemaName: tenant.schema_name, tenantSlug: tenant.slug },
       async () => {
         const existingReceipt = await this.findReceipt(
           tenant.schema_name,
           tenant.id,
+          'CONSUMPTION',
           payload.inventoryRequestId,
         );
         if (existingReceipt) {
@@ -199,12 +229,13 @@ export class InventoryExecutionRequestProcessor
           payload.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER &&
           !subscriberId?.trim()
         ) {
-          await this.persistRejectedReceipt(
-            tenant,
-            request.envelope.aggregateVersion,
-            payload,
-            'SUBSCRIBER_REQUIRED',
-          );
+          await this.persistRejectedReceipt(tenant, {
+            kind: 'CONSUMPTION',
+            requestId: payload.inventoryRequestId,
+            executionOrderId: payload.executionOrderId,
+            aggregateVersion: request.envelope.aggregateVersion,
+            reasonCode: 'SUBSCRIBER_REQUIRED',
+          });
         } else {
           const ledgerInputResult = ExecutionOrderMovementSchema.safeParse({
             executionOrderId: payload.executionOrderId,
@@ -229,12 +260,13 @@ export class InventoryExecutionRequestProcessor
             payload.technicianCustodyId,
           );
           if (!technicianCustodyLocationId) {
-            await this.persistRejectedReceipt(
-              tenant,
-              request.envelope.aggregateVersion,
-              payload,
-              'CUSTODY_INSUFFICIENT',
-            );
+            await this.persistRejectedReceipt(tenant, {
+              kind: 'CONSUMPTION',
+              requestId: payload.inventoryRequestId,
+              executionOrderId: payload.executionOrderId,
+              aggregateVersion: request.envelope.aggregateVersion,
+              reasonCode: 'CUSTODY_INSUFFICIENT',
+            });
           } else {
             try {
               await this.stockLedger.recordExecutionOrderMovementForInventoryRequest(
@@ -244,22 +276,30 @@ export class InventoryExecutionRequestProcessor
                 async (manager, movement) =>
                   this.insertReceipt(manager, {
                     tenantId: tenant.id,
-                    inventoryRequestId: payload.inventoryRequestId,
+                    kind: 'CONSUMPTION',
+                    requestId: payload.inventoryRequestId,
                     executionOrderId: payload.executionOrderId,
                     aggregateVersion: request.envelope.aggregateVersion,
                     outcome: 'CONFIRMED',
                     stockMovementId: movement.movement.id,
+                    originalStockMovementId: null,
                     reasonCode: null,
                   }),
               );
             } catch (error) {
-              if (!(error instanceof InventoryBusinessRejection)) throw error;
-              await this.persistRejectedReceipt(
-                tenant,
-                request.envelope.aggregateVersion,
-                payload,
-                error.reasonCode,
-              );
+              if (
+                !(error instanceof InventoryBusinessRejection) ||
+                !isConsumptionReasonCode(error.reasonCode)
+              ) {
+                throw error;
+              }
+              await this.persistRejectedReceipt(tenant, {
+                kind: 'CONSUMPTION',
+                requestId: payload.inventoryRequestId,
+                executionOrderId: payload.executionOrderId,
+                aggregateVersion: request.envelope.aggregateVersion,
+                reasonCode: error.reasonCode,
+              });
             }
           }
         }
@@ -267,18 +307,97 @@ export class InventoryExecutionRequestProcessor
         const decidedReceipt = await this.findReceipt(
           tenant.schema_name,
           tenant.id,
+          'CONSUMPTION',
           payload.inventoryRequestId,
         );
-        if (!decidedReceipt) {
-          throw new Error('No se pudo confirmar el recibo de inventario.');
-        }
+        if (!decidedReceipt) throw new Error('No se pudo confirmar el recibo de inventario.');
         await this.enqueueResponse(tenant.id, payload.inventoryRequestId, decidedReceipt);
       },
     );
   }
 
+  private async processReversalRequest(
+    request: SignedInventoryExecutionReversalRequest,
+  ): Promise<void> {
+    const payload = request.envelope.payload;
+    const tenant = await this.resolveActiveTenant(request.tenantId);
+    await TenantContext.run(
+      { tenantId: tenant.id, schemaName: tenant.schema_name, tenantSlug: tenant.slug },
+      async () => {
+        const existingReceipt = await this.findReceipt(
+          tenant.schema_name,
+          tenant.id,
+          'REVERSAL',
+          payload.reversalRequestId,
+        );
+        if (existingReceipt) {
+          await this.enqueueResponse(tenant.id, payload.reversalRequestId, existingReceipt);
+          return;
+        }
+
+        try {
+          await this.stockLedger.reverseExecutionOrderMovementForInventoryRequest(
+            {
+              executionOrderId: payload.executionOrderId,
+              reversalRequestId: payload.reversalRequestId,
+              originalStockMovementId: payload.originalStockMovementId,
+              technicianCustodyId: payload.technicianCustodyId,
+            },
+            { sub: payload.actorUserId },
+            async (manager, movement, originalStockMovementId) =>
+              this.insertReceipt(manager, {
+                tenantId: tenant.id,
+                kind: 'REVERSAL',
+                requestId: payload.reversalRequestId,
+                executionOrderId: payload.executionOrderId,
+                aggregateVersion: request.envelope.aggregateVersion,
+                outcome: 'CONFIRMED',
+                stockMovementId: movement.movement.id,
+                originalStockMovementId,
+                reasonCode: null,
+              }),
+          );
+        } catch (error) {
+          if (
+            !(error instanceof InventoryBusinessRejection) ||
+            !isReversalReasonCode(error.reasonCode)
+          ) {
+            throw error;
+          }
+          await this.persistRejectedReceipt(tenant, {
+            kind: 'REVERSAL',
+            requestId: payload.reversalRequestId,
+            executionOrderId: payload.executionOrderId,
+            aggregateVersion: request.envelope.aggregateVersion,
+            reasonCode: error.reasonCode,
+            originalStockMovementId: payload.originalStockMovementId,
+          });
+        }
+
+        const decidedReceipt = await this.findReceipt(
+          tenant.schema_name,
+          tenant.id,
+          'REVERSAL',
+          payload.reversalRequestId,
+        );
+        if (!decidedReceipt) throw new Error('No se pudo confirmar el recibo de reverso.');
+        await this.enqueueResponse(tenant.id, payload.reversalRequestId, decidedReceipt);
+      },
+    );
+  }
+
+  private async resolveActiveTenant(tenantId: string): Promise<InternalTenantRow> {
+    const tenant = await this.resolveTenant(tenantId);
+    if (tenant.status !== 'ACTIVE') {
+      const deferred = new Error('Tenant aún no está activo.');
+      deferred.name = 'InventoryTenantNotActiveError';
+      throw deferred;
+    }
+    return tenant;
+  }
+
   /** Verifica el HMAC sobre datos opacos; el esquema completo se valida después. */
-  private verifySignatureBeforeValidation(candidate: unknown): SignedInventoryExecutionRequest {
+  private verifySignatureBeforeValidation(candidate: unknown): unknown {
     if (!isRecord(candidate) || !isRecord(candidate['envelope'])) {
       throw new UnrecoverableError('Solicitud de inventario sin firma válida.');
     }
@@ -305,7 +424,7 @@ export class InventoryExecutionRequestProcessor
     if (!providedIsHex || !matched) {
       throw new UnrecoverableError('Firma de solicitud de inventario inválida.');
     }
-    return candidate as unknown as SignedInventoryExecutionRequest;
+    return candidate;
   }
 
   private readSigningKey(name: string, required: boolean): Buffer | null {
@@ -338,15 +457,16 @@ export class InventoryExecutionRequestProcessor
   private async findReceipt(
     schemaName: string,
     tenantId: string,
-    inventoryRequestId: string,
+    kind: 'CONSUMPTION' | 'REVERSAL',
+    requestId: string,
   ): Promise<InventoryRequestReceipt | null> {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const rows = (await qr.query(
-        `SELECT outcome, stock_movement_id, reason_code, execution_order_id,
-                aggregate_version, decided_at
+        `SELECT kind, outcome, stock_movement_id, original_stock_movement_id,
+                reason_code, execution_order_id, aggregate_version, decided_at
            FROM inventory_execution_request_receipts
-          WHERE tenant_id = $1 AND inventory_request_id = $2`,
-        [tenantId, inventoryRequestId],
+          WHERE tenant_id = $1 AND kind = $2 AND request_id = $3`,
+        [tenantId, kind, requestId],
       )) as ReceiptRow[];
       return toReceipt(rows[0]);
     });
@@ -374,27 +494,31 @@ export class InventoryExecutionRequestProcessor
     manager: EntityManager,
     input: {
       tenantId: string;
-      inventoryRequestId: string;
+      kind: 'CONSUMPTION' | 'REVERSAL';
+      requestId: string;
       executionOrderId: string;
       aggregateVersion: number;
       outcome: 'CONFIRMED' | 'REJECTED';
       stockMovementId: string | null;
-      reasonCode: InventoryConsumptionRejectionReasonCode | null;
+      originalStockMovementId: string | null;
+      reasonCode: string | null;
     },
   ): Promise<void> {
     await manager.query(
       `INSERT INTO inventory_execution_request_receipts
-         (id, tenant_id, inventory_request_id, execution_order_id, aggregate_version,
-          outcome, stock_movement_id, reason_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (id, tenant_id, kind, request_id, execution_order_id, aggregate_version,
+          outcome, stock_movement_id, original_stock_movement_id, reason_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         randomUUID(),
         input.tenantId,
-        input.inventoryRequestId,
+        input.kind,
+        input.requestId,
         input.executionOrderId,
         input.aggregateVersion,
         input.outcome,
         input.stockMovementId,
+        input.originalStockMovementId,
         input.reasonCode,
       ],
     );
@@ -402,53 +526,92 @@ export class InventoryExecutionRequestProcessor
 
   private async persistRejectedReceipt(
     tenant: InternalTenantRow,
-    aggregateVersion: number,
-    payload: SignedInventoryExecutionRequest['envelope']['payload'],
-    reasonCode: InventoryConsumptionRejectionReasonCode,
+    input: {
+      kind: 'CONSUMPTION' | 'REVERSAL';
+      requestId: string;
+      executionOrderId: string;
+      aggregateVersion: number;
+      reasonCode: InventoryConsumptionRejectionReasonCode | InventoryReversalRejectionReasonCode;
+      originalStockMovementId?: string;
+    },
   ): Promise<void> {
     await runInTenantSchema(this.dataSource, tenant.schema_name, async (qr) =>
       this.insertReceipt(qr.manager, {
         tenantId: tenant.id,
-        inventoryRequestId: payload.inventoryRequestId,
-        executionOrderId: payload.executionOrderId,
-        aggregateVersion,
+        kind: input.kind,
+        requestId: input.requestId,
+        executionOrderId: input.executionOrderId,
+        aggregateVersion: input.aggregateVersion,
         outcome: 'REJECTED',
         stockMovementId: null,
-        reasonCode,
+        originalStockMovementId: input.originalStockMovementId ?? null,
+        reasonCode: input.reasonCode,
       }),
     );
   }
 
   private async enqueueResponse(
     tenantId: string,
-    inventoryRequestId: string,
+    requestId: string,
     receipt: InventoryRequestReceipt,
   ): Promise<void> {
-    const eventId = deterministicUuidV5(inventoryRequestId);
-    const confirmed = receipt.outcome === 'CONFIRMED';
-    const payload: InventoryMovementConfirmedV1 | InventoryMovementRejectedV1 = confirmed
-      ? {
-          executionOrderId: receipt.executionOrderId,
-          inventoryRequestId,
-          stockMovementId: receipt.stockMovementId as string,
-        }
-      : {
-          executionOrderId: receipt.executionOrderId,
-          inventoryRequestId,
-          reasonCode: receipt.reasonCode as InventoryConsumptionRejectionReasonCode,
-        };
-    const envelope = {
-      eventId,
-      eventType: confirmed
-        ? ('InventoryMovementConfirmedV1' as const)
-        : ('InventoryMovementRejectedV1' as const),
-      tenantId,
-      aggregateId: receipt.executionOrderId,
-      aggregateVersion: receipt.aggregateVersion,
-      occurredAt: receipt.decidedAt,
-      correlationId: inventoryRequestId,
-      payload,
-    } as OperationalEventEnvelopeV1;
+    const eventId = deterministicUuidV5(
+      receipt.kind === 'REVERSAL' ? `reversal:${requestId}` : requestId,
+    );
+    let envelope: OperationalEventEnvelopeV1;
+    if (receipt.kind === 'CONSUMPTION') {
+      const payload: InventoryMovementConfirmedV1 | InventoryMovementRejectedV1 =
+        receipt.outcome === 'CONFIRMED'
+          ? {
+              executionOrderId: receipt.executionOrderId,
+              inventoryRequestId: requestId,
+              stockMovementId: receipt.stockMovementId as string,
+            }
+          : {
+              executionOrderId: receipt.executionOrderId,
+              inventoryRequestId: requestId,
+              reasonCode: receipt.reasonCode as InventoryConsumptionRejectionReasonCode,
+            };
+      envelope = {
+        eventId,
+        eventType:
+          receipt.outcome === 'CONFIRMED'
+            ? 'InventoryMovementConfirmedV1'
+            : 'InventoryMovementRejectedV1',
+        tenantId,
+        aggregateId: receipt.executionOrderId,
+        aggregateVersion: receipt.aggregateVersion,
+        occurredAt: receipt.decidedAt,
+        correlationId: requestId,
+        payload,
+      } as OperationalEventEnvelopeV1;
+    } else {
+      const payload: InventoryReversalConfirmedV1 | InventoryReversalRejectedV1 =
+        receipt.outcome === 'CONFIRMED'
+          ? {
+              executionOrderId: receipt.executionOrderId,
+              reversalRequestId: requestId,
+              stockMovementId: receipt.stockMovementId as string,
+            }
+          : {
+              executionOrderId: receipt.executionOrderId,
+              reversalRequestId: requestId,
+              reasonCode: receipt.reasonCode as InventoryReversalRejectionReasonCode,
+            };
+      envelope = {
+        eventId,
+        eventType:
+          receipt.outcome === 'CONFIRMED'
+            ? 'InventoryReversalConfirmedV1'
+            : 'InventoryReversalRejectedV1',
+        tenantId,
+        aggregateId: receipt.executionOrderId,
+        aggregateVersion: receipt.aggregateVersion,
+        occurredAt: receipt.decidedAt,
+        correlationId: requestId,
+        payload,
+      } as OperationalEventEnvelopeV1;
+    }
 
     const accepted = await this.responseQueue.add(
       'deliver-execution-event',
@@ -506,13 +669,20 @@ export class InventoryExecutionRequestProcessor
     const eventId = safeUuid(envelope['eventId']);
     const executionOrderId = safeUuid(payload['executionOrderId']);
     const inventoryRequestId = safeUuid(payload['inventoryRequestId']);
+    const reversalRequestId = safeUuid(payload['reversalRequestId']);
     const errorType = safeErrorType(error);
     const failedAt = new Date().toISOString();
     const attemptsMade = Math.max(0, job.attemptsMade ?? 0);
 
     const identifiers =
       tenantId && eventId && executionOrderId && inventoryRequestId
-        ? { tenantId, eventId, executionOrderId, inventoryRequestId }
+        ? {
+            tenantId,
+            eventId,
+            executionOrderId,
+            inventoryRequestId,
+            ...(reversalRequestId ? { reversalRequestId } : {}),
+          }
         : {};
     const diagnostic: InventoryDlqJob = {
       ...identifiers,
@@ -524,7 +694,7 @@ export class InventoryExecutionRequestProcessor
       await this.dlqQueue.add('failed-inventory-execution-event', diagnostic, {
         jobId: `dlq-${eventId ?? randomUUID()}`,
         removeOnComplete: true,
-        removeOnFail: DLQ_RETENTION_SECONDS,
+        removeOnFail: { age: DLQ_RETENTION_SECONDS },
       });
     } catch (enqueueError) {
       this.logger.error(

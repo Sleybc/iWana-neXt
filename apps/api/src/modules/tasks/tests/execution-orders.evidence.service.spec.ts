@@ -283,6 +283,7 @@ describe('ExecutionOrdersService — Evidence', () => {
           ],
           1,
         ]),
+        getMany: jest.fn().mockResolvedValue([]),
       };
       const manager = {
         findOne: jest.fn().mockResolvedValue(mockOrder()),

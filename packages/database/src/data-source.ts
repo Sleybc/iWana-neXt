@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from './db-credentials';
+import { SafeTypeOrmLogger } from './safe-typeorm.logger';
 import { resolvePublicMigrations } from './migrations/public';
 import { AuditLog } from './entities/audit-log.entity';
 import { AccessPermissionCatalog } from './entities/access-permission-catalog.entity';
@@ -159,6 +160,7 @@ export const dataSourceOptions: DataSourceOptions = {
   synchronize: false, // Solo migraciones versionadas — nunca synchronize en produccion
   ssl: process.env['DB_SSL'] === 'true' ? { rejectUnauthorized: false } : false,
   logging: process.env['NODE_ENV'] !== 'production' ? ['error', 'migration'] : ['error'],
+  logger: new SafeTypeOrmLogger(),
   extra: {
     // Tamano del pool: ajustado para un solo pod en MVP on-premise
     max: parseInt(process.env['DB_POOL_MAX'] ?? '10', 10),

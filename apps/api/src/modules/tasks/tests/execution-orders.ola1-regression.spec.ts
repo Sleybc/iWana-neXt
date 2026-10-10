@@ -616,6 +616,11 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
       permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
     },
     {
+      // MOD11 reverso supervisado: solo coordinación, SUPERVISE y motivo validado.
+      roles: 'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT',
+      permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE',
+    },
+    {
       roles:
         'UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR',
       permission: 'AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_EXECUTE',
@@ -692,7 +697,7 @@ describe('OLA1 regresión backend — caso 11: política de acceso sin ampliaci�
     return pairs;
   };
 
-  it('R11a: ningún endpoint amplió @Roles ni @Permissions en esta ola (24 pares exactos)', () => {
+  it('R11a: los roles y permisos de los endpoints coinciden con la política aprobada (25 pares)', () => {
     expect(readPolicyPairs()).toEqual(EXPECTED_POLICY);
   });
 

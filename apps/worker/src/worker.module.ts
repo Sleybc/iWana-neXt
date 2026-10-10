@@ -5,7 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { dataSourceOptions } from '@iwana/db';
+import { dataSourceOptions, SafeTypeOrmLogger } from '@iwana/db';
 import { createStorageAdapter, STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import {
   ASSURANCE_FIELD_SERVICE_QUEUE,
@@ -170,6 +170,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
         ssl: false,
         logging:
           config.get<string>('NODE_ENV') !== 'production' ? ['error', 'migration'] : ['error'],
+        logger: new SafeTypeOrmLogger(),
         extra: dataSourceOptions.extra,
         autoLoadEntities: true,
       }),

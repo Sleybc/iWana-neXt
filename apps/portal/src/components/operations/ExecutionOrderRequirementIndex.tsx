@@ -63,7 +63,7 @@ export function ExecutionOrderRequirementIndex({
   );
   const unattributedHistory =
     moment !== 'pre-start' && context.itemUsage.some((usage) => usage.requirementKey == null) ? (
-      <ExecutionOrderMaterialUnattributedHistory context={context} />
+      <ExecutionOrderMaterialUnattributedHistory order={order} context={context} />
     ) : null;
   const historyFooter =
     moment !== 'pre-start' ? (

@@ -16,7 +16,7 @@ import { z } from 'zod';
  * - ADR-068: Sincronización de OT de ejecución y proyecciones operativas.
  * - Spec API: docs/specs/2026-07-27-mod09-mod11-ot-instalacion-contrato-api.md
  *
- * Este archivo es la fuente de verdad del contrato v1.6. Los DTOs del controlador
+ * Este archivo es la fuente de verdad del contrato v1.7. Los DTOs del controlador
  * y el OpenAPI máquina-legible se derivan de aquí. No modificar sin versionar.
  *
  * Historial:
@@ -46,6 +46,9 @@ import { z } from 'zod';
  * - v1.6 (2026-10-06, MOD11 ↔ MOD12 consumo de OT): nace
  *   `InventoryConsumptionRequestedV2` con contexto completo, esquema Zod runtime
  *   y motivo tipado de rechazo. Los eventos V1 permanecen sin cambios.
+ * - v1.7 (2026-10-10, MOD11 ↔ MOD12 reverso de consumo): nacen el comando,
+ *   los eventos tipados de reverso y su validación Zod; la proyección de línea
+ *   expone el estado del reverso sin sacar el motivo de MOD11.
  */
 
 /** Acciones que el servidor puede ofrecer a la UI según política; no reemplazan la autorización. */
@@ -60,7 +63,8 @@ export type ExecutionOrderAllowedAction =
   | 'UNBLOCK'
   | 'CLOSE'
   | 'CREATE_FOLLOW_UP'
-  | 'OPEN';
+  | 'OPEN'
+  | 'REVERSE_ITEM_USAGE';
 
 export interface ExecutionOrderTemplateReference {
   id: string;
@@ -359,6 +363,12 @@ export interface ExecutionOrderItemUsage {
   inventoryRequestId: string;
   movementStatus: 'PENDING' | 'CONFIRMED' | 'REJECTED';
   rejectionReasonCode?: InventoryConsumptionRejectionReasonCode | null;
+  /** Estado proyectado del reverso; no contiene el motivo operativo. */
+  reversal?: {
+    status: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+    requestedAt: string;
+    rejectionReasonCode: InventoryReversalRejectionReasonCode | null;
+  } | null;
   createdAt: string;
 }
 
@@ -455,12 +465,15 @@ export type OperationalEventTypeV1 =
   | 'ExecutionOrderBlockedV1'
   | 'InventoryConsumptionRequestedV1'
   | 'InventoryConsumptionRequestedV2'
+  | 'InventoryConsumptionReversalRequestedV1'
   | 'ExecutionOrderClosedV1'
   | 'ExecutionOrderCancelledV1'
   | 'ExecutionOrderAnnulledV1'
   | 'ExecutionOrderFollowUpRequiredV1'
   | 'InventoryMovementConfirmedV1'
-  | 'InventoryMovementRejectedV1';
+  | 'InventoryMovementRejectedV1'
+  | 'InventoryReversalConfirmedV1'
+  | 'InventoryReversalRejectedV1';
 
 interface EventPayloadBase {
   executionOrderId: string;
@@ -559,6 +572,31 @@ export interface InventoryMovementRejectedV1 extends EventPayloadBase {
   reasonCode: InventoryConsumptionRejectionReasonCode;
 }
 
+/** Comando HTTP de supervisión; el motivo permanece dentro de MOD11 (R9). */
+export interface ReverseItemUsageCommand {
+  reason: string;
+}
+
+/** Solicitud firmada al ledger; deliberadamente no transporta el motivo. */
+export interface InventoryConsumptionReversalRequestedV1 extends EventPayloadBase {
+  eventId?: string;
+  reversalRequestId: string;
+  inventoryRequestId: string;
+  originalStockMovementId: string;
+  technicianCustodyId: string;
+  actorUserId: string;
+}
+
+export interface InventoryReversalConfirmedV1 extends EventPayloadBase {
+  reversalRequestId: string;
+  stockMovementId: string;
+}
+
+export interface InventoryReversalRejectedV1 extends EventPayloadBase {
+  reversalRequestId: string;
+  reasonCode: InventoryReversalRejectionReasonCode;
+}
+
 export const INVENTORY_CONSUMPTION_REJECTION_REASON_CODES = [
   'CUSTODY_INSUFFICIENT',
   'SERIAL_NOT_IN_CUSTODY',
@@ -568,6 +606,53 @@ export const INVENTORY_CONSUMPTION_REJECTION_REASON_CODES = [
 
 export type InventoryConsumptionRejectionReasonCode =
   (typeof INVENTORY_CONSUMPTION_REJECTION_REASON_CODES)[number];
+
+export const INVENTORY_REVERSAL_REJECTION_REASON_CODES = [
+  'REVERSAL_ASSET_MOVED',
+  'REVERSAL_CUSTODY_INACTIVE',
+  'REVERSAL_ORIGINAL_NOT_FOUND',
+  'REVERSAL_LOAN_MISMATCH',
+] as const;
+
+export type InventoryReversalRejectionReasonCode =
+  (typeof INVENTORY_REVERSAL_REJECTION_REASON_CODES)[number];
+
+export const ReverseItemUsageCommandSchema = z
+  .object({
+    reason: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+
+export const InventoryConsumptionReversalRequestedV1Schema = z
+  .object({
+    executionOrderId: z.string().uuid(),
+    eventId: z.string().uuid().optional(),
+    intentId: z.string().optional(),
+    reversalRequestId: z.string().uuid(),
+    inventoryRequestId: z.string().uuid(),
+    originalStockMovementId: z.string().trim().min(1).max(160),
+    technicianCustodyId: z.string().trim().min(1).max(160),
+    actorUserId: z.string().uuid(),
+  })
+  .strict();
+
+export const InventoryReversalConfirmedV1Schema = z
+  .object({
+    executionOrderId: z.string().uuid(),
+    intentId: z.string().optional(),
+    reversalRequestId: z.string().uuid(),
+    stockMovementId: z.string().trim().min(1).max(160),
+  })
+  .strict();
+
+export const InventoryReversalRejectedV1Schema = z
+  .object({
+    executionOrderId: z.string().uuid(),
+    intentId: z.string().optional(),
+    reversalRequestId: z.string().uuid(),
+    reasonCode: z.enum(INVENTORY_REVERSAL_REJECTION_REASON_CODES),
+  })
+  .strict();
 
 /** Payload validado en runtime al cruzar el límite Redis/API. */
 export const InventoryConsumptionRequestedV2Schema = z
@@ -635,6 +720,43 @@ export const InventoryConsumptionRequestedV2EnvelopeSchema = z
         message: 'El eventId del payload debe coincidir con el envelope.',
       });
     }
+    if (envelope.payload.eventId !== undefined && envelope.payload.eventId !== envelope.eventId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['payload', 'eventId'],
+        message: 'El eventId del payload debe coincidir con el envelope.',
+      });
+    }
+  });
+
+/** Envelope tipado de la solicitud; el motivo no pertenece a este contrato. */
+export const InventoryConsumptionReversalRequestedV1EnvelopeSchema = z
+  .object({
+    eventId: z.string().uuid(),
+    eventType: z.literal('InventoryConsumptionReversalRequestedV1'),
+    tenantId: z.string().uuid(),
+    aggregateId: z.string().uuid(),
+    aggregateVersion: z.number().int().positive(),
+    occurredAt: z.string().datetime({ offset: true }),
+    correlationId: z.string().uuid(),
+    payload: InventoryConsumptionReversalRequestedV1Schema,
+  })
+  .strict()
+  .superRefine((envelope, context) => {
+    if (envelope.aggregateId !== envelope.payload.executionOrderId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['aggregateId'],
+        message: 'aggregateId debe coincidir con executionOrderId.',
+      });
+    }
+    if (envelope.payload.eventId !== undefined && envelope.payload.eventId !== envelope.eventId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['payload', 'eventId'],
+        message: 'El eventId del payload debe coincidir con el envelope.',
+      });
+    }
   });
 
 /** Job interno firmado que cruza Redis; el HMAC cubre tenantId y envelope. */
@@ -656,6 +778,28 @@ export const SignedInventoryExecutionRequestSchema = z
   });
 
 export type SignedInventoryExecutionRequest = z.infer<typeof SignedInventoryExecutionRequestSchema>;
+
+/** Job firmado para la variante de reverso, con el mismo HMAC y aislamiento tenant. */
+export const SignedInventoryExecutionReversalRequestSchema = z
+  .object({
+    tenantId: z.string().uuid(),
+    envelope: InventoryConsumptionReversalRequestedV1EnvelopeSchema,
+    signature: z.string().regex(/^[a-f0-9]{64}$/iu),
+  })
+  .strict()
+  .superRefine((job, context) => {
+    if (job.tenantId !== job.envelope.tenantId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['tenantId'],
+        message: 'tenantId externo debe coincidir con el del envelope.',
+      });
+    }
+  });
+
+export type SignedInventoryExecutionReversalRequest = z.infer<
+  typeof SignedInventoryExecutionReversalRequestSchema
+>;
 
 function sortJsonKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJsonKeys);
@@ -686,12 +830,15 @@ export type OperationalEventPayloadV1 =
   | ExecutionOrderBlockedV1
   | InventoryConsumptionRequestedV1
   | InventoryConsumptionRequestedV2
+  | InventoryConsumptionReversalRequestedV1
   | ExecutionOrderClosedV1
   | ExecutionOrderCancelledV1
   | ExecutionOrderAnnulledV1
   | ExecutionOrderFollowUpRequiredV1
   | InventoryMovementConfirmedV1
-  | InventoryMovementRejectedV1;
+  | InventoryMovementRejectedV1
+  | InventoryReversalConfirmedV1
+  | InventoryReversalRejectedV1;
 
 interface OperationalEventPayloadByType {
   VisitScheduledV1: VisitScheduledV1;
@@ -702,12 +849,15 @@ interface OperationalEventPayloadByType {
   ExecutionOrderBlockedV1: ExecutionOrderBlockedV1;
   InventoryConsumptionRequestedV1: InventoryConsumptionRequestedV1;
   InventoryConsumptionRequestedV2: InventoryConsumptionRequestedV2;
+  InventoryConsumptionReversalRequestedV1: InventoryConsumptionReversalRequestedV1;
   ExecutionOrderClosedV1: ExecutionOrderClosedV1;
   ExecutionOrderCancelledV1: ExecutionOrderCancelledV1;
   ExecutionOrderAnnulledV1: ExecutionOrderAnnulledV1;
   ExecutionOrderFollowUpRequiredV1: ExecutionOrderFollowUpRequiredV1;
   InventoryMovementConfirmedV1: InventoryMovementConfirmedV1;
   InventoryMovementRejectedV1: InventoryMovementRejectedV1;
+  InventoryReversalConfirmedV1: InventoryReversalConfirmedV1;
+  InventoryReversalRejectedV1: InventoryReversalRejectedV1;
 }
 
 export type OperationalEventEnvelopeV1 = {

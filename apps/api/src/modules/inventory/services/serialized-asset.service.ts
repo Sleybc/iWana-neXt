@@ -97,6 +97,8 @@ interface TransitionAssetInput {
   currentResponsibleRefId?: string | null | undefined;
   subscriberRefId?: string | null | undefined;
   contractRefId?: string | null | undefined;
+  /** Solo el ledger de reversos puede restaurar un estado previo validado contra su evento. */
+  allowExecutionOrderReversalRestore?: boolean | undefined;
 }
 
 const ALLOWED_STATUS_TRANSITIONS: Record<SerializedAssetStatus, SerializedAssetStatus[]> = {
@@ -568,7 +570,9 @@ export class SerializedAssetService {
       throw new NotFoundException('Activo serializado no encontrado.');
     }
 
-    this.assertStatusTransition(asset.currentStatus, input.toStatus);
+    if (!input.allowExecutionOrderReversalRestore) {
+      this.assertStatusTransition(asset.currentStatus, input.toStatus);
+    }
     asset.currentStatus = input.toStatus;
 
     if (input.currentLocationId !== undefined) {

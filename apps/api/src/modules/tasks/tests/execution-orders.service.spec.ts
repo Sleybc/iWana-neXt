@@ -184,6 +184,7 @@ describe('ExecutionOrdersService', () => {
 
     it('rechaza una OT ya vinculada en vez de cambiar su evento en silencio', async () => {
       const manager = {
+        query: jest.fn().mockResolvedValue([]),
         findOne: jest.fn().mockResolvedValue({
           id: input.executionOrderId,
           tenantId,
@@ -780,6 +781,7 @@ describe('ExecutionOrdersService', () => {
         execute: jest.fn().mockResolvedValue({ affected: 1 }),
       };
       const manager = {
+        query: jest.fn().mockResolvedValue([]),
         findOne: jest.fn().mockResolvedValue({
           id: 'eo-001',
           tenantId: 'tenant-001',
@@ -1024,6 +1026,7 @@ describe('ExecutionOrdersService', () => {
 
   it('rejects close without customer signature when installed at customer usage exists', async () => {
     const manager = {
+      query: jest.fn().mockResolvedValue([]),
       findOne: jest.fn().mockResolvedValue({
         id: 'eo-001',
         tenantId: 'tenant-001',

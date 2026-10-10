@@ -13,6 +13,7 @@ import type {
   ExecutionOrderEvidence,
   ExecutionOrderTemplateRequirement,
   RegisterActivityCommand,
+  ReverseItemUsageCommand,
   ListMeta,
 } from '@iwana/shared';
 import type {
@@ -84,6 +85,10 @@ export interface ExecutionOrderDrawerProps {
   ) => Promise<void | boolean>;
   onDeleteActivity?: (activityId: string) => Promise<void | boolean>;
   onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void | boolean>;
+  onReverseItemUsage?: (
+    usageId: string,
+    payload: ReverseItemUsageCommand,
+  ) => Promise<void | boolean>;
   onUploadEvidence: ExecutionOrderEvidenceUploadHandler;
   onBlock?: (payload: { reasonCode: string; note?: string }) => Promise<void>;
   onUnblock?: (payload: { resolutionCode: string; note?: string }) => Promise<void>;

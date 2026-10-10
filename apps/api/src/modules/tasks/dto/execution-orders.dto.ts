@@ -9,7 +9,11 @@ import {
   WfmWorkType,
   WorkOrderSourceContext,
 } from '@iwana/shared';
-import type { ExecutionOrderAllowedAction, ExecutionOrderTemplateRequirement } from '@iwana/shared';
+import type {
+  ExecutionOrderAllowedAction,
+  ExecutionOrderTemplateRequirement,
+  InventoryReversalRejectionReasonCode,
+} from '@iwana/shared';
 import { ListMetaDto, MAX_LIMIT } from '../../../common/pagination';
 
 /**
@@ -155,6 +159,24 @@ export class RegisterExecutionOrderItemUsageDto {
   @ApiProperty({ enum: InventoryDisposition })
   @Allow()
   finalDisposition!: InventoryDisposition;
+}
+
+export const ReverseExecutionOrderItemUsageSchema = z
+  .object({
+    reason: safeTextField(2000).refine((value) => value.length > 0, {
+      message: 'El reverso exige un motivo operativo.',
+    }),
+  })
+  .strict();
+
+export type ReverseExecutionOrderItemUsageInput = z.infer<
+  typeof ReverseExecutionOrderItemUsageSchema
+>;
+
+export class ReverseExecutionOrderItemUsageDto {
+  @ApiProperty({ minLength: 1, maxLength: 2000 })
+  @Allow()
+  reason!: string;
 }
 
 export const CloseExecutionOrderSchema = z
@@ -396,6 +418,21 @@ export class ExecutionOrderItemUsageResponseDto {
 
   @ApiProperty({ enum: ['PENDING', 'CONFIRMED', 'REJECTED'] })
   movementStatus!: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    properties: {
+      status: { enum: ['PENDING', 'CONFIRMED', 'REJECTED'] },
+      requestedAt: { type: 'string', format: 'date-time' },
+      rejectionReasonCode: { type: 'string', nullable: true },
+    },
+  })
+  reversal?: {
+    status: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+    requestedAt: string;
+    rejectionReasonCode: InventoryReversalRejectionReasonCode | null;
+  } | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;

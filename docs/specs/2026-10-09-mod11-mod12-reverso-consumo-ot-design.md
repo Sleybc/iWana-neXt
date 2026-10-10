@@ -1,8 +1,9 @@
 # Diseño — MOD11 ↔ MOD12: reverso de un consumo de inventario de OT
 
-**Versión:** 1.1
+**Versión:** 1.2
 **Estado:** **Aprobado por el CTO el 2026-10-10**, con el índice parcial de R3, `REVERSAL_LOAN_MISMATCH`, las migraciones 140 y 141 (con el valor de enum no reversible) y la decisión R9 sobre motivo y PII. **El contrato v1.7 del §3 queda congelado desde esta aprobación.**
 **Fecha:** 2026-10-09 · **Revisión:** 2026-10-10
+**Cambio v1.1 → v1.2 (2026-10-10, fe de erratas de AI-EM-ARCH tras V4-R):** RA-03, RA-05 y RA-06 se alinean con las convenciones vigentes del repositorio. Las decisiones R1 a R10 y el contrato v1.7 no cambian. Detalle en §9b.
 **Cambio v1.0 → v1.1 (2026-10-10):** incorpora F1 (GO de factibilidad con dos consultas), S1 (GO condicionado con una consulta) y U1 (GO de copy). Cambian R3, R5, R6, R7 y R8; nacen R9 (motivo y auditoría) y R10 (re-solicitud D7 de reversos). Detalle en §9.
 **Modo:** Product Architect + Architect
 **Autor:** AI-EM-ARCH
@@ -98,10 +99,10 @@ export interface InventoryReversalRejectedV1 extends EventPayloadBase {
 
 - **RA-01** — Un supervisor revierte un CPE serial `CONFIRMED` de una OT abierta. El serial vuelve a la custodia móvil del técnico en estado `ASSIGNED_TO_TECHNICIAN`, **el comodato ligado al movimiento original** se cierra, queda un movimiento `EXECUTION_ORDER_REVERSAL` enlazado con `reversedByMovementId`, y la línea muestra el reverso `CONFIRMED`.
 - **RA-02** — Revertir un consumo por cantidad devuelve el saldo a la custodia de origen.
-- **RA-03** — El consumo original **no cambia**: ni su estado, ni su recibo, ni sus líneas de movimiento. Solo se fija su `reversedByMovementId`.
+- **RA-03** — El consumo original **no cambia**: ni su estado, ni su recibo, ni sus líneas de movimiento. En la fila del movimiento original solo se fija `reversedByMovementId`, y la metadata técnica `updated_at` registra ese cambio (v1.2). Ningún campo de negocio cambia.
 - **RA-04** — Sobre una OT **terminal**, el reverso se aplica y el resultado, el cierre y la evidencia quedan intactos. La consola muestra «Corrección posterior al cierre».
-- **RA-05** — Un técnico, aunque sea el asignado, **no puede** revertir: `403` y la acción no aparece en `allowedActions`. Un supervisor fuera de su sede, tampoco.
-- **RA-06** — Sin motivo, o con un motivo que contenga patrones de PII conocidos, el comando responde `422`.
+- **RA-05** — Un técnico, aunque sea el asignado, **no puede** revertir: `403` y la acción no aparece en `allowedActions`. Un supervisor fuera de su sede, tampoco: recibe `404`, como en los demás comandos de supervisión, porque `assertSupervisionScope` no revela que la OT existe (v1.2).
+- **RA-06** — Sin motivo, o con un motivo que contenga patrones de PII conocidos, el comando responde `400` antes de abrir la transacción, como toda validación de esquema del repositorio (`ZodValidationPipe`). El `422` queda para las reglas de negocio (v1.2).
 - **RA-07** — Una segunda solicitud con un reverso `PENDING` o `CONFIRMED` sobre la misma línea responde `409`. El replay de la misma solicitud es idempotente: un solo movimiento contrario y un solo recibo, también en una **carrera real**.
 - **RA-08** — Los **cuatro** motivos de R7 terminan `REJECTED`, con recibo, sin reintentos y con su copy visible. **Test integrado por motivo**, contra Postgres y Redis reales (norma del CTO del 2026-10-08).
 - **RA-09** — Tras un reverso `CONFIRMED`, el requisito `MATERIAL` que ese consumo satisfacía vuelve a pendiente **en el progreso y en el comando de cierre**. En la OT terminal, el resultado no cambia.
@@ -154,3 +155,15 @@ export interface InventoryReversalRejectedV1 extends EventPayloadBase {
 | S1.3 | Las garantías no se heredan solas | **R5** y RA-11 |
 | S1.4 | Abuso por reversos en cadena | Índice parcial (R3) y original derivado (R9); métrica con alerta, sin cuota dura |
 | U1 | Tabla de copy cerrada | **Adoptada, con dos ajustes que ratifica `prod-ux` en V3:** (a) la frase «Esta línea no admite otra solicitud de reverso» de los tres motivos ya no es cierta con el índice parcial (R3); se propone «Cuando resuelvas la causa, puedes solicitar un nuevo reverso»; (b) falta el copy de `REVERSAL_LOAN_MISMATCH`. Propuesta: «**Qué pasó:** El comodato del equipo no está abierto como se esperaba. **Qué hacer:** Revisa el estado del comodato en el inventario antes de corregir la orden.» |
+
+## 9b. Fe de erratas v1.2 (2026-10-10)
+
+V4-R conservó las expectativas literales de RA-03, RA-05 y RA-06, y fallaron. Lo correcto es que fallaran mientras la spec dijera eso. AI-EM-ARCH revisó el código contra las convenciones vigentes y corrige la spec, no el código:
+
+| Criterio | Decía | Dice | Motivo |
+| --- | --- | --- | --- |
+| RA-03 | Solo se fija `reversedByMovementId` | También cambia `updated_at`, que es metadata técnica | `StockMovement.updatedAt` es `@UpdateDateColumn`. Que refleje el enlace es honesto con la auditoría, y ningún campo de negocio cambia. |
+| RA-05 | Supervisor fuera de sede: implícitamente `403` | `404` | `assertSupervisionScope` responde `404` en los ocho comandos de supervisión, para no revelar que la OT existe. Hacer distinto solo el reverso abriría un oráculo de existencia. |
+| RA-06 | `422` | `400` | El motivo se valida en el esquema (`safeTextField` con `ZodValidationPipe`), que en todo el repositorio responde `400`. El servicio reserva el `422` para las reglas de negocio, como el gate de cierre. |
+
+Es una errata de criterios de aceptación: no cambia ninguna decisión de producto ni el contrato. El CTO puede revertirla; en ese caso se corrige el código con un bloque propio.

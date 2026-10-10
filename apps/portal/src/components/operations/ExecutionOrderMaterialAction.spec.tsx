@@ -17,6 +17,7 @@ import {
 } from '@iwana/shared';
 import type {
   ExecutionOrderAllowedAction,
+  InventoryReversalRejectionReasonCode,
   ExecutionOrderItemUsage,
   ExecutionOrderTemplateVersion,
   ListMeta,
@@ -844,5 +845,209 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
       expect(onRetryItemUsage).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('ExecutionOrderMaterialAction — reverso de consumo', () => {
+  const reversalAllowed = ['REVERSE_ITEM_USAGE'] as ExecutionOrderAllowedAction[];
+  const pendingReversal: NonNullable<ExecutionOrderItemUsage['reversal']> = {
+    status: 'PENDING',
+    requestedAt: '2026-10-10T12:00:00.000Z',
+    rejectionReasonCode: null,
+  };
+  const confirmedReversal: NonNullable<ExecutionOrderItemUsage['reversal']> = {
+    status: 'CONFIRMED',
+    requestedAt: '2026-10-10T12:00:00.000Z',
+    rejectionReasonCode: null,
+  };
+  const rejectedReversal: NonNullable<ExecutionOrderItemUsage['reversal']> = {
+    status: 'REJECTED',
+    requestedAt: '2026-10-10T12:00:00.000Z',
+    rejectionReasonCode: 'REVERSAL_CUSTODY_INACTIVE',
+  };
+
+  it('solo muestra el reverso con permiso, consumo confirmado y sin reverso activo', () => {
+    const allowed = detail({ allowedActions: reversalAllowed });
+    const allowedView = renderDrawer({
+      order: allowed,
+      itemUsage: [usage],
+      onReverseItemUsage: jest.fn(),
+    });
+    expect(screen.getByRole('button', { name: 'Revertir consumo' })).toBeInTheDocument();
+    allowedView.unmount();
+
+    const noPermission = renderDrawer({
+      order: detail({ allowedActions: ['REGISTER_ITEM_USAGE'] }),
+      itemUsage: [usage],
+      onReverseItemUsage: jest.fn(),
+    });
+    expect(screen.queryByRole('button', { name: 'Revertir consumo' })).toBeNull();
+    noPermission.unmount();
+
+    renderDrawer({
+      order: allowed,
+      itemUsage: [{ ...usage, movementStatus: 'PENDING' }],
+      onReverseItemUsage: jest.fn(),
+    });
+    expect(screen.queryByRole('button', { name: 'Revertir consumo' })).toBeNull();
+  });
+
+  it.each([pendingReversal, confirmedReversal])(
+    'no permite una segunda solicitud mientras el reverso está %s',
+    (reversal) => {
+      renderDrawer({
+        order: detail({ allowedActions: reversalAllowed }),
+        itemUsage: [{ ...usage, reversal }],
+        onReverseItemUsage: jest.fn(),
+      });
+      expect(screen.queryByRole('button', { name: 'Revertir consumo' })).toBeNull();
+    },
+  );
+
+  it('vuelve a ofrecer el reverso tras un rechazo y muestra el copy final de U2', () => {
+    renderDrawer({
+      order: detail({ allowedActions: reversalAllowed }),
+      itemUsage: [{ ...usage, reversal: rejectedReversal }],
+      onReverseItemUsage: jest.fn(),
+    });
+
+    expect(screen.getByRole('button', { name: 'Revertir consumo' })).toBeInTheDocument();
+    const rejectionNotice = screen
+      .getByText('No se pudo revertir. Revisa el motivo y sigue la acción indicada.')
+      .closest<HTMLElement>('[role="status"]')!;
+    expect(rejectionNotice).toHaveTextContent(
+      'No se pudo revertir. Revisa el motivo y sigue la acción indicada.',
+    );
+    expect(rejectionNotice).toHaveTextContent(
+      'Qué pasó: La custodia del técnico ya no está activa.',
+    );
+    expect(rejectionNotice).toHaveTextContent(
+      'Qué hacer: Revisa el estado de la custodia y coordina su regularización antes de corregir la orden. Cuando resuelvas la causa, puedes solicitar un nuevo reverso.',
+    );
+    expect(screen.queryByText('REVERSAL_CUSTODY_INACTIVE')).toBeNull();
+  });
+
+  it.each([
+    [
+      'REVERSAL_ASSET_MOVED',
+      'El equipo ya no está en la ubicación donde quedó tras el consumo.',
+      'Verifica su ubicación actual y el movimiento más reciente en el inventario antes de corregir la orden. Cuando resuelvas la causa, puedes solicitar un nuevo reverso.',
+    ],
+    [
+      'REVERSAL_CUSTODY_INACTIVE',
+      'La custodia del técnico ya no está activa.',
+      'Revisa el estado de la custodia y coordina su regularización antes de corregir la orden. Cuando resuelvas la causa, puedes solicitar un nuevo reverso.',
+    ],
+    [
+      'REVERSAL_ORIGINAL_NOT_FOUND',
+      'No encontramos el movimiento de inventario necesario para aplicar el reverso.',
+      'Revisa el historial de inventario. Si el movimiento no aparece, solicita una revisión antes de corregir la orden. Cuando resuelvas la causa, puedes solicitar un nuevo reverso.',
+    ],
+    [
+      'REVERSAL_LOAN_MISMATCH',
+      'El préstamo del equipo al cliente no está abierto como se esperaba.',
+      'Revisa el estado del préstamo en el inventario antes de corregir la orden.',
+    ],
+  ] as const)(
+    'muestra en lenguaje de producto el motivo %s',
+    (reasonCode, whatHappened, nextStep) => {
+      const reversal: NonNullable<ExecutionOrderItemUsage['reversal']> = {
+        status: 'REJECTED',
+        requestedAt: '2026-10-10T12:00:00.000Z',
+        rejectionReasonCode: reasonCode as InventoryReversalRejectionReasonCode,
+      };
+      renderDrawer({
+        order: detail({ allowedActions: reversalAllowed }),
+        itemUsage: [{ ...usage, reversal }],
+        onReverseItemUsage: jest.fn(),
+      });
+
+      const rejectionNotice = screen
+        .getByText('No se pudo revertir. Revisa el motivo y sigue la acción indicada.')
+        .closest<HTMLElement>('[role="status"]')!;
+      expect(rejectionNotice).toHaveTextContent(`Qué pasó: ${whatHappened}`);
+      expect(rejectionNotice).toHaveTextContent(`Qué hacer: ${nextStep}`);
+      expect(screen.queryByText(reasonCode)).toBeNull();
+    },
+  );
+
+  it('abre el diálogo con foco en el motivo y devuelve el foco al disparador al cancelar', async () => {
+    renderDrawer({
+      order: detail({ allowedActions: reversalAllowed }),
+      itemUsage: [usage],
+      onReverseItemUsage: jest.fn(),
+    });
+    const trigger = screen.getByRole('button', { name: 'Revertir consumo' });
+    await userEvent.click(trigger);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Revertir consumo' });
+    const reason = within(dialog).getByRole('textbox', {
+      name: 'Motivo del reverso (obligatorio)',
+    });
+    expect(reason).toHaveFocus();
+    expect(
+      within(dialog).getByText(
+        'Explica por qué solicitas este reverso. No incluyas datos personales.',
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    expect(trigger).toHaveFocus();
+  });
+
+  it('valida el motivo obligatorio y envía texto recortado sin datos personales adicionales', async () => {
+    const onReverseItemUsage = jest.fn().mockResolvedValue(true);
+    renderDrawer({
+      order: detail({ allowedActions: reversalAllowed }),
+      itemUsage: [usage],
+      onReverseItemUsage,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Revertir consumo' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Revertir consumo' });
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar reverso' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Escribe un motivo para continuar.',
+    );
+    expect(onReverseItemUsage).not.toHaveBeenCalled();
+
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: 'Motivo del reverso (obligatorio)' }),
+      '  Corrección operativa  ',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar reverso' }));
+
+    expect(onReverseItemUsage).toHaveBeenCalledWith('iu-001', {
+      reason: 'Corrección operativa',
+    });
+    expect(await screen.queryByRole('dialog', { name: 'Revertir consumo' })).toBeNull();
+  });
+
+  it('anuncia pendiente y confirmado, marca la corrección terminal y el requisito pendiente', () => {
+    const { rerender } = render(
+      <DrawerUnderTest
+        order={detail({ allowedActions: reversalAllowed })}
+        itemUsage={[{ ...usage, reversal: pendingReversal }]}
+      />,
+    );
+    expect(screen.getByText('Reverso pendiente.').closest('[role="status"]')).toHaveTextContent(
+      'Estamos verificando el inventario. No vuelvas a enviar la solicitud; el estado se actualizará cuando recibamos una respuesta.',
+    );
+
+    rerender(
+      <DrawerUnderTest
+        order={detail({
+          status: ExecutionOrderStatus.COMPLETED,
+          allowedActions: [],
+        })}
+        itemUsage={[{ ...usage, reversal: confirmedReversal }]}
+      />,
+    );
+    expect(screen.getByText('Reverso aplicado.').closest('[role="status"]')).toHaveTextContent(
+      'El movimiento contrario quedó registrado en el inventario.',
+    );
+    expect(screen.getByText('Corrección posterior al cierre.')).toBeInTheDocument();
+    expect(screen.getByText('Material pendiente.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revertir consumo' })).toBeNull();
   });
 });

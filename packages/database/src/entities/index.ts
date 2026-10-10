@@ -58,6 +58,7 @@ export { TaskAssignmentHistory } from './task-assignment-history.entity';
 export { ExecutionOrder } from './execution-order.entity';
 export { ExecutionOrderActivity } from './execution-order-activity.entity';
 export { ExecutionOrderItemUsage } from './execution-order-item-usage.entity';
+export { ExecutionOrderItemUsageReversal } from './execution-order-item-usage-reversal.entity';
 export { ExecutionOrderEvidence } from './execution-order-evidence.entity';
 export {
   ExecutionOrderEvidenceUploadIntent,

@@ -6,6 +6,7 @@ import {
   ExecutionOrderEvidence,
   ExecutionOrderEvidenceUploadIntent,
   ExecutionOrderItemUsage,
+  ExecutionOrderItemUsageReversal,
   ExecutionOrderTemplate,
   ExecutionOrderTemplateVersion,
   ExecutionOrderTemplateRequirement,
@@ -60,6 +61,7 @@ import { TasksService } from './services/tasks.service';
       ExecutionOrder,
       ExecutionOrderActivity,
       ExecutionOrderItemUsage,
+      ExecutionOrderItemUsageReversal,
       ExecutionOrderEvidence,
       // Sin este registro la entidad no obtiene metadata bajo autoLoadEntities
       // y POST .../evidence-assets falla con EntityMetadataNotFoundError (500).

@@ -50,7 +50,9 @@ describe('ExecutionOrderInventoryRescanService', () => {
       .mockResolvedValueOnce({ rowCount: 1 }) // increment attempt and timestamp
       .mockResolvedValueOnce({ rowCount: 1 }) // insert new V2 outbox event
       .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // pending reversals
       .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged metric
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged reversal metric
       .mockResolvedValueOnce(undefined); // COMMIT
 
     await expect(service.scanPendingRequests()).resolves.toBe(1);
@@ -129,7 +131,9 @@ describe('ExecutionOrderInventoryRescanService', () => {
       .mockResolvedValueOnce({ rowCount: 1 }) // increment valid row
       .mockResolvedValueOnce({ rowCount: 1 }) // insert valid outbox row
       .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT valid
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // pending reversals
       .mockResolvedValueOnce({ rows: [{ count: '1' }] }) // prolonged metric
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged reversal metric
       .mockResolvedValueOnce(undefined); // COMMIT
 
     await expect(service.scanPendingRequests()).resolves.toBe(1);
@@ -199,7 +203,9 @@ describe('ExecutionOrderInventoryRescanService', () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce({ rowCount: 1 })
       .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // pending reversals
       .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged reversal metric
       .mockResolvedValueOnce(undefined);
 
     await expect(service.scanPendingRequests()).resolves.toBe(0);
@@ -230,5 +236,68 @@ describe('ExecutionOrderInventoryRescanService', () => {
           mockConfig({ INVENTORY_REQUEST_RESCAN_MAX_ATTEMPTS: '0' }),
         ),
     ).toThrow('INVENTORY_REQUEST_RESCAN_MAX_ATTEMPTS debe ser un entero positivo.');
+  });
+
+  it('reemite reversos pendientes sin transportar el motivo en el outbox', async () => {
+    const lookupClient = { query: jest.fn(), release: jest.fn() };
+    const tenantClient = { query: jest.fn(), release: jest.fn() };
+    const service = new ExecutionOrderInventoryRescanService(mockConfig());
+    (service as unknown as { pool: { connect: jest.Mock } }).pool = {
+      connect: jest.fn().mockResolvedValueOnce(lookupClient).mockResolvedValueOnce(tenantClient),
+    } as never;
+    lookupClient.query.mockResolvedValueOnce({
+      rows: [{ id: TENANT_ID, schema_name: 'tenant_test001' }],
+    });
+    tenantClient.query
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce(undefined) // SET LOCAL search_path
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // pending consumption requests
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: '90000000-0000-4000-8000-000000000001',
+            tenant_id: TENANT_ID,
+            execution_order_id: ORDER_ID,
+            aggregate_version: 3,
+            reversal_request_id: '90000000-0000-4000-8000-000000000002',
+            inventory_request_id: REQUEST_ID,
+            stock_movement_id: '90000000-0000-4000-8000-000000000003',
+            technician_custody_id: '60000000-0000-4000-8000-000000000001',
+            requested_by: '80000000-0000-4000-8000-000000000001',
+            request_attempts: 1,
+          },
+        ],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce(undefined) // SAVEPOINT
+      .mockResolvedValueOnce({ rowCount: 1 }) // increment attempt and timestamp
+      .mockResolvedValueOnce({ rowCount: 1 }) // insert reversal outbox event
+      .mockResolvedValueOnce(undefined) // RELEASE SAVEPOINT
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged metric
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // prolonged reversal metric
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    await expect(service.scanPendingRequests()).resolves.toBe(1);
+
+    const selectCall = tenantClient.query.mock.calls.find(([sql]) =>
+      String(sql).includes('FOR UPDATE OF reversal SKIP LOCKED'),
+    );
+    expect(selectCall).toBeDefined();
+    const insertCall = tenantClient.query.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO execution_order_outbox_events'),
+    );
+    expect(insertCall).toBeDefined();
+    const outboxValues = insertCall?.[1] as unknown[];
+    expect(outboxValues[4]).toBe('InventoryConsumptionReversalRequestedV1');
+    const payload = JSON.parse(String(outboxValues[5])) as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      reversalRequestId: '90000000-0000-4000-8000-000000000002',
+      inventoryRequestId: REQUEST_ID,
+      originalStockMovementId: '90000000-0000-4000-8000-000000000003',
+      actorUserId: '80000000-0000-4000-8000-000000000001',
+    });
+    expect(payload).not.toHaveProperty('reason');
+    expect(payload).not.toHaveProperty('reasonText');
+    expect(outboxValues[6]).toBe('90000000-0000-4000-8000-000000000002');
   });
 });
