@@ -8,8 +8,18 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 import { PlatformBrandingProvider } from '@/components/branding/PlatformBrandingProvider';
 
 const exo2 = localFont({
-  src: '../../../../packages/ui/src/styles/fonts/exo2-latin.woff2',
-  weight: '100 800',
+  src: [
+    {
+      path: '../../../../packages/ui/src/styles/fonts/exo2-latin.woff2',
+      weight: '100 800',
+      style: 'normal',
+    },
+    {
+      path: '../../../../packages/ui/src/styles/fonts/exo2-italic-latin.woff2',
+      weight: '100 900',
+      style: 'italic',
+    },
+  ],
   display: 'swap',
   fallback: ['Inter', 'SF Pro Display', 'system-ui', 'sans-serif'],
   variable: '--font-exo-2',

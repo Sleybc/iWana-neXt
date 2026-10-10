@@ -9,8 +9,18 @@ import { SessionRecoveryModal } from '@/components/auth/SessionRecoveryModal';
 import { TenantFavicon } from '@/components/layout/TenantFavicon';
 
 const exo2 = localFont({
-  src: '../../../../packages/ui/src/styles/fonts/exo2-latin.woff2',
-  weight: '100 800',
+  src: [
+    {
+      path: '../../../../packages/ui/src/styles/fonts/exo2-latin.woff2',
+      weight: '100 800',
+      style: 'normal',
+    },
+    {
+      path: '../../../../packages/ui/src/styles/fonts/exo2-italic-latin.woff2',
+      weight: '100 900',
+      style: 'italic',
+    },
+  ],
   display: 'swap',
   variable: '--font-exo-2',
 });
