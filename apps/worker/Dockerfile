@@ -85,6 +85,7 @@ RUN set -eu; \
       /output/tsconfig.typecheck.json /output/tsconfig.test.json \
       /output/jest.config.js /output/jest.integration.config.js /output/Dockerfile; \
     test -f /output/dist/main.js; \
+    test -f /output/dist/worker-healthcheck.js; \
     test ! -e /output/src; \
     test -z "$(find /output -type f \( -name '*.map' -o -name '*.d.ts' \) -print -quit)"
 

@@ -133,6 +133,7 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_DB: ${REDIS_DB:-0}
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?JWT_PRIVATE_KEY is required}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required}
       EXECUTION_ORDER_IDEMPOTENCY_SECRET: ${EXECUTION_ORDER_IDEMPOTENCY_SECRET:?EXECUTION_ORDER_IDEMPOTENCY_SECRET is required}
@@ -329,6 +330,10 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_DB: ${REDIS_DB:-0}
+      WORKER_HEARTBEAT_ENABLED: 'true'
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-10}
+      WORKER_HEARTBEAT_TTL_SECONDS: ${WORKER_HEARTBEAT_TTL_SECONDS:-30}
       OUTBOX_RELAY_LAG_DEGRADED_SECONDS: ${OUTBOX_RELAY_LAG_DEGRADED_SECONDS-}
       OUTBOX_RELAY_LAG_STOPPED_SECONDS: ${OUTBOX_RELAY_LAG_STOPPED_SECONDS-}
       INTERNAL_QUEUE_SIGNING_KEY: ${INTERNAL_QUEUE_SIGNING_KEY:?INTERNAL_QUEUE_SIGNING_KEY is required}
@@ -349,18 +354,12 @@ services:
       TYPESENSE_HOST: ${TYPESENSE_HOST:-typesense}
       TYPESENSE_PORT: ${TYPESENSE_PORT:-8108}
     healthcheck:
-      # DEUDA CONOCIDA: este probe no verifica nada. `process.kill(1, 0)` solo
-      # comprueba que exista el PID 1 dentro del propio contenedor, lo cual es
-      # cierto mientras el contenedor viva: un worker con el loop de BullMQ
-      # colgado reporta `healthy`. Sustituirlo exige un heartbeat emitido por el
-      # proceso (código de aplicación), no una corrección de infraestructura.
-      # Por el mismo motivo este servicio NO lleva `init: true`: cambiaría el
-      # PID 1 a docker-init y volvería el probe todavía menos significativo.
-      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
-      interval: 15s
+      # Lee el latido que el loop de eventos del worker actualiza en Redis.
+      test: ['CMD', 'node', 'dist/worker-healthcheck.js']
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 3
+      start_period: 60s
       start_interval: 3s
     depends_on:
       redis:
@@ -377,6 +376,7 @@ services:
       typesense:
         condition: service_healthy
     restart: unless-stopped
+    init: true
     # BullMQ necesita margen para cerrar los jobs en vuelo al recibir SIGTERM.
     # Con los 10 s por defecto de Docker, un job largo recibía SIGKILL y volvía
     # a la cola como stalled en el siguiente arranque.

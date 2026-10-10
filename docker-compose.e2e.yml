@@ -70,6 +70,9 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       REDIS_DB: ${REDIS_DB:-0}
+      WORKER_HEARTBEAT_ENABLED: 'true'
+      WORKER_HEARTBEAT_INTERVAL_SECONDS: ${WORKER_HEARTBEAT_INTERVAL_SECONDS:-10}
+      WORKER_HEARTBEAT_TTL_SECONDS: ${WORKER_HEARTBEAT_TTL_SECONDS:-30}
       STORAGE_DRIVER: minio
       S3_ENDPOINT: http://minio:9000
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -93,15 +96,12 @@ services:
       typesense:
         condition: service_healthy
     healthcheck:
-      # El worker BullMQ no expone HTTP: el proceso vivo es el healthcheck
-      # operativo aprobado para este consumidor sin puerto de administración.
-      # Misma deuda conocida que `worker-prod`: el probe no distingue un worker
-      # sano de uno con el loop colgado. Ver el comentario en docker-compose.prod.yml.
-      test: ['CMD-SHELL', 'node -e "process.kill(1, 0)"']
+      # El worker no expone HTTP; se lee su señal periódica Redis con TTL.
+      test: ['CMD', 'node', 'dist/worker-healthcheck.js']
       interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 30s
+      retries: 3
+      start_period: 60s
       start_interval: 3s
     logging: *default-logging
     security_opt: *default-security-opt

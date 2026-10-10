@@ -12,4 +12,23 @@ describe('validateWorkerConfiguration', () => {
 
     expect(validateWorkerConfiguration(environment)).toBe(environment);
   });
+
+  it('rechaza un intervalo y TTL incompatibles para el heartbeat', () => {
+    expect(() =>
+      validateWorkerConfiguration({
+        REDIS_PASSWORD: 'test-only-redis-password',
+        WORKER_HEARTBEAT_INTERVAL_SECONDS: '10',
+        WORKER_HEARTBEAT_TTL_SECONDS: '10',
+      }),
+    ).toThrow('WORKER_HEARTBEAT_TTL_SECONDS debe ser al menos el doble del intervalo.');
+  });
+
+  it('rechaza valores ambiguos para habilitar el heartbeat', () => {
+    expect(() =>
+      validateWorkerConfiguration({
+        REDIS_PASSWORD: 'test-only-redis-password',
+        WORKER_HEARTBEAT_ENABLED: 'yes',
+      }),
+    ).toThrow('WORKER_HEARTBEAT_ENABLED debe ser true o false.');
+  });
 });

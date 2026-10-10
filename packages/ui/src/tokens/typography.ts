@@ -1,6 +1,6 @@
 /**
  * Tokens de tipografia del sistema de diseno iWana neXt.
- * Fuente principal: Exo 2 (carga via Google Fonts en globals.css).
+ * Fuente principal: Exo 2, autoalojada por las aplicaciones web.
  */
 export const iwanaTypography = {
   fontFamily: {

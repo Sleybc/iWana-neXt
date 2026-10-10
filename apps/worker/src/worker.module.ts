@@ -49,6 +49,7 @@ import {
   EVIDENCE_ANALYSIS_QUEUE,
 } from './processors/evidence-analysis.processor';
 import { validateWorkerConfiguration } from './worker.config';
+import { WorkerHeartbeatService } from './services/worker-heartbeat.service';
 
 const runtimeEnv = process.env['NODE_ENV'];
 const workerDevelopmentLocalEnvPath = resolve(__dirname, '../../../.env.development.local');
@@ -250,6 +251,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     SearchNavigationCatalogService,
     SearchTypesenseClient,
     SchedulerService,
+    WorkerHeartbeatService,
     ExecutionOrderRelayService,
     ExecutionOrderInventoryRescanService,
     ExecutionOrderEventsProcessor,

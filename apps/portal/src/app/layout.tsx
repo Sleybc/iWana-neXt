@@ -3,20 +3,21 @@ import { Suspense } from 'react';
 import '@iwana/ui/styles/globals.css';
 import './portal-typography.css';
 import { ThemeProvider, THEME_BOOTSTRAP_SCRIPT } from '@iwana/ui';
-import { Exo_2, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { SessionRecoveryModal } from '@/components/auth/SessionRecoveryModal';
 import { TenantFavicon } from '@/components/layout/TenantFavicon';
 
-const exo2 = Exo_2({
-  subsets: ['latin'],
-  weight: ['100', '300', '400', '500', '600', '700'],
+const exo2 = localFont({
+  src: '../../../../packages/ui/src/styles/fonts/exo2-latin.woff2',
+  weight: '100 800',
   display: 'swap',
+  variable: '--font-exo-2',
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
+const jetbrainsMono = localFont({
+  src: '../../../../packages/ui/src/styles/fonts/jetbrains-mono-latin.woff2',
+  weight: '400 500',
   display: 'swap',
   preload: false,
   variable: '--font-jetbrains-mono',
@@ -41,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
       </head>
-      <body className={`${exo2.className} ${jetbrainsMono.variable} antialiased`}>
+      <body className={`${exo2.className} ${exo2.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider>
           <Suspense fallback={null}>
             <AuthProvider>

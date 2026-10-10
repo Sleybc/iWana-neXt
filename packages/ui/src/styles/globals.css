@@ -1,9 +1,7 @@
 /* globals.css — Sistema de diseno iWana neXt */
 /* Tailwind 4 CSS-first: sin tailwind.config.js */
 
-/* Tipografia: Exo 2 (display/UI) + JetBrains Mono (codigo) */
-/* Pesos: 100 Thin, 300 Light, 400 Regular, 500 Medium, 600 SemiBold, 700 Bold — segun manual identidad iWana */
-@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100;0,300;0,400;0,500;0,600;0,700;1,100;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Tipografía Exo 2 + JetBrains Mono cargada localmente por cada aplicación. */
 
 /* Tailwind 4 — activacion CSS-first */
 @import 'tailwindcss';
@@ -26,10 +24,6 @@
    ================================================================ */
 @theme {
   /* Tipografia — Exo 2 Bold/Thin segun Manual Identidad Corporativa iWana */
-  --font-sans: 'Exo 2', 'SF Pro Display', system-ui, sans-serif;
-  --font-display: 'Exo 2', sans-serif;
-  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', monospace;
-
   /* Color primario — Azul Noche iWana (escala oficial Manual de Identidad) */
   --color-iwana-primary: #17163a;
   --color-iwana-primary-50: #f8f8fb;
@@ -194,11 +188,17 @@
   --color-veil: rgb(0 0 0 / 45%);
 }
 
+@theme inline {
+  --font-sans: var(--font-exo-2), 'SF Pro Display', system-ui, sans-serif;
+  --font-display: var(--font-exo-2), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Fira Code', monospace;
+}
+
 /* ================================================================
    Estilos base
    ================================================================ */
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-exo-2), 'SF Pro Display', system-ui, sans-serif;
   color: var(--color-iwana-primary);
   background-color: #ffffff;
 }
