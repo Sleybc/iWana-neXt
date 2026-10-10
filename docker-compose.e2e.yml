@@ -103,6 +103,7 @@ services:
       retries: 3
       start_period: 60s
       start_interval: 3s
+    init: true
     logging: *default-logging
     security_opt: *default-security-opt
     cap_drop: *default-cap-drop
