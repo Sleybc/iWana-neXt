@@ -3,7 +3,7 @@
 // Se monta el drawer completo para que el slot reciba el sobre real (`order`,
 // `requirement`, `action`, `context`); lo que el hook de custodia carga bajo
 // demanda llega aquí por las props del contexto, tal como lo entrega el adaptador.
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS,
@@ -984,7 +984,7 @@ describe('ExecutionOrderMaterialAction — reverso de consumo', () => {
     const reason = within(dialog).getByRole('textbox', {
       name: 'Motivo del reverso (obligatorio)',
     });
-    expect(reason).toHaveFocus();
+    await waitFor(() => expect(reason).toHaveFocus());
     expect(
       within(dialog).getByText(
         'Explica por qué solicitas este reverso. No incluyas datos personales.',
