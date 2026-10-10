@@ -1,7 +1,9 @@
 # Plan de orquestación — MOD11 ↔ MOD12: el consumo de una OT mueve el inventario
 
 **Versión:** 1.4
-**Estado:** **G6 GO** y **G6.5 GO (2026-10-09, `72d367a3`) para el alcance del consumo**; ver §5. El estado G7 compartido está en el [plan del reverso v1.6](2026-10-09-mod11-mod12-reverso-consumo-ot.md): V5-R está ratificado, el gate p95 ≤ 1,5 s fue aprobado y sigue sin poder medirse porque no hay staging configurado. El heartbeat del worker ya comprueba sus consumidores BullMQ. G6.5 del cambio que lo reforzó pasó sus gates bloqueantes de CI en `91c1f5e9` (`38070902801`) y el smoke web en `38070902780`; el conteo E2E informativo seguía en curso.
+**Estado:** **Cerrado en construcción (ADR-080 §5):** G6 GO y G6.5 GO (`72d367a3`; el reverso, en `209bcb39`). **G7 diferido por el CTO el 2026-10-10.**
+
+> **G7 DIFERIDO POR EL CTO (2026-10-10). No trabajar en G7 hasta que el CTO lo vuelva a pedir.** No hay que provisionar un host, medir el p95 compartido, configurar alertas ni redactar encargos de staging. El módulo está **cerrado en construcción** (ADR-080 §5). Detalle en el registro del plan del reverso.
 **Cambio v1.3 → v1.4 (2026-10-10):** enlaza el plan del reverso v1.6 y el informe B4 v1.1, que cierran formalmente la evidencia del monitor del worker y conservan los pendientes de G7.
 **Cambio v1.2 → v1.3 (2026-10-10):** actualiza el SHA de seguimiento de G6.5 tras corregir en el spec portal la carrera de foco detectada por CI; enlaza la recomendación de staging y alerta del plan del reverso v1.5.
 **Cambio v1.1 → v1.2 (2026-10-10):** actualiza el seguimiento de G7 después de la ratificación formal V5-R, el cierre del monitor B4 y la aprobación del umbral R2; registra que el entorno compartido aún no existe.
