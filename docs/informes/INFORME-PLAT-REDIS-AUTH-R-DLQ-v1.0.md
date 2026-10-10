@@ -1,10 +1,11 @@
 # Informe R-DLQ — Retención y saneamiento de la DLQ genérica
 
 **Versión:** 1.0
-**Estado:** En revisión por `sec-eng`
+**Estado:** Aceptado por `sec-eng` — **GO** para §8.5 en `72d367a3bea79a0f9f3e3932ef6f983f740ec803`
 **Fecha:** 2026-10-09
 **Agente:** `sr-backend`
-**Commit:** no realizado
+**SHA del bloque R-DLQ validado:** `72d367a3bea79a0f9f3e3932ef6f983f740ec803`
+**Actualización documental:** 2026-10-10; sin commit, según el encargo.
 
 ## Alcance
 
@@ -37,4 +38,8 @@ Cierre técnico de la deuda §8.5 señalada en [la reauditoría S3](INFORME-PLAT
 
 La pasada inicial se ejecutó sobre la cola genérica de `iwana_redis_dev`, sin imprimir claves ni `data`: `removed=0`, `legacy_envelope_jobs=0`. Tras incorporar la recuperación v2, repetí la pasada sobre esa misma cola: `marker=present`, `removed=0`, `legacy_envelope_jobs=0` y `stale_generic_retention_jobs=0`. No se imprimieron claves ni contenido de jobs. El marcador global se escribe solo después de completar el barrido.
 
-No se accedió a Redis de producción. En cada namespace donde no exista el marcador v2, el primer arranque del worker actualizado ejecutará su barrido antes de registrar workers. La reinspección S3 solicitada para §8.5 se documenta en la respuesta de cierre y queda sujeta al SHA validado por CI.
+No se accedió a Redis de producción. En cada namespace donde no exista el marcador v2, el primer arranque del worker actualizado ejecutará su barrido antes de registrar workers.
+
+## Dictamen de sec-eng
+
+La reauditoría estática de §8.5 dio **GO** sobre el SHA `72d367a3bea79a0f9f3e3932ef6f983f740ec803`; la CI de ese SHA terminó en `success`. El dictamen y sus referencias al código están en [INFORME-PLAT-REDIS-AUTH-ADR074-S3-SEC-ENG-v1.1.md](INFORME-PLAT-REDIS-AUTH-ADR074-S3-SEC-ENG-v1.1.md). No se accedió a Redis de producción.
