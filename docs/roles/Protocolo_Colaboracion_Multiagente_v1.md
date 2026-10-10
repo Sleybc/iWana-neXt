@@ -1,6 +1,6 @@
 # Protocolo de Colaboración Multiagente — iWana neXt Platform
 
-**Versión:** 1.6
+**Versión:** 1.7
 **Estado:** Vigente (aprobado por ADR-049, 2026-07-10; v1.2 aprobada por CTO, 2026-07-12; v1.3 aprobada por CTO, 2026-07-18; v1.4, 2026-08-02 — auditoría del protocolo, ver [informe](../informes/INFORME-ROLES-AUDITORIA-PROTOCOLO-v1.0.md); **v1.5, 2026-08-02** — incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día; **v1.6, 2026-10-09** — categoría de **verificadores auxiliares**, ver §1 y §9)
 **Fecha:** 2026-10-09
 **Nombre de archivo:** el sufijo `_v1` es histórico y **no indica la versión del contenido**; la versión vigente es la de esta cabecera. No se renombra para no romper ~40 enlaces entrantes.
@@ -9,6 +9,7 @@
 **Cambio v1.2 → v1.3 (auditoría integral):** incorpora **AI-PLAT-OPS** (Platform/DevOps, on-demand) y los roles humanos externos (Legal/regulatorio) a la estructura; añade la doctrina *gobernanza vs modo de sesión*; cierra la auto-aprobación de G1 (review cruzado); suma FE-PLATFORM (y PLAT-OPS si aplica) a la etapa 3; define el **artefacto y el evento de congelación** de los contratos del §3bis; aclara el desempate con Responsible múltiple; reexpresa los SLAs en unidades de sesión; añade los reportes de QA/SEC-ENG a la cadencia §8; y corrige la RACI de datos (DATA-ENG R on-demand en modelo/migraciones de su dominio).
 **Cambio v1.3 → v1.4 (auditoría del protocolo):** regulariza la modificación del 2026-07-27 aplicada sin bump (§3bis regla 4); corrige la enumeración de handoff de §3, que declaraba cerrada una lista sin `docs/hlds/` ni `docs/adrs/` — artefactos de su propia etapa 1; reancla la regla de completitud a **ADR-022**; alinea §4 con los *Gates Before Merge* de `AGENTS.md` (faltaban lint y typecheck) y mapea cada gate a su **comando verificable**; unifica la Estrella Polar en los tres dominios de ADR-056 §3 también en la RACI; añade **§6.3 Vocabulario de marcadores** como fuente única de `[BLOQUEO]` / `[CONSULTA]` / `[DESEMPATE]` / `[ESCALACION AL CTO]`; corrige la cadencia §8 a la unidad **fase/módulo**; declara la capa de subagentes; y corrige "cuatro tracks" (§3bis lista cinco).
 **Cambio v1.4 → v1.5:** incorpora **G6.5 — merge readiness** ([ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), Aprobado 2026-08-02) al workflow §3, que pasa de 7 a **8 gates** sin cambiar sus 7 etapas; añade la **definition of ready** de las dos entradas donde nace el retrabajo tardío (etapas 2 y 5); y suma la fila *Documentación y trazabilidad* a la RACI §2.
+**Cambio v1.6 → v1.7 (2026-10-09):** alta de dos verificadores auxiliares más, con la regla de §9: **AI-CONTRACT-REV** (deriva de contratos de `packages/shared` hacia productores, consumidores, proyecciones y portal; solo lectura) y **AI-E2E-TRIAGE** (clasificación de fallos E2E en regresión, flaky o entorno; sin edición). Perfil, fila en *Verificadores auxiliares*, mención en §1, subagente y registro en el [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md) §11. Sin cambios en la RACI ni en la red de consulta.
 **Cambio v1.5 → v1.6:** crea la categoría **verificadores auxiliares** (AI-BOUNDARY-REV, AI-GATE-VERIFIER, AI-DOCS-GOV): tienen perfil y subagente, pero **no son roles de la RACI ni destinos de escalación** — verifican y reportan al agente que los invoca. Se añaden al cuadro de perfiles, a la estructura §1 y a una regla propia en §9; la RACI §2, la matriz de consulta §6.1 y la cadencia §8 no cambian (decisión del usuario titular del repositorio, 2026-10-09).
 **Clasificación:** Estratégico — Confidencial
 **Alcance:** Define la matriz RACI, el workflow de colaboración, los artefactos de handoff, el **vocabulario de marcadores** y los gates de aprobación entre los agentes IA del proyecto. Es la **fuente única** de estas definiciones: los perfiles individuales la referencian y no la duplican.
@@ -34,12 +35,14 @@
 | AI-BOUNDARY-REV | Boundaries del Modulith y tenancy (solo lectura) | [Perfil_IA_Verificador_Boundaries_v1.md](Perfil_IA_Verificador_Boundaries_v1.md) |
 | AI-GATE-VERIFIER | Gates de merge con evidencia real | [Perfil_IA_Verificador_Gates_v1.md](Perfil_IA_Verificador_Gates_v1.md) |
 | AI-DOCS-GOV | Gobernanza documental (solo lectura) | [Perfil_IA_Auditor_Gobernanza_Documental_v1.md](Perfil_IA_Auditor_Gobernanza_Documental_v1.md) |
+| AI-CONTRACT-REV | Deriva de contratos compartidos (solo lectura) | [Perfil_IA_Revisor_Contratos_v1.md](Perfil_IA_Revisor_Contratos_v1.md) |
+| AI-E2E-TRIAGE | Triaje de fallos E2E (sin edición) | [Perfil_IA_Triador_E2E_v1.md](Perfil_IA_Triador_E2E_v1.md) |
 
 > **Sucesión:** `AI-SR-UI-SYS` (Perfil v2) queda como referencia histórica al aprobarse este split; sus responsabilidades se reparten entre `AI-PROD-UX` (experiencia) y `AI-DS-OWNER` (contrato). `AI-SR-FULL` v2 conserva el backend y cede el frontend a `AI-FE-PLATFORM`.
 
 **Precedencia:** este protocolo se subordina a `AGENTS.md`, al CTO humano, a los ADRs aprobados y al PRD vigente. Complementa (no reemplaza) la precedencia documental declarada en cada perfil.
 
-**Operacionalización:** los perfiles definen el rol; su ejecución concreta vive en `.claude/agents/*.md` — **8 subagentes**, uno por perfil ejecutor, más **3 subagentes de verificadores auxiliares** (`boundary-reviewer`, `gate-verifier`, `docs-governance`). AI-EM-ARCH **no es subagente**: es el modo Orquestador del agente padre, activable con [PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md). `.opencode/agents/` y `.codex/agents/` son **generados** por `pnpm sync:agents` y verificados en CI por `pnpm sync:agents:check`; no se editan a mano (`AGENTS.md` → Superficies activas).
+**Operacionalización:** los perfiles definen el rol; su ejecución concreta vive en `.claude/agents/*.md` — **8 subagentes**, uno por perfil ejecutor, más **5 subagentes de verificadores auxiliares** (`boundary-reviewer`, `gate-verifier`, `docs-governance`, `contract-drift-reviewer`, `e2e-triage`). AI-EM-ARCH **no es subagente**: es el modo Orquestador del agente padre, activable con [PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md). `.opencode/agents/` y `.codex/agents/` son **generados** por `pnpm sync:agents` y verificados en CI por `pnpm sync:agents:check`; no se editan a mano (`AGENTS.md` → Superficies activas).
 
 ---
 
@@ -64,7 +67,8 @@ CTO Humano (decisión estratégica, presupuesto, ADRs, excepciones)
 
 Verificadores auxiliares (fuera de la jerarquía de decisión; los invoca cualquier agente)
   AI-BOUNDARY-REV (boundaries + tenancy) · AI-GATE-VERIFIER (gates de merge)
-  AI-DOCS-GOV (gobernanza documental)
+  AI-DOCS-GOV (gobernanza documental) · AI-CONTRACT-REV (deriva de contratos)
+  AI-E2E-TRIAGE (triaje de fallos E2E)
 ```
 
 **Roles que no existen en esta estructura no son destinos de escalación.** Un perfil que necesite escalar algo sin dueño aquí lo escala a AI-EM-ARCH, quien lo resuelve o lo sube al CTO. (Corrige los destinos fantasma "Staff Engineer" y "Architect de Datos" que arrastraban los perfiles v1.)

@@ -1,7 +1,7 @@
 {
-  "version": "1.5",
+  "version": "1.6",
   "status": "approved",
-  "date": "2026-10-08",
+  "date": "2026-10-09",
   "governance": {
     "precedence": [
       "AGENTS.md",
@@ -13,7 +13,7 @@
     "archiveDirectory": null
   },
   "summary": {
-    "coreCount": 49,
+    "coreCount": 51,
     "archivedItemCount": 0,
     "archivedDirectoryCount": 0,
     "archivedLegacyFileCount": 0,
@@ -77,7 +77,9 @@
       "skill-creator",
       "iwana-tenant-migration",
       "iwana-test-evidence",
-      "iwana-cierre-fase"
+      "iwana-cierre-fase",
+      "iwana-matriz-motivos",
+      "iwana-queue-inspect"
     ]
   },
   "core": {
@@ -95,10 +97,11 @@
       "bullmq-specialist",
       "database-migration",
       "docker-expert",
+      "iwana-queue-inspect",
       "iwana-tenant-migration",
       "nestjs-expert",
-      "openapi-spec-generation",
       "observability-engineer",
+      "openapi-spec-generation",
       "postgresql",
       "security-auditor",
       "typescript-expert",
@@ -119,6 +122,7 @@
     ],
     "testing": [
       "e2e-testing-patterns",
+      "iwana-matriz-motivos",
       "iwana-test-evidence",
       "playwright-skill",
       "test-driven-development",

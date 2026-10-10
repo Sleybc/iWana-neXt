@@ -10,8 +10,8 @@ const RULES = [
   [/(^|\/)\.env(?!.*\.example$)[^/]*$/, 'los .env reales se editan a mano; usa .env.example'],
   [/(^|\/)secrets\//, 'secrets/ no se edita desde Claude'],
   [
-    /(^|\/)\.claude\/mcp-postgres\.local\.env$/,
-    'credencial local: la genera pnpm db:dev:readonly-role',
+    /(^|\/)\.claude\/mcp-[a-z]+\.local\.env$/,
+    'credencial local: la generan pnpm db:dev:readonly-role y pnpm dev:redis-readonly-user',
   ],
   [/(^|\/)pnpm-lock\.yaml$/, 'el lockfile solo cambia con pnpm install/add'],
   [

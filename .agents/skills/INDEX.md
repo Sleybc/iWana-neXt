@@ -1,8 +1,10 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.5
+**Version:** 1.6
 **Estado:** Aprobado
-**Fecha:** 2026-10-08
+**Fecha:** 2026-10-09
+
+**Cambio v1.5 → v1.6 (2026-10-09):** alta de dos skills propias del repo (segunda pasada de `claude-code-setup`): `iwana-matriz-motivos` (testing; matriz motivo de rechazo → test integrado con conteo real para encargos MOD11↔MOD12, norma del CTO del 2026-10-08; se apoya en `iwana-test-evidence`) e `iwana-queue-inspect` (backend; inspeccion de solo lectura de las colas BullMQ de Redis dev, via el MCP `redis-dev` o `redis-cli`; complementa a `bullmq-specialist`, que es de patrones). `coreCount` pasa de 49 a 51. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`.
 
 **Cambio v1.4 → v1.5 (2026-10-08):** alta de tres skills propias del repo, por la politica de admision estricta: `iwana-tenant-migration` (backend; complementa a `database-migration`, que es generica, con las convenciones de `runner.ts` y `TENANT_MIGRATIONS`), `iwana-test-evidence` (testing; complementa a `verification-before-completion` con las trampas de cache de Turbo, `--passWithNoTests` e integracion en skip) e `iwana-cierre-fase` (flujo de trabajo; empaqueta INFORME + plan con matriz de dispatch + launcher de 40 lineas). Las tres son especializadas por necesidad y no reemplazan a ninguna activa. `coreCount` pasa de 46 a 49. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`.
 
@@ -77,6 +79,8 @@ Estados admitidos:
 - iwana-tenant-migration
 - iwana-test-evidence
 - iwana-cierre-fase
+- iwana-matriz-motivos
+- iwana-queue-inspect
 
 ### Arquitectura y gobierno
 
@@ -94,6 +98,7 @@ Estados admitidos:
 - bullmq-specialist
 - database-migration
 - docker-expert
+- iwana-queue-inspect
 - iwana-tenant-migration
 - nestjs-expert
 - openapi-spec-generation
@@ -120,6 +125,7 @@ Estados admitidos:
 ### Testing
 
 - e2e-testing-patterns
+- iwana-matriz-motivos
 - iwana-test-evidence
 - playwright-skill
 - test-driven-development

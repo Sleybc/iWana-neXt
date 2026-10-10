@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.5
+**Version:** 1.6
 **Estado:** Aprobado
-**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; ver change-log)
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -734,3 +734,18 @@ Claude Code solo expone como `/comando` los skills de `.claude/skills/`; estos t
 ### Estado posterior
 
 Catalogo activo: **49 skills core**, 0 candidatas, 6 revisadas archivadas, 3 en hold, 1 dada de baja.
+
+## Actualizacion 2026-10-09 — Alta de dos skills propias mas (49 -> 51)
+
+**Modo activo:** ejecutor · **Autor:** Claude Code · **Origen:** segunda pasada de `claude-code-setup`, aprobada por el usuario el 2026-10-09
+
+| Skill | Dominio | Caso de uso recurrente y verificable | Relacion con el catalogo |
+| --- | --- | --- | --- |
+| `iwana-matriz-motivos` | testing | Norma del CTO (2026-10-08): todo encargo MOD11↔MOD12 exige un test integrado por motivo de rechazo, con conteo real; la matriz se armaba a mano en cada G4 | Se apoya en `iwana-test-evidence`; el hook `rejection-reason-coverage` cubre solo la presencia |
+| `iwana-queue-inspect` | backend | 13 colas BullMQ (relay, eventos, DLQ, tombstone, recibos de inventario); no habia forma de leer su estado sin tocar Redis a mano | Complementa a `bullmq-specialist` (patrones); usa el MCP `redis-dev` de solo lectura |
+
+**Archivos:** las dos `SKILL.md` nuevas; `INDEX.md` y `MANIFEST.json` v1.5 -> **v1.6** (altas en `core.testing`, `core.backend` y `usagePriority.specializedOnDemand`; `summary.coreCount` 49 -> **51**); `README.md` v1.6; punteros en `.claude/skills/` generados por `pnpm sync:skills`.
+
+**Verificacion:** skills unicas en `MANIFEST.core`: **51** · directorios con `SKILL.md`: **51** · `summary.coreCount`: **51** · divergencias: **ninguna** · `pnpm sync:skills:check` OK (51 punteros). Claude Code listo las dos como `/comando` en la misma sesion.
+
+**Estado posterior:** catalogo activo de **51 skills core**.

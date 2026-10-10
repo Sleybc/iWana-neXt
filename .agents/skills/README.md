@@ -1,8 +1,8 @@
 # Skills activas de iWana neXt
 
-**Version:** 1.5  
-**Estado:** Aprobado  
-**Fecha:** 2026-10-08
+- **Version:** 1.6
+- **Estado:** Aprobado
+- **Fecha:** 2026-10-09
 
 Este directorio contiene el catalogo activo de skills del proyecto. La fuente maestra de gobernanza es `AGENTS.md`; el indice operativo del catalogo es `.agents/skills/INDEX.md`.
 

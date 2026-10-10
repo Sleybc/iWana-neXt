@@ -21,6 +21,19 @@
         "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
         "--access-mode=restricted"
       ]
+    },
+    "redis-dev": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "container:iwana_redis_dev",
+        "--env-file",
+        ".claude/mcp-redis.local.env",
+        "mcp/redis@sha256:e886a7e9990a084a20d46adcea8e7c89d539271f1b453ffabdce4c3f96f27fa0"
+      ]
     }
   }
 }

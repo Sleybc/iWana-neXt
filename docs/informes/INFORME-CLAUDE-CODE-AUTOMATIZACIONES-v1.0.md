@@ -1,9 +1,9 @@
 # INFORME — Automatizaciones de Claude Code
 
 **Modo activo:** ejecutor
-**Version:** 1.1
+**Version:** 1.3
 **Estado:** Vigente
-**Fecha:** 2026-10-08 (**v1.1: 2026-10-09 — cierre de las cinco decisiones abiertas**, ver §9)
+**Fecha:** 2026-10-08 (**v1.1: 2026-10-09 — cierre de las cinco decisiones abiertas**, ver §9; **v1.2: 2026-10-09 — segunda pasada: decisiones de guard-bash, Redis, tests de hooks y commit**, ver §10; **v1.3: 2026-10-09 — segunda ola implementada y diagnóstico de CI**, ver §11)
 **Origen:** analisis `claude-code-setup` (`claude-automation-recommender`) del 2026-10-08; implementacion aprobada por el usuario con 15 recomendaciones.
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
@@ -194,3 +194,89 @@ Aprobado. La autorización OAuth la hace el usuario en la configuración de cone
 | Rol y servidor MCP | §9.1 |
 | `audit:doc-locations` · `audit:adr-citations` | 0 bloqueantes; avisos sin variación (3 preexistentes en `.playwright-mcp/`; 142 con 77 ADR indexados) |
 | Prettier sobre todo lo nuevo o generado | Sin cambios pendientes |
+
+## 10. Actualizacion 2026-10-09 (v1.2) — Segunda pasada de `claude-code-setup`
+
+La segunda pasada confirmó implementadas 14 de las 15 recomendaciones (falta autorizar el conector GitHub) y propuso una segunda ola de 9. Tabla interactiva: artefacto «Automatizaciones iWana neXt». Respuestas del usuario a las cuatro decisiones abiertas: 1 «comprueba» · 2, 3 y 4 «sí».
+
+### 10.1 Commit de la primera ola (decisión 4)
+
+`2dbec9c6 chore(ia): hooks, skills, MCP y verificadores de Claude Code (ADR-092)`: 93 archivos, solo superficies IA, separado de la ola MOD11-MOD12 y del trabajo de ADR-074 (P2). lint-staged y commitlint en verde.
+
+### 10.2 `guard-bash` y comportamiento de `ask` (decisión 1)
+
+Prueba en vivo en esta sesión, en modo bypassPermissions, con sondas `echo` inofensivas: `deny` bloqueó el comando; `ask` lo dejó pasar **sin mostrar confirmación** (confirmado por el usuario). Conclusión: un `ask` no protege en bypassPermissions. `guard-bash` niega todo lo que casa y, para lo destructivo pero legítimo, el motivo indica que lo ejecute el usuario en su terminal.
+
+| Niega | Motivo |
+| --- | --- |
+| `git checkout -b`, `switch -c`, `worktree add`, `git branch <nombre>` | Se trabaja siempre en `main` |
+| `--no-verify` | No se saltan husky ni commitlint |
+| `>`, `>>`, `tee`, `cp`, `mv` hacia `.env` reales, `secrets/`, lockfile, `.mcp.json`, `.claude/skills/`, `mcp-*.local.env` | Rutas de `guard-paths` |
+| `push --force`, `reset --hard`, `clean -f`, `compose down -v`, `volume rm`, `migration(:tenant):revert`, `db:restore` | Destructivo; lo ejecuta el usuario |
+
+Falso positivo corregido el mismo día: el primer intento de escribir esta sección con un heredoc fue bloqueado porque la tabla menciona `git checkout -b`. El hook ahora descarta el cuerpo de los heredocs (texto, no comandos) y conserva la línea que los abre, así que `cat <<EOF > .env` sigue negado. Los patrones son una red, no una frontera de seguridad: un comando ofuscado puede evadirlos.
+
+### 10.3 MCP `redis-dev` de solo lectura (decisión 2)
+
+| Pieza | Detalle |
+| --- | --- |
+| `scripts/db/dev-redis-readonly-user.mjs` (`pnpm dev:redis-readonly-user`) | Fail-closed: fuera de `NODE_ENV=production` y contenedor `*_dev`. Crea `iwana_readonly` con `reset on ~bull:* resetchannels -@all +@read` más los comandos de conexión del cliente. Autentica como admin con `REDIS_PASSWORD` (exigida tras el ajuste de P2 a ADR-074). Las claves entran por stdin a `redis-cli`, nunca en argv. Se autoverifica: `PING` → `PONG` y `SET bull:…` → `NOPERM`. |
+| `.claude/mcp-redis.local.env` | Credencial local, ignorada por git y bloqueada por `guard-paths` y `guard-bash`. |
+| `.agents/mcp/servers.json` → `redis-dev` | `mcp/redis` fijada por digest `sha256:e886a7e9…`, red del contenedor `iwana_redis_dev`, `--env-file`. |
+
+**Evidencia:** creación y re-ejecución idempotente en `iwana_redis_dev`. Servidor lanzado con el comando exacto: `initialize` → Redis MCP Server 1.26.0; `tools/list` → 53 herramientas (incluye escrituras); `dbsize` responde; `set` → «no permissions to run the 'set' command». La barrera es el ACL del servidor, no el MCP.
+
+**Dependencia con P2 (ADR-074):** el usuario ACL vive en memoria. Cuando P2 recree `iwana_redis_dev` con `--requirepass`, hay que re-ejecutar `pnpm dev:redis-readonly-user` con `REDIS_PASSWORD` en `.env`. Claude Code conecta `redis-dev` al reiniciar la sesión.
+
+### 10.4 Tests de los hooks (decisión 3)
+
+`scripts/claude-hooks.test.mjs`, incluido en `test:tooling`: caja negra por stdin, con fixtures en un directorio temporal para los hooks que leen el repo o ejecutan scripts (`tenant-migration-gate`, `format-file`, `sync-surfaces`, `doc-audits` con un repo git temporal). 7 tests: `guard-paths`, `guard-bash` (deny, pass y heredocs), `tenant-migration-gate`, `format-file`, `sync-surfaces` y `doc-audits`. `sync-surfaces.test.mjs` suma 2 tests del script de Redis.
+
+### 10.5 Verificación de v1.2
+
+| Prueba | Resultado |
+| --- | --- |
+| `pnpm test:tooling` | 143 tests, 143 pass, 0 fail, 0 skipped |
+| `sync:agents:check` · `sync:skills:check` · `sync:mcp:check` | OK · OK · 4 servidores → `.mcp.json`, 6 → `opencode.json` |
+| `guard-bash` en vivo | `deny` bloquea; `ask` no pregunta en bypassPermissions (§10.2); heredoc con texto prohibido pasa |
+| `redis-dev` | §10.3 |
+
+### 10.6 Pendiente
+
+- Autorizar el conector GitHub (usuario, claude.ai).
+- Segunda ola sin implementar: `rejection-reason-coverage`, `pii-log-guard`, `session-context`, `iwana-matriz-motivos`, `iwana-queue-inspect`, `contract-drift-reviewer`, `e2e-triage`.
+- Los cambios de v1.2 quedan sin commitear: `package.json` y `.gitignore` comparten árbol con P2 de ADR-074, en curso.
+
+## 11. Actualizacion 2026-10-09 (v1.3) — Segunda ola implementada
+
+Aprobada por el usuario a partir de la selección de la tabla interactiva (7 de las 8 piezas; el conector GitHub depende de él).
+
+| Pieza | Tipo | Ubicación | Evidencia |
+| --- | --- | --- | --- |
+| `rejection-reason-coverage` | Hook PostToolUse | `.claude/hooks/rejection-reason-coverage.mjs` | Test: bloquea si un motivo no tiene spec integrada (también cuenta una spec sin commitear) y pasa al completarla. Contra el repo real: exit 0 (4 de 4 motivos cubiertos). |
+| `pii-log-guard` | Hook PostToolUse | `.claude/hooks/pii-log-guard.mjs` | Test: bloquea `${subscriber.email}` en un log; deja pasar `${expediente.id}`, specs y archivos fuera de `apps/api` y `apps/worker`. Barrido de todos los `.ts` de `apps/api` y `apps/worker`: 0 avisos. |
+| `session-context` | Hook SessionStart | `.claude/hooks/session-context.mjs` | Test con repo temporal y fuera de un repo (nunca falla). En el repo real: rama, commits por delante de origin, 70 rutas sin commitear y plan más reciente. |
+| `iwana-matriz-motivos` | Skill | `.agents/skills/iwana-matriz-motivos/SKILL.md` | Registrada en INDEX v1.6 y MANIFEST v1.6; visible como `/comando`. |
+| `iwana-queue-inspect` | Skill | `.agents/skills/iwana-queue-inspect/SKILL.md` | Ídem; usa el MCP `redis-dev` o `redis-cli` con la contraseña por stdin (ADR-074). |
+| `contract-drift-reviewer` | Subagente | `.claude/agents/contract-drift-reviewer.md` + perfil `Perfil_IA_Revisor_Contratos_v1.md` (AI-CONTRACT-REV) | Alta en un acto según protocolo §9 (v1.7) e informe de roles §11. |
+| `e2e-triage` | Subagente | `.claude/agents/e2e-triage.md` + perfil `Perfil_IA_Triador_E2E_v1.md` (AI-E2E-TRIAGE) | Ídem. |
+
+### 11.1 Conector GitHub
+
+`plugin:engineering:github` sigue en `needs_auth` en esta sesión. La CLI `gh` sí está autenticada (cuenta `Sleybc`, permisos `repo`, `workflow`, `read:org`) y se usó para leer CI.
+
+### 11.2 Diagnóstico de CI (run 37919521519, commit `1af90dd8`)
+
+CI de `main` falla desde el 2026-10-06 en tres commits seguidos. Dos causas independientes, ninguna de las superficies IA:
+
+1. **Unit tests (`@iwana/api`): 4 suites, 8 tests.** `6ed0b845` volvió obligatoria `INTERNAL_QUEUE_SIGNING_KEY` en producción y las specs `app.config.production-urls`, `app.config.bootstrap-credential`, `app.module.config` y `app.config.cookie-secure` no la incluyen en su entorno de producción simulado. El árbol de trabajo (P2 de ADR-074, sin commitear) ya las corrige: en local, 4 suites y 58 tests en verde.
+2. **E2E operativo R4.1: falla al arrancar.** `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` y `quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z` ya no existen en el registro (`docker manifest inspect` → *no such manifest*; en CI, *unauthorized*). En local funciona solo porque las imágenes están en caché. Requiere decisión de `plat-ops`: fuente alternativa de MinIO o imagen propia.
+
+### 11.3 Verificación de v1.3
+
+| Prueba | Resultado |
+| --- | --- |
+| `pnpm test:tooling` | 146 tests, 146 pass, 0 fail, 0 skipped |
+| `scripts/claude-hooks.test.mjs` | 10 tests, 10 pass |
+| `sync:agents:check` · `sync:skills:check` · `sync:mcp:check` | 13 agentes · 51 skills · 4 + 6 servidores, todos OK |
+| Catálogo de skills | 51 en `core` = 51 directorios = `coreCount` |

@@ -43,6 +43,21 @@
         "--access-mode=restricted"
       ],
       "enabled": true
+    },
+    "redis-dev": {
+      "type": "local",
+      "command": [
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "container:iwana_redis_dev",
+        "--env-file",
+        ".claude/mcp-redis.local.env",
+        "mcp/redis@sha256:e886a7e9990a084a20d46adcea8e7c89d539271f1b453ffabdce4c3f96f27fa0"
+      ],
+      "enabled": true
     }
   }
 }

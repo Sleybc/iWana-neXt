@@ -1,8 +1,8 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.8
+**Versión:** 1.9
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3)
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11
 **Sin pendientes de gobernanza abiertos.** La decisión menor que abrió v1.7 se cerró en v1.8 (§10.3). El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
@@ -320,3 +320,14 @@ El usuario titular del repositorio decidió que los tres verificadores **tienen 
 **Cómo entran al protocolo (decisión de diseño de la implementación, revisable por AI-EM-ARCH):** la regla «añadir un perfil nuevo» de §9 exige columna y fila en la RACI §2 y en la matriz de consulta §6.1. Aplicarla tal cual les daría Responsible/Accountable que no ejercen y los convertiría en destinos de escalación. El [protocolo v1.6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) crea en su lugar la categoría **verificadores auxiliares**: perfil, fila en su cuadro, mención en §1 y subagente, sin RACI ni red de consulta, con una cláusula de salida — si un verificador empieza a decidir o recibir escalaciones, se integra como perfil completo.
 
 Los subagentes remiten ahora a su perfil (`pnpm sync:agents:check` → 11 agentes sincronizados).
+
+## 11. Actualización 2026-10-09 — Dos verificadores auxiliares más
+
+**Origen:** segunda pasada del análisis `claude-code-setup`, implementación aprobada por el usuario titular del repositorio. Detalle en [INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0](INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md) §11.
+
+| Identificador | Subagente | Perfil | Motivo |
+| --- | --- | --- | --- |
+| AI-CONTRACT-REV | `contract-drift-reviewer` (sonnet, solo lectura) | [Perfil_IA_Revisor_Contratos_v1.md](../roles/Perfil_IA_Revisor_Contratos_v1.md) | La deriva entre un contrato de `packages/shared` y su proyección de lectura pasó todos los unitarios en MOD11↔MOD12 (ola 3). `boundary-reviewer` mira dependencias entre módulos, no si un campo del contrato se proyecta. |
+| AI-E2E-TRIAGE | `e2e-triage` (sonnet, sin edición) | [Perfil_IA_Triador_E2E_v1.md](../roles/Perfil_IA_Triador_E2E_v1.md) | El triaje de fallos E2E se repetía a mano en cada ola de UI; los separa en regresión, flaky o entorno antes de tocar código. No sustituye a AI-SR-QA. |
+
+Alta en un solo acto según el protocolo §9 (v1.7): perfil, fila en *Verificadores auxiliares*, mención en §1, subagente en `.claude/agents/` con `pnpm sync:agents` y este registro. Ninguno entra en la RACI ni recibe escalaciones.

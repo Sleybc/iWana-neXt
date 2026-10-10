@@ -153,9 +153,9 @@ El esquema Zod de runtime vive junto al contrato y lo consumen tanto el worker c
 
 1. El ajuste o reverso de consumos confirmados (MOD12).
 2. ~~La custodia `CREW` de punta a punta.~~ **Deja de ser deuda (CTO, 2026-10-09):** la v1 asigna solo a técnicos individuales y las cuadrillas quedan como capacidad futura (`docs/plans/2026-10-09-mod11-mod12-deuda-g7.md` §3).
-3. ADR-074 (Aprobado), la autenticación de Redis, lo aprobó el CTO el 2026-10-09 y su implementación está pendiente. D8 no depende de él, pero **G7 lo exige**.
+3. ~~ADR-074, la autenticación de Redis.~~ **Cerrada:** el CTO aprobó ADR-074 (Aprobado) el 2026-10-09 y P2 lo implementó, con la CI en verde sobre `72d367a3`.
 4. **Excepción D3:** consumidor de jobs en el proceso API. Saldarla exige extraer el ledger a una librería de dominio consumible desde el worker. Se suma a la deuda ya declarada de `users-bulk-create`.
-5. El DLQ de `execution-order-events` para los tipos que no son de inventario: D11 solo cubre los de inventario. Generalizarlo es deuda de `plat-ops`.
+5. ~~La DLQ de `execution-order-events` para los tipos que no son de inventario.~~ **Cerrada (2026-10-10)** por R-DLQ, con GO de `sec-eng` (`INFORME-PLAT-REDIS-AUTH-ADR074-S3-SEC-ENG-v1.1.md`).
 
 ## 9. Artefactos que esta spec no supera
 

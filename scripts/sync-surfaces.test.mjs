@@ -6,6 +6,11 @@ import {
   buildDatabaseUri,
   readExistingPassword,
 } from './db/dev-readonly-role.mjs';
+import {
+  assertDevelopmentTarget as assertRedisDevelopmentTarget,
+  buildAclSetUser,
+  readExistingPassword as readExistingRedisPassword,
+} from './db/dev-redis-readonly-user.mjs';
 import { buildClientConfigs, toClaude, toOpencode, validateServer } from './sync-mcp.mjs';
 import { toPointer } from './sync-skills.mjs';
 
@@ -88,4 +93,22 @@ test('dev-readonly-role: se niega fuera del contenedor de desarrollo', () => {
     () => assertDevelopmentTarget({ ...dev, container: 'iwana_postgres' }, undefined),
     /\*_dev/,
   );
+});
+
+test('dev-redis-readonly-user: el ACL solo lee bull:* y nunca concede escritura', () => {
+  const acl = buildAclSetUser('clave-de-prueba');
+  assert.match(acl, /^ACL SETUSER iwana_readonly reset on >clave-de-prueba /);
+  assert.match(acl, / ~bull:\* resetchannels -@all \+@read /);
+  assert.doesNotMatch(acl, /\+@(write|all|dangerous|admin)|allkeys|~\*/);
+  assert.equal(
+    readExistingRedisPassword('# x\nREDIS_USERNAME=iwana_readonly\nREDIS_PWD=abc_1\n'),
+    'abc_1',
+  );
+  assert.equal(readExistingRedisPassword('REDIS_USERNAME=iwana_readonly\n'), null);
+});
+
+test('dev-redis-readonly-user: se niega fuera del contenedor de desarrollo', () => {
+  assert.doesNotThrow(() => assertRedisDevelopmentTarget('iwana_redis_dev', 'development'));
+  assert.throws(() => assertRedisDevelopmentTarget('iwana_redis_dev', 'production'), /production/);
+  assert.throws(() => assertRedisDevelopmentTarget('iwana_redis', undefined), /\*_dev/);
 });
