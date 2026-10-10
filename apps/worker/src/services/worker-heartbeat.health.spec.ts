@@ -1,4 +1,9 @@
-import { isWorkerHeartbeatFresh, resolveWorkerHeartbeatTiming } from './worker-heartbeat.health';
+import {
+  areBullMqWorkersOperational,
+  isWorkerHeartbeatFresh,
+  resolveWorkerHeartbeatTiming,
+  type BullMqWorkerHealthState,
+} from './worker-heartbeat.health';
 
 describe('worker heartbeat health helpers', () => {
   it('rejects a missing, malformed, future or stale heartbeat', () => {
@@ -18,5 +23,28 @@ describe('worker heartbeat health helpers', () => {
       intervalSeconds: 10,
       ttlSeconds: 30,
     });
+  });
+
+  it('requires every BullMQ consumer to be running, unpaused and connected', async () => {
+    const ready = (): BullMqWorkerHealthState => ({
+      isRunning: () => true,
+      isPaused: () => false,
+      client: Promise.resolve({ status: 'ready' }),
+    });
+
+    expect(await areBullMqWorkersOperational([])).toBe(false);
+    expect(await areBullMqWorkersOperational([ready()])).toBe(true);
+    expect(
+      await areBullMqWorkersOperational([ready(), { ...ready(), isRunning: () => false }]),
+    ).toBe(false);
+    expect(await areBullMqWorkersOperational([ready(), { ...ready(), isPaused: () => true }])).toBe(
+      false,
+    );
+    expect(
+      await areBullMqWorkersOperational([
+        ready(),
+        { ...ready(), client: Promise.resolve({ status: 'reconnecting' }) },
+      ]),
+    ).toBe(false);
   });
 });

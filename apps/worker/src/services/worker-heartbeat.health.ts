@@ -4,6 +4,12 @@ export const DEFAULT_WORKER_HEARTBEAT_TTL_SECONDS = 30;
 
 const MAX_WORKER_HEARTBEAT_SECONDS = 3600;
 
+export interface BullMqWorkerHealthState {
+  isRunning(): boolean;
+  isPaused(): boolean;
+  client: Promise<{ status: string }>;
+}
+
 function positiveSeconds(value: unknown, fallback: number, name: string): number {
   if (value === undefined || value === null || value === '') {
     return fallback;
@@ -55,4 +61,28 @@ export function isWorkerHeartbeatFresh(
 
   const ageMs = nowMs - timestamp;
   return ageMs >= 0 && ageMs <= ttlSeconds * 1000;
+}
+
+export async function areBullMqWorkersOperational(
+  workers: readonly BullMqWorkerHealthState[],
+): Promise<boolean> {
+  if (workers.length === 0) {
+    return false;
+  }
+
+  try {
+    const operationalStates = await Promise.all(
+      workers.map(async (worker) => {
+        if (!worker.isRunning() || worker.isPaused()) {
+          return false;
+        }
+
+        return (await worker.client).status === 'ready';
+      }),
+    );
+
+    return operationalStates.every(Boolean);
+  } catch {
+    return false;
+  }
 }

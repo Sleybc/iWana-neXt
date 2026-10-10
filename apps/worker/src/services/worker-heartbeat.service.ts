@@ -6,10 +6,16 @@ import {
   OnApplicationShutdown,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { WorkerHost } from '@nestjs/bullmq';
+import { DiscoveryService } from '@nestjs/core';
 import Redis from 'ioredis';
 import { hostname } from 'node:os';
 import { RELAY_SCAN_TIMESTAMP_REDIS } from './execution-order-relay.service';
-import { resolveWorkerHeartbeatTiming, WORKER_HEARTBEAT_PREFIX } from './worker-heartbeat.health';
+import {
+  areBullMqWorkersOperational,
+  resolveWorkerHeartbeatTiming,
+  WORKER_HEARTBEAT_PREFIX,
+} from './worker-heartbeat.health';
 
 /** Publica un latido acotado para distinguir un worker activo de un PID colgado. */
 @Injectable()
@@ -22,10 +28,12 @@ export class WorkerHeartbeatService implements OnApplicationBootstrap, OnApplica
   private timer: NodeJS.Timeout | undefined;
   private writeInFlight = false;
   private warnedAboutRedis = false;
+  private warnedAboutWorkers = false;
 
   constructor(
     @Inject(RELAY_SCAN_TIMESTAMP_REDIS) private readonly redis: Redis,
     config: ConfigService,
+    private readonly discovery: DiscoveryService,
   ) {
     this.enabled =
       config.get<string>('NODE_ENV') === 'production' ||
@@ -62,6 +70,18 @@ export class WorkerHeartbeatService implements OnApplicationBootstrap, OnApplica
 
     this.writeInFlight = true;
     try {
+      if (!(await this.haveOperationalBullMqWorkers())) {
+        await this.redis.del(this.key);
+        if (!this.warnedAboutWorkers) {
+          this.logger.warn(
+            'El heartbeat se omitió porque algún consumidor BullMQ no está operativo.',
+          );
+          this.warnedAboutWorkers = true;
+        }
+        return;
+      }
+
+      this.warnedAboutWorkers = false;
       await this.redis.set(this.key, Date.now().toString(), 'EX', this.ttlSeconds);
       this.warnedAboutRedis = false;
     } catch {
@@ -71,6 +91,22 @@ export class WorkerHeartbeatService implements OnApplicationBootstrap, OnApplica
       }
     } finally {
       this.writeInFlight = false;
+    }
+  }
+
+  private async haveOperationalBullMqWorkers(): Promise<boolean> {
+    // El probe depende de Redis a propósito: si el broker no está disponible,
+    // se retira la marca y Compose declara unhealthy aunque el proceso siga vivo.
+    try {
+      const workers = this.discovery
+        .getProviders()
+        .map(({ instance }) => instance)
+        .filter((instance): instance is WorkerHost => instance instanceof WorkerHost)
+        .map((workerHost) => workerHost.worker);
+
+      return areBullMqWorkersOperational(workers);
+    } catch {
+      return false;
     }
   }
 }

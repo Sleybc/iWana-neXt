@@ -1,5 +1,6 @@
 import { BullModule, BullRegistrar } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { DiscoveryModule } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import Redis from 'ioredis';
@@ -140,6 +141,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
  */
 @Module({
   imports: [
+    DiscoveryModule,
     // Variables de entorno disponibles en todos los providers del worker
     ConfigModule.forRoot({
       isGlobal: true,
