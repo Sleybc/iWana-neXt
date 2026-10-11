@@ -6,6 +6,7 @@ import {
   convertPurchaseQuantityToBase,
   convertPurchaseUnitCostToBase,
   formatUomEquivalence,
+  getInventoryBaseUnitCostScale,
   isInventoryUnitOfMeasureCode,
 } from '@iwana/shared';
 
@@ -87,7 +88,11 @@ export function resolveReceiptUomConversion(
   const baseUnitCost =
     purchaseUnitCost === undefined || purchaseUnitCost === null
       ? null
-      : convertPurchaseUnitCostToBase(purchaseUnitCost, factor);
+      : convertPurchaseUnitCostToBase(
+          purchaseUnitCost,
+          factor,
+          getInventoryBaseUnitCostScale(baseCode, purchaseCode),
+        );
 
   return {
     applies: true,

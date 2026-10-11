@@ -94,7 +94,7 @@ export class InventoryItem {
   @Column({ name: 'unit_of_measure', type: 'varchar', length: 32 })
   unitOfMeasure: string;
 
-  @Column({ name: 'base_cost', type: 'numeric', precision: 14, scale: 2, default: 0 })
+  @Column({ name: 'base_cost', type: 'numeric', precision: 14, scale: 5, default: 0 })
   baseCost: string;
 
   @Column({ name: 'minimum_stock', type: 'numeric', precision: 12, scale: 2, default: 0 })
@@ -115,14 +115,7 @@ export class InventoryItem {
   @Column({ name: 'supplier_sku', type: 'varchar', length: 80, nullable: true })
   supplierSku: string | null;
 
-  /**
-   * Unidad en la que se compra. Mismo catálogo canónico que la unidad base.
-   *
-   * Se conserva varchar(32) nullable: en F5a la unidad de compra sigue sin ser
-   * establecible desde el portal (recorte ADR-085) y el factor de conversión no
-   * se aplica (es F5b). La validación dimensional entre ambas unidades también
-   * es F5b; aquí solo se exige pertenencia al catálogo cuando hay valor.
-   */
+  /** Unidad de compra del artículo, relacionada con la unidad base por el factor explícito. */
   @Column({ name: 'purchase_unit_of_measure', type: 'varchar', length: 32, nullable: true })
   purchaseUnitOfMeasure: string | null;
 
@@ -135,13 +128,13 @@ export class InventoryItem {
   })
   purchaseToBaseUomFactor: string | null;
 
-  @Column({ name: 'standard_cost', type: 'numeric', precision: 14, scale: 2, default: 0 })
+  @Column({ name: 'standard_cost', type: 'numeric', precision: 14, scale: 5, default: 0 })
   standardCost: string;
 
-  @Column({ name: 'last_purchase_cost', type: 'numeric', precision: 14, scale: 2, nullable: true })
+  @Column({ name: 'last_purchase_cost', type: 'numeric', precision: 14, scale: 5, nullable: true })
   lastPurchaseCost: string | null;
 
-  @Column({ name: 'average_cost', type: 'numeric', precision: 14, scale: 2, default: 0 })
+  @Column({ name: 'average_cost', type: 'numeric', precision: 14, scale: 5, default: 0 })
   averageCost: string;
 
   @Column({ name: 'reorder_point', type: 'numeric', precision: 12, scale: 2, default: 0 })

@@ -18,6 +18,7 @@ import {
   InventoryTrackingMode,
   SerializedAssetStatus,
   buildCompositeSku,
+  getInventoryBaseUnitCostScale,
   type ListResponse,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -243,8 +244,8 @@ function formatOptionalNumeric(value: number | null | undefined): string | null 
   return value.toFixed(4).replace(/\.?0+$/, '') || '0';
 }
 
-function formatMoney(value: number | null | undefined, fallback = 0): string {
-  return (value ?? fallback).toFixed(2);
+function formatMoney(value: number | null | undefined, fallback = 0, scale = 2): string {
+  return (value ?? fallback).toFixed(scale);
 }
 
 function mapCreateInputToEntity(
@@ -256,6 +257,10 @@ function mapCreateInputToEntity(
     validated.assetControlled ??
     (validated.trackingMode === InventoryTrackingMode.SERIALIZED ||
       validated.trackingMode === InventoryTrackingMode.FIXED_ASSET);
+  const costScale = getInventoryBaseUnitCostScale(
+    validated.unitOfMeasure,
+    validated.purchaseUnitOfMeasure ?? validated.unitOfMeasure,
+  );
 
   return {
     tenantId,
@@ -269,7 +274,7 @@ function mapCreateInputToEntity(
     category: validated.category ?? legacyCategoryFromCode(category.code),
     trackingMode: validated.trackingMode,
     unitOfMeasure: validated.unitOfMeasure,
-    baseCost: formatMoney(validated.baseCost),
+    baseCost: formatMoney(validated.baseCost, 0, costScale),
     minimumStock: formatMoney(validated.minimumStock),
     purchasable: validated.purchasable,
     inventoryControlled: validated.inventoryControlled,
@@ -278,15 +283,17 @@ function mapCreateInputToEntity(
     supplierSku: validated.supplierSku ?? null,
     purchaseUnitOfMeasure: validated.purchaseUnitOfMeasure ?? null,
     purchaseToBaseUomFactor: formatOptionalNumeric(validated.purchaseToBaseUomFactor),
-    standardCost: formatMoney(validated.standardCost),
+    standardCost: formatMoney(validated.standardCost, 0, costScale),
     lastPurchaseCost:
       validated.lastPurchaseCost === null || validated.lastPurchaseCost === undefined
         ? null
-        : formatMoney(validated.lastPurchaseCost),
+        : formatMoney(validated.lastPurchaseCost, 0, costScale),
     averageCost: formatMoney(
       validated.averageCost !== undefined && validated.averageCost !== null
         ? validated.averageCost
         : (validated.lastPurchaseCost ?? validated.standardCost ?? validated.baseCost ?? 0),
+      0,
+      costScale,
     ),
     reorderPoint: formatMoney(validated.reorderPoint),
     targetStock: formatMoney(validated.targetStock),
@@ -310,8 +317,15 @@ function mapCreateInputToEntity(
 function mapUpdateInputToEntity(
   validated: UpdateInventoryItemInput,
   category?: InventoryCategory,
+  current?: InventoryItem,
 ): Partial<InventoryItem> {
   const patch: Partial<InventoryItem> = {};
+  const baseCode = validated.unitOfMeasure ?? current?.unitOfMeasure ?? 'UNIT';
+  const purchaseCode =
+    validated.purchaseUnitOfMeasure !== undefined
+      ? (validated.purchaseUnitOfMeasure ?? baseCode)
+      : (current?.purchaseUnitOfMeasure ?? baseCode);
+  const costScale = getInventoryBaseUnitCostScale(baseCode, purchaseCode);
 
   if (validated.name !== undefined) patch.name = validated.name;
   if (validated.description !== undefined) patch.description = validated.description ?? null;
@@ -326,7 +340,8 @@ function mapUpdateInputToEntity(
   }
   if (validated.trackingMode !== undefined) patch.trackingMode = validated.trackingMode;
   if (validated.unitOfMeasure !== undefined) patch.unitOfMeasure = validated.unitOfMeasure;
-  if (validated.baseCost !== undefined) patch.baseCost = formatMoney(validated.baseCost);
+  if (validated.baseCost !== undefined)
+    patch.baseCost = formatMoney(validated.baseCost, 0, costScale);
   if (validated.minimumStock !== undefined)
     patch.minimumStock = formatMoney(validated.minimumStock);
   if (validated.purchasable !== undefined) patch.purchasable = validated.purchasable;
@@ -345,13 +360,15 @@ function mapUpdateInputToEntity(
     patch.purchaseToBaseUomFactor = formatOptionalNumeric(validated.purchaseToBaseUomFactor);
   }
   if (validated.standardCost !== undefined)
-    patch.standardCost = formatMoney(validated.standardCost);
+    patch.standardCost = formatMoney(validated.standardCost, 0, costScale);
   if (validated.lastPurchaseCost !== undefined) {
     patch.lastPurchaseCost =
-      validated.lastPurchaseCost === null ? null : formatMoney(validated.lastPurchaseCost);
+      validated.lastPurchaseCost === null
+        ? null
+        : formatMoney(validated.lastPurchaseCost, 0, costScale);
   }
   if (validated.averageCost !== undefined) {
-    patch.averageCost = formatMoney(validated.averageCost);
+    patch.averageCost = formatMoney(validated.averageCost, 0, costScale);
   }
   if (validated.reorderPoint !== undefined)
     patch.reorderPoint = formatMoney(validated.reorderPoint);
@@ -1016,7 +1033,7 @@ export class InventoryItemService {
       }
 
       const previousCategoryId = existing.categoryId;
-      Object.assign(existing, mapUpdateInputToEntity(validated, category));
+      Object.assign(existing, mapUpdateInputToEntity(validated, category, existing));
       let saved: InventoryItem;
       try {
         saved = await qr.manager.save(InventoryItem, existing);

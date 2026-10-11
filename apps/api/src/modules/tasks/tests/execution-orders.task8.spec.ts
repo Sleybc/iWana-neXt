@@ -163,6 +163,7 @@ describe('Task 8.1 — Inventory consumption request', () => {
     expect(outboxEvent!.eventType).toBe('InventoryConsumptionRequestedV2');
     const payload = outboxEvent!.payload as Record<string, unknown>;
     expect(payload.inventoryRequestId).toBe('00000000-0000-4000-8000-000000000101');
+    expect(payload.executionOrderId).toBe('eo-001');
     expect(payload.itemId).toBe('item-001');
     expect(payload.quantity).toBe(1);
     expect(payload.serial).toBe('SER-001');

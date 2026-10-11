@@ -34,7 +34,7 @@ export class StockMovementLine {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   quantity: string;
 
-  @Column({ name: 'unit_cost', type: 'numeric', precision: 14, scale: 2, nullable: true })
+  @Column({ name: 'unit_cost', type: 'numeric', precision: 14, scale: 5, nullable: true })
   unitCost: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

@@ -1,7 +1,8 @@
 # ADR-085: Unidades de medida — catálogo canónico y aplicación efectiva del factor de conversión
 
-**Version:** 1.0
+**Version:** 1.1
 **Estado:** Aprobado
+**Enmienda v1.1:** Aprobada por el CTO el 2026-10-11. La v1.0 (D1-D5) sigue vigente. Los cambios de v1.1 están marcados como (v1.1) y resumidos en el registro de cambios.
 **Fecha:** 2026-09-02
 **Fecha aprobación:** 2026-09-02
 **Aprobado por:** CTO Humano (decisión en sesión de auditoría del catálogo)
@@ -40,7 +41,7 @@ pruebas del portal usan `'UND'`: **dos convenciones conviviendo desde el princip
 
 `refineInventoryItemMaster` (`apps/api/src/modules/inventory/dto/index.ts:230-274`) valida que, si hay
 `purchaseUnitOfMeasure`, el factor sea mayor que cero. El PRD lo exige en RF-CAT-06 y el propio PRD
-§6 declara la regla: *«`purchase_unit_of_measure` sin factor de conversion valido no debe aprobarse»*.
+§6 declara la regla: _«`purchase_unit_of_measure` sin factor de conversion valido no debe aprobarse»_.
 
 **Pero el factor no se aplica en ninguna parte.** Verificado el 2026-09-02: `purchaseToBaseUomFactor`
 aparece exclusivamente en `inventory-item.service.ts` — persistir, leer y copiar en el update. La
@@ -88,7 +89,7 @@ haría que cada tenant reinventara `'unidad'` con su propia grafía y **volverí
 puerta el problema que este ADR cierra**. Si un tenant necesitara una unidad ausente, se añade al
 catálogo del sistema por release, no por configuración.
 
-### D2. La conversión solo es válida dentro de la misma dimensión
+### D2. La conversión solo es válida dentro de la misma dimensión, salvo las unidades de empaque (v1.1)
 
 `purchaseToBaseUomFactor` solo se acepta si `purchase_unit_of_measure` y `unit_of_measure` comparten
 dimensión. Declarar una conversión entre `metro` y `litro` pasa a ser un error de validación, no un
@@ -97,6 +98,20 @@ dato aceptado.
 Excepción deliberada: la dimensión `COUNT` admite conversión entre sus miembros (una `caja` contiene
 N `unidad`), que es precisamente el caso de uso dominante. Es una relación de empaque, no de
 magnitud física, y por eso vive dentro de `COUNT`.
+
+**v1.1 — Unidades de empaque de contenido fijo.** Una unidad de empaque (`ROLL`, `BOX`, `PACKAGE`)
+puede usarse como unidad de compra de un artículo cuya unidad base pertenece a **otra dimensión**
+(por ejemplo, rollo → metro o caja → kilogramo) cuando el artículo declara un **factor fijo,
+positivo y explícito** (`purchase_to_base_uom_factor`), que es el contenido de un empaque. La
+excepción es de empaque, no de magnitud:
+
+- solo en el sentido empaque → unidad base, nunca a la inversa ni entre dos magnitudes físicas
+  (metro ↔ litro sigue siendo un error de validación);
+- el factor es un dato del artículo, no un valor por defecto del sistema;
+- la validación es autoritativa en el backend (regla de implementación 4).
+
+**Pares habilitados en el código a la fecha:** `ROLL → METER`. Habilitar otro par de empaque es
+añadirlo a la tabla de pares de `packages/shared` con sus tests; no requiere un ADR nuevo.
 
 ### D3. El factor se aplica en la entrada de mercancía
 
@@ -115,9 +130,42 @@ normalización difusa**. Todo valor que no tenga equivalencia exacta se reporta 
 migración** para decisión humana: convertir una unidad por aproximación es corromper existencias en
 silencio.
 
-La migración **no recalcula ningún saldo histórico**. Los movimientos ya registrados quedan como
-están; el factor se aplica solo hacia adelante. Recalcular retroactivamente exigiría saber qué
-cantidad quiso registrar el operador, dato que no existe.
+La migración **no recalcula saldos históricos**. Los movimientos ya registrados quedan como están;
+el factor se aplica solo hacia adelante. Recalcular retroactivamente exigiría saber qué cantidad quiso
+registrar el operador, dato que normalmente no existe.
+
+**v1.1 — Conversión histórica excepcional.** Cuando ese dato sí existe (un humano con autoridad sobre
+el inventario confirma el contenido exacto de cada empaque registrado), se admite convertir **una
+vez** la unidad base de un artículo y su historial, con este procedimiento obligatorio:
+
+1. **Autorización expresa** del responsable del inventario del tenant, registrada en el informe.
+2. **Alcance cerrado:** un artículo y un tenant por ejecución.
+3. **Respaldo previo** de las filas afectadas, exportado fuera del esquema del tenant (no como tabla
+   residual en él).
+4. **Transacción única y verificable:**
+   - cantidades del ledger, saldos y salidas × factor;
+   - costos unitarios de unidad base ÷ factor;
+   - los documentos de compra (órdenes y recepciones) **conservan** la unidad de compra.
+5. **Verificación posterior:**
+   - suma del ledger = suma de saldos, por ubicación y lote;
+   - valor del inventario sin cambios (dentro de la escala de D6);
+   - ningún consumo, baja o conteo en curso sobre el artículo.
+6. **Informe** en `docs/informes/` con el antes y el después.
+
+La primera aplicación fue la conversión de un artículo de fibra (rollo → metro) en un tenant de
+pruebas, el 2026-10-11 (`docs/informes/INFORME-MOD12-FIBRA-DROP-METROS-v1.0.md`).
+
+### D6. Precisión del costo de unidad base (v1.1)
+
+Los costos de unidad base (`inventory_items.base_cost`, `standard_cost`, `last_purchase_cost` y
+`average_cost`) y `stock_movement_lines.unit_cost` se almacenan como `numeric(14,5)` (migración tenant
+142). Al dividir un costo de compra por un factor grande, redondear a centavos altera el valor del
+inventario: 168.067,23 por rollo ÷ 1.000 m = 168,06723 por metro.
+
+**Escala vigente en el código:** 5 decimales para los pares de empaque habilitados en D2 y 2 para el
+resto. **Deuda declarada:** el problema de precisión no es exclusivo de los empaques; cualquier
+factor ≥ 100 lo provoca. La escala debería decidirse por la magnitud del factor y no por el par de
+unidades. Se corregirá cuando aparezca el siguiente factor grande.
 
 ### D5. Secuencia obligatoria
 
@@ -175,6 +223,8 @@ persistir la unidad de compra y el factor.
 ### Riesgos aceptados
 
 - **Saldos históricos no se recalculan** (D4). Un tenant que ya haya comprado en unidad de compra tiene saldos mal desde antes de este ADR, y este ADR no los arregla: los congela y evita que sigan degradándose. Corregirlos exige inventario físico, no migración.
+- **Conversión histórica excepcional (v1.1):** reescribe registros del ledger de un artículo. Se acepta solo bajo el procedimiento de D4 y cuando el contenido de cada empaque es un dato confirmado, no una estimación.
+- **Unidades de empaque entre dimensiones (v1.1):** un factor mal declarado en un empaque de otra dimensión no es detectable por la validación dimensional. La mitigación es que el factor sea un dato explícito por artículo y que su edición siga bajo `INVENTORY_STOCK_MANAGE`.
 - El caso `COUNT` (caja → unidad) mezcla empaque con magnitud. Se acepta por ser el caso dominante y por evitar una jerarquía de empaques que nadie ha pedido.
 
 ---
@@ -186,7 +236,7 @@ persistir la unidad de compra y el factor.
 3. La conversión se aplica en un único punto del flujo de entrada; prohibido duplicarla en el cliente.
 4. La validación dimensional es autoritativa en backend (`refineInventoryItemMaster`); el cliente puede guiar, no decidir.
 5. La migración se detiene ante cualquier valor sin equivalencia exacta y lo reporta. Prohibida la normalización difusa.
-6. No se recalculan movimientos ni saldos históricos.
+6. No se recalculan movimientos ni saldos históricos, salvo la conversión histórica excepcional de D4 (v1.1), con su procedimiento completo.
 7. Migración aditiva y reversible, con `down()` verificado, sobre schema tenant.
 8. Ejecutar en el orden de D5. Cualquier alteración del orden requiere volver a este ADR.
 
@@ -209,6 +259,14 @@ bounded context aprobado en ADR-048, altera la base de cálculo de existencias, 
 detenerse ante datos no mapeables.
 
 **Aprobación del CTO 2026-09-02.** Autoriza las decisiones D1-D5 y su ejecución en el orden de D5.
+
+**Enmienda v1.1: aprobada por el CTO el 2026-10-11.** Generaliza el caso de la fibra en tres reglas:
+
+- D2: unidades de empaque de contenido fijo;
+- D4: procedimiento de conversión histórica excepcional;
+- D6: precisión del costo base.
+
+No cambia D1, D3 ni D5.
 
 **Restricción de secuencia vigente:** este ADR debe estar ejecutado —al menos D1, D2 y D4— **antes de
 exponer** `purchaseUnitOfMeasure` y `purchaseToBaseUomFactor` en la superficie de edición del catálogo
@@ -233,3 +291,12 @@ hasta que este ADR esté ejecutado.
 - packages/database/src/entities/inventory-item.entity.ts — `unit_of_measure`, `purchase_unit_of_measure`, `purchase_to_base_uom_factor`
 - apps/api/src/modules/inventory/dto/index.ts:230-274 — `refineInventoryItemMaster`
 - apps/api/src/modules/inventory/services/goods-receipt.service.ts:268,315 — punto donde hoy falta la conversión
+
+---
+
+## Registro de cambios
+
+| Versión | Fecha | Cambio | Estado |
+| --- | --- | --- | --- |
+| 1.0 | 2026-09-02 | Catálogo canónico, validación dimensional, factor en recepción y migración sin recálculo (D1-D5) | Aprobado por el CTO |
+| 1.1 | 2026-10-11 | D2 admite unidades de empaque de contenido fijo entre dimensiones con factor explícito. D4 incorpora el procedimiento de conversión histórica excepcional. Nace D6, con la precisión del costo base `numeric(14,5)` (migración 142). Se retiran del ADR los datos de un tenant concreto, que quedan en su informe | Aprobado por el CTO (2026-10-11) |

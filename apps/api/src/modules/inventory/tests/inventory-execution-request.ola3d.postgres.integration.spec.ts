@@ -2,7 +2,7 @@ import { randomBytes, randomUUID, createHash, createHmac } from 'node:crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, Worker } from 'bullmq';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
 import {
   dataSourceOptions,
@@ -19,6 +19,7 @@ import {
   InventoryCategory,
   InventoryItem,
   StockBalance,
+  StockLot,
   StockLocation,
   StockMovement,
   StockMovementLine,
@@ -35,7 +36,10 @@ import {
   InventoryItemCategory,
   InventoryItemKind,
   InventoryItemStatus,
+  InventoryResponsibleType,
   InventoryTrackingMode,
+  SerializedAssetStatus,
+  StockBalanceCondition,
   StockLocationStatus,
   StockLocationType,
   StockMovementOrigin,
@@ -60,6 +64,7 @@ import { SerializedAssetService } from '../services/serialized-asset.service';
 import { InventoryCostingService } from '../services/inventory-costing.service';
 import { InventoryDomainEventPublisher } from '../services/inventory-domain-event-publisher.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
+import { CustomerSiteLocationResolver } from '../services/customer-site-location.resolver';
 import { ExecutionOrderReliabilityService } from '../../tasks/services/execution-order-reliability.service';
 import { ExecutionOrdersService } from '../../tasks/services/execution-orders.service';
 import { signInventoryExecutionRequestForTest } from './helpers/sign-inventory-execution-request';
@@ -121,6 +126,7 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
   const createdResponseJobIds: string[] = [];
   const createdSerialNumbers: string[] = [];
   const createdStockLocationIds: string[] = [];
+  const createdLotIds: string[] = [];
   const createdTestMovementIds: string[] = [];
 
   const tenantContext = () => ({
@@ -164,12 +170,19 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
 
   async function createOrderAndUsage(input: {
     itemId: string;
+    quantity?: number;
+    technicianCustodyId?: string;
     serialNumber?: string;
     finalDisposition?: InventoryDisposition;
     action?: ExecutionOrderItemAction;
     subscriberId?: string | null;
-  }): Promise<{ inventoryRequestId: string; actor: JwtPayload }> {
-    const technicianId = randomUUID();
+  }): Promise<{
+    inventoryRequestId: string;
+    executionOrderId: string;
+    technicianCustodyId: string;
+    actor: JwtPayload;
+  }> {
+    const technicianId = input.technicianCustodyId ?? randomUUID();
     const actor: JwtPayload = {
       sub: technicianId,
       email: 'actor-r-ca04@example.test',
@@ -205,7 +218,7 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         {
           itemId: input.itemId,
           technicianCustodyId: technicianId,
-          quantity: 1,
+          quantity: input.quantity ?? 1,
           ...(input.serialNumber ? { serialNumber: input.serialNumber } : {}),
           action: input.action ?? ExecutionOrderItemAction.INSTALL,
           finalDisposition: input.finalDisposition ?? InventoryDisposition.INSTALLED_AT_CUSTOMER,
@@ -218,7 +231,110 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
     if (!inventoryRequestId) throw new Error('INVENTORY_REQUEST_ID_MISSING');
     createdIntentIds.push(inventoryRequestId);
     createdRequestIds.push(inventoryRequestId);
-    return { inventoryRequestId, actor };
+    return {
+      inventoryRequestId,
+      executionOrderId: created.id,
+      technicianCustodyId: technicianId,
+      actor,
+    };
+  }
+
+  async function seedLottedCustody(
+    responsibleRefId: string,
+    itemId: string,
+    balances: Array<{
+      onHand: number;
+      reserved?: number;
+      expiryDate: string | null;
+      createdAt: string;
+    }>,
+  ): Promise<{ locationId: string; lotIds: string[] }> {
+    const locationId = randomUUID();
+    const lotIds = balances.map(() => randomUUID());
+    await TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        await qr.query(
+          `INSERT INTO stock_locations
+             (id, tenant_id, code, name, type, status, responsible_ref_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            locationId,
+            tenantId,
+            `RLOT-${randomUUID().slice(0, 8)}`,
+            'Custodia de integración con lotes',
+            StockLocationType.MOBILE_TECHNICIAN,
+            StockLocationStatus.ACTIVE,
+            responsibleRefId,
+          ],
+        );
+        for (const [index, balance] of balances.entries()) {
+          const lotId = lotIds[index]!;
+          await qr.query(
+            `INSERT INTO stock_lots
+               (id, tenant_id, item_id, lot_number, expiry_date, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              lotId,
+              tenantId,
+              itemId,
+              `RLOT-${randomUUID().slice(0, 12)}`,
+              balance.expiryDate,
+              balance.createdAt,
+            ],
+          );
+          await qr.query(
+            `INSERT INTO stock_balances
+               (tenant_id, item_id, location_id, lot_id, condition, quantity_on_hand, quantity_reserved)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              tenantId,
+              itemId,
+              locationId,
+              lotId,
+              StockBalanceCondition.NEW,
+              balance.onHand,
+              balance.reserved ?? 0,
+            ],
+          );
+        }
+      }),
+    );
+    createdStockLocationIds.push(locationId);
+    createdLotIds.push(...lotIds);
+    return { locationId, lotIds };
+  }
+
+  async function seedSerializedAssetInCustody(
+    itemId: string,
+    locationId: string,
+    responsibleRefId: string,
+  ): Promise<{ id: string; serialNumber: string }> {
+    const id = randomUUID();
+    const serialNumber = `RLOT-SERIAL-${randomUUID()}`;
+    createdSerialNumbers.push(serialNumber);
+    await TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        await qr.query(
+          `INSERT INTO serialized_assets
+             (id, tenant_id, inventory_item_id, serial_number, normalized_serial_number,
+              current_status, current_location_id, current_responsible_type,
+              current_responsible_ref_id, lot_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)`,
+          [
+            id,
+            tenantId,
+            itemId,
+            serialNumber,
+            serialNumber.toUpperCase(),
+            SerializedAssetStatus.ASSIGNED_TO_TECHNICIAN,
+            locationId,
+            InventoryResponsibleType.TECHNICIAN,
+            responsibleRefId,
+          ],
+        );
+      }),
+    );
+    return { id, serialNumber };
   }
 
   async function readRequestOutbox(inventoryRequestId: string): Promise<{
@@ -643,11 +759,12 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
   async function readReceipt(inventoryRequestId: string): Promise<{
     outcome: string;
     reason_code: string | null;
+    stock_movement_id: string | null;
   }> {
     return TenantContext.run(tenantContext(), () =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
         const rows = (await qr.query(
-          `SELECT receipt.outcome, receipt.reason_code
+          `SELECT receipt.outcome, receipt.reason_code, receipt.stock_movement_id
              FROM inventory_execution_request_receipts receipt
             WHERE receipt.tenant_id = $1 AND receipt.kind = 'CONSUMPTION'
               AND receipt.request_id = $2`,
@@ -655,10 +772,57 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         )) as Array<{
           outcome: string;
           reason_code: string | null;
+          stock_movement_id: string | null;
         }>;
         if (!rows[0]) throw new Error('INVENTORY_RECEIPT_MISSING');
         return rows[0];
       }),
+    );
+  }
+
+  async function readMovementLines(
+    movementId: string,
+  ): Promise<
+    Array<{ item_id: string; location_id: string; lot_id: string | null; quantity: string }>
+  > {
+    return TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(
+        dataSource,
+        schemaName,
+        async (qr) =>
+          (await qr.query(
+            `SELECT item_id, location_id, lot_id, quantity::text AS quantity
+             FROM stock_movement_lines
+            WHERE tenant_id = $1 AND movement_id = $2
+            ORDER BY created_at ASC, id ASC`,
+            [tenantId, movementId],
+          )) as Array<{
+            item_id: string;
+            location_id: string;
+            lot_id: string | null;
+            quantity: string;
+          }>,
+      ),
+    );
+  }
+
+  async function readLotBalances(
+    locationId: string,
+    lotIds: string[],
+  ): Promise<Array<{ lot_id: string; quantity_on_hand: string }>> {
+    return TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(
+        dataSource,
+        schemaName,
+        async (qr) =>
+          (await qr.query(
+            `SELECT lot_id, quantity_on_hand::text AS quantity_on_hand
+             FROM stock_balances
+            WHERE tenant_id = $1 AND location_id = $2 AND lot_id = ANY($3::uuid[])
+            ORDER BY lot_id`,
+            [tenantId, locationId, lotIds],
+          )) as Array<{ lot_id: string; quantity_on_hand: string }>,
+      ),
     );
   }
 
@@ -678,6 +842,7 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
         InventoryCategory,
         InventoryItem,
         StockBalance,
+        StockLot,
         StockLocation,
         StockMovement,
         StockMovementLine,
@@ -740,6 +905,7 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
       assetLoan,
     );
     const domainPublisher = new InventoryDomainEventPublisher(new EventEmitter2());
+    const customerSiteLocationResolver = new CustomerSiteLocationResolver();
     const ledger = new StockLedgerService(
       dataSource,
       stockBalance,
@@ -748,6 +914,21 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
       new InventoryCostingService(),
       assetLoan,
       domainPublisher,
+      {
+        resolveOrCreateWithManager: async (
+          manager: EntityManager,
+          currentTenantId: string,
+          subscriberId: string,
+        ) => {
+          const locationId = await customerSiteLocationResolver.resolveOrCreateWithManager(
+            manager,
+            currentTenantId,
+            subscriberId,
+          );
+          createdStockLocationIds.push(locationId);
+          return locationId;
+        },
+      } as never,
     );
     apiProcessor = new InventoryExecutionRequestProcessor(
       dataSource,
@@ -839,6 +1020,12 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
               'DELETE FROM stock_balances WHERE tenant_id = $1 AND location_id = ANY($2::uuid[])',
               [tenantId, createdStockLocationIds],
             );
+          }
+          if (createdLotIds.length > 0) {
+            await qr.query('DELETE FROM stock_lots WHERE tenant_id = $1 AND id = ANY($2::uuid[])', [
+              tenantId,
+              createdLotIds,
+            ]);
           }
           if (createdOrderIds.length > 0) {
             await qr.query(
@@ -949,6 +1136,237 @@ describeWithDb('R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de
       outcome: 'REJECTED',
       reason_code: 'CUSTODY_INSUFFICIENT',
     });
+  });
+
+  it('confirma una solicitud consumible repartida entre dos lotes FEFO', async () => {
+    const result = await createOrderAndUsage({
+      itemId: activeItemId,
+      quantity: 3,
+      subscriberId: randomUUID(),
+    });
+    const custody = await seedLottedCustody(result.actor.sub, activeItemId, [
+      {
+        onHand: 2,
+        expiryDate: '2027-01-01',
+        createdAt: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        onHand: 2,
+        expiryDate: '2028-01-01',
+        createdAt: '2025-02-01T00:00:00.000Z',
+      },
+    ]);
+
+    const processing = await runThroughApiQueue(result.inventoryRequestId);
+    expect(processing).toMatchObject({
+      apiAttempts: 1,
+      apiErrorClass: null,
+      responseEvent: {
+        tenantId,
+        envelope: {
+          eventType: 'InventoryMovementConfirmedV1',
+        },
+      },
+    });
+    const receipt = await readReceipt(result.inventoryRequestId);
+    expect(receipt).toMatchObject({ outcome: 'CONFIRMED', reason_code: null });
+    expect(receipt.stock_movement_id).toBeTruthy();
+    if (!receipt.stock_movement_id) throw new Error('CONFIRMED_MOVEMENT_ID_MISSING');
+    createdTestMovementIds.push(receipt.stock_movement_id);
+
+    const lines = await readMovementLines(receipt.stock_movement_id);
+    expect(lines).toHaveLength(4);
+    const sourceLines = lines.filter((line) => Number(line.quantity) < 0);
+    const destinationLines = lines.filter((line) => Number(line.quantity) > 0);
+    expect(sourceLines).toHaveLength(2);
+    expect(destinationLines).toHaveLength(2);
+    expect(sourceLines.every((line) => line.location_id === custody.locationId)).toBe(true);
+    expect(destinationLines.every((line) => line.location_id !== custody.locationId)).toBe(true);
+    for (const [index, lotId] of custody.lotIds.entries()) {
+      const lotLines = lines.filter((line) => line.lot_id === lotId);
+      expect(lotLines.map((line) => Number(line.quantity)).sort((a, b) => a - b)).toEqual(
+        index === 0 ? [-2, 2] : [-1, 1],
+      );
+    }
+
+    const destinationLocationId = destinationLines[0]!.location_id;
+    expect(destinationLines.every((line) => line.location_id === destinationLocationId)).toBe(true);
+    await expect(readLotBalances(custody.locationId, custody.lotIds)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ lot_id: custody.lotIds[0], quantity_on_hand: '0.00' }),
+        expect.objectContaining({ lot_id: custody.lotIds[1], quantity_on_hand: '1.00' }),
+      ]),
+    );
+    await expect(readLotBalances(destinationLocationId, custody.lotIds)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ lot_id: custody.lotIds[0], quantity_on_hand: '2.00' }),
+        expect.objectContaining({ lot_id: custody.lotIds[1], quantity_on_hand: '1.00' }),
+      ]),
+    );
+  });
+
+  it('rechaza CUSTODY_INSUFFICIENT cuando la suma disponible de los lotes no alcanza', async () => {
+    const result = await createOrderAndUsage({
+      itemId: activeItemId,
+      quantity: 3,
+      subscriberId: randomUUID(),
+    });
+    await seedLottedCustody(result.actor.sub, activeItemId, [
+      {
+        onHand: 1,
+        expiryDate: '2027-01-01',
+        createdAt: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        onHand: 1,
+        expiryDate: '2028-01-01',
+        createdAt: '2025-02-01T00:00:00.000Z',
+      },
+    ]);
+
+    const processing = await runThroughApiQueue(result.inventoryRequestId);
+    expect(processing).toMatchObject({
+      apiAttempts: 1,
+      apiErrorClass: null,
+      responseEvent: {
+        tenantId,
+        envelope: {
+          eventType: 'InventoryMovementRejectedV1',
+          payload: { reasonCode: 'CUSTODY_INSUFFICIENT' },
+        },
+      },
+    });
+    expect(await readReceipt(result.inventoryRequestId)).toMatchObject({
+      outcome: 'REJECTED',
+      reason_code: 'CUSTODY_INSUFFICIENT',
+      stock_movement_id: null,
+    });
+  });
+
+  it('asigna por FEFO el lote a un serial que no tiene lote y no modifica el activo', async () => {
+    const technicianId = randomUUID();
+    const custody = await seedLottedCustody(technicianId, serialItemId, [
+      {
+        onHand: 1,
+        expiryDate: '2027-01-01',
+        createdAt: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        onHand: 1,
+        expiryDate: '2028-01-01',
+        createdAt: '2025-02-01T00:00:00.000Z',
+      },
+    ]);
+    const asset = await seedSerializedAssetInCustody(
+      serialItemId,
+      custody.locationId,
+      technicianId,
+    );
+    const result = await createOrderAndUsage({
+      itemId: serialItemId,
+      serialNumber: asset.serialNumber,
+      subscriberId: randomUUID(),
+      technicianCustodyId: technicianId,
+    });
+
+    const processing = await runThroughApiQueue(result.inventoryRequestId);
+    expect(processing.responseEvent?.envelope.eventType).toBe('InventoryMovementConfirmedV1');
+    const receipt = await readReceipt(result.inventoryRequestId);
+    expect(receipt.outcome).toBe('CONFIRMED');
+    if (!receipt.stock_movement_id) throw new Error('CONFIRMED_MOVEMENT_ID_MISSING');
+    createdTestMovementIds.push(receipt.stock_movement_id);
+    const lines = await readMovementLines(receipt.stock_movement_id);
+    expect(lines).toHaveLength(2);
+    expect(lines.every((line) => line.lot_id === custody.lotIds[0])).toBe(true);
+
+    const assetRows = (await TenantContext.run(tenantContext(), () =>
+      runInTenantSchema(dataSource, schemaName, (qr) =>
+        qr.query(
+          'SELECT lot_id, current_status FROM serialized_assets WHERE tenant_id = $1 AND id = $2',
+          [tenantId, asset.id],
+        ),
+      ),
+    )) as Array<{ lot_id: string | null; current_status: string }>;
+    expect(assetRows[0]).toMatchObject({ lot_id: null, current_status: 'INSTALLED_COMODATO' });
+  });
+
+  it('revierte en Redis y PostgreSQL un movimiento repartido y conserva el lote por línea', async () => {
+    const result = await createOrderAndUsage({
+      itemId: activeItemId,
+      quantity: 3,
+      subscriberId: randomUUID(),
+    });
+    const custody = await seedLottedCustody(result.actor.sub, activeItemId, [
+      {
+        onHand: 2,
+        expiryDate: '2027-01-01',
+        createdAt: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        onHand: 2,
+        expiryDate: '2028-01-01',
+        createdAt: '2025-02-01T00:00:00.000Z',
+      },
+    ]);
+    await runThroughApiQueue(result.inventoryRequestId);
+    const receipt = await readReceipt(result.inventoryRequestId);
+    if (!receipt.stock_movement_id) throw new Error('CONFIRMED_MOVEMENT_ID_MISSING');
+    createdTestMovementIds.push(receipt.stock_movement_id);
+    const reversal = signReversal({
+      executionOrderId: result.executionOrderId,
+      reversalRequestId: randomUUID(),
+      inventoryRequestId: result.inventoryRequestId,
+      originalStockMovementId: receipt.stock_movement_id,
+      technicianCustodyId: result.technicianCustodyId,
+      actorUserId: result.actor.sub,
+    });
+    const reversalResult = await runThroughReversalApiQueue(reversal);
+    expect(reversalResult).toMatchObject({
+      apiAttempts: 1,
+      apiErrorClass: null,
+      responseEvent: {
+        tenantId,
+        envelope: { eventType: 'InventoryReversalConfirmedV1' },
+      },
+    });
+    const reversalReceipt = await readReversalReceipt(reversal.envelope.payload.reversalRequestId);
+    expect(reversalReceipt).toMatchObject({
+      outcome: 'CONFIRMED',
+      original_stock_movement_id: receipt.stock_movement_id,
+    });
+    if (!reversalReceipt.stock_movement_id) throw new Error('REVERSAL_MOVEMENT_ID_MISSING');
+    createdTestMovementIds.push(reversalReceipt.stock_movement_id);
+
+    const originalLines = await readMovementLines(receipt.stock_movement_id);
+    const reversalLines = await readMovementLines(reversalReceipt.stock_movement_id);
+    expect(reversalLines).toHaveLength(originalLines.length);
+    for (const originalLine of originalLines) {
+      const matchingReverseLine = reversalLines.find(
+        (line) =>
+          line.item_id === originalLine.item_id &&
+          line.location_id === originalLine.location_id &&
+          line.lot_id === originalLine.lot_id &&
+          Number(line.quantity) === -Number(originalLine.quantity),
+      );
+      expect(matchingReverseLine).toBeDefined();
+    }
+
+    const custodyBalances = await readLotBalances(custody.locationId, custody.lotIds);
+    expect(custodyBalances).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ lot_id: custody.lotIds[0], quantity_on_hand: '2.00' }),
+        expect.objectContaining({ lot_id: custody.lotIds[1], quantity_on_hand: '2.00' }),
+      ]),
+    );
+    const destinationLocationId = originalLines.find(
+      (line) => Number(line.quantity) > 0,
+    )!.location_id;
+    expect(await readLotBalances(destinationLocationId, custody.lotIds)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ lot_id: custody.lotIds[0], quantity_on_hand: '0.00' }),
+        expect.objectContaining({ lot_id: custody.lotIds[1], quantity_on_hand: '0.00' }),
+      ]),
+    );
   });
 
   it('ITEM_INACTIVE llega al recibo y a REJECTED sin reintento', async () => {

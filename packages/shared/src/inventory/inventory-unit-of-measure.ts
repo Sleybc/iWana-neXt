@@ -3,8 +3,8 @@
  *
  * Conjunto cerrado del sistema: `code` estable para persistencia y comparación,
  * etiqueta en español para superficies visibles y dimensión física declarada.
- * La validación dimensional (D2) llega en F5b; en esta fase solo se exige
- * pertenencia al catálogo.
+ * La compatibilidad dimensional sigue ADR-085 D2, incluida la excepción
+ * explícita ROLL → METER para rollos de longitud fija.
  *
  * Es catálogo del sistema, no tabla por tenant: el ADR descartó esa alternativa
  * porque haría que cada tenant reinventara 'unidad' con su propia grafía,

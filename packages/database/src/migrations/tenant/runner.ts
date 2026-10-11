@@ -98,6 +98,7 @@ import { ExecutionOrderInventoryRequestRecovery1380000000000 } from './138_execu
 import { InventoryExecutionRequestReceipts1390000000000 } from './139_inventory_execution_request_receipts';
 import { ExecutionOrderItemUsageReversals1400000000000 } from './140_execution_order_item_usage_reversals';
 import { InventoryExecutionRequestReversalReceipts1410000000000 } from './141_inventory_execution_request_reversal_receipts';
+import { ExpandInventoryBaseCostPrecision1420000000000 } from './142_expand_inventory_base_cost_precision';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -277,6 +278,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InventoryExecutionRequestReceipts1390000000000,
   ExecutionOrderItemUsageReversals1400000000000,
   InventoryExecutionRequestReversalReceipts1410000000000,
+  ExpandInventoryBaseCostPrecision1420000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

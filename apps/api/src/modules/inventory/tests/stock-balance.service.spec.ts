@@ -5,6 +5,7 @@ import { StockBalanceCondition } from '@iwana/shared';
 import {
   StockBalanceService,
   buildReservationAvailabilityKey,
+  buildStockBalanceLocationLockKey,
   buildStockBalanceLockKey,
   computeAvailable,
   formatInsufficientAvailableMessage,
@@ -75,7 +76,15 @@ describe('StockBalanceService', () => {
         reservedDelta: 4,
       });
 
-      expect(query).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), [
+      expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining('pg_advisory_xact_lock'), [
+        buildStockBalanceLocationLockKey({
+          tenantId: 'tenant-001',
+          itemId: 'item-001',
+          locationId: 'loc-001',
+          condition: StockBalanceCondition.NEW,
+        }),
+      ]);
+      expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining('pg_advisory_xact_lock'), [
         'stock-balance:tenant-001:item-001:loc-001:null:NEW',
       ]);
       expect(callOrder[0]).toBe('query');
@@ -95,6 +104,17 @@ describe('StockBalanceService', () => {
       expect(
         buildStockBalanceLockKey({ ...base, condition: StockBalanceCondition.DAMAGED }),
       ).not.toBe(buildStockBalanceLockKey(base));
+    });
+
+    it('comparte el lock de ubicación entre todos los lotes de la condición', () => {
+      const base = { tenantId: 't1', itemId: 'i1', locationId: 'l1' };
+      const locationKey = buildStockBalanceLocationLockKey(base);
+      expect(locationKey).toBe(
+        buildStockBalanceLocationLockKey({ ...base, condition: StockBalanceCondition.NEW }),
+      );
+      expect(locationKey).not.toBe(
+        buildStockBalanceLocationLockKey({ ...base, condition: StockBalanceCondition.DAMAGED }),
+      );
     });
 
     it('reserva feliz: aumenta reserved sin tocar onHand', async () => {
@@ -211,6 +231,93 @@ describe('StockBalanceService', () => {
         available: 4,
       });
       expect(formatInsufficientAvailableMessage(12, 8)).toContain('comprometidos');
+    });
+
+    it('mantiene la búsqueda estricta por lote', async () => {
+      const manager = {
+        find: jest.fn().mockResolvedValue([
+          { lotId: 'lot-a', quantityOnHand: '5.00', quantityReserved: '1.00' },
+          { lotId: 'lot-b', quantityOnHand: '7.00', quantityReserved: '2.00' },
+          { lotId: null, quantityOnHand: '3.00', quantityReserved: '1.00' },
+        ]),
+      } as unknown as EntityManager;
+      const service = new StockBalanceService({} as DataSource);
+
+      await expect(
+        service.getAvailabilityWithManager(manager, 'tenant-001', {
+          itemId: 'item-001',
+          locationId: 'loc-001',
+          lotId: 'lot-a',
+        }),
+      ).resolves.toEqual({ onHand: 5, reserved: 1, available: 4 });
+    });
+
+    it('agrega el disponible de todos los lotes y del saldo sin lote', async () => {
+      const manager = {
+        find: jest.fn().mockResolvedValue([
+          { lotId: 'lot-a', quantityOnHand: '5.00', quantityReserved: '1.00' },
+          { lotId: 'lot-b', quantityOnHand: '7.00', quantityReserved: '2.00' },
+          { lotId: null, quantityOnHand: '3.00', quantityReserved: '1.00' },
+        ]),
+      } as unknown as EntityManager;
+      const service = new StockBalanceService({} as DataSource);
+
+      await expect(
+        service.getAvailabilityAcrossLotsWithManager(manager, 'tenant-001', {
+          itemId: 'item-001',
+          locationId: 'loc-001',
+        }),
+      ).resolves.toEqual({ onHand: 15, reserved: 4, available: 11 });
+    });
+
+    it('ordena los lotes por FEFO, FIFO y deja el saldo sin lote al final', async () => {
+      const manager = {
+        find: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { lotId: null, quantityOnHand: '1.00', quantityReserved: '0.00' },
+            { lotId: 'lot-late', quantityOnHand: '1.00', quantityReserved: '0.00' },
+            { lotId: 'lot-same-newer', quantityOnHand: '1.00', quantityReserved: '0.00' },
+            { lotId: 'lot-same-older', quantityOnHand: '1.00', quantityReserved: '0.00' },
+            { lotId: 'lot-no-expiry', quantityOnHand: '1.00', quantityReserved: '0.00' },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 'lot-late',
+              expiryDate: '2027-01-01',
+              createdAt: new Date('2025-01-01T00:00:00Z'),
+            },
+            {
+              id: 'lot-same-newer',
+              expiryDate: '2026-06-01',
+              createdAt: new Date('2025-02-01T00:00:00Z'),
+            },
+            {
+              id: 'lot-same-older',
+              expiryDate: '2026-06-01',
+              createdAt: new Date('2025-01-01T00:00:00Z'),
+            },
+            {
+              id: 'lot-no-expiry',
+              expiryDate: null,
+              createdAt: new Date('2024-01-01T00:00:00Z'),
+            },
+          ]),
+      } as unknown as EntityManager;
+      const service = new StockBalanceService({} as DataSource);
+
+      const result = await service.getLotAvailabilitiesWithManager(manager, 'tenant-001', {
+        itemId: 'item-001',
+        locationId: 'loc-001',
+      });
+
+      expect(result.map((lot) => lot.lotId)).toEqual([
+        'lot-same-older',
+        'lot-same-newer',
+        'lot-late',
+        'lot-no-expiry',
+        null,
+      ]);
     });
   });
 

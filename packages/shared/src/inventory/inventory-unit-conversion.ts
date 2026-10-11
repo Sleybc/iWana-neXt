@@ -7,7 +7,8 @@
  *
  * Precisión y redondeo (restricción §4.7 del prompt F5b, Regla 2):
  * - El factor es `numeric(12,4)`; las cantidades del ledger son
- *   `numeric(12,2)` y los costos `numeric(14,2)`.
+ *   `numeric(12,2)`. Los costos usan `numeric(14,2)`, salvo la conversión
+ *   explícita ROLL → METER, que usa `numeric(14,5)` para conservar el valor.
  * - Cada recepción redondea SU PROPIO producto a 2 decimales (half-up):
  *   `base = redondeo2(cantidadCompra × factor)`.
  * - El error por línea queda acotado a 0,005 (media centésima). Las
@@ -15,10 +16,11 @@
  *   saldo redondeado anterior— así que no hay deriva por encadenamiento:
  *   N recepciones idénticas producen N veces el mismo valor base.
  * - El costo unitario se normaliza a unidad base preservando el valor total
- *   de la línea: `costoBase = redondeo2(costoCompra / factor)`, de modo que
- *   `cantidadBase × costoBase ≈ cantidadCompra × costoCompra` (salvo el
- *   redondeo acotado a centavos). Sin esta normalización, el costo promedio
- *   móvil (ADR-059) se corrompería en la misma proporción que el saldo.
+ *   de la línea: `costoBase = redondeo(costoCompra / factor, escala)`, de modo
+ *   que `cantidadBase × costoBase ≈ cantidadCompra × costoCompra`. ROLL →
+ *   METER conserva cinco decimales; con 1.000 m por rollo, redondear a
+ *   centavos altera el valor de inventario. Sin esta normalización, el costo
+ *   promedio móvil (ADR-059) se corrompería en la misma proporción que el saldo.
  */
 
 import {
@@ -30,8 +32,21 @@ import {
 /** Escala del ledger para cantidades (`numeric(12,2)`). */
 export const UOM_BASE_QUANTITY_SCALE = 2;
 
-/** Escala monetaria para costos unitarios (`numeric(14,2)`). */
+/** Escala monetaria usual para costos unitarios (`numeric(14,2)`). */
 export const UOM_BASE_COST_SCALE = 2;
+
+/**
+ * Un rollo de longitud declarada puede convertirse a metros. La división del
+ * costo de compra por el factor necesita conservar cinco decimales para que un
+ * rollo de 1.000 m no cambie su valor al expresarlo como costo por metro.
+ */
+export const UOM_ROLL_TO_METER_COST_SCALE = 5;
+
+export function getInventoryBaseUnitCostScale(baseCode: string, purchaseCode: string): number {
+  return baseCode === 'METER' && purchaseCode === 'ROLL'
+    ? UOM_ROLL_TO_METER_COST_SCALE
+    : UOM_BASE_COST_SCALE;
+}
 
 /**
  * Redondeo half-up a `scale` decimales (empate siempre hacia arriba).
@@ -65,8 +80,12 @@ export function convertPurchaseQuantityToBase(purchaseQuantity: number, factor: 
  * Costo unitario en unidad base, redondeado a escala monetaria.
  * Preserva el valor total de la línea (cantidad × costo).
  */
-export function convertPurchaseUnitCostToBase(purchaseUnitCost: number, factor: number): number {
-  return roundToScale(purchaseUnitCost / factor, UOM_BASE_COST_SCALE);
+export function convertPurchaseUnitCostToBase(
+  purchaseUnitCost: number,
+  factor: number,
+  scale = UOM_BASE_COST_SCALE,
+): number {
+  return roundToScale(purchaseUnitCost / factor, scale);
 }
 
 /**
@@ -76,7 +95,8 @@ export function convertPurchaseUnitCostToBase(purchaseUnitCost: number, factor: 
  * código desconocido devuelve `false` para no autorizar a ciegas (la
  * pertenencia al catálogo la exige la validación del maestro).
  * `COUNT ↔ COUNT` (caja → unidad) es relación de empaque dentro de la misma
- * dimensión y por tanto se acepta.
+ * dimensión. También se admite `ROLL → METER`: solo es válida con un factor
+ * explícito por artículo que declare la longitud fija de ese rollo.
  */
 export function areInventoryUnitsDimensionallyCompatible(
   baseCode: string,
@@ -85,6 +105,8 @@ export function areInventoryUnitsDimensionallyCompatible(
   if (!isInventoryUnitOfMeasureCode(baseCode) || !isInventoryUnitOfMeasureCode(purchaseCode)) {
     return false;
   }
+
+  if (baseCode === 'METER' && purchaseCode === 'ROLL') return true;
 
   return (
     getInventoryUnitOfMeasureDimension(baseCode) ===
@@ -102,8 +124,8 @@ export function buildDimensionalMismatchMessage(baseCode: string, purchaseCode: 
   return (
     `La unidad de compra (${purchaseLabel}) y la unidad base (${baseLabel}) pertenecen a ` +
     `dimensiones distintas (${purchaseDimension} frente a ${baseDimension}): la conversión solo ` +
-    `es válida dentro de la misma dimensión. Dentro de Conteo sí se admite empaque ` +
-    `(por ejemplo, caja → unidad).`
+    `es válida dentro de la misma dimensión, salvo Rollo → Metro cuando el artículo declara ` +
+    `un factor de conversión fijo. Dentro de Conteo sí se admite empaque (por ejemplo, caja → unidad).`
   );
 }
 

@@ -38,6 +38,16 @@ export interface StockAvailabilityQuery {
   condition?: StockBalanceCondition;
 }
 
+/** Disponible de una tupla de stock antes de agregarlo entre lotes. */
+export interface StockLotAvailability {
+  lotId: string | null;
+  onHand: number;
+  reserved: number;
+  available: number;
+  expiryDate: string | null;
+  lotCreatedAt: Date | null;
+}
+
 /** Balance con número de lote legible (enriquecido en lectura, no persistido). */
 export type StockBalanceWithLotNumber = StockBalance & { lotNumber: string | null };
 
@@ -109,6 +119,21 @@ export function buildStockBalanceLockKey(input: {
   const condition = input.condition ?? StockBalanceCondition.NEW;
   const lotId = input.lotId ?? 'null';
   return `stock-balance:${input.tenantId}:${input.itemId}:${input.locationId}:${lotId}:${condition}`;
+}
+
+/**
+ * Lock compartido por todas las filas de lote de una tupla (ítem × ubicación ×
+ * condición). Permite que una asignación agregada vea un conjunto estable de
+ * lotes mientras se valida y se aplica el movimiento.
+ */
+export function buildStockBalanceLocationLockKey(input: {
+  tenantId: string;
+  itemId: string;
+  locationId: string;
+  condition?: StockBalanceCondition;
+}): string {
+  const condition = input.condition ?? StockBalanceCondition.NEW;
+  return `stock-balance-location:${input.tenantId}:${input.itemId}:${input.locationId}:${condition}`;
 }
 
 export function formatInvariantViolationMessage(onHand: number, reserved: number): string {
@@ -234,6 +259,74 @@ export class StockBalanceService {
   }
 
   /**
+   * Disponible agregado de todas las filas de lote, incluido el saldo sin
+   * lote. `getAvailabilityWithManager` conserva su búsqueda estricta.
+   */
+  async getAvailabilityAcrossLotsWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: Omit<StockAvailabilityQuery, 'lotId'>,
+  ): Promise<StockAvailability> {
+    const condition = input.condition ?? StockBalanceCondition.NEW;
+    const balances = await manager.find(StockBalance, {
+      where: {
+        tenantId,
+        itemId: input.itemId,
+        locationId: input.locationId,
+        condition,
+      },
+    });
+    const onHand = roundQty(
+      balances.reduce((total, balance) => total + toNumeric(balance.quantityOnHand), 0),
+    );
+    const reserved = roundQty(
+      balances.reduce((total, balance) => total + toNumeric(balance.quantityReserved), 0),
+    );
+
+    return { onHand, reserved, available: computeAvailable(onHand, reserved) };
+  }
+
+  /** Filas por lote ordenadas FEFO → FIFO, con el saldo sin lote al final. */
+  async getLotAvailabilitiesWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    input: Omit<StockAvailabilityQuery, 'lotId'>,
+  ): Promise<StockLotAvailability[]> {
+    const condition = input.condition ?? StockBalanceCondition.NEW;
+    const balances = await manager.find(StockBalance, {
+      where: {
+        tenantId,
+        itemId: input.itemId,
+        locationId: input.locationId,
+        condition,
+      },
+    });
+    const lotIds = [
+      ...new Set(balances.map((balance) => balance.lotId).filter((id): id is string => !!id)),
+    ];
+    const lots = lotIds.length
+      ? await manager.find(StockLot, { where: { tenantId, itemId: input.itemId, id: In(lotIds) } })
+      : [];
+    const lotById = new Map(lots.map((lot) => [lot.id, lot]));
+
+    return balances
+      .map((balance) => {
+        const lot = balance.lotId ? lotById.get(balance.lotId) : undefined;
+        const onHand = toNumeric(balance.quantityOnHand);
+        const reserved = toNumeric(balance.quantityReserved);
+        return {
+          lotId: balance.lotId ?? null,
+          onHand,
+          reserved,
+          available: computeAvailable(onHand, reserved),
+          expiryDate: lot?.expiryDate ?? null,
+          lotCreatedAt: lot?.createdAt ?? null,
+        };
+      })
+      .sort(compareLotAvailability);
+  }
+
+  /**
    * Disponible batch por tuplas de reserva (MOD12 S2.1 · B2): UNA sola
    * consulta `GROUP BY` (ítem, lote, condición) para todas las claves, en vez
    * de un `getAvailabilityWithManager` por línea. Las tuplas sin filas suman
@@ -301,6 +394,15 @@ export class StockBalanceService {
     // Se usa advisory lock en lugar de SELECT ... FOR UPDATE porque también cubre
     // el caso "la fila aún no existe" (dos inserciones concurrentes de la misma tupla);
     // el índice UNIQUE queda como segunda red.
+    await acquireTransactionAdvisoryLock(
+      manager,
+      buildStockBalanceLocationLockKey({
+        tenantId: input.tenantId,
+        itemId: input.itemId,
+        locationId: input.locationId,
+        condition,
+      }),
+    );
     await acquireTransactionAdvisoryLock(
       manager,
       buildStockBalanceLockKey({
@@ -380,4 +482,27 @@ export class StockBalanceService {
     existing.quantityReserved = toQuantity(nextReserved);
     return manager.save(StockBalance, existing);
   }
+}
+
+function compareLotAvailability(left: StockLotAvailability, right: StockLotAvailability): number {
+  if (left.lotId === null || right.lotId === null) {
+    if (left.lotId === right.lotId) return 0;
+    return left.lotId === null ? 1 : -1;
+  }
+
+  if (left.expiryDate !== right.expiryDate) {
+    if (left.expiryDate === null) return 1;
+    if (right.expiryDate === null) return -1;
+    const byExpiry = left.expiryDate.localeCompare(right.expiryDate);
+    if (byExpiry !== 0) return byExpiry;
+  }
+
+  if (left.lotCreatedAt !== right.lotCreatedAt) {
+    if (left.lotCreatedAt === null) return 1;
+    if (right.lotCreatedAt === null) return -1;
+    const byCreation = left.lotCreatedAt.getTime() - right.lotCreatedAt.getTime();
+    if (byCreation !== 0) return byCreation;
+  }
+
+  return left.lotId.localeCompare(right.lotId);
 }

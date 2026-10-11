@@ -43,8 +43,11 @@ import { InventoryCostingService } from './inventory-costing.service';
 import { InventoryDomainEventPublisher } from './inventory-domain-event-publisher.service';
 import type { ItemStockThresholdSnapshot } from './inventory-domain-event-publisher.service';
 import { SerializedAssetService } from './serialized-asset.service';
-import { StockBalanceService, formatInsufficientAvailableMessage } from './stock-balance.service';
-import { buildStockBalanceLockKey } from './stock-balance.service';
+import {
+  StockBalanceService,
+  buildStockBalanceLocationLockKey,
+  formatInsufficientAvailableMessage,
+} from './stock-balance.service';
 import { acquireTransactionAdvisoryLock } from './inventory-postgres.util';
 import { InventoryBusinessRejection } from './inventory-business-rejection';
 
@@ -102,6 +105,11 @@ export interface StockMovementResult {
   lines: StockMovementLine[];
   /** `true` si el movimiento se persistió en esta llamada (no replay de idempotencia). */
   created: boolean;
+}
+
+interface ExecutionOrderLotAllocation {
+  lotId: string | null;
+  quantity: number;
 }
 
 export interface ReverseExecutionOrderMovementInput {
@@ -297,22 +305,23 @@ export class StockLedgerService {
     );
 
     const lines: StockMovementLine[] = [];
-    const sealedCostCache = new Map<string, number | null>();
+    const itemCostContextCache = new Map<
+      string,
+      { sealedUnitCost: number | null; baseUnitCostScale: number }
+    >();
 
     for (const lineInput of input.lines) {
       if (lineInput.quantity === 0) {
         throw new BadRequestException('Las líneas del movimiento no pueden tener cantidad cero.');
       }
 
-      let unitCost = lineInput.unitCost;
-      if (unitCost === undefined || unitCost === null) {
-        unitCost = await this.inventoryCostingService.resolveSealedUnitCostWithManager(
-          manager,
-          tenantId,
-          lineInput.itemId,
-          sealedCostCache,
-        );
-      }
+      const itemCostContext = await this.inventoryCostingService.resolveUnitCostContextWithManager(
+        manager,
+        tenantId,
+        lineInput.itemId,
+        itemCostContextCache,
+      );
+      const unitCost = lineInput.unitCost ?? itemCostContext.sealedUnitCost;
 
       const line = await manager.save(
         StockMovementLine,
@@ -324,7 +333,7 @@ export class StockLedgerService {
           lotId: lineInput.lotId ?? null,
           serializedAssetId: lineInput.serializedAssetId ?? null,
           quantity: toQuantity(lineInput.quantity),
-          unitCost: unitCost != null ? unitCost.toFixed(2) : null,
+          unitCost: unitCost != null ? unitCost.toFixed(itemCostContext.baseUnitCostScale) : null,
         }),
       );
 
@@ -767,11 +776,13 @@ export class StockLedgerService {
           .setLock('pessimistic_write')
           .getMany();
         const negativeLines = originalLines.filter((line) => toNumeric(line.quantity) < 0);
+        const sourceLocationIds = new Set(negativeLines.map((line) => line.locationId));
         if (
           originalLines.length === 0 ||
-          negativeLines.length !== 1 ||
+          negativeLines.length === 0 ||
           originalLines.some((line) => toNumeric(line.quantity) === 0) ||
-          originalLines.some((line) => line.itemId !== negativeLines[0]?.itemId)
+          originalLines.some((line) => line.itemId !== negativeLines[0]?.itemId) ||
+          sourceLocationIds.size !== 1
         ) {
           throw new InventoryBusinessRejection('REVERSAL_ORIGINAL_NOT_FOUND');
         }
@@ -938,6 +949,20 @@ export class StockLedgerService {
           throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
         }
 
+        // El lock de ubicación serializa el conjunto completo de lotes frente
+        // a cualquier ajuste o movimiento que aplique deltas en esta custodia.
+        await acquireTransactionAdvisoryLock(
+          manager,
+          buildStockBalanceLocationLockKey({
+            tenantId,
+            itemId: input.itemId,
+            locationId: technicianCustodyLocationId,
+            condition: StockBalanceCondition.NEW,
+          }),
+        );
+
+        let lotAllocations: ExecutionOrderLotAllocation[];
+
         if (validateInventoryRequest) {
           await this.assertActiveTechnicianCustodyLocation(
             manager,
@@ -945,12 +970,32 @@ export class StockLedgerService {
             input.technicianCustodyId,
             technicianCustodyLocationId,
           );
-          await this.validateExecutionOrderInventoryRequest(
+          lotAllocations = await this.validateExecutionOrderInventoryRequest(
             manager,
             tenantId,
             input,
             technicianCustodyLocationId,
             quantity,
+          );
+        } else {
+          const serializedAsset = input.serialNumber
+            ? await manager.findOne(SerializedAsset, {
+                where: {
+                  tenantId,
+                  inventoryItemId: input.itemId,
+                  normalizedSerialNumber: this.serializedAssetService.normalizeSerial(
+                    input.serialNumber,
+                  ),
+                },
+              })
+            : null;
+          lotAllocations = await this.allocateExecutionOrderLots(
+            manager,
+            tenantId,
+            input,
+            technicianCustodyLocationId,
+            quantity,
+            serializedAsset?.lotId ?? null,
           );
         }
 
@@ -984,7 +1029,7 @@ export class StockLedgerService {
             notes: `Movimiento originado desde OT (${input.action}).`,
             lines: this.buildExecutionOrderMovementLines(
               input,
-              quantity,
+              lotAllocations,
               technicianCustodyLocationId,
               customerSiteLocationId,
               mainWarehouseLocationId,
@@ -1069,12 +1114,13 @@ export class StockLedgerService {
     input: ExecutionOrderMovementInput,
     technicianCustodyLocationId: string,
     quantity: number,
-  ): Promise<void> {
+  ): Promise<ExecutionOrderLotAllocation[]> {
     const item = await manager.findOne(InventoryItem, { where: { tenantId, id: input.itemId } });
     if (!item || item.status !== InventoryItemStatus.ACTIVE) {
       throw new InventoryBusinessRejection('ITEM_INACTIVE');
     }
 
+    let serializedAssetLotId: string | null = null;
     if (input.serialNumber) {
       const normalizedSerial = this.serializedAssetService.normalizeSerial(input.serialNumber);
       const asset = await manager.findOne(SerializedAsset, {
@@ -1092,33 +1138,73 @@ export class StockLedgerService {
       ) {
         throw new InventoryBusinessRejection('SERIAL_NOT_IN_CUSTODY');
       }
+      serializedAssetLotId = asset.lotId ?? null;
     }
 
-    // Serializa la comprobación de saldo con el mismo lock que aplica el delta,
-    // de forma que una concurrencia no transforme un rechazo de negocio en 500.
-    if (input.finalDisposition !== InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK) {
-      await acquireTransactionAdvisoryLock(
-        manager,
-        buildStockBalanceLockKey({
-          tenantId,
-          itemId: input.itemId,
-          locationId: technicianCustodyLocationId,
-          condition: StockBalanceCondition.NEW,
-        }),
-      );
-      const available = await this.stockBalanceService.getAvailableQuantityWithManager(
-        manager,
-        tenantId,
-        {
-          itemId: input.itemId,
-          locationId: technicianCustodyLocationId,
-          condition: StockBalanceCondition.NEW,
-        },
-      );
-      if (available < quantity) {
+    return this.allocateExecutionOrderLots(
+      manager,
+      tenantId,
+      input,
+      technicianCustodyLocationId,
+      quantity,
+      serializedAssetLotId,
+    );
+  }
+
+  private async allocateExecutionOrderLots(
+    manager: EntityManager,
+    tenantId: string,
+    input: ExecutionOrderMovementInput,
+    technicianCustodyLocationId: string,
+    quantity: number,
+    serializedAssetLotId: string | null,
+  ): Promise<ExecutionOrderLotAllocation[]> {
+    const availability = await this.stockBalanceService.getAvailabilityAcrossLotsWithManager(
+      manager,
+      tenantId,
+      {
+        itemId: input.itemId,
+        locationId: technicianCustodyLocationId,
+        condition: StockBalanceCondition.NEW,
+      },
+    );
+    if (availability.available < quantity) {
+      throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
+    }
+
+    const lotAvailabilities = await this.stockBalanceService.getLotAvailabilitiesWithManager(
+      manager,
+      tenantId,
+      {
+        itemId: input.itemId,
+        locationId: technicianCustodyLocationId,
+        condition: StockBalanceCondition.NEW,
+      },
+    );
+
+    if (input.serialNumber && serializedAssetLotId !== null) {
+      const assetLot = lotAvailabilities.find((lot) => lot.lotId === serializedAssetLotId);
+      if (!assetLot || assetLot.available < quantity) {
         throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
       }
+      return [{ lotId: serializedAssetLotId, quantity }];
     }
+
+    let remaining = quantity;
+    const allocations: ExecutionOrderLotAllocation[] = [];
+    for (const lot of lotAvailabilities) {
+      if (remaining <= 0) break;
+      const allocated = Math.min(remaining, Math.max(0, lot.available));
+      if (allocated <= 0) continue;
+      allocations.push({ lotId: lot.lotId, quantity: allocated });
+      remaining = Math.round((remaining - allocated) * 100) / 100;
+    }
+
+    if (remaining > 0) {
+      throw new InventoryBusinessRejection('CUSTODY_INSUFFICIENT');
+    }
+
+    return allocations;
   }
 
   private async assertActiveTechnicianCustodyLocation(
@@ -1752,57 +1838,62 @@ export class StockLedgerService {
 
   private buildExecutionOrderMovementLines(
     input: ExecutionOrderMovementInput,
-    quantity: number,
+    lotAllocations: ExecutionOrderLotAllocation[],
     technicianCustodyLocationId: string,
     customerSiteLocationId: string | null,
     mainWarehouseLocationId: string | null,
   ): StockLedgerLineInput[] {
-    const lines: StockLedgerLineInput[] = [
-      {
-        itemId: input.itemId,
-        locationId: technicianCustodyLocationId,
-        quantity: -quantity,
-        serializedAssetId: null,
-        serialNumber: input.serialNumber ?? null,
-      },
-    ];
-
-    if (
-      input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER &&
-      customerSiteLocationId
-    ) {
+    const lines: StockLedgerLineInput[] = [];
+    for (const allocation of lotAllocations) {
       lines.push({
         itemId: input.itemId,
-        locationId: customerSiteLocationId,
-        quantity,
+        locationId: technicianCustodyLocationId,
+        quantity: -allocation.quantity,
+        lotId: allocation.lotId,
         serializedAssetId: null,
         serialNumber: input.serialNumber ?? null,
       });
-    }
 
-    if (input.finalDisposition === InventoryDisposition.RETURNED_TO_WAREHOUSE) {
-      if (!mainWarehouseLocationId) {
-        throw new BadRequestException(
-          'No fue posible resolver la bodega principal para registrar la devolución.',
-        );
+      if (
+        input.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER &&
+        customerSiteLocationId
+      ) {
+        lines.push({
+          itemId: input.itemId,
+          locationId: customerSiteLocationId,
+          quantity: allocation.quantity,
+          lotId: allocation.lotId,
+          serializedAssetId: null,
+          serialNumber: input.serialNumber ?? null,
+        });
       }
-      lines.push({
-        itemId: input.itemId,
-        locationId: mainWarehouseLocationId,
-        quantity,
-        serializedAssetId: null,
-        serialNumber: input.serialNumber ?? null,
-      });
-    }
 
-    if (input.finalDisposition === InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK) {
-      lines.push({
-        itemId: input.itemId,
-        locationId: technicianCustodyLocationId,
-        quantity,
-        serializedAssetId: null,
-        serialNumber: input.serialNumber ?? null,
-      });
+      if (input.finalDisposition === InventoryDisposition.RETURNED_TO_WAREHOUSE) {
+        if (!mainWarehouseLocationId) {
+          throw new BadRequestException(
+            'No fue posible resolver la bodega principal para registrar la devolución.',
+          );
+        }
+        lines.push({
+          itemId: input.itemId,
+          locationId: mainWarehouseLocationId,
+          quantity: allocation.quantity,
+          lotId: allocation.lotId,
+          serializedAssetId: null,
+          serialNumber: input.serialNumber ?? null,
+        });
+      }
+
+      if (input.finalDisposition === InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK) {
+        lines.push({
+          itemId: input.itemId,
+          locationId: technicianCustodyLocationId,
+          quantity: allocation.quantity,
+          lotId: allocation.lotId,
+          serializedAssetId: null,
+          serialNumber: input.serialNumber ?? null,
+        });
+      }
     }
 
     return lines;

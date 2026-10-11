@@ -38,6 +38,9 @@ jest.mock('@iwana/db', () => ({
 describe('StockLedgerService', () => {
   const inventoryCostingServiceMock = {
     resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null),
+    resolveUnitCostContextWithManager: jest
+      .fn()
+      .mockResolvedValue({ sealedUnitCost: null, baseUnitCostScale: 2 }),
     applyReceiptCostingWithManager: jest.fn().mockResolvedValue(undefined),
     sumOnHandWithManager: jest.fn().mockResolvedValue(0),
   };
@@ -93,10 +96,23 @@ describe('StockLedgerService', () => {
   ): T & {
     getAvailabilityWithManager: jest.Mock;
     getAvailableQuantityWithManager: jest.Mock;
+    getAvailabilityAcrossLotsWithManager: jest.Mock;
+    getLotAvailabilitiesWithManager: jest.Mock;
   } {
     return {
       getAvailabilityWithManager: jest.fn().mockResolvedValue(availability),
       getAvailableQuantityWithManager: jest.fn().mockResolvedValue(availability.available),
+      getAvailabilityAcrossLotsWithManager: jest.fn().mockResolvedValue(availability),
+      getLotAvailabilitiesWithManager: jest.fn().mockResolvedValue([
+        {
+          lotId: null,
+          onHand: availability.onHand,
+          reserved: availability.reserved,
+          available: availability.available,
+          expiryDate: null,
+          lotCreatedAt: null,
+        },
+      ]),
       ...stockBalanceService,
     };
   }
@@ -253,7 +269,7 @@ describe('StockLedgerService', () => {
     expect(result.lines).toEqual([expect.objectContaining({ movementId: 'mov-010' })]);
     expect(stockBalanceService.applyDeltaWithManager).toHaveBeenCalledTimes(1);
     expect(manager.save).toHaveBeenCalledTimes(2);
-    expect(inventoryCostingServiceMock.resolveSealedUnitCostWithManager).toHaveBeenCalledWith(
+    expect(inventoryCostingServiceMock.resolveUnitCostContextWithManager).toHaveBeenCalledWith(
       manager,
       'tenant-001',
       'item-001',
@@ -262,7 +278,10 @@ describe('StockLedgerService', () => {
   });
 
   it('sella unitCost en salidas cuando el costing resuelve avg > 0 (CA-F4-03)', async () => {
-    inventoryCostingServiceMock.resolveSealedUnitCostWithManager.mockResolvedValueOnce(25);
+    inventoryCostingServiceMock.resolveUnitCostContextWithManager.mockResolvedValueOnce({
+      sealedUnitCost: 25,
+      baseUnitCostScale: 2,
+    });
 
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
@@ -315,7 +334,10 @@ describe('StockLedgerService', () => {
   });
 
   it('ajuste negativo sella unitCost y no invoca applyReceiptCosting (CA-F4-04)', async () => {
-    inventoryCostingServiceMock.resolveSealedUnitCostWithManager.mockResolvedValueOnce(18.5);
+    inventoryCostingServiceMock.resolveUnitCostContextWithManager.mockResolvedValueOnce({
+      sealedUnitCost: 18.5,
+      baseUnitCostScale: 2,
+    });
 
     const manager = {
       findOne: jest
@@ -760,6 +782,7 @@ describe('StockLedgerService', () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
       find: jest.fn().mockResolvedValue([]),
+      query: jest.fn().mockResolvedValue([]),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -843,6 +866,7 @@ describe('StockLedgerService', () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
       find: jest.fn().mockResolvedValue([]),
+      query: jest.fn().mockResolvedValue([]),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -948,6 +972,7 @@ describe('StockLedgerService', () => {
         return null;
       }),
       find: jest.fn().mockResolvedValue([]),
+      query: jest.fn().mockResolvedValue([]),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -1030,6 +1055,7 @@ describe('StockLedgerService', () => {
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
       find: jest.fn().mockResolvedValue([]),
+      query: jest.fn().mockResolvedValue([]),
       createQueryBuilder: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -1462,10 +1488,23 @@ describe('StockLedgerService', () => {
           expect.objectContaining({ locationId: 'loc-customer-site', quantity: '1.00' }),
         ]),
       );
-      expect(stockBalanceService.getAvailableQuantityWithManager).toHaveBeenCalledWith(
+      expect(stockBalanceService.getAvailabilityAcrossLotsWithManager).toHaveBeenCalledWith(
         manager,
         'tenant-001',
-        expect.objectContaining({ locationId: custodyLocationId }),
+        expect.objectContaining({
+          itemId,
+          locationId: custodyLocationId,
+          condition: StockBalanceCondition.NEW,
+        }),
+      );
+      expect(stockBalanceService.getLotAvailabilitiesWithManager).toHaveBeenCalledWith(
+        manager,
+        'tenant-001',
+        expect.objectContaining({
+          itemId,
+          locationId: custodyLocationId,
+          condition: StockBalanceCondition.NEW,
+        }),
       );
       expect(serializedAssetService.transitionAssetWithManager).toHaveBeenCalledWith(
         manager,
@@ -1526,6 +1565,7 @@ describe('StockLedgerService', () => {
       const manager = {
         findOne: jest.fn().mockResolvedValue(null),
         find: jest.fn().mockResolvedValue([]),
+        query: jest.fn().mockResolvedValue([]),
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
@@ -1542,6 +1582,7 @@ describe('StockLedgerService', () => {
         transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       };
       const serializedAssetService = {
+        normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
         resolveForMovementWithManager: jest
           .fn()
           .mockResolvedValueOnce({
@@ -1604,9 +1645,11 @@ describe('StockLedgerService', () => {
       const manager = {
         findOne: jest.fn().mockResolvedValue(existingMovement),
         find: jest.fn().mockResolvedValue([]),
+        query: jest.fn().mockResolvedValue([]),
         transaction: jest.fn().mockImplementation(async (work) => work(manager)),
       };
       const serializedAssetService = {
+        normalizeSerial: jest.fn((serial: string) => serial.trim().toUpperCase()),
         resolveForMovementWithManager: jest.fn().mockResolvedValue({ id: 'asset-loan-001' }),
         transitionAssetWithManager: jest.fn(),
       };

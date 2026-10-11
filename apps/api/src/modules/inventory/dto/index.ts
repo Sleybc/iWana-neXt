@@ -792,7 +792,7 @@ export class CreateInventoryItemDto {
     enum: [...INVENTORY_UNIT_OF_MEASURE_CODES],
     description:
       'Código del catálogo canónico de unidades para la compra (opcional). ' +
-      'Debe compartir dimensión con la unidad base (ADR-085 D2); COUNT admite empaque (caja → unidad).',
+      'Debe compartir dimensión con la unidad base (ADR-085 D2); COUNT admite empaque (caja → unidad) y ROLL → METER requiere factor fijo explícito.',
   })
   @Allow()
   purchaseUnitOfMeasure?: string | null;

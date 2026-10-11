@@ -151,7 +151,12 @@ const actor: JwtPayload = {
         transitionAssetWithManager: jest.fn(),
       } as never,
       { recordWithManager: jest.fn() } as never,
-      { resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null) } as never,
+      {
+        resolveSealedUnitCostWithManager: jest.fn().mockResolvedValue(null),
+        resolveUnitCostContextWithManager: jest
+          .fn()
+          .mockResolvedValue({ sealedUnitCost: null, baseUnitCostScale: 2 }),
+      } as never,
       { openLoanWithManager: jest.fn(), closeOpenLoanWithManager: jest.fn() } as never,
       {
         captureItemSnapshots: jest.fn().mockResolvedValue(new Map()),

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { InventoryItem, StockBalance } from '@iwana/db';
+import { getInventoryBaseUnitCostScale } from '@iwana/shared';
 import { acquireTransactionAdvisoryLock } from './inventory-postgres.util';
 
 export interface ReceiptCostingLine {
@@ -22,8 +23,8 @@ function toNumeric(value: string | number | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function toMoney(value: number): string {
-  return value.toFixed(2);
+function toMoney(value: number, scale: number): string {
+  return value.toFixed(scale);
 }
 
 /**
@@ -92,6 +93,11 @@ export function resolveSealedUnitCost(item: {
   return value > 0 ? value : null;
 }
 
+export interface InventoryItemUnitCostContext {
+  sealedUnitCost: number | null;
+  baseUnitCostScale: number;
+}
+
 @Injectable()
 export class InventoryCostingService {
   async sumOnHandWithManager(
@@ -154,12 +160,46 @@ export class InventoryCostingService {
         lastPurchaseCost = line.unitCost;
       }
 
-      item.averageCost = toMoney(averageCost);
-      item.lastPurchaseCost = toMoney(lastPurchaseCost);
+      const costScale = getInventoryBaseUnitCostScale(
+        item.unitOfMeasure,
+        item.purchaseUnitOfMeasure ?? item.unitOfMeasure,
+      );
+      item.averageCost = toMoney(averageCost, costScale);
+      item.lastPurchaseCost = toMoney(lastPurchaseCost, costScale);
       await manager.save(InventoryItem, item);
     }
   }
 
+  async resolveUnitCostContextWithManager(
+    manager: EntityManager,
+    tenantId: string,
+    itemId: string,
+    cache?: Map<string, InventoryItemUnitCostContext>,
+  ): Promise<InventoryItemUnitCostContext> {
+    if (cache?.has(itemId)) {
+      return cache.get(itemId) as InventoryItemUnitCostContext;
+    }
+
+    const item = await manager.findOne(InventoryItem, {
+      where: { id: itemId, tenantId },
+    });
+
+    if (!item) {
+      throw new NotFoundException('El ítem de inventario no existe.');
+    }
+
+    const context: InventoryItemUnitCostContext = {
+      sealedUnitCost: resolveSealedUnitCost(item),
+      baseUnitCostScale: getInventoryBaseUnitCostScale(
+        item.unitOfMeasure,
+        item.purchaseUnitOfMeasure ?? item.unitOfMeasure,
+      ),
+    };
+    cache?.set(itemId, context);
+    return context;
+  }
+
+  /** Costo sellado legado para lectores que no necesitan serializar su escala. */
   async resolveSealedUnitCostWithManager(
     manager: EntityManager,
     tenantId: string,

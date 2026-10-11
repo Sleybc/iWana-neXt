@@ -1673,7 +1673,7 @@ export class ExecutionOrdersService {
         tenantId,
         actor,
         'execution_order.item_usage',
-        usage.id,
+        id,
         order.version ?? 1,
         context,
         receipt,
@@ -1692,6 +1692,7 @@ export class ExecutionOrdersService {
               : null,
           actorUserId: actor.sub,
         },
+        usage.id,
       );
       // MOD12 consume la solicitud desde el outbox; no se hace llamada
       // sincrónica que pueda dejar un movimiento externo sin reconciliar.
