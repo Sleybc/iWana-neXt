@@ -38,6 +38,11 @@ import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
       provide: STORAGE_PORT,
       useFactory: (config: ConfigService) => {
         const driver = config.get<string>('STORAGE_DRIVER', 'local') as 'minio' | 'local';
+        const forcePathStyleSetting = config.get<boolean | string>('S3_FORCE_PATH_STYLE', true);
+        const forcePathStyle =
+          typeof forcePathStyleSetting === 'boolean'
+            ? forcePathStyleSetting
+            : forcePathStyleSetting.trim().toLowerCase() === 'true';
 
         if (driver === 'minio') {
           return createStorageAdapter({
@@ -48,7 +53,7 @@ import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
               accessKeyId: config.get<string>('S3_ACCESS_KEY_ID', ''),
               secretAccessKey: config.get<string>('S3_SECRET_ACCESS_KEY', ''),
               bucket: config.get<string>('S3_BUCKET', 'iwana-media'),
-              forcePathStyle: config.get<string>('S3_FORCE_PATH_STYLE', 'true') === 'true',
+              forcePathStyle,
               // publicBaseUrl es opcional — solo se incluye si está configurada
               ...(config.get<string>('S3_PUBLIC_BASE_URL')
                 ? { publicBaseUrl: config.get<string>('S3_PUBLIC_BASE_URL') as string }

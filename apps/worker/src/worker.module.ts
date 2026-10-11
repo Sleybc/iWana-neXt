@@ -97,6 +97,11 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
 function createWorkerStorageAdapter(config: ConfigService): StoragePort {
   const driver = config.get<string>('STORAGE_DRIVER', 'local') as 'minio' | 'local';
+  const forcePathStyleSetting = config.get<boolean | string>('S3_FORCE_PATH_STYLE', true);
+  const forcePathStyle =
+    typeof forcePathStyleSetting === 'boolean'
+      ? forcePathStyleSetting
+      : forcePathStyleSetting.trim().toLowerCase() === 'true';
 
   if (driver === 'minio') {
     return createStorageAdapter({
@@ -107,7 +112,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
         accessKeyId: config.get<string>('S3_ACCESS_KEY_ID', ''),
         secretAccessKey: config.get<string>('S3_SECRET_ACCESS_KEY', ''),
         bucket: config.get<string>('S3_BUCKET', 'iwana-media'),
-        forcePathStyle: config.get<string>('S3_FORCE_PATH_STYLE', 'true') === 'true',
+        forcePathStyle,
         ...(config.get<string>('S3_PUBLIC_BASE_URL')
           ? { publicBaseUrl: config.get<string>('S3_PUBLIC_BASE_URL') as string }
           : {}),
