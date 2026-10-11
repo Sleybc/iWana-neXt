@@ -343,8 +343,6 @@ function isNodeExecutable(executable, platform) {
   );
 }
 
-const REPO_DEV_FILTERS = new Set(['@iwana/api', '@iwana/worker', '@iwana/web', '@iwana/portal']);
-
 function isPnpmExecutable(executable, platform) {
   const basename = normalizeForMatching(getTokenBasename(executable), platform);
   return platform === 'win32'
@@ -355,18 +353,6 @@ function isPnpmExecutable(executable, platform) {
 function isPnpmCommand(command, platform) {
   const { tokens, complete } = getCommandTokens(command);
   return complete && isPnpmExecutable(tokens[0] ?? '', platform);
-}
-
-function isRepoPnpmDevCommand(command, platform) {
-  const { tokens, complete } = getCommandTokens(command);
-  return (
-    complete &&
-    tokens.length === 4 &&
-    isPnpmExecutable(tokens[0] ?? '', platform) &&
-    tokens[1] === '--filter' &&
-    REPO_DEV_FILTERS.has(tokens[2]) &&
-    tokens[3] === 'dev'
-  );
 }
 
 function isRepoDevLauncher(command, root, platform) {
@@ -437,7 +423,6 @@ export function findRepoWatcherPids(
     .filter((entry) => !protectedPids.has(entry.pid))
     .filter((entry) => {
       const pnpmCommand = isPnpmCommand(entry.command, platform);
-      const repoPnpmDevCommand = isRepoPnpmDevCommand(entry.command, platform);
       const directMarkerMatch =
         !pnpmCommand &&
         markers.some((marker) => {
@@ -473,10 +458,12 @@ export function findRepoWatcherPids(
 
       if (directMarkerMatch) return true;
 
-      // A pnpm wrapper is safe only when its ancestry proves that this repo's
-      // path-anchored node scripts/dev.mjs launched it. A standalone pnpm
-      // command, even with an iWana filter, remains external.
-      return repoPnpmDevCommand && hasRepoDevLauncherAncestor(entry, entries, root, platform);
+      // Los comandos reales de pnpm, Nest y Next pueden ser wrappers o hijos
+      // ubicados en el store global de pnpm. Su ejecutable ya no identifica
+      // `apps/<app>` de forma directa; la ascendencia del launcher absoluto del
+      // repo demuestra que pertenecen a esta ejecución de desarrollo.
+      // Un proceso externo con el mismo comando no supera esta comprobación.
+      return hasRepoDevLauncherAncestor(entry, entries, root, platform);
     })
     .map((entry) => entry.pid);
 }

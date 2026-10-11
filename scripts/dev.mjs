@@ -824,7 +824,7 @@ function waitForExit(child, label) {
 }
 
 async function runStep(label, command, args, options = {}) {
-  const { dashboard, section, trackChild } = options;
+  const { dashboard, section, trackChild, captureFailureOutput = false } = options;
   // Los pasos secuenciales (docker compose, builds, migraciones) también deben
   // ser alcanzables por el apagado: un Ctrl+C durante las migraciones dejaba el
   // hijo huérfano porque solo se registraban los procesos de larga duración.
@@ -852,21 +852,34 @@ async function runStep(label, command, args, options = {}) {
 
   const child = spawnPipedCommand(command, args);
   const untrack = track(child);
+  let failureOutput = '';
+  const maxFailureOutputLength = 8_000;
+
+  function consumeChunk(chunk) {
+    dashboard.consumeChunk(section ?? 'system', chunk);
+
+    if (captureFailureOutput) {
+      const normalized = normalizeChunk(chunk);
+      failureOutput = `${failureOutput}${normalized}`.slice(-maxFailureOutputLength);
+    }
+  }
 
   if (child.stdout) {
-    child.stdout.on('data', (chunk) => {
-      dashboard.consumeChunk(section ?? 'system', chunk);
-    });
+    child.stdout.on('data', consumeChunk);
   }
 
   if (child.stderr) {
-    child.stderr.on('data', (chunk) => {
-      dashboard.consumeChunk(section ?? 'system', chunk);
-    });
+    child.stderr.on('data', consumeChunk);
   }
 
   try {
     await waitForExit(child, label);
+  } catch (error) {
+    const details = failureOutput.trim();
+    if (captureFailureOutput && details && error instanceof Error) {
+      error.message = `${error.message}\n\nSalida del paso:\n${details}`;
+    }
+    throw error;
   } finally {
     untrack();
   }
@@ -1184,6 +1197,7 @@ async function runStartupSequence({ dashboard, registry, trackChild }) {
   await runStep('Liberando puertos de desarrollo', 'pnpm', ['dev:free-ports'], {
     dashboard,
     trackChild,
+    captureFailureOutput: true,
   });
 
   // `--wait` bloquea hasta que cada servicio esté running/healthy. Sin él, las
