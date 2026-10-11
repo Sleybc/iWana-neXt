@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  RadioCardGroup,
 } from '@iwana/ui';
 import type { VisitAttemptDecision, WfmVisitRequest } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
@@ -74,45 +75,24 @@ export function ExhaustedAttemptsDecisionDialog({
               </p>
             </div>
 
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                Decisión
-              </legend>
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-border dark:bg-dark-surface-2">
-                <input
-                  type="radio"
-                  name="exhausted-attempt-decision"
-                  className="mt-1"
-                  checked={choice === 'FORCE_RESCHEDULE'}
-                  onChange={() => setChoice('FORCE_RESCHEDULE')}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-gray-900 dark:text-white">
-                    Reprogramar de todas formas
-                  </span>
-                  <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
-                    Abre el despacho para elegir técnico y franja otra vez.
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-border dark:bg-dark-surface-2">
-                <input
-                  type="radio"
-                  name="exhausted-attempt-decision"
-                  className="mt-1"
-                  checked={choice === 'CLOSE_CASE'}
-                  onChange={() => setChoice('CLOSE_CASE')}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-gray-900 dark:text-white">
-                    Cerrar el caso
-                  </span>
-                  <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
-                    Cierra la solicitud. Debes indicar el motivo.
-                  </span>
-                </span>
-              </label>
-            </fieldset>
+            <RadioCardGroup
+              legend="Decisión"
+              name="exhausted-attempt-decision"
+              value={choice}
+              onChange={(value) => setChoice(value as ExhaustedAttemptChoice)}
+              options={[
+                {
+                  value: 'FORCE_RESCHEDULE',
+                  title: 'Reprogramar de todas formas',
+                  description: 'Abre el despacho para elegir técnico y franja otra vez.',
+                },
+                {
+                  value: 'CLOSE_CASE',
+                  title: 'Cerrar el caso',
+                  description: 'Cierra la solicitud. Debes indicar el motivo.',
+                },
+              ]}
+            />
 
             {choice === 'CLOSE_CASE' ? (
               <div className="space-y-2">

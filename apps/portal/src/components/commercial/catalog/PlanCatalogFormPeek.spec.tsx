@@ -1,11 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useForm } from 'react-hook-form';
 import { InstallationRule } from '@iwana/shared';
 import { PlanCatalogFormPeek } from './PlanCatalogFormPeek';
 import type { PlanFormValues } from './plan-catalog-helpers';
 
 /**
- * Spec de regresión del radiogroup «Modalidad de velocidad» (roving tabIndex).
+ * Spec de regresión de la modalidad de velocidad con radios nativos.
  * El peek recibe muchas props; se monta con react-hook-form real y se dejan
  * como noop los handlers que no participan del flujo bajo prueba. No se aserta
  * contra vocabulario de secciones distintas al radiogroup (otro agente puede
@@ -66,81 +67,36 @@ function RenderFormPeek({ speedMode = 'SYMMETRIC' }: { speedMode?: PlanFormValue
   );
 }
 
-describe('PlanCatalogFormPeek — Modalidad de velocidad (radiogroup)', () => {
-  it('aplica roving tabindex: la opción seleccionada queda en el orden de tabulación', () => {
+describe('PlanCatalogFormPeek — Modalidad de velocidad', () => {
+  it('expone un grupo nativo controlado con la opción seleccionada', () => {
     render(<RenderFormPeek />);
 
-    expect(screen.getByRole('radio', { name: 'Simétrica' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    expect(screen.getByRole('radio', { name: 'Simétrica' })).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('radio', { name: 'Asimétrica' })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
-    expect(screen.getByRole('radio', { name: 'Asimétrica' })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('group', { name: 'Modalidad de velocidad' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Simétrica' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Asimétrica' })).not.toBeChecked();
   });
 
-  it('cambia la selección a Asimétrica y mueve el foco con ArrowRight', () => {
-    render(<RenderFormPeek />);
-
+  it('usa el cambio por teclado nativo sin añadir roles ARIA al grupo', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<RenderFormPeek />);
     const simetrica = screen.getByRole('radio', { name: 'Simétrica' });
     simetrica.focus();
-    fireEvent.keyDown(simetrica, { key: 'ArrowRight' });
+    await user.keyboard('{ArrowRight}');
 
     const asimetrica = screen.getByRole('radio', { name: 'Asimétrica' });
-    expect(asimetrica).toHaveAttribute('aria-checked', 'true');
-    expect(asimetrica).toHaveAttribute('tabindex', '0');
+    expect(asimetrica).toBeChecked();
     expect(asimetrica).toHaveFocus();
-    expect(simetrica).toHaveAttribute('aria-checked', 'false');
-    expect(simetrica).toHaveAttribute('tabindex', '-1');
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+    expect(container.querySelector('[role="radio"]')).toBeNull();
   });
 
-  it('cambia la selección a Asimétrica con ArrowDown', () => {
+  it('actualiza la selección al hacer clic', async () => {
+    const user = userEvent.setup();
     render(<RenderFormPeek />);
 
-    fireEvent.keyDown(screen.getByRole('radio', { name: 'Simétrica' }), { key: 'ArrowDown' });
+    await user.click(screen.getByRole('radio', { name: 'Asimétrica' }));
 
-    expect(screen.getByRole('radio', { name: 'Asimétrica' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    expect(screen.getByRole('radio', { name: 'Simétrica' })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    );
-  });
-
-  it('vuelve a Simétrica con ArrowLeft', () => {
-    render(<RenderFormPeek speedMode="ASYMMETRIC" />);
-
-    const asimetrica = screen.getByRole('radio', { name: 'Asimétrica' });
-    asimetrica.focus();
-    fireEvent.keyDown(asimetrica, { key: 'ArrowLeft' });
-
-    expect(screen.getByRole('radio', { name: 'Simétrica' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    expect(screen.getByRole('radio', { name: 'Simétrica' })).toHaveFocus();
-    expect(asimetrica).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('salta a la primera y última opción con Home y End', () => {
-    render(<RenderFormPeek />);
-
-    const simetrica = screen.getByRole('radio', { name: 'Simétrica' });
-    simetrica.focus();
-    fireEvent.keyDown(simetrica, { key: 'End' });
-
-    const asimetrica = screen.getByRole('radio', { name: 'Asimétrica' });
-    expect(asimetrica).toHaveAttribute('aria-checked', 'true');
-    expect(asimetrica).toHaveFocus();
-
-    fireEvent.keyDown(asimetrica, { key: 'Home' });
-
-    expect(simetrica).toHaveAttribute('aria-checked', 'true');
-    expect(simetrica).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'Asimétrica' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Simétrica' })).not.toBeChecked();
   });
 });

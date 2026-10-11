@@ -11,6 +11,7 @@ import { ExhaustedAttemptsDecisionDialog } from './ExhaustedAttemptsDecisionDial
 jest.mock('@iwana/ui', () => {
   const React = require('react') as typeof import('react');
   return {
+    RadioCardGroup: jest.requireActual('@iwana/ui').RadioCardGroup,
     Button: ({
       children,
       disabled,

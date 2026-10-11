@@ -1,6 +1,5 @@
 'use client';
 
-import { useRef, type KeyboardEvent } from 'react';
 import type {
   Control,
   FieldErrors,
@@ -10,7 +9,7 @@ import type {
 } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Button, Input, Select, cn } from '@iwana/ui';
+import { Button, Input, RadioCardGroup, Select, cn } from '@iwana/ui';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import {
   normalizeTechnologyName,
@@ -21,7 +20,6 @@ import {
   PortalAlert,
   PortalSidePeek,
   interactiveFocusClassName,
-  portalModuleTabsTrackClassName,
 } from '@/components/shared/portal-ui';
 
 const SPEED_MODE_OPTIONS = [
@@ -29,7 +27,7 @@ const SPEED_MODE_OPTIONS = [
   { value: 'ASYMMETRIC' as const, label: 'Asimétrica' },
 ];
 
-/** Radiogroup de modalidad de velocidad con navegación por teclado (roving tabIndex). */
+/** Selector controlado de modalidad de velocidad. */
 function SpeedModeRadioGroup({
   value,
   onChange,
@@ -39,66 +37,16 @@ function SpeedModeRadioGroup({
   onChange: (value: SpeedMode) => void;
   disabled: boolean;
 }) {
-  const radioRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const currentIndex = SPEED_MODE_OPTIONS.findIndex((option) => option.value === value);
-    let nextIndex: number | null = null;
-
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = (currentIndex + 1) % SPEED_MODE_OPTIONS.length;
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = (currentIndex - 1 + SPEED_MODE_OPTIONS.length) % SPEED_MODE_OPTIONS.length;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = SPEED_MODE_OPTIONS.length - 1;
-    }
-
-    if (nextIndex === null) {
-      return;
-    }
-
-    event.preventDefault();
-    const nextOption = SPEED_MODE_OPTIONS[nextIndex];
-    if (!nextOption) {
-      return;
-    }
-    onChange(nextOption.value);
-    radioRefs.current[nextIndex]?.focus();
-  };
-
   return (
-    <div
-      role="radiogroup"
-      aria-labelledby="plan-speed-mode-label"
-      className={cn(portalModuleTabsTrackClassName, 'inline-flex w-fit gap-1 p-1')}
-      onKeyDown={handleKeyDown}
-    >
-      {SPEED_MODE_OPTIONS.map((option, index) => (
-        <button
-          key={option.value}
-          ref={(element) => {
-            radioRefs.current[index] = element;
-          }}
-          type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          tabIndex={value === option.value ? 0 : -1}
-          disabled={disabled}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-            interactiveFocusClassName,
-            value === option.value
-              ? 'bg-iwana-primary text-white shadow-sm'
-              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <RadioCardGroup
+      legend="Modalidad de velocidad"
+      name="plan-speed-mode"
+      value={value}
+      onChange={(nextValue) => onChange(nextValue as SpeedMode)}
+      disabled={disabled}
+      density="compact"
+      options={SPEED_MODE_OPTIONS.map((option) => ({ value: option.value, title: option.label }))}
+    />
   );
 }
 
@@ -417,12 +365,6 @@ export function PlanCatalogFormPeek({
             control={control}
             render={({ field }) => (
               <div className="space-y-2">
-                <p
-                  id="plan-speed-mode-label"
-                  className="text-sm font-medium text-gray-700 dark:text-gray-200"
-                >
-                  Modalidad de velocidad
-                </p>
                 <SpeedModeRadioGroup
                   value={field.value}
                   onChange={field.onChange}
