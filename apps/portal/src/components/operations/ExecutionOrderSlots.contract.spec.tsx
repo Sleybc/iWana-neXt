@@ -29,7 +29,10 @@ jest.mock('./ExecutionOrderEvidenceAction', () => ({
   },
 }));
 jest.mock('./ExecutionOrderMaterialAction', () => ({
-  ExecutionOrderMaterialAction: (props: { bindSubmit: (h: (() => void) | null) => void }) => {
+  ExecutionOrderMaterialAction: (props: {
+    bindSubmit: (h: (() => void) | null) => void;
+    onClose: () => void;
+  }) => {
     mockMaterialAction(props);
     useEffect(() => {
       props.bindSubmit(mockSubmit);
@@ -38,6 +41,9 @@ jest.mock('./ExecutionOrderMaterialAction', () => ({
     return (
       <form data-requirement-submit>
         <button type="submit">Enviar doble de consumo</button>
+        <button type="button" onClick={props.onClose}>
+          Cancelar
+        </button>
       </form>
     );
   },
@@ -210,11 +216,12 @@ describe('contrato de slots del expediente (B0)', () => {
   it('el submit nativo del formulario del slot de consumo llega al manejador que él registró', async () => {
     renderDrawer();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /^Registrar equipo instalado para / }));
+    await user.click(screen.getByRole('button', { name: /^Registrar material para Material$/ }));
     const props = mockMaterialAction.mock.calls[0]![0];
     expect(props.action).toMatchObject({
       kind: 'consumption',
       requirementKey: 'mat',
+      requirementLabel: 'Material',
       itemCategory: 'CPE',
     });
     await user.click(screen.getByRole('button', { name: 'Enviar doble de consumo' }));

@@ -103,15 +103,17 @@ export function RequirementActionSheet({
             Guardar registro
           </Button>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          className="min-h-11"
-          disabled={status === 'loading'}
-          onClick={onCancel}
-        >
-          Cancelar
-        </Button>
+        {!(bodySuppliesForm && action.kind === 'consumption') && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-h-11"
+            disabled={status === 'loading'}
+            onClick={onCancel}
+          >
+            Cancelar
+          </Button>
+        )}
         {status === 'error' && onRetry && (
           <Button type="button" onClick={onRetry}>
             Reintentar

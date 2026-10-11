@@ -169,6 +169,7 @@ describe('resolveRequirementAction: la acción nace del requisito y de allowedAc
     ).toMatchObject({
       kind: 'consumption',
       requirementKey: 'installed-equipment',
+      requirementLabel: 'Equipos',
       itemCategory: 'CPE',
     });
   });

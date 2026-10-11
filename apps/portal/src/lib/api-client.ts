@@ -6820,13 +6820,19 @@ export type CloseExecutionOrderDto = CloseExecutionOrderCommand & {
 export type RegisterExecutionOrderEvidenceDto = RegisterEvidenceCommand;
 
 /** Headers obligatorios para cada comando de mutación de una OT. */
-export function buildExecutionOrderCommandHeaders(currentVersion: number): Record<string, string> {
+export function buildExecutionOrderCommandHeaders(
+  currentVersion: number,
+  idempotencyKey = crypto.randomUUID(),
+): Record<string, string> {
   if (!Number.isInteger(currentVersion) || currentVersion < 1) {
     throw new Error('La versión actual de la OT debe ser un entero positivo.');
   }
+  if (idempotencyKey.trim().length === 0) {
+    throw new Error('La clave de idempotencia debe tener contenido.');
+  }
 
   return {
-    'Idempotency-Key': crypto.randomUUID(),
+    'Idempotency-Key': idempotencyKey,
     'If-Match': String(currentVersion),
   };
 }
@@ -7059,12 +7065,13 @@ export const tasksApi = {
       dto: RegisterExecutionOrderItemUsageDto,
       currentVersion: number,
       tenantSlug?: string,
+      idempotencyKey?: string,
     ) =>
       request<ExecutionOrderItemUsageRecord>(
         `/tasks/execution-orders/${id}/item-usage`,
         {
           method: 'POST',
-          headers: buildExecutionOrderCommandHeaders(currentVersion),
+          headers: buildExecutionOrderCommandHeaders(currentVersion, idempotencyKey),
           body: JSON.stringify(dto),
           returnFullResponse: true,
         },

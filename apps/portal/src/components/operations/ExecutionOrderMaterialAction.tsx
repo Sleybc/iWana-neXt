@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ExecutionOrderItemAction,
+  InventoryDisposition,
+  getInventoryUnitOfMeasureDimension,
+  getInventoryUnitOfMeasureLabelForQuantity,
   type InventoryConsumptionRejectionReasonCode,
   type InventoryReversalRejectionReasonCode,
   type ExecutionOrderItemUsage,
-  type InventoryDisposition,
+  InventoryTrackingMode,
 } from '@iwana/shared';
 import {
   Badge,
@@ -18,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  RadioCardGroup,
   Select,
   SkeletonBlock,
 } from '@iwana/ui';
@@ -33,7 +37,10 @@ import type {
   RegisterExecutionOrderItemUsageDto,
 } from '@/lib/api-client';
 import { collectionCountLabel } from './execution-order-collections';
-import type { ExecutionOrderCustodyOption } from './execution-order-console-types';
+import type {
+  ExecutionOrderItemUsageBatchRow,
+  ExecutionOrderItemUsageBatchResult,
+} from './execution-order-console-types';
 import type {
   ExecutionOrderCaptureSlotProps,
   ExecutionOrderHistorySlotProps,
@@ -43,7 +50,7 @@ import { isTerminalStatus } from './execution-order-moment';
 
 // SLOT R3 — consumo y custodia por requisito (propiedad de R3).
 //
-// Acto «Registrar equipo instalado» (captura) e historial de consumos (lectura):
+// Acto de registro de material (captura) e historial de consumos (lectura):
 // dos superficies separadas bajo el mismo requisito MATERIAL (UX §4.1 y §6). El
 // slot no consulta nada por su cuenta: la custodia y el inventario los carga bajo
 // demanda `use-execution-order-custody.ts` al abrir esta hoja y llegan por
@@ -80,215 +87,133 @@ const DISPOSITION_LABELS: Record<string, string> = {
   DIVERGED: 'Conciliación divergente',
 };
 
-const ACTION_OPTIONS = [
-  { value: ExecutionOrderItemAction.INSTALL, label: 'Instalar' },
-  { value: ExecutionOrderItemAction.CONSUME, label: 'Consumir' },
-  { value: ExecutionOrderItemAction.RETURN, label: 'Devolver' },
-  { value: ExecutionOrderItemAction.REMOVE, label: 'Retirar' },
-];
+const DISPOSITION_OPTIONS = Object.values(InventoryDisposition).map((value) => ({
+  value,
+  label:
+    value === InventoryDisposition.INSTALLED_AT_CUSTOMER
+      ? 'Instalado en el sitio del cliente'
+      : (DISPOSITION_LABELS[value] ?? value),
+}));
 
-// Destinos que el usuario puede elegir al registrar (las claves de conciliación
-// PENDING/CONFIRMED/... de DISPOSITION_LABELS solo se muestran, no se eligen).
-const DISPOSITION_OPTIONS = [
-  'INSTALLED_AT_CUSTOMER',
-  'INTERNAL_CONSUMPTION',
-  'RETURNED_TO_TECHNICIAN_STOCK',
-  'RETURNED_TO_WAREHOUSE',
-  'DAMAGED_OR_LOST',
-].map((value) => ({ value, label: DISPOSITION_LABELS[value] as string }));
+/** La acción del comando se deriva del destino elegido o fijado en el snapshot. */
+const ACTION_BY_DISPOSITION: Record<InventoryDisposition, ExecutionOrderItemAction> = {
+  [InventoryDisposition.INSTALLED_AT_CUSTOMER]: ExecutionOrderItemAction.INSTALL,
+  [InventoryDisposition.INTERNAL_CONSUMPTION]: ExecutionOrderItemAction.CONSUME,
+  [InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK]: ExecutionOrderItemAction.RETURN,
+  [InventoryDisposition.RETURNED_TO_WAREHOUSE]: ExecutionOrderItemAction.RETURN,
+  [InventoryDisposition.DAMAGED_OR_LOST]: ExecutionOrderItemAction.REMOVE,
+};
 
-type CaptureContext = ExecutionOrderCaptureSlotProps<'MATERIAL', 'consumption'>['context'];
+type CaptureScope = 'serialized' | 'consumables';
+type CaptureRow = ExecutionOrderItemUsageBatchRow & { reference: string; scope: CaptureScope };
+type CaptureResult = ExecutionOrderItemUsageBatchResult;
 
-/** Concordancia del sustantivo con el total que se informa («1 equipo», «3 equipos»). */
 function noun(total: number, singular: string, plural: string): string {
   return total === 1 ? singular : plural;
 }
 
-/** Normaliza el string numérico de stock a una cifra legible sin ceros forzados. */
-function custodyQuantityLabel(quantityOnHand: string): string {
-  const value = Number(quantityOnHand);
-  return Number.isFinite(value) ? String(value) : quantityOnHand;
+/** Las unidades de conteo son enteras; las unidades físicas siguen la escala del ledger (2). */
+function getQuantityPrecision(unitCode: string): number {
+  const dimension = getInventoryUnitOfMeasureDimension(unitCode);
+  return dimension && dimension !== 'COUNT' ? 2 : 0;
 }
 
-/** Custodia del ejecutor en lectura pura, dentro del acto de consumo. */
-function ExecutorCustodyReadout({
-  context,
-  onRetry,
-}: {
-  context: CaptureContext;
-  onRetry: (() => void) | undefined;
-}) {
-  const {
-    executorCustodyState = 'available',
-    executorCustodyName = null,
-    executorCustodyAssets = [],
-    executorCustodyAssetsMeta,
-    executorCustodyBalances = [],
-    executorCustodyBalancesMeta,
-    isLoadingMoreExecutorCustody,
-    onLoadMoreExecutorCustody,
-    itemOptions = [],
-  } = context;
-  const itemLabelById = useMemo(
-    () => new Map(itemOptions.map((option) => [option.value, option.label])),
-    [itemOptions],
-  );
+function roundQuantity(value: number, precision: number): number {
+  const factor = 10 ** precision;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
 
+function formatInventoryQuantity(value: number): string {
+  return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(value);
+}
+
+function newIdempotencyKey(): string {
   return (
-    <div className="mt-3">
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-        En custodia del ejecutor
-      </p>
-      {executorCustodyState === 'unavailable' ? (
-        <PortalAlert
-          variant="warning"
-          title="Custodia no disponible"
-          description="No pudimos consultar la custodia del ejecutor. El resto de la orden sigue disponible."
-          action={
-            onRetry ? (
-              <Button type="button" onClick={onRetry}>
-                Reintentar
-              </Button>
-            ) : undefined
-          }
-          className="mt-2"
-        />
-      ) : executorCustodyState === 'loading' ? (
-        <div aria-busy="true" aria-label="Cargando custodia del ejecutor" className="mt-2">
-          <SkeletonBlock className="h-20" />
-        </div>
-      ) : executorCustodyAssets.length === 0 && executorCustodyBalances.length === 0 ? (
-        <PortalEmptyState
-          className="mt-2"
-          title="No hay equipos de esta categoría en tu custodia"
-          description="Contacta a supervisión para revisar la disponibilidad."
-        />
-      ) : (
-        <div className="mt-2 space-y-2">
-          {executorCustodyName && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">{executorCustodyName}</p>
-          )}
-          {executorCustodyAssets.length > 0 && (
-            <>
-              {executorCustodyAssetsMeta && executorCustodyAssetsMeta.total > 0 ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
-                  {collectionCountLabel(
-                    executorCustodyAssets.length,
-                    executorCustodyAssetsMeta.total,
-                    noun(executorCustodyAssetsMeta.total, 'equipo', 'equipos'),
-                  )}
-                </p>
-              ) : null}
-              {executorCustodyAssets.map((asset) => (
-                <article
-                  key={asset.id}
-                  className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {asset.serialNumber ?? 'Equipo en custodia'}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {[
-                        itemLabelById.get(asset.inventoryItemId),
-                        getSerializedAssetStatusLabel(asset.currentStatus),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
-                  </div>
-                </article>
-              ))}
-            </>
-          )}
-          {executorCustodyBalances.length > 0 && (
-            <>
-              {executorCustodyBalancesMeta && executorCustodyBalancesMeta.total > 0 ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400" role="status">
-                  {collectionCountLabel(
-                    executorCustodyBalances.length,
-                    executorCustodyBalancesMeta.total,
-                    noun(executorCustodyBalancesMeta.total, 'material', 'materiales'),
-                  )}
-                </p>
-              ) : null}
-              {executorCustodyBalances.map((balance) => (
-                <article
-                  key={balance.id}
-                  className="rounded-xl border border-gray-200 p-3 dark:border-dark-border"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {itemLabelById.get(balance.itemId) ?? 'Material en custodia'}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Cantidad disponible: {custodyQuantityLabel(balance.quantityOnHand)}
-                    </p>
-                  </div>
-                </article>
-              ))}
-            </>
-          )}
-          <PortalTablePagination
-            hasMore={
-              executorCustodyAssetsMeta?.hasMore === true ||
-              executorCustodyBalancesMeta?.hasMore === true
-            }
-            onLoadMore={() => void onLoadMoreExecutorCustody()}
-            loading={isLoadingMoreExecutorCustody}
-            resourceLabel="elementos en custodia"
-            shown={executorCustodyAssets.length + executorCustodyBalances.length}
-            total={
-              (executorCustodyAssetsMeta?.total ?? 0) + (executorCustodyBalancesMeta?.total ?? 0)
-            }
-          />
-        </div>
-      )}
-    </div>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
   );
 }
 
-/** Texto de ayuda del selector de equipo según el estado de la carga bajo demanda. */
-function itemHelperText(state: 'loading' | 'available' | 'unavailable', optionCount: number) {
-  if (state === 'loading') return 'Consultando tu custodia.';
-  if (state === 'unavailable') {
-    return 'No pudimos consultar tu custodia. Usa Reintentar para volver a consultarla.';
-  }
-  return optionCount === 0
-    ? 'No hay equipos de esta categoría para seleccionar.'
-    : 'Selecciona un equipo de tu custodia';
-}
-
-/** Captura inline: custodia en lectura y formulario de consumo del requisito. */
+/** Captura compacta: el modo del artículo decide entre activo serializado y fila de cantidad. */
 export function ExecutionOrderMaterialAction({
   order,
   requirement,
   action,
   context,
   bindSubmit,
+  onClose,
 }: ExecutionOrderCaptureSlotProps<'MATERIAL', 'consumption'>) {
   const {
     isSubmitting,
     itemOptions = [],
     itemsState = 'available',
+    executorCustodyState = 'available',
+    executorCustodyName,
+    executorCustodyAssets = [],
+    executorCustodyAssetsMeta,
+    executorCustodyBalances = [],
+    executorCustodyBalancesMeta,
+    isLoadingMoreExecutorCustody,
+    onLoadMoreExecutorCustody,
     custodyOptions,
     onRegisterItemUsage,
+    onRegisterItemUsageBatch,
     onOpenRequirementAction,
     onRefreshDetail,
   } = context;
-  const [itemId, setItemId] = useState('');
-  const [itemQty, setItemQty] = useState('1');
-  const [itemSerial, setItemSerial] = useState('');
-  const [itemAction, setItemAction] = useState<ExecutionOrderItemAction | ''>('');
-  const [selectedCustodyId, setSelectedCustodyId] = useState('');
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [results, setResults] = useState<Record<string, CaptureResult>>({});
+  const [activeScope, setActiveScope] = useState<CaptureScope | null>(null);
   const [itemDisposition, setItemDisposition] = useState<InventoryDisposition | ''>('');
+  const submitScopeRef = useRef<CaptureScope | null>(null);
+  const idempotencyKeys = useRef(new Map<string, { fingerprint: string; key: string }>());
 
-  const resolvedCustodyOptions = useMemo<ExecutionOrderCustodyOption[]>(() => {
-    if (custodyOptions && custodyOptions.length > 0) {
-      return custodyOptions;
+  const itemById = useMemo(
+    () => new Map(itemOptions.map((item) => [item.value, item])),
+    [itemOptions],
+  );
+  const serializedItems = useMemo(
+    () => itemOptions.filter((item) => item.trackingMode === InventoryTrackingMode.SERIALIZED),
+    [itemOptions],
+  );
+  const serializedItemIds = useMemo(
+    () => new Set(serializedItems.map((item) => item.value)),
+    [serializedItems],
+  );
+  const serializedAssets = useMemo(
+    () => executorCustodyAssets.filter((asset) => serializedItemIds.has(asset.inventoryItemId)),
+    [executorCustodyAssets, serializedItemIds],
+  );
+  const visibleAssets = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('es');
+    if (serializedAssets.length <= 8 || query.length === 0) return serializedAssets;
+    return serializedAssets.filter((asset) =>
+      [asset.serialNumber?.trim(), asset.macAddress?.trim()]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLocaleLowerCase('es').includes(query)),
+    );
+  }, [search, serializedAssets]);
+  const consumableRows = useMemo(() => {
+    const availableByItem = new Map<string, number>();
+    for (const balance of executorCustodyBalances) {
+      const item = itemById.get(balance.itemId);
+      if (!item || item.trackingMode === InventoryTrackingMode.SERIALIZED) continue;
+      const onHand = Number(balance.quantityOnHand);
+      const reserved = Number(balance.quantityReserved);
+      const net = onHand - reserved;
+      if (!Number.isFinite(net)) continue;
+      availableByItem.set(balance.itemId, (availableByItem.get(balance.itemId) ?? 0) + net);
     }
-    // Red de seguridad: si el boundary no aporta opciones, la custodia elegible
-    // por contrato es el técnico/cuadrilla asignados a la OT.
+    return [...availableByItem]
+      .filter(([, available]) => available > 0)
+      .map(([itemId, available]) => ({ item: itemById.get(itemId)!, itemId, available }))
+      .sort((left, right) => left.item.name.localeCompare(right.item.name, 'es'));
+  }, [executorCustodyBalances, itemById]);
+
+  const resolvedCustodyOptions = useMemo(() => {
+    if (custodyOptions && custodyOptions.length > 0) return custodyOptions;
     if (order.assignee?.id && order.assignee.type) {
       return [
         {
@@ -300,66 +225,159 @@ export function ExecutionOrderMaterialAction({
     }
     return [];
   }, [custodyOptions, order.assignee]);
-  const custodySelectOptions = useMemo(
-    () => resolvedCustodyOptions.map(({ id, label }) => ({ value: id, label })),
-    [resolvedCustodyOptions],
-  );
-
-  // Con una sola custodia elegible (la del responsable de la OT) no hay nada que elegir.
-  const custodyId =
-    selectedCustodyId || (resolvedCustodyOptions.length === 1 ? resolvedCustodyOptions[0]!.id : '');
-  // Solo vale lo que el selector ofrece: un ítem de otra categoría no satisface el requisito.
-  const selectedItemId = itemOptions.some((option) => option.value === itemId) ? itemId : '';
-  // El destino lo declara el requisito cuando corresponde; en ese caso no se elige.
+  const custody = resolvedCustodyOptions.length === 1 ? resolvedCustodyOptions[0] : null;
+  const custodyId = custody?.id ?? '';
+  const custodyName = executorCustodyName ?? custody?.label ?? 'custodia asignada';
   const requiredDisposition = action.finalDisposition as InventoryDisposition | undefined;
   const disposition = requiredDisposition ?? itemDisposition;
-  const dispositionOptions = requiredDisposition
-    ? [
-        {
-          value: requiredDisposition,
-          label: DISPOSITION_LABELS[requiredDisposition] ?? 'Destino del requisito',
-        },
-      ]
-    : DISPOSITION_OPTIONS;
+  const derivedAction = disposition ? ACTION_BY_DISPOSITION[disposition] : null;
+  const retryLoad = onOpenRequirementAction
+    ? () => onOpenRequirementAction(action)
+    : onRefreshDetail
+      ? () => void onRefreshDetail()
+      : undefined;
 
-  const itemQuantityError =
-    itemQty.trim().length === 0
-      ? 'Ingresa una cantidad entera mayor que cero.'
-      : !Number.isInteger(Number(itemQty)) || Number(itemQty) <= 0
-        ? 'La cantidad debe ser entera y mayor que cero.'
-        : null;
+  function getIdempotencyKey(rowKey: string, payload: RegisterExecutionOrderItemUsageDto) {
+    const fingerprint = JSON.stringify(payload);
+    const previous = idempotencyKeys.current.get(rowKey);
+    if (previous?.fingerprint === fingerprint) return previous.key;
+    const key = newIdempotencyKey();
+    idempotencyKeys.current.set(rowKey, { fingerprint, key });
+    return key;
+  }
 
-  async function submit() {
-    const quantity = Number(itemQty);
+  function buildConsumableRow(row: (typeof consumableRows)[number]): CaptureRow | null {
+    const quantity = quantities[row.itemId] ?? 0;
+    const precision = getQuantityPrecision(row.item.unitOfMeasure ?? 'UNIT');
+    const roundedQuantity = roundQuantity(quantity, precision);
     if (
-      !selectedItemId ||
-      !itemAction ||
       !custodyId ||
+      !derivedAction ||
       !disposition ||
-      !Number.isInteger(quantity) ||
-      quantity <= 0
+      !Number.isFinite(quantity) ||
+      quantity !== roundedQuantity ||
+      roundedQuantity <= 0 ||
+      roundedQuantity > row.available
     ) {
-      return;
+      return null;
     }
+    const rowKey = `item:${row.itemId}`;
     const payload: RegisterExecutionOrderItemUsageDto = {
-      itemId: selectedItemId,
+      itemId: row.itemId,
       requirementKey: requirement.key,
       technicianCustodyId: custodyId,
-      quantity,
-      action: itemAction,
+      quantity: roundedQuantity,
+      action: derivedAction,
       finalDisposition: disposition,
     };
-    const serial = itemSerial.trim();
-    if (serial) payload.serialNumber = serial;
-    // Si el boundary informa un fallo, la captura permanece intacta para que el
-    // operador pueda corregirla o actualizar el detalle sin perderla.
-    const result = await onRegisterItemUsage(payload);
-    if (result === false) return;
-    setItemId('');
-    setItemQty('1');
-    setItemSerial('');
-    setItemAction('');
-    setSelectedCustodyId('');
+    return {
+      key: rowKey,
+      idempotencyKey: getIdempotencyKey(rowKey, payload),
+      payload,
+      reference: row.item.name,
+      scope: 'consumables',
+    };
+  }
+
+  async function registerRows(rows: CaptureRow[]) {
+    if (rows.length === 0 || isSubmitting) return;
+    setActiveScope(rows[0]!.scope);
+    setResults((current) => {
+      const next = { ...current };
+      for (const row of rows) delete next[row.key];
+      return next;
+    });
+
+    let outcomes: CaptureResult[];
+    if (onRegisterItemUsageBatch) {
+      try {
+        outcomes = await onRegisterItemUsageBatch(
+          rows.map(({ key, idempotencyKey, payload }) => ({
+            key,
+            idempotencyKey,
+            payload,
+          })),
+        );
+      } catch {
+        outcomes = rows.map(({ key }) => ({ key, status: 'error' }));
+      }
+    } else {
+      outcomes = [];
+      for (const row of rows) {
+        try {
+          const result = await onRegisterItemUsage(row.payload);
+          outcomes.push({ key: row.key, status: result === false ? 'error' : 'success' });
+        } catch {
+          outcomes.push({ key: row.key, status: 'error' });
+        }
+      }
+    }
+
+    const outcomeByKey = new Map(outcomes.map((outcome) => [outcome.key, outcome]));
+    const completed = rows.map(
+      (row) => outcomeByKey.get(row.key) ?? { key: row.key, status: 'error' as const },
+    );
+    setResults((current) => ({
+      ...current,
+      ...Object.fromEntries(completed.map((outcome) => [outcome.key, outcome])),
+    }));
+    const succeeded = new Set(
+      completed.filter((outcome) => outcome.status === 'success').map((outcome) => outcome.key),
+    );
+    for (const row of rows) {
+      if (!succeeded.has(row.key)) continue;
+      idempotencyKeys.current.delete(row.key);
+      if (row.scope === 'consumables') {
+        const itemId = row.payload.itemId;
+        setQuantities((current) => ({ ...current, [itemId]: 0 }));
+      }
+    }
+    setActiveScope(null);
+  }
+
+  async function submit() {
+    const scope = submitScopeRef.current ?? (selectedAssetId ? 'serialized' : 'consumables');
+    submitScopeRef.current = null;
+    if (
+      !custodyId ||
+      !derivedAction ||
+      !disposition ||
+      itemsState !== 'available' ||
+      executorCustodyState !== 'available'
+    )
+      return;
+
+    const rows: CaptureRow[] = [];
+    if (scope === 'serialized') {
+      const asset = serializedAssets.find((candidate) => candidate.id === selectedAssetId);
+      const serialNumber = asset?.serialNumber?.trim();
+      if (asset && serialNumber) {
+        const rowKey = `asset:${asset.id}`;
+        if (results[rowKey]?.status === 'success') return;
+        const payload: RegisterExecutionOrderItemUsageDto = {
+          itemId: asset.inventoryItemId,
+          requirementKey: requirement.key,
+          technicianCustodyId: custodyId,
+          quantity: 1,
+          serialNumber,
+          action: derivedAction,
+          finalDisposition: disposition,
+        };
+        rows.push({
+          key: rowKey,
+          idempotencyKey: getIdempotencyKey(rowKey, payload),
+          payload,
+          reference: itemById.get(asset.inventoryItemId)?.name ?? serialNumber,
+          scope,
+        });
+      }
+    } else {
+      for (const row of consumableRows) {
+        const captureRow = buildConsumableRow(row);
+        if (captureRow) rows.push(captureRow);
+      }
+    }
+    await registerRows(rows);
   }
 
   useEffect(() => {
@@ -367,114 +385,428 @@ export function ExecutionOrderMaterialAction({
     return () => bindSubmit(null);
   });
 
-  // Reintentar la custodia vuelve a abrir este mismo acto (solo recarga la custodia);
-  // sin esa vía el drawer ofrece actualizar el detalle completo.
-  const retry = onOpenRequirementAction
-    ? () => onOpenRequirementAction(action)
-    : onRefreshDetail
-      ? () => void onRefreshDetail()
-      : undefined;
-
+  const showSerialFlow = serializedItems.length > 0;
+  const showConsumableFlow = itemOptions.some(
+    (item) => item.trackingMode !== InventoryTrackingMode.SERIALIZED,
+  );
+  const destinationLabel = disposition
+    ? disposition === InventoryDisposition.INSTALLED_AT_CUSTOMER
+      ? 'instalado en el sitio del cliente'
+      : DISPOSITION_LABELS[disposition]?.toLocaleLowerCase('es')
+    : '';
+  const destinationContext =
+    requiredDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER
+      ? `Desde ${custodyName} · Se registrará como instalado en el sitio del cliente`
+      : disposition
+        ? `Desde ${custodyName} · Se registrará como ${destinationLabel}`
+        : `Desde ${custodyName}`;
+  const serialResult = selectedAssetId ? results[`asset:${selectedAssetId}`] : undefined;
+  const selectedAsset = selectedAssetId
+    ? serializedAssets.find((asset) => asset.id === selectedAssetId)
+    : undefined;
   const idSuffix = `${requirement.key}-capture`;
+  const loadUnavailable = itemsState === 'unavailable' || executorCustodyState === 'unavailable';
+  const loadPending = itemsState === 'loading' || executorCustodyState === 'loading';
+
   return (
-    <div className="space-y-3">
-      <ExecutorCustodyReadout context={context} onRetry={retry} />
-      <form
-        data-requirement-submit
-        className="mt-4 space-y-3 rounded-xl border border-dashed border-gray-300 p-3 dark:border-dark-border"
-      >
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          Agregar material o equipo
-        </p>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Select
-            id={`eo-item-id-${idSuffix}`}
-            label="Ítem"
-            value={selectedItemId}
-            options={itemOptions}
-            placeholder={
-              itemsState === 'loading'
-                ? 'Cargando inventario…'
-                : itemsState === 'unavailable'
-                  ? 'Inventario no disponible'
-                  : itemOptions.length === 0
-                    ? 'No hay equipos de esta categoría'
-                    : 'Selecciona un equipo'
-            }
-            helperText={itemHelperText(itemsState, itemOptions.length)}
-            disabled={isSubmitting || itemsState !== 'available' || itemOptions.length === 0}
-            onChange={(event) => setItemId(event.target.value)}
-          />
-          <Input
-            id={`eo-item-qty-${idSuffix}`}
-            label="Cantidad"
-            type="number"
-            min="1"
-            step="1"
-            value={itemQty}
-            error={itemQuantityError ?? undefined}
-            disabled={isSubmitting}
-            onChange={(event) => setItemQty(event.target.value)}
-          />
-          <Input
-            id={`eo-item-serial-${idSuffix}`}
-            label="Serial o lote"
-            value={itemSerial}
-            disabled={isSubmitting}
-            onChange={(event) => setItemSerial(event.target.value)}
-            placeholder="Opcional"
-          />
-          <Select
-            id={`eo-item-action-${idSuffix}`}
-            label="Acción"
-            value={itemAction}
-            placeholder="Selecciona una acción"
-            options={ACTION_OPTIONS}
-            disabled={isSubmitting}
-            onChange={(event) => setItemAction(event.target.value as ExecutionOrderItemAction)}
-          />
-          <Select
-            id={`eo-item-custody-${idSuffix}`}
-            label="Custodia de origen"
-            value={custodyId}
-            placeholder={
-              resolvedCustodyOptions.length > 0
-                ? 'Selecciona una custodia'
-                : 'No hay custodia elegible'
-            }
-            options={custodySelectOptions}
-            disabled={isSubmitting || resolvedCustodyOptions.length === 0}
-            {...(resolvedCustodyOptions.length === 0
-              ? { helperText: 'La orden no tiene una custodia técnica o de cuadrilla elegible.' }
-              : {})}
-            onChange={(event) => setSelectedCustodyId(event.target.value)}
-          />
-          <Select
-            id={`eo-item-disposition-${idSuffix}`}
-            label="Destino"
-            value={disposition}
-            options={dispositionOptions}
-            disabled={isSubmitting || requiredDisposition !== undefined}
-            {...(requiredDisposition ? { helperText: 'Lo define el requisito.' } : {})}
-            onChange={(event) => setItemDisposition(event.target.value as InventoryDisposition)}
-          />
-        </div>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={
-            isSubmitting ||
-            selectedItemId.length === 0 ||
-            itemQuantityError !== null ||
-            !itemAction ||
-            !custodyId ||
-            !disposition
-          }
+    <form
+      data-requirement-submit
+      onSubmit={(event) => event.preventDefault()}
+      className="space-y-4"
+    >
+      <p className="text-sm text-gray-700 dark:text-gray-200">{destinationContext}</p>
+      {requiredDisposition === undefined ? (
+        <Select
+          id={`eo-item-disposition-${idSuffix}`}
+          label="Destino"
+          value={itemDisposition}
+          options={DISPOSITION_OPTIONS}
+          placeholder="Selecciona el destino"
+          disabled={isSubmitting}
+          onChange={(event) => setItemDisposition(event.target.value as InventoryDisposition)}
+        />
+      ) : null}
+
+      {showSerialFlow ? (
+        <section aria-labelledby={`eo-material-serial-heading-${idSuffix}`} className="space-y-3">
+          <h3
+            id={`eo-material-serial-heading-${idSuffix}`}
+            className="text-sm font-semibold text-gray-900 dark:text-white"
+          >
+            Selecciona el equipo que instalaste
+          </h3>
+          {loadPending ? (
+            <div
+              aria-busy="true"
+              aria-label="Cargando equipos de tu custodia…"
+              className="space-y-2"
+            >
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Cargando equipos de tu custodia…
+              </p>
+              <SkeletonBlock className="h-16" />
+              <SkeletonBlock className="h-16" />
+            </div>
+          ) : loadUnavailable ? (
+            <PortalAlert
+              variant="warning"
+              title="No pudimos cargar los equipos de tu custodia."
+              action={
+                retryLoad ? (
+                  <Button type="button" onClick={retryLoad}>
+                    Reintentar
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : serializedAssets.length === 0 ? (
+            <PortalEmptyState
+              title="No hay equipos de esta categoría en tu custodia."
+              description="Contacta a supervisión para revisar la disponibilidad."
+            />
+          ) : (
+            <>
+              {serializedAssets.length > 8 ? (
+                <Input
+                  id={`eo-material-search-${idSuffix}`}
+                  label="Buscar equipo"
+                  helperText="Serial o MAC"
+                  value={search}
+                  disabled={isSubmitting}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              ) : null}
+              {visibleAssets.length === 0 ? (
+                <div className="space-y-2" role="status">
+                  <p className="text-sm text-gray-700 dark:text-gray-200">
+                    No encontramos equipos con ese serial o MAC.
+                  </p>
+                  <Button type="button" variant="secondary" onClick={() => setSearch('')}>
+                    Limpiar búsqueda
+                  </Button>
+                </div>
+              ) : (
+                <RadioCardGroup
+                  legend="Equipo instalado"
+                  name={`eo-installed-asset-${idSuffix}`}
+                  value={selectedAssetId}
+                  onChange={setSelectedAssetId}
+                  disabled={isSubmitting || !custodyId || !derivedAction}
+                  options={visibleAssets.map((asset) => {
+                    const item = itemById.get(asset.inventoryItemId);
+                    const serialNumber = asset.serialNumber?.trim() || null;
+                    const macAddress = asset.macAddress?.trim() || null;
+                    const disabledReason = serialNumber
+                      ? undefined
+                      : macAddress
+                        ? 'Este equipo no tiene serial registrado. Pide a supervisión que lo complete para poder registrarlo.'
+                        : 'Este equipo no tiene serial ni MAC registrados. Pide a supervisión que los complete.';
+                    const brand = item?.brand?.trim();
+                    const model = item?.model?.trim();
+                    const productTitle = brand && model ? `${brand} ${model}` : null;
+                    const title = serialNumber
+                      ? (productTitle ?? item?.name?.trim() ?? 'Equipo sin identificar')
+                      : macAddress
+                        ? `MAC ${macAddress}`
+                        : 'Equipo sin identificar';
+                    const titleIncludesSerial = Boolean(
+                      serialNumber &&
+                      title.toLocaleLowerCase('es').includes(serialNumber.toLocaleLowerCase('es')),
+                    );
+                    const description = [
+                      serialNumber && !titleIncludesSerial ? `Serial ${serialNumber}` : null,
+                      serialNumber && macAddress ? `MAC ${macAddress}` : null,
+                    ]
+                      .filter((value): value is string => Boolean(value))
+                      .join('\n');
+                    const status = getSerializedAssetStatusLabel(asset.currentStatus);
+                    return {
+                      value: asset.id,
+                      title,
+                      description,
+                      meta: item?.sku ? `${item.sku} · ${status}` : status,
+                      ...(disabledReason ? { disabled: true as const, disabledReason } : {}),
+                    };
+                  })}
+                />
+              )}
+              <p className="text-xs text-gray-600 dark:text-gray-300">
+                ¿No ves el equipo? Contacta a supervisión para revisar tu custodia.
+              </p>
+              {serialResult?.status === 'success' ? (
+                <p className="text-sm text-green-800 dark:text-green-300" role="status">
+                  Equipo registrado. Queda pendiente de confirmación de inventario.
+                </p>
+              ) : null}
+              {serialResult?.status === 'error' ? (
+                <div role="alert" className="space-y-2">
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    No se pudo registrar el equipo. Intenta de nuevo.
+                  </p>
+                  {serialResult.message ? (
+                    <p className="text-sm text-gray-700 dark:text-gray-200">
+                      {serialResult.message}
+                    </p>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      submitScopeRef.current = 'serialized';
+                      void submit();
+                    }}
+                  >
+                    Reintentar registro
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {showConsumableFlow ? (
+        <section
+          aria-labelledby={`eo-material-consumables-heading-${idSuffix}`}
+          className="space-y-3"
         >
-          Registrar material
+          <h3
+            id={`eo-material-consumables-heading-${idSuffix}`}
+            className="text-sm font-semibold text-gray-900 dark:text-white"
+          >
+            Indica cuánto usaste de cada material.
+          </h3>
+          {loadPending ? (
+            <div
+              aria-busy="true"
+              aria-label="Cargando materiales de tu custodia…"
+              className="space-y-2"
+            >
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Cargando materiales de tu custodia…
+              </p>
+              <SkeletonBlock className="h-16" />
+              <SkeletonBlock className="h-16" />
+            </div>
+          ) : loadUnavailable ? (
+            <PortalAlert
+              variant="warning"
+              title="No pudimos cargar los materiales de tu custodia."
+              action={
+                retryLoad ? (
+                  <Button type="button" onClick={retryLoad}>
+                    Reintentar
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : consumableRows.length === 0 ? (
+            <PortalEmptyState
+              title="No hay materiales disponibles para registrar."
+              description="Contacta a supervisión para revisar los materiales de tu custodia."
+            />
+          ) : (
+            <div className="space-y-3">
+              {consumableRows.map(({ item, itemId, available }) => {
+                const quantity = Math.min(available, Math.max(0, quantities[itemId] ?? 0));
+                const result = results[`item:${itemId}`];
+                const unitCode = item.unitOfMeasure ?? 'UNIT';
+                const availableUnit = getInventoryUnitOfMeasureLabelForQuantity(
+                  available,
+                  unitCode,
+                );
+                const oneUnit = getInventoryUnitOfMeasureLabelForQuantity(1, unitCode);
+                const pluralUnit = getInventoryUnitOfMeasureLabelForQuantity(2, unitCode);
+                const precision = getQuantityPrecision(unitCode);
+                const quantityStep = precision === 0 ? 1 : 1 / 10 ** precision;
+                return (
+                  <article
+                    key={itemId}
+                    className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface-2"
+                  >
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {item.name} · disponible {formatInventoryQuantity(available)} {availableUnit}
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-gray-600 dark:text-gray-300">
+                      {item.sku}
+                    </p>
+                    <div className="mt-3 grid grid-cols-[2.75rem_minmax(5rem,1fr)_2.75rem] items-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11 min-w-11 px-0"
+                        aria-label={`Restar 1 ${oneUnit} de ${item.name}`}
+                        disabled={isSubmitting || quantity <= 0}
+                        onClick={() =>
+                          setQuantities((current) => ({
+                            ...current,
+                            [itemId]: Math.max(
+                              0,
+                              roundQuantity((current[itemId] ?? 0) - 1, precision),
+                            ),
+                          }))
+                        }
+                      >
+                        −
+                      </Button>
+                      <Input
+                        id={`eo-material-qty-${idSuffix}-${itemId}`}
+                        label={`Cantidad de ${item.name} (${pluralUnit})`}
+                        type="number"
+                        min="0"
+                        max={available}
+                        step={quantityStep}
+                        value={quantity}
+                        disabled={isSubmitting}
+                        onChange={(event) => {
+                          const next = Number(event.target.value);
+                          setQuantities((current) => ({
+                            ...current,
+                            [itemId]: Number.isFinite(next)
+                              ? roundQuantity(Math.min(available, Math.max(0, next)), precision)
+                              : 0,
+                          }));
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-11 min-w-11 px-0"
+                        aria-label={`Sumar 1 ${oneUnit} de ${item.name}`}
+                        disabled={isSubmitting || quantity >= available}
+                        onClick={() =>
+                          setQuantities((current) => ({
+                            ...current,
+                            [itemId]: roundQuantity(
+                              Math.min(available, (current[itemId] ?? 0) + 1),
+                              precision,
+                            ),
+                          }))
+                        }
+                      >
+                        +
+                      </Button>
+                    </div>
+                    {result?.status === 'success' ? (
+                      <p className="mt-2 text-sm text-green-800 dark:text-green-300" role="status">
+                        Material registrado. Queda pendiente de confirmación de inventario.
+                      </p>
+                    ) : result?.status === 'error' ? (
+                      <div role="alert" className="mt-2 space-y-2">
+                        <p className="text-sm text-red-700 dark:text-red-300">
+                          No se pudo registrar {item.name}. Intenta de nuevo.
+                        </p>
+                        {result.message ? (
+                          <p className="text-sm text-gray-700 dark:text-gray-200">
+                            {result.message}
+                          </p>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            const retryRow = consumableRows.find(
+                              (candidate) => candidate.itemId === itemId,
+                            );
+                            const captureRow = retryRow ? buildConsumableRow(retryRow) : null;
+                            if (captureRow) void registerRows([captureRow]);
+                          }}
+                        >
+                          Reintentar
+                        </Button>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {executorCustodyAssetsMeta?.hasMore || executorCustodyBalancesMeta?.hasMore ? (
+        <PortalTablePagination
+          hasMore
+          onLoadMore={() => void onLoadMoreExecutorCustody()}
+          loading={isLoadingMoreExecutorCustody}
+          resourceLabel="equipos y materiales compatibles"
+          shown={executorCustodyAssets.length + executorCustodyBalances.length}
+          total={
+            (executorCustodyAssetsMeta?.total ?? 0) + (executorCustodyBalancesMeta?.total ?? 0)
+          }
+        />
+      ) : null}
+
+      <div className="sticky bottom-0 z-10 -mx-3 flex flex-wrap items-center gap-2 border-t border-gray-200 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] dark:border-dark-border dark:bg-dark-surface-2">
+        {showSerialFlow ? (
+          <>
+            {selectedAsset?.serialNumber?.trim() ? (
+              <p className="w-full font-mono text-xs font-semibold text-gray-700 dark:text-gray-200">
+                Serial {selectedAsset.serialNumber.trim()}
+                {selectedAsset.macAddress?.trim()
+                  ? ` · MAC ${selectedAsset.macAddress.trim()}`
+                  : ''}
+              </p>
+            ) : null}
+            <Button
+              type="submit"
+              variant="primary"
+              className="min-h-11"
+              disabled={
+                isSubmitting ||
+                !selectedAssetId ||
+                !selectedAsset?.serialNumber?.trim() ||
+                results[`asset:${selectedAssetId}`]?.status === 'success' ||
+                !custodyId ||
+                !derivedAction ||
+                loadPending ||
+                loadUnavailable
+              }
+              onClick={() => {
+                submitScopeRef.current = 'serialized';
+              }}
+            >
+              {isSubmitting && activeScope === 'serialized'
+                ? 'Registrando equipo…'
+                : 'Registrar equipo'}
+            </Button>
+          </>
+        ) : null}
+        {showConsumableFlow ? (
+          <Button
+            type="submit"
+            variant="primary"
+            className="min-h-11"
+            disabled={
+              isSubmitting ||
+              !custodyId ||
+              !derivedAction ||
+              loadPending ||
+              loadUnavailable ||
+              !consumableRows.some((row) => (quantities[row.itemId] ?? 0) > 0)
+            }
+            onClick={() => {
+              submitScopeRef.current = 'consumables';
+            }}
+          >
+            {isSubmitting && activeScope === 'consumables'
+              ? 'Registrando materiales…'
+              : 'Registrar materiales'}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-h-11"
+          disabled={isSubmitting}
+          onClick={onClose}
+        >
+          Cancelar
         </Button>
-      </form>
-    </div>
+      </div>
+    </form>
   );
 }
 

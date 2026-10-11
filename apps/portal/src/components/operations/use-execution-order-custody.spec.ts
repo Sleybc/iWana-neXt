@@ -4,7 +4,11 @@
 // la política es qué se consulta, cuándo y qué se ofrece, no cómo lo implementa.
 import { useRef, useState } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS, type ListMeta } from '@iwana/shared';
+import {
+  INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS,
+  InventoryTrackingMode,
+  type ListMeta,
+} from '@iwana/shared';
 import type {
   ExecutionOrderDetailResponse,
   SerializedAssetRecord,
@@ -33,6 +37,7 @@ type LoadState = 'loading' | 'available' | 'unavailable';
 const consumption = {
   kind: 'consumption',
   requirementKey: 'installed-equipment',
+  requirementLabel: 'Equipos instalados en el sitio del cliente',
   itemCategory: 'CPE',
   finalDisposition: 'INSTALLED_AT_CUSTOMER',
   action: 'REGISTER_ITEM_USAGE',
@@ -64,6 +69,7 @@ const item = (id: string, categoryCode: string, overrides: Record<string, unknow
   id,
   sku: `SKU-${id}`,
   name: `Equipo ${id}`,
+  trackingMode: InventoryTrackingMode.SERIALIZED,
   status: 'ACTIVE',
   categoryId: `cat-${categoryCode}`,
   categoryCode,
@@ -124,7 +130,15 @@ function useHarness(selected: ExecutionOrderDetailResponse | null) {
   const [assetsMeta, setAssetsMeta] = useState<ListMeta>(meta());
   const [balances, setBalances] = useState<StockBalanceRecord[]>([]);
   const [balancesMeta, setBalancesMeta] = useState<ListMeta>(meta());
-  const [itemOptions, setItemOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [itemOptions, setItemOptions] = useState<
+    Array<{
+      value: string;
+      label: string;
+      sku: string;
+      name: string;
+      trackingMode: InventoryTrackingMode;
+    }>
+  >([]);
   const [custodyOptions, setCustodyOptions] = useState<ExecutionOrderCustodyOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingMore, setLoadingMore] = useState(false);
@@ -215,7 +229,11 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
   });
 
   it('al abrir el consumo consulta con el responsable de la OT y ofrece solo la categoría del requisito', async () => {
-    mockCatalog([item('ont-1', 'CPE'), item('router-1', 'CPE'), item('cable-1', 'CPE')]);
+    mockCatalog([
+      item('ont-1', 'CPE'),
+      item('router-1', 'CPE', { trackingMode: InventoryTrackingMode.CONSUMABLE }),
+      item('cable-1', 'CPE', { trackingMode: InventoryTrackingMode.CONSUMABLE }),
+    ]);
     jest
       .mocked(inventoryApi.getExecutorCustody)
       .mockResolvedValue(
@@ -248,8 +266,27 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
     expect(result.current.assets.map((entry) => entry.id)).toEqual(['a1']);
     expect(result.current.balances.map((entry) => entry.id)).toEqual(['b1']);
     expect(result.current.itemOptions).toEqual([
-      { value: 'ont-1', label: 'SKU-ont-1 · Equipo ont-1' },
-      { value: 'router-1', label: 'SKU-router-1 · Equipo router-1' },
+      {
+        value: 'cable-1',
+        label: 'SKU-cable-1 · Equipo cable-1',
+        sku: 'SKU-cable-1',
+        name: 'Equipo cable-1',
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+      },
+      {
+        value: 'ont-1',
+        label: 'SKU-ont-1 · Equipo ont-1',
+        sku: 'SKU-ont-1',
+        name: 'Equipo ont-1',
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+      },
+      {
+        value: 'router-1',
+        label: 'SKU-router-1 · Equipo router-1',
+        sku: 'SKU-router-1',
+        name: 'Equipo router-1',
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+      },
     ]);
     expect(result.current.custodyOptions).toEqual([
       { type: 'TECHNICIAN', id: 'tech-001', label: 'Bodega móvil de Carlos López' },
@@ -338,7 +375,7 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
       limit: 100,
       cursor: 'c-items-2',
     });
-    expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-2']);
+    expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-1', 'ont-2']);
   });
 
   it('con la cota de recorrido conserva la paginación y no trunca: «cargar más» continúa', async () => {
@@ -380,7 +417,7 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
     expect(result.current.inventoryState).toBe('available');
     expect(result.current.assets).toEqual([]);
     expect(result.current.balances).toEqual([]);
-    expect(result.current.itemOptions).toEqual([]);
+    expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-1']);
   });
 
   it('una categoría que no existe en el catálogo no ofrece nada y no consulta ítems', async () => {
@@ -399,6 +436,7 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
   });
 
   it('sin responsable asignado no consulta custodia y declara el vacío', async () => {
+    mockCatalog();
     const { assignee: _assignee, ...withoutAssignee } = order;
     const { result } = mount(withoutAssignee as ExecutionOrderDetailResponse);
 
@@ -406,9 +444,9 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
     await waitFor(() => expect(result.current.custodyState).toBe('available'));
 
     expect(inventoryApi.getExecutorCustody).not.toHaveBeenCalled();
-    expect(inventoryApi.listItems).not.toHaveBeenCalled();
+    expect(inventoryApi.listItems).toHaveBeenCalledTimes(1);
     expect(result.current.custodyOptions).toEqual([]);
-    expect(result.current.itemOptions).toEqual([]);
+    expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-1']);
   });
 
   it('un fallo marca custodia e inventario no disponibles y el reintento vuelve a consultar', async () => {
@@ -421,8 +459,8 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
 
     act(() => result.current.slot.openAction(consumption));
     await waitFor(() => expect(result.current.custodyState).toBe('unavailable'));
-    expect(result.current.inventoryState).toBe('unavailable');
-    expect(result.current.itemOptions).toEqual([]);
+    expect(result.current.inventoryState).toBe('available');
+    expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-1']);
     expect(result.current.assets).toEqual([]);
 
     // Reintento: el mismo acto vuelve a abrirse y solo recarga custodia e inventario.
@@ -463,13 +501,18 @@ describe('useExecutionOrderCustody — política bajo demanda', () => {
 
     act(() => result.current.slot.openAction(consumption));
     await waitFor(() => expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-1']),
+    );
+    const catalogOptions = result.current.itemOptions;
     act(() => result.current.slot.openAction(null));
     await act(async () => {
       late.resolve(custodyPage(1, 1, [asset('a1', 'ont-1')]));
     });
 
     expect(result.current.assets).toEqual([]);
-    expect(result.current.itemOptions).toEqual([]);
+    expect(result.current.itemOptions).toEqual(catalogOptions);
+    expect(result.current.itemOptions.map((option) => option.value)).toEqual(['ont-1']);
     expect(result.current.custodyState).toBe('loading');
   });
 

@@ -41,6 +41,7 @@ const freshDetail = { id: 'eo-1', version: 4 } as ExecutionOrderDetailResponse;
 const consumptionAction: RequirementActionDescriptor = {
   kind: 'consumption',
   requirementKey: 'material',
+  requirementLabel: 'Materiales usados en la instalación',
   itemCategory: 'CPE',
   action: 'REGISTER_ITEM_USAGE',
 };

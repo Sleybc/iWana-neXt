@@ -6,6 +6,7 @@ import {
   ExecutionOrderStatus,
   InventoryDisposition,
   InventoryResponsibleType,
+  InventoryTrackingMode,
   SerializedAssetStatus,
   StockBalanceCondition,
   WfmWorkType,
@@ -141,6 +142,7 @@ function templateFactory(): ExecutionOrderTemplateVersion {
         required: true,
         kind: 'MATERIAL',
         itemCategory: 'ONT',
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
       },
     ],
     reasonCatalogs: ['CAUSA_TECNICA', 'CAUSA_CLIENTE'],
@@ -371,14 +373,22 @@ describe('ExecutionOrderDrawer', () => {
         onBlock={jest.fn().mockResolvedValue(undefined)}
         onUnblock={jest.fn().mockResolvedValue(undefined)}
         onCloseOrder={jest.fn().mockResolvedValue(undefined)}
-        itemOptions={[{ value: 'item-001', label: 'ONT de instalación' }]}
+        itemOptions={[
+          {
+            value: 'item-001',
+            label: 'ONT de instalación',
+            sku: 'ONT-001',
+            name: 'ONT de instalación',
+            trackingMode: InventoryTrackingMode.SERIALIZED,
+          },
+        ]}
         {...props}
       />,
     );
     if (action) {
       const names = {
         activity: 'Registrar actividad',
-        consumption: 'Registrar equipo instalado',
+        consumption: 'Registrar serial ONT',
         evidence: 'Adjuntar evidencia',
       };
       fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${names[action]} para `) }));
@@ -515,7 +525,7 @@ describe('ExecutionOrderDrawer', () => {
             screen.getByRole('button', { name: /^Registrar actividad para / }),
           ).toBeInTheDocument();
           expect(
-            screen.getByRole('button', { name: /^Registrar equipo instalado para / }),
+            screen.getByRole('button', { name: /^Registrar serial ONT para / }),
           ).toBeInTheDocument();
           expect(screen.queryByLabelText('Descripción de la actividad')).toBeNull();
         }
@@ -730,27 +740,21 @@ describe('ExecutionOrderDrawer', () => {
       expect(onStart).toHaveBeenCalledWith('Inicio de ejecución en campo');
     });
 
-    it('envía serialNumber y technicianCustodyId al registrar inventario', async () => {
+    it('registra un activo serializado de la custodia con destino y acción derivados', async () => {
       const onRegisterItemUsage = jest.fn().mockResolvedValue(undefined);
       const user = userEvent.setup();
       renderDrawer(
         {
           order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
           onRegisterItemUsage,
+          executorCustodyAssets: [custodyAssetFactory()],
+          executorCustodyState: 'available',
         },
         'consumption',
       );
 
-      await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'ONT de instalación' }));
-      await user.type(screen.getByLabelText('Serial o lote'), 'ONT-2026-001');
-      await user.click(screen.getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Instalar' }));
-      await user.click(screen.getByRole('combobox', { name: 'Custodia de origen' }));
-      await user.click(screen.getByRole('option', { name: 'Carlos López' }));
-      await user.click(screen.getByRole('combobox', { name: 'Destino' }));
-      await user.click(screen.getByRole('option', { name: 'Instalado en cliente' }));
-      await user.click(screen.getByRole('button', { name: 'Registrar material' }));
+      await user.click(screen.getByRole('radio', { name: /ONT-2026-001/ }));
+      await user.click(screen.getByRole('button', { name: 'Registrar equipo' }));
 
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
         itemId: 'item-001',
@@ -763,29 +767,37 @@ describe('ExecutionOrderDrawer', () => {
       });
     });
 
-    it('bloquea el registro hasta seleccionar acción y custodia', () => {
+    it('bloquea el registro hasta seleccionar un equipo serializado', () => {
       renderDrawer(
-        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          executorCustodyAssets: [custodyAssetFactory()],
+          executorCustodyState: 'available',
+        },
         'consumption',
       );
 
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
-      expect(screen.getByLabelText('Acción')).toBeInTheDocument();
-      expect(screen.getByLabelText('Custodia de origen')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: /ONT-2026-001/ })).not.toBeChecked();
+      expect(screen.queryByLabelText('Acción')).toBeNull();
+      expect(screen.queryByLabelText('Custodia de origen')).toBeNull();
     });
 
-    it('no fija una acción ni un destino por defecto', () => {
+    it('no permite cambiar la acción ni el destino fijados por el requisito', () => {
       renderDrawer(
-        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          executorCustodyAssets: [custodyAssetFactory()],
+          executorCustodyState: 'available',
+        },
         'consumption',
       );
 
-      expect(screen.getByRole('combobox', { name: 'Acción' })).toHaveTextContent(
-        'Selecciona una acción',
-      );
-      expect(screen.getByRole('combobox', { name: 'Destino' })).toHaveTextContent(
-        'Selecciona una opción',
-      );
+      expect(
+        screen.getByText(/Se registrará como instalado en el sitio del cliente/),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Acción' })).toBeNull();
+      expect(screen.queryByRole('combobox', { name: 'Destino' })).toBeNull();
     });
 
     it('muestra estado vacío cuando la OT no tiene custodia elegible', () => {
@@ -800,9 +812,9 @@ describe('ExecutionOrderDrawer', () => {
       );
 
       expect(
-        screen.getByText('La orden no tiene una custodia técnica o de cuadrilla elegible.'),
+        screen.getByText('No hay equipos de esta categoría en tu custodia.'),
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
     });
 
     // R2: «conserva el requirementKey real y selecciona un solo archivo al subir evidencia»
@@ -1061,35 +1073,57 @@ describe('ExecutionOrderDrawer', () => {
       renderDrawer(
         {
           order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          executorCustodyAssets: [custodyAssetFactory()],
+          executorCustodyState: 'available',
         },
         'consumption',
       );
-      expect(screen.getByLabelText('Ítem')).toBeInTheDocument();
-      expect(screen.getByLabelText('Cantidad')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /ONT-2026-001/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Registrar equipo' })).toBeInTheDocument();
     });
 
-    it('exige una cantidad positiva y muestra el error junto al campo', async () => {
+    it('limita la cantidad de consumible al saldo disponible y permite restablecer cero', async () => {
       const user = userEvent.setup();
       renderDrawer(
-        { order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) },
+        {
+          order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }),
+          itemOptions: [
+            {
+              value: 'item-consumable',
+              label: 'Consumible FO',
+              sku: 'FO-001',
+              name: 'Consumible FO',
+              trackingMode: InventoryTrackingMode.CONSUMABLE,
+            },
+          ],
+          executorCustodyAssets: [],
+          executorCustodyBalances: [
+            custodyBalanceFactory({
+              itemId: 'item-consumable',
+              quantityOnHand: '2',
+              quantityReserved: '1',
+            }),
+          ],
+          executorCustodyState: 'available',
+        },
         'consumption',
       );
 
-      const quantity = screen.getByLabelText('Cantidad');
-      expect(quantity).toHaveAttribute('min', '1');
+      const quantity = screen.getByRole('spinbutton', {
+        name: 'Cantidad de Consumible FO (unidades)',
+      });
+      expect(quantity).toHaveAttribute('min', '0');
+      expect(quantity).toHaveAttribute('max', '1');
       expect(quantity).toHaveAttribute('step', '1');
-
-      await user.clear(quantity);
-      await user.type(quantity, '0');
-
-      expect(screen.getByText('La cantidad debe ser entera y mayor que cero.')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
-
-      await user.clear(quantity);
-      await user.type(quantity, '1.5');
-      expect(screen.getByText('La cantidad debe ser entera y mayor que cero.')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Registrar materiales' })).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: 'Sumar 1 unidad de Consumible FO' }));
+      expect(quantity).toHaveValue(1);
+      expect(screen.getByRole('button', { name: 'Registrar materiales' })).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: 'Sumar 1 unidad de Consumible FO' }));
+      expect(quantity).toHaveValue(1);
+      await user.click(screen.getByRole('button', { name: 'Restar 1 unidad de Consumible FO' }));
+      expect(quantity).toHaveValue(0);
+      expect(screen.getByRole('button', { name: 'Registrar materiales' })).toBeDisabled();
     });
 
     it('disables add item form on terminal OT', () => {
@@ -1138,13 +1172,16 @@ describe('ExecutionOrderDrawer', () => {
         'consumption',
       );
 
-      expect(screen.getByText('En custodia del ejecutor')).toBeInTheDocument();
-      expect(screen.getByText('Bodega móvil de Carlos López')).toBeInTheDocument();
-      expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
-      expect(screen.getByText('ONT de instalación · Asignado a técnico')).toBeInTheDocument();
-      expect(screen.getAllByText('ONT de instalación')[0]).toBeInTheDocument();
-      expect(screen.getByText('Cantidad disponible: 4')).toBeInTheDocument();
-      expect(screen.queryByText('Custodia no disponible')).not.toBeInTheDocument();
+      expect(screen.getByText(/Desde Bodega móvil de Carlos López/)).toBeInTheDocument();
+      expect(
+        screen.getByRole('radio', {
+          name: /ONT de instalación[\s\S]*Serial ONT-2026-001[\s\S]*ONT-001 · Asignado a técnico/,
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('disponible 4')).toBeNull();
+      expect(
+        screen.queryByText('No pudimos cargar los equipos de tu custodia.'),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByText('No hay equipos de esta categoría en tu custodia'),
       ).not.toBeInTheDocument();
@@ -1163,14 +1200,14 @@ describe('ExecutionOrderDrawer', () => {
 
       // UX §5: la custodia vacía de la categoría se dice con el copy cerrado y no se promete otra cosa.
       expect(
-        screen.getByText('No hay equipos de esta categoría en tu custodia'),
+        screen.getByText('No hay equipos de esta categoría en tu custodia.'),
       ).toBeInTheDocument();
       expect(
         screen.getByText('Contacta a supervisión para revisar la disponibilidad.'),
       ).toBeInTheDocument();
     });
 
-    it('muestra la alerta de no disponible con la acción de reintentar', () => {
+    it('muestra la alerta de no disponible con la acción de reintentar', async () => {
       const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
       renderDrawer(
         {
@@ -1181,9 +1218,11 @@ describe('ExecutionOrderDrawer', () => {
         'consumption',
       );
 
-      const section = screen.getByRole('region', { name: 'Registrar equipo instalado' });
-      expect(within(section).getByText('Custodia no disponible')).toBeInTheDocument();
-      within(section).getByRole('button', { name: 'Reintentar' }).click();
+      const section = screen.getByRole('region', { name: 'Registrar serial ONT' });
+      expect(
+        within(section).getByText('No pudimos cargar los equipos de tu custodia.'),
+      ).toBeInTheDocument();
+      await userEvent.click(within(section).getByRole('button', { name: 'Reintentar' }));
       expect(onRefreshDetail).toHaveBeenCalledTimes(1);
     });
 
@@ -1196,9 +1235,11 @@ describe('ExecutionOrderDrawer', () => {
         'consumption',
       );
 
-      const section = screen.getByRole('region', { name: 'Registrar equipo instalado' });
-      expect(within(section).getByLabelText('Cargando custodia del ejecutor')).toBeInTheDocument();
-      expect(within(section).getByText('En custodia del ejecutor')).toBeInTheDocument();
+      const section = screen.getByRole('region', { name: 'Registrar serial ONT' });
+      expect(
+        within(section).getByLabelText('Cargando equipos de tu custodia…'),
+      ).toBeInTheDocument();
+      expect(within(section).queryByText('En custodia del ejecutor')).toBeNull();
     });
 
     it('expone la paginación compartida vía onLoadMoreExecutorCustody', async () => {
@@ -1215,7 +1256,7 @@ describe('ExecutionOrderDrawer', () => {
         'consumption',
       );
 
-      const section = screen.getByRole('region', { name: 'Registrar equipo instalado' });
+      const section = screen.getByRole('region', { name: 'Registrar serial ONT' });
       const loadMore = within(section).getByRole('button', { name: 'Cargar más' });
       await userEvent.click(loadMore);
       expect(onLoadMoreExecutorCustody).toHaveBeenCalledTimes(1);
@@ -1531,9 +1572,7 @@ describe('ExecutionOrderDrawer', () => {
       expect(matches.length).toBeGreaterThanOrEqual(2);
       expect(screen.queryByRole('button', { name: 'Iniciar ejecución' })).toBeNull();
       expect(screen.getByRole('button', { name: /^Registrar actividad para / })).toBeDisabled();
-      expect(
-        screen.getByRole('button', { name: /^Registrar equipo instalado para / }),
-      ).toBeDisabled();
+      expect(screen.getByRole('button', { name: /^Registrar serial ONT para / })).toBeDisabled();
       expect(screen.queryByRole('button', { name: 'Cerrar OT' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Crear seguimiento' })).toBeNull();
     });

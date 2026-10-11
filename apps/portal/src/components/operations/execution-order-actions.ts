@@ -11,6 +11,7 @@ export type RequirementActionDescriptor =
   | {
       kind: 'consumption';
       requirementKey: string;
+      requirementLabel: string;
       itemCategory: string;
       finalDisposition?: string;
       action: 'REGISTER_ITEM_USAGE';
@@ -46,6 +47,7 @@ export function getRequirementAction(
     return {
       kind: 'consumption',
       requirementKey,
+      requirementLabel: requirement.label,
       itemCategory: requirement.itemCategory,
       ...(requirement.finalDisposition ? { finalDisposition: requirement.finalDisposition } : {}),
       action: 'REGISTER_ITEM_USAGE',
@@ -55,7 +57,13 @@ export function getRequirementAction(
 
 export function requirementActionLabel(action: RequirementActionDescriptor): string {
   if (action.kind === 'activity') return 'Registrar actividad';
-  if (action.kind === 'consumption') return 'Registrar equipo instalado';
+  if (action.kind === 'consumption') {
+    const label = action.requirementLabel.trim();
+    const labelWithLowercaseInitial = label
+      ? `${label.slice(0, 1).toLocaleLowerCase('es')}${label.slice(1)}`
+      : 'material';
+    return `Registrar ${labelWithLowercaseInitial}`;
+  }
   if (action.kind === 'acceptance') return 'Cerrar orden';
   if (action.evidenceType === 'SIGNATURE') return 'Capturar firma del cliente';
   if (action.requirementKey === 'service-test') return 'Añadir foto de la prueba de servicio';

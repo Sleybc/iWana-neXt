@@ -4,6 +4,7 @@
 // (`selectedExecutionOrder` null): antes el botón quedaba inerte porque el
 // único origen del id era la OT seleccionada.
 import { act, renderHook } from '@testing-library/react';
+import { ExecutionOrderItemAction, InventoryDisposition } from '@iwana/shared';
 import { useExecutionOrderConsole } from './use-execution-order-console';
 import { ApiError, inventoryApi, tasksApi } from '@/lib/api-client';
 
@@ -35,6 +36,7 @@ jest.mock('@/lib/api-client', () => ({
       uploadEvidenceAsset: jest.fn(),
       getEvidenceAsset: jest.fn(),
       registerEvidence: jest.fn(),
+      registerItemUsage: jest.fn(),
     },
   },
 }));
@@ -48,6 +50,7 @@ describe('useExecutionOrderConsole — reintento de apertura (OLA 4.1)', () => {
     jest.mocked(tasksApi.executionOrders.uploadEvidenceAsset).mockReset();
     jest.mocked(tasksApi.executionOrders.getEvidenceAsset).mockReset();
     jest.mocked(tasksApi.executionOrders.registerEvidence).mockReset();
+    jest.mocked(tasksApi.executionOrders.registerItemUsage).mockReset();
     jest.mocked(inventoryApi.listItems).mockResolvedValue({ data: [] } as never);
     jest.mocked(inventoryApi.listLocations).mockResolvedValue({ data: [] } as never);
   });
@@ -206,5 +209,180 @@ describe('useExecutionOrderConsole — reintento de apertura (OLA 4.1)', () => {
     expect(tasksApi.executionOrders.getEvidenceAsset).toHaveBeenCalledTimes(6);
     expect(tasksApi.executionOrders.registerEvidence).not.toHaveBeenCalled();
     expect(result.current.executionOrderError).toContain('sigue en revisión');
+  });
+
+  it('registra las filas en serie con la versión leída antes de cada POST', async () => {
+    const executionOrderId = 'eo-batch-001';
+    const getExecutionOrder = jest.mocked(tasksApi.executionOrders.get);
+    getExecutionOrder
+      .mockResolvedValueOnce({ id: executionOrderId, version: 3 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 8 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 9 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 10 } as never);
+    const registerItemUsage = jest.mocked(tasksApi.executionOrders.registerItemUsage);
+    registerItemUsage.mockResolvedValue({} as never);
+    const { result } = renderHook(() => useExecutionOrderConsole());
+
+    await act(async () => {
+      await result.current.openExecutionOrder(executionOrderId);
+    });
+    await act(async () => {
+      await result.current.handleRegisterExecutionOrderItemUsageBatch([
+        {
+          key: 'item:drop',
+          idempotencyKey: 'row-key-drop',
+          payload: {
+            itemId: 'drop',
+            requirementKey: 'materials',
+            technicianCustodyId: 'tech-1',
+            quantity: 2,
+            action: ExecutionOrderItemAction.INSTALL,
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          },
+        },
+        {
+          key: 'item:patchcord',
+          idempotencyKey: 'row-key-patchcord',
+          payload: {
+            itemId: 'patchcord',
+            requirementKey: 'materials',
+            technicianCustodyId: 'tech-1',
+            quantity: 1,
+            action: ExecutionOrderItemAction.INSTALL,
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          },
+        },
+      ]);
+    });
+
+    expect(registerItemUsage).toHaveBeenNthCalledWith(
+      1,
+      executionOrderId,
+      expect.objectContaining({ itemId: 'drop' }),
+      8,
+      undefined,
+      'row-key-drop',
+    );
+    expect(registerItemUsage).toHaveBeenNthCalledWith(
+      2,
+      executionOrderId,
+      expect.objectContaining({ itemId: 'patchcord' }),
+      9,
+      undefined,
+      'row-key-patchcord',
+    );
+    expect(getExecutionOrder.mock.invocationCallOrder[2]).toBeLessThan(
+      registerItemUsage.mock.invocationCallOrder[1]!,
+    );
+    expect(registerItemUsage.mock.invocationCallOrder[0]).toBeLessThan(
+      getExecutionOrder.mock.invocationCallOrder[2]!,
+    );
+  });
+
+  it('refresca tras 412 y reintenta una sola vez con la misma clave de la fila', async () => {
+    const executionOrderId = 'eo-batch-412';
+    jest
+      .mocked(tasksApi.executionOrders.get)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 3 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 8 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 9 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 10 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 11 } as never);
+    const registerItemUsage = jest.mocked(tasksApi.executionOrders.registerItemUsage);
+    registerItemUsage
+      .mockRejectedValueOnce(new ApiError(412, 'VERSION_CONFLICT', 'Versión desactualizada'))
+      .mockResolvedValueOnce({} as never);
+    const { result } = renderHook(() => useExecutionOrderConsole());
+
+    await act(async () => {
+      await result.current.openExecutionOrder(executionOrderId);
+    });
+    let outcomes: Awaited<
+      ReturnType<typeof result.current.handleRegisterExecutionOrderItemUsageBatch>
+    > = [];
+    await act(async () => {
+      outcomes = await result.current.handleRegisterExecutionOrderItemUsageBatch([
+        {
+          key: 'item:drop',
+          idempotencyKey: 'stable-row-key',
+          payload: {
+            itemId: 'drop',
+            requirementKey: 'materials',
+            technicianCustodyId: 'tech-1',
+            quantity: 2,
+            action: ExecutionOrderItemAction.INSTALL,
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          },
+        },
+      ]);
+    });
+
+    expect(outcomes).toEqual([{ key: 'item:drop', status: 'success' }]);
+    expect(registerItemUsage).toHaveBeenCalledTimes(2);
+    expect(registerItemUsage).toHaveBeenNthCalledWith(
+      1,
+      executionOrderId,
+      expect.any(Object),
+      8,
+      undefined,
+      'stable-row-key',
+    );
+    expect(registerItemUsage).toHaveBeenNthCalledWith(
+      2,
+      executionOrderId,
+      expect.any(Object),
+      10,
+      undefined,
+      'stable-row-key',
+    );
+  });
+
+  it('detiene la fila tras un segundo 412 sin crear un tercer POST', async () => {
+    const executionOrderId = 'eo-batch-double-412';
+    jest
+      .mocked(tasksApi.executionOrders.get)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 3 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 8 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 9 } as never)
+      .mockResolvedValueOnce({ id: executionOrderId, version: 10 } as never);
+    const registerItemUsage = jest.mocked(tasksApi.executionOrders.registerItemUsage);
+    registerItemUsage
+      .mockRejectedValueOnce(new ApiError(412, 'VERSION_CONFLICT', 'Versión desactualizada'))
+      .mockRejectedValueOnce(new ApiError(412, 'VERSION_CONFLICT', 'Versión desactualizada'));
+    const { result } = renderHook(() => useExecutionOrderConsole());
+
+    await act(async () => {
+      await result.current.openExecutionOrder(executionOrderId);
+    });
+    let outcomes: Awaited<
+      ReturnType<typeof result.current.handleRegisterExecutionOrderItemUsageBatch>
+    > = [];
+    await act(async () => {
+      outcomes = await result.current.handleRegisterExecutionOrderItemUsageBatch([
+        {
+          key: 'item:drop',
+          idempotencyKey: 'stable-row-key',
+          payload: {
+            itemId: 'drop',
+            requirementKey: 'materials',
+            technicianCustodyId: 'tech-1',
+            quantity: 2,
+            action: ExecutionOrderItemAction.INSTALL,
+            finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          },
+        },
+      ]);
+    });
+
+    expect(outcomes).toEqual([expect.objectContaining({ key: 'item:drop', status: 'error' })]);
+    expect(registerItemUsage).toHaveBeenCalledTimes(2);
+    expect(registerItemUsage).toHaveBeenNthCalledWith(
+      2,
+      executionOrderId,
+      expect.any(Object),
+      10,
+      undefined,
+      'stable-row-key',
+    );
   });
 });

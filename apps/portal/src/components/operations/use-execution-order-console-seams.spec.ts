@@ -85,6 +85,7 @@ describe('B0 contratos de integración de slots', () => {
     const action = {
       kind: 'consumption',
       requirementKey: 'material',
+      requirementLabel: 'Materiales usados en la instalación',
       itemCategory: 'CPE',
       action: 'REGISTER_ITEM_USAGE',
     } as const;
@@ -133,6 +134,7 @@ describe('B0 contratos de integración de slots', () => {
     const action = {
       kind: 'consumption',
       requirementKey: 'material',
+      requirementLabel: 'Materiales usados en la instalación',
       itemCategory: 'CPE',
       action: 'REGISTER_ITEM_USAGE',
     } as const;

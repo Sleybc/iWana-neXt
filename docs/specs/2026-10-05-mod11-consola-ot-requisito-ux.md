@@ -1,10 +1,10 @@
 # Spec UX — MOD11: consola de OT por requisito y por momento
 
-**Versión:** 1.3<br>
-**Fecha:** 2026-10-06<br>
-**Estado:** **Aprobado.** La línea base v1.1 se aprobó en G2 el 2026-10-05. Las adendas v1.2 (§14) y v1.3 (§14.2 y §15) las **aprobó AI-EM-ARCH a posteriori el 2026-10-06** (plan v1.2, §Registro de bloqueos — Ola 2). **Corrección de §14.1:** la frase «no se cambia el gate de cierre» es inexacta. La API v1.5 hace que un consumo **con** clave satisfaga solo su requisito exacto, aplicando ADR-088 §D4. Para consumos sin clave se conserva el comportamiento anterior.<br>
+**Versión:** 1.5<br>
+**Fecha:** 2026-10-11<br>
+**Estado:** **Línea base v1.1 aprobada.** Las adendas v1.2 (§14) y v1.3 (§14.2 y §15) las **aprobó AI-EM-ARCH a posteriori el 2026-10-06** (plan v1.2, §Registro de bloqueos — Ola 2). La adenda v1.4 (§16) fue aprobada en U1. La adenda v1.5 (§17) fija la firma como último requisito en el orden visual de captura, sin alterar el snapshot ni el gate de cierre. **Corrección de §14.1:** la frase «no se cambia el gate de cierre» es inexacta. La API v1.5 hace que un consumo **con** clave satisfaga solo su requisito exacto, aplicando ADR-088 §D4. Para consumos sin clave se conserva el comportamiento anterior.<br>
 **Productora:** AI-PROD-UX (prod-ux)  
-**Alcance:** R0 de la consola + UX de E4 para OT sin ventana; adendas de producto §§14–15 para la deuda del historial de consumos R3 y la ratificación de copy R2.
+**Alcance:** R0 de la consola + UX de E4 para OT sin ventana; adendas de producto §§14–17 para la deuda del historial de consumos R3, la ratificación de copy R2, la captura compacta de equipos y materiales y el orden de captura de la firma.
 
 ## Trazabilidad y contratos de entrada
 
@@ -16,11 +16,11 @@
 - Predecesora de bandeja: [UX de subrutas operativas](2026-09-13-mod11-operaciones-subrutas-bandeja-ot-ux.md).
 - Copy de compromiso por rol y estado preservado: [informe OLA 1 prod-ux](../informes/INFORME-MOD11-CONSOLA-OT-OLA1-PROD-UX-v1.0.md) y apps/portal/src/components/operations/execution-order-commitment-copy.ts. En este diseño solo se reemplaza el copy de BLOQUEADA que dependía de un motivo no legible.
 
-| Contrato consumido | Versión | Regla en R0 |
-| --- | --- | --- |
-| packages/shared/src/contracts/operations/execution-orders.ts | v1.4 según su historial publicado | Solo consume campos existentes; no se corrige su cabecera ni se amplía. |
-| packages/shared/src/contracts/operations/execution-orders-completion.ts | v1 | El estado real por requisito gobierna el checklist; no se infiere cumplimiento desde el historial. |
-| docs/specs/2026-09-13-mod11-operaciones-tablas-operativas-contrato-componente.md | v1.1 | No se modifica en R0. R1 resuelve cómo compatibilizar su raya para ventana nula con la semántica de E4. |
+| Contrato consumido                                                               | Versión                           | Regla en R0                                                                                             |
+| -------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| packages/shared/src/contracts/operations/execution-orders.ts                     | v1.4 según su historial publicado | Solo consume campos existentes; no se corrige su cabecera ni se amplía.                                 |
+| packages/shared/src/contracts/operations/execution-orders-completion.ts          | v1                                | El estado real por requisito gobierna el checklist; no se infiere cumplimiento desde el historial.      |
+| docs/specs/2026-09-13-mod11-operaciones-tablas-operativas-contrato-componente.md | v1.1                              | No se modifica en R0. R1 resuelve cómo compatibilizar su raya para ventana nula con la semántica de E4. |
 
 ## 1. Resultado de experiencia
 
@@ -42,13 +42,13 @@ La lente de compromiso de OLA 1 ya se calcula con allowedActions. Su copy de ini
 
 El orden y las etiquetas corresponden al snapshot v2 publicado. Las razones entre comillas son las que produce el evaluador hoy; se muestran solo cuando el estado no está satisfecho. No se sustituyen por claves internas ni se atribuyen verificaciones adicionales al requisito.
 
-| Clave y requisito visible | Estado y razón al estar pendiente | Acción originada en el requisito | Copy de acción y criterio |
-| --- | --- | --- | --- |
-| installed-equipment — Equipos instalados en el sitio del cliente. MATERIAL obligatorio: categoría CPE y disposición INSTALLED_AT_CUSTOMER. | Cumplido o Pendiente. Razón pendiente: «No se ha registrado el material "Equipos instalados en el sitio del cliente".» | Registrar consumo con la categoría CPE. El registro debe cumplir la disposición que evalúa el requisito. Custodia solo se consulta al abrir este acto. | «Registrar equipo instalado». En el selector: «Selecciona un equipo de tu custodia». La etiqueta de resultado puede decir «Instalado en el sitio del cliente»; no se muestra el enum. |
-| service-test — Prueba de servicio en el sitio. EVIDENCE PHOTO obligatorio. | Cumplido o Pendiente. Razón pendiente: «No se ha vinculado una foto para "Prueba de servicio en el sitio".» | Adjuntar foto con requirementKey service-test y evidenceType PHOTO. | «Añadir foto de la prueba de servicio». El copy acredita una foto vinculada a la prueba, no que el servicio funcione ni el resultado de una medición. |
-| work-photo — Fotos del trabajo realizado. EVIDENCE PHOTO obligatorio. | Cumplido o Pendiente. Razón pendiente: «No se ha vinculado una foto para "Fotos del trabajo realizado".» | Adjuntar foto con requirementKey work-photo y evidenceType PHOTO. | «Añadir fotos del trabajo». Cada archivo guardado aparece en el historial de este requisito. |
-| CUSTOMER_SIGNATURE — Acta de conformidad firmada por el cliente. EVIDENCE SIGNATURE obligatorio. | Cumplido o Pendiente. Razón pendiente: «No se ha vinculado una firma para "Acta de conformidad firmada por el cliente".» | Capturar firma en el navegador y subir el artefacto como evidenceType SIGNATURE y requirementKey CUSTOMER_SIGNATURE. | «Capturar firma del cliente». Guardar la captura produce el artefacto; la acción de cierre conserva el registro automático existente y lo referencia. |
-| installation-activity — Registro de la actividad en bitácora (NO requerido). ACTIVITY opcional: activityType INSTALLATION. | Cumplido o «Sin registrar». Si se presenta la razón del evaluador: «No se ha registrado la actividad "Registro de la actividad en bitácora (NO requerido)".» | Registrar actividad con activityType INSTALLATION, solo si REGISTER_ACTIVITY está permitido. | «Registrar actividad». Ayuda fija: «Puedes dejar constancia de la instalación. Este registro es opcional y no bloquea el cierre.» |
+| Clave y requisito visible                                                                                                                  | Estado y razón al estar pendiente                                                                                                                            | Acción originada en el requisito                                                                                                                       | Copy de acción y criterio                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| installed-equipment — Equipos instalados en el sitio del cliente. MATERIAL obligatorio: categoría CPE y disposición INSTALLED_AT_CUSTOMER. | Cumplido o Pendiente. Razón pendiente: «No se ha registrado el material "Equipos instalados en el sitio del cliente".»                                       | Registrar consumo con la categoría CPE. El registro debe cumplir la disposición que evalúa el requisito. Custodia solo se consulta al abrir este acto. | «Registrar equipo instalado». En el selector: «Selecciona un equipo de tu custodia». La etiqueta de resultado puede decir «Instalado en el sitio del cliente»; no se muestra el enum. |
+| service-test — Prueba de servicio en el sitio. EVIDENCE PHOTO obligatorio.                                                                 | Cumplido o Pendiente. Razón pendiente: «No se ha vinculado una foto para "Prueba de servicio en el sitio".»                                                  | Adjuntar foto con requirementKey service-test y evidenceType PHOTO.                                                                                    | «Añadir foto de la prueba de servicio». El copy acredita una foto vinculada a la prueba, no que el servicio funcione ni el resultado de una medición.                                 |
+| work-photo — Fotos del trabajo realizado. EVIDENCE PHOTO obligatorio.                                                                      | Cumplido o Pendiente. Razón pendiente: «No se ha vinculado una foto para "Fotos del trabajo realizado".»                                                     | Adjuntar foto con requirementKey work-photo y evidenceType PHOTO.                                                                                      | «Añadir fotos del trabajo». Cada archivo guardado aparece en el historial de este requisito.                                                                                          |
+| CUSTOMER_SIGNATURE — Acta de conformidad firmada por el cliente. EVIDENCE SIGNATURE obligatorio.                                           | Cumplido o Pendiente. Razón pendiente: «No se ha vinculado una firma para "Acta de conformidad firmada por el cliente".»                                     | Capturar firma en el navegador y subir el artefacto como evidenceType SIGNATURE y requirementKey CUSTOMER_SIGNATURE.                                   | «Capturar firma del cliente». Guardar la captura produce el artefacto; la acción de cierre conserva el registro automático existente y lo referencia.                                 |
+| installation-activity — Registro de la actividad en bitácora (NO requerido). ACTIVITY opcional: activityType INSTALLATION.                 | Cumplido o «Sin registrar». Si se presenta la razón del evaluador: «No se ha registrado la actividad "Registro de la actividad en bitácora (NO requerido)".» | Registrar actividad con activityType INSTALLATION, solo si REGISTER_ACTIVITY está permitido.                                                           | «Registrar actividad». Ayuda fija: «Puedes dejar constancia de la instalación. Este registro es opcional y no bloquea el cierre.»                                                     |
 
 La etiqueta de `installation-activity` se conserva literalmente desde el snapshot publicado. El «NO» en mayúsculas es una deuda de copy de la plantilla; corregirlo requiere publicar una v3 y queda fuera de este tramo.
 
@@ -72,12 +72,12 @@ El trazo libre es una entrada dependiente de la trayectoria y queda exceptuado p
 
 La estructura se ordena por requisito. No se mantienen las seis secciones siempre montadas ni se pliegan en acordeones.
 
-| Momento | Ejecutor asignado | Ejecutor sin asignación que puede ver la OT | Supervisión |
-| --- | --- | --- | --- |
-| Pre-inicio: CREATED, ASSIGNED, EN_ROUTE | Resumen, ventana, compromiso y checklist de solo lectura. Si allowedActions contiene START, acción de inicio. No se monta captura ni se consulta custodia fuera del acto de consumo, que todavía no aplica. | En ASSIGNED/EN_ROUTE y solo si la orden se devuelve a esta persona, mismo resumen y checklist de lectura; las acciones aparecen únicamente por allowedActions. CREATED no forma parte del pool técnico y no se lista ni se abre para este rol. | Resumen y checklist de lectura. Acciones de coordinación como asignar, reasignar o seguimiento aparecen solo cuando allowedActions las ofrece. CREATED pertenece a esta bandeja de coordinación. |
-| En progreso: IN_PROGRESS | Índice activo de requisitos. Cada acción permitida abre su acto junto al requisito; debajo se ven los registros que lo satisfacen. Cierre disponible solo si allowedActions contiene CLOSE. | Si una OT es visible para esta persona y allowedActions ofrece una acción, ve solo esa acción y su requisito; de lo contrario, no obtiene la superficie. No se deduce acceso de la ausencia de responsable. | Checklist e historial en lectura. Seguimiento solo si allowedActions lo ofrece. No se muestran controles de actividad, consumo, evidencia o cierre como editables. |
-| Bloqueada: BLOCKED | Estado «Orden bloqueada», sin motivo. Resto del expediente en lectura. Si allowedActions incluye UNBLOCK, se conserva la disponibilidad real y se muestra «Desbloqueo no disponible» mientras no haya catálogo y ruta utilizables; no se crea una captura de motivo. | Misma regla cuando la orden sea accesible: estado sin motivo, lectura y acciones solo por allowedActions. No se presenta una OT CREATED al pool. | Estado sin motivo y expediente en lectura. CREATE_FOLLOW_UP puede mostrarse si allowedActions lo incluye. No se afirma que haya un motivo oculto ni una explicación consultable. |
-| Cierre y terminal: estados terminales del contrato | Resultado, requisitos, evidencias y registros asociados en lectura; se conserva el copy de cierre OLA 1. Sin superficie de captura. | Si tiene acceso al detalle, mismo resultado de lectura; no se prometen acciones. | Resultado y expediente en lectura. Seguimiento solo si allowedActions lo permite. No se añade una acción de anulación. |
+| Momento                                            | Ejecutor asignado                                                                                                                                                                                                                                                    | Ejecutor sin asignación que puede ver la OT                                                                                                                                                                                                    | Supervisión                                                                                                                                                                                      |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pre-inicio: CREATED, ASSIGNED, EN_ROUTE            | Resumen, ventana, compromiso y checklist de solo lectura. Si allowedActions contiene START, acción de inicio. No se monta captura ni se consulta custodia fuera del acto de consumo, que todavía no aplica.                                                          | En ASSIGNED/EN_ROUTE y solo si la orden se devuelve a esta persona, mismo resumen y checklist de lectura; las acciones aparecen únicamente por allowedActions. CREATED no forma parte del pool técnico y no se lista ni se abre para este rol. | Resumen y checklist de lectura. Acciones de coordinación como asignar, reasignar o seguimiento aparecen solo cuando allowedActions las ofrece. CREATED pertenece a esta bandeja de coordinación. |
+| En progreso: IN_PROGRESS                           | Índice activo de requisitos. Cada acción permitida abre su acto junto al requisito; debajo se ven los registros que lo satisfacen. Cierre disponible solo si allowedActions contiene CLOSE.                                                                          | Si una OT es visible para esta persona y allowedActions ofrece una acción, ve solo esa acción y su requisito; de lo contrario, no obtiene la superficie. No se deduce acceso de la ausencia de responsable.                                    | Checklist e historial en lectura. Seguimiento solo si allowedActions lo ofrece. No se muestran controles de actividad, consumo, evidencia o cierre como editables.                               |
+| Bloqueada: BLOCKED                                 | Estado «Orden bloqueada», sin motivo. Resto del expediente en lectura. Si allowedActions incluye UNBLOCK, se conserva la disponibilidad real y se muestra «Desbloqueo no disponible» mientras no haya catálogo y ruta utilizables; no se crea una captura de motivo. | Misma regla cuando la orden sea accesible: estado sin motivo, lectura y acciones solo por allowedActions. No se presenta una OT CREATED al pool.                                                                                               | Estado sin motivo y expediente en lectura. CREATE_FOLLOW_UP puede mostrarse si allowedActions lo incluye. No se afirma que haya un motivo oculto ni una explicación consultable.                 |
+| Cierre y terminal: estados terminales del contrato | Resultado, requisitos, evidencias y registros asociados en lectura; se conserva el copy de cierre OLA 1. Sin superficie de captura.                                                                                                                                  | Si tiene acceso al detalle, mismo resultado de lectura; no se prometen acciones.                                                                                                                                                               | Resultado y expediente en lectura. Seguimiento solo si allowedActions lo permite. No se añade una acción de anulación.                                                                           |
 
 La matriz cubre 12 combinaciones. Para cualquier celda, allowedActions y status publicados son la fuente de las acciones; una combinación no autorizada se resuelve como «No tienes acceso a esta orden», sin exponer el detalle. Los estados de carga, error y conexión son transversales (§9).
 
@@ -95,33 +95,33 @@ Una mutación se vincula visualmente al requisito que la originó. Registrar una
 
 Todo el texto visible usa español en sentence case. Estados y acciones se entienden por texto y no por color; no se renderizan enums crudos.
 
-| Contexto | Título, estado o acción | Descripción o ayuda |
-| --- | --- | --- |
-| Obligatorio no satisfecho | «Pendiente» | Se muestra la razón publicada por el evaluador. |
-| Obligatorio satisfecho | «Cumplido» | Sin razón pendiente. |
-| Actividad opcional no registrada | «Sin registrar» | «Puedes dejar constancia de la instalación. Este registro es opcional y no bloquea el cierre.» |
-| Evaluación ausente o incompleta | «Estado no disponible» | «No pudimos consultar el estado de los requisitos. Intenta actualizar la orden.» |
-| Material | «Registrar equipo instalado» | «Selecciona un equipo de tu custodia». Sin categoría disponible: «No hay equipos de esta categoría en tu custodia. Contacta a supervisión para revisar la disponibilidad.» |
-| Foto por requisito | «Añadir foto de la prueba de servicio» o «Añadir fotos del trabajo» | «Selecciona una foto». El acceso es por selector de archivo; se retira la promesa de arrastrar fotos o documentos. |
-| Firma | «Capturar firma del cliente» | «Pide al cliente que firme el acta de conformidad». |
-| Superficie de firma | «Limpiar», «Guardar firma», «Cancelar» | «Firma guardada». El error de carga: «No pudimos guardar la firma. Intenta de nuevo.» La captura permanece disponible para reintentar. |
-| Bloqueada — título | «Orden bloqueada» | No se muestra motivo ni se dice «motivo no disponible». |
-| Bloqueada — ejecutor | «Orden bloqueada» | «La orden está bloqueada. Contacta a supervisión para acordar cómo continuar.» |
-| Bloqueada — supervisión | «Orden bloqueada» | «La orden está bloqueada. Coordina con el equipo de campo el siguiente paso.» |
-| Acción UNBLOCK ofrecida, pero sin ruta/catálogo utilizable | «Desbloqueo no disponible» | No se habilita una acción ficticia ni se pide un motivo. Si UNBLOCK no aparece en allowedActions, esta leyenda tampoco aparece. |
-| Sin ventana, no terminal | «Por programar» | «Esta orden no tiene una ventana planificada. Coordina su programación con el equipo de programación.» |
-| Sin ventana, terminal | «Sin ventana planificada» | El estado terminal indica que ya no es trabajo por programar. |
-| Carga inicial del detalle | «Cargando orden» | Se presenta estructura de carga; ninguna superficie de captura se monta durante la carga. |
-| Bandeja sin órdenes para supervisión | «No hay órdenes para coordinar» | «Las órdenes creadas aparecerán aquí para que puedas asignarlas.» |
-| Bandeja sin órdenes para el ejecutor | «No hay órdenes disponibles para ti» | Si hay filtros, se conserva el vacío y la acción de limpiarlos de la bandeja. |
-| Historial de actividad vacío | «Todavía no hay actividades registradas» | Se ofrece el acto de registro solo si está permitido y corresponde al requisito. |
-| Historial de consumos vacío | «Todavía no hay consumos registrados para este requisito» | El acto de consumo está dentro del requisito MATERIAL. |
-| Historial de evidencia vacío | «Todavía no hay evidencias para este requisito» | Se ofrece seleccionar archivo o capturar firma según el requisito y allowedActions. |
-| Error de lectura | «No pudimos cargar esta orden» | «Intenta de nuevo». Acción: «Reintentar». Se conservan los datos válidos ya mostrados. |
-| Sin acceso | «No tienes acceso a esta orden» | No se confirma si la orden existe ni se presenta información de detalle. |
-| Sin conexión | «Sin conexión» | «Sin conexión; vuelve a intentar cuando recuperes la red.» Se bloquean las escrituras; no se promete ni se presenta persistencia local. |
-| Inicio en progreso, asignado | Copy OLA 1 sin cambios | «La ejecución está en curso. Registra avances, evidencias y consumos desde la lista de requisitos.» |
-| Inicio en progreso, supervisión | Copy OLA 1 sin cambios | «La ejecución está en curso. Puedes seguir el avance en la lista de requisitos y crear una orden de seguimiento si hace falta.» |
+| Contexto                                                   | Título, estado o acción                                             | Descripción o ayuda                                                                                                                                                        |
+| ---------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Obligatorio no satisfecho                                  | «Pendiente»                                                         | Se muestra la razón publicada por el evaluador.                                                                                                                            |
+| Obligatorio satisfecho                                     | «Cumplido»                                                          | Sin razón pendiente.                                                                                                                                                       |
+| Actividad opcional no registrada                           | «Sin registrar»                                                     | «Puedes dejar constancia de la instalación. Este registro es opcional y no bloquea el cierre.»                                                                             |
+| Evaluación ausente o incompleta                            | «Estado no disponible»                                              | «No pudimos consultar el estado de los requisitos. Intenta actualizar la orden.»                                                                                           |
+| Material                                                   | «Registrar equipo instalado»                                        | «Selecciona un equipo de tu custodia». Sin categoría disponible: «No hay equipos de esta categoría en tu custodia. Contacta a supervisión para revisar la disponibilidad.» |
+| Foto por requisito                                         | «Añadir foto de la prueba de servicio» o «Añadir fotos del trabajo» | «Selecciona una foto». El acceso es por selector de archivo; se retira la promesa de arrastrar fotos o documentos.                                                         |
+| Firma                                                      | «Capturar firma del cliente»                                        | «Pide al cliente que firme el acta de conformidad».                                                                                                                        |
+| Superficie de firma                                        | «Limpiar», «Guardar firma», «Cancelar»                              | «Firma guardada». El error de carga: «No pudimos guardar la firma. Intenta de nuevo.» La captura permanece disponible para reintentar.                                     |
+| Bloqueada — título                                         | «Orden bloqueada»                                                   | No se muestra motivo ni se dice «motivo no disponible».                                                                                                                    |
+| Bloqueada — ejecutor                                       | «Orden bloqueada»                                                   | «La orden está bloqueada. Contacta a supervisión para acordar cómo continuar.»                                                                                             |
+| Bloqueada — supervisión                                    | «Orden bloqueada»                                                   | «La orden está bloqueada. Coordina con el equipo de campo el siguiente paso.»                                                                                              |
+| Acción UNBLOCK ofrecida, pero sin ruta/catálogo utilizable | «Desbloqueo no disponible»                                          | No se habilita una acción ficticia ni se pide un motivo. Si UNBLOCK no aparece en allowedActions, esta leyenda tampoco aparece.                                            |
+| Sin ventana, no terminal                                   | «Por programar»                                                     | «Esta orden no tiene una ventana planificada. Coordina su programación con el equipo de programación.»                                                                     |
+| Sin ventana, terminal                                      | «Sin ventana planificada»                                           | El estado terminal indica que ya no es trabajo por programar.                                                                                                              |
+| Carga inicial del detalle                                  | «Cargando orden»                                                    | Se presenta estructura de carga; ninguna superficie de captura se monta durante la carga.                                                                                  |
+| Bandeja sin órdenes para supervisión                       | «No hay órdenes para coordinar»                                     | «Las órdenes creadas aparecerán aquí para que puedas asignarlas.»                                                                                                          |
+| Bandeja sin órdenes para el ejecutor                       | «No hay órdenes disponibles para ti»                                | Si hay filtros, se conserva el vacío y la acción de limpiarlos de la bandeja.                                                                                              |
+| Historial de actividad vacío                               | «Todavía no hay actividades registradas»                            | Se ofrece el acto de registro solo si está permitido y corresponde al requisito.                                                                                           |
+| Historial de consumos vacío                                | «Todavía no hay consumos registrados para este requisito»           | El acto de consumo está dentro del requisito MATERIAL.                                                                                                                     |
+| Historial de evidencia vacío                               | «Todavía no hay evidencias para este requisito»                     | Se ofrece seleccionar archivo o capturar firma según el requisito y allowedActions.                                                                                        |
+| Error de lectura                                           | «No pudimos cargar esta orden»                                      | «Intenta de nuevo». Acción: «Reintentar». Se conservan los datos válidos ya mostrados.                                                                                     |
+| Sin acceso                                                 | «No tienes acceso a esta orden»                                     | No se confirma si la orden existe ni se presenta información de detalle.                                                                                                   |
+| Sin conexión                                               | «Sin conexión»                                                      | «Sin conexión; vuelve a intentar cuando recuperes la red.» Se bloquean las escrituras; no se promete ni se presenta persistencia local.                                    |
+| Inicio en progreso, asignado                               | Copy OLA 1 sin cambios                                              | «La ejecución está en curso. Registra avances, evidencias y consumos desde la lista de requisitos.»                                                                        |
+| Inicio en progreso, supervisión                            | Copy OLA 1 sin cambios                                              | «La ejecución está en curso. Puedes seguir el avance en la lista de requisitos y crear una orden de seguimiento si hace falta.»                                            |
 
 Las acciones de asignación, inicio, seguimiento y cierre conservan sus etiquetas vigentes en OLA 1 y en el cliente; esta spec solo fija el copy nuevo de requisitos, evidencia, firma, ventana y bloqueo.
 
@@ -145,7 +145,7 @@ La tabla operativa v1.1 fija hoy null como raya. Esta spec no modifica ese contr
 
 El orden por defecto pertenece al servidor: `planned_window_start_at DESC NULLS FIRST, id DESC`. Las órdenes sin ventana quedan primero; las demás conservan fecha descendente, y los empates se resuelven por id descendente. `NULLS FIRST` explicita el comportamiento de PostgreSQL para `DESC`; el índice `idx_execution_orders_tenant_window_start` de la migración 130 ya cubre este orden, por lo que no requiere DDL nueva. La decisión alinea la bandeja con el orden aprobado en la spec de subrutas del 2026-09-13 §4.7.1.
 
-La tabla no agrega encabezados ordenables, estado de orden local ni sortBy/sortDir; `sortableFields` permanece vacío conforme al contrato operativo v1.2 *(referencia actualizada en la aprobación de G2: R1 versionó el contrato de tablas)*. La propuesta anterior de ordenar en tres tramos queda como mejora diferida: retomarla requiere dictamen de DATA-ENG sobre índice y paginación, además de una enmienda a la spec de subrutas del 2026-09-13.
+La tabla no agrega encabezados ordenables, estado de orden local ni sortBy/sortDir; `sortableFields` permanece vacío conforme al contrato operativo v1.2 _(referencia actualizada en la aprobación de G2: R1 versionó el contrato de tablas)_. La propuesta anterior de ordenar en tres tramos queda como mejora diferida: retomarla requiere dictamen de DATA-ENG sobre índice y paginación, además de una enmienda a la spec de subrutas del 2026-09-13.
 
 ### 7.3 Detalle y bolsa CREATED
 
@@ -161,14 +161,14 @@ El índice recorre la plantilla congelada de cada orden y cruza su clave con com
 
 ## 9. Estados transversales y accesibilidad
 
-| Estado | Comportamiento |
-| --- | --- |
-| Carga | Skeleton con forma para resumen y lista; sin spinners como contenido principal. No se montan acciones ni consultas de custodia antes de disponer del detalle y del momento. |
-| Vacío | La bandeja compone el vacío según rol/filtros. Los historiales vacíos usan los mensajes de §5; el formulario permanece separado y solo si aplica. |
-| Error | Alerta con «Reintentar». Conserve último dato válido; el error reemplaza el vacío. Error de mutación permanece junto al requisito que originó el acto. |
-| Sin acceso | Mensaje genérico de §5 sin render de resumen, cliente, requisitos, ventana ni historial. |
-| Degradado sin completion.requirements | Snapshot visible con estado «Estado no disponible» por ítem; no se convierte ausencia en incumplimiento. Permite refrescar la lectura. |
-| Sin conexión | Se muestra el estado «Sin conexión» con el copy vigente de §5. Se bloquean las escrituras. La consola no persiste borradores offline ni promete recuperación local. |
+| Estado                                | Comportamiento                                                                                                                                                              |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Carga                                 | Skeleton con forma para resumen y lista; sin spinners como contenido principal. No se montan acciones ni consultas de custodia antes de disponer del detalle y del momento. |
+| Vacío                                 | La bandeja compone el vacío según rol/filtros. Los historiales vacíos usan los mensajes de §5; el formulario permanece separado y solo si aplica.                           |
+| Error                                 | Alerta con «Reintentar». Conserve último dato válido; el error reemplaza el vacío. Error de mutación permanece junto al requisito que originó el acto.                      |
+| Sin acceso                            | Mensaje genérico de §5 sin render de resumen, cliente, requisitos, ventana ni historial.                                                                                    |
+| Degradado sin completion.requirements | Snapshot visible con estado «Estado no disponible» por ítem; no se convierte ausencia en incumplimiento. Permite refrescar la lectura.                                      |
+| Sin conexión                          | Se muestra el estado «Sin conexión» con el copy vigente de §5. Se bloquean las escrituras. La consola no persiste borradores offline ni promete recuperación local.         |
 
 El estado, obligatoriedad y razón se leen en texto para lector de pantalla. Los botones de archivo y acción son operables por teclado. El trazo libre de la firma es una entrada dependiente de trayectoria exceptuada por WCAG 2.1.1; las instrucciones y los controles «Limpiar», «Guardar firma» y «Cancelar» sí son accesibles por teclado, con foco gestionado y anuncios para lector de pantalla. No se usa un nombre escrito como alternativa para producir evidencia `SIGNATURE`. La ausencia de otra vía para quien no puede firmar con puntero queda como deuda de v1; cualquier alternativa de aceptación electrónica requeriría análisis posterior y verificación jurídica con fuente oficial (Ley 527 de 1999), fuera del alcance de R0.
 
@@ -204,14 +204,14 @@ El estado, obligatoriedad y razón se leen en texto para lector de pantalla. Los
 
 ## 12. Criterios de salida de R0
 
-| Criterio del encargo §7 | Resultado |
-| --- | --- |
-| Los cinco requisitos v2 tienen estado, razón y acción o ausencia de acción con copy. | Cumple: §3 y §5. |
-| Matriz momento × rol completa; en pre-inicio no se monta captura. | Cumple: §4; las 12 combinaciones están definidas. |
-| Custodia solo aparece dentro del acto de consumo. | Cumple: §6. |
+| Criterio del encargo §7                                                                 | Resultado                                                                                                           |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Los cinco requisitos v2 tienen estado, razón y acción o ausencia de acción con copy.    | Cumple: §3 y §5.                                                                                                    |
+| Matriz momento × rol completa; en pre-inicio no se monta captura.                       | Cumple: §4; las 12 combinaciones están definidas.                                                                   |
+| Custodia solo aparece dentro del acto de consumo.                                       | Cumple: §6.                                                                                                         |
 | OT sin ventana tiene presentación y orden por defecto definidos para bandeja y detalle. | Cumple: §7 fija presentación y orden de servidor; R1 resuelve compatibilidad visual con v1.1 sin modificarlo en R0. |
-| Se decidió el arrastre de archivos. | Cumple: se retira; selector de archivo solamente. |
-| Se declara el comportamiento de una OT viva con snapshot v1. | Cumple: §8. |
+| Se decidió el arrastre de archivos.                                                     | Cumple: se retira; selector de archivo solamente.                                                                   |
+| Se declara el comportamiento de una OT viva con snapshot v1.                            | Cumple: §8.                                                                                                         |
 
 ## 13. Stop/go — §7 del encargo
 
@@ -251,21 +251,135 @@ Esta adenda conserva §§1–13 como la definición aprobada de R0, incluido el 
 
 Se ratifican los textos de captura de evidencia y firma documentados en el [informe R2, §10](../informes/INFORME-MOD11-CONSOLA-OT-OLA2B-R2-FE-PLATFORM-v1.0.md). Se conservan literalmente:
 
-| Contexto | Copy ratificado |
-| --- | --- |
-| Selector de foto y documento | «Selecciona una foto» (ayuda ya fijada en §5) · «Seleccionar foto» · «Seleccionar documento» · «Selecciona un documento en PDF o una imagen.» · «Archivo seleccionado: {nombre}» · «Reintentar registro» |
-| Instrucción complementaria de firma | «Dibuja la firma dentro del recuadro con el dedo, un lápiz o el ratón.» |
+| Contexto                              | Copy ratificado                                                                                                                                                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Selector de foto y documento          | «Selecciona una foto» (ayuda ya fijada en §5) · «Seleccionar foto» · «Seleccionar documento» · «Selecciona un documento en PDF o una imagen.» · «Archivo seleccionado: {nombre}» · «Reintentar registro»                  |
+| Instrucción complementaria de firma   | «Dibuja la firma dentro del recuadro con el dedo, un lápiz o el ratón.»                                                                                                                                                   |
 | Estados y nombres accesibles de firma | «Todavía no hay firma dibujada.» · «Firma dibujada. Puedes guardarla o limpiarla.» · «Firma limpiada. Puedes volver a firmar.» · «Dibuja la firma antes de guardarla.» · «Captura de firma del cliente» · «Área de firma» |
-| Firma en revisión | «La firma sigue en revisión y aún no se guardó. Puedes volver a intentarlo en unos minutos.» |
-| Validación del archivo | «Selecciona una foto en formato JPG, PNG, WebP o GIF.» · «Selecciona un documento en PDF o una imagen en formato JPG, PNG, WebP o GIF.» · «El archivo está vacío.» · «El archivo supera el tamaño máximo de 25 MB.» |
-| Vacío del historial de evidencia | «Las fotos que añadas aparecerán aquí.» · «Los documentos que adjuntes aparecerán aquí.» · «La firma del cliente aparecerá aquí cuando se guarde.» |
+| Firma en revisión                     | «La firma sigue en revisión y aún no se guardó. Puedes volver a intentarlo en unos minutos.»                                                                                                                              |
+| Validación del archivo                | «Selecciona una foto en formato JPG, PNG, WebP o GIF.» · «Selecciona un documento en PDF o una imagen en formato JPG, PNG, WebP o GIF.» · «El archivo está vacío.» · «El archivo supera el tamaño máximo de 25 MB.»       |
+| Vacío del historial de evidencia      | «Las fotos que añadas aparecerán aquí.» · «Los documentos que adjuntes aparecerán aquí.» · «La firma del cliente aparecerá aquí cuando se guarde.»                                                                        |
 
 La base de copy de firma y sus botones permanece como en §5: «Capturar firma del cliente», «Pide al cliente que firme el acta de conformidad.», «Limpiar», «Guardar firma», «Cancelar», «Firma guardada» y «No pudimos guardar la firma. Intenta de nuevo.» La ratificación complementa esos textos sin cambiar el flujo ni los estados aprobados.
 
+## 16. Adenda de producto v1.4 — captura compacta de equipos y materiales (2026-10-11)
+
+**Estado:** Adenda U1 aprobada; G2 cerrado.
+
+Esta adenda sustituye el renglón «Material» de §5 y el acto de captura descrito en §6 para los requisitos MATERIAL de la plantilla de instalación v3. El resto de §§1–15 sigue vigente. No cambia el contrato v1.7, el API, MOD12, los permisos ni el alcance funcional.
+
+La v3 conserva los cinco requisitos de la v2 y añade «Materiales usados en la instalación», opcional, de categoría «Consumibles FO». La captura siempre se deriva del snapshot de la orden: v1 y v2 no reciben requisitos retroactivos. Para la v3, «Equipos instalados en el sitio del cliente» usa el flujo con serial y «Materiales usados en la instalación» usa el flujo por filas.
+
+### 16.1 Destino y acción del registro
+
+Se ratifica para «Materiales usados en la instalación» el destino «Instalado en el sitio del cliente». El drop, el patchcord y la roseta se dejan instalados o incorporados al trabajo realizado para el cliente; registrar ese destino conserva el sentido operativo del uso y coincide con la configuración ya publicada en la plantilla v3.
+
+La acción se deriva del destino y no se presenta como una decisión independiente:
+
+| Configuración del destino | Texto visible del destino           | Acción enviada | Texto visible de acción |
+| ------------------------- | ----------------------------------- | -------------- | ----------------------- |
+| INSTALLED_AT_CUSTOMER     | «Instalado en el sitio del cliente» | INSTALL        | «Instalar»              |
+| INTERNAL_CONSUMPTION      | «Consumo interno»                   | CONSUME        | «Consumir»              |
+
+Si el snapshot fija el destino, se muestra como contexto de solo lectura y no se presenta un selector. Si el snapshot no lo fija, se conserva el selector de destino; la acción sigue derivándose de esa selección y no aparece un selector independiente de acción. Cualquier otro destino usa el mapeo canónico ya admitido por el contrato de registro; esta adenda no crea pares nuevos.
+
+### 16.2 Flujo con serial — equipos instalados
+
+El acto aparece solo cuando la orden y allowedActions permiten registrar el consumo. Al abrirlo se consulta la custodia compatible con la categoría del requisito, bajo demanda. La custodia y el destino son contexto de solo lectura; el técnico toma una decisión: cuál equipo instaló.
+
+1. Instrucción: «Selecciona el equipo que instalaste».
+2. Contexto de solo lectura: «Desde {custodia} · Se registrará como instalado en el sitio del cliente».
+3. Una tarjeta de opción por activo serializado elegible. El serial ocupa el título; debajo se muestra «{referencia} · {SKU} · {estado}». La referencia es el nombre legible del artículo del catálogo, el SKU se presenta como dato técnico y el estado usa el texto del mapeo canónico, nunca el enum.
+4. La selección identifica un activo concreto. El valor interno de la opción es el ID del activo; el registro usa el inventoryItemId y serialNumber de ese activo. No se permite escribir o corregir el serial manualmente.
+5. Con más de ocho equipos elegibles se muestra una búsqueda con etiqueta «Buscar equipo» y ayuda «Serial o MAC». Busca por serial o MAC, sin cambiar la selección de categoría. Si no hay coincidencias: «No encontramos equipos con ese serial o MAC.» y acción «Limpiar búsqueda».
+6. El pie fijo reserva espacio en el contenido y respeta el área segura del dispositivo. Sin selección, el botón deshabilitado dice «Registrar equipo»; con selección dice «Registrar equipo {serial}».
+7. Al enviar se usa el registro existente: un POST para el activo, con itemId del activo, serialNumber del activo, quantity 1, requirementKey del snapshot, custodia asignada y action derivada del destino. El POST se envía una sola vez por selección.
+
+No se muestra una lista de custodia separada antes de las opciones ni el saldo de un artículo serializado. Tampoco se muestran materiales de otra categoría: se filtran fuera del flujo, sin desplegable adicional. La custodia única y el destino fijo pasan a la línea de contexto. Si el equipo no aparece, no hay serial manual ni alternativa de otra categoría.
+
+### 16.3 Flujo de consumibles — materiales usados en la instalación
+
+El requisito opcional muestra una fila por cada artículo compatible de «Consumibles FO» con disponibilidad positiva. Si la custodia tiene más de un saldo para el mismo artículo, sus disponibilidades netas se agregan en una sola fila; no se presenta un selector de lote. Cada fila contiene «{referencia} · disponible {N}» y un control −/+ de unidades enteras entre cero y la disponibilidad neta. La disponibilidad visible resta las unidades reservadas; el servidor conserva la validación final del stock.
+
+El botón único «Registrar materiales» envía un POST separado por cada fila cuya cantidad sea mayor que cero. La cantidad cero no produce un registro. Cada fila comunica su propio envío y resultado. En una respuesta parcial, se conservan los resultados satisfactorios y solo se permite reintentar las filas fallidas; un reintento no vuelve a enviar filas ya registradas. La acción y el destino se derivan con la regla de §16.1. El requisito opcional no bloquea el cierre ni cambia el progreso de requisitos obligatorios.
+
+### 16.4 Lo que deja de mostrarse
+
+- En el flujo serializado desaparecen el selector manual de artículo, el campo de cantidad, el campo libre de serial o lote y los selectores independientes de acción y custodia.
+- Cuando el snapshot fija el destino, desaparece el selector de destino y se muestra el texto de contexto indicado en §16.2.
+- No se repite una lista de custodia en lectura junto a las tarjetas seleccionables.
+- No se presenta el saldo de artículos serializados.
+- No se ofrecen artículos de otra categoría ni en una lista secundaria ni en un desplegable.
+- En el flujo de consumibles, los campos genéricos de artículo, serial o lote y acción se sustituyen por filas de cantidad y un solo botón de registro.
+
+### 16.5 Estados y copy cerrado
+
+Los estados se comunican por texto y la acción solo aparece cuando está permitida. Durante una petición se evita un segundo envío. Los avisos de éxito y error quedan junto al activo o a la fila que los originó.
+
+| Contexto                      | Copy                                                                                                                                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Instrucción del flujo serial  | «Selecciona el equipo que instalaste»                                                                                                                                                                             |
+| Custodia y destino fijos      | «Desde {custodia} · Se registrará como instalado en el sitio del cliente»                                                                                                                                         |
+| Opción serializada            | Título «{serial}» · detalle «{referencia} · {SKU} · {estado}»                                                                                                                                                     |
+| Búsqueda serializada          | Etiqueta «Buscar equipo» · ayuda «Serial o MAC»                                                                                                                                                                   |
+| Búsqueda sin resultados       | «No encontramos equipos con ese serial o MAC.» · acción «Limpiar búsqueda»                                                                                                                                        |
+| Equipo no visible             | «¿No ves el equipo? Contacta a supervisión para revisar tu custodia.»                                                                                                                                             |
+| Sin equipos elegibles         | «No hay equipos de esta categoría en tu custodia.» · «Contacta a supervisión para revisar la disponibilidad.»                                                                                                     |
+| Cargando equipos              | «Cargando equipos de tu custodia…»; se muestra un esqueleto con forma de tarjeta y no se habilita el envío.                                                                                                       |
+| Error al consultar equipos    | «No pudimos cargar los equipos de tu custodia.» · acción «Reintentar»                                                                                                                                             |
+| Envío del equipo              | «Registrando equipo…»                                                                                                                                                                                             |
+| Equipo registrado             | «Equipo registrado. Queda pendiente de confirmación de inventario.»                                                                                                                                               |
+| Error al registrar equipo     | «No se pudo registrar el equipo. Intenta de nuevo.» · acción «Reintentar registro»; se conserva la selección. Las causas de rechazo conocidas mantienen el mensaje y el siguiente paso canónicos del módulo.      |
+| Instrucción de consumibles    | «Indica cuántas unidades usaste de cada material.»                                                                                                                                                                |
+| Fila de consumible            | «{referencia} · disponible {N}»                                                                                                                                                                                   |
+| Campo de cantidad             | «Cantidad de {referencia}»                                                                                                                                                                                        |
+| Botón −                       | «Restar una unidad de {referencia}»                                                                                                                                                                               |
+| Botón +                       | «Sumar una unidad de {referencia}»                                                                                                                                                                                |
+| Sin materiales disponibles    | «No hay materiales disponibles para registrar.» · «Contacta a supervisión para revisar los materiales de tu custodia.»                                                                                            |
+| Cargando materiales           | «Cargando materiales de tu custodia…»; se muestran filas de carga y no se habilita el envío.                                                                                                                      |
+| Error al consultar materiales | «No pudimos cargar los materiales de tu custodia.» · acción «Reintentar»                                                                                                                                          |
+| Envío de consumibles          | «Registrando materiales…»                                                                                                                                                                                         |
+| Material registrado           | «Material registrado. Queda pendiente de confirmación de inventario.»                                                                                                                                             |
+| Fallo de una fila             | «No se pudo registrar {referencia}. Intenta de nuevo.» · acción «Reintentar»; se conserva la cantidad de esa fila. Las causas de rechazo conocidas mantienen el mensaje y el siguiente paso canónicos del módulo. |
+
+El grupo de opciones serializadas usa radios nativos agrupados y operables por teclado. La búsqueda tiene etiqueta visible; el control de cantidad nombra cada acción para lector de pantalla. Targets táctiles de al menos 44 px, foco visible, contraste AA en ambos temas y ninguna información comunicada solo por color. El pie fijo no tapa filas ni controles. Los estados de error anuncian el problema y permiten reintentar.
+
+### 16.6 Criterios de aceptación U1
+
+1. El equipo instalado se elige de la custodia filtrada por categoría; un registro contiene exactamente un activo y quantity 1.
+2. La tarjeta identifica serial, referencia, SKU y estado legible; la búsqueda por serial o MAC aparece solo si hay más de ocho activos.
+3. La interfaz no permite escribir serial, escoger otra categoría ni cambiar custodia o destino cuando estos vienen fijados por el requisito.
+4. Para consumibles, cada fila con cantidad positiva produce un registro independiente; cero no se envía y un fallo no oculta los resultados de las demás filas.
+5. La acción enviada se deriva del destino según §16.1 y se conserva el registro POST actual.
+6. Carga, vacío, error recuperable, envío, éxito y fallo por fila tienen copy y comportamiento definidos.
+7. La captura de materiales permanece dentro del requisito de origen; el requisito opcional no modifica completion ni el gate de cierre.
+8. No se consultan ni muestran otras categorías. El historial existente sigue asociado al requisito por su clave exacta.
+
+**Resultado U1:** GO para revisión consolidada de G2. La decisión de destino está ratificada y no quedan bloqueos de flujo o copy. La aprobación formal de G2 corresponde al gate definido en el plan.
+
+## 17. Orden de captura de la firma
+
+El requisito de evidencia cuyo tipo sea `SIGNATURE` se presenta al final del índice de requisitos para que la firma del cliente sea el último registro que captura el técnico. Los demás requisitos mantienen su orden relativo del snapshot.
+
+Este ajuste afecta solo la presentación del índice. No modifica claves, etiquetas, estados, permisos, historial, orden persistido de la plantilla ni criterios del gate de cierre.
+
+### 16.7 Enmienda de la tarjeta del equipo (CTO, 2026-10-11)
+
+Sustituye la línea «Opción serializada» de §16.5 y los criterios 2 y 3 de §16.6 en lo que toca a la tarjeta.
+
+- **Título:** marca y modelo del artículo tal como están en el maestro. Si faltan, el nombre del artículo.
+- **Debajo:** «Serial {serial}» y, solo si existe, «MAC {mac}».
+- **Al final:** «{SKU} · {estado}».
+- El serial nunca se repite. «MAC no registrada» no se muestra.
+- Los equipos sin serial se muestran deshabilitados y con su motivo.
+- **Unidades:** los consumibles muestran su unidad de medida (por ejemplo, «disponible 1.000 m») en el disponible, la cantidad y los controles −/+.
+
 ## Registro de cambios
 
-| Versión | Fecha | Cambio |
-| --- | --- | --- |
-| 1.1 | 2026-10-05 | Aplicación de la adenda A2: se elimina la promesa de borrador offline; se fija el orden `planned_window_start_at DESC NULLS FIRST, id DESC` y se aplaza la propuesta de tres tramos; se conserva la etiqueta exacta del snapshot y el estado opcional «Sin registrar»; se resuelve la excepción del trazo de firma por WCAG 2.1.1 y se especifican controles e instrucciones accesibles por teclado. |
-| 1.2 | 2026-10-06 | Adenda de producto §14: historial único para consumos sin clave, copy que explicita su falta de atribución, compatibilidad del evaluador preservada y reglas accesibles de carga, error y paginación. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH. |
-| 1.3 | 2026-10-06 | Se alinea §14.2 con la paginación global de `GET itemUsage` y el contrato de componente v1.1: contador/footer únicos, metadata global y vacío por requisito al final de la paginación. Se ratifica en §15 el copy complementario de R2. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH. |
+| Versión | Fecha      | Cambio                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1     | 2026-10-05 | Aplicación de la adenda A2: se elimina la promesa de borrador offline; se fija el orden `planned_window_start_at DESC NULLS FIRST, id DESC` y se aplaza la propuesta de tres tramos; se conserva la etiqueta exacta del snapshot y el estado opcional «Sin registrar»; se resuelve la excepción del trazo de firma por WCAG 2.1.1 y se especifican controles e instrucciones accesibles por teclado. |
+| 1.2     | 2026-10-06 | Adenda de producto §14: historial único para consumos sin clave, copy que explicita su falta de atribución, compatibilidad del evaluador preservada y reglas accesibles de carga, error y paginación. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH.                                                                                                                             |
+| 1.3     | 2026-10-06 | Se alinea §14.2 con la paginación global de `GET itemUsage` y el contrato de componente v1.1: contador/footer únicos, metadata global y vacío por requisito al final de la paginación. Se ratifica en §15 el copy complementario de R2. Pendiente de verificación consolidada; no aprobada por AI-EM-ARCH.                                                                                           |
+| 1.4     | 2026-10-11 | Adenda §16 para captura compacta de equipo serializado y consumibles; ratifica el destino instalado en el sitio del cliente, deriva la acción del destino, cierra el copy, los estados y los criterios U1. Lista para revisión consolidada de G2.                                                                                                                                                    |
+| 1.5     | 2026-10-11 | Adenda §17: los requisitos de evidencia tipo firma se muestran al final de la captura; conserva el orden relativo de los demás requisitos y no cambia el contrato ni el gate de cierre.                                                                                                                                                                                                              |

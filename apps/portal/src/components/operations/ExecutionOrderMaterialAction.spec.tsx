@@ -1,4 +1,4 @@
-// R3 — acto «Registrar equipo instalado» e historial de consumos (CA-10 / CA-11).
+// R3 — captura de material e historial de consumos (CA-10 / CA-11).
 //
 // Se monta el drawer completo para que el slot reciba el sobre real (`order`,
 // `requirement`, `action`, `context`); lo que el hook de custodia carga bajo
@@ -11,6 +11,7 @@ import {
   ExecutionOrderStatus,
   InventoryDisposition,
   InventoryResponsibleType,
+  InventoryTrackingMode,
   SerializedAssetStatus,
   StockBalanceCondition,
   WfmWorkType,
@@ -149,8 +150,20 @@ const usage: ExecutionOrderItemUsage = {
 };
 
 const itemOptions = [
-  { value: 'item-ont', label: 'CPE-ONT · ONT de fibra' },
-  { value: 'item-router', label: 'CPE-RTR · Router WiFi' },
+  {
+    value: 'item-ont',
+    label: 'CPE-ONT · ONT de fibra',
+    sku: 'CPE-ONT',
+    name: 'ONT de fibra',
+    trackingMode: InventoryTrackingMode.SERIALIZED,
+  },
+  {
+    value: 'item-router',
+    label: 'CPE-RTR · Router WiFi',
+    sku: 'CPE-RTR',
+    name: 'Router WiFi',
+    trackingMode: InventoryTrackingMode.CONSUMABLE,
+  },
 ];
 
 type DrawerProps = Parameters<typeof ExecutionOrderDrawer>[0];
@@ -169,6 +182,7 @@ function DrawerUnderTest(props: Partial<DrawerProps>) {
       error={null}
       offline={false}
       onClose={jest.fn()}
+      onOpenRequirementAction={jest.fn()}
       isLoadingMoreActivities={false}
       isLoadingMoreItemUsage={false}
       isLoadingMoreEvidence={false}
@@ -193,7 +207,11 @@ function DrawerUnderTest(props: Partial<DrawerProps>) {
 function renderDrawer(props: Partial<DrawerProps> = {}, { open = false }: { open?: boolean } = {}) {
   const result = render(<DrawerUnderTest {...props} />);
   if (open) {
-    fireEvent.click(screen.getByRole('button', { name: /^Registrar equipo instalado para / }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /^Registrar equipos instalados en el sitio del cliente para /,
+      }),
+    );
   }
   return {
     ...result,
@@ -202,7 +220,8 @@ function renderDrawer(props: Partial<DrawerProps> = {}, { open = false }: { open
   };
 }
 
-const sheet = () => screen.getByRole('region', { name: 'Registrar equipo instalado' });
+const sheet = () =>
+  screen.getByRole('region', { name: 'Registrar equipos instalados en el sitio del cliente' });
 
 describe('ExecutionOrderMaterialAction — acto de consumo', () => {
   describe('cuándo existe el acto (CA-10)', () => {
@@ -220,7 +239,11 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
           onOpenRequirementAction,
         });
 
-        expect(screen.queryByRole('button', { name: /Registrar equipo instalado/ })).toBeNull();
+        expect(
+          screen.queryByRole('button', {
+            name: /^Registrar equipos instalados en el sitio del cliente para /,
+          }),
+        ).toBeNull();
         expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
         expect(screen.queryByLabelText('Cantidad')).toBeNull();
         expect(document.querySelector('form')).toBeNull();
@@ -242,7 +265,11 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       });
 
       expect(screen.getByText('ONT-2026-001')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /Registrar equipo instalado/ })).toBeNull();
+      expect(
+        screen.queryByRole('button', {
+          name: /^Registrar equipos instalados en el sitio del cliente para /,
+        }),
+      ).toBeNull();
       expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
       expect(screen.queryByLabelText('Cantidad')).toBeNull();
     });
@@ -271,7 +298,11 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
         onOpenRequirementAction,
       });
 
-      expect(screen.queryByRole('button', { name: /Registrar equipo instalado/ })).toBeNull();
+      expect(
+        screen.queryByRole('button', {
+          name: /^Registrar equipos instalados en el sitio del cliente para /,
+        }),
+      ).toBeNull();
       expect(onOpenRequirementAction).not.toHaveBeenCalled();
     });
 
@@ -280,7 +311,9 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       renderDrawer({ onOpenRequirementAction });
 
       expect(
-        screen.getByRole('button', { name: /^Registrar equipo instalado para / }),
+        screen.getByRole('button', {
+          name: /^Registrar equipos instalados en el sitio del cliente para /,
+        }),
       ).toBeVisible();
       expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
       expect(onOpenRequirementAction).not.toHaveBeenCalled();
@@ -295,6 +328,7 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       expect(onOpenRequirementAction).toHaveBeenLastCalledWith({
         kind: 'consumption',
         requirementKey: 'installed-equipment',
+        requirementLabel: 'Equipos instalados en el sitio del cliente',
         itemCategory: 'CPE',
         finalDisposition: 'INSTALLED_AT_CUSTOMER',
         action: 'REGISTER_ITEM_USAGE',
@@ -309,296 +343,454 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       await userEvent.click(within(sheet()).getByRole('button', { name: 'Cancelar' }));
 
       expect(onOpenRequirementAction).toHaveBeenLastCalledWith(null);
-      expect(screen.queryByRole('region', { name: 'Registrar equipo instalado' })).toBeNull();
+      expect(
+        screen.queryByRole('region', {
+          name: 'Registrar equipos instalados en el sitio del cliente',
+        }),
+      ).toBeNull();
     });
   });
 
-  describe('estados de la carga bajo demanda', () => {
-    it('cargando: esqueleto de custodia y selector con su estado, sin vacío definitivo', () => {
-      renderDrawer(
-        { executorCustodyState: 'loading', itemsState: 'loading', itemOptions: [] },
-        { open: true },
-      );
-
-      expect(within(sheet()).getByLabelText('Cargando custodia del ejecutor')).toBeInTheDocument();
-      expect(within(sheet()).getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
-      expect(within(sheet()).getByText('Consultando tu custodia.')).toBeInTheDocument();
-      expect(
-        screen.queryByText('No hay equipos de esta categoría en tu custodia'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('disponible con equipos: muestra solo lo entregado, con su categoría y conteo', () => {
+  describe('captura compacta por trackingMode', () => {
+    it('muestra marca/modelo, serial, MAC, SKU y estado; registra exactamente un activo', async () => {
+      const onRegisterItemUsage = jest.fn().mockResolvedValue(undefined);
+      const assetWithMac = {
+        ...custodyAsset,
+        macAddress: '00:11:22:33:44:55',
+      } as SerializedAssetRecord;
       renderDrawer(
         {
-          executorCustodyName: 'Bodega móvil de Carlos López',
-          executorCustodyAssets: [custodyAsset],
-          executorCustodyAssetsMeta: meta(),
-          executorCustodyBalances: [custodyBalance],
-          executorCustodyBalancesMeta: meta(),
-        },
-        { open: true },
-      );
-
-      const region = within(sheet());
-      expect(region.getByText('Bodega móvil de Carlos López')).toBeInTheDocument();
-      expect(region.getByText('ONT-2026-001')).toBeInTheDocument();
-      expect(region.getByText('CPE-ONT · ONT de fibra · Asignado a técnico')).toBeInTheDocument();
-      expect(region.getAllByText('CPE-RTR · Router WiFi').length).toBeGreaterThanOrEqual(1);
-      expect(region.getByText('Cantidad disponible: 4')).toBeInTheDocument();
-      // Concordancia con el total que se informa.
-      expect(region.getByText('1 equipo')).toBeInTheDocument();
-      expect(region.getByText('1 material')).toBeInTheDocument();
-      expect(region.getByText('Selecciona un equipo de tu custodia')).toBeInTheDocument();
-    });
-
-    it('vacío por categoría: copy cerrado de UX §5 y selector sin opciones de otra categoría', () => {
-      renderDrawer(
-        { itemOptions: [], executorCustodyAssets: [], executorCustodyBalances: [] },
-        { open: true },
-      );
-
-      const region = within(sheet());
-      expect(
-        region.getByText('No hay equipos de esta categoría en tu custodia'),
-      ).toBeInTheDocument();
-      expect(
-        region.getByText('Contacta a supervisión para revisar la disponibilidad.'),
-      ).toBeInTheDocument();
-      expect(region.getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
-      expect(region.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
-    });
-
-    it('error: alerta de custodia no disponible y reintento que reabre el mismo acto', async () => {
-      const onOpenRequirementAction = jest.fn();
-      const onRefreshDetail = jest.fn().mockResolvedValue(undefined);
-      renderDrawer(
-        {
-          executorCustodyState: 'unavailable',
-          itemsState: 'unavailable',
-          itemOptions: [],
-          onOpenRequirementAction,
-          onRefreshDetail,
-        },
-        { open: true },
-      );
-      onOpenRequirementAction.mockClear();
-
-      const region = within(sheet());
-      expect(region.getByText('Custodia no disponible')).toBeInTheDocument();
-      expect(region.getByRole('combobox', { name: 'Ítem' })).toHaveTextContent(
-        'Inventario no disponible',
-      );
-      expect(region.getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
-      await userEvent.click(region.getByRole('button', { name: 'Reintentar' }));
-
-      // El reintento recarga solo la custodia: reabre el mismo descriptor, no el detalle.
-      expect(onOpenRequirementAction).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'consumption', requirementKey: 'installed-equipment' }),
-      );
-      expect(onRefreshDetail).not.toHaveBeenCalled();
-    });
-
-    it('si la conexión cae con la hoja abierta, el formulario queda bloqueado y la red se avisa', () => {
-      const { update } = renderDrawer({}, { open: true });
-      expect(within(sheet()).getByLabelText('Cantidad')).toBeEnabled();
-
-      update({ offline: true });
-
-      expect(
-        within(sheet()).getByText('Sin conexión; vuelve a intentar cuando recuperes la red.'),
-      ).toBeInTheDocument();
-      expect(within(sheet()).getByLabelText('Cantidad')).toBeDisabled();
-    });
-
-    it('la paginación se conserva: «Cargar más» pide la siguiente página de custodia', async () => {
-      const onLoadMoreExecutorCustody = jest.fn().mockResolvedValue(undefined);
-      renderDrawer(
-        {
-          executorCustodyAssets: [custodyAsset],
-          executorCustodyAssetsMeta: meta({ hasMore: true, total: 1 }),
+          executorCustodyAssets: [assetWithMac],
           executorCustodyBalances: [],
-          executorCustodyBalancesMeta: meta({ total: 0 }),
-          onLoadMoreExecutorCustody,
+          executorCustodyName: 'Bodega móvil de Carlos López',
+          itemOptions: [
+            { ...itemOptions[0]!, brand: 'TP Link', model: 'XC220G3V' },
+            itemOptions[1]!,
+          ],
+          onRegisterItemUsage,
         },
         { open: true },
       );
 
-      await userEvent.click(within(sheet()).getByRole('button', { name: 'Cargar más' }));
-
-      expect(onLoadMoreExecutorCustody).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('formulario y payload', () => {
-    async function fillAndSubmit(
-      user: ReturnType<typeof userEvent.setup>,
-      serial = 'ONT-2026-001',
-    ) {
-      await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'CPE-ONT · ONT de fibra' }));
-      await user.type(screen.getByLabelText('Serial o lote'), serial);
-      await user.click(screen.getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Instalar' }));
-      await user.click(screen.getByRole('button', { name: 'Registrar material' }));
-    }
-
-    it('conserva el payload vigente: ítem, custodia del responsable, cantidad, acción y destino del requisito', async () => {
-      const onRegisterItemUsage = jest.fn().mockResolvedValue(true);
-      const user = userEvent.setup();
-      renderDrawer({ onRegisterItemUsage }, { open: true });
-
-      // El responsable de la OT es la única custodia elegible: llega preseleccionado.
-      expect(screen.getByRole('combobox', { name: 'Custodia de origen' })).toHaveTextContent(
-        'Carlos López',
+      expect(
+        screen.getByText(
+          'Desde Bodega móvil de Carlos López · Se registrará como instalado en el sitio del cliente',
+        ),
+      ).toBeInTheDocument();
+      const radio = screen.getByRole('radio', {
+        name: /TP Link XC220G3V[\s\S]*Serial ONT-2026-001[\s\S]*MAC 00:11:22:33:44:55[\s\S]*CPE-ONT · Asignado a técnico/i,
+      });
+      expect(radio).toBeInTheDocument();
+      const option = radio.closest('label')!;
+      const content = option.querySelector(':scope > span')!;
+      expect(content.textContent).toBe(
+        'TP Link XC220G3VSerial ONT-2026-001\nMAC 00:11:22:33:44:55CPE-ONT · Asignado a técnico',
       );
-      await fillAndSubmit(user);
+      expect(document.body.innerHTML).not.toContain('[_label>');
+      expect(screen.queryByLabelText('Serial o lote')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Acción')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Custodia de origen')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Destino')).not.toBeInTheDocument();
 
-      expect(onRegisterItemUsage).toHaveBeenCalledTimes(1);
+      await userEvent.click(screen.getByRole('radio', { name: /Serial ONT-2026-001/i }));
+      const registerButton = screen.getByRole('button', { name: 'Registrar equipo' });
+      const cancelButton = screen.getByRole('button', { name: 'Cancelar' });
+      expect(registerButton.previousElementSibling).toHaveTextContent(
+        'Serial ONT-2026-001 · MAC 00:11:22:33:44:55',
+      );
+      expect(registerButton.parentElement).toHaveClass('sticky', 'flex', 'flex-wrap', 'gap-2');
+      expect(cancelButton.parentElement).toBe(registerButton.parentElement);
+      expect(registerButton.closest('form')).not.toHaveClass('pb-28');
+      await userEvent.click(registerButton);
+
       expect(onRegisterItemUsage).toHaveBeenCalledWith({
         itemId: 'item-ont',
         requirementKey: 'installed-equipment',
         technicianCustodyId: 'tech-001',
         quantity: 1,
         serialNumber: 'ONT-2026-001',
-        action: 'INSTALL',
-        finalDisposition: 'INSTALLED_AT_CUSTOMER',
+        action: ExecutionOrderItemAction.INSTALL,
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
       });
+      expect(
+        await screen.findByText(
+          'Equipo registrado. Queda pendiente de confirmación de inventario.',
+        ),
+      ).toBeInTheDocument();
     });
 
-    it('usa la custodia entregada por el adaptador (ubicación del responsable)', async () => {
-      const onRegisterItemUsage = jest.fn().mockResolvedValue(true);
-      const user = userEvent.setup();
+    it('usa la referencia cuando faltan marca/modelo y no duplica el serial', async () => {
+      renderDrawer(
+        { executorCustodyAssets: [custodyAsset], executorCustodyBalances: [] },
+        { open: true },
+      );
+
+      const radio = screen.getByRole('radio', {
+        name: /ONT de fibra[\s\S]*Serial ONT-2026-001[\s\S]*CPE-ONT · Asignado a técnico/i,
+      });
+      expect(radio).toBeEnabled();
+      const option = radio.closest('label')!;
+      expect(option.textContent?.match(/ONT-2026-001/g)).toHaveLength(1);
+      expect(option).toHaveTextContent('ONT de fibra');
+      expect(option).toHaveTextContent('CPE-ONT · Asignado a técnico');
+      expect(screen.queryByText('MAC no registrada')).not.toBeInTheDocument();
+      await userEvent.click(radio);
+      expect(
+        screen.getByRole('button', { name: 'Registrar equipo' }).previousElementSibling,
+      ).toHaveTextContent('Serial ONT-2026-001');
+      expect(
+        screen.getByRole('button', { name: 'Registrar equipo' }).previousElementSibling,
+      ).not.toHaveTextContent('MAC');
+    });
+
+    it('muestra el equipo identificado por MAC sin serial y lo deshabilita con el motivo correspondiente', () => {
+      const macOnlyAsset = { ...custodyAsset, serialNumber: null, macAddress: '00:11:22:33:44:55' };
+      renderDrawer(
+        { executorCustodyAssets: [macOnlyAsset], executorCustodyBalances: [] },
+        { open: true },
+      );
+
+      const radio = screen.getByRole('radio', {
+        name: /MAC 00:11:22:33:44:55[\s\S]*CPE-ONT · Asignado a técnico/i,
+      });
+      expect(radio).toBeDisabled();
+      expect(radio).toHaveAccessibleDescription(
+        'Este equipo no tiene serial registrado. Pide a supervisión que lo complete para poder registrarlo.',
+      );
+    });
+
+    it('muestra los equipos sin identificadores como no seleccionables y explica qué datos faltan', () => {
+      const unidentifiedAsset = { ...custodyAsset, serialNumber: null, macAddress: null };
+      renderDrawer(
+        { executorCustodyAssets: [unidentifiedAsset], executorCustodyBalances: [] },
+        { open: true },
+      );
+
+      const radio = screen.getByRole('radio', {
+        name: /Equipo sin identificar[\s\S]*CPE-ONT · Asignado a técnico/i,
+      });
+      expect(radio).toBeDisabled();
+      expect(radio).toHaveAccessibleDescription(
+        'Este equipo no tiene serial ni MAC registrados. Pide a supervisión que los complete.',
+      );
+    });
+
+    it('busca por serial o MAC solo con más de ocho activos y ofrece limpiar la búsqueda', async () => {
+      const assets = Array.from({ length: 9 }, (_, index) => ({
+        ...custodyAsset,
+        id: 'asset-' + index,
+        serialNumber: 'ONT-' + index,
+        macAddress: 'MAC-' + index,
+      })) as SerializedAssetRecord[];
+      renderDrawer({ executorCustodyAssets: assets, executorCustodyBalances: [] }, { open: true });
+
+      const search = screen.getByRole('textbox', { name: 'Buscar equipo' });
+      expect(screen.getByText('Serial o MAC')).toBeInTheDocument();
+      await userEvent.type(search, 'MAC-8');
+      expect(screen.getByRole('radio', { name: /ONT-8/i })).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /ONT-1/i })).not.toBeInTheDocument();
+
+      await userEvent.clear(search);
+      await userEvent.type(search, 'sin-coincidencia');
+      expect(screen.getByText('No encontramos equipos con ese serial o MAC.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Limpiar búsqueda' }));
+      expect(screen.getAllByRole('radio')).toHaveLength(9);
+    });
+
+    it('agrega saldos por artículo, resta reservas y comunica resultados parciales por fila', async () => {
+      const onRegisterItemUsageBatch = jest
+        .fn()
+        .mockResolvedValueOnce([
+          { key: 'item:item-router', status: 'success' },
+          { key: 'item:item-patch', status: 'error' },
+        ])
+        .mockResolvedValueOnce([{ key: 'item:item-patch', status: 'success' }]);
+      const options = [
+        ...itemOptions,
+        {
+          value: 'item-patch',
+          label: 'FO-PATCH · Patchcord',
+          sku: 'FO-PATCH',
+          name: 'Patchcord',
+          trackingMode: InventoryTrackingMode.CONSUMABLE,
+        },
+      ];
+      const balances = [
+        { ...custodyBalance, id: 'router-1', quantityOnHand: '4', quantityReserved: '1' },
+        { ...custodyBalance, id: 'router-2', quantityOnHand: '5', quantityReserved: '2' },
+        {
+          ...custodyBalance,
+          id: 'patch-1',
+          itemId: 'item-patch',
+          quantityOnHand: '4',
+          quantityReserved: '1',
+        },
+        {
+          ...custodyBalance,
+          id: 'empty-1',
+          itemId: 'item-patch',
+          quantityOnHand: '1',
+          quantityReserved: '1',
+        },
+      ] as StockBalanceRecord[];
       renderDrawer(
         {
-          onRegisterItemUsage,
-          custodyOptions: [{ type: 'TECHNICIAN', id: 'tech-001', label: 'Bodega móvil de Carlos' }],
+          itemOptions: options,
+          executorCustodyAssets: [],
+          executorCustodyBalances: balances,
+          onRegisterItemUsageBatch,
         },
         { open: true },
       );
 
-      expect(screen.getByRole('combobox', { name: 'Custodia de origen' })).toHaveTextContent(
-        'Bodega móvil de Carlos',
-      );
-      await fillAndSubmit(user);
+      expect(screen.getByText('Router WiFi · disponible 6 unidades')).toBeInTheDocument();
+      expect(screen.getByText('Patchcord · disponible 3 unidades')).toBeInTheDocument();
+      const routerQuantity = screen.getByRole('spinbutton', {
+        name: 'Cantidad de Router WiFi (unidades)',
+      });
+      const patchQuantity = screen.getByRole('spinbutton', {
+        name: 'Cantidad de Patchcord (unidades)',
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'Sumar 1 unidad de Router WiFi' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Sumar 1 unidad de Router WiFi' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Sumar 1 unidad de Patchcord' }));
+      expect(routerQuantity).toHaveValue(2);
+      expect(patchQuantity).toHaveValue(1);
+      await userEvent.click(screen.getByRole('button', { name: 'Registrar materiales' }));
 
-      expect(onRegisterItemUsage).toHaveBeenCalledWith(
-        expect.objectContaining({ technicianCustodyId: 'tech-001' }),
-      );
+      expect(onRegisterItemUsageBatch).toHaveBeenCalledTimes(1);
+      const rows = onRegisterItemUsageBatch.mock.calls[0]![0];
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row: { payload: { itemId: string } }) => row.payload.itemId)).toEqual([
+        'item-patch',
+        'item-router',
+      ]);
+      expect(
+        rows.find((row: { payload: { itemId: string } }) => row.payload.itemId === 'item-router')
+          ?.payload,
+      ).toMatchObject({
+        quantity: 2,
+        action: ExecutionOrderItemAction.INSTALL,
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+      });
+      expect(
+        await screen.findByText(
+          'Material registrado. Queda pendiente de confirmación de inventario.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('No se pudo registrar Patchcord. Intenta de nuevo.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('spinbutton', { name: 'Cantidad de Router WiFi (unidades)' }),
+      ).toHaveValue(0);
+      expect(
+        screen.getByRole('spinbutton', { name: 'Cantidad de Patchcord (unidades)' }),
+      ).toHaveValue(1);
+      const failedRowKey = rows.find(
+        (row: { payload: { itemId: string } }) => row.payload.itemId === 'item-patch',
+      )!.idempotencyKey;
+      await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+      await waitFor(() => expect(onRegisterItemUsageBatch).toHaveBeenCalledTimes(2));
+      expect(onRegisterItemUsageBatch.mock.calls[1]![0]).toHaveLength(1);
+      expect(onRegisterItemUsageBatch.mock.calls[1]![0][0]).toMatchObject({
+        key: 'item:item-patch',
+        idempotencyKey: failedRowKey,
+      });
     });
 
-    it('el destino lo define el requisito: queda fijo, visible y sin opciones ajenas', async () => {
-      const user = userEvent.setup();
-      renderDrawer({}, { open: true });
-
-      const destination = screen.getByRole('combobox', { name: 'Destino' });
-      expect(destination).toBeDisabled();
-      expect(destination).toHaveTextContent('Instalado en cliente');
-      expect(screen.getByText('Lo define el requisito.')).toBeInTheDocument();
-      await user.click(destination);
-      expect(screen.queryByRole('option', { name: 'Consumo interno' })).toBeNull();
-    });
-
-    it('sin destino declarado por el requisito el usuario lo elige', async () => {
-      const onRegisterItemUsage = jest.fn().mockResolvedValue(true);
-      const user = userEvent.setup();
-      const free = template();
+    it('muestra metros en disponible, cantidad y controles; conserva dos decimales al registrar', async () => {
+      const onRegisterItemUsageBatch = jest
+        .fn()
+        .mockResolvedValue([{ key: 'item:item-drop', status: 'success' }]);
+      const drop = {
+        value: 'item-drop',
+        label: 'FO-DROP · Fibra Drop',
+        sku: 'FO-DROP',
+        name: 'Fibra Drop',
+        unitOfMeasure: 'METER',
+        trackingMode: InventoryTrackingMode.CONSUMABLE,
+      };
       renderDrawer(
-        { onRegisterItemUsage, template: free, order: detail({}, free) },
+        {
+          itemOptions: [drop],
+          executorCustodyAssets: [],
+          executorCustodyBalances: [
+            {
+              ...custodyBalance,
+              itemId: 'item-drop',
+              quantityOnHand: '2.50',
+              quantityReserved: '0.25',
+            },
+          ],
+          onRegisterItemUsageBatch,
+        },
         { open: true },
       );
 
-      expect(screen.getByRole('combobox', { name: 'Destino' })).toBeEnabled();
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
-      await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'CPE-ONT · ONT de fibra' }));
-      await user.click(screen.getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Consumir' }));
-      await user.click(screen.getByRole('combobox', { name: 'Destino' }));
-      await user.click(screen.getByRole('option', { name: 'Consumo interno' }));
-      await user.click(screen.getByRole('button', { name: 'Registrar material' }));
-
-      expect(onRegisterItemUsage).toHaveBeenCalledWith({
-        itemId: 'item-ont',
-        requirementKey: 'installed-equipment',
-        technicianCustodyId: 'tech-001',
-        quantity: 1,
-        action: 'CONSUME',
-        finalDisposition: 'INTERNAL_CONSUMPTION',
+      expect(screen.getByText('Fibra Drop · disponible 2,25 metros')).toBeInTheDocument();
+      const quantity = screen.getByRole('spinbutton', {
+        name: 'Cantidad de Fibra Drop (metros)',
       });
+      expect(quantity).toHaveAttribute('max', '2.25');
+      expect(quantity).toHaveAttribute('step', '0.01');
+      expect(screen.getByRole('button', { name: 'Restar 1 metro de Fibra Drop' })).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Sumar 1 metro de Fibra Drop' }));
+      expect(quantity).toHaveValue(1);
+
+      await userEvent.clear(quantity);
+      await userEvent.type(quantity, '1.25');
+      expect(quantity).toHaveValue(1.25);
+      await userEvent.click(screen.getByRole('button', { name: 'Registrar materiales' }));
+
+      expect(onRegisterItemUsageBatch.mock.calls[0]![0][0]!.payload.quantity).toBe(1.25);
     });
 
-    it('no habilita el registro hasta elegir ítem y acción, y valida la cantidad', async () => {
-      const user = userEvent.setup();
-      renderDrawer({}, { open: true });
-      const submit = screen.getByRole('button', { name: 'Registrar material' });
-
-      expect(submit).toBeDisabled();
-      await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'CPE-RTR · Router WiFi' }));
-      expect(submit).toBeDisabled();
-      await user.click(screen.getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Instalar' }));
-      expect(submit).toBeEnabled();
-
-      await user.clear(screen.getByLabelText('Cantidad'));
-      await user.type(screen.getByLabelText('Cantidad'), '0');
-      expect(screen.getByText('La cantidad debe ser entera y mayor que cero.')).toBeInTheDocument();
-      expect(submit).toBeDisabled();
-    });
-
-    it('un fallo conserva la captura; un éxito limpia ítem, serial y acción', async () => {
-      const onRegisterItemUsage = jest
+    it('reutiliza la clave de idempotencia de la fila al reintentar tras un fallo', async () => {
+      const onRegisterItemUsageBatch = jest
         .fn()
-        .mockResolvedValueOnce(false)
-        .mockResolvedValueOnce(true);
-      const user = userEvent.setup();
-      renderDrawer({ onRegisterItemUsage }, { open: true });
-
-      await fillAndSubmit(user);
-      expect(screen.getByLabelText('Serial o lote')).toHaveValue('ONT-2026-001');
-      expect(screen.getByRole('combobox', { name: 'Ítem' })).toHaveTextContent(
-        'CPE-ONT · ONT de fibra',
+        .mockResolvedValueOnce([{ key: 'item:item-router', status: 'error' }])
+        .mockResolvedValueOnce([{ key: 'item:item-router', status: 'success' }]);
+      renderDrawer(
+        {
+          itemOptions: [itemOptions[1]!],
+          executorCustodyAssets: [],
+          executorCustodyBalances: [custodyBalance],
+          onRegisterItemUsageBatch,
+        },
+        { open: true },
       );
 
-      await user.click(screen.getByRole('button', { name: 'Registrar material' }));
-      expect(onRegisterItemUsage).toHaveBeenCalledTimes(2);
-      expect(screen.getByLabelText('Serial o lote')).toHaveValue('');
-      expect(screen.getByRole('combobox', { name: 'Acción' })).toHaveTextContent(
-        'Selecciona una acción',
+      await userEvent.click(screen.getByRole('button', { name: 'Sumar 1 unidad de Router WiFi' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Registrar materiales' }));
+      await screen.findByText('No se pudo registrar Router WiFi. Intenta de nuevo.');
+      await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+
+      const firstKey = onRegisterItemUsageBatch.mock.calls[0]![0][0]!.idempotencyKey;
+      const retryKey = onRegisterItemUsageBatch.mock.calls[1]![0][0]!.idempotencyKey;
+      expect(retryKey).toBe(firstKey);
+      expect(
+        await screen.findByText(
+          'Material registrado. Queda pendiente de confirmación de inventario.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      [
+        InventoryDisposition.INSTALLED_AT_CUSTOMER,
+        'Instalado en el sitio del cliente',
+        ExecutionOrderItemAction.INSTALL,
+      ],
+      [
+        InventoryDisposition.INTERNAL_CONSUMPTION,
+        'Consumo interno',
+        ExecutionOrderItemAction.CONSUME,
+      ],
+      [
+        InventoryDisposition.RETURNED_TO_TECHNICIAN_STOCK,
+        'Retorno a custodia técnica',
+        ExecutionOrderItemAction.RETURN,
+      ],
+      [
+        InventoryDisposition.RETURNED_TO_WAREHOUSE,
+        'Retorno a bodega',
+        ExecutionOrderItemAction.RETURN,
+      ],
+      [InventoryDisposition.DAMAGED_OR_LOST, 'Dañado o perdido', ExecutionOrderItemAction.REMOVE],
+    ] as const)(
+      'deriva la acción %s del destino elegido cuando el snapshot no lo fija',
+      async (disposition, optionLabel, action) => {
+        const onRegisterItemUsageBatch = jest
+          .fn()
+          .mockResolvedValue([{ key: 'item:item-router', status: 'success' }]);
+        const optionalTemplate = template();
+        renderDrawer(
+          {
+            order: detail({}, optionalTemplate),
+            template: optionalTemplate,
+            itemOptions: [itemOptions[1]!],
+            executorCustodyAssets: [],
+            executorCustodyBalances: [custodyBalance],
+            onRegisterItemUsageBatch,
+          },
+          { open: true },
+        );
+
+        await userEvent.click(screen.getByRole('combobox', { name: 'Destino' }));
+        await userEvent.click(await screen.findByRole('option', { name: optionLabel }));
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Sumar 1 unidad de Router WiFi' }),
+        );
+        await userEvent.click(screen.getByRole('button', { name: 'Registrar materiales' }));
+        await waitFor(() => expect(onRegisterItemUsageBatch).toHaveBeenCalled());
+        expect(onRegisterItemUsageBatch.mock.calls[0]![0][0]!.payload).toMatchObject({
+          action,
+          finalDisposition: disposition,
+        });
+      },
+    );
+
+    it('no envía filas con cantidad cero', async () => {
+      const onRegisterItemUsageBatch = jest.fn();
+      renderDrawer(
+        {
+          itemOptions: [itemOptions[1]!],
+          executorCustodyAssets: [],
+          executorCustodyBalances: [custodyBalance],
+          onRegisterItemUsageBatch,
+        },
+        { open: true },
       );
-    });
-
-    it('si la lista de opciones cambia y el ítem elegido ya no es compatible, no se envía', async () => {
-      const onRegisterItemUsage = jest.fn().mockResolvedValue(true);
-      const user = userEvent.setup();
-      const { update } = renderDrawer({ onRegisterItemUsage }, { open: true });
-      await user.click(screen.getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'CPE-ONT · ONT de fibra' }));
-      await user.click(screen.getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Instalar' }));
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeEnabled();
-
-      update({
-        onRegisterItemUsage,
-        itemOptions: [{ value: 'item-router', label: 'CPE-RTR · Router WiFi' }],
-      });
-
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
-      expect(onRegisterItemUsage).not.toHaveBeenCalled();
-    });
-
-    it('sin responsable la custodia de origen no existe y el registro queda bloqueado', () => {
-      const { assignee: _assignee, ...withoutAssignee } = detail();
-      renderDrawer({ order: withoutAssignee as ExecutionOrderDetailResponse }, { open: true });
 
       expect(
-        screen.getByText('La orden no tiene una custodia técnica o de cuadrilla elegible.'),
+        screen.getByRole('spinbutton', { name: 'Cantidad de Router WiFi (unidades)' }),
+      ).toHaveValue(0);
+      expect(screen.getByRole('button', { name: 'Registrar materiales' })).toBeDisabled();
+      expect(onRegisterItemUsageBatch).not.toHaveBeenCalled();
+    });
+
+    it('comunica carga, vacío y error recuperable con el copy cerrado', async () => {
+      const loading = renderDrawer(
+        {
+          itemsState: 'loading',
+          executorCustodyState: 'loading',
+          executorCustodyAssets: [],
+          executorCustodyBalances: [],
+        },
+        { open: true },
+      );
+      expect(screen.getByText('Cargando equipos de tu custodia…')).toBeInTheDocument();
+      expect(screen.getByText('Cargando materiales de tu custodia…')).toBeInTheDocument();
+      loading.unmount();
+
+      const empty = renderDrawer(
+        { itemOptions: [itemOptions[0]!], executorCustodyAssets: [], executorCustodyBalances: [] },
+        { open: true },
+      );
+      expect(
+        screen.getByText('No hay equipos de esta categoría en tu custodia.'),
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+      empty.unmount();
+
+      const failedLoad = renderDrawer(
+        {
+          itemsState: 'unavailable',
+          executorCustodyState: 'unavailable',
+          executorCustodyAssets: [],
+          executorCustodyBalances: [],
+        },
+        { open: true },
+      );
+      expect(screen.getByText('No pudimos cargar los equipos de tu custodia.')).toBeInTheDocument();
+      expect(
+        screen.getByText('No pudimos cargar los materiales de tu custodia.'),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Reintentar' })).toHaveLength(2);
+      failedLoad.unmount();
     });
   });
-
   describe('historial de consumos', () => {
     it('vive bajo el requisito, separado de la captura, y no mezcla disponibilidad con consumo', () => {
       renderDrawer(
@@ -617,9 +809,14 @@ describe('ExecutionOrderMaterialAction — acto de consumo', () => {
       expect(
         within(history).getByText('Instalar · Cantidad: 1 · Instalado en cliente'),
       ).toBeInTheDocument();
-      // La custodia disponible solo aparece dentro del acto, nunca en el historial.
+      // El historial no mezcla la disponibilidad de custodia con los registros.
       expect(within(history).queryByText('En custodia del ejecutor')).toBeNull();
-      expect(within(capture).getByText('En custodia del ejecutor')).toBeInTheDocument();
+      expect(
+        within(capture).getByText(
+          /Desde Carlos López · Se registrará como instalado en el sitio del cliente/,
+        ),
+      ).toBeInTheDocument();
+      expect(within(capture).queryByText('En custodia del ejecutor')).toBeNull();
       expect(history.contains(capture)).toBe(false);
     });
 

@@ -47,6 +47,7 @@ const OPEN_VERSION = 4;
 const consumptionAction: RequirementActionDescriptor = {
   kind: 'consumption',
   requirementKey: 'material',
+  requirementLabel: 'Materiales usados en la instalación',
   itemCategory: 'CPE',
   action: 'REGISTER_ITEM_USAGE',
 };

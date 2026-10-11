@@ -520,7 +520,6 @@ describe('tasksApi execution order payloads', () => {
         .fn()
         .mockReturnValueOnce('command-start-key')
         .mockReturnValueOnce('command-field-work-key')
-        .mockReturnValueOnce('command-item-usage-key')
         .mockReturnValueOnce('command-upload-evidence-key')
         .mockReturnValueOnce('command-register-evidence-key')
         .mockReturnValueOnce('command-close-key')
@@ -549,6 +548,7 @@ describe('tasksApi execution order payloads', () => {
       },
       5,
       'isp-demo',
+      'item-usage-row-key-001',
     );
     const file = new File(['foto'], 'instalacion.jpg', { type: 'image/jpeg' });
     await tasksApi.executionOrders.uploadEvidenceAsset('eo-001', file, 6, 'isp-demo');
@@ -598,7 +598,7 @@ describe('tasksApi execution order payloads', () => {
       'If-Match': '4',
     });
     expect(commandHeaders(2)).toEqual({
-      'Idempotency-Key': 'command-item-usage-key',
+      'Idempotency-Key': 'item-usage-row-key-001',
       'If-Match': '5',
     });
     expect(commandHeaders(3)).toEqual({

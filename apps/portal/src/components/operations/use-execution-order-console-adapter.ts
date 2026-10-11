@@ -7,6 +7,7 @@ import {
   type RegisterActivityCommand,
 } from '@iwana/shared';
 import {
+  ApiError,
   tasksApi,
   type CloseExecutionOrderDto,
   type ExecutionOrderDetailResponse,
@@ -16,6 +17,11 @@ import {
 } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 import type { RequirementActionDescriptor } from './execution-order-actions';
+import type {
+  ExecutionOrderItemOption,
+  ExecutionOrderItemUsageBatchRow,
+  ExecutionOrderItemUsageBatchResult,
+} from './execution-order-console-types';
 import {
   collectExecutionOrderCollectionPages,
   loadMoreExecutionOrderCollection,
@@ -110,7 +116,7 @@ export function useExecutionOrderConsoleAdapter() {
     useState(false);
   const [isLoadingMoreExecutorCustody, setIsLoadingMoreExecutorCustody] = useState(false);
   const [executionOrderItemOptions, setExecutionOrderItemOptions] = useState<
-    Array<{ value: string; label: string }>
+    ExecutionOrderItemOption[]
   >([]);
   const [executionOrderCustodyOptions, setExecutionOrderCustodyOptions] = useState<
     Array<{ type: 'TECHNICIAN' | 'CREW'; id: string; label: string }>
@@ -597,6 +603,72 @@ export function useExecutionOrderConsoleAdapter() {
     }
   }
 
+  /**
+   * Registra cada fila en serie. Cada POST toma la versión vigente justo antes
+   * de enviarse; un 412 provoca un refresco y un único reintento con la misma
+   * clave de idempotencia de la fila.
+   */
+  async function handleRegisterExecutionOrderItemUsageBatch(
+    rows: ExecutionOrderItemUsageBatchRow[],
+  ): Promise<ExecutionOrderItemUsageBatchResult[]> {
+    const context = beginExecutionOrderMutation();
+    if (!context) {
+      return rows.map(({ key }) => ({
+        key,
+        status: 'error',
+        message: 'La orden ya no está disponible.',
+      }));
+    }
+    const results: ExecutionOrderItemUsageBatchResult[] = [];
+    try {
+      for (const row of rows) {
+        if (!isCurrentExecutionOrderMutation(context)) {
+          results.push({
+            key: row.key,
+            status: 'error',
+            message: 'La orden cambió mientras se registraban los materiales.',
+          });
+          continue;
+        }
+        try {
+          const currentOrder = await tasksApi.executionOrders.get(context.order.id);
+          try {
+            await tasksApi.executionOrders.registerItemUsage(
+              context.order.id,
+              row.payload,
+              currentOrder.version,
+              undefined,
+              row.idempotencyKey,
+            );
+          } catch (error) {
+            if (!(error instanceof ApiError) || error.status !== 412) throw error;
+            await refreshExecutionOrder(context.order.id, 'consumption');
+            const refreshedOrder = await tasksApi.executionOrders.get(context.order.id);
+            await tasksApi.executionOrders.registerItemUsage(
+              context.order.id,
+              row.payload,
+              refreshedOrder.version,
+              undefined,
+              row.idempotencyKey,
+            );
+          }
+          results.push({ key: row.key, status: 'success' });
+        } catch (error) {
+          results.push({ key: row.key, status: 'error', message: mapOperationsError(error) });
+        }
+      }
+      if (
+        results.some(({ status }) => status === 'success') &&
+        isCurrentExecutionOrderMutation(context)
+      ) {
+        await refreshExecutionOrder(context.order.id, 'consumption');
+      }
+      return results;
+    } finally {
+      if (isCurrentExecutionOrderMutation(context)) setIsSubmittingExecutionOrder(false);
+    }
+  }
+
   async function handleReverseExecutionOrderItemUsage(
     usageId: string,
     payload: { reason: string },
@@ -731,6 +803,7 @@ export function useExecutionOrderConsoleAdapter() {
     handleUpdateExecutionOrderFieldWork,
     handleDeleteExecutionOrderFieldWork,
     handleRegisterExecutionOrderItemUsage,
+    handleRegisterExecutionOrderItemUsageBatch,
     handleReverseExecutionOrderItemUsage,
     handleUploadEvidence,
     handleCloseExecutionOrder,

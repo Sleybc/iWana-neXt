@@ -5,7 +5,12 @@
 // requisito); borrador del cierre que sobrevive al refresco.
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ExecutionOrderStatus, WfmWorkType } from '@iwana/shared';
+import {
+  ExecutionOrderStatus,
+  InventoryDisposition,
+  InventoryTrackingMode,
+  WfmWorkType,
+} from '@iwana/shared';
 import type {
   ExecutionOrderActivity,
   ExecutionOrderAllowedAction,
@@ -39,6 +44,7 @@ function templateV2(): ExecutionOrderTemplateVersion {
         required: true,
         kind: 'MATERIAL',
         itemCategory: 'CPE',
+        finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
       },
       {
         key: 'service-test',
@@ -146,7 +152,15 @@ function drawerProps(props: Partial<DrawerProps> = {}): DrawerProps {
     onRegisterItemUsage: jest.fn().mockResolvedValue(undefined),
     onUploadEvidence: jest.fn().mockResolvedValue(undefined),
     onCloseOrder: jest.fn().mockResolvedValue(undefined),
-    itemOptions: [{ value: 'item-1', label: 'ONT de instalación' }],
+    itemOptions: [
+      {
+        value: 'item-1',
+        label: 'ONT de instalación',
+        sku: 'ONT-1',
+        name: 'ONT de instalación',
+        trackingMode: InventoryTrackingMode.SERIALIZED,
+      },
+    ],
     // Custodia disponible: aun así NO debe montarse fuera del acto de consumo.
     executorCustodyState: 'available',
     executorCustodyName: 'Bodega móvil',
@@ -209,7 +223,7 @@ const LENSES = [
 ] as const;
 
 const TRIGGER_NAMES = [
-  /^Registrar equipo instalado para /,
+  /^Registrar equipos instalados en el sitio del cliente para /,
   /^Añadir foto de la prueba de servicio para /,
   /^Añadir fotos del trabajo para /,
   /^Capturar firma del cliente para /,
@@ -377,6 +391,57 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
     );
   });
 
+  it('abrir la captura de un material opcional no altera su estado ni habilita el cierre', async () => {
+    const user = userEvent.setup();
+    const baseTemplate = templateV2();
+    const optionalMaterialTemplate: ExecutionOrderTemplateVersion = {
+      ...baseTemplate,
+      requirements: baseTemplate.requirements.map((requirement) =>
+        requirement.key === 'installed-equipment'
+          ? { ...requirement, label: 'Material opcional', required: false }
+          : requirement,
+      ),
+    };
+    const optionalOrder = detail({
+      template: {
+        id: 'tpl-v2',
+        key: 'INSTALACION_ESTANDAR',
+        version: 2,
+        label: 'Instalación estándar',
+        requirements: optionalMaterialTemplate.requirements,
+      },
+      allowedActions: ['REGISTER_ITEM_USAGE', 'CLOSE'],
+      completion: {
+        progress: 0,
+        completed: 0,
+        total: 4,
+        requirements: optionalMaterialTemplate.requirements.map((requirement) => ({
+          requirementId: requirement.key,
+          label: requirement.label ?? requirement.key,
+          kind: requirement.kind,
+          satisfied: false,
+          ...(requirement.required ? { reason: `Falta ${requirement.key}` } : {}),
+        })),
+      },
+    });
+    renderDrawer({ order: optionalOrder, template: optionalMaterialTemplate });
+
+    const optionalRequirement = screen.getByRole('listitem', { name: /^Material opcional:/ });
+    expect(optionalRequirement).toHaveTextContent('Sin registrar');
+    expect(optionalRequirement).toHaveTextContent('Opcional');
+    const closeButton = screen.getByRole('button', { name: 'Cerrar OT' });
+    expect(closeButton).toBeDisabled();
+
+    await user.click(
+      screen.getByRole('button', { name: /^Registrar material opcional para Material opcional/ }),
+    );
+
+    expect(screen.getByRole('listitem', { name: /^Material opcional:/ })).toHaveTextContent(
+      'Sin registrar',
+    );
+    expect(screen.getByRole('button', { name: 'Cerrar OT' })).toBeDisabled();
+  });
+
   it('sin completion.requirements todo el índice queda «Estado no disponible», sin acciones', () => {
     renderDrawer({
       order: detail({
@@ -407,16 +472,33 @@ describe('Checklist como índice con cuatro estados (UX §3.2)', () => {
       within(checklist).queryByRole('button', { name: /^Registrar actividad para / }),
     ).toBeNull();
     expect(
-      within(checklist).queryByRole('button', { name: /^Registrar equipo instalado para / }),
+      within(checklist).queryByRole('button', {
+        name: /^Registrar equipos instalados en el sitio del cliente para /,
+      }),
     ).toBeNull();
   });
 
-  it('respeta el orden y la etiqueta literal del snapshot, incluido el «NO» en mayúsculas', () => {
+  it('deja la firma para el final y conserva el orden y las etiquetas del resto del snapshot', () => {
     renderDrawer({ order: detail() });
     const labels = within(screen.getByRole('region', { name: 'Requisitos' }))
       .getAllByRole('listitem')
       .map((item) => item.getAttribute('aria-label')?.split(':')[0]);
-    expect(labels).toEqual(templateV2().requirements.map((requirement) => requirement.label));
+    const templateRequirements = templateV2().requirements;
+    const expectedLabels = [
+      ...templateRequirements
+        .filter(
+          (requirement) =>
+            requirement.kind !== 'EVIDENCE' || requirement.evidenceType !== 'SIGNATURE',
+        )
+        .map((requirement) => requirement.label),
+      ...templateRequirements
+        .filter(
+          (requirement) =>
+            requirement.kind === 'EVIDENCE' && requirement.evidenceType === 'SIGNATURE',
+        )
+        .map((requirement) => requirement.label),
+    ];
+    expect(labels).toEqual(expectedLabels);
   });
 });
 
@@ -608,10 +690,15 @@ describe('La acción nace del requisito que la originó', () => {
     const user = userEvent.setup();
     renderDrawer({ order: detail({ allowedActions: ['REGISTER_ITEM_USAGE'] }) });
     expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
-    const trigger = screen.getByRole('button', { name: /^Registrar equipo instalado para / });
+    const trigger = screen.getByRole('button', {
+      name: /^Registrar equipos instalados en el sitio del cliente para /,
+    });
     await user.click(trigger);
-    expect(screen.getByText('En custodia del ejecutor')).toBeInTheDocument();
-    expect(screen.getByLabelText('Cantidad')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Desde Bodega móvil · Se registrará como instalado en el sitio del cliente/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /ONT-CUSTODIA-001/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
     expect(trigger).toHaveFocus();

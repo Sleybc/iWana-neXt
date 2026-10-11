@@ -1,6 +1,10 @@
 import { useMemo, useRef } from 'react';
 import type { ListMeta } from '@iwana/shared';
-import { INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS, InventoryItemStatus } from '@iwana/shared';
+import {
+  INVENTORY_CONSUMPTION_PENDING_THRESHOLD_MS,
+  InventoryItemStatus,
+  type InventoryTrackingMode,
+} from '@iwana/shared';
 import type {
   ExecutorCustodyResponse,
   SerializedAssetRecord,
@@ -9,7 +13,10 @@ import type {
 import { inventoryApi, type ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { EMPTY_LIST_META, normalizeListMeta } from '@/lib/list-meta';
 import type { RequirementActionDescriptor } from './execution-order-actions';
-import type { ExecutionOrderCustodyOption } from './execution-order-console-types';
+import type {
+  ExecutionOrderCustodyOption,
+  ExecutionOrderItemOption,
+} from './execution-order-console-types';
 import { mapOperationsError } from './execution-order-requirements';
 
 type LoadState = 'loading' | 'available' | 'unavailable';
@@ -55,7 +62,7 @@ export interface ExecutionOrderCustodyAdapter {
     value: StockBalanceRecord[] | ((current: StockBalanceRecord[]) => StockBalanceRecord[]),
   ) => void;
   setBalancesMeta: (value: ListMeta) => void;
-  setItemOptions: (value: Array<{ value: string; label: string }>) => void;
+  setItemOptions: (value: ExecutionOrderItemOption[]) => void;
   setCustodyOptions: (value: ExecutionOrderCustodyOption[]) => void;
   setError: (value: string | null) => void;
   assetsMeta: ListMeta;
@@ -109,9 +116,19 @@ interface CustodyWalk {
   nextPage: number | null;
 }
 
+interface CompatibleInventoryItem {
+  label: string;
+  sku: string;
+  name: string;
+  unitOfMeasure: string;
+  brand?: string;
+  model?: string;
+  trackingMode: InventoryTrackingMode;
+}
+
 interface CustodySession {
   assigneeId: string;
-  compatible: ReadonlyMap<string, string>;
+  compatible: ReadonlyMap<string, CompatibleInventoryItem>;
   assets: SerializedAssetRecord[];
   balances: StockBalanceRecord[];
   nextPage: number | null;
@@ -137,16 +154,16 @@ async function resolveCategoryId(code: string, isCurrent: () => boolean): Promis
   throw new Error('El catálogo de categorías supera la cota de recorrido.');
 }
 
-/** Ítems ACTIVE de la categoría del requisito: id -> etiqueta visible. */
+/** Ítems ACTIVE de la categoría del requisito, con su modo de seguimiento. */
 async function loadCompatibleItems(
   category: string,
   isCurrent: () => boolean,
-): Promise<Map<string, string> | Stale> {
-  const compatible = new Map<string, string>();
+): Promise<Map<string, CompatibleInventoryItem> | Stale> {
+  const compatible = new Map<string, CompatibleInventoryItem>();
   const categoryId = await resolveCategoryId(category, isCurrent);
   if (categoryId === STALE) return STALE;
   // Categoría inexistente en el catálogo: no hay ítems compatibles que ofrecer.
-  if (categoryId === '') return compatible;
+  if (categoryId === '') return new Map<string, CompatibleInventoryItem>();
 
   let cursor: string | undefined;
   for (let page = 0; page < MAX_CATALOG_PAGES; page += 1) {
@@ -159,7 +176,15 @@ async function loadCompatibleItems(
     if (!isCurrent()) return STALE;
     for (const item of response.data) {
       if (item.status === InventoryItemStatus.ACTIVE && item.categoryCode === category) {
-        compatible.set(item.id, `${item.sku} · ${item.name}`);
+        compatible.set(item.id, {
+          label: `${item.sku} · ${item.name}`,
+          sku: item.sku,
+          name: item.name,
+          unitOfMeasure: item.unitOfMeasure,
+          ...(item.brand?.trim() ? { brand: item.brand.trim() } : {}),
+          ...(item.model?.trim() ? { model: item.model.trim() } : {}),
+          trackingMode: item.trackingMode,
+        });
       }
     }
     const meta = normalizeListMeta(response.meta, { dataLength: response.data.length });
@@ -201,30 +226,19 @@ async function walkCustody(
 }
 
 const compatibleAssets = (
-  compatible: ReadonlyMap<string, string>,
+  compatible: ReadonlyMap<string, CompatibleInventoryItem>,
   assets: SerializedAssetRecord[],
 ) => assets.filter((asset) => compatible.has(asset.inventoryItemId));
 
 const compatibleBalances = (
-  compatible: ReadonlyMap<string, string>,
+  compatible: ReadonlyMap<string, CompatibleInventoryItem>,
   balances: StockBalanceRecord[],
 ) => balances.filter((balance) => compatible.has(balance.itemId));
 
-/** Opciones del selector: los ítems compatibles que de verdad están en la custodia. */
-function custodyItemOptions(
-  compatible: ReadonlyMap<string, string>,
-  assets: SerializedAssetRecord[],
-  balances: StockBalanceRecord[],
-) {
-  const options = new Map<string, string>();
-  for (const itemId of [
-    ...assets.map((asset) => asset.inventoryItemId),
-    ...balances.map((balance) => balance.itemId),
-  ]) {
-    options.set(itemId, compatible.get(itemId) ?? itemId);
-  }
-  return [...options]
-    .map(([value, label]) => ({ value, label }))
+/** Catálogo de la categoría; activos y saldos determinan qué opciones están disponibles. */
+function custodyItemOptions(compatible: ReadonlyMap<string, CompatibleInventoryItem>) {
+  return [...compatible]
+    .map(([value, item]) => ({ value, ...item }))
     .sort((left, right) => left.label.localeCompare(right.label, 'es'));
 }
 
@@ -293,10 +307,15 @@ export function useExecutionOrderCustody(
       }
 
       const assignee = order.assignee ?? null;
+      const itemsPromise = loadCompatibleItems(action.itemCategory, isCurrent).then((items) => {
+        if (items !== STALE && isCurrent()) {
+          latest.current.setItemOptions(custodyItemOptions(items));
+          latest.current.setInventoryState('available');
+        }
+        return items;
+      });
       const [itemsResult, custodyResult] = await Promise.allSettled([
-        assignee
-          ? loadCompatibleItems(action.itemCategory, isCurrent)
-          : Promise.resolve(new Map<string, string>()),
+        itemsPromise,
         assignee ? walkCustody(assignee.id, 1, isCurrent) : Promise.resolve(null),
       ]);
       if (!isCurrent()) return NOOP;
@@ -306,9 +325,26 @@ export function useExecutionOrderCustody(
       if (items === STALE || walk === STALE) return NOOP;
       // Sin catálogo no se puede decidir qué es compatible; sin custodia no hay
       // qué ofrecer. En ambos casos la selección queda «no disponible».
-      if (itemsResult.status === 'rejected' || custodyResult.status === 'rejected' || !items) {
+      if (itemsResult.status === 'rejected' || !items) {
         return () => {
           if (isCurrent()) showUnavailable();
+        };
+      }
+
+      if (custodyResult.status === 'rejected') {
+        return () => {
+          if (!isCurrent()) return;
+          const ctx = latest.current;
+          ctx.setLoadingMore(false);
+          ctx.setCustodyName(null);
+          ctx.setAssets([]);
+          ctx.setAssetsMeta(EMPTY_LIST_META);
+          ctx.setBalances([]);
+          ctx.setBalancesMeta(EMPTY_LIST_META);
+          ctx.setItemOptions(custodyItemOptions(items));
+          ctx.setCustodyOptions([]);
+          ctx.setInventoryState('available');
+          ctx.setCustodyState('unavailable');
         };
       }
 
@@ -339,7 +375,7 @@ export function useExecutionOrderCustody(
         ctx.setAssetsMeta(compatibleMeta(loaded.assetsMeta, assets.length, hasMore));
         ctx.setBalances(balances);
         ctx.setBalancesMeta(compatibleMeta(loaded.balancesMeta, balances.length, hasMore));
-        ctx.setItemOptions(custodyItemOptions(items, assets, balances));
+        ctx.setItemOptions(custodyItemOptions(items));
         ctx.setCustodyOptions(
           assignee
             ? [
@@ -414,7 +450,7 @@ export function useExecutionOrderCustody(
           ctx.setAssetsMeta(compatibleMeta(walk.assetsMeta, assets.length, hasMore));
           ctx.setBalances(balances);
           ctx.setBalancesMeta(compatibleMeta(walk.balancesMeta, balances.length, hasMore));
-          ctx.setItemOptions(custodyItemOptions(current.compatible, assets, balances));
+          ctx.setItemOptions(custodyItemOptions(current.compatible));
         } catch (loadError) {
           if (isCurrent()) ctx.setError(mapOperationsError(loadError));
         } finally {

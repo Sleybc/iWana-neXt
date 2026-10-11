@@ -3,6 +3,7 @@ import {
   ExecutionOrderStatus,
   ExecutionOrderItemAction,
   InventoryDisposition,
+  InventoryTrackingMode,
   SerializedAssetStatus,
 } from '@iwana/shared';
 import type {
@@ -85,6 +86,9 @@ export interface ExecutionOrderDrawerProps {
   ) => Promise<void | boolean>;
   onDeleteActivity?: (activityId: string) => Promise<void | boolean>;
   onRegisterItemUsage: (payload: RegisterExecutionOrderItemUsageDto) => Promise<void | boolean>;
+  onRegisterItemUsageBatch?: (
+    rows: ExecutionOrderItemUsageBatchRow[],
+  ) => Promise<ExecutionOrderItemUsageBatchResult[]>;
   onReverseItemUsage?: (
     usageId: string,
     payload: ReverseItemUsageCommand,
@@ -96,11 +100,34 @@ export interface ExecutionOrderDrawerProps {
   /** Opciones entregadas por el boundary de asignacion; no admite texto libre. */
   custodyOptions?: ExecutionOrderCustodyOption[];
   /** Opciones de inventario autorizadas; el formulario no acepta IDs escritos a mano. */
-  itemOptions?: Array<{ value: string; label: string }>;
+  itemOptions?: ExecutionOrderItemOption[];
   /** ADR-077 — causas de no realización del catálogo. */
   nonRealizationCauses?: NonRealizationCause[] | null;
   /** ADR-077 — callback de subida de evidencia para intento fallido. */
   onUploadNonRealizationEvidence?: (file: File) => Promise<void | boolean>;
+}
+
+export interface ExecutionOrderItemUsageBatchRow {
+  key: string;
+  idempotencyKey: string;
+  payload: RegisterExecutionOrderItemUsageDto;
+}
+
+export interface ExecutionOrderItemUsageBatchResult {
+  key: string;
+  status: 'success' | 'error';
+  message?: string;
+}
+
+export interface ExecutionOrderItemOption {
+  value: string;
+  label: string;
+  sku: string;
+  name: string;
+  trackingMode: InventoryTrackingMode;
+  unitOfMeasure?: string;
+  brand?: string | null;
+  model?: string | null;
 }
 
 export interface ExecutionOrderCustodyOption {

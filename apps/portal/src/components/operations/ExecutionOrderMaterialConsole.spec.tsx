@@ -8,7 +8,7 @@
 import type { ReactNode } from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { UserRole, WfmWorkType } from '@iwana/shared';
+import { InventoryTrackingMode, UserRole, WfmWorkType } from '@iwana/shared';
 import { ExecutionOrdersClient } from './ExecutionOrdersClient';
 import { ApiError, inventoryApi, tasksApi } from '@/lib/api-client';
 
@@ -155,6 +155,7 @@ const catalogItem = (id: string, categoryCode = 'CPE') =>
     id,
     sku: `SKU-${id}`,
     name: `Equipo ${id}`,
+    trackingMode: InventoryTrackingMode.SERIALIZED,
     status: 'ACTIVE',
     categoryId: `cat-${categoryCode}`,
     categoryCode,
@@ -200,8 +201,11 @@ const setOnline = (value: boolean) =>
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, value });
 
 const materialButton = () =>
-  screen.findByRole('button', { name: /^Registrar equipo instalado para / });
-const sheet = () => screen.getByRole('region', { name: 'Registrar equipo instalado' });
+  screen.findByRole('button', {
+    name: /^Registrar equipos instalados en el sitio del cliente para /,
+  });
+const sheet = () =>
+  screen.getByRole('region', { name: 'Registrar equipos instalados en el sitio del cliente' });
 
 describe('Consola de OT — consumo y custodia bajo demanda', () => {
   beforeEach(() => {
@@ -277,7 +281,11 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
         });
 
         expect((await screen.findAllByText('OT-PRE')).length).toBeGreaterThanOrEqual(1);
-        expect(screen.queryByRole('button', { name: /^Registrar equipo instalado/ })).toBeNull();
+        expect(
+          screen.queryByRole('button', {
+            name: /^Registrar equipos instalados en el sitio del cliente para /,
+          }),
+        ).toBeNull();
         expect(screen.queryByText('En custodia del ejecutor')).toBeNull();
         expectNoInventoryReads();
       },
@@ -289,7 +297,11 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
         openOrder('eo-ro', 'OT-RO', { status, allowedActions: [] });
 
         expect((await screen.findAllByText('OT-RO')).length).toBeGreaterThanOrEqual(1);
-        expect(screen.queryByRole('button', { name: /^Registrar equipo instalado/ })).toBeNull();
+        expect(
+          screen.queryByRole('button', {
+            name: /^Registrar equipos instalados en el sitio del cliente para /,
+          }),
+        ).toBeNull();
         expectNoInventoryReads();
       },
     );
@@ -298,7 +310,11 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       openOrder('eo-sin-permiso', 'OT-SIN-PERMISO', { allowedActions: ['REGISTER_EVIDENCE'] });
 
       expect((await screen.findAllByText('OT-SIN-PERMISO')).length).toBeGreaterThanOrEqual(1);
-      expect(screen.queryByRole('button', { name: /^Registrar equipo instalado/ })).toBeNull();
+      expect(
+        screen.queryByRole('button', {
+          name: /^Registrar equipos instalados en el sitio del cliente para /,
+        }),
+      ).toBeNull();
       expectNoInventoryReads();
     });
 
@@ -306,32 +322,38 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       openOrder('eo-custody-001', 'OT-CUSTODY-001', { assigneeId: 'tech-777' });
       await userEvent.setup().click(await materialButton());
 
-      expect(await within(sheet()).findByText('ONT-2026-001')).toBeInTheDocument();
+      expect(await within(sheet()).findByText('Serial ONT-2026-001')).toBeInTheDocument();
       // El id que se consulta es el del responsable de la OT, no el de una ubicación de stock.
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledWith('tech-777', {
         page: 1,
         limit: 100,
       });
       expect(inventoryApi.listLocations).not.toHaveBeenCalled();
-      expect(within(sheet()).getByText('En custodia del ejecutor')).toBeInTheDocument();
-      // El nombre de la custodia llega a la vista y a la custodia de origen preseleccionada.
       expect(
-        within(sheet()).getByRole('combobox', { name: 'Custodia de origen' }),
-      ).toHaveTextContent('Bodega móvil de Carlos López');
+        within(sheet()).getByText(
+          /Desde Bodega móvil de Carlos López · Se registrará como instalado en el sitio del cliente/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(sheet()).getByRole('radio', {
+          name: /Equipo item-ont[\s\S]*Serial ONT-2026-001[\s\S]*SKU-item-ont · Asignado a técnico/i,
+        }),
+      ).toBeInTheDocument();
+      expect(within(sheet()).queryByRole('combobox', { name: 'Custodia de origen' })).toBeNull();
     });
 
     it('cancelar el acto y volver a abrirlo vuelve a consultar; cerrarlo no consulta nada más', async () => {
       const user = userEvent.setup();
       openOrder('eo-reopen', 'OT-REOPEN');
       await user.click(await materialButton());
-      await within(sheet()).findByText('ONT-2026-001');
+      await within(sheet()).findByText('Serial ONT-2026-001');
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1);
 
       await user.click(within(sheet()).getByRole('button', { name: 'Cancelar' }));
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1);
 
       await user.click(await materialButton());
-      await within(sheet()).findByText('ONT-2026-001');
+      await within(sheet()).findByText('Serial ONT-2026-001');
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(2);
     });
   });
@@ -353,13 +375,15 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       openOrder('eo-paginas', 'OT-PAGINAS');
       await user.click(await materialButton());
 
-      expect(await within(sheet()).findByText('ONT-PAG-3')).toBeInTheDocument();
+      expect(await within(sheet()).findByText('Serial ONT-PAG-3')).toBeInTheDocument();
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(3);
       expect(within(sheet()).queryByText('HERR-1')).toBeNull();
-      await user.click(within(sheet()).getByRole('combobox', { name: 'Ítem' }));
-      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-        'SKU-item-ont · Equipo item-ont',
-      ]);
+      expect(
+        within(sheet()).getByRole('radio', {
+          name: /Equipo item-ont[\s\S]*Serial ONT-PAG-3[\s\S]*SKU-item-ont · Asignado a técnico/i,
+        }),
+      ).toBeInTheDocument();
+      expect(within(sheet()).queryByRole('combobox', { name: 'Ítem' })).toBeNull();
       expect(
         screen.queryByText('No hay equipos de esta categoría en tu custodia'),
       ).not.toBeInTheDocument();
@@ -375,13 +399,14 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       await userEvent.setup().click(await materialButton());
 
       expect(
-        await within(sheet()).findByText('No hay equipos de esta categoría en tu custodia'),
+        await within(sheet()).findByText('No hay equipos de esta categoría en tu custodia.'),
       ).toBeInTheDocument();
       expect(
         within(sheet()).getByText('Contacta a supervisión para revisar la disponibilidad.'),
       ).toBeInTheDocument();
       expect(within(sheet()).queryByText('HERR-1')).toBeNull();
-      expect(within(sheet()).getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
+      expect(within(sheet()).queryByRole('radio')).toBeNull();
+      expect(within(sheet()).queryByRole('combobox', { name: 'Ítem' })).toBeNull();
     });
 
     it('sin responsable asignado no consulta custodia y muestra el vacío', async () => {
@@ -389,7 +414,7 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       await userEvent.setup().click(await materialButton());
 
       expect(
-        await within(sheet()).findByText('No hay equipos de esta categoría en tu custodia'),
+        await within(sheet()).findByText('No hay equipos de esta categoría en tu custodia.'),
       ).toBeInTheDocument();
       expect(inventoryApi.getExecutorCustody).not.toHaveBeenCalled();
     });
@@ -407,15 +432,18 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       openOrder('eo-404', 'OT-404');
       await user.click(await materialButton());
 
-      expect(await within(sheet()).findByText('Custodia no disponible')).toBeInTheDocument();
+      expect(
+        await within(sheet()).findByText('No pudimos cargar los equipos de tu custodia.'),
+      ).toBeInTheDocument();
       // La orden sigue operativa: el resumen y el historial siguen ahí.
       expect(screen.getAllByText('OT-404').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Equipos y materiales')).toBeInTheDocument();
-      expect(within(sheet()).getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
+      expect(within(sheet()).queryByRole('radio')).toBeNull();
+      expect(within(sheet()).getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
 
       await user.click(within(sheet()).getByRole('button', { name: 'Reintentar' }));
 
-      expect(await within(sheet()).findByText('ONT-REINTENTO')).toBeInTheDocument();
+      expect(await within(sheet()).findByText('Serial ONT-REINTENTO')).toBeInTheDocument();
       expect(within(sheet()).queryByText('Custodia no disponible')).toBeNull();
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(2);
       // El reintento no vuelve a leer la orden entera.
@@ -429,7 +457,9 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       openOrder('eo-late', 'OT-LATE');
       await user.click(await materialButton());
       await waitFor(() => expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1));
-      expect(within(sheet()).getByLabelText('Cargando custodia del ejecutor')).toBeInTheDocument();
+      expect(
+        await within(sheet()).findByText('Cargando equipos de tu custodia…'),
+      ).toBeInTheDocument();
 
       const veil = document.body.querySelector<HTMLElement>('[data-portal-veil]');
       expect(veil).not.toBeNull();
@@ -494,7 +524,7 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
           ),
         );
       await user.click(await materialButton());
-      expect(await within(sheet()).findByText('ONT-DE-B')).toBeInTheDocument();
+      expect(await within(sheet()).findByText('Serial ONT-DE-B')).toBeInTheDocument();
       expect(inventoryApi.getExecutorCustody).toHaveBeenLastCalledWith('tech-bbb', {
         page: 1,
         limit: 100,
@@ -505,7 +535,7 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
       const user = userEvent.setup();
       openOrder('eo-offline', 'OT-OFFLINE');
       await user.click(await materialButton());
-      await within(sheet()).findByText('ONT-2026-001');
+      await within(sheet()).findByText('Serial ONT-2026-001');
 
       setOnline(false);
       act(() => {
@@ -517,14 +547,14 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
           'Sin conexión; vuelve a intentar cuando recuperes la red.',
         ),
       ).toBeInTheDocument();
-      expect(within(sheet()).getByLabelText('Cantidad')).toBeDisabled();
-      expect(within(sheet()).getByRole('button', { name: 'Registrar material' })).toBeDisabled();
+      expect(within(sheet()).getByRole('radio', { name: /ONT-2026-001/ })).toBeDisabled();
+      expect(within(sheet()).getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
 
       setOnline(true);
       act(() => {
         window.dispatchEvent(new Event('online'));
       });
-      expect(within(sheet()).getByLabelText('Cantidad')).toBeEnabled();
+      expect(within(sheet()).getByRole('radio', { name: /ONT-2026-001/ })).toBeEnabled();
     });
   });
 
@@ -536,21 +566,16 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
         .mockResolvedValue({ id: 'iu-nuevo' } as never);
       openOrder('eo-registro', 'OT-REGISTRO', { version: 7 });
       await user.click(await materialButton());
-      await within(sheet()).findByText('ONT-2026-001');
-
-      await user.click(within(sheet()).getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'SKU-item-ont · Equipo item-ont' }));
-      await user.type(within(sheet()).getByLabelText('Serial o lote'), 'ONT-2026-001');
-      await user.click(within(sheet()).getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Instalar' }));
-      await user.click(within(sheet()).getByRole('button', { name: 'Registrar material' }));
+      await within(sheet()).findByText('Serial ONT-2026-001');
+      await user.click(within(sheet()).getByRole('radio', { name: /ONT-2026-001/ }));
+      await user.click(within(sheet()).getByRole('button', { name: 'Registrar equipo' }));
 
       await waitFor(() =>
         expect(tasksApi.executionOrders.registerItemUsage).toHaveBeenCalledTimes(1),
       );
       expect(tasksApi.executionOrders.registerItemUsage).toHaveBeenCalledWith(
         'eo-registro',
-        {
+        expect.objectContaining({
           itemId: 'item-ont',
           requirementKey: 'installed-equipment',
           technicianCustodyId: 'tech-001',
@@ -558,13 +583,17 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
           serialNumber: 'ONT-2026-001',
           action: 'INSTALL',
           finalDisposition: 'INSTALLED_AT_CUSTOMER',
-        },
+        }),
         7,
+        undefined,
+        expect.any(String),
       );
       // Tras registrar, con MATERIAL todavía abierto, la disponibilidad se vuelve a leer.
       await waitFor(() => expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(2));
-      expect(await within(sheet()).findByText('ONT-2026-001')).toBeInTheDocument();
-      expect(within(sheet()).getByLabelText('Serial o lote')).toHaveValue('');
+      expect(
+        await within(sheet()).findByRole('radio', { name: /ONT-2026-001/ }),
+      ).toBeInTheDocument();
+      expect(within(sheet()).getByRole('radio', { name: /ONT-2026-001/ })).toBeChecked();
     });
 
     it('un fallo al registrar conserva la captura y no recarga la custodia', async () => {
@@ -574,18 +603,17 @@ describe('Consola de OT — consumo y custodia bajo demanda', () => {
         .mockRejectedValue(new ApiError(409, 'VERSION_CONFLICT', 'Conflicto de versión'));
       openOrder('eo-falla', 'OT-FALLA');
       await user.click(await materialButton());
-      await within(sheet()).findByText('ONT-2026-001');
-      await user.click(within(sheet()).getByRole('combobox', { name: 'Ítem' }));
-      await user.click(screen.getByRole('option', { name: 'SKU-item-ont · Equipo item-ont' }));
-      await user.type(within(sheet()).getByLabelText('Serial o lote'), 'ONT-2026-001');
-      await user.click(within(sheet()).getByRole('combobox', { name: 'Acción' }));
-      await user.click(screen.getByRole('option', { name: 'Instalar' }));
-      await user.click(within(sheet()).getByRole('button', { name: 'Registrar material' }));
+      await within(sheet()).findByText('Serial ONT-2026-001');
+      await user.click(within(sheet()).getByRole('radio', { name: /ONT-2026-001/ }));
+      await user.click(within(sheet()).getByRole('button', { name: 'Registrar equipo' }));
 
       await waitFor(() =>
         expect(tasksApi.executionOrders.registerItemUsage).toHaveBeenCalledTimes(1),
       );
-      expect(within(sheet()).getByLabelText('Serial o lote')).toHaveValue('ONT-2026-001');
+      expect(within(sheet()).getByRole('radio', { name: /ONT-2026-001/ })).toBeChecked();
+      expect(
+        within(sheet()).getByRole('button', { name: 'Reintentar registro' }),
+      ).toBeInTheDocument();
       expect(inventoryApi.getExecutorCustody).toHaveBeenCalledTimes(1);
     });
   });

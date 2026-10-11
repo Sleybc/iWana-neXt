@@ -47,6 +47,10 @@ export interface ExecutionOrderRequirementIndexProps {
   onSelectAction: (action: RequirementActionDescriptor | null) => void;
 }
 
+function isSignatureRequirement(requirement: ExecutionOrderTemplateRequirement): boolean {
+  return requirement.kind === 'EVIDENCE' && requirement.evidenceType === 'SIGNATURE';
+}
+
 export function ExecutionOrderRequirementIndex({
   order,
   context,
@@ -54,7 +58,12 @@ export function ExecutionOrderRequirementIndex({
   onSelectAction,
 }: ExecutionOrderRequirementIndexProps) {
   const { template = null, isSubmitting, offline, error, successMessage = null } = context;
-  const requirements = template?.requirements ?? [];
+  const templateRequirements = template?.requirements ?? [];
+  // La firma cierra la secuencia de captura; el resto conserva el orden del snapshot.
+  const requirements = [
+    ...templateRequirements.filter((requirement) => !isSignatureRequirement(requirement)),
+    ...templateRequirements.filter(isSignatureRequirement),
+  ];
   const moment = getExecutionOrderMoment(order.status);
   const items = getRequirementChecklistItems(
     requirements,
