@@ -29,8 +29,6 @@ import {
  */
 @Entity({ name: 'subscribers' })
 @Index('idx_subscribers_tenant_status', ['tenantId', 'status'])
-@Index('idx_subscribers_tenant_doc', ['tenantId', 'documentNumberEncrypted'])
-@Index('idx_subscribers_tenant_email', ['tenantId', 'emailEncrypted'])
 @Index('idx_subscribers_tenant_stratum', ['tenantId', 'stratum'])
 @Index('idx_subscribers_tenant_segment', ['tenantId', 'customerSegment'])
 @Index('idx_subscribers_tenant_expediente', ['tenantId', 'expedienteId'])
@@ -120,6 +118,12 @@ export class Subscriber {
 
   @Column({ type: 'varchar', length: 50, name: 'whatsapp', nullable: true })
   whatsapp: string | null;
+
+  @Column({ type: 'varchar', length: 500, name: 'whatsapp_encrypted', nullable: true })
+  whatsappEncrypted: string | null;
+
+  @Column({ type: 'varchar', length: 64, name: 'whatsapp_hmac', nullable: true })
+  whatsappHmac: string | null;
 
   // ── Fiscal (calculado automáticamente por VatTreatmentService) ──
   @Column({ type: 'varchar', length: 20, name: 'vat_treatment' })

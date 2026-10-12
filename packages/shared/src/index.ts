@@ -67,6 +67,7 @@ export * from './operations/task-type-to-wfm-work-type';
 
 // Nombres de persona e iniciales canónicas (contrato Avatar v1.0 §4)
 export * from './utils/person-name';
+export * from './utils/normalize-document-number';
 
 // Schemas Zod (frontend)
 export * from './schemas/auth.schema';

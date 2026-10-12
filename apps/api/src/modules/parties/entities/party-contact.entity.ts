@@ -38,6 +38,12 @@ export class PartyContact {
   @Column({ name: 'value', type: 'varchar', length: 255 })
   value: string;
 
+  @Column({ name: 'value_encrypted', type: 'varchar', length: 500, nullable: true })
+  valueEncrypted: string | null;
+
+  @Column({ name: 'value_hmac', type: 'varchar', length: 64, nullable: true })
+  valueHmac: string | null;
+
   @Column({ name: 'is_primary', type: 'boolean', default: false })
   isPrimary: boolean;
 

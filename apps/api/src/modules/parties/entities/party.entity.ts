@@ -19,9 +19,9 @@ import { PartyType, DocumentTypeParty, PartyStatus } from '@iwana/shared';
  * Ref: HLD-MOD08 §4, migración 022
  */
 @Entity('party')
-@Index('idx_party_document_active', ['documentType', 'documentNumber'], {
+@Index('uq_party_document_hmac_active', ['documentType', 'documentNumberHmac'], {
   unique: true,
-  where: `"deleted_at" IS NULL AND "status" != 'MERGED'`,
+  where: `"deleted_at" IS NULL AND "status" <> 'MERGED' AND "document_number_hmac" IS NOT NULL`,
 })
 export class Party {
   @PrimaryGeneratedColumn('uuid')
@@ -36,6 +36,9 @@ export class Party {
   // Longitud 500: acomoda valores cifrados AES-256-GCM (migración 024 — ADR-030)
   @Column({ name: 'document_number', type: 'varchar', length: 500 })
   documentNumber: string;
+
+  @Column({ name: 'document_number_hmac', type: 'varchar', length: 64, nullable: true })
+  documentNumberHmac: string | null;
 
   @Column({ name: 'verification_digit', type: 'varchar', length: 2, nullable: true })
   verificationDigit: string | null;
