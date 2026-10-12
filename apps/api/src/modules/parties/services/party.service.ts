@@ -6,9 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { DataSource, IsNull, Not } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { PartyStatus, PartyRoleStatus } from '@iwana/shared';
+import { createPartyPiiCrypto } from '../party-pii.util';
 import { Party } from '../entities/party.entity';
 import { PartyRole } from '../entities/party-role.entity';
 import { CreatePartyDto, CreatePartySchema } from '../dto/create-party.dto';
@@ -40,8 +42,14 @@ const SORTABLE_FIELDS: string[] = [];
 @Injectable()
 export class PartyService {
   private readonly logger = new Logger(PartyService.name);
+  private readonly pii: ReturnType<typeof createPartyPiiCrypto>;
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    configService: ConfigService,
+  ) {
+    this.pii = createPartyPiiCrypto(configService);
+  }
 
   async create(dto: CreatePartyDto): Promise<Party> {
     // Validación Zod en boundary
@@ -49,12 +57,21 @@ export class PartyService {
     const { schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      // Verificar unicidad (documentType, documentNumber) activo
+      const documentNumberHmac = this.pii.documentHmac(
+        validated.documentType,
+        validated.documentNumber,
+      );
+      await qr.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `party:${validated.documentType}:${documentNumberHmac}`,
+      ]);
+
+      // Verificar unicidad por HMAC, compatible con uq_party_document_hmac_active.
       const existing = await qr.manager.findOne(Party, {
         where: {
           documentType: validated.documentType,
-          documentNumber: validated.documentNumber,
+          documentNumberHmac,
           deletedAt: IsNull(),
+          status: Not(PartyStatus.MERGED),
         },
       });
 
@@ -71,7 +88,8 @@ export class PartyService {
       const party = qr.manager.create(Party, {
         partyType: validated.partyType,
         documentType: validated.documentType,
-        documentNumber: validated.documentNumber,
+        documentNumber: this.pii.encrypt(validated.documentNumber),
+        documentNumberHmac,
         verificationDigit: validated.verificationDigit ?? null,
         displayName: validated.displayName,
         legalName: validated.legalName ?? null,
@@ -85,8 +103,26 @@ export class PartyService {
 
       await qr.manager.save(Party, party);
       this.logger.log(`[PartyService] Party creado id=${party.id} tipo=${party.partyType}`);
-      return party;
+      return this.decryptParty(party);
     });
+  }
+
+  async findByDocument(documentType: CreatePartyDto['documentType'], documentNumber: string) {
+    const { schemaName } = TenantContext.getOrThrow();
+    const documentNumberHmac = this.pii.documentHmac(documentType, documentNumber);
+
+    const party = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.findOne(Party, {
+        where: {
+          documentType,
+          documentNumberHmac,
+          deletedAt: IsNull(),
+          status: Not(PartyStatus.MERGED),
+        },
+      }),
+    );
+
+    return party ? this.decryptParty(party) : null;
   }
 
   async findAll(dto: ListPartiesDto): Promise<PaginatedParties> {
@@ -119,7 +155,7 @@ export class PartyService {
 
       const [data, total] = await qb.skip(skip).take(limit).getManyAndCount();
       return {
-        data,
+        data: data.map((party) => this.decryptParty(party)),
         total,
         page,
         limit,
@@ -149,7 +185,11 @@ export class PartyService {
         throw new NotFoundException(`Party ${id} no encontrado`);
       }
 
-      return party;
+      party.contacts = (party.contacts ?? []).map((contact) => ({
+        ...contact,
+        value: contact.valueEncrypted ? this.pii.decrypt(contact.valueEncrypted) : '',
+      }));
+      return this.decryptParty(party);
     });
   }
 
@@ -178,6 +218,27 @@ export class PartyService {
         );
       }
 
+      const changesDocument = dto.documentType !== undefined || dto.documentNumber !== undefined;
+      const targetDocumentType = dto.documentType ?? party.documentType;
+      const targetDocumentNumber = dto.documentNumber ?? this.pii.decrypt(party.documentNumber);
+      const documentNumberHmac = this.pii.documentHmac(targetDocumentType, targetDocumentNumber);
+      if (changesDocument) {
+        await qr.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `party:${targetDocumentType}:${documentNumberHmac}`,
+        ]);
+        const duplicate = await qr.manager.findOne(Party, {
+          where: {
+            documentType: targetDocumentType,
+            documentNumberHmac,
+            deletedAt: IsNull(),
+            status: Not(PartyStatus.MERGED),
+          },
+        });
+        if (duplicate && duplicate.id !== id) {
+          throw new ConflictException('Ya existe un party activo con ese documento.');
+        }
+      }
+
       Object.assign(party, {
         ...(dto.displayName && { displayName: dto.displayName }),
         ...(dto.legalName !== undefined && { legalName: dto.legalName }),
@@ -189,13 +250,19 @@ export class PartyService {
         }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.verificationDigit !== undefined && { verificationDigit: dto.verificationDigit }),
-        ...(hasActiveRoles === 0 && dto.documentType && { documentType: dto.documentType }),
-        ...(hasActiveRoles === 0 && dto.documentNumber && { documentNumber: dto.documentNumber }),
+        ...(hasActiveRoles === 0 &&
+          changesDocument && {
+            documentType: targetDocumentType,
+            documentNumberHmac,
+            ...(dto.documentNumber !== undefined && {
+              documentNumber: this.pii.encrypt(targetDocumentNumber),
+            }),
+          }),
       });
 
       await qr.manager.save(Party, party);
       this.logger.log(`[PartyService] Party actualizado id=${id}`);
-      return party;
+      return this.decryptParty(party);
     });
   }
 
@@ -213,6 +280,12 @@ export class PartyService {
       party.deletedAt = new Date();
       await qr.manager.save(Party, party);
       this.logger.log(`[PartyService] Party soft-deleted id=${id}`);
+    });
+  }
+
+  private decryptParty(party: Party): Party {
+    return Object.assign(new Party(), party, {
+      documentNumber: this.pii.decrypt(party.documentNumber),
     });
   }
 }

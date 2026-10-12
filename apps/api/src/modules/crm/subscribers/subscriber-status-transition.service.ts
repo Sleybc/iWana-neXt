@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { AuditAction, SubscriberStatus } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
@@ -187,6 +187,90 @@ export class SubscriberStatusTransitionService {
     );
 
     return { fromStatus, toStatus: targetStatus, reason };
+  }
+
+  /**
+   * Única excepción a CANCELLED terminal: restaurar un prospecto cancelado
+   * por el descarte de su mismo expediente. No se expone como transición general.
+   */
+  async reactivateFromExpediente(
+    subscriberId: string,
+    expedienteId: string,
+    actorId: string,
+  ): Promise<TransitionResult> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const subscriber = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.findOne(Subscriber, { where: { id: subscriberId } }),
+    );
+
+    if (!subscriber || subscriber.expedienteId !== expedienteId) {
+      throw new BadRequestException('El suscriptor no pertenece al expediente reactivado.');
+    }
+    if (subscriber.activatedAt !== null && subscriber.activatedAt !== undefined) {
+      throw new BadRequestException(
+        'Un suscriptor previamente activado no puede restaurarse desde su expediente.',
+      );
+    }
+    if (subscriber.status === SubscriberStatus.PROSPECT) {
+      return {
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+      };
+    }
+    if (subscriber.status !== SubscriberStatus.CANCELLED) {
+      throw new BadRequestException(
+        'Solo un suscriptor cancelado puede restaurarse como prospecto.',
+      );
+    }
+
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.update(
+        Subscriber,
+        {
+          id: subscriberId,
+          expedienteId,
+          status: SubscriberStatus.CANCELLED,
+          activatedAt: IsNull(),
+        },
+        { status: SubscriberStatus.PROSPECT },
+      ),
+    );
+    if (result.affected !== 1) {
+      const current = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+        qr.manager.findOne(Subscriber, { where: { id: subscriberId, expedienteId } }),
+      );
+      if (current?.status === SubscriberStatus.PROSPECT) {
+        return {
+          fromStatus: SubscriberStatus.PROSPECT,
+          toStatus: SubscriberStatus.PROSPECT,
+          reason: 'EXPEDIENTE_REACTIVATED',
+        };
+      }
+      throw new BadRequestException('No se pudo restaurar el suscriptor del expediente.');
+    }
+
+    await this.auditService.log({
+      action: AuditAction.UPDATE,
+      entityType: 'Subscriber',
+      entityId: subscriberId,
+      userId: actorId,
+      newValue: {
+        fromStatus: SubscriberStatus.CANCELLED,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+        expedienteId,
+      },
+    });
+    this.logger.log(
+      `Suscriptor ${subscriberId}: CANCELLED → PROSPECT por reactivación del expediente`,
+    );
+
+    return {
+      fromStatus: SubscriberStatus.CANCELLED,
+      toStatus: SubscriberStatus.PROSPECT,
+      reason: 'EXPEDIENTE_REACTIVATED',
+    };
   }
 
   /**

@@ -1,9 +1,13 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   ForbiddenException,
   Get,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -11,13 +15,26 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiExcludeEndpoint,
+  ApiExtraModels,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   AccessPermissionKey,
+  SearchSubscribersInput,
+  SearchSubscribersSchema,
   PlatformRole,
   PersonType,
   CustomerSegment,
+  DocumentType,
   SubscriberStatus,
+  VatTreatment,
   UserRole,
 } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -41,6 +58,7 @@ import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '@iwana/shared';
+import { projectSubscriberForList } from './subscriber-projection';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -99,27 +117,24 @@ export class SubscribersController {
    * Roles: ADMIN, NOC, SALES, SUPPORT, ACCOUNTANT
    */
   @Get()
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.NOC,
-    UserRole.SALES,
-    UserRole.SUPPORT,
-    UserRole.ACCOUNTANT,
-    UserRole.TECHNICIAN,
-    UserRole.AUDITOR,
-  )
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Listar suscriptores con filtros' })
   @ApiExtraModels(CrmListPaginationDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
+  @ApiQuery({ name: 'status', required: false, enum: SubscriberStatus })
+  @ApiQuery({ name: 'personType', required: false, enum: PersonType })
+  @ApiQuery({ name: 'customerSegment', required: false, enum: CustomerSegment })
+  @ApiQuery({ name: 'stratum', required: false, type: Number })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['asc', 'desc'] })
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: SubscriberStatus,
     @Query('personType') personType?: PersonType,
     @Query('customerSegment') customerSegment?: CustomerSegment,
     @Query('stratum') stratum?: number,
-    @Query('search') search?: string,
     @Query('page', CrmListPagePipe) page?: number,
     @Query('limit', CrmListLimitPipe) limit?: number,
     @Query('sortBy') sortBy?: string,
@@ -130,7 +145,6 @@ export class SubscribersController {
       personType: personType ?? undefined,
       customerSegment: customerSegment ?? undefined,
       stratum: stratum ? Number(stratum) : undefined,
-      search: search ?? undefined,
       page,
       limit,
       sortBy: sortBy ?? undefined,
@@ -141,76 +155,182 @@ export class SubscribersController {
 
     // ADR-067 §5: registro de acceso masivo a PII — se registran filtros y
     // dimensiones, nunca los datos leídos.
-    void this.auditService.log({
-      action: AuditAction.LIST_ACCESS,
-      entityType: 'SubscriberList',
-      entityId: 'N/A',
-      userId: user.sub,
-      newValue: {
-        role: user.role,
-        filters: {
-          status: filters.status ?? null,
-          personType: filters.personType ?? null,
-          customerSegment: filters.customerSegment ?? null,
-          stratum: filters.stratum ?? null,
-          search: filters.search ? '(aplicado)' : null,
-          sortBy: filters.sortBy ?? null,
-          sortDir: filters.sortDir ?? null,
-        },
-        pagination: {
-          page: result.meta.page,
-          limit: result.meta.limit,
-          totalServed: result.data.length,
-          totalAvailable: result.meta.total,
-        },
-      },
-    });
+    await this.logListAccess(user, filters, result.meta, result.data.length);
 
     return {
-      data: result.data.map((s) => this.sanitizeResponse(s)),
+      data: result.data.map((subscriber) => projectSubscriberForList(subscriber, user.role)),
       total: result.total,
       meta: result.meta,
     };
   }
 
   /**
-   * GET /crm/subscribers/search
-   * Búsqueda determinista por documento, NIT, email o teléfono.
-   * Roles: ADMIN, NOC, SALES, SUPPORT, ACCOUNTANT
-   *
-   * E-4 dual-emit / gap documentado:
-   * - Este endpoint NO es typeahead `q` (lookup exacto por hash de PII).
-   * - El typeahead de suscriptores para pickers usa hoy `GET /crm/subscribers?search=`
-   *   (listado) o se añadirá `?q=` en una ola posterior sin romper este contrato.
-   * - FE E-4 (TaskCoreFields) debe mapear listado→`{ id, label, sublabel, total }`
-   *   hasta que exista un `/search` typeahead dedicado.
+   * Ruta retirada explícitamente para que `/search` no caiga en el ParseUUIDPipe de `:id`.
    */
   @Get('search')
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.NOC,
-    UserRole.SALES,
-    UserRole.SUPPORT,
-    UserRole.ACCOUNTANT,
-    UserRole.TECHNICIAN,
-    UserRole.AUDITOR,
-  )
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
-  @ApiOperation({ summary: 'Buscar suscriptor por documento, NIT, email o teléfono' })
-  async search(
-    @Query('documentNumber') documentNumber?: string,
-    @Query('nit') nit?: string,
-    @Query('email') email?: string,
-    @Query('phone') phone?: string,
-  ) {
-    const results = await this.subscribersService.search({
-      documentNumber: documentNumber ?? undefined,
-      nit: nit ?? undefined,
-      email: email ?? undefined,
-      phone: phone ?? undefined,
-    });
+  @HttpCode(HttpStatus.NOT_FOUND)
+  @ApiExcludeEndpoint()
+  async retiredGetSearch(): Promise<never> {
+    throw new NotFoundException();
+  }
 
-    return { data: results.map((s) => this.sanitizeResponse(s)) };
+  /**
+   * POST /crm/subscribers/search — búsqueda libre del listado o lookup exacto por PII.
+   */
+  @Post('search')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Buscar suscriptores para listado y lookup exacto' })
+  @ApiBody({
+    schema: {
+      oneOf: [
+        {
+          type: 'object',
+          required: ['search'],
+          properties: { search: { type: 'string', minLength: 1, maxLength: 200 } },
+          additionalProperties: false,
+        },
+        {
+          type: 'object',
+          minProperties: 1,
+          properties: {
+            documentNumber: { type: 'string' },
+            nit: { type: 'string' },
+            email: { type: 'string', format: 'email' },
+            phone: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      ],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      type: 'object',
+      required: ['data'],
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            title: 'SubscriberListItem',
+            required: [
+              'id',
+              'status',
+              'personType',
+              'customerSegment',
+              'stratum',
+              'vatTreatment',
+              'documentType',
+              'firstName',
+              'lastName',
+              'businessName',
+              'commercialName',
+              'createdAt',
+            ],
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              status: { type: 'string', enum: Object.values(SubscriberStatus) },
+              personType: { type: 'string', enum: Object.values(PersonType) },
+              customerSegment: { type: 'string', enum: Object.values(CustomerSegment) },
+              stratum: { type: 'number', nullable: true },
+              vatTreatment: { type: 'string', enum: Object.values(VatTreatment) },
+              documentType: {
+                type: 'string',
+                enum: Object.values(DocumentType),
+                nullable: true,
+              },
+              firstName: { type: 'string', nullable: true },
+              lastName: { type: 'string', nullable: true },
+              businessName: { type: 'string', nullable: true },
+              commercialName: { type: 'string', nullable: true },
+              createdAt: { type: 'string', format: 'date-time' },
+              documentNumber: { type: 'string' },
+              nit: { type: 'string' },
+              nitVerificationDigit: { type: 'string' },
+              phone: { type: 'string' },
+              altContactPhone: { type: 'string' },
+              whatsapp: { type: 'string' },
+              email: { type: 'string', format: 'email' },
+              address: { type: 'string' },
+              neighborhood: { type: 'string' },
+              city: { type: 'string' },
+              department: { type: 'string' },
+              latitude: { type: 'number' },
+              longitude: { type: 'number' },
+            },
+          },
+        },
+        total: { type: 'number' },
+        meta: { type: 'object' },
+      },
+    },
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
+  @ApiQuery({ name: 'status', required: false, enum: SubscriberStatus })
+  @ApiQuery({ name: 'personType', required: false, enum: PersonType })
+  @ApiQuery({ name: 'customerSegment', required: false, enum: CustomerSegment })
+  @ApiQuery({ name: 'stratum', required: false, type: Number })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortDir', required: false, enum: ['asc', 'desc'] })
+  async search(
+    @Body(new ZodBodyValidationPipe(SearchSubscribersSchema)) body: SearchSubscribersInput,
+    @CurrentUser() user: JwtPayload,
+    @Query('status') status?: SubscriberStatus,
+    @Query('personType') personType?: PersonType,
+    @Query('customerSegment') customerSegment?: CustomerSegment,
+    @Query('stratum') stratum?: number,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: 'asc' | 'desc',
+  ) {
+    const filters = {
+      status: status ?? undefined,
+      personType: personType ?? undefined,
+      customerSegment: customerSegment ?? undefined,
+      stratum: stratum ? Number(stratum) : undefined,
+      page,
+      limit,
+      sortBy: sortBy ?? undefined,
+      sortDir: sortDir ?? undefined,
+    };
+
+    if (body.search !== undefined) {
+      const result = await this.subscribersService.findAll({ ...filters, search: body.search });
+      await this.logListAccess(
+        user,
+        { ...filters, searchApplied: true, exactCriteriaApplied: false },
+        result.meta,
+        result.data.length,
+      );
+      return {
+        data: result.data.map((subscriber) => projectSubscriberForList(subscriber, user.role)),
+        total: result.total,
+        meta: result.meta,
+      };
+    }
+
+    if (Object.values(filters).some((value) => value !== undefined)) {
+      throw new BadRequestException(
+        'Los filtros y la paginación solo se admiten con búsqueda libre de listado.',
+      );
+    }
+
+    const results = await this.subscribersService.search(body);
+    await this.logListAccess(
+      user,
+      { ...filters, searchApplied: false, exactCriteriaApplied: true },
+      null,
+      results.length,
+    );
+
+    return { data: results.map((subscriber) => projectSubscriberForList(subscriber, user.role)) };
   }
 
   /**
@@ -229,8 +349,9 @@ export class SubscribersController {
   )
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Obtener suscriptor por ID' })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const subscriber = await this.subscribersService.findById(id);
+    await this.auditRecordAccess(id, user);
     return { data: this.sanitizeResponse(subscriber) };
   }
 
@@ -328,9 +449,51 @@ export class SubscribersController {
   )
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Ficha 360° del suscriptor' })
-  async get360View(@Param('id', ParseUUIDPipe) id: string) {
+  async get360View(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const view360 = await this.subscribersService.get360View(id);
+    await this.auditRecordAccess(id, user);
     return { data: { ...view360, subscriber: this.sanitizeResponse(view360.subscriber) } };
+  }
+
+  private async logListAccess(
+    user: JwtPayload,
+    filters: Record<string, unknown>,
+    meta: { page?: number | null; limit?: number | null; total?: number | null } | null,
+    totalServed: number,
+  ): Promise<void> {
+    const { searchApplied, exactCriteriaApplied, ...nonPersonalFilters } = filters;
+    await this.auditService.log({
+      action: AuditAction.LIST_ACCESS,
+      entityType: 'SubscriberList',
+      entityId: 'N/A',
+      userId: user.sub,
+      newValue: {
+        role: user.role,
+        filters: {
+          ...nonPersonalFilters,
+          search: searchApplied ? '(aplicado)' : null,
+          exactCriteria: exactCriteriaApplied ? '(aplicado)' : null,
+        },
+        pagination: meta
+          ? {
+              page: meta.page ?? null,
+              limit: meta.limit ?? null,
+              totalServed,
+              totalAvailable: meta.total ?? null,
+            }
+          : { totalServed },
+      },
+    });
+  }
+
+  private async auditRecordAccess(id: string, user: JwtPayload): Promise<void> {
+    await this.auditService.log({
+      action: AuditAction.RECORD_ACCESS,
+      entityType: 'Subscriber',
+      entityId: id,
+      userId: user.sub,
+      newValue: { role: user.role },
+    });
   }
 
   /**

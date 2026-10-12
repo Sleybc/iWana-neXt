@@ -38,6 +38,32 @@ describe('Subscriber pipeline listeners', () => {
     );
   });
 
+  it('no publica el evento de activación cuando no hay subscriber que activar', async () => {
+    const subscribersService = {
+      activateFromExpediente: jest.fn().mockResolvedValue(null),
+    };
+    const eventEmitter = { emit: jest.fn() };
+    const listener = new SubscriberActivationListener(
+      subscribersService as never,
+      eventEmitter as never,
+    );
+
+    await expect(
+      listener.handle({
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_iwana',
+        expedienteId: 'exp-missing',
+        actorUserId: 'actor-1',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(subscribersService.activateFromExpediente).toHaveBeenCalledWith(
+      'exp-missing',
+      'actor-1',
+    );
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+  });
+
   it('cancela prospecto desde expediente descartado usando el contrato actual del evento', async () => {
     const subscribersService = {
       cancelProspectFromExpediente: jest.fn().mockResolvedValue({ id: 'sub-2' }),
@@ -57,6 +83,29 @@ describe('Subscriber pipeline listeners', () => {
       'exp-2',
       'Descartado por negocio',
       'actor-2',
+    );
+  });
+
+  it('omite el log de cancelación cuando el expediente no tenía prospecto', async () => {
+    const subscribersService = {
+      cancelProspectFromExpediente: jest.fn().mockResolvedValue(null),
+    };
+    const listener = new SubscriberCancellationListener(subscribersService as never);
+
+    await expect(
+      listener.handle({
+        tenantId: 'tenant-1',
+        schemaName: 'tenant_iwana',
+        expedienteId: 'exp-no-prospect',
+        actorUserId: 'actor-1',
+        reason: null,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(subscribersService.cancelProspectFromExpediente).toHaveBeenCalledWith(
+      'exp-no-prospect',
+      null,
+      'actor-1',
     );
   });
 });

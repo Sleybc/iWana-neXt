@@ -1,8 +1,17 @@
 import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
+import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  CustomerSegment,
+  DocumentType,
+  PersonType,
+  SubscriberStatus,
+  UserRole,
+  VatTreatment,
+} from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -12,6 +21,7 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
 import { AuditService } from '../../audit/audit.service';
+import { Subscriber } from './entities/subscriber.entity';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -79,6 +89,26 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
         } as JwtPayload;
         return true;
       }
+      if (h === 'Bearer noc-token') {
+        req.user = {
+          sub: 'noc-001',
+          role: UserRole.NOC,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
+      if (h === 'Bearer accountant-token') {
+        req.user = {
+          sub: 'accountant-001',
+          role: UserRole.ACCOUNTANT,
+          tenantId: 'tenant-001',
+          schemaName: 'tenant_001',
+          type: 'tenant',
+        } as JwtPayload;
+        return true;
+      }
       throw new UnauthorizedException('Token inválido');
     }
   },
@@ -107,6 +137,56 @@ jest.mock('../../auth/guards/roles.guard', () => ({
 
 describe('SubscribersController Fase 2 — doble guard', () => {
   let app: INestApplication;
+  const listSubscriber = {
+    id: 'sub-001',
+    tenantId: 'tenant-001',
+    partyId: 'party-001',
+    userId: null,
+    personType: PersonType.NATURAL,
+    customerSegment: CustomerSegment.RESIDENTIAL,
+    vatTreatment: VatTreatment.STANDARD,
+    documentType: DocumentType.CC,
+    documentNumber: '12345678',
+    documentNumberEncrypted: 'cipher-doc',
+    documentNumberHash: 'hash-doc',
+    firstName: 'Ana',
+    lastName: 'Prueba',
+    stratum: 3,
+    birthDate: null,
+    nit: '900123456-7',
+    nitVerificationDigit: '7',
+    businessName: null,
+    commercialName: null,
+    legalRepresentativeId: null,
+    email: 'ana@example.invalid',
+    emailEncrypted: 'cipher-email',
+    emailHash: 'hash-email',
+    phone: '3001234567',
+    phoneEncrypted: 'cipher-phone',
+    phoneHash: 'hash-phone',
+    altContactPhone: '3009876543',
+    altContactPhoneEncrypted: 'cipher-alt-phone',
+    whatsapp: '3001112233',
+    whatsappEncrypted: null,
+    address: 'Dirección privada 1',
+    neighborhood: 'Barrio privado',
+    city: 'Bogotá',
+    department: 'Cundinamarca',
+    postalCode: null,
+    latitude: 4.6,
+    longitude: -74.1,
+    coverageNodeId: null,
+    expedienteId: null,
+    convertedAt: null,
+    activatedAt: null,
+    manualOverrideReason: 'razón privada',
+    status: SubscriberStatus.ACTIVE,
+    externalId: 'external-private',
+    createdBy: 'user-001',
+    createdAt: new Date('2026-10-12T12:00:00.000Z'),
+    updatedAt: new Date('2026-10-12T12:00:00.000Z'),
+    deletedAt: null,
+  } as unknown as Subscriber;
   const subscribersServiceMock = {
     findAll: jest
       .fn()
@@ -154,14 +234,14 @@ describe('SubscribersController Fase 2 — doble guard', () => {
     });
   });
 
-  it('GET /crm/subscribers — 200 para TECHNICIAN con permiso crm.subscribers.read', async () => {
+  it('GET /crm/subscribers — 403 para TECHNICIAN aunque tenga permiso crm.subscribers.read', async () => {
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
       AccessPermissionKey.CRM_SUBSCRIBERS_READ,
     ]);
     await request(app.getHttpServer())
       .get('/api/v1/crm/subscribers')
       .set('Authorization', 'Bearer tech-token')
-      .expect(200);
+      .expect(403);
   });
 
   it('GET /crm/subscribers — 403 para TECHNICIAN sin permiso aunque rol pase', async () => {
@@ -180,14 +260,262 @@ describe('SubscribersController Fase 2 — doble guard', () => {
       .expect(403);
   });
 
-  it('GET /crm/subscribers — 200 para AUDITOR con permiso', async () => {
+  it('GET /crm/subscribers — 403 para AUDITOR aunque tenga permiso', async () => {
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
       AccessPermissionKey.CRM_SUBSCRIBERS_READ,
     ]);
     await request(app.getHttpServer())
       .get('/api/v1/crm/subscribers')
       .set('Authorization', 'Bearer auditor-token')
+      .expect(403);
+  });
+
+  it.each([
+    { role: 'TECHNICIAN', token: 'tech-token' },
+    { role: 'AUDITOR', token: 'auditor-token' },
+  ])('POST /crm/subscribers/search — 403 para $role aunque tenga permiso', async ({ token }) => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers/search')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ documentNumber: '12345678' })
+      .expect(403);
+  });
+
+  it('GET /crm/subscribers/search — responde 404 tras retirar el GET legacy', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/crm/subscribers/search?email=persona%40ejemplo.invalid')
+      .set('Authorization', 'Bearer admin-token')
+      .expect(404);
+    expect(subscribersServiceMock.search).not.toHaveBeenCalled();
+  });
+
+  it('POST /crm/subscribers/search — busca libremente en body y responde proyección paginada', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    subscribersServiceMock.findAll.mockResolvedValue({
+      data: [listSubscriber],
+      total: 1,
+      meta: { page: 1, limit: 20, total: 1 },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers/search?status=ACTIVE&page=1&limit=20')
+      .set('Authorization', 'Bearer admin-token')
+      .send({ search: 'Ana Prueba' })
       .expect(200);
+
+    expect(subscribersServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: SubscriberStatus.ACTIVE,
+        page: 1,
+        limit: 20,
+        search: 'Ana Prueba',
+      }),
+    );
+    expect(response.body).toMatchObject({
+      total: 1,
+      data: [
+        {
+          id: 'sub-001',
+          firstName: 'Ana',
+          email: 'ana@example.invalid',
+          phone: '3001234567',
+          address: 'Dirección privada 1',
+        },
+      ],
+    });
+    expect(response.body.data[0]).not.toHaveProperty('tenantId');
+    expect(response.body.data[0]).not.toHaveProperty('birthDate');
+    const auditPayload = JSON.stringify(auditMock.log.mock.calls.at(-1)?.[0]);
+    expect(auditPayload).toContain('(aplicado)');
+    expect(auditPayload).not.toContain('Ana Prueba');
+  });
+
+  it('POST /crm/subscribers/search — criterios exactos llegan solo en el body', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    subscribersServiceMock.search.mockResolvedValue([listSubscriber]);
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers/search')
+      .set('Authorization', 'Bearer admin-token')
+      .send({ documentNumber: '12345678' })
+      .expect(200);
+
+    expect(subscribersServiceMock.search).toHaveBeenCalledWith({
+      documentNumber: '12345678',
+    });
+    expect(response.body.data[0]).toHaveProperty('documentNumber', '12345678');
+    expect(JSON.stringify(auditMock.log.mock.calls.at(-1)?.[0])).not.toContain('12345678');
+  });
+
+  it.each([
+    {
+      role: 'ADMIN',
+      token: 'admin-token',
+      allowed: [
+        'documentNumber',
+        'nit',
+        'nitVerificationDigit',
+        'phone',
+        'altContactPhone',
+        'whatsapp',
+        'email',
+        'address',
+        'neighborhood',
+        'city',
+        'department',
+      ],
+    },
+    { role: 'NOC', token: 'noc-token', allowed: [] },
+    { role: 'SALES', token: 'sales-token', allowed: [] },
+    {
+      role: 'SUPPORT',
+      token: 'support-token',
+      allowed: [
+        'documentNumber',
+        'nit',
+        'nitVerificationDigit',
+        'phone',
+        'altContactPhone',
+        'whatsapp',
+        'address',
+        'neighborhood',
+        'city',
+        'department',
+      ],
+    },
+    {
+      role: 'ACCOUNTANT',
+      token: 'accountant-token',
+      allowed: ['documentNumber', 'nit', 'nitVerificationDigit'],
+    },
+  ])(
+    'POST /crm/subscribers/search — $role recibe solo los campos permitidos',
+    async ({ token, allowed }) => {
+      effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      ]);
+      subscribersServiceMock.findAll.mockResolvedValue({
+        data: [listSubscriber],
+        total: 1,
+        meta: { page: 1, limit: 20, total: 1 },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/crm/subscribers/search')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ search: 'Ana' })
+        .expect(200);
+      const item = response.body.data[0] as Record<string, unknown>;
+      const restrictedFields = [
+        'documentNumber',
+        'nit',
+        'nitVerificationDigit',
+        'phone',
+        'altContactPhone',
+        'whatsapp',
+        'email',
+        'address',
+        'neighborhood',
+        'city',
+        'department',
+        'latitude',
+        'longitude',
+      ];
+
+      expect(item).toHaveProperty('vatTreatment', VatTreatment.STANDARD);
+      for (const field of restrictedFields) {
+        if (allowed.includes(field)) expect(item).toHaveProperty(field);
+        else expect(item).not.toHaveProperty(field);
+      }
+    },
+  );
+
+  it('POST /crm/subscribers/search — rechaza filtros de listado junto con criterios exactos', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers/search?page=1')
+      .set('Authorization', 'Bearer admin-token')
+      .send({ documentNumber: '12345678' })
+      .expect(400);
+    expect(subscribersServiceMock.search).not.toHaveBeenCalled();
+  });
+
+  it('GET list ignora query personal y ningún @Query declara campos personales', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+
+    await request(app.getHttpServer())
+      .get(
+        '/api/v1/crm/subscribers?search=Ana%20Prueba&documentNumber=12345678&email=ana%40example.invalid',
+      )
+      .set('Authorization', 'Bearer admin-token')
+      .expect(200);
+
+    expect(subscribersServiceMock.findAll).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        search: expect.anything(),
+        documentNumber: expect.anything(),
+        email: expect.anything(),
+      }),
+    );
+
+    for (const method of ['findAll', 'search', 'retiredGetSearch']) {
+      const routeArgs = Reflect.getMetadata(
+        ROUTE_ARGS_METADATA,
+        SubscribersController,
+        method,
+      ) as Record<string, { data?: unknown }>;
+      const queryArgs = Object.entries(routeArgs ?? {})
+        .filter(([key]) => key.startsWith('4:'))
+        .map(([, metadata]) => metadata.data);
+      expect(queryArgs).not.toEqual(
+        expect.arrayContaining(['search', 'documentNumber', 'nit', 'email', 'phone']),
+      );
+    }
+  });
+
+  it('espera LIST_ACCESS antes de responder el listado', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    let releaseAudit: (() => void) | undefined;
+    let responseSettled = false;
+    auditMock.log.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseAudit = resolve;
+        }),
+    );
+
+    const responsePromise = request(app.getHttpServer())
+      .get('/api/v1/crm/subscribers')
+      .set('Authorization', 'Bearer admin-token')
+      .then((response) => {
+        responseSettled = true;
+        return response;
+      });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(auditMock.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'LIST_ACCESS' }));
+    expect(responseSettled).toBe(false);
+    releaseAudit?.();
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
   });
 
   it('GET /crm/subscribers — 403 para rol no permitido (SUBSCRIBER simulado como sales sin rol en lista?) — usamos sales sin permiso', async () => {

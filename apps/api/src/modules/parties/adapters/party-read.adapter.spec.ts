@@ -1,9 +1,15 @@
-import { DataSource } from 'typeorm';
-import { DocumentTypeParty, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
+import { DataSource, IsNull } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { DocumentTypeParty, PartyRoleStatus, PartyRoleType, PartyStatus } from '@iwana/shared';
 import { Party } from '../entities/party.entity';
 import { PartyContact } from '../entities/party-contact.entity';
 import { PartyRole } from '../entities/party-role.entity';
 import { PartyReadAdapter } from './party-read.adapter';
+import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
+
+const TEST_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const TEST_KEY = parseEncryptionKeyHex(TEST_KEY_HEX);
+const encryptDocument = (value: string) => encryptAes256Gcm(value, TEST_KEY);
 
 // Mock @iwana/db antes de importar el adaptador
 jest.mock('@iwana/db', () => ({
@@ -25,6 +31,10 @@ describe('PartyReadAdapter', () => {
       createQueryBuilder: jest.Mock;
     };
   };
+  const configService = {
+    getOrThrow: () => TEST_KEY_HEX,
+    get: () => undefined,
+  } as unknown as ConfigService;
 
   beforeEach(() => {
     mockQr = {
@@ -40,7 +50,7 @@ describe('PartyReadAdapter', () => {
     );
 
     mockDataSource = {} as unknown as jest.Mocked<DataSource>;
-    adapter = new PartyReadAdapter(mockDataSource);
+    adapter = new PartyReadAdapter(mockDataSource, configService);
   });
 
   afterEach(() => {
@@ -57,7 +67,7 @@ describe('PartyReadAdapter', () => {
         id: partyId,
         partyType: 'NATURAL',
         documentType: DocumentTypeParty.CC,
-        documentNumber: 'DOC-FICT-001',
+        documentNumber: encryptDocument('DOC-FICT-001'),
         displayName: 'Nombre Ficticio',
         legalName: null,
         status: 'ACTIVE',
@@ -134,12 +144,41 @@ describe('PartyReadAdapter', () => {
 
   // ---------------------------------------------------------------------------
   describe('findByDocument', () => {
+    function buildParty(overrides: Partial<Party> = {}): Party {
+      return Object.assign(new Party(), {
+        id: 'party-uuid-found',
+        partyType: 'NATURAL',
+        documentType: DocumentTypeParty.CC,
+        documentNumber: encryptDocument('987654321'),
+        documentNumberHmac: 'a'.repeat(64),
+        displayName: 'Persona ficticia',
+        legalName: null,
+        status: PartyStatus.ACTIVE,
+        verificationDigit: null,
+        birthDate: null,
+        incorporationDate: null,
+        notes: null,
+        address: null,
+        latitude: null,
+        longitude: null,
+        city: null,
+        department: null,
+        mergedIntoPartyId: null,
+        createdAt: new Date('2025-01-01'),
+        updatedAt: new Date('2025-01-01'),
+        deletedAt: null,
+        contacts: [],
+        roles: [],
+        ...overrides,
+      });
+    }
+
     it('retorna snapshot cuando el documento existe', async () => {
       const party = Object.assign(new Party(), {
         id: 'party-uuid-002',
         partyType: 'JURIDICAL',
         documentType: DocumentTypeParty.NIT,
-        documentNumber: '9000000001',
+        documentNumber: encryptDocument('9000000001'),
         displayName: 'Empresa Ficticia SAS',
         legalName: 'Empresa Ficticia S.A.S.',
         status: 'ACTIVE',
@@ -157,7 +196,12 @@ describe('PartyReadAdapter', () => {
       const result = await adapter.findByDocument(DocumentTypeParty.NIT, '9000000001');
 
       expect(mockQr.manager.findOne).toHaveBeenCalledWith(Party, {
-        where: { documentType: DocumentTypeParty.NIT, documentNumber: '9000000001' },
+        where: {
+          documentType: DocumentTypeParty.NIT,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
       });
       expect(result).not.toBeNull();
       expect(result!.documentType).toBe(DocumentTypeParty.NIT);
@@ -166,9 +210,117 @@ describe('PartyReadAdapter', () => {
     it('retorna null cuando el documento no existe', async () => {
       mockQr.manager.findOne.mockResolvedValue(null);
 
-      const result = await adapter.findByDocument(DocumentTypeParty.CC, 'INEXISTENTE');
+      const result = await adapter.findByDocument(DocumentTypeParty.CC, '987654321');
 
       expect(result).toBeNull();
+    });
+
+    it('encuentra Party INACTIVE no eliminado, como PartyService', async () => {
+      const inactive = buildParty({ status: PartyStatus.INACTIVE });
+      mockQr.manager.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(inactive);
+
+      const result = await adapter.findByDocument(DocumentTypeParty.CC, '987654321');
+
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(1, Party, {
+        where: {
+          documentType: DocumentTypeParty.CC,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
+      });
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(2, Party, {
+        where: {
+          documentType: DocumentTypeParty.CC,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.INACTIVE,
+        },
+      });
+      expect(result?.id).toBe('party-uuid-found');
+      expect(result?.status).toBe(PartyStatus.INACTIVE);
+    });
+
+    it('resuelve el canónico en un salto cuando solo encuentra un Party MERGED', async () => {
+      const merged = buildParty({
+        id: 'party-uuid-merged',
+        status: PartyStatus.MERGED,
+        mergedIntoPartyId: 'party-uuid-canonical',
+      });
+      const canonical = buildParty({ id: 'party-uuid-canonical' });
+      mockQr.manager.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(merged)
+        .mockResolvedValueOnce(canonical);
+
+      const result = await adapter.findByDocument(DocumentTypeParty.CC, '987654321');
+
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(1, Party, {
+        where: {
+          documentType: DocumentTypeParty.CC,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
+      });
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(2, Party, {
+        where: {
+          documentType: DocumentTypeParty.CC,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.INACTIVE,
+        },
+      });
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(3, Party, {
+        where: {
+          documentType: DocumentTypeParty.CC,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.MERGED,
+        },
+      });
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(4, Party, {
+        where: {
+          id: 'party-uuid-canonical',
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
+      });
+      expect(result?.id).toBe('party-uuid-canonical');
+    });
+
+    it('retorna null si el destino de la fusión está eliminado o también está MERGED', async () => {
+      const merged = buildParty({
+        id: 'party-uuid-merged',
+        status: PartyStatus.MERGED,
+        mergedIntoPartyId: 'party-uuid-invalid-target',
+      });
+      mockQr.manager.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(merged)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      const result = await adapter.findByDocument(DocumentTypeParty.CC, '987654321');
+
+      expect(result).toBeNull();
+      expect(mockQr.manager.findOne).toHaveBeenCalledTimes(5);
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(4, Party, {
+        where: {
+          id: 'party-uuid-invalid-target',
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
+      });
+      expect(mockQr.manager.findOne).toHaveBeenNthCalledWith(5, Party, {
+        where: {
+          id: 'party-uuid-invalid-target',
+          deletedAt: IsNull(),
+          status: PartyStatus.INACTIVE,
+        },
+      });
     });
   });
 
@@ -179,7 +331,7 @@ describe('PartyReadAdapter', () => {
         id: 'party-uuid-search-001',
         partyType: 'JURIDICAL',
         documentType: DocumentTypeParty.NIT,
-        documentNumber: 'NIT-FICT-900',
+        documentNumber: encryptDocument('NIT-FICT-900'),
         displayName: 'Macrotics SAS',
         legalName: 'Macrotics S.A.S.',
         status: 'ACTIVE',
@@ -324,7 +476,7 @@ describe('PartyReadAdapter', () => {
           id: 'party-uuid-001',
           partyType: 'NATURAL',
           documentType: DocumentTypeParty.CC,
-          documentNumber: 'DOC-FICT-001',
+          documentNumber: encryptDocument('DOC-FICT-001'),
           displayName: 'Nombre Ficticio',
           legalName: null,
           status: 'ACTIVE',
@@ -335,7 +487,7 @@ describe('PartyReadAdapter', () => {
           id: 'party-uuid-002',
           partyType: 'JURIDICAL',
           documentType: DocumentTypeParty.NIT,
-          documentNumber: 'NIT-FICT-001',
+          documentNumber: encryptDocument('NIT-FICT-001'),
           displayName: 'Empresa Ficticia',
           legalName: 'Empresa Ficticia SAS',
           status: 'ACTIVE',

@@ -12,6 +12,7 @@ import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
 import { AuditService } from '../../../audit/audit.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
+import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 import { Subscriber } from '../entities/subscriber.entity';
 
 /**
@@ -35,12 +36,13 @@ describe('SubscribersController', () => {
     updateSection: jest.fn(),
     get360View: jest.fn(),
   };
+  const auditServiceMock = { log: jest.fn().mockResolvedValue(undefined) };
 
   // Usuario autenticado de prueba
   const mockUser = {
     sub: 'user-001',
     email: 'hash',
-    role: 'ADMIN',
+    role: UserRole.ADMIN,
     tenantId: 'tenant-001',
     schemaName: 'tenant_test',
     jti: 'jti-001',
@@ -101,7 +103,7 @@ describe('SubscribersController', () => {
       controllers: [SubscribersController],
       providers: [
         { provide: SubscribersService, useValue: subscribersServiceMock },
-        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+        { provide: AuditService, useValue: auditServiceMock },
         {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
@@ -116,30 +118,28 @@ describe('SubscribersController', () => {
     const roles = Reflect.getMetadata('roles', controller.findAll as object) as
       | UserRole[]
       | undefined;
-    expect(roles).toEqual(
-      expect.arrayContaining([
-        UserRole.ADMIN,
-        UserRole.NOC,
-        UserRole.SALES,
-        UserRole.SUPPORT,
-        UserRole.ACCOUNTANT,
-      ]),
-    );
+    expect(roles).toEqual([
+      UserRole.ADMIN,
+      UserRole.NOC,
+      UserRole.SALES,
+      UserRole.SUPPORT,
+      UserRole.ACCOUNTANT,
+    ]);
+    expect(roles).not.toContain(UserRole.TECHNICIAN);
+    expect(roles).not.toContain(UserRole.AUDITOR);
   });
 
-  it('permite rol NOC en la búsqueda determinista de suscriptores', () => {
+  it('permite solo los cinco roles ratificados en la búsqueda de suscriptores', () => {
     const roles = Reflect.getMetadata('roles', controller.search as object) as
       | UserRole[]
       | undefined;
-    expect(roles).toEqual(
-      expect.arrayContaining([
-        UserRole.ADMIN,
-        UserRole.NOC,
-        UserRole.SALES,
-        UserRole.SUPPORT,
-        UserRole.ACCOUNTANT,
-      ]),
-    );
+    expect(roles).toEqual([
+      UserRole.ADMIN,
+      UserRole.NOC,
+      UserRole.SALES,
+      UserRole.SUPPORT,
+      UserRole.ACCOUNTANT,
+    ]);
   });
 
   // ── POST /crm/subscribers ──
@@ -227,15 +227,12 @@ describe('SubscribersController', () => {
         },
       });
 
-      const mockUser = { sub: 'user-1', role: 'ADMIN', tenantId: 't1', schemaName: 't1' } as any;
-
       const result = await controller.findAll(
         mockUser,
         SubscriberStatus.LEAD,
         PersonType.NATURAL,
         CustomerSegment.RESIDENTIAL,
         3,
-        'Juan',
         1,
         20,
       );
@@ -245,7 +242,6 @@ describe('SubscribersController', () => {
         personType: PersonType.NATURAL,
         customerSegment: CustomerSegment.RESIDENTIAL,
         stratum: 3,
-        search: 'Juan',
         page: 1,
         limit: 20,
         sortBy: undefined,
@@ -273,10 +269,9 @@ describe('SubscribersController', () => {
         },
       });
 
-      const mockUser = { sub: 'user-1', role: 'ADMIN', tenantId: 't1', schemaName: 't1' } as any;
-
       const result = await controller.findAll(
         mockUser,
+        undefined,
         undefined,
         undefined,
         undefined,
@@ -291,9 +286,10 @@ describe('SubscribersController', () => {
         personType: undefined,
         customerSegment: undefined,
         stratum: undefined,
-        search: undefined,
         page: undefined,
         limit: undefined,
+        sortBy: undefined,
+        sortDir: undefined,
       });
       expect(result.data).toHaveLength(1);
     });
@@ -304,30 +300,61 @@ describe('SubscribersController', () => {
   describe('search', () => {
     it('busca suscriptor por NIT', async () => {
       subscribersServiceMock.search.mockResolvedValue([mockSubscriber]);
+      const user = { ...mockUser, role: UserRole.ADMIN } as JwtPayload;
 
-      const result = await controller.search('12345678', '900123456-7', undefined, undefined);
+      const result = await controller.search({ nit: '900123456-7' }, user);
 
-      expect(subscribersServiceMock.search).toHaveBeenCalledWith({
-        documentNumber: '12345678',
-        nit: '900123456-7',
-        email: undefined,
-        phone: undefined,
-      });
+      expect(subscribersServiceMock.search).toHaveBeenCalledWith({ nit: '900123456-7' });
       expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toHaveProperty('email', 'juan@example.com');
+      expect(result.data[0]).not.toHaveProperty('tenantId');
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'LIST_ACCESS',
+          newValue: expect.objectContaining({
+            filters: expect.objectContaining({ exactCriteria: '(aplicado)' }),
+          }),
+        }),
+      );
     });
 
     it('busca suscriptor por email', async () => {
       subscribersServiceMock.search.mockResolvedValue([mockSubscriber]);
+      const user = { ...mockUser, role: UserRole.ACCOUNTANT } as JwtPayload;
 
-      const result = await controller.search(undefined, undefined, 'juan@example.com', undefined);
+      const result = await controller.search({ email: 'juan@example.com' }, user);
 
-      expect(subscribersServiceMock.search).toHaveBeenCalledWith({
-        documentNumber: undefined,
-        nit: undefined,
-        email: 'juan@example.com',
-        phone: undefined,
-      });
+      expect(subscribersServiceMock.search).toHaveBeenCalledWith({ email: 'juan@example.com' });
       expect(result.data).toHaveLength(1);
+      expect(result.data[0]).not.toHaveProperty('email');
+      expect(result.data[0]).toHaveProperty('documentNumber', '12345678');
+    });
+
+    it('busca libremente y registra solo marcador, nunca el texto', async () => {
+      subscribersServiceMock.findAll.mockResolvedValue({
+        data: [mockSubscriber],
+        total: 1,
+        meta: { page: 1, limit: 20, total: 1 },
+      });
+      const user = { ...mockUser, role: UserRole.ADMIN } as JwtPayload;
+
+      const result = await controller.search({ search: 'Ana Privada' }, user);
+
+      expect(subscribersServiceMock.findAll).toHaveBeenCalledWith({
+        status: undefined,
+        personType: undefined,
+        customerSegment: undefined,
+        stratum: undefined,
+        page: undefined,
+        limit: undefined,
+        sortBy: undefined,
+        sortDir: undefined,
+        search: 'Ana Privada',
+      });
+      expect(result.data[0]).toHaveProperty('id', 'sub-001');
+      const auditEntry = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
+      expect(auditEntry).toContain('(aplicado)');
+      expect(auditEntry).not.toContain('Ana Privada');
     });
   });
 
@@ -337,9 +364,12 @@ describe('SubscribersController', () => {
     it('obtiene suscriptor por ID con PII descifrado', async () => {
       subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
 
-      const result = await controller.findById('sub-001');
+      const result = await controller.findById('sub-001', mockUser);
 
       expect(subscribersServiceMock.findById).toHaveBeenCalledWith('sub-001');
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
+      );
       expect(result.data.id).toBe('sub-001');
       expect(result.data.email).toBe('juan@example.com');
     });
@@ -462,9 +492,12 @@ describe('SubscribersController', () => {
         timelineSeed: [],
       });
 
-      const result = await controller.get360View('sub-001');
+      const result = await controller.get360View('sub-001', mockUser);
 
       expect(subscribersServiceMock.get360View).toHaveBeenCalledWith('sub-001');
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
+      );
       expect(result.data.subscriber).toBeDefined();
       expect(result.data.subscriber.id).toBe('sub-001');
       expect(result.data.contacts).toEqual([]);
@@ -486,7 +519,7 @@ describe('SubscribersController', () => {
         phoneEncrypted: 'iv:authTag:ciphertext',
       };
 
-      const result = (controller as any).sanitizeResponse(subscriber);
+      const result = sanitizeResponse(subscriber);
 
       // No debe incluir campos cifrados internos
       expect(result).not.toHaveProperty('documentNumberEncrypted');
@@ -517,7 +550,7 @@ describe('SubscribersController', () => {
         legalRepresentativeId: 'rep-001',
       };
 
-      const result = (controller as any).sanitizeResponse(juridicaSubscriber);
+      const result = sanitizeResponse(juridicaSubscriber);
 
       expect(result.nit).toBe('900123456-7');
       expect(result.businessName).toBe('Empresa XYZ');
@@ -526,19 +559,27 @@ describe('SubscribersController', () => {
     });
 
     it('no incluye campos descifrados si no existen en el objeto', () => {
-      const subscriberWithoutDecrypted = {
-        ...mockSubscriber,
-      };
-      // Eliminar campos descifrados si no existen
-      delete (subscriberWithoutDecrypted as any).documentNumber;
-      delete (subscriberWithoutDecrypted as any).email;
-      delete (subscriberWithoutDecrypted as any).phone;
+      const {
+        documentNumber: _documentNumber,
+        email: _email,
+        phone: _phone,
+        ...subscriberWithoutDecrypted
+      } = mockSubscriber;
 
-      const result = (controller as any).sanitizeResponse(subscriberWithoutDecrypted);
+      const result = sanitizeResponse(subscriberWithoutDecrypted);
 
       expect(result).not.toHaveProperty('documentNumber');
       expect(result).not.toHaveProperty('email');
       expect(result).not.toHaveProperty('phone');
     });
   });
+
+  function sanitizeResponse<T extends Record<string, unknown>>(
+    subscriber: T,
+  ): Record<string, unknown> {
+    const controllerWithSanitizer = controller as unknown as {
+      sanitizeResponse: (value: Subscriber) => Record<string, unknown>;
+    };
+    return controllerWithSanitizer.sanitizeResponse(subscriber as unknown as Subscriber);
+  }
 });

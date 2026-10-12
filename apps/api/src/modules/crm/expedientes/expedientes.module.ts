@@ -16,6 +16,7 @@ import { ContactAttempt } from './entities/contact-attempt.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
 import { StatusChange } from './entities/status-change.entity';
+import { CrmConversionFailure } from './entities/crm-conversion-failure.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 import { AuditModule } from '../../audit/audit.module';
 import { SubscribersModule } from '../subscribers/subscribers.module';
@@ -32,6 +33,7 @@ import { AccessControlModule } from '../../access-control/access-control.module'
       ConsentRecord,
       CoverageCheck,
       StatusChange,
+      CrmConversionFailure,
       Quote,
     ]),
     AuditModule,

@@ -1,6 +1,7 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import type { QueryRunner } from 'typeorm';
@@ -281,6 +282,12 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
       providers: [
         // La única dependencia real de infraestructura: sustituida por completo.
         { provide: getDataSourceToken(), useValue: stubProvider() },
+        {
+          provide: ConfigService,
+          useValue: {
+            getOrThrow: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          },
+        },
 
         // —— servicios REALES bajo prueba ——
         PartyService,

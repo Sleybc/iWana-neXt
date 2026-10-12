@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IsNull } from 'typeorm';
-import { PartyStatus, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
+import { DocumentTypeParty, PartyStatus, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
 import { Party } from '../entities/party.entity';
 import { PartyRole } from '../entities/party-role.entity';
 import { PartyContact } from '../entities/party-contact.entity';
+import { createPartyPiiCrypto, partyContactStorageValue } from '../party-pii.util';
+import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verification-digit.util';
 import {
   IPartyWritePort,
   EnsurePartyInput,
@@ -11,6 +14,10 @@ import {
   EnsurePartyResult,
   PartyIdentitySnapshot,
 } from '../ports/party-write.port';
+
+const NON_MERGED_PARTY_STATUSES = Object.values(PartyStatus).filter(
+  (status) => status !== PartyStatus.MERGED,
+);
 
 /**
  * Implementación del puerto de escritura de Parties.
@@ -20,6 +27,12 @@ import {
 @Injectable()
 export class PartyWriteAdapter extends IPartyWritePort {
   private readonly logger = new Logger(PartyWriteAdapter.name);
+  private readonly pii: ReturnType<typeof createPartyPiiCrypto>;
+
+  constructor(configService: ConfigService) {
+    super();
+    this.pii = createPartyPiiCrypto(configService);
+  }
 
   async ensurePartyWithRole(
     input: EnsurePartyInput,
@@ -28,20 +41,36 @@ export class PartyWriteAdapter extends IPartyWritePort {
   ): Promise<EnsurePartyResult> {
     const { manager } = ctx;
     let partyCreated = false;
+    const documentNumberHmac = this.pii.documentHmac(input.documentType, input.documentNumber);
 
-    let party = await manager.findOne(Party, {
-      where: {
-        documentType: input.documentType,
-        documentNumber: input.documentNumber,
-        deletedAt: IsNull(),
-      },
-    });
+    // Serializa por HMAC para cerrar la carrera antes de alcanzar el índice único.
+    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `party:${input.documentType}:${documentNumberHmac}`,
+    ]);
+
+    let party: Party | null = null;
+    for (const status of NON_MERGED_PARTY_STATUSES) {
+      party = await manager.findOne(Party, {
+        where: {
+          documentType: input.documentType,
+          documentNumberHmac,
+          deletedAt: IsNull(),
+          status,
+        },
+      });
+      if (party) break;
+    }
 
     if (!party) {
       party = manager.create(Party, {
         partyType: input.partyType,
         documentType: input.documentType,
-        documentNumber: input.documentNumber,
+        documentNumber: this.pii.encrypt(input.documentNumber),
+        documentNumberHmac,
+        verificationDigit:
+          input.documentType === DocumentTypeParty.NIT
+            ? calculateNitVerificationDigit(input.documentNumber)
+            : null,
         displayName: input.displayName,
         legalName: input.legalName ?? null,
         status: PartyStatus.ACTIVE,
@@ -133,7 +162,7 @@ export class PartyWriteAdapter extends IPartyWritePort {
       status: party.status,
       contacts: contacts.map((contact) => ({
         type: contact.type,
-        value: contact.value,
+        value: contact.valueEncrypted ? this.pii.decrypt(contact.valueEncrypted) : '',
         isPrimary: contact.isPrimary,
         metadata: contact.metadata ?? null,
       })),
@@ -150,7 +179,9 @@ export class PartyWriteAdapter extends IPartyWritePort {
       const contact = manager.create(PartyContact, {
         partyId,
         type: contactInput.type,
-        value: contactInput.value,
+        value: partyContactStorageValue(),
+        valueEncrypted: this.pii.encrypt(contactInput.value),
+        valueHmac: this.pii.contactHmac(contactInput.type, contactInput.value),
         isPrimary: contactInput.isPrimary ?? false,
         metadata: contactInput.metadata ?? null,
       });

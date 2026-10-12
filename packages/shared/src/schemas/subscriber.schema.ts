@@ -4,6 +4,77 @@ import { PersonType } from '../enums/person-type.enum';
 import { CustomerSegment } from '../enums/customer-segment.enum';
 import { DocumentType } from '../enums/document-type.enum';
 import { SubscriberStatus } from '../enums/subscriber-status.enum';
+import { VatTreatment } from '../enums/vat-treatment.enum';
+
+/**
+ * C-API-1 v1.1 body contract for POST /crm/subscribers/search.
+ * Personal identifiers and free-text search are accepted only in the JSON body,
+ * never as query parameters. Free-text search cannot be combined with exact criteria.
+ */
+export const SearchSubscribersSchema = z
+  .object({
+    documentNumber: z.string().min(1).max(50).optional(),
+    nit: z.string().min(1).max(20).optional(),
+    email: z.string().min(1).email().max(500).optional(),
+    phone: z.string().min(1).max(100).optional(),
+    search: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict()
+  .superRefine((filters, context) => {
+    const hasExactCriteria =
+      filters.documentNumber !== undefined ||
+      filters.nit !== undefined ||
+      filters.email !== undefined ||
+      filters.phone !== undefined;
+    const hasFreeSearch = filters.search !== undefined;
+
+    if (!hasExactCriteria && !hasFreeSearch) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Debe proporcionar al menos un criterio de búsqueda',
+      });
+    }
+    if (hasExactCriteria && hasFreeSearch) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'La búsqueda libre no se combina con criterios exactos',
+      });
+    }
+  });
+
+export type SearchSubscribersInput = z.infer<typeof SearchSubscribersSchema>;
+
+/**
+ * Frozen, role-filtered list projection contract shared by API and portal.
+ * Restricted fields are omitted entirely when the caller's role is not allowed to see them.
+ */
+export interface SubscriberListItem {
+  id: string;
+  status: SubscriberStatus;
+  personType: PersonType;
+  customerSegment: CustomerSegment;
+  stratum: number | null;
+  vatTreatment: VatTreatment;
+  documentType: DocumentType | null;
+  firstName: string | null;
+  lastName: string | null;
+  businessName: string | null;
+  commercialName: string | null;
+  createdAt: string;
+  documentNumber?: string;
+  nit?: string;
+  nitVerificationDigit?: string;
+  phone?: string;
+  altContactPhone?: string;
+  whatsapp?: string;
+  email?: string;
+  address?: string;
+  neighborhood?: string;
+  city?: string;
+  department?: string;
+  latitude?: number;
+  longitude?: number;
+}
 
 /**
  * Schema Zod para crear suscriptor — persona natural.

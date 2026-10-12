@@ -294,6 +294,16 @@ export class ExpedientesController {
     return { data };
   }
 
+  @Post(':id/retry-conversion')
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @SkipAudit()
+  @ApiOperation({ summary: 'Reintentar evento de conversión pendiente del expediente' })
+  async retryConversion(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const data = await this.expedienteService.retryConversionEvent(id, user.sub);
+    return { data };
+  }
+
   @Get(':id/timeline')
   @Roles(
     UserRole.ADMIN,

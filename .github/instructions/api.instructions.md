@@ -13,5 +13,6 @@ Referencia maestra: `AGENTS.md`.
 - Cuando se resuelva tenant desde JWT, validar consistencia entre `tenantId` y `schemaName` del token frente al tenant real antes de establecer contexto.
 - El fallback `X-Tenant-Slug` debe restringirse a flujos publicos aprobados de auth o recovery; no extenderlo por conveniencia a rutas protegidas.
 - Mantener auditoria en operaciones sensibles y preservar idempotencia en provisioning, auth y escrituras criticas.
+- Para listados con PII, aplicar minimizacion, proyeccion por finalidad y auditoria `LIST_ACCESS`/`RECORD_ACCESS` segun ADR-067; no aceptar datos personales en query strings ni guardar valores personales en la auditoria.
 - Si expones contratos para portal tenant-aware, preferir endpoints self-service del tenant autenticado sobre endpoints globales de plataforma.
 - Si un endpoint es solo para plataforma, dejarlo claramente separado de self-service tenant-aware aunque comparta controller.

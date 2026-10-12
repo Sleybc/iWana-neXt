@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import {
   PartyType,
   DocumentTypeParty,
@@ -13,6 +14,10 @@ import { PartyRole } from '../entities/party-role.entity';
 import { CreatePartyDto } from '../dto/create-party.dto';
 import { UpdatePartyDto } from '../dto/update-party.dto';
 import { ListPartiesDto } from '../dto/list-parties.dto';
+import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
+
+const TEST_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const TEST_KEY = parseEncryptionKeyHex(TEST_KEY_HEX);
 
 // Mock TenantContext y runInTenantSchema antes de importar el servicio
 jest.mock('@iwana/db', () => ({
@@ -29,6 +34,10 @@ describe('PartyService', () => {
   let mockDataSource: jest.Mocked<DataSource>;
   let mockQr: any;
   let mockQb: any;
+  const configService = {
+    getOrThrow: () => TEST_KEY_HEX,
+    get: () => undefined,
+  } as unknown as ConfigService;
 
   beforeEach(() => {
     // Mock del QueryBuilder para findAll
@@ -51,6 +60,7 @@ describe('PartyService', () => {
         count: jest.fn(),
         createQueryBuilder: jest.fn().mockReturnValue(mockQb),
       },
+      query: jest.fn(),
     };
 
     (runInTenantSchema as jest.Mock).mockImplementation(
@@ -61,7 +71,7 @@ describe('PartyService', () => {
       createQueryRunner: jest.fn().mockReturnValue(mockQr),
     } as unknown as jest.Mocked<DataSource>;
 
-    service = new PartyService(mockDataSource);
+    service = new PartyService(mockDataSource, configService);
   });
 
   afterEach(() => {
@@ -72,11 +82,11 @@ describe('PartyService', () => {
    * Factory para Party — usa datos ficticios, sin PII real.
    */
   function buildParty(overrides: Partial<Party> = {}): Party {
+    const documentNumber = overrides.documentNumber ?? '10000001';
     return Object.assign(new Party(), {
       id: 'party-uuid-001',
       partyType: PartyType.NATURAL,
       documentType: DocumentTypeParty.CC,
-      documentNumber: '10000001',
       verificationDigit: null,
       displayName: 'Nombre Ficticio',
       legalName: null,
@@ -92,6 +102,7 @@ describe('PartyService', () => {
       contacts: [],
       roles: [],
       ...overrides,
+      documentNumber: encryptAes256Gcm(documentNumber, TEST_KEY),
     });
   }
 
@@ -119,7 +130,7 @@ describe('PartyService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             documentType: DocumentTypeParty.CC,
-            documentNumber: '10000001',
+            documentNumberHmac: expect.any(String),
           }),
         }),
       );
@@ -129,10 +140,12 @@ describe('PartyService', () => {
           partyType: PartyType.NATURAL,
           documentType: DocumentTypeParty.CC,
           status: PartyStatus.ACTIVE,
+          documentNumber: expect.any(String),
+          documentNumberHmac: expect.any(String),
         }),
       );
       expect(mockQr.manager.save).toHaveBeenCalledWith(Party, expected);
-      expect(result).toEqual(expected);
+      expect(result.documentNumber).toBe('10000001');
     });
 
     it('lanza ConflictException si ya existe party activo con mismo documento', async () => {
@@ -208,7 +221,7 @@ describe('PartyService', () => {
         Party,
         expect.objectContaining({ notes: 'Notas de prueba' }),
       );
-      expect(result).toEqual(expected);
+      expect(result.documentNumber).toBe('10000099');
     });
   });
 
@@ -314,7 +327,7 @@ describe('PartyService', () => {
         where: { id: 'party-uuid-001', deletedAt: IsNull() },
         relations: ['contacts', 'roles'],
       });
-      expect(result).toEqual(party);
+      expect(result.documentNumber).toBe('10000001');
     });
 
     it('lanza NotFoundException cuando no existe el party', async () => {
@@ -344,7 +357,8 @@ describe('PartyService', () => {
         where: { id: 'party-uuid-001', deletedAt: IsNull() },
       });
       expect(mockQr.manager.save).toHaveBeenCalledWith(Party, expect.any(Object));
-      expect(result).toEqual(updated);
+      expect(result.displayName).toBe('Nombre Actualizado');
+      expect(result.documentNumber).toBe('10000001');
     });
 
     it('lanza NotFoundException si el party no existe', async () => {
@@ -439,7 +453,8 @@ describe('PartyService', () => {
 
       expect(mockQr.manager.save).toHaveBeenCalled();
       expect(party.documentType).toBe(DocumentTypeParty.CE);
-      expect(party.documentNumber).toBe('20000099');
+      expect(party.documentNumber).not.toBe('20000099');
+      expect(party.documentNumberHmac).toEqual(expect.any(String));
     });
   });
 
@@ -483,7 +498,7 @@ describe('PartyService', () => {
       const dto: CreatePartyDto = {
         partyType: 'NATURAL' as any,
         documentType: DocumentTypeParty.CC,
-        documentNumber: 'NUMERO-SECRETO-PII',
+        documentNumber: '987654321098',
         displayName: 'Nombre Ficticio',
       };
 
@@ -492,7 +507,7 @@ describe('PartyService', () => {
       // El warn no debe filtrar el valor del documento
       const warnCalls = warnSpy.mock.calls.map((args) => args.join(' '));
       for (const call of warnCalls) {
-        expect(call).not.toContain('NUMERO-SECRETO-PII');
+        expect(call).not.toContain('987654321098');
       }
 
       warnSpy.mockRestore();
@@ -501,7 +516,7 @@ describe('PartyService', () => {
     it('logger.log de creación exitosa NO incluye documentNumber', async () => {
       const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-      const newParty = buildParty({ id: 'party-nuevo', documentNumber: 'NUMERO-SECRETO-PII' });
+      const newParty = buildParty({ id: 'party-nuevo', documentNumber: '987654321098' });
       mockQr.manager.findOne.mockResolvedValueOnce(null); // Sin duplicado
       mockQr.manager.create.mockReturnValue(newParty);
       mockQr.manager.save.mockResolvedValue(newParty);
@@ -509,7 +524,7 @@ describe('PartyService', () => {
       const dto: CreatePartyDto = {
         partyType: 'NATURAL' as any,
         documentType: DocumentTypeParty.CC,
-        documentNumber: 'NUMERO-SECRETO-PII',
+        documentNumber: '987654321098',
         displayName: 'Nombre Ficticio',
       };
 
@@ -517,7 +532,7 @@ describe('PartyService', () => {
 
       const logCalls = logSpy.mock.calls.map((args) => args.join(' '));
       for (const call of logCalls) {
-        expect(call).not.toContain('NUMERO-SECRETO-PII');
+        expect(call).not.toContain('987654321098');
       }
 
       logSpy.mockRestore();

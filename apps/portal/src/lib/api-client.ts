@@ -101,6 +101,8 @@ import {
   UserRole,
   type ListMeta,
   type ListResponse,
+  type SearchSubscribersInput,
+  type SubscriberListItem,
   type StockIssuePickableItem,
   type StockIssueLineSerialRef,
   type ExecutorCustodyResponse as ExecutorCustodyResponseContract,
@@ -4407,7 +4409,7 @@ function formatPortalUserTitle(user: InternalUser): string {
   return formatFullName(user.firstName, user.lastName).trim() || user.email;
 }
 
-function formatPortalSubscriberTitle(subscriber: SubscriberRecord): string {
+function formatPortalSubscriberTitle(subscriber: SubscriberListItem): string {
   return (
     subscriber.commercialName?.trim() ||
     subscriber.businessName?.trim() ||
@@ -4418,7 +4420,7 @@ function formatPortalSubscriberTitle(subscriber: SubscriberRecord): string {
   );
 }
 
-function formatPortalSubscriberSubtitle(subscriber: SubscriberRecord): string {
+function formatPortalSubscriberSubtitle(subscriber: SubscriberListItem): string {
   const parts = [
     subscriber.city,
     subscriber.email,
@@ -4489,6 +4491,14 @@ function emptyCollectionResponse<TRecord>(): { data: TRecord[]; total: number } 
   };
 }
 
+function emptySubscribersResponse(): ListSubscribersResponse {
+  return {
+    data: [],
+    meta: EMPTY_LIST_META,
+    total: 0,
+  };
+}
+
 async function withSearchFallback<T>(executor: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await executor();
@@ -4536,7 +4546,7 @@ function mapUsersGroup(
 }
 
 function mapSubscribersGroup(
-  subscribers: SubscriberRecord[],
+  subscribers: SubscriberListItem[],
   total: number,
   query: string,
 ): GlobalSearchGroup | null {
@@ -5209,17 +5219,10 @@ export const globalSearchApi = {
         searchParams.set('search', normalizedQuery);
         return request<ListUsersResponse>(`/users?${searchParams.toString()}`, options, tenantSlug);
       }, emptyUsersResponse()),
-      withSearchFallback(() => {
-        const searchParams = new URLSearchParams();
-        searchParams.set('search', normalizedQuery);
-        searchParams.set('page', '1');
-        searchParams.set('limit', String(limit));
-        return request<{ data: SubscriberRecord[]; total: number }>(
-          `/crm/subscribers?${searchParams.toString()}`,
-          { ...options, returnFullResponse: true },
-          tenantSlug,
-        );
-      }, emptyCollectionResponse<SubscriberRecord>()),
+      withSearchFallback(
+        () => subscribersApi.list({ search: normalizedQuery, page: 1, limit }, tenantSlug, options),
+        emptySubscribersResponse(),
+      ),
       withSearchFallback(() => {
         const searchParams = new URLSearchParams();
         searchParams.set('search', normalizedQuery);
@@ -5583,17 +5586,10 @@ export interface ListSubscribersParams {
  * Envelope ADR-065 + dual-emit `total` plano (Ola 1) para no romper pickers E-4
  * (`TaskCoreFields` / typeahead) que aún leen `response.total`.
  */
-export type ListSubscribersResponse = ListResponse<SubscriberRecord> & {
+export type ListSubscribersResponse = ListResponse<SubscriberListItem> & {
   /** @deprecated Preferir `meta.total`. Conservado por dual-emit / E-4. */
   total: number;
 };
-
-export interface SearchSubscribersParams {
-  documentNumber?: string;
-  nit?: string;
-  email?: string;
-  phone?: string;
-}
 
 // ?? Contratos / Servicios contratados ????????????????????????????????????????
 
@@ -6415,26 +6411,30 @@ export const subscribersApi = {
     options?: Pick<RequestOptions, 'signal'>,
   ): Promise<ListSubscribersResponse> => {
     const searchParams = new URLSearchParams();
+    const search = params?.search;
+    const searchPayload: SearchSubscribersInput | undefined = search ? { search } : undefined;
 
     if (params?.status) searchParams.set('status', params.status);
     if (params?.personType) searchParams.set('personType', params.personType);
     if (params?.customerSegment) searchParams.set('customerSegment', params.customerSegment);
     if (params?.stratum !== undefined) searchParams.set('stratum', String(params.stratum));
-    if (params?.search) searchParams.set('search', params.search);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params?.sortDir) searchParams.set('sortDir', params.sortDir);
 
     const query = searchParams.toString();
+    const hasSearch = Boolean(searchPayload);
+    const endpoint = hasSearch ? '/crm/subscribers/search' : '/crm/subscribers';
 
     const response = await request<{
-      data: SubscriberRecord[];
+      data: SubscriberListItem[];
       total?: number;
       meta?: Partial<ListMeta>;
     }>(
-      `/crm/subscribers${query ? `?${query}` : ''}`,
+      `${endpoint}${query ? `?${query}` : ''}`,
       {
+        ...(searchPayload ? { method: 'POST', body: JSON.stringify(searchPayload) } : {}),
         returnFullResponse: true,
         ...(options?.signal ? { signal: options.signal } : {}),
       },
@@ -6457,22 +6457,16 @@ export const subscribersApi = {
     };
   },
 
-  search: (params?: SearchSubscribersParams, tenantSlug?: string) => {
-    const searchParams = new URLSearchParams();
-
-    if (params?.documentNumber) searchParams.set('documentNumber', params.documentNumber);
-    if (params?.nit) searchParams.set('nit', params.nit);
-    if (params?.email) searchParams.set('email', params.email);
-    if (params?.phone) searchParams.set('phone', params.phone);
-
-    const query = searchParams.toString();
-
-    return request<{ data: SubscriberRecord[] }>(
-      `/crm/subscribers/search${query ? `?${query}` : ''}`,
-      { returnFullResponse: true },
+  search: (params: SearchSubscribersInput, tenantSlug?: string) =>
+    request<{ data: SubscriberListItem[] }>(
+      '/crm/subscribers/search',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+        returnFullResponse: true,
+      },
       tenantSlug,
-    );
-  },
+    ),
 
   getById: (id: string, tenantSlug?: string) =>
     request<SubscriberRecord>(`/crm/subscribers/${id}`, undefined, tenantSlug),

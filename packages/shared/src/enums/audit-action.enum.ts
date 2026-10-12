@@ -26,4 +26,6 @@ export enum AuditAction {
   PASSWORD_RESET_COMPLETED = 'PASSWORD_RESET_COMPLETED',
   /** Acceso de lectura masiva a listado con PII — ADR-067 §5 */
   LIST_ACCESS = 'LIST_ACCESS',
+  /** Acceso a un registro individual con PII — ADR-067 §§5, 8 */
+  RECORD_ACCESS = 'RECORD_ACCESS',
 }

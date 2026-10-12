@@ -18,6 +18,10 @@ import {
   DocumentType,
   ExpedienteStatus,
   AuditAction,
+  DocumentTypeParty,
+  PartyContactType,
+  PartyRoleType,
+  PartyType,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 import { VatTreatmentService } from './vat-treatment.service';
@@ -30,6 +34,11 @@ import {
 } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import { IPartyWritePort } from '../../parties/ports/party-write.port';
+import {
+  calculateNitVerificationDigit,
+  parseExpedienteNit,
+} from '../../../common/crypto/nit-verification-digit.util';
 import {
   evaluateProvisioningReadiness,
   isBlockingLegalComplianceStatus,
@@ -103,6 +112,10 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
  */
 const SORTABLE_FIELDS: string[] = [];
 
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 @Injectable()
 export class SubscribersService {
   private readonly encryptionKey: Buffer;
@@ -116,6 +129,7 @@ export class SubscribersService {
     private readonly vatTreatmentService: VatTreatmentService,
     private readonly statusTransitionService: SubscriberStatusTransitionService,
     private readonly auditService: AuditService,
+    private readonly partyWritePort: IPartyWritePort,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -167,6 +181,9 @@ export class SubscribersService {
       activatedAt?: Date | undefined;
       // Vínculo a Party (MOD08 — ADR-030 F4/F5)
       partyId?: string | null | undefined;
+      /** Identidad entregada por la conversión; no forma parte del contrato HTTP. */
+      partyDocumentNumber?: string | undefined;
+      partyDocumentType?: DocumentTypeParty | undefined;
     },
     actorId: string,
   ): Promise<Subscriber> {
@@ -185,6 +202,17 @@ export class SubscribersService {
     const altContactPhoneEncrypted = dto.altContactPhone
       ? this.encryptValue(dto.altContactPhone)
       : null;
+    const parsedNit = dto.nit ? parseExpedienteNit(dto.nit) : null;
+    const nit = parsedNit?.nit ?? dto.nit ?? null;
+    const nitVerificationDigit = parsedNit?.verificationDigit ?? dto.nitVerificationDigit ?? null;
+    if (
+      nit &&
+      nitVerificationDigit &&
+      calculateNitVerificationDigit(nit) !== nitVerificationDigit
+    ) {
+      throw new BadRequestException('El dígito de verificación del NIT no coincide.');
+    }
+
     const documentNumberEncrypted = dto.documentNumber
       ? this.encryptValue(dto.documentNumber)
       : null;
@@ -214,8 +242,8 @@ export class SubscribersService {
     entity.lastName = dto.lastName ?? null;
     entity.stratum = dto.stratum ?? null;
     entity.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
-    entity.nit = dto.nit ?? null;
-    entity.nitVerificationDigit = dto.nitVerificationDigit ?? null;
+    entity.nit = nit;
+    entity.nitVerificationDigit = nitVerificationDigit;
     entity.businessName = dto.businessName ?? null;
     entity.commercialName = dto.commercialName ?? null;
     entity.legalRepresentativeId = dto.legalRepresentativeId ?? null;
@@ -223,7 +251,9 @@ export class SubscribersService {
     entity.phoneEncrypted = phoneEncrypted;
     entity.altContactName = dto.altContactName ?? null;
     entity.altContactPhoneEncrypted = altContactPhoneEncrypted;
-    entity.whatsapp = dto.whatsapp ?? null;
+    entity.whatsapp = null;
+    entity.whatsappEncrypted = dto.whatsapp ? this.encryptValue(dto.whatsapp) : null;
+    entity.whatsappHmac = dto.whatsapp ? this.hmacPhoneHash(dto.whatsapp.trim()) : null;
     entity.vatTreatment = vatTreatment;
     entity.taxRegime = taxRegime;
     entity.address = dto.address;
@@ -244,9 +274,55 @@ export class SubscribersService {
     // Vínculo a Party (MOD08 — ADR-030)
     entity.partyId = dto.partyId ?? null;
 
-    const saved = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.save(Subscriber, entity),
-    );
+    let saved: Subscriber;
+    try {
+      saved = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        const partyDocumentNumber =
+          dto.partyDocumentNumber ??
+          (dto.personType === PersonType.JURIDICA ? nit : dto.documentNumber);
+        if (partyDocumentNumber) {
+          const documentType =
+            dto.partyDocumentType ?? this.toPartyDocumentType(dto.documentType, dto.personType);
+          const displayName =
+            dto.personType === PersonType.JURIDICA
+              ? (dto.businessName ?? dto.commercialName ?? 'Sin nombre')
+              : [dto.firstName, dto.lastName].filter(Boolean).join(' ').trim() || 'Sin nombre';
+          const party = await this.partyWritePort.ensurePartyWithRole(
+            {
+              partyType:
+                dto.personType === PersonType.NATURAL ? PartyType.NATURAL : PartyType.ORGANIZATION,
+              documentType,
+              documentNumber: partyDocumentNumber,
+              displayName: displayName.slice(0, 160),
+              legalName:
+                dto.personType === PersonType.JURIDICA
+                  ? (dto.businessName ?? null)
+                  : [dto.firstName, dto.lastName].filter(Boolean).join(' ').trim() || null,
+              contacts: [
+                { type: PartyContactType.EMAIL, value: dto.email, isPrimary: true },
+                { type: PartyContactType.PHONE, value: dto.phone, isPrimary: true },
+              ],
+              address: dto.address,
+              city: dto.city ?? null,
+              department: dto.department ?? null,
+              latitude: dto.latitude ?? null,
+              longitude: dto.longitude ?? null,
+            },
+            PartyRoleType.CUSTOMER,
+            { manager: qr.manager, actorUserId: actorId },
+          );
+          entity.partyId = party.partyId;
+        }
+
+        return qr.manager.save(Subscriber, entity);
+      });
+    } catch (error) {
+      if (dto.expedienteId && this.isExpedienteUniqueViolation(error)) {
+        const existing = await this.findByExpedienteId(dto.expedienteId);
+        if (existing) return this.decryptSubscriberFields(existing);
+      }
+      throw error;
+    }
 
     this.logger.log(`Suscriptor creado: ${saved.id} [${dto.personType}/${dto.customerSegment}]`);
 
@@ -306,11 +382,14 @@ export class SubscribersService {
           });
         if (filters.stratum) query.andWhere('s.stratum = :stratum', { stratum: filters.stratum });
 
-        // Búsqueda por nombre/NIT/businessName (campos no cifrados)
+        // La entrada libre llega por el body POST. Escapamos también el carácter
+        // escape para que %, _ y \\ se interpreten literalmente en ILIKE.
         if (filters.search) {
+          const searchPattern = `%${escapeLikePattern(filters.search)}%`;
+          const escapeClause = String.raw`ESCAPE E'\\'`;
           query.andWhere(
-            '(s.firstName ILIKE :search OR s.lastName ILIKE :search OR s.businessName ILIKE :search OR s.nit ILIKE :search OR s.commercialName ILIKE :search)',
-            { search: `%${filters.search}%` },
+            `(s.firstName ILIKE :search ${escapeClause} OR s.lastName ILIKE :search ${escapeClause} OR s.businessName ILIKE :search ${escapeClause} OR s.nit ILIKE :search ${escapeClause} OR s.commercialName ILIKE :search ${escapeClause})`,
+            { search: searchPattern },
           );
         }
 
@@ -433,9 +512,17 @@ export class SubscribersService {
     if (dto.stratum !== undefined) entity.stratum = dto.stratum;
     if (dto.birthDate !== undefined)
       entity.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
-    if (dto.nit !== undefined) entity.nit = dto.nit;
-    if (dto.nitVerificationDigit !== undefined)
-      entity.nitVerificationDigit = dto.nitVerificationDigit;
+    if (dto.nit !== undefined || dto.nitVerificationDigit !== undefined) {
+      const parsedNit = dto.nit !== undefined ? parseExpedienteNit(dto.nit) : null;
+      const nextNit = parsedNit?.nit ?? dto.nit ?? entity.nit;
+      const nextDigit =
+        parsedNit?.verificationDigit ?? dto.nitVerificationDigit ?? entity.nitVerificationDigit;
+      if (nextNit && nextDigit && calculateNitVerificationDigit(nextNit) !== nextDigit) {
+        throw new BadRequestException('El dígito de verificación del NIT no coincide.');
+      }
+      entity.nit = nextNit ?? null;
+      entity.nitVerificationDigit = nextDigit ?? null;
+    }
     if (dto.businessName !== undefined) entity.businessName = dto.businessName;
     if (dto.commercialName !== undefined) entity.commercialName = dto.commercialName;
     if (dto.legalRepresentativeId !== undefined)
@@ -454,7 +541,11 @@ export class SubscribersService {
       entity.altContactPhoneEncrypted = dto.altContactPhone
         ? this.encryptValue(dto.altContactPhone)
         : null;
-    if (dto.whatsapp !== undefined) entity.whatsapp = dto.whatsapp;
+    if (dto.whatsapp !== undefined) {
+      entity.whatsapp = null;
+      entity.whatsappEncrypted = dto.whatsapp ? this.encryptValue(dto.whatsapp) : null;
+      entity.whatsappHmac = dto.whatsapp ? this.hmacPhoneHash(dto.whatsapp.trim()) : null;
+    }
     if (dto.address !== undefined) entity.address = dto.address;
     if (dto.neighborhood !== undefined) entity.neighborhood = dto.neighborhood;
     if (dto.city !== undefined) entity.city = dto.city;
@@ -482,27 +573,8 @@ export class SubscribersService {
     this.logger.log(`Suscriptor actualizado: ${id} [actor: ${actorId}]`);
 
     // Registro de auditoría — diff de campos modificados, sin PII
-    const diff: Record<string, { old: unknown; new: unknown }> = {};
-    if (dto.personType !== undefined)
-      diff.personType = { old: entity.personType, new: dto.personType };
-    if (dto.customerSegment !== undefined)
-      diff.customerSegment = { old: entity.customerSegment, new: dto.customerSegment };
-    if (dto.stratum !== undefined) diff.stratum = { old: entity.stratum, new: dto.stratum };
-    if (dto.nit !== undefined) diff.nit = { old: entity.nit, new: dto.nit };
-    if (dto.businessName !== undefined)
-      diff.businessName = { old: entity.businessName, new: dto.businessName };
-    if (dto.city !== undefined) diff.city = { old: entity.city, new: dto.city };
-    if (dto.department !== undefined)
-      diff.department = { old: entity.department, new: dto.department };
-    if (dto.address !== undefined) diff.address = { old: entity.address, new: dto.address };
-    if (dto.altContactName !== undefined)
-      diff.altContactName = { old: entity.altContactName, new: dto.altContactName };
-    if (dto.altContactPhone !== undefined)
-      diff.altContactPhone = {
-        old: Boolean(entity.altContactPhoneEncrypted),
-        new: Boolean(dto.altContactPhone?.trim()),
-      };
-
+    // Solo se conservan nombres de campos; el contenido previo/nuevo puede ser PII.
+    const diff = { changedFields: Object.keys(dto).sort() };
     await this.auditService.log({
       action: AuditAction.UPDATE,
       entityType: 'Subscriber',
@@ -599,7 +671,8 @@ export class SubscribersService {
       }
 
       qb.where(conditions.join(' AND '), params);
-      return qb.take(100).getMany();
+      const results = await qb.take(100).getMany();
+      return results.map((subscriber) => this.decryptSubscriberFields(subscriber));
     });
   }
 
@@ -622,6 +695,7 @@ export class SubscribersService {
       stratum?: number | null | undefined;
       businessName?: string | undefined;
       nit?: string | undefined;
+      nitVerificationDigit?: string | undefined;
       email: string;
       phone: string;
       altContactName?: string | undefined;
@@ -634,15 +708,12 @@ export class SubscribersService {
       latitude?: number | undefined;
       longitude?: number | undefined;
       // Vínculo obligatorio a Party (MOD08 — ADR-030 F4/F5)
-      partyId: string;
+      partyId?: string | null;
+      partyDocumentNumber?: string;
+      partyDocumentType?: DocumentTypeParty;
     },
     actorId: string,
   ): Promise<Subscriber> {
-    // Guard: Subscriber requiere partyId — regla de negocio ADR-030
-    if (!overrides.partyId) {
-      throw new BadRequestException('Subscriber requiere un partyId válido (Party MOD08)');
-    }
-
     const subscriber = await this.create(
       {
         personType: overrides.personType,
@@ -654,6 +725,7 @@ export class SubscribersService {
         stratum: overrides.stratum,
         businessName: overrides.businessName,
         nit: overrides.nit,
+        nitVerificationDigit: overrides.nitVerificationDigit,
         email: overrides.email,
         phone: overrides.phone,
         altContactName: overrides.altContactName,
@@ -665,10 +737,11 @@ export class SubscribersService {
         postalCode: overrides.postalCode,
         latitude: overrides.latitude,
         longitude: overrides.longitude,
+        partyDocumentNumber: overrides.partyDocumentNumber,
+        partyDocumentType: overrides.partyDocumentType,
         expedienteId,
         initialStatus: SubscriberStatus.PROSPECT,
         convertedAt: new Date(),
-        partyId: overrides.partyId,
       },
       actorId,
     );
@@ -723,9 +796,18 @@ export class SubscribersService {
   }
 
   async activateFromExpediente(expedienteId: string, actorId: string): Promise<Subscriber | null> {
-    const subscriber = await this.findByExpedienteId(expedienteId);
+    let subscriber = await this.findByExpedienteId(expedienteId);
     if (!subscriber) {
       return null;
+    }
+
+    if (subscriber.status === SubscriberStatus.CANCELLED) {
+      await this.statusTransitionService.reactivateFromExpediente(
+        subscriber.id,
+        expedienteId,
+        actorId,
+      );
+      subscriber = { ...subscriber, status: SubscriberStatus.PROSPECT } as Subscriber;
     }
 
     if (subscriber.status === SubscriberStatus.ACTIVE) {
@@ -754,6 +836,26 @@ export class SubscribersService {
       );
     });
 
+    return this.findById(subscriber.id);
+  }
+
+  async reactivateProspectFromExpediente(
+    expedienteId: string,
+    actorId: string,
+  ): Promise<Subscriber | null> {
+    const subscriber = await this.findByExpedienteId(expedienteId);
+    if (!subscriber) return null;
+    if (subscriber.status !== SubscriberStatus.CANCELLED) {
+      return subscriber.status === SubscriberStatus.PROSPECT
+        ? this.decryptSubscriberFields(subscriber)
+        : null;
+    }
+
+    await this.statusTransitionService.reactivateFromExpediente(
+      subscriber.id,
+      expedienteId,
+      actorId,
+    );
     return this.findById(subscriber.id);
   }
 
@@ -1002,6 +1104,34 @@ export class SubscribersService {
     return hmacPii(value, this.piiHashKey);
   }
 
+  private toPartyDocumentType(
+    documentType: string | undefined,
+    personType: PersonType,
+  ): DocumentTypeParty {
+    const mapping: Record<string, DocumentTypeParty> = {
+      CC: DocumentTypeParty.CC,
+      CE: DocumentTypeParty.CE,
+      PASAPORTE: DocumentTypeParty.PASAPORTE,
+      TI: DocumentTypeParty.TI,
+      RUT: DocumentTypeParty.RUT,
+      NIT: DocumentTypeParty.NIT,
+      NIT_PERSONA: DocumentTypeParty.NIT,
+      PEP: DocumentTypeParty.OTHER,
+      PTP: DocumentTypeParty.OTHER,
+    };
+    return (
+      (documentType ? mapping[documentType] : undefined) ??
+      (personType === PersonType.NATURAL ? DocumentTypeParty.CC : DocumentTypeParty.NIT)
+    );
+  }
+
+  private isExpedienteUniqueViolation(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const driverError = (error as { driverError?: { code?: string; constraint?: string } })
+      .driverError;
+    return driverError?.code === '23505' && driverError.constraint === 'uq_subscribers_expediente';
+  }
+
   /**
    * Descifra campos PII del suscriptor para respuesta.
    */
@@ -1034,6 +1164,17 @@ export class SubscribersService {
       } catch {
         this.logger.warn(`No se pudo descifrar phone para suscriptor ${subscriber.id}`);
       }
+    }
+
+    if (subscriber.whatsappEncrypted) {
+      try {
+        subscriber.whatsapp = this.decryptValue(subscriber.whatsappEncrypted);
+      } catch {
+        subscriber.whatsapp = null;
+        this.logger.warn(`No se pudo descifrar whatsapp para suscriptor ${subscriber.id}`);
+      }
+    } else {
+      subscriber.whatsapp = null;
     }
 
     if (subscriber.altContactPhoneEncrypted) {

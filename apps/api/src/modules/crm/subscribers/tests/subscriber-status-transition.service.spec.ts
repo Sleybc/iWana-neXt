@@ -120,6 +120,12 @@ describe('SubscriberStatusTransitionService', () => {
         false,
       );
     });
+
+    it('falla cerrado para un estado sin definición en la máquina', () => {
+      expect(service.canTransition('UNKNOWN' as SubscriberStatus, SubscriberStatus.ACTIVE)).toBe(
+        false,
+      );
+    });
   });
 
   // ── validateTransitionRequirements ──
@@ -280,6 +286,29 @@ describe('SubscriberStatusTransitionService', () => {
       expect(result.toStatus).toBe(SubscriberStatus.ACTIVE);
     });
 
+    it('permite PROSPECT → ACTIVE sin motivo y conserva un audit diff sin PII', async () => {
+      const subscriber = buildSubscriber({ status: SubscriberStatus.PROSPECT });
+      mockSubscriber(subscriber);
+
+      await expect(
+        service.transition(subscriber.id, SubscriberStatus.ACTIVE, null, 'actor-1'),
+      ).resolves.toEqual({
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.ACTIVE,
+        reason: null,
+      });
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: subscriber.id,
+          newValue: {
+            fromStatus: SubscriberStatus.PROSPECT,
+            toStatus: SubscriberStatus.ACTIVE,
+            reason: null,
+          },
+        }),
+      );
+    });
+
     it('lanza BadRequestException si subscriber no existe', async () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({
@@ -312,6 +341,151 @@ describe('SubscriberStatusTransitionService', () => {
     });
   });
 
+  describe('reactivateFromExpediente', () => {
+    it('rechaza si el suscriptor no existe o pertenece a otro expediente', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => null } }),
+      );
+
+      await expect(
+        service.reactivateFromExpediente('sub-missing', 'exp-1', 'actor-1'),
+      ).rejects.toThrow('no pertenece al expediente');
+
+      const otherExpediente = buildSubscriber({ expedienteId: 'exp-2' });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => otherExpediente } }),
+      );
+      await expect(
+        service.reactivateFromExpediente(otherExpediente.id, 'exp-1', 'actor-1'),
+      ).rejects.toThrow('no pertenece al expediente');
+    });
+
+    it('falla cerrado si el subscriber ya tuvo activación', async () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.CANCELLED,
+        activatedAt: new Date('2026-09-01T10:00:00.000Z'),
+      });
+      mockSubscriber(subscriber);
+
+      await expect(
+        service.reactivateFromExpediente(subscriber.id, 'exp-1', 'actor-1'),
+      ).rejects.toThrow('previamente activado');
+    });
+
+    it('devuelve sin mutación el prospecto que ya fue restaurado', async () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.PROSPECT,
+        activatedAt: null,
+      });
+      mockSubscriber(subscriber);
+
+      await expect(
+        service.reactivateFromExpediente(subscriber.id, 'exp-1', 'actor-1'),
+      ).resolves.toEqual({
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+      });
+      expect(auditService.log).not.toHaveBeenCalled();
+    });
+
+    it('rechaza estados distintos de CANCELLED cuando no es un prospecto ya restaurado', async () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.ACTIVE,
+        activatedAt: null,
+      });
+      mockSubscriber(subscriber);
+
+      await expect(
+        service.reactivateFromExpediente(subscriber.id, 'exp-1', 'actor-1'),
+      ).rejects.toThrow('Solo un suscriptor cancelado');
+    });
+
+    it('restaura el cancelado con guarda atómica y registra la transición sin PII', async () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.CANCELLED,
+        activatedAt: null,
+      });
+      const update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => subscriber, update } }),
+      );
+
+      await expect(
+        service.reactivateFromExpediente(subscriber.id, 'exp-1', 'actor-1'),
+      ).resolves.toEqual({
+        fromStatus: SubscriberStatus.CANCELLED,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+      });
+      expect(update).toHaveBeenCalledWith(
+        Subscriber,
+        {
+          id: subscriber.id,
+          expedienteId: 'exp-1',
+          status: SubscriberStatus.CANCELLED,
+          activatedAt: expect.anything(),
+        },
+        { status: SubscriberStatus.PROSPECT },
+      );
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: subscriber.id,
+          newValue: expect.objectContaining({
+            fromStatus: SubscriberStatus.CANCELLED,
+            toStatus: SubscriberStatus.PROSPECT,
+            reason: 'EXPEDIENTE_REACTIVATED',
+            expedienteId: 'exp-1',
+          }),
+        }),
+      );
+    });
+
+    it('tolera una carrera si otro proceso ya lo restauró a PROSPECT', async () => {
+      const cancelled = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.CANCELLED,
+        activatedAt: null,
+      });
+      const prospect = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.PROSPECT,
+        activatedAt: null,
+      });
+      const findOne = jest.fn().mockResolvedValueOnce(cancelled).mockResolvedValueOnce(prospect);
+      const update = jest.fn().mockResolvedValue({ affected: 0 });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne, update } }),
+      );
+
+      await expect(
+        service.reactivateFromExpediente(cancelled.id, 'exp-1', 'actor-1'),
+      ).resolves.toMatchObject({ toStatus: SubscriberStatus.PROSPECT });
+      expect(auditService.log).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si la guarda atómica falla y el estado sigue cancelado', async () => {
+      const subscriber = buildSubscriber({
+        expedienteId: 'exp-1',
+        status: SubscriberStatus.CANCELLED,
+        activatedAt: null,
+      });
+      const findOne = jest.fn().mockResolvedValue(subscriber);
+      const update = jest.fn().mockResolvedValue({ affected: 0 });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne, update } }),
+      );
+
+      await expect(
+        service.reactivateFromExpediente(subscriber.id, 'exp-1', 'actor-1'),
+      ).rejects.toThrow('No se pudo restaurar');
+    });
+  });
+
   // ── getAllowedTransitions ──
 
   describe('getAllowedTransitions', () => {
@@ -328,6 +502,10 @@ describe('SubscriberStatusTransitionService', () => {
     it('retorna array vacío desde CANCELLED', () => {
       const transitions = service.getAllowedTransitions(SubscriberStatus.CANCELLED);
       expect(transitions).toEqual([]);
+    });
+
+    it('retorna array vacío para un estado sin definición', () => {
+      expect(service.getAllowedTransitions('UNKNOWN' as SubscriberStatus)).toEqual([]);
     });
   });
 

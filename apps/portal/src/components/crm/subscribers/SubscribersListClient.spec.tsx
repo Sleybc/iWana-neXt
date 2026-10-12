@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ListMeta } from '@iwana/shared';
 import { subscribersApi } from '@/lib/api-client';
@@ -111,6 +111,26 @@ describe('SubscribersListClient ADR-065', () => {
     replaceMock.mockImplementation((href: string) => {
       searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
     });
+  });
+
+  it('muestra el IVA real y conserva el fallback de ubicación sin city restringida', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          'sub-iva',
+          { firstName: 'Ana', lastName: 'Pérez' },
+          { vatTreatment: 'EXCLUDED', city: undefined, department: undefined },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const row = await screen.findByRole('row', { name: /Ana Pérez/ });
+    expect(within(row).getByText('Excluido')).toBeInTheDocument();
+    expect(within(row).getByText('Sin ubicación')).toBeInTheDocument();
   });
 
   it('reemplaza la página: página 2 muestra filas distintas (no acumulación)', async () => {

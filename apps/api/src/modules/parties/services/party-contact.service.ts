@@ -1,15 +1,23 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { PartyContact } from '../entities/party-contact.entity';
 import { UpsertContactDto } from '../dto/upsert-contact.dto';
+import { createPartyPiiCrypto, partyContactStorageValue } from '../party-pii.util';
 
 @Injectable()
 export class PartyContactService {
   private readonly logger = new Logger(PartyContactService.name);
+  private readonly pii: ReturnType<typeof createPartyPiiCrypto>;
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    configService: ConfigService,
+  ) {
+    this.pii = createPartyPiiCrypto(configService);
+  }
 
   async upsert(partyId: string, dto: UpsertContactDto): Promise<PartyContact> {
     const { schemaName } = TenantContext.getOrThrow();
@@ -31,20 +39,24 @@ export class PartyContactService {
 
       if (existing) {
         // PII: no loguear value
-        existing.value = dto.value;
+        existing.value = partyContactStorageValue();
+        existing.valueEncrypted = this.pii.encrypt(dto.value);
+        existing.valueHmac = this.pii.contactHmac(dto.type, dto.value);
         existing.isPrimary = dto.isPrimary;
         existing.metadata = dto.metadata ?? null;
         await qr.manager.save(PartyContact, existing);
         this.logger.log(
           `[PartyContactService] Contacto tipo=${dto.type} actualizado para party=${partyId}`,
         );
-        return existing;
+        return this.decryptContact(existing, dto.value);
       }
 
       const contact = qr.manager.create(PartyContact, {
         partyId,
         type: dto.type,
-        value: dto.value,
+        value: partyContactStorageValue(),
+        valueEncrypted: this.pii.encrypt(dto.value),
+        valueHmac: this.pii.contactHmac(dto.type, dto.value),
         isPrimary: dto.isPrimary,
         metadata: dto.metadata ?? null,
       });
@@ -53,7 +65,7 @@ export class PartyContactService {
       this.logger.log(
         `[PartyContactService] Contacto tipo=${dto.type} creado para party=${partyId}`,
       );
-      return contact;
+      return this.decryptContact(contact, dto.value);
     });
   }
 
@@ -61,7 +73,13 @@ export class PartyContactService {
     const { schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      return qr.manager.find(PartyContact, { where: { partyId } });
+      const contacts = await qr.manager.find(PartyContact, { where: { partyId } });
+      return contacts.map((contact) =>
+        this.decryptContact(
+          contact,
+          contact.valueEncrypted ? this.pii.decrypt(contact.valueEncrypted) : '',
+        ),
+      );
     });
   }
 
@@ -83,5 +101,9 @@ export class PartyContactService {
         `[PartyContactService] Contacto tipo=${contact.type} eliminado de party=${partyId}`,
       );
     });
+  }
+
+  private decryptContact(contact: PartyContact, value: string): PartyContact {
+    return Object.assign(new PartyContact(), contact, { value });
   }
 }

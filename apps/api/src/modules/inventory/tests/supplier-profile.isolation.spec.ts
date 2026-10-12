@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { DocumentTypeParty, PartyType, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { PartyReadAdapter } from '../../parties/adapters/party-read.adapter';
@@ -14,6 +15,12 @@ import { InMemoryTenantStore } from './support/in-memory-tenant-store';
  */
 
 const store = new InMemoryTenantStore();
+const encryptionKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const hashKeyHex = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+const configService = {
+  getOrThrow: (key: string) => (key === 'PII_HASH_KEY' ? hashKeyHex : encryptionKeyHex),
+  get: () => undefined,
+} as unknown as ConfigService;
 let currentTenant = { tenantId: 'tenant-a', schemaName: 'tenant_a' };
 
 jest.mock('@iwana/db', () => ({
@@ -37,8 +44,8 @@ const actor: JwtPayload = {
 };
 
 function buildService(): SupplierProfileService {
-  const partyReadAdapter = new PartyReadAdapter({} as DataSource);
-  const partyWriteAdapter = new PartyWriteAdapter();
+  const partyReadAdapter = new PartyReadAdapter({} as DataSource, configService);
+  const partyWriteAdapter = new PartyWriteAdapter(configService);
   const supplierPartyPort = new SupplierPartyPortAdapter(partyReadAdapter);
   return new SupplierProfileService({} as DataSource, partyWriteAdapter, supplierPartyPort);
 }

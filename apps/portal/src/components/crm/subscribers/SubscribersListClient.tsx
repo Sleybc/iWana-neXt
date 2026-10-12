@@ -3,15 +3,10 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Select, cn } from '@iwana/ui';
-import type { ListMeta } from '@iwana/shared';
+import type { ListMeta, SubscriberListItem } from '@iwana/shared';
 import { CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
 import { CircleDashed, Plus } from 'lucide-react';
-import {
-  ApiError,
-  type ListSubscribersParams,
-  type SubscriberRecord,
-  subscribersApi,
-} from '@/lib/api-client';
+import { ApiError, type ListSubscribersParams, subscribersApi } from '@/lib/api-client';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
@@ -117,7 +112,7 @@ function SubscribersListClientInner() {
     defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
   });
 
-  const [records, setRecords] = useState<SubscriberRecord[]>([]);
+  const [records, setRecords] = useState<SubscriberListItem[]>([]);
   const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

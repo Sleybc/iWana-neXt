@@ -1,4 +1,5 @@
-import { EntityManager } from 'typeorm';
+import { EntityManager, IsNull } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import {
   DocumentTypeParty,
   PartyContactType,
@@ -18,10 +19,15 @@ describe('PartyWriteAdapter', () => {
   let mockManager: {
     findOne: jest.Mock;
     find: jest.Mock;
+    query: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
   };
   let ctx: PartyWriteContext;
+  const configService = {
+    getOrThrow: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    get: () => undefined,
+  } as unknown as ConfigService;
 
   const baseInput: EnsurePartyInput = {
     partyType: PartyType.ORGANIZATION,
@@ -35,12 +41,13 @@ describe('PartyWriteAdapter', () => {
     mockManager = {
       findOne: jest.fn(),
       find: jest.fn(async () => []),
+      query: jest.fn(async () => []),
       create: jest.fn((_entity, data) => ({ id: `gen-${_entity.name}-${Date.now()}`, ...data })),
       save: jest.fn(async (_entity, data) => data),
     };
 
     ctx = { manager: mockManager as unknown as EntityManager, actorUserId: 'user-uuid-001' };
-    adapter = new PartyWriteAdapter();
+    adapter = new PartyWriteAdapter(configService);
   });
 
   afterEach(() => {
@@ -98,8 +105,17 @@ describe('PartyWriteAdapter', () => {
       expect(mockManager.findOne).toHaveBeenNthCalledWith(1, Party, {
         where: {
           documentType: DocumentTypeParty.NIT,
-          documentNumber: '9000000001',
-          deletedAt: expect.anything(),
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
+      });
+      expect(mockManager.findOne).toHaveBeenNthCalledWith(2, Party, {
+        where: {
+          documentType: DocumentTypeParty.NIT,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.INACTIVE,
         },
       });
       expect(mockManager.create).toHaveBeenCalledWith(
@@ -109,6 +125,8 @@ describe('PartyWriteAdapter', () => {
           documentType: DocumentTypeParty.NIT,
           displayName: 'Empresa Ficticia SAS',
           status: PartyStatus.ACTIVE,
+          documentNumber: expect.stringMatching(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]*$/u),
+          documentNumberHmac: expect.any(String),
         }),
       );
       expect(mockManager.create).toHaveBeenCalledWith(
@@ -163,7 +181,9 @@ describe('PartyWriteAdapter', () => {
         expect.objectContaining({
           partyId: 'party-uuid-new',
           type: PartyContactType.EMAIL,
-          value: 'noreply@example.invalid',
+          value: '',
+          valueEncrypted: expect.stringMatching(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/u),
+          valueHmac: expect.any(String),
           isPrimary: true,
         }),
       );
@@ -298,12 +318,10 @@ describe('PartyWriteAdapter', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // M1 (ADR-052 nota de implementacion): el adapter NO delega en PartyService (que abre su
-  // propia transaccion/schema y romperia la atomicidad del alta). La unicidad de documento la
-  // garantizan (a) la busqueda por (documentType, documentNumber) previa a crear y (b) el indice
-  // unico parcial `idx_party_document_active` en `party(document_type, document_number)`.
+  // El adapter NO delega en PartyService (que abre su propia transacción/schema y rompería
+  // la atomicidad del alta). Resuelve por HMAC dentro del EntityManager de la transacción.
   describe('ensurePartyWithRole — unicidad y normalizacion de documento (M1)', () => {
-    it('busca por (documentType, documentNumber) exacto excluyendo soft-deleted antes de crear', async () => {
+    it('busca por HMAC excluyendo fusionados y soft-deleted antes de crear', async () => {
       mockManager.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
       mockManager.create.mockImplementation((_entity, data) => {
         if (_entity === Party) return { id: 'party-uuid-new', ...data };
@@ -316,8 +334,39 @@ describe('PartyWriteAdapter', () => {
       expect(mockManager.findOne).toHaveBeenNthCalledWith(1, Party, {
         where: {
           documentType: DocumentTypeParty.NIT,
-          documentNumber: '9000000001',
-          deletedAt: expect.anything(),
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.ACTIVE,
+        },
+      });
+      expect(mockManager.findOne).toHaveBeenNthCalledWith(2, Party, {
+        where: {
+          documentType: DocumentTypeParty.NIT,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.INACTIVE,
+        },
+      });
+    });
+
+    it('reutiliza una Party INACTIVE no eliminada, siguiendo el filtro de PartyService', async () => {
+      const inactiveParty = buildExistingParty({ status: PartyStatus.INACTIVE });
+      mockManager.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(inactiveParty)
+        .mockResolvedValueOnce(null);
+
+      const result = await adapter.ensurePartyWithRole(baseInput, PartyRoleType.SUPPLIER, ctx);
+
+      expect(result.partyId).toBe(inactiveParty.id);
+      expect(result.partyCreated).toBe(false);
+      expect(mockManager.create).not.toHaveBeenCalledWith(Party, expect.anything());
+      expect(mockManager.findOne).toHaveBeenNthCalledWith(2, Party, {
+        where: {
+          documentType: DocumentTypeParty.NIT,
+          documentNumberHmac: expect.any(String),
+          deletedAt: IsNull(),
+          status: PartyStatus.INACTIVE,
         },
       });
     });
@@ -348,6 +397,7 @@ describe('PartyWriteAdapter', () => {
       }));
 
       const tenantManager = {
+        query: jest.fn().mockResolvedValue(undefined),
         findOne: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
         find: jest.fn(async () => []),
         create: jest.fn((_entity, data) => {

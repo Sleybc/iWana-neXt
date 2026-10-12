@@ -327,6 +327,167 @@ describe('SubscriberTaxProfileService', () => {
 
       expect(result.profileStatus).toBe(TaxProfileStatus.CONFIGURED);
     });
+
+    it('actualiza el upsert existente y configura por ajuste manual confirmado', async () => {
+      const assignment = makeAssignment({ status: TaxAssignmentStatus.SUGGESTED });
+      const profile = makeProfile({ profileStatus: TaxProfileStatus.PENDING_REVIEW });
+      const refreshed = makeProfile({ profileStatus: TaxProfileStatus.CONFIGURED });
+      managerMock.findOne
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(assignment)
+        .mockResolvedValueOnce(refreshed);
+      managerMock.find.mockResolvedValueOnce([
+        { ...assignment, status: TaxAssignmentStatus.MANUAL_ADJUSTMENT },
+      ]);
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+      taxCatalogPort.findById.mockResolvedValueOnce(makeIvaDef());
+
+      const result = await service.saveAssignments(
+        'sub-001',
+        [
+          {
+            taxDefinitionId: assignment.taxDefinitionId,
+            rateSource: TaxAssignmentRateSource.MANUAL,
+            effectiveRate: 2.5,
+            treatment: TaxTreatment.FIXED,
+            status: TaxAssignmentStatus.MANUAL_ADJUSTMENT,
+            reason: 'Ajuste manual de prueba',
+          },
+        ],
+        'user-001',
+      );
+
+      expect(assignment).toMatchObject({
+        effectiveRate: '2.5',
+        rateSource: TaxAssignmentRateSource.MANUAL,
+        treatment: TaxTreatment.FIXED,
+        status: TaxAssignmentStatus.MANUAL_ADJUSTMENT,
+        reason: 'Ajuste manual de prueba',
+        taxNameSnapshot: 'IVA 19%',
+      });
+      expect(profile).toMatchObject({
+        profileStatus: TaxProfileStatus.CONFIGURED,
+        confirmedBy: 'user-001',
+      });
+      expect(result.profileStatus).toBe(TaxProfileStatus.CONFIGURED);
+      expect(managerMock.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('crea una asignación con rateSource explícito y los valores tributarios predeterminados', async () => {
+      const profile = makeProfile();
+      const refreshed = makeProfile();
+      const created: Record<string, unknown> = {};
+      managerMock.findOne
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(refreshed);
+      managerMock.find.mockResolvedValueOnce([]);
+      managerMock.create.mockImplementation((_entity, values) => Object.assign(created, values));
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+      taxCatalogPort.findById.mockResolvedValueOnce(makeIvaDef());
+
+      await service.saveAssignments(
+        'sub-001',
+        [
+          {
+            taxDefinitionId: 'taxdef-iva-001',
+            rateSource: TaxAssignmentRateSource.CATALOG,
+            effectiveRate: null,
+            treatment: null,
+            reason: null,
+          },
+        ],
+        'user-001',
+      );
+
+      expect(created).toMatchObject({
+        effectiveRate: null,
+        rateSource: TaxAssignmentRateSource.CATALOG,
+        treatment: TaxTreatment.STANDARD,
+        status: TaxAssignmentStatus.SUGGESTED,
+        reason: null,
+      });
+      expect(managerMock.save).toHaveBeenCalledWith(expect.anything(), created);
+    });
+  });
+
+  describe('updateAssignment', () => {
+    it('rechaza una asignación cuando el perfil tributario no existe', async () => {
+      managerMock.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateAssignment(
+          'sub-001',
+          'assign-001',
+          { status: TaxAssignmentStatus.CONFIRMED },
+          'user-001',
+        ),
+      ).rejects.toThrow('Perfil tributario para suscriptor sub-001 no encontrado');
+    });
+
+    it('rechaza una asignación que no pertenece al perfil del suscriptor', async () => {
+      managerMock.findOne.mockResolvedValueOnce(makeProfile()).mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateAssignment('sub-001', 'assign-missing', {}, 'user-001'),
+      ).rejects.toThrow('Asignación tributaria assign-missing no encontrada');
+    });
+
+    it('actualiza campos explícitos y configura el perfil al confirmar la asignación', async () => {
+      const assignment = makeAssignment({ status: TaxAssignmentStatus.SUGGESTED });
+      const profile = makeProfile({
+        profileStatus: TaxProfileStatus.PENDING_REVIEW,
+        assignments: [assignment],
+      });
+      managerMock.findOne
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(assignment)
+        .mockResolvedValueOnce(profile);
+      managerMock.find.mockResolvedValueOnce([assignment]);
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+
+      const result = await service.updateAssignment(
+        'sub-001',
+        assignment.id,
+        {
+          effectiveRate: null,
+          treatment: null,
+          status: TaxAssignmentStatus.CONFIRMED,
+          reason: null,
+        },
+        'user-001',
+      );
+
+      expect(assignment).toMatchObject({
+        effectiveRate: null,
+        rateSource: TaxAssignmentRateSource.MANUAL,
+        treatment: null,
+        status: TaxAssignmentStatus.CONFIRMED,
+        reason: null,
+      });
+      expect(profile).toMatchObject({
+        profileStatus: TaxProfileStatus.CONFIGURED,
+        confirmedBy: 'user-001',
+      });
+      expect(result.profileStatus).toBe(TaxProfileStatus.CONFIGURED);
+      expect(managerMock.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('conserva el estado del perfil cuando la asignación no está confirmada', async () => {
+      const assignment = makeAssignment({ status: TaxAssignmentStatus.SUGGESTED });
+      const profile = makeProfile({ assignments: [assignment] });
+      managerMock.findOne
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(assignment)
+        .mockResolvedValueOnce(profile);
+      managerMock.find.mockResolvedValueOnce([assignment]);
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+
+      const result = await service.updateAssignment('sub-001', assignment.id, {}, 'user-001');
+
+      expect(result.profileStatus).toBe(TaxProfileStatus.PENDING_REVIEW);
+      expect(managerMock.save).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ── suggestVatForSubscriber ──────────────────────────────────────────────────
@@ -366,6 +527,164 @@ describe('SubscriberTaxProfileService', () => {
 
       // save NO debe haberse llamado para la asignación CONFIRMED
       expect(managerMock.save).not.toHaveBeenCalled();
+    });
+
+    it('usa el código IVA alternativo y actualiza una asignación SUGGESTED', async () => {
+      const subscriber = makeSubscriber({ stratum: 2 });
+      const suggested = makeAssignment({ status: TaxAssignmentStatus.SUGGESTED });
+      const profile = makeProfile({ assignments: [suggested] });
+      managerMock.findOne
+        .mockResolvedValueOnce(subscriber)
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(suggested)
+        .mockResolvedValueOnce(profile);
+      taxCatalogPort.findActiveByCode
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeIvaDef());
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+
+      await service.suggestVatForSubscriber(subscriber.id);
+
+      expect(taxCatalogPort.findActiveByCode.mock.calls).toEqual([['IVA_19'], ['IVA']]);
+      expect(suggested).toMatchObject({
+        treatment: TaxTreatment.EXEMPT,
+        reason: 'Persona natural — IVA exento (estratos 1-2)',
+        taxNameSnapshot: 'IVA 19%',
+      });
+      expect(managerMock.save).toHaveBeenCalledWith(expect.anything(), suggested);
+    });
+
+    it('no crea sugerencias si el catálogo no tiene definición de IVA', async () => {
+      const subscriber = makeSubscriber();
+      const profile = makeProfile();
+      managerMock.findOne
+        .mockResolvedValueOnce(subscriber)
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(profile);
+      taxCatalogPort.findActiveByCode.mockResolvedValue(null);
+
+      const result = await service.suggestVatForSubscriber(subscriber.id);
+
+      expect(taxCatalogPort.findActiveByCode.mock.calls).toEqual([['IVA_19'], ['IVA']]);
+      expect(managerMock.create).not.toHaveBeenCalled();
+      expect(managerMock.save).not.toHaveBeenCalled();
+      expect(result.assignments).toEqual([]);
+    });
+
+    it('omite IVA, definiciones inexistentes y asignaciones previas al sugerir otros tributos', async () => {
+      const subscriber = makeSubscriber({ stratum: 4 });
+      const profile = makeProfile();
+      const iva = makeIvaDef();
+      const existingDefinition: TaxDefinitionSnapshot = {
+        ...iva,
+        id: 'taxdef-existing',
+        code: 'EXISTING',
+        name: 'Tributo existente',
+        category: TaxCategory.WITHHOLDING,
+      };
+      const exemptDefinition: TaxDefinitionSnapshot = {
+        ...iva,
+        id: 'taxdef-exempt',
+        code: 'EXEMPT',
+        baseRate: '5.0000',
+        treatment: TaxTreatment.EXEMPT,
+        category: TaxCategory.WITHHOLDING,
+      };
+      const excludedDefinition: TaxDefinitionSnapshot = {
+        ...iva,
+        id: 'taxdef-excluded',
+        code: 'EXCLUDED',
+        baseRate: '6.0000',
+        treatment: TaxTreatment.EXCLUDED,
+        category: TaxCategory.WITHHOLDING,
+      };
+      const fixedDefinition: TaxDefinitionSnapshot = {
+        ...iva,
+        id: 'taxdef-fixed',
+        code: 'FIXED',
+        baseRate: '7.0000',
+        treatment: TaxTreatment.FIXED,
+        category: TaxCategory.WITHHOLDING,
+      };
+      taxApplicationPort.resolve.mockResolvedValueOnce([
+        {
+          taxDefinitionId: iva.id,
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: 19,
+          ruleId: 'iva-rule',
+          priorityMatched: 1,
+        },
+        {
+          taxDefinitionId: 'taxdef-missing',
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: null,
+          ruleId: 'missing-rule',
+          priorityMatched: 2,
+        },
+        {
+          taxDefinitionId: existingDefinition.id,
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: 1,
+          ruleId: 'existing-rule',
+          priorityMatched: 3,
+        },
+        ...[
+          [exemptDefinition, TaxTreatment.EXEMPT],
+          [excludedDefinition, TaxTreatment.EXCLUDED],
+          [fixedDefinition, TaxTreatment.FIXED],
+        ].map(([definition, treatment]) => ({
+          taxDefinitionId: (definition as TaxDefinitionSnapshot).id,
+          treatment: treatment as TaxTreatment,
+          effectiveRate: null,
+          ruleId: `${(definition as TaxDefinitionSnapshot).id}-rule`,
+          priorityMatched: 4,
+        })),
+      ]);
+      managerMock.findOne
+        .mockResolvedValueOnce(subscriber)
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(null) // no existing IVA assignment
+        .mockResolvedValueOnce(makeAssignment({ taxDefinitionId: existingDefinition.id }))
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(profile);
+      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(null).mockResolvedValueOnce(iva);
+      taxCatalogPort.findById
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existingDefinition)
+        .mockResolvedValueOnce(exemptDefinition)
+        .mockResolvedValueOnce(excludedDefinition)
+        .mockResolvedValueOnce(fixedDefinition);
+      const created: Array<Record<string, unknown>> = [];
+      managerMock.create.mockImplementation((_entity, values) => {
+        created.push(values as Record<string, unknown>);
+        return values;
+      });
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+
+      await service.suggestVatForSubscriber(subscriber.id);
+
+      expect(created.map(({ taxDefinitionId }) => taxDefinitionId)).toEqual([
+        iva.id,
+        exemptDefinition.id,
+        excludedDefinition.id,
+        fixedDefinition.id,
+      ]);
+      expect(created.slice(1)).toEqual([
+        expect.objectContaining({
+          effectiveRate: exemptDefinition.baseRate,
+          treatment: TaxTreatment.EXEMPT,
+        }),
+        expect.objectContaining({
+          effectiveRate: excludedDefinition.baseRate,
+          treatment: TaxTreatment.EXCLUDED,
+        }),
+        expect.objectContaining({
+          effectiveRate: fixedDefinition.baseRate,
+          treatment: TaxTreatment.FIXED,
+        }),
+      ]);
     });
   });
 

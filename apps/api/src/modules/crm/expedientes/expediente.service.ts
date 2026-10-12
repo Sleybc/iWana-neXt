@@ -5,7 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
-import { DataSource, EntityManager, In, Like } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Like } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { ExpedienteListView, resolveExpedienteStatusesForView } from './expediente-list-view';
 import {
@@ -23,6 +23,7 @@ import {
 const DOCUMENT_TYPE_OPTIONS = ['CC', 'CE', 'TI', 'NIT', 'PASAPORTE', 'PEP', 'PPT', 'OTRO'];
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 import { StatusChange } from './entities/status-change.entity';
+import { CrmConversionFailure } from './entities/crm-conversion-failure.entity';
 import { ContactAttempt } from './entities/contact-attempt.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
@@ -1181,7 +1182,60 @@ export class ExpedienteService {
       newValue: { action: 'reactivate', previousStatus },
     });
 
+    const restoredEvent = this.pipelineEventForStatus(
+      previousStatus,
+      tenantId,
+      schemaName,
+      TenantContext.getOrThrow().tenantSlug,
+      id,
+      actorUserId,
+      entity.discardReason,
+    );
+    if (restoredEvent) {
+      await this.emitPipelineEventSafely(
+        restoredEvent.eventName,
+        restoredEvent.payload,
+        id,
+        actorUserId,
+      );
+    }
+
     return this.findById(id);
+  }
+
+  async retryConversionEvent(
+    expedienteId: string,
+    actorUserId: string,
+  ): Promise<{ retried: boolean; resolved: boolean; eventName: string | null }> {
+    const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
+    const expediente = await this.findById(expedienteId);
+    const event = this.pipelineEventForStatus(
+      expediente.status,
+      tenantId,
+      schemaName,
+      tenantSlug,
+      expedienteId,
+      actorUserId,
+      expediente.discardReason,
+    );
+    if (!event) return { retried: false, resolved: false, eventName: null };
+
+    const pending = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+      qr.manager.findOne(CrmConversionFailure, {
+        where: { expedienteId, eventName: event.eventName, resolvedAt: IsNull() },
+      }),
+    );
+    if (!pending) {
+      return { retried: false, resolved: false, eventName: event.eventName };
+    }
+
+    const resolved = await this.emitPipelineEventSafely(
+      event.eventName,
+      event.payload,
+      expedienteId,
+      actorUserId,
+    );
+    return { retried: true, resolved, eventName: event.eventName };
   }
 
   async createContactAttempt(
@@ -2867,13 +2921,108 @@ export class ExpedienteService {
       | ExpedienteActivatedEvent
       | ExpedienteDiscardedEvent,
     expedienteId: string,
-  ): Promise<void> {
+    resolvedBy?: string,
+  ): Promise<boolean> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     try {
       await this.eventEmitter.emitAsync(eventName, payload);
-    } catch (error) {
+    } catch {
+      try {
+        await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+          qr.query(
+            `INSERT INTO crm_conversion_failures
+               (tenant_id, expediente_id, event_name, error_code, attempts, first_failed_at, last_failed_at)
+             VALUES ($1, $2, $3, 'EVENT_EMIT_FAILED', 1, now(), now())
+             ON CONFLICT (expediente_id, event_name)
+             DO UPDATE SET error_code = 'EVENT_EMIT_FAILED', attempts = crm_conversion_failures.attempts + 1,
+                           last_failed_at = now(), resolved_at = NULL, resolved_by = NULL`,
+            [tenantId, expedienteId, eventName],
+          ),
+        );
+      } catch {
+        this.logger.warn(
+          `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}; no se pudo persistir EVENT_FAILURE_PERSISTENCE_FAILED`,
+        );
+        return false;
+      }
       this.logger.warn(
-        `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}: ${String(error)}`,
+        `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}: EVENT_EMIT_FAILED`,
       );
+      return false;
+    }
+
+    try {
+      await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
+        qr.manager.update(
+          CrmConversionFailure,
+          { expedienteId, eventName, resolvedAt: IsNull() },
+          { resolvedAt: new Date(), resolvedBy: resolvedBy ?? payload.actorUserId },
+        ),
+      );
+    } catch {
+      this.logger.warn(
+        `[PIPELINE_EVENT] Emisión ${eventName} correcta para expediente ${expedienteId}; EVENT_FAILURE_RESOLUTION_FAILED`,
+      );
+    }
+    return true;
+  }
+
+  private pipelineEventForStatus(
+    status: ExpedienteStatus,
+    tenantId: string,
+    schemaName: string,
+    tenantSlug: string,
+    expedienteId: string,
+    actorUserId: string,
+    reason: string | null,
+  ): {
+    eventName: string;
+    payload:
+      | ExpedienteReadyForInstallationEvent
+      | ExpedienteInstallationScheduledEvent
+      | ExpedienteActivatedEvent
+      | ExpedienteDiscardedEvent;
+  } | null {
+    switch (status) {
+      case ExpedienteStatus.LISTO_PARA_INSTALACION:
+        return {
+          eventName: 'crm.expediente.ready-for-installation',
+          payload: new ExpedienteReadyForInstallationEvent(
+            tenantId,
+            schemaName,
+            expedienteId,
+            actorUserId,
+          ),
+        };
+      case ExpedienteStatus.INSTALACION_AGENDADA:
+        return {
+          eventName: 'crm.expediente.installation-scheduled',
+          payload: new ExpedienteInstallationScheduledEvent(
+            tenantId,
+            schemaName,
+            tenantSlug,
+            expedienteId,
+            actorUserId,
+          ),
+        };
+      case ExpedienteStatus.CLIENTE_ACTIVO:
+        return {
+          eventName: 'crm.expediente.activated',
+          payload: new ExpedienteActivatedEvent(tenantId, schemaName, expedienteId, actorUserId),
+        };
+      case ExpedienteStatus.DESCARTADO:
+        return {
+          eventName: 'crm.expediente.discarded',
+          payload: new ExpedienteDiscardedEvent(
+            tenantId,
+            schemaName,
+            expedienteId,
+            actorUserId,
+            reason,
+          ),
+        };
+      default:
+        return null;
     }
   }
 

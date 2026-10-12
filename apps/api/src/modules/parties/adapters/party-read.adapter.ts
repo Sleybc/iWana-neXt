@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In } from 'typeorm';
+import { DataSource, In, IsNull } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
-import { DocumentTypeParty, PartyRoleStatus, PartyRoleType } from '@iwana/shared';
+import { DocumentTypeParty, PartyRoleStatus, PartyRoleType, PartyStatus } from '@iwana/shared';
 import { Party } from '../entities/party.entity';
 import { PartyContact } from '../entities/party-contact.entity';
 import { PartyRole } from '../entities/party-role.entity';
+import { createPartyPiiCrypto } from '../party-pii.util';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import {
   IPartyReadPort,
@@ -15,10 +17,20 @@ import {
   PartyContactSnapshot,
 } from '../ports/party-read.port';
 
+const NON_MERGED_PARTY_STATUSES = Object.values(PartyStatus).filter(
+  (status) => status !== PartyStatus.MERGED,
+);
+
 @Injectable()
 export class PartyReadAdapter extends IPartyReadPort {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
+  private readonly pii: ReturnType<typeof createPartyPiiCrypto>;
+
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    configService: ConfigService,
+  ) {
     super();
+    this.pii = createPartyPiiCrypto(configService);
   }
 
   async getById(id: string): Promise<PartySnapshot | null> {
@@ -43,9 +55,32 @@ export class PartyReadAdapter extends IPartyReadPort {
     documentNumber: string,
   ): Promise<PartySnapshot | null> {
     const { schemaName } = TenantContext.getOrThrow();
+    const documentNumberHmac = this.pii.documentHmac(documentType, documentNumber);
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const party = await qr.manager.findOne(Party, { where: { documentType, documentNumber } });
-      return party ? this.toSnapshot(party) : null;
+      for (const status of NON_MERGED_PARTY_STATUSES) {
+        const party = await qr.manager.findOne(Party, {
+          where: { documentType, documentNumberHmac, deletedAt: IsNull(), status },
+        });
+        if (party) return this.toSnapshot(party);
+      }
+
+      const mergedParty = await qr.manager.findOne(Party, {
+        where: {
+          documentType,
+          documentNumberHmac,
+          deletedAt: IsNull(),
+          status: PartyStatus.MERGED,
+        },
+      });
+      if (!mergedParty?.mergedIntoPartyId) return null;
+
+      for (const status of NON_MERGED_PARTY_STATUSES) {
+        const canonicalParty = await qr.manager.findOne(Party, {
+          where: { id: mergedParty.mergedIntoPartyId, deletedAt: IsNull(), status },
+        });
+        if (canonicalParty) return this.toSnapshot(canonicalParty);
+      }
+      return null;
     });
   }
 
@@ -140,7 +175,7 @@ export class PartyReadAdapter extends IPartyReadPort {
       return contacts.map((c) => ({
         id: c.id,
         type: c.type,
-        value: c.value,
+        value: c.valueEncrypted ? this.pii.decrypt(c.valueEncrypted) : '',
         isPrimary: c.isPrimary,
       }));
     });
@@ -157,7 +192,7 @@ export class PartyReadAdapter extends IPartyReadPort {
         const snapshot: PartyContactSnapshot = {
           id: c.id,
           type: c.type,
-          value: c.value,
+          value: c.valueEncrypted ? this.pii.decrypt(c.valueEncrypted) : '',
           isPrimary: c.isPrimary,
         };
         if (existing) {
@@ -175,7 +210,7 @@ export class PartyReadAdapter extends IPartyReadPort {
       id: party.id,
       partyType: party.partyType,
       documentType: party.documentType,
-      documentNumber: party.documentNumber,
+      documentNumber: this.pii.decrypt(party.documentNumber),
       displayName: party.displayName,
       legalName: party.legalName,
       status: party.status,

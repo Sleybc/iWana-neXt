@@ -1,5 +1,7 @@
 import { QueryFailedError } from 'typeorm';
-import { PartyStatus } from '@iwana/shared';
+import { ConfigService } from '@nestjs/config';
+import { DocumentTypeParty, PartyStatus } from '@iwana/shared';
+import { createPartyPiiCrypto } from '../../../parties/party-pii.util';
 
 /**
  * Almacen en memoria multi-schema que MODELA las restricciones reales de Postgres para MOD12
@@ -8,7 +10,7 @@ import { PartyStatus } from '@iwana/shared';
  * cross-tenant, sin depender de una base de datos viva (el repo no expone harness de DB real).
  *
  * Restricciones modeladas:
- * - party: unico parcial `idx_party_document_active (document_type, document_number)` (deleted_at IS NULL, status != MERGED).
+ * - party: unico parcial `uq_party_document_hmac_active (document_type, document_number_hmac)` (deleted_at IS NULL, status != MERGED).
  * - supplier_profiles: unico `uq_supplier_profiles_tenant_party_ref (tenant_id, party_ref_id)`
  *   y `uq_supplier_profiles_tenant_supplier_code (tenant_id, supplier_code)`.
  */
@@ -25,6 +27,12 @@ interface SchemaData {
 }
 
 let idCounter = 0;
+const encryptionKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const hashKeyHex = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+const partyPii = createPartyPiiCrypto({
+  getOrThrow: (key: string) => (key === 'PII_HASH_KEY' ? hashKeyHex : encryptionKeyHex),
+} as unknown as ConfigService);
+
 function nextId(prefix: string): string {
   idCounter += 1;
   return `${prefix}-${String(idCounter).padStart(6, '0')}`;
@@ -85,7 +93,22 @@ export class InMemoryTenantStore {
       status: PartyStatus.ACTIVE,
       deletedAt: null,
       ...party,
+      documentNumber: partyPii.encrypt(party.documentNumber),
+      documentNumberHmac: partyPii.documentHmac(
+        party.documentType as DocumentTypeParty,
+        party.documentNumber,
+      ),
     });
+  }
+
+  countPartiesByDocument(schemaName: string, documentType: string, documentNumber: string): number {
+    const documentNumberHmac = partyPii.documentHmac(
+      documentType as DocumentTypeParty,
+      documentNumber,
+    );
+    return this.schema(schemaName).party.filter(
+      (row) => row.documentType === documentType && row.documentNumberHmac === documentNumberHmac,
+    ).length;
   }
 
   /** Activa una carrera de codigo: la proxima insercion de perfil colisiona una vez y reintenta. */
@@ -146,12 +169,12 @@ export class InMemoryEntityManager {
       const duplicate = this.data.party.find(
         (row) =>
           row.documentType === payload.documentType &&
-          row.documentNumber === payload.documentNumber &&
+          row.documentNumberHmac === payload.documentNumberHmac &&
           !row.deletedAt &&
           row.status !== 'MERGED',
       );
       if (duplicate) {
-        throw uniqueViolation('idx_party_document_active');
+        throw uniqueViolation('uq_party_document_hmac_active');
       }
     }
     return this.upsert(this.data.party, payload, 'Party');

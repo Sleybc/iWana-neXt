@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import {
@@ -8,6 +9,7 @@ import {
   VatTreatment,
   TaxRegime,
   DocumentType,
+  ExpedienteStatus,
 } from '@iwana/shared';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { hashEmail } from '../../../../common/crypto/hash-email.util';
@@ -16,10 +18,22 @@ import { VatTreatmentService } from '../vat-treatment.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
 import { Subscriber } from '../entities/subscriber.entity';
 import { AuditService } from '../../../audit/audit.service';
+import { IPartyWritePort } from '../../../parties/ports/party-write.port';
+import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.util';
 
 // Mocks para multi-tenant
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
+const auditServiceMock = { log: jest.fn().mockResolvedValue(undefined) };
+const partyWritePortMock = {
+  ensurePartyWithRole: jest.fn().mockResolvedValue({
+    partyId: 'party-test-uuid',
+    partyRoleId: 'role-test-uuid',
+    partyCreated: true,
+    roleAdded: true,
+    identity: { contacts: [] },
+  }),
+};
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
@@ -42,6 +56,8 @@ describe('SubscribersService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    auditServiceMock.log.mockResolvedValue(undefined);
+    partyWritePortMock.ensurePartyWithRole.mockClear();
     mockTenantContextGetOrThrow.mockReturnValue({
       schemaName: 'tenant_test',
       tenantId: 'tenant-001',
@@ -53,7 +69,8 @@ describe('SubscribersService', () => {
         VatTreatmentService,
         SubscriberStatusTransitionService,
         { provide: DataSource, useValue: {} },
-        { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: AuditService, useValue: auditServiceMock },
+        { provide: IPartyWritePort, useValue: partyWritePortMock },
         {
           provide: ConfigService,
           useValue: {
@@ -141,6 +158,86 @@ describe('SubscribersService', () => {
   });
 
   // ── Cálculo automático de IVA ──
+
+  describe('rechazos de alta y recuperación idempotente', () => {
+    const minimumCreateInput = {
+      personType: PersonType.NATURAL,
+      customerSegment: CustomerSegment.RESIDENTIAL,
+      stratum: 3,
+      email: 'synthetic@example.invalid',
+      phone: '3000000000',
+      address: 'Dirección sintética',
+    };
+
+    it('permite registrar un prospecto sin documento sin inventar un vínculo de Party', async () => {
+      const saved = buildSubscriber({ id: 'sub-without-document', partyId: null });
+      mockSave(saved);
+
+      await expect(service.create(minimumCreateInput, 'actor-1')).resolves.toMatchObject({
+        id: saved.id,
+      });
+
+      expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un dígito de verificación NIT que no coincide antes de escribir', async () => {
+      const expectedDigit = calculateNitVerificationDigit('900111222');
+      const wrongDigit = expectedDigit === '0' ? '1' : '0';
+
+      await expect(
+        service.create(
+          {
+            ...minimumCreateInput,
+            nit: '900111222',
+            nitVerificationDigit: wrongDigit,
+          },
+          'actor-1',
+        ),
+      ).rejects.toThrow('El dígito de verificación del NIT no coincide.');
+
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
+    });
+
+    it('rechaza una razón de override demasiado corta antes de escribir', async () => {
+      await expect(
+        service.create({ ...minimumCreateInput, manualOverrideReason: 'corto' }, 'actor-1'),
+      ).rejects.toThrow('manualOverrideReason debe tener al menos 10 caracteres');
+
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('reutiliza el suscriptor existente ante la colisión única del expediente', async () => {
+      const expedienteId = 'exp-idempotent';
+      const existing = buildSubscriber({ id: 'sub-existing', expedienteId });
+      const duplicateError = {
+        driverError: { code: '23505', constraint: 'uq_subscribers_expediente' },
+      };
+      mockRunInTenantSchema
+        .mockRejectedValueOnce(duplicateError)
+        .mockImplementationOnce(async (_ds, _schema, callback) =>
+          callback({ manager: { findOne: async () => existing } }),
+        );
+
+      await expect(
+        service.create({ ...minimumCreateInput, expedienteId }, 'actor-1'),
+      ).resolves.toMatchObject({ id: existing.id });
+
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(2);
+    });
+
+    it('propaga una colisión única ajena al expediente', async () => {
+      const duplicateError = {
+        driverError: { code: '23505', constraint: 'uq_subscribers_external_id' },
+      };
+      mockRunInTenantSchema.mockRejectedValueOnce(duplicateError);
+
+      await expect(
+        service.create({ ...minimumCreateInput, expedienteId: 'exp-idempotent' }, 'actor-1'),
+      ).rejects.toBe(duplicateError);
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+    });
+  });
 
   describe('Cálculo automático de IVA', () => {
     it('NATURAL estrato 2 RESIDENTIAL → EXEMPT + SIMPLIFIED al crear', async () => {
@@ -270,6 +367,7 @@ describe('SubscribersService', () => {
     });
 
     it('search sin parámetros retorna array vacío', async () => {
+      mockSearchResults([]);
       const results = await service.search({});
       expect(results).toEqual([]);
     });
@@ -338,6 +436,64 @@ describe('SubscribersService', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0]!.status).toBe(SubscriberStatus.ACTIVE);
+    });
+
+    it('escapa %, _ y backslash para búsqueda literal con ILIKE', async () => {
+      const chainable: Record<string, jest.Mock> = {};
+      chainable.andWhere = jest.fn().mockReturnThis();
+      chainable.orderBy = jest.fn().mockReturnThis();
+      chainable.addOrderBy = jest.fn().mockReturnThis();
+      chainable.skip = jest.fn().mockReturnThis();
+      chainable.take = jest.fn().mockReturnThis();
+      chainable.getManyAndCount = jest.fn().mockResolvedValue([[], 0]);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { createQueryBuilder: () => chainable } }),
+      );
+
+      await service.findAll({ search: 'a%_\\b' });
+
+      expect(chainable.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining("ILIKE :search ESCAPE E'\\\\'"),
+        { search: '%a\\%\\_\\\\b%' },
+      );
+    });
+
+    it('aplica en conjunto filtros de estado, tipo, segmento, estrato y búsqueda libre', async () => {
+      const query = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { createQueryBuilder: () => query } }),
+      );
+
+      await service.findAll({
+        status: SubscriberStatus.ACTIVE,
+        personType: PersonType.NATURAL,
+        customerSegment: CustomerSegment.RESIDENTIAL,
+        stratum: 3,
+        search: 'suscriptor sintético',
+      });
+
+      expect(query.andWhere).toHaveBeenCalledTimes(5);
+      expect(query.andWhere).toHaveBeenCalledWith('s.status = :status', {
+        status: SubscriberStatus.ACTIVE,
+      });
+      expect(query.andWhere).toHaveBeenCalledWith('s.personType = :personType', {
+        personType: PersonType.NATURAL,
+      });
+      expect(query.andWhere).toHaveBeenCalledWith('s.customerSegment = :customerSegment', {
+        customerSegment: CustomerSegment.RESIDENTIAL,
+      });
+      expect(query.andWhere).toHaveBeenCalledWith('s.stratum = :stratum', { stratum: 3 });
+      expect(query.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('s.firstName ILIKE :search'),
+        { search: '%suscriptor sintético%' },
+      );
     });
   });
 
@@ -409,6 +565,211 @@ describe('SubscribersService', () => {
       // Cambiar estrato de 2 a 5 cambia EXEMPT → STANDARD
       expect(vatTreatmentService.resolve(PersonType.NATURAL, 5, CustomerSegment.RESIDENTIAL)).toBe(
         VatTreatment.STANDARD,
+      );
+    });
+
+    it('audita solo nombres de campos y no persiste valores personales en audit_logs', async () => {
+      const existing = buildSubscriber({ nit: '900111222-1', address: 'Dirección previa' });
+      mockSave(existing);
+
+      await service.update(
+        'sub-001',
+        { nit: '900999888-5', address: 'Dirección personal nueva' },
+        'actor-1',
+      );
+
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'UPDATE',
+          entityType: 'Subscriber',
+          newValue: { changedFields: ['address', 'nit'] },
+          isDiff: true,
+        }),
+      );
+      const persistedPayload = JSON.stringify(auditServiceMock.log.mock.calls[0]?.[0]);
+      expect(persistedPayload).not.toContain('900111222-1');
+      expect(persistedPayload).not.toContain('900999888-5');
+      expect(persistedPayload).not.toContain('Dirección previa');
+      expect(persistedPayload).not.toContain('Dirección personal nueva');
+    });
+
+    it('aplica los campos enviados y registra únicamente sus nombres', async () => {
+      const existing = buildSubscriber({ id: 'sub-all-fields' });
+      mockSave(existing);
+      const nit = '900111222';
+      const dto = {
+        personType: PersonType.JURIDICA,
+        customerSegment: CustomerSegment.GOVERNMENT,
+        documentType: 'NIT',
+        documentNumber: '800123456',
+        firstName: 'Nombre sintético',
+        lastName: 'Apellido sintético',
+        stratum: 4,
+        birthDate: '1990-01-02',
+        nit: `${nit}-${calculateNitVerificationDigit(nit)}`,
+        businessName: 'Empresa sintética',
+        commercialName: 'Comercial sintético',
+        legalRepresentativeId: 'representante-1',
+        email: 'updated@example.invalid',
+        phone: '3000000001',
+        altContactName: '  Contacto alterno  ',
+        altContactPhone: '3000000002',
+        whatsapp: '3000000003',
+        address: 'Calle sintética 1',
+        neighborhood: 'Barrio sintético',
+        city: 'Ciudad sintética',
+        department: 'Departamento sintético',
+        postalCode: '110111',
+        latitude: 4.61,
+        longitude: -74.08,
+        coverageNodeId: 'node-1',
+        externalId: 'external-1',
+        expedienteId: 'exp-update',
+        manualOverrideReason: 'Razón sintética suficientemente larga',
+      };
+
+      await service.update(existing.id, dto, 'actor-1');
+
+      expect(existing).toMatchObject({
+        personType: PersonType.JURIDICA,
+        customerSegment: CustomerSegment.GOVERNMENT,
+        documentType: 'NIT',
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        stratum: 4,
+        nit,
+        nitVerificationDigit: calculateNitVerificationDigit(nit),
+        businessName: dto.businessName,
+        commercialName: dto.commercialName,
+        legalRepresentativeId: dto.legalRepresentativeId,
+        altContactName: 'Contacto alterno',
+        address: dto.address,
+        neighborhood: dto.neighborhood,
+        city: dto.city,
+        department: dto.department,
+        postalCode: dto.postalCode,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        coverageNodeId: dto.coverageNodeId,
+        externalId: dto.externalId,
+        expedienteId: dto.expedienteId,
+        manualOverrideReason: dto.manualOverrideReason,
+      });
+      expect(existing.documentNumberEncrypted).not.toBe(dto.documentNumber);
+      expect(existing.emailEncrypted).not.toBe(dto.email);
+      expect(existing.phoneEncrypted).not.toBe(dto.phone);
+      expect(existing.whatsappEncrypted).not.toBe(dto.whatsapp);
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: { changedFields: Object.keys(dto).sort() },
+          isDiff: true,
+        }),
+      );
+      expect(JSON.stringify(auditServiceMock.log.mock.calls)).not.toContain(
+        'updated@example.invalid',
+      );
+      expect(JSON.stringify(auditServiceMock.log.mock.calls)).not.toContain(dto.address);
+    });
+
+    it('limpia los datos opcionales cuando recibe cadenas vacías', async () => {
+      const existing = buildSubscriber({ id: 'sub-clear-fields' });
+      mockSave(existing);
+
+      await service.update(
+        existing.id,
+        {
+          documentNumber: '',
+          altContactName: '',
+          altContactPhone: '',
+          whatsapp: '',
+          manualOverrideReason: '',
+        },
+        'actor-1',
+      );
+
+      expect(existing.documentNumberEncrypted).toBeNull();
+      expect(existing.documentNumberHash).toBeNull();
+      expect(existing.altContactName).toBeNull();
+      expect(existing.altContactPhoneEncrypted).toBeNull();
+      expect(existing.whatsapp).toBeNull();
+      expect(existing.whatsappEncrypted).toBeNull();
+      expect(existing.whatsappHmac).toBeNull();
+      expect(existing.manualOverrideReason).toBeNull();
+    });
+
+    it('rechaza un dígito de verificación NIT incorrecto antes de guardar', async () => {
+      const existing = buildSubscriber({ id: 'sub-invalid-dv' });
+      mockSave(existing);
+      const expectedDigit = calculateNitVerificationDigit('900111222');
+      const wrongDigit = expectedDigit === '0' ? '1' : '0';
+
+      await expect(
+        service.update(
+          existing.id,
+          { nit: '900111222', nitVerificationDigit: wrongDigit },
+          'actor-1',
+        ),
+      ).rejects.toThrow('El dígito de verificación del NIT no coincide.');
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un motivo manual corto antes de guardar', async () => {
+      const existing = buildSubscriber({ id: 'sub-short-reason' });
+      mockSave(existing);
+
+      await expect(
+        service.update(existing.id, { manualOverrideReason: 'corto' }, 'actor-1'),
+      ).rejects.toThrow('manualOverrideReason debe tener al menos 10 caracteres');
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateSection', () => {
+    it('rechaza una sección que no está en la allowlist', async () => {
+      await expect(
+        service.updateSection(
+          'sub-1',
+          'privateFields',
+          { email: 'synthetic@example.invalid' },
+          'actor-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un payload inválido sin actualizar ni auditar', async () => {
+      await expect(
+        service.updateSection('sub-1', 'contact', { email: 'not-an-email' }, 'actor-1'),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'INVALID_SUBSCRIBER_SECTION_PAYLOAD' }),
+      });
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('audita solo sección y nombres de campos al actualizar un contacto', async () => {
+      const subscriber = buildSubscriber({
+        emailEncrypted: '',
+        phoneEncrypted: '',
+      });
+      mockSave(subscriber);
+
+      await service.updateSection(
+        subscriber.id,
+        'contact',
+        { email: 'updated@example.invalid' },
+        'actor-1',
+      );
+
+      expect(auditServiceMock.log).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          entityId: subscriber.id,
+          newValue: { section: 'contact', changedFields: ['email'] },
+        }),
+      );
+      expect(JSON.stringify(auditServiceMock.log.mock.calls)).not.toContain(
+        'updated@example.invalid',
       );
     });
   });
@@ -552,6 +913,280 @@ describe('SubscribersService', () => {
       );
 
       await expect(service.findSummaryByExpedienteId('exp-noname')).resolves.toBeNull();
+    });
+  });
+
+  describe('get360View', () => {
+    it('incluye el resumen compatible del expediente y el timeline de conversión y activación', async () => {
+      const convertedAt = new Date('2026-09-01T10:00:00.000Z');
+      const activatedAt = new Date('2026-09-02T10:00:00.000Z');
+      const subscriber = buildSubscriber({
+        id: 'sub-360',
+        expedienteId: 'exp-360',
+        postalCode: null,
+        convertedAt,
+        activatedAt,
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: 'encrypted-phone',
+        documentNumberEncrypted: null,
+      });
+      const expediente = {
+        id: 'exp-360',
+        fullName: 'Persona sintética',
+        status: ExpedienteStatus.LISTO_PARA_INSTALACION,
+        source: 'B12_TEST',
+        createdAt: new Date('2026-08-30T10:00:00.000Z'),
+        statusChangedAt: new Date('2026-09-01T09:00:00.000Z'),
+        postalCode: '110111',
+        paymentMethod: null,
+        billingCycle: null,
+        fiscalName: null,
+        interestedPlanId: null,
+        additionalProductIds: undefined,
+        additionalServiceIds: undefined,
+        commercialNotes: undefined,
+        dataConsentRevoked: false,
+        identityVerified: null,
+        legalComplianceStatus: null,
+        installationAddress: null,
+        siteContactName: null,
+        siteContactPhoneEncrypted: null,
+        workOrderId: null,
+        ticketId: null,
+        availableTechnology: null,
+        candidateTechnologies: null,
+        feasibility: null,
+        coverageResult: null,
+      };
+      const manager = {
+        findOne: jest.fn().mockResolvedValueOnce(subscriber).mockResolvedValueOnce(expediente),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      const view = await service.get360View(subscriber.id);
+
+      expect(view.subscriber.postalCode).toBe('110111');
+      expect(view.expedienteSummary).toMatchObject({
+        id: 'exp-360',
+        additionalProductIds: [],
+        additionalServiceIds: [],
+        commercialNotes: null,
+      });
+      expect(view.timelineSeed).toEqual([
+        { type: 'SUBSCRIBER_CONVERTED', occurredAt: convertedAt, expedienteId: 'exp-360' },
+        { type: 'SUBSCRIBER_ACTIVATED', occurredAt: activatedAt, expedienteId: 'exp-360' },
+      ]);
+    });
+
+    it('devuelve una vista sin resumen ni eventos para un suscriptor sin expediente', async () => {
+      const subscriber = buildSubscriber({
+        expedienteId: null,
+        convertedAt: null,
+        activatedAt: null,
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: 'encrypted-phone',
+        documentNumberEncrypted: null,
+      });
+      const manager = {
+        findOne: jest.fn().mockResolvedValueOnce(subscriber),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      const view = await service.get360View(subscriber.id);
+
+      expect(view.expedienteSummary).toBeNull();
+      expect(view.timelineSeed).toEqual([]);
+      expect(view.contracts).toEqual([]);
+      expect(manager.findOne).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('transiciones desde el expediente', () => {
+    it('activa un prospecto y marca activatedAt', async () => {
+      const prospect = buildSubscriber({
+        id: 'sub-activate',
+        expedienteId: 'exp-activate',
+        status: SubscriberStatus.PROSPECT,
+      });
+      const active = buildSubscriber({
+        ...prospect,
+        status: SubscriberStatus.ACTIVE,
+        activatedAt: new Date('2026-10-01T10:00:00.000Z'),
+      });
+      jest.spyOn(service, 'findByExpedienteId').mockResolvedValue(prospect);
+      jest.spyOn(service, 'findById').mockResolvedValue(active);
+      const transitions = (service as any)
+        .statusTransitionService as SubscriberStatusTransitionService;
+      const transition = jest.spyOn(transitions, 'transition').mockResolvedValue({
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.ACTIVE,
+        reason: 'Activación automática desde expediente exp-activate',
+      });
+      const update = jest.fn().mockResolvedValue({ affected: 1 });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { update } }),
+      );
+
+      await expect(service.activateFromExpediente('exp-activate', 'actor-1')).resolves.toBe(active);
+
+      expect(transition).toHaveBeenCalledWith(
+        prospect.id,
+        SubscriberStatus.ACTIVE,
+        'Activación automática desde expediente exp-activate',
+        'actor-1',
+      );
+      expect(update).toHaveBeenCalledWith(
+        Subscriber,
+        { id: prospect.id },
+        { activatedAt: expect.any(Date) },
+      );
+    });
+
+    it('reactiva el cancelado como prospecto antes de activarlo', async () => {
+      const cancelled = buildSubscriber({
+        id: 'sub-cancelled',
+        expedienteId: 'exp-cancelled',
+        status: SubscriberStatus.CANCELLED,
+        activatedAt: null,
+      });
+      const active = buildSubscriber({
+        ...cancelled,
+        status: SubscriberStatus.ACTIVE,
+        activatedAt: new Date('2026-10-01T10:00:00.000Z'),
+      });
+      jest.spyOn(service, 'findByExpedienteId').mockResolvedValue(cancelled);
+      jest.spyOn(service, 'findById').mockResolvedValue(active);
+      const transitions = (service as any)
+        .statusTransitionService as SubscriberStatusTransitionService;
+      const reactivate = jest.spyOn(transitions, 'reactivateFromExpediente').mockResolvedValue({
+        fromStatus: SubscriberStatus.CANCELLED,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+      });
+      const transition = jest.spyOn(transitions, 'transition').mockResolvedValue({
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.ACTIVE,
+        reason: 'Activación automática desde expediente exp-cancelled',
+      });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { update: jest.fn().mockResolvedValue({ affected: 1 }) } }),
+      );
+
+      const result = await service.activateFromExpediente('exp-cancelled', 'actor-1');
+
+      expect(result).toBe(active);
+      expect(reactivate).toHaveBeenCalledWith(cancelled.id, 'exp-cancelled', 'actor-1');
+      expect(transition).toHaveBeenCalledWith(
+        cancelled.id,
+        SubscriberStatus.ACTIVE,
+        'Activación automática desde expediente exp-cancelled',
+        'actor-1',
+      );
+    });
+
+    it('no activa un expediente sin suscriptor, un estado ajeno o uno ya activo', async () => {
+      const lookup = jest
+        .spyOn(service, 'findByExpedienteId')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildSubscriber({ status: SubscriberStatus.LEAD }))
+        .mockResolvedValueOnce(buildSubscriber({ status: SubscriberStatus.ACTIVE }));
+      const transitions = (service as any)
+        .statusTransitionService as SubscriberStatusTransitionService;
+      const transition = jest.spyOn(transitions, 'transition');
+      const findById = jest.spyOn(service, 'findById').mockResolvedValue(buildSubscriber());
+
+      await expect(service.activateFromExpediente('exp-1', 'actor-1')).resolves.toBeNull();
+      await expect(service.activateFromExpediente('exp-1', 'actor-1')).resolves.toBeNull();
+      await expect(service.activateFromExpediente('exp-1', 'actor-1')).resolves.toEqual(
+        buildSubscriber(),
+      );
+
+      expect(lookup).toHaveBeenCalledTimes(3);
+      expect(transition).not.toHaveBeenCalled();
+      expect(findById).toHaveBeenCalledTimes(1);
+    });
+
+    it('restaura solo el prospecto cancelado y devuelve intacto el prospecto existente', async () => {
+      const prospective = buildSubscriber({
+        status: SubscriberStatus.PROSPECT,
+        emailEncrypted: (service as any).encryptValue('synthetic@example.invalid'),
+      });
+      const cancelled = buildSubscriber({ status: SubscriberStatus.CANCELLED });
+      jest
+        .spyOn(service, 'findByExpedienteId')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildSubscriber({ status: SubscriberStatus.ACTIVE }))
+        .mockResolvedValueOnce(prospective)
+        .mockResolvedValueOnce(cancelled);
+      const transitions = (service as any)
+        .statusTransitionService as SubscriberStatusTransitionService;
+      const reactivate = jest.spyOn(transitions, 'reactivateFromExpediente').mockResolvedValue({
+        fromStatus: SubscriberStatus.CANCELLED,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+      });
+      jest.spyOn(service, 'findById').mockResolvedValue(prospective);
+
+      await expect(
+        service.reactivateProspectFromExpediente('exp-1', 'actor-1'),
+      ).resolves.toBeNull();
+      await expect(
+        service.reactivateProspectFromExpediente('exp-1', 'actor-1'),
+      ).resolves.toBeNull();
+      await expect(
+        service.reactivateProspectFromExpediente('exp-1', 'actor-1'),
+      ).resolves.toMatchObject({
+        status: SubscriberStatus.PROSPECT,
+        email: 'synthetic@example.invalid',
+      });
+      await expect(service.reactivateProspectFromExpediente('exp-1', 'actor-1')).resolves.toBe(
+        prospective,
+      );
+
+      expect(reactivate).toHaveBeenCalledWith(cancelled.id, 'exp-1', 'actor-1');
+    });
+
+    it('cancela únicamente prospectos y registra el motivo fijo al descartar el expediente', async () => {
+      const prospect = buildSubscriber({
+        id: 'sub-cancel-prospect',
+        status: SubscriberStatus.PROSPECT,
+      });
+      jest
+        .spyOn(service, 'findByExpedienteId')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildSubscriber({ status: SubscriberStatus.ACTIVE }))
+        .mockResolvedValueOnce(prospect);
+      jest.spyOn(service, 'findById').mockResolvedValue(prospect);
+      const transitions = (service as any)
+        .statusTransitionService as SubscriberStatusTransitionService;
+      const transition = jest.spyOn(transitions, 'transition').mockResolvedValue({
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.CANCELLED,
+        reason: 'Cancelación automática por descarte de expediente exp-1',
+      });
+
+      await expect(
+        service.cancelProspectFromExpediente('exp-1', null, 'actor-1'),
+      ).resolves.toBeNull();
+      await expect(
+        service.cancelProspectFromExpediente('exp-1', null, 'actor-1'),
+      ).resolves.toBeNull();
+      await expect(service.cancelProspectFromExpediente('exp-1', null, 'actor-1')).resolves.toBe(
+        prospect,
+      );
+
+      expect(transition).toHaveBeenCalledWith(
+        prospect.id,
+        SubscriberStatus.CANCELLED,
+        'Cancelación automática por descarte de expediente exp-1',
+        'actor-1',
+      );
     });
   });
 

@@ -16,8 +16,9 @@ import {
   TaskPriority,
   TaskRecipientType,
   TaskType,
+  type SubscriberListItem,
 } from '@iwana/shared';
-import type { ExpedienteRecord, SubscriberRecord } from '@/lib/api-client';
+import type { ExpedienteRecord } from '@/lib/api-client';
 import { crmApi, subscribersApi } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
@@ -79,7 +80,7 @@ function formatProspectOption(expediente: ExpedienteRecord): SearchablePickerIte
   };
 }
 
-function formatSubscriberOption(subscriber: SubscriberRecord): SearchablePickerItem {
+function formatSubscriberOption(subscriber: SubscriberListItem): SearchablePickerItem {
   const label =
     subscriber.commercialName?.trim() ||
     subscriber.businessName?.trim() ||
@@ -157,8 +158,8 @@ export function TaskCoreFields({
         };
       }
 
-      // F4: `/crm/subscribers/search` es exacto-hash (documento/NIT/email/tel).
-      // Typeahead usable: listado con `search` (ILIKE sobre nombre comercial / razón social).
+      // F4: el typeahead usa `search` del listado; el API compara nombres, apellidos,
+      // razón social, NIT y nombre comercial con ILIKE.
       const response = await subscribersApi.list(
         { search: query, limit: RECIPIENT_PICKER_LIMIT, page: 1 },
         undefined,

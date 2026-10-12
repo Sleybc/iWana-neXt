@@ -1,4 +1,5 @@
 import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
@@ -30,6 +31,12 @@ import { InMemoryTenantStore } from './support/in-memory-tenant-store';
 
 const CURRENT_TENANT = { tenantId: 'tenant-001', schemaName: 'tenant_001' };
 const store = new InMemoryTenantStore();
+const encryptionKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const hashKeyHex = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+const configService = {
+  getOrThrow: (key: string) => (key === 'PII_HASH_KEY' ? hashKeyHex : encryptionKeyHex),
+  get: () => undefined,
+} as unknown as ConfigService;
 
 jest.mock('@iwana/db', () => ({
   SupplierProfile: class SupplierProfile {},
@@ -119,8 +126,8 @@ describe('Supplier profile HTTP integration (service + adapter + DB en memoria)'
         cb({ manager: store.managerFor(schemaName) }),
     );
 
-    const partyReadAdapter = new PartyReadAdapter({} as DataSource);
-    const partyWriteAdapter = new PartyWriteAdapter();
+    const partyReadAdapter = new PartyReadAdapter({} as DataSource, configService);
+    const partyWriteAdapter = new PartyWriteAdapter(configService);
     const supplierPartyPort = new SupplierPartyPortAdapter(partyReadAdapter);
     const supplierProfileService = new SupplierProfileService(
       {} as DataSource,
@@ -210,10 +217,7 @@ describe('Supplier profile HTTP integration (service + adapter + DB en memoria)'
     expect(response.body.partyRefId).toBe('party-existing-001');
     expect(response.body.party.displayName).toBe('Cliente que tambien vende');
     // No se creo un Party duplicado para el mismo documento.
-    const partiesWithDoc = store
-      .parties('tenant_001')
-      .filter((row) => row.documentNumber === '800200300');
-    expect(partiesWithDoc).toHaveLength(1);
+    expect(store.countPartiesByDocument('tenant_001', DocumentTypeParty.NIT, '800200300')).toBe(1);
   });
 
   it('POST /purchasing/suppliers responde 409 por unico real (perfil ya existe para el tercero)', async () => {

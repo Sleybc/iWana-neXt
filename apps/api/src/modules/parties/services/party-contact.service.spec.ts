@@ -1,5 +1,6 @@
 import { Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { PartyContactType } from '@iwana/shared';
 import { PartyContactService } from './party-contact.service';
 import { PartyContact } from '../entities/party-contact.entity';
@@ -19,6 +20,10 @@ describe('PartyContactService', () => {
   let service: PartyContactService;
   let mockDataSource: jest.Mocked<DataSource>;
   let mockQr: any;
+  const configService = {
+    getOrThrow: () => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    get: () => undefined,
+  } as unknown as ConfigService;
 
   beforeEach(() => {
     mockQr = {
@@ -40,7 +45,7 @@ describe('PartyContactService', () => {
       createQueryRunner: jest.fn().mockReturnValue(mockQr),
     } as unknown as jest.Mocked<DataSource>;
 
-    service = new PartyContactService(mockDataSource);
+    service = new PartyContactService(mockDataSource, configService);
   });
 
   afterEach(() => {
@@ -91,7 +96,9 @@ describe('PartyContactService', () => {
         expect.objectContaining({
           partyId,
           type: PartyContactType.EMAIL,
-          value: 'nuevo@example.invalid',
+          value: '',
+          valueEncrypted: expect.stringMatching(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/u),
+          valueHmac: expect.any(String),
           isPrimary: false,
         }),
       );
@@ -109,7 +116,8 @@ describe('PartyContactService', () => {
 
       expect(mockQr.manager.create).not.toHaveBeenCalled();
       expect(mockQr.manager.save).toHaveBeenCalledWith(PartyContact, existing);
-      expect(existing.value).toBe('nuevo@example.invalid');
+      expect(existing.value).toBe('');
+      expect(existing.valueEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/u);
       expect(result.value).toBe('nuevo@example.invalid');
     });
 

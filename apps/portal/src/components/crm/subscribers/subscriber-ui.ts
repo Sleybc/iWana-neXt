@@ -3,11 +3,11 @@ import {
   DocumentType,
   formatFullName,
   PersonType,
+  type SubscriberListItem,
   SubscriberStatus,
   TaxRegime,
   VatTreatment,
 } from '@iwana/shared';
-import type { SubscriberRecord } from '@/lib/api-client';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { DEPARTAMENTOS } from '@/components/crm/expedientes/expediente-ui';
 
@@ -181,7 +181,7 @@ export const ALLOWED_TRANSITIONS: Record<SubscriberStatus, SubscriberStatus[]> =
 };
 
 export function formatSubscriberName(
-  subscriber: Pick<SubscriberRecord, 'personType' | 'firstName' | 'lastName' | 'businessName'>,
+  subscriber: Pick<SubscriberListItem, 'personType' | 'firstName' | 'lastName' | 'businessName'>,
 ): string {
   if (subscriber.personType === PersonType.JURIDICA) {
     return subscriber.businessName?.trim() || 'Sin razón social';
@@ -193,7 +193,7 @@ export function formatSubscriberName(
 
 export function formatDocumentDisplay(
   subscriber: Pick<
-    SubscriberRecord,
+    SubscriberListItem,
     'personType' | 'documentType' | 'documentNumber' | 'nit' | 'nitVerificationDigit'
   >,
 ): string {
@@ -210,8 +210,8 @@ export function formatDocumentDisplay(
   return typeLabel ? `${typeLabel}: ${subscriber.documentNumber}` : subscriber.documentNumber;
 }
 
-export function formatVatTreatmentLabel(vatTreatment: VatTreatment): string {
-  return VAT_TREATMENT_META[vatTreatment]?.label ?? vatTreatment;
+export function formatVatTreatmentLabel(vatTreatment: VatTreatment | undefined): string {
+  return vatTreatment ? (VAT_TREATMENT_META[vatTreatment]?.label ?? vatTreatment) : '';
 }
 
 export function formatSubscriberDate(value: string): string {
