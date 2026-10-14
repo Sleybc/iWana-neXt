@@ -14,7 +14,6 @@ import { ContactsService } from './contacts/contacts.service';
 import { ContractsController } from './contracts/contracts.controller';
 import { ContractsService } from './contracts/contracts.service';
 import { HabeasDataController } from './habeas-data/habeas-data.controller';
-import { HabeasDataService } from './habeas-data/habeas-data.service';
 import { OpportunitiesController } from './opportunities/opportunities.controller';
 import { OpportunitiesService } from './opportunities/opportunities.service';
 import { PotentialsController } from './potentials/potentials.controller';
@@ -136,11 +135,6 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
   const customerOverviewServiceMock = {
     getCustomerOverview: jest.fn().mockResolvedValue({ id: SUB_ID }),
   };
-  const habeasDataServiceMock = {
-    listConsents: jest.fn().mockResolvedValue([]),
-    createConsent: jest.fn().mockResolvedValue({ id: 'cons-001' }),
-  };
-
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [
@@ -163,7 +157,6 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
         { provide: ActivationService, useValue: {} },
         { provide: ReviewCoordinationService, useValue: reviewCoordinationServiceMock },
         { provide: CustomerOverviewService, useValue: customerOverviewServiceMock },
-        { provide: HabeasDataService, useValue: habeasDataServiceMock },
         { provide: EffectivePermissionsService, useValue: effectivePermissionsMock },
         Reflector,
         PermissionsGuard,
@@ -471,14 +464,20 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
   });
 
   describe('habeas-data', () => {
-    it('GET consents — 200 con crm.expedientes.read', async () => {
+    it('GET consents — 410 con crm.expedientes.read y referencia a privacidad', async () => {
       effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
         AccessPermissionKey.CRM_EXPEDIENTES_READ,
       ]);
       await request(app.getHttpServer())
         .get(`/api/v1/subscribers/${SUB_ID}/habeas-data/consents`)
         .set('Authorization', 'Bearer sales-token')
-        .expect(200);
+        .expect(410)
+        .expect(({ body }) =>
+          expect(body).toMatchObject({
+            code: 'PRIVACY_ROUTE_RETIRED',
+            redirectTo: '/privacy',
+          }),
+        );
     });
 
     it('GET consents — 403 sin permiso aunque rol pase', async () => {
@@ -488,7 +487,7 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
         .expect(403);
     });
 
-    it('POST consent — 201 con crm.expedientes.manage', async () => {
+    it('POST consent — 410 con crm.expedientes.manage y referencia a privacidad', async () => {
       effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
         AccessPermissionKey.CRM_EXPEDIENTES_MANAGE,
       ]);
@@ -496,7 +495,13 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
         .post(`/api/v1/subscribers/${SUB_ID}/habeas-data/consent`)
         .set('Authorization', 'Bearer sales-token')
         .send({ accepted: true, channel: 'WEB' })
-        .expect(201);
+        .expect(410)
+        .expect(({ body }) =>
+          expect(body).toMatchObject({
+            code: 'PRIVACY_ROUTE_RETIRED',
+            redirectTo: '/privacy',
+          }),
+        );
     });
 
     it('POST consent — 403 sin permiso aunque rol pase', async () => {

@@ -13,6 +13,7 @@ import { ConsentRecord } from '../reviews/entities/consent-record.entity';
 import { PotentialsController } from './potentials.controller';
 import { PotentialsService } from './potentials.service';
 import { AccessControlModule } from '../../access-control/access-control.module';
+import { PrivacyModule } from '../../privacy/privacy.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AccessControlModule } from '../../access-control/access-control.module'
     TenantModule,
     TypeOrmModule.forFeature([PotentialLead, ProspectCase, ConsentRecord]),
     AccessControlModule,
+    PrivacyModule,
   ],
   controllers: [PotentialsController],
   providers: [

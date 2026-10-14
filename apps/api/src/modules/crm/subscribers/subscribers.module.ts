@@ -17,6 +17,7 @@ import { PartiesModule } from '../../parties/parties.module';
 import { TaxationModule } from '../../taxation/taxation.module';
 import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 import { AccessControlModule } from '../../access-control/access-control.module';
+import { PrivacyModule } from '../../privacy/privacy.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AccessControlModule } from '../../access-control/access-control.module'
     PartiesModule,
     TaxationModule,
     AccessControlModule,
+    PrivacyModule,
   ],
   controllers: [SubscribersController, SubscriberTaxController],
   providers: [

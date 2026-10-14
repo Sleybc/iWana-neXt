@@ -2,8 +2,6 @@ import { Allow } from 'class-validator';
 import { z } from 'zod';
 import { ConsentStatus, ConsentType, ConsentChannel } from '@iwana/shared';
 
-export const CONSENT_LEGAL_VERSION = 'Ley 1581 de 2012';
-
 const LegacyConsentTypeSchema = z.enum([
   'DATA_TREATMENT',
   'COMMERCIAL_CONTACT',

@@ -706,6 +706,22 @@ export const MOD00_ACCESS_V2_CATALOG: PermissionSeedDefinition[] = [
     catalogVersion: versionV2,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
+  {
+    permissionKey: AccessPermissionKey.PRIVACY_READ,
+    moduleKey: 'privacy',
+    action: 'read',
+    description: 'Consultar registros de protección de datos personales',
+    catalogVersion: versionV2,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.PRIVACY_MANAGE,
+    moduleKey: 'privacy',
+    action: 'manage',
+    description: 'Administrar controles de protección de datos personales',
+    catalogVersion: versionV2,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
   // ── Billing permanece RESERVED ──
   {
     permissionKey: AccessPermissionKey.BILLING_PAYMENTS_READ,
@@ -844,6 +860,8 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2: Record<UserRole, AccessPermis
     AccessPermissionKey.INVENTORY_STOCK_READ,
     AccessPermissionKey.INVENTORY_PURCHASING_READ,
     AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+    AccessPermissionKey.PRIVACY_READ,
+    AccessPermissionKey.PRIVACY_MANAGE,
   ],
   [UserRole.INVESTOR]: [],
 };
@@ -901,6 +919,10 @@ export const MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES: SystemRoleTemplateDefinition
     name: 'Acceso estándar Auditoría',
     description: 'Para consulta y auditoría.',
     baseRoleConstraint: UserRole.AUDITOR,
-    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.AUDITOR],
+    permissionKeys: ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.AUDITOR].filter(
+      (permissionKey) =>
+        permissionKey !== AccessPermissionKey.PRIVACY_READ &&
+        permissionKey !== AccessPermissionKey.PRIVACY_MANAGE,
+    ),
   },
 ];

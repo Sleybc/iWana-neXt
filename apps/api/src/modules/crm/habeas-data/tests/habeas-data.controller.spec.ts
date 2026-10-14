@@ -1,39 +1,23 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { HabeasDataController } from '../habeas-data.controller';
-import { HabeasDataService } from '../habeas-data.service';
-import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
+import { GoneException } from '@nestjs/common';
 
 describe('HabeasDataController', () => {
   let controller: HabeasDataController;
 
-  const serviceMock = {
-    createConsent: jest.fn(),
-    listConsents: jest.fn(),
-    createArcoRequest: jest.fn(),
-    listArcoRequests: jest.fn(),
-    updateArcoStatus: jest.fn(),
-  };
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [HabeasDataController],
-      providers: [
-        { provide: HabeasDataService, useValue: serviceMock },
-        {
-          provide: EffectivePermissionsService,
-          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
-        },
-      ],
-    }).compile();
-
-    controller = module.get<HabeasDataController>(HabeasDataController);
+  beforeEach(() => {
+    controller = new HabeasDataController();
   });
 
-  it('lista consentimientos del suscriptor', async () => {
-    serviceMock.listConsents.mockResolvedValue([{ id: 'cons-1' }]);
-
-    const result = await controller.listConsents('00000000-0000-4000-a000-000000000001');
-
-    expect(result.data[0]?.id).toBe('cons-1');
+  it('retira las rutas heredadas con 410 y referencia el módulo de privacidad', () => {
+    try {
+      controller.listConsents();
+      fail('Se esperaba GoneException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GoneException);
+      expect((error as GoneException).getResponse()).toMatchObject({
+        code: 'PRIVACY_ROUTE_RETIRED',
+        redirectTo: '/privacy',
+      });
+    }
   });
 });

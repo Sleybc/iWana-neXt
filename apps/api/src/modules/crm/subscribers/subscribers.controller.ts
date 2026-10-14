@@ -13,6 +13,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -59,6 +60,7 @@ import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '@iwana/shared';
 import { projectSubscriberForList } from './subscriber-projection';
+import type { Request } from 'express';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -99,6 +101,7 @@ export class SubscribersController {
   async create(
     @Body(new ZodBodyValidationPipe(CreateSubscriberSchema)) dto: CreateSubscriberDto,
     @CurrentUser() user: JwtPayload,
+    @Req() request: Request,
   ) {
     const isManualOverride = Boolean(dto.manualOverrideReason?.trim());
     if (isManualOverride && !ADMINISTRATIVE_ROLES.includes(user.role)) {
@@ -107,7 +110,13 @@ export class SubscribersController {
       );
     }
 
-    const subscriber = await this.subscribersService.create(dto, user.sub);
+    const subscriber = await this.subscribersService.create(dto, user.sub, {
+      ip: request.ip ?? null,
+      userAgent:
+        typeof request.headers['user-agent'] === 'string'
+          ? request.headers['user-agent'].slice(0, 512)
+          : null,
+    });
     return { data: this.sanitizeResponse(subscriber) };
   }
 

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ConsentChannel } from '@iwana/shared';
 
 class CoordinatesDto {
   @ApiProperty()
@@ -19,7 +20,7 @@ export class QualifyPotentialDto {
   consentAccepted: boolean;
 
   @ApiProperty()
-  consentChannel: string;
+  consentChannel: ConsentChannel;
 
   @ApiProperty()
   legalTextVersion: string;

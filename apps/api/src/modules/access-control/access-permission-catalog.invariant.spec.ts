@@ -250,8 +250,8 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 35 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(35);
+  it('ADMIN V2 contiene 37 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(37);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
@@ -289,8 +289,14 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
         AccessPermissionKey.INVENTORY_STOCK_READ,
         AccessPermissionKey.INVENTORY_PURCHASING_READ,
         AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+        AccessPermissionKey.PRIVACY_READ,
+        AccessPermissionKey.PRIVACY_MANAGE,
       ]),
     );
+    const auditorTemplate = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.find(
+      (template) => template.name === 'Acceso estándar Auditoría',
+    );
+    expect(auditorTemplate?.permissionKeys).not.toContain(AccessPermissionKey.PRIVACY_MANAGE);
   });
 });
 

@@ -34,6 +34,7 @@ import { SearchModule } from './modules/search/search.module';
 import { AssuranceModule } from './modules/assurance/assurance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { PrivacyModule } from './modules/privacy/privacy.module';
 import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
 import { getGlobalRateLimitTracker } from './common/rate-limit-tracker';
 
@@ -238,6 +239,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Modulo Tasks (MOD11): ejecucion operativa transversal
     TasksModule,
+
+    // Privacidad (ADR-094 Fase 1): autorizaciones, textos legales y gobierno de datos
+    PrivacyModule,
   ],
   controllers: [],
   providers: [

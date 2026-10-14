@@ -57,6 +57,10 @@ const MEDIA_CONSTRAINTS: Record<MediaUsage, { maxBytes: number; allowedMimes: st
     maxBytes: 10 * 1024 * 1024, // 10 MiB
     allowedMimes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
   },
+  [MediaUsage.PRIVACY_EVIDENCE]: {
+    maxBytes: 10 * 1024 * 1024, // 10 MiB
+    allowedMimes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+  },
 };
 
 type DimensionConstraint = {
@@ -145,6 +149,13 @@ export class MediaService {
       });
     }
 
+    if (usage === MediaUsage.PRIVACY_EVIDENCE) {
+      throw new BadRequestException({
+        code: 'MEDIA_GENERIC_PRIVACY_EVIDENCE_FORBIDDEN',
+        message: 'La evidencia de privacidad debe cargarse desde el flujo del titular.',
+      });
+    }
+
     if (usage === MediaUsage.EXECUTION_EVIDENCE) {
       throw new BadRequestException({
         code: 'MEDIA_GENERIC_EXECUTION_EVIDENCE_FORBIDDEN',
@@ -185,6 +196,31 @@ export class MediaService {
     }
 
     return this.uploadAsset(tenantSchema, MediaUsage.STRATUM_EVIDENCE, file, uploadedByUserId);
+  }
+
+  /** Carga aislada para que las rutas de privacy adjunten soportes del titular. */
+  async uploadPrivacyEvidence(
+    tenantSchema: string,
+    file: Express.Multer.File,
+    uploadedByUserId?: string,
+  ): Promise<MediaAssetResponseDto> {
+    this.assertTenantSchema(tenantSchema);
+    if (!file) {
+      throw new BadRequestException('Se requiere el archivo de evidencia de privacidad.');
+    }
+
+    const constraints = MEDIA_CONSTRAINTS[MediaUsage.PRIVACY_EVIDENCE];
+    if (
+      !constraints.allowedMimes.includes(file.mimetype) ||
+      !validateMagicBytes(file.buffer, file.mimetype)
+    ) {
+      throw new UnprocessableEntityException({
+        code: 'PRIVACY_EVIDENCE_TYPE_NOT_ALLOWED',
+        message: 'Formato no admitido. Usa un archivo PDF o una imagen JPG, PNG o WEBP.',
+      });
+    }
+
+    return this.uploadAsset(tenantSchema, MediaUsage.PRIVACY_EVIDENCE, file, uploadedByUserId);
   }
 
   private async uploadAsset(
@@ -297,11 +333,19 @@ export class MediaService {
     return this.generateSignedUrl(id, tenantSchema, 300, MediaUsage.STRATUM_EVIDENCE);
   }
 
+  /** URL privada de evidencia, accesible solo desde una ruta de privacy. */
+  async getPrivacyEvidenceSignedUrl(
+    id: string,
+    tenantSchema: string,
+  ): Promise<{ signedUrl: string; expiresAt: Date }> {
+    return this.generateSignedUrl(id, tenantSchema, 300, MediaUsage.PRIVACY_EVIDENCE);
+  }
+
   private async generateSignedUrl(
     id: string,
     tenantSchema: string,
     expiresInSeconds: number,
-    access: 'generic' | MediaUsage.STRATUM_EVIDENCE,
+    access: 'generic' | MediaUsage.STRATUM_EVIDENCE | MediaUsage.PRIVACY_EVIDENCE,
   ): Promise<{ signedUrl: string; expiresAt: Date }> {
     this.assertTenantSchema(tenantSchema);
     const asset = await this.mediaRepo.findOne({
@@ -311,14 +355,16 @@ export class MediaService {
     if (
       !asset ||
       asset.deletedAt ||
-      (access === 'generic' && asset.usage === MediaUsage.STRATUM_EVIDENCE) ||
-      (access === MediaUsage.STRATUM_EVIDENCE && asset.usage !== MediaUsage.STRATUM_EVIDENCE)
+      (access === 'generic' &&
+        (asset.usage === MediaUsage.STRATUM_EVIDENCE ||
+          asset.usage === MediaUsage.PRIVACY_EVIDENCE)) ||
+      (access !== 'generic' && asset.usage !== access)
     ) {
       throw new NotFoundException(`Asset ${id} no encontrado.`);
     }
 
     // El endpoint contractual tiene un máximo de 5 minutos; el genérico conserva su política de 1 hora.
-    const maximumExpiry = access === MediaUsage.STRATUM_EVIDENCE ? 300 : 3600;
+    const maximumExpiry = access === 'generic' ? 3600 : 300;
     const clampedExpiry = Math.min(expiresInSeconds, maximumExpiry);
     const signedUrl = await this.storage.getSignedUrl(asset.objectKey, clampedExpiry);
     const expiresAt = new Date(Date.now() + clampedExpiry * 1000);

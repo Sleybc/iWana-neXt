@@ -560,6 +560,35 @@ describe('SubscribersController Fase 2 — doble guard', () => {
       .expect(201);
   });
 
+  it('POST /crm/subscribers — 400 si se envían autorizaciones sin medio', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ]);
+    await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers')
+      .set('Authorization', 'Bearer sales-token')
+      .send({
+        personType: 'NATURAL',
+        customerSegment: 'RESIDENTIAL',
+        documentType: 'CC',
+        documentNumber: '123456789',
+        firstName: 'Test',
+        lastName: 'User',
+        stratum: 3,
+        email: 'test@example.com',
+        phone: '3001234567',
+        address: 'Calle 123',
+        authorizations: [
+          {
+            purpose: 'TRATAMIENTO_CONTRACTUAL',
+            granted: true,
+            legalTextId: '00000000-0000-4000-8000-000000000099',
+          },
+        ],
+      })
+      .expect(400);
+  });
+
   it('POST /crm/subscribers — 403 sin permiso aunque rol pase', async () => {
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([]);
     await request(app.getHttpServer())

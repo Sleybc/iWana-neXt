@@ -65,6 +65,13 @@ const PNG_HEADER = Buffer.concat([
   Buffer.alloc(8),
 ]);
 const PDF_HEADER = Buffer.from('%PDF-1.7\n%fixture');
+const JPEG_HEADER = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(12)]);
+const WEBP_HEADER = Buffer.concat([
+  Buffer.from('RIFF'),
+  Buffer.alloc(4),
+  Buffer.from('WEBP'),
+  Buffer.alloc(4),
+]);
 
 /**
  * Factoría de archivo simulado para pruebas de upload.
@@ -154,6 +161,103 @@ describe('MediaService', () => {
       const errors = await validate(dto);
 
       expect(errors.some((error) => error.property === 'usage')).toBe(true);
+    });
+
+    it('rechaza PRIVACY_EVIDENCE en la validación del DTO genérico', async () => {
+      const dto = Object.assign(new UploadMediaDto(), {
+        usage: MediaUsage.PRIVACY_EVIDENCE,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((error) => error.property === 'usage')).toBe(true);
+    });
+
+    it('rechaza PRIVACY_EVIDENCE aunque llegue directamente al servicio genérico', async () => {
+      await expect(
+        service.upload(
+          'tenant_test_isp',
+          { usage: MediaUsage.PRIVACY_EVIDENCE } as UploadMediaDto,
+          buildMulterFile(),
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MEDIA_GENERIC_PRIVACY_EVIDENCE_FORBIDDEN' },
+      });
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('sube evidencia de privacidad solo con MIME y bytes admitidos', async () => {
+      const saved = buildMediaAsset({ usage: MediaUsage.PRIVACY_EVIDENCE });
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      mockRepo.update.mockResolvedValue(undefined);
+      mockStorage.putObject.mockResolvedValue(undefined);
+      mockStorage.getPublicUrl.mockReturnValue('http://localhost/storage/evidence.pdf');
+
+      const result = await service.uploadPrivacyEvidence(
+        'tenant_test_isp',
+        buildMulterFile({
+          mimetype: 'application/pdf',
+          buffer: PDF_HEADER,
+          size: PDF_HEADER.length,
+        }),
+        'user-001',
+      );
+
+      expect(result.usage).toBe(MediaUsage.PRIVACY_EVIDENCE);
+      expect(mockStorage.putObject).toHaveBeenCalledWith(
+        expect.stringContaining('/privacy_evidence/'),
+        PDF_HEADER,
+        expect.objectContaining({ contentType: 'application/pdf' }),
+      );
+    });
+
+    it.each<[string, Buffer]>([
+      ['application/pdf', PDF_HEADER],
+      ['image/jpeg', JPEG_HEADER],
+      ['image/png', PNG_HEADER],
+      ['image/webp', WEBP_HEADER],
+    ])('acepta el formato autorizado %s con firma válida', async (mimetype, buffer) => {
+      const saved = buildMediaAsset({ usage: MediaUsage.PRIVACY_EVIDENCE, mimeType: mimetype });
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      mockRepo.update.mockResolvedValue(undefined);
+      mockStorage.putObject.mockResolvedValue(undefined);
+      mockStorage.getPublicUrl.mockReturnValue('http://localhost/storage/evidence');
+
+      await expect(
+        service.uploadPrivacyEvidence(
+          'tenant_test_isp',
+          buildMulterFile({ mimetype, buffer, size: buffer.length }),
+        ),
+      ).resolves.toMatchObject({ usage: MediaUsage.PRIVACY_EVIDENCE });
+    });
+
+    it('rechaza evidencia de privacidad cuyo contenido no coincide con el MIME', async () => {
+      await expect(
+        service.uploadPrivacyEvidence(
+          'tenant_test_isp',
+          buildMulterFile({ mimetype: 'application/pdf', buffer: PNG_HEADER }),
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'PRIVACY_EVIDENCE_TYPE_NOT_ALLOWED' },
+      });
+      expect(mockRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('limita la evidencia de privacidad a 10 MiB', async () => {
+      await expect(
+        service.uploadPrivacyEvidence(
+          'tenant_test_isp',
+          buildMulterFile({
+            mimetype: 'application/pdf',
+            buffer: PDF_HEADER,
+            size: 10 * 1024 * 1024 + 1,
+          }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockRepo.save).not.toHaveBeenCalled();
     });
 
     it('rechaza tenant ausente o platform sin escribir en BD ni storage', async () => {
@@ -529,6 +633,37 @@ describe('MediaService', () => {
       await expect(service.getSignedUrl(asset.id, 'tenant_test_isp')).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('oculta PRIVACY_EVIDENCE del endpoint genérico', async () => {
+      const asset = buildMediaAsset({ usage: MediaUsage.PRIVACY_EVIDENCE });
+      mockRepo.findOne.mockResolvedValue(asset);
+
+      await expect(service.getSignedUrl(asset.id, 'tenant_test_isp')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('solo firma PRIVACY_EVIDENCE por el método dedicado y limita a 300 segundos', async () => {
+      const asset = buildMediaAsset({ usage: MediaUsage.PRIVACY_EVIDENCE });
+      mockRepo.findOne.mockResolvedValue(asset);
+      mockStorage.getSignedUrl.mockResolvedValue('https://minio/privacy-proof');
+
+      const result = await service.getPrivacyEvidenceSignedUrl(asset.id, 'tenant_test_isp');
+
+      expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(asset.objectKey, 300);
+      expect(result.signedUrl).toBe('https://minio/privacy-proof');
+    });
+
+    it('el método dedicado no firma un asset con otro uso', async () => {
+      const asset = buildMediaAsset({ usage: MediaUsage.GENERAL });
+      mockRepo.findOne.mockResolvedValue(asset);
+
+      await expect(
+        service.getPrivacyEvidenceSignedUrl(asset.id, 'tenant_test_isp'),
+      ).rejects.toThrow(NotFoundException);
       expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     });
   });

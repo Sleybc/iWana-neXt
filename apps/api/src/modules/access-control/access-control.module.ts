@@ -13,6 +13,8 @@ import { AccessControlService } from './access-control.service';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { AccessGovernanceService } from './services/access-governance.service';
 import { EffectivePermissionsService } from './services/effective-permissions.service';
+import { IPermissionHoldersReadPort } from './ports/permission-holders-read.port';
+import { PermissionHoldersReadAdapter } from './ports/permission-holders-read.adapter';
 
 @Module({
   imports: [
@@ -31,12 +33,15 @@ import { EffectivePermissionsService } from './services/effective-permissions.se
     EffectivePermissionsService,
     AccessGovernanceService,
     PermissionsGuard,
+    PermissionHoldersReadAdapter,
+    { provide: IPermissionHoldersReadPort, useExisting: PermissionHoldersReadAdapter },
   ],
   exports: [
     AccessControlService,
     EffectivePermissionsService,
     AccessGovernanceService,
     PermissionsGuard,
+    IPermissionHoldersReadPort,
   ],
 })
 export class AccessControlModule {}

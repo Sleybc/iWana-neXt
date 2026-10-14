@@ -29,6 +29,7 @@ import { CommercialCatalogReadPort } from '../../../commercial/ports/commercial-
 import { IInternetVatResolverPort } from '../../../taxation/ports/internet-vat-resolver.port';
 import { AuditService } from '../../../audit/audit.service';
 import { MediaService } from '../../../media/media.service';
+import { IPrivacyAuthorizationReadPort } from '../../../privacy/ports/privacy-authorization-read.port';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -37,8 +38,32 @@ jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
   return {
     ...actual,
-    runInTenantSchema: (...args: Parameters<typeof mockRunInTenantSchema>) =>
-      mockRunInTenantSchema(...args),
+    runInTenantSchema: (...args: Parameters<typeof mockRunInTenantSchema>) => {
+      const [dataSource, schemaName, callback] = args;
+      return mockRunInTenantSchema(
+        dataSource,
+        schemaName,
+        (queryRunner: { manager: Record<string, unknown> }) => {
+          if (typeof queryRunner.manager['findOne'] !== 'function') {
+            queryRunner.manager['findOne'] = async (
+              _entity: unknown,
+              options?: { where?: { id?: string } },
+            ) => ({
+              id: options?.where?.id ?? 'sub-1',
+              tenantId: 'ten-1',
+              personType: PersonType.NATURAL,
+              partyId: 'party-test-uuid',
+              expedienteId: 'exp-1',
+              address: 'Dirección sintética',
+              city: 'Bogotá',
+              department: 'Cundinamarca',
+              postalCode: null,
+            });
+          }
+          return callback(queryRunner);
+        },
+      );
+    },
     TenantContext: {
       getOrThrow: () => mockTenantContextGetOrThrow(),
     },
@@ -95,6 +120,15 @@ describe('ContractsService', () => {
     upload: jest.fn(),
     uploadStratumEvidence: jest.fn(),
   };
+  const privacyAuthorizationReadPort = {
+    hasActive: jest.fn().mockResolvedValue({
+      active: true,
+      authorizationId: 'authorization-1',
+      legalTextVersion: 'legal-v1',
+      legacyUnverified: false,
+    }),
+    listForParty: jest.fn(),
+  };
   const configService = {
     get: jest.fn((key: string, fallback?: unknown) =>
       key === 'STORAGE_DRIVER' ? 'minio' : fallback,
@@ -121,6 +155,7 @@ describe('ContractsService', () => {
         { provide: AuditService, useValue: auditService },
         { provide: MediaService, useValue: mediaService },
         { provide: ConfigService, useValue: configService },
+        { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
       ],
     }).compile();
 
@@ -525,6 +560,45 @@ describe('ContractsService', () => {
   // ── create ────────────────────────────────────────────────────────────────
 
   describe('create', () => {
+    it('rechaza el alta de contrato si falta autorización para el tratamiento contractual', async () => {
+      const save = jest.fn();
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'sub-1',
+          tenantId: 'ten-1',
+          personType: PersonType.NATURAL,
+          partyId: 'party-test-uuid',
+        }),
+        create: jest.fn(),
+        save,
+      };
+      privacyAuthorizationReadPort.hasActive.mockResolvedValueOnce({
+        active: false,
+        authorizationId: null,
+        legalTextVersion: null,
+        legacyUnverified: false,
+      });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      await expect(
+        service.create(
+          { subscriberId: 'sub-1', planId: 'plan-1', planSnapshotJson: {} },
+          'actor-1',
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTRACT_DATA_AUTHORIZATION_REQUIRED' },
+        status: 422,
+      });
+
+      expect(save).not.toHaveBeenCalled();
+      expect(privacyAuthorizationReadPort.hasActive).toHaveBeenCalledWith(
+        'party-test-uuid',
+        'TRATAMIENTO_CONTRACTUAL',
+      );
+    });
+
     it('audita la creación con IDs y estado, sin copiar valores fiscales ni notas', async () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({
@@ -677,6 +751,7 @@ describe('ContractsService', () => {
               id: 'sub-1',
               tenantId: 'ten-1',
               personType: PersonType.NATURAL,
+              partyId: 'party-test-uuid',
             }),
             create: (_entity: unknown, data: Record<string, unknown>) => data,
             save: async (_entity: unknown, data: Record<string, unknown>) => {
@@ -740,7 +815,7 @@ describe('ContractsService', () => {
       const mockManager = {
         findOne: jest
           .fn()
-          .mockResolvedValueOnce({ id: 'sub-1', expedienteId: 'exp-1' }) // subscriber
+          .mockResolvedValueOnce({ id: 'sub-1', partyId: 'party-test-uuid', expedienteId: 'exp-1' }) // subscriber
           .mockResolvedValueOnce(null), // expediente no encontrado
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
@@ -754,7 +829,7 @@ describe('ContractsService', () => {
       const mockManager = {
         findOne: jest
           .fn()
-          .mockResolvedValueOnce({ id: 'sub-1', expedienteId: 'exp-1' })
+          .mockResolvedValueOnce({ id: 'sub-1', partyId: 'party-test-uuid', expedienteId: 'exp-1' })
           .mockResolvedValueOnce({ id: 'exp-1', interestedPlanId: null }),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
@@ -767,6 +842,7 @@ describe('ContractsService', () => {
     it('crea contrato DRAFT con datos del expediente', async () => {
       const subscriber = {
         id: 'sub-1',
+        partyId: 'party-test-uuid',
         expedienteId: 'exp-1',
         address: 'Cra 7',
         city: 'Bogotá',
@@ -816,6 +892,7 @@ describe('ContractsService', () => {
     it('recorta el interés del expediente antes de usarlo como planId y en la instantánea', async () => {
       const subscriber = {
         id: 'sub-1',
+        partyId: 'party-test-uuid',
         expedienteId: 'exp-1',
         address: null,
         city: null,
@@ -866,7 +943,11 @@ describe('ContractsService', () => {
         const mockManager = {
           findOne: jest
             .fn()
-            .mockResolvedValueOnce({ id: 'sub-1', expedienteId: 'exp-1' })
+            .mockResolvedValueOnce({
+              id: 'sub-1',
+              partyId: 'party-test-uuid',
+              expedienteId: 'exp-1',
+            })
             .mockResolvedValueOnce({ id: 'exp-1', interestedPlanId }),
           create: jest.fn(),
           save: jest.fn(),
@@ -886,6 +967,7 @@ describe('ContractsService', () => {
     it('prioriza expediente y dirección recibidos y no hereda estrato de otro punto', async () => {
       const subscriber = {
         id: 'sub-1',
+        partyId: 'party-test-uuid',
         expedienteId: 'exp-subscriber',
         address: 'Dirección anterior',
         city: 'Ciudad anterior',
@@ -957,6 +1039,7 @@ describe('ContractsService', () => {
     it('usa los datos del suscriptor cuando el expediente no los tiene y hereda estrato del mismo punto', async () => {
       const subscriber = {
         id: 'sub-1',
+        partyId: 'party-test-uuid',
         expedienteId: null,
         address: 'Calle 12 #4-20',
         city: 'Cali',
@@ -1017,7 +1100,11 @@ describe('ContractsService', () => {
 
     it('rechaza la creación si ni el DTO ni el suscriptor aportan expediente', async () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
-        cb({ manager: { findOne: async () => ({ id: 'sub-1', expedienteId: null }) } }),
+        cb({
+          manager: {
+            findOne: async () => ({ id: 'sub-1', partyId: 'party-test-uuid', expedienteId: null }),
+          },
+        }),
       );
 
       await expect(service.createFromExpediente('sub-1', {})).rejects.toThrow(BadRequestException);

@@ -7,6 +7,7 @@ import {
   TaxRegime,
   DocumentType,
   UserRole,
+  ConsentChannel,
 } from '@iwana/shared';
 import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
@@ -14,6 +15,7 @@ import { AuditService } from '../../../audit/audit.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 import { Subscriber } from '../entities/subscriber.entity';
+import type { Request } from 'express';
 
 /**
  * Tests unitarios del SubscribersController.
@@ -37,6 +39,7 @@ describe('SubscribersController', () => {
     get360View: jest.fn(),
   };
   const auditServiceMock = { log: jest.fn().mockResolvedValue(undefined) };
+  const mockRequest = { ip: '127.0.0.1', headers: { 'user-agent': 'test-agent' } } as Request;
 
   // Usuario autenticado de prueba
   const mockUser = {
@@ -159,11 +162,22 @@ describe('SubscribersController', () => {
         email: 'juan@example.com',
         phone: '3001234567',
         address: 'Calle 1 #2-3',
+        authorizationChannel: ConsentChannel.TELEFONO,
+        authorizations: [
+          {
+            purpose: 'TRATAMIENTO_CONTRACTUAL' as const,
+            granted: true,
+            legalTextId: '00000000-0000-4000-8000-000000000099',
+          },
+        ],
       };
 
-      const result = await controller.create(dto, mockUser);
+      const result = await controller.create(dto, mockUser, mockRequest);
 
-      expect(subscribersServiceMock.create).toHaveBeenCalledWith(dto, 'user-001');
+      expect(subscribersServiceMock.create).toHaveBeenCalledWith(dto, 'user-001', {
+        ip: '127.0.0.1',
+        userAgent: 'test-agent',
+      });
       expect(result.data.id).toBe('sub-001');
       // Verificar que la respuesta sanitizada NO incluye campos cifrados internos
       expect(result.data).not.toHaveProperty('documentNumberEncrypted');
@@ -196,11 +210,22 @@ describe('SubscribersController', () => {
         email: 'contacto@empresa.co',
         phone: '6011234567',
         address: 'Av. El Dorado #50-20',
+        authorizationChannel: ConsentChannel.EMAIL,
+        authorizations: [
+          {
+            purpose: 'TRATAMIENTO_CONTRACTUAL' as const,
+            granted: true,
+            legalTextId: '00000000-0000-4000-8000-000000000099',
+          },
+        ],
       };
 
-      const result = await controller.create(dto, mockUser);
+      const result = await controller.create(dto, mockUser, mockRequest);
 
-      expect(subscribersServiceMock.create).toHaveBeenCalledWith(dto, 'user-001');
+      expect(subscribersServiceMock.create).toHaveBeenCalledWith(dto, 'user-001', {
+        ip: '127.0.0.1',
+        userAgent: 'test-agent',
+      });
       expect(result.data.personType).toBe(PersonType.JURIDICA);
       expect(result.data.vatTreatment).toBe(VatTreatment.STANDARD);
     });

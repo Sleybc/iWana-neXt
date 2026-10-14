@@ -1,4 +1,4 @@
-import { SubscriberListItem, UserRole } from '@iwana/shared';
+import { SubscriberListItem, UserRole, type PrivacyMark } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 
 /** Finalidades declaradas para los campos personales del listado — ADR-067 §2. */
@@ -63,6 +63,7 @@ type SubscriberWithDecryptedFields = Subscriber & {
   email?: string | null;
   phone?: string | null;
   altContactPhone?: string | null;
+  privacyMarks?: PrivacyMark[];
 };
 
 /** Construye una lista cerrada; roles desconocidos solo reciben campos base. */
@@ -83,6 +84,7 @@ export function projectSubscriberForList(
     businessName: subscriber.businessName,
     commercialName: subscriber.commercialName,
     createdAt: subscriber.createdAt.toISOString(),
+    privacyMarks: subscriber.privacyMarks ?? [],
   };
   const allowedFields = SUBSCRIBER_LIST_FIELD_ROLE_MAP[role as UserRole] ?? [];
   const fieldValues: Record<SubscriberListField, unknown> = {

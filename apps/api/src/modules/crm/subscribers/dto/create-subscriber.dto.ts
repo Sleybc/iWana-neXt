@@ -1,5 +1,11 @@
 import { Allow } from 'class-validator';
-import { PersonType, CustomerSegment, DocumentType } from '@iwana/shared';
+import {
+  PersonType,
+  CustomerSegment,
+  ConsentChannel,
+  DocumentType,
+  type DataPurpose,
+} from '@iwana/shared';
 
 export { CreateSubscriberSchema } from '@iwana/shared';
 
@@ -94,4 +100,10 @@ export class CreateSubscriberDto {
 
   @Allow()
   manualOverrideReason?: string;
+
+  @Allow()
+  authorizationChannel?: ConsentChannel;
+
+  @Allow()
+  authorizations?: Array<{ purpose: DataPurpose; granted: boolean; legalTextId: string }>;
 }

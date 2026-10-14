@@ -1,4 +1,13 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -18,10 +27,17 @@ import {
   DocumentType,
   ExpedienteStatus,
   AuditAction,
+  ConsentChannel,
   DocumentTypeParty,
   PartyContactType,
   PartyRoleType,
   PartyType,
+  ConsentStatus,
+  ConsentType,
+  type DataPurpose,
+  type DataAuthorizationView,
+  type PrivacyMark,
+  type RequestSummary,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 import { VatTreatmentService } from './vat-treatment.service';
@@ -33,8 +49,14 @@ import {
   loadAesGcmKeyPair,
 } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
+import { ConsentRecord } from '../expedientes/entities/consent-record-v2.entity';
 import { Contract } from '../contracts/entities/contract.entity';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
+import { IPrivacyAuthorizationWritePort } from '../../privacy/ports/privacy-authorization-write.port';
+import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
+import { IPrivacyLegalTextReadPort } from '../../privacy/ports/privacy-legal-text-read.port';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
+import { IPrivacyRequestsReadPort } from '../../privacy/requests/ports/privacy-requests-read.port';
 import {
   calculateNitVerificationDigit,
   parseExpedienteNit,
@@ -112,6 +134,10 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
  */
 const SORTABLE_FIELDS: string[] = [];
 
+function isConsentChannel(value: string): value is ConsentChannel {
+  return Object.values(ConsentChannel).includes(value as ConsentChannel);
+}
+
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
@@ -130,6 +156,21 @@ export class SubscribersService {
     private readonly statusTransitionService: SubscriberStatusTransitionService,
     private readonly auditService: AuditService,
     private readonly partyWritePort: IPartyWritePort,
+    @Optional()
+    @Inject(IPrivacyAuthorizationWritePort)
+    private readonly privacyAuthorizationWritePort?: IPrivacyAuthorizationWritePort,
+    @Optional()
+    @Inject(IPrivacyAuthorizationReadPort)
+    private readonly privacyAuthorizationReadPort?: IPrivacyAuthorizationReadPort,
+    @Optional()
+    @Inject(IPrivacyLegalTextReadPort)
+    private readonly privacyLegalTextReadPort?: IPrivacyLegalTextReadPort,
+    @Optional()
+    @Inject(IPrivacyMarksReadPort)
+    private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
+    @Optional()
+    @Inject(IPrivacyRequestsReadPort)
+    private readonly privacyRequestsReadPort?: IPrivacyRequestsReadPort,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -184,10 +225,36 @@ export class SubscribersService {
       /** Identidad entregada por la conversión; no forma parte del contrato HTTP. */
       partyDocumentNumber?: string | undefined;
       partyDocumentType?: DocumentTypeParty | undefined;
+      authorizationChannel?: ConsentChannel | undefined;
+      authorizations?: Array<{
+        purpose: DataPurpose;
+        granted: boolean;
+        legalTextId: string;
+      }>;
     },
     actorId: string,
+    requestContext: { ip: string | null; userAgent: string | null } = {
+      ip: null,
+      userAgent: null,
+    },
   ): Promise<Subscriber> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const isConversion = Boolean(dto.expedienteId && dto.convertedAt);
+    if (!isConversion && dto.authorizations?.length && !dto.authorizationChannel) {
+      throw new BadRequestException('Debe indicar el medio de las autorizaciones del alta.');
+    }
+    if (
+      !isConversion &&
+      !dto.authorizations?.some(
+        (authorization) =>
+          authorization.purpose === 'TRATAMIENTO_CONTRACTUAL' && authorization.granted,
+      )
+    ) {
+      throw new UnprocessableEntityException({
+        code: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+        message: 'Se requiere autorización vigente para el tratamiento contractual.',
+      });
+    }
 
     // Calcular tratamiento IVA y régimen tributario
     const { vatTreatment, taxRegime } = this.vatTreatmentService.applyTaxFields(
@@ -314,6 +381,120 @@ export class SubscribersService {
           entity.partyId = party.partyId;
         }
 
+        if (!entity.partyId) {
+          throw new UnprocessableEntityException({
+            code: 'SUBSCRIBER_PARTY_REQUIRED',
+            message: 'No fue posible vincular el suscriptor con su titular.',
+          });
+        }
+        const partyId = entity.partyId;
+
+        const authorizationWriter = this.requireAuthorizationWriter();
+        if (isConversion && dto.expedienteId) {
+          await qr.manager.findOne(ExpedienteRecord, {
+            where: { id: dto.expedienteId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          const sourceConsents = await qr.manager.find(ConsentRecord, {
+            where: { expedienteId: dto.expedienteId },
+            order: { obtainedAt: 'ASC', id: 'ASC' },
+          });
+          const timeline: Array<{ purpose: DataPurpose; granted: boolean; at: Date }> = [];
+          for (const consent of sourceConsents) {
+            const purpose = this.mapConsentPurpose(consent.consentType);
+            const revokedAt =
+              consent.revokedAt ??
+              (consent.status === ConsentStatus.REVOCADO ? consent.updatedAt : null);
+            const accepted =
+              consent.status === ConsentStatus.ACEPTADO ||
+              consent.status === ConsentStatus.REVOCADO ||
+              consent.legacyAccepted === true ||
+              revokedAt !== null;
+            const legalText = await this.findConsentLegalText(consent.legalTextVersion);
+            const initialGranted = accepted;
+            const recordSourceConsent = (granted: boolean, capturedAt: Date, sourceRef: string) => {
+              const input = {
+                partyId,
+                purpose,
+                granted,
+                legalTextId: legalText?.id ?? null,
+                capturedAt: capturedAt.toISOString(),
+                sourceRef,
+                actorId,
+              };
+              const context = {
+                ip: consent.ipAddress,
+                userAgent: null,
+                manager: qr.manager,
+              };
+
+              if (!legalText || !isConsentChannel(consent.channel)) {
+                return authorizationWriter.record(
+                  { ...input, kind: 'LEGACY_IMPORT', channel: consent.channel },
+                  context,
+                );
+              }
+
+              return authorizationWriter.record(
+                {
+                  ...input,
+                  kind: granted ? 'GRANT' : 'REVOCATION',
+                  channel: consent.channel,
+                },
+                context,
+              );
+            };
+
+            await recordSourceConsent(
+              initialGranted,
+              consent.obtainedAt,
+              `consent_records:${consent.id}`,
+            );
+            timeline.push({ purpose, granted: initialGranted, at: consent.obtainedAt });
+
+            if (revokedAt) {
+              await recordSourceConsent(
+                false,
+                revokedAt,
+                `consent_records:${consent.id}:revocation`,
+              );
+              timeline.push({ purpose, granted: false, at: revokedAt });
+            }
+          }
+
+          const latestTreatment = timeline
+            .filter((item) => item.purpose === 'TRATAMIENTO_CONTRACTUAL')
+            .sort((left, right) => right.at.getTime() - left.at.getTime())[0];
+          if (!latestTreatment?.granted) {
+            throw new UnprocessableEntityException({
+              code: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+              message: 'El expediente no tiene autorización vigente para tratamiento contractual.',
+            });
+          }
+        } else {
+          const authorizationChannel = dto.authorizationChannel;
+          if (dto.authorizations?.length && !authorizationChannel) {
+            throw new BadRequestException('Debe indicar el medio de las autorizaciones del alta.');
+          }
+          for (const authorization of dto.authorizations ?? []) {
+            await authorizationWriter.record(
+              {
+                partyId: entity.partyId,
+                purpose: authorization.purpose,
+                granted: authorization.granted,
+                channel: authorizationChannel!,
+                legalTextId: authorization.legalTextId,
+                actorId,
+              },
+              {
+                ip: requestContext.ip,
+                userAgent: requestContext.userAgent,
+                manager: qr.manager,
+              },
+            );
+          }
+        }
+
         return qr.manager.save(Subscriber, entity);
       });
     } catch (error) {
@@ -361,7 +542,11 @@ export class SubscribersService {
     limit?: number | undefined;
     sortBy?: string | undefined;
     sortDir?: 'asc' | 'desc' | undefined;
-  }): Promise<{ data: Subscriber[]; total: number; meta: ReturnType<typeof buildPageMeta> }> {
+  }): Promise<{
+    data: Array<Subscriber & { privacyMarks: PrivacyMark[] }>;
+    total: number;
+    meta: ReturnType<typeof buildPageMeta>;
+  }> {
     const { schemaName } = TenantContext.getOrThrow();
     // H-1 / D-2: tope de limit 100 antes de clampPage (Ley 1581 — no amplificar extracción PII).
     const cappedLimit = clampLimit(filters.limit);
@@ -405,9 +590,17 @@ export class SubscribersService {
 
     // Descifrar PII para respuesta
     const hydratedData = data.map((s) => this.decryptSubscriberFields(s));
+    const marksByParty = await this.privacyMarksReadPort?.activeMarks(
+      hydratedData.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
+    );
+    const dataWithMarks = hydratedData.map((subscriber) =>
+      Object.assign(subscriber, {
+        privacyMarks: subscriber.partyId ? (marksByParty?.[subscriber.partyId] ?? []) : [],
+      }),
+    );
 
     return {
-      data: hydratedData,
+      data: dataWithMarks,
       total,
       meta: buildPageMeta({
         total,
@@ -884,8 +1077,9 @@ export class SubscribersService {
     contacts: unknown[];
     contracts: Contract[];
     quotes: unknown[];
-    habeasData: unknown[];
-    arcoRequests: unknown[];
+    habeasData: DataAuthorizationView[];
+    arcoRequests: RequestSummary[];
+    privacyMarks: PrivacyMark[];
     expedienteSummary: Record<string, unknown> | null;
     timelineSeed: Array<Record<string, unknown>>;
     provisioningReadiness: ProvisioningReadinessSummary;
@@ -937,14 +1131,25 @@ export class SubscribersService {
         order: { createdAt: 'DESC' },
       }),
     );
+    let habeasData: DataAuthorizationView[] = [];
+    let arcoRequests: RequestSummary[] = [];
+    let marksByParty: Record<string, PrivacyMark[]> = {};
+    if (subscriber.partyId) {
+      [habeasData, arcoRequests, marksByParty] = await Promise.all([
+        this.privacyAuthorizationReadPort?.listForParty(subscriber.partyId) ?? Promise.resolve([]),
+        this.privacyRequestsReadPort?.listForParty(subscriber.partyId) ?? Promise.resolve([]),
+        this.privacyMarksReadPort?.activeMarks([subscriber.partyId]) ?? Promise.resolve({}),
+      ]);
+    }
 
     return {
       subscriber,
       contacts: [],
       contracts,
       quotes: [],
-      habeasData: [],
-      arcoRequests: [],
+      habeasData,
+      arcoRequests,
+      privacyMarks: subscriber.partyId ? (marksByParty[subscriber.partyId] ?? []) : [],
       expedienteSummary,
       timelineSeed: [
         ...(subscriber.convertedAt
@@ -1087,6 +1292,35 @@ export class SubscribersService {
   }
 
   // ── Cifrado PII (mismo patrón que ExpedienteService) ──
+
+  private requireAuthorizationWriter(): IPrivacyAuthorizationWritePort {
+    if (!this.privacyAuthorizationWritePort) {
+      throw new ServiceUnavailableException('El registro de autorizaciones no está disponible.');
+    }
+    return this.privacyAuthorizationWritePort;
+  }
+
+  private async findConsentLegalText(version: string): Promise<{ id: string } | null> {
+    if (!this.privacyLegalTextReadPort) {
+      throw new ServiceUnavailableException('La consulta de textos legales no está disponible.');
+    }
+    return this.privacyLegalTextReadPort.findByVersion('AUTORIZACION', version);
+  }
+
+  private mapConsentPurpose(consentType: string): DataPurpose {
+    switch (consentType) {
+      case ConsentType.TRATAMIENTO_DATOS:
+      case ConsentType.CONTACTO_OPERATIVO:
+        return 'TRATAMIENTO_CONTRACTUAL';
+      case ConsentType.CONTACTO_COMERCIAL:
+        return 'CONTACTO_COMERCIAL';
+      default:
+        throw new UnprocessableEntityException({
+          code: 'CONSENT_PURPOSE_UNRESOLVED',
+          message: 'No fue posible clasificar una finalidad del expediente.',
+        });
+    }
+  }
 
   private encryptValue(plaintext: string): string {
     return encryptAes256Gcm(plaintext, this.encryptionKey);

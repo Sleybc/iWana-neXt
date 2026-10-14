@@ -9,6 +9,7 @@ import { AuditModule } from '../../audit/audit.module';
 import { CommercialModule } from '../../commercial/commercial.module';
 import { TaxationModule } from '../../taxation/taxation.module';
 import { MediaModule } from '../../media/media.module';
+import { PrivacyModule } from '../../privacy/privacy.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MediaModule } from '../../media/media.module';
     CommercialModule,
     TaxationModule,
     MediaModule,
+    PrivacyModule,
   ],
   controllers: [ContractsController],
   providers: [ContractsService, ContractSignGuard],

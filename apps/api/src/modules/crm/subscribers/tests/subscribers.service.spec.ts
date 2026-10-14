@@ -10,6 +10,7 @@ import {
   TaxRegime,
   DocumentType,
   ExpedienteStatus,
+  ConsentChannel,
 } from '@iwana/shared';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { hashEmail } from '../../../../common/crypto/hash-email.util';
@@ -19,6 +20,8 @@ import { SubscriberStatusTransitionService } from '../subscriber-status-transiti
 import { Subscriber } from '../entities/subscriber.entity';
 import { AuditService } from '../../../audit/audit.service';
 import { IPartyWritePort } from '../../../parties/ports/party-write.port';
+import { IPrivacyAuthorizationWritePort } from '../../../privacy/ports/privacy-authorization-write.port';
+import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
 import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.util';
 
 // Mocks para multi-tenant
@@ -33,6 +36,13 @@ const partyWritePortMock = {
     roleAdded: true,
     identity: { contacts: [] },
   }),
+};
+const privacyAuthorizationWritePortMock = {
+  record: jest.fn().mockResolvedValue({ authorizationId: 'auth-test-id', created: true }),
+};
+const privacyLegalTextReadPortMock = {
+  current: jest.fn().mockResolvedValue(null),
+  findByVersion: jest.fn().mockResolvedValue(null),
 };
 
 jest.mock('@iwana/db', () => {
@@ -58,6 +68,7 @@ describe('SubscribersService', () => {
     jest.clearAllMocks();
     auditServiceMock.log.mockResolvedValue(undefined);
     partyWritePortMock.ensurePartyWithRole.mockClear();
+    privacyAuthorizationWritePortMock.record.mockClear();
     mockTenantContextGetOrThrow.mockReturnValue({
       schemaName: 'tenant_test',
       tenantId: 'tenant-001',
@@ -71,6 +82,8 @@ describe('SubscribersService', () => {
         { provide: DataSource, useValue: {} },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: IPartyWritePort, useValue: partyWritePortMock },
+        { provide: IPrivacyAuthorizationWritePort, useValue: privacyAuthorizationWritePortMock },
+        { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
         {
           provide: ConfigService,
           useValue: {
@@ -167,14 +180,22 @@ describe('SubscribersService', () => {
       email: 'synthetic@example.invalid',
       phone: '3000000000',
       address: 'Dirección sintética',
+      authorizationChannel: ConsentChannel.TELEFONO,
+      authorizations: [
+        {
+          purpose: 'TRATAMIENTO_CONTRACTUAL' as const,
+          granted: true,
+          legalTextId: '00000000-0000-4000-8000-000000000099',
+        },
+      ],
     };
 
-    it('permite registrar un prospecto sin documento sin inventar un vínculo de Party', async () => {
+    it('rechaza un alta que no puede vincularse con un Party', async () => {
       const saved = buildSubscriber({ id: 'sub-without-document', partyId: null });
       mockSave(saved);
 
-      await expect(service.create(minimumCreateInput, 'actor-1')).resolves.toMatchObject({
-        id: saved.id,
+      await expect(service.create(minimumCreateInput, 'actor-1')).rejects.toMatchObject({
+        response: { code: 'SUBSCRIBER_PARTY_REQUIRED' },
       });
 
       expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
@@ -263,6 +284,14 @@ describe('SubscribersService', () => {
           email: 'juan@example.com',
           phone: '3001234567',
           address: 'Calle 1 #2-3',
+          authorizationChannel: ConsentChannel.EMAIL,
+          authorizations: [
+            {
+              purpose: 'TRATAMIENTO_CONTRACTUAL',
+              granted: true,
+              legalTextId: '00000000-0000-4000-8000-000000000099',
+            },
+          ],
         },
         'actor-1',
       );
@@ -829,6 +858,19 @@ describe('SubscribersService', () => {
           manager: {
             save: async () => created,
             update: async () => ({ affected: 1 }),
+            find: jest.fn().mockResolvedValue([
+              {
+                id: 'consent-fixture-1',
+                consentType: 'TRATAMIENTO_DATOS',
+                status: 'ACEPTADO',
+                legacyAccepted: true,
+                obtainedAt: new Date('2026-10-01T12:00:00.000Z'),
+                updatedAt: new Date('2026-10-01T12:00:00.000Z'),
+                revokedAt: null,
+                ipAddress: null,
+                legalTextVersion: 'legacy-v1',
+              },
+            ]),
             findOne: async () => ({ ...created, status: SubscriberStatus.ACTIVE }),
           },
         }),

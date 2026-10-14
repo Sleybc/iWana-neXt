@@ -24,6 +24,7 @@ import { AttributionsModule } from '../attributions/attributions.module';
 import { ResponsibilitiesModule } from '../responsibilities/responsibilities.module';
 import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.service';
 import { AccessControlModule } from '../../access-control/access-control.module';
+import { PrivacyModule } from '../../privacy/privacy.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AccessControlModule } from '../../access-control/access-control.module'
     AttributionsModule,
     ResponsibilitiesModule,
     AccessControlModule,
+    PrivacyModule,
   ],
   controllers: [ExpedientesController, PipelineController],
   providers: [

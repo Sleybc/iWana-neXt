@@ -1,4 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -22,6 +30,7 @@ import { CreatePotentialDto } from './dto/create-potential.dto';
 import { PotentialResponseDto } from './dto/potential-response.dto';
 import { QualifyPotentialDto } from './dto/qualify-potential.dto';
 import { ProspectResponseDto } from '../prospects/dto/prospect-response.dto';
+import { IPrivacyLegalTextReadPort } from '../../privacy/ports/privacy-legal-text-read.port';
 
 @Injectable()
 export class PotentialsService {
@@ -34,6 +43,9 @@ export class PotentialsService {
     private readonly coverageReadPort: CoverageReadPort,
     private readonly planCatalogReadPort: PlanCatalogReadPort,
     private readonly auditService: AuditService,
+    @Optional()
+    @Inject(IPrivacyLegalTextReadPort)
+    private readonly privacyLegalTextReadPort?: IPrivacyLegalTextReadPort,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -105,6 +117,16 @@ export class PotentialsService {
 
   async qualify(id: string, dto: QualifyPotentialDto): Promise<ProspectResponseDto> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    if (!this.privacyLegalTextReadPort) {
+      throw new ServiceUnavailableException('La consulta de textos legales no está disponible.');
+    }
+    const currentLegalText = await this.privacyLegalTextReadPort.current('AUTORIZACION');
+    if (!currentLegalText) {
+      throw new UnprocessableEntityException({
+        code: 'PRIVACY_LEGAL_TEXT_NOT_PUBLISHED',
+        message: 'No hay un texto de autorización vigente publicado.',
+      });
+    }
 
     const coverage = await this.coverageReadPort.checkAvailability(
       tenantId,
@@ -161,9 +183,9 @@ export class PotentialsService {
         tenantId,
         prospectId: savedProspect.id,
         accepted: dto.consentAccepted,
-        channel: dto.consentChannel.trim(),
+        channel: dto.consentChannel,
         ipAddress: null,
-        legalTextVersion: dto.legalTextVersion.trim(),
+        legalTextVersion: currentLegalText.version,
       });
       await qr.manager.save(ConsentRecord, consent);
 

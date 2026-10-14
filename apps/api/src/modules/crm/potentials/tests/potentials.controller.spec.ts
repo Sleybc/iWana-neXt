@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PotentialsController } from '../potentials.controller';
 import { PotentialsService } from '../potentials.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
+import { ConsentChannel } from '@iwana/shared';
 
 describe('PotentialsController', () => {
   let controller: PotentialsController;
@@ -34,7 +35,7 @@ describe('PotentialsController', () => {
       address: 'Calle 123',
       planId: 'plan-1',
       consentAccepted: true,
-      consentChannel: 'WEB',
+      consentChannel: ConsentChannel.EMAIL,
       legalTextVersion: 'v1',
     });
 

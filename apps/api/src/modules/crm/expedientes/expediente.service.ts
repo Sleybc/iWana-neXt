@@ -1,4 +1,13 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -60,7 +69,10 @@ import { CreateExpedienteDto } from './dto/create-expediente.dto';
 import { UpdateSectionDto, ExpedienteSection } from './dto/update-section.dto';
 import { TransitionStatusDto } from './dto/transition-status.dto';
 import { CreateContactAttemptDto } from './dto/create-contact-attempt.dto';
-import { CreateConsentDto, CONSENT_LEGAL_VERSION } from './dto/create-consent.dto';
+import { CreateConsentDto } from './dto/create-consent.dto';
+import { IPrivacyLegalTextReadPort } from '../../privacy/ports/privacy-legal-text-read.port';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
+import type { PrivacyMark } from '@iwana/shared';
 import { CreateCoverageCheckDto } from './dto/create-coverage-check.dto';
 import {
   LinkInstallationOperationalRefsDto,
@@ -258,6 +270,12 @@ export class ExpedienteService {
     private readonly crmActorReadPort: CrmActorReadPort,
     private readonly eventEmitter: EventEmitter2,
     private readonly subscribersService: SubscribersService,
+    @Optional()
+    @Inject(IPrivacyLegalTextReadPort)
+    private readonly privacyLegalTextReadPort?: IPrivacyLegalTextReadPort,
+    @Optional()
+    @Inject(IPrivacyMarksReadPort)
+    private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
   ) {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -640,7 +658,7 @@ export class ExpedienteService {
     page?: number | undefined;
     limit?: number | undefined;
   }): Promise<{
-    data: ExpedienteRecord[];
+    data: Array<ExpedienteRecord & { privacyMarks: PrivacyMark[] }>;
     total: number;
     meta: ReturnType<typeof buildPageMeta>;
   }> {
@@ -655,84 +673,106 @@ export class ExpedienteService {
     const documentNumber = filters.documentNumber?.trim();
     const includeCompleted = filters.includeCompleted ?? false;
 
-    const { hydrated: hydratedData, count: total } = await runInTenantSchema(
-      this.dataSource,
-      schemaName,
-      async (qr) => {
-        const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
+    const {
+      hydrated: hydratedData,
+      count: total,
+      partyByExpediente,
+    } = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const query = qr.manager.createQueryBuilder(ExpedienteRecord, 'expediente');
 
-        if (municipality)
-          query.andWhere('expediente.municipality = :municipality', { municipality });
-        if (search) query.andWhere('expediente.fullName ILIKE :search', { search: `%${search}%` });
-        if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
+      if (municipality) query.andWhere('expediente.municipality = :municipality', { municipality });
+      if (search) query.andWhere('expediente.fullName ILIKE :search', { search: `%${search}%` });
+      if (assignedTo) query.andWhere('expediente.assignedTo = :assignedTo', { assignedTo });
 
-        // Semántica de vista: `view` es fuente de verdad; `includeCompleted` es compatibilidad temporal.
-        const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
-        const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
+      // Semántica de vista: `view` es fuente de verdad; `includeCompleted` es compatibilidad temporal.
+      const effectiveView = filters.view ?? (includeCompleted ? 'all' : 'open');
+      const allowedStatuses = resolveExpedienteStatusesForView(effectiveView);
 
-        if (status) {
-          query.andWhere('expediente.status = :status', { status });
-          // Solo aplicar restricción de vista si no es 'all' (allowedStatuses !== null)
-          if (allowedStatuses !== null) {
-            query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
-          }
-        } else if (allowedStatuses !== null) {
+      if (status) {
+        query.andWhere('expediente.status = :status', { status });
+        // Solo aplicar restricción de vista si no es 'all' (allowedStatuses !== null)
+        if (allowedStatuses !== null) {
           query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
         }
+      } else if (allowedStatuses !== null) {
+        query.andWhere('expediente.status IN (:...allowedStatuses)', { allowedStatuses });
+      }
 
-        // D-4: filtro por hash determinista (sin decrypt + SCAN_CAP).
-        if (documentNumber) {
-          query.andWhere('expediente.documentNumberHash = :docHash', {
-            docHash: hashDocumentNumber(documentNumber),
+      // D-4: filtro por hash determinista (sin decrypt + SCAN_CAP).
+      if (documentNumber) {
+        query.andWhere('expediente.documentNumberHash = :docHash', {
+          docHash: hashDocumentNumber(documentNumber),
+        });
+      }
+
+      // DEF-1: desempate por id para paginación offset estable.
+      query
+        .orderBy('expediente.createdAt', 'DESC')
+        .addOrderBy('expediente.id', 'DESC')
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      const [rows, count] = await query.getManyAndCount();
+      const pageIds = rows.map((row) => row.id);
+      const linkedParties =
+        this.privacyMarksReadPort && pageIds.length
+          ? ((await qr.query(
+              `SELECT expediente_id, party_id
+                 FROM subscribers
+                WHERE expediente_id = ANY($1::uuid[])
+                  AND party_id IS NOT NULL`,
+              [pageIds],
+            )) as Array<{ expediente_id: string; party_id: string }>)
+          : [];
+      const partyByExpediente = new Map(
+        linkedParties.map((row) => [row.expediente_id, row.party_id]),
+      );
+
+      // Batch: una consulta por tabla en vez de 3 por fila (ADR-065 S-1)
+      const ids = rows.map((r) => r.id);
+      const completenessMap = await this.completenessCalculator.calculateBatch(
+        qr.manager,
+        schemaName,
+        ids,
+      );
+
+      const hydrated = rows.map((item) => {
+        const completeness = completenessMap.get(item.id);
+        if (completeness) {
+          const pipelineProgress = this.calculatePipelineProgress(completeness);
+          Object.assign(item, {
+            completenessCommercial: completeness.commercial,
+            completenessLegal: completeness.legal,
+            completenessTechnical: completeness.technical,
+            completenessOperational: completeness.operational,
+            completenessOverall: completeness.overall,
+            pipelineProgress,
           });
         }
+        item.documentNumberEncrypted = null;
+        item.documentNumberHash = null;
+        item.phonePrimaryEncrypted = null;
+        item.phoneSecondaryEncrypted = null;
+        item.emailPrimaryEncrypted = null;
+        item.altContactPhoneEncrypted = null;
+        item.siteContactPhoneEncrypted = null;
+        return item;
+      });
 
-        // DEF-1: desempate por id para paginación offset estable.
-        query
-          .orderBy('expediente.createdAt', 'DESC')
-          .addOrderBy('expediente.id', 'DESC')
-          .skip((page - 1) * limit)
-          .take(limit);
+      return { hydrated, count, partyByExpediente };
+    });
 
-        const [rows, count] = await query.getManyAndCount();
-
-        // Batch: una consulta por tabla en vez de 3 por fila (ADR-065 S-1)
-        const ids = rows.map((r) => r.id);
-        const completenessMap = await this.completenessCalculator.calculateBatch(
-          qr.manager,
-          schemaName,
-          ids,
-        );
-
-        const hydrated = rows.map((item) => {
-          const completeness = completenessMap.get(item.id);
-          if (completeness) {
-            const pipelineProgress = this.calculatePipelineProgress(completeness);
-            Object.assign(item, {
-              completenessCommercial: completeness.commercial,
-              completenessLegal: completeness.legal,
-              completenessTechnical: completeness.technical,
-              completenessOperational: completeness.operational,
-              completenessOverall: completeness.overall,
-              pipelineProgress,
-            });
-          }
-          item.documentNumberEncrypted = null;
-          item.documentNumberHash = null;
-          item.phonePrimaryEncrypted = null;
-          item.phoneSecondaryEncrypted = null;
-          item.emailPrimaryEncrypted = null;
-          item.altContactPhoneEncrypted = null;
-          item.siteContactPhoneEncrypted = null;
-          return item;
-        });
-
-        return { hydrated, count };
-      },
-    );
+    const partyIds = [...new Set(partyByExpediente.values())];
+    const marksByParty = await this.privacyMarksReadPort?.activeMarks(partyIds);
+    const dataWithMarks = hydratedData.map((item) => {
+      const partyId = partyByExpediente.get(item.id);
+      return Object.assign(item, {
+        privacyMarks: partyId ? (marksByParty?.[partyId] ?? []) : [],
+      });
+    });
 
     return {
-      data: hydratedData,
+      data: dataWithMarks,
       total,
       meta: buildPageMeta({ total, page, limit, randomAccess: true }),
     };
@@ -1323,6 +1363,16 @@ export class ExpedienteService {
   ): Promise<ConsentRecord> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     await this.findById(expedienteId);
+    if (!this.privacyLegalTextReadPort) {
+      throw new ServiceUnavailableException('La consulta de textos legales no está disponible.');
+    }
+    const currentLegalText = await this.privacyLegalTextReadPort.current('AUTORIZACION');
+    if (!currentLegalText) {
+      throw new UnprocessableEntityException({
+        code: 'PRIVACY_LEGAL_TEXT_NOT_PUBLISHED',
+        message: 'No hay un texto de autorización vigente publicado.',
+      });
+    }
     const normalizedConsentType = this.normalizeConsentType(dto.consentType);
     const normalizedConsentStatus = this.normalizeConsentStatus(dto.status);
 
@@ -1354,7 +1404,7 @@ export class ExpedienteService {
         channel: dto.channel,
         obtainedAt: new Date(),
         ipAddress,
-        legalTextVersion: dto.legalTextVersion?.trim() || CONSENT_LEGAL_VERSION,
+        legalTextVersion: currentLegalText.version,
         evidenceRef: dto.evidenceRef?.trim() ?? null,
         revokedAt: null,
         revokedReason: null,

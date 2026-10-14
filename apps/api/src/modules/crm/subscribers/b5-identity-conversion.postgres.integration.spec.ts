@@ -14,6 +14,9 @@ import {
   SubscriberStatus,
   TaxRegime,
   VatTreatment,
+  ConsentStatus,
+  ConsentChannel,
+  ConsentType,
 } from '@iwana/shared';
 import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
 import { createPartyPiiCrypto } from '../../parties/party-pii.util';
@@ -38,6 +41,18 @@ import { StatusChange } from '../expedientes/entities/status-change.entity';
 import { SalesAttribution } from '../attributions/entities/sales-attribution.entity';
 import { CrmConversionFailure } from '../expedientes/entities/crm-conversion-failure.entity';
 import { ExpedienteService } from '../expedientes/expediente.service';
+import { Contract } from '../contracts/entities/contract.entity';
+import { ContractStatus } from '../enums/contract-status.enum';
+import { DataAuthorizationEntity } from '../../privacy/entities/data-authorization.entity';
+import { LegalTextEntity } from '../../privacy/entities/legal-text.entity';
+import { PartyPrivacyMarkEntity } from '../../privacy/entities/party-privacy-mark.entity';
+import { PrivacyAuthorizationAdapter } from '../../privacy/authorizations/privacy-authorization.adapter';
+import { LegalTextsService } from '../../privacy/legal-texts/legal-texts.service';
+import { PrivacyMarksAdapter } from '../../privacy/marks/privacy-marks.adapter';
+import { CrmContractImpersonationAdapter } from '../privacy-adapters/crm-contract-impersonation.adapter';
+import { CrmContractStandingReadAdapter } from '../privacy-adapters/crm-contract-standing-read.adapter';
+import { UnprocessableEntityException } from '@nestjs/common';
+import { PrivacyModule1460000000000 } from '../../../../../../packages/database/src/migrations/tenant/146_privacy_module';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
@@ -81,6 +96,7 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
 
   async function createExpediente(
     overrides: Partial<ExpedienteRecord> = {},
+    options: { withTreatmentConsent?: boolean; consentChannel?: string } = {},
   ): Promise<ExpedienteRecord> {
     const expediente = Object.assign(new ExpedienteRecord(), {
       id: randomUUID(),
@@ -106,6 +122,29 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     await runInTenantSchema(dataSource, testSchemaName, (qr) =>
       qr.manager.save(ExpedienteRecord, expediente),
     );
+    if (options.withTreatmentConsent !== false) {
+      await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+        qr.manager.save(
+          ConsentRecord,
+          Object.assign(new ConsentRecord(), {
+            tenantId,
+            expedienteId: expediente.id,
+            legacyProspectId: expediente.id,
+            consentType: ConsentType.TRATAMIENTO_DATOS,
+            status: ConsentStatus.ACEPTADO,
+            legacyAccepted: true,
+            channel: options.consentChannel ?? 'WEB',
+            obtainedAt: new Date('2026-10-01T12:00:00.000Z'),
+            ipAddress: '127.0.0.1',
+            legalTextVersion: 'privacy-v1',
+            evidenceRef: null,
+            revokedAt: null,
+            revokedReason: null,
+            revokedBy: null,
+          }),
+        ),
+      );
+    }
     return expediente;
   }
 
@@ -139,14 +178,55 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     return runInTenantSchema(dataSource, testSchemaName, (qr) => qr.manager.save(Party, party));
   }
 
+  async function persistContract(
+    subscriberId: string,
+    status: ContractStatus = ContractStatus.ACTIVE,
+  ): Promise<Contract> {
+    const contract = Object.assign(new Contract(), {
+      tenantId,
+      quoteId: null,
+      subscriberId,
+      planId: 'B5-PLAN',
+      planSnapshotJson: { id: 'B5-PLAN' },
+      status,
+      alias: `Contrato ${randomUUID().slice(0, 8)}`,
+      installationAddress: null,
+      installationCity: null,
+      installationDepartment: null,
+      installationPostalCode: null,
+      installationNotes: null,
+      customerSegment: null,
+      serviceUsage: null,
+      installationStratum: null,
+      stratumEvidenceMediaId: null,
+      vatSnapshot: null,
+      additionalProductIds: [],
+      additionalServiceIds: [],
+      paymentMethod: null,
+      billingCycle: null,
+      fiscalName: null,
+      fiscalDocument: null,
+      fiscalAddress: null,
+      startDate: null,
+      endDate: null,
+    });
+    return runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.save(Contract, contract),
+    );
+  }
+
   function makeAuditService(): AuditService {
     return new AuditService(dataSource, {
       log: jest.fn().mockResolvedValue(undefined),
     } as unknown as PlatformAuditService);
   }
 
-  function makeSubscribersService(auditService: AuditService): SubscribersService {
+  function makeSubscribersService(
+    auditService: AuditService,
+    marksAdapter = new PrivacyMarksAdapter(dataSource),
+  ): SubscribersService {
     const statusTransitions = new SubscriberStatusTransitionService(dataSource, auditService);
+    const privacyAuthorizationAdapter = new PrivacyAuthorizationAdapter(dataSource);
     return new SubscribersService(
       dataSource,
       testConfig,
@@ -154,6 +234,10 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       statusTransitions,
       auditService,
       new PartyWriteAdapter(testConfig),
+      privacyAuthorizationAdapter,
+      privacyAuthorizationAdapter,
+      new LegalTextsService(dataSource, auditService),
+      marksAdapter,
     );
   }
 
@@ -177,6 +261,7 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       { findById: jest.fn().mockResolvedValue({ name: 'Actor B5' }) } as never,
       eventEmitter as EventEmitter2,
       subscribersService,
+      new LegalTextsService(dataSource, auditService),
     );
   }
 
@@ -196,6 +281,10 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
         StatusChange,
         SalesAttribution,
         CrmConversionFailure,
+        Contract,
+        DataAuthorizationEntity,
+        LegalTextEntity,
+        PartyPrivacyMarkEntity,
       ],
       migrations: [],
       logging: false,
@@ -227,20 +316,41 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       'status_changes',
       'sales_attributions',
       'audit_logs',
+      'contracts',
     ]) {
       await dataSource.query(
         `CREATE TABLE ${target}.${quoteIdentifier(table)} (LIKE ${source}.${quoteIdentifier(table)} INCLUDING ALL)`,
       );
     }
 
+    const migrationRunner = dataSource.createQueryRunner();
+    await migrationRunner.connect();
+    try {
+      await migrationRunner.query(`SET search_path TO ${target}`);
+      await new PrivacyModule1460000000000().up(migrationRunner);
+    } finally {
+      await migrationRunner.release();
+    }
+
     await dataSource.query(
       `ALTER TABLE ${target}.party ADD COLUMN document_number_hmac varchar(64)`,
+    );
+    await dataSource.query(
+      `INSERT INTO ${target}.legal_texts (id, type, version, sha256, content, published_at)
+       VALUES ('00000000-0000-4000-8000-000000000099', 'AUTORIZACION', 'privacy-v1', repeat('a', 64), 'Texto legal sintético', now())`,
     );
     await dataSource.query(
       `ALTER TABLE ${target}.party_contact ADD COLUMN value_encrypted varchar(500), ADD COLUMN value_hmac varchar(64)`,
     );
     await dataSource.query(
       `ALTER TABLE ${target}.subscribers ADD COLUMN whatsapp_encrypted varchar(500), ADD COLUMN whatsapp_hmac varchar(64)`,
+    );
+    await dataSource.query(
+      `ALTER TABLE ${target}.contracts
+         ADD COLUMN service_usage varchar(20),
+         ADD COLUMN installation_stratum smallint,
+         ADD COLUMN stratum_evidence_media_id uuid,
+         ADD COLUMN vat_snapshot jsonb`,
     );
     await dataSource.query(
       `CREATE UNIQUE INDEX uq_party_document_hmac_active ON ${target}.party (document_type, document_number_hmac) WHERE deleted_at IS NULL AND status <> 'MERGED' AND document_number_hmac IS NOT NULL`,
@@ -467,6 +577,14 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
           address: 'Dirección sintética',
           expedienteId: expediente.id,
           initialStatus: SubscriberStatus.CANCELLED,
+          authorizationChannel: ConsentChannel.PRESENCIAL,
+          authorizations: [
+            {
+              purpose: 'TRATAMIENTO_CONTRACTUAL',
+              granted: true,
+              legalTextId: '00000000-0000-4000-8000-000000000099',
+            },
+          ],
         },
         actorId,
       ),
@@ -521,6 +639,14 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
           address: 'Dirección sintética',
           expedienteId: expediente.id,
           initialStatus: SubscriberStatus.CANCELLED,
+          authorizationChannel: ConsentChannel.PRESENCIAL,
+          authorizations: [
+            {
+              purpose: 'TRATAMIENTO_CONTRACTUAL',
+              granted: true,
+              legalTextId: '00000000-0000-4000-8000-000000000099',
+            },
+          ],
         },
         actorId,
       ),
@@ -596,5 +722,311 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     );
     expect(repeated.retried).toBe(false);
     expect(eventEmitter.emitAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechaza conversión sin autorización contractual y revierte Party y Subscriber', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente(
+      { documentNumberEncrypted: encryptAes256Gcm('83000001', encryptionKey) },
+      { withTreatmentConsent: false },
+    );
+    const partyCountBefore = await countRows('party');
+
+    await expect(
+      TenantContext.run(context(), () => conversion.createFromExpediente(expediente.id, actorId)),
+    ).rejects.toMatchObject({
+      response: { code: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED' },
+      status: 422,
+    });
+
+    expect(await countRows('party')).toBe(partyCountBefore);
+    expect(await countRows('subscribers', 'WHERE expediente_id = $1', [expediente.id])).toBe(0);
+    const sourceConsents = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT id FROM consent_records WHERE expediente_id = $1', [expediente.id]),
+    )) as Array<{ id: string }>;
+    expect(
+      await countRows('data_authorizations', 'WHERE source_ref = $1', [
+        `consent_records:${sourceConsents[0]?.id}`,
+      ]),
+    ).toBe(0);
+  });
+
+  it('convierte dos veces con las mismas filas de autorización por sourceRef', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente(
+      { documentNumberEncrypted: encryptAes256Gcm('83000002', encryptionKey) },
+      { consentChannel: ConsentChannel.TELEFONO },
+    );
+
+    const [first, second] = await TenantContext.run(context(), async () => [
+      await conversion.createFromExpediente(expediente.id, actorId),
+      await conversion.createFromExpediente(expediente.id, actorId),
+    ]);
+
+    expect(first).toBe(second);
+    expect(await countRows('subscribers', 'WHERE expediente_id = $1', [expediente.id])).toBe(1);
+    const sourceConsents = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT id FROM consent_records WHERE expediente_id = $1', [expediente.id]),
+    )) as Array<{ id: string }>;
+    const convertedAuthorization = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT channel, kind FROM data_authorizations WHERE source_ref = $1', [
+        `consent_records:${sourceConsents[0]?.id}`,
+      ]),
+    )) as Array<{ channel: string; kind: string }>;
+    expect(convertedAuthorization).toEqual([{ channel: ConsentChannel.TELEFONO, kind: 'GRANT' }]);
+    expect(
+      await countRows('data_authorizations', 'WHERE source_ref = $1', [
+        `consent_records:${sourceConsents[0]?.id}`,
+      ]),
+    ).toBe(1);
+  });
+
+  it('conserva un canal histórico fuera del catálogo como LEGACY_IMPORT', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente({
+      documentNumberEncrypted: encryptAes256Gcm('83000006', encryptionKey),
+    });
+
+    await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(expediente.id, actorId),
+    );
+
+    const [authorization] = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        `SELECT da.channel, da.kind
+         FROM data_authorizations da
+         JOIN consent_records cr
+           ON da.source_ref = 'consent_records:' || cr.id::text
+         WHERE cr.expediente_id = $1`,
+        [expediente.id],
+      ),
+    )) as Array<{ channel: string; kind: string }>;
+    expect(authorization).toEqual({ channel: 'WEB', kind: 'LEGACY_IMPORT' });
+  });
+
+  it('rechaza alta directa sin autorización contractual con 422', async () => {
+    const auditService = makeAuditService();
+    const subscribersService = makeSubscribersService(auditService);
+    const before = await countRows('subscribers');
+
+    await expect(
+      TenantContext.run(context(), () =>
+        subscribersService.create(
+          {
+            personType: PersonType.NATURAL,
+            customerSegment: CustomerSegment.RESIDENTIAL,
+            documentType: 'CC',
+            documentNumber: '83000003',
+            firstName: 'Titular',
+            lastName: 'Sintético',
+            stratum: 2,
+            email: 'signup@example.test',
+            phone: '3000000003',
+            address: 'Dirección sintética',
+          },
+          actorId,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED' },
+      status: 422,
+    });
+    expect(await countRows('subscribers')).toBe(before);
+  });
+
+  it('consulta las marcas una sola vez por página del listado de suscriptores', async () => {
+    const auditService = makeAuditService();
+    const marksAdapter = new PrivacyMarksAdapter(dataSource);
+    const marksSpy = jest.spyOn(marksAdapter, 'activeMarks');
+    const subscribersService = makeSubscribersService(auditService, marksAdapter);
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      subscribersService,
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente({
+      documentNumberEncrypted: encryptAes256Gcm('83000004', encryptionKey),
+    });
+    await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(expediente.id, actorId),
+    );
+
+    const page = await TenantContext.run(context(), () =>
+      subscribersService.findAll({ page: 1, limit: 20 }),
+    );
+
+    expect(marksSpy).toHaveBeenCalledTimes(1);
+    expect(marksSpy).toHaveBeenCalledWith(expect.arrayContaining([expect.any(String)]));
+    expect(page.data[0]?.privacyMarks).toEqual([]);
+  });
+
+  it('suspende contratos del Party en una transacción y emite eventos después del commit', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente({
+      documentNumberEncrypted: encryptAes256Gcm('83000005', encryptionKey),
+    });
+    const subscriberId = await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(expediente.id, actorId),
+    );
+    const subscriber = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.findOneOrFail(Subscriber, { where: { id: subscriberId } }),
+    );
+    const contract = await persistContract(subscriber.id, ContractStatus.ACTIVE);
+    const eventEmitter = new EventEmitter2();
+    const emitted: Array<Record<string, unknown>> = [];
+    eventEmitter.on('crm.contract.suspended', (event: Record<string, unknown>) =>
+      emitted.push(event),
+    );
+    const adapter = new CrmContractImpersonationAdapter(dataSource, eventEmitter);
+
+    await TenantContext.run(context(), () =>
+      runInTenantSchema(dataSource, testSchemaName, async (qr) => {
+        const result = await adapter.suspendForImpersonation(
+          {
+            partyId: subscriber.partyId!,
+            contractIds: [contract.id],
+            requestId: randomUUID(),
+            actorId,
+          },
+          { manager: qr.manager },
+        );
+        expect(result.suspendedContractIds).toEqual([contract.id]);
+        expect(emitted).toHaveLength(0);
+      }),
+    );
+
+    const persisted = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.findOneOrFail(Contract, { where: { id: contract.id } }),
+    );
+    expect(persisted.status).toBe(ContractStatus.SUSPENDED);
+    expect(emitted).toMatchObject([
+      { partyId: subscriber.partyId, contractId: contract.id, reason: 'SUPLANTACION' },
+    ]);
+    const auditRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        "SELECT new_value FROM audit_logs WHERE entity_type = 'Contract' AND entity_id = $1",
+        [contract.id],
+      ),
+    )) as Array<{ new_value: { reason?: string } }>;
+    expect(auditRows.at(-1)?.new_value.reason).toBe('SUPLANTACION');
+  });
+
+  it('rechaza contrato ajeno con rollback y sin evento de suspensión', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const firstExpediente = await createExpediente({
+      documentNumberEncrypted: encryptAes256Gcm('83000006', encryptionKey),
+    });
+    const secondExpediente = await createExpediente({
+      documentNumberEncrypted: encryptAes256Gcm('83000007', encryptionKey),
+    });
+    const firstId = await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(firstExpediente.id, actorId),
+    );
+    const secondId = await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(secondExpediente.id, actorId),
+    );
+    const first = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.findOneOrFail(Subscriber, { where: { id: firstId } }),
+    );
+    const second = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.findOneOrFail(Subscriber, { where: { id: secondId } }),
+    );
+    const ownContract = await persistContract(first.id, ContractStatus.ACTIVE);
+    const foreignContract = await persistContract(second.id, ContractStatus.ACTIVE);
+    const eventEmitter = new EventEmitter2();
+    const emitted = jest.fn();
+    eventEmitter.on('crm.contract.suspended', emitted);
+    const adapter = new CrmContractImpersonationAdapter(dataSource, eventEmitter);
+
+    await expect(
+      TenantContext.run(context(), () =>
+        runInTenantSchema(dataSource, testSchemaName, (qr) =>
+          adapter.suspendForImpersonation(
+            {
+              partyId: first.partyId!,
+              contractIds: [ownContract.id, foreignContract.id],
+              requestId: randomUUID(),
+              actorId,
+            },
+            { manager: qr.manager },
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'IMPERSONATION_CONTRACT_NOT_OWNED' },
+      status: 422,
+    });
+
+    const statusRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT id, status FROM contracts WHERE id = ANY($1::uuid[])', [
+        [ownContract.id, foreignContract.id],
+      ]),
+    )) as Array<{ id: string; status: ContractStatus }>;
+    expect(statusRows.every((row) => row.status === ContractStatus.ACTIVE)).toBe(true);
+    expect(emitted).not.toHaveBeenCalled();
+  });
+
+  it('expone el estado contractual para las reglas de conservación', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente({
+      documentNumberEncrypted: encryptAes256Gcm('83000008', encryptionKey),
+    });
+    const subscriberId = await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(expediente.id, actorId),
+    );
+    const subscriber = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.findOneOrFail(Subscriber, { where: { id: subscriberId } }),
+    );
+    const open = await persistContract(subscriber.id, ContractStatus.ACTIVE);
+    await persistContract(subscriber.id, ContractStatus.TERMINATED);
+    const standing = await TenantContext.run(context(), () =>
+      new CrmContractStandingReadAdapter(dataSource).standing(subscriber.partyId!),
+    );
+    expect(standing.openContractIds).toEqual([open.id]);
+    expect(standing.lastTerminatedAt).toEqual(expect.any(String));
   });
 });

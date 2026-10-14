@@ -5,6 +5,8 @@ import { CoverageReadPort } from '../../ports/coverage-read.port';
 import { PlanCatalogReadPort } from '../../ports/plan-catalog-read.port';
 import { AuditService } from '../../../audit/audit.service';
 import { PotentialsService } from '../potentials.service';
+import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
+import { ConsentChannel } from '@iwana/shared';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -36,6 +38,13 @@ describe('PotentialsService', () => {
     log: jest.fn().mockResolvedValue(undefined),
   };
 
+  const privacyLegalTextReadPortMock = {
+    current: jest
+      .fn()
+      .mockResolvedValue({ id: 'legal-1', version: 'legal-v2', sha256: 'a'.repeat(64) }),
+    findByVersion: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     mockTenantContextGetOrThrow.mockReturnValue({ tenantId: 'ten-1', schemaName: 'tenant_test' });
@@ -55,6 +64,7 @@ describe('PotentialsService', () => {
         { provide: CoverageReadPort, useValue: coverageReadPortMock },
         { provide: PlanCatalogReadPort, useValue: planCatalogReadPortMock },
         { provide: AuditService, useValue: auditServiceMock },
+        { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
       ],
     }).compile();
 
@@ -104,6 +114,19 @@ describe('PotentialsService', () => {
     });
 
     let saveCount = 0;
+    const managerSave = jest.fn(async (_entity: unknown, data: Record<string, unknown>) => {
+      saveCount += 1;
+      if (saveCount === 1) {
+        return { ...data, updatedAt: new Date() };
+      }
+
+      return {
+        ...data,
+        id: saveCount === 2 ? 'pros-1' : 'cons-1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    });
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {
@@ -116,19 +139,7 @@ describe('PotentialsService', () => {
             qualified: false,
           }),
           create: (_entity: unknown, data: Record<string, unknown>) => data,
-          save: async (_entity: unknown, data: Record<string, unknown>) => {
-            saveCount += 1;
-            if (saveCount === 1) {
-              return { ...data, updatedAt: new Date() };
-            }
-
-            return {
-              ...data,
-              id: saveCount === 2 ? 'pros-1' : 'cons-1',
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            };
-          },
+          save: managerSave,
         },
       }),
     );
@@ -137,13 +148,36 @@ describe('PotentialsService', () => {
       address: 'Calle 123',
       planId: 'plan-1',
       consentAccepted: true,
-      consentChannel: 'WEB',
+      consentChannel: ConsentChannel.EMAIL,
       legalTextVersion: 'v1',
     });
 
     expect(result.id).toBe('pros-1');
     expect(result.status).toBe('PROSPECT');
     expect(result.selectedPlanId).toBe('plan-1');
+    expect(managerSave).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ legalTextVersion: 'legal-v2' }),
+    );
+    expect(privacyLegalTextReadPortMock.current).toHaveBeenCalledWith('AUTORIZACION');
+  });
+
+  it('bloquea la calificación si no hay autorización vigente publicada', async () => {
+    privacyLegalTextReadPortMock.current.mockResolvedValueOnce(null);
+
+    await expect(
+      service.qualify('pot-1', {
+        address: 'Calle 123',
+        planId: 'plan-1',
+        consentAccepted: true,
+        consentChannel: ConsentChannel.EMAIL,
+        legalTextVersion: 'v1',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'PRIVACY_LEGAL_TEXT_NOT_PUBLISHED' },
+    });
+
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
   });
 
   it('lanza BadRequestException cuando no hay cobertura disponible', async () => {
@@ -159,7 +193,7 @@ describe('PotentialsService', () => {
         address: 'Calle 123',
         planId: 'plan-1',
         consentAccepted: true,
-        consentChannel: 'WEB',
+        consentChannel: ConsentChannel.EMAIL,
         legalTextVersion: 'v1',
       }),
     ).rejects.toThrow('La calificacion requiere cobertura disponible y un plan elegible.');
@@ -177,7 +211,7 @@ describe('PotentialsService', () => {
         address: 'Calle 123',
         planId: 'plan-inexistente',
         consentAccepted: true,
-        consentChannel: 'WEB',
+        consentChannel: ConsentChannel.EMAIL,
         legalTextVersion: 'v1',
       }),
     ).rejects.toThrow('La calificacion requiere cobertura disponible y un plan elegible.');
@@ -214,7 +248,7 @@ describe('PotentialsService', () => {
         address: 'Calle 123',
         planId: 'plan-1',
         consentAccepted: true,
-        consentChannel: 'WEB',
+        consentChannel: ConsentChannel.EMAIL,
         legalTextVersion: 'v1',
       }),
     ).rejects.toThrow('Potencial pot-inexistente no encontrado.');

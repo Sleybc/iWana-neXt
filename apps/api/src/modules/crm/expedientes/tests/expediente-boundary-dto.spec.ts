@@ -8,11 +8,7 @@ import {
   CustomerSegment,
   Feasibility,
 } from '@iwana/shared';
-import {
-  CreateConsentDto,
-  RevokeConsentDto,
-  CONSENT_LEGAL_VERSION,
-} from '../dto/create-consent.dto';
+import { CreateConsentDto, RevokeConsentDto } from '../dto/create-consent.dto';
 import { CreateContactAttemptDto } from '../dto/create-contact-attempt.dto';
 import { CreateCoverageCheckDto } from '../dto/create-coverage-check.dto';
 import { CreateExpedienteDto, CreateExpedienteSchema } from '../dto/create-expediente.dto';
@@ -129,7 +125,7 @@ describe('Expedientes boundary DTOs', () => {
           consentType: ConsentType.TRATAMIENTO_DATOS,
           status: ConsentStatus.ACEPTADO,
           channel: ConsentChannel.PRESENCIAL,
-          legalTextVersion: CONSENT_LEGAL_VERSION,
+          legalTextVersion: 'versión-cliente-obsoleta',
           evidenceRef: 'consent://evidence/1',
         },
         buildBodyMetadata(CreateConsentDto),
@@ -138,7 +134,7 @@ describe('Expedientes boundary DTOs', () => {
       consentType: ConsentType.TRATAMIENTO_DATOS,
       status: ConsentStatus.ACEPTADO,
       channel: ConsentChannel.PRESENCIAL,
-      legalTextVersion: CONSENT_LEGAL_VERSION,
+      legalTextVersion: 'versión-cliente-obsoleta',
       evidenceRef: 'consent://evidence/1',
     });
 

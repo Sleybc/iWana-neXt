@@ -6,6 +6,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
+  Inject,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -37,6 +39,7 @@ import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-cat
 import { AuditService } from '../../audit/audit.service';
 import type { AuditEntryInput } from '../../audit/interfaces/audit-entry.interface';
 import { MediaService } from '../../media/media.service';
+import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
 
 /** Transiciones de estado permitidas según máquina de estados del spec. */
 const ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
@@ -84,6 +87,9 @@ export class ContractsService {
     private readonly auditService: AuditService,
     private readonly mediaService: MediaService,
     private readonly configService: ConfigService,
+    @Optional()
+    @Inject(IPrivacyAuthorizationReadPort)
+    private readonly privacyAuthorizationReadPort?: IPrivacyAuthorizationReadPort,
   ) {}
 
   // ── Creación ────────────────────────────────────────────────────────────────
@@ -96,16 +102,18 @@ export class ContractsService {
     );
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await qr.manager.findOne(Subscriber, {
+        where: { id: dto.subscriberId, tenantId },
+        select: { id: true, tenantId: true, personType: true, partyId: true },
+      });
+      if (!subscriber) {
+        throw new NotFoundException('Suscriptor del contrato no encontrado.');
+      }
+      await this.requireContractualAuthorization(subscriber.partyId);
+
       const installationStratum = dto.installationStratum ?? null;
       const serviceUsage = dto.serviceUsage ?? null;
       if (serviceUsage === ServiceUsage.RESIDENTIAL) {
-        const subscriber = await qr.manager.findOne(Subscriber, {
-          where: { id: dto.subscriberId, tenantId },
-          select: { id: true, tenantId: true, personType: true },
-        });
-        if (!subscriber) {
-          throw new NotFoundException('Suscriptor del contrato no encontrado.');
-        }
         this._validateServicePoint(serviceUsage, installationStratum, subscriber.personType);
       }
 
@@ -176,6 +184,7 @@ export class ContractsService {
       if (!subscriber) {
         throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado.`);
       }
+      await this.requireContractualAuthorization(subscriber.partyId);
 
       // Resolver el expediente: usar el del DTO si viene, o el del subscriber
       const expedienteId = dto.expedienteId ?? subscriber.expedienteId ?? null;
@@ -719,6 +728,31 @@ export class ContractsService {
   }
 
   // ── Helpers privados ────────────────────────────────────────────────────────
+
+  private async requireContractualAuthorization(partyId: string | null): Promise<void> {
+    if (!partyId) {
+      throw new UnprocessableEntityException({
+        code: 'CONTRACT_DATA_AUTHORIZATION_REQUIRED',
+        message: 'El suscriptor no tiene autorización vigente para el tratamiento contractual.',
+      });
+    }
+    if (!this.privacyAuthorizationReadPort) {
+      throw new ServiceUnavailableException('La consulta de autorizaciones no está disponible.');
+    }
+    const authorization = await this.privacyAuthorizationReadPort.hasActive(
+      partyId,
+      'TRATAMIENTO_CONTRACTUAL',
+    );
+    if (!authorization.active) {
+      throw new UnprocessableEntityException({
+        code: 'CONTRACT_DATA_AUTHORIZATION_REQUIRED',
+        message: 'El suscriptor no tiene autorización vigente para el tratamiento contractual.',
+      });
+    }
+    if (authorization.legacyUnverified) {
+      this.logger.warn('Autorización heredada del titular requiere recolectar evidencia.');
+    }
+  }
 
   private async _transition(
     id: string,

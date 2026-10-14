@@ -18,6 +18,7 @@ import { AuditService } from '../../../audit/audit.service';
 import { CompletenessCalculator } from '../completeness-calculator.service';
 import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
 import { SubscribersService } from '../../subscribers/subscribers.service';
+import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
@@ -90,6 +91,15 @@ describe('ExpedienteService', () => {
     findSummaryByExpedienteId: jest.fn(),
   };
 
+  const privacyLegalTextReadPortMock = {
+    current: jest.fn().mockResolvedValue({
+      id: 'legal-1',
+      version: 'legal-v2',
+      sha256: 'a'.repeat(64),
+    }),
+    findByVersion: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     subscribersServiceMock.findSummaryByExpedienteId.mockReset();
@@ -135,6 +145,7 @@ describe('ExpedienteService', () => {
         { provide: CrmActorReadPort, useValue: crmActorReadPortMock },
         { provide: EventEmitter2, useValue: eventEmitterMock },
         { provide: SubscribersService, useValue: subscribersServiceMock },
+        { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
       ],
     }).compile();
 
@@ -2263,9 +2274,35 @@ describe('ExpedienteService', () => {
       expect.objectContaining({
         consentType: ConsentType.TRATAMIENTO_DATOS,
         status: ConsentStatus.ACEPTADO,
-        legalTextVersion: 'Ley 1581 v1',
+        legalTextVersion: 'legal-v2',
       }),
     );
+    expect(privacyLegalTextReadPortMock.current).toHaveBeenCalledWith('AUTORIZACION');
+  });
+
+  it('bloquea la captura si no hay autorización vigente publicada', async () => {
+    jest
+      .spyOn(service, 'findById')
+      .mockResolvedValue(buildExpediente({ id: 'exp-consent-create' }));
+    privacyLegalTextReadPortMock.current.mockResolvedValueOnce(null);
+
+    await expect(
+      service.createConsent(
+        'exp-consent-create',
+        {
+          consentType: 'DATA_TREATMENT' as any,
+          status: 'ACCEPTED' as any,
+          channel: 'TELEFONO' as any,
+          legalTextVersion: 'versión-cliente-obsoleta',
+        },
+        'user-consent-create',
+        null,
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'PRIVACY_LEGAL_TEXT_NOT_PUBLISHED' },
+    });
+
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
   });
 
   it('registra cobertura sin intentar nullificar expediente_id en checks ya cargados', async () => {
