@@ -290,3 +290,37 @@ El adaptador de suplantación usa `logWithin`. Ningún módulo fuera de `audit` 
 | --- | --- | --- | --- |
 | R5 | `sr-backend` | `crm/subscribers/subscribers.controller.ts` y sus specs | turbo API `--force`; test de controlador: `partyId` presente en el detalle y en la 360°, y ausente de cualquier texto de log o auditoría |
 | R4b | `sr-qa` | Solo tests (`e2e/tests/portal-privacy-live.spec.ts` y la matriz) | Tras R5: 3/3 E2E contra la API real; un test de la leyenda en la transacción de `complete`; el tenant desechable se elimina o se marca inactivo al terminar, y el informe lo confirma |
+
+## 5. G6.5: CI de `main` en rojo (v1.3.5)
+
+**Diagnóstico de AI-EM-ARCH, solo lectura, sobre las corridas `38300855442`, `38562247928` y `38644689892`:**
+- El paso «Integration tests — API R2.3» falla en `main` **desde el 12-10** (`8f571e45`).
+- **Causa:** `b5-identity-conversion.postgres.integration.spec.ts` clona tablas del tenant de origen con `LIKE` y luego simula el estado anterior a la 143 con `ALTER TABLE … ADD COLUMN document_number_hmac` (línea 336) y con columnas de `party_contact`. En CI el tenant `test` ya está migrado, así que da `42701 column already exists` y fallan 8 tests.
+- En local pasaba porque `dbiw` no estaba migrada. Con `dbiw` ya migrada, también fallará en local.
+- **Consecuencia:** ningún G6.5 (IVA, D-PDF, Fase 1a) puede declararse con el CI en rojo.
+
+**Lo que sí corrió en CI** (`38562247928`): las integraciones de la 026 pública, la 143, la 145 y `contracts.service.postgres.integration.spec.ts` (P2 de D-PDF), todas en PASS. La 027 corre por primera vez en `38644689892`.
+
+| Bloque | Subagente | Propiedad | Stop/go |
+| --- | --- | --- | --- |
+| R6 | `sr-backend` | Solo tests: `crm/subscribers/b5-identity-conversion.postgres.integration.spec.ts` y `crm/subscribers/subscribers.controller.fase2.http.spec.ts` | El spec B5 no depende del estado de migración del tenant de origen: `ADD COLUMN IF NOT EXISTS` o comprobación en `information_schema`, sin bajar lo que verifica. Pasa en local contra `dbiw` migrada **y** con `E2E_TENANT_SLUG=test`. El test de `fase2.http.spec.ts:514` deja de depender de una espera de 10 ms. Se cierra con el CI de `main` en verde, con los PASS de la 027 y de B5 citados del log |
+
+### R6: resultado y R7
+
+**R6** ([informe](../informes/INFORME-PRIVACY-FASE-1A-R6-v1.0.md)): solo tests, sin commitear.
+- B5 pasa 16/16 contra `dbiw` migrada y 16/16 con `E2E_TENANT_SLUG=test`.
+- `fase2.http.spec.ts` pasa en 5 de 5 corridas `--no-cache`.
+- La API pasa 372 suites y 4.963 tests.
+- **Corrida `38644689892`:** `PASS 027_media_usage_privacy_evidence.integration.spec.ts` (28/28 suites). **La integración de la 027 queda cumplida.**
+
+**Segundo fallo en la misma corrida, verificado por AI-EM-ARCH en el log:**
+- `contracts.service.postgres.integration.spec.ts:133` falla con `42703 Subscriber.party_id does not exist`.
+- El spec crea a mano su tabla `subscribers` (líneas 159–190) sin `party_id`.
+- Desde `ee5e494d`, el alta de contrato lee el `partyId` del suscriptor para exigir la autorización (A18).
+- El 14-10 ese spec pasaba: es una regresión de la Fase 1a que ningún gate local vio, porque sin `E2E_TENANT_SLUG` la suite se omite.
+
+| Bloque | Subagente | Propiedad | Stop/go |
+| --- | --- | --- | --- |
+| R7 | `sr-backend` | Solo tests: `crm/contracts/tests/contracts.service.postgres.integration.spec.ts` | Las tablas del fixture se crean con `LIKE <tenant de origen> INCLUDING ALL`, como ya hace con `audit_logs`, para que sigan las migraciones. Si eso no se puede, `party_id` explícito. La autorización de prestación del servicio se resuelve con un stub del puerto que devuelva activa; el caso 422 ya está cubierto en B5. No se quita ninguna aserción del IVA. Pasa con `E2E_TENANT_SLUG=test` sobre una base migrada y con `dbiw`. Se cierra con el CI de `main` verde tras el push del CTO de R6 + R7, citando los PASS de B5, de contratos y de la 027 con el número de corrida |
+
+**R7** ([informe](../informes/INFORME-PRIVACY-FASE-1A-R7-v1.0.md)): solo el spec de contratos, con `subscribers` y `contracts` copiadas con `LIKE … INCLUDING ALL`. Pasa 19/19 con `dbiw` y 19/19 con el slug `test`. `test:integration` entero con `E2E_TENANT_SLUG=test`: 14 suites en PASS y 2 omitidas por diseño; 73 tests. La API pasa 372 suites y 4.963 tests. **Pendiente:** el push de R6 + R7 y un CI de `main` en verde, con los PASS de B5, de contratos y de la 027 en la misma corrida.

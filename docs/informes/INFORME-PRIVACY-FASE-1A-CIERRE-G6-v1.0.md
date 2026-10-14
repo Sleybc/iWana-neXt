@@ -51,7 +51,7 @@ Cierra E-2 de la auditoría MOD05 (SUB-A06, SUB-A07 y SUB-B03) en lo que corresp
 
 ## 4. Condición del GO y pasos antes de producción
 
-1. **G6.5:** la integración real de la migración pública 027 en CI (`DB_NAME=test`). La suite existe (`027_media_usage_privacy_evidence.integration.spec.ts`) y no se marca aprobada hasta correr.
+1. **G6.5:** la integración real de la migración pública 027 en CI (`DB_NAME=test`) **y el CI de `main` en verde**. Adenda posterior al push: el CI está en rojo desde el 12-10 por un spec de MOD05 (B5) que depende del estado de migración. Se corrige con R6 (prompt v1.3 §5).
 2. **Dictámenes jurídicos** de ADR-094 §7.3 (⚠): bloquean producción, no la construcción. Los gestiona el CTO.
 3. **G7:** `HLD-PRIVACY-v1.0` (deuda de AI-EM-ARCH, excepción documental de la Fase 1).
 4. **Requisito por empresa:** publicar el texto de autorización. Sin él, el expediente y el alta responden 422 (A18).

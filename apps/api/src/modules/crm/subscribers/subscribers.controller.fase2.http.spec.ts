@@ -510,7 +510,17 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         return response;
       });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // R6: sincronización determinista — espera hasta que el controlador invoque
+    // la auditoría en lugar de una ventana fija de 10 ms sensible a la carga.
+    const deadline = Date.now() + 5000;
+    while (
+      !auditMock.log.mock.calls.some(
+        (call: unknown[]) => (call[0] as { action?: string } | undefined)?.action === 'LIST_ACCESS',
+      )
+    ) {
+      if (Date.now() > deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     expect(auditMock.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'LIST_ACCESS' }));
     expect(responseSettled).toBe(false);
     releaseAudit?.();

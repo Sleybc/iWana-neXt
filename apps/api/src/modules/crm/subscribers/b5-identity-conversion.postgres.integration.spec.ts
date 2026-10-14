@@ -319,7 +319,21 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       'contracts',
     ]) {
       await dataSource.query(
-        `CREATE TABLE ${target}.${quoteIdentifier(table)} (LIKE ${source}.${quoteIdentifier(table)} INCLUDING ALL)`,
+        `CREATE TABLE IF NOT EXISTS ${target}.${quoteIdentifier(table)} (LIKE ${source}.${quoteIdentifier(table)} INCLUDING ALL)`,
+      );
+    }
+
+    // R6: LIKE INCLUDING ALL copia los índices del origen con nombre autogenerado
+    // (p. ej. subscribers_expediente_id_idx). Producción reconoce el conflicto
+    // de concurrencia por el nombre uq_subscribers_expediente, así que se
+    // eliminan los duplicados: el fixture no depende del estado de migración.
+    const duplicateExpedienteIndexes = (await dataSource.query(
+      `SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND tablename = 'subscribers' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%(expediente_id)%' AND indexname <> 'uq_subscribers_expediente'`,
+      [testSchemaName],
+    )) as Array<{ indexname: string }>;
+    for (const duplicate of duplicateExpedienteIndexes) {
+      await dataSource.query(
+        `DROP INDEX IF EXISTS ${target}.${quoteIdentifier(duplicate.indexname)}`,
       );
     }
 
@@ -332,34 +346,37 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       await migrationRunner.release();
     }
 
+    // R6: el tenant de origen ya puede estar migrado (143/144 aplicadas). El clon
+    // con LIKE trae esas columnas, asi que cada alta usa IF NOT EXISTS para no
+    // fallar con 42701 en CI. No cambia lo verificado por los tests.
     await dataSource.query(
-      `ALTER TABLE ${target}.party ADD COLUMN document_number_hmac varchar(64)`,
+      `ALTER TABLE ${target}.party ADD COLUMN IF NOT EXISTS document_number_hmac varchar(64)`,
     );
     await dataSource.query(
       `INSERT INTO ${target}.legal_texts (id, type, version, sha256, content, published_at)
        VALUES ('00000000-0000-4000-8000-000000000099', 'AUTORIZACION', 'privacy-v1', repeat('a', 64), 'Texto legal sintético', now())`,
     );
     await dataSource.query(
-      `ALTER TABLE ${target}.party_contact ADD COLUMN value_encrypted varchar(500), ADD COLUMN value_hmac varchar(64)`,
+      `ALTER TABLE ${target}.party_contact ADD COLUMN IF NOT EXISTS value_encrypted varchar(500), ADD COLUMN IF NOT EXISTS value_hmac varchar(64)`,
     );
     await dataSource.query(
-      `ALTER TABLE ${target}.subscribers ADD COLUMN whatsapp_encrypted varchar(500), ADD COLUMN whatsapp_hmac varchar(64)`,
+      `ALTER TABLE ${target}.subscribers ADD COLUMN IF NOT EXISTS whatsapp_encrypted varchar(500), ADD COLUMN IF NOT EXISTS whatsapp_hmac varchar(64)`,
     );
     await dataSource.query(
       `ALTER TABLE ${target}.contracts
-         ADD COLUMN service_usage varchar(20),
-         ADD COLUMN installation_stratum smallint,
-         ADD COLUMN stratum_evidence_media_id uuid,
-         ADD COLUMN vat_snapshot jsonb`,
+         ADD COLUMN IF NOT EXISTS service_usage varchar(20),
+         ADD COLUMN IF NOT EXISTS installation_stratum smallint,
+         ADD COLUMN IF NOT EXISTS stratum_evidence_media_id uuid,
+         ADD COLUMN IF NOT EXISTS vat_snapshot jsonb`,
     );
     await dataSource.query(
-      `CREATE UNIQUE INDEX uq_party_document_hmac_active ON ${target}.party (document_type, document_number_hmac) WHERE deleted_at IS NULL AND status <> 'MERGED' AND document_number_hmac IS NOT NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_party_document_hmac_active ON ${target}.party (document_type, document_number_hmac) WHERE deleted_at IS NULL AND status <> 'MERGED' AND document_number_hmac IS NOT NULL`,
     );
     await dataSource.query(
-      `CREATE UNIQUE INDEX uq_subscribers_expediente ON ${target}.subscribers (expediente_id) WHERE expediente_id IS NOT NULL AND deleted_at IS NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_subscribers_expediente ON ${target}.subscribers (expediente_id) WHERE expediente_id IS NOT NULL AND deleted_at IS NULL`,
     );
     await dataSource.query(
-      `CREATE TABLE ${target}.crm_conversion_failures (
+      `CREATE TABLE IF NOT EXISTS ${target}.crm_conversion_failures (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id uuid NOT NULL,
         expediente_id uuid NOT NULL REFERENCES ${target}.expediente_records(id),

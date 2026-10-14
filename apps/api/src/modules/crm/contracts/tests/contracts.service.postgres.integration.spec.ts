@@ -17,9 +17,11 @@ import {
 import { STORAGE_PORT } from '@iwana/storage';
 import {
   AuditAction,
+  CustomerSegment,
   NetworkType,
   PersonType,
   ServiceUsage,
+  TaxRegime,
   UserRole,
   VatConcept,
   VatLegalBasis,
@@ -38,6 +40,7 @@ import { AuditService } from '../../../audit/audit.service';
 import { AuditInterceptor } from '../../../audit/audit.interceptor';
 import { PlatformAuditService } from '../../../audit/platform-audit.service';
 import { MediaService } from '../../../media/media.service';
+import { IPrivacyAuthorizationReadPort } from '../../../privacy/ports/privacy-authorization-read.port';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../auth/guards/roles.guard';
 import { AbacGuard } from '../../../auth/guards/abac.guard';
@@ -83,7 +86,68 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     tenantSlug: integrationTenantSlug!,
   });
 
+  // R7: el alta de contrato exige autorización contractual vigente del titular
+  // (A18, `requireContractualAuthorization`). El 422 sin autorización ya lo
+  // cubre B5; aquí el puerto devuelve activa para aislar el IVA del spec.
+  const privacyAuthorizationReadPort = {
+    hasActive: jest.fn().mockResolvedValue({
+      active: true,
+      authorizationId: 'fixture-authorization-1',
+      legalTextVersion: 'fixture-legal-v1',
+      legacyUnverified: false,
+    }),
+  };
+
   const quoteIdentifier = (value: string) => '"' + value.replace(/"/g, '""') + '"';
+
+  // R7: inserta el suscriptor mínimo que la tabla real exige (NOT NULL sin
+  // default + `chk_subscriber_person_fields`): satisface ambas ramas del CHECK
+  // con valores sintéticos, sin PII. Devuelve el `party_id` que `create`
+  // lee desde `ee5e494d`.
+  async function insertSubscriber(
+    input: {
+      personType?: PersonType | undefined;
+    } = {},
+  ): Promise<{ id: string; partyId: string }> {
+    const subscriberId = randomUUID();
+    const partyId = randomUUID();
+    const tag = subscriberId.slice(0, 8);
+    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        [
+          'INSERT INTO subscribers (',
+          'id, tenant_id, party_id, person_type, customer_segment,',
+          'document_type, document_number_encrypted, first_name, last_name, stratum,',
+          'nit, business_name, email_encrypted, phone_encrypted,',
+          'vat_treatment, tax_regime, address, created_by',
+          ') VALUES (',
+          '$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18',
+          ')',
+        ].join('\n'),
+        [
+          subscriberId,
+          tenantId,
+          partyId,
+          input.personType ?? PersonType.NATURAL,
+          CustomerSegment.RESIDENTIAL,
+          'CC',
+          'cifrado-' + tag,
+          'Fixture',
+          'Contratos',
+          2,
+          '900000000-' + tag,
+          'Fixture Contratos SAS',
+          'cifrado-' + tag,
+          'cifrado-' + tag,
+          VatTreatment.STANDARD,
+          TaxRegime.SIMPLIFIED,
+          'Dirección sintética de fixture',
+          actor.sub,
+        ],
+      ),
+    );
+    return { id: subscriberId, partyId };
+  }
 
   async function createContract(input: {
     usage: ServiceUsage | null;
@@ -92,14 +156,9 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     personType?: PersonType;
     status?: ContractStatus;
   }): Promise<string> {
-    const subscriberId = randomUUID();
+    const { id: subscriberId } = await insertSubscriber({ personType: input.personType });
     const contractId = randomUUID();
     await runInTenantSchema(dataSource, testSchemaName, async (qr) => {
-      await qr.query('INSERT INTO subscribers (id, tenant_id, person_type) VALUES ($1, $2, $3)', [
-        subscriberId,
-        tenantId,
-        input.personType ?? PersonType.NATURAL,
-      ]);
       const contract = Object.assign(new Contract(), {
         id: contractId,
         tenantId,
@@ -166,55 +225,19 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     await dataSource.query(
       'CREATE TABLE ' + target + '.audit_logs (LIKE ' + source + '.audit_logs INCLUDING ALL)',
     );
+    // R7: las tablas del fixture siguen las migraciones del tenant de origen
+    // con `LIKE … INCLUDING ALL` (igual que `audit_logs`): el alta de contrato
+    // lee `party_id` desde `ee5e494d` y el DDL manual quedó obsoleto (42703).
     await dataSource.query(
-      [
-        'CREATE TABLE ' + target + '.subscribers (',
-        'id uuid PRIMARY KEY,',
-        'tenant_id uuid NOT NULL,',
-        'person_type varchar(30) NOT NULL,',
-        'deleted_at timestamptz NULL',
-        ')',
-      ].join('\n'),
+      'CREATE TABLE ' + target + '.subscribers (LIKE ' + source + '.subscribers INCLUDING ALL)',
     );
     await dataSource.query(
-      [
-        'CREATE TABLE ' + target + '.contracts (',
-        'id uuid PRIMARY KEY DEFAULT gen_random_uuid(),',
-        'tenant_id uuid NOT NULL,',
-        'quote_id uuid NULL,',
-        'subscriber_id uuid NOT NULL,',
-        'plan_id varchar(120) NOT NULL,',
-        'plan_snapshot_json jsonb NOT NULL,',
-        'status varchar(20) NOT NULL,',
-        'alias varchar(120) NOT NULL,',
-        'installation_address varchar(255) NULL,',
-        'installation_city varchar(120) NULL,',
-        'installation_department varchar(120) NULL,',
-        'installation_postal_code varchar(20) NULL,',
-        'installation_notes text NULL,',
-        'customer_segment varchar(20) NULL,',
-        "service_usage varchar(20) NULL CHECK (service_usage IN ('RESIDENTIAL','NON_RESIDENTIAL')) ,",
-        'installation_stratum smallint NULL CHECK (installation_stratum BETWEEN 1 AND 6),',
-        'stratum_evidence_media_id uuid NULL,',
-        'vat_snapshot jsonb NULL,',
-        "additional_product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,",
-        "additional_service_ids jsonb NOT NULL DEFAULT '[]'::jsonb,",
-        'payment_method varchar(30) NULL,',
-        'billing_cycle varchar(20) NULL,',
-        'fiscal_name varchar(200) NULL,',
-        'fiscal_document varchar(30) NULL,',
-        'fiscal_address varchar(255) NULL,',
-        'start_date date NULL,',
-        'end_date date NULL,',
-        'created_at timestamptz NOT NULL DEFAULT now(),',
-        'updated_at timestamptz NOT NULL DEFAULT now(),',
-        'deleted_at timestamptz NULL,',
-        "CHECK (service_usage IS DISTINCT FROM 'RESIDENTIAL' OR installation_stratum IS NOT NULL)",
-        ')',
-      ].join('\n'),
+      'CREATE TABLE ' + target + '.contracts (LIKE ' + source + '.contracts INCLUDING ALL)',
     );
+    // La 145 aporta este índice en el origen migrado; se conserva con
+    // `IF NOT EXISTS` para el origen sin migrar (lo exige el test de 23505).
     await dataSource.query(
-      'CREATE UNIQUE INDEX uq_contracts_stratum_evidence ON ' +
+      'CREATE UNIQUE INDEX IF NOT EXISTS uq_contracts_stratum_evidence ON ' +
         target +
         '.contracts (stratum_evidence_media_id) WHERE stratum_evidence_media_id IS NOT NULL',
     );
@@ -254,6 +277,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
         MediaService,
         { provide: CommercialCatalogReadPort, useValue: planPort },
         { provide: IInternetVatResolverPort, useClass: InternetVatResolverAdapter },
+        { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
         {
           provide: PlatformAuditService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
@@ -421,14 +445,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
   });
 
   it('audita crear, activar y /service-point sin persistir nombre ni documento fiscales', async () => {
-    const subscriberId = randomUUID();
-    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
-      qr.query('INSERT INTO subscribers (id, tenant_id, person_type) VALUES ($1, $2, $3)', [
-        subscriberId,
-        tenantId,
-        PersonType.NATURAL,
-      ]),
-    );
+    const { id: subscriberId } = await insertSubscriber();
 
     const fiscalNameMarker = 'pii-name-marker';
     const fiscalDocumentMarker = 'pii-document-marker';
