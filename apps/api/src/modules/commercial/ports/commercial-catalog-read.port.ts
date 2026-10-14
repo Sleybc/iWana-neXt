@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CustomerSegment } from '@iwana/shared';
+import { CustomerSegment, NetworkType, VatConcept } from '@iwana/shared';
 
 /**
  * Snapshot inmutable del catálogo comercial consumido por CRM.
@@ -16,6 +16,10 @@ export interface CommercialItemSnapshot {
   /** Precio mensual vigente para el segmento consultado */
   monthlyPrice: number;
   installationFee: number;
+  /** Concepto fiscal leído del catálogo de Commercial, nunca del caller. */
+  vatConcept: VatConcept | null;
+  /** Red que define la resolución fiscal del plan. */
+  networkType: NetworkType;
   snapshotAt: Date;
 }
 
@@ -27,6 +31,8 @@ export interface CommercialCatalogItem {
   uploadSpeedMbps: number;
   basePrice: number;
   installationFee: number;
+  vatConcept: VatConcept | null;
+  networkType: NetworkType;
   isActive: boolean;
 }
 

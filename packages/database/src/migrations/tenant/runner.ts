@@ -100,6 +100,8 @@ import { ExecutionOrderItemUsageReversals1400000000000 } from './140_execution_o
 import { InventoryExecutionRequestReversalReceipts1410000000000 } from './141_inventory_execution_request_reversal_receipts';
 import { ExpandInventoryBaseCostPrecision1420000000000 } from './142_expand_inventory_base_cost_precision';
 import { AddSubscriberPartyPiiHmac1430000000000 } from './143_subscriber_party_pii_hmac';
+import { VatServicePoint1440000000000 } from './144_vat_service_point';
+import { ContractStratumEvidenceUnique1450000000000 } from './145_contract_stratum_evidence_unique';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -281,6 +283,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   InventoryExecutionRequestReversalReceipts1410000000000,
   ExpandInventoryBaseCostPrecision1420000000000,
   AddSubscriberPartyPiiHmac1430000000000,
+  VatServicePoint1440000000000,
+  ContractStratumEvidenceUnique1450000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

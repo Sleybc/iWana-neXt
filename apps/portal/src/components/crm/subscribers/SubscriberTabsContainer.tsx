@@ -17,11 +17,28 @@ export interface SubscriberTab {
 interface SubscriberTabsContainerProps {
   tabs: SubscriberTab[];
   defaultTab?: string;
+  activeTab?: string;
+  onActiveTabChange?: (tabId: string) => void;
 }
 
-export function SubscriberTabsContainer({ tabs, defaultTab }: SubscriberTabsContainerProps) {
-  const [activeTab, setActiveTab] = useState(defaultTab ?? tabs[0]?.id ?? '');
+export function SubscriberTabsContainer({
+  tabs,
+  defaultTab,
+  activeTab: controlledActiveTab,
+  onActiveTabChange,
+}: SubscriberTabsContainerProps) {
+  const [uncontrolledActiveTab, setUncontrolledActiveTab] = useState(
+    defaultTab ?? tabs[0]?.id ?? '',
+  );
+  const activeTab = controlledActiveTab ?? uncontrolledActiveTab;
   const currentTab = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+
+  function selectTab(tabId: string) {
+    if (controlledActiveTab === undefined) {
+      setUncontrolledActiveTab(tabId);
+    }
+    onActiveTabChange?.(tabId);
+  }
 
   return (
     <div className="flex w-full flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
@@ -38,7 +55,7 @@ export function SubscriberTabsContainer({ tabs, defaultTab }: SubscriberTabsCont
               type="button"
               role="tab"
               aria-selected={isActive}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
               className={cn(
                 'flex min-h-11 items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors',
                 interactiveFocusClassName,

@@ -29,7 +29,7 @@ import {
   type UpdateAdditionalServiceDto,
 } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
-import { ChargeType } from '@iwana/shared';
+import { ChargeType, VatConcept } from '@iwana/shared';
 import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
@@ -42,6 +42,7 @@ import {
   PortalAlert,
   PortalDataTableHead,
   PortalEmptyState,
+  PortalFilterChip,
   PortalPanel,
   PortalResultsStrip,
   PortalSearchField,
@@ -64,6 +65,7 @@ import {
   type CatalogStatusFilter,
   type ServiceCatalogFilters,
 } from '@/components/commercial/catalog/catalog-filter-params';
+import { VAT_CONCEPT_OPTIONS, vatConceptNotice } from './catalog-tax-options';
 const SERVICE_CHARGE_TYPES = [
   ChargeType.ONE_TIME,
   ChargeType.ON_DEMAND,
@@ -77,6 +79,7 @@ const serviceFormSchema = z.object({
   basePrice: z.coerce.number().min(0, 'No puede ser negativo.'),
   installationFee: z.coerce.number().min(0, 'No puede ser negativo.'),
   isActive: z.boolean(),
+  vatConcept: z.union([z.nativeEnum(VatConcept), z.literal('')]),
 });
 
 type ServiceFormValues = z.infer<typeof serviceFormSchema>;
@@ -95,6 +98,7 @@ function getDefaultServiceFormValues(): ServiceFormValues {
     basePrice: 0,
     installationFee: 0,
     isActive: true,
+    vatConcept: '',
   };
 }
 
@@ -106,6 +110,7 @@ function toServiceFormValues(service: AdditionalService): ServiceFormValues {
     basePrice: service.basePrice ?? 0,
     installationFee: service.installationFee,
     isActive: service.isActive,
+    vatConcept: service.vatConcept ?? '',
   };
 }
 
@@ -134,7 +139,12 @@ function formatCurrency(value: number): string {
 }
 
 function filtersEqual(a: ServiceCatalogFilters, b: ServiceCatalogFilters): boolean {
-  return a.q === b.q && a.status === b.status && a.charge === b.charge;
+  return (
+    a.q === b.q &&
+    a.status === b.status &&
+    a.charge === b.charge &&
+    Boolean(a.missingVatConcept) === Boolean(b.missingVatConcept)
+  );
 }
 
 export function AdditionalServicesPanel({
@@ -168,6 +178,9 @@ export function AdditionalServicesPanel({
   const [searchValue, setSearchValue] = useState(filtersFromUrl.q);
   const [statusFilter, setStatusFilter] = useState<CatalogStatusFilter>(filtersFromUrl.status);
   const [chargeTypeFilter, setChargeTypeFilter] = useState(filtersFromUrl.charge);
+  const [missingVatConceptFilter, setMissingVatConceptFilter] = useState(
+    filtersFromUrl.missingVatConcept ?? false,
+  );
 
   const {
     control,
@@ -185,6 +198,7 @@ export function AdditionalServicesPanel({
       q: searchValue,
       status: statusFilter,
       charge: chargeTypeFilter,
+      ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
     };
     if (filtersEqual(current, filtersFromUrl)) {
       return;
@@ -192,7 +206,8 @@ export function AdditionalServicesPanel({
     setSearchValue(filtersFromUrl.q);
     setStatusFilter(filtersFromUrl.status);
     setChargeTypeFilter(filtersFromUrl.charge);
-  }, [filtersFromUrl, searchValue, statusFilter, chargeTypeFilter]);
+    setMissingVatConceptFilter(filtersFromUrl.missingVatConcept ?? false);
+  }, [filtersFromUrl, searchValue, statusFilter, chargeTypeFilter, missingVatConceptFilter]);
 
   function syncFiltersToUrl(next: ServiceCatalogFilters) {
     const params = new URLSearchParams(searchParams.toString());
@@ -209,11 +224,13 @@ export function AdditionalServicesPanel({
       q: patch.q ?? searchValue,
       status: patch.status ?? statusFilter,
       charge: patch.charge ?? chargeTypeFilter,
+      missingVatConcept: patch.missingVatConcept ?? missingVatConceptFilter,
     };
 
     if (patch.q !== undefined) setSearchValue(patch.q);
     if (patch.status !== undefined) setStatusFilter(patch.status);
     if (patch.charge !== undefined) setChargeTypeFilter(patch.charge);
+    if (patch.missingVatConcept !== undefined) setMissingVatConceptFilter(patch.missingVatConcept);
 
     syncFiltersToUrl(next);
   }
@@ -229,6 +246,7 @@ export function AdditionalServicesPanel({
     q: string;
     status: CatalogStatusFilter;
     charge: ServiceCatalogFilters['charge'];
+    missingVatConcept?: boolean;
   }): CommercialListParams {
     const params: CommercialListParams = { limit: COMMERCIAL_LIST_PAGE_SIZE };
     const q = filters.q.trim();
@@ -236,6 +254,7 @@ export function AdditionalServicesPanel({
     if (filters.status === 'ACTIVE') params.isActive = true;
     else if (filters.status === 'INACTIVE') params.isActive = false;
     if (filters.charge !== 'ALL') params.charge = filters.charge as ChargeType;
+    if (filters.missingVatConcept) params.missingVatConcept = true;
     return params;
   }
 
@@ -285,9 +304,10 @@ export function AdditionalServicesPanel({
         q: debouncedSearch,
         status: statusFilter,
         charge: chargeTypeFilter,
+        ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
       }),
     );
-  }, [chargeTypeFilter, debouncedSearch, loadServices, statusFilter]);
+  }, [chargeTypeFilter, debouncedSearch, loadServices, statusFilter, missingVatConceptFilter]);
 
   function openCreateForm() {
     setEditingServiceId(null);
@@ -332,6 +352,12 @@ export function AdditionalServicesPanel({
     setSaving(true);
     setFormError(null);
 
+    if (!editingServiceId && !values.vatConcept) {
+      setFormError('Selecciona el concepto de cobro para crear el servicio.');
+      setSaving(false);
+      return;
+    }
+
     const normalizedDescription = values.description?.trim()
       ? values.description.trim()
       : undefined;
@@ -345,6 +371,7 @@ export function AdditionalServicesPanel({
           basePrice: values.basePrice,
           installationFee: values.installationFee,
           isActive: values.isActive,
+          ...(values.vatConcept ? { vatConcept: values.vatConcept } : {}),
         };
         await commercialApi.updateAdditionalService(editingServiceId, dto);
         setSuccessMessage('Servicio actualizado.');
@@ -356,6 +383,7 @@ export function AdditionalServicesPanel({
           basePrice: values.basePrice,
           installationFee: values.installationFee,
           isActive: values.isActive,
+          vatConcept: values.vatConcept as VatConcept,
         };
         await commercialApi.createAdditionalService(dto);
         setSuccessMessage('Servicio creado.');
@@ -366,6 +394,7 @@ export function AdditionalServicesPanel({
           q: debouncedSearch,
           status: statusFilter,
           charge: chargeTypeFilter,
+          ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
         }),
       );
       handleFormOpenChange(false);
@@ -391,6 +420,7 @@ export function AdditionalServicesPanel({
           q: debouncedSearch,
           status: statusFilter,
           charge: chargeTypeFilter,
+          ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
         }),
       );
     } catch {
@@ -408,13 +438,17 @@ export function AdditionalServicesPanel({
   const filteredServices = services;
 
   const hasActiveFilters =
-    Boolean(searchValue.trim()) || statusFilter !== 'ALL' || chargeTypeFilter !== 'ALL';
+    Boolean(searchValue.trim()) ||
+    statusFilter !== 'ALL' ||
+    chargeTypeFilter !== 'ALL' ||
+    missingVatConceptFilter;
 
   function clearFilters() {
     updateFilters({
       q: '',
       status: 'ALL',
       charge: 'ALL',
+      missingVatConcept: false,
     });
   }
 
@@ -472,6 +506,7 @@ export function AdditionalServicesPanel({
                     q: debouncedSearch,
                     status: statusFilter,
                     charge: chargeTypeFilter,
+                    ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
                   }),
                 )
               }
@@ -524,7 +559,7 @@ export function AdditionalServicesPanel({
             />
           )}
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_auto] lg:items-end">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.8fr)_220px_220px_220px_auto] lg:items-end">
             <PortalSearchField
               id="service-search"
               label="Buscar servicio"
@@ -546,6 +581,14 @@ export function AdditionalServicesPanel({
               <option value="ACTIVE">Activos</option>
               <option value="INACTIVE">Inactivos</option>
             </Select>
+
+            <PortalFilterChip
+              active={missingVatConceptFilter}
+              onClick={() => updateFilters({ missingVatConcept: !missingVatConceptFilter })}
+              className="min-h-12 px-4"
+            >
+              Sin concepto fiscal
+            </PortalFilterChip>
 
             <Select
               id="service-charge-filter"
@@ -785,6 +828,47 @@ export function AdditionalServicesPanel({
                       </option>
                     ))}
                   </Select>
+                )}
+              />
+
+              <Controller
+                name="vatConcept"
+                control={control}
+                render={({ field }) => (
+                  <div className="space-y-2">
+                    <Select
+                      label="Concepto de cobro"
+                      helperText="Selecciona qué estás cobrando; esta opción define cómo se calcula el IVA."
+                      required={!editingServiceId}
+                      className="h-11"
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      {...(errors.vatConcept?.message ? { error: errors.vatConcept.message } : {})}
+                    >
+                      <option value="">Selecciona un concepto</option>
+                      {VAT_CONCEPT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {vatConceptNotice(field.value) ? (
+                      <PortalAlert
+                        variant="warning"
+                        title={vatConceptNotice(field.value)!}
+                        live="off"
+                      />
+                    ) : null}
+                    {editingServiceId && !field.value ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Este servicio no tiene un concepto de cobro registrado. Puedes asignarlo
+                        aquí; los demás cambios se guardan sin inventar uno.
+                      </p>
+                    ) : null}
+                  </div>
                 )}
               />
 

@@ -17,6 +17,11 @@ import {
   type SpeedMode,
 } from '@/components/commercial/catalog/plan-catalog-helpers';
 import {
+  NETWORK_TYPE_OPTIONS,
+  VAT_CONCEPT_OPTIONS,
+  vatConceptNotice,
+} from '@/components/commercial/catalog/catalog-tax-options';
+import {
   PortalAlert,
   PortalSidePeek,
   interactiveFocusClassName,
@@ -354,6 +359,70 @@ export function PlanCatalogFormPeek({
               </div>
             </div>
           </details>
+        </section>
+
+        <section className="space-y-4" aria-labelledby="plan-section-tax">
+          <p id="plan-section-tax" className="portal-eyebrow-muted">
+            Facturación e IVA
+          </p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Controller
+              name="vatConcept"
+              control={control}
+              render={({ field }) => {
+                const notice = vatConceptNotice(field.value);
+                return (
+                  <div className="space-y-2">
+                    <Select
+                      label="Concepto de cobro"
+                      helperText="Selecciona qué estás cobrando; esta opción define cómo se calcula el IVA."
+                      required={!editingPlan}
+                      disabled={!canEdit || isSubmitting}
+                      className="h-11"
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      {...(errors.vatConcept?.message ? { error: errors.vatConcept.message } : {})}
+                    >
+                      <option value="">Selecciona un concepto</option>
+                      {VAT_CONCEPT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {notice ? <PortalAlert variant="warning" title={notice} live="off" /> : null}
+                    {editingPlan && !field.value ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Este plan no tiene un concepto registrado. Puedes asignarlo aquí; los demás
+                        cambios se conservan sin inventar uno.
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              }}
+            />
+
+            <Controller
+              name="networkType"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  label="Tipo de red"
+                  disabled={!canEdit || isSubmitting}
+                  className="h-11"
+                  name={field.name}
+                  value={field.value}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  options={NETWORK_TYPE_OPTIONS.map((option) => ({ ...option }))}
+                />
+              )}
+            />
+          </div>
         </section>
 
         <section className="space-y-4" aria-labelledby="plan-section-speed">

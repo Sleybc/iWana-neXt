@@ -8,12 +8,17 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ContractStatus } from '../../enums/contract-status.enum';
-import { CustomerSegment } from '@iwana/shared';
+import { CustomerSegment, ServiceUsage } from '@iwana/shared';
+import type { ContractServicePointSnapshot } from '@iwana/shared';
 
 @Entity({ name: 'contracts' })
 @Index('idx_contracts_tenant_status', ['tenantId', 'status'])
 @Index('idx_contracts_quote', ['quoteId'])
 @Index('idx_contracts_tenant_subscriber', ['tenantId', 'subscriberId'])
+@Index('uq_contracts_stratum_evidence', ['stratumEvidenceMediaId'], {
+  unique: true,
+  where: '"stratum_evidence_media_id" IS NOT NULL',
+})
 export class Contract {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -67,6 +72,18 @@ export class Contract {
     enum: CustomerSegment,
   })
   customerSegment: CustomerSegment | null;
+
+  @Column({ type: 'varchar', length: 20, name: 'service_usage', nullable: true })
+  serviceUsage: ServiceUsage | null;
+
+  @Column({ type: 'smallint', name: 'installation_stratum', nullable: true })
+  installationStratum: number | null;
+
+  @Column({ type: 'uuid', name: 'stratum_evidence_media_id', nullable: true })
+  stratumEvidenceMediaId: string | null;
+
+  @Column({ type: 'jsonb', name: 'vat_snapshot', nullable: true })
+  vatSnapshot: ContractServicePointSnapshot['vatSnapshot'];
 
   // ── Add-ons del catálogo ──────────────────────────────────────────────────
 

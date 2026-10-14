@@ -3,6 +3,7 @@ import type { ConfigService } from '@nestjs/config';
 import { MediaAsset } from '@iwana/db';
 import type { Readable } from 'node:stream';
 import type { DataSource, Repository } from 'typeorm';
+import { EVIDENCE_ASSET_CONSTRAINTS } from '../tasks/ports/evidence-asset.port';
 import { EvidenceAssetProvider, EVIDENCE_ANALYSIS_QUEUE } from './evidence-asset.provider';
 
 type MockFile = Express.Multer.File;
@@ -165,6 +166,19 @@ describe('EvidenceAssetProvider', () => {
   });
 
   describe('validación de tamaño', () => {
+    it('rechaza archivos que superan el máximo permitido antes de persistir', async () => {
+      const oversizedFile = buildFile({
+        size: EVIDENCE_ASSET_CONSTRAINTS.MAX_BYTES + 1,
+      });
+
+      await expect(
+        createProvider().createUploadIntent('tenant_test', oversizedFile, 'actor-001'),
+      ).rejects.toMatchObject({ response: { code: 'EVIDENCE_FILE_TOO_LARGE' } });
+
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(storage.putObject).not.toHaveBeenCalled();
+    });
+
     it('rechaza archivo vacío', async () => {
       const emptyBuf = Buffer.alloc(0);
       await expect(

@@ -11,6 +11,7 @@ import {
   CatalogItemType,
   CustomerSegment,
   InstallationRule,
+  VatConcept,
   ProductCategory,
   UserRole,
 } from '@iwana/shared';
@@ -210,6 +211,25 @@ describe('CatalogController HTTP', () => {
     );
   });
 
+  it('GET /api/v1/commercial/catalog propaga el filtro de ítems sin concepto fiscal', async () => {
+    catalogServiceMock.findAll.mockResolvedValue({
+      data: [{ id: 'legacy-item', vatConcept: null }],
+      meta: { nextCursor: null, total: 1 },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/commercial/catalog?missingVatConcept=true')
+      .set('Authorization', 'Bearer sales-token')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.data).toEqual([{ id: 'legacy-item', vatConcept: null }]);
+      });
+
+    expect(catalogServiceMock.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ missingVatConcept: true }),
+    );
+  });
+
   it('GET /api/v1/commercial/catalog propaga page y limit en modo page', async () => {
     catalogServiceMock.findAll.mockResolvedValue({
       data: [],
@@ -286,6 +306,7 @@ describe('CatalogController HTTP', () => {
       .set('Authorization', 'Bearer admin-token')
       .send({
         name: 'Plan Fibra 300',
+        vatConcept: VatConcept.INTERNET_ACCESS,
         technology: 'FTTH',
         downloadSpeedMbps: 300,
         uploadSpeedMbps: 300,
@@ -302,6 +323,21 @@ describe('CatalogController HTTP', () => {
         name: 'Plan Fibra 300',
       }),
     );
+  });
+
+  it('POST /api/v1/commercial/catalog/plans rechaza crear sin concepto fiscal', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/commercial/catalog/plans')
+      .set('Authorization', 'Bearer admin-token')
+      .send({
+        name: 'Plan sin concepto',
+        technology: 'FTTH',
+        downloadSpeedMbps: 100,
+        uploadSpeedMbps: 100,
+      })
+      .expect(400);
+
+    expect(catalogServiceMock.create).not.toHaveBeenCalled();
   });
 
   it('POST /api/v1/commercial/catalog/products valida payload segun DTO', async () => {
@@ -325,6 +361,7 @@ describe('CatalogController HTTP', () => {
       .set('Authorization', 'Bearer admin-token')
       .send({
         name: 'Router WiFi 6',
+        vatConcept: VatConcept.EQUIPMENT_SALE,
         category: ProductCategory.CPE,
         isLoan: true,
         requiresInventory: true,
@@ -390,6 +427,7 @@ describe('CatalogController HTTP', () => {
       .set('Authorization', 'Bearer admin-token')
       .send({
         name: 'IP pública',
+        vatConcept: VatConcept.INDEPENDENT_SERVICE,
         chargeType: 'RECURRING',
       })
       .expect(201);
@@ -408,12 +446,12 @@ describe('CatalogController HTTP', () => {
     await request(app.getHttpServer())
       .patch('/api/v1/commercial/catalog/11111111-1111-1111-1111-111111111111')
       .set('Authorization', 'Bearer admin-token')
-      .send({ name: 'Plan Fibra 400' })
+      .send({ name: 'Plan Fibra 400', vatConcept: VatConcept.INTERNET_ACCESS })
       .expect(200);
 
     expect(catalogServiceMock.update).toHaveBeenCalledWith(
       '11111111-1111-1111-1111-111111111111',
-      expect.objectContaining({ name: 'Plan Fibra 400' }),
+      expect.objectContaining({ name: 'Plan Fibra 400', vatConcept: VatConcept.INTERNET_ACCESS }),
     );
   });
 

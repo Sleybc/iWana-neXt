@@ -30,7 +30,7 @@ import {
   type UpdateAdditionalProductDto,
 } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
-import { ProductCategory, PRODUCT_CATEGORY_LABELS } from '@iwana/shared';
+import { ProductCategory, PRODUCT_CATEGORY_LABELS, VatConcept } from '@iwana/shared';
 import {
   getPortalActiveBadgeVariant,
   portalActiveCountBadgeVariant,
@@ -70,6 +70,7 @@ import {
   type ProductCommercialModelFilter,
   type ProductSortMode,
 } from '@/components/commercial/catalog/catalog-filter-params';
+import { VAT_CONCEPT_OPTIONS, vatConceptNotice } from './catalog-tax-options';
 
 const PRODUCT_CATEGORY_VALUES = [
   ProductCategory.ENTERTAINMENT,
@@ -88,6 +89,7 @@ const productFormSchema = z.object({
   isLoan: z.boolean(),
   requiresInventory: z.boolean(),
   isActive: z.boolean(),
+  vatConcept: z.union([z.nativeEnum(VatConcept), z.literal('')]),
 });
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
@@ -116,6 +118,7 @@ function getDefaultProductFormValues(): ProductFormValues {
     isLoan: false,
     requiresInventory: false,
     isActive: true,
+    vatConcept: '',
   };
 }
 
@@ -128,6 +131,7 @@ function toProductFormValues(product: AdditionalProduct): ProductFormValues {
     isLoan: product.isLoan,
     requiresInventory: product.requiresInventory,
     isActive: product.isActive,
+    vatConcept: product.vatConcept ?? '',
   };
 }
 
@@ -149,7 +153,8 @@ function filtersEqual(a: ProductCatalogFilters, b: ProductCatalogFilters): boole
     a.category === b.category &&
     a.status === b.status &&
     a.model === b.model &&
-    a.sort === b.sort
+    a.sort === b.sort &&
+    Boolean(a.missingVatConcept) === Boolean(b.missingVatConcept)
   );
 }
 
@@ -188,6 +193,9 @@ export function AdditionalProductsPanel({
     filtersFromUrl.model,
   );
   const [sortMode, setSortMode] = useState<ProductSortMode>(filtersFromUrl.sort);
+  const [missingVatConceptFilter, setMissingVatConceptFilter] = useState(
+    filtersFromUrl.missingVatConcept ?? false,
+  );
 
   const {
     control,
@@ -207,6 +215,7 @@ export function AdditionalProductsPanel({
       status: statusFilter,
       model: commercialModelFilter,
       sort: sortMode,
+      ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
     };
     if (filtersEqual(current, filtersFromUrl)) {
       return;
@@ -216,7 +225,16 @@ export function AdditionalProductsPanel({
     setStatusFilter(filtersFromUrl.status);
     setCommercialModelFilter(filtersFromUrl.model);
     setSortMode(filtersFromUrl.sort);
-  }, [filtersFromUrl, searchValue, categoryFilter, statusFilter, commercialModelFilter, sortMode]);
+    setMissingVatConceptFilter(filtersFromUrl.missingVatConcept ?? false);
+  }, [
+    filtersFromUrl,
+    searchValue,
+    categoryFilter,
+    statusFilter,
+    commercialModelFilter,
+    sortMode,
+    missingVatConceptFilter,
+  ]);
 
   function syncFiltersToUrl(next: ProductCatalogFilters) {
     const params = new URLSearchParams(searchParams.toString());
@@ -235,6 +253,7 @@ export function AdditionalProductsPanel({
       status: patch.status ?? statusFilter,
       model: patch.model ?? commercialModelFilter,
       sort: patch.sort ?? sortMode,
+      missingVatConcept: patch.missingVatConcept ?? missingVatConceptFilter,
     };
 
     if (patch.q !== undefined) setSearchValue(patch.q);
@@ -242,6 +261,7 @@ export function AdditionalProductsPanel({
     if (patch.status !== undefined) setStatusFilter(patch.status);
     if (patch.model !== undefined) setCommercialModelFilter(patch.model);
     if (patch.sort !== undefined) setSortMode(patch.sort);
+    if (patch.missingVatConcept !== undefined) setMissingVatConceptFilter(patch.missingVatConcept);
 
     syncFiltersToUrl(next);
   }
@@ -259,6 +279,7 @@ export function AdditionalProductsPanel({
     category: ProductCatalogFilters['category'];
     model: ProductCommercialModelFilter;
     sort: ProductSortMode;
+    missingVatConcept?: boolean;
   }): CommercialListParams {
     const params: CommercialListParams = {
       limit: COMMERCIAL_LIST_PAGE_SIZE,
@@ -270,6 +291,7 @@ export function AdditionalProductsPanel({
     else if (filters.status === 'INACTIVE') params.isActive = false;
     if (filters.category !== 'ALL') params.category = filters.category as ProductCategory;
     if (filters.model === 'LOAN' || filters.model === 'SALE') params.model = filters.model;
+    if (filters.missingVatConcept) params.missingVatConcept = true;
     return params;
   }
 
@@ -321,6 +343,7 @@ export function AdditionalProductsPanel({
         category: categoryFilter,
         model: commercialModelFilter,
         sort: sortMode,
+        ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
       }),
     );
   }, [
@@ -330,6 +353,7 @@ export function AdditionalProductsPanel({
     loadProducts,
     sortMode,
     statusFilter,
+    missingVatConceptFilter,
   ]);
 
   function openCreateDialog() {
@@ -375,6 +399,12 @@ export function AdditionalProductsPanel({
     setSaving(true);
     setFormError(null);
 
+    if (!editingProductId && !values.vatConcept) {
+      setFormError('Selecciona el concepto de cobro para crear el producto.');
+      setSaving(false);
+      return;
+    }
+
     const normalizedDescription = values.description?.trim()
       ? values.description.trim()
       : undefined;
@@ -388,6 +418,7 @@ export function AdditionalProductsPanel({
           isLoan: values.isLoan,
           requiresInventory: values.requiresInventory,
           isActive: values.isActive,
+          ...(values.vatConcept ? { vatConcept: values.vatConcept } : {}),
           basePrice: values.basePrice,
         };
         await commercialApi.updateAdditionalProduct(editingProductId, dto);
@@ -400,6 +431,7 @@ export function AdditionalProductsPanel({
           isLoan: values.isLoan,
           requiresInventory: values.requiresInventory,
           isActive: values.isActive,
+          vatConcept: values.vatConcept as VatConcept,
           basePrice: values.basePrice,
         };
         await commercialApi.createAdditionalProduct(dto);
@@ -413,6 +445,7 @@ export function AdditionalProductsPanel({
           category: categoryFilter,
           model: commercialModelFilter,
           sort: sortMode,
+          ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
         }),
       );
 
@@ -441,6 +474,7 @@ export function AdditionalProductsPanel({
           category: categoryFilter,
           model: commercialModelFilter,
           sort: sortMode,
+          ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
         }),
       );
     } catch {
@@ -465,7 +499,9 @@ export function AdditionalProductsPanel({
     Boolean(searchValue.trim()) ||
     categoryFilter !== 'ALL' ||
     statusFilter !== 'ALL' ||
-    commercialModelFilter !== 'ALL';
+    commercialModelFilter !== 'ALL' ||
+    missingVatConceptFilter;
+  const hasCatalogTaxFilter = missingVatConceptFilter;
 
   function clearFilters() {
     updateFilters({
@@ -473,6 +509,7 @@ export function AdditionalProductsPanel({
       category: 'ALL',
       status: 'ALL',
       model: 'ALL',
+      missingVatConcept: false,
     });
   }
 
@@ -532,6 +569,7 @@ export function AdditionalProductsPanel({
                     category: categoryFilter,
                     model: commercialModelFilter,
                     sort: sortMode,
+                    ...(missingVatConceptFilter ? { missingVatConcept: true } : {}),
                   }),
                 )
               }
@@ -606,6 +644,14 @@ export function AdditionalProductsPanel({
               <option value="ACTIVE">Activos</option>
               <option value="INACTIVE">Inactivos</option>
             </Select>
+
+            <PortalFilterChip
+              active={hasCatalogTaxFilter}
+              onClick={() => updateFilters({ missingVatConcept: !missingVatConceptFilter })}
+              className="min-h-12 px-4"
+            >
+              Sin concepto fiscal
+            </PortalFilterChip>
 
             <Select
               id="product-model-filter"
@@ -899,6 +945,47 @@ export function AdditionalProductsPanel({
                       </option>
                     ))}
                   </Select>
+                )}
+              />
+
+              <Controller
+                name="vatConcept"
+                control={control}
+                render={({ field }) => (
+                  <div className="space-y-2">
+                    <Select
+                      label="Concepto de cobro"
+                      helperText="Selecciona qué estás cobrando; esta opción define cómo se calcula el IVA."
+                      required={!editingProductId}
+                      className="h-11"
+                      name={field.name}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      {...(errors.vatConcept?.message ? { error: errors.vatConcept.message } : {})}
+                    >
+                      <option value="">Selecciona un concepto</option>
+                      {VAT_CONCEPT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {vatConceptNotice(field.value) ? (
+                      <PortalAlert
+                        variant="warning"
+                        title={vatConceptNotice(field.value)!}
+                        live="off"
+                      />
+                    ) : null}
+                    {editingProductId && !field.value ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Este producto no tiene un concepto de cobro registrado. Puedes asignarlo
+                        aquí; los demás cambios se guardan sin inventar uno.
+                      </p>
+                    ) : null}
+                  </div>
                 )}
               />
 

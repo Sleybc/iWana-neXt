@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType } from '@iwana/shared';
 import { PlanCatalogPanel } from './PlanCatalogPanel';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 import type { PlanCatalogItem } from '@/lib/api-client';
@@ -114,6 +114,8 @@ function buildPlan(overrides: Partial<PlanCatalogItem> = {}): PlanCatalogItem {
     basePrice: 89900,
     installationFee: 50000,
     currentPrice: '89900',
+    vatConcept: null,
+    networkType: NetworkType.FIXED,
     isActive: true,
     createdAt: '2026-05-01T10:00:00.000Z',
     updatedAt: '2026-05-02T11:00:00.000Z',
@@ -219,6 +221,37 @@ describe('PlanCatalogPanel', () => {
       const lastCall = mockGetPlans.mock.calls.at(-1)?.[0] as Record<string, unknown>;
       expect(lastCall).toEqual(expect.objectContaining({ missingPrice: true, page: 1, limit: 20 }));
     });
+  });
+
+  it('envía missingVatConcept al servidor al activar el filtro fiscal', async () => {
+    mockGetPlans.mockResolvedValue({
+      data: [buildPlan({ vatConcept: null })],
+      meta: pageMeta({ total: 1 }),
+    });
+
+    render(<PlanCatalogPanel canEdit />);
+    expect(await screen.findByText('Hogar 300')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sin concepto fiscal' }));
+
+    await waitFor(() => {
+      const lastCall = mockGetPlans.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      expect(lastCall).toEqual(
+        expect.objectContaining({ missingVatConcept: true, page: 1, limit: 20 }),
+      );
+    });
+  });
+
+  it('inicia planes nuevos como red fija y presenta etiquetas de negocio', async () => {
+    render(<PlanCatalogPanel canEdit />);
+    await waitFor(() => expect(mockGetPlans).toHaveBeenCalled());
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Nuevo plan' }))[0]!);
+
+    const networkType = await screen.findByRole('combobox', { name: 'Tipo de red' });
+    expect(networkType).toHaveTextContent('Fija');
+    fireEvent.click(networkType);
+    expect(await screen.findByRole('option', { name: 'Fija' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Móvil' })).toBeInTheDocument();
+    expect(screen.queryByText('FIXED')).toBeNull();
   });
 
   it('con una sola página muestra conteo y no Cargar más', async () => {

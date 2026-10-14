@@ -201,6 +201,26 @@ describe('TaxRulesController HTTP', () => {
     );
   });
 
+  it('POST simulate conserva el código DANE opcional al delegar la simulación', async () => {
+    taxApplicationServiceMock.simulate.mockResolvedValue({
+      applications: [],
+      winnerRuleId: null,
+      reason: 'Sin regla',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/taxation/tax/simulate')
+      .set('Authorization', 'Bearer accountant-token')
+      .send({ personType: 'JURIDICA', segment: 'PYME', municipalityCode: '11001' })
+      .expect(201);
+
+    expect(taxApplicationServiceMock.simulate).toHaveBeenCalledWith({
+      personType: 'JURIDICA',
+      segment: 'PYME',
+      municipalityCode: '11001',
+    });
+  });
+
   it('POST simulate acepta rol SALES', async () => {
     taxApplicationServiceMock.simulate.mockResolvedValue({
       applications: [],

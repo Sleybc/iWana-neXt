@@ -102,6 +102,15 @@ export class CatalogQueryDto extends CommercialListQueryDto {
   missingPrice?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Cuando es true, incluye solo los ítems legacy sin concepto fiscal asignado.',
+    example: true,
+  })
+  @IsOptional()
+  @Transform(transformQueryBoolean)
+  @IsBoolean()
+  missingVatConcept?: boolean;
+
+  @ApiPropertyOptional({
     enum: ProductCategory,
     description: 'Filtra productos por categoría (`product_details.category`).',
   })

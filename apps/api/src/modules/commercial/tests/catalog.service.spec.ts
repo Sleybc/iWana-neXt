@@ -3,9 +3,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CatalogService } from '../services/catalog.service';
-import { CatalogItemType } from '@iwana/shared';
+import { CatalogItemType, NetworkType, VatConcept } from '@iwana/shared';
+import { CreateCatalogItemDto } from '../dto/create-catalog-item.dto';
 import { PLAN_CATALOG_SORTABLE_FIELDS } from '../dto/catalog-query.dto';
 import { PlanDetail } from '../entities/plan-detail.entity';
+import { ProductDetail } from '../entities/product-detail.entity';
+import {
+  encodeActiveNameIdCursor,
+  encodeCategoryRankNameIdCursor,
+  encodeDateIdCursor,
+  encodeNameIdCursor,
+} from '../../../common/pagination/cursor-codec';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -307,6 +315,46 @@ describe('CatalogService', () => {
       expect(result.meta.nextCursor).toBeTruthy();
     });
 
+    it.each([
+      ['RECENTLY_UPDATED', undefined],
+      ['ACTIVE_NAME', undefined],
+      ['CATEGORY_NAME', 'NETWORKING'],
+      ['CATEGORY_NAME', undefined],
+    ] as const)('genera nextCursor válido para sort=%s y categoría=%s', async (sort, category) => {
+      const items = [
+        {
+          id: 'item-1',
+          name: 'Elemento A',
+          type: sort === 'CATEGORY_NAME' ? CatalogItemType.PRODUCT : CatalogItemType.PLAN,
+          isActive: true,
+          updatedAt: new Date('2026-10-01T00:00:00.000Z'),
+        },
+        {
+          id: 'item-2',
+          name: 'Elemento B',
+          type: sort === 'CATEGORY_NAME' ? CatalogItemType.PRODUCT : CatalogItemType.PLAN,
+          isActive: true,
+          updatedAt: new Date('2026-10-02T00:00:00.000Z'),
+        },
+      ];
+      const qb = buildQueryBuilderMock(items, 2);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: hydrateQueryBuilder({
+              list: qb,
+              prd: category ? [{ itemId: 'item-1', category }] : [],
+            }),
+          },
+        }),
+      );
+
+      const result = await service.findAll({ sort, limit: 1 } as any);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.meta.nextCursor).toBeTruthy();
+    });
+
     it('aplica default limit 20 cuando se omite', async () => {
       const qb = buildQueryBuilderMock([], 0);
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
@@ -339,6 +387,73 @@ describe('CatalogService', () => {
         expect.stringContaining('NOT EXISTS'),
         expect.objectContaining({ missingPriceSegment: 'RESIDENTIAL' }),
       );
+    });
+
+    it('filtra ítems legacy sin concepto fiscal y los devuelve en la página', async () => {
+      const legacyItem = {
+        id: 'legacy-item',
+        type: CatalogItemType.PRODUCT,
+        name: 'Equipo heredado',
+        vatConcept: null,
+      };
+      const qb = buildQueryBuilderMock([legacyItem], 1);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: hydrateQueryBuilder({ list: qb }) } }),
+      );
+
+      const result = await service.findAll({ missingVatConcept: true });
+
+      expect(qb.andWhere).toHaveBeenCalledWith('ci.vat_concept IS NULL');
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: 'legacy-item', vatConcept: null }),
+      ]);
+    });
+
+    it('combina filtros de negocio sin aplicar joins de otros tipos de ítem', async () => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      await service.findAll({
+        type: CatalogItemType.PRODUCT,
+        name: 'router',
+        isActive: false,
+        missingVatConcept: true,
+        model: 'SALE',
+      } as any);
+
+      expect(qb.andWhere).toHaveBeenCalledWith('ci.type = :type', {
+        type: CatalogItemType.PRODUCT,
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'ci.name ILIKE :name ESCAPE :esc',
+        expect.objectContaining({ name: '%router%' }),
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith('ci.is_active = :isActive', { isActive: false });
+      expect(qb.andWhere).toHaveBeenCalledWith('ci.vat_concept IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('pd.is_loan = false');
+      expect(qb.innerJoin).toHaveBeenCalledWith(expect.anything(), 'pd', 'pd.item_id = ci.id');
+    });
+
+    it.each([
+      ['RECENTLY_UPDATED', encodeDateIdCursor('2026-10-01T00:00:00.000Z', 'item-1')],
+      ['ACTIVE_NAME', encodeActiveNameIdCursor(true, 'Plan A', 'item-1')],
+      ['CATEGORY_NAME', encodeCategoryRankNameIdCursor(4, 'Router', 'item-1')],
+      [undefined, encodeNameIdCursor('Plan A', 'item-1')],
+    ] as const)('aplica el cursor compuesto correspondiente para sort=%p', async (sort, cursor) => {
+      const qb = buildQueryBuilderMock([], 0);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => qb } }),
+      );
+
+      await service.findAll({ sort, cursor, limit: 10 } as any);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('cursor'),
+        expect.any(Object),
+      );
+      expect(qb.orderBy).toHaveBeenCalled();
     });
 
     it('aplica category y model con join a product_details', async () => {
@@ -641,10 +756,20 @@ describe('CatalogService', () => {
   });
 
   describe('create', () => {
+    it('rechaza un ítem nuevo sin vatConcept', async () => {
+      await expect(
+        service.create({
+          type: CatalogItemType.PRODUCT,
+          name: 'Producto sin concepto',
+        } as unknown as CreateCatalogItemDto),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('crea un plan con detalle de velocidades', async () => {
       const dto = {
         type: CatalogItemType.PLAN,
         name: 'Plan Fibra 100MB',
+        vatConcept: VatConcept.INTERNET_ACCESS,
         downloadSpeedMbps: 100,
         uploadSpeedMbps: 20,
         technology: 'FIBER',
@@ -652,15 +777,17 @@ describe('CatalogService', () => {
       };
       const savedDetail = { id: 'det-1', itemId: 'item-1', downloadSpeedMbps: 100 };
 
+      const managerCreate = jest.fn((_entity: unknown, data: Record<string, unknown>) => ({
+        ...data,
+        id: 'item-1',
+      }));
+      const managerSave = jest.fn().mockResolvedValue(savedDetail);
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({
           manager: {
             // create devuelve el objeto con id simulado
-            create: (_entity: unknown, data: Record<string, unknown>) => ({
-              ...data,
-              id: 'item-1',
-            }),
-            save: jest.fn().mockResolvedValueOnce(savedDetail),
+            create: managerCreate,
+            save: managerSave,
             findOne: async (entity: { name?: string }) => {
               if (entity?.name === 'PlanDetail') {
                 return savedDetail;
@@ -678,12 +805,20 @@ describe('CatalogService', () => {
 
       const result = await service.create(dto as any);
       expect(result.id).toBe('item-1');
+      expect(result.vatConcept).toBe(VatConcept.INTERNET_ACCESS);
+      expect(result.networkType).toBe(NetworkType.FIXED);
+      expect(managerCreate).toHaveBeenCalledWith(
+        PlanDetail,
+        expect.objectContaining({ itemId: 'item-1', networkType: NetworkType.FIXED }),
+      );
+      expect(managerSave).toHaveBeenCalledTimes(2);
     });
 
     it('lanza BadRequestException si tipo PLAN no incluye velocidades', async () => {
       const dto = {
         type: CatalogItemType.PLAN,
         name: 'Plan incompleto',
+        vatConcept: VatConcept.INTERNET_ACCESS,
         // sin downloadSpeedMbps
       };
 
@@ -694,6 +829,7 @@ describe('CatalogService', () => {
       const dto = {
         type: CatalogItemType.PRODUCT,
         name: 'Router WiFi 6',
+        vatConcept: VatConcept.EQUIPMENT_SALE,
         category: 'NETWORKING',
         isLoan: true,
         requiresInventory: true,
@@ -717,8 +853,36 @@ describe('CatalogService', () => {
       expect(result.id).toBe('item-2');
     });
 
+    it('crea producto de venta con flags conservadores cuando se omiten', async () => {
+      const create = jest.fn((_entity: unknown, data: Record<string, unknown>) => ({
+        ...data,
+        id: 'item-sale',
+      }));
+      const save = jest.fn().mockResolvedValue({ id: 'item-sale' });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({ manager: { create, save } }),
+      );
+
+      const result = await service.create({
+        type: CatalogItemType.PRODUCT,
+        name: 'Router de venta',
+        vatConcept: VatConcept.EQUIPMENT_SALE,
+        category: 'NETWORKING',
+      } as any);
+
+      expect(result.id).toBe('item-sale');
+      expect(create).toHaveBeenCalledWith(
+        ProductDetail,
+        expect.objectContaining({ isLoan: false, requiresInventory: false }),
+      );
+    });
+
     it('lanza BadRequestException si tipo PRODUCT no incluye category', async () => {
-      const dto = { type: CatalogItemType.PRODUCT, name: 'Producto sin categoría' };
+      const dto = {
+        type: CatalogItemType.PRODUCT,
+        name: 'Producto sin categoría',
+        vatConcept: VatConcept.EQUIPMENT_SALE,
+      };
       await expect(service.create(dto as any)).rejects.toThrow(BadRequestException);
     });
 
@@ -726,6 +890,7 @@ describe('CatalogService', () => {
       const dto = {
         type: CatalogItemType.SERVICE,
         name: 'IP Pública',
+        vatConcept: VatConcept.INDEPENDENT_SERVICE,
         chargeType: 'RECURRING',
       };
       const savedItem = { id: 'item-3', type: CatalogItemType.SERVICE, name: dto.name };
@@ -748,7 +913,11 @@ describe('CatalogService', () => {
     });
 
     it('lanza BadRequestException si tipo SERVICE no incluye chargeType', async () => {
-      const dto = { type: CatalogItemType.SERVICE, name: 'Servicio sin tipo' };
+      const dto = {
+        type: CatalogItemType.SERVICE,
+        name: 'Servicio sin tipo',
+        vatConcept: VatConcept.INDEPENDENT_SERVICE,
+      };
       await expect(service.create(dto as any)).rejects.toThrow(BadRequestException);
     });
   });
@@ -815,11 +984,41 @@ describe('CatalogService', () => {
   });
 
   describe('update', () => {
+    it('preserva el concepto fiscal cuando el PATCH omite campos opcionales', async () => {
+      mockRunInTenantSchema.mockReset();
+      const item = {
+        id: 'plan-1',
+        type: CatalogItemType.PLAN,
+        name: 'Plan Fibra',
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        isActive: true,
+        tenantId: 'ten-1',
+      };
+      const update = jest.fn();
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => item,
+            save: async (_entity: unknown, entity: unknown) => entity,
+            update,
+            createQueryBuilder: hydrateQueryBuilder({}),
+          },
+        }),
+      );
+
+      const result = await service.update('plan-1', {});
+
+      expect(result.vatConcept).toBe(VatConcept.INTERNET_ACCESS);
+      expect(update).not.toHaveBeenCalled();
+      expect(item.isActive).toBe(true);
+    });
+
     it('actualiza un plan y retorna ítem hidratado', async () => {
       const item = {
         id: 'item-1',
         type: CatalogItemType.PLAN,
         name: 'Plan viejo',
+        vatConcept: null,
         isActive: true,
         tenantId: 'ten-1',
       };
@@ -836,6 +1035,7 @@ describe('CatalogService', () => {
                   downloadSpeedMbps: 100,
                   technology: 'FTTH',
                   installationRule: 'ALWAYS',
+                  networkType: NetworkType.FIXED,
                 };
               }
               if ((entity as { name?: string })?.name === 'CatalogPriceHistory') {
@@ -852,6 +1052,7 @@ describe('CatalogService', () => {
                   downloadSpeedMbps: 100,
                   technology: 'FTTH',
                   installationRule: 'ALWAYS',
+                  networkType: NetworkType.FIXED,
                 },
               ],
               ph: [{ itemId: 'item-1', basePrice: '89900.00', installationFee: '0.00' }],
@@ -863,9 +1064,20 @@ describe('CatalogService', () => {
       const result = await service.update('item-1', {
         name: 'Plan nuevo',
         downloadSpeedMbps: 200,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.MOBILE,
       } as any);
       expect(saveMock).toHaveBeenCalled();
+      expect(saveMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ vatConcept: VatConcept.INTERNET_ACCESS }),
+      );
       expect(updateMock).toHaveBeenCalled();
+      expect(updateMock).toHaveBeenCalledWith(
+        PlanDetail,
+        { itemId: 'item-1' },
+        expect.objectContaining({ networkType: NetworkType.MOBILE }),
+      );
       expect(result).toBeDefined();
     });
 
@@ -1173,6 +1385,27 @@ describe('CatalogService', () => {
         ],
         total: 2,
       });
+    });
+
+    it('usa sublabel Inactivo para un producto inactivo del resultado', async () => {
+      const items = [
+        {
+          id: 'prod-archived',
+          name: 'Router retirado',
+          isActive: false,
+          type: CatalogItemType.PRODUCT,
+        },
+      ];
+      const { createQueryBuilder } = buildPickerQueryBuilder(items, 1);
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder } }),
+      );
+
+      const result = await service.searchForPicker({ type: CatalogItemType.PRODUCT, q: 'router' });
+
+      expect(result.data).toEqual([
+        { id: 'prod-archived', label: 'Router retirado', sublabel: 'Inactivo' },
+      ]);
     });
   });
 });

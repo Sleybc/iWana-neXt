@@ -1,6 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { CustomerSegment } from '@iwana/shared';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { CustomerSegment, ServiceUsage } from '@iwana/shared';
 
 /**
  * DTO para crear un contrato a partir del interés comercial registrado en el expediente.
@@ -53,6 +63,18 @@ export class CreateContractFromExpedienteDto {
   @IsOptional()
   @IsEnum(CustomerSegment)
   customerSegment?: CustomerSegment;
+
+  @ApiPropertyOptional({ enum: ServiceUsage })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(ServiceUsage)
+  serviceUsage?: ServiceUsage;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  installationStratum?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()

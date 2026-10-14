@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
   TaxAssignmentRateSource,
@@ -17,7 +17,6 @@ import { TaxDefinitionSnapshot } from '../../../taxation/ports/tax-catalog-read.
 import { SubscriberTaxProfileService } from '../subscriber-tax-profile.service';
 import { TaxCatalogReadPort } from '../../../taxation/ports/tax-catalog-read.port';
 import { ITaxApplicationReadPort } from '../../../taxation/ports/tax-application-read.port';
-import { VatTreatmentService } from '../vat-treatment.service';
 
 // ── Mocks de @iwana/db ──────────────────────────────────────────────────────────
 const mockRunInTenantSchema = jest.fn();
@@ -85,6 +84,7 @@ function makeAssignment(
   overrides: Partial<{
     id: string;
     taxDefinitionId: string;
+    taxNameSnapshot: string;
     status: TaxAssignmentStatus;
     treatment: TaxTreatment;
   }> = {},
@@ -160,6 +160,7 @@ describe('SubscriberTaxProfileService', () => {
       listByContext: jest.fn(),
       resolveSystemPreset: jest.fn(),
     } as unknown as jest.Mocked<TaxCatalogReadPort>;
+    taxCatalogPort.findById.mockResolvedValue(makeIvaDef());
 
     taxApplicationPort = {
       resolve: jest.fn().mockResolvedValue([]),
@@ -169,7 +170,6 @@ describe('SubscriberTaxProfileService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriberTaxProfileService,
-        VatTreatmentService,
         { provide: DataSource, useValue: {} },
         { provide: TaxCatalogReadPort, useValue: taxCatalogPort },
         {
@@ -210,25 +210,49 @@ describe('SubscriberTaxProfileService', () => {
       expect(firstAssignment!.taxDefinitionId).toBe('taxdef-iva-001');
     });
 
-    it('crea un perfil nuevo y sugiere IVA cuando el perfil no existe', async () => {
-      const subscriber = makeSubscriber({ stratum: 2 }); // estrato 2 → EXEMPT
+    it('crea un perfil nuevo y sugiere tributos no IVA, sin IVA por estrato', async () => {
       const newProfile = makeProfile({ assignments: [] });
-      const assignment = makeAssignment({ treatment: TaxTreatment.EXEMPT });
+      const ivaDefinition = makeIvaDef();
+      const withholdingDefinition: TaxDefinitionSnapshot = {
+        ...ivaDefinition,
+        id: 'taxdef-withholding',
+        code: 'WITHHOLDING',
+        name: 'Retención',
+        category: TaxCategory.WITHHOLDING,
+      };
+      const assignment = makeAssignment({
+        taxDefinitionId: withholdingDefinition.id,
+        taxNameSnapshot: withholdingDefinition.name,
+        treatment: TaxTreatment.STANDARD,
+      });
       const profileWithAssignment = makeProfile({ assignments: [assignment] });
 
-      // Finder: subscriber, luego no profile, luego profile creado, luego profile refresh
       managerMock.findOne
-        .mockResolvedValueOnce(subscriber) // subscriber exists
-        .mockResolvedValueOnce(null) // no existing profile
-        .mockResolvedValueOnce(profileWithAssignment) // refresh after suggest
-        .mockResolvedValueOnce(null); // findOne(SubscriberTaxAssignment) in _suggestVatInSchema
-      managerMock.create.mockReturnValue(newProfile);
-      managerMock.save.mockResolvedValue(newProfile);
-
-      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(makeIvaDef()); // IVA_19 found
-
-      // findOne para la asignación IVA existente (none)
-      managerMock.findOne.mockResolvedValueOnce(null); // no existing IVA assignment
+        .mockResolvedValueOnce(makeSubscriber({ stratum: 2 }))
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(profileWithAssignment);
+      managerMock.create.mockImplementation((_entity, values) => values);
+      managerMock.save.mockImplementation(async (_entity, entity) => entity);
+      taxApplicationPort.resolve.mockResolvedValueOnce([
+        {
+          taxDefinitionId: ivaDefinition.id,
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: 19,
+          ruleId: 'vat-rule',
+          priorityMatched: 1,
+        },
+        {
+          taxDefinitionId: withholdingDefinition.id,
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: 2.5,
+          ruleId: 'withholding-rule',
+          priorityMatched: 2,
+        },
+      ]);
+      taxCatalogPort.findById.mockImplementation(async (id) =>
+        id === withholdingDefinition.id ? withholdingDefinition : ivaDefinition,
+      );
 
       const result = await service.getOrCreateProfile('sub-001');
 
@@ -239,7 +263,7 @@ describe('SubscriberTaxProfileService', () => {
           profileStatus: TaxProfileStatus.PENDING_REVIEW,
         }),
       );
-      expect(taxCatalogPort.findActiveByCode).toHaveBeenCalledWith('IVA_19');
+      expect(taxCatalogPort.findActiveByCode).not.toHaveBeenCalled();
       expect(taxApplicationPort.resolve).toHaveBeenCalledWith(
         expect.objectContaining({
           personType: PersonType.NATURAL,
@@ -247,7 +271,12 @@ describe('SubscriberTaxProfileService', () => {
           stratum: 2,
         }),
       );
-      expect(result.id).toBe('profile-001');
+      expect(result.assignments).toHaveLength(1);
+      expect(result.assignments[0]).toMatchObject({
+        taxDefinitionId: withholdingDefinition.id,
+        taxCategory: TaxCategory.WITHHOLDING,
+      });
+      expect(managerMock.create).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -490,172 +519,79 @@ describe('SubscriberTaxProfileService', () => {
     });
   });
 
-  // ── suggestVatForSubscriber ──────────────────────────────────────────────────
-
   describe('suggestVatForSubscriber', () => {
     it('lanza NotFoundException si el suscriptor no existe', async () => {
-      managerMock.findOne.mockResolvedValueOnce(null); // subscriber not found
-
+      managerMock.findOne.mockResolvedValueOnce(null);
       await expect(service.suggestVatForSubscriber('sub-999')).rejects.toThrow(NotFoundException);
     });
 
     it('lanza NotFoundException si el perfil no existe', async () => {
-      managerMock.findOne
-        .mockResolvedValueOnce(makeSubscriber()) // subscriber found
-        .mockResolvedValueOnce(null); // profile NOT found
-
+      managerMock.findOne.mockResolvedValueOnce(makeSubscriber()).mockResolvedValueOnce(null);
       await expect(service.suggestVatForSubscriber('sub-001')).rejects.toThrow(NotFoundException);
     });
 
-    it('no sobreescribe una asignación CONFIRMED al re-sugerir IVA', async () => {
-      const subscriber = makeSubscriber({ stratum: 2 });
-      const confirmedAssignment = makeAssignment({
-        treatment: TaxTreatment.STANDARD,
-        status: TaxAssignmentStatus.CONFIRMED,
-      });
-      const profile = makeProfile({ assignments: [confirmedAssignment] });
-
+    it('no crea sugerencias IVA y conserva una asignación IVA existente sin modificarla', async () => {
+      const existingVat = makeAssignment({ treatment: TaxTreatment.EXEMPT });
+      const profile = makeProfile({ assignments: [existingVat] });
       managerMock.findOne
-        .mockResolvedValueOnce(subscriber)
-        .mockResolvedValueOnce(profile)
-        .mockResolvedValueOnce(confirmedAssignment) // existing IVA assignment (CONFIRMED)
-        .mockResolvedValueOnce(profile); // refreshed profile
-
-      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(makeIvaDef());
-
-      await service.suggestVatForSubscriber('sub-001');
-
-      // save NO debe haberse llamado para la asignación CONFIRMED
-      expect(managerMock.save).not.toHaveBeenCalled();
-    });
-
-    it('usa el código IVA alternativo y actualiza una asignación SUGGESTED', async () => {
-      const subscriber = makeSubscriber({ stratum: 2 });
-      const suggested = makeAssignment({ status: TaxAssignmentStatus.SUGGESTED });
-      const profile = makeProfile({ assignments: [suggested] });
-      managerMock.findOne
-        .mockResolvedValueOnce(subscriber)
-        .mockResolvedValueOnce(profile)
-        .mockResolvedValueOnce(suggested)
-        .mockResolvedValueOnce(profile);
-      taxCatalogPort.findActiveByCode
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(makeIvaDef());
-      managerMock.save.mockImplementation(async (_entity, entity) => entity);
-
-      await service.suggestVatForSubscriber(subscriber.id);
-
-      expect(taxCatalogPort.findActiveByCode.mock.calls).toEqual([['IVA_19'], ['IVA']]);
-      expect(suggested).toMatchObject({
-        treatment: TaxTreatment.EXEMPT,
-        reason: 'Persona natural — IVA exento (estratos 1-2)',
-        taxNameSnapshot: 'IVA 19%',
-      });
-      expect(managerMock.save).toHaveBeenCalledWith(expect.anything(), suggested);
-    });
-
-    it('no crea sugerencias si el catálogo no tiene definición de IVA', async () => {
-      const subscriber = makeSubscriber();
-      const profile = makeProfile();
-      managerMock.findOne
-        .mockResolvedValueOnce(subscriber)
+        .mockResolvedValueOnce(makeSubscriber({ stratum: 2 }))
         .mockResolvedValueOnce(profile)
         .mockResolvedValueOnce(profile);
-      taxCatalogPort.findActiveByCode.mockResolvedValue(null);
-
-      const result = await service.suggestVatForSubscriber(subscriber.id);
-
-      expect(taxCatalogPort.findActiveByCode.mock.calls).toEqual([['IVA_19'], ['IVA']]);
-      expect(managerMock.create).not.toHaveBeenCalled();
-      expect(managerMock.save).not.toHaveBeenCalled();
-      expect(result.assignments).toEqual([]);
-    });
-
-    it('omite IVA, definiciones inexistentes y asignaciones previas al sugerir otros tributos', async () => {
-      const subscriber = makeSubscriber({ stratum: 4 });
-      const profile = makeProfile();
-      const iva = makeIvaDef();
-      const existingDefinition: TaxDefinitionSnapshot = {
-        ...iva,
-        id: 'taxdef-existing',
-        code: 'EXISTING',
-        name: 'Tributo existente',
-        category: TaxCategory.WITHHOLDING,
-      };
-      const exemptDefinition: TaxDefinitionSnapshot = {
-        ...iva,
-        id: 'taxdef-exempt',
-        code: 'EXEMPT',
-        baseRate: '5.0000',
-        treatment: TaxTreatment.EXEMPT,
-        category: TaxCategory.WITHHOLDING,
-      };
-      const excludedDefinition: TaxDefinitionSnapshot = {
-        ...iva,
-        id: 'taxdef-excluded',
-        code: 'EXCLUDED',
-        baseRate: '6.0000',
-        treatment: TaxTreatment.EXCLUDED,
-        category: TaxCategory.WITHHOLDING,
-      };
-      const fixedDefinition: TaxDefinitionSnapshot = {
-        ...iva,
-        id: 'taxdef-fixed',
-        code: 'FIXED',
-        baseRate: '7.0000',
-        treatment: TaxTreatment.FIXED,
-        category: TaxCategory.WITHHOLDING,
-      };
       taxApplicationPort.resolve.mockResolvedValueOnce([
         {
-          taxDefinitionId: iva.id,
+          taxDefinitionId: existingVat.taxDefinitionId,
           treatment: TaxTreatment.STANDARD,
           effectiveRate: 19,
-          ruleId: 'iva-rule',
+          ruleId: 'vat-rule',
+          priorityMatched: 1,
+        },
+      ]);
+      taxCatalogPort.findById.mockResolvedValue(makeIvaDef());
+
+      const original = { ...existingVat };
+      const result = await service.suggestVatForSubscriber('sub-001');
+
+      expect(taxCatalogPort.findActiveByCode).not.toHaveBeenCalled();
+      expect(managerMock.create).not.toHaveBeenCalled();
+      expect(managerMock.save).not.toHaveBeenCalled();
+      expect(existingVat).toEqual(original);
+      expect(result.assignments[0]).toMatchObject({ taxCategory: TaxCategory.VAT });
+    });
+
+    it('sugiere tributos no IVA y filtra cualquier aplicación IVA', async () => {
+      const profile = makeProfile({ assignments: [] });
+      const vatDefinition = makeIvaDef();
+      const withholdingDefinition: TaxDefinitionSnapshot = {
+        ...vatDefinition,
+        id: 'taxdef-withholding',
+        code: 'WITHHOLDING',
+        name: 'Retención',
+        category: TaxCategory.WITHHOLDING,
+      };
+      managerMock.findOne
+        .mockResolvedValueOnce(makeSubscriber({ stratum: 2 }))
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeProfile({ assignments: [] }));
+      taxApplicationPort.resolve.mockResolvedValueOnce([
+        {
+          taxDefinitionId: vatDefinition.id,
+          treatment: TaxTreatment.STANDARD,
+          effectiveRate: 19,
+          ruleId: 'vat-rule',
           priorityMatched: 1,
         },
         {
-          taxDefinitionId: 'taxdef-missing',
+          taxDefinitionId: withholdingDefinition.id,
           treatment: TaxTreatment.STANDARD,
-          effectiveRate: null,
-          ruleId: 'missing-rule',
+          effectiveRate: 2.5,
+          ruleId: 'withholding-rule',
           priorityMatched: 2,
         },
-        {
-          taxDefinitionId: existingDefinition.id,
-          treatment: TaxTreatment.STANDARD,
-          effectiveRate: 1,
-          ruleId: 'existing-rule',
-          priorityMatched: 3,
-        },
-        ...[
-          [exemptDefinition, TaxTreatment.EXEMPT],
-          [excludedDefinition, TaxTreatment.EXCLUDED],
-          [fixedDefinition, TaxTreatment.FIXED],
-        ].map(([definition, treatment]) => ({
-          taxDefinitionId: (definition as TaxDefinitionSnapshot).id,
-          treatment: treatment as TaxTreatment,
-          effectiveRate: null,
-          ruleId: `${(definition as TaxDefinitionSnapshot).id}-rule`,
-          priorityMatched: 4,
-        })),
       ]);
-      managerMock.findOne
-        .mockResolvedValueOnce(subscriber)
-        .mockResolvedValueOnce(profile)
-        .mockResolvedValueOnce(null) // no existing IVA assignment
-        .mockResolvedValueOnce(makeAssignment({ taxDefinitionId: existingDefinition.id }))
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(profile);
-      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(null).mockResolvedValueOnce(iva);
       taxCatalogPort.findById
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(existingDefinition)
-        .mockResolvedValueOnce(exemptDefinition)
-        .mockResolvedValueOnce(excludedDefinition)
-        .mockResolvedValueOnce(fixedDefinition);
+        .mockResolvedValueOnce(vatDefinition)
+        .mockResolvedValueOnce(withholdingDefinition);
       const created: Array<Record<string, unknown>> = [];
       managerMock.create.mockImplementation((_entity, values) => {
         created.push(values as Record<string, unknown>);
@@ -663,160 +599,32 @@ describe('SubscriberTaxProfileService', () => {
       });
       managerMock.save.mockImplementation(async (_entity, entity) => entity);
 
-      await service.suggestVatForSubscriber(subscriber.id);
-
-      expect(created.map(({ taxDefinitionId }) => taxDefinitionId)).toEqual([
-        iva.id,
-        exemptDefinition.id,
-        excludedDefinition.id,
-        fixedDefinition.id,
-      ]);
-      expect(created.slice(1)).toEqual([
-        expect.objectContaining({
-          effectiveRate: exemptDefinition.baseRate,
-          treatment: TaxTreatment.EXEMPT,
-        }),
-        expect.objectContaining({
-          effectiveRate: excludedDefinition.baseRate,
-          treatment: TaxTreatment.EXCLUDED,
-        }),
-        expect.objectContaining({
-          effectiveRate: fixedDefinition.baseRate,
-          treatment: TaxTreatment.FIXED,
-        }),
-      ]);
-    });
-  });
-
-  // ── _resolveVatTreatmentByStratum (via suggestVatForSubscriber) ──────────────
-
-  describe('Política IVA por estrato', () => {
-    const stratumCases: Array<{
-      label: string;
-      personType: PersonType;
-      stratum: number | null;
-      expectedTreatment: TaxTreatment | null;
-    }> = [
-      {
-        label: 'Natural estrato 1 → EXEMPT',
-        personType: PersonType.NATURAL,
-        stratum: 1,
-        expectedTreatment: TaxTreatment.EXEMPT,
-      },
-      {
-        label: 'Natural estrato 2 → EXEMPT',
-        personType: PersonType.NATURAL,
-        stratum: 2,
-        expectedTreatment: TaxTreatment.EXEMPT,
-      },
-      {
-        label: 'Natural estrato 3 → EXCLUDED',
-        personType: PersonType.NATURAL,
-        stratum: 3,
-        expectedTreatment: TaxTreatment.EXCLUDED,
-      },
-      {
-        label: 'Natural estrato 4 → STANDARD',
-        personType: PersonType.NATURAL,
-        stratum: 4,
-        expectedTreatment: TaxTreatment.STANDARD,
-      },
-      {
-        label: 'Natural sin estrato → error',
-        personType: PersonType.NATURAL,
-        stratum: null,
-        expectedTreatment: null,
-      },
-      {
-        label: 'Jurídica estrato 1 → STANDARD',
-        personType: PersonType.JURIDICA,
-        stratum: 1,
-        expectedTreatment: TaxTreatment.STANDARD,
-      },
-    ];
-
-    test.each(stratumCases)('$label', async ({ personType, stratum, expectedTreatment }) => {
-      const subscriber = makeSubscriber({ personType, stratum });
-      const profile = makeProfile({ assignments: [] });
-      const ivaDef = makeIvaDef();
-
-      managerMock.findOne
-        .mockResolvedValueOnce(subscriber)
-        .mockResolvedValueOnce(profile)
-        .mockResolvedValueOnce(null) // no existing IVA assignment
-        .mockResolvedValueOnce(profile); // refreshed profile
-
-      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(ivaDef);
-
-      const createdAssignments: unknown[] = [];
-      managerMock.create.mockImplementation((_entity: unknown, data: unknown) => {
-        createdAssignments.push(data);
-        return data;
-      });
-      managerMock.save.mockResolvedValue({});
-
-      if (expectedTreatment === null) {
-        await expect(service.suggestVatForSubscriber('sub-001')).rejects.toThrow(
-          BadRequestException,
-        );
-        return;
-      }
-
       await service.suggestVatForSubscriber('sub-001');
 
-      const created = createdAssignments[0] as { treatment: TaxTreatment };
-      expect(created.treatment).toBe(expectedTreatment);
-      expect(taxApplicationPort.resolve).toHaveBeenCalled();
+      expect(created).toHaveLength(1);
+      expect(created[0]).toMatchObject({
+        taxDefinitionId: withholdingDefinition.id,
+        status: TaxAssignmentStatus.SUGGESTED,
+      });
+      expect(taxCatalogPort.findActiveByCode).not.toHaveBeenCalled();
     });
 
-    it('sugiere tributos no IVA que devolvió ITaxApplicationReadPort', async () => {
-      const subscriber = makeSubscriber({ stratum: 4 });
+    it('crea un perfil nuevo sin inventar IVA a partir del estrato', async () => {
       const profile = makeProfile({ assignments: [] });
-      const ivaDef = makeIvaDef();
-      const reteDef: TaxDefinitionSnapshot = {
-        ...makeIvaDef(),
-        id: 'taxdef-rete-001',
-        code: 'RETEFUENTE',
-        name: 'Retención en la fuente',
-        category: TaxCategory.WITHHOLDING,
-      };
-
-      taxApplicationPort.resolve.mockResolvedValueOnce([
-        {
-          taxDefinitionId: reteDef.id,
-          treatment: TaxTreatment.STANDARD,
-          effectiveRate: 2.5,
-          ruleId: 'rule-1',
-          priorityMatched: 10,
-        },
-      ]);
-
       managerMock.findOne
-        .mockResolvedValueOnce(subscriber)
-        .mockResolvedValueOnce(profile)
-        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeSubscriber({ stratum: 2 }))
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(profile);
+      managerMock.create.mockReturnValue(profile);
+      managerMock.save.mockResolvedValue(profile);
+      taxApplicationPort.resolve.mockResolvedValueOnce([]);
 
-      taxCatalogPort.findActiveByCode.mockResolvedValueOnce(ivaDef);
-      taxCatalogPort.findById.mockResolvedValueOnce(reteDef);
+      const result = await service.getOrCreateProfile('sub-001');
 
-      const createdAssignments: Array<{ taxDefinitionId: string; reason: string | null }> = [];
-      managerMock.create.mockImplementation(
-        (_entity: unknown, data: { taxDefinitionId: string; reason: string | null }) => {
-          createdAssignments.push(data);
-          return data;
-        },
-      );
-      managerMock.save.mockResolvedValue({});
-
-      await service.suggestVatForSubscriber('sub-001');
-
-      expect(createdAssignments.map((item) => item.taxDefinitionId)).toEqual([
-        ivaDef.id,
-        reteDef.id,
-      ]);
-      expect(createdAssignments[1]?.reason).toBe('Sugerido por reglas de aplicación tributaria');
+      expect(result.assignments).toEqual([]);
+      expect(taxApplicationPort.resolve).toHaveBeenCalled();
+      expect(taxCatalogPort.findActiveByCode).not.toHaveBeenCalled();
+      expect(managerMock.create).toHaveBeenCalledTimes(1);
     });
   });
 });

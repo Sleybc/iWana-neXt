@@ -68,6 +68,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const [loading, setLoading] = useState(mode === 'detail');
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [activeSubscriberTab, setActiveSubscriberTab] = useState('vista-general');
 
   // Estado de edición del panel Facturación en la vista 360
   const [billingEditing, setBillingEditing] = useState(false);
@@ -314,7 +315,12 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       {
         id: 'tributario',
         label: 'Tributario',
-        content: <TaxProfileBlock subscriberId={subscriber.id} />,
+        content: (
+          <TaxProfileBlock
+            subscriberId={subscriber.id}
+            onNavigateToServices={() => setActiveSubscriberTab('servicios')}
+          />
+        ),
       },
       {
         id: 'servicios',
@@ -401,7 +407,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           </div>
 
           <div>
-            <SubscriberTabsContainer tabs={tabs} />
+            <SubscriberTabsContainer
+              tabs={tabs}
+              activeTab={activeSubscriberTab}
+              onActiveTabChange={setActiveSubscriberTab}
+            />
           </div>
 
           <SubscriberStatusTransitionDialog

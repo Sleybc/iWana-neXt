@@ -7,6 +7,7 @@ import {
   CatalogItemType,
   CustomerSegment,
   InstallationRule,
+  NetworkType,
   type ListResponse,
 } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
@@ -49,6 +50,7 @@ export interface CatalogItemWithDetail extends CatalogItem {
   uploadSpeedMbps?: number | undefined;
   technology?: string | undefined;
   installationRule?: string | undefined;
+  networkType?: NetworkType | undefined;
   category?: string | undefined;
   isLoan?: boolean | undefined;
   requiresInventory?: boolean | undefined;
@@ -82,6 +84,7 @@ export class CatalogService {
       isActive,
       cursor,
       missingPrice,
+      missingVatConcept,
       category,
       model,
       charge,
@@ -120,6 +123,10 @@ export class CatalogService {
           )`,
           { missingPriceSegment: CustomerSegment.RESIDENTIAL },
         );
+      }
+
+      if (missingVatConcept === true) {
+        qb.andWhere('ci.vat_concept IS NULL');
       }
 
       const needsProductJoin =
@@ -214,14 +221,18 @@ export class CatalogService {
     return entity;
   }
 
-  async create(dto: CreateCatalogItemDto): Promise<CatalogItem> {
+  async create(dto: CreateCatalogItemDto): Promise<CatalogItemWithDetail> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    if (!dto.vatConcept) {
+      throw new BadRequestException('Para crear un ítem se requiere vatConcept');
+    }
     this._validateDetailRequired(dto);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const item = qr.manager.create(CatalogItem, {
         tenantId,
         type: dto.type,
+        vatConcept: dto.vatConcept,
         name: dto.name,
         description: dto.description ?? null,
         taxClassificationId: dto.taxClassificationId ?? null,
@@ -233,11 +244,16 @@ export class CatalogService {
       // Crear registro de detalle según el tipo
       await this._createDetail(qr.manager, item.id, dto);
 
-      return item;
+      return {
+        ...item,
+        ...(dto.type === CatalogItemType.PLAN && {
+          networkType: dto.networkType ?? NetworkType.FIXED,
+        }),
+      };
     });
   }
 
-  async update(id: string, dto: UpdateCatalogItemDto): Promise<CatalogItem> {
+  async update(id: string, dto: UpdateCatalogItemDto): Promise<CatalogItemWithDetail> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
@@ -249,6 +265,7 @@ export class CatalogService {
       const wasActive = item.isActive;
       Object.assign(item, {
         ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.taxClassificationId !== undefined && {
           taxClassificationId: dto.taxClassificationId,
@@ -267,6 +284,7 @@ export class CatalogService {
           ...(dto.uploadSpeedMbps !== undefined && { uploadSpeedMbps: dto.uploadSpeedMbps }),
           ...(dto.technology !== undefined && { technology: dto.technology }),
           ...(dto.installationRule !== undefined && { installationRule: dto.installationRule }),
+          ...(dto.networkType !== undefined && { networkType: dto.networkType }),
         };
         if (Object.keys(planUpdate).length > 0) {
           await qr.manager.update(PlanDetail, { itemId: id }, planUpdate);
@@ -519,6 +537,7 @@ export class CatalogService {
     if (dto.type === CatalogItemType.PLAN) {
       const detail = manager.create(PlanDetail, {
         itemId,
+        networkType: dto.networkType ?? NetworkType.FIXED,
         downloadSpeedMbps: dto.downloadSpeedMbps!,
         uploadSpeedMbps: dto.uploadSpeedMbps!,
         technology: dto.technology!,
@@ -590,6 +609,7 @@ export class CatalogService {
           downloadSpeedMbps: detail?.downloadSpeedMbps,
           uploadSpeedMbps: detail?.uploadSpeedMbps,
           technology: detail?.technology,
+          networkType: detail?.networkType ?? NetworkType.FIXED,
           installationRule: detail?.installationRule,
         };
       }

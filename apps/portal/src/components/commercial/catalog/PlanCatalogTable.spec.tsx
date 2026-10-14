@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType } from '@iwana/shared';
 import { PlanCatalogTable } from './PlanCatalogTable';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import { PLAN_CATALOG_COLUMNS_STORAGE_KEY } from './plan-catalog-columns';
@@ -32,6 +32,8 @@ function buildPlan(overrides: Partial<PlanCatalogItem> = {}): PlanCatalogItem {
     basePrice: 89900,
     installationFee: 50000,
     currentPrice: '89900',
+    vatConcept: null,
+    networkType: NetworkType.FIXED,
     isActive: true,
     createdAt: '2026-05-01T10:00:00.000Z',
     updatedAt: '2026-05-02T11:00:00.000Z',
@@ -47,6 +49,7 @@ function renderTable(overrides: Partial<ComponentProps<typeof PlanCatalogTable>>
     filteredPlans: [buildPlan()],
     searchValue: '',
     missingPriceFilter: false,
+    missingVatConceptFilter: false,
     hasActiveFilters: false,
     page: 1,
     pageCount: 1,

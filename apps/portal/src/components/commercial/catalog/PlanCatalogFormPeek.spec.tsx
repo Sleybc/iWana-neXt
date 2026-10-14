@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useForm } from 'react-hook-form';
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType } from '@iwana/shared';
 import { PlanCatalogFormPeek } from './PlanCatalogFormPeek';
 import type { PlanFormValues } from './plan-catalog-helpers';
 
@@ -16,6 +16,8 @@ import type { PlanFormValues } from './plan-catalog-helpers';
 const baseFormValues: PlanFormValues = {
   name: 'Hogar 300',
   technology: 'GPON',
+  vatConcept: '',
+  networkType: NetworkType.FIXED,
   speedMode: 'SYMMETRIC',
   downloadSpeedMbps: 300,
   uploadSpeedMbps: 300,

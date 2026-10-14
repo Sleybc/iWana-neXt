@@ -62,8 +62,10 @@ export class CatalogController {
       'Orden default: name ASC, id ASC. `sort` = CATEGORY_NAME | ACTIVE_NAME | RECENTLY_UPDATED ' +
       '(keyset coherente; cambiar sort reinicia cursor). ' +
       'Filtros servidor: `type`, `name`, `isActive`, `missingPrice`, `category` (productos), ' +
-      '`model` (SALE|LOAN), `charge` (servicios). Planes en modo page: `sortBy`/`sortDir` y ' +
-      '`sortableFields` de columnas de dato. Productos/servicios y modo cursor: `sortableFields: []`.',
+      '`missingVatConcept` (ítems legacy sin concepto fiscal), `model` (SALE|LOAN), ' +
+      '`charge` (servicios). Planes en modo page: `sortBy`/`sortDir` y ' +
+      '`sortableFields` de columnas de dato. Cada fila incluye vatConcept; los planes también incluyen ' +
+      'networkType. Productos/servicios y modo cursor: `sortableFields: []`.',
   })
   @ApiResponse({
     status: 200,
@@ -78,7 +80,10 @@ export class CatalogController {
   @Get(':id')
   @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
-  @ApiOperation({ summary: 'Obtener ítem del catálogo por ID' })
+  @ApiOperation({
+    summary: 'Obtener ítem del catálogo por ID',
+    description: 'La respuesta incluye vatConcept; los planes también incluyen networkType.',
+  })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.catalogService.findOne(id);
     return { data };
@@ -87,7 +92,10 @@ export class CatalogController {
   @Post()
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
-  @ApiOperation({ summary: 'Crear ítem en el catálogo (plan, producto o servicio)' })
+  @ApiOperation({
+    summary: 'Crear ítem en el catálogo (plan, producto o servicio)',
+    description: 'Requiere vatConcept; la respuesta incluye el concepto fiscal del ítem.',
+  })
   @ApiResponse({ status: 201, description: 'Ítem creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o campos de detalle faltantes' })
   async create(@Body() dto: CreateCatalogItemDto) {
@@ -98,7 +106,10 @@ export class CatalogController {
   @Post('plans')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
-  @ApiOperation({ summary: 'Crear plan comercial' })
+  @ApiOperation({
+    summary: 'Crear plan comercial',
+    description: 'networkType es opcional y usa FIXED por defecto; la respuesta incluye la red.',
+  })
   async createPlan(@Body() dto: CreatePlanCatalogItemDto) {
     const data = await this.catalogService.create({ ...dto, type: CatalogItemType.PLAN });
     return { data };
@@ -125,7 +136,11 @@ export class CatalogController {
   @Patch(':id')
   @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
-  @ApiOperation({ summary: 'Actualizar ítem del catálogo' })
+  @ApiOperation({
+    summary: 'Actualizar ítem del catálogo',
+    description:
+      'vatConcept y, para planes, networkType son opcionales. La respuesta conserva ambos campos.',
+  })
   async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCatalogItemDto) {
     const data = await this.catalogService.update(id, dto);
     return { data };

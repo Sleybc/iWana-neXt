@@ -4,6 +4,7 @@ import { CustomerSegment, PersonType, TaxType } from '@iwana/shared';
 import { TaxCatalogReadPort } from '../ports/tax-catalog-read.port';
 import { TaxApplicationService } from '../services/tax-application.service';
 import { ITaxApplicationReadPort } from '../ports/tax-application-read.port';
+import { encodeDateIdCursor } from '../../../common/pagination';
 
 // ─── Mocks de módulos ────────────────────────────────────────────────────────
 
@@ -391,6 +392,60 @@ describe('TaxApplicationService', () => {
       expect(result.applications).toEqual([]);
       expect(result.reason).toContain('No se encontró');
     });
+
+    it('explica una regla activa que todavía no tiene aplicaciones de catálogo', async () => {
+      const rule = { id: 'rule-without-apps', priority: 3 };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => createMockQueryBuilder(rule),
+            find: jest.fn().mockResolvedValue([]),
+          },
+        }),
+      );
+
+      const result = await service.simulate({
+        personType: PersonType.JURIDICA,
+        segment: CustomerSegment.PYME,
+      });
+
+      expect(result).toEqual({
+        applications: [],
+        winnerRuleId: 'rule-without-apps',
+        reason:
+          'Regla de prioridad 3 encontrada pero sin aplicaciones en catálogo. Configure aplicaciones tributarias para esta regla.',
+      });
+    });
+
+    it('omite del resultado las aplicaciones cuya definición no está en el catálogo', async () => {
+      const rule = { id: 'rule-orphaned-app', priority: 2 };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => createMockQueryBuilder(rule),
+            find: jest.fn().mockResolvedValue([
+              {
+                taxRuleId: rule.id,
+                taxDefinitionId: 'missing-tax-definition',
+                treatment: 'STANDARD',
+                rateOverride: null,
+                isActive: true,
+              },
+            ]),
+          },
+        }),
+      );
+      mockTaxCatalogPort.findById.mockResolvedValue(null);
+
+      const result = await service.simulate({
+        personType: PersonType.JURIDICA,
+        segment: CustomerSegment.PYME,
+      });
+
+      expect(result.winnerRuleId).toBe(rule.id);
+      expect(result.applications).toEqual([]);
+      expect(result.reason).toContain('0 impuesto(s) aplicable(s)');
+    });
   });
 
   // ─── Test 6: Puerto correcto vía DI ─────────────────────────────────────
@@ -468,6 +523,45 @@ describe('TaxApplicationService', () => {
       expect(result.meta.total).toBe(1);
     });
 
+    it('aplica el cursor de fecha e id al listar reglas y aplicaciones', async () => {
+      const cursor = encodeDateIdCursor('2026-10-10T00:00:00.000Z', 'rule-cursor');
+      const makeQb = () => {
+        const qb = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          take: jest.fn().mockReturnThis(),
+          clone: jest.fn(),
+          getCount: jest.fn().mockResolvedValue(2),
+          getMany: jest.fn().mockResolvedValue([]),
+        };
+        qb.clone.mockReturnValue(qb);
+        return qb;
+      };
+      const ruleQb = makeQb();
+      const applicationQb = makeQb();
+      const createQueryBuilder = jest
+        .fn()
+        .mockReturnValueOnce(ruleQb)
+        .mockReturnValueOnce(applicationQb);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder } }),
+      );
+
+      await service.listRules({ cursor, limit: 10 });
+      await service.listApplications({ cursor, limit: 10 });
+
+      expect(ruleQb.andWhere).toHaveBeenCalledWith(
+        '(rule.created_at < :cursorDate OR (rule.created_at = :cursorDate AND rule.id < :cursorId))',
+        { cursorDate: '2026-10-10T00:00:00.000Z', cursorId: 'rule-cursor' },
+      );
+      expect(applicationQb.andWhere).toHaveBeenCalledWith(
+        '(app.created_at < :cursorDate OR (app.created_at = :cursorDate AND app.id < :cursorId))',
+        { cursorDate: '2026-10-10T00:00:00.000Z', cursorId: 'rule-cursor' },
+      );
+    });
+
     it('createRule persiste tenantId y createdBy', async () => {
       const save = jest.fn().mockImplementation(async (_e, data) => ({ id: 'rule-new', ...data }));
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
@@ -485,6 +579,43 @@ describe('TaxApplicationService', () => {
       );
       expect(result.tenantId).toBe(tenantCtx.tenantId);
       expect(result.createdBy).toBe('usr-accountant');
+    });
+
+    it('persiste los criterios opcionales de una regla y su vigencia explícita', async () => {
+      const save = jest.fn().mockImplementation(async (_entity, data) => data);
+      const create = jest.fn((_entity: unknown, data: Record<string, unknown>) => data);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { create, save } }),
+      );
+      const validFrom = '2026-01-01T00:00:00.000Z';
+      const validTo = '2026-12-31T23:59:59.000Z';
+
+      const result = await service.createRule(
+        {
+          taxClassificationId: 'classification-1',
+          customerSegment: CustomerSegment.PYME,
+          stratumFrom: 2,
+          stratumTo: 4,
+          priority: 7,
+          municipalityCode: '11001',
+          taxType: TaxType.IVA,
+          ratePercentage: '19.00',
+          validFrom,
+          validTo,
+        },
+        'usr-accountant',
+      );
+
+      expect(result).toMatchObject({
+        taxClassificationId: 'classification-1',
+        customerSegment: CustomerSegment.PYME,
+        stratumFrom: 2,
+        stratumTo: 4,
+        priority: 7,
+        municipalityCode: '11001',
+        validFrom: new Date(validFrom),
+        validTo: new Date(validTo),
+      });
     });
 
     it('listApplications pagina aplicaciones', async () => {
@@ -527,6 +658,62 @@ describe('TaxApplicationService', () => {
       });
       expect(result.tenantId).toBe(tenantCtx.tenantId);
       expect(result.taxRuleId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+
+    it('guarda tasa override y prioridad de aplicación explícitas', async () => {
+      const save = jest.fn().mockImplementation(async (_entity, data) => data);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            create: (_entity: unknown, data: Record<string, unknown>) => data,
+            save,
+          },
+        }),
+      );
+
+      const result = await service.createApplication({
+        taxRuleId: '11111111-1111-4111-8111-111111111111',
+        taxDefinitionId: '22222222-2222-4222-8222-222222222222',
+        treatment: 'STANDARD',
+        rateOverride: 0,
+        priority: 5,
+      });
+
+      expect(result.rateOverride).toBe('0');
+      expect(result.priority).toBe(5);
+    });
+
+    it('actualiza los campos proporcionados y permite limpiar el rate override', async () => {
+      const existing = {
+        treatment: 'STANDARD',
+        rateOverride: '19',
+        priority: 0,
+        isActive: true,
+      };
+      const save = jest.fn().mockImplementation(async (_entity, data) => data);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: jest.fn().mockResolvedValue(existing),
+            save,
+          },
+        }),
+      );
+
+      const result = await service.updateApplication('application-1', {
+        treatment: 'EXEMPT',
+        rateOverride: null,
+        priority: 4,
+        isActive: false,
+      });
+
+      expect(result).toMatchObject({
+        treatment: 'EXEMPT',
+        rateOverride: null,
+        priority: 4,
+        isActive: false,
+      });
+      expect(save).toHaveBeenCalled();
     });
 
     it('updateApplication lanza NotFoundException si no existe', async () => {

@@ -40,7 +40,6 @@ import {
   formatSubscriberLocation,
   formatSubscriberDate,
   formatSubscriberName,
-  formatVatTreatmentLabel,
 } from './subscriber-ui';
 
 const SUBSCRIBERS_RESOURCE = { singular: 'suscriptor', plural: 'suscriptores' } as const;
@@ -446,7 +445,6 @@ function SubscribersListClientInner() {
                     {renderHead(null, 'Documento / NIT')}
                     {renderHead('personType', 'Tipo')}
                     {renderHead('customerSegment', 'Segmento')}
-                    {renderHead(null, 'IVA')}
                     {renderHead(null, 'Ubicación')}
                     {renderHead('status', 'Estado')}
                     {renderHead('createdAt', 'Creado')}
@@ -456,7 +454,7 @@ function SubscribersListClientInner() {
                   {initialLoading && records.length === 0
                     ? Array.from({ length: 5 }, (_, index) => (
                         <tr key={`subscriber-skeleton-${index}`}>
-                          <td className={portalDataTableCellClassName} colSpan={8}>
+                          <td className={portalDataTableCellClassName} colSpan={7}>
                             <PortalSkeletonBlock className="h-10 w-full rounded-xl" />
                           </td>
                         </tr>
@@ -465,7 +463,7 @@ function SubscribersListClientInner() {
 
                   {!initialLoading && records.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className={cn(portalDataTableCellClassName, 'py-12')}>
+                      <td colSpan={7} className={cn(portalDataTableCellClassName, 'py-12')}>
                         <PortalEmptyState
                           title={
                             hasActiveFilters
@@ -530,9 +528,6 @@ function SubscribersListClientInner() {
                           >
                             {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
                           </Badge>
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {formatVatTreatmentLabel(subscriber.vatTreatment)}
                         </td>
                         <td className={portalDataTableCellClassName}>
                           {formatSubscriberLocation(subscriber.city, subscriber.department)}

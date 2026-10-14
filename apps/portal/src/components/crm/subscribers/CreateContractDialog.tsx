@@ -2,10 +2,11 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
-import { CustomerSegment } from '@iwana/shared';
-import { FormStatus, ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
+import { CustomerSegment, PersonType, ServiceUsage } from '@iwana/shared';
+import { FormField, FormStatus, ModalLayer, Select, overlayEdgeClassName, cn } from '@iwana/ui';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
+import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import {
@@ -13,6 +14,12 @@ import {
   SearchablePicker,
   type SearchablePickerItem,
 } from '@/components/shared/SearchablePicker';
+import {
+  STRATUM_EVIDENCE_ACCEPT,
+  STRATUM_EVIDENCE_FORMATS_LABEL,
+  stratumEvidenceFileError,
+  stratumEvidenceUploadErrorMessage,
+} from './stratum-evidence';
 
 // ── Opciones estáticas ────────────────────────────────────────────────────────
 
@@ -57,6 +64,7 @@ const sectionTitleCls =
 
 interface CreateContractDialogProps {
   subscriberId: string;
+  personType?: PersonType;
   onClose: () => void;
   onSuccess: () => Promise<void>;
 }
@@ -107,6 +115,7 @@ const INITIAL_FORM: FormState = {
 
 export function CreateContractDialog({
   subscriberId,
+  personType = PersonType.NATURAL,
   onClose,
   onSuccess,
 }: CreateContractDialogProps) {
@@ -120,6 +129,14 @@ export function CreateContractDialog({
   const [planResolving, setPlanResolving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [serviceUsage, setServiceUsage] = useState<ServiceUsage | ''>('');
+  const [installationStratum, setInstallationStratum] = useState('');
+  const [hasStratumEvidence, setHasStratumEvidence] = useState(false);
+  const [pendingEvidenceFile, setPendingEvidenceFile] = useState<File | null>(null);
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+  const [evidenceUploadError, setEvidenceUploadError] = useState<string | null>(null);
+  const [usageError, setUsageError] = useState<string | undefined>();
+  const [stratumError, setStratumError] = useState<string | undefined>();
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   // Escape, trampa de foco, foco inicial y retorno al disparador. Es
@@ -207,6 +224,34 @@ export function CreateContractDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUsageError(undefined);
+    setStratumError(undefined);
+
+    if (savedDraftId) {
+      if (!pendingEvidenceFile) {
+        await onSuccess();
+        return;
+      }
+
+      setSaving(true);
+      setEvidenceUploadError(null);
+      try {
+        const updated = await contractsApi.uploadStratumEvidence(savedDraftId, pendingEvidenceFile);
+        setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+        setPendingEvidenceFile(null);
+        await onSuccess();
+      } catch (uploadError) {
+        setEvidenceUploadError(stratumEvidenceUploadErrorMessage(uploadError));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (serviceUsage === ServiceUsage.RESIDENTIAL && !installationStratum) {
+      setStratumError('Selecciona el estrato del predio de instalación.');
+      return;
+    }
     if (!form.planId || !form.selectedPlan) {
       setSaveError('Selecciona un plan antes de continuar.');
       return;
@@ -229,7 +274,7 @@ export function CreateContractDialog({
       const additionalProductIds = form.additionalProducts.map((item) => item.id);
       const additionalServiceIds = form.additionalServices.map((item) => item.id);
 
-      await contractsApi.createForSubscriber(subscriberId, {
+      const created = await contractsApi.createForSubscriber(subscriberId, {
         planId: form.planId,
         planSnapshotJson,
         ...(form.alias ? { alias: form.alias } : {}),
@@ -245,6 +290,9 @@ export function CreateContractDialog({
         ...(form.customerSegment
           ? { customerSegment: form.customerSegment as CustomerSegment }
           : {}),
+        ...(serviceUsage ? { serviceUsage } : {}),
+        installationStratum:
+          serviceUsage === ServiceUsage.RESIDENTIAL ? Number(installationStratum) : null,
         ...(additionalProductIds.length > 0 ? { additionalProductIds } : {}),
         ...(additionalServiceIds.length > 0 ? { additionalServiceIds } : {}),
         ...(form.paymentMethod ? { paymentMethod: form.paymentMethod } : {}),
@@ -254,9 +302,32 @@ export function CreateContractDialog({
         ...(form.fiscalAddress ? { fiscalAddress: form.fiscalAddress } : {}),
       });
 
+      if (pendingEvidenceFile) {
+        setSavedDraftId(created.id);
+        try {
+          const updated = await contractsApi.uploadStratumEvidence(created.id, pendingEvidenceFile);
+          setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+          setPendingEvidenceFile(null);
+        } catch (uploadError) {
+          setEvidenceUploadError(stratumEvidenceUploadErrorMessage(uploadError));
+          return;
+        }
+      }
+
       await onSuccess();
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : 'Error al crear el contrato.');
+      if (err instanceof ApiError && err.status === 422) {
+        const detail = `${err.message} ${JSON.stringify(err.details ?? '')}`.toLowerCase();
+        if (detail.includes('installationstratum')) {
+          setStratumError('Revisa el estrato del predio de instalación.');
+        } else if (detail.includes('serviceusage')) {
+          setUsageError('Selecciona el uso del servicio para continuar.');
+        } else {
+          setSaveError(err.message);
+        }
+      } else {
+        setSaveError(err instanceof ApiError ? err.message : 'Error al crear el contrato.');
+      }
     } finally {
       setSaving(false);
     }
@@ -444,6 +515,52 @@ export function CreateContractDialog({
               </div>
             </div>
 
+            <ServicePointFields
+              personType={personType}
+              serviceUsage={serviceUsage}
+              onServiceUsageChange={(value) => {
+                setServiceUsage(value);
+                setUsageError(undefined);
+                if (value !== ServiceUsage.RESIDENTIAL) {
+                  setInstallationStratum('');
+                  setPendingEvidenceFile(null);
+                  setEvidenceUploadError(null);
+                  setStratumError(undefined);
+                }
+              }}
+              installationStratum={installationStratum}
+              onInstallationStratumChange={(value) => {
+                setInstallationStratum(value);
+                setStratumError(undefined);
+                if (!['1', '2', '3'].includes(value)) {
+                  setPendingEvidenceFile(null);
+                  setEvidenceUploadError(null);
+                }
+              }}
+              hasStratumEvidence={hasStratumEvidence}
+              pendingEvidenceFile={pendingEvidenceFile}
+              onPendingEvidenceFileChange={(file) => {
+                setPendingEvidenceFile(file);
+                setEvidenceUploadError(null);
+              }}
+              {...(savedDraftId
+                ? {
+                    onRemoveEvidence: async () => {
+                      if (hasStratumEvidence) {
+                        const updated = await contractsApi.deleteStratumEvidence(savedDraftId);
+                        setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+                      }
+                      setPendingEvidenceFile(null);
+                      setEvidenceUploadError(null);
+                    },
+                  }
+                : {})}
+              {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
+              disabled={saving}
+              {...(usageError ? { usageError } : {})}
+              {...(stratumError ? { stratumError } : {})}
+            />
+
             {/* ── Productos y servicios adicionales ────────────────────── */}
             <div>
               <p className={sectionTitleCls}>Complementos del plan</p>
@@ -558,7 +675,7 @@ export function CreateContractDialog({
           <button
             type="submit"
             form="create-contract-form"
-            disabled={saving || planResolving || !form.planId}
+            disabled={saving || planResolving || (!form.planId && !savedDraftId)}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
           >
             {saving ? (
@@ -571,5 +688,177 @@ export function CreateContractDialog({
         </div>
       </div>
     </ModalLayer>
+  );
+}
+
+/** Campos compartidos del punto de servicio para crear, convertir y editar. */
+export function ServicePointFields({
+  personType,
+  serviceUsage,
+  onServiceUsageChange,
+  installationStratum,
+  onInstallationStratumChange,
+  hasStratumEvidence,
+  pendingEvidenceFile,
+  onPendingEvidenceFileChange,
+  onRemoveEvidence,
+  uploadErrorMessage,
+  usageError,
+  stratumError,
+  disabled = false,
+}: {
+  personType: PersonType;
+  serviceUsage: ServiceUsage | '';
+  onServiceUsageChange: (value: ServiceUsage | '') => void;
+  installationStratum: string;
+  onInstallationStratumChange: (value: string) => void;
+  hasStratumEvidence: boolean;
+  pendingEvidenceFile: File | null;
+  onPendingEvidenceFileChange: (file: File | null) => void;
+  onRemoveEvidence?: () => Promise<void>;
+  uploadErrorMessage?: string | null;
+  usageError?: string;
+  stratumError?: string;
+  disabled?: boolean;
+}) {
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const requiresEvidence =
+    serviceUsage === ServiceUsage.RESIDENTIAL && ['1', '2', '3'].includes(installationStratum);
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const fileError = stratumEvidenceFileError(file);
+    if (fileError) {
+      setUploadError(fileError);
+      return;
+    }
+
+    setUploadError(null);
+    onPendingEvidenceFileChange(file);
+  }
+
+  async function handleRemoveEvidence() {
+    setUploadError(null);
+    try {
+      if (hasStratumEvidence && onRemoveEvidence) await onRemoveEvidence();
+      onPendingEvidenceFileChange(null);
+    } catch {
+      setUploadError('No se pudo cargar el soporte. Intenta de nuevo.');
+    }
+  }
+
+  return (
+    <section className="space-y-4" aria-labelledby="service-point-title">
+      <div>
+        <p id="service-point-title" className={sectionTitleCls}>
+          Punto de servicio
+        </p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          El uso del predio determina el tratamiento de IVA de este contrato. Si allí también
+          funciona un negocio, selecciona No residencial mientras el contador no indique otra
+          clasificación.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Select
+            label="Uso del servicio"
+            helperText="Puedes dejarlo pendiente si aún no conoces el uso; será necesario al activar el contrato."
+            value={serviceUsage}
+            onChange={(event) => onServiceUsageChange(event.target.value as ServiceUsage | '')}
+            disabled={disabled}
+            {...(usageError ? { error: usageError } : {})}
+            className="h-11"
+            placeholder="Selecciona el uso"
+          >
+            <option value={ServiceUsage.RESIDENTIAL} disabled={personType === PersonType.JURIDICA}>
+              Residencial
+            </option>
+            <option value={ServiceUsage.NON_RESIDENTIAL}>No residencial</option>
+          </Select>
+          {personType === PersonType.JURIDICA ? (
+            <PortalAlert
+              variant="info"
+              title="Las personas jurídicas no pueden registrar un servicio como residencial. Selecciona No residencial."
+              live="off"
+            />
+          ) : null}
+        </div>
+
+        {serviceUsage === ServiceUsage.RESIDENTIAL ? (
+          <Select
+            label="Estrato del predio de instalación"
+            value={installationStratum}
+            onChange={(event) => onInstallationStratumChange(event.target.value)}
+            disabled={disabled}
+            {...(stratumError ? { error: stratumError } : {})}
+            className="h-11"
+            placeholder="Selecciona el estrato"
+            options={[1, 2, 3, 4, 5, 6].map((stratum) => ({
+              value: String(stratum),
+              label: `Estrato ${stratum}`,
+            }))}
+          />
+        ) : null}
+      </div>
+
+      {requiresEvidence ? (
+        <div className="space-y-3">
+          <FormField
+            label={hasStratumEvidence ? 'Reemplazar soporte' : 'Soporte del estrato'}
+            hint={`Adjunta un recibo de un servicio público o el certificado municipal de estratificación de la dirección de instalación. Formatos admitidos: ${STRATUM_EVIDENCE_FORMATS_LABEL}.`}
+          >
+            <input
+              type="file"
+              accept={STRATUM_EVIDENCE_ACCEPT}
+              disabled={disabled}
+              onChange={(event) => void handleFileChange(event)}
+              className={cn(
+                'min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200',
+                interactiveFocusClassName,
+              )}
+            />
+          </FormField>
+          {hasStratumEvidence || pendingEvidenceFile ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {hasStratumEvidence ? (
+                <p role="status" className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                  Soporte cargado
+                </p>
+              ) : null}
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => void handleRemoveEvidence()}
+                className={cn(
+                  'min-h-11 rounded-lg px-3 text-sm font-medium text-iwana-secondary-700 underline underline-offset-2 dark:text-iwana-secondary-300',
+                  interactiveFocusClassName,
+                )}
+              >
+                Quitar soporte
+              </button>
+            </div>
+          ) : pendingEvidenceFile ? null : (
+            <PortalAlert
+              variant="warning"
+              title="Sin soporte del estrato, a este servicio se le aplicará IVA del 19 %."
+              live="off"
+            />
+          )}
+          {uploadError || uploadErrorMessage ? (
+            <PortalAlert
+              variant="error"
+              title="No se guardó el soporte"
+              description={uploadError ?? uploadErrorMessage ?? undefined}
+              live="assertive"
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }

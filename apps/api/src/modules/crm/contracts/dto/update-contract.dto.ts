@@ -1,6 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { CustomerSegment } from '@iwana/shared';
+import {
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { CustomerSegment, ServiceUsage } from '@iwana/shared';
 
 /**
  * DTO de actualización parcial de contrato.
@@ -56,6 +68,18 @@ export class UpdateContractDto {
   @IsOptional()
   @IsEnum(CustomerSegment)
   customerSegment?: CustomerSegment;
+
+  @ApiPropertyOptional({ enum: ServiceUsage })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(ServiceUsage)
+  serviceUsage?: ServiceUsage;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  installationStratum?: number | null;
 
   // ── Add-ons ───────────────────────────────────────────────────────────────
 
@@ -119,5 +143,6 @@ export class UpdateContractDto {
 
   @ApiPropertyOptional({ description: 'Snapshot actualizado del plan (solo en DRAFT)' })
   @IsOptional()
+  @IsObject()
   planSnapshotJson?: Record<string, unknown>;
 }

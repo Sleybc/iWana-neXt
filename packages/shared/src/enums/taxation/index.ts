@@ -6,3 +6,8 @@ export * from './tax-origin.enum';
 export * from './tax-assignment-status.enum';
 export * from './tax-assignment-rate-source.enum';
 export * from './tax-profile-status.enum';
+export * from './vat-concept.enum';
+export * from './network-type.enum';
+export * from './service-usage.enum';
+export * from './vat-legal-basis.enum';
+export * from './internet-vat.types';

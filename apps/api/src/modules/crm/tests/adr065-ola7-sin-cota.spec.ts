@@ -3,6 +3,7 @@
  * Cubre clamp DEF-2, ListMeta y desempate id en recursos prioritarios.
  */
 import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { Test } from '@nestjs/testing';
 import { OpportunitiesService } from '../../crm/opportunities/opportunities.service';
@@ -14,6 +15,10 @@ import { PurchasingPolicyService } from '../../inventory/services/purchasing-pol
 import { RfqService } from '../../inventory/services/rfq.service';
 import { SupplierProfileService } from '../../inventory/services/supplier-profile.service';
 import { TaxCatalogReadPort } from '../../taxation/ports/tax-catalog-read.port';
+import { IInternetVatResolverPort } from '../../taxation/ports/internet-vat-resolver.port';
+import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-catalog-read.port';
+import { AuditService } from '../../audit/audit.service';
+import { MediaService } from '../../media/media.service';
 import { WorkOrdersService } from '../../wfm/services/work-orders.service';
 import { UserRole } from '@iwana/shared';
 
@@ -120,7 +125,18 @@ describe('ADR-065 Ola 7 — endpoints sin cota', () => {
     );
 
     const module = await Test.createTestingModule({
-      providers: [ContractsService, { provide: DataSource, useValue: {} }],
+      providers: [
+        ContractsService,
+        { provide: DataSource, useValue: {} },
+        {
+          provide: CommercialCatalogReadPort,
+          useValue: { getPlanById: jest.fn(), createSnapshot: jest.fn() },
+        },
+        { provide: IInternetVatResolverPort, useValue: { resolve: jest.fn() } },
+        { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: MediaService, useValue: {} },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+      ],
     }).compile();
     const service = module.get(ContractsService);
 

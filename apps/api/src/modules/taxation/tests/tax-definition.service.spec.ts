@@ -6,6 +6,7 @@ import { TaxDefinition } from '../entities/tax-definition.entity';
 import { CreateTaxDefinitionInput } from '../dto/create-tax-definition.dto';
 import { UpdateTaxDefinitionInput } from '../dto/update-tax-definition.dto';
 import { ListTaxDefinitionQueryDto } from '../dto/list-tax-definition-query.dto';
+import { encodeCodeIdCursor } from '../../../common/pagination';
 
 // Mock TenantContext y runInTenantSchema antes de importar el servicio
 jest.mock('@iwana/db', () => ({
@@ -313,6 +314,43 @@ describe('TaxDefinitionService', () => {
 
       expect(mockQr.manager.save).not.toHaveBeenCalled();
     });
+
+    it('clears nullable fields when an explicit null is provided', async () => {
+      const entity = buildTaxDef({
+        municipalityCode: '11001',
+        baseRate: '19.0000',
+        notes: 'nota anterior',
+      });
+      mockQr.manager.findOne.mockResolvedValue(entity);
+      mockQr.manager.save.mockResolvedValue(entity);
+
+      await service.update('def-nullables', {
+        municipalityCode: null,
+        baseRate: null,
+        notes: null,
+      });
+
+      expect(entity.municipalityCode).toBeNull();
+      expect(entity.baseRate).toBeNull();
+      expect(entity.notes).toBeNull();
+    });
+
+    it('keeps every existing field when an empty partial update is applied', async () => {
+      const entity = buildTaxDef({ name: 'Nombre existente' });
+      mockQr.manager.findOne.mockResolvedValue(entity);
+      mockQr.manager.save.mockResolvedValue(entity);
+
+      await service.update('def-empty-patch', {});
+
+      expect(entity).toMatchObject({
+        name: 'Nombre existente',
+        municipalityCode: null,
+        baseRate: '19.0000',
+        isActive: true,
+        notes: null,
+      });
+      expect(mockQr.manager.save).toHaveBeenCalledWith(TaxDefinition, entity);
+    });
   });
 
   describe('softDelete', () => {
@@ -473,6 +511,33 @@ describe('TaxDefinitionService', () => {
       expect(result.data).toHaveLength(2);
       expect(result.meta.total).toBe(3);
       expect(result.meta.nextCursor).toBeTruthy();
+    });
+
+    it('aplica el cursor por código e id después de contar el conjunto filtrado', async () => {
+      const cursor = encodeCodeIdCursor('IVA_19', 'def-001');
+      mockQb.getMany.mockResolvedValue([]);
+      mockQb.getCount.mockResolvedValue(4);
+
+      const result = await service.findAll({ cursor, limit: 10 });
+
+      expect(mockQb.clone).toHaveBeenCalled();
+      expect(mockQb.andWhere).toHaveBeenCalledWith(
+        '(td.code > :cursorCode OR (td.code = :cursorCode AND td.id > :cursorId))',
+        { cursorCode: 'IVA_19', cursorId: 'def-001' },
+      );
+      expect(result.meta).toEqual({ nextCursor: null, total: 4 });
+    });
+
+    it('no agrega la condición de contexto BOTH cuando el filtro pide un contexto concreto', async () => {
+      await service.findAll({ context: TaxContext.SALES, isActive: false });
+
+      expect(mockQb.andWhere).toHaveBeenCalledWith('(td.context = :ctx OR td.context = :both)', {
+        ctx: TaxContext.SALES,
+        both: 'BOTH',
+      });
+      expect(mockQb.andWhere).not.toHaveBeenCalledWith('td.is_active = :isActive', {
+        isActive: true,
+      });
     });
   });
 });

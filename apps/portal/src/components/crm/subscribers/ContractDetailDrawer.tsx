@@ -16,11 +16,21 @@ import {
   Trash2,
   X,
   XCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
-import { CustomerSegment } from '@iwana/shared';
+import {
+  CustomerSegment,
+  PersonType,
+  ServiceUsage,
+  VatLegalBasis,
+  VatTreatment,
+} from '@iwana/shared';
 import type { Contract, ContractStatus } from '@/lib/api-client';
 import { ApiError, contractsApi } from '@/lib/api-client';
+import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { ServicePointFields } from './CreateContractDialog';
+import { stratumEvidenceUploadErrorMessage } from './stratum-evidence';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import { formatLocationLabel } from './subscriber-ui';
@@ -190,6 +200,7 @@ function buildEditForm(contract: Contract): EditForm {
 
 interface ContractDetailDrawerProps {
   contract: Contract;
+  personType?: PersonType;
   onClose: () => void;
   onReload: () => Promise<void>;
   onRemove?: (id: string) => Promise<void>;
@@ -249,6 +260,28 @@ const inputCls =
 
 const selectCls = inputCls;
 
+function vatTreatmentLabel(treatment: VatTreatment): string {
+  switch (treatment) {
+    case VatTreatment.EXEMPT:
+      return 'Exento';
+    case VatTreatment.EXCLUDED:
+      return 'Excluido';
+    default:
+      return 'Gravado';
+  }
+}
+
+function vatLegalBasisLabel(basis: VatLegalBasis): string {
+  switch (basis) {
+    case VatLegalBasis.ET_481_H:
+      return 'Estatuto Tributario, artículo 481, literal h';
+    case VatLegalBasis.ET_476_7:
+      return 'Estatuto Tributario, artículo 476, numeral 7';
+    default:
+      return 'Estatuto Tributario, artículo 468';
+  }
+}
+
 // ── Variantes de botón de acción ──────────────────────────────────────────────
 
 const ACTION_BTN: Record<string, string> = {
@@ -266,11 +299,13 @@ const ACTION_BTN: Record<string, string> = {
 
 export function ContractDetailDrawer({
   contract,
+  personType = PersonType.NATURAL,
   onClose,
   onReload,
   onRemove,
 }: ContractDetailDrawerProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingServicePoint, setIsEditingServicePoint] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
   // Estos diálogos se montan/desmontan desde el padre, así que su apertura es su
   // propia presencia: se difunde `true` mientras vivan y el hook libera el estado
@@ -279,6 +314,19 @@ export function ContractDetailDrawer({
   usePortalModalDrawerBroadcast(true);
 
   const [form, setForm] = useState<EditForm>(() => buildEditForm(contract));
+  const [serviceUsage, setServiceUsage] = useState<ServiceUsage | ''>(contract.serviceUsage ?? '');
+  const [installationStratum, setInstallationStratum] = useState(
+    contract.installationStratum?.toString() ?? '',
+  );
+  const [hasStratumEvidence, setHasStratumEvidence] = useState(
+    Boolean(contract.stratumEvidenceMediaId),
+  );
+  const [pendingEvidenceFile, setPendingEvidenceFile] = useState<File | null>(null);
+  const [evidenceUploadError, setEvidenceUploadError] = useState<string | null>(null);
+  const [servicePointError, setServicePointError] = useState<string | null>(null);
+  const [serviceUsageError, setServiceUsageError] = useState<string | undefined>();
+  const [stratumError, setStratumError] = useState<string | undefined>();
+  const [currentContract, setCurrentContract] = useState(contract);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
@@ -305,10 +353,21 @@ export function ContractDetailDrawer({
     };
 
   const handleSave = async () => {
+    setServiceUsageError(undefined);
+    setStratumError(undefined);
+    if (
+      contract.status === 'DRAFT' &&
+      serviceUsage === ServiceUsage.RESIDENTIAL &&
+      !installationStratum
+    ) {
+      setStratumError('Selecciona el estrato del predio de instalación.');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
+    setEvidenceUploadError(null);
     try {
-      await contractsApi.update(contract.id, {
+      let updatedContract = await contractsApi.update(contract.id, {
         ...(form.alias ? { alias: form.alias } : {}),
         ...(form.installationAddress !== undefined
           ? { installationAddress: form.installationAddress }
@@ -331,11 +390,45 @@ export function ContractDetailDrawer({
         ...(form.fiscalName !== undefined ? { fiscalName: form.fiscalName } : {}),
         ...(form.fiscalDocument !== undefined ? { fiscalDocument: form.fiscalDocument } : {}),
         ...(form.fiscalAddress !== undefined ? { fiscalAddress: form.fiscalAddress } : {}),
+        ...(contract.status === 'DRAFT' && serviceUsage
+          ? {
+              serviceUsage,
+              installationStratum:
+                serviceUsage === ServiceUsage.RESIDENTIAL ? Number(installationStratum) : null,
+            }
+          : {}),
       });
+      setCurrentContract(updatedContract);
+      if (pendingEvidenceFile) {
+        try {
+          updatedContract = await contractsApi.uploadStratumEvidence(
+            contract.id,
+            pendingEvidenceFile,
+          );
+        } catch (uploadError) {
+          // El contrato ya quedó actualizado; la edición sigue abierta para reintentar la carga.
+          setEvidenceUploadError(stratumEvidenceUploadErrorMessage(uploadError));
+          return;
+        }
+        setCurrentContract(updatedContract);
+        setHasStratumEvidence(Boolean(updatedContract.stratumEvidenceMediaId));
+        setPendingEvidenceFile(null);
+      }
       setIsEditing(false);
       await onReload();
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : 'Error al guardar cambios.');
+      if (err instanceof ApiError && err.status === 422) {
+        const detail = `${err.message} ${JSON.stringify(err.details ?? '')}`.toLowerCase();
+        if (detail.includes('installationstratum')) {
+          setStratumError('Revisa el estrato del predio de instalación.');
+        } else if (detail.includes('serviceusage')) {
+          setServiceUsageError('Selecciona el uso del servicio para continuar.');
+        } else {
+          setSaveError(err.message);
+        }
+      } else {
+        setSaveError(err instanceof ApiError ? err.message : 'Error al guardar cambios.');
+      }
     } finally {
       setSaving(false);
     }
@@ -343,8 +436,88 @@ export function ContractDetailDrawer({
 
   const handleCancelEdit = () => {
     setForm(buildEditForm(contract));
+    setServiceUsage(contract.serviceUsage ?? '');
+    setInstallationStratum(contract.installationStratum?.toString() ?? '');
+    setHasStratumEvidence(Boolean(contract.stratumEvidenceMediaId));
+    setPendingEvidenceFile(null);
+    setEvidenceUploadError(null);
     setIsEditing(false);
     setSaveError(null);
+    setServiceUsageError(undefined);
+    setStratumError(undefined);
+  };
+
+  const handleSaveServicePoint = async () => {
+    setServiceUsageError(undefined);
+    setStratumError(undefined);
+    if (!serviceUsage) {
+      setServiceUsageError('Selecciona el uso del servicio para actualizar el contrato.');
+      return;
+    }
+    if (serviceUsage === ServiceUsage.RESIDENTIAL && !installationStratum) {
+      setStratumError('Selecciona el estrato del predio de instalación.');
+      return;
+    }
+
+    setSaving(true);
+    setServicePointError(null);
+    setEvidenceUploadError(null);
+    try {
+      let updatedContract = await contractsApi.updateServicePoint(contract.id, {
+        serviceUsage,
+        installationStratum:
+          serviceUsage === ServiceUsage.RESIDENTIAL ? Number(installationStratum) : null,
+      });
+      setCurrentContract(updatedContract);
+      if (pendingEvidenceFile) {
+        try {
+          updatedContract = await contractsApi.uploadStratumEvidence(
+            contract.id,
+            pendingEvidenceFile,
+          );
+        } catch (uploadError) {
+          // El punto de servicio ya se recalculó; el formulario queda abierto para reintentar la carga.
+          setEvidenceUploadError(stratumEvidenceUploadErrorMessage(uploadError));
+          return;
+        }
+        setCurrentContract(updatedContract);
+        setPendingEvidenceFile(null);
+      }
+      setServiceUsage(updatedContract.serviceUsage ?? '');
+      setInstallationStratum(updatedContract.installationStratum?.toString() ?? '');
+      setHasStratumEvidence(Boolean(updatedContract.stratumEvidenceMediaId));
+      setIsEditingServicePoint(false);
+      await onReload();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        const detail = `${err.message} ${JSON.stringify(err.details ?? '')}`.toLowerCase();
+        if (detail.includes('installationstratum')) {
+          setStratumError('Revisa el estrato del predio de instalación.');
+        } else if (detail.includes('serviceusage')) {
+          setServiceUsageError('Selecciona el uso del servicio para continuar.');
+        } else {
+          setServicePointError(err.message);
+        }
+      } else {
+        setServicePointError(
+          err instanceof ApiError ? err.message : 'No se pudo actualizar el punto de servicio.',
+        );
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelServicePoint = () => {
+    setServiceUsage(currentContract.serviceUsage ?? '');
+    setInstallationStratum(currentContract.installationStratum?.toString() ?? '');
+    setHasStratumEvidence(Boolean(currentContract.stratumEvidenceMediaId));
+    setPendingEvidenceFile(null);
+    setEvidenceUploadError(null);
+    setIsEditingServicePoint(false);
+    setServicePointError(null);
+    setServiceUsageError(undefined);
+    setStratumError(undefined);
   };
 
   // Escape, trampa de foco, foco inicial y retorno al disparador. Es
@@ -356,7 +529,11 @@ export function ContractDetailDrawer({
   // Escape replica exactamente el botón de la cabecera: con edición en curso
   // cancela la edición en lugar de descartar el panel — la misma razón por la
   // que el velo queda inerte mientras `isEditing`.
-  usePortalSideDrawerA11y(true, panelRef, isEditing ? handleCancelEdit : onClose);
+  usePortalSideDrawerA11y(
+    true,
+    panelRef,
+    isEditing ? handleCancelEdit : isEditingServicePoint ? handleCancelServicePoint : onClose,
+  );
 
   // ── Transiciones de estado ───────────────────────────────────────────────
 
@@ -401,7 +578,10 @@ export function ContractDetailDrawer({
   // Velo /30 → /45 (token `--color-veil`): el /30 fallaba WCAG 1.4.11 con
   // 2,10:1 entre el borde del panel blanco y el fondo velado.
   return (
-    <ModalLayer align="end" {...(isEditing ? {} : { onVeilClick: onClose })}>
+    <ModalLayer
+      align="end"
+      {...(isEditing || isEditingServicePoint ? {} : { onVeilClick: onClose })}
+    >
       {/* Drawer */}
       <aside
         ref={panelRef}
@@ -441,7 +621,13 @@ export function ContractDetailDrawer({
           {/* Botón cerrar */}
           <button
             type="button"
-            onClick={isEditing ? handleCancelEdit : onClose}
+            onClick={
+              isEditing
+                ? handleCancelEdit
+                : isEditingServicePoint
+                  ? handleCancelServicePoint
+                  : onClose
+            }
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-border"
             aria-label="Cerrar panel"
           >
@@ -608,6 +794,153 @@ export function ContractDetailDrawer({
             )}
           </Section>
 
+          <Section
+            icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+            title="Punto de servicio"
+          >
+            {isEditingServicePoint || (isEditing && contract.status === 'DRAFT') ? (
+              <div className="sm:col-span-2 space-y-3">
+                <ServicePointFields
+                  personType={personType}
+                  serviceUsage={serviceUsage}
+                  onServiceUsageChange={(value) => {
+                    setServiceUsage(value);
+                    setServiceUsageError(undefined);
+                    if (value !== ServiceUsage.RESIDENTIAL) {
+                      setInstallationStratum('');
+                      setPendingEvidenceFile(null);
+                      setEvidenceUploadError(null);
+                      setStratumError(undefined);
+                    }
+                  }}
+                  installationStratum={installationStratum}
+                  onInstallationStratumChange={(value) => {
+                    setInstallationStratum(value);
+                    setStratumError(undefined);
+                    if (!['1', '2', '3'].includes(value)) {
+                      setPendingEvidenceFile(null);
+                      setEvidenceUploadError(null);
+                    }
+                  }}
+                  hasStratumEvidence={hasStratumEvidence}
+                  pendingEvidenceFile={pendingEvidenceFile}
+                  onPendingEvidenceFileChange={(file) => {
+                    setPendingEvidenceFile(file);
+                    setEvidenceUploadError(null);
+                  }}
+                  {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
+                  onRemoveEvidence={async () => {
+                    const updated = await contractsApi.deleteStratumEvidence(contract.id);
+                    setCurrentContract(updated);
+                    setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+                    setPendingEvidenceFile(null);
+                    await onReload();
+                  }}
+                  {...(serviceUsageError ? { usageError: serviceUsageError } : {})}
+                  {...(stratumError ? { stratumError } : {})}
+                  disabled={saving}
+                />
+                {servicePointError ? (
+                  <PortalAlert
+                    variant="error"
+                    title="No fue posible actualizar el punto de servicio"
+                    description={servicePointError}
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <DetailField
+                  label="Uso del servicio"
+                  value={
+                    currentContract.serviceUsage === ServiceUsage.RESIDENTIAL
+                      ? 'Residencial'
+                      : currentContract.serviceUsage === ServiceUsage.NON_RESIDENTIAL
+                        ? 'No residencial'
+                        : 'Pendiente de definir'
+                  }
+                />
+                {currentContract.serviceUsage === ServiceUsage.RESIDENTIAL ? (
+                  <DetailField
+                    label="Estrato del predio de instalación"
+                    value={
+                      currentContract.installationStratum != null
+                        ? `Estrato ${currentContract.installationStratum}`
+                        : 'Pendiente de definir'
+                    }
+                  />
+                ) : null}
+                {hasStratumEvidence ? (
+                  <DetailField label="Soporte del estrato" value="Soporte cargado" />
+                ) : null}
+                {contract.status === 'ACTIVE' ? (
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setServiceUsage(currentContract.serviceUsage ?? '');
+                        setInstallationStratum(
+                          currentContract.installationStratum?.toString() ?? '',
+                        );
+                        setHasStratumEvidence(Boolean(currentContract.stratumEvidenceMediaId));
+                        setPendingEvidenceFile(null);
+                        setEvidenceUploadError(null);
+                        setIsEditingServicePoint(true);
+                      }}
+                      className={cn(
+                        'min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-iwana-secondary-700 transition hover:border-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-iwana-secondary-300',
+                        interactiveFocusClassName,
+                      )}
+                    >
+                      Actualizar punto de servicio
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </Section>
+
+          <Section
+            icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+            title="IVA del contrato"
+          >
+            {currentContract.vatSnapshot ? (
+              <>
+                <DetailField
+                  label="Tratamiento y tarifa"
+                  value={`${vatTreatmentLabel(currentContract.vatSnapshot.treatment)} · ${currentContract.vatSnapshot.ratePercent} %`}
+                />
+                <DetailField
+                  label="Fundamento"
+                  value={vatLegalBasisLabel(currentContract.vatSnapshot.legalBasis)}
+                />
+                {currentContract.vatSnapshot.resolvedAt ? (
+                  <DetailField
+                    label="Fecha de cálculo"
+                    value={`Calculado el ${new Date(currentContract.vatSnapshot.resolvedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}`}
+                  />
+                ) : null}
+                {currentContract.vatSnapshot.requiresAccountantReview ? (
+                  <div className="sm:col-span-2">
+                    <PortalAlert
+                      variant="warning"
+                      title="Este concepto requiere revisión del contador."
+                      live="off"
+                    />
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="sm:col-span-2">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {currentContract.status === 'DRAFT'
+                    ? 'El cálculo de IVA estará disponible cuando se active el contrato.'
+                    : 'El cálculo de IVA no está disponible para este contrato.'}
+                </p>
+              </div>
+            )}
+          </Section>
+
           {/* ── Facturación ───────────────────────────────────────────────── */}
           <Section icon={<CreditCard className="h-3.5 w-3.5" aria-hidden />} title="Facturación">
             {!isEditing ? (
@@ -753,12 +1086,12 @@ export function ContractDetailDrawer({
 
         {/* Footer con acciones */}
         <div className="border-t border-gray-100 px-6 py-4 dark:border-dark-border">
-          {isEditing ? (
+          {isEditing || isEditingServicePoint ? (
             /* Modo edición: guardar / cancelar */
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={handleCancelEdit}
+                onClick={isEditingServicePoint ? handleCancelServicePoint : handleCancelEdit}
                 disabled={saving}
                 className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
               >
@@ -766,7 +1099,7 @@ export function ContractDetailDrawer({
               </button>
               <button
                 type="button"
-                onClick={handleSave}
+                onClick={isEditingServicePoint ? handleSaveServicePoint : handleSave}
                 disabled={saving}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
               >
@@ -775,7 +1108,7 @@ export function ContractDetailDrawer({
                 ) : (
                   <Save className="h-4 w-4" aria-hidden />
                 )}
-                Guardar cambios
+                {isEditingServicePoint ? 'Actualizar punto de servicio' : 'Guardar cambios'}
               </button>
             </div>
           ) : (

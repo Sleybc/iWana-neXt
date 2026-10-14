@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
+import { PersonType, ServiceUsage } from '@iwana/shared';
 import { FormStatus, ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
 import type { Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
+import { ServicePointFields } from './CreateContractDialog';
+import { stratumEvidenceUploadErrorMessage } from './stratum-evidence';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
@@ -13,6 +16,7 @@ import { SearchablePicker, type SearchablePickerItem } from '@/components/shared
 
 interface ConvertExpedienteToContractDialogProps {
   subscriberId: string;
+  personType?: PersonType;
   expedienteSummary: NonNullable<Subscriber360Response['expedienteSummary']>;
   onClose: () => void;
   onSuccess: () => Promise<void>;
@@ -22,6 +26,7 @@ interface ConvertExpedienteToContractDialogProps {
 
 export function ConvertExpedienteToContractDialog({
   subscriberId,
+  personType = PersonType.NATURAL,
   expedienteSummary,
   onClose,
   onSuccess,
@@ -34,6 +39,13 @@ export function ConvertExpedienteToContractDialog({
   usePortalModalDrawerBroadcast(true);
 
   const [error, setError] = useState<string | null>(null);
+  const [serviceUsage, setServiceUsage] = useState<ServiceUsage | ''>('');
+  const [installationStratum, setInstallationStratum] = useState('');
+  const [hasStratumEvidence, setHasStratumEvidence] = useState(false);
+  const [pendingEvidenceFile, setPendingEvidenceFile] = useState<File | null>(null);
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+  const [evidenceUploadError, setEvidenceUploadError] = useState<string | null>(null);
+  const [stratumError, setStratumError] = useState<string | undefined>();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     expedienteSummary.interestedPlanId ?? null,
   );
@@ -85,15 +97,70 @@ export function ConvertExpedienteToContractDialog({
   }, []);
 
   const handleConvert = async () => {
+    setStratumError(undefined);
+
+    if (savedDraftId) {
+      if (!pendingEvidenceFile) {
+        await onSuccess();
+        return;
+      }
+
+      setLoading(true);
+      setEvidenceUploadError(null);
+      try {
+        const updated = await contractsApi.uploadStratumEvidence(savedDraftId, pendingEvidenceFile);
+        setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+        setPendingEvidenceFile(null);
+        await onSuccess();
+      } catch (uploadError) {
+        setEvidenceUploadError(stratumEvidenceUploadErrorMessage(uploadError));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (serviceUsage === ServiceUsage.RESIDENTIAL && !installationStratum) {
+      setStratumError('Selecciona el estrato del predio de instalación.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await contractsApi.createFromExpediente(subscriberId, {
+      const created = await contractsApi.createFromExpediente(subscriberId, {
         expedienteId: expedienteSummary.id,
+        ...(serviceUsage ? { serviceUsage } : {}),
+        ...(serviceUsage === ServiceUsage.RESIDENTIAL
+          ? { installationStratum: Number(installationStratum) }
+          : serviceUsage === ServiceUsage.NON_RESIDENTIAL
+            ? { installationStratum: null }
+            : {}),
       });
+
+      if (pendingEvidenceFile) {
+        setSavedDraftId(created.id);
+        try {
+          const updated = await contractsApi.uploadStratumEvidence(created.id, pendingEvidenceFile);
+          setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+          setPendingEvidenceFile(null);
+        } catch (uploadError) {
+          setEvidenceUploadError(stratumEvidenceUploadErrorMessage(uploadError));
+          return;
+        }
+      }
       await onSuccess();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No fue posible convertir la oportunidad.');
+      if (
+        err instanceof ApiError &&
+        err.status === 422 &&
+        /installationStratum/i.test(err.message)
+      ) {
+        setStratumError('Revisa el estrato del predio de instalación.');
+      } else {
+        setError(
+          err instanceof ApiError ? err.message : 'No fue posible convertir la oportunidad.',
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -168,6 +235,52 @@ export function ConvertExpedienteToContractDialog({
               <SummaryRow label="Notas" value={expedienteSummary.commercialNotes} />
             )}
           </dl>
+        </div>
+
+        <div className="mt-5">
+          <ServicePointFields
+            personType={personType}
+            serviceUsage={serviceUsage}
+            onServiceUsageChange={(value) => {
+              setServiceUsage(value);
+              setStratumError(undefined);
+              if (value !== ServiceUsage.RESIDENTIAL) {
+                setInstallationStratum('');
+                setPendingEvidenceFile(null);
+                setEvidenceUploadError(null);
+              }
+            }}
+            installationStratum={installationStratum}
+            onInstallationStratumChange={(value) => {
+              setInstallationStratum(value);
+              setStratumError(undefined);
+              if (!['1', '2', '3'].includes(value)) {
+                setPendingEvidenceFile(null);
+                setEvidenceUploadError(null);
+              }
+            }}
+            hasStratumEvidence={hasStratumEvidence}
+            pendingEvidenceFile={pendingEvidenceFile}
+            onPendingEvidenceFileChange={(file) => {
+              setPendingEvidenceFile(file);
+              setEvidenceUploadError(null);
+            }}
+            {...(savedDraftId
+              ? {
+                  onRemoveEvidence: async () => {
+                    if (hasStratumEvidence) {
+                      const updated = await contractsApi.deleteStratumEvidence(savedDraftId);
+                      setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+                    }
+                    setPendingEvidenceFile(null);
+                    setEvidenceUploadError(null);
+                  },
+                }
+              : {})}
+            {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
+            disabled={loading}
+            {...(stratumError ? { stratumError } : {})}
+          />
         </div>
 
         {/* Selector de plan (confirmación / cambio) */}

@@ -165,7 +165,12 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       await contractsApi[action](id);
       await onReload();
     } catch (err) {
-      setTransitionError(err instanceof ApiError ? err.message : 'Error al cambiar estado.');
+      const message = err instanceof ApiError ? err.message : 'Error al cambiar estado.';
+      setTransitionError(
+        action === 'activate' && err instanceof ApiError && err.status === 422
+          ? `${message} Revisa el concepto de cobro del plan y sus complementos en el catálogo.`
+          : message,
+      );
     }
   };
 
@@ -364,6 +369,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       {selectedContract && (
         <ContractDetailDrawer
           contract={selectedContract}
+          personType={subscriber.personType}
           onClose={() => setSelectedContract(null)}
           onReload={async () => {
             await onReload();
@@ -378,6 +384,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       {showCreateDialog && (
         <CreateContractDialog
           subscriberId={subscriber.id}
+          personType={subscriber.personType}
           onClose={() => setShowCreateDialog(false)}
           onSuccess={async () => {
             setShowCreateDialog(false);
@@ -390,6 +397,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       {showConvertDialog && expedienteSummary && (
         <ConvertExpedienteToContractDialog
           subscriberId={subscriber.id}
+          personType={subscriber.personType}
           expedienteSummary={expedienteSummary}
           onClose={() => setShowConvertDialog(false)}
           onSuccess={async () => {

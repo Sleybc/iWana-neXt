@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { CatalogItemType, CustomerSegment } from '@iwana/shared';
+import { CatalogItemType, CustomerSegment, NetworkType } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
 import { PlanDetail } from '../entities/plan-detail.entity';
 import { ProductDetail } from '../entities/product-detail.entity';
@@ -116,6 +116,8 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
       isActive: item.isActive,
       basePrice: priceMap.has(item.id) ? parseFloat(priceMap.get(item.id)!) : 0,
       installationFee: installationMap.has(item.id) ? parseFloat(installationMap.get(item.id)!) : 0,
+      vatConcept: item.vatConcept,
+      networkType: detailMap.get(item.id)?.networkType ?? NetworkType.FIXED,
     }));
   }
 
@@ -156,6 +158,8 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
         monthlyPrice: parseFloat(price.basePrice),
         installationFee: parseFloat(price.installationFee),
         technology: detail?.technology ?? 'N/A',
+        vatConcept: item.vatConcept,
+        networkType: detail?.networkType ?? NetworkType.FIXED,
         snapshotAt: new Date(),
       };
     });

@@ -8,8 +8,15 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
-import { ChargeType, InstallationRule, ProductCategory } from '@iwana/shared';
+import {
+  ChargeType,
+  InstallationRule,
+  NetworkType,
+  ProductCategory,
+  VatConcept,
+} from '@iwana/shared';
 
 export class UpdateCatalogItemDto {
   @ApiPropertyOptional({ maxLength: 200 })
@@ -17,6 +24,14 @@ export class UpdateCatalogItemDto {
   @IsString()
   @MaxLength(200)
   name?: string;
+
+  @ApiPropertyOptional({
+    enum: VatConcept,
+    description: 'Concepto fiscal aplicable al ítem. Omitir conserva el valor actual.',
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(VatConcept)
+  vatConcept?: VatConcept;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -57,6 +72,11 @@ export class UpdateCatalogItemDto {
   @IsString()
   @MaxLength(100)
   technology?: string;
+
+  @ApiPropertyOptional({ enum: NetworkType })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(NetworkType)
+  networkType?: NetworkType;
 
   @ApiPropertyOptional({ enum: InstallationRule })
   @IsOptional()

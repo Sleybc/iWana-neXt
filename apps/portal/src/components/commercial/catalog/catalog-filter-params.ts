@@ -10,12 +10,14 @@ export interface ProductCatalogFilters {
   status: CatalogStatusFilter;
   model: ProductCommercialModelFilter;
   sort: ProductSortMode;
+  missingVatConcept?: boolean;
 }
 
 export interface ServiceCatalogFilters {
   q: string;
   status: CatalogStatusFilter;
   charge: string;
+  missingVatConcept?: boolean;
 }
 
 export interface PlanCatalogFilters {
@@ -23,6 +25,7 @@ export interface PlanCatalogFilters {
   status: CatalogStatusFilter;
   /** Chip «Sin precio vigente»: solo activos sin precio current. */
   missingPrice: boolean;
+  missingVatConcept?: boolean;
 }
 
 export const DEFAULT_PRODUCT_CATALOG_FILTERS: ProductCatalogFilters = {
@@ -45,9 +48,16 @@ export const DEFAULT_PLAN_CATALOG_FILTERS: PlanCatalogFilters = {
   missingPrice: false,
 };
 
-const PRODUCT_FILTER_KEYS = ['q', 'category', 'status', 'model', 'sort'] as const;
-const SERVICE_FILTER_KEYS = ['q', 'status', 'charge'] as const;
-const PLAN_FILTER_KEYS = ['q', 'status', 'missingPrice'] as const;
+const PRODUCT_FILTER_KEYS = [
+  'q',
+  'category',
+  'status',
+  'model',
+  'sort',
+  'missingVatConcept',
+] as const;
+const SERVICE_FILTER_KEYS = ['q', 'status', 'charge', 'missingVatConcept'] as const;
+const PLAN_FILTER_KEYS = ['q', 'status', 'missingPrice', 'missingVatConcept'] as const;
 
 const STATUS_VALUES: CatalogStatusFilter[] = ['ALL', 'ACTIVE', 'INACTIVE'];
 const MODEL_VALUES: ProductCommercialModelFilter[] = ['ALL', 'SALE', 'LOAN'];
@@ -99,39 +109,55 @@ function parseMissingPrice(value: string | null): boolean {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+function parseMissingVatConcept(value: string | null): boolean {
+  return parseMissingPrice(value);
+}
+
 /** Hidrata filtros de productos desde query params (defaults si ausentes o inválidos). */
 export function parseProductCatalogFilters(
   params: URLSearchParams | ReadonlyURLSearchParamsLike,
 ): ProductCatalogFilters {
-  return {
+  const filters: ProductCatalogFilters = {
     q: params.get('q')?.trim() ?? '',
     category: parseCategory(params.get('category')),
     status: parseStatus(params.get('status')),
     model: parseModel(params.get('model')),
     sort: parseSort(params.get('sort')),
   };
+  if (parseMissingVatConcept(params.get('missingVatConcept'))) {
+    filters.missingVatConcept = true;
+  }
+  return filters;
 }
 
 /** Hidrata filtros de servicios desde query params. */
 export function parseServiceCatalogFilters(
   params: URLSearchParams | ReadonlyURLSearchParamsLike,
 ): ServiceCatalogFilters {
-  return {
+  const filters: ServiceCatalogFilters = {
     q: params.get('q')?.trim() ?? '',
     status: parseStatus(params.get('status')),
     charge: parseCharge(params.get('charge')),
   };
+  if (parseMissingVatConcept(params.get('missingVatConcept'))) {
+    filters.missingVatConcept = true;
+  }
+  return filters;
 }
 
 /** Hidrata filtros de planes desde query params (defaults si ausentes o inválidos). */
 export function parsePlanCatalogFilters(
   params: URLSearchParams | ReadonlyURLSearchParamsLike,
 ): PlanCatalogFilters {
-  return {
+  const filters: PlanCatalogFilters = {
     q: params.get('q')?.trim() ?? '',
     status: parseStatus(params.get('status')),
     missingPrice: parseMissingPrice(params.get('missingPrice')),
   };
+  if (parseMissingVatConcept(params.get('missingVatConcept'))) {
+    filters.missingVatConcept = true;
+  }
+  return filters;
 }
 
 /** Escribe filtros de productos omitiendo defaults; preserva params no relacionados (p. ej. tab). */
@@ -159,6 +185,9 @@ export function applyProductCatalogFilters(
   if (filters.sort !== 'ACTIVE_NAME') {
     params.set('sort', filters.sort);
   }
+  if (filters.missingVatConcept) {
+    params.set('missingVatConcept', '1');
+  }
 
   return params;
 }
@@ -181,6 +210,9 @@ export function applyServiceCatalogFilters(
   }
   if (filters.charge !== 'ALL') {
     params.set('charge', filters.charge);
+  }
+  if (filters.missingVatConcept) {
+    params.set('missingVatConcept', '1');
   }
 
   return params;
@@ -207,6 +239,9 @@ export function applyPlanCatalogFilters(
   }
   if (filters.missingPrice) {
     params.set('missingPrice', '1');
+  }
+  if (filters.missingVatConcept) {
+    params.set('missingVatConcept', '1');
   }
 
   return params;

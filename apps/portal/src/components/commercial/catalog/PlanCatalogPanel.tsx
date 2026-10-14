@@ -22,7 +22,7 @@ import {
   type PlanInstallationRule,
   type UpdatePlanCatalogItemDto,
 } from '@/lib/api-client';
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType } from '@iwana/shared';
 import { PortalAlert, PortalPanel } from '@/components/shared/portal-ui';
 import { useCommercialFocusConsume } from '@/components/commercial/useCommercialFocusConsume';
 import {
@@ -61,7 +61,7 @@ interface PlanCatalogPanelProps {
   onFocusConsumed?: (() => void) | undefined;
 }
 
-const PLAN_FILTER_KEYS = ['q', 'status', 'missingPrice'] as const;
+const PLAN_FILTER_KEYS = ['q', 'status', 'missingPrice', 'missingVatConcept'] as const;
 
 export function PlanCatalogPanel({
   canEdit,
@@ -118,6 +118,7 @@ export function PlanCatalogPanel({
   const prevPageRef = useRef(page);
 
   const missingPriceFilter = catalogFilters.missingPrice;
+  const missingVatConceptFilter = catalogFilters.missingVatConcept ?? false;
   const searchValue = searchDraft;
 
   const activePlansCount = useMemo(() => plans.filter((item) => item.isActive).length, [plans]);
@@ -129,7 +130,8 @@ export function PlanCatalogPanel({
   });
   const pageCount = Math.max(1, meta.totalPages ?? 1);
 
-  const hasActiveFilters = Boolean(searchDraft.trim()) || missingPriceFilter;
+  const hasActiveFilters =
+    Boolean(searchDraft.trim()) || missingPriceFilter || missingVatConceptFilter;
 
   const editingPlan = useMemo(
     () => plans.find((plan) => plan.id === editingPlanId) ?? null,
@@ -173,6 +175,8 @@ export function PlanCatalogPanel({
       installationEnabled: true,
       installationFee: 120000,
       installationRule: InstallationRule.ON_DEMAND,
+      vatConcept: '',
+      networkType: NetworkType.FIXED,
     },
   });
 
@@ -229,6 +233,9 @@ export function PlanCatalogPanel({
       if (missingPriceFilter) {
         params.missingPrice = true;
       }
+      if (missingVatConceptFilter) {
+        params.missingVatConcept = true;
+      }
       if (sortBy && sortDir) {
         params.sortBy = sortBy;
         params.sortDir = sortDir;
@@ -276,7 +283,16 @@ export function PlanCatalogPanel({
         setIsLoading(false);
       }
     },
-    [catalogFilters.q, missingPriceFilter, page, pageSize, setQuery, sortBy, sortDir],
+    [
+      catalogFilters.q,
+      missingPriceFilter,
+      missingVatConceptFilter,
+      page,
+      pageSize,
+      setQuery,
+      sortBy,
+      sortDir,
+    ],
   );
 
   useEffect(() => {
@@ -335,11 +351,13 @@ export function PlanCatalogPanel({
       q: next.q ?? catalogFilters.q,
       status: 'ALL',
       missingPrice: next.missingPrice ?? catalogFilters.missingPrice,
+      missingVatConcept: next.missingVatConcept ?? missingVatConceptFilter,
     };
     setFilters({
       q: merged.q.trim() || null,
       status: null,
       missingPrice: merged.missingPrice ? '1' : null,
+      missingVatConcept: merged.missingVatConcept ? '1' : null,
     });
   }
 
@@ -371,6 +389,7 @@ export function PlanCatalogPanel({
       q: null,
       status: null,
       missingPrice: null,
+      missingVatConcept: null,
     });
   }
 
@@ -391,6 +410,8 @@ export function PlanCatalogPanel({
       installationEnabled: true,
       installationFee: 120000,
       installationRule: InstallationRule.ON_DEMAND,
+      vatConcept: '',
+      networkType: NetworkType.FIXED,
     });
     setIsDialogOpen(true);
   };
@@ -516,6 +537,11 @@ export function PlanCatalogPanel({
   const onSubmit = async (values: PlanFormValues) => {
     setServerMessage(null);
 
+    if (!editingPlanId && !values.vatConcept) {
+      setServerMessage('Selecciona el concepto de cobro para crear el plan.');
+      return;
+    }
+
     if (isBlockedTechnology(values.technology)) {
       setServerMessage('FTTH ya no está disponible como tecnología comercial.');
       return;
@@ -534,6 +560,8 @@ export function PlanCatalogPanel({
       basePrice: values.basePrice,
       installationRule: normalizedInstallationRule,
       installationFee: values.installationEnabled ? values.installationFee : 0,
+      vatConcept: values.vatConcept as NonNullable<PlanCatalogItem['vatConcept']>,
+      networkType: values.networkType,
     };
 
     try {
@@ -552,6 +580,14 @@ export function PlanCatalogPanel({
         const currentTechnology = normalizeTechnologyName(current.technology);
 
         const updatePayload: UpdatePlanCatalogItemDto = {};
+
+        if (values.vatConcept && values.vatConcept !== current.vatConcept) {
+          updatePayload.vatConcept = values.vatConcept;
+        }
+
+        if (values.networkType !== current.networkType) {
+          updatePayload.networkType = values.networkType;
+        }
 
         if (payload.name !== current.name) {
           updatePayload.name = payload.name;
@@ -657,6 +693,7 @@ export function PlanCatalogPanel({
           focusId={focusId}
           searchValue={searchValue}
           missingPriceFilter={missingPriceFilter}
+          missingVatConceptFilter={missingVatConceptFilter}
           hasActiveFilters={hasActiveFilters}
           page={meta.page ?? page}
           pageCount={pageCount}

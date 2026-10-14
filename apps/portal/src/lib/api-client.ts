@@ -31,6 +31,8 @@ import {
   SlaBreachStatus,
   SubscriberStatus,
   TaxType,
+  VatConcept,
+  NetworkType,
   TechnicalConfidence,
   TechnicalViabilityResult,
   TaxRegime,
@@ -124,6 +126,21 @@ import {
   type ExecutionOrderItemUsage,
   type ExecutionOrderEvidence,
   type Page,
+} from '@iwana/shared';
+import type {
+  CatalogItemTaxFields,
+  CreateCatalogItemTaxFields,
+  CreatePlanCatalogTaxFields,
+  ContractCreateInput,
+  ContractResponse,
+  ContractFromExpedienteCreateInput,
+  ContractServicePointUpdateInput,
+  ContractUpdateInput,
+  PlanCatalogTaxFields,
+  SubscriberTaxProfileSnapshot as SharedSubscriberTaxProfileSnapshot,
+  UpdateCatalogItemTaxFields,
+  UpdatePlanCatalogTaxFields,
+  TaxAssignmentSnapshot as SharedTaxAssignmentSnapshot,
 } from '@iwana/shared';
 import { formatFullName } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
@@ -1184,7 +1201,7 @@ export interface TenantSelfSettings {
 
 export type PlanInstallationRule = InstallationRule;
 
-export interface PlanCatalogItem {
+export interface PlanCatalogItem extends PlanCatalogTaxFields {
   id: string;
   name: string;
   technology: string;
@@ -1217,7 +1234,7 @@ export type {
   CommercialRecentChangeEntityType,
 } from '@iwana/shared';
 
-export interface CreatePlanCatalogItemDto {
+export interface CreatePlanCatalogItemDto extends CreatePlanCatalogTaxFields {
   name: string;
   technology: string;
   installationRule?: PlanInstallationRule;
@@ -1230,7 +1247,7 @@ export interface CreatePlanCatalogItemDto {
   isActive?: boolean;
 }
 
-export interface UpdatePlanCatalogItemDto {
+export interface UpdatePlanCatalogItemDto extends UpdatePlanCatalogTaxFields {
   name?: string;
   technology?: string;
   installationRule?: PlanInstallationRule;
@@ -1244,7 +1261,7 @@ export interface UpdatePlanCatalogItemDto {
 }
 
 // Additional Products types
-export interface AdditionalProduct {
+export interface AdditionalProduct extends CatalogItemTaxFields {
   id: string;
   name: string;
   category: ProductCategory;
@@ -1259,7 +1276,7 @@ export interface AdditionalProduct {
   updatedAt: string;
 }
 
-export interface AdditionalService {
+export interface AdditionalService extends CatalogItemTaxFields {
   id: string;
   name: string;
   chargeType: ChargeType;
@@ -1532,7 +1549,7 @@ export interface SimulateTaxResult {
   reason: string;
 }
 
-export interface CreateAdditionalProductDto {
+export interface CreateAdditionalProductDto extends CreateCatalogItemTaxFields {
   name: string;
   description?: string | undefined;
   category: AdditionalProduct['category'];
@@ -1542,7 +1559,7 @@ export interface CreateAdditionalProductDto {
   basePrice?: number;
 }
 
-export interface UpdateAdditionalProductDto {
+export interface UpdateAdditionalProductDto extends UpdateCatalogItemTaxFields {
   name?: string;
   description?: string | undefined;
   category?: AdditionalProduct['category'];
@@ -1552,7 +1569,7 @@ export interface UpdateAdditionalProductDto {
   basePrice?: number;
 }
 
-export interface CreateAdditionalServiceDto {
+export interface CreateAdditionalServiceDto extends CreateCatalogItemTaxFields {
   name: string;
   description?: string | undefined;
   chargeType: ChargeType;
@@ -1561,7 +1578,7 @@ export interface CreateAdditionalServiceDto {
   isActive?: boolean;
 }
 
-export interface UpdateAdditionalServiceDto {
+export interface UpdateAdditionalServiceDto extends UpdateCatalogItemTaxFields {
   name?: string;
   description?: string | undefined;
   chargeType?: ChargeType;
@@ -1626,6 +1643,8 @@ export interface CommercialListParams {
   isActive?: boolean;
   /** Solo ítems activos sin precio vigente RESIDENTIAL. */
   missingPrice?: boolean;
+  /** Solo catálogo legado sin concepto de cobro asociado. */
+  missingVatConcept?: boolean;
   /** Categoría de producto (`product_details.category`). */
   category?: ProductCategory;
   /** SALE (`is_loan=false`) | LOAN (`is_loan=true`). */
@@ -1758,6 +1777,9 @@ function buildCommercialListQuery(
   if (params?.missingPrice === true) {
     searchParams.set('missingPrice', 'true');
   }
+  if (params?.missingVatConcept === true) {
+    searchParams.set('missingVatConcept', 'true');
+  }
   if (params?.category) {
     searchParams.set('category', params.category);
   }
@@ -1797,6 +1819,8 @@ interface CommercialCatalogItemPayload {
   description: string | null;
   taxClassificationId: string | null;
   retentionApplicable: boolean;
+  vatConcept?: VatConcept | null;
+  networkType?: NetworkType;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -1837,6 +1861,8 @@ function mapCommercialPlan(item: CommercialCatalogItemPayload): PlanCatalogItem 
     isActive: item.isActive,
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
+    vatConcept: item.vatConcept ?? null,
+    networkType: item.networkType ?? NetworkType.FIXED,
   };
 }
 
@@ -1853,6 +1879,7 @@ function mapCommercialProduct(item: CommercialCatalogItemPayload): AdditionalPro
     basePrice: mapCurrentPriceAmount(item.currentPrice),
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
+    vatConcept: item.vatConcept ?? null,
   };
 }
 
@@ -1868,6 +1895,7 @@ function mapCommercialService(item: CommercialCatalogItemPayload): AdditionalSer
     installationFee: Number(item.installationFee ?? 0),
     createdAt: item.createdAt ?? new Date(0).toISOString(),
     updatedAt: item.updatedAt ?? new Date(0).toISOString(),
+    vatConcept: item.vatConcept ?? null,
   };
 }
 
@@ -2195,6 +2223,8 @@ export const commercialApi = {
           installationRule: dto.installationRule,
           downloadSpeedMbps: dto.downloadSpeedMbps,
           uploadSpeedMbps: dto.uploadSpeedMbps,
+          vatConcept: dto.vatConcept,
+          ...(dto.networkType ? { networkType: dto.networkType } : {}),
           retentionApplicable: false,
         }),
       },
@@ -2227,6 +2257,8 @@ export const commercialApi = {
         downloadSpeedMbps: dto.downloadSpeedMbps,
       }),
       ...(dto.uploadSpeedMbps !== undefined && { uploadSpeedMbps: dto.uploadSpeedMbps }),
+      ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
+      ...(dto.networkType !== undefined && { networkType: dto.networkType }),
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
     };
 
@@ -2302,6 +2334,7 @@ export const commercialApi = {
           category: dto.category,
           isLoan: dto.isLoan ?? false,
           requiresInventory: dto.requiresInventory ?? false,
+          vatConcept: dto.vatConcept,
           retentionApplicable: false,
         }),
       },
@@ -2331,6 +2364,7 @@ export const commercialApi = {
           ...(dto.requiresInventory !== undefined && {
             requiresInventory: dto.requiresInventory,
           }),
+          ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         }),
       },
@@ -2385,6 +2419,7 @@ export const commercialApi = {
           name: dto.name,
           description: dto.description,
           chargeType: dto.chargeType,
+          vatConcept: dto.vatConcept,
           retentionApplicable: false,
         }),
       },
@@ -2417,6 +2452,7 @@ export const commercialApi = {
           ...(dto.name !== undefined && { name: dto.name }),
           ...(dto.description !== undefined && { description: dto.description }),
           ...(dto.chargeType !== undefined && { chargeType: dto.chargeType }),
+          ...(dto.vatConcept !== undefined && { vatConcept: dto.vatConcept }),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         }),
       },
@@ -5593,73 +5629,12 @@ export type ListSubscribersResponse = ListResponse<SubscriberListItem> & {
 
 // ?? Contratos / Servicios contratados ????????????????????????????????????????
 
-export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'ARCHIVED';
+export type Contract = ContractResponse;
+export type ContractStatus = ContractResponse['status'];
 
-/** Contrato de servicio contratado (un subscriber puede tener N contratos). */
-export interface Contract {
-  id: string;
-  tenantId: string;
-  quoteId: string | null;
-  subscriberId: string;
-  planId: string;
-  planSnapshotJson: Record<string, unknown>;
-  status: ContractStatus;
-  alias: string;
-  installationAddress: string | null;
-  installationCity: string | null;
-  installationDepartment: string | null;
-  installationPostalCode: string | null;
-  installationNotes: string | null;
-  customerSegment: string | null;
-  additionalProductIds: string[];
-  additionalServiceIds: string[];
-  paymentMethod: string | null;
-  billingCycle: string | null;
-  fiscalName: string | null;
-  fiscalDocument: string | null;
-  fiscalAddress: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-}
+export type CreateContractPayload = Omit<ContractCreateInput, 'subscriberId'>;
 
-export interface CreateContractPayload {
-  subscriberId?: string;
-  quoteId?: string;
-  planId: string;
-  planSnapshotJson: Record<string, unknown>;
-  alias?: string;
-  installationAddress?: string;
-  installationCity?: string;
-  installationDepartment?: string;
-  installationPostalCode?: string;
-  installationNotes?: string;
-  customerSegment?: string;
-  additionalProductIds?: string[];
-  additionalServiceIds?: string[];
-  paymentMethod?: string;
-  billingCycle?: string;
-  fiscalName?: string;
-  fiscalDocument?: string;
-  fiscalAddress?: string;
-  startDate?: string;
-  endDate?: string;
-}
-
-export interface CreateContractFromExpedientePayload {
-  expedienteId?: string;
-  alias?: string;
-  installationAddress?: string;
-  installationCity?: string;
-  installationDepartment?: string;
-  installationPostalCode?: string;
-  installationNotes?: string;
-  customerSegment?: string;
-  paymentMethod?: string;
-  billingCycle?: string;
-}
+export type CreateContractFromExpedientePayload = ContractFromExpedienteCreateInput;
 
 export interface Subscriber360Response {
   subscriber: SubscriberRecord;
@@ -5702,34 +5677,11 @@ export type TaxAssignmentRateSource = 'CATALOG' | 'MANUAL';
 /** Tratamiento tributario efectivo de la asignaci?n. */
 export type TaxTreatmentPortal = 'STANDARD' | 'EXEMPT' | 'EXCLUDED' | 'FIXED';
 
-/** Estado del perfil tributario del suscriptor. */
-export type TaxProfileStatus = 'PENDING_REVIEW' | 'CONFIGURED';
-
 /** Snapshot de una asignaci?n tributaria individual. */
-export interface TaxAssignmentSnapshot {
-  id: string;
-  taxDefinitionId: string;
-  taxName: string;
-  effectiveRate: string | null;
-  rateSource: TaxAssignmentRateSource;
-  treatment: TaxTreatmentPortal | null;
-  status: TaxAssignmentStatus;
-  reason: string | null;
-  updatedAt: string;
-}
+export type TaxAssignmentSnapshot = SharedTaxAssignmentSnapshot;
 
 /** Snapshot del perfil tributario completo del suscriptor. */
-export interface SubscriberTaxProfileSnapshot {
-  id: string;
-  subscriberId: string;
-  segment: string | null;
-  stratum: number | null;
-  profileStatus: TaxProfileStatus;
-  confirmedAt: string | null;
-  confirmedBy: string | null;
-  assignments: TaxAssignmentSnapshot[];
-  updatedAt: string;
-}
+export type SubscriberTaxProfileSnapshot = SharedSubscriberTaxProfileSnapshot;
 
 /** Payload para crear o actualizar una asignaci?n tributaria. */
 export interface UpsertTaxAssignmentPayload {
@@ -6626,14 +6578,6 @@ export const contractsApi = {
       tenantSlug,
     ),
 
-  /** Crea un contrato de forma directa (sin pasar por subscriber en la ruta). */
-  create: (payload: CreateContractPayload, tenantSlug?: string) =>
-    request<Contract>(
-      '/crm/contracts',
-      { method: 'POST', body: JSON.stringify(payload) },
-      tenantSlug,
-    ),
-
   /** Lista todos los contratos (con filtros opcionales ?status=&planId=&page=&limit=). */
   findAll: (
     params?: { status?: ContractStatus; planId?: string; page?: number; limit?: number },
@@ -6657,10 +6601,37 @@ export const contractsApi = {
     request<Contract>(`/crm/contracts/${id}`, undefined, tenantSlug),
 
   /** Actualiza campos editables de un contrato (no incluye status). */
-  update: (id: string, payload: Partial<CreateContractPayload>, tenantSlug?: string) =>
+  update: (id: string, payload: ContractUpdateInput, tenantSlug?: string) =>
     request<Contract>(
       `/crm/contracts/${id}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  /** Actualiza y recalcula los datos fiscales del punto de servicio activo. */
+  updateServicePoint: (id: string, payload: ContractServicePointUpdateInput, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}/service-point`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  /** Asocia o reemplaza el soporte de estrato del contrato. */
+  uploadStratumEvidence: (id: string, file: File, tenantSlug?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<Contract>(
+      `/crm/contracts/${encodeURIComponent(id)}/stratum-evidence`,
+      { method: 'POST', body: formData },
+      tenantSlug,
+    );
+  },
+
+  /** Quita el soporte de estrato del contrato. */
+  deleteStratumEvidence: (id: string, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${encodeURIComponent(id)}/stratum-evidence`,
+      { method: 'DELETE' },
       tenantSlug,
     ),
 

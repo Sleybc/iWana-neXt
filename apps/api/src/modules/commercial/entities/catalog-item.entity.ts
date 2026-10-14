@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { CatalogItemType } from '@iwana/shared';
+import { CatalogItemType, VatConcept } from '@iwana/shared';
 
 /**
  * Tabla base del catálogo comercial (Class Table Inheritance manual).
@@ -30,6 +30,9 @@ export class CatalogItem {
 
   @Column({ type: 'varchar', length: 20 })
   type: CatalogItemType;
+
+  @Column({ type: 'varchar', length: 30, name: 'vat_concept', nullable: true })
+  vatConcept: VatConcept | null;
 
   @Column({ type: 'varchar', length: 200 })
   name: string;

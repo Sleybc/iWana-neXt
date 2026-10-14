@@ -1,9 +1,4 @@
-import {
-  TaxAssignmentRateSource,
-  TaxAssignmentStatus,
-  TaxTreatment,
-  TaxProfileStatus,
-} from '@iwana/shared';
+import type { SubscriberTaxProfileSnapshot, TaxAssignmentSnapshot } from '@iwana/shared';
 
 /**
  * Snapshot inmutable de una asignación tributaria para respuestas de lectura.
@@ -11,17 +6,7 @@ import {
  *
  * Ref: spec-2026-04-22 §9.1
  */
-export interface TaxAssignmentSnapshotDto {
-  id: string;
-  taxDefinitionId: string;
-  taxName: string;
-  effectiveRate: string | null;
-  rateSource: TaxAssignmentRateSource;
-  treatment: TaxTreatment | null;
-  status: TaxAssignmentStatus;
-  reason: string | null;
-  updatedAt: string;
-}
+export interface TaxAssignmentSnapshotDto extends TaxAssignmentSnapshot {}
 
 /**
  * Snapshot del perfil tributario del suscriptor para respuestas de lectura.
@@ -29,14 +14,4 @@ export interface TaxAssignmentSnapshotDto {
  *
  * Ref: spec-2026-04-22 §9.1
  */
-export interface SubscriberTaxProfileSnapshotDto {
-  id: string;
-  subscriberId: string;
-  segment: string | null;
-  stratum: number | null;
-  profileStatus: TaxProfileStatus;
-  confirmedAt: string | null;
-  confirmedBy: string | null;
-  assignments: TaxAssignmentSnapshotDto[];
-  updatedAt: string;
-}
+export interface SubscriberTaxProfileSnapshotDto extends SubscriberTaxProfileSnapshot {}

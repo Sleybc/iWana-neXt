@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CatalogItemType } from '@iwana/shared';
+import { CatalogItemType, NetworkType } from '@iwana/shared';
 import { SeguimientoTab } from './SeguimientoTab';
 import {
   commercialApi,
@@ -250,6 +250,8 @@ describe('SeguimientoTab', () => {
     mockGetPlanById.mockResolvedValue({
       id: planId,
       name: 'Plan Fibra 300',
+      vatConcept: null,
+      networkType: NetworkType.FIXED,
       technology: 'FTTH',
       installationRule: 'ALWAYS' as never,
       downloadSpeedMbps: 300,

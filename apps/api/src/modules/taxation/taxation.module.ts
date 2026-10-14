@@ -7,6 +7,8 @@ import { TaxCatalogReadAdapter } from './ports/tax-catalog-read.adapter';
 import { TaxCatalogReadPort } from './ports/tax-catalog-read.port';
 import { TaxApplicationReadAdapter } from './ports/tax-application-read.adapter';
 import { ITaxApplicationReadPort } from './ports/tax-application-read.port';
+import { InternetVatResolverAdapter } from './ports/internet-vat-resolver.adapter';
+import { IInternetVatResolverPort } from './ports/internet-vat-resolver.port';
 import { TaxationController } from './taxation.controller';
 import { TaxRulesController } from './tax-rules.controller';
 import { CommercialTaxAliasController } from './commercial-tax-alias.controller';
@@ -20,6 +22,7 @@ import { TaxRuleApplication } from './entities/tax-rule-application.entity';
  * Exports:
  * - TaxCatalogReadPort
  * - ITaxApplicationReadPort
+ * - IInternetVatResolverPort
  * - TaxPresetsSeeder
  *
  * ADR-029, ADR-082.
@@ -33,6 +36,7 @@ import { TaxRuleApplication } from './entities/tax-rule-application.entity';
     TaxPresetsSeeder,
     TaxCatalogReadAdapter,
     TaxApplicationReadAdapter,
+    InternetVatResolverAdapter,
     {
       provide: TaxCatalogReadPort,
       useExisting: TaxCatalogReadAdapter,
@@ -41,7 +45,16 @@ import { TaxRuleApplication } from './entities/tax-rule-application.entity';
       provide: ITaxApplicationReadPort,
       useExisting: TaxApplicationReadAdapter,
     },
+    {
+      provide: IInternetVatResolverPort,
+      useExisting: InternetVatResolverAdapter,
+    },
   ],
-  exports: [TaxCatalogReadPort, ITaxApplicationReadPort, TaxPresetsSeeder],
+  exports: [
+    TaxCatalogReadPort,
+    ITaxApplicationReadPort,
+    IInternetVatResolverPort,
+    TaxPresetsSeeder,
+  ],
 })
 export class TaxationModule {}

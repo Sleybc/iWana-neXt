@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BundleService } from '../services/bundle.service';
 import { CustomerSegment, DiscountType } from '@iwana/shared';
+import { encodeNameIdCursor } from '../../../common/pagination/cursor-codec';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -111,6 +112,28 @@ describe('BundleService', () => {
   });
 
   describe('findAll', () => {
+    it('sin parámetros entrega una primera página vacía de forma acotada', async () => {
+      const listQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      listQb.clone.mockReturnValue(listQb);
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({ manager: { createQueryBuilder: () => listQb } }),
+      );
+
+      const result = await service.findAll();
+
+      expect(listQb.take).toHaveBeenCalledWith(21);
+      expect(result).toEqual({ data: [], meta: { nextCursor: null, total: 0 } });
+    });
+
     it('retorna lista paginada de bundles activos con itemCount y meta', async () => {
       const bundles = [{ id: 'bun-1', name: 'Bundle A', isActive: true }];
       const listQb = {
@@ -183,6 +206,51 @@ describe('BundleService', () => {
         }),
       );
     });
+
+    it('continúa el cursor y devuelve cero ítems cuando el conteo no trae fila', async () => {
+      const bundles = [
+        { id: 'bun-2', name: 'Combo B', isActive: true },
+        { id: 'bun-3', name: 'Combo C', isActive: true },
+      ];
+      const listQb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        clone: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(3),
+        getMany: jest.fn().mockResolvedValue(bundles),
+      };
+      listQb.clone.mockReturnValue(listQb);
+      const countQb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      let queryCount = 0;
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => (++queryCount === 1 ? listQb : countQb),
+          },
+        }),
+      );
+
+      const result = await service.findAll({
+        cursor: encodeNameIdCursor('Combo A', 'bun-1'),
+        limit: 1,
+      });
+
+      expect(listQb.andWhere).toHaveBeenCalledWith(expect.stringContaining('bundle.name >'), {
+        cursorName: 'Combo A',
+        cursorId: 'bun-1',
+      });
+      expect(result.data).toEqual([{ ...bundles[0], itemCount: 0 }]);
+      expect(result.meta.nextCursor).toBeTruthy();
+    });
   });
 
   describe('findOne', () => {
@@ -231,6 +299,29 @@ describe('BundleService', () => {
       );
 
       await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);
+    });
+
+    it('marca como nula la referencia cuando falta el ítem de catálogo', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => ({ id: 'bun-1', name: 'Combo legado', tenantId: 'ten-1' }),
+            find: async () => [
+              { bundleId: 'bun-1', itemId: 'deleted-item', isRequired: true, sortOrder: 0 },
+            ],
+            createQueryBuilder: () => ({
+              where: jest.fn().mockReturnThis(),
+              getMany: jest.fn().mockResolvedValue([]),
+            }),
+          },
+        }),
+      );
+
+      const result = await service.findOne('bun-1');
+
+      expect(result.items).toEqual([
+        { itemId: 'deleted-item', isRequired: true, sortOrder: 0, item: null },
+      ]);
     });
   });
 
@@ -283,6 +374,45 @@ describe('BundleService', () => {
   });
 
   describe('calculatePrice', () => {
+    it('FREE_MONTHS no altera el precio del ciclo y omite opcionales no seleccionados', async () => {
+      const bundle = {
+        id: 'bun-free',
+        discountType: DiscountType.FREE_MONTHS,
+        discountValue: '1',
+        tenantId: 'ten-1',
+      };
+      const priceQuery = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([
+            { item_id: 'required-item', base_price: '12500.00', name: 'Plan básico' },
+          ]),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => bundle,
+            find: async () => [
+              { itemId: 'required-item', isRequired: true },
+              { itemId: 'optional-item', isRequired: false },
+            ],
+            createQueryBuilder: () => priceQuery,
+          },
+        }),
+      );
+
+      const result = await service.calculatePrice('bun-free', CustomerSegment.RESIDENTIAL);
+
+      expect(result).toMatchObject({ subtotal: '12500.00', discount: '0.00', total: '12500.00' });
+      expect(result.breakdown).toEqual([
+        { itemId: 'required-item', name: 'Plan básico', price: '12500.00' },
+      ]);
+    });
+
     it('aplica descuento por porcentaje correctamente', async () => {
       const bundle = {
         id: 'bun-1',

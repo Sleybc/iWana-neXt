@@ -219,6 +219,7 @@ export interface PlanCatalogTableProps {
   focusId?: string | null | undefined;
   searchValue: string;
   missingPriceFilter: boolean;
+  missingVatConceptFilter: boolean;
   hasActiveFilters: boolean;
   page: number;
   pageCount: number;
@@ -244,6 +245,7 @@ export function PlanCatalogTable({
   focusId = null,
   searchValue,
   missingPriceFilter,
+  missingVatConceptFilter,
   hasActiveFilters,
   page,
   pageCount,
@@ -389,6 +391,14 @@ export function PlanCatalogTable({
             )}
           >
             Sin precio vigente
+          </PortalFilterChip>
+
+          <PortalFilterChip
+            active={missingVatConceptFilter}
+            onClick={() => onUpdateFilters({ missingVatConcept: !missingVatConceptFilter })}
+            className="h-12 px-4"
+          >
+            Sin concepto fiscal
           </PortalFilterChip>
 
           {hasActiveFilters && (

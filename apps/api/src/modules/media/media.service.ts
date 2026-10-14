@@ -1,4 +1,11 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
@@ -7,7 +14,7 @@ import { MediaAsset, MediaUsage } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import { imageSize } from 'image-size';
 import { validateMagicBytes } from './magic-bytes';
-import type { UploadMediaDto } from './dto/upload-media.dto';
+import { GENERIC_MEDIA_USAGES, type UploadMediaDto } from './dto/upload-media.dto';
 import type { MediaAssetResponseDto } from './dto/media-asset-response.dto';
 
 /**
@@ -45,6 +52,10 @@ const MEDIA_CONSTRAINTS: Record<MediaUsage, { maxBytes: number; allowedMimes: st
   [MediaUsage.EXECUTION_EVIDENCE]: {
     maxBytes: 25 * 1024 * 1024, // 25 MB
     allowedMimes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
+  },
+  [MediaUsage.STRATUM_EVIDENCE]: {
+    maxBytes: 10 * 1024 * 1024, // 10 MiB
+    allowedMimes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
   },
 };
 
@@ -127,6 +138,13 @@ export class MediaService {
     this.assertTenantSchema(tenantSchema);
     const usage = dto.usage ?? MediaUsage.GENERAL;
 
+    if (usage === MediaUsage.STRATUM_EVIDENCE) {
+      throw new BadRequestException({
+        code: 'MEDIA_GENERIC_STRATUM_EVIDENCE_FORBIDDEN',
+        message: 'El soporte de estrato debe cargarse desde el contrato correspondiente.',
+      });
+    }
+
     if (usage === MediaUsage.EXECUTION_EVIDENCE) {
       throw new BadRequestException({
         code: 'MEDIA_GENERIC_EXECUTION_EVIDENCE_FORBIDDEN',
@@ -134,6 +152,48 @@ export class MediaService {
       });
     }
 
+    if (!GENERIC_MEDIA_USAGES.some((genericUsage) => genericUsage === usage)) {
+      throw new BadRequestException({
+        code: 'MEDIA_GENERIC_USAGE_FORBIDDEN',
+        message: 'El uso solicitado no está disponible en la carga genérica.',
+      });
+    }
+
+    return this.uploadAsset(tenantSchema, usage, file, uploadedByUserId, dto.themeVariant);
+  }
+
+  /** Carga de uso interno; no existe una ruta genérica que permita escogerlo. */
+  async uploadStratumEvidence(
+    tenantSchema: string,
+    file: Express.Multer.File,
+    uploadedByUserId?: string,
+  ): Promise<MediaAssetResponseDto> {
+    this.assertTenantSchema(tenantSchema);
+    if (!file) {
+      throw new BadRequestException('Se requiere el campo "file" con el soporte del estrato.');
+    }
+
+    const constraints = MEDIA_CONSTRAINTS[MediaUsage.STRATUM_EVIDENCE];
+    if (
+      !constraints.allowedMimes.includes(file.mimetype) ||
+      !validateMagicBytes(file.buffer, file.mimetype)
+    ) {
+      throw new UnprocessableEntityException({
+        code: 'STRATUM_EVIDENCE_TYPE_NOT_ALLOWED',
+        message: 'Formato no admitido. Usa un archivo PDF o una imagen JPG, PNG o WEBP.',
+      });
+    }
+
+    return this.uploadAsset(tenantSchema, MediaUsage.STRATUM_EVIDENCE, file, uploadedByUserId);
+  }
+
+  private async uploadAsset(
+    tenantSchema: string,
+    usage: MediaUsage,
+    file: Express.Multer.File,
+    uploadedByUserId?: string,
+    themeVariant?: UploadMediaDto['themeVariant'],
+  ): Promise<MediaAssetResponseDto> {
     // Validar MIME type y tamaño según el uso declarado
     this.validateFile(file, usage);
 
@@ -144,7 +204,7 @@ export class MediaService {
     const asset = this.mediaRepo.create({
       tenantSchema,
       usage,
-      themeVariant: dto.themeVariant ?? null,
+      themeVariant: themeVariant ?? null,
       // El nombre recibido es no confiable y no se persiste.
       originalFilename: `${randomUUID()}.${ext}`,
       mimeType: file.mimetype,
@@ -226,17 +286,40 @@ export class MediaService {
     tenantSchema: string,
     expiresInSeconds = 3600,
   ): Promise<{ signedUrl: string; expiresAt: Date }> {
+    return this.generateSignedUrl(id, tenantSchema, expiresInSeconds, 'generic');
+  }
+
+  /** Uso interno de Contracts: el vínculo al contrato se valida antes de llamar este método. */
+  async getStratumEvidenceSignedUrl(
+    id: string,
+    tenantSchema: string,
+  ): Promise<{ signedUrl: string; expiresAt: Date }> {
+    return this.generateSignedUrl(id, tenantSchema, 300, MediaUsage.STRATUM_EVIDENCE);
+  }
+
+  private async generateSignedUrl(
+    id: string,
+    tenantSchema: string,
+    expiresInSeconds: number,
+    access: 'generic' | MediaUsage.STRATUM_EVIDENCE,
+  ): Promise<{ signedUrl: string; expiresAt: Date }> {
     this.assertTenantSchema(tenantSchema);
     const asset = await this.mediaRepo.findOne({
       where: { id, tenantSchema },
     });
 
-    if (!asset || asset.deletedAt) {
+    if (
+      !asset ||
+      asset.deletedAt ||
+      (access === 'generic' && asset.usage === MediaUsage.STRATUM_EVIDENCE) ||
+      (access === MediaUsage.STRATUM_EVIDENCE && asset.usage !== MediaUsage.STRATUM_EVIDENCE)
+    ) {
       throw new NotFoundException(`Asset ${id} no encontrado.`);
     }
 
-    // Por política de seguridad, la URL firmada expira en máx. 1 hora
-    const clampedExpiry = Math.min(expiresInSeconds, 3600);
+    // El endpoint contractual tiene un máximo de 5 minutos; el genérico conserva su política de 1 hora.
+    const maximumExpiry = access === MediaUsage.STRATUM_EVIDENCE ? 300 : 3600;
+    const clampedExpiry = Math.min(expiresInSeconds, maximumExpiry);
     const signedUrl = await this.storage.getSignedUrl(asset.objectKey, clampedExpiry);
     const expiresAt = new Date(Date.now() + clampedExpiry * 1000);
 
@@ -379,6 +462,7 @@ export class MediaService {
       'image/gif': 'gif',
       'image/x-icon': 'ico',
       'image/vnd.microsoft.icon': 'ico',
+      'application/pdf': 'pdf',
     };
 
     return mimeExtMap[mimeType] ?? 'bin';

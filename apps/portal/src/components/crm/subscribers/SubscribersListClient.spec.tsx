@@ -113,7 +113,7 @@ describe('SubscribersListClient ADR-065', () => {
     });
   });
 
-  it('muestra el IVA real y conserva el fallback de ubicación sin city restringida', async () => {
+  it('CA-UX-IVA-18 retira el IVA del listado y conserva el fallback de ubicación', async () => {
     listMock.mockResolvedValue({
       data: [
         subscriberFixture(
@@ -129,7 +129,8 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     const row = await screen.findByRole('row', { name: /Ana Pérez/ });
-    expect(within(row).getByText('Excluido')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'IVA' })).not.toBeInTheDocument();
+    expect(within(row).queryByText('Excluido')).not.toBeInTheDocument();
     expect(within(row).getByText('Sin ubicación')).toBeInTheDocument();
   });
 

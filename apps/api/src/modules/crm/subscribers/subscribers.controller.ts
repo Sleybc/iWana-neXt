@@ -238,7 +238,7 @@ export class SubscribersController {
               personType: { type: 'string', enum: Object.values(PersonType) },
               customerSegment: { type: 'string', enum: Object.values(CustomerSegment) },
               stratum: { type: 'number', nullable: true },
-              vatTreatment: { type: 'string', enum: Object.values(VatTreatment) },
+              vatTreatment: { type: 'string', enum: Object.values(VatTreatment), deprecated: true },
               documentType: {
                 type: 'string',
                 enum: Object.values(DocumentType),

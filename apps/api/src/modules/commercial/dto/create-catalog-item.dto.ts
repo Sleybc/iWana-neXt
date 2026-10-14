@@ -8,8 +8,16 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
-import { CatalogItemType, ChargeType, InstallationRule, ProductCategory } from '@iwana/shared';
+import {
+  CatalogItemType,
+  ChargeType,
+  InstallationRule,
+  NetworkType,
+  ProductCategory,
+  VatConcept,
+} from '@iwana/shared';
 
 export class CreateCatalogItemDto {
   @ApiProperty({ enum: CatalogItemType })
@@ -20,6 +28,13 @@ export class CreateCatalogItemDto {
   @IsString()
   @MaxLength(200)
   name: string;
+
+  @ApiProperty({
+    enum: VatConcept,
+    description: 'Concepto fiscal aplicable al ítem del catálogo.',
+  })
+  @IsEnum(VatConcept)
+  vatConcept: VatConcept;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -56,6 +71,12 @@ export class CreateCatalogItemDto {
   @IsString()
   @MaxLength(100)
   technology?: string;
+
+  /** Solo para type=PLAN. La red fija es el valor predeterminado. */
+  @ApiPropertyOptional({ enum: NetworkType, default: NetworkType.FIXED })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(NetworkType)
+  networkType?: NetworkType;
 
   @ApiPropertyOptional({ enum: InstallationRule })
   @IsOptional()

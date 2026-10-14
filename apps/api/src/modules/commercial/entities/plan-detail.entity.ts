@@ -1,5 +1,5 @@
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType } from '@iwana/shared';
 import { CatalogItem } from './catalog-item.entity';
 
 /**
@@ -19,6 +19,9 @@ export class PlanDetail {
 
   @Column({ type: 'integer', name: 'upload_speed_mbps' })
   uploadSpeedMbps: number;
+
+  @Column({ type: 'varchar', length: 10, name: 'network_type', default: 'FIXED' })
+  networkType: NetworkType;
 
   @Column({ type: 'varchar', length: 100 })
   technology: string;

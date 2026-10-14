@@ -1,6 +1,26 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { CustomerSegment } from '@iwana/shared';
+import { Transform } from 'class-transformer';
+import {
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  MinLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { CustomerSegment, ServiceUsage } from '@iwana/shared';
+import { CONTRACT_PLAN_ID_MAX_LENGTH } from '../utils/contract-plan-id.util';
+
+/** Recorta los espacios antes de validar; la regla coincide con la ruta desde expediente. */
+function trimPlanId({ value }: { value: unknown }): unknown {
+  return typeof value === 'string' ? value.trim() : value;
+}
 
 export class CreateContractDto {
   @ApiPropertyOptional({ description: 'ID de la cotización de origen (opcional)' })
@@ -13,11 +33,14 @@ export class CreateContractDto {
   subscriberId: string;
 
   @ApiProperty({ description: 'ID del plan del catálogo' })
+  @Transform(trimPlanId)
   @IsString()
-  @MaxLength(120)
+  @MinLength(1)
+  @MaxLength(CONTRACT_PLAN_ID_MAX_LENGTH)
   planId: string;
 
   @ApiProperty({ description: 'Snapshot del plan en el momento de contratación' })
+  @IsObject()
   planSnapshotJson: Record<string, unknown>;
 
   @ApiPropertyOptional({
@@ -65,6 +88,18 @@ export class CreateContractDto {
   @IsOptional()
   @IsEnum(CustomerSegment)
   customerSegment?: CustomerSegment;
+
+  @ApiPropertyOptional({ enum: ServiceUsage })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsEnum(ServiceUsage)
+  serviceUsage?: ServiceUsage;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  installationStratum?: number | null;
 
   // ── Add-ons ───────────────────────────────────────────────────────────────
 

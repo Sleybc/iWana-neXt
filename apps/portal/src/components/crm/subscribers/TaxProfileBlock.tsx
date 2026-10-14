@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Button,
   Card,
   CardContent,
   CardHeader,
@@ -14,7 +15,8 @@ import {
   DialogTitle,
   FormStatus,
 } from '@iwana/ui';
-import { Check, Loader2, Plus, RefreshCw, ShieldCheck, Pencil, X } from 'lucide-react';
+import { Check, Loader2, Plus, ShieldCheck, Pencil, X } from 'lucide-react';
+import { TaxCategory } from '@iwana/shared';
 import {
   ApiError,
   COMMERCIAL_PICKER_LIMIT,
@@ -24,6 +26,11 @@ import {
   type TaxDefinition,
   subscriberTaxApi,
 } from '@/lib/api-client';
+import {
+  PortalAlert,
+  PortalSkeletonBlock,
+  interactiveFocusClassName,
+} from '@/components/shared/portal-ui';
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
 
@@ -61,15 +68,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   OTHER: 'Otro',
 };
 
-const STRATUM_LABELS: Record<number, string> = {
-  1: 'Estrato 1',
-  2: 'Estrato 2',
-  3: 'Estrato 3',
-  4: 'Estrato 4',
-  5: 'Estrato 5',
-  6: 'Estrato 6',
-};
-
 // ── Modal: Agregar tributos del catálogo ─────────────────────────────────────
 
 interface AddTributosModalProps {
@@ -102,7 +100,9 @@ function AddTributosModal({
     setLoadingCatalog(true);
     commercialApi
       .listTaxDefinitions({ isActive: true, limit: COMMERCIAL_PICKER_LIMIT })
-      .then((res) => setCatalog(res.data))
+      .then((res) =>
+        setCatalog(res.data.filter((definition) => definition.category !== TaxCategory.VAT)),
+      )
       .catch(() => setErrorMsg('No fue posible cargar el catálogo de tributos.'))
       .finally(() => setLoadingCatalog(false));
   }, [open]);
@@ -173,9 +173,10 @@ function AddTributosModal({
         </DialogHeader>
 
         {loadingCatalog && (
-          <div className="flex items-center gap-2 py-6 text-sm text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Cargando catálogo…
+          <div role="status" aria-label="Cargando catálogo de tributos" className="space-y-3 py-4">
+            <span className="sr-only">Cargando catálogo…</span>
+            <PortalSkeletonBlock className="h-10 rounded-xl" />
+            <PortalSkeletonBlock className="h-10 rounded-xl" />
           </div>
         )}
 
@@ -183,7 +184,7 @@ function AddTributosModal({
 
         {!loadingCatalog && !errorMsg && catalog.length === 0 && (
           <p className="py-4 text-center text-sm text-gray-400">
-            No hay tributos activos en el catálogo. Créalos en{' '}
+            No hay otros tributos activos en el catálogo. Créalos en{' '}
             <span className="font-medium">Configuración → Reglas</span>.
           </p>
         )}
@@ -442,26 +443,24 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
 
 interface TaxProfileBlockProps {
   subscriberId: string;
+  onNavigateToServices: () => void;
 }
 
 /**
  * Bloque de perfil tributario del suscriptor para Suscriptor 360.
  *
- * Al primer acceso (perfil vacío), sugiere automáticamente IVA por estrato.
- * Permite agregar tributos adicionales del catálogo vía checklist modal,
+ * Conserva los tributos distintos de IVA del perfil del suscriptor y permite
+ * administrarlos desde el catálogo; el IVA se consulta en cada contrato.
+ * Permite agregar tributos del catálogo vía checklist modal,
  * y confirmar o ajustar manualmente cada asignación.
  *
  * Ref: BT-TAXMVP-13, BT-TAXMVP-14, BT-TAXMVP-15
  */
-export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
+export function TaxProfileBlock({ subscriberId, onNavigateToServices }: TaxProfileBlockProps) {
   const [profile, setProfile] = useState<SubscriberTaxProfileSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [recalculating, setRecalculating] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-
-  // Evita doble auto-sugerencia (React StrictMode invoca effects dos veces en dev)
-  const autoSuggestedRef = useRef(false);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -482,31 +481,11 @@ export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
     void loadProfile();
   }, [loadProfile]);
 
-  // Auto-sugerencia de IVA cuando el perfil está vacío (primer acceso)
-  useEffect(() => {
-    if (!profile || profile.assignments.length > 0 || autoSuggestedRef.current) return;
-    autoSuggestedRef.current = true;
-    setRecalculating(true);
-    subscriberTaxApi
-      .suggestVat(subscriberId)
-      .then((res) => setProfile(res))
-      .catch(() => {
-        /* si no hay sugerencia, el usuario puede usar Agregar tributos */
-      })
-      .finally(() => setRecalculating(false));
-  }, [profile, subscriberId]);
-
-  const handleRecalculateVat = useCallback(async () => {
-    setRecalculating(true);
-    try {
-      const result = await subscriberTaxApi.suggestVat(subscriberId);
-      setProfile(result);
-    } catch {
-      /* mantiene estado previo */
-    } finally {
-      setRecalculating(false);
-    }
-  }, [subscriberId]);
+  const visibleAssignments = useMemo(
+    () =>
+      profile?.assignments.filter((assignment) => assignment.taxCategory !== TaxCategory.VAT) ?? [],
+    [profile],
+  );
 
   const profileStatusMeta = profile
     ? (PROFILE_STATUS_META[profile.profileStatus] ?? PROFILE_STATUS_META['PENDING_REVIEW']!)
@@ -514,113 +493,122 @@ export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
 
   return (
     <>
-      <Card className="rounded-[20px] shadow-sm">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
-            <CardTitle className="text-base">Perfil tributario</CardTitle>
+      {loading ? (
+        <div aria-label="Cargando perfil tributario" aria-busy="true" className="space-y-3">
+          <PortalSkeletonBlock className="h-16 rounded-2xl" />
+          <PortalSkeletonBlock className="h-32 rounded-2xl" />
+        </div>
+      ) : null}
 
-            {profile?.stratum != null && (
-              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-surface-3 dark:text-gray-300">
-                {STRATUM_LABELS[profile.stratum] ?? `Estrato ${profile.stratum}`}
-              </span>
-            )}
+      {error ? (
+        <PortalAlert
+          variant="error"
+          title="No fue posible cargar el perfil tributario"
+          description={error}
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void loadProfile()}>
+              Reintentar
+            </Button>
+          }
+        />
+      ) : null}
 
-            {profileStatusMeta && (
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${profileStatusMeta.badgeClass}`}
-              >
-                {profileStatusMeta.label}
-              </span>
-            )}
-          </div>
+      {!loading && !error && profile ? (
+        <Card className="rounded-[20px] shadow-sm">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
+              <CardTitle className="text-base">Perfil tributario</CardTitle>
 
-          {profile && (
+              {profileStatusMeta && (
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${profileStatusMeta.badgeClass}`}
+                >
+                  {profileStatusMeta.label}
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center gap-2">
-              <button
-                aria-label="Recalcular sugerencia de IVA por estrato"
-                disabled={recalculating}
-                onClick={() => void handleRecalculateVat()}
-                className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface-3"
-              >
-                {recalculating ? (
-                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                ) : (
-                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                )}
-                Recalcular IVA
-              </button>
-
               <button
                 aria-label="Agregar tributos del catálogo"
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1 rounded-lg bg-iwana-primary px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90"
+                className="flex min-h-11 items-center gap-1 rounded-lg bg-iwana-primary px-3 text-xs font-semibold text-white hover:opacity-90"
               >
                 <Plus className="h-3 w-3" aria-hidden="true" />
                 Agregar tributos
               </button>
             </div>
-          )}
-        </CardHeader>
+          </CardHeader>
 
-        <CardContent>
-          {(loading || recalculating) && (
-            <div className="flex items-center gap-2 py-6 text-sm text-gray-500 dark:text-gray-400">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              {loading ? 'Cargando perfil tributario…' : 'Calculando sugerencia de IVA…'}
-            </div>
-          )}
+          <CardContent>
+            <PortalAlert
+              variant="info"
+              title="Consulta el IVA por contrato"
+              description={
+                <>
+                  El IVA se consulta en cada contrato, en{' '}
+                  <button
+                    type="button"
+                    onClick={onNavigateToServices}
+                    className={`inline-flex min-h-11 items-center font-semibold text-iwana-primary underline underline-offset-2 ${interactiveFocusClassName}`}
+                  >
+                    Servicios
+                  </button>
+                  .
+                </>
+              }
+            />
 
-          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
-
-          {!loading && !recalculating && !error && profile && profile.assignments.length === 0 && (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                No hay tributos aplicables por estrato para este suscriptor. Agrega manualmente los
-                tributos que le corresponden.
-              </p>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-iwana-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Agregar tributos
-              </button>
-            </div>
-          )}
-
-          {!loading && !recalculating && !error && profile && profile.assignments.length > 0 && (
-            <>
-              <ul
-                aria-label="Asignaciones tributarias del suscriptor"
-                className="flex flex-col gap-2"
-              >
-                {profile.assignments.map((assignment) => (
-                  <AssignmentRow
-                    key={assignment.id}
-                    assignment={assignment}
-                    subscriberId={subscriberId}
-                    onUpdated={setProfile}
-                  />
-                ))}
-              </ul>
-
-              {profile.confirmedAt && (
-                <p className="mt-3 text-right text-xs text-gray-400 dark:text-gray-400">
-                  Configurado el{' '}
-                  {new Date(profile.confirmedAt).toLocaleDateString('es-CO', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
+            {visibleAssignments.length === 0 && (
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No hay otros tributos asignados a este suscriptor. Puedes agregar los que le
+                  correspondan desde el catálogo.
                 </p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex min-h-11 items-center gap-1.5 rounded-lg bg-iwana-primary px-4 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Agregar tributos
+                </button>
+              </div>
+            )}
 
-      {profile && (
+            {visibleAssignments.length > 0 && (
+              <>
+                <ul
+                  aria-label="Asignaciones tributarias del suscriptor"
+                  className="flex flex-col gap-2"
+                >
+                  {visibleAssignments.map((assignment) => (
+                    <AssignmentRow
+                      key={assignment.id}
+                      assignment={assignment}
+                      subscriberId={subscriberId}
+                      onUpdated={setProfile}
+                    />
+                  ))}
+                </ul>
+
+                {profile.confirmedAt && (
+                  <p className="mt-3 text-right text-xs text-gray-400 dark:text-gray-400">
+                    Configurado el{' '}
+                    {new Date(profile.confirmedAt).toLocaleDateString('es-CO', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {!loading && !error && profile ? (
         <AddTributosModal
           open={showAddModal}
           onClose={() => setShowAddModal(false)}
@@ -628,7 +616,7 @@ export function TaxProfileBlock({ subscriberId }: TaxProfileBlockProps) {
           existingAssignments={profile.assignments}
           onSaved={setProfile}
         />
-      )}
+      ) : null}
     </>
   );
 }

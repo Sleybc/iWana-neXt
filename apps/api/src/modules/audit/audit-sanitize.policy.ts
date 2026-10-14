@@ -93,7 +93,7 @@ export const AUDIT_NEVER_OMITTED_KEYS = new Set(['actorname', 'piiaaccess']);
 export const AUDIT_TECHNICAL_ADDRESS_PATTERN = /(^|_)(ip|mac|remote)_address$/;
 
 export const AUDIT_PII_KEY_SUFFIX_PATTERN =
-  /(^|_)(email|encrypted|phone|document_number|nit|address|(contact|person|customer|holder|owner|subscriber|responsible|technician|uploaded_by|directed_to)_name)$/;
+  /(^|_)(email|encrypted|phone|document_number|fiscal_document|fiscal_name|nit|address|(contact|person|customer|holder|owner|subscriber|responsible|technician|uploaded_by|directed_to)_name)$/;
 
 export const AUDIT_MAX_SANITIZE_DEPTH = 5;
 

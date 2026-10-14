@@ -2,7 +2,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import { TenantContext } from '@iwana/db';
-import { CatalogItemType, CustomerSegment, InstallationRule } from '@iwana/shared';
+import { CatalogItemType, CustomerSegment, InstallationRule, VatConcept } from '@iwana/shared';
 import { CatalogService } from './services/catalog.service';
 import { PriceHistoryService } from './services/price-history.service';
 import { CatalogItem } from './entities/catalog-item.entity';
@@ -397,6 +397,7 @@ describe('CatalogService persistence tenant isolation', () => {
       async () => {
         const created = await catalogService.create({
           type: CatalogItemType.PLAN,
+          vatConcept: VatConcept.INTERNET_ACCESS,
           name: 'Plan Fibra 300 A',
           technology: 'FTTH',
           downloadSpeedMbps: 300,
@@ -427,6 +428,7 @@ describe('CatalogService persistence tenant isolation', () => {
       async () => {
         const created = await catalogService.create({
           type: CatalogItemType.PLAN,
+          vatConcept: VatConcept.INTERNET_ACCESS,
           name: 'Plan Fibra 600 B',
           technology: 'XGS-PON',
           downloadSpeedMbps: 600,

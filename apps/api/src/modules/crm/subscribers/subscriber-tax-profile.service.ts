@@ -2,13 +2,12 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import {
-  PersonType,
   TaxApplicationSnapshot,
   TaxAssignmentRateSource,
   TaxAssignmentStatus,
+  TaxCategory,
   TaxProfileStatus,
   TaxTreatment,
-  VatTreatment,
 } from '@iwana/shared';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { SubscriberTaxProfile } from './entities/subscriber-tax-profile.entity';
@@ -19,7 +18,6 @@ import {
   ITaxApplicationReadPort,
   type TaxApplicationResolveInput,
 } from '../../taxation/ports/tax-application-read.port';
-import { VatTreatmentService } from './vat-treatment.service';
 import {
   SubscriberTaxProfileSnapshotDto,
   TaxAssignmentSnapshotDto,
@@ -31,14 +29,13 @@ import { UpsertTaxAssignmentDto } from './dto/upsert-tax-assignment.dto';
  *
  * Dueño del submodelo subscriber_tax_profile / subscriber_tax_assignment.
  * Consume TaxationModule vía TaxCatalogReadPort e ITaxApplicationReadPort (ADR-082).
- * El tratamiento IVA canónico vive en VatTreatmentService (ADR-025).
  *
  * Usa runInTenantSchema para todas las operaciones de escritura/lectura en el
  * schema del tenant activo, compatibilidad con pgBouncer transaction pooling.
  *
  * Responsabilidades:
  * - Crear o retornar el perfil tributario de un suscriptor.
- * - Sugerir el tratamiento de IVA según estrato (encapsulado en este servicio).
+ * - Sugerir tributos distintos de IVA mediante las reglas tributarias vigentes.
  * - Guardar asignaciones en bulk (upsert por profileId + taxDefinitionId).
  * - Leer el perfil tributario completo para Suscriptor 360.
  *
@@ -52,12 +49,11 @@ export class SubscriberTaxProfileService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly taxCatalogPort: TaxCatalogReadPort,
     private readonly taxApplicationPort: ITaxApplicationReadPort,
-    private readonly vatTreatmentService: VatTreatmentService,
   ) {}
 
   /**
    * Retorna el perfil tributario completo del suscriptor con sus asignaciones.
-   * Si aún no existe, lo crea vacío y sugiere IVA por estrato automáticamente.
+   * Si aún no existe, crea el perfil y sugiere tributos distintos de IVA.
    */
   async getOrCreateProfile(subscriberId: string): Promise<SubscriberTaxProfileSnapshotDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
@@ -76,7 +72,7 @@ export class SubscriberTaxProfileService {
       });
 
       if (!profile) {
-        this.logger.log(`Creando perfil tributario para suscriptor ${subscriberId}`);
+        this.logger.log('Creando perfil tributario de suscriptor.');
         const newProfile = qr.manager.create(SubscriberTaxProfile, {
           tenantId,
           subscriberId,
@@ -88,9 +84,9 @@ export class SubscriberTaxProfileService {
         profile.assignments = [];
       }
 
-      // Sugerir IVA automáticamente si el perfil no tiene asignaciones aún
+      // Las asignaciones legadas se conservan; nuevas sugerencias excluyen IVA.
       if (!profile.assignments.length) {
-        await this._suggestVatInSchema(qr, profile, subscriber);
+        await this._suggestNonVatApplications(qr, profile, subscriber);
         profile =
           (await qr.manager.findOne(SubscriberTaxProfile, {
             where: { id: profile.id },
@@ -268,8 +264,8 @@ export class SubscriberTaxProfileService {
   }
 
   /**
-   * Recalcula y actualiza la sugerencia de IVA del suscriptor basándose en el estrato actual.
-   * Solo actualiza la asignación IVA si está en estado SUGGESTED; no sobreescribe confirmadas.
+   * Conserva la ruta legada de sugerencias para compatibilidad, pero ya no genera
+   * asignaciones de IVA por suscriptor. Solo añade sugerencias de otros tributos.
    *
    * Ref: spec-2026-04-22 §6.3
    */
@@ -294,7 +290,7 @@ export class SubscriberTaxProfileService {
         );
       }
 
-      await this._suggestVatInSchema(qr, profile, subscriber);
+      await this._suggestNonVatApplications(qr, profile, subscriber);
 
       const refreshed = await qr.manager.findOne(SubscriberTaxProfile, {
         where: { id: profile.id },
@@ -306,65 +302,19 @@ export class SubscriberTaxProfileService {
 
   // ── Helpers privados ──────────────────────────────────────────────────────────
 
-  /**
-   * Genera o actualiza la asignación de IVA basándose en la política de estrato.
-   * Busca el preset de IVA en el catálogo por código; si no existe, no genera asignación.
-   * Solo sobreescribe si la asignación existente sigue en estado SUGGESTED.
-   */
-  private async _suggestVatInSchema(
+  /** Resuelve sugerencias no IVA; nunca modifica ni crea asignaciones IVA existentes. */
+  private async _suggestNonVatApplications(
     qr: { manager: DataSource['manager'] },
     profile: SubscriberTaxProfile,
     subscriber: Subscriber,
   ): Promise<void> {
-    const treatment = this._mapVatTreatment(
-      this.vatTreatmentService.resolve(subscriber.personType, subscriber.stratum),
-    );
-    const reason = this._buildVatReason(subscriber.personType, subscriber.stratum);
-
     const resolveInput: TaxApplicationResolveInput = {
       personType: subscriber.personType,
       segment: subscriber.customerSegment,
       ...(subscriber.stratum != null ? { stratum: subscriber.stratum } : {}),
     };
     const resolvedApps = await this.taxApplicationPort.resolve(resolveInput);
-
-    const ivaDef =
-      (await this.taxCatalogPort.findActiveByCode('IVA_19')) ??
-      (await this.taxCatalogPort.findActiveByCode('IVA'));
-
-    if (!ivaDef) {
-      this.logger.warn(
-        `No se encontró definición IVA en el catálogo para tenant ${profile.tenantId}. Sin sugerencia IVA.`,
-      );
-    } else {
-      const existing = await qr.manager.findOne(SubscriberTaxAssignment, {
-        where: { profileId: profile.id, taxDefinitionId: ivaDef.id },
-      });
-
-      if (existing) {
-        if (existing.status === TaxAssignmentStatus.SUGGESTED) {
-          existing.treatment = treatment;
-          existing.reason = reason;
-          existing.taxNameSnapshot = ivaDef.name;
-          await qr.manager.save(SubscriberTaxAssignment, existing);
-        }
-      } else {
-        const newAssignment = qr.manager.create(SubscriberTaxAssignment, {
-          tenantId: profile.tenantId,
-          profileId: profile.id,
-          taxDefinitionId: ivaDef.id,
-          taxNameSnapshot: ivaDef.name,
-          effectiveRate: treatment === TaxTreatment.STANDARD ? ivaDef.baseRate : null,
-          rateSource: TaxAssignmentRateSource.CATALOG,
-          treatment,
-          status: TaxAssignmentStatus.SUGGESTED,
-          reason,
-        });
-        await qr.manager.save(SubscriberTaxAssignment, newAssignment);
-      }
-    }
-
-    await this._suggestResolvedApplications(qr, profile, resolvedApps, ivaDef?.id);
+    await this._suggestResolvedApplications(qr, profile, resolvedApps);
   }
 
   /**
@@ -375,15 +325,10 @@ export class SubscriberTaxProfileService {
     qr: { manager: DataSource['manager'] },
     profile: SubscriberTaxProfile,
     resolvedApps: TaxApplicationSnapshot[],
-    ivaDefinitionId: string | undefined,
   ): Promise<void> {
     for (const snapshot of resolvedApps) {
-      if (ivaDefinitionId && snapshot.taxDefinitionId === ivaDefinitionId) {
-        continue;
-      }
-
       const taxDef = await this.taxCatalogPort.findById(snapshot.taxDefinitionId);
-      if (!taxDef) {
+      if (!taxDef || taxDef.category === TaxCategory.VAT) {
         continue;
       }
 
@@ -417,24 +362,9 @@ export class SubscriberTaxProfileService {
     return TaxTreatment.STANDARD;
   }
 
-  /**
-   * IVA canónico: delega en VatTreatmentService (ADR-025). No asume STANDARD sin estrato.
-   */
-  private _mapVatTreatment(treatment: VatTreatment): TaxTreatment {
-    if (treatment === VatTreatment.EXEMPT) return TaxTreatment.EXEMPT;
-    if (treatment === VatTreatment.EXCLUDED) return TaxTreatment.EXCLUDED;
-    return TaxTreatment.STANDARD;
-  }
-
-  private _buildVatReason(personType: string, stratum: number | null): string {
-    if (personType === PersonType.JURIDICA) return 'Persona jurídica — IVA estándar';
-    if (stratum === null) return 'Persona natural — estrato obligatorio para calcular IVA';
-    if (stratum <= 2) return 'Persona natural — IVA exento (estratos 1-2)';
-    if (stratum === 3) return 'Persona natural — IVA excluido (estrato 3)';
-    return 'Persona natural — IVA estándar (estratos 4-6)';
-  }
-
-  private _toSnapshot(profile: SubscriberTaxProfile): SubscriberTaxProfileSnapshotDto {
+  private async _toSnapshot(
+    profile: SubscriberTaxProfile,
+  ): Promise<SubscriberTaxProfileSnapshotDto> {
     return {
       id: profile.id,
       subscriberId: profile.subscriberId,
@@ -443,16 +373,27 @@ export class SubscriberTaxProfileService {
       profileStatus: profile.profileStatus,
       confirmedAt: profile.confirmedAt?.toISOString() ?? null,
       confirmedBy: profile.confirmedBy,
-      assignments: (profile.assignments ?? []).map((a) => this._toAssignmentSnapshot(a)),
+      assignments: await Promise.all(
+        (profile.assignments ?? []).map((assignment) => this._toAssignmentSnapshot(assignment)),
+      ),
       updatedAt: profile.updatedAt.toISOString(),
     };
   }
 
-  private _toAssignmentSnapshot(a: SubscriberTaxAssignment): TaxAssignmentSnapshotDto {
+  private async _toAssignmentSnapshot(
+    a: SubscriberTaxAssignment,
+  ): Promise<TaxAssignmentSnapshotDto> {
+    const taxDefinition = await this.taxCatalogPort.findById(a.taxDefinitionId);
+    if (!taxDefinition) {
+      throw new NotFoundException(
+        `Definición tributaria ${a.taxDefinitionId} no disponible para clasificar la asignación.`,
+      );
+    }
     return {
       id: a.id,
       taxDefinitionId: a.taxDefinitionId,
       taxName: a.taxNameSnapshot,
+      taxCategory: taxDefinition.category,
       effectiveRate: a.effectiveRate,
       rateSource: a.rateSource,
       treatment: a.treatment,

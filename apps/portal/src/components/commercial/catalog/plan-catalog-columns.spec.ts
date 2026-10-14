@@ -1,4 +1,4 @@
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType } from '@iwana/shared';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import {
   columnHasData,
@@ -13,6 +13,8 @@ function buildPlan(overrides: Partial<PlanCatalogItem> = {}): PlanCatalogItem {
     id: 'plan-1',
     name: 'Hogar 300',
     technology: 'GPON',
+    vatConcept: null,
+    networkType: NetworkType.FIXED,
     installationRule: InstallationRule.ON_DEMAND,
     downloadSpeedMbps: 300,
     uploadSpeedMbps: 300,

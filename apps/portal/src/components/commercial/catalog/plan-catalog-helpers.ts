@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { InstallationRule } from '@iwana/shared';
+import { InstallationRule, NetworkType, VatConcept } from '@iwana/shared';
 import { ApiError, type PlanCatalogItem } from '@/lib/api-client';
 import type { PlanCatalogFilters } from '@/components/commercial/catalog/catalog-filter-params';
 
@@ -24,6 +24,8 @@ export const planFormSchema = z
     installationEnabled: z.boolean(),
     installationFee: z.number().min(0, 'El valor no puede ser negativo.'),
     installationRule: z.nativeEnum(InstallationRule),
+    vatConcept: z.union([z.nativeEnum(VatConcept), z.literal('')]),
+    networkType: z.nativeEnum(NetworkType),
   })
   .superRefine((value, ctx) => {
     if (value.speedMode === 'SYMMETRIC' && value.downloadSpeedMbps !== value.uploadSpeedMbps) {
@@ -182,5 +184,7 @@ export function toFormValues(plan: PlanCatalogItem): PlanFormValues {
     installationEnabled: plan.installationRule !== 'NEVER',
     installationFee: parseMoneyFromApi(plan.installationFee),
     installationRule: plan.installationRule,
+    vatConcept: plan.vatConcept ?? '',
+    networkType: plan.networkType,
   };
 }

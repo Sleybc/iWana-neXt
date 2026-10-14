@@ -25,6 +25,7 @@ describe('catalog-filter-params', () => {
         status: 'ACTIVE',
         model: 'LOAN',
         sort: 'RECENTLY_UPDATED',
+        missingVatConcept: 'true',
         tab: 'products',
       });
 
@@ -34,6 +35,7 @@ describe('catalog-filter-params', () => {
         status: 'ACTIVE',
         model: 'LOAN',
         sort: 'RECENTLY_UPDATED',
+        missingVatConcept: true,
       });
 
       expect(
@@ -68,10 +70,11 @@ describe('catalog-filter-params', () => {
         status: 'INACTIVE',
         model: 'SALE',
         sort: 'CATEGORY_NAME',
+        missingVatConcept: true,
       });
 
       expect(params.toString()).toBe(
-        'tab=products&q=box&category=CPE&status=INACTIVE&model=SALE&sort=CATEGORY_NAME',
+        'tab=products&q=box&category=CPE&status=INACTIVE&model=SALE&sort=CATEGORY_NAME&missingVatConcept=1',
       );
     });
   });
@@ -80,9 +83,15 @@ describe('catalog-filter-params', () => {
     it('parsea charge y status', () => {
       expect(
         parseServiceCatalogFilters(
-          new URLSearchParams({ q: 'ip', status: 'ACTIVE', charge: 'RECURRING', tab: 'services' }),
+          new URLSearchParams({
+            q: 'ip',
+            status: 'ACTIVE',
+            charge: 'RECURRING',
+            missingVatConcept: '1',
+            tab: 'services',
+          }),
         ),
-      ).toEqual({ q: 'ip', status: 'ACTIVE', charge: 'RECURRING' });
+      ).toEqual({ q: 'ip', status: 'ACTIVE', charge: 'RECURRING', missingVatConcept: true });
     });
 
     it('limpia keys de servicio sin tocar tab', () => {
@@ -91,6 +100,7 @@ describe('catalog-filter-params', () => {
         q: 'x',
         status: 'ACTIVE',
         charge: 'ONE_TIME',
+        missingVatConcept: '1',
       });
       applyServiceCatalogFilters(params, DEFAULT_SERVICE_CATALOG_FILTERS);
 
@@ -98,6 +108,7 @@ describe('catalog-filter-params', () => {
       expect(params.has('q')).toBe(false);
       expect(params.has('status')).toBe(false);
       expect(params.has('charge')).toBe(false);
+      expect(params.has('missingVatConcept')).toBe(false);
     });
   });
 
@@ -113,6 +124,7 @@ describe('catalog-filter-params', () => {
             q: '  gpon  ',
             status: 'ACTIVE',
             missingPrice: '1',
+            missingVatConcept: 'true',
             tab: 'plans',
             focus: 'plan-uuid',
             offerStatus: 'AT_RISK',
@@ -122,6 +134,7 @@ describe('catalog-filter-params', () => {
         q: 'gpon',
         status: 'ACTIVE',
         missingPrice: true,
+        missingVatConcept: true,
       });
 
       expect(
@@ -168,10 +181,11 @@ describe('catalog-filter-params', () => {
         q: 'fibra',
         status: 'INACTIVE',
         missingPrice: true,
+        missingVatConcept: true,
       });
 
       expect(params.toString()).toBe(
-        'tab=plans&focus=keep-me&q=fibra&status=INACTIVE&missingPrice=1',
+        'tab=plans&focus=keep-me&q=fibra&status=INACTIVE&missingPrice=1&missingVatConcept=1',
       );
     });
   });

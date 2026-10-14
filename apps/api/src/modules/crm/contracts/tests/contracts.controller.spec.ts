@@ -1,9 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException, RequestMethod } from '@nestjs/common';
+import { METHOD_METADATA } from '@nestjs/common/constants';
 import { ContractsController } from '../contracts.controller';
 import { ContractsService } from '../contracts.service';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Contract } from '../entities/contract.entity';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
+import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
+import { SKIP_AUDIT_KEY } from '../../../audit/decorators/skip-audit.decorator';
 
 /** Factory de contrato mínimo para tests */
 function buildContract(overrides: Partial<Contract> = {}): Contract {
@@ -47,6 +51,10 @@ describe('ContractsController', () => {
     findAllBySubscriber: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
+    updateServicePoint: jest.fn(),
+    uploadStratumEvidence: jest.fn(),
+    removeStratumEvidence: jest.fn(),
+    getStratumEvidenceSignedUrl: jest.fn(),
     remove: jest.fn(),
     createFromExpediente: jest.fn(),
     activate: jest.fn(),
@@ -72,6 +80,56 @@ describe('ContractsController', () => {
     controller = module.get<ContractsController>(ContractsController);
   });
 
+  it('omite la auditoría automática en cada endpoint de escritura de contratos', () => {
+    const writeHandlers = [
+      'createForSubscriber',
+      'createFromExpediente',
+      'create',
+      'update',
+      'updateServicePoint',
+      'uploadStratumEvidence',
+      'removeStratumEvidence',
+      'remove',
+      'activate',
+      'suspend',
+      'reactivate',
+      'terminate',
+      'archive',
+    ] as const;
+
+    for (const handlerName of writeHandlers) {
+      const handler = ContractsController.prototype[handlerName];
+      expect(Reflect.getMetadata(SKIP_AUDIT_KEY, handler)).toBe(true);
+    }
+  });
+
+  it('no deja ningún endpoint HTTP de escritura sin @SkipAudit(), aunque se añada más adelante', () => {
+    const writeMethods = [
+      RequestMethod.POST,
+      RequestMethod.PUT,
+      RequestMethod.PATCH,
+      RequestMethod.DELETE,
+    ];
+    // Se descubren los handlers por su metadato HTTP, no por una lista fija: un endpoint nuevo
+    // de escritura entra aquí aunque nadie recuerde añadirlo a la lista de arriba.
+    const writeHandlers = Object.getOwnPropertyNames(ContractsController.prototype).filter(
+      (name) => {
+        if (name === 'constructor') return false;
+        const handler = ContractsController.prototype[name as keyof ContractsController];
+        return writeMethods.includes(Reflect.getMetadata(METHOD_METADATA, handler));
+      },
+    );
+
+    expect(writeHandlers.length).toBeGreaterThanOrEqual(13);
+    for (const handlerName of writeHandlers) {
+      const handler = ContractsController.prototype[handlerName as keyof ContractsController];
+      expect({ handlerName, skip: Reflect.getMetadata(SKIP_AUDIT_KEY, handler) }).toEqual({
+        handlerName,
+        skip: true,
+      });
+    }
+  });
+
   describe('findAll', () => {
     it('retorna contratos en envelope { data, meta }', async () => {
       serviceMock.findAll.mockResolvedValue({
@@ -94,6 +152,19 @@ describe('ContractsController', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.mode).toBe('page');
+    });
+
+    it('forwarda los filtros opcionales cuando están presentes', async () => {
+      serviceMock.findAll.mockResolvedValue({ data: [], meta: { mode: 'page' } });
+
+      await controller.findAll(ContractStatus.ACTIVE, 'plan-1', 2, 10);
+
+      expect(serviceMock.findAll).toHaveBeenCalledWith({
+        status: ContractStatus.ACTIVE,
+        planId: 'plan-1',
+        page: 2,
+        limit: 10,
+      });
     });
   });
 
@@ -121,6 +192,23 @@ describe('ContractsController', () => {
       expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1', {});
       expect(result.data).toHaveLength(2);
     });
+
+    it('forwarda paginación cuando se proporcionan page y limit', async () => {
+      serviceMock.findAllBySubscriber.mockResolvedValue({ data: [], meta: { mode: 'page' } });
+
+      await controller.findAllBySubscriber('sub-1', 3, 25);
+
+      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1', { page: 3, limit: 25 });
+    });
+  });
+
+  describe('uploadStratumEvidence', () => {
+    it('rechaza la petición multipart que no trae archivo', async () => {
+      await expect(
+        controller.uploadStratumEvidence('ctr-1', undefined, { sub: 'user-1' } as JwtPayload),
+      ).rejects.toThrow(BadRequestException);
+      expect(serviceMock.uploadStratumEvidence).not.toHaveBeenCalled();
+    });
   });
 
   describe('createForSubscriber', () => {
@@ -128,14 +216,19 @@ describe('ContractsController', () => {
       const contract = buildContract();
       serviceMock.create.mockResolvedValue(contract);
 
-      await controller.createForSubscriber('sub-1', {
-        planId: 'plan-1',
-        planSnapshotJson: {},
-        subscriberId: 'ignorado-se-sobreescribe',
-      });
+      await controller.createForSubscriber(
+        'sub-1',
+        {
+          planId: 'plan-1',
+          planSnapshotJson: {},
+          subscriberId: 'ignorado-se-sobreescribe',
+        },
+        { sub: 'actor-1' } as JwtPayload,
+      );
 
       expect(serviceMock.create).toHaveBeenCalledWith(
         expect.objectContaining({ subscriberId: 'sub-1' }),
+        'actor-1',
       );
     });
   });
@@ -145,10 +238,34 @@ describe('ContractsController', () => {
       const contract = buildContract();
       serviceMock.createFromExpediente.mockResolvedValue(contract);
 
-      const result = await controller.createFromExpediente('sub-1', {});
+      const result = await controller.createFromExpediente('sub-1', {}, {
+        sub: 'actor-1',
+      } as JwtPayload);
 
-      expect(serviceMock.createFromExpediente).toHaveBeenCalledWith('sub-1', {});
+      expect(serviceMock.createFromExpediente).toHaveBeenCalledWith('sub-1', {}, 'actor-1');
       expect(result.data.id).toBe('ctr-1');
+    });
+  });
+
+  describe('updateServicePoint', () => {
+    it('delega el cambio dedicado y propaga el actor auditado', async () => {
+      const actor = { sub: 'user-1' } as JwtPayload;
+      serviceMock.updateServicePoint.mockResolvedValue(
+        buildContract({ status: ContractStatus.ACTIVE }),
+      );
+
+      const result = await controller.updateServicePoint(
+        'ctr-1',
+        { installationStratum: 2 },
+        actor,
+      );
+
+      expect(serviceMock.updateServicePoint).toHaveBeenCalledWith(
+        'ctr-1',
+        { installationStratum: 2 },
+        'user-1',
+      );
+      expect(result.data.status).toBe(ContractStatus.ACTIVE);
     });
   });
 
@@ -157,33 +274,37 @@ describe('ContractsController', () => {
       const contract = buildContract({ status: ContractStatus.ACTIVE });
       serviceMock.activate.mockResolvedValue(contract);
 
-      const result = await controller.activate('ctr-1');
+      const result = await controller.activate('ctr-1', { sub: 'actor-1' } as JwtPayload);
 
-      expect(serviceMock.activate).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock.activate).toHaveBeenCalledWith('ctr-1', 'actor-1');
       expect(result.data.status).toBe(ContractStatus.ACTIVE);
     });
 
     it('suspend retorna contrato con status SUSPENDED', async () => {
       serviceMock.suspend.mockResolvedValue(buildContract({ status: ContractStatus.SUSPENDED }));
-      const result = await controller.suspend('ctr-1');
+      const result = await controller.suspend('ctr-1', { sub: 'actor-1' } as JwtPayload);
+      expect(serviceMock.suspend).toHaveBeenCalledWith('ctr-1', 'actor-1');
       expect(result.data.status).toBe(ContractStatus.SUSPENDED);
     });
 
     it('reactivate retorna contrato con status ACTIVE', async () => {
       serviceMock.reactivate.mockResolvedValue(buildContract({ status: ContractStatus.ACTIVE }));
-      const result = await controller.reactivate('ctr-1');
+      const result = await controller.reactivate('ctr-1', { sub: 'actor-1' } as JwtPayload);
+      expect(serviceMock.reactivate).toHaveBeenCalledWith('ctr-1', 'actor-1');
       expect(result.data.status).toBe(ContractStatus.ACTIVE);
     });
 
     it('terminate retorna contrato con status TERMINATED', async () => {
       serviceMock.terminate.mockResolvedValue(buildContract({ status: ContractStatus.TERMINATED }));
-      const result = await controller.terminate('ctr-1');
+      const result = await controller.terminate('ctr-1', { sub: 'actor-1' } as JwtPayload);
+      expect(serviceMock.terminate).toHaveBeenCalledWith('ctr-1', 'actor-1');
       expect(result.data.status).toBe(ContractStatus.TERMINATED);
     });
 
     it('archive retorna contrato con status ARCHIVED', async () => {
       serviceMock.archive.mockResolvedValue(buildContract({ status: ContractStatus.ARCHIVED }));
-      const result = await controller.archive('ctr-1');
+      const result = await controller.archive('ctr-1', { sub: 'actor-1' } as JwtPayload);
+      expect(serviceMock.archive).toHaveBeenCalledWith('ctr-1', 'actor-1');
       expect(result.data.status).toBe(ContractStatus.ARCHIVED);
     });
   });
@@ -191,7 +312,10 @@ describe('ContractsController', () => {
   describe('remove', () => {
     it('delega remove al servicio sin retorno', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
-      await expect(controller.remove('ctr-1')).resolves.toBeUndefined();
+      await expect(
+        controller.remove('ctr-1', { sub: 'actor-1' } as JwtPayload),
+      ).resolves.toBeUndefined();
+      expect(serviceMock.remove).toHaveBeenCalledWith('ctr-1', 'actor-1');
     });
   });
 });

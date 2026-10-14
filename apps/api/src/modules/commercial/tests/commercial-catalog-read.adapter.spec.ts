@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
+import { NotFoundException } from '@nestjs/common';
 import { TenantContext } from '@iwana/db';
-import { CustomerSegment, InstallationRule } from '@iwana/shared';
+import { CustomerSegment, InstallationRule, NetworkType, VatConcept } from '@iwana/shared';
 import { CommercialCatalogReadAdapter } from '../ports/commercial-catalog-read.adapter';
 
 const mockRunInTenantSchema = jest.fn();
@@ -19,13 +20,20 @@ jest.mock('@iwana/db', () => {
 function mockPlanManager() {
   return {
     find: async (_entity: unknown) => [
-      { id: 'plan-1', name: 'Plan Fibra 300', type: 'PLAN', isActive: true },
+      {
+        id: 'plan-1',
+        name: 'Plan Fibra 300',
+        type: 'PLAN',
+        isActive: true,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+      },
     ],
     findOne: async () => ({
       id: 'plan-1',
       name: 'Plan Fibra 300',
       type: 'PLAN',
       isActive: true,
+      vatConcept: VatConcept.INTERNET_ACCESS,
     }),
     createQueryBuilder: (entity: { name?: string }) => {
       if (entity?.name === 'CatalogPriceHistory') {
@@ -51,6 +59,7 @@ function mockPlanManager() {
             downloadSpeedMbps: 300,
             uploadSpeedMbps: 300,
             installationRule: InstallationRule.ON_DEMAND,
+            networkType: NetworkType.MOBILE,
           },
         ]),
       };
@@ -99,6 +108,8 @@ describe('CommercialCatalogReadAdapter', () => {
         basePrice: 89900,
         installationFee: 120000,
         isActive: true,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.MOBILE,
       }),
     ]);
   });
@@ -117,6 +128,8 @@ describe('CommercialCatalogReadAdapter', () => {
         technology: 'FTTH',
         downloadSpeedMbps: 300,
         basePrice: 89900,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.MOBILE,
       }),
     );
   });
@@ -133,6 +146,50 @@ describe('CommercialCatalogReadAdapter', () => {
     await expect(adapter.getPlanById('ten-1', 'tenant_test', 'missing')).resolves.toBeNull();
   });
 
+  it('devuelve defaults fiscales y técnicos cuando faltan precio y detalle del plan', async () => {
+    const item = {
+      id: 'plan-legacy',
+      name: 'Plan heredado',
+      type: 'PLAN',
+      isActive: true,
+      vatConcept: null,
+    };
+    const createQueryBuilder = jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    }));
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { find: async () => [item], createQueryBuilder } }),
+    );
+
+    const result = await adapter.getActivePlans('ten-1', 'tenant_test');
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'plan-legacy',
+        technology: 'N/A',
+        downloadSpeedMbps: 0,
+        uploadSpeedMbps: 0,
+        basePrice: 0,
+        installationFee: 0,
+        vatConcept: null,
+        networkType: NetworkType.FIXED,
+      }),
+    ]);
+    expect(createQueryBuilder).toHaveBeenCalledTimes(2);
+  });
+
+  it('retorna lista vacía de planes sin consultar precios ni detalles', async () => {
+    const createQueryBuilder = jest.fn();
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { find: async () => [], createQueryBuilder } }),
+    );
+
+    await expect(adapter.getActivePlans('ten-1', 'tenant_test')).resolves.toEqual([]);
+    expect(createQueryBuilder).not.toHaveBeenCalled();
+  });
+
   it('crea snapshot compatible con QuotesService', async () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
@@ -146,6 +203,7 @@ describe('CommercialCatalogReadAdapter', () => {
                 type: 'PLAN',
                 isActive: true,
                 deletedAt: null,
+                vatConcept: VatConcept.INTERNET_ACCESS,
               };
             }
 
@@ -165,6 +223,7 @@ describe('CommercialCatalogReadAdapter', () => {
               downloadSpeedMbps: 500,
               uploadSpeedMbps: 500,
               installationRule: InstallationRule.ALWAYS,
+              networkType: NetworkType.MOBILE,
             };
           },
         },
@@ -182,8 +241,37 @@ describe('CommercialCatalogReadAdapter', () => {
         monthlyPrice: 129900,
         installationFee: 0,
         technology: 'XGS-PON',
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.MOBILE,
       }),
     );
+  });
+
+  it('rechaza el snapshot si el plan está inactivo o eliminado', async () => {
+    const findOne = jest.fn().mockResolvedValue(null);
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne } }),
+    );
+
+    await expect(adapter.createSnapshot('ten-1', 'tenant_test', 'plan-legacy')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechaza el snapshot si el plan no tiene precio vigente para el segmento', async () => {
+    const findOne = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'plan-1', name: 'Plan sin precio', isActive: true })
+      .mockResolvedValueOnce(null);
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne } }),
+    );
+
+    await expect(adapter.createSnapshot('ten-1', 'tenant_test', 'plan-1')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(findOne).toHaveBeenCalledTimes(2);
   });
 
   it('expone productos adicionales activos para referencias de inventario', async () => {
@@ -226,5 +314,48 @@ describe('CommercialCatalogReadAdapter', () => {
         isLoan: true,
       },
     ]);
+  });
+
+  it('omite la consulta de detalles cuando no hay productos activos', async () => {
+    const createQueryBuilder = jest.fn();
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { find: async () => [], createQueryBuilder } }),
+    );
+
+    await expect(adapter.getActiveProducts('ten-1', 'tenant_test')).resolves.toEqual([]);
+    expect(createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('resuelve producto vigente sin detalle con los flags conservadores', async () => {
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async (entity: { name?: string }) =>
+            entity?.name === 'CatalogItem'
+              ? { id: 'prod-legacy', name: 'Producto legado', isActive: true }
+              : null,
+        },
+      }),
+    );
+
+    await expect(
+      adapter.resolveProductReference('ten-1', 'tenant_test', 'prod-legacy'),
+    ).resolves.toEqual({
+      id: 'prod-legacy',
+      name: 'Producto legado',
+      isActive: true,
+      requiresInventory: false,
+      isLoan: false,
+    });
+  });
+
+  it('devuelve null si no existe el producto solicitado', async () => {
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne: async () => null } }),
+    );
+
+    await expect(
+      adapter.resolveProductReference('ten-1', 'tenant_test', 'missing'),
+    ).resolves.toBeNull();
   });
 });

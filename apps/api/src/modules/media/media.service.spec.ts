@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -60,6 +64,7 @@ const PNG_HEADER = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.alloc(8),
 ]);
+const PDF_HEADER = Buffer.from('%PDF-1.7\n%fixture');
 
 /**
  * Factoría de archivo simulado para pruebas de upload.
@@ -139,6 +144,16 @@ describe('MediaService', () => {
 
       expect(errors.some((error) => error.property === 'usage')).toBe(true);
       expect(errors[0]?.constraints).toEqual(expect.objectContaining({ isIn: expect.any(String) }));
+    });
+
+    it('rechaza STRATUM_EVIDENCE en la validación del DTO genérico', async () => {
+      const dto = Object.assign(new UploadMediaDto(), {
+        usage: MediaUsage.STRATUM_EVIDENCE,
+      });
+
+      const errors = await validate(dto);
+
+      expect(errors.some((error) => error.property === 'usage')).toBe(true);
     });
 
     it('rechaza tenant ausente o platform sin escribir en BD ni storage', async () => {
@@ -269,6 +284,141 @@ describe('MediaService', () => {
       expect(mockStorage.putObject).not.toHaveBeenCalled();
     });
 
+    it('debe rechazar STRATUM_EVIDENCE en el upload genérico sin persistir ni escribir en storage', async () => {
+      const file = buildMulterFile({ mimetype: 'application/pdf', buffer: PDF_HEADER });
+
+      await expect(
+        service.upload('tenant_test_isp', { usage: MediaUsage.STRATUM_EVIDENCE }, file, 'user-001'),
+      ).rejects.toMatchObject({
+        response: { code: 'MEDIA_GENERIC_STRATUM_EVIDENCE_FORBIDDEN' },
+      });
+      expect(mockRepo.create).not.toHaveBeenCalled();
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('sube PDF con uso STRATUM_EVIDENCE y extensión PDF', async () => {
+      const saved = buildMediaAsset({
+        usage: MediaUsage.STRATUM_EVIDENCE,
+        mimeType: 'application/pdf',
+        ext: 'pdf',
+      });
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      mockRepo.update.mockResolvedValue(undefined);
+      mockStorage.putObject.mockResolvedValue(undefined);
+      const file = buildMulterFile({
+        originalname: 'documento.pdf',
+        mimetype: 'application/pdf',
+        buffer: PDF_HEADER,
+        size: PDF_HEADER.length,
+      });
+
+      const result = await service.uploadStratumEvidence('tenant_test_isp', file, 'user-001');
+
+      expect(result.usage).toBe(MediaUsage.STRATUM_EVIDENCE);
+      expect(result.mimeType).toBe('application/pdf');
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ usage: MediaUsage.STRATUM_EVIDENCE, ext: 'pdf' }),
+      );
+      expect(mockStorage.putObject).toHaveBeenCalledWith(
+        expect.stringContaining('/stratum_evidence/'),
+        PDF_HEADER,
+        expect.objectContaining({ contentType: 'application/pdf' }),
+      );
+    });
+
+    it('acepta soporte de estrato de exactamente 10 MiB', async () => {
+      const maxBytes = 10 * 1024 * 1024;
+      const saved = buildMediaAsset({
+        usage: MediaUsage.STRATUM_EVIDENCE,
+        mimeType: 'application/pdf',
+        ext: 'pdf',
+        sizeBytes: maxBytes,
+      });
+      mockRepo.create.mockReturnValue(saved);
+      mockRepo.save.mockResolvedValue(saved);
+      mockRepo.update.mockResolvedValue(undefined);
+      mockStorage.putObject.mockResolvedValue(undefined);
+      const file = buildMulterFile({
+        originalname: 'support.pdf',
+        mimetype: 'application/pdf',
+        buffer: PDF_HEADER,
+        size: maxBytes,
+      });
+
+      const result = await service.uploadStratumEvidence('tenant_test_isp', file, 'user-001');
+
+      expect(result.sizeBytes).toBe(maxBytes);
+      expect(mockRepo.save).toHaveBeenCalledTimes(1);
+      expect(mockStorage.putObject).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza soporte de estrato superior a 10 MiB antes de persistir', async () => {
+      const file = buildMulterFile({
+        originalname: 'support.pdf',
+        mimetype: 'application/pdf',
+        buffer: PDF_HEADER,
+        size: 10 * 1024 * 1024 + 1,
+      });
+
+      await expect(
+        service.uploadStratumEvidence('tenant_test_isp', file, 'user-001'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('rechaza la carga dedicada cuando falta el archivo', async () => {
+      await expect(
+        service.uploadStratumEvidence(
+          'tenant_test_isp',
+          undefined as unknown as Express.Multer.File,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('responde 422 con código estable si el PDF declara bytes de otro tipo', async () => {
+      const file = buildMulterFile({
+        originalname: 'documento.pdf',
+        mimetype: 'application/pdf',
+        buffer: Buffer.from('not a PDF document'),
+        size: 19,
+      });
+
+      await expect(
+        service.uploadStratumEvidence('tenant_test_isp', file, 'user-001'),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: { code: 'STRATUM_EVIDENCE_TYPE_NOT_ALLOWED' },
+      });
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
+    it('responde 422 con formatos de negocio si el MIME no pertenece a la allowlist', async () => {
+      const file = buildMulterFile({
+        originalname: 'documento.gif',
+        mimetype: 'image/gif',
+        buffer: Buffer.from('GIF89a0123456789'),
+        size: 16,
+      });
+
+      await expect(
+        service.uploadStratumEvidence('tenant_test_isp', file, 'user-001'),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'STRATUM_EVIDENCE_TYPE_NOT_ALLOWED',
+          message: expect.stringContaining('PDF'),
+        },
+      });
+      expect(mockRepo.save).not.toHaveBeenCalled();
+      expect(mockStorage.putObject).not.toHaveBeenCalled();
+    });
+
     it('debe lanzar BadRequestException si el archivo supera el tamaño máximo', async () => {
       // Logo tiene límite de 1 MB = 1048576 bytes
       const file = buildMulterFile({
@@ -370,6 +520,16 @@ describe('MediaService', () => {
       // Debe limitar a 3600 segundos por política de seguridad
       expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(asset.objectKey, 3600);
       expect(result.signedUrl).toBe('https://minio/signed-url?...');
+    });
+
+    it('oculta assets STRATUM_EVIDENCE del endpoint genérico', async () => {
+      const asset = buildMediaAsset({ usage: MediaUsage.STRATUM_EVIDENCE });
+      mockRepo.findOne.mockResolvedValue(asset);
+
+      await expect(service.getSignedUrl(asset.id, 'tenant_test_isp')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     });
   });
 

@@ -2,6 +2,7 @@ import { getMetadataArgsStorage } from 'typeorm';
 
 import { PlatformUser } from '../../entities/platform-user.entity';
 import { PlatformUsersPasswordResetRequired1784419213000 } from './025_platform_users_password_reset_required';
+import { MediaUsageStratumEvidence1784419214000 } from './026_media_usage_stratum_evidence';
 import { PUBLIC_MIGRATIONS } from './index';
 
 interface QueryCall {
@@ -37,11 +38,13 @@ describe('025_platform_users_password_reset_required', () => {
     expect(parseInt(migration.name.substr(-13), 10)).toBeGreaterThan(1784419212000);
   });
 
-  it('queda registrada en PUBLIC_MIGRATIONS y en último lugar', () => {
-    // Sin el registro no se aplica: `data-source.ts` ya no usa glob.
-    const ultima = PUBLIC_MIGRATIONS[PUBLIC_MIGRATIONS.length - 1];
+  it('queda registrada en PUBLIC_MIGRATIONS, justo antes de la 026', () => {
+    // Sin el registro no se aplica: `data-source.ts` ya no usa glob. Desde la 026
+    // ya no es la última de la lista: se comprueba que la sucede de inmediato.
+    const posicion = PUBLIC_MIGRATIONS.indexOf(PlatformUsersPasswordResetRequired1784419213000);
 
-    expect(ultima).toBe(PlatformUsersPasswordResetRequired1784419213000);
+    expect(posicion).toBeGreaterThan(-1);
+    expect(PUBLIC_MIGRATIONS[posicion + 1]).toBe(MediaUsageStratumEvidence1784419214000);
   });
 
   it('up añade la columna sobre public.platform_users, no sobre users de tenant', async () => {

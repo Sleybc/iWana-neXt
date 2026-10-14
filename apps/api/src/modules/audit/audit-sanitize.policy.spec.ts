@@ -1,4 +1,8 @@
-import { AUDIT_ALWAYS_OMITTED_KEYS, sanitizeAuditPayload } from './audit-sanitize.policy';
+import {
+  AUDIT_ALWAYS_OMITTED_KEYS,
+  matchesAuditPiiSuffix,
+  sanitizeAuditPayload,
+} from './audit-sanitize.policy';
 
 /**
  * Cobertura directa de la política compartida (SEC-P1 E4/E5).
@@ -56,5 +60,38 @@ describe('sanitizeAuditPayload (SEC-P1)', () => {
   it('retorna null para entrada nula o indefinida', () => {
     expect(sanitizeAuditPayload(null)).toBeNull();
     expect(sanitizeAuditPayload(undefined)).toBeNull();
+  });
+
+  it('reconoce los sufijos fiscales en camelCase y snake_case sin ampliar nombres genéricos', () => {
+    expect(matchesAuditPiiSuffix('fiscalDocument')).toBe(true);
+    expect(matchesAuditPiiSuffix('fiscal_document')).toBe(true);
+    expect(matchesAuditPiiSuffix('fiscalName')).toBe(true);
+    expect(matchesAuditPiiSuffix('fiscal_name')).toBe(true);
+    expect(matchesAuditPiiSuffix('document')).toBe(false);
+    expect(matchesAuditPiiSuffix('name')).toBe(false);
+  });
+
+  it('omite claves fiscales anidadas dentro de objetos y arreglos', () => {
+    const sanitized = sanitizeAuditPayload({
+      data: [
+        {
+          id: 'ctr-synthetic-1',
+          fiscalDocument: 'documento-sintetico-a',
+          fiscal_document: 'documento-sintetico-b',
+          fiscalName: 'nombre-sintetico-a',
+          fiscal_name: 'nombre-sintetico-b',
+          metadata: { name: 'nombre-tecnico-preservado', document: 'tipo-tecnico-preservado' },
+        },
+      ],
+    });
+
+    expect(sanitized).toEqual({
+      data: [
+        {
+          id: 'ctr-synthetic-1',
+          metadata: { name: 'nombre-tecnico-preservado', document: 'tipo-tecnico-preservado' },
+        },
+      ],
+    });
   });
 });
