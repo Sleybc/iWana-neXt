@@ -6,6 +6,8 @@
 **Aprobado por:** CTO Humano (2026-07-19, vía [ADR-056](ADR-056-Integridad-Base-Normativa-Diseno.md) — sin cambios de contenido; el modelo ya está implementado y tiene 37 citas)  
 **PRD relacionado:** docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md
 
+**Parcialmente superado (2026-10-12):** §"Regla clave: customerSegment NO afecta el IVA" y su tabla quedan **superados** por [ADR-093](ADR-093-Tratamiento-IVA-Internet-por-Punto-y-Linea-de-Servicio.md), aprobado por el CTO: el IVA se resuelve por concepto facturable y punto de servicio (uso y estrato del predio), no por `personType + stratum` del suscriptor. **Sigue vigente** la separación ortogonal `personType` / `customerSegment`
+
 ---
 
 ## Contexto
