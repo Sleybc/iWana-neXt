@@ -136,10 +136,12 @@ async function setAuthSession(page: import('@playwright/test').Page) {
 
 async function setupCrmMocks(
   page: import('@playwright/test').Page,
-  options: { installationReady?: boolean } = {},
+  options: { installationReady?: boolean; privacyConsentConversion?: boolean } = {},
 ) {
   let capturedExpedientesQuery = '';
   let capturedTechnicalPayload: Record<string, unknown> | null = null;
+  let capturedConsentPayload: Record<string, unknown> | null = null;
+  let expedienteConsentRecords: Record<string, unknown>[] = [];
   let contactAttemptCreated = false;
   let consentRevoked = false;
   const capturedCommercialCatalogRequests: string[] = [];
@@ -227,7 +229,7 @@ async function setupCrmMocks(
   ];
 
   const buildBootstrapResponse = (record: typeof mockExpediente) => {
-    const isReady = options.installationReady;
+    const isReady = options.installationReady || options.privacyConsentConversion;
     const overall = isReady ? 80 : 48;
     const readiness = isReady
       ? {
@@ -299,6 +301,195 @@ async function setupCrmMocks(
     const url = route.request().url();
     const method = route.request().method();
     const pathname = new URL(url).pathname;
+
+    if (pathname.endsWith('/access-control/me/effective-permissions') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            userId: 'user-uuid-admin-test',
+            role: 'ADMIN',
+            effectivePermissions: [
+              'crm.expedientes.read',
+              'crm.subscribers.read',
+              'privacy.read',
+              'privacy.manage',
+            ],
+            recoveryPermissions: [],
+            profileSources: [],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/privacy/legal-texts/current') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            type: 'AUTORIZACION',
+            version: '3.2',
+            sha256: 'a'.repeat(64),
+            content: 'Autorizo el tratamiento de mis datos para la prestación del servicio.',
+            publishedAt: '2026-10-01T10:00:00.000Z',
+            url: null,
+            isCurrent: true,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/consents`) && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: expedienteConsentRecords }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/consents`) && method === 'POST') {
+      capturedConsentPayload = route.request().postDataJSON() as Record<string, unknown>;
+      const record = {
+        id: 'consent-expediente-1',
+        consentType: capturedConsentPayload.consentType,
+        status: capturedConsentPayload.status,
+        channel: capturedConsentPayload.channel,
+        obtainedAt: '2026-10-14T10:00:00.000Z',
+        ipAddress: null,
+        legalTextVersion: capturedConsentPayload.legalTextVersion,
+        evidenceRef: null,
+      };
+      expedienteConsentRecords = [record];
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: record }),
+      });
+      return;
+    }
+
+    if (
+      options.privacyConsentConversion &&
+      pathname.endsWith(`/crm/expedientes/${mockExpediente.id}/status`) &&
+      method === 'PATCH'
+    ) {
+      const body = route.request().postDataJSON() as { targetStatus?: string };
+      expect(body.targetStatus).toBe('LISTO_PARA_INSTALACION');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { ...installationReadyExpediente, status: body.targetStatus },
+          completeness: { overall: 80 },
+          sectionCompleteness: [],
+          installationReadiness: { status: 'READY_COMPLETE', canTransition: true },
+          missingRequirements: [],
+          pipelineRecommendation: null,
+          transitionWarning: null,
+        }),
+      });
+      return;
+    }
+
+    if (
+      options.privacyConsentConversion &&
+      pathname.endsWith('/crm/subscribers/sub-privacy-channel-1/360') &&
+      method === 'GET'
+    ) {
+      const channel = capturedConsentPayload?.channel ?? 'LEGACY_IMPORT';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            subscriber: {
+              id: 'sub-privacy-channel-1',
+              tenantId: 'tenant-uuid-test',
+              userId: null,
+              personType: 'NATURAL',
+              customerSegment: 'RESIDENTIAL',
+              documentType: 'CC',
+              documentNumber: '1012345678',
+              firstName: 'Ana',
+              lastName: 'Pérez',
+              stratum: 2,
+              birthDate: null,
+              nit: null,
+              nitVerificationDigit: null,
+              businessName: null,
+              commercialName: null,
+              legalRepresentativeId: null,
+              altContactName: null,
+              altContactPhone: null,
+              email: 'ana@example.test',
+              phone: '3001234567',
+              whatsapp: null,
+              vatTreatment: 'EXCLUDED',
+              taxRegime: 'ORDINARY',
+              address: 'Calle 10 # 20-30',
+              neighborhood: null,
+              city: 'Bogotá',
+              department: 'Cundinamarca',
+              postalCode: null,
+              latitude: null,
+              longitude: null,
+              coverageNodeId: null,
+              expedienteId: mockExpediente.id,
+              convertedAt: '2026-10-14T10:00:00.000Z',
+              activatedAt: null,
+              manualOverrideReason: null,
+              status: 'PROSPECT',
+              externalId: null,
+              createdBy: 'user-uuid-admin-test',
+              createdAt: '2026-10-14T10:00:00.000Z',
+              updatedAt: '2026-10-14T10:00:00.000Z',
+              deletedAt: null,
+              partyId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            },
+            contacts: [],
+            contracts: [],
+            quotes: [],
+            habeasData: [
+              {
+                id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+                partyId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+                purpose: 'TRATAMIENTO_CONTRACTUAL',
+                kind: 'GRANT',
+                granted: true,
+                channel,
+                legalTextId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                capturedAt: '2026-10-14T10:00:00.000Z',
+              },
+            ],
+            arcoRequests: [],
+            privacyMarks: [],
+            expedienteSummary: {
+              id: mockExpediente.id,
+              fullName: 'Ana Pérez',
+              status: 'LISTO_PARA_INSTALACION',
+              source: 'Manual',
+              createdAt: '2026-10-14T10:00:00.000Z',
+              statusChangedAt: '2026-10-14T10:00:00.000Z',
+              paymentMethod: null,
+              billingCycle: null,
+              fiscalName: null,
+              interestedPlanId: null,
+              additionalProductIds: [],
+              additionalServiceIds: [],
+              commercialNotes: null,
+            },
+            timelineSeed: [],
+          },
+        }),
+      });
+      return;
+    }
 
     if (url.includes('/tenants/public-branding') && method === 'GET') {
       await route.fulfill({
@@ -393,7 +584,11 @@ async function setupCrmMocks(
         contentType: 'application/json',
         body: JSON.stringify(
           buildBootstrapResponse(
-            options.installationReady ? installationReadyExpediente : mockExpediente,
+            options.privacyConsentConversion
+              ? { ...installationReadyExpediente, status: 'EN_COTIZACION' }
+              : options.installationReady
+                ? installationReadyExpediente
+                : mockExpediente,
           ),
         ),
       });
@@ -1125,7 +1320,11 @@ async function setupCrmMocks(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: options.installationReady ? installationReadyExpediente : mockExpediente,
+          data: options.privacyConsentConversion
+            ? { ...installationReadyExpediente, status: 'EN_COTIZACION' }
+            : options.installationReady
+              ? installationReadyExpediente
+              : mockExpediente,
           completeness: {
             commercial: 70,
             legal: 50,
@@ -1159,6 +1358,7 @@ async function setupCrmMocks(
     getCapturedTechnicalPayload: () => capturedTechnicalPayload,
     getCapturedCommercialCatalogRequests: () => capturedCommercialCatalogRequests,
     getCapturedVisitRequestPayload: () => capturedVisitRequestPayload,
+    getCapturedConsentPayload: () => capturedConsentPayload,
   };
 }
 
@@ -1318,6 +1518,52 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
       latitude: 4.711,
       longitude: -74.0721,
     });
+  });
+
+  test('conserva el medio de autorización del expediente al convertirlo y verlo en la ficha 360°', async ({
+    page,
+  }) => {
+    const mocks = await setupCrmMocks(page, {
+      installationReady: true,
+      privacyConsentConversion: true,
+    });
+    await setAuthSession(page);
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
+
+    await expect(page.getByRole('heading', { name: 'Consentimientos (Ley 1581)' })).toBeVisible();
+    await page.getByRole('button', { name: 'Registrar autorización' }).first().click();
+    const channel = page.getByRole('combobox', {
+      name: 'Medio por el que la persona otorgó la autorización',
+    });
+    await channel.click();
+    await page.getByRole('option', { name: 'Teléfono', exact: true }).click();
+    await page.getByRole('button', { name: 'Registrar autorización' }).last().click();
+
+    await expect
+      .poll(() => mocks.getCapturedConsentPayload())
+      .toMatchObject({
+        channel: 'TELEFONO',
+        legalTextVersion: '3.2',
+      });
+
+    const transitionStatus = await page.evaluate(async (expedienteId) => {
+      const response = await fetch(`/api/v1/crm/expedientes/${expedienteId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'x-tenant-slug': 'isp-demo',
+        },
+        body: JSON.stringify({ targetStatus: 'LISTO_PARA_INSTALACION' }),
+      });
+      return response.status;
+    }, mockExpediente.id);
+    expect(transitionStatus).toBe(200);
+
+    await page.goto('/dashboard/crm/subscribers/sub-privacy-channel-1');
+    await expect(page.getByRole('heading', { name: /Ana Pérez/ })).toBeVisible();
+    await page.getByRole('tab', { name: 'Cumplimiento' }).click();
+    await expect(page.getByText(/Medio: Teléfono/)).toBeVisible();
+    expect(mocks.getCapturedConsentPayload()).toMatchObject({ channel: 'TELEFONO' });
   });
 
   test('CRM oculta PII en listados y mantiene detalle operativo', async ({ page }) => {

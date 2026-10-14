@@ -127,6 +127,37 @@ import {
   type ExecutionOrderEvidence,
   type Page,
 } from '@iwana/shared';
+import {
+  createDataSubjectRequestSchema,
+  createLegalTextSchema,
+  createPrivacyIncidentSchema,
+  createDataAuthorizationSchema,
+  dataAuthorizationViewSchema,
+  dataSubjectRequestDetailSchema,
+  dataSubjectRequestSummarySchema,
+  legalTextSchema,
+  privacyEvidenceResponseSchema,
+  privacyIncidentSchema,
+  privacyInventorySchema,
+  partyPrivacyMarkSchema,
+  authorizationProofSchema,
+  type AuthorizationProof,
+  type CreateDataAuthorization,
+  type CreateDataSubjectRequest,
+  type CreateLegalText,
+  type CreatePrivacyIncident,
+  type DataAuthorizationView,
+  type DataSubjectRequestDetail,
+  type LegalText,
+  type LegalTextType,
+  type PrivacyEvidenceResponse,
+  type PrivacyIncident,
+  type PrivacyInventory,
+  type PrivacyMark,
+  type PartyPrivacyMark,
+  type RequestSummary,
+  type VerifyIdentityRequest,
+} from '@iwana/shared';
 import type {
   CatalogItemTaxFields,
   CreateCatalogItemTaxFields,
@@ -5525,6 +5556,7 @@ export interface ExpedienteRecord {
   subscriberSummary?: ExpedienteSubscriberSummary | null;
   createdAt: string;
   updatedAt: string;
+  privacyMarks?: PrivacyMark[];
 }
 
 export type DocumentReviewStatus = 'PENDING' | 'UPLOADED' | 'OBSERVED' | 'APPROVED' | 'REJECTED';
@@ -5603,6 +5635,7 @@ export interface SubscriberRecord {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  partyId?: string | null;
 }
 
 export interface ListSubscribersParams {
@@ -5641,8 +5674,9 @@ export interface Subscriber360Response {
   contacts: unknown[];
   contracts: Contract[];
   quotes: unknown[];
-  habeasData: unknown[];
-  arcoRequests: unknown[];
+  habeasData: DataAuthorizationView[];
+  arcoRequests: RequestSummary[];
+  privacyMarks: PrivacyMark[];
   expedienteSummary: {
     id: string;
     fullName: string;
@@ -9759,5 +9793,177 @@ export const purchasingApi = {
       blob,
       filename: filenameMatch?.[1] ?? `solicitud-${requestId}-ordenes.zip`,
     };
+  },
+};
+
+// Cliente tipado de Habeas Data. Las respuestas de detalle se validan contra el
+// schema compartido para detectar cualquier deriva entre portal y API.
+export const privacyApi = {
+  listRequests: async (
+    params: {
+      kind?: string;
+      status?: string;
+      dueWithinDays?: number;
+      cursor?: string;
+      limit?: number;
+    } = {},
+  ): Promise<{
+    data: RequestSummary[];
+    meta: { nextCursor: string | null; total: number; limit: number };
+  }> => {
+    const query = new URLSearchParams();
+    if (params.kind) query.set('kind', params.kind);
+    if (params.status) query.set('status', params.status);
+    if (params.dueWithinDays !== undefined) {
+      query.set('dueWithinDays', String(params.dueWithinDays));
+    }
+    if (params.cursor) query.set('cursor', params.cursor);
+    query.set('limit', String(params.limit ?? 20));
+    const response = await request<{
+      data: unknown[];
+      meta: { nextCursor: string | null; total: number; limit: number };
+    }>(`/privacy/requests?${query.toString()}`, { returnFullResponse: true });
+    return {
+      data: response.data.map((item) => dataSubjectRequestSummarySchema.parse(item)),
+      meta: response.meta,
+    };
+  },
+
+  getRequest: async (id: string): Promise<DataSubjectRequestDetail> => {
+    const detail = await request<unknown>(`/privacy/requests/${id}`);
+    return dataSubjectRequestDetailSchema.parse(detail);
+  },
+
+  createRequest: (payload: CreateDataSubjectRequest) =>
+    request<{
+      request: { id: string; status: string; dueAt: string };
+      suspendedContractIds: string[];
+      tasks: Array<{
+        id: string;
+        kind: string;
+        dueAt: string;
+        doneAt: string | null;
+        note: string | null;
+      }>;
+    }>('/privacy/requests', {
+      method: 'POST',
+      body: JSON.stringify(createDataSubjectRequestSchema.parse(payload)),
+    }),
+
+  requireInfo: (id: string, payload: { missingItems: string; channel: string }) =>
+    request<unknown>(`/privacy/requests/${id}/require-info`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  completeRequest: (id: string, payload: { completedAt?: string } = {}) =>
+    request<unknown>(`/privacy/requests/${id}/complete`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  extendRequest: (id: string, payload: { reason: string }) =>
+    request<unknown>(`/privacy/requests/${id}/extend`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  resolveRequest: (
+    id: string,
+    payload: {
+      responseText: string;
+      responseChannel: string;
+      dataChangeReference?: string;
+    },
+  ) =>
+    request<unknown>(`/privacy/requests/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  rejectRequest: (
+    id: string,
+    payload: { responseText: string; responseChannel: string; legalBasis: string },
+  ) =>
+    request<unknown>(`/privacy/requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  transferRequest: (
+    id: string,
+    payload: { transferredTo: string; reason: string; channel: string },
+  ) =>
+    request<unknown>(`/privacy/requests/${id}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  verifyIdentity: (id: string, payload: VerifyIdentityRequest) =>
+    request<unknown>(`/privacy/requests/${id}/verify-identity`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  completeTask: (id: string, taskId: string, note: string) =>
+    request<unknown>(`/privacy/requests/${id}/tasks/${taskId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  getRequesterEvidence: (id: string) =>
+    request<{ url: string; expiresAt: string }>(`/privacy/requests/${id}/evidence`),
+
+  listAuthorizations: async (partyId: string): Promise<DataAuthorizationView[]> => {
+    const response = await request<unknown[]>(`/privacy/parties/${partyId}/authorizations`);
+    return response.map((item) => dataAuthorizationViewSchema.parse(item));
+  },
+  createAuthorization: (payload: CreateDataAuthorization) =>
+    request<{ authorizationId: string; created?: boolean }>('/privacy/authorizations', {
+      method: 'POST',
+      body: JSON.stringify(createDataAuthorizationSchema.parse(payload)),
+    }),
+  getAuthorizationProof: (partyId: string, authorizationId: string): Promise<AuthorizationProof> =>
+    request<unknown>(`/privacy/parties/${partyId}/authorizations/${authorizationId}/proof`).then(
+      (proof) => authorizationProofSchema.parse(proof),
+    ),
+  getPartyMarks: async (partyId: string): Promise<PartyPrivacyMark[]> => {
+    const response = await request<unknown[]>(`/privacy/parties/${partyId}/marks`);
+    return response.map((item) => partyPrivacyMarkSchema.parse(item));
+  },
+
+  listLegalTexts: async (): Promise<LegalText[]> => {
+    const response = await request<unknown[]>('/privacy/legal-texts');
+    return response.map((item) => legalTextSchema.parse(item));
+  },
+  getCurrentLegalText: async (type: LegalTextType): Promise<LegalText> => {
+    const response = await request<unknown>(
+      `/privacy/legal-texts/current?type=${encodeURIComponent(type)}`,
+    );
+    return legalTextSchema.parse(response);
+  },
+  createLegalText: (payload: CreateLegalText) =>
+    request<LegalText>('/privacy/legal-texts', {
+      method: 'POST',
+      body: JSON.stringify(createLegalTextSchema.parse(payload)),
+    }),
+
+  listIncidents: async (): Promise<PrivacyIncident[]> => {
+    const response = await request<unknown[]>('/privacy/incidents');
+    return response.map((item) => privacyIncidentSchema.parse(item));
+  },
+  createIncident: (payload: CreatePrivacyIncident) =>
+    request<PrivacyIncident>('/privacy/incidents', {
+      method: 'POST',
+      body: JSON.stringify(createPrivacyIncidentSchema.parse(payload)),
+    }),
+  reportIncident: (id: string, payload: { reportedAt: string; externalReference: string }) =>
+    request<PrivacyIncident>(`/privacy/incidents/${id}/reported`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getInventory: async (): Promise<PrivacyInventory> =>
+    privacyInventorySchema.parse(await request<unknown>('/privacy/inventory')),
+
+  uploadEvidence: async (file: File): Promise<PrivacyEvidenceResponse> => {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await request<unknown>('/privacy/evidence', {
+      method: 'POST',
+      body,
+    });
+    return privacyEvidenceResponseSchema.parse(response);
   },
 };

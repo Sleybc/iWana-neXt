@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ExpedienteDetailPage from './page';
-import { crmApi, usersApi } from '@/lib/api-client';
+import { crmApi, privacyApi, usersApi } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { createCrmVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 import { invalidateExpedienteTimelineCache } from '@/components/crm/expedientes/expediente-detail-cache';
@@ -83,6 +83,10 @@ jest.mock('@/components/crm/expedientes/ExpedienteConversionBanner', () => ({
   ExpedienteConversionBanner: () => <div>Banner conversión</div>,
 }));
 
+jest.mock('@/components/crm/expedientes/ConsentsPanel', () => ({
+  ConsentsPanel: () => <div data-testid="expediente-consents-panel" />,
+}));
+
 jest.mock('@/components/crm/expedientes/sections', () => {
   const actual = jest.requireActual('@/components/crm/expedientes/sections');
   return {
@@ -163,6 +167,12 @@ jest.mock('@/lib/api-client', () => ({
     transitionExpedienteStatus: jest.fn(),
     updateExpedienteSection: jest.fn(),
     reactivateExpediente: jest.fn(),
+    listConsents: jest.fn(),
+    createConsent: jest.fn(),
+    revokeConsent: jest.fn(),
+  },
+  privacyApi: {
+    getCurrentLegalText: jest.fn(),
   },
   commercialApi: {
     searchPlansForPicker: jest.fn(),
@@ -196,6 +206,9 @@ const crmApiMock = crmApi as unknown as {
   transitionExpedienteStatus: jest.Mock;
   updateExpedienteSection: jest.Mock;
   reactivateExpediente: jest.Mock;
+  listConsents: jest.Mock;
+  createConsent: jest.Mock;
+  revokeConsent: jest.Mock;
 };
 
 const usersApiMock = usersApi as unknown as {
@@ -372,6 +385,17 @@ describe('ExpedienteDetailPage', () => {
     crmApiMock.getResponsibility.mockResolvedValue({ data: null });
     crmApiMock.getResponsibilityHistory.mockResolvedValue({ data: [] });
     crmApiMock.transitionExpedienteStatus.mockResolvedValue({ data: {}, transitionWarning: null });
+    crmApiMock.listConsents.mockResolvedValue({ data: [] });
+    jest.mocked(privacyApi.getCurrentLegalText).mockResolvedValue({
+      id: 'legal-text-1',
+      type: 'AUTORIZACION',
+      sha256: 'a'.repeat(64),
+      version: 'v1.0',
+      content: 'Texto de autorización vigente',
+      isCurrent: true,
+      publishedAt: '2026-10-14T00:00:00.000Z',
+      url: null,
+    });
     jest.mocked(invalidateExpedienteTimelineCache).mockClear();
 
     usersApiMock.list.mockResolvedValue({
@@ -388,6 +412,7 @@ describe('ExpedienteDetailPage', () => {
       expect(screen.getByText('Acción recomendada ahora')).toBeInTheDocument();
     });
 
+    expect(screen.getByTestId('expediente-consents-panel')).toBeInTheDocument();
     expect(screen.getByText(/Avanzar a Precalificado/i)).toBeInTheDocument();
     expect(screen.getByText(/Bloqueantes para avanzar: 1/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Contacto: Teléfono primario/i).length).toBeGreaterThan(0);

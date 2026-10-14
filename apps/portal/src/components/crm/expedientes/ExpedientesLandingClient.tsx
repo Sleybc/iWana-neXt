@@ -12,6 +12,7 @@ import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { getSafeCrmErrorMessage } from './crm-error-message';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -777,6 +778,7 @@ function ExpedientesLandingClientInner() {
                           >
                             {expediente.fullName}
                           </Link>
+                          <PrivacyMarks marks={expediente.privacyMarks ?? []} />
                         </div>
                       </td>
                       <td className={portalDataTableCellClassName}>

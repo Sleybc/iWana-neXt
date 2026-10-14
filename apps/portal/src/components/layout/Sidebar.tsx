@@ -14,6 +14,7 @@ import {
   LifeBuoy,
   ClipboardList,
   Package,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import { cn, interactiveFocusClassName } from '@iwana/ui';
@@ -99,6 +100,12 @@ const navGroups: NavGroup[] = [
         label: 'Suscriptores',
         icon: Users,
         permission: AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      },
+      {
+        href: '/dashboard/privacy',
+        label: 'Privacidad',
+        icon: ShieldCheck,
+        permission: AccessPermissionKey.PRIVACY_READ,
       },
       {
         href: '/dashboard/scheduling',

@@ -1,21 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  FormStatus,
-  Input,
-  Select,
-} from '@iwana/ui';
-import { Loader2, Shield, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
-import { ConsentChannel } from '@iwana/shared';
+import Link from 'next/link';
+import { Badge, Button, FormStatus, Select } from '@iwana/ui';
+import { ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { ConsentChannel, type LegalText } from '@iwana/shared';
 import { crmApi, type ConsentRecordItem, type CreateConsentDto } from '@/lib/api-client';
+import { PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { getSafeCrmErrorMessage } from './crm-error-message';
+import { privacyApi } from '@/lib/api-client';
 
 const CONSENT_TYPE_OPTIONS = [
   { value: 'DATA_TREATMENT', label: 'Tratamiento de datos' },
@@ -30,8 +23,8 @@ const CONSENT_STATUS_OPTIONS = [
 ];
 
 const CONSENT_CHANNEL_OPTIONS = [
-  { value: ConsentChannel.PRESENCIAL, label: 'Presencial' },
   { value: ConsentChannel.TELEFONO, label: 'Teléfono' },
+  { value: ConsentChannel.PRESENCIAL, label: 'Presencial' },
   { value: ConsentChannel.EMAIL, label: 'Correo electrónico' },
   { value: ConsentChannel.MENSAJE_TEXTO, label: 'Mensaje de texto' },
   { value: ConsentChannel.MENSAJERIA_INSTANTANEA, label: 'Mensajería instantánea' },
@@ -70,7 +63,7 @@ function getConsentStatusLabel(status: string) {
     case 'REVOCADO':
       return 'Revocado';
     default:
-      return status;
+      return 'Estado registrado';
   }
 }
 
@@ -86,7 +79,24 @@ function getConsentTypeLabel(type: string) {
     case 'CONTACTO_OPERATIVO':
       return 'Contacto operativo';
     default:
-      return type;
+      return 'Autorización histórica';
+  }
+}
+
+function getConsentChannelLabel(channel: string) {
+  switch (channel) {
+    case 'PRESENCIAL':
+      return 'Presencial';
+    case 'TELEFONO':
+      return 'Teléfono';
+    case 'EMAIL':
+      return 'Correo electrónico';
+    case 'MENSAJE_TEXTO':
+      return 'Mensaje de texto';
+    case 'MENSAJERIA_INSTANTANEA':
+      return 'Mensajería instantánea';
+    default:
+      return 'Medio histórico';
   }
 }
 
@@ -110,23 +120,37 @@ interface ConsentsPanelProps {
 export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
   const [consents, setConsents] = useState<ConsentRecordItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const [formData, setFormData] = useState<CreateConsentDto>({
-    consentType: 'DATA_TREATMENT',
-    status: 'ACCEPTED',
-    channel: ConsentChannel.PRESENCIAL,
-    legalTextVersion: '1.0',
-    evidenceRef: undefined,
-  });
-
+  const [authorizationText, setAuthorizationText] = useState<LegalText | null>(null);
+  const [authorizationTextLoading, setAuthorizationTextLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [consentType, setConsentType] = useState('DATA_TREATMENT');
+  const [status, setStatus] = useState('ACCEPTED');
+  const [channel, setChannel] = useState<ConsentChannel | ''>('');
   useEffect(() => {
     void loadConsents();
   }, [expedienteId]);
+
+  useEffect(() => {
+    let active = true;
+    void privacyApi
+      .getCurrentLegalText('AUTORIZACION')
+      .then((text) => {
+        if (active) setAuthorizationText(text);
+      })
+      .catch(() => {
+        if (active) setAuthorizationText(null);
+      })
+      .finally(() => {
+        if (active) setAuthorizationTextLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loadConsents = async () => {
     try {
@@ -142,23 +166,27 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleCreateConsent = async () => {
+    if (!authorizationText || !channel) return;
+
+    const payload: CreateConsentDto = {
+      consentType,
+      status,
+      channel,
+      legalTextVersion: authorizationText.version,
+    };
+
     try {
       setSubmitting(true);
       setError(null);
       setSuccessMessage(null);
-      await crmApi.createConsent(expedienteId, formData);
-      await loadConsents();
+      await crmApi.createConsent(expedienteId, payload);
       setShowForm(false);
-      setFormData({
-        consentType: 'DATA_TREATMENT',
-        status: 'ACCEPTED',
-        channel: ConsentChannel.PRESENCIAL,
-        legalTextVersion: '1.0',
-        evidenceRef: undefined,
-      });
+      setChannel('');
+      await loadConsents();
+      setSuccessMessage('La autorización quedó registrada.');
     } catch (err) {
-      setError(getSafeCrmErrorMessage(err, 'No fue posible registrar el consentimiento.'));
+      setError(getSafeCrmErrorMessage(err, 'No fue posible registrar la autorización.'));
     } finally {
       setSubmitting(false);
     }
@@ -209,102 +237,108 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
             Autorizaciones para tratamiento de datos y contacto
           </p>
         </div>
-        <Button type="button" size="sm" onClick={() => setShowForm(!showForm)}>
-          <Shield className="mr-2 h-4 w-4" aria-hidden="true" />
-          {showForm ? 'Cancelar' : 'Registrar consentimiento'}
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => setShowForm((current) => !current)}
+          disabled={authorizationTextLoading || !authorizationText}
+        >
+          {showForm ? 'Cancelar' : 'Registrar autorización'}
         </Button>
       </div>
 
       <FormStatus
-        status={successMessage ? 'success' : 'idle'}
-        message={successMessage ?? undefined}
+        status={error ? 'error' : successMessage ? 'success' : 'idle'}
+        message={error ?? successMessage ?? undefined}
       />
 
-      {showForm && (
-        <Card className="rounded-2xl border border-white/70 shadow-sm dark:border-dark-border dark:bg-dark-surface-2/95">
-          <CardHeader>
-            <CardTitle className="text-base">Nuevo consentimiento</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Select
-                  id="consentType"
-                  label="Tipo de consentimiento"
-                  value={formData.consentType}
-                  onChange={(e) => setFormData({ ...formData, consentType: e.target.value })}
-                  className="h-11"
-                >
-                  {CONSENT_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Select
-                  id="status"
-                  label="Estado"
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="h-11"
-                >
-                  {CONSENT_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Select
-                id="channel"
-                label="Canal de obtención"
-                value={formData.channel}
-                onChange={(e) =>
-                  setFormData({ ...formData, channel: e.target.value as ConsentChannel })
-                }
-                className="h-11"
-              >
-                {CONSENT_CHANNEL_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <Input
-              id="evidenceRef"
-              label="Referencia de evidencia"
-              value={formData.evidenceRef ?? ''}
-              onChange={(e) =>
-                setFormData({ ...formData, evidenceRef: e.target.value || undefined })
-              }
-              placeholder="Número de acta, URL, etc."
-            />
-            <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                loading={submitting}
-                disabled={!formData.consentType || !formData.status || !formData.channel}
-              >
-                Registrar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {authorizationTextLoading ? (
+        <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
+          Cargando texto de autorización vigente…
+        </p>
+      ) : authorizationText ? (
+        <section
+          className="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-border"
+          aria-label="Texto de autorización vigente"
+        >
+          <p className="text-sm font-semibold">
+            Texto vigente · versión {authorizationText.version}
+          </p>
+          <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
+            {authorizationText.content}
+          </p>
+        </section>
+      ) : (
+        <div className="rounded-xl border border-amber-300 p-4 text-sm">
+          <p>No hay un texto de autorización vigente. La captura está bloqueada.</p>
+          <Link className="font-medium underline" href="/dashboard/privacy?view=legal">
+            Administrar textos legales
+          </Link>
+        </div>
       )}
 
+      {showForm && authorizationText ? (
+        <section
+          className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-border dark:bg-dark-surface-2"
+          aria-labelledby="expediente-authorization-form-title"
+        >
+          <div>
+            <h4 id="expediente-authorization-form-title" className="font-semibold">
+              Registrar una autorización
+            </h4>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              El medio indica cómo la persona otorgó su autorización.
+            </p>
+          </div>
+          <Select
+            id="expediente-consent-type"
+            label="Finalidad"
+            value={consentType}
+            options={CONSENT_TYPE_OPTIONS}
+            onChange={(event) => setConsentType(event.target.value)}
+          />
+          <Select
+            id="expediente-consent-status"
+            label="Decisión registrada"
+            value={status}
+            options={CONSENT_STATUS_OPTIONS}
+            onChange={(event) => setStatus(event.target.value)}
+          />
+          <Select
+            id="expediente-consent-channel"
+            label="Medio por el que la persona otorgó la autorización"
+            value={channel}
+            options={CONSENT_CHANNEL_OPTIONS}
+            placeholder="Selecciona un medio"
+            onChange={(event) => setChannel(event.target.value as ConsentChannel | '')}
+            required
+            aria-required="true"
+          />
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Texto vinculado: versión {authorizationText.version}. No se adjuntan archivos desde el
+            expediente.
+          </p>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              onClick={() => void handleCreateConsent()}
+              loading={submitting}
+              disabled={submitting || !channel}
+            >
+              Registrar autorización
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-iwana-primary" aria-hidden="true" />
+        <div className="space-y-3 py-3" aria-busy="true">
+          <span className="sr-only" role="status">
+            Cargando autorizaciones
+          </span>
+          <PortalSkeletonBlock className="h-20 rounded-2xl" />
+          <PortalSkeletonBlock className="h-20 rounded-2xl" />
+          <PortalSkeletonBlock className="h-20 rounded-2xl" />
         </div>
       ) : (
         <div className="space-y-3">
@@ -354,7 +388,7 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
                           </div>
                           {consent.channel && (
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              Canal: {consent.channel}
+                              Medio: {getConsentChannelLabel(consent.channel)}
                             </p>
                           )}
                         </>

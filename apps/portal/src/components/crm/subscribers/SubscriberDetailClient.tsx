@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { AccessPermissionKey, PersonType } from '@iwana/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
-import { BriefcaseBusiness, FileCheck2, Pencil, Users, X } from 'lucide-react';
+import { BriefcaseBusiness, Pencil, Users, X } from 'lucide-react';
 import type { CreateSubscriberPayload, UpdateSubscriberPayload } from '@iwana/shared';
 import { ApiError, Subscriber360Response, crmApi, subscribersApi } from '@/lib/api-client';
 import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
+import { usePermissions } from '@/components/access-control/permissions-context';
+import { CompliancePanel } from '@/components/privacy/CompliancePanel';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
@@ -63,6 +66,9 @@ function toSentenceCase(value: string): string {
 export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { hasPermission } = usePermissions();
+  const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
+  const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const subscriberId = typeof params?.id === 'string' ? params.id : '';
   const [subscriber360, setSubscriber360] = useState<Subscriber360Response | null>(null);
   const [loading, setLoading] = useState(mode === 'detail');
@@ -79,12 +85,12 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     fiscalName: '',
   });
 
-  const loadSubscriber = async () => {
+  const loadSubscriber = async (preserveContent = false) => {
     if (mode !== 'detail' || !subscriberId) {
       return;
     }
 
-    setLoading(true);
+    if (!preserveContent) setLoading(true);
     setError(null);
     try {
       const response = await subscribersApi.get360(subscriberId);
@@ -343,11 +349,32 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       {
         id: 'cumplimiento',
         label: 'Cumplimiento',
-        content: (
-          <StubCard
-            title="Cumplimiento"
-            description="Consentimientos y solicitudes ARCO se muestran como lectura consolidada progresiva."
-            icon={FileCheck2}
+        content: canReadPrivacy ? (
+          <CompliancePanel
+            partyId={subscriber.partyId}
+            authorizations={subscriber360?.habeasData ?? []}
+            requests={subscriber360?.arcoRequests ?? []}
+            canManage={canManagePrivacy}
+            contracts={subscriber360?.contracts ?? []}
+            requesterDefaults={{
+              name:
+                subscriber.personType === PersonType.JURIDICA
+                  ? subscriber.businessName
+                  : `${subscriber.firstName ?? ''} ${subscriber.lastName ?? ''}`.trim(),
+              ...(subscriber.documentNumber !== undefined
+                ? { document: subscriber.documentNumber }
+                : {}),
+              ...((subscriber.email ?? subscriber.phone) !== undefined
+                ? { contact: subscriber.email ?? subscriber.phone }
+                : {}),
+            }}
+            onChanged={() => void loadSubscriber(true)}
+          />
+        ) : (
+          <PortalAlert
+            variant="warning"
+            title="No tienes acceso a datos de privacidad"
+            description="Solicita el permiso de lectura para consultar autorizaciones y solicitudes vinculadas."
           />
         ),
       },
@@ -363,7 +390,16 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         ),
       },
     ];
-  }, [subscriber, subscriber360, billingEditing, billingDraft, billingSaving, loadSubscriber]);
+  }, [
+    subscriber,
+    subscriber360,
+    billingEditing,
+    billingDraft,
+    billingSaving,
+    loadSubscriber,
+    canManagePrivacy,
+    canReadPrivacy,
+  ]);
 
   if (mode === 'create') {
     return (
@@ -403,7 +439,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       {!loading && subscriber && (
         <>
           <div>
-            <SubscriberHeader subscriber={subscriber} onChangeStatus={() => setDialogOpen(true)} />
+            <SubscriberHeader
+              subscriber={subscriber}
+              marks={subscriber360?.privacyMarks ?? []}
+              onChangeStatus={() => setDialogOpen(true)}
+            />
           </div>
 
           <div>

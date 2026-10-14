@@ -378,10 +378,10 @@ describe('Sidebar', () => {
       expect(screen.queryByRole('link', { name: 'Suscriptores' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'Mesa de ayuda' })).not.toBeInTheDocument();
 
-      // Skeletons con forma de ítem: un li aria-hidden por slot gateado (9)
+      // Skeletons con forma de ítem: un li aria-hidden por slot gateado (10, incluida Privacidad)
       const nav = screen.getByRole('navigation', { name: 'Menú principal' });
       const skeletonRows = nav.querySelectorAll('li[aria-hidden="true"]');
-      expect(skeletonRows).toHaveLength(9);
+      expect(skeletonRows).toHaveLength(10);
       const focusablePlaceholders = Array.from(skeletonRows).filter(
         (element) => element.querySelector('a, button, [tabindex]:not([tabindex="-1"])') !== null,
       );

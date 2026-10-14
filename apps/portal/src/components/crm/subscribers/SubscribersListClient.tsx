@@ -11,6 +11,7 @@ import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-m
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -505,6 +506,7 @@ function SubscribersListClientInner() {
                             <p className="font-semibold text-iwana-primary transition-colors group-hover:text-iwana-secondary-700 dark:text-white dark:group-hover:text-iwana-secondary-300">
                               {formatSubscriberName(subscriber)}
                             </p>
+                            <PrivacyMarks marks={subscriber.privacyMarks ?? []} />
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                               {subscriber.email || subscriber.phone || 'Sin contacto principal'}
                             </p>

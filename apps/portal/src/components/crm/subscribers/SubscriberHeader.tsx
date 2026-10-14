@@ -5,6 +5,8 @@ import { Badge, Button } from '@iwana/ui';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { PersonType, SubscriberStatus } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
+import type { PrivacyMark } from '@iwana/shared';
+import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
 import {
   CUSTOMER_SEGMENT_META,
   PERSON_TYPE_META,
@@ -15,10 +17,15 @@ import { VatTreatmentBanner } from './VatTreatmentBanner';
 
 interface SubscriberHeaderProps {
   subscriber: SubscriberRecord;
+  marks?: PrivacyMark[];
   onChangeStatus: () => void;
 }
 
-export function SubscriberHeader({ subscriber, onChangeStatus }: SubscriberHeaderProps) {
+export function SubscriberHeader({
+  subscriber,
+  marks = [],
+  onChangeStatus,
+}: SubscriberHeaderProps) {
   const router = useRouter();
   const name = formatSubscriberName(subscriber);
   const statusMeta = SUBSCRIBER_STATUS_META[subscriber.status as SubscriberStatus];
@@ -57,6 +64,9 @@ export function SubscriberHeader({ subscriber, onChangeStatus }: SubscriberHeade
           >
             {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
           </Badge>
+        </div>
+        <div className="mt-3">
+          <PrivacyMarks marks={marks} />
         </div>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Suscriptor de la empresa</p>
       </div>

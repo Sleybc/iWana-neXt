@@ -58,6 +58,7 @@ import {
 } from '@/lib/api-client';
 import { ExpedienteHeader } from '@/components/crm/expedientes/ExpedienteHeader';
 import { ExpedienteConversionBanner } from '@/components/crm/expedientes/ExpedienteConversionBanner';
+import { ConsentsPanel } from '@/components/crm/expedientes/ConsentsPanel';
 import {
   EXPEDIENTE_STATUS_META,
   getStatusMeta,
@@ -989,6 +990,7 @@ export default function ExpedienteDetailPage() {
             : undefined
         }
       />
+      <ConsentsPanel expedienteId={expediente.id} />
       {installationReadiness && (
         <div
           className={`rounded-[20px] border px-4 py-4 shadow-iwana-soft ${
