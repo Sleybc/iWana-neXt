@@ -2,7 +2,6 @@ import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { AuditAction } from '@iwana/shared';
-import { AuditLog, TenantContext } from '@iwana/db';
 import {
   DataSource,
   EntitySubscriberInterface,
@@ -12,6 +11,7 @@ import {
 } from 'typeorm';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { IContractImpersonationPort } from '../../privacy/ports/contract-impersonation.port';
+import { AuditService } from '../../audit/audit.service';
 
 type PendingSuspension = { partyId: string; contractId: string; requestId: string };
 
@@ -44,6 +44,7 @@ export class CrmContractImpersonationAdapter implements IContractImpersonationPo
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService,
   ) {
     const subscriber = new ContractSuspensionCommitSubscriber(
       this.pendingByRunner,
@@ -109,24 +110,24 @@ export class CrmContractImpersonationAdapter implements IContractImpersonationPo
       )) as Array<{ id: string }>;
       if (!result[0]) continue;
 
-      const { tenantId } = TenantContext.getOrThrow();
-      const audit = ctx.manager.create(AuditLog, {
-        tenantId,
-        userId: input.actorId,
-        action: AuditAction.UPDATE,
-        entityType: 'Contract',
-        entityId: row.id,
-        oldValue: { status: ContractStatus.ACTIVE },
-        newValue: {
-          status: ContractStatus.SUSPENDED,
-          reason: 'SUPLANTACION',
+      await this.auditService.logWithin(
+        {
+          userId: input.actorId,
+          action: AuditAction.UPDATE,
+          entityType: 'Contract',
+          entityId: row.id,
+          oldValue: { status: ContractStatus.ACTIVE },
+          newValue: {
+            status: ContractStatus.SUSPENDED,
+            reason: 'SUPLANTACION',
+            requestId: input.requestId,
+          },
+          ipAddress: null,
+          userAgent: null,
           requestId: input.requestId,
         },
-        ipAddress: null,
-        userAgent: null,
-        requestId: input.requestId,
-      });
-      await ctx.manager.save(AuditLog, audit);
+        ctx.manager,
+      );
       suspendedContractIds.push(row.id);
       pending.push({ partyId: input.partyId, contractId: row.id, requestId: input.requestId });
     }

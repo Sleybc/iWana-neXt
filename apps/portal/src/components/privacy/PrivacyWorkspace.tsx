@@ -18,6 +18,8 @@ import type {
   LegalTextType,
   PrivacyIncident,
   PrivacyInventory,
+  RequestKind,
+  RequestStatus,
   RequestSummary,
 } from '@iwana/shared';
 import { PrivacyRequestDetail } from './PrivacyRequestDetail';
@@ -50,6 +52,14 @@ const surfaceLabels: Record<Surface, string> = {
 
 function readSurface(value: string | null): Surface {
   return value === 'legal' || value === 'incidents' || value === 'inventory' ? value : 'requests';
+}
+
+function readRequestKind(value: string | null): RequestKind | '' {
+  return PRIVACY_REQUEST_KINDS.find((item) => item.value === value)?.value ?? '';
+}
+
+function readRequestStatus(value: string | null): RequestStatus | '' {
+  return PRIVACY_REQUEST_STATUSES.find((item) => item.value === value)?.value ?? '';
 }
 
 function RequestSummaryCard({ item, onOpen }: { item: RequestSummary; onOpen: () => void }) {
@@ -104,8 +114,8 @@ function RequestsSurface({ canManage }: { canManage: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
-  const kind = search.get('kind') ?? '';
-  const status = search.get('status') ?? '';
+  const kind = readRequestKind(search.get('kind'));
+  const status = readRequestStatus(search.get('status'));
   const dueWithinDays = search.get('dueWithinDays') ?? '';
   const cursor = search.get('cursor') ?? '';
   const page = Math.max(1, Number(search.get('page') ?? '1'));
@@ -164,7 +174,15 @@ function RequestsSurface({ canManage }: { canManage: boolean }) {
   }, [load]);
 
   const changeFilter = (name: 'kind' | 'status' | 'dueWithinDays', value: string) => {
-    setFilters((current) => ({ ...current, [name]: value }));
+    if (name === 'kind') {
+      const selected = readRequestKind(value);
+      setFilters((current) => ({ ...current, kind: selected }));
+    } else if (name === 'status') {
+      const selected = readRequestStatus(value);
+      setFilters((current) => ({ ...current, status: selected }));
+    } else {
+      setFilters((current) => ({ ...current, dueWithinDays: value }));
+    }
     previousCursors.current = [];
     replaceQuery({ [name]: value || null, cursor: null, page: null });
   };

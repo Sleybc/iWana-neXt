@@ -966,3 +966,53 @@ describe('api-client expiración terminal notificable', () => {
     window.removeEventListener('iwana:session-expired', sessionExpiredListener);
   });
 });
+
+describe('privacyApi response envelopes', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('lee la evidencia del solicitante desde la envoltura data', async () => {
+    const evidence = {
+      url: 'https://storage.example.test/evidence?signature=short-lived',
+      expiresAt: '2026-10-14T18:00:00.000Z',
+    };
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain('/privacy/requests/request-1/evidence');
+      return createJsonResponse(200, { data: evidence });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { persistAccessToken, privacyApi } = await import('./api-client');
+    persistTenantSlug('isp-demo');
+    persistAccessToken('privacy-test-token');
+
+    await expect(privacyApi.getRequesterEvidence('request-1')).resolves.toEqual(evidence);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('valida el inventario recibido dentro de la envoltura data', async () => {
+    const inventory = {
+      generatedAt: '2026-10-14T17:00:00.000Z',
+      databases: [],
+    };
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain('/privacy/inventory');
+      return createJsonResponse(200, { data: inventory });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { persistAccessToken, privacyApi } = await import('./api-client');
+    persistTenantSlug('isp-demo');
+    persistAccessToken('privacy-test-token');
+
+    await expect(privacyApi.getInventory()).resolves.toEqual(inventory);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,9 +1,9 @@
 # Módulo `privacy` — Habeas Data · Fase 1 · Plan de orquestación
 
-**Fecha:** 2026-10-14 · **Versión:** 1.5 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-14 · **Versión:** 1.6 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Decisión:** [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md) — Aprobado por el CTO el 2026-10-14 (retención de prospectos: 24 meses)
-**Prompt G4:** [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md) — A22 y D-POT sobre v1.2 (A10–A21), v1.1 (A1–A9) y v1.0; las anteriores, superadas
-**Launcher vigente (Ola 4a-bis):** [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.7.md](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.7.md) · superados: [LAUNCH-v1.6](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.6.md) (Ola 4a, NO-GO), [LAUNCH-v1.5](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.5.md) (A24), [LAUNCH-v1.4](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.4.md) (Q3Δ3 → Q7), [LAUNCH-v1.3](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.3.md) (Q7 bloqueado), [LAUNCH-v1.2](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.2.md) (Ola 2-bis + Ola 2), [LAUNCH-v1.1](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.1.md) (Ola 1-bis), [LAUNCH-v1.0](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.0.md) (Ola 1)
+**Prompt G4:** [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md) — A22 a A26, D-POT, D-F1A y el cierre (§3 y §4), sobre v1.2 (A10–A21), v1.1 (A1–A9) y v1.0; las anteriores, superadas
+**Último launcher (cerrado):** [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.8.md](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.8.md) · anteriores: [LAUNCH-v1.7](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.7.md) (Ola 4a-bis), [LAUNCH-v1.6](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.6.md) (Ola 4a, NO-GO), [LAUNCH-v1.5](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.5.md) (A24), [LAUNCH-v1.4](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.4.md) (Q3Δ3 → Q7), [LAUNCH-v1.3](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.3.md) (Q7 bloqueado), [LAUNCH-v1.2](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.2.md) (Ola 2-bis + Ola 2), [LAUNCH-v1.1](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.1.md) (Ola 1-bis), [LAUNCH-v1.0](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.0.md) (Ola 1)
 
 **Goal:** cerrar E-2 (SUB-A06, SUB-A07, SUB-B03) con el titular modelado como Party, plazos legales calculados con festivos y la suplantación operativa antes de que rija la Ley 2573 (19-nov-2026 ⚠).
 
@@ -13,32 +13,27 @@
 - **Escala:** un job diario por tenant; índices por `(status, due_at)`.
 - **Regulación:** Ley 1581, Decreto 1377, Ley 2573, Decreto 1704 y Ley 962.
 
-## Estado al 2026-10-14 (v1.3)
+## Estado al 2026-10-14 (v1.6) — Fase 1a cerrada en G6
 
-| Bloque | Estado |
+| Tema | Estado |
 | --- | --- |
-| Q1–Q6 | ✅ Ola 2-bis + Ola 2 cerradas: API 350 suites / 4.847 tests; shared 18 / 166; 0 en caché. Integraciones reales: Q1 6/6, Q2 1/1, Q3 9/9, Q5 15/15, Q6 1/1 |
-| Spec Q4 | ✅ v1.2 ratificada (52 CA + CA-53 de §17) |
-| A22 (defecto del emisor) | ✅ Cerrado: Q1 v1.3 (10 integración + 3 unitarios), Q3 v1.3 (10/10; API 351 / 4.852) |
-| A23 | ✅ Q3 v1.4 (API 353 / 4.856; shared 18 / 167; integración real 12/12) |
-| Q7 | ✅ Portal 297 suites / 2.993 tests, 0 en caché; Playwright 3/3 (API simulada con el schema real); matriz CA-01–53. P1: captura del expediente deshabilitada |
-| A24 (defecto del emisor en A18) | Canal = medio del titular, no la superficie. La conversión hoy destruye el medio original. **El árbol no se puede commitear** hasta Q2Δ4, Q5Δ1 y Q7Δ1 |
-| P2 de Q7 → Ola 4 | `sr-qa`: E2E contra la API levantada y cobertura de interacciones |
-| A24 | ✅ Q2 v1.3 (API 355 / 4.862; shared 18 / 168), Q5 v1.1 (integración real 16/16), Q7 v1.2 (portal 298 / 2.996). Verificado en el código: no quedan constantes de superficie salvo en tests negativos y de `LEGACY_IMPORT` |
-| D-F1A | ✅ **Aprobada por el CTO** (2026-10-14): la Fase 1a se cierra ahora; Q8 sale a la Fase 1b con su contrato trazado |
-| D-POT | ✅ Desmontar (CTO). `PotentialsModule` no está registrado en `CrmModule` |
-| Checkpoint | ✅ `91283057` (db + shared), `15bda462` (api), `a5a78672` (portal + e2e) |
-| Ola 4a | **NO-GO:** SEC-01 (P1), boundary de auditoría (bloqueante, A25), deriva de envoltura (P1), QA sin correr (falta `dbiw` migrada), cobertura de `privacy` 54 / 33 %, §Lanzamiento del plan (corregido). Gates de lint, typecheck y tests verdes en 5 paquetes → Ola 4a-bis (prompt v1.3 §4) |
-| D-POT | `PotentialsModule` montado por primera vez (autorizado por el CTO), sin consumidor en el portal. AI-EM-ARCH recomienda desmontarlo. **Decisión del CTO** |
-| Deuda | 027 pública → G6.5; conciliación del backfill por tenant; evidencias huérfanas (Fase 2); métrica de Q6 solo en logs (P2); el adaptador de suplantación replica la regla de transición (P3); `HLD-PRIVACY-v1.0` antes de G7 |
-| Ruta crítica (Ley 2573, 19-nov) | Q7 → Ola 4 (cierre de la suplantación). Q8 (bloqueo) puede ir después si el calendario aprieta |
+| Fase 1a (Q1 a Q7, A1 a A26) | ✅ **G6 GO**, condicionado a G6.5. Consolidado en [INFORME-PRIVACY-FASE-1A-CIERRE-G6-v1.0](../informes/INFORME-PRIVACY-FASE-1A-CIERRE-G6-v1.0.md) |
+| Construcción | Q1 a Q6 (integraciones reales: Q1 10, Q2 1, Q3 12, Q5 16, Q6 1); spec Q4 v1.2 ratificada (53 CA); Q7 en el portal |
+| Correcciones del emisor | A1–A9 (v1.1), A10–A21 (v1.2), A22–A26 (v1.3). Lección en memoria: pasada regla → campo antes de congelar |
+| Cierre (Ola 4a → 4a-bis) | Ola 4a NO-GO → R1 (SEC-01, envolturas), R2 (A25 `logWithin`), R3 (enums del cliente), R4 (cobertura), R5 (A26 `partyId`), R4b (E2E reales 3/3). Re-verificación: SEC GO, BOUNDARY sin hallazgos, DRIFT GO, GATES verdes en 5 paquetes, DOCS corregido en esta versión |
+| D-F1A | ✅ Aprobada por el CTO: Q8 (bloqueo y anonimización) pasa a la **Fase 1b** |
+| D-POT | ✅ El CTO decidió desmontarlo: `PotentialsModule` **no** está registrado en `CrmModule` (revertido antes del checkpoint) |
+| Commits | Checkpoint `91283057`, `15bda462`, `a5a78672`, `e20bdf01`. R1 a R5, R4b y el cierre, sin commitear |
+| G6.5 (pendiente) | Integración real de la migración pública 027 en CI (`DB_NAME=test`) |
+| Deuda registrada | Ver el informe de cierre §5 |
+| Ruta crítica (Ley 2573, 19-nov) | La suplantación quedó lista en G6. Antes de producción: G6.5, dictámenes de ADR-094 §7.3 y `HLD-PRIVACY-v1.0` (G7) |
 
 ## 0. Gates y bloqueos
 
 | Gate / bloqueo | Estado |
 | --- | --- |
 | G1–G3 | ADR-094 aprobado |
-| G4 | Se firma al lanzar la Ola 1 |
+| G4 | ✅ Firmado al lanzar la Ola 1 · G6 de la Fase 1a: ✅ GO (informe de cierre) · G6.5: pendiente (027 en CI) |
 | Precondición | ✅ IVA y D-PDF commiteados (`4a1b437a`, `9d227eaf`) |
 | Número de módulo `privacy` | Pendiente del CTO (roadmap). **No bloquea**: el nombre técnico es `privacy` |
 | Dictámenes ⚠ (ADR-094 §7.3) | **Bloquean producción, no la construcción** |
@@ -93,6 +88,6 @@ Skills verificadas en disco (`ls .agents/skills/<nombre>/SKILL.md`, 2026-10-11/1
 
 ## Lanzamiento
 
-> Espejo de [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.7.md](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.7.md). **El archivo es la fuente y prevalece si divergen.**
+> Espejo de [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.8.md](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.8.md). **El archivo es la fuente y prevalece si divergen.**
 
-Ola 4a-bis: R1 `sr-backend` ∥ R2 `sr-backend` ∥ R3 `fe-platform`, después R4 `sr-qa` (con `dbiw` migrada por el CTO) y la re-verificación de solo lectura, contra el prompt v1.3 §4. Q8 sale a la Fase 1b (D-F1A).
+Fase 1a cerrada (G6 GO). Siguiente: la Fase 1b (Q8 y el plazo de traslado), con un plan y un contrato propios.

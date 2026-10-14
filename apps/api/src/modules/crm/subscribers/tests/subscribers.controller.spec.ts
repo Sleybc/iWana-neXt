@@ -56,6 +56,7 @@ describe('SubscribersController', () => {
   const mockSubscriber = {
     id: 'sub-001',
     tenantId: 'tenant-001',
+    partyId: 'party-test-001',
     userId: null,
     personType: PersonType.NATURAL,
     customerSegment: CustomerSegment.RESIDENTIAL,
@@ -397,6 +398,20 @@ describe('SubscribersController', () => {
       );
       expect(result.data.id).toBe('sub-001');
       expect(result.data.email).toBe('juan@example.com');
+      expect(result.data.partyId).toBe('party-test-001');
+      const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
+      expect(auditPayload).not.toContain('partyId');
+      expect(auditPayload).not.toContain('party-test-001');
+    });
+
+    it('incluye partyId nulo para un suscriptor heredado y no lo agrega a auditoría', async () => {
+      subscribersServiceMock.findById.mockResolvedValue({ ...mockSubscriber, partyId: null });
+
+      const result = await controller.findById('sub-001', mockUser);
+
+      expect(result.data).toHaveProperty('partyId', null);
+      const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
+      expect(auditPayload).not.toContain('partyId');
     });
   });
 
@@ -525,11 +540,34 @@ describe('SubscribersController', () => {
       );
       expect(result.data.subscriber).toBeDefined();
       expect(result.data.subscriber.id).toBe('sub-001');
+      expect(result.data.subscriber.partyId).toBe('party-test-001');
+      const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
+      expect(auditPayload).not.toContain('partyId');
+      expect(auditPayload).not.toContain('party-test-001');
       expect(result.data.contacts).toEqual([]);
       expect(result.data.contracts).toEqual([]);
       expect(result.data.quotes).toEqual([]);
       expect(result.data.habeasData).toEqual([]);
       expect(result.data.arcoRequests).toEqual([]);
+    });
+
+    it('conserva partyId nulo en la ficha 360° sin incorporarlo a auditoría', async () => {
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: { ...mockSubscriber, partyId: null },
+        contacts: [],
+        contracts: [],
+        quotes: [],
+        habeasData: [],
+        arcoRequests: [],
+        expedienteSummary: null,
+        timelineSeed: [],
+      });
+
+      const result = await controller.get360View('sub-001', mockUser);
+
+      expect(result.data.subscriber).toHaveProperty('partyId', null);
+      const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
+      expect(auditPayload).not.toContain('partyId');
     });
   });
 

@@ -15,7 +15,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { AuditAction } from '@iwana/shared';
 import { AuditService } from './audit.service';
 import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
@@ -308,5 +308,83 @@ describe('AuditService', () => {
       newValue: Record<string, unknown>;
     };
     expect(savedPayload.newValue).toEqual({ id: 'evt-2', status: 'DRAFT' });
+  });
+
+  it('logWithin persiste en el manager recibido y sanea los valores', async () => {
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'tenant_s1' });
+    const created = { id: 'audit-entry' };
+    const manager = {
+      create: jest.fn().mockReturnValue(created),
+      save: jest.fn().mockResolvedValue(created),
+    };
+
+    await service.logWithin(
+      {
+        ...BASE_ENTRY,
+        action: AuditAction.UPDATE,
+        oldValue: { status: 'ACTIVE', fullName: 'Nombre Sintético' },
+        newValue: { status: 'SUSPENDED', fiscalDocument: 'Documento Sintético' },
+      },
+      manager as unknown as EntityManager,
+    );
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        oldValue: { status: 'ACTIVE' },
+        newValue: { status: 'SUSPENDED' },
+      }),
+    );
+    expect(manager.save).toHaveBeenCalledWith(expect.anything(), created);
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+  });
+
+  it('logWithin propaga el error de persistencia para que el llamador revierta su transacción', async () => {
+    mockTenantContextGet.mockReturnValue({ tenantId: 'tenant-1', schemaName: 'tenant_s1' });
+    const failure = new Error('audit insert failed');
+    const manager = {
+      create: jest.fn((_entity: unknown, entry: unknown) => entry),
+      save: jest.fn().mockRejectedValue(failure),
+    };
+
+    await expect(service.logWithin(BASE_ENTRY, manager as unknown as EntityManager)).rejects.toBe(
+      failure,
+    );
+    expect(platformAuditLog).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+  });
+
+  it('logWithin requiere tenant explícito o TenantContext', async () => {
+    mockTenantContextGet.mockReturnValue(undefined);
+    const manager = {
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+
+    await expect(
+      service.logWithin(BASE_ENTRY, manager as unknown as EntityManager),
+    ).rejects.toThrow('sin contexto tenant');
+    expect(manager.create).not.toHaveBeenCalled();
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('logWithin respeta el tenant explícito cuando también se indica el schema', async () => {
+    mockTenantContextGet.mockReturnValue(undefined);
+    const manager = {
+      create: jest.fn((_entity: unknown, entry: unknown) => entry),
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+
+    await service.logWithin(
+      { ...BASE_ENTRY, tenantId: 'explicit-tenant', schemaName: 'tenant_explicit' },
+      manager as unknown as EntityManager,
+    );
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tenantId: 'explicit-tenant' }),
+    );
+    expect(mockTenantContextGet).not.toHaveBeenCalled();
   });
 });

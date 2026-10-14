@@ -209,6 +209,16 @@ export const privacyEvidenceResponseSchema = dataEnvelopeSchema(
   ),
 );
 
+export const requesterEvidenceResponseSchema = dataEnvelopeSchema(
+  objectSchema(
+    {
+      url: { type: 'string', format: 'uri' },
+      expiresAt: timestamp,
+    },
+    ['url', 'expiresAt'],
+  ),
+);
+
 const privacyInventoryDatabase = objectSchema(
   {
     key: {
@@ -253,10 +263,12 @@ const privacyInventoryDatabase = objectSchema(
   ],
 );
 
-export const privacyInventoryResponseSchema = objectSchema(
-  {
-    generatedAt: timestamp,
-    databases: { type: 'array', items: privacyInventoryDatabase },
-  },
-  ['generatedAt', 'databases'],
+export const privacyInventoryResponseSchema = dataEnvelopeSchema(
+  objectSchema(
+    {
+      generatedAt: timestamp,
+      databases: { type: 'array', items: privacyInventoryDatabase },
+    },
+    ['generatedAt', 'databases'],
+  ),
 );

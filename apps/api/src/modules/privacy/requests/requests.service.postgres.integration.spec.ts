@@ -529,6 +529,38 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     expect(auditPayloads.join(' ')).not.toContain('1234567');
   });
 
+  it('abre la leyenda de reclamo en la misma transacción que complete', async () => {
+    const request = await createRequest({ right: 'ACTUALIZAR' });
+    await dataSource.query(`
+      ALTER TABLE "${schemaName}".data_subject_request_events
+      ADD CONSTRAINT reject_complete_event CHECK (to_status <> 'EN_TRAMITE') NOT VALID
+    `);
+
+    try {
+      await expect(
+        inTenant(() => service.transition(request.request.id, 'complete', {}, actorId)),
+      ).rejects.toThrow(/reject_complete_event/u);
+
+      const rows = (await dataSource.query(
+        `SELECT status FROM "${schemaName}".data_subject_requests WHERE id = $1`,
+        [request.request.id],
+      )) as Array<{ status: string }>;
+      const marks = (await dataSource.query(
+        `SELECT event FROM "${schemaName}".party_privacy_marks
+         WHERE request_id = $1 AND mark = 'RECLAMO_EN_TRAMITE'`,
+        [request.request.id],
+      )) as Array<{ event: string }>;
+
+      expect(rows).toEqual([{ status: 'RADICADA' }]);
+      expect(marks).toEqual([]);
+    } finally {
+      await dataSource.query(`
+        ALTER TABLE "${schemaName}".data_subject_request_events
+        DROP CONSTRAINT IF EXISTS reject_complete_event
+      `);
+    }
+  });
+
   it('inserta REVOCATION al resolver CONTACTO_COMERCIAL y traslada con entidad, canal y motivo', async () => {
     const revokeRequest = await createRequest({
       right: 'REVOCAR',

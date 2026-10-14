@@ -4,7 +4,7 @@
 **Estado:** Emitido — G4 vigente
 **Fecha:** 2026-10-14
 **Emisor:** AI-EM-ARCH (modo Orchestrator)
-**Plan:** [2026-10-14-privacy-habeas-data-fase-1.md](../plans/2026-10-14-privacy-habeas-data-fase-1.md) v1.3
+**Plan:** [2026-10-14-privacy-habeas-data-fase-1.md](../plans/2026-10-14-privacy-habeas-data-fase-1.md) v1.6
 
 ## 0. Estado de la Ola 2-bis + Ola 2
 
@@ -271,4 +271,22 @@ El adaptador de suplantación usa `logWithin`. Ningún módulo fuera de `audit` 
 | R3 | `fe-platform` | `apps/portal/src/lib/api-client.ts` (sección `privacy`) y sus specs | turbo portal `--force`; typecheck; tests de Ver evidencia e inventario contra la respuesta con `{ data }` |
 | R4 | `sr-qa` | Solo tests: `apps/api/src/modules/privacy/**/*.spec.ts`, `e2e/tests/portal-privacy*` | Arranca **tras** R1–R3 y la precondición del CTO. Matriz CA-01 a 53; plazos; cobertura ≥ 80 % de statements y branches de `privacy`; tres E2E contra la API real; conteos sin caché |
 
-**Re-verificación (después de R1 a R4, solo lectura):** `sec-eng` revisa SEC-01; `boundary-reviewer` revisa A25; `contract-drift-reviewer` revisa la envoltura y los enums; `gate-verifier` corre los cinco paquetes; `docs-governance` revisa el plan v1.5. Después, AI-EM-ARCH consolida `INFORME-PRIVACY-FASE-1A-CIERRE-G6-v1.0.md`.
+**Re-verificación (solo lectura; la secuencia que se ejecutó fue R5 → R4b con V1 a V5, según LAUNCH v1.8):** `sec-eng` revisa SEC-01; `boundary-reviewer` revisa A25; `contract-drift-reviewer` revisa la envoltura y los enums; `gate-verifier` corre los cinco paquetes; `docs-governance` revisa el plan v1.5. Después, AI-EM-ARCH consolida `INFORME-PRIVACY-FASE-1A-CIERRE-G6-v1.0.md`.
+
+### A26. `partyId` en la respuesta del suscriptor (v1.3.4 · cierra el P1 de R4)
+
+**Causa: defecto del emisor.** A17 («se radica desde la ficha 360° del titular») y A20 (paneles de Cumplimiento) dependen de que el portal conozca el `partyId` del suscriptor, pero ninguna adenda lo pidió en la respuesta. `SubscribersController.sanitizeResponse` (`subscribers.controller.ts:512`) arma una lista blanca sin `partyId`, aunque la entidad lo tiene (`subscriber.entity.ts:49`). El portal lo espera (`api-client.ts:5642`, `SubscriberDetailClient.tsx:354`). Los mocks lo ocultaron y solo el E2E real lo detectó.
+
+**Contrato:**
+- `sanitizeResponse` añade `partyId: string | null` en todas las respuestas que la usan (`subscribers.controller.ts:120, 364, 383, 402, 442, 464`).
+- Es un UUID, no PII. La UI nunca lo muestra (CA-08).
+- Con `partyId` nulo (suscriptor heredado sin Party), Cumplimiento muestra el estado «sin titular vinculado» y no ofrece radicar. Ese estado ya es responsabilidad de Q7; si no existe, es deuda P2.
+
+**Plazos que R4 dejó sin vencimiento propio (P2, no bloquean G6):**
+- **Leyenda (R1):** se abre en la misma transacción de `complete`, así que el máximo de 2 días hábiles se cumple por construcción. Se verifica con un test de esa misma transacción; no hace falta una fecha propia.
+- **Traslado:** A5 decía «valida ≤ 2 días hábiles», y no se implementó. **Corrección del emisor:** bloquear un traslado tardío empeoraría el incumplimiento. En la **Fase 1b** el detalle derivará `transferDueAt` (`received_at` + 2 días hábiles) y un traslado tardío quedará marcado con `TRASLADO_EXTEMPORANEO` en el evento. Hasta entonces, deuda P2.
+
+| Bloque | Subagente | Propiedad | Stop/go |
+| --- | --- | --- | --- |
+| R5 | `sr-backend` | `crm/subscribers/subscribers.controller.ts` y sus specs | turbo API `--force`; test de controlador: `partyId` presente en el detalle y en la 360°, y ausente de cualquier texto de log o auditoría |
+| R4b | `sr-qa` | Solo tests (`e2e/tests/portal-privacy-live.spec.ts` y la matriz) | Tras R5: 3/3 E2E contra la API real; un test de la leyenda en la transacción de `complete`; el tenant desechable se elimina o se marca inactivo al terminar, y el informe lo confirma |

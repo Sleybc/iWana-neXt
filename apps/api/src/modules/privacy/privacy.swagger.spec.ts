@@ -167,14 +167,29 @@ describe('Privacy OpenAPI', () => {
     expect(getResponseSchema(incidentCreate, '201')).toBeDefined();
   });
 
-  it('documenta el inventario con la forma declarativa directa y sin conteos', () => {
+  it('documenta evidencia e inventario con la envoltura data y sin conteos', () => {
+    const paths = document().paths;
+    const evidenceOperation = paths['/privacy/requests/{id}/evidence']?.get as
+      | SwaggerOperation
+      | undefined;
+    const evidenceSchema = getResponseSchema(evidenceOperation, '200');
+    const evidenceProperties = evidenceSchema?.properties as Record<string, unknown> | undefined;
+
+    expect(evidenceSchema?.required).toEqual(['data']);
+    expect(evidenceProperties?.data).toMatchObject({
+      type: 'object',
+      required: ['url', 'expiresAt'],
+    });
+
     const operation = document().paths['/privacy/inventory']?.get as SwaggerOperation | undefined;
     const schema = getResponseSchema(operation, '200');
     const properties = schema?.properties as Record<string, unknown> | undefined;
 
-    expect(schema?.required).toEqual(['generatedAt', 'databases']);
+    expect(schema?.required).toEqual(['data']);
     expect(schema?.additionalProperties).toBe(false);
-    expect(properties?.databases).toBeDefined();
-    expect(properties?.data).toBeUndefined();
+    expect(properties?.data).toMatchObject({
+      type: 'object',
+      required: ['generatedAt', 'databases'],
+    });
   });
 });

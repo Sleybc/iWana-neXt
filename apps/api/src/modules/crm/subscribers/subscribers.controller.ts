@@ -513,6 +513,7 @@ export class SubscribersController {
     const result: Record<string, unknown> = {
       id: subscriber.id,
       tenantId: subscriber.tenantId,
+      partyId: subscriber.partyId,
       userId: subscriber.userId,
       personType: subscriber.personType,
       customerSegment: subscriber.customerSegment,

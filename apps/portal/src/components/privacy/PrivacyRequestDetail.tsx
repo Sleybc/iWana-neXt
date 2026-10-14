@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@iwana/ui';
-import type { DataSubjectRequestDetail, ResponseChannel } from '@iwana/shared';
+import type { DataSubjectRequestDetail, RequestLegalBasis, ResponseChannel } from '@iwana/shared';
 import { ApiError, privacyApi } from '@/lib/api-client';
 import {
   PortalAlert,
@@ -38,7 +38,7 @@ function isClosed(status: string): boolean {
 function getResponseTemplate(
   action: Action,
   kind: DataSubjectRequestDetail['request']['kind'],
-  legalBasis: string,
+  legalBasis: RequestLegalBasis,
 ): string | null {
   if (action === 'require-info')
     return 'Para continuar con la atención, necesitamos la siguiente información:';
@@ -88,7 +88,7 @@ export function PrivacyRequestDetail({
   const [reason, setReason] = useState('');
   const [responseText, setResponseText] = useState('');
   const [channel, setChannel] = useState<ResponseChannel>('EMAIL');
-  const [legalBasis, setLegalBasis] = useState('SOLICITANTE_NO_LEGITIMADO');
+  const [legalBasis, setLegalBasis] = useState<RequestLegalBasis>('SOLICITANTE_NO_LEGITIMADO');
   const [transferredTo, setTransferredTo] = useState('');
   const [dataChangeReference, setDataChangeReference] = useState('');
   const [identityMethod, setIdentityMethod] = useState('');
@@ -622,7 +622,7 @@ export function PrivacyRequestDetail({
                     <select
                       className={inputClass}
                       value={legalBasis}
-                      onChange={(event) => setLegalBasis(event.target.value)}
+                      onChange={(event) => setLegalBasis(event.target.value as RequestLegalBasis)}
                     >
                       {rejectBasisOptions.map((item) => (
                         <option key={item.value} value={item.value}>

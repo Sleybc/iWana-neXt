@@ -155,6 +155,10 @@ import {
   type PrivacyInventory,
   type PrivacyMark,
   type PartyPrivacyMark,
+  type RequestKind,
+  type RequestLegalBasis,
+  type RequestStatus,
+  type ResponseChannel,
   type RequestSummary,
   type VerifyIdentityRequest,
 } from '@iwana/shared';
@@ -9801,8 +9805,8 @@ export const purchasingApi = {
 export const privacyApi = {
   listRequests: async (
     params: {
-      kind?: string;
-      status?: string;
+      kind?: RequestKind;
+      status?: RequestStatus;
       dueWithinDays?: number;
       cursor?: string;
       limit?: number;
@@ -9850,7 +9854,7 @@ export const privacyApi = {
       body: JSON.stringify(createDataSubjectRequestSchema.parse(payload)),
     }),
 
-  requireInfo: (id: string, payload: { missingItems: string; channel: string }) =>
+  requireInfo: (id: string, payload: { missingItems: string; channel: ResponseChannel }) =>
     request<unknown>(`/privacy/requests/${id}/require-info`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -9869,7 +9873,7 @@ export const privacyApi = {
     id: string,
     payload: {
       responseText: string;
-      responseChannel: string;
+      responseChannel: ResponseChannel;
       dataChangeReference?: string;
     },
   ) =>
@@ -9879,7 +9883,11 @@ export const privacyApi = {
     }),
   rejectRequest: (
     id: string,
-    payload: { responseText: string; responseChannel: string; legalBasis: string },
+    payload: {
+      responseText: string;
+      responseChannel: ResponseChannel;
+      legalBasis: RequestLegalBasis;
+    },
   ) =>
     request<unknown>(`/privacy/requests/${id}/reject`, {
       method: 'POST',
@@ -9887,7 +9895,7 @@ export const privacyApi = {
     }),
   transferRequest: (
     id: string,
-    payload: { transferredTo: string; reason: string; channel: string },
+    payload: { transferredTo: string; reason: string; channel: ResponseChannel },
   ) =>
     request<unknown>(`/privacy/requests/${id}/transfer`, {
       method: 'POST',

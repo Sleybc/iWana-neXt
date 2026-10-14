@@ -1,6 +1,8 @@
 # LAUNCH — `privacy` · Habeas Data · Fase 1a · Ola 4a-bis
 
-**Fecha:** 2026-10-14 · **Estado:** Vigente · **Plan:** `docs/plans/2026-10-14-privacy-habeas-data-fase-1.md` v1.5 · **Prompt:** `docs/prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md` §4 (disposición del NO-GO y A25)
+> **Superado el 2026-10-14** por [PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.8.md](PROMPT-PRIVACY-HABEAS-DATA-FASE-1-LAUNCH-v1.8.md) (A26 y re-verificación). No relanzar desde este archivo.
+
+**Fecha:** 2026-10-14 · **Estado:** Superado · **Plan:** `docs/plans/2026-10-14-privacy-habeas-data-fase-1.md` v1.5 · **Prompt:** `docs/prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md` §4 (disposición del NO-GO y A25)
 **Ola que lanza:** correcciones del NO-GO de la Ola 4a (R1–R3), luego QA (R4) y re-verificación · **Gates:** G6 al cerrar
 **Precondición (CTO, pendiente):** `pnpm db:backup` y `pnpm db:migrate:all` sobre `dbiw`; sin esto R4 no arranca. PostgreSQL en `127.0.0.1:5433`. D-F1A y D-POT resueltos; checkpoint commiteado.
 

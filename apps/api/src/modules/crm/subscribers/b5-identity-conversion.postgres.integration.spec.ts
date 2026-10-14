@@ -907,7 +907,11 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     eventEmitter.on('crm.contract.suspended', (event: Record<string, unknown>) =>
       emitted.push(event),
     );
-    const adapter = new CrmContractImpersonationAdapter(dataSource, eventEmitter);
+    const adapter = new CrmContractImpersonationAdapter(
+      dataSource,
+      eventEmitter,
+      makeAuditService(),
+    );
 
     await TenantContext.run(context(), () =>
       runInTenantSchema(dataSource, testSchemaName, async (qr) => {
@@ -973,7 +977,11 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     const eventEmitter = new EventEmitter2();
     const emitted = jest.fn();
     eventEmitter.on('crm.contract.suspended', emitted);
-    const adapter = new CrmContractImpersonationAdapter(dataSource, eventEmitter);
+    const adapter = new CrmContractImpersonationAdapter(
+      dataSource,
+      eventEmitter,
+      makeAuditService(),
+    );
 
     await expect(
       TenantContext.run(context(), () =>

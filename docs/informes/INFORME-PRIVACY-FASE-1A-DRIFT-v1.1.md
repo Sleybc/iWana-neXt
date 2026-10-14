@@ -1,0 +1,30 @@
+# Informe de deriva de contratos — Privacy Fase 1a
+
+**Versión:** 1.1  
+**Fecha:** 2026-10-14  
+**Bloque:** V3 · `contract-drift-reviewer`  
+**Resultado:** **GO con una observación menor**. Las envolturas de evidencia e inventario, los tipos de privacidad y las proyecciones consumidas llegan al portal. La interfaz del suscriptor aún declara `partyId` opcional, aunque A26 exige que la respuesta siempre lo incluya como UUID o `null`.
+
+## Alcance
+
+Revisión estática de solo lectura de los cambios R1, R3 y R5 y de las proyecciones relacionadas del portal. Se siguió la evidencia e inventario desde controladores y OpenAPI hasta `request()` y sus consumidores; se compararon los enums de privacidad de `@iwana/shared` con validadores y llamadas del portal; se revisaron `partyId`, la ficha 360° y la proyección de listas de suscriptores. No se ejecutaron pruebas ni se modificó implementación.
+
+## Matriz por símbolo
+
+| Símbolo | Productor | Consumidor | Proyección | Portal | Hallazgo | Severidad |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET /privacy/requests/:id/evidence` → `{ data: { url, expiresAt } }` | `requests.controller.ts:203-217`; OpenAPI usa `requesterEvidenceResponseSchema` en `privacy-openapi.schemas.ts:212` | — | Servicio devuelve `{ url, expiresAt }`; controlador lo envuelve en `data` (`requests.controller.ts:216-217`) | `api-client.ts:9914-9915` usa `request()`; el helper desempaqueta `body.data` en `api-client.ts:809`; `PrivacyRequestDetail.tsx:204` consume `url` | Coincide. | — |
+| `GET /privacy/inventory` → `{ data: PrivacyInventory }` | `inventory.controller.ts:38-44`; OpenAPI envolvente en `privacy-openapi.schemas.ts:266` | — | `privacyInventorySchema.parse()` conserva la forma declarativa (`inventory.controller.ts:43-44`) | `api-client.ts:9965-9966` desempaqueta y valida con `privacyInventorySchema`; `PrivacyWorkspace.tsx:792` lo muestra | Coincide. | — |
+| Tipos de filtros y transiciones de solicitudes | Zod compartido define `RequestKind`, `RequestStatus`, `ResponseChannel` y `RequestLegalBasis` en `requests.ts:5,15,37-38,304-310`; los controladores validan los cuerpos con esos schemas | API rechaza valores fuera de los schemas | Detalle y resumen se parsean con schemas compartidos (`api-client.ts:9838`, `requests.ts:242-310`) | `api-client.ts:9806-9809,9857,9876,9888-9889,9898` usa los tipos compartidos | Los filtros y cuerpos ya no aceptan `string` abierto. | — |
+| Canal de autorización | `createDataAuthorizationSchema` limita `channel` a `ConsentChannel` (`authorizations.ts:13-18`); API valida el mismo schema en `authorizations.controller.ts:75-76` | La escritura acepta el enum vigente | La vista conserva `channel: string` en `authorizations.ts:24` para registros históricos, incluido `LEGACY_IMPORT` | El cliente importa `ConsentChannel` y el payload de captura deriva de `CreateDataAuthorization` (`api-client.ts:9,5806-5811,9921-9925`) | Escritura y lectura distinguen correctamente canal actual de valores históricos. | — |
+| `partyId` en respuestas de suscriptor y ficha 360° | `sanitizeResponse` incluye `partyId` (`subscribers.controller.ts:512-516`) y se usa en las respuestas de `:120,364,383,402,442,464` | — | Ficha 360° mantiene `habeasData`, `arcoRequests` y `privacyMarks` (`subscribers.service.ts:1080-1082,1134-1152`) | `SubscriberRecord.partyId` está en `api-client.ts:5642`; la ficha lo pasa a `CompliancePanel` (`SubscriberDetailClient.tsx:354`), que maneja ausencia (`CompliancePanel.tsx:58,152`) | **La propiedad del tipo está declarada opcional** (`partyId?: string | null`), pero A26 define una clave obligatoria `partyId: string | null`. El productor actual sí emite la propiedad, incluso cuando vale `null`; el tipo del cliente no detectaría una regresión que la omitiera. | Menor |
+| Campos de privacidad en proyecciones CRM de lista y 360° | La lista incluye `privacyMarks` en la whitelist (`subscriber-projection.ts:74-87`); el servicio 360° proyecta `habeasData`, `arcoRequests` y `privacyMarks` (`subscribers.service.ts:1134-1152`) | — | La lista publica `SubscriberListItem` compartido, que declara `privacyMarks` (`subscriber.schema.ts:63-76`) | La lista consume marcas en `SubscribersListClient.tsx:509`; la ficha consume autorizaciones/solicitudes en `SubscriberDetailClient.tsx:355-356` y marcas en `:444`; tipos 360° en `api-client.ts:5676-5683` | No encontré otro campo de la lista blanca que el portal consuma y la proyección omita. `partyId` no forma parte del contrato ni del consumo de la lista; se usa en detalle/360°, donde ya está presente. | — |
+
+## Lista de símbolos y archivos revisados
+
+- Envolturas: `apps/api/src/modules/privacy/requests/requests.controller.ts`, `apps/api/src/modules/privacy/inventory/inventory.controller.ts`, `apps/api/src/modules/privacy/privacy-openapi.schemas.ts`, `apps/portal/src/lib/api-client.ts`, `apps/portal/src/components/privacy/PrivacyRequestDetail.tsx`, `apps/portal/src/components/privacy/PrivacyWorkspace.tsx`.
+- Tipos: `packages/shared/src/schemas/privacy/requests.ts`, `packages/shared/src/schemas/privacy/authorizations.ts`, `apps/api/src/modules/privacy/authorizations/authorizations.controller.ts`, sección `privacy` de `apps/portal/src/lib/api-client.ts`.
+- Suscriptores: `apps/api/src/modules/crm/subscribers/subscribers.controller.ts`, `apps/api/src/modules/crm/subscribers/subscriber-projection.ts`, `apps/api/src/modules/crm/subscribers/subscribers.service.ts`, `packages/shared/src/schemas/subscriber.schema.ts`, `apps/portal/src/lib/api-client.ts`, `apps/portal/src/components/crm/subscribers/SubscriberDetailClient.tsx`, `apps/portal/src/components/crm/subscribers/SubscribersListClient.tsx`, `apps/portal/src/components/privacy/CompliancePanel.tsx`.
+- Antecedentes leídos: `AGENTS.md`; `docs/informes/INFORME-PRIVACY-FASE-1A-DRIFT-v1.0.md`; `docs/informes/INFORME-PRIVACY-FASE-1A-R1-v1.0.md`; `docs/informes/INFORME-PRIVACY-FASE-1A-R3-v1.0.md`; `docs/informes/INFORME-PRIVACY-FASE-1A-R5-v1.0.md`; `docs/prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md` §4 A26.
+
+La ruta del informe estaba libre antes de crearlo. No se modificaron archivos de implementación.

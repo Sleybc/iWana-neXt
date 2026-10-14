@@ -53,6 +53,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { PrivacyRequestsService } from './requests.service';
+import { requesterEvidenceResponseSchema } from '../privacy-openapi.schemas';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -208,19 +209,12 @@ export class PrivacyRequestsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({
     description: 'URL firmada de corta duración; la respuesta no se almacena en caché.',
-    schema: {
-      type: 'object',
-      required: ['url', 'expiresAt'],
-      properties: {
-        url: { type: 'string', format: 'uri' },
-        expiresAt: { type: 'string', format: 'date-time' },
-      },
-      additionalProperties: false,
-    },
+    schema: requesterEvidenceResponseSchema,
   })
   @ApiNotFoundResponse({ description: 'No existe evidencia disponible para esta solicitud.' })
   async getEvidence(@Param('id', ParseUUIDPipe) id: string, @Req() request: AuthenticatedRequest) {
-    return this.requestsService.getRequesterEvidence(id, request.user.sub);
+    const data = await this.requestsService.getRequesterEvidence(id, request.user.sub);
+    return { data };
   }
 
   @Post(':id/verify-identity')

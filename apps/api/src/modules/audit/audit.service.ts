@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
@@ -37,6 +37,42 @@ export class AuditService {
     private readonly dataSource: DataSource,
     private readonly platformAuditService: PlatformAuditService,
   ) {}
+
+  /**
+   * Registra una entrada en la transacción del llamador.
+   *
+   * A diferencia de `log()`, los errores se propagan para que la operación de
+   * negocio pueda revertirse junto con su auditoría. El llamador debe haber
+   * fijado el `search_path` tenant en la transacción asociada al manager.
+   */
+  async logWithin(entry: AuditEntryInput, manager: EntityManager): Promise<void> {
+    let tenantId = entry.tenantId;
+    let schemaName = entry.schemaName;
+
+    if (!tenantId || !schemaName) {
+      const ctx = TenantContext.get();
+      if (!ctx) {
+        throw new Error('No se puede auditar dentro de una transacción sin contexto tenant.');
+      }
+      tenantId = ctx.tenantId;
+      schemaName = ctx.schemaName;
+    }
+
+    const logEntry = manager.create(AuditLog, {
+      tenantId,
+      userId: entry.userId ?? null,
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      oldValue: sanitizeAuditPayload(entry.oldValue ?? null),
+      newValue: sanitizeAuditPayload(entry.newValue ?? null),
+      ipAddress: entry.ipAddress ?? null,
+      userAgent: entry.userAgent ?? null,
+      requestId: entry.requestId ?? null,
+    });
+
+    await manager.save(AuditLog, logEntry);
+  }
 
   /**
    * Registra una entrada de audit trail en el schema del tenant.

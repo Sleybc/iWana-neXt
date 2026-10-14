@@ -39,7 +39,8 @@ export class PrivacyInventoryController {
   })
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite esta acción.' })
-  async getInventory(): Promise<PrivacyInventory> {
-    return privacyInventorySchema.parse(await this.inventoryService.getInventory());
+  async getInventory(): Promise<{ data: PrivacyInventory }> {
+    const data = privacyInventorySchema.parse(await this.inventoryService.getInventory());
+    return { data };
   }
 }
