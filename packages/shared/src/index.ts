@@ -31,6 +31,8 @@ export * from './enums/operations';
 export * from './enums/inventory';
 export * from './inventory';
 export * from './taxation';
+export * from './calendar';
+export * from './schemas/privacy';
 
 // Interfaces
 export * from './interfaces/api-response.interface';

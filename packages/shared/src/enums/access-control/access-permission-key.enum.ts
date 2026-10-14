@@ -52,4 +52,6 @@ export enum AccessPermissionKey {
   BILLING_PAYMENTS_REGISTER = 'billing.payments.register',
   BILLING_INVOICES_READ = 'billing.invoices.read',
   BILLING_INVOICES_MANAGE = 'billing.invoices.manage',
+  PRIVACY_READ = 'privacy.read',
+  PRIVACY_MANAGE = 'privacy.manage',
 }

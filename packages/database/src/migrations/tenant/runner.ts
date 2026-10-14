@@ -102,6 +102,8 @@ import { ExpandInventoryBaseCostPrecision1420000000000 } from './142_expand_inve
 import { AddSubscriberPartyPiiHmac1430000000000 } from './143_subscriber_party_pii_hmac';
 import { VatServicePoint1440000000000 } from './144_vat_service_point';
 import { ContractStratumEvidenceUnique1450000000000 } from './145_contract_stratum_evidence_unique';
+import { PrivacyModule1460000000000 } from './146_privacy_module';
+import { SeedPrivacyPermissions1470000000000 } from './147_seed_privacy_permissions';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -285,6 +287,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   AddSubscriberPartyPiiHmac1430000000000,
   VatServicePoint1440000000000,
   ContractStratumEvidenceUnique1450000000000,
+  PrivacyModule1460000000000,
+  SeedPrivacyPermissions1470000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

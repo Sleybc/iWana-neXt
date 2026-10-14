@@ -5,6 +5,18 @@ import { CustomerSegment } from '../enums/customer-segment.enum';
 import { DocumentType } from '../enums/document-type.enum';
 import { SubscriberStatus } from '../enums/subscriber-status.enum';
 import { VatTreatment } from '../enums/vat-treatment.enum';
+import { ConsentChannel } from '../enums/crm/consent-channel.enum';
+import { dataPurposeSchema } from './privacy/authorizations';
+
+const subscriberAuthorizationSchema = z
+  .object({
+    purpose: dataPurposeSchema,
+    granted: z.boolean(),
+    legalTextId: z.string().uuid(),
+  })
+  .strict();
+
+const authorizationsSchema = z.array(subscriberAuthorizationSchema).optional();
 
 /**
  * C-API-1 v1.1 body contract for POST /crm/subscribers/search.
@@ -61,6 +73,7 @@ export interface SubscriberListItem {
   businessName: string | null;
   commercialName: string | null;
   createdAt: string;
+  privacyMarks?: import('./privacy/marks').PrivacyMark[];
   documentNumber?: string;
   nit?: string;
   nitVerificationDigit?: string;
@@ -116,6 +129,8 @@ export const naturalSubscriberSchema = z.object({
   externalId: z.string().max(160).optional(),
   expedienteId: z.string().uuid().optional(),
   manualOverrideReason: z.string().min(10).max(500).optional(),
+  authorizations: authorizationsSchema,
+  authorizationChannel: z.nativeEnum(ConsentChannel).optional(),
 });
 
 /**
@@ -150,16 +165,25 @@ export const juridicaSubscriberSchema = z.object({
   externalId: z.string().max(160).optional(),
   expedienteId: z.string().uuid().optional(),
   manualOverrideReason: z.string().min(10).max(500).optional(),
+  authorizations: authorizationsSchema,
+  authorizationChannel: z.nativeEnum(ConsentChannel).optional(),
 });
 
 /**
  * Schema Zod con unión discriminada por personType.
  * Valida campos obligatorios según tipo de persona.
  */
-export const CreateSubscriberSchema = z.discriminatedUnion('personType', [
-  naturalSubscriberSchema,
-  juridicaSubscriberSchema,
-]);
+export const CreateSubscriberSchema = z
+  .discriminatedUnion('personType', [naturalSubscriberSchema, juridicaSubscriberSchema])
+  .superRefine((subscriber, context) => {
+    if (subscriber.authorizations?.length && !subscriber.authorizationChannel) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['authorizationChannel'],
+        message: 'Debe indicar el medio por el que se obtuvo la autorización.',
+      });
+    }
+  });
 
 /**
  * Schema Zod para actualizar suscriptor — todos los campos opcionales.

@@ -1,4 +1,5 @@
 import { MediaUsageStratumEvidence1784419214000 } from './026_media_usage_stratum_evidence';
+import { MediaUsagePrivacyEvidence1784419215000 } from './027_media_usage_privacy_evidence';
 import { PUBLIC_MIGRATIONS } from './index';
 
 const CHECK_020 =
@@ -58,8 +59,11 @@ describe('026_media_usage_stratum_evidence', () => {
     expect(migration.name).toBe('MediaUsageStratumEvidence1784419214000');
     // Exactamente lo que hace TypeORM en MigrationExecutor.getMigrations.
     expect(parseInt(migration.name.slice(-13), 10)).toBeGreaterThan(1784419213000);
-    expect(PUBLIC_MIGRATIONS[PUBLIC_MIGRATIONS.length - 1]).toBe(
+    expect(PUBLIC_MIGRATIONS[PUBLIC_MIGRATIONS.length - 2]).toBe(
       MediaUsageStratumEvidence1784419214000,
+    );
+    expect(PUBLIC_MIGRATIONS[PUBLIC_MIGRATIONS.length - 1]).toBe(
+      MediaUsagePrivacyEvidence1784419215000,
     );
   });
 

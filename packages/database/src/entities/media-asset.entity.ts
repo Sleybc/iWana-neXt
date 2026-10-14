@@ -26,6 +26,8 @@ export enum MediaUsage {
   EXECUTION_EVIDENCE = 'execution_evidence',
   /** Soporte del estrato de un contrato: PDF, JPEG, PNG o WEBP (ADR-093 D5, C-MEDIA-1) */
   STRATUM_EVIDENCE = 'stratum_evidence',
+  /** Evidencia de identidad Habeas Data: PDF, JPEG, PNG o WEBP (ADR-094, A9) */
+  PRIVACY_EVIDENCE = 'privacy_evidence',
 }
 
 /**
