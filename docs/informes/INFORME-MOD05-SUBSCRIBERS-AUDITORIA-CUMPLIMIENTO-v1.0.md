@@ -467,3 +467,10 @@ F-7 confirma que el tratamiento de IVA es atributo de la **línea de servicio**,
 **C-6 — E-1 resuelta (2026-10-12).** El CTO aprobó [ADR-093](../adrs/ADR-093-Tratamiento-IVA-Internet-por-Punto-y-Linea-de-Servicio.md); ADR-025 queda parcialmente superado. La implementación se orquesta en [2026-10-12-mod05-iva-punto-servicio.md](../plans/2026-10-12-mod05-iva-punto-servicio.md). SUB-C03 pasa de *bloqueado por decisión* a *en implementación*; sigue abierto hasta el G6 de esa fase.
 
 **C-7 — SUB-C03 cerrado en G6 (2026-10-14).** Fases IVA (ADR-093) y D-PDF con G6 en GO: [cierre consolidado](INFORME-MOD05-IVA-PDF-CIERRE-G6-v1.0.md). Quedan G6.5 (CI por SHA) y G7 (MinIO privado, migraciones y backfill por tenant). El módulo sigue **NO-GO para producción** por E-2 (Habeas Data) y E-3 (placeholders).
+
+**C-8 — E-2 verificada (2026-10-14).** El insumo del CTO sobre Habeas Data se contrastó contra la Ley 1581 (arts. 14 y 15), la Ley 2157 de 2021, la Ley 2573 de 2026, el Decreto 1704 de 2012, la Ley 962 de 2005 y la Ley 2300 de 2023.
+- **Correcciones al insumo:** la conservación de soportes contables es de **10 años** (Ley 962 art. 28), no 5, y la caducidad del dato negativo corre desde la entrada en mora.
+- **Lo que añade al modelo:** la Ley 2573 (vigente desde el 19-nov-2026) aplica a operadores de internet y exige suspender de inmediato el servicio adquirido con suplantación; además, el calendario de festivos, el reporte de incidentes y la Ley 2300.
+- **Decisión:** [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md), **aprobado por el CTO el 2026-10-14**, con un módulo `privacy` cuyo titular es el Party. Hallazgo nuevo de ámbito transversal: `assurance/sla.service.ts:85-86` calcula plazos PQR sin festivos (deuda de `assurance`).
+
+**C-9 — E-2 resuelta (2026-10-14).** ADR-094 aprobado. La implementación se orquesta en [2026-10-14-privacy-habeas-data-fase-1.md](../plans/2026-10-14-privacy-habeas-data-fase-1.md). SUB-A06, SUB-A07 y SUB-B03 pasan a *en implementación*. Hallazgo adicional: la vista 360° devuelve `habeasData` y `arcoRequests` vacíos fijos (`subscribers.service.ts:946-947`); lo cubre el bloque Q5.
