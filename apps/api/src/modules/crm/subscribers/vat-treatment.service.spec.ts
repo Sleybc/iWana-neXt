@@ -199,7 +199,7 @@ describe('VatTreatmentService', () => {
       expect(errors).toContain('stratum debe ser entre 1 y 6');
     });
 
-    it('campos compartidos obligatorios — sin email → error', () => {
+    it('acepta el teléfono cuando falta el correo', () => {
       const data: Partial<Subscriber> = {
         personType: PersonType.NATURAL,
         documentType: DocumentType.CC,
@@ -211,10 +211,10 @@ describe('VatTreatmentService', () => {
         address: 'Calle 1 #2-3',
       };
       const errors = service.validateRequiredFields(PersonType.NATURAL, data);
-      expect(errors).toContain('email es obligatorio');
+      expect(errors).not.toContain('email o phone es obligatorio');
     });
 
-    it('campos compartidos obligatorios — sin phone → error', () => {
+    it('acepta el correo cuando falta el teléfono', () => {
       const data: Partial<Subscriber> = {
         personType: PersonType.NATURAL,
         documentType: DocumentType.CC,
@@ -226,7 +226,7 @@ describe('VatTreatmentService', () => {
         address: 'Calle 1 #2-3',
       };
       const errors = service.validateRequiredFields(PersonType.NATURAL, data);
-      expect(errors).toContain('phone es obligatorio');
+      expect(errors).not.toContain('email o phone es obligatorio');
     });
 
     it('campos compartidos obligatorios — sin address → error', () => {

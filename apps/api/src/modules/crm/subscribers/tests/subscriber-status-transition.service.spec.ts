@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import {
@@ -131,24 +131,25 @@ describe('SubscriberStatusTransitionService', () => {
   // ── validateTransitionRequirements ──
 
   describe('validateTransitionRequirements', () => {
-    it('LEAD → PROSPECT: requiere documento, nombre y contacto', () => {
+    it('LEAD → PROSPECT: requiere documento, nombre y un contacto', () => {
       const subscriber = buildSubscriber({
         documentType: null,
         documentNumberEncrypted: null,
         firstName: null,
         lastName: null,
-        emailEncrypted: '',
-        phoneEncrypted: '',
+        emailEncrypted: null,
+        phoneEncrypted: null,
       });
 
       const errors = service.validateTransitionRequirements(subscriber, SubscriberStatus.PROSPECT);
-      expect(errors).toHaveLength(6);
+      expect(errors).toHaveLength(5);
       expect(errors).toContain('Campo obligatorio faltante: documentType');
       expect(errors).toContain('Campo obligatorio faltante: documentNumberEncrypted');
       expect(errors).toContain('Campo obligatorio faltante: firstName');
       expect(errors).toContain('Campo obligatorio faltante: lastName');
-      expect(errors).toContain('Campo obligatorio faltante: emailEncrypted');
-      expect(errors).toContain('Campo obligatorio faltante: phoneEncrypted');
+      expect(errors).toContain('Debe registrar al menos un teléfono o un correo');
+      expect(errors).not.toContain('Campo obligatorio faltante: emailEncrypted');
+      expect(errors).not.toContain('Campo obligatorio faltante: phoneEncrypted');
     });
 
     it('LEAD → PROSPECT: sin errores cuando todos los campos están presentes', () => {
@@ -307,6 +308,43 @@ describe('SubscriberStatusTransitionService', () => {
           },
         }),
       );
+    });
+
+    it.each([SubscriberStatus.PROSPECT, SubscriberStatus.SUSPENDED])(
+      'rechaza %s → ACTIVE si faltan ambos contactos',
+      async (status) => {
+        const subscriber = buildSubscriber({
+          status,
+          emailEncrypted: null,
+          phoneEncrypted: null,
+        });
+        mockSubscriber(subscriber);
+
+        await expect(
+          service.transition(subscriber.id, SubscriberStatus.ACTIVE, 'motivo sintético', 'actor-1'),
+        ).rejects.toMatchObject({
+          constructor: UnprocessableEntityException,
+          response: {
+            code: 'SUBSCRIBER_CONTACT_REQUIRED',
+            message:
+              'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
+          },
+        });
+        expect(auditService.log).not.toHaveBeenCalled();
+      },
+    );
+
+    it('permite activar con solo un canal cifrado', async () => {
+      const subscriber = buildSubscriber({
+        status: SubscriberStatus.PROSPECT,
+        emailEncrypted: null,
+        phoneEncrypted: 'encrypted-phone',
+      });
+      mockSubscriber(subscriber);
+
+      await expect(
+        service.transition(subscriber.id, SubscriberStatus.ACTIVE, null, 'actor-1'),
+      ).resolves.toMatchObject({ toStatus: SubscriberStatus.ACTIVE });
     });
 
     it('lanza BadRequestException si subscriber no existe', async () => {

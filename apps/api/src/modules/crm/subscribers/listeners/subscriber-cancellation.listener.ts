@@ -9,7 +9,7 @@ export class SubscriberCancellationListener {
 
   constructor(private readonly subscribersService: SubscribersService) {}
 
-  @OnEvent('crm.expediente.discarded', { async: true })
+  @OnEvent('crm.expediente.discarded', { suppressErrors: false })
   async handle(event: ExpedienteDiscardedEvent): Promise<void> {
     const cancelled = await this.subscribersService.cancelProspectFromExpediente(
       event.expedienteId,

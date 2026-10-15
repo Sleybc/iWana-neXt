@@ -57,7 +57,7 @@ describe('createPartyPiiCrypto', () => {
     expect(() => crypto.contactHmac(PartyContactType.EMAIL, '   ')).toThrow(BadRequestException);
   });
 
-  it('conserva vacío el valor de contacto en claro durante la transición', () => {
-    expect(partyContactStorageValue()).toBe('');
+  it('persiste null en el valor de contacto en claro', () => {
+    expect(partyContactStorageValue()).toBeNull();
   });
 });

@@ -8,8 +8,6 @@ import {
 } from '../../common/crypto/aes-gcm.util';
 import { hmacPii, resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 
-const LEGACY_CONTACT_VALUE = '';
-
 export interface PartyPiiCrypto {
   encrypt(value: string): string;
   decrypt(value: string): string;
@@ -44,7 +42,6 @@ export function createPartyPiiCrypto(config: ConfigService): PartyPiiCrypto {
   };
 }
 
-export function partyContactStorageValue(): string {
-  // C-DDL-1 conserva `party_contact.value NOT NULL` hasta E-3; no guardar allí PII.
-  return LEGACY_CONTACT_VALUE;
+export function partyContactStorageValue(): null {
+  return null;
 }

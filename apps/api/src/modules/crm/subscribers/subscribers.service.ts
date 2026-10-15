@@ -40,6 +40,7 @@ import {
   type RequestSummary,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
+import { hasRealContact } from './subscriber-contact.util';
 import { VatTreatmentService } from './vat-treatment.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
 import { AuditService } from '../../audit/audit.service';
@@ -201,8 +202,8 @@ export class SubscribersService {
       commercialName?: string | undefined;
       legalRepresentativeId?: string | undefined;
       // Compartido
-      email: string;
-      phone: string;
+      email?: string | undefined;
+      phone?: string | undefined;
       altContactName?: string | undefined;
       altContactPhone?: string | undefined;
       whatsapp?: string | undefined;
@@ -240,6 +241,12 @@ export class SubscribersService {
   ): Promise<Subscriber> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const isConversion = Boolean(dto.expedienteId && dto.convertedAt);
+    if (!isConversion && !dto.email && !dto.phone) {
+      throw new UnprocessableEntityException({
+        code: 'SUBSCRIBER_CONTACT_REQUIRED',
+        message: 'Registra al menos un teléfono o un correo.',
+      });
+    }
     if (!isConversion && dto.authorizations?.length && !dto.authorizationChannel) {
       throw new BadRequestException('Debe indicar el medio de las autorizaciones del alta.');
     }
@@ -264,8 +271,8 @@ export class SubscribersService {
     );
 
     // Cifrar PII
-    const emailEncrypted = this.encryptValue(dto.email);
-    const phoneEncrypted = this.encryptValue(dto.phone);
+    const emailEncrypted = dto.email ? this.encryptValue(dto.email) : null;
+    const phoneEncrypted = dto.phone ? this.encryptValue(dto.phone) : null;
     const altContactPhoneEncrypted = dto.altContactPhone
       ? this.encryptValue(dto.altContactPhone)
       : null;
@@ -288,8 +295,8 @@ export class SubscribersService {
     const documentNumberHash = dto.documentNumber
       ? hashDocumentNumber(dto.documentNumber, this.piiHashKey)
       : null;
-    const emailHash = hashEmail(dto.email, this.piiHashKey);
-    const phoneHash = this.hmacPhoneHash(dto.phone);
+    const emailHash = dto.email ? hashEmail(dto.email, this.piiHashKey) : null;
+    const phoneHash = dto.phone ? this.hmacPhoneHash(dto.phone) : null;
     const normalizedManualReason = dto.manualOverrideReason?.trim();
 
     if (normalizedManualReason && normalizedManualReason.length < 10) {
@@ -368,8 +375,12 @@ export class SubscribersService {
                   ? (dto.businessName ?? null)
                   : [dto.firstName, dto.lastName].filter(Boolean).join(' ').trim() || null,
               contacts: [
-                { type: PartyContactType.EMAIL, value: dto.email, isPrimary: true },
-                { type: PartyContactType.PHONE, value: dto.phone, isPrimary: true },
+                ...(dto.email
+                  ? [{ type: PartyContactType.EMAIL, value: dto.email, isPrimary: true }]
+                  : []),
+                ...(dto.phone
+                  ? [{ type: PartyContactType.PHONE, value: dto.phone, isPrimary: true }]
+                  : []),
               ],
               address: dto.address,
               city: dto.city ?? null,
@@ -652,8 +663,8 @@ export class SubscribersService {
       businessName?: string | undefined;
       commercialName?: string | undefined;
       legalRepresentativeId?: string | undefined;
-      email?: string | undefined;
-      phone?: string | undefined;
+      email?: string | null | undefined;
+      phone?: string | null | undefined;
       altContactName?: string | undefined;
       altContactPhone?: string | undefined;
       whatsapp?: string | undefined;
@@ -673,6 +684,28 @@ export class SubscribersService {
   ): Promise<Subscriber> {
     const { schemaName } = TenantContext.getOrThrow();
     const entity = await this.findById(id);
+
+    const nextEmailEncrypted =
+      dto.email === undefined
+        ? entity.emailEncrypted
+        : dto.email
+          ? this.encryptValue(dto.email)
+          : null;
+    const nextPhoneEncrypted =
+      dto.phone === undefined
+        ? entity.phoneEncrypted
+        : dto.phone
+          ? this.encryptValue(dto.phone)
+          : null;
+    if (
+      entity.status === SubscriberStatus.ACTIVE &&
+      !hasRealContact({ emailEncrypted: nextEmailEncrypted, phoneEncrypted: nextPhoneEncrypted })
+    ) {
+      throw new UnprocessableEntityException({
+        code: 'SUBSCRIBER_CONTACT_REQUIRED',
+        message: 'Un suscriptor activo necesita al menos un teléfono o un correo.',
+      });
+    }
 
     // Recalcular IVA si cambia personType o stratum
     const effectivePersonType = dto.personType ?? entity.personType;
@@ -723,12 +756,12 @@ export class SubscribersService {
     if (dto.legalRepresentativeId !== undefined)
       entity.legalRepresentativeId = dto.legalRepresentativeId;
     if (dto.email !== undefined) {
-      entity.emailEncrypted = this.encryptValue(dto.email);
-      entity.emailHash = hashEmail(dto.email, this.piiHashKey);
+      entity.emailEncrypted = nextEmailEncrypted;
+      entity.emailHash = dto.email ? hashEmail(dto.email, this.piiHashKey) : null;
     }
     if (dto.phone !== undefined) {
-      entity.phoneEncrypted = this.encryptValue(dto.phone);
-      entity.phoneHash = this.hmacPhoneHash(dto.phone);
+      entity.phoneEncrypted = nextPhoneEncrypted;
+      entity.phoneHash = dto.phone ? this.hmacPhoneHash(dto.phone) : null;
     }
     if (dto.altContactName !== undefined)
       entity.altContactName = dto.altContactName ? dto.altContactName.trim() : null;
@@ -891,8 +924,8 @@ export class SubscribersService {
       businessName?: string | undefined;
       nit?: string | undefined;
       nitVerificationDigit?: string | undefined;
-      email: string;
-      phone: string;
+      email?: string | null | undefined;
+      phone?: string | null | undefined;
       altContactName?: string | undefined;
       altContactPhone?: string | undefined;
       address: string;
@@ -921,8 +954,8 @@ export class SubscribersService {
         businessName: overrides.businessName,
         nit: overrides.nit,
         nitVerificationDigit: overrides.nitVerificationDigit,
-        email: overrides.email,
-        phone: overrides.phone,
+        email: overrides.email ?? undefined,
+        phone: overrides.phone ?? undefined,
         altContactName: overrides.altContactName,
         altContactPhone: overrides.altContactPhone,
         address: overrides.address,
@@ -1005,9 +1038,23 @@ export class SubscribersService {
       subscriber = { ...subscriber, status: SubscriberStatus.PROSPECT } as Subscriber;
     }
 
-    if (subscriber.status === SubscriberStatus.ACTIVE) {
-      return this.findById(subscriber.id);
+    if (!hasRealContact(subscriber)) {
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'Subscriber',
+        entityId: subscriber.id,
+        userId: actorId,
+        newValue: {
+          event: 'ACTIVATION_BLOCKED_CONTACT_PENDING',
+          source: 'expediente',
+          expedienteId,
+          status: subscriber.status,
+        },
+      });
+      return null;
     }
+
+    if (subscriber.status === SubscriberStatus.ACTIVE) return this.findById(subscriber.id);
 
     if (subscriber.status !== SubscriberStatus.PROSPECT) {
       return null;

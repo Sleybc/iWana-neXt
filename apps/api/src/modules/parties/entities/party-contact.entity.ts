@@ -35,8 +35,8 @@ export class PartyContact {
   @Column({ name: 'type', type: 'varchar' })
   type: PartyContactType;
 
-  @Column({ name: 'value', type: 'varchar', length: 255 })
-  value: string;
+  @Column({ name: 'value', type: 'varchar', length: 255, nullable: true })
+  value: string | null;
 
   @Column({ name: 'value_encrypted', type: 'varchar', length: 500, nullable: true })
   valueEncrypted: string | null;

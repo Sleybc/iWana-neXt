@@ -104,11 +104,11 @@ export class Subscriber {
   legalRepresentativeId: string | null;
 
   // ── Compartido (ambos tipos) ──
-  @Column({ type: 'varchar', length: 500, name: 'email_encrypted' })
-  emailEncrypted: string;
+  @Column({ type: 'varchar', length: 500, name: 'email_encrypted', nullable: true })
+  emailEncrypted: string | null;
 
-  @Column({ type: 'varchar', length: 100, name: 'phone_encrypted' })
-  phoneEncrypted: string;
+  @Column({ type: 'varchar', length: 100, name: 'phone_encrypted', nullable: true })
+  phoneEncrypted: string | null;
 
   @Column({ type: 'varchar', length: 160, name: 'alt_contact_name', nullable: true })
   altContactName: string | null;

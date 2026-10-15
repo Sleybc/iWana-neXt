@@ -48,6 +48,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { SubscribersService } from './subscribers.service';
+import { hasRealContact } from './subscriber-contact.util';
 import { CreateSubscriberDto, CreateSubscriberSchema } from './dto/create-subscriber.dto';
 import { UpdateSubscriberDto, UpdateSubscriberSchema } from './dto/update-subscriber.dto';
 import { Subscriber } from './entities/subscriber.entity';
@@ -518,6 +519,7 @@ export class SubscribersController {
       personType: subscriber.personType,
       customerSegment: subscriber.customerSegment,
       documentType: subscriber.documentType,
+      contactPending: !hasRealContact(subscriber),
       firstName: subscriber.firstName,
       lastName: subscriber.lastName,
       stratum: subscriber.stratum,

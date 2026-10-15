@@ -54,10 +54,10 @@ export class CreateSubscriberDto {
   legalRepresentativeId?: string;
 
   @Allow()
-  email!: string;
+  email?: string;
 
   @Allow()
-  phone!: string;
+  phone?: string;
 
   @Allow()
   altContactName?: string;

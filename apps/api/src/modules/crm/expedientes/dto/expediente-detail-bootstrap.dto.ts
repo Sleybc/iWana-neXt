@@ -51,6 +51,13 @@ export interface SubscriberSummary {
   fullName: string;
 }
 
+export interface ConversionFailureSummary {
+  eventName: string;
+  errorCode: string;
+  attempts: number;
+  lastFailedAt: Date;
+}
+
 export interface ExpedienteDetailBootstrap {
   expediente: ExpedienteDetailProjection;
   completeness: CompletenessResult;
@@ -59,6 +66,7 @@ export interface ExpedienteDetailBootstrap {
   currentAttribution: CurrentAttributionSummary | null;
   responsibility: ResponsibilitySnapshot | null;
   subscriberSummary: SubscriberSummary | null;
+  conversionFailure: ConversionFailureSummary | null;
 }
 
 export class MissingRequirementDto implements MissingRequirement {
@@ -277,6 +285,20 @@ export class SubscriberSummaryDto implements SubscriberSummary {
   fullName!: string;
 }
 
+export class ConversionFailureSummaryDto implements ConversionFailureSummary {
+  @ApiProperty({ type: String })
+  eventName!: string;
+
+  @ApiProperty({ type: String })
+  errorCode!: string;
+
+  @ApiProperty({ type: Number })
+  attempts!: number;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  lastFailedAt!: Date;
+}
+
 export class ExpedienteDetailBootstrapDataDto {
   @ApiProperty({ type: ExpedienteDetailProjectionDto })
   expediente!: ExpedienteDetailProjection;
@@ -298,6 +320,9 @@ export class ExpedienteDetailBootstrapDataDto {
 
   @ApiProperty({ type: SubscriberSummaryDto, nullable: true })
   subscriberSummary!: SubscriberSummary | null;
+
+  @ApiProperty({ type: ConversionFailureSummaryDto, nullable: true })
+  conversionFailure!: ConversionFailureSummary | null;
 }
 
 export class ExpedienteDetailBootstrapResponseDto {

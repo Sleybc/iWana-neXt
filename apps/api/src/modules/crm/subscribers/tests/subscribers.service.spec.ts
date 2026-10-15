@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import {
@@ -190,6 +190,20 @@ describe('SubscribersService', () => {
         },
       ],
     };
+
+    it('rechaza un alta directa sin teléfono ni correo antes de escribir', async () => {
+      const { email: _email, phone: _phone, ...withoutContact } = minimumCreateInput;
+
+      await expect(service.create(withoutContact, 'actor-1')).rejects.toMatchObject({
+        response: {
+          code: 'SUBSCRIBER_CONTACT_REQUIRED',
+          message: 'Registra al menos un teléfono o un correo.',
+        },
+      });
+
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
+    });
 
     it('rechaza un alta que no puede vincularse con un Party', async () => {
       const saved = buildSubscriber({ id: 'sub-without-document', partyId: null });
@@ -602,6 +616,44 @@ describe('SubscribersService', () => {
   // ── update ──
 
   describe('update', () => {
+    it('rechaza quitar el último contacto de un suscriptor activo antes de guardar', async () => {
+      const activeWithEmail = buildSubscriber({
+        status: SubscriberStatus.ACTIVE,
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: null,
+      });
+      mockFindOne(activeWithEmail);
+      const clearEmail = { email: null } as unknown as Parameters<typeof service.update>[1];
+
+      await expect(service.update(activeWithEmail.id, clearEmail, 'actor-1')).rejects.toMatchObject(
+        {
+          response: {
+            code: 'SUBSCRIBER_CONTACT_REQUIRED',
+            message: 'Un suscriptor activo necesita al menos un teléfono o un correo.',
+          },
+        },
+      );
+
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('permite editar un suscriptor activo si conserva un canal', async () => {
+      const activeWithEmail = buildSubscriber({
+        status: SubscriberStatus.ACTIVE,
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: null,
+      });
+      mockSave(activeWithEmail);
+
+      await expect(
+        service.update(activeWithEmail.id, { email: null, phone: '3000000001' }, 'actor-1'),
+      ).resolves.toMatchObject({ id: activeWithEmail.id });
+
+      expect(activeWithEmail.emailEncrypted).toBeNull();
+      expect(activeWithEmail.phoneEncrypted).not.toBeNull();
+    });
+
     it('recalcula IVA al cambiar personType', async () => {
       const existing = buildSubscriber({
         personType: PersonType.NATURAL,

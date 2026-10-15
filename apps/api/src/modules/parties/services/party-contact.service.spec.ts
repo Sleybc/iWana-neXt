@@ -96,7 +96,7 @@ describe('PartyContactService', () => {
         expect.objectContaining({
           partyId,
           type: PartyContactType.EMAIL,
-          value: '',
+          value: null,
           valueEncrypted: expect.stringMatching(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/u),
           valueHmac: expect.any(String),
           isPrimary: false,
@@ -116,7 +116,7 @@ describe('PartyContactService', () => {
 
       expect(mockQr.manager.create).not.toHaveBeenCalled();
       expect(mockQr.manager.save).toHaveBeenCalledWith(PartyContact, existing);
-      expect(existing.value).toBe('');
+      expect(existing.value).toBeNull();
       expect(existing.valueEncrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/u);
       expect(result.value).toBe('nuevo@example.invalid');
     });

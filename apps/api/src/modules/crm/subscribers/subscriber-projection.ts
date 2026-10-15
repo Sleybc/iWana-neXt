@@ -1,5 +1,6 @@
 import { SubscriberListItem, UserRole, type PrivacyMark } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
+import { hasRealContact } from './subscriber-contact.util';
 
 /** Finalidades declaradas para los campos personales del listado — ADR-067 §2. */
 export const SUBSCRIBER_LIST_FIELD_PURPOSE = {
@@ -84,6 +85,7 @@ export function projectSubscriberForList(
     businessName: subscriber.businessName,
     commercialName: subscriber.commercialName,
     createdAt: subscriber.createdAt.toISOString(),
+    contactPending: !hasRealContact(subscriber),
     privacyMarks: subscriber.privacyMarks ?? [],
   };
   const allowedFields = SUBSCRIBER_LIST_FIELD_ROLE_MAP[role as UserRole] ?? [];

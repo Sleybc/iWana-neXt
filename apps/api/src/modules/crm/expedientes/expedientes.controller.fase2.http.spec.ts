@@ -40,6 +40,20 @@ jest.mock('../../auth/guards/jwt-auth.guard', () => ({
           schemaName: 't_001',
           type: 'tenant',
         },
+        'Bearer support-token': {
+          sub: 'support-001',
+          role: UserRole.SUPPORT,
+          tenantId: 't-001',
+          schemaName: 't_001',
+          type: 'tenant',
+        },
+        'Bearer admin-token': {
+          sub: 'admin-001',
+          role: UserRole.ADMIN,
+          tenantId: 't-001',
+          schemaName: 't_001',
+          type: 'tenant',
+        },
       };
       if (h && map[h]) {
         req.user = map[h];
@@ -72,16 +86,15 @@ describe('ExpedientesController Fase2', () => {
     findAll: jest.fn().mockResolvedValue({ data: [], meta: {} }),
     create: jest.fn().mockResolvedValue({ id: '1' }),
     findById: jest.fn().mockResolvedValue({ id: '1' }),
+    retryConversionEvent: jest.fn().mockResolvedValue({ retried: true, resolved: true }),
   };
   const statusMock = { validateTransition: jest.fn().mockResolvedValue({ valid: true }) };
   const completenessMock = {
-    calculate: jest
-      .fn()
-      .mockResolvedValue({
-        sectionCompleteness: {},
-        installationReadiness: {},
-        missingRequirements: [],
-      }),
+    calculate: jest.fn().mockResolvedValue({
+      sectionCompleteness: {},
+      installationReadiness: {},
+      missingRequirements: [],
+    }),
   };
   const pipelineMock = { getRecommendation: jest.fn().mockResolvedValue(null) };
   const bootstrapMock = { getDetailBootstrap: jest.fn().mockResolvedValue({}) };
@@ -137,5 +150,37 @@ describe('ExpedientesController Fase2', () => {
       .set('Authorization', 'Bearer sales-token')
       .send({ name: 'Test', channel: 'WEB' })
       .expect(403);
+  });
+
+  it.each([
+    ['SALES', 'sales-token'],
+    ['SUPPORT', 'support-token'],
+  ])(
+    'POST reintento de conversión — %s con CRM_SUBSCRIBERS_MANAGE recibe 403',
+    async (_role, token) => {
+      permsMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      ]);
+      await request(app.getHttpServer())
+        .post('/api/v1/crm/expedientes/00000000-0000-4000-8000-000000000001/retry-conversion')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+      expect(expedienteServiceMock.retryConversionEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it('POST reintento de conversión — ADMIN con CRM_SUBSCRIBERS_MANAGE pasa', async () => {
+    permsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ]);
+    await request(app.getHttpServer())
+      .post('/api/v1/crm/expedientes/00000000-0000-4000-8000-000000000001/retry-conversion')
+      .set('Authorization', 'Bearer admin-token')
+      .expect(201)
+      .expect({ data: { retried: true, resolved: true } });
+    expect(expedienteServiceMock.retryConversionEvent).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      'admin-001',
+    );
   });
 });

@@ -244,15 +244,14 @@ describe('SubscriberCreationService', () => {
       expect(result).toBe('primary@test.com');
     });
 
-    it('genera placeholder si no hay email', () => {
+    it('retorna null si el expediente no tiene email', () => {
       const expediente = {
         ...mockExpedienteNatural,
         emailPrimaryEncrypted: null,
         emailSecondary: null,
       };
       const result = (service as any).resolveEmail(expediente);
-      expect(result).toContain('expediente-');
-      expect(result).toContain('@placeholder.iwana.co');
+      expect(result).toBeNull();
     });
 
     it('usa emailSecondary si emailPrimary no se puede descifrar', () => {
@@ -280,9 +279,9 @@ describe('SubscriberCreationService', () => {
       expect(result).toBe('3001112222');
     });
 
-    it('retorna placeholder si no hay teléfono', () => {
+    it('retorna null si el expediente no tiene teléfono', () => {
       const result = (service as any).resolvePhone(mockExpedienteNatural);
-      expect(result).toBe('0000000000');
+      expect(result).toBeNull();
     });
 
     it('intenta phoneSecondary si phonePrimary no se puede descifrar', () => {
@@ -382,6 +381,32 @@ describe('SubscriberCreationService', () => {
       );
     });
 
+    it('convierte un expediente sin canales de contacto y los entrega como null', async () => {
+      const expedienteSinContacto = {
+        ...mockExpedienteNatural,
+        emailPrimaryEncrypted: null,
+        emailSecondary: null,
+        phonePrimaryEncrypted: null,
+        phoneSecondaryEncrypted: null,
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => expedienteSinContacto } }),
+      );
+      subscribersServiceMock.createFromExpediente.mockResolvedValue({
+        id: 'sub-contact-pending',
+        partyId: 'party-contact-pending',
+        status: SubscriberStatus.PROSPECT,
+      });
+
+      await service.createFromExpediente('exp-001', 'actor-1');
+
+      expect(subscribersServiceMock.createFromExpediente).toHaveBeenCalledWith(
+        'exp-001',
+        expect.objectContaining({ email: null, phone: null }),
+        'actor-1',
+      );
+    });
+
     it('propaga NIT y DV validado a la escritura transaccional', async () => {
       // Mock: expediente encontrado
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
@@ -439,7 +464,7 @@ describe('SubscriberCreationService', () => {
       );
     });
 
-    it('usa placeholder para email si expediente no tiene emailSecondary', async () => {
+    it('conserva el contacto pendiente si el expediente no tiene correo', async () => {
       const expedienteSinEmail = {
         ...mockExpedienteNatural,
         emailPrimaryEncrypted: null,
@@ -463,7 +488,7 @@ describe('SubscriberCreationService', () => {
       expect(subscribersServiceMock.createFromExpediente).toHaveBeenCalledWith(
         'exp-003',
         expect.objectContaining({
-          email: expect.stringContaining('@placeholder.iwana.co'),
+          email: null,
         }),
         'actor-1',
       );

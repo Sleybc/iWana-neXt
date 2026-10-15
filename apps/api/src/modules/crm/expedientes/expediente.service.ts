@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   Inject,
   Injectable,
   Logger,
@@ -96,6 +97,7 @@ import {
   isBlockingLegalComplianceStatus,
 } from '../provisioning-readiness';
 import { SubscribersService } from '../subscribers/subscribers.service';
+import { hasRealContact } from '../subscribers/subscriber-contact.util';
 import {
   type ExpedienteTimelineActorDto,
   type ExpedienteTimelineEventDto,
@@ -1101,6 +1103,58 @@ export class ExpedienteService {
       return entity;
     }
 
+    if (toStatus === ExpedienteStatus.CLIENTE_ACTIVO) {
+      const subscriber = await this.subscribersService.findByExpedienteId(id);
+      if (!subscriber || !hasRealContact(subscriber)) {
+        throw new UnprocessableEntityException({
+          code: 'EXPEDIENTE_SUBSCRIBER_CONTACT_REQUIRED',
+          message:
+            'No se puede marcar como cliente activo: el suscriptor no tiene teléfono ni correo registrados.',
+        });
+      }
+    }
+
+    if (toStatus === ExpedienteStatus.LISTO_PARA_INSTALACION) {
+      const sourceConsents = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+        qr.manager.find(ConsentRecord, {
+          where: { expedienteId: id },
+          order: { obtainedAt: 'ASC', id: 'ASC' },
+        }),
+      );
+      const treatmentTimeline: Array<{ granted: boolean; at: Date }> = [];
+
+      for (const consent of sourceConsents) {
+        if (
+          consent.consentType !== ConsentType.TRATAMIENTO_DATOS &&
+          consent.consentType !== ConsentType.CONTACTO_OPERATIVO
+        ) {
+          continue;
+        }
+
+        const revokedAt =
+          consent.revokedAt ??
+          (consent.status === ConsentStatus.REVOCADO ? consent.updatedAt : null);
+        const accepted =
+          consent.status === ConsentStatus.ACEPTADO ||
+          consent.status === ConsentStatus.REVOCADO ||
+          consent.legacyAccepted === true ||
+          revokedAt !== null;
+        treatmentTimeline.push({ granted: accepted, at: consent.obtainedAt });
+        if (revokedAt) treatmentTimeline.push({ granted: false, at: revokedAt });
+      }
+
+      const latestTreatment = treatmentTimeline
+        .sort((left, right) => right.at.getTime() - left.at.getTime())
+        .at(0);
+      if (!latestTreatment?.granted) {
+        throw new UnprocessableEntityException({
+          code: 'EXPEDIENTE_DATA_AUTHORIZATION_REQUIRED',
+          message:
+            'Para pasar a Listo para instalación, registra la autorización de tratamiento de datos en Consentimientos.',
+        });
+      }
+    }
+
     const now = new Date();
     entity.previousStatus = fromStatus;
     entity.status = toStatus;
@@ -1251,6 +1305,15 @@ export class ExpedienteService {
     actorUserId: string,
   ): Promise<{ retried: boolean; resolved: boolean; eventName: string | null }> {
     const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
+    const logRetry = (eventName: string | null, resolved: boolean, errorCode: string | null) =>
+      this.auditService.log({
+        // audit_logs.action sigue siendo VARCHAR en el esquema tenant; no se amplía el contrato compartido.
+        action: 'CONVERSION_RETRY' as AuditAction,
+        entityType: 'Expediente',
+        entityId: expedienteId,
+        userId: actorUserId,
+        newValue: { eventName, resolved, errorCode },
+      });
     const expediente = await this.findById(expedienteId);
     const event = this.pipelineEventForStatus(
       expediente.status,
@@ -1261,7 +1324,10 @@ export class ExpedienteService {
       actorUserId,
       expediente.discardReason,
     );
-    if (!event) return { retried: false, resolved: false, eventName: null };
+    if (!event) {
+      await logRetry(null, false, null);
+      return { retried: false, resolved: false, eventName: null };
+    }
 
     const pending = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.findOne(CrmConversionFailure, {
@@ -1269,6 +1335,7 @@ export class ExpedienteService {
       }),
     );
     if (!pending) {
+      await logRetry(event.eventName, false, null);
       return { retried: false, resolved: false, eventName: event.eventName };
     }
 
@@ -1278,6 +1345,7 @@ export class ExpedienteService {
       expedienteId,
       actorUserId,
     );
+    await logRetry(event.eventName, resolved, pending.errorCode ?? null);
     return { retried: true, resolved, eventName: event.eventName };
   }
 
@@ -2977,29 +3045,37 @@ export class ExpedienteService {
     resolvedBy?: string,
   ): Promise<boolean> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    let errorCode: string | null = null;
     try {
       await this.eventEmitter.emitAsync(eventName, payload);
-    } catch {
+      if (!(await this.pipelineEventHasEffect(eventName, expedienteId))) {
+        errorCode = 'CONVERSION_FAILED';
+      }
+    } catch (error) {
+      errorCode = this.pipelineErrorCode(error);
+    }
+
+    if (errorCode) {
       try {
         await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
           qr.query(
             `INSERT INTO crm_conversion_failures
                (tenant_id, expediente_id, event_name, error_code, attempts, first_failed_at, last_failed_at)
-             VALUES ($1, $2, $3, 'EVENT_EMIT_FAILED', 1, now(), now())
+             VALUES ($1, $2, $3, $4, 1, now(), now())
              ON CONFLICT (expediente_id, event_name)
-             DO UPDATE SET error_code = 'EVENT_EMIT_FAILED', attempts = crm_conversion_failures.attempts + 1,
+             DO UPDATE SET error_code = $4, attempts = crm_conversion_failures.attempts + 1,
                            last_failed_at = now(), resolved_at = NULL, resolved_by = NULL`,
-            [tenantId, expedienteId, eventName],
+            [tenantId, expedienteId, eventName, errorCode],
           ),
         );
       } catch {
         this.logger.warn(
-          `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}; no se pudo persistir EVENT_FAILURE_PERSISTENCE_FAILED`,
+          `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}; no se pudo persistir el fallo de conversión`,
         );
         return false;
       }
       this.logger.warn(
-        `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}: EVENT_EMIT_FAILED`,
+        `[PIPELINE_EVENT] Falló emisión ${eventName} para expediente ${expedienteId}: ${errorCode}`,
       );
       return false;
     }
@@ -3018,6 +3094,33 @@ export class ExpedienteService {
       );
     }
     return true;
+  }
+
+  private async pipelineEventHasEffect(eventName: string, expedienteId: string): Promise<boolean> {
+    if (eventName === 'crm.expediente.ready-for-installation') {
+      return Boolean(await this.subscribersService.findByExpedienteId(expedienteId));
+    }
+
+    if (eventName === 'crm.expediente.activated') {
+      const subscriber = await this.subscribersService.findByExpedienteId(expedienteId);
+      return subscriber?.status === SubscriberStatus.ACTIVE;
+    }
+
+    return true;
+  }
+
+  private pipelineErrorCode(error: unknown): string {
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      if (typeof response === 'object' && response !== null && 'code' in response) {
+        const code = response.code;
+        if (typeof code === 'string' && /^[A-Z][A-Z0-9_]{2,63}$/u.test(code)) {
+          return code;
+        }
+      }
+    }
+
+    return 'CONVERSION_FAILED';
   }
 
   private pipelineEventForStatus(

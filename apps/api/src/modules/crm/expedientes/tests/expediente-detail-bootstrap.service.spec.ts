@@ -9,6 +9,7 @@ import {
 } from '../completeness-calculator.service';
 import { PipelineRecommendationService } from '../pipeline-recommendation.service';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
+import { CrmConversionFailure } from '../entities/crm-conversion-failure.entity';
 import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
 import { CrmAttributionReadPort } from '../../ports/crm-attribution-read.port';
 import { CrmResponsibilityReadPort } from '../../ports/crm-responsibility-read.port';
@@ -129,6 +130,7 @@ describe('ExpedienteDetailBootstrapService', () => {
     const manager = {
       createQueryBuilder: jest.fn().mockReturnValue(projectionQuery),
       find: metadataFind,
+      findOne: jest.fn().mockResolvedValue(null),
     };
     mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
       callback({ manager } as never),
@@ -284,6 +286,7 @@ describe('ExpedienteDetailBootstrapService', () => {
     expect(Object.keys(result).sort()).toEqual(
       [
         'completeness',
+        'conversionFailure',
         'currentAttribution',
         'expediente',
         'operationalMetadata',
@@ -293,6 +296,7 @@ describe('ExpedienteDetailBootstrapService', () => {
       ].sort(),
     );
     expect(result.subscriberSummary).toBeNull();
+    expect((result as unknown as { conversionFailure?: unknown }).conversionFailure).toBeNull();
     expect(result.operationalMetadata.lastActivityAt).toEqual(functionalAudit.createdAt);
     expect(result.operationalMetadata.lastEditedBy.userId).toBe('user-test');
     expect(crmActorReadPortMock.findByIds.mock.calls[0][1]).not.toContain('pii-user-test');
@@ -314,6 +318,61 @@ describe('ExpedienteDetailBootstrapService', () => {
     expect(result.expediente.additionalProductIds).toEqual(['product-1']);
     expect(result.expediente.additionalServiceIds).toEqual(['service-1']);
     expect(typeof result.completeness.overall).toBe('number');
+  });
+
+  it('proyecta solo el fallo de conversión pendiente más reciente y lo oculta al resolverlo', async () => {
+    const expediente = buildExpediente();
+    const projectionQuery = buildProjectionQuery(expediente);
+    const pendingFailure = {
+      eventName: 'crm.expediente.ready-for-installation',
+      errorCode: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+      attempts: 2,
+      lastFailedAt: new Date('2026-10-15T12:00:00.000Z'),
+      expedienteId: 'exp-interno',
+      tenantId: 'tenant-interno',
+    };
+    const findFailure = jest.fn().mockResolvedValue(pendingFailure);
+    const manager = {
+      createQueryBuilder: jest.fn().mockReturnValue(projectionQuery),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: findFailure,
+    };
+    mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+
+    const pending = (await service.getDetailBootstrap('exp-1', 'actor-1')) as unknown as {
+      conversionFailure: {
+        eventName: string;
+        errorCode: string;
+        attempts: number;
+        lastFailedAt: Date;
+      } | null;
+    };
+
+    expect(findFailure).toHaveBeenCalledWith(
+      CrmConversionFailure,
+      expect.objectContaining({
+        where: expect.objectContaining({ expedienteId: 'exp-1' }),
+        order: { lastFailedAt: 'DESC' },
+        select: ['eventName', 'errorCode', 'attempts', 'lastFailedAt'],
+      }),
+    );
+    expect(pending.conversionFailure).toEqual({
+      eventName: 'crm.expediente.ready-for-installation',
+      errorCode: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+      attempts: 2,
+      lastFailedAt: pendingFailure.lastFailedAt,
+    });
+    expect(Object.keys(pending.conversionFailure ?? {}).sort()).toEqual(
+      ['attempts', 'errorCode', 'eventName', 'lastFailedAt'].sort(),
+    );
+
+    findFailure.mockResolvedValueOnce(null);
+    const resolved = (await service.getDetailBootstrap('exp-1', 'actor-1')) as unknown as {
+      conversionFailure: unknown;
+    };
+    expect(resolved.conversionFailure).toBeNull();
   });
 
   it('rechaza un expediente inexistente sin calcular ni enriquecer', async () => {
@@ -339,6 +398,7 @@ describe('ExpedienteDetailBootstrapService', () => {
     const manager = {
       createQueryBuilder: jest.fn().mockReturnValue(projectionQuery),
       find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
     };
     mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
       callback({ manager } as never),
@@ -360,6 +420,7 @@ describe('ExpedienteDetailBootstrapService', () => {
     const manager = {
       createQueryBuilder: jest.fn().mockReturnValue(projectionQuery),
       find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
     };
     mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
       callback({ manager } as never),

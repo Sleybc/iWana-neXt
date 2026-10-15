@@ -181,7 +181,7 @@ describe('PartyWriteAdapter', () => {
         expect.objectContaining({
           partyId: 'party-uuid-new',
           type: PartyContactType.EMAIL,
-          value: '',
+          value: null,
           valueEncrypted: expect.stringMatching(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/u),
           valueHmac: expect.any(String),
           isPrimary: true,

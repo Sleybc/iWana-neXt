@@ -1,9 +1,36 @@
 import { SubscriberActivationListener } from '../listeners/subscriber-activation.listener';
 import { SubscriberCancellationListener } from '../listeners/subscriber-cancellation.listener';
+import { SubscriberCreationService } from '../subscriber-creation.service';
 
 describe('Subscriber pipeline listeners', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('propaga los errores de los tres listeners al emisor del pipeline', () => {
+    const listeners = [
+      {
+        handler: SubscriberCreationService.prototype.handleExpedienteReadyForInstallation,
+        event: 'crm.expediente.ready-for-installation',
+      },
+      {
+        handler: SubscriberActivationListener.prototype.handle,
+        event: 'crm.expediente.activated',
+      },
+      {
+        handler: SubscriberCancellationListener.prototype.handle,
+        event: 'crm.expediente.discarded',
+      },
+    ];
+
+    for (const listener of listeners) {
+      const metadata = Reflect.getMetadata('EVENT_LISTENER_METADATA', listener.handler) as Array<{
+        event: string;
+        options?: Record<string, unknown>;
+      }>;
+
+      expect(metadata).toEqual([{ event: listener.event, options: { suppressErrors: false } }]);
+    }
   });
 
   it('activa subscriber desde expediente usando el contrato actual del evento', async () => {

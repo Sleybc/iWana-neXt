@@ -52,7 +52,7 @@ export class SubscriberCreationService {
     this.encryptionKeyPrevious = keys.previousKey;
   }
 
-  @OnEvent('crm.expediente.ready-for-installation', { async: true })
+  @OnEvent('crm.expediente.ready-for-installation', { suppressErrors: false })
   async handleExpedienteReadyForInstallation(
     event: ExpedienteReadyForInstallationEvent,
   ): Promise<void> {
@@ -258,9 +258,9 @@ export class SubscriberCreationService {
   /**
    * Resuelve el email del expediente.
    * Prioriza emailPrimary (descifrado), luego emailSecondary (texto plano).
-   * Si no hay email, genera un placeholder temporal.
+   * Si no hay email real, conserva el contacto pendiente.
    */
-  private resolveEmail(expediente: ExpedienteRecord): string {
+  private resolveEmail(expediente: ExpedienteRecord): string | null {
     // Intentar descifrar emailPrimary si existe
     if (expediente.emailPrimaryEncrypted) {
       try {
@@ -275,17 +275,18 @@ export class SubscriberCreationService {
       return expediente.emailSecondary;
     }
 
-    // Placeholder temporal — el usuario debe actualizar su email al activar el portal
-    this.logger.warn(`Expediente ${expediente.id} sin email — usando placeholder temporal`);
-    return `expediente-${expediente.id}@placeholder.iwana.co`;
+    this.logger.warn(
+      `Expediente ${expediente.id} sin correo; el suscriptor quedará con contacto pendiente`,
+    );
+    return null;
   }
 
   /**
    * Resuelve el teléfono del expediente.
    * Prioriza phonePrimary (descifrado), luego phoneSecondary (descifrado).
-   * Si no hay teléfono, usa placeholder temporal.
+   * Si no hay teléfono real, conserva el contacto pendiente.
    */
-  private resolvePhone(expediente: ExpedienteRecord): string {
+  private resolvePhone(expediente: ExpedienteRecord): string | null {
     // Intentar descifrar phonePrimary si existe
     if (expediente.phonePrimaryEncrypted) {
       try {
@@ -304,9 +305,10 @@ export class SubscriberCreationService {
       }
     }
 
-    // Placeholder temporal — el usuario debe actualizar su teléfono al activar el portal
-    this.logger.warn(`Expediente ${expediente.id} sin teléfono — usando placeholder temporal`);
-    return '0000000000';
+    this.logger.warn(
+      `Expediente ${expediente.id} sin teléfono; el suscriptor quedará con contacto pendiente`,
+    );
+    return null;
   }
 
   /**

@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
 import { AuditAction } from '@iwana/shared';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import {
   CrmActorReadPort,
   CrmAttributionReadPort,
@@ -11,6 +11,7 @@ import {
   type CrmCurrentAttributionSnapshot,
 } from '../ports';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
+import { CrmConversionFailure } from './entities/crm-conversion-failure.entity';
 import {
   type CompletenessCalculationContext,
   CompletenessCalculator,
@@ -19,6 +20,7 @@ import { PipelineRecommendationService } from './pipeline-recommendation.service
 import { AuditService } from '../../audit/audit.service';
 import {
   type CurrentAttributionSummary,
+  type ConversionFailureSummary,
   type ExpedienteDetailBootstrap,
   type ExpedienteDetailOperationalMetadata,
   type ExpedienteDetailProjection,
@@ -102,7 +104,8 @@ export class ExpedienteDetailBootstrapService {
 
   async getDetailBootstrap(id: string, actorUserId: string): Promise<ExpedienteDetailBootstrap> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    const { expediente, sensitiveFieldPresence } = await this.loadContextProjection(id, schemaName);
+    const { expediente, sensitiveFieldPresence, conversionFailure } =
+      await this.loadContextProjection(id, schemaName);
 
     const relatedContextPromise = this.completenessCalculator.loadRelatedContext(id, schemaName);
     const completenessPromise = relatedContextPromise.then((relatedContext) => {
@@ -143,6 +146,7 @@ export class ExpedienteDetailBootstrapService {
       currentAttribution: currentAttribution ? this.toAttributionSummary(currentAttribution) : null,
       responsibility,
       subscriberSummary,
+      conversionFailure,
     };
 
     // Solo registra dimensiones operativas; nunca persiste la proyección ni valores PII.
@@ -169,6 +173,7 @@ export class ExpedienteDetailBootstrapService {
   ): Promise<{
     expediente: ExpedienteRecord;
     sensitiveFieldPresence: ExpedienteSensitiveFieldPresence;
+    conversionFailure: ConversionFailureSummary | null;
   }> {
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const query = qr.manager
@@ -281,9 +286,25 @@ export class ExpedienteDetailBootstrapService {
       const expediente = entities[0];
       const row = raw[0] as Record<string, unknown> | undefined;
 
+      const pendingFailure = expediente
+        ? await qr.manager.findOne(CrmConversionFailure, {
+            where: { expedienteId: id, resolvedAt: IsNull() },
+            select: ['eventName', 'errorCode', 'attempts', 'lastFailedAt'],
+            order: { lastFailedAt: 'DESC' },
+          })
+        : null;
+
       return expediente
         ? {
             expediente,
+            conversionFailure: pendingFailure
+              ? {
+                  eventName: pendingFailure.eventName,
+                  errorCode: pendingFailure.errorCode,
+                  attempts: pendingFailure.attempts,
+                  lastFailedAt: pendingFailure.lastFailedAt,
+                }
+              : null,
             sensitiveFieldPresence: {
               documentNumber: this.readPresenceFlag(row, PRESENCE_ALIASES.documentNumber),
               phonePrimary: this.readPresenceFlag(row, PRESENCE_ALIASES.phonePrimary),

@@ -53,6 +53,8 @@ import { CrmContractImpersonationAdapter } from '../privacy-adapters/crm-contrac
 import { CrmContractStandingReadAdapter } from '../privacy-adapters/crm-contract-standing-read.adapter';
 import { UnprocessableEntityException } from '@nestjs/common';
 import { PrivacyModule1460000000000 } from '../../../../../../packages/database/src/migrations/tenant/146_privacy_module';
+import { SubscriberContactNullable1480000000000 } from '../../../../../../packages/database/src/migrations/tenant/148_subscriber_contact_nullable';
+import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
@@ -146,6 +148,30 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       );
     }
     return expediente;
+  }
+
+  async function captureTreatmentConsent(expedienteId: string): Promise<void> {
+    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.save(
+        ConsentRecord,
+        Object.assign(new ConsentRecord(), {
+          tenantId,
+          expedienteId,
+          legacyProspectId: expedienteId,
+          consentType: ConsentType.TRATAMIENTO_DATOS,
+          status: ConsentStatus.ACEPTADO,
+          legacyAccepted: true,
+          channel: 'WEB',
+          obtainedAt: new Date('2026-10-14T12:00:00.000Z'),
+          ipAddress: '127.0.0.1',
+          legalTextVersion: 'privacy-v1',
+          evidenceRef: null,
+          revokedAt: null,
+          revokedReason: null,
+          revokedBy: null,
+        }),
+      ),
+    );
   }
 
   async function persistParty(
@@ -337,14 +363,9 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       );
     }
 
-    const migrationRunner = dataSource.createQueryRunner();
-    await migrationRunner.connect();
-    try {
-      await migrationRunner.query(`SET search_path TO ${target}`);
-      await new PrivacyModule1460000000000().up(migrationRunner);
-    } finally {
-      await migrationRunner.release();
-    }
+    await runInTenantSchema(dataSource, testSchemaName, (migrationRunner) =>
+      new PrivacyModule1460000000000().up(migrationRunner),
+    );
 
     // R6: el tenant de origen ya puede estar migrado (143/144 aplicadas). El clon
     // con LIKE trae esas columnas, asi que cada alta usa IF NOT EXISTS para no
@@ -358,6 +379,9 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     );
     await dataSource.query(
       `ALTER TABLE ${target}.party_contact ADD COLUMN IF NOT EXISTS value_encrypted varchar(500), ADD COLUMN IF NOT EXISTS value_hmac varchar(64)`,
+    );
+    await runInTenantSchema(dataSource, testSchemaName, (contactMigrationRunner) =>
+      new SubscriberContactNullable1480000000000().up(contactMigrationRunner),
     );
     await dataSource.query(
       `ALTER TABLE ${target}.subscribers ADD COLUMN IF NOT EXISTS whatsapp_encrypted varchar(500), ADD COLUMN IF NOT EXISTS whatsapp_hmac varchar(64)`,
@@ -430,10 +454,10 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     expect(partyRows[0]?.document_number_hmac).toMatch(/^[a-f0-9]{64}$/u);
     const contactRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
       qr.query('SELECT value, value_encrypted, value_hmac FROM party_contact'),
-    )) as Array<{ value: string; value_encrypted: string; value_hmac: string }>;
+    )) as Array<{ value: string | null; value_encrypted: string; value_hmac: string }>;
     expect(contactRows).toHaveLength(2);
     for (const contact of contactRows) {
-      expect(contact.value).toBe('');
+      expect(contact.value).toBeNull();
       expect(contact.value_encrypted).not.toContain('b5@example.test');
       expect(contact.value_encrypted).not.toContain('3000000000');
       expect(contact.value_hmac).toMatch(/^[a-f0-9]{64}$/u);
@@ -691,54 +715,143 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     expect(new Date(persisted[0]!.activated_at).toISOString()).toBe(activatedAt.toISOString());
   });
 
-  it('persiste el fallo de evento y el reintento idempotente lo resuelve', async () => {
+  it('mantiene pendiente la conversión tras un fallo transitorio y la resuelve al reintentar', async () => {
     const auditService = makeAuditService();
     const subscribersService = makeSubscribersService(auditService);
-    const eventEmitter = {
-      emitAsync: jest
-        .fn()
-        .mockRejectedValueOnce(new Error('event listener failed'))
-        .mockResolvedValueOnce([]),
-    };
+    const eventEmitter = new EventEmitter2();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      subscribersService,
+      eventEmitter,
+      auditService,
+    );
+    eventEmitter.on(
+      'crm.expediente.ready-for-installation',
+      (event: ExpedienteReadyForInstallationEvent) =>
+        conversion.handleExpedienteReadyForInstallation(event),
+    );
     const expedienteService = makeExpedienteService(auditService, subscribersService, eventEmitter);
-    const expediente = await createExpediente({ status: ExpedienteStatus.PRECALIFICADO });
+    jest
+      .spyOn(eventEmitter, 'emitAsync')
+      .mockRejectedValueOnce(new Error('fallo transitorio sintético'))
+      .mockRejectedValueOnce(new Error('fallo transitorio sintético'));
+    const expediente = await createExpediente(
+      {
+        status: ExpedienteStatus.PRECALIFICADO,
+        documentNumberEncrypted: encryptAes256Gcm('83000011', encryptionKey),
+      },
+      { withTreatmentConsent: false },
+    );
+    await captureTreatmentConsent(expediente.id);
 
-    await TenantContext.run(context(), () =>
+    const transitioned = await TenantContext.run(context(), () =>
       expedienteService.transitionStatus(
         expediente.id,
         { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION },
         actorId,
       ),
     );
+    expect(transitioned.status).toBe(ExpedienteStatus.LISTO_PARA_INSTALACION);
+    const persistedExpediente = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT status FROM expediente_records WHERE id = $1', [expediente.id]),
+    )) as Array<{ status: ExpedienteStatus }>;
+    expect(persistedExpediente[0]?.status).toBe(ExpedienteStatus.LISTO_PARA_INSTALACION);
+
     const beforeRetry = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
       qr.manager.findOne(CrmConversionFailure, { where: { expedienteId: expediente.id } }),
     );
     expect(beforeRetry).toMatchObject({
       eventName: 'crm.expediente.ready-for-installation',
-      errorCode: 'EVENT_EMIT_FAILED',
+      errorCode: 'CONVERSION_FAILED',
       attempts: 1,
       resolvedAt: null,
     });
+    expect(await countRows('subscribers', 'WHERE expediente_id = $1', [expediente.id])).toBe(0);
 
-    const result = await TenantContext.run(context(), () =>
+    const failedRetry = await TenantContext.run(context(), () =>
       expedienteService.retryConversionEvent(expediente.id, actorId),
     );
-    expect(result).toEqual({
+    expect(failedRetry).toEqual({
+      retried: true,
+      resolved: false,
+      eventName: 'crm.expediente.ready-for-installation',
+    });
+
+    const stillPending = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.manager.findOne(CrmConversionFailure, { where: { expedienteId: expediente.id } }),
+    );
+    expect(stillPending).toMatchObject({
+      errorCode: 'CONVERSION_FAILED',
+      attempts: 2,
+      resolvedAt: null,
+    });
+    expect(await countRows('subscribers', 'WHERE expediente_id = $1', [expediente.id])).toBe(0);
+
+    const successfulRetry = await TenantContext.run(context(), () =>
+      expedienteService.retryConversionEvent(expediente.id, actorId),
+    );
+    expect(successfulRetry).toEqual({
       retried: true,
       resolved: true,
       eventName: 'crm.expediente.ready-for-installation',
     });
 
-    const afterRetry = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+    const resolvedFailure = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
       qr.manager.findOne(CrmConversionFailure, { where: { expedienteId: expediente.id } }),
     );
-    expect(afterRetry?.attempts).toBe(1);
-    expect(afterRetry?.resolvedAt).toBeInstanceOf(Date);
-    const repeated = await TenantContext.run(context(), () =>
-      expedienteService.retryConversionEvent(expediente.id, actorId),
+    expect(resolvedFailure).toMatchObject({
+      errorCode: 'CONVERSION_FAILED',
+      attempts: 2,
+      resolvedBy: actorId,
+    });
+    expect(resolvedFailure?.resolvedAt).toBeInstanceOf(Date);
+    expect(await countRows('subscribers', 'WHERE expediente_id = $1', [expediente.id])).toBe(1);
+    expect(eventEmitter.listenerCount('crm.expediente.ready-for-installation')).toBe(1);
+
+    const retryAuditEntries = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        `SELECT action, entity_type, entity_id, user_id, new_value
+           FROM audit_logs
+          WHERE entity_type = $1 AND entity_id = $2 AND action = $3
+          ORDER BY created_at ASC, id ASC`,
+        ['Expediente', expediente.id, 'CONVERSION_RETRY'],
+      ),
+    )) as Array<{
+      action: string;
+      entity_type: string;
+      entity_id: string;
+      user_id: string;
+      new_value: Record<string, unknown>;
+    }>;
+    expect(retryAuditEntries).toHaveLength(2);
+    expect(retryAuditEntries).toEqual([
+      {
+        action: 'CONVERSION_RETRY',
+        entity_type: 'Expediente',
+        entity_id: expediente.id,
+        user_id: actorId,
+        new_value: {
+          eventName: 'crm.expediente.ready-for-installation',
+          resolved: false,
+          errorCode: 'CONVERSION_FAILED',
+        },
+      },
+      {
+        action: 'CONVERSION_RETRY',
+        entity_type: 'Expediente',
+        entity_id: expediente.id,
+        user_id: actorId,
+        new_value: {
+          eventName: 'crm.expediente.ready-for-installation',
+          resolved: true,
+          errorCode: 'CONVERSION_FAILED',
+        },
+      },
+    ]);
+    expect(JSON.stringify(retryAuditEntries)).not.toMatch(
+      /83000011|b5@example\.test|3000000000|persona de prueba/i,
     );
-    expect(repeated.retried).toBe(false);
-    expect(eventEmitter.emitAsync).toHaveBeenCalledTimes(2);
   });
 
   it('rechaza conversión sin autorización contractual y revierte Party y Subscriber', async () => {

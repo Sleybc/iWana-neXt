@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
@@ -23,6 +27,7 @@ import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { hmacPii } from '../../../../common/crypto/pii-hash-key.util';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
+import { ConsentRecord } from '../entities/consent-record-v2.entity';
 import { StatusChange } from '../entities/status-change.entity';
 import { ContactAttempt } from '../entities/contact-attempt.entity';
 import { SalesAttribution } from '../../attributions/entities/sales-attribution.entity';
@@ -96,6 +101,7 @@ describe('ExpedienteService', () => {
 
   const subscribersServiceMock = {
     findSummaryByExpedienteId: jest.fn(),
+    findByExpedienteId: jest.fn(),
   };
 
   const privacyLegalTextReadPortMock = {
@@ -1489,6 +1495,127 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('rechaza CLIENTE_ACTIVO sin contacto del subscriber antes de guardar el expediente', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-contact-pending',
+      status: ExpedienteStatus.INSTALACION_AGENDADA,
+    });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    subscribersServiceMock.findByExpedienteId.mockResolvedValue({
+      id: 'sub-contact-pending',
+      status: SubscriberStatus.PROSPECT,
+      emailEncrypted: null,
+      phoneEncrypted: null,
+    });
+
+    await expect(
+      service.transitionStatus(
+        expediente.id,
+        { targetStatus: ExpedienteStatus.CLIENTE_ACTIVO },
+        'user-1',
+      ),
+    ).rejects.toMatchObject({
+      constructor: UnprocessableEntityException,
+      response: {
+        code: 'EXPEDIENTE_SUBSCRIBER_CONTACT_REQUIRED',
+        message:
+          'No se puede marcar como cliente activo: el suscriptor no tiene teléfono ni correo registrados.',
+      },
+    });
+
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    expect(auditServiceMock.log).not.toHaveBeenCalled();
+    expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
+  });
+
+  it('rechaza LISTO_PARA_INSTALACION sin autorización contractual antes de guardar', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-consent-required',
+      status: ExpedienteStatus.EN_COTIZACION,
+    });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    const findConsent = jest.fn().mockResolvedValue([]);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { find: findConsent } }),
+    );
+
+    await expect(
+      service.transitionStatus(
+        expediente.id,
+        { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION },
+        'user-1',
+      ),
+    ).rejects.toMatchObject({
+      constructor: UnprocessableEntityException,
+      response: {
+        code: 'EXPEDIENTE_DATA_AUTHORIZATION_REQUIRED',
+        message:
+          'Para pasar a Listo para instalación, registra la autorización de tratamiento de datos en Consentimientos.',
+      },
+    });
+
+    expect(findConsent).toHaveBeenCalledWith(
+      ConsentRecord,
+      expect.objectContaining({
+        where: { expedienteId: expediente.id },
+        order: { obtainedAt: 'ASC', id: 'ASC' },
+      }),
+    );
+    expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+    expect(auditServiceMock.log).not.toHaveBeenCalled();
+    expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
+  });
+
+  it('rechaza LISTO cuando el consentimiento contractual más reciente fue revocado', async () => {
+    const expediente = buildExpediente({
+      id: 'exp-consent-revoked',
+      status: ExpedienteStatus.EN_COTIZACION,
+    });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    const findConsent = jest.fn().mockResolvedValue([
+      {
+        consentType: ConsentType.CONTACTO_COMERCIAL,
+        status: ConsentStatus.ACEPTADO,
+        legacyAccepted: true,
+        obtainedAt: new Date('2026-10-15T09:00:00.000Z'),
+        revokedAt: null,
+        updatedAt: new Date('2026-10-15T09:00:00.000Z'),
+      },
+      {
+        consentType: ConsentType.TRATAMIENTO_DATOS,
+        status: ConsentStatus.ACEPTADO,
+        legacyAccepted: true,
+        obtainedAt: new Date('2026-10-15T10:00:00.000Z'),
+        revokedAt: null,
+        updatedAt: new Date('2026-10-15T10:00:00.000Z'),
+      },
+      {
+        consentType: ConsentType.CONTACTO_OPERATIVO,
+        status: ConsentStatus.REVOCADO,
+        legacyAccepted: true,
+        obtainedAt: new Date('2026-10-15T11:00:00.000Z'),
+        revokedAt: new Date('2026-10-15T12:00:00.000Z'),
+        updatedAt: new Date('2026-10-15T12:00:00.000Z'),
+      },
+    ]);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { find: findConsent } }),
+    );
+
+    await expect(
+      service.transitionStatus(
+        expediente.id,
+        { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION },
+        'user-1',
+      ),
+    ).rejects.toMatchObject({
+      constructor: UnprocessableEntityException,
+      response: { code: 'EXPEDIENTE_DATA_AUTHORIZATION_REQUIRED' },
+    });
+    expect(auditServiceMock.log).not.toHaveBeenCalled();
+    expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
+  });
+
   it('emite installation-scheduled al transicionar a INSTALACION_AGENDADA', async () => {
     const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
     const expediente = buildExpediente({
@@ -1559,6 +1686,16 @@ describe('ExpedienteService', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {
+          find: jest.fn().mockResolvedValue([
+            {
+              consentType: ConsentType.TRATAMIENTO_DATOS,
+              status: ConsentStatus.ACEPTADO,
+              legacyAccepted: true,
+              obtainedAt: new Date('2026-10-15T10:00:00.000Z'),
+              revokedAt: null,
+              updatedAt: new Date('2026-10-15T10:00:00.000Z'),
+            },
+          ]),
           save: async (entity: unknown, data: Record<string, unknown>) => {
             if (entity === ExpedienteRecord) {
               Object.assign(expediente, data);
@@ -3314,6 +3451,271 @@ describe('ExpedienteService', () => {
       const result = await service.findById('exp-resilient');
       expect(result).toBeDefined();
       expect((result as any).subscriberSummary).toBeUndefined();
+    });
+  });
+
+  describe('fallos y reintentos del pipeline de conversión', () => {
+    const eventPayload = { expedienteId: 'exp-pipeline', actorUserId: 'user-1' };
+
+    function pipelineEmitter() {
+      return service as unknown as {
+        emitPipelineEventSafely: (
+          eventName: string,
+          payload: typeof eventPayload,
+          expedienteId: string,
+        ) => Promise<boolean>;
+      };
+    }
+
+    function arrangeTenantRunner() {
+      const query = jest.fn().mockResolvedValue(undefined);
+      const update = jest.fn().mockResolvedValue(undefined);
+      const findOne = jest.fn().mockResolvedValue({ id: 'pending-failure' });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ query, manager: { update, findOne } }),
+      );
+      return { query, update, findOne };
+    }
+
+    it('audita sin evento ni reintento cuando el estado no pertenece al pipeline', async () => {
+      arrangeTenantRunner();
+      jest.spyOn(service, 'findById').mockResolvedValue(
+        buildExpediente({
+          id: 'exp-no-pipeline-event',
+          status: ExpedienteStatus.PRECALIFICADO,
+        }),
+      );
+
+      await expect(
+        service.retryConversionEvent('exp-no-pipeline-event', 'user-1'),
+      ).resolves.toEqual({
+        retried: false,
+        resolved: false,
+        eventName: null,
+      });
+
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith({
+        action: 'CONVERSION_RETRY',
+        entityType: 'Expediente',
+        entityId: 'exp-no-pipeline-event',
+        userId: 'user-1',
+        newValue: { eventName: null, resolved: false, errorCode: null },
+      });
+    });
+
+    it('audita el evento sin reintento cuando no hay un fallo pendiente', async () => {
+      const { findOne } = arrangeTenantRunner();
+      findOne.mockResolvedValueOnce(null);
+      jest.spyOn(service, 'findById').mockResolvedValue(
+        buildExpediente({
+          id: 'exp-no-pending-failure',
+          status: ExpedienteStatus.LISTO_PARA_INSTALACION,
+        }),
+      );
+
+      await expect(
+        service.retryConversionEvent('exp-no-pending-failure', 'user-1'),
+      ).resolves.toEqual({
+        retried: false,
+        resolved: false,
+        eventName: 'crm.expediente.ready-for-installation',
+      });
+
+      expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith({
+        action: 'CONVERSION_RETRY',
+        entityType: 'Expediente',
+        entityId: 'exp-no-pending-failure',
+        userId: 'user-1',
+        newValue: {
+          eventName: 'crm.expediente.ready-for-installation',
+          resolved: false,
+          errorCode: null,
+        },
+      });
+    });
+
+    it('persiste el código de dominio de la excepción del listener', async () => {
+      const { query } = arrangeTenantRunner();
+      eventEmitterMock.emitAsync.mockRejectedValueOnce(
+        new UnprocessableEntityException({
+          code: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+          message: 'Autorización requerida.',
+        }),
+      );
+
+      const resolved = await pipelineEmitter().emitPipelineEventSafely(
+        'crm.expediente.ready-for-installation',
+        eventPayload,
+        eventPayload.expedienteId,
+      );
+
+      expect(resolved).toBe(false);
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('crm_conversion_failures'), [
+        'ten-1',
+        'exp-pipeline',
+        'crm.expediente.ready-for-installation',
+        'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+      ]);
+    });
+
+    it('usa CONVERSION_FAILED cuando el error no expone un código de dominio', async () => {
+      const { query } = arrangeTenantRunner();
+      eventEmitterMock.emitAsync.mockRejectedValueOnce(new Error('listener failed'));
+
+      const resolved = await pipelineEmitter().emitPipelineEventSafely(
+        'crm.expediente.ready-for-installation',
+        eventPayload,
+        eventPayload.expedienteId,
+      );
+
+      expect(resolved).toBe(false);
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('crm_conversion_failures'), [
+        'ten-1',
+        'exp-pipeline',
+        'crm.expediente.ready-for-installation',
+        'CONVERSION_FAILED',
+      ]);
+    });
+
+    it('usa CONVERSION_FAILED si una HttpException no incluye response.code', async () => {
+      const { query } = arrangeTenantRunner();
+      eventEmitterMock.emitAsync.mockRejectedValueOnce(
+        new UnprocessableEntityException('Fallo sin código de dominio.'),
+      );
+
+      const resolved = await pipelineEmitter().emitPipelineEventSafely(
+        'crm.expediente.ready-for-installation',
+        eventPayload,
+        eventPayload.expedienteId,
+      );
+
+      expect(resolved).toBe(false);
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('crm_conversion_failures'), [
+        'ten-1',
+        'exp-pipeline',
+        'crm.expediente.ready-for-installation',
+        'CONVERSION_FAILED',
+      ]);
+    });
+
+    it('usa CONVERSION_FAILED si response.code no cumple el patrón de código de dominio', async () => {
+      const { query } = arrangeTenantRunner();
+      eventEmitterMock.emitAsync.mockRejectedValueOnce(
+        new UnprocessableEntityException({
+          code: 'PII\nINJECTED',
+          message: 'Mensaje sintético',
+        }),
+      );
+
+      const resolved = await pipelineEmitter().emitPipelineEventSafely(
+        'crm.expediente.ready-for-installation',
+        eventPayload,
+        eventPayload.expedienteId,
+      );
+
+      expect(resolved).toBe(false);
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('crm_conversion_failures'), [
+        'ten-1',
+        'exp-pipeline',
+        'crm.expediente.ready-for-installation',
+        'CONVERSION_FAILED',
+      ]);
+    });
+
+    it('devuelve pendiente si no puede persistir el fallo de conversión', async () => {
+      mockRunInTenantSchema.mockRejectedValueOnce(new Error('persistence unavailable'));
+      eventEmitterMock.emitAsync.mockRejectedValueOnce(new Error('listener failed'));
+
+      await expect(
+        pipelineEmitter().emitPipelineEventSafely(
+          'crm.expediente.ready-for-installation',
+          eventPayload,
+          eventPayload.expedienteId,
+        ),
+      ).resolves.toBe(false);
+    });
+
+    it('no resuelve el reintento listo si no existe un suscriptor vinculado', async () => {
+      const { query, update } = arrangeTenantRunner();
+      jest.spyOn(service, 'findById').mockResolvedValue(
+        buildExpediente({
+          id: 'exp-ready-pending',
+          status: ExpedienteStatus.LISTO_PARA_INSTALACION,
+        }),
+      );
+      eventEmitterMock.emitAsync.mockResolvedValue([]);
+      subscribersServiceMock.findByExpedienteId.mockResolvedValue(null);
+
+      await expect(service.retryConversionEvent('exp-ready-pending', 'user-1')).resolves.toEqual({
+        retried: true,
+        resolved: false,
+        eventName: 'crm.expediente.ready-for-installation',
+      });
+
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('crm_conversion_failures'), [
+        'ten-1',
+        'exp-ready-pending',
+        'crm.expediente.ready-for-installation',
+        'CONVERSION_FAILED',
+      ]);
+      expect(update).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith({
+        action: 'CONVERSION_RETRY',
+        entityType: 'Expediente',
+        entityId: 'exp-ready-pending',
+        userId: 'user-1',
+        newValue: {
+          eventName: 'crm.expediente.ready-for-installation',
+          resolved: false,
+          errorCode: null,
+        },
+      });
+    });
+
+    it('solo resuelve la activación cuando el suscriptor vinculado queda ACTIVE', async () => {
+      const { query, update } = arrangeTenantRunner();
+      jest.spyOn(service, 'findById').mockResolvedValue(
+        buildExpediente({
+          id: 'exp-activation-pending',
+          status: ExpedienteStatus.CLIENTE_ACTIVO,
+        }),
+      );
+      eventEmitterMock.emitAsync.mockResolvedValue([]);
+      subscribersServiceMock.findByExpedienteId.mockResolvedValue({
+        id: 'sub-pending',
+        status: SubscriberStatus.PROSPECT,
+      });
+
+      await expect(
+        service.retryConversionEvent('exp-activation-pending', 'user-1'),
+      ).resolves.toEqual({
+        retried: true,
+        resolved: false,
+        eventName: 'crm.expediente.activated',
+      });
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('crm_conversion_failures'), [
+        'ten-1',
+        'exp-activation-pending',
+        'crm.expediente.activated',
+        'CONVERSION_FAILED',
+      ]);
+      expect(update).not.toHaveBeenCalled();
+
+      subscribersServiceMock.findByExpedienteId.mockResolvedValueOnce({
+        id: 'sub-active',
+        status: SubscriberStatus.ACTIVE,
+      });
+      await expect(
+        service.retryConversionEvent('exp-activation-pending', 'user-1'),
+      ).resolves.toEqual({
+        retried: true,
+        resolved: true,
+        eventName: 'crm.expediente.activated',
+      });
+      expect(update).toHaveBeenCalledTimes(1);
     });
   });
 });

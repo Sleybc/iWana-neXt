@@ -14,7 +14,7 @@ export class SubscriberActivationListener {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  @OnEvent('crm.expediente.activated', { async: true })
+  @OnEvent('crm.expediente.activated', { suppressErrors: false })
   async handle(event: ExpedienteActivatedEvent): Promise<void> {
     const updated = await this.subscribersService.activateFromExpediente(
       event.expedienteId,

@@ -27,6 +27,8 @@ const subscriber = {
   commercialName: 'Marca de prueba',
   email: 'ana@example.invalid',
   phone: '3001234567',
+  emailEncrypted: 'encrypted-email',
+  phoneEncrypted: 'encrypted-phone',
   altContactPhone: '3007654321',
   whatsapp: '3001112233',
   whatsappEncrypted: null,
@@ -118,6 +120,7 @@ describe('projectSubscriberForList', () => {
       commercialName: 'Marca de prueba',
       vatTreatment: VatTreatment.STANDARD,
       createdAt: '2026-10-12T12:00:00.000Z',
+      contactPending: false,
     });
     expect(projected).not.toHaveProperty('tenantId');
     expect(projected).not.toHaveProperty('partyId');
@@ -135,5 +138,19 @@ describe('projectSubscriberForList', () => {
     expect(projected).toHaveProperty('firstName', 'Ana');
     expect(projected).not.toHaveProperty('documentNumber');
     expect(projected).not.toHaveProperty('email');
+  });
+
+  it('declara contacto pendiente solo cuando faltan ambos canales cifrados', () => {
+    const noContact = projectSubscriberForList(
+      { ...subscriber, emailEncrypted: null, phoneEncrypted: null },
+      UserRole.SALES,
+    );
+    const phoneOnly = projectSubscriberForList(
+      { ...subscriber, emailEncrypted: null },
+      UserRole.SALES,
+    );
+
+    expect(noContact.contactPending).toBe(true);
+    expect(phoneOnly.contactPending).toBe(false);
   });
 });

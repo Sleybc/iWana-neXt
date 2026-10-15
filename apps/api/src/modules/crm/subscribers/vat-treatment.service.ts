@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PersonType, VatTreatment, TaxRegime, CustomerSegment } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
+import { hasRealContact } from './subscriber-contact.util';
 
 /**
  * Motor IVA colombiano para servicios de Internet.
@@ -82,9 +83,8 @@ export class VatTreatmentService {
       if (!data.businessName) errors.push('businessName es obligatorio para persona jurídica');
     }
 
-    // Campos compartidos obligatorios para ambos tipos
-    if (!data.emailEncrypted) errors.push('email es obligatorio');
-    if (!data.phoneEncrypted) errors.push('phone es obligatorio');
+    // Basta con un canal de contacto; no se inventan valores sustitutos.
+    if (!hasRealContact(data)) errors.push('email o phone es obligatorio');
     if (!data.address) errors.push('address es obligatorio');
 
     return errors;

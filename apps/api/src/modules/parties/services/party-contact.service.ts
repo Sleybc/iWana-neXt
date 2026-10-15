@@ -77,7 +77,7 @@ export class PartyContactService {
       return contacts.map((contact) =>
         this.decryptContact(
           contact,
-          contact.valueEncrypted ? this.pii.decrypt(contact.valueEncrypted) : '',
+          contact.valueEncrypted ? this.pii.decrypt(contact.valueEncrypted) : null,
         ),
       );
     });
@@ -103,7 +103,7 @@ export class PartyContactService {
     });
   }
 
-  private decryptContact(contact: PartyContact, value: string): PartyContact {
+  private decryptContact(contact: PartyContact, value: string | null): PartyContact {
     return Object.assign(new PartyContact(), contact, { value });
   }
 }

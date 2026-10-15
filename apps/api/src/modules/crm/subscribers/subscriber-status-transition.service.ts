@@ -1,15 +1,21 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, IsNull } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { AuditAction, SubscriberStatus } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
+import { hasRealContact } from './subscriber-contact.util';
 
 /**
  * Transiciones permitidas del ciclo de vida del suscriptor.
  *
- * LEAD → PROSPECT (requiere: documento, nombre, contacto)
+ * LEAD → PROSPECT (requiere: documento, nombre y al menos un contacto)
  * PROSPECT → ACTIVE (requiere: evento de activación)
  * ACTIVE → SUSPENDED (requiere: motivo)
  * SUSPENDED → ACTIVE (requiere: motivo)
@@ -30,16 +36,9 @@ const ALLOWED_TRANSITIONS: Map<SubscriberStatus, Set<SubscriberStatus>> = new Ma
  */
 const TRANSITION_REQUIREMENTS: Record<string, { fields: string[]; description: string }> = {
   [`${SubscriberStatus.LEAD}->${SubscriberStatus.PROSPECT}`]: {
-    fields: [
-      'documentType',
-      'documentNumberEncrypted',
-      'firstName',
-      'lastName',
-      'emailEncrypted',
-      'phoneEncrypted',
-    ],
+    fields: ['documentType', 'documentNumberEncrypted', 'firstName', 'lastName'],
     description:
-      'Documento, nombre completo y contacto son obligatorios para calificar como prospecto',
+      'Documento, nombre completo y un contacto son obligatorios para calificar como prospecto',
   },
   [`${SubscriberStatus.PROSPECT}->${SubscriberStatus.ACTIVE}`]: {
     fields: [],
@@ -104,6 +103,14 @@ export class SubscriberStatusTransitionService {
       }
     }
 
+    if (
+      subscriber.status === SubscriberStatus.LEAD &&
+      targetStatus === SubscriberStatus.PROSPECT &&
+      !hasRealContact(subscriber)
+    ) {
+      errors.push('Debe registrar al menos un teléfono o un correo');
+    }
+
     return errors;
   }
 
@@ -141,6 +148,14 @@ export class SubscriberStatusTransitionService {
         `Transición no permitida: ${fromStatus} → ${targetStatus}. ` +
           `Estados permitidos desde ${fromStatus}: ${[...(ALLOWED_TRANSITIONS.get(fromStatus) || [])].join(', ')}`,
       );
+    }
+
+    if (targetStatus === SubscriberStatus.ACTIVE && !hasRealContact(subscriber)) {
+      throw new UnprocessableEntityException({
+        code: 'SUBSCRIBER_CONTACT_REQUIRED',
+        message:
+          'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
+      });
     }
 
     // Validar campos mínimos para la transición

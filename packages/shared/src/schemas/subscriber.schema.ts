@@ -73,6 +73,7 @@ export interface SubscriberListItem {
   businessName: string | null;
   commercialName: string | null;
   createdAt: string;
+  contactPending: boolean;
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
   documentNumber?: string;
   nit?: string;
@@ -113,8 +114,9 @@ export const naturalSubscriberSchema = z.object({
     .string()
     .min(1, 'El correo es requerido')
     .email('Ingresa un correo electrónico válido')
-    .max(500),
-  phone: z.string().min(5, 'El teléfono debe tener al menos 5 caracteres').max(100),
+    .max(500)
+    .optional(),
+  phone: z.string().min(5, 'El teléfono debe tener al menos 5 caracteres').max(100).optional(),
   altContactName: z.string().max(160).optional(),
   altContactPhone: z.string().max(100).optional(),
   whatsapp: z.string().max(50).optional(),
@@ -149,8 +151,9 @@ export const juridicaSubscriberSchema = z.object({
     .string()
     .min(1, 'El correo es requerido')
     .email('Ingresa un correo electrónico válido')
-    .max(500),
-  phone: z.string().min(5, 'El teléfono debe tener al menos 5 caracteres').max(100),
+    .max(500)
+    .optional(),
+  phone: z.string().min(5, 'El teléfono debe tener al menos 5 caracteres').max(100).optional(),
   altContactName: z.string().max(160).optional(),
   altContactPhone: z.string().max(100).optional(),
   whatsapp: z.string().max(50).optional(),
@@ -176,6 +179,12 @@ export const juridicaSubscriberSchema = z.object({
 export const CreateSubscriberSchema = z
   .discriminatedUnion('personType', [naturalSubscriberSchema, juridicaSubscriberSchema])
   .superRefine((subscriber, context) => {
+    if (!subscriber.email && !subscriber.phone) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Registra al menos un teléfono o un correo.',
+      });
+    }
     if (subscriber.authorizations?.length && !subscriber.authorizationChannel) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
