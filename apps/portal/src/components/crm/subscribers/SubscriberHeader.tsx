@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Badge, Button } from '@iwana/ui';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Plus, RefreshCw } from 'lucide-react';
 import { PersonType, SubscriberStatus } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import type { PrivacyMark } from '@iwana/shared';
@@ -19,12 +19,14 @@ interface SubscriberHeaderProps {
   subscriber: SubscriberRecord;
   marks?: PrivacyMark[];
   onChangeStatus: () => void;
+  onAddContact: () => void;
 }
 
 export function SubscriberHeader({
   subscriber,
   marks = [],
   onChangeStatus,
+  onAddContact,
 }: SubscriberHeaderProps) {
   const router = useRouter();
   const name = formatSubscriberName(subscriber);
@@ -52,6 +54,15 @@ export function SubscriberHeader({
           >
             {statusMeta.label}
           </Badge>
+          {subscriber.contactPending && (
+            <Badge
+              variant="warning"
+              className="rounded-full px-3 py-1 text-[10px] font-bold tracking-wide"
+            >
+              <AlertTriangle className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Contacto pendiente
+            </Badge>
+          )}
           <Badge
             variant={personMeta.variant}
             className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
@@ -73,10 +84,18 @@ export function SubscriberHeader({
 
       <VatTreatmentBanner vatTreatment={subscriber.vatTreatment} taxRegime={subscriber.taxRegime} />
 
-      <Button type="button" variant="secondary" onClick={onChangeStatus}>
-        <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        Cambiar estado
-      </Button>
+      <div className="flex flex-wrap gap-3">
+        {subscriber.contactPending && (
+          <Button type="button" variant="secondary" onClick={onAddContact}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Agregar contacto
+          </Button>
+        )}
+        <Button type="button" variant="secondary" onClick={onChangeStatus}>
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          Cambiar estado
+        </Button>
+      </div>
     </div>
   );
 }

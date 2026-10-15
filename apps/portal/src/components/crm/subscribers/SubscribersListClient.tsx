@@ -508,7 +508,9 @@ function SubscribersListClientInner() {
                             </p>
                             <PrivacyMarks marks={subscriber.privacyMarks ?? []} />
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {subscriber.email || subscriber.phone || 'Sin contacto principal'}
+                              {subscriber.contactPending
+                                ? 'Contacto pendiente'
+                                : subscriber.email || subscriber.phone || 'Sin contacto principal'}
                             </p>
                           </Link>
                         </td>

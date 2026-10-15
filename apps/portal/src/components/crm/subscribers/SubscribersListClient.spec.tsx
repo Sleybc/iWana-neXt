@@ -67,6 +67,7 @@ function subscriberFixture(
     documentNumber: id,
     email: `${id}@example.com`,
     phone: null,
+    contactPending: false,
     customerSegment: 'RESIDENTIAL',
     vatTreatment: 'STANDARD',
     status: 'ACTIVE',
@@ -132,6 +133,35 @@ describe('SubscribersListClient ADR-065', () => {
     expect(screen.queryByRole('columnheader', { name: 'IVA' })).not.toBeInTheDocument();
     expect(within(row).queryByText('Excluido')).not.toBeInTheDocument();
     expect(within(row).getByText('Sin ubicación')).toBeInTheDocument();
+  });
+
+  it('CA-E3-04 muestra el contacto pendiente sin revelar placeholders ni enums crudos', async () => {
+    const placeholder = 'expediente-sub-1@placeholder.iwana.co';
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          'sub-pending',
+          { firstName: 'Ana', lastName: 'Pérez' },
+          {
+            contactPending: true,
+            email: placeholder,
+            phone: '0000000000',
+            status: 'ACTIVE',
+          },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const row = await screen.findByRole('row', { name: /Ana Pérez/ });
+    expect(within(row).getByText('Contacto pendiente')).toBeInTheDocument();
+    expect(within(row).queryByText(placeholder)).not.toBeInTheDocument();
+    expect(within(row).queryByText('0000000000')).not.toBeInTheDocument();
+    expect(within(row).getByText('Activo')).toBeInTheDocument();
+    expect(within(row).queryByText('ACTIVE')).not.toBeInTheDocument();
   });
 
   it('reemplaza la página: página 2 muestra filas distintas (no acumulación)', async () => {

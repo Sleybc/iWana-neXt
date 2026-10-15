@@ -121,6 +121,14 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
   });
 
   const personType = watch('personType');
+  const emailValue = watch('email');
+  const phoneValue = watch('phone');
+
+  useEffect(() => {
+    if (!emailValue?.trim() && !phoneValue?.trim()) return;
+    if (errors.email?.type === 'contact-required') clearErrors('email');
+    if (errors.phone?.type === 'contact-required') clearErrors('phone');
+  }, [clearErrors, emailValue, errors.email?.type, errors.phone?.type, phoneValue]);
 
   useEffect(() => {
     reset(buildDefaults(initialData));
@@ -215,6 +223,14 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
       : CreateSubscriberSchema.safeParse(payload);
 
     if (!result.success) {
+      const contactMissing = !editing && !common.email?.trim() && !common.phone?.trim();
+
+      if (contactMissing) {
+        const message = 'Registra al menos un teléfono o un correo.';
+        setError('email', { type: 'contact-required', message });
+        setError('phone', { type: 'contact-required', message });
+      }
+
       result.error.issues.forEach((issue) => {
         const field = issue.path[0];
         if (typeof field === 'string') {
@@ -222,7 +238,9 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
         }
       });
 
-      const firstFormIssue = result.error.issues.find((issue) => issue.path.length === 0);
+      const firstFormIssue = result.error.issues.find(
+        (issue) => issue.path.length === 0 && !contactMissing,
+      );
       if (firstFormIssue) {
         setSubmitError(firstFormIssue.message);
       }

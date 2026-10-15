@@ -1,10 +1,11 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Badge, Button, FormStatus, Input, ProgressMeter, Select } from '@iwana/ui';
-import { formatFullName } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole, formatFullName } from '@iwana/shared';
 const ExpedienteSections = dynamic(
   () =>
     import('@/components/crm/expedientes/sections/ExpedienteSections').then(
@@ -66,6 +67,7 @@ import {
 } from '@/components/crm/expedientes/expediente-ui';
 import { ExpedienteTabsContainer } from '@/components/crm/expedientes/ExpedienteTabsContainer';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/components/access-control/permissions-context';
 import {
   ACQUISITION_CHANNEL_OPTIONS,
   applyIdentificationDerivedDefaults,
@@ -191,6 +193,7 @@ export default function ExpedienteDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { status: permissionsStatus, hasPermission } = usePermissions();
   const id = params?.id as string;
   const tenantScope = resolveExpedienteCacheScope(user?.tenantId);
   const [timelineRevision, setTimelineRevision] = useState(0);
@@ -213,6 +216,10 @@ export default function ExpedienteDetailPage() {
     useState<PipelineRecommendation | null>(null);
   const [subscriberSummary, setSubscriberSummary] =
     useState<ExpedienteDetailBootstrap['subscriberSummary']>(null);
+  const [conversionFailure, setConversionFailure] =
+    useState<ExpedienteDetailBootstrap['conversionFailure']>(null);
+  const [isRetryingConversion, setIsRetryingConversion] = useState(false);
+  const [conversionRetryError, setConversionRetryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [draftValues, setDraftValues] = useState<DraftValues>({});
@@ -223,6 +230,7 @@ export default function ExpedienteDetailPage() {
   const [transitionReason, setTransitionReason] = useState('');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionMessageTone, setActionMessageTone] = useState<'success' | 'error' | 'info'>('info');
+  const [contactActionAvailable, setContactActionAvailable] = useState(false);
   const [lockedSections, setLockedSections] = useState<Set<SectionId>>(new Set());
   const [currentAttribution, setCurrentAttribution] =
     useState<ExpedienteDetailAttributionSummary | null>(null);
@@ -279,6 +287,10 @@ export default function ExpedienteDetailPage() {
   }, [departmentValue, municipalityValue]);
 
   const currentUserDisplayName = getCurrentUserDisplayName(user);
+  const canRetryConversion =
+    permissionsStatus === 'ready' &&
+    (user?.role === UserRole.ADMIN || user?.role === PlatformRole.SYSTEM_ADMIN) &&
+    hasPermission(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE);
   const lastEditedByLabel =
     operationalMetadata?.lastEditedBy.name?.trim() ||
     currentUserDisplayName ||
@@ -312,6 +324,7 @@ export default function ExpedienteDetailPage() {
     setCurrentAttribution(bootstrap.currentAttribution);
     setResponsibility(bootstrap.responsibility);
     setSubscriberSummary(bootstrap.subscriberSummary);
+    setConversionFailure(bootstrap.conversionFailure);
     setTransitionTarget((current) =>
       current && current !== bootstrap.expediente.status
         ? current
@@ -552,6 +565,9 @@ export default function ExpedienteDetailPage() {
       setCompleteness(null);
       setPipelineRecommendation(null);
       setSubscriberSummary(null);
+      setConversionFailure(null);
+      setIsRetryingConversion(false);
+      setConversionRetryError(null);
       setOperationalMetadata(null);
       setCurrentAttribution(null);
       setResponsibility(null);
@@ -861,6 +877,7 @@ export default function ExpedienteDetailPage() {
 
     try {
       setActionMessage(null);
+      setContactActionAvailable(false);
 
       // No hay secciones con campos requeridos pre-transición que deban auto-persistirse.
       // Billing e instalación ya no son secciones del expediente.
@@ -885,6 +902,29 @@ export default function ExpedienteDetailPage() {
       }
     } catch (err) {
       setActionMessageTone('error');
+      if (
+        targetStatus === 'CLIENTE_ACTIVO' &&
+        err instanceof ApiError &&
+        err.status === 422 &&
+        err.code === 'EXPEDIENTE_SUBSCRIBER_CONTACT_REQUIRED'
+      ) {
+        setActionMessage(
+          'No se puede marcar como cliente activo: el suscriptor no tiene teléfono ni correo registrados.',
+        );
+        setContactActionAvailable(Boolean(subscriberSummary?.id));
+        return;
+      }
+      if (
+        targetStatus === 'LISTO_PARA_INSTALACION' &&
+        err instanceof ApiError &&
+        err.status === 422 &&
+        err.code === 'EXPEDIENTE_DATA_AUTHORIZATION_REQUIRED'
+      ) {
+        setActionMessage(
+          'Para pasar a Listo para instalación, registra la autorización de tratamiento de datos en Consentimientos.',
+        );
+        return;
+      }
       if (err instanceof ApiError) {
         const missing: string[] = Array.isArray(
           (err as ApiError & { details?: { missingFields?: unknown[] } }).details?.missingFields,
@@ -914,6 +954,30 @@ export default function ExpedienteDetailPage() {
         setActionMessage(getSafeCrmErrorMessage(err, 'No fue posible cambiar el estado.'));
       }
     }
+  };
+
+  const handleRetryConversion = async () => {
+    if (!canRetryConversion || isRetryingConversion) {
+      return;
+    }
+
+    setIsRetryingConversion(true);
+    setConversionRetryError(null);
+    let retryFailed = false;
+    try {
+      await crmApi.retryExpedienteConversion(id);
+      markTimelineMutation();
+    } catch {
+      retryFailed = true;
+    }
+
+    const refreshed = await loadExpediente({ clearActionMessage: false });
+    if (!refreshed) {
+      setConversionRetryError('No fue posible actualizar la información de la oportunidad.');
+    } else if (retryFailed) {
+      setConversionRetryError('No fue posible reintentar la conversión. Intenta de nuevo.');
+    }
+    setIsRetryingConversion(false);
   };
 
   const handleReactivate = async () => {
@@ -973,6 +1037,16 @@ export default function ExpedienteDetailPage() {
                 : 'Información de la oportunidad'
           }
           description={actionMessage}
+          action={
+            contactActionAvailable && subscriberSummary?.id ? (
+              <Link
+                href={`/dashboard/crm/subscribers/${subscriberSummary.id}`}
+                className="inline-flex min-h-11 items-center font-medium text-iwana-secondary-700 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 dark:text-iwana-secondary-300"
+              >
+                Abrir ficha del suscriptor
+              </Link>
+            ) : undefined
+          }
         />
       )}
       {coordinationError && (
@@ -1481,6 +1555,11 @@ export default function ExpedienteDetailPage() {
       <ExpedienteConversionBanner
         status={expediente.status}
         subscriberSummary={subscriberSummary}
+        conversionFailure={conversionFailure}
+        canRetryConversion={canRetryConversion}
+        isRetrying={isRetryingConversion}
+        retryError={conversionRetryError}
+        onRetryConversion={() => void handleRetryConversion()}
       />
       <ExpedienteTabsContainer
         key={id}

@@ -1016,3 +1016,37 @@ describe('privacyApi response envelopes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('crmApi expediente conversion retry', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('envía POST a la ruta de reintento y devuelve el resultado de la API', async () => {
+    const result = {
+      retried: true,
+      resolved: true,
+      eventName: 'crm.expediente.ready-for-installation',
+    };
+    const fetchMock = jest.fn(async () => createJsonResponse(200, { data: result }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { crmApi, persistAccessToken } = await import('./api-client');
+    persistTenantSlug('isp-demo');
+    persistAccessToken(makeAccessToken(Math.floor(Date.now() / 1000) + 15 * 60));
+
+    await expect(crmApi.retryExpedienteConversion('expediente-1')).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toMatch(/\/crm\/expedientes\/expediente-1\/retry-conversion$/);
+    expect(requestInit.method).toBe('POST');
+    expect(new Headers(requestInit.headers).get('X-Requested-With')).toBe('XMLHttpRequest');
+  });
+});

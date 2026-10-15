@@ -1,13 +1,17 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { AccessPermissionKey } from '@iwana/shared';
+import * as conversionBanner from '@/components/crm/expedientes/ExpedienteConversionBanner';
 import ExpedienteDetailPage from './page';
-import { crmApi, privacyApi, usersApi } from '@/lib/api-client';
+import { ApiError, crmApi, privacyApi, usersApi } from '@/lib/api-client';
 import { EMPTY_LIST_META } from '@/lib/list-meta';
 import { createCrmVisitRequestAndRoute } from '@/components/scheduling/visit-request-origin-orchestration';
 import { invalidateExpedienteTimelineCache } from '@/components/crm/expedientes/expediente-detail-cache';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockUsePermissions = jest.fn();
 let currentExpedienteId = 'exp-1';
+let currentUserRole = 'SALES';
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: currentExpedienteId }),
@@ -62,10 +66,14 @@ jest.mock('@/components/auth/AuthProvider', () => ({
       displayName: 'Laura Comercial',
       firstName: 'Laura',
       lastName: 'Comercial',
-      role: 'SALES',
+      role: currentUserRole,
       tenantId: 'tenant-1',
     },
   }),
+}));
+
+jest.mock('@/components/access-control/permissions-context', () => ({
+  usePermissions: () => mockUsePermissions(),
 }));
 
 jest.mock('@/components/crm/expedientes/ExpedienteHeader', () => ({
@@ -77,10 +85,6 @@ jest.mock('@/components/crm/expedientes/ExpedienteHeader', () => ({
 jest.mock('@/components/crm/expedientes/expediente-detail-cache', () => ({
   ...jest.requireActual('@/components/crm/expedientes/expediente-detail-cache'),
   invalidateExpedienteTimelineCache: jest.fn(),
-}));
-
-jest.mock('@/components/crm/expedientes/ExpedienteConversionBanner', () => ({
-  ExpedienteConversionBanner: () => <div>Banner conversión</div>,
 }));
 
 jest.mock('@/components/crm/expedientes/ConsentsPanel', () => ({
@@ -151,8 +155,13 @@ jest.mock('@/components/crm/expedientes/ExpedienteTabsContainer', () => {
 
 jest.mock('@/lib/api-client', () => ({
   ApiError: class ApiError extends Error {
-    status = 400;
-    code = 'VALIDATION_ERROR';
+    constructor(
+      public status = 400,
+      public code = 'VALIDATION_ERROR',
+      message = 'Error de prueba',
+    ) {
+      super(message);
+    }
     details?: unknown;
   },
   crmApi: {
@@ -165,6 +174,7 @@ jest.mock('@/lib/api-client', () => ({
     getResponsibility: jest.fn(),
     getResponsibilityHistory: jest.fn(),
     transitionExpedienteStatus: jest.fn(),
+    retryExpedienteConversion: jest.fn(),
     updateExpedienteSection: jest.fn(),
     reactivateExpediente: jest.fn(),
     listConsents: jest.fn(),
@@ -204,6 +214,7 @@ const crmApiMock = crmApi as unknown as {
   getResponsibility: jest.Mock;
   getResponsibilityHistory: jest.Mock;
   transitionExpedienteStatus: jest.Mock;
+  retryExpedienteConversion: jest.Mock;
   updateExpedienteSection: jest.Mock;
   reactivateExpediente: jest.Mock;
   listConsents: jest.Mock;
@@ -357,6 +368,7 @@ function buildExpedienteBootstrapResponse(
       currentAttribution: null,
       responsibility: null,
       subscriberSummary: null,
+      conversionFailure: null,
       ...overrides,
     },
   };
@@ -366,6 +378,13 @@ describe('ExpedienteDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     currentExpedienteId = 'exp-1';
+    currentUserRole = 'SALES';
+    mockUsePermissions.mockReturnValue({
+      status: 'ready',
+      hasPermission: (permission: AccessPermissionKey) =>
+        permission === AccessPermissionKey.CRM_EXPEDIENTES_MANAGE ||
+        permission === AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    });
 
     crmApiMock.getExpediente.mockResolvedValue(buildExpedienteResponse());
     crmApiMock.getExpedienteBootstrap.mockResolvedValue(buildExpedienteBootstrapResponse());
@@ -385,6 +404,11 @@ describe('ExpedienteDetailPage', () => {
     crmApiMock.getResponsibility.mockResolvedValue({ data: null });
     crmApiMock.getResponsibilityHistory.mockResolvedValue({ data: [] });
     crmApiMock.transitionExpedienteStatus.mockResolvedValue({ data: {}, transitionWarning: null });
+    crmApiMock.retryExpedienteConversion.mockResolvedValue({
+      retried: true,
+      resolved: true,
+      eventName: 'crm.expediente.ready-for-installation',
+    });
     crmApiMock.listConsents.mockResolvedValue({ data: [] });
     jest.mocked(privacyApi.getCurrentLegalText).mockResolvedValue({
       id: 'legal-text-1',
@@ -420,6 +444,302 @@ describe('ExpedienteDetailPage', () => {
     expect(screen.getByText('Ubicación registrada')).toBeInTheDocument();
     expect(screen.getByText('La dirección exacta se consulta en Gestión.')).toBeInTheDocument();
     expect(screen.queryByText('Calle 1')).not.toBeInTheDocument();
+  });
+
+  it('muestra el copy exacto de R8 cuando no hay autorización de tratamiento', async () => {
+    const completeness = {
+      ...buildExpedienteResponse().completeness,
+      installationReadiness: {
+        status: 'READY_COMPLETE' as const,
+        canTransition: true,
+        title: 'Listo para instalación',
+        message: 'La oportunidad puede avanzar.',
+      },
+    };
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse({ completeness }, { status: 'EN_COTIZACION' }),
+    );
+    crmApiMock.transitionExpedienteStatus.mockRejectedValue(
+      new ApiError(422, 'EXPEDIENTE_DATA_AUTHORIZATION_REQUIRED', 'Se requiere autorización'),
+    );
+
+    render(<ExpedienteDetailPage />);
+
+    await screen.findByRole('button', { name: 'Aplicar transición' });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar transición' }));
+
+    await waitFor(() => expect(crmApiMock.transitionExpedienteStatus).toHaveBeenCalled());
+    expect(crmApiMock.transitionExpedienteStatus).toHaveBeenCalledWith('exp-1', {
+      targetStatus: 'LISTO_PARA_INSTALACION',
+    });
+    expect(
+      await screen.findByText(
+        'Para pasar a Listo para instalación, registra la autorización de tratamiento de datos en Consentimientos.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('reintenta la conversión y vuelve a cargar el bootstrap', async () => {
+    currentUserRole = 'ADMIN';
+    const failure = {
+      eventName: 'crm.expediente.ready-for-installation',
+      errorCode: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
+      attempts: 1,
+      lastFailedAt: '2026-10-15T12:00:00.000Z',
+    };
+    crmApiMock.getExpedienteBootstrap
+      .mockResolvedValueOnce(
+        buildExpedienteBootstrapResponse(
+          { conversionFailure: failure },
+          {
+            status: 'LISTO_PARA_INSTALACION',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        buildExpedienteBootstrapResponse(
+          { conversionFailure: null },
+          { status: 'INSTALACION_AGENDADA' },
+        ),
+      );
+
+    render(<ExpedienteDetailPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar conversión' }));
+
+    await waitFor(() => {
+      expect(crmApiMock.retryExpedienteConversion).toHaveBeenCalledWith('exp-1');
+      expect(crmApiMock.getExpedienteBootstrap).toHaveBeenCalledTimes(2);
+    });
+    expect(crmApiMock.getExpedienteBootstrap.mock.invocationCallOrder[1]).toBeGreaterThan(
+      crmApiMock.retryExpedienteConversion.mock.invocationCallOrder[0]!,
+    );
+    expect(
+      screen.queryByText(
+        'No se creó el suscriptor: falta la autorización de tratamiento de datos. Regístrala en Consentimientos y vuelve a intentarlo.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Esta oportunidad ya fue convertida a suscriptor.'),
+    ).toBeInTheDocument();
+  });
+
+  it.each(['SALES', 'SUPPORT', 'TECHNICIAN'])(
+    'muestra el motivo y el siguiente paso a %s aunque tenga el permiso',
+    async (role) => {
+      currentUserRole = role;
+      const hasPermission = jest.fn().mockReturnValue(true);
+      mockUsePermissions.mockReturnValue({ status: 'ready', hasPermission });
+      crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+        buildExpedienteBootstrapResponse(
+          {
+            conversionFailure: {
+              eventName: 'crm.expediente.ready-for-installation',
+              errorCode: 'CONVERSION_FAILED',
+              attempts: 1,
+              lastFailedAt: '2026-10-15T12:00:00.000Z',
+            },
+          },
+          { status: 'LISTO_PARA_INSTALACION' },
+        ),
+      );
+
+      render(<ExpedienteDetailPage />);
+
+      expect(await screen.findByText('Hay una conversión pendiente')).toBeInTheDocument();
+      expect(
+        screen.getByText('Pide a un administrador que reintente la conversión.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Reintentar conversión' }),
+      ).not.toBeInTheDocument();
+      expect(hasPermission).not.toHaveBeenCalled();
+      expect(crmApiMock.retryExpedienteConversion).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['ADMIN', 'SYSTEM_ADMIN'])(
+    'ofrece el reintento a %s cuando tiene crm.subscribers.manage',
+    async (role) => {
+      currentUserRole = role;
+      const hasPermission = jest.fn(
+        (permission: AccessPermissionKey) =>
+          permission === AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      );
+      mockUsePermissions.mockReturnValue({ status: 'ready', hasPermission });
+      crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+        buildExpedienteBootstrapResponse(
+          {
+            conversionFailure: {
+              eventName: 'crm.expediente.ready-for-installation',
+              errorCode: 'CONVERSION_FAILED',
+              attempts: 1,
+              lastFailedAt: '2026-10-15T12:00:00.000Z',
+            },
+          },
+          { status: 'LISTO_PARA_INSTALACION' },
+        ),
+      );
+
+      render(<ExpedienteDetailPage />);
+
+      expect(
+        await screen.findByRole('button', { name: 'Reintentar conversión' }),
+      ).toBeInTheDocument();
+      expect(hasPermission).toHaveBeenCalledWith(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE);
+    },
+  );
+
+  it('oculta el reintento al administrador si falta crm.subscribers.manage', async () => {
+    currentUserRole = 'ADMIN';
+    const hasPermission = jest.fn().mockReturnValue(false);
+    mockUsePermissions.mockReturnValue({ status: 'ready', hasPermission });
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse(
+        {
+          conversionFailure: {
+            eventName: 'crm.expediente.ready-for-installation',
+            errorCode: 'CONVERSION_FAILED',
+            attempts: 1,
+            lastFailedAt: '2026-10-15T12:00:00.000Z',
+          },
+        },
+        { status: 'LISTO_PARA_INSTALACION' },
+      ),
+    );
+
+    render(<ExpedienteDetailPage />);
+
+    expect(await screen.findByText('Hay una conversión pendiente')).toBeInTheDocument();
+    expect(
+      screen.getByText('Pide a un administrador que reintente la conversión.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reintentar conversión' })).not.toBeInTheDocument();
+    expect(hasPermission).toHaveBeenCalledWith(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE);
+    expect(crmApiMock.retryExpedienteConversion).not.toHaveBeenCalled();
+  });
+
+  it('ignora una invocación del reintento para un rol no permitido', async () => {
+    currentUserRole = 'SALES';
+    mockUsePermissions.mockReturnValue({
+      status: 'ready',
+      hasPermission: () => true,
+    });
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse(
+        {
+          conversionFailure: {
+            eventName: 'crm.expediente.ready-for-installation',
+            errorCode: 'CONVERSION_FAILED',
+            attempts: 1,
+            lastFailedAt: '2026-10-15T12:00:00.000Z',
+          },
+        },
+        { status: 'LISTO_PARA_INSTALACION' },
+      ),
+    );
+    const bannerSpy = jest
+      .spyOn(conversionBanner, 'ExpedienteConversionBanner')
+      .mockImplementation(({ onRetryConversion }) => (
+        <button type="button" onClick={onRetryConversion}>
+          Invocar el callback de prueba
+        </button>
+      ));
+
+    try {
+      render(<ExpedienteDetailPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Invocar el callback de prueba' }));
+
+      expect(crmApiMock.retryExpedienteConversion).not.toHaveBeenCalled();
+    } finally {
+      bannerSpy.mockRestore();
+    }
+  });
+
+  it('muestra un error fijo si falla el reintento y logra actualizar el bootstrap', async () => {
+    currentUserRole = 'ADMIN';
+    const failure = {
+      eventName: 'crm.expediente.ready-for-installation',
+      errorCode: 'CONVERSION_FAILED',
+      attempts: 1,
+      lastFailedAt: '2026-10-15T12:00:00.000Z',
+    };
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse(
+        { conversionFailure: failure },
+        { status: 'LISTO_PARA_INSTALACION' },
+      ),
+    );
+    crmApiMock.retryExpedienteConversion.mockRejectedValue(new Error('respuesta interna'));
+
+    render(<ExpedienteDetailPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar conversión' }));
+
+    expect(
+      await screen.findByText('No fue posible reintentar la conversión. Intenta de nuevo.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('respuesta interna')).not.toBeInTheDocument();
+  });
+
+  it('muestra un error fijo cuando falla la recarga posterior al reintento', async () => {
+    currentUserRole = 'ADMIN';
+    const failure = {
+      eventName: 'crm.expediente.ready-for-installation',
+      errorCode: 'CONVERSION_FAILED',
+      attempts: 1,
+      lastFailedAt: '2026-10-15T12:00:00.000Z',
+    };
+    crmApiMock.getExpedienteBootstrap
+      .mockResolvedValueOnce(
+        buildExpedienteBootstrapResponse(
+          { conversionFailure: failure },
+          { status: 'LISTO_PARA_INSTALACION' },
+        ),
+      )
+      .mockRejectedValueOnce(new Error('respuesta interna'));
+
+    render(<ExpedienteDetailPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reintentar conversión' }));
+
+    expect(
+      await screen.findAllByText('No fue posible actualizar la información de la oportunidad.'),
+    ).not.toHaveLength(0);
+    expect(screen.queryByText('respuesta interna')).not.toBeInTheDocument();
+  });
+
+  it('ignora un segundo intento mientras el primero sigue en curso', async () => {
+    currentUserRole = 'ADMIN';
+    const failure = {
+      eventName: 'crm.expediente.ready-for-installation',
+      errorCode: 'CONVERSION_FAILED',
+      attempts: 1,
+      lastFailedAt: '2026-10-15T12:00:00.000Z',
+    };
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse(
+        { conversionFailure: failure },
+        { status: 'LISTO_PARA_INSTALACION' },
+      ),
+    );
+    let resolveRetry!: (value: { retried: boolean; resolved: boolean; eventName: string }) => void;
+    crmApiMock.retryExpedienteConversion.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRetry = resolve;
+      }),
+    );
+
+    render(<ExpedienteDetailPage />);
+    const retryButton = await screen.findByRole('button', { name: 'Reintentar conversión' });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(retryButton).toBeDisabled());
+
+    retryButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(crmApiMock.retryExpedienteConversion).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRetry({ retried: true, resolved: false, eventName: failure.eventName });
+    });
+    await waitFor(() => expect(retryButton).not.toBeDisabled());
   });
 
   it('define bootstrap como contrato inicial y no carga historiales al abrir el detalle', async () => {
@@ -692,6 +1012,51 @@ describe('ExpedienteDetailPage', () => {
       );
     });
     expect(invalidateExpedienteTimelineCache).toHaveBeenCalledWith('tenant-id:tenant-1', 'exp-1');
+  });
+
+  it('CA-E3-03 muestra el 422 de activación con enlace a la ficha del suscriptor', async () => {
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue(
+      buildExpedienteBootstrapResponse(
+        {
+          subscriberSummary: {
+            id: 'subscriber-pending',
+            status: 'PROSPECT',
+            fullName: 'Juan Perez',
+          },
+        },
+        { status: 'INSTALACION_AGENDADA' },
+      ),
+    );
+    crmApiMock.getExpediente.mockResolvedValue(
+      buildExpedienteResponse({
+        data: buildExpediente({ status: 'INSTALACION_AGENDADA' }),
+      }),
+    );
+    crmApiMock.transitionExpedienteStatus.mockRejectedValue(
+      new ApiError(
+        422,
+        'EXPEDIENTE_SUBSCRIBER_CONTACT_REQUIRED',
+        'No se puede marcar como cliente activo: el suscriptor no tiene teléfono ni correo registrados.',
+      ),
+    );
+
+    render(<ExpedienteDetailPage />);
+
+    await waitFor(() => expect(screen.getByLabelText('Nuevo estado')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Nuevo estado'), {
+      target: { value: 'CLIENTE_ACTIVO' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar transición' }));
+
+    expect(
+      await screen.findByText(
+        'No se puede marcar como cliente activo: el suscriptor no tiene teléfono ni correo registrados.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Abrir ficha del suscriptor' })).toHaveAttribute(
+      'href',
+      '/dashboard/crm/subscribers/subscriber-pending',
+    );
   });
 
   it('invalida el timeline al guardar una sección desde Gestión', async () => {

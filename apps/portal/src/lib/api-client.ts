@@ -5467,6 +5467,13 @@ export interface ExpedienteDetailAttributionSummary {
   revokedAt: string | null;
 }
 
+export interface ExpedienteConversionFailure {
+  eventName: string;
+  errorCode: string;
+  attempts: number;
+  lastFailedAt: string;
+}
+
 export interface ExpedienteDetailBootstrap {
   expediente: ExpedienteDetailSummary;
   completeness: CompletenessResult;
@@ -5475,6 +5482,7 @@ export interface ExpedienteDetailBootstrap {
   currentAttribution: ExpedienteDetailAttributionSummary | null;
   responsibility: ResponsibilitySnapshot | null;
   subscriberSummary: ExpedienteSubscriberSummary | null;
+  conversionFailure: ExpedienteConversionFailure | null;
 }
 
 export interface ExpedienteRecord {
@@ -5618,6 +5626,7 @@ export interface SubscriberRecord {
   altContactPhone?: string | null;
   email?: string | null;
   phone?: string | null;
+  contactPending: boolean;
   whatsapp: string | null;
   vatTreatment: VatTreatment;
   taxRegime: TaxRegime;
@@ -6163,6 +6172,16 @@ export const crmApi = {
   reactivateExpediente: (id: string, tenantSlug?: string) =>
     request<{ data: ExpedienteRecord }>(
       `/crm/expedientes/${id}/reactivate`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
+  retryExpedienteConversion: (
+    id: string,
+    tenantSlug?: string,
+  ): Promise<{ retried: boolean; resolved: boolean; eventName: string | null }> =>
+    request<{ retried: boolean; resolved: boolean; eventName: string | null }>(
+      `/crm/expedientes/${id}/retry-conversion`,
       { method: 'POST' },
       tenantSlug,
     ),

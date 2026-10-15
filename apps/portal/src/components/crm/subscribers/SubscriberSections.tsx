@@ -6,6 +6,7 @@ import { MapPin, Phone, UserRound } from 'lucide-react';
 import { PersonType } from '@iwana/shared';
 import type { UpdateSubscriberPayload } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-client';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import {
   DEPARTAMENTOS,
@@ -272,8 +273,16 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
         altContactName: contact.altContactName || undefined,
         altContactPhone: contact.altContactPhone || undefined,
       });
-    } catch {
-      setErrorContact('No fue posible guardar el contacto.');
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 422 &&
+        error.code === 'SUBSCRIBER_CONTACT_REQUIRED'
+      ) {
+        setErrorContact('Un suscriptor activo necesita al menos un teléfono o un correo.');
+      } else {
+        setErrorContact('No fue posible guardar el contacto.');
+      }
     } finally {
       setSavingContact(false);
     }

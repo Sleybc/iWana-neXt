@@ -443,6 +443,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               subscriber={subscriber}
               marks={subscriber360?.privacyMarks ?? []}
               onChangeStatus={() => setDialogOpen(true)}
+              onAddContact={() => setActiveSubscriberTab('datos')}
             />
           </div>
 
@@ -458,6 +459,10 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             currentStatus={subscriber.status}
             open={dialogOpen}
             onOpenChange={setDialogOpen}
+            onAddContact={() => {
+              setDialogOpen(false);
+              setActiveSubscriberTab('datos');
+            }}
             onTransition={async (targetStatus, reason) => {
               await subscribersApi.transitionStatus(subscriber.id, {
                 targetStatus,
