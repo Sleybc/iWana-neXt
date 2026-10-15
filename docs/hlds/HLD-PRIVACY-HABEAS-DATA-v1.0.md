@@ -192,4 +192,6 @@ flowchart LR
 3. la ejecución por tenant: migraciones 146, 147 y 027, conciliación del backfill y publicación del texto de autorización;
 4. ~~este HLD aprobado por el CTO~~ ✅ aprobado el 2026-10-15.
 
-**D-1B (CTO, 2026-10-15):** la Fase 1b va **después** de producción. Mientras tanto, el bloqueo y la supresión se operan con un runbook manual con SLA, que es precondición de G7.
+**D-1B (CTO, 2026-10-15):** la Fase 1b va **después** de producción. Mientras tanto, el bloqueo y la supresión se operan con el [runbook manual con SLA](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md), precondición de G7 junto con su Anexo A (`data-eng`).
+
+**Defecto conocido (P2, Fase 1b):** `reject` de SUPRIMIR abre `DATOS_BLOQUEADOS` también con `DEBER_CONTRACTUAL` (`requests.service.ts:776-804`). Con contrato vigente, los datos se necesitan para operar y no deben bloquearse. El runbook (§4.2) lo mitiga; la Fase 1b debe abrir el bloqueo solo con `DEBER_LEGAL_CONSERVACION`, o diferirlo hasta la terminación.

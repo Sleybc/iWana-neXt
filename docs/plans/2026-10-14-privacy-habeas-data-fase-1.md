@@ -84,6 +84,7 @@ Skills verificadas en disco (`ls .agents/skills/<nombre>/SKILL.md`, 2026-10-11/1
 - **Fase 3:** centrales de riesgo (con Billing) y Ley 2300 (con comunicaciones).
 - **Deuda registrada para el turno de `assurance`:** reemplazar `sla.service.ts:85-99` por C-CAL-1.
 - **Dictámenes jurídicos** (ADR-094 §7.3): los gestiona el CTO.
+- **Fase 1b (alcance acumulado):** Q8 (bloqueo y anonimización); `transferDueAt` y traslado extemporáneo (A26); **bloqueo solo con `DEBER_LEGAL_CONSERVACION`**, porque hoy también se abre con `DEBER_CONTRACTUAL` (`requests.service.ts:776-804`); y reutilizar el script del Anexo A del [runbook manual](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) como base de `IPersonalDataErasurePort`.
 - **Fase 2 (P3):** limpieza de evidencias huérfanas (A16); nombres de contrato en el detalle de suplantación; alerta o bloqueo de altas nuevas con el documento de un titular con `VICTIMA_FALSEDAD_PERSONAL` (candidato a decisión del CTO).
 
 ## Lanzamiento

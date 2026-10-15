@@ -29,6 +29,14 @@ La transición del expediente **no se revierte** si falla el downstream de subsc
 1. Conversión directa en `CLIENTE_ACTIVO`: pierde visibilidad operacional de prospecto post-venta.
 2. Llamadas directas servicio→servicio sin eventos: mayor acoplamiento y menor extensibilidad.
 
+## Aclaración (2026-10-15, AI-EM-ARCH)
+
+No cambia la decisión. Tras emitir un evento del pipeline, el emisor puede hacer una **lectura de postcondición** (por ejemplo, comprobar con `SubscribersService.findByExpedienteId` que exista el suscriptor esperado) para decidir si el fallo queda registrado para reintento. Esa lectura está permitida porque:
+- es de **solo lectura** y no reemplaza la orquestación por eventos;
+- ocurre dentro del mismo bounded context CRM, donde `ExpedienteService` ya depende de `SubscribersService`.
+
+La alternativa descartada n.º 2 se refiere a **escrituras** directas en lugar de eventos. Origen: hallazgo SEC-G4-03 de E-3 ([prompt E-3 §8](../prompts/PROMPT-MOD05-E3-CONTACTO-PENDIENTE-v1.0.md)).
+
 ## Referencias
 
 - `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-03-v1.0.md`

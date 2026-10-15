@@ -1,0 +1,47 @@
+# Informe de ejecución — MOD05 E-3 · E3 contacto pendiente
+
+**Fecha:** 2026-10-15  
+**Responsable:** AI-FE-PLATFORM  
+**Alcance:** interfaz del contacto pendiente, validación de alta, manejo de los errores 422 R4/R5/R6 y consumo del contrato real de E2.
+
+## Resultado
+
+La UI consume `contactPending: boolean` en las respuestas de suscriptores. El formulario de alta muestra «Registra al menos un teléfono o un correo.» junto a ambos campos si falta contacto, y permite continuar con solo teléfono. La ficha y el listado muestran «Contacto pendiente» sin exponer placeholders. Desde la ficha, «Agregar contacto» abre la pestaña Datos.
+
+La transición a activo maneja `SUBSCRIBER_CONTACT_REQUIRED` con el texto y acción prescritos; la acción cierra el diálogo y abre Datos. El expediente maneja `EXPEDIENTE_SUBSCRIBER_CONTACT_REQUIRED` con el texto prescrito y un enlace a la ficha del suscriptor. La edición de contacto muestra el mensaje R6 cuando recibe `SUBSCRIBER_CONTACT_REQUIRED`.
+
+Se verificó el contrato publicado por E2 en `@iwana/shared`, la proyección de lista y `sanitizeResponse`: `contactPending` se deriva del contacto real y forma parte de las respuestas de alta, edición, detalle, 360° y transición. Los tests E3 usan el shape contractual y los códigos/mensajes reales.
+
+## Archivos de E3
+
+- `apps/portal/src/components/crm/subscribers/SubscriberForm.tsx`
+- `apps/portal/src/components/crm/subscribers/SubscriberHeader.tsx`
+- `apps/portal/src/components/crm/subscribers/SubscribersListClient.tsx`
+- `apps/portal/src/components/crm/subscribers/SubscriberStatusTransitionDialog.tsx`
+- `apps/portal/src/lib/api-client.ts`
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx`
+- `apps/portal/src/components/crm/subscribers/SubscriberDetailClient.tsx` — callback para abrir Datos desde la ficha y desde R4.
+- `apps/portal/src/components/crm/subscribers/SubscriberSections.tsx` — mapeo limitado del 422 R6 en la sección Contacto.
+- `apps/portal/src/components/crm/subscribers/subscriber-contact-pending.portal.spec.tsx`
+- `apps/portal/src/components/crm/subscribers/SubscribersListClient.spec.tsx`
+- `apps/portal/src/app/dashboard/crm/expedientes/[id]/page.spec.tsx`
+- `docs/informes/INFORME-MOD05-E3-E3-v1.0.md`
+
+La edición de `SubscriberDetailClient.tsx` y `SubscriberSections.tsx` amplía la propiedad inicial en dos componentes para habilitar «Agregar contacto» desde la ficha y mostrar el mensaje R6 en Contacto; el alcance adicional está cubierto por tests.
+
+## Evidencia
+
+| Verificación                                              | Comando                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Resultado                                                                                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pruebas dirigidas de criterios E3 y superficies afectadas | `pnpm --filter @iwana/portal exec jest --runInBand --silent --runTestsByPath src/components/crm/subscribers/subscriber-contact-pending.portal.spec.tsx src/components/crm/subscribers/SubscribersListClient.spec.tsx "src/app/dashboard/crm/expedientes/[id]/page.spec.tsx"`                                                                                                                                                                                                                                                                                 | 3 suites aprobadas; 35 tests aprobados.                                                                                                                                                            |
+| Gate completo sin caché                                   | `pnpm exec turbo run test --filter=@iwana/portal --force`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 299 suites aprobadas; 3,004 tests aprobados; 1 omitido. Turbo: 2 tareas exitosas, 0 cacheadas.                                                                                                     |
+| Typecheck                                                 | `pnpm --filter @iwana/portal typecheck`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Exit 0.                                                                                                                                                                                            |
+| Lint                                                      | `pnpm --filter @iwana/portal lint`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Exit 0; 0 errores y 46 warnings reportados por ESLint en el paquete. No se modificaron las ubicaciones advertidas; `SubscriberDetailClient.tsx` ya tenía warnings en `loadSubscriber` y su efecto. |
+| Reglas duras de identidad UI                              | `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/src/components/crm/subscribers/SubscriberForm.tsx apps/portal/src/components/crm/subscribers/SubscriberHeader.tsx apps/portal/src/components/crm/subscribers/SubscriberSections.tsx apps/portal/src/components/crm/subscribers/SubscriberStatusTransitionDialog.tsx apps/portal/src/components/crm/subscribers/SubscribersListClient.tsx apps/portal/src/components/crm/subscribers/SubscriberDetailClient.tsx "apps/portal/src/app/dashboard/crm/expedientes/[id]/page.tsx"` | Sin hallazgos.                                                                                                                                                                                     |
+| Formato                                                   | `pnpm exec prettier --write` sobre los archivos Portal E3 y sus specs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Exit 0; archivos formateados.                                                                                                                                                                      |
+
+## Gobernanza y cierre E3
+
+Se aplicaron `AGENTS.md`, `.github/copilot-instructions.md`, las instrucciones del portal, el prompt y plan E3, los PRD vigentes de Fase 03/Fase 04, HLD MOD05, ADRs aplicables y las skills `frontend-dev-guidelines`, `iwana-identity-ui-review` y `system-vocabulary-review`. El PRD general `PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md` está superado y no se usó como autoridad.
+
+**E3:** comportamiento UI, contrato real E2 y criterios CA-E3-01..04 cubiertos; gate Portal `--force` aprobado. El informe no declara cerrados E1, E2 ni E4.

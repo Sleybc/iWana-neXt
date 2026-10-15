@@ -36,7 +36,7 @@ Cada hallazgo se contrastó con el código de `main`, citando `archivo:línea`, 
 
 | ID | Estado | Evidencia |
 | --- | --- | --- |
-| SUB-A01 fallo de conversión sin registro | ✅ | B5; integración B5 en CI |
+| SUB-A01 fallo de conversión sin registro | ❌ **Reabierto (2026-10-15)** | Los listeners usan `@OnEvent` con `suppressErrors` por defecto en `true`: el error se registra en el log y no se propaga, así que `emitPipelineEventSafely` marca el evento como resuelto. Detectado por el E2E real de E-3. Corrección F1 ([prompt E-3 §6.1](../prompts/PROMPT-MOD05-E3-CONTACTO-PENDIENTE-v1.0.md)). **Error de esta re-auditoría:** se apoyó en B5, que no ejercita un fallo dentro del listener |
 | SUB-A02 reactivación | ✅ | B5: «reactiva hasta ACTIVE…» y «no restaura un suscriptor que ya estuvo ACTIVE» en PASS en CI |
 | SUB-A03 idempotencia sin garantía de BD | ✅ | Índice único por expediente (B1); «dos conversiones concurrentes…» en PASS |
 | SUB-A04 Party fuera de puerto y de transacción | ✅ | `IPartyWritePort.ensurePartyWithRole` dentro de la transacción de alta (B5) |
@@ -79,7 +79,7 @@ Cada hallazgo se contrastó con el código de `main`, citando `archivo:línea`, 
 | 2 | `party` deduplica por HMAC; cero documentos en claro | ⚠ | Código ✅ y B5 en CI ✅; los conteos por tenant se obtienen en G7 (runbook B13) |
 | 3 | Sin PII en query string | ✅ | §2.1 C02 |
 | 4 | Regla del IVA con dictamen y ADR aprobado | ⚠ | ADR-093 aprobado ✅; faltan los cuatro puntos del dictamen del contador (ADR-093 §6) |
-| 5 | Conversión: unicidad, registro de fallos y reactivación | ✅ | B5 en CI |
+| 5 | Conversión: unicidad, registro de fallos y reactivación | ❌ | Unicidad y reactivación ✅. **El registro de fallos no funciona** (A01 reabierto) → F1 |
 | 6 | Proyección = mapa campo × rol | ✅ | B2 y B6 (G6 2026-10-12) |
 | 7 | Acceso auditado y esperado, sin PII | ✅ | §2.3 M06 y A08. Deuda transversal: `AuditService.log` es fail-open (B7-04) |
 | 8 | Consentimiento previo al alta; evidencia de solo-anexar | ✅ | A18 y los triggers de la 146 (Fase 1a, G6.5) |
@@ -90,7 +90,7 @@ Cada hallazgo se contrastó con el código de `main`, citando `archivo:línea`, 
 | 13 | SEC-ENG GO sobre el diff | ✅ | GO de MOD05 (B7), de IVA/D-PDF y de la Fase 1a (SEC v1.1) |
 | 14 | G6.5: CI por SHA | ✅ | `38735918857` |
 
-**Resultado:** 8 ✅ · 4 ⚠ · 2 ❌ (los criterios #1 y #10).
+**Resultado:** 8 ✅ · 4 ⚠ · 2 ❌ (los criterios #1 y #10). **Corrección del 2026-10-15: 7 ✅ · 4 ⚠ · 3 ❌; se suma el #5 por A01.**
 
 ## 4. Lo que falta para producción, por camino
 
@@ -121,7 +121,16 @@ Si el CTO prefiere no asumir ese riesgo, la Fase 1b pasa delante de G7 y entra e
 
 ## 6. Decisiones del CTO (2026-10-15)
 
-- **D-1B:** la Fase 1b va **después** de producción, con un runbook manual de bloqueo y supresión con SLA. El runbook es precondición de G7. El criterio #1 del checklist queda **aceptado con mitigación** mientras exista ese runbook.
+- **D-1B:** la Fase 1b va **después** de producción, con el [runbook manual de bloqueo y supresión](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md), con SLA. El runbook y su Anexo A son precondición de G7. El criterio #1 del checklist queda **aceptado con mitigación** mientras exista ese runbook.
 - **HLD de privacidad:** [HLD-PRIVACY-HABEAS-DATA-v1.0](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.0.md) **aprobado**.
 - **E-3 (a):** plan emitido en [2026-10-15-mod05-e3-contacto-pendiente.md](../plans/2026-10-15-mod05-e3-contacto-pendiente.md).
+
+## 7. Actualización tras el G6 de E-3 (2026-10-15)
+
+[Cierre G6 de E-3](INFORME-MOD05-E3-CIERRE-G6-v1.0.md):
+- SUB-A01 → ✅ (reabierto y cerrado de punta a punta);
+- SUB-M07 y SUB-B05 → ✅ en código, con la limpieza por tenant en G7;
+- el criterio #5 vuelve a ✅.
+
+**Checklist: 8 ✅ · 4 ⚠ · 2 ❌.** Siguen abiertos el #1 (A06, mitigado por D-1B y el runbook) y el #10 (ADR-058 fase 2). G6.5 de E-3: pendiente del CI por SHA.
 
