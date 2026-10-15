@@ -132,5 +132,5 @@ Si el CTO prefiere no asumir ese riesgo, la Fase 1b pasa delante de G7 y entra e
 - SUB-M07 y SUB-B05 → ✅ en código, con la limpieza por tenant en G7;
 - el criterio #5 vuelve a ✅.
 
-**Checklist: 8 ✅ · 4 ⚠ · 2 ❌.** Siguen abiertos el #1 (A06, mitigado por D-1B y el runbook) y el #10 (ADR-058 fase 2). G6.5 de E-3: pendiente del CI por SHA.
+**Checklist: 8 ✅ · 4 ⚠ · 2 ❌.** Siguen abiertos el #1 (A06, mitigado por D-1B y el runbook) y el #10 (ADR-058 fase 2). G6.5 de E-3: ✅ GO (CI [`38793545136`](https://github.com/Sleybc/iWana-neXt/actions/runs/38793545136)).
 

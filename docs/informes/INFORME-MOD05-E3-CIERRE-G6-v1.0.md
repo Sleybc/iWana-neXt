@@ -3,7 +3,7 @@
 **Versión:** 1.0 · **Fecha:** 2026-10-15
 **Emisor:** AI-EM-ARCH (consolidación). Los veredictos son de `sec-eng`, `sr-qa`, `gate-verifier` y `boundary-reviewer`, ninguno de los cuales produjo el código
 **Plan:** [2026-10-15-mod05-e3-contacto-pendiente.md](../plans/2026-10-15-mod05-e3-contacto-pendiente.md) · **Contrato:** [prompt E-3 v1.0](../prompts/PROMPT-MOD05-E3-CONTACTO-PENDIENTE-v1.0.md), de §1 a §9
-**Estado:** **G6: GO** · G6.5 pendiente (CI por SHA después del commit) · G7 pendiente (CLI por tenant en el runbook)
+**Estado:** **G6: GO** · **G6.5: GO** (CI [`38793545136`](https://github.com/Sleybc/iWana-neXt/actions/runs/38793545136), 2026-10-15) · G7 pendiente (CLI por tenant en el runbook)
 
 ## 1. Qué cierra
 
@@ -52,3 +52,24 @@ Las lecciones quedaron en memoria: precondiciones de dominio en los E2E, cerrar 
 - SUB-M07 y SUB-B05 → ✅ en código, con la limpieza de datos en G7.
 - El criterio #5 del checklist vuelve a ✅.
 - El checklist queda en **8 ✅ · 4 ⚠ · 2 ❌**; siguen abiertos el #1 (A06, mitigado por D-1B y el runbook) y el #10 (ADR-058 fase 2).
+
+## Adenda — G6.5 cumplido (2026-10-15, AI-EM-ARCH)
+
+Corrida de CI [`38793545136`](https://github.com/Sleybc/iWana-neXt/actions/runs/38793545136) sobre el SHA `ad3e6f10`: **success**, los 5 jobs en verde.
+
+**Migraciones con `DB_NAME=test`** (29 de 29 suites, 107 de 107 tests):
+- `PASS src/migrations/tenant/148_subscriber_contact_nullable.integration.spec.ts`
+- `PASS src/migrations/tenant/146_privacy_module.integration.spec.ts`
+- `PASS src/migrations/public/027_media_usage_privacy_evidence.integration.spec.ts`
+
+**Integración de la API con `E2E_TENANT_SLUG=test`** (19 suites en PASS y 2 omitidas por diseño, de inventario; 83 tests):
+- `PASS …/subscribers/contact-pending.postgres.integration.spec.ts` (R1–R7)
+- `PASS …/expedientes/tests/g1-conversion-failure.postgres.integration.spec.ts` (SUB-A01, R8, `conversionFailure`)
+- `PASS …/subscribers/b5-identity-conversion.postgres.integration.spec.ts`
+- `PASS …/contracts/tests/contracts.service.postgres.integration.spec.ts`
+- `PASS …/subscribers/subscriber-null-encryption-rotation.postgres.integration.spec.ts`
+- `PASS src/cli/backfill-placeholder-contacts.postgres.integration.spec.ts` y `PASS src/cli/anonymize-titular.postgres.integration.spec.ts`
+
+**Unitarias y portal:** `PASS` de `148_subscriber_contact_nullable.spec.ts`, de las specs de ambos CLI y de `subscriber-contact-pending.portal.spec.tsx`.
+
+**G6.5 de E-3: ✅ GO.** Pendiente: G7 (148 y CLI por tenant, según el runbook).

@@ -24,7 +24,8 @@
 | Ola 2-bis | F1, F2 y F3 ✅; `sec-eng` NO-GO (UUID en logs y `response.code`) → disposiciones D1–D5 (prompt §7.1); el portal no muestra fallos de conversión → **Ola 2-ter** (G1–G4, prompt §7.3) |
 | Ola 2-ter | G3 ✅ 2/2 E2E reales; G4 con 15 comandos verdes. NO-GO por SEC-G4-01 (ampliación de roles; **defecto del emisor** en §7.2), SEC-G4-02 (reintento sin auditoría), el test B5 desfasado por R8 y la cobertura D1 (3 métricas por debajo de `fb3d41ee`; portal 95/99). SEC-G4-03 aclarado en ADR-027 → **Ola 2-quater** (H1–H4, prompt §8) |
 | Ola 2-quater | H1, H2, H3 ✅; `sec-eng` ✅ GO; gates ✅ salvo 3 líneas nuevas sin cubrir (`expediente.service.ts:1328-1329` y `:1338`) → delta H5 + H6 (prompt §9) |
-| **G6** | ✅ **GO** (2026-10-15): H5 cubre las 3 líneas; H6, API 5.002 tests sin caché, líneas cambiadas 55/55 y 51/51, D1 > línea base. [Informe de cierre](../informes/INFORME-MOD05-E3-CIERRE-G6-v1.0.md). Pendiente: G6.5 (CI por SHA) y G7 (CLI por tenant) |
+| **G6** | ✅ **GO** (2026-10-15): H5 cubre las 3 líneas; H6, API 5.002 tests sin caché, líneas cambiadas 55/55 y 51/51, D1 > línea base. [Informe de cierre](../informes/INFORME-MOD05-E3-CIERRE-G6-v1.0.md). Commits `ceade85d`…`ad3e6f10` |
+| **G6.5** | ✅ **GO** (2026-10-15): CI [`38793545136`](https://github.com/Sleybc/iWana-neXt/actions/runs/38793545136) en verde, con PASS de la 148, `contact-pending`, `g1-conversion-failure`, B5 y los dos CLI. Pendiente: G7 (CLI por tenant) |
 
 ## 1. Olas
 
