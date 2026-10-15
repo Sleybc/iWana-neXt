@@ -21,6 +21,7 @@ import { SubscribersService } from '../../subscribers/subscribers.service';
 import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
+import { hmacPii } from '../../../../common/crypto/pii-hash-key.util';
 import { ExpedienteRecord } from '../entities/expediente-record.entity';
 import { StatusChange } from '../entities/status-change.entity';
 import { ContactAttempt } from '../entities/contact-attempt.entity';
@@ -68,6 +69,12 @@ jest.mock('@iwana/db', () => {
 
 describe('ExpedienteService', () => {
   let service: ExpedienteService;
+
+  // Clave sintética inyectada por ConfigService (el mock de getOrThrow la devuelve
+  // para cualquier clave). R8: las expectativas usan esta clave explícita, nunca
+  // el respaldo de process.env, para que el spec sea hermético al entorno.
+  const TEST_PII_HASH_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const testPiiHashKey = Buffer.from(TEST_PII_HASH_KEY_HEX, 'hex');
 
   const auditServiceMock = {
     log: jest.fn().mockResolvedValue(undefined),
@@ -1842,7 +1849,7 @@ describe('ExpedienteService', () => {
 
     expect(createQueryBuilder).toHaveBeenCalledWith(ExpedienteRecord, 'expediente');
     expect(andWhere).toHaveBeenCalledWith('expediente.documentNumberHash = :docHash', {
-      docHash: hashDocumentNumber('900123456'),
+      docHash: hashDocumentNumber('900123456', testPiiHashKey),
     });
     expect(skip).toHaveBeenCalledWith(0);
     expect(take).toHaveBeenCalledWith(10);
@@ -1854,6 +1861,49 @@ describe('ExpedienteService', () => {
     expect(result.data[0]?.documentNumberEncrypted).toBeNull();
     expect(result.data[0]?.documentNumberHash).toBeNull();
     expect(result.data[0]?.phonePrimaryEncrypted).toBeNull();
+  });
+
+  it('resuelve el HMAC de documento desde ConfigService con PII_HASH_KEY ausente del entorno (R8)', async () => {
+    const saved = process.env.PII_HASH_KEY;
+    delete process.env.PII_HASH_KEY;
+    try {
+      const andWhere = jest.fn().mockReturnThis();
+      const createQueryBuilder = jest.fn().mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[{ id: 'exp-r8' }], 1]),
+      });
+
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            createQueryBuilder,
+          },
+        }),
+      );
+
+      await service.findAll({ documentNumber: '1122334455', page: 1, limit: 10 } as any);
+
+      expect(andWhere).toHaveBeenCalledWith('expediente.documentNumberHash = :docHash', {
+        docHash: hmacPii('1122334455', testPiiHashKey),
+      });
+    } finally {
+      if (saved !== undefined) process.env.PII_HASH_KEY = saved;
+    }
+  });
+
+  it('el HMAC no cambia cuando la clave de configuración y la de entorno coinciden (R8)', () => {
+    const saved = process.env.PII_HASH_KEY;
+    process.env.PII_HASH_KEY = TEST_PII_HASH_KEY_HEX;
+    try {
+      expect(hashDocumentNumber('99887766', testPiiHashKey)).toBe(hashDocumentNumber('99887766'));
+    } finally {
+      if (saved !== undefined) process.env.PII_HASH_KEY = saved;
+      else delete process.env.PII_HASH_KEY;
+    }
   });
 
   it('capa limit=10000 a ≤100 en findAll (H-1 residual P3)', async () => {
@@ -1921,7 +1971,7 @@ describe('ExpedienteService', () => {
       ExpedienteRecord,
       expect.objectContaining({
         id: 'exp-backfill',
-        documentNumberHash: hashDocumentNumber(plaintext),
+        documentNumberHash: hashDocumentNumber(plaintext, testPiiHashKey),
       }),
     );
     for (const call of warnSpy.mock.calls) {
@@ -2837,7 +2887,7 @@ describe('ExpedienteService', () => {
 
     expect(updated.fullName).toBe('Laura Perez');
     expect(updated.companyName).toBeNull();
-    expect(updated.documentNumberHash).toBe(hashDocumentNumber('1012345678'));
+    expect(updated.documentNumberHash).toBe(hashDocumentNumber('1012345678', testPiiHashKey));
     expect(updated.documentNumberEncrypted).toBeTruthy();
   });
 

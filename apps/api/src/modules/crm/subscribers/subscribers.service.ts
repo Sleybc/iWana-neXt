@@ -285,7 +285,9 @@ export class SubscribersService {
       : null;
 
     // Hash determinista para búsqueda por documento/email/teléfono (migración 014)
-    const documentNumberHash = dto.documentNumber ? hashDocumentNumber(dto.documentNumber) : null;
+    const documentNumberHash = dto.documentNumber
+      ? hashDocumentNumber(dto.documentNumber, this.piiHashKey)
+      : null;
     const emailHash = hashEmail(dto.email, this.piiHashKey);
     const phoneHash = this.hmacPhoneHash(dto.phone);
     const normalizedManualReason = dto.manualOverrideReason?.trim();
@@ -697,7 +699,7 @@ export class SubscribersService {
         ? this.encryptValue(dto.documentNumber)
         : null;
       entity.documentNumberHash = dto.documentNumber
-        ? hashDocumentNumber(dto.documentNumber)
+        ? hashDocumentNumber(dto.documentNumber, this.piiHashKey)
         : null;
     }
     if (dto.firstName !== undefined) entity.firstName = dto.firstName;
@@ -841,7 +843,7 @@ export class SubscribersService {
       // Búsqueda por HMAC (columnas *_hmac)
       if (query.documentNumber) {
         conditions.push('s.documentNumberHash = :docHash');
-        params.docHash = hashDocumentNumber(query.documentNumber);
+        params.docHash = hashDocumentNumber(query.documentNumber, this.piiHashKey);
       }
 
       if (query.nit) {

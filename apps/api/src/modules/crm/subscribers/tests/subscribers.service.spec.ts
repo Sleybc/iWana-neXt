@@ -14,6 +14,7 @@ import {
 } from '@iwana/shared';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { hashEmail } from '../../../../common/crypto/hash-email.util';
+import { hmacPii } from '../../../../common/crypto/pii-hash-key.util';
 import { SubscribersService } from '../subscribers.service';
 import { VatTreatmentService } from '../vat-treatment.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
@@ -438,6 +439,49 @@ describe('SubscribersService', () => {
 
       const results = await service.search({ documentNumber: docNumber });
       expect(results).toHaveLength(1);
+    });
+  });
+
+  // ── R8: origen único de la clave HMAC (ConfigService, sin respaldo de entorno) ──
+
+  describe('Origen único de la clave HMAC (R8)', () => {
+    it('resuelve el HMAC de documento desde ConfigService con PII_HASH_KEY ausente del entorno', async () => {
+      const saved = process.env.PII_HASH_KEY;
+      delete process.env.PII_HASH_KEY;
+      try {
+        const where = jest.fn().mockReturnThis();
+        const take = jest.fn().mockReturnThis();
+        const getMany = jest.fn().mockResolvedValue([]);
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+          callback({
+            manager: {
+              createQueryBuilder: () => ({ where, take, getMany }),
+            },
+          }),
+        );
+
+        const docNumber = '1122334455';
+        await service.search({ documentNumber: docNumber });
+
+        const expected = hmacPii(docNumber, Buffer.from(TEST_ENCRYPTION_KEY, 'hex'));
+        expect(where).toHaveBeenCalledWith(expect.stringContaining('documentNumberHash'), {
+          docHash: expected,
+        });
+      } finally {
+        if (saved !== undefined) process.env.PII_HASH_KEY = saved;
+      }
+    });
+
+    it('el HMAC no cambia cuando la clave de configuración y la de entorno coinciden', () => {
+      const saved = process.env.PII_HASH_KEY;
+      process.env.PII_HASH_KEY = TEST_ENCRYPTION_KEY;
+      try {
+        const key = Buffer.from(TEST_ENCRYPTION_KEY, 'hex');
+        expect(hashDocumentNumber('99887766', key)).toBe(hashDocumentNumber('99887766'));
+      } finally {
+        if (saved !== undefined) process.env.PII_HASH_KEY = saved;
+        else delete process.env.PII_HASH_KEY;
+      }
     });
   });
 

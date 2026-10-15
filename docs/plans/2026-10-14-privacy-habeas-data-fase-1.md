@@ -24,7 +24,7 @@
 | D-F1A | ✅ Aprobada por el CTO: Q8 (bloqueo y anonimización) pasa a la **Fase 1b** |
 | D-POT | ✅ El CTO decidió desmontarlo: `PotentialsModule` **no** está registrado en `CrmModule` (revertido antes del checkpoint) |
 | Commits | Checkpoint `91283057`, `15bda462`, `a5a78672`, `e20bdf01`. R1 a R5, R4b y el cierre, sin commitear |
-| G6.5 (pendiente) | **CI de `main` en rojo desde el 12-10** por el spec B5 (`b5-identity-conversion…:336`, dependiente del estado de migración). En CI pasaron: la 026, la 143, la 145 y la P2 de D-PDF. La 027 **pasó** en `38644689892`. En esa corrida falla además `contracts.service.postgres.integration.spec.ts` (fixture sin `party_id`, regresión de la Fase 1a). Corrección: R6 (hecho en local) + R7 (prompt v1.3 §5). Ningún G6.5 (IVA, D-PDF, Fase 1a) se declara hasta tener el CI en verde |
+| G6.5 (pendiente) | **CI de `main` en rojo desde el 12-10** por el spec B5 (`b5-identity-conversion…:336`, dependiente del estado de migración). En CI pasaron: la 026, la 143, la 145 y la P2 de D-PDF. La 027 **pasó** en `38644689892`. En esa corrida falla además `contracts.service.postgres.integration.spec.ts` (fixture sin `party_id`, regresión de la Fase 1a). R6 + R7 publicados en `689fa676`; la corrida `38652716190` deja verdes 026, 027 y contratos, y B5 falla por `PII_HASH_KEY`, un defecto latente: la producción usa el entorno en lugar de la configuración. Corrección: R8 (prompt v1.3 §5). Ningún G6.5 (IVA, D-PDF, Fase 1a) se declara hasta tener el CI en verde |
 | Deuda registrada | Ver el informe de cierre §5 |
 | Ruta crítica (Ley 2573, 19-nov) | La suplantación quedó lista en G6. Antes de producción: G6.5, dictámenes de ADR-094 §7.3 y `HLD-PRIVACY-v1.0` (G7) |
 

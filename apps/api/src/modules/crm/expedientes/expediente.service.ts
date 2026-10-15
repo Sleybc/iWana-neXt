@@ -47,6 +47,7 @@ import {
   looksLikeEncryptedAesGcm,
 } from '../../../common/crypto/aes-gcm.util';
 import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
+import { resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.util';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
@@ -259,6 +260,7 @@ const DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Readonly<
 export class ExpedienteService {
   private readonly encryptionKey: Buffer;
   private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly piiHashKey: Buffer;
   private readonly documentSupportDir: string;
   private readonly logger = new Logger(ExpedienteService.name);
 
@@ -280,6 +282,7 @@ export class ExpedienteService {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
+    this.piiHashKey = resolvePiiHashKey(this.configService);
     const configuredDocumentSupportDir = (
       this.configService as ConfigService & { get?: (key: string) => string | undefined }
     ).get?.('EXPEDIENTE_DOCUMENTS_DIR');
@@ -701,7 +704,7 @@ export class ExpedienteService {
       // D-4: filtro por hash determinista (sin decrypt + SCAN_CAP).
       if (documentNumber) {
         query.andWhere('expediente.documentNumberHash = :docHash', {
-          docHash: hashDocumentNumber(documentNumber),
+          docHash: hashDocumentNumber(documentNumber, this.piiHashKey),
         });
       }
 
@@ -827,7 +830,7 @@ export class ExpedienteService {
           }
           try {
             const plaintext = this.decryptValue(row.documentNumberEncrypted);
-            row.documentNumberHash = hashDocumentNumber(plaintext);
+            row.documentNumberHash = hashDocumentNumber(plaintext, this.piiHashKey);
             await qr.manager.save(ExpedienteRecord, row);
             updated += 1;
           } catch {
@@ -2385,7 +2388,7 @@ export class ExpedienteService {
     );
     const documentNumber = this.requireNonEmptyText(data.documentNumber, 'Numero de documento');
 
-    const documentNumberHash = hashDocumentNumber(String(documentNumber));
+    const documentNumberHash = hashDocumentNumber(String(documentNumber), this.piiHashKey);
 
     if (personType === 'PERSONA_NATURAL') {
       const firstName = this.requireNonEmptyText(data.firstName, 'Nombres');

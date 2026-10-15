@@ -324,3 +324,20 @@ El adaptador de suplantación usa `logWithin`. Ningún módulo fuera de `audit` 
 | R7 | `sr-backend` | Solo tests: `crm/contracts/tests/contracts.service.postgres.integration.spec.ts` | Las tablas del fixture se crean con `LIKE <tenant de origen> INCLUDING ALL`, como ya hace con `audit_logs`, para que sigan las migraciones. Si eso no se puede, `party_id` explícito. La autorización de prestación del servicio se resuelve con un stub del puerto que devuelva activa; el caso 422 ya está cubierto en B5. No se quita ninguna aserción del IVA. Pasa con `E2E_TENANT_SLUG=test` sobre una base migrada y con `dbiw`. Se cierra con el CI de `main` verde tras el push del CTO de R6 + R7, citando los PASS de B5, de contratos y de la 027 con el número de corrida |
 
 **R7** ([informe](../informes/INFORME-PRIVACY-FASE-1A-R7-v1.0.md)): solo el spec de contratos, con `subscribers` y `contracts` copiadas con `LIKE … INCLUDING ALL`. Pasa 19/19 con `dbiw` y 19/19 con el slug `test`. `test:integration` entero con `E2E_TENANT_SLUG=test`: 14 suites en PASS y 2 omitidas por diseño; 73 tests. La API pasa 372 suites y 4.963 tests. **Pendiente:** el push de R6 + R7 y un CI de `main` en verde, con los PASS de B5, de contratos y de la 027 en la misma corrida.
+
+### Corrida `38652716190` (tras R6 + R7) y R8
+
+**Diagnóstico de AI-EM-ARCH sobre el log real:**
+- **Pasan:** las integraciones de las migraciones 026, 027, 143 a 147, la de contratos (R7 ✅), las de solicitudes, alertas, auditoría transaccional (A25) y autorizaciones.
+- **Falla solo B5:** 13 de 13 tests, ya sin el 42701, porque R6 funcionó. El error es `PII_HASH_KEY es requerida`, en `SubscribersService.create` → `hashDocumentNumber(dto.documentNumber)` (`subscribers.service.ts:288`).
+- **Causa, un defecto de producción latente:** `SubscribersService` resuelve `piiHashKey` desde `ConfigService` (`:178`) y la usa para el correo y el teléfono, pero llama a `hashDocumentNumber` **sin clave** (`:288, :700, :844`), que entonces cae a `process.env`. Lo mismo en `ExpedienteService` (`:704, :830, :2388`).
+- **Por qué solo en CI:** en local `PII_HASH_KEY` está en el entorno; el paso de integración de CI no la exporta (solo el job E2E, `ci.yml:709-721`). B5 inyecta la clave por configuración, como corresponde, y la producción la ignora.
+- **No es la base de datos:** el CI usa un contenedor de servicio nuevo en cada corrida (`ci.yml:217-219`) y las migraciones pasan. Los mensajes de triggers que rechazan escrituras pertenecen a tests negativos que esperan ese rechazo. **Se descarta** la sugerencia de recrear la base en CI.
+
+**Decisión:** se corrige la producción, que debe tomar la clave de una sola fuente (`ConfigService`). **No** se añade `PII_HASH_KEY` al paso de integración de CI: así el CI sigue detectando cualquier recaída en el respaldo de `process.env`.
+
+| Bloque | Subagente | Propiedad | Stop/go |
+| --- | --- | --- | --- |
+| R8 | `sr-backend` | `crm/subscribers/subscribers.service.ts` y `crm/expedientes/expediente.service.ts` (solo el origen de la clave HMAC), más sus specs | Las 6 llamadas pasan la clave resuelta desde `ConfigService` (`this.piiHashKey`; en `ExpedienteService`, resuelta igual que en `SubscribersService`). Los HMAC no cambian de valor cuando la clave de configuración y la de entorno coinciden. Un test unitario sin `PII_HASH_KEY` en `process.env` pasa con la clave inyectada. B5 pasa con `PII_HASH_KEY` **ausente** del entorno. Turbo API `--force`. Se cierra con el CI de `main` en verde tras el push |
+
+**Deuda P3 (fuera de R8):** `auth.service.ts` (`:192, :354, :908, :1232`), `platform-bootstrap.service.ts:53` y `platform-users.service.ts:156` también usan el respaldo de entorno. Unificar en el turno de Auth/Plataforma.
