@@ -26,7 +26,7 @@
 | Commits | Checkpoint `91283057`, `15bda462`, `a5a78672`, `e20bdf01`. R1 a R5, R4b y el cierre, sin commitear |
 | G6.5 | ✅ **GO** (2026-10-15): CI [`38735918857`](https://github.com/Sleybc/iWana-neXt/actions/runs/38735918857) en verde sobre `70786da0`, con PASS de la 027, 146, 147, B5 y contratos. Antes requirió R6, R7 y R8 (CI rojo desde el 12-10). Adenda del [informe de cierre](../informes/INFORME-PRIVACY-FASE-1A-CIERRE-G6-v1.0.md) |
 | Deuda registrada | Ver el informe de cierre §5 |
-| Ruta crítica (Ley 2573, 19-nov) | La suplantación quedó lista en G6. Antes de producción: G6.5, dictámenes de ADR-094 §7.3 y `HLD-PRIVACY-v1.0` (G7) |
+| Ruta crítica (Ley 2573, 19-nov) | La suplantación quedó lista en G6 y G6.5. Antes de producción: dictámenes de ADR-094 §7.3, decisión D-1B y G7 por tenant. HLD emitido: [HLD-PRIVACY-HABEAS-DATA-v1.0](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.0.md) (Propuesto) |
 
 ## 0. Gates y bloqueos
 

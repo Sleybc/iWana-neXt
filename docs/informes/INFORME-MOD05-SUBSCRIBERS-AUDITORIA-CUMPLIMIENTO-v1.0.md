@@ -474,3 +474,7 @@ F-7 confirma que el tratamiento de IVA es atributo de la **línea de servicio**,
 - **Decisión:** [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md), **aprobado por el CTO el 2026-10-14**, con un módulo `privacy` cuyo titular es el Party. Hallazgo nuevo de ámbito transversal: `assurance/sla.service.ts:85-86` calcula plazos PQR sin festivos (deuda de `assurance`).
 
 **C-9 — E-2 resuelta (2026-10-14).** ADR-094 aprobado. La implementación se orquesta en [2026-10-14-privacy-habeas-data-fase-1.md](../plans/2026-10-14-privacy-habeas-data-fase-1.md). SUB-A06, SUB-A07 y SUB-B03 pasan a *en implementación*. Hallazgo adicional: la vista 360° devuelve `habeasData` y `arcoRequests` vacíos fijos (`subscribers.service.ts:946-947`); lo cubre el bloque Q5.
+
+**C-10 — E-3 resuelta (2026-10-15).** El CTO eligió la **opción (a)**: relajar el `NOT NULL` del contacto y bloquear la activación sin contacto real, para que la conversión nunca se pierda. Cierra SUB-M07, SUB-B05 y B7-03 cuando se implemente. AI-EM-ARCH emite el plan.
+
+**C-11 — Re-auditoría (2026-10-15).** [INFORME-MOD05-SUBSCRIBERS-REAUDITORIA-v1.0](INFORME-MOD05-SUBSCRIBERS-REAUDITORIA-v1.0.md) re-evalúa §5 y §8 sobre `main` (`365eb0fb`): críticos C01–C03 cerrados y A06 parcial. El checklist queda en 8 ✅, 4 ⚠ y 2 ❌. Sigue **NO-GO para producción**, pendiente de D-1B, E-3 (a), ADR-058 fase 2, los dictámenes y G7.

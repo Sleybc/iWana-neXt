@@ -90,10 +90,10 @@ En consecuencia, **S-3 no se remedia estrechando la proyección**. Se cierra doc
 ## Criterio de aceptación
 
 - [x] CTO decide la política (2026-07-25).
-- [ ] Finalidad por campo (cláusula 2) documentada en el módulo CRM.
-- [ ] Registro de acceso masivo (cláusula 5) implementado — **AI-SR-FULL**.
-- [ ] Mapa campo × rol (cláusula 9) propuesto — **AI-PROD-UX**.
-- [ ] `.github/instructions` del módulo cita este ADR.
+- [x] Finalidad por campo (cláusula 2) documentada en el módulo CRM: `SUBSCRIBER_LIST_FIELD_PURPOSE` en `apps/api/src/modules/crm/subscribers/subscriber-projection.ts` (verificado el 2026-10-15).
+- [x] Registro de acceso masivo (cláusula 5) implementado — **AI-SR-FULL**: `LIST_ACCESS` esperado en `subscribers.controller.ts` (remediación MOD05 B2; G6 del 2026-10-12).
+- [x] Mapa campo × rol (cláusula 9) propuesto — **AI-PROD-UX**, y ratificado: `docs/specs/2026-10-11-mod05-subscriber-list-field-role-map.md` §6.
+- [x] `.github/instructions` del módulo cita este ADR (`.github/instructions/api.instructions.md`). Verificado en la [re-auditoría MOD05](../informes/INFORME-MOD05-SUBSCRIBERS-REAUDITORIA-v1.0.md).
 
 ## Escalación
 
