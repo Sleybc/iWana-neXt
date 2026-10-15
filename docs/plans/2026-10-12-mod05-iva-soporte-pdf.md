@@ -13,7 +13,7 @@
 
 ## Estado al 2026-10-14 (v1.4): **G6 de D-PDF — GO**
 
-[Informe de cierre](../informes/INFORME-MOD05-IVA-PDF-CIERRE-G6-v1.0.md). P4 cerró el OpenAPI y el gate delta dio GO. Pendientes: commit del CTO → G6.5 (suite de P2 ejecutada y en verde en CI; integraciones de 026 y 145 con `DB_NAME=test`) → G7.
+[Informe de cierre](../informes/INFORME-MOD05-IVA-PDF-CIERRE-G6-v1.0.md). P4 cerró el OpenAPI y el gate delta dio GO. Commit ✅ (`4a1b437a`, `9d227eaf`) · G6.5 ✅ (CI `38735918857`, 2026-10-15: P2, 026 y 145 en PASS; adenda del informe de cierre) · pendiente: G7.
 
 ## Estado al 2026-10-14 (v1.3, histórico): disposición de la Ola 3
 

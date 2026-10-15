@@ -16,7 +16,7 @@
 
 ## Estado al 2026-10-14 (v1.8): **G6 re-confirmado — GO; SUB-C03 cerrado en G6**
 
-Adenda 2 del [informe G6](../informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-G6-v1.0.md) y [cierre consolidado con D-PDF](../informes/INFORME-MOD05-IVA-PDF-CIERRE-G6-v1.0.md). Pendientes: commit → G6.5 → G7.
+Adenda 2 del [informe G6](../informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-G6-v1.0.md) y [cierre consolidado con D-PDF](../informes/INFORME-MOD05-IVA-PDF-CIERRE-G6-v1.0.md). Commit ✅ (`4a1b437a`) · G6.5 ✅ (CI `38735918857`, 2026-10-15; Adenda 3 del informe G6) · pendiente: G7.
 
 ## Estado al 2026-10-13 (v1.7, histórico): G6 en re-confirmación
 

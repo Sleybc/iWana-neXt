@@ -3,7 +3,7 @@
 **Versión:** 1.0 · **Fecha:** 2026-10-14
 **Emisor:** AI-EM-ARCH (consolidación). Los veredictos son de `sec-eng`, `sr-qa`, `boundary-reviewer`, `contract-drift-reviewer`, `gate-verifier` y `docs-governance`, ninguno de los cuales produjo el código revisado
 **Decisión:** [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md) (Aprobado) · **Plan:** [v1.6](../plans/2026-10-14-privacy-habeas-data-fase-1.md) · **Contrato:** [prompt v1.3](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md) (cadena v1.3 → v1.0, adendas A1–A26)
-**Estado:** **G6 de la Fase 1a: GO** · G6.5 pendiente (027 en CI) · G7 no evaluado · la Fase 1b (Q8) no se incluye (D-F1A)
+**Estado:** **G6 de la Fase 1a: GO** · **G6.5: GO** (CI `38735918857`, 2026-10-15) · G7 no evaluado · la Fase 1b (Q8) no se incluye (D-F1A)
 
 ## 1. Alcance cerrado
 
@@ -74,3 +74,17 @@ Cierra E-2 de la auditoría MOD05 (SUB-A06, SUB-A07 y SUB-B03) en lo que corresp
 ## 6. Siguiente
 
 La **Fase 1b** cubre Q8 (bloqueo y anonimización) y el plazo de traslado. Lleva plan y contrato propios, con la pasada regla → campo **antes** de lanzar. Los cinco puntos abiertos están en el prompt v1.3 §3 (D-F1A). No está en la ruta crítica de la Ley 2573.
+
+## Adenda — G6.5 cumplido (2026-10-15, AI-EM-ARCH)
+
+Corrida de CI [`38735918857`](https://github.com/Sleybc/iWana-neXt/actions/runs/38735918857) sobre el SHA `70786da0`: **success** (6 de 6 checks). Integraciones de API con `E2E_TENANT_SLUG=test`: 14 suites en PASS y 2 omitidas por diseño, que no son de esta fase; 73 tests. Integraciones de migraciones con `DB_NAME=test`: 28 de 28 suites y 106 de 106 tests.
+
+| Condición | Línea del log de CI |
+| --- | --- |
+| Integración de la 027 pública | `PASS src/migrations/public/027_media_usage_privacy_evidence.integration.spec.ts` |
+| Migraciones de privacidad | `PASS …/146_privacy_module.integration.spec.ts` · `PASS …/147_seed_privacy_permissions.integration.spec.ts` |
+| Conversión, autorización y suplantación (B5) | `PASS src/modules/crm/subscribers/b5-identity-conversion.postgres.integration.spec.ts` |
+| Solicitudes, alertas, A25 y autorizaciones | `PASS` en `requests.service`, `privacy-due-alerts.processor`, `audit.service.transaction` y `privacy-authorization.adapter` (`*.postgres.integration.spec.ts`) |
+| CI de `main` en verde | Los 6 checks en verde |
+
+**G6.5 de la Fase 1a: ✅ GO.** Antes de producción siguen pendientes los dictámenes de ADR-094 §7.3 y G7 (`HLD-PRIVACY-v1.0`).

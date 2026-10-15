@@ -69,3 +69,13 @@ Los informes de trabajo conservan el detalle reproducible: [T11 v1.1](INFORME-MO
 **Condición de G6.5:** en CI con `DB_NAME=test` y `E2E_TENANT_SLUG=test`, `contracts.service.postgres.integration.spec.ts` (incluidos los casos P2) debe aparecer ejecutada, **sin omisiones y en verde**, después de aplicar las migraciones. El reporte de CI debe quedar asociado al SHA; esta adenda no afirma que esa corrida se haya ejecutado.
 
 **Manifiestos de commit:** el commit de código permanece en **116 rutas**, idénticas a la lista completa de la sección «Rutas para dos commits» del [informe de gates v1.0](../informes/INFORME-MOD05-IVA-PDF-GATES-v1.0.md); el controlador P4 ya era una de ellas. El commit de documentación queda en **44 rutas**: las 41 del manifiesto v1.0 más el launcher D-PDF v1.3, [el informe P4](../informes/INFORME-MOD05-IVA-PDF-P4-v1.0.md) y el nuevo [informe de gates v1.1](../informes/INFORME-MOD05-IVA-PDF-GATES-v1.1.md). El informe G6 actualizado ya estaba en el manifiesto original. `OTHER=0`.
+
+## Adenda 3 — G6.5 cumplido (2026-10-15, AI-EM-ARCH)
+
+Corrida de CI [`38735918857`](https://github.com/Sleybc/iWana-neXt/actions/runs/38735918857) sobre el SHA `70786da0`: **success** (6 de 6 checks). Integraciones de API con `E2E_TENANT_SLUG=test`: 14 suites en PASS y 2 omitidas por diseño, que no son de esta fase; 73 tests. Integraciones de migraciones con `DB_NAME=test`: 28 de 28 suites y 106 de 106 tests.
+
+- `PASS src/modules/crm/contracts/tests/contracts.service.postgres.integration.spec.ts`, con los casos P2: ejecutada, sin omisiones y en verde.
+- `PASS src/migrations/tenant/144_vat_service_point.integration.spec.ts`
+- `PASS src/migrations/tenant/143_subscriber_party_pii_hmac.integration.spec.ts`
+
+**G6.5 de IVA: ✅ GO.** Pendiente: G7.

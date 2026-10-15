@@ -3,7 +3,7 @@
 **Versión:** 1.0 · **Fecha:** 2026-10-14
 **Emisor:** AI-EM-ARCH (consolidación; los veredictos son de `sec-eng`, `sr-qa` y `gate-verifier`, que no produjeron el código)
 **Planes:** [D-PDF v1.4](../plans/2026-10-12-mod05-iva-soporte-pdf.md) · [IVA v1.8](../plans/2026-10-12-mod05-iva-punto-servicio.md)
-**Estado:** **G6 D-PDF: GO · G6 IVA: re-confirmado GO · SUB-C03: cerrado en G6** · G6.5 y G7 pendientes
+**Estado:** **G6 D-PDF: GO · G6 IVA: re-confirmado GO · SUB-C03: cerrado en G6** · **G6.5: GO** (CI `38735918857`, 2026-10-15) · G7 pendiente
 
 ## 1. Veredictos que se consolidan
 
@@ -39,3 +39,17 @@
 | Redacción histórica de `audit_logs` | decisión | CTO (T12: 0 coincidencias en desarrollo) |
 | Rotar la credencial local `iwana_readonly` | operación | CTO |
 | E-2 (Habeas Data) y E-3 (placeholders) | módulo | CTO |
+
+## Adenda — G6.5 cumplido (2026-10-15, AI-EM-ARCH)
+
+Corrida de CI [`38735918857`](https://github.com/Sleybc/iWana-neXt/actions/runs/38735918857) sobre el SHA `70786da0`: **success** (6 de 6 checks). Integraciones de API con `E2E_TENANT_SLUG=test`: 14 suites en PASS y 2 omitidas por diseño, que no son de esta fase; 73 tests. Integraciones de migraciones con `DB_NAME=test`: 28 de 28 suites y 106 de 106 tests.
+
+| Condición de §2 | Línea del log de CI |
+| --- | --- |
+| Suite de P2 ejecutada, sin omisiones y en verde | `PASS src/modules/crm/contracts/tests/contracts.service.postgres.integration.spec.ts`. La suite corre bajo `describeWithDb`: en esta corrida no se omitió y no tiene `it.skip` |
+| Integración de la 026 con `DB_NAME=test` | `PASS src/migrations/public/026_media_usage_stratum_evidence.integration.spec.ts` |
+| Integración de la 145 con `DB_NAME=test` | `PASS src/migrations/tenant/145_contract_stratum_evidence_unique.integration.spec.ts` |
+
+**Historial:** el CI de `main` estuvo en rojo del 12 al 15 de octubre por specs de prueba que dependían del estado de migración (B5 y el fixture de contratos) y por un respaldo de la clave HMAC en el entorno. Se corrigió en R6, R7 y R8 ([prompt de privacidad v1.3 §5](../prompts/PROMPT-PRIVACY-HABEAS-DATA-FASE-1-v1.3.md)).
+
+**G6.5 de D-PDF: ✅ GO. Re-confirmado el G6.5 de IVA (adenda del informe G6 de IVA).** Pendiente: G7.
