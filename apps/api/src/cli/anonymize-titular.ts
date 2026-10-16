@@ -42,6 +42,9 @@ export interface AnonymizeTitularKeys {
 
 export interface AnonymizeTitularReport {
   mode: AnonymizeTitularMode;
+  labels: {
+    privacyMediaAssets: 'conservada (prueba de autorización)';
+  };
   totals: {
     potentialLeads: number;
     expedienteRecords: number;
@@ -371,6 +374,9 @@ export function parseAnonymizeTitularArgs(argv: string[]): AnonymizeTitularFlags
 function buildReport(mode: AnonymizeTitularMode): AnonymizeTitularReport {
   return {
     mode,
+    labels: {
+      privacyMediaAssets: 'conservada (prueba de autorización)',
+    },
     totals: {
       potentialLeads: 0,
       expedienteRecords: 0,
@@ -682,7 +688,7 @@ async function safeUpdateMedia(
   queryRunner: QueryRunner,
   ids: string[],
   tenantSchema: string,
-  usage: 'privacy_evidence' | 'stratum_evidence',
+  usage: 'stratum_evidence',
   mode: AnonymizeTitularMode,
 ): Promise<{ selected: number; changed: number; active: number }> {
   if (ids.length === 0) return { selected: 0, changed: 0, active: 0 };
@@ -726,61 +732,11 @@ async function safeUpdateMedia(
   };
 }
 
-async function mediaEvidenceIds(
+async function stratumEvidenceMediaIds(
   queryRunner: QueryRunner,
   columns: Map<string, TenantColumn>,
-  partyId: string | null,
   subscriberIds: string[],
-): Promise<{ privacy: string[]; stratum: string[] }> {
-  const privacyCandidates: string[] = [];
-  if (
-    partyId &&
-    tableExists(columns, 'data_authorizations') &&
-    columnOf(columns, 'data_authorizations', 'evidence_media_id') &&
-    columnOf(columns, 'data_authorizations', 'party_id')
-  ) {
-    const rows = (await queryRunner.query(
-      `SELECT evidence_media_id::text AS id
-         FROM data_authorizations
-        WHERE party_id = $1 AND evidence_media_id IS NOT NULL
-        FOR SHARE`,
-      [partyId],
-    )) as Array<{ id: string }>;
-    privacyCandidates.push(...rows.map((row) => row.id));
-  }
-
-  const uniquePrivacyCandidates = [...new Set(privacyCandidates)];
-  let privacySafe = uniquePrivacyCandidates;
-  if (uniquePrivacyCandidates.length > 0) {
-    if (tableExists(columns, 'data_authorizations')) {
-      const sharedRows = (await queryRunner.query(
-        `SELECT evidence_media_id::text AS id
-           FROM data_authorizations
-          WHERE evidence_media_id = ANY($1::uuid[])
-            AND party_id IS DISTINCT FROM $2
-         FOR SHARE`,
-        [uniquePrivacyCandidates, partyId],
-      )) as Array<{ id: string }>;
-      const shared = new Set(sharedRows.map((row) => row.id));
-      privacySafe = privacySafe.filter((id) => !shared.has(id));
-    }
-    if (
-      privacySafe.length > 0 &&
-      tableExists(columns, 'data_subject_requests') &&
-      columnOf(columns, 'data_subject_requests', 'requester_evidence_media_id')
-    ) {
-      const requestRows = (await queryRunner.query(
-        `SELECT requester_evidence_media_id::text AS id
-           FROM data_subject_requests
-          WHERE requester_evidence_media_id = ANY($1::uuid[])
-          FOR SHARE`,
-        [privacySafe],
-      )) as Array<{ id: string }>;
-      const protectedIds = new Set(requestRows.map((row) => row.id));
-      privacySafe = privacySafe.filter((id) => !protectedIds.has(id));
-    }
-  }
-
+): Promise<string[]> {
   const stratumCandidates: string[] = [];
   if (
     subscriberIds.length > 0 &&
@@ -811,7 +767,7 @@ async function mediaEvidenceIds(
     const shared = new Set(otherRows.map((row) => row.id));
     stratumSafe = stratumSafe.filter((id) => !shared.has(id));
   }
-  return { privacy: privacySafe, stratum: stratumSafe };
+  return stratumSafe;
 }
 
 async function updateUniqueUserFields(
@@ -1092,19 +1048,11 @@ async function anonymizeTitularInTransaction(
     throw new AnonymizeTitularCliError('No se puede comprobar la baja de las cuentas enlazadas.');
   }
   const users = await findUserRows(queryRunner, columns, userIds);
-  const mediaIds = await mediaEvidenceIds(queryRunner, columns, partyId, subscriberIds);
+  const stratumMediaIds = await stratumEvidenceMediaIds(queryRunner, columns, subscriberIds);
   scope.relatedIds ??= {};
-  scope.relatedIds.privacyEvidenceMediaIds = mediaIds.privacy;
-  const privacyMedia = await safeUpdateMedia(
-    queryRunner,
-    mediaIds.privacy,
-    tenantSchema,
-    'privacy_evidence',
-    'dry-run',
-  );
   const stratumMedia = await safeUpdateMedia(
     queryRunner,
-    mediaIds.stratum,
+    stratumMediaIds,
     tenantSchema,
     'stratum_evidence',
     'dry-run',
@@ -1138,10 +1086,9 @@ async function anonymizeTitularInTransaction(
       : 0;
   report.totals.subscribers = subscriberRows.length;
   report.totals.users = users.length;
-  report.totals.privacyMediaAssets = privacyMedia.selected;
   report.totals.stratumMediaAssets = stratumMedia.selected;
   report.totals.unmatchedExpedientes = unmatchedExpedientes;
-  report.verification.activeMediaAssets = privacyMedia.active + stratumMedia.active;
+  report.verification.activeMediaAssets = stratumMedia.active;
 
   const participantResults = await adapter.applyScope(scope, queryRunner, mode);
   for (const result of participantResults) {
@@ -1301,7 +1248,9 @@ async function main(): Promise<void> {
       keys,
       flags.mode,
     );
-    process.stdout.write('[PRIVACY-ANONYMIZE] resultado sin identificadores personales\n');
+    process.stdout.write(
+      '[PRIVACY-ANONYMIZE] evidencia de autorización conservada (prueba de autorización); resultado sin identificadores personales\n',
+    );
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } finally {
     await AppDataSource.destroy();

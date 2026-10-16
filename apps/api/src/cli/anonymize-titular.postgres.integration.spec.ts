@@ -492,7 +492,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     }
   });
 
-  it('retira evidencia de autorización no compartida por medio del scope interno del CLI', async () => {
+  it('conserva evidencia de autorización no compartida y activa en el CLI', async () => {
     const fixture = await createFixture(dataSource);
     const q = quoteIdentifier(fixture.schema);
     const mediaId = randomUUID();
@@ -525,7 +525,66 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           `SELECT deleted_at IS NOT NULL AS deleted FROM public.media_assets WHERE id = $1`,
           [mediaId],
         ),
-      ).toEqual([{ deleted: true }]);
+      ).toEqual([{ deleted: false }]);
+    } finally {
+      await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+    }
+  });
+
+  it('mantiene activa la evidencia de autorización y sin cambios su fila al anonimizar por CLI', async () => {
+    const fixture = await createFixture(dataSource);
+    const q = quoteIdentifier(fixture.schema);
+    const mediaId = randomUUID();
+    try {
+      await dataSource.query(
+        `INSERT INTO public.media_assets
+          (id, tenant_schema, usage, original_filename, mime_type, ext, size_bytes, object_key)
+         VALUES ($1, $2, 'privacy_evidence', 'fixture.bin', 'application/octet-stream',
+           'bin', 1, $3)`,
+        [mediaId, fixture.schema, `${fixture.schema}/privacy_evidence/${mediaId}.bin`],
+      );
+      await dataSource.query(
+        `UPDATE ${q}.data_authorizations SET evidence_media_id = $1 WHERE party_id = $2`,
+        [mediaId, fixture.partyId],
+      );
+      await dataSource.query(
+        `CREATE TABLE ${q}.data_authorizations_snapshot AS
+         SELECT * FROM ${q}.data_authorizations WHERE party_id = $1`,
+        [fixture.partyId],
+      );
+
+      const result = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [fixture.expedienteId],
+        false,
+        KEYS,
+        'apply',
+      );
+
+      expect(result.labels.privacyMediaAssets).toBe('conservada (prueba de autorización)');
+      expect(result.totals.privacyMediaAssets).toBe(0);
+      expect(result.changed.privacyMediaAssets).toBe(0);
+      expect(
+        await dataSource.query(
+          `SELECT deleted_at IS NULL AS active FROM public.media_assets WHERE id = $1`,
+          [mediaId],
+        ),
+      ).toEqual([{ active: true }]);
+      expect(
+        await dataSource.query(
+          `SELECT NOT EXISTS (
+             SELECT 1
+               FROM ${q}.data_authorizations current_row
+               FULL JOIN ${q}.data_authorizations_snapshot snapshot USING (id)
+              WHERE (current_row.party_id = $1 OR snapshot.party_id = $1)
+                AND to_jsonb(current_row) IS DISTINCT FROM to_jsonb(snapshot)
+           ) AS unchanged`,
+          [fixture.partyId],
+        ),
+      ).toEqual([{ unchanged: true }]);
     } finally {
       await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);

@@ -8,7 +8,6 @@ import type {
 } from '../../crm/privacy-adapters/titular-erasure/titular-erasure.types';
 
 interface MediaCandidateSets {
-  privacy: string[];
   stratum: string[];
   execution: string[];
 }
@@ -40,13 +39,6 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
   ): Promise<TitularErasureTableResult[]> {
     const candidates = this.mediaCandidates(scope);
     const tenantSchema = scope.tenantSchema ?? (await this.currentSchema(qr));
-    const privacy = await this.updateAssets(
-      qr,
-      candidates.privacy,
-      tenantSchema,
-      'privacy_evidence',
-      mode,
-    );
     const stratum = await this.updateAssets(
       qr,
       candidates.stratum,
@@ -62,7 +54,13 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
       mode,
     );
     return [
-      { table: 'media_assets:privacy_evidence', category: 'EVIDENCIA_DOCUMENTAL', ...privacy },
+      {
+        table: 'media_assets:privacy_evidence',
+        category: 'EVIDENCIA_DOCUMENTAL',
+        selected: 0,
+        changed: 0,
+        residual: 0,
+      },
       { table: 'media_assets:stratum_evidence', category: 'EVIDENCIA_DOCUMENTAL', ...stratum },
       { table: 'media_assets:execution_evidence', category: 'EVIDENCIA_DOCUMENTAL', ...execution },
     ];
@@ -79,7 +77,6 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
 
   private mediaCandidates(scope: TitularErasureScope): MediaCandidateSets {
     return {
-      privacy: [...new Set(scope.relatedIds?.privacyEvidenceMediaIds ?? [])],
       stratum: [...new Set(scope.relatedIds?.stratumEvidenceMediaIds ?? [])],
       execution: [...new Set(scope.relatedIds?.executionEvidenceMediaIds ?? [])],
     };
@@ -89,7 +86,7 @@ export class MediaTitularErasureParticipant implements TitularErasureParticipant
     qr: QueryRunner,
     ids: string[],
     tenantSchema: string,
-    usage: 'privacy_evidence' | 'stratum_evidence' | 'execution_evidence',
+    usage: 'stratum_evidence' | 'execution_evidence',
     mode: 'dry-run' | 'apply',
   ): Promise<MediaUpdateResult> {
     if (ids.length === 0) return { selected: 0, changed: 0, residual: 0 };
