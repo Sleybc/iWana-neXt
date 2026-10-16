@@ -12,8 +12,8 @@
 **Cambio v1.3 → v1.4 (2026-09-12):** cierra el hallazgo H-1 del ensayo de aceptación T2 (GO-CON-ENMIENDAS) del [plan de restore por tenant](../plans/2026-09-12-plat-ops-restore-por-tenant.md): §6.3 añade el paso obligatorio post-restore de re-aplicación de grants de runtime al schema restaurado y §6.2 advierte que el dump no transporta ACLs. El contrato de la herramienta ([SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0](../specs/SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0.md)) no cambia.
 
 > **Cómo leer este runbook hoy.** Todos sus procedimientos son correctos y ejecutables, pero **ninguno está planificado**: el programa está en construcción modular y no va a producción ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)). Lo que aquí figura como "pendiente" es **condición de un release futuro**, no trabajo atrasado. Se reactiva con el disparador de ADR-070 — en particular, y sin excepción, si se procesa PII de personas reales aunque el entorno no se llame producción.
-**R3:** R3.4
-**Referencias:** [Plan de remediación G6, R3.1–R3.5](../plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md) · [Protocolo de colaboración §2, §4 y §6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) · [Stack tecnológico](../prds/Stack_Tecnologico.md) · [Migraciones DB](RUNBOOK-DB-MIGRATIONS-v1.1.md) · [Least privilege](RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)
+> **R3:** R3.4
+> **Referencias:** [Plan de remediación G6, R3.1–R3.5](../plans/2026-07-28-mod09-mod11-ot-instalacion-remediacion-g6.md) · [Protocolo de colaboración §2, §4 y §6](../roles/Protocolo_Colaboracion_Multiagente_v1.md) · [Stack tecnológico](../prds/Stack_Tecnologico.md) · [Migraciones DB](RUNBOOK-DB-MIGRATIONS-v1.1.md) · [Least privilege](RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md)
 
 > **Regla de verdad:** este documento define un procedimiento reproducible. No registra como ejecutados un backup, un restore, una emisión/renovación de certificado ni un rollback mientras no exista evidencia fechada y revisable. Ver [evidencia R3.4](../informes/INFORME-PLAT-OPS-R3.4-EVIDENCIA-v1.0.md).
 
@@ -44,20 +44,20 @@ No cambia topología, código de aplicación, contratos ni política de segurida
 
 ### 1.1 Autoridad y responsabilidades
 
-| Responsabilidad | Dueño |
-|---|---|
-| Recomendación técnica y cierre de fase | AI-EM-ARCH |
-| Go de producción / excepciones / RPO-RTO / ventana | **CTO vía G7** |
-| Ejecución de Compose, migrator, Nginx, backup y rollback | AI-PLAT-OPS |
-| Orden y contenido de migraciones | AI-SR-FULL / AI-DATA-ENG cuando aplique |
-| Controles TLS, secretos y PII | AI-SEC-ENG define y audita; AI-PLAT-OPS implementa |
-| Evidencia E2E y criterios de calidad | AI-SR-QA |
+| Responsabilidad                                          | Dueño                                              |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| Recomendación técnica y cierre de fase                   | AI-EM-ARCH                                         |
+| Go de producción / excepciones / RPO-RTO / ventana       | **CTO vía G7**                                     |
+| Ejecución de Compose, migrator, Nginx, backup y rollback | AI-PLAT-OPS                                        |
+| Orden y contenido de migraciones                         | AI-SR-FULL / AI-DATA-ENG cuando aplique            |
+| Controles TLS, secretos y PII                            | AI-SEC-ENG define y audita; AI-PLAT-OPS implementa |
+| Evidencia E2E y criterios de calidad                     | AI-SR-QA                                           |
 
 Un release sin go de G7, sin rollback declarado o sin backup/restore verificable es **NO-GO**.
 
 ### 1.2 Condiciones pendientes de un release aún no planificado
 
-> **Reencuadre v1.1 ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)):** estos cuatro puntos se listaban como *"bloqueos conocidos"*. No bloquean nada hoy — son **condiciones de entrada de un release que no está planificado**. Permanecen visibles porque deben cumplirse antes del primer despliegue, no porque haya trabajo detenido.
+> **Reencuadre v1.1 ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)):** estos cuatro puntos se listaban como _"bloqueos conocidos"_. No bloquean nada hoy — son **condiciones de entrada de un release que no está planificado**. Permanecen visibles porque deben cumplirse antes del primer despliegue, no porque haya trabajo detenido.
 
 Estos puntos no se resuelven en este commit y deben permanecer visibles en el registro de release:
 
@@ -239,17 +239,17 @@ curl --fail --silent --show-error https://<dominio-aprobado>/api/v1/health
 
 Abortar antes de publicar tráfico nuevo si ocurre cualquiera de estos eventos:
 
-| Señal | Acción inmediata |
-|---|---|
-| `config --quiet` falla o falta una variable obligatoria | No arrancar; corregir el secret store/configuración y repetir preflight. |
-| Imagen sin digest/tag aprobado o pull/build distinto al registro | Detener; resolver aprobación de release. |
-| Backup ausente, checksum inválido o restore previo no verificable | **NO-GO**; no hacer una copia “a posteriori” y llamarla evidencia. |
-| PostgreSQL, Redis, MinIO, Typesense o pgBouncer no saludables | Mantener tráfico en mantenimiento; diagnosticar dependencia. |
-| Migrator retorna código distinto de cero, hay tenant parcial o migración ambigua | Detener; conservar logs sanitizados y decidir rollback/restauración con DATA-ENG/CTO. |
-| API no responde `/api/v1/health` o web/portal no arranca | No publicar Nginx; volver a imagen anterior según §5. |
-| `nginx -t` falla, cadena TLS inválida o certificado expirado | No recargar; mantener el certificado anterior válido o declarar NO-GO. Nunca sustituir por autofirmado en producción. |
-| Error funcional crítico, pérdida de aislamiento tenant o logs con secretos/PII | Abort inmediato y escalar a EM-ARCH/SEC-ENG. |
-| Lag, DLQ o discrepancia sin umbral aprobado | Registrar la medición; no inventar un criterio numérico de abort. Si el comportamiento es claramente anómalo, abortar por decisión de G7. |
+| Señal                                                                            | Acción inmediata                                                                                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `config --quiet` falla o falta una variable obligatoria                          | No arrancar; corregir el secret store/configuración y repetir preflight.                                                                  |
+| Imagen sin digest/tag aprobado o pull/build distinto al registro                 | Detener; resolver aprobación de release.                                                                                                  |
+| Backup ausente, checksum inválido o restore previo no verificable                | **NO-GO**; no hacer una copia “a posteriori” y llamarla evidencia.                                                                        |
+| PostgreSQL, Redis, MinIO, Typesense o pgBouncer no saludables                    | Mantener tráfico en mantenimiento; diagnosticar dependencia.                                                                              |
+| Migrator retorna código distinto de cero, hay tenant parcial o migración ambigua | Detener; conservar logs sanitizados y decidir rollback/restauración con DATA-ENG/CTO.                                                     |
+| API no responde `/api/v1/health` o web/portal no arranca                         | No publicar Nginx; volver a imagen anterior según §5.                                                                                     |
+| `nginx -t` falla, cadena TLS inválida o certificado expirado                     | No recargar; mantener el certificado anterior válido o declarar NO-GO. Nunca sustituir por autofirmado en producción.                     |
+| Error funcional crítico, pérdida de aislamiento tenant o logs con secretos/PII   | Abort inmediato y escalar a EM-ARCH/SEC-ENG.                                                                                              |
+| Lag, DLQ o discrepancia sin umbral aprobado                                      | Registrar la medición; no inventar un criterio numérico de abort. Si el comportamiento es claramente anómalo, abortar por decisión de G7. |
 
 Abortar no significa ejecutar automáticamente un `down()` de migración. Primero se identifica el punto de fallo y se elige rollback de imagen, reversión revisada o restore.
 
@@ -334,6 +334,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
   ```
 
   Antes de revertir conviene inspeccionar el plan con `pnpm --filter @iwana/db migration:show`. La ruta canónica de diagnóstico completa está en [RUNBOOK-DB-MIGRATIONS-v1.1.md](RUNBOOK-DB-MIGRATIONS-v1.1.md).
+
 - Para tenant, operar únicamente sobre el schema afectado y solo si existe un `down()` revisado y una evidencia de ensayo. El revert tenant es **asimétrico por diseño**: nunca itera tenants; el schema es un argumento obligatorio:
 
   ```bash
@@ -344,6 +345,7 @@ Usar siempre los tags/digests **anteriores** registrados en el acta. No usar `la
   > **Nota de invocación (2026-08-01).** La ayuda del CLI documenta el separador `pnpm ... migration:tenant:revert -- --schema=...`, pero en pnpm 10 / Windows el `--` no es consumido por pnpm y `parseArgs` del CLI lo rechaza. La forma operativa verificada es **sin** el separador (`--schema=...` directo). Mantener esta nota hasta alinear la ayuda del CLI.
 
   Algunos `down()` de tenant exigen declarar intención destructiva con `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true` cuando el schema contiene filas de negocio (p. ej. `095`, `099`, `000`). El flag se exporta **acotado a la sesión** que ejecuta el revert; el CLI no lo fija y no ofrece opción para hacerlo. Sin el flag, el `down()` aborta sin tocar nada; con el flag, elimina únicamente filas transitorias (`PENDING`/`FAILED` con `media_asset_id IS NULL` en el caso de `099`) y cualquier fila que sobreviva y viole el CHECK previo aborta la transacción completa — el revert nunca deja el schema a medias.
+
 - Si hay DDL no reversible, datos transformados o múltiples tenants afectados, usar restore desde el backup verificado. No declarar éxito por que la API arranque: comprobar migraciones, tenants y smoke.
 
 ### 5.6 PostgreSQL, Redis, MinIO y Typesense
@@ -449,7 +451,49 @@ pg_restore --exit-on-error --no-owner --no-privileges \
 3. si el schema ya existe en destino, aborta e indica el procedimiento con ventana de esta misma sección: no elimina schemas ni ejecuta un reemplazo destructivo;
 4. emite un resumen sanitizado: duración, sha256 del dump, base destino, schema restaurado y conteo de tablas, sin filas de negocio.
 
-En una base productiva, un reemplazo de schema requiere ventana, bloqueo de escrituras del tenant, backup previo y autorización CTO; `DROP SCHEMA ... CASCADE` nunca se ejecuta como atajo, y el nombre del schema debe liberarse bajo ese procedimiento antes de reintentar el restore.
+### Mecanismo aprobado por decisión; ejecución bloqueada por el CLI vigente (M1-G2, NO-GO)
+
+La secuencia aprobada conserva el tenant suspendido y las escrituras congeladas: respaldo fresco del tenant; `ALTER SCHEMA <t> RENAME TO <t>__pre_rollback_<ts>`; restore del dump al nombre original; re-aplicación de grants H-1; comparación de conteos; y reactivación del tenant al final. El schema anterior se conserva hasta autorización expresa del CTO. Nunca se ejecuta `DROP SCHEMA` como parte de esta ventana.
+
+Antes de cualquier cambio, resolver `TENANT_ID`, `TENANT_SCHEMA` y el nombre del archivo desde `public.tenants` y el manifiesto aprobado; validar el regex `^tenant_[a-z][a-z0-9_]{0,54}$`, checksum del dump/sidecar y que el nombre de archivo sea el del tenant. Suspender el tenant mediante el flujo auditado de plataforma, detener nuevas escrituras y drenar/retener trabajos tenant-scoped sin purgar colas. Si no se puede confirmar que no quedan escritores, detenerse. La base `DB_NAME` y todos los demás tenants permanecen intactos.
+
+> **STOP — no ejecutar el bloque siguiente con la versión vigente.** La aprobación del CTO cubre el mecanismo de RENAME, no este CLI incompatible. `restore-tenant.mjs` rechaza primero la fila que sigue en `public.tenants` por el mismo ID o slug (`assertNoRegistryConflicts`, antes de `pg_restore`). Aunque se resolviera esa guarda, la reinyección posterior usa un `INSERT` simple y chocaría con la fila ya existente (`buildTenantRegisterSql`/`injectTenantRow`). No renombrar el schema hasta que el contrato y el CLI se corrijan y el flujo completo pase un ensayo desechable.
+
+El siguiente es el SQL de referencia para la maniobra **solo después de resolver y ensayar ambos conflictos del CLI**. No derivar nombres desde input sin validar, no truncar identificadores y detenerse si el nombre de archivo excede el límite PostgreSQL de 63 caracteres:
+
+```bash
+TENANT_SCHEMA="<schema resuelto desde public.tenants>"
+ROLLBACK_TS="<UTC sin separadores>"
+ARCHIVE_SCHEMA="${TENANT_SCHEMA}__pre_rollback_${ROLLBACK_TS}"
+[[ "$TENANT_SCHEMA" =~ ^tenant_[a-z][a-z0-9_]{0,54}$ ]] || exit 2
+(( ${#ARCHIVE_SCHEMA} <= 63 )) || exit 2
+psql --host "$DB_HOST" --port "$DB_PORT" --username "$DB_MIGRATOR_USER" \
+  --dbname "$DB_NAME" -X -v ON_ERROR_STOP=1 \
+  -v tenant_schema="$TENANT_SCHEMA" -v archive_schema="$ARCHIVE_SCHEMA" <<'SQL'
+BEGIN;
+SELECT format('ALTER SCHEMA %I RENAME TO %I', :'tenant_schema', :'archive_schema') \gexec
+COMMIT;
+SQL
+pnpm db:restore:tenant --file="$TENANT_DUMP" --into="$DB_NAME" --force-same-database
+DB_NAME="$DB_NAME" pnpm db:apply-least-privilege
+```
+
+El restore requiere la confirmación interactiva de `--force-same-database`, tecleando el schema que declara el sidecar. Verificar grants de `DB_APP_USER` según §6.3 y comparar conteos exactos por tabla con el manifiesto preparado desde el dump, sin leer valores de filas:
+
+```sql
+SELECT format(
+  'SELECT %L AS table_name, count(*)::bigint AS filas FROM %I.%I',
+  table_name, table_schema, table_name
+)
+FROM information_schema.tables
+WHERE table_schema = :'tenant_schema' AND table_type = 'BASE TABLE'
+ORDER BY table_name
+\gexec
+```
+
+Mantener el tenant suspendido hasta que restore, checksum, conteos, grants y health/smoke pasen. Reactivarlo por el control auditado de plataforma solo entonces. Para revertir la maniobra antes de reabrir tráfico, renombrar el schema restaurado a una ubicación de cuarentena y después invertir el `RENAME` del schema anterior; conservar ambos schemas. Si el nombre inverso no está libre, detenerse y escalar, nunca borrar.
+
+**Bloqueo de la herramienta vigente:** `scripts/db/restore-tenant.mjs` invoca `assertNoRegistryConflicts` después de comprobar que el schema destino no exista. Tras el `RENAME`, la fila original de `public.tenants` sigue presente con el mismo `id` y `slug`; el guard vuelve a rechazarla antes de `pg_restore`. Además, `injectTenantRow` intenta reinsertar el registro mediante `buildTenantRegisterSql`, que emite `INSERT INTO public.tenants` sin upsert. Por tanto, aunque se relajara la primera guarda, el flujo volvería a fallar después del restore. **No iniciar el RENAME ni ejecutar el restore** hasta resolver ambos conflictos del contrato/herramienta y ensayar el flujo completo en una base desechable sin afectar otros tenants. No hacer DML manual sobre `public.tenants`, no omitir el guard y no usar `DROP SCHEMA ... CASCADE` como workaround.
 
 **Paso obligatorio post-restore — grants de runtime al schema restaurado (hallazgo H-1 del ensayo T2, 2026-09-12).** El dump es `--no-owner --no-privileges`: el schema restaurado no hereda ACLs y `iwana_app` conecta pero falla con `permission denied for schema <schema>`. Antes de declarar el restore operativo o verificado, re-aplicar least privilege en la base destino:
 
@@ -591,15 +635,15 @@ El `dry-run` solo es evidencia de la ruta de renovación del cliente ACME; no pr
 
 **Al reactivar, la primera pregunta es el hosting**, no el dominio: ACME HTTP-01 exige el puerto 80 alcanzable desde Internet, y esa condición determina cuál de las tres opciones es viable. El CTO ya declaró disponer de un dominio de marca en uso para marketing, así que la opción por defecto es un subdominio de ese dominio (`app.…`, `portal.…`) y no hay paso de registro.
 
-> **Registro histórico — decisión del CTO del 2026-07-31** *(superada en su forma por ADR-070 (superado), vigente en su contenido técnico)*: el CTO autorizó diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. QA-34/TLS no bloquea G6 ni G6.5; **bloquea G7** hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado. QA-34 queda en el checklist de calidad como `DIFERIDO`.
+> **Registro histórico — decisión del CTO del 2026-07-31** _(superada en su forma por ADR-070 (superado), vigente en su contenido técnico)_: el CTO autorizó diferir la implementación de CA/TLS hasta la definición formal del dominio productivo. QA-34/TLS no bloquea G6 ni G6.5; **bloquea G7** hasta que se verifique un certificado de CA reconocida, terminación TLS efectiva y redirección HTTPS sobre el dominio aprobado. QA-34 queda en el checklist de calidad como `DIFERIDO`.
 
 #### Opciones evaluadas (insumo de reactivación)
 
-| Opción | Alcance y requisitos principales | Evaluación |
-|---|---|---|
-| **1. Let's Encrypt ACME HTTP-01** | Un FQDN productivo único; DNS A/AAAA bajo control del equipo; puerto 80 público hasta Nginx; webroot/volumen compartido para `/.well-known/acme-challenge/`; cliente ACME, renovación automática y recarga controlada. | **Recomendada**: CA reconocida, automatizable y coherente con el baseline Compose/Nginx sin introducir topología nueva. |
-| **2. CA comercial reconocida vía ACME HTTP-01** | Los mismos requisitos de HTTP-01, más cuenta/provisión y condiciones comerciales del proveedor elegido. | Alternativa si el CTO exige una CA comercial, soporte o política de emisión distinta. |
-| **3. CA reconocida vía ACME DNS-01** | Control operativo del proveedor DNS y credencial API restringida, guardada fuera de Git en el secret store; automatización segura de TXT; aplica si se necesitan wildcards o no se puede exponer HTTP-01. | Alternativa condicionada; aumenta el alcance de secretos y la coordinación con DNS. |
+| Opción                                          | Alcance y requisitos principales                                                                                                                                                                                       | Evaluación                                                                                                              |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **1. Let's Encrypt ACME HTTP-01**               | Un FQDN productivo único; DNS A/AAAA bajo control del equipo; puerto 80 público hasta Nginx; webroot/volumen compartido para `/.well-known/acme-challenge/`; cliente ACME, renovación automática y recarga controlada. | **Recomendada**: CA reconocida, automatizable y coherente con el baseline Compose/Nginx sin introducir topología nueva. |
+| **2. CA comercial reconocida vía ACME HTTP-01** | Los mismos requisitos de HTTP-01, más cuenta/provisión y condiciones comerciales del proveedor elegido.                                                                                                                | Alternativa si el CTO exige una CA comercial, soporte o política de emisión distinta.                                   |
+| **3. CA reconocida vía ACME DNS-01**            | Control operativo del proveedor DNS y credencial API restringida, guardada fuera de Git en el secret store; automatización segura de TXT; aplica si se necesitan wildcards o no se puede exponer HTTP-01.              | Alternativa condicionada; aumenta el alcance de secretos y la coordinación con DNS.                                     |
 
 **Recomendación de AI-PLAT-OPS:** aprobar **Opción 1 — Let's Encrypt ACME HTTP-01** para el primer FQDN productivo, salvo que el CTO requiera wildcard, no pueda habilitar puerto 80 o exista una restricción contractual que fuerce otra CA. No se recomienda DNS-01 solo por conveniencia.
 
@@ -617,10 +661,10 @@ El HSTS de un año solo puede habilitarse después de validar el dominio y una c
 
 #### Criterio de decisión stop/go
 
-| Estado | Criterio |
-|---|---|
-| **STOP/NO-GO** | Falta decisión CTO sobre dominio/CA/proveedor; DNS o puerto requerido no están bajo control; el challenge no es públicamente validable; no hay almacenamiento seguro de la clave; `nginx -t` falla; la cadena no es reconocida; no existe handshake público verificable; renovación/reload o rollback no están ensayados; o falta el go de G7/CTO. Nunca degradar a HTTP ni sustituir por autofirmado. |
-| **GO técnico para proponer a G7/CTO** | Opción aprobada y documentada; requisitos de DNS/CA/secretos revisados por SEC-ENG; certificado válido servido por Nginx; `nginx -t`, reload, handshake público y `/api/v1/health` PASS; renovación y rollback con evidencia localizable; ventana y plan de incidente aprobados. El GO final sigue siendo de G7/CTO. |
+| Estado                                | Criterio                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **STOP/NO-GO**                        | Falta decisión CTO sobre dominio/CA/proveedor; DNS o puerto requerido no están bajo control; el challenge no es públicamente validable; no hay almacenamiento seguro de la clave; `nginx -t` falla; la cadena no es reconocida; no existe handshake público verificable; renovación/reload o rollback no están ensayados; o falta el go de G7/CTO. Nunca degradar a HTTP ni sustituir por autofirmado. |
+| **GO técnico para proponer a G7/CTO** | Opción aprobada y documentada; requisitos de DNS/CA/secretos revisados por SEC-ENG; certificado válido servido por Nginx; `nginx -t`, reload, handshake público y `/api/v1/health` PASS; renovación y rollback con evidencia localizable; ventana y plan de incidente aprobados. El GO final sigue siendo de G7/CTO.                                                                                   |
 
 ---
 
