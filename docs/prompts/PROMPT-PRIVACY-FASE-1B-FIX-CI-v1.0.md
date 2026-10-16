@@ -1,6 +1,6 @@
 # PROMPT — `privacy` Fase 1b · Corrección del CI de `main` (P0)
 
-**Versión:** 1.0 · **Fecha:** 2026-10-16 · **Emisor:** AI-EM-ARCH · **Agente:** `sr-backend` (dueño de B1 y B2) · **Base:** `main` en `252a9669` más el árbol de E-A y F+G sin commitear
+**Versión:** 1.0 · **Fecha:** 2026-10-16 · **Estado:** Ejecutado (commit `68e5f0d5`) · **Emisor:** AI-EM-ARCH · **Agente:** `sr-backend` (dueño de B1 y B2) · **Base:** `main` en `252a9669` más el árbol de E-A y F+G sin commitear
 **Evidencia:** CI [`38944406821`](https://github.com/Sleybc/iWana-neXt/actions/runs/38944406821), jobs «Lint + Typecheck + Build + Unit tests» y «E2E operativo R4.1»
 
 ## Fallos

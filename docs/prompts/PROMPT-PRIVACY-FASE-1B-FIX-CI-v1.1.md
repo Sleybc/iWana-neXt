@@ -1,6 +1,6 @@
 # PROMPT — `privacy` Fase 1b · Corrección del CI de `main` · v1.1 (portal)
 
-**Versión:** 1.1 (sigue a [v1.0](PROMPT-PRIVACY-FASE-1B-FIX-CI-v1.0.md), que cerró la API) · **Fecha:** 2026-10-16 · **Emisor:** AI-EM-ARCH · **Agente:** `fe-platform` (dueño de B4) · **Base:** `main` en `8f393c1d`
+**Versión:** 1.1 (sigue a [v1.0](PROMPT-PRIVACY-FASE-1B-FIX-CI-v1.0.md), que cerró la API) · **Fecha:** 2026-10-16 · **Estado:** Ejecutado (commit `0af184d4`) · **Emisor:** AI-EM-ARCH · **Agente:** `fe-platform` (dueño de B4) · **Base:** `main` en `8f393c1d`
 **Evidencia:** CI [`38949223069`](https://github.com/Sleybc/iWana-neXt/actions/runs/38949223069): el E2E operativo pasó (la API arranca); falló `@iwana/portal#test`, con 1 suite y 30 tests en rojo
 
 ## Fallo

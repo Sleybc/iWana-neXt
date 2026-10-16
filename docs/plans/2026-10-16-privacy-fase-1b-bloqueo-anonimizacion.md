@@ -1,6 +1,6 @@
 # `privacy` Fase 1b — Bloqueo, anonimización y plazo de traslado · Plan de orquestación
 
-**Fecha:** 2026-10-16 · **Versión:** 1.2 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-16 · **Versión:** 1.5 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Prompt:** [PROMPT-PRIVACY-FASE-1B-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.0.md) · **Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md)
 **Autoridad:**
 - [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md);
@@ -164,3 +164,54 @@ El launcher es [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY
 **Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.2.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.2.md).
 
 **✅ D-1B-7 = A aprobada por el CTO (2026-10-16):** la evidencia de las autorizaciones se conserva como prueba de la autorización. Corregida la fila `public.media_assets` del Anexo A del runbook. E-A queda habilitado.
+
+### v1.3 (2026-10-16): resultado de la Ola 2 y correcciones
+
+| Verificador | Resultado |
+| --- | --- |
+| V1 `sr-qa` | `[BLOQUEO]`: no hay suite E2E de la fase y `dbiw` no está migrada a la 151. El launcher v1.3 prohibía «corregir código» y `sr-qa` entendió que tampoco podía escribir tests: defecto del emisor |
+| V2 `sec-eng` | **NO-GO G4**: `updateSection` sirve la PII de un bloqueado (alta); la auditoría de la supresión no es transaccional (alta) |
+| V3 revisores | Sin violaciones de boundary. **NO-GO G4** por el límite de candidatos entre la vista previa y `resolve` (alta); además, la marca en las respuestas de mutación de contrato (media) y OpenAPI (baja) |
+| V4 `gate-verifier` | Gates verdes: api 5 204, db 397, portal 3 042, shared 173 y worker 169 tests; `privacy/**` con 93,38 % de statements y 81,99 % de branches |
+| V5 `docs-governance` | 0 bloqueantes; 7 metadatos menores (los de los prompts FIX-CI ya están corregidos) |
+| CI `38958070660` | Unit tests de los siete paquetes en verde. Falla la integración de la 150: el test cuenta en `pg_proc` sin filtrar por schema |
+
+**Delta:** [PROMPT-PRIVACY-FASE-1B-v1.3.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.3.md):
+- H1 a H10, con los contratos C1 a C8;
+- decisión del emisor: las lecturas de datos bloqueados no se sirven sin auditoría (C3).
+
+**Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.4.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.4.md).
+
+### v1.4 (2026-10-16): resultado de la Ola 2-bis
+
+**Lo que quedó cerrado:**
+- H1 a H10 de v1.3, según V2′ y V3′;
+- V3′ sin violaciones de boundary.
+
+**Lo que sigue abierto:**
+- **G4 NO-GO**, por dos P1 de V2′: las transiciones de estado del suscriptor y del contrato mutan titulares bloqueados. La causa es del emisor: v1.1 §5.3 enumeró rutas en vez de fijar una regla.
+- **V4′:** la API tiene 69 tests en rojo (fixtures HTTP de expedientes tras C3).
+- **V1:** la suite está escrita, pero no se ejecutó. **AI-EM-ARCH verificó en solo lectura que `dbiw` no tiene la 149 ni la 150 en ninguno de sus 21 schemas tenant:** la precondición del CTO sigue pendiente.
+- **CI de `0af184d4`:** rojo solo por la integración de la 150 (H7), corregida en el árbol por B1 (C6).
+
+**Delta:** [PROMPT-PRIVACY-FASE-1B-v1.4.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.4.md):
+- R10 como regla general, con un decorador y un test de arquitectura sobre todas las rutas de mutación;
+- H12 a H14;
+- deuda D-H15.
+
+**Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.5.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.5.md).
+
+### v1.5 (2026-10-16): resultado de la Ola 2-ter
+
+| Verificador | Resultado |
+| --- | --- |
+| B1 y B3 | API con 385 suites y 5 229 tests, 0 fallos; turbo 10/10 sin caché. Guardas: 4 rutas de suscriptores, 13 de contratos y 12 de expedientes (todas las del inventario salvo las excepciones), con test de arquitectura |
+| V2″ `sec-eng` | ✅ **G4 GO**: 32 rutas de mutación revisadas |
+| V4″ `gate-verifier` | `privacy/**` con 94,61 % de statements y 82,73 % de branches; integraciones de la 149 a la 151, 3/3. El build terminó 7/7 sin caché, pero el wrapper de turbo quedó abierto en Windows sin ninguna tarea activa |
+| V1 `sr-qa` | `[BLOQUEO]`: `dbiw` sigue sin la 149 a la 151 en sus 21 schemas tenant |
+
+**Disposición de H14:** la evidencia de build se toma del CI de Linux («Build y validación de imágenes production» y el build del job de unit tests). El cuelgue del wrapper en Windows queda como deuda P3 de `plat-ops`.
+
+**Observación P3:** el decorador `guard-blocked-titular` está repetido en tres módulos; consolidarlo en un util compartido de CRM.
+
+**G6 sigue abierto** solo por V1, que espera la migración de `dbiw` (CTO).
