@@ -121,7 +121,7 @@ describe('ADR-065 Ola 7 — endpoints sin cota', () => {
   it('contracts.findAll y findAllBySubscriber respetan page/limit', async () => {
     const { chain } = mockPageQb([{ id: 'c-1' }], 5);
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
-      cb({ manager: { createQueryBuilder: () => chain } }),
+      cb({ manager: { createQueryBuilder: () => chain, find: jest.fn().mockResolvedValue([]) } }),
     );
 
     const module = await Test.createTestingModule({
@@ -146,7 +146,7 @@ describe('ADR-065 Ola 7 — endpoints sin cota', () => {
 
     const bySub = await service.findAllBySubscriber('sub-1', { page: 1, limit: 5 });
     expect(bySub.data).toHaveLength(1);
-    expect(bySub.meta.mode).toBe('page');
+    expect(bySub.meta).toMatchObject({ page: 1, limit: 5, mode: 'page' });
   });
 
   it('purchasing.listOrders emite ListResponse con page', async () => {

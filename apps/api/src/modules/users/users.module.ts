@@ -43,6 +43,6 @@ import { UsersPrivacyModule } from './privacy/users-privacy.module';
     SettingsPriorityUsersReadAdapter,
     { provide: SettingsPriorityUsersReadPort, useExisting: SettingsPriorityUsersReadAdapter },
   ],
-  exports: [UsersService, SettingsPriorityUsersReadPort, UsersPrivacyModule],
+  exports: [UsersService, SettingsPriorityUsersReadPort],
 })
 export class UsersModule {}

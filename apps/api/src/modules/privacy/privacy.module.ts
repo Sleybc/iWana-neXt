@@ -35,7 +35,6 @@ import { IPrivacyAuthorizationReadPort } from './ports/privacy-authorization-rea
 import { IPrivacyAuthorizationWritePort } from './ports/privacy-authorization-write.port';
 import { IPrivacyLegalTextReadPort } from './ports/privacy-legal-text-read.port';
 import { IPrivacyMarksReadPort } from './ports/privacy-marks-read.port';
-import { IPersonalDataErasurePort } from './ports/personal-data-erasure.port';
 import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-adapters.module';
 import { PrivacyDueAlertsProcessor } from './alerts/privacy-due-alerts.processor';
 import { PrivacyDueAlertsMetrics } from './alerts/privacy-due-alerts.metrics';
@@ -110,7 +109,6 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
     IPrivacyMarksReadPort,
     IPrivacyRequestsReadPort,
     CrmPrivacyAdaptersModule,
-    IPersonalDataErasurePort,
   ],
 })
 export class PrivacyModule {}
