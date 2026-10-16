@@ -1,6 +1,6 @@
 # `privacy` Fase 1b — Bloqueo, anonimización y plazo de traslado · Plan de orquestación
 
-**Fecha:** 2026-10-16 · **Versión:** 1.0 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-16 · **Versión:** 1.2 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Prompt:** [PROMPT-PRIVACY-FASE-1B-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.0.md) · **Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md)
 **Autoridad:**
 - [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md);
@@ -38,6 +38,31 @@ Las cuatro son reversibles antes de lanzar y no cambian ADR-094. El HLD se actua
 | B4 | Parcial: detalle de solicitud hecho; la redacción espera a B3 | [B4](../informes/INFORME-PRIVACY-FASE-1B-B4-v1.0.md) |
 
 Mientras no esté el adaptador real, `resolve` de SUPRIMIR y la vista previa responden **503**: fallan cerrados en lugar de declarar una supresión sin ejecutarla. El runbook manual cubre ese tramo. El delta v1.1 del prompt resuelve los dos bloqueos.
+
+### v1.1 (2026-10-16): delta y Ola 1-bis
+
+**Decisiones del CTO:**
+- **D-1B-5:** los datos personales del contrato se anonimizan, pero el contrato se conserva como insumo de las consultas, y en todo el sistema se ve que fue anonimizado (marca `anonymized_at` en Party, suscriptor y expediente).
+- **D-1B-6:** los datos de un titular bloqueado los ven el Oficial (`privacy.read`) y facturación y cobro (permiso nuevo `crm.blocked_data.read`, perfil «Facturación y cobro», rol base `ACCOUNTANT`). Ventas y técnicos no los ven en CRM.
+
+**Delta:** [PROMPT-PRIVACY-FASE-1B-v1.1.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.1.md):
+- reglas de `contracts` y `quotes`;
+- migraciones 150 (marca de anonimización) y 151 (permiso);
+- encadenamiento de WFM y `tasks` según D1;
+- R10 corregida (sin `crm/contacts/**`);
+- cierre de `DATOS_BLOQUEADOS` al resolver una supresión posterior.
+
+**Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.1.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.1.md).
+
+**Orden de la Ola 1-bis:**
+1. B1 (S1′: 150, 151 y el enum) ∥ B2 (extracción del CLI desde ya).
+2. B3 tras S1′; publica los esquemas (S2′).
+3. B4 tras S2′.
+4. B1 retira el adaptador `Unavailable` tras el paso 2 de B2 (S3).
+
+| Bloque | Skills: sin cambios respecto a §3 |
+| --- | --- |
+| B1 a B4 | Las mismas filas de la matriz; B4 aplica también `wcag-audit-patterns` a la insignia y al enlace |
 
 ## 2. Bloques y dependencias
 
@@ -116,3 +141,26 @@ El launcher es [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY
 - **Ola 1:** B1 (primer paso) ∥ D1. Tras S1, B2 ∥ B3 ∥ B4.
 - **Ola 2:** V1 ∥ V2 ∥ V3, después V4 y V5.
 - **Precondición:** el CTO aprueba D-1B-1 a D-1B-4; `main` en `aeedeffc` o posterior; `dbiw` respaldada con `pnpm db:backup` antes de migrar a la 149 (Ola 2).
+
+### v1.2 (2026-10-16): resultado de la Ola 1-bis y delta
+
+| Bloque | Estado | Evidencia |
+| --- | --- | --- |
+| CI | Test de `restore-tenant` corregido (normaliza espacios; el script no cambia): 43/43 | [INFORME-PLAT-OPS-CI-RESTORE-TENANT-TEST-v1.0](../informes/INFORME-PLAT-OPS-CI-RESTORE-TENANT-TEST-v1.0.md) |
+| B1 | ✅ 150, 151, permiso, cierre de `DATOS_BLOQUEADOS` y S3 (adaptador `Unavailable` retirado) | [B1 v1.1](../informes/INFORME-PRIVACY-FASE-1B-B1-v1.1.md) |
+| B2 | Participantes, adaptador y marca hechos; `[BLOQUEO]` por la evidencia de las autorizaciones | [B2 v1.1](../informes/INFORME-PRIVACY-FASE-1B-B2-v1.1.md) |
+| B3 | Hecho: 33 suites y 663 tests. Queda P1 (subrecursos del expediente) y P2 (functions −0,50 pp) | [B3 v1.1](../informes/INFORME-PRIVACY-FASE-1B-B3-v1.1.md) |
+| B4 | ✅ 11 suites y 86 tests | [B4 v1.1](../informes/INFORME-PRIVACY-FASE-1B-B4-v1.1.md) |
+
+**Diagnóstico:** el bloqueo de B2 es una contradicción del emisor. R6 y la pregunta 9 al abogado conservan la prueba de la autorización, pero el Anexo A y el CLI borran su evidencia. Por eso hoy la API y el CLI divergen (contra R13).
+
+**D-1B-7 (pendiente del CTO):** conservar la evidencia de las autorizaciones (A, recomendada) o borrarla (B).
+
+**Delta:** [PROMPT-PRIVACY-FASE-1B-v1.2.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.2.md):
+- E-A o E-B según D-1B-7;
+- F, lecturas de subrecursos bloqueadas;
+- G, cobertura de functions.
+
+**Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.2.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.2.md).
+
+**✅ D-1B-7 = A aprobada por el CTO (2026-10-16):** la evidencia de las autorizaciones se conserva como prueba de la autorización. Corregida la fila `public.media_assets` del Anexo A del runbook. E-A queda habilitado.
