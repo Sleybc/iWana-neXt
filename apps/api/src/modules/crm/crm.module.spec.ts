@@ -38,4 +38,12 @@ describe('CrmModule', () => {
     expect(imports).toContain(ExpedientesModule);
     expect(providers.some((provider) => provider.provide === ExecutionPolicyReadPort)).toBe(true);
   });
+
+  it('no monta ContactsModule (D-CONT): su tabla subscriber_contacts no existe', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, CrmModule) as unknown[];
+
+    expect(
+      imports.some((module) => typeof module === 'function' && module.name === 'ContactsModule'),
+    ).toBe(false);
+  });
 });
