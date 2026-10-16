@@ -215,3 +215,9 @@ El launcher es [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY
 **Observación P3:** el decorador `guard-blocked-titular` está repetido en tres módulos; consolidarlo en un util compartido de CRM.
 
 **G6 sigue abierto** solo por V1, que espera la migración de `dbiw` (CTO).
+
+### Corrección del emisor y migración de `dbiw` (2026-10-16)
+
+- **Corrección:** la afirmación de v1.4 de que «`dbiw` no tiene la 149 ni la 150 en ninguno de sus 21 schemas» se apoyó en `information_schema.columns`, que oculta las columnas sin permiso para el rol de solo lectura. La comprobación correcta (`pg_attribute` y `typeorm_migrations`) muestra que los **3 tenants ACTIVE** tienen la 149 a la 151. Los otros 18 schemas son tenants no ACTIVE (QA y E2E), que `db:migrate:all` no recorre.
+- **Ejecutado por orden del CTO:** `pnpm db:backup` (`.backups/dbiw-2026-10-16T23-45-00-410Z.dump`, 14 MB) y luego `pnpm db:migrate:all`, que terminó con exit 0, lock global, 3 tenants y `apply-least-privilege: OK`.
+- **Consecuencia para V1:** la suite E2E corre sobre un tenant **ACTIVE** migrado. Los tenants de E2E no ACTIVE no tienen la Fase 1b.

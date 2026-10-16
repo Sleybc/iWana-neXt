@@ -41,6 +41,8 @@ import { AuditInterceptor } from '../../../audit/audit.interceptor';
 import { PlatformAuditService } from '../../../audit/platform-audit.service';
 import { MediaService } from '../../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../../privacy/ports/privacy-authorization-read.port';
+import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
+import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../auth/guards/roles.guard';
 import { AbacGuard } from '../../../auth/guards/abac.guard';
@@ -278,6 +280,17 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
         { provide: CommercialCatalogReadPort, useValue: planPort },
         { provide: IInternetVatResolverPort, useClass: InternetVatResolverAdapter },
         { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: IPrivacyMarksReadPort,
+          useValue: {
+            activeMarks: jest.fn().mockResolvedValue({}),
+            partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
+          },
+        },
         {
           provide: PlatformAuditService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },

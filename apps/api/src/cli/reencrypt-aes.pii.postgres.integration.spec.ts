@@ -10,13 +10,16 @@ import { ReencryptDbPort } from '../common/crypto/reencrypt-aes.orchestrator';
 import { TypeOrmReencryptDbAdapter } from '../common/crypto/reencrypt-aes.db-adapter';
 import { EncryptedColumnTarget } from '../common/crypto/reencrypt-aes.targets';
 import { listEligiblePiiTenantSchemas, runMfaToPii } from './reencrypt-aes.pii';
-import { assertSafeDisposableIntegrationTarget } from './reencrypt-aes.integration-safety';
+import { resolveK2ReencryptIntegrationEnabled } from './reencrypt-aes.integration-safety';
 
 const databaseName = (process.env['DB_NAME'] ?? '').trim();
 const databaseHost = process.env['DB_HOST']?.trim() || undefined;
-const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
-assertSafeDisposableIntegrationTarget({ enabled: dbAvailable, databaseName, databaseHost });
-const describeWithDb = dbAvailable ? describe : describe.skip;
+const k2Enabled = resolveK2ReencryptIntegrationEnabled({
+  optIn: process.env['IWANA_K2_REENCRYPT_INTEGRATION'],
+  databaseName,
+  databaseHost,
+});
+const describeWithDb = k2Enabled ? describe : describe.skip;
 const schemaName = `tenant_k2_reencrypt_${randomBytes(5).toString('hex')}`;
 const mfaKey = parseEncryptionKeyHex('0123456789abcdef'.repeat(4));
 const mfaPreviousKey = parseEncryptionKeyHex('fedcba9876543210'.repeat(4));

@@ -26,7 +26,10 @@ import {
   TENANT_ENCRYPTED_TARGETS,
 } from '../common/crypto/reencrypt-aes.targets';
 import { PII_ENCRYPTED_TARGETS } from './reencrypt-aes.pii';
-import { assertSafeDisposableIntegrationTarget } from './reencrypt-aes.integration-safety';
+import {
+  assertSafeDisposableIntegrationTarget,
+  resolveK2ReencryptIntegrationEnabled,
+} from './reencrypt-aes.integration-safety';
 
 /** 64 hex con entropía suficiente para no disparar el guard de clave débil. */
 const KEY_A = '0123456789abcdef'.repeat(4);
@@ -229,6 +232,45 @@ describe('CLI reencrypt-aes — límites tenant MFA/PII', () => {
         databaseHost: 'external.example.invalid',
       }),
     ).toThrow('La integración K2 solo acepta un DB_HOST loopback.');
+  });
+});
+
+describe('CLI reencrypt-aes — opt-in de integración K2', () => {
+  it('omite K2 sin la bandera propia aunque la base genérica no sea desechable', () => {
+    expect(
+      resolveK2ReencryptIntegrationEnabled({
+        databaseName: 'test',
+        databaseHost: 'external.example.invalid',
+      }),
+    ).toBe(false);
+  });
+
+  it('rechaza destinos inseguros cuando el opt-in está activo', () => {
+    expect(() =>
+      resolveK2ReencryptIntegrationEnabled({
+        optIn: 'true',
+        databaseName: 'test',
+        databaseHost: '127.0.0.1',
+      }),
+    ).toThrow('La integración K2 solo acepta una DB_NAME iwana_it_g7_* desechable.');
+
+    expect(() =>
+      resolveK2ReencryptIntegrationEnabled({
+        optIn: 'true',
+        databaseName: 'iwana_it_g7_synthetic',
+        databaseHost: 'external.example.invalid',
+      }),
+    ).toThrow('La integración K2 solo acepta un DB_HOST loopback.');
+  });
+
+  it('habilita K2 con opt-in explícito y destino desechable loopback', () => {
+    expect(
+      resolveK2ReencryptIntegrationEnabled({
+        optIn: 'true',
+        databaseName: 'iwana_it_g7_ci',
+        databaseHost: '127.0.0.1',
+      }),
+    ).toBe(true);
   });
 });
 

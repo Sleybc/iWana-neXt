@@ -20,6 +20,8 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { AuditService } from '../../audit/audit.service';
 import { PlatformAuditService } from '../../audit/platform-audit.service';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
 import { Subscriber } from './entities/subscriber.entity';
@@ -119,6 +121,17 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
           },
         },
         { provide: SubscriberStatusTransitionService, useValue: {} },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: IPrivacyMarksReadPort,
+          useValue: {
+            activeMarks: jest.fn().mockResolvedValue({}),
+            partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
+          },
+        },
         { provide: IPartyWritePort, useValue: { ensurePartyWithRole: jest.fn() } },
         {
           provide: PlatformAuditService,
