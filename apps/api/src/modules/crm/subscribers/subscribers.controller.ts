@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
@@ -16,8 +15,10 @@ import {
   Post,
   Query,
   Req,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -67,6 +68,9 @@ import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.po
 import { AuditAction } from '@iwana/shared';
 import { projectSubscriberForList } from './subscriber-projection';
 import type { Request } from 'express';
+import { DataSource } from 'typeorm';
+import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -94,6 +98,7 @@ export class SubscribersController {
     private readonly auditService: AuditService,
     private readonly effectivePermissionsService: EffectivePermissionsService,
     @Inject(IPrivacyMarksReadPort) private readonly privacyMarksReadPort: IPrivacyMarksReadPort,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -415,6 +420,7 @@ export class SubscribersController {
    * Roles: ADMIN, SALES
    */
   @Patch(':id')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
@@ -424,9 +430,10 @@ export class SubscribersController {
     @Body(new ZodBodyValidationPipe(UpdateSubscriberSchema)) dto: UpdateSubscriberDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.assertNotBlocked(id);
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const subscriber = await this.subscribersService.update(id, dto, user.sub);
-    return { data: this.sanitizeResponse(subscriber, [], true) };
+    const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
+    return { data: this.sanitizeResponse(subscriber, privacyMarks, readAccess.canSeeBlocked) };
   }
 
   /**
@@ -434,6 +441,7 @@ export class SubscribersController {
    * Guardado parcial por sección para la vista 360°.
    */
   @Patch(':id/section/:section')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN, PlatformRole.IWANA_SUPPORT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
@@ -444,8 +452,10 @@ export class SubscribersController {
     @Body() payload: Record<string, unknown>,
     @CurrentUser() user: JwtPayload,
   ) {
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const updated = await this.subscribersService.updateSection(id, section, payload, user.sub);
-    return { data: this.sanitizeResponse(updated, [], true) };
+    const privacyMarks = await this.getPrivacyMarks(updated.partyId);
+    return { data: this.sanitizeResponse(updated, privacyMarks, readAccess.canSeeBlocked) };
   }
 
   /**
@@ -454,6 +464,7 @@ export class SubscribersController {
    * Roles: ADMIN
    */
   @Delete(':id')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
@@ -469,6 +480,7 @@ export class SubscribersController {
    * Roles: ADMIN, SUPPORT
    */
   @Patch(':id/status')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SUPPORT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
@@ -479,13 +491,19 @@ export class SubscribersController {
     dto: TransitionSubscriberStatusDto,
     @CurrentUser() user: JwtPayload,
   ) {
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const subscriber = await this.subscribersService.transitionStatus(
       id,
       dto.targetStatus,
       dto.reason ?? null,
       user.sub,
     );
-    return { data: this.sanitizeResponse(subscriber) };
+    const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
+    const blocked = this.isBlocked({ ...subscriber, privacyMarks });
+    if (blocked) await this.auditRecordAccess(id, user, true, readAccess.grantedBy);
+    return {
+      data: this.sanitizeResponse(subscriber, privacyMarks, readAccess.canSeeBlocked),
+    };
   }
 
   /**
@@ -557,7 +575,7 @@ export class SubscribersController {
     blockedServed?: number,
   ): Promise<void> {
     const { searchApplied, exactCriteriaApplied, ...nonPersonalFilters } = filters;
-    await this.auditService.log({
+    const entry: Parameters<AuditService['log']>[0] = {
       action: AuditAction.LIST_ACCESS,
       entityType: 'SubscriberList',
       entityId: 'N/A',
@@ -579,7 +597,12 @@ export class SubscribersController {
             }
           : { totalServed, ...(blockedServed !== undefined ? { blockedServed } : {}) },
       },
-    });
+    };
+    if (blockedServed !== undefined && blockedServed > 0) {
+      await this.logBlockedDataAccess(entry);
+      return;
+    }
+    await this.auditService.log(entry);
   }
 
   private async auditRecordAccess(
@@ -588,7 +611,7 @@ export class SubscribersController {
     blocked: boolean,
     grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ',
   ): Promise<void> {
-    await this.auditService.log({
+    const entry: Parameters<AuditService['log']>[0] = {
       action: AuditAction.RECORD_ACCESS,
       entityType: 'Subscriber',
       entityId: id,
@@ -597,7 +620,26 @@ export class SubscribersController {
         role: user.role,
         ...(blocked && grantedBy ? { privacyMark: 'DATOS_BLOQUEADOS', grantedBy } : {}),
       },
-    });
+    };
+    if (blocked && grantedBy) {
+      await this.logBlockedDataAccess(entry);
+      return;
+    }
+    await this.auditService.log(entry);
+  }
+
+  private async logBlockedDataAccess(entry: Parameters<AuditService['log']>[0]): Promise<void> {
+    try {
+      const { schemaName } = TenantContext.getOrThrow();
+      await runInTenantSchema(this.dataSource, schemaName, (queryRunner) =>
+        this.auditService.logWithin(entry, queryRunner.manager),
+      );
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_AUDIT_UNAVAILABLE',
+        message: 'No se pudo registrar el acceso a los datos protegidos.',
+      });
+    }
   }
 
   private async resolveBlockedReadAccess(actorId: string): Promise<{
@@ -624,21 +666,6 @@ export class SubscribersController {
 
   private isBlocked(subscriber: SubscriberWithDecryptedFields): boolean {
     return !subscriber.anonymizedAt && (subscriber.privacyMarks ?? []).includes('DATOS_BLOQUEADOS');
-  }
-
-  private async assertNotBlocked(subscriberId: string): Promise<void> {
-    const subscriber = await this.subscribersService.findById(subscriberId);
-    if (
-      this.isBlocked({
-        ...subscriber,
-        privacyMarks: await this.getPrivacyMarks(subscriber.partyId),
-      })
-    ) {
-      throw new ConflictException({
-        code: 'PRIVACY_DATA_BLOCKED',
-        message: 'Los datos de este titular están bloqueados para edición.',
-      });
-    }
   }
 
   private redactExpedienteSummary(

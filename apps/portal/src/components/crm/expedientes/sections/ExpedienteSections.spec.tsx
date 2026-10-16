@@ -42,6 +42,7 @@ describe('ExpedienteSections', () => {
   const expediente = {
     id: 'expediente-1',
     documentSupports: {},
+    privacyRestricted: false,
   } as unknown as ExpedienteRecord;
 
   const completeness: CompletenessResult = {
@@ -199,6 +200,34 @@ describe('ExpedienteSections', () => {
     render(
       <ExpedienteSections
         expediente={{ ...expediente, privacyRestricted: true } as ExpedienteRecord}
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn(async () => undefined)}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn(async () => undefined)}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Datos bloqueados');
+    expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Mock identificación')).not.toBeInTheDocument();
+  });
+
+  it('restringe la sección cuando falta el indicador de privacidad', () => {
+    const expedienteSinIndicador = {
+      id: expediente.id,
+      documentSupports: expediente.documentSupports,
+    } as unknown as ExpedienteRecord;
+
+    render(
+      <ExpedienteSections
+        expediente={expedienteSinIndicador}
         completeness={completeness}
         draftValues={{}}
         onDraftChange={jest.fn()}

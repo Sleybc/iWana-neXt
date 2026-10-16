@@ -51,6 +51,7 @@ import { ContractsService } from './contracts.service';
 import { Contract } from './entities/contract.entity';
 import { RejectClientStratumEvidenceGuard } from './guards/reject-client-stratum-evidence.guard';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
+import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
 
 const rejectClientStratumEvidenceGuard = new RejectClientStratumEvidenceGuard();
 
@@ -67,6 +68,7 @@ export class ContractsController {
   // ── Endpoints anidados bajo /crm/subscribers/:subscriberId ─────────────────
 
   @Post('crm/subscribers/:subscriberId/contracts')
+  @GuardBlockedTitular('params.subscriberId')
   @UseGuards(rejectClientStratumEvidenceGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
@@ -114,6 +116,7 @@ export class ContractsController {
   }
 
   @Post('crm/subscribers/:subscriberId/contracts/from-expediente')
+  @GuardBlockedTitular('params.subscriberId')
   @UseGuards(rejectClientStratumEvidenceGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
@@ -134,6 +137,7 @@ export class ContractsController {
   // ── Endpoints de recurso /crm/contracts ────────────────────────────────────
 
   @Post('crm/contracts')
+  @GuardBlockedTitular('body.subscriberId')
   @UseGuards(rejectClientStratumEvidenceGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
@@ -208,6 +212,7 @@ export class ContractsController {
   }
 
   @Patch('crm/contracts/:id')
+  @GuardBlockedTitular('params.id')
   @UseGuards(rejectClientStratumEvidenceGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
@@ -219,12 +224,12 @@ export class ContractsController {
     @Body() dto: UpdateContractDto,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: Contract }> {
-    await this.contractsService.assertContractNotBlocked(id);
     const data = await this.contractsService.update(id, dto, actor.sub);
     return { data };
   }
 
   @Patch('crm/contracts/:id/service-point')
+  @GuardBlockedTitular('params.id')
   @UseGuards(rejectClientStratumEvidenceGuard)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
@@ -241,12 +246,12 @@ export class ContractsController {
     @Body() dto: UpdateServicePointDto,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: Contract }> {
-    await this.contractsService.assertContractNotBlocked(id);
     const data = await this.contractsService.updateServicePoint(id, dto, actor.sub);
     return { data };
   }
 
   @Post('crm/contracts/:id/stratum-evidence')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -287,12 +292,12 @@ export class ContractsController {
     if (!file) {
       throw new BadRequestException('Se requiere el campo "file" con el soporte del estrato.');
     }
-    await this.contractsService.assertContractNotBlocked(id);
     const data = await this.contractsService.uploadStratumEvidence(id, file, actor.sub);
     return { data };
   }
 
   @Delete('crm/contracts/:id/stratum-evidence')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -348,6 +353,7 @@ export class ContractsController {
       id,
       actor.sub,
       readAccess.canSeeBlocked,
+      readAccess.grantedBy,
     );
     return { data };
   }
@@ -370,6 +376,7 @@ export class ContractsController {
   }
 
   @Delete('crm/contracts/:id')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -385,6 +392,7 @@ export class ContractsController {
   // ── Transiciones de estado ──────────────────────────────────────────────────
 
   @Post('crm/contracts/:id/activate')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -401,6 +409,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/suspend')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -415,6 +424,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/reactivate')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -429,6 +439,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/terminate')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -443,6 +454,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/archive')
+  @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()

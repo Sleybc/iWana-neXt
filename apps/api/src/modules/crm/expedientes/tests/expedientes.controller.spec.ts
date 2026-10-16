@@ -1,5 +1,11 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import {
   AccessPermissionKey,
   PlatformRole,
@@ -18,10 +24,13 @@ import { StatusTransitionService } from '../status-transition.service';
 import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { AuditService } from '../../../audit/audit.service';
+import { TenantContext } from '@iwana/db';
+import { ExpedientesBlockedTitularGuard } from '../guards/expedientes-blocked-titular.guard';
 
 describe('ExpedientesController', () => {
   let controller: ExpedientesController;
   let pipelineController: PipelineController;
+  const guardTargetId = '00000000-0000-4000-a000-000000000102';
 
   const expedienteServiceMock = {
     create: jest.fn(),
@@ -31,6 +40,7 @@ describe('ExpedientesController', () => {
     getTimelineSummary: jest.fn(),
     getTimelinePage: jest.fn(),
     getDocumentSupports: jest.fn(),
+    getDocumentSupportFile: jest.fn(),
     uploadDocumentSupport: jest.fn(),
     updateDocumentSupportStatus: jest.fn(),
     deleteDocumentSupport: jest.fn(),
@@ -39,8 +49,10 @@ describe('ExpedientesController', () => {
     reactivate: jest.fn(),
     retryConversionEvent: jest.fn(),
     createContactAttempt: jest.fn(),
+    listContactAttempts: jest.fn(),
     createConsent: jest.fn(),
     listConsents: jest.fn(),
+    listCoverageChecks: jest.fn(),
     getPipelineSummary: jest.fn(),
   };
 
@@ -58,6 +70,23 @@ describe('ExpedientesController', () => {
   const detailBootstrapServiceMock = {
     getDetailBootstrap: jest.fn(),
   };
+  const auditServiceMock = {
+    log: jest.fn().mockResolvedValue(undefined),
+    logWithin: jest.fn().mockResolvedValue(undefined),
+  };
+  const dataSourceMock = {
+    createQueryRunner: jest.fn(() => ({
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {},
+    })),
+  };
+  const withTenantContext = <T>(run: () => Promise<T>) =>
+    TenantContext.run({ tenantId: 'tenant-1', schemaName: 'tenant_test', tenantSlug: 'test' }, run);
   const effectivePermissionsMock = {
     getEffectivePermissionsForUser: jest
       .fn()
@@ -95,7 +124,8 @@ describe('ExpedientesController', () => {
           provide: EffectivePermissionsService,
           useValue: effectivePermissionsMock,
         },
-        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+        { provide: AuditService, useValue: auditServiceMock },
+        { provide: getDataSourceToken(), useValue: dataSourceMock },
       ],
     }).compile();
 
@@ -357,12 +387,17 @@ describe('ExpedientesController', () => {
   });
 
   it('responde 409 al editar una sección de un expediente bloqueado', async () => {
-    expedienteServiceMock.findById.mockResolvedValue({ id: 'exp-1', anonymizedAt: null });
+    expedienteServiceMock.findById.mockResolvedValue({ id: guardTargetId, anonymizedAt: null });
     expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
+    const guard = new ExpedientesBlockedTitularGuard(
+      new Reflector(),
+      expedienteServiceMock as never,
+    );
 
     await expect(
-      controller.updateSection('exp-1', 'identification', { data: {} }, {
-        sub: 'actor-1',
+      guard.canActivate({
+        getHandler: () => ExpedientesController.prototype.updateSection,
+        switchToHttp: () => ({ getRequest: () => ({ params: { id: guardTargetId } }) }),
       } as never),
     ).rejects.toThrow(ConflictException);
 
@@ -370,14 +405,126 @@ describe('ExpedientesController', () => {
   });
 
   it('responde 409 al reintentar conversión de un expediente bloqueado', async () => {
-    expedienteServiceMock.findById.mockResolvedValue({ id: 'exp-1', anonymizedAt: null });
+    expedienteServiceMock.findById.mockResolvedValue({ id: guardTargetId, anonymizedAt: null });
     expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
-
-    await expect(controller.retryConversion('exp-1', { sub: 'actor-1' } as never)).rejects.toThrow(
-      ConflictException,
+    const guard = new ExpedientesBlockedTitularGuard(
+      new Reflector(),
+      expedienteServiceMock as never,
     );
 
+    await expect(
+      guard.canActivate({
+        getHandler: () => ExpedientesController.prototype.retryConversion,
+        switchToHttp: () => ({ getRequest: () => ({ params: { id: guardTargetId } }) }),
+      } as never),
+    ).rejects.toThrow(ConflictException);
+
     expect(expedienteServiceMock.retryConversionEvent).not.toHaveBeenCalled();
+  });
+
+  describe('lecturas de subrecursos de un titular bloqueado', () => {
+    it.each([
+      'timeline',
+      'document-supports',
+      'document-support-file',
+      'contact-attempts',
+      'consents',
+      'coverage-checks',
+    ] as const)('audita %s dentro de una transacción antes de responder', async (route) => {
+      const user = { ...authenticatedReader, role: UserRole.ACCOUNTANT };
+      expedienteServiceMock.findById.mockResolvedValue({ id: 'exp-1', anonymizedAt: null });
+      expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
+      effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_EXPEDIENTES_READ,
+        AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      ]);
+
+      let response: unknown;
+      const fileResponse = {
+        setHeader: jest.fn(),
+        download: jest.fn(() => {
+          expect(auditServiceMock.logWithin).toHaveBeenCalledTimes(1);
+        }),
+      };
+      switch (route) {
+        case 'timeline':
+          expedienteServiceMock.getTimelineSummary.mockResolvedValue({
+            changes: [],
+            activities: [],
+          });
+          response = await withTenantContext(() => controller.getTimeline('exp-1', user));
+          break;
+        case 'document-supports':
+          expedienteServiceMock.getDocumentSupports.mockResolvedValue([]);
+          response = await withTenantContext(() => controller.getDocumentSupports('exp-1', user));
+          break;
+        case 'document-support-file':
+          expedienteServiceMock.getDocumentSupportFile.mockResolvedValue({
+            mimeType: 'application/pdf',
+            filePath: 'synthetic-path',
+            fileName: 'synthetic.pdf',
+          });
+          response = await withTenantContext(() =>
+            controller.getDocumentSupportFile(
+              'exp-1',
+              'identity',
+              'version-1',
+              user,
+              fileResponse as never,
+            ),
+          );
+          break;
+        case 'contact-attempts':
+          expedienteServiceMock.listContactAttempts.mockResolvedValue([]);
+          response = await withTenantContext(() => controller.listContactAttempts('exp-1', user));
+          break;
+        case 'consents':
+          expedienteServiceMock.listConsents.mockResolvedValue([]);
+          response = await withTenantContext(() => controller.listConsents('exp-1', user));
+          break;
+        case 'coverage-checks':
+          expedienteServiceMock.listCoverageChecks.mockResolvedValue([]);
+          response = await withTenantContext(() => controller.listCoverageChecks('exp-1', user));
+          break;
+      }
+
+      if (route === 'document-support-file') {
+        expect(fileResponse.download).toHaveBeenCalledTimes(1);
+      } else {
+        expect(response).toBeDefined();
+      }
+      const auditEntry = auditServiceMock.logWithin.mock.calls[0]?.[0];
+      expect(auditEntry).toMatchObject({
+        action: route === 'document-support-file' ? 'RECORD_ACCESS' : 'LIST_ACCESS',
+        entityId: 'exp-1',
+        newValue: {
+          privacyMark: 'DATOS_BLOQUEADOS',
+          grantedBy: 'CRM_BLOCKED_DATA_READ',
+        },
+      });
+    });
+
+    it('no entrega datos de consentimientos si falla la auditoría', async () => {
+      const user = { ...authenticatedReader, role: UserRole.ACCOUNTANT };
+      expedienteServiceMock.findById.mockResolvedValue({ id: 'exp-1', anonymizedAt: null });
+      expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
+      expedienteServiceMock.listConsents.mockResolvedValue([{ id: 'synthetic-consent' }]);
+      effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_EXPEDIENTES_READ,
+        AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      ]);
+      auditServiceMock.logWithin.mockRejectedValueOnce(new Error('synthetic audit failure'));
+
+      const error = await withTenantContext(() => controller.listConsents('exp-1', user)).catch(
+        (reason: unknown) => reason,
+      );
+
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as ServiceUnavailableException).getStatus()).toBe(503);
+      expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
+        code: 'PRIVACY_AUDIT_UNAVAILABLE',
+      });
+    });
   });
 
   it('acepta pipelineRecommendation nula según el contrato del bootstrap', async () => {

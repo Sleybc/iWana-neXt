@@ -89,7 +89,7 @@ function createInput(overrides: Record<string, unknown> = {}) {
 
 describe('PrivacyRequestsService — cobertura de operaciones', () => {
   const manager = { query: jest.fn() };
-  const auditService = { log: jest.fn() };
+  const auditService = { log: jest.fn(), logWithin: jest.fn() };
   const mediaService = {
     findOne: jest.fn(),
     getPrivacyEvidenceSignedUrl: jest.fn(),
@@ -108,6 +108,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     jest.clearAllMocks();
     manager.query.mockReset().mockResolvedValue([]);
     auditService.log.mockReset().mockResolvedValue(undefined);
+    auditService.logWithin.mockReset().mockResolvedValue(undefined);
     mediaService.findOne.mockReset();
     mediaService.getPrivacyEvidenceSignedUrl.mockReset();
     impersonationPort.suspendForImpersonation.mockReset().mockResolvedValue({
@@ -691,7 +692,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
           (values as unknown[])[2] === 'RESUELTA',
       ),
     ).toBe(true);
-    expect(auditService.log).toHaveBeenCalledWith(
+    expect(auditService.logWithin).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.UPDATE,
         newValue: expect.objectContaining({
@@ -699,7 +700,73 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
           erasure: { categories: ['IDENTIFICACION'], changedRows: 2 },
         }),
       }),
+      manager,
     );
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it('bloquea la vista previa con más de 500 candidatos y no expone sus IDs', async () => {
+    const candidates = Array.from(
+      { length: 501 },
+      (_, index) => `60000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    manager.query.mockResolvedValueOnce([
+      requestRow({
+        right: 'SUPRIMIR',
+        status: 'EN_TRAMITE',
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+      }),
+    ]);
+    erasurePort.plan.mockResolvedValueOnce({
+      candidateExpedienteIds: candidates,
+      blockers: [],
+      counts: { IDENTIFICACION: 501 },
+    });
+
+    const preview = await service.erasurePreview(requestId);
+
+    expect(preview).toMatchObject({
+      eligible: false,
+      blockers: ['TOO_MANY_CANDIDATES'],
+      candidateExpedienteIds: [],
+      counts: { IDENTIFICACION: 501 },
+    });
+    expect(JSON.stringify(preview)).not.toContain(candidates[0]);
+  });
+
+  it('rechaza resolve si el recálculo supera 500 candidatos antes de anonimizar', async () => {
+    const candidates = Array.from(
+      { length: 501 },
+      (_, index) => `60000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    manager.query.mockResolvedValueOnce([
+      requestRow({
+        right: 'SUPRIMIR',
+        status: 'EN_TRAMITE',
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+      }),
+    ]);
+    erasurePort.plan.mockResolvedValueOnce({
+      candidateExpedienteIds: candidates,
+      blockers: [],
+      counts: { IDENTIFICACION: 501 },
+    });
+
+    await expect(
+      service.transition(
+        requestId,
+        'resolve',
+        {
+          responseText: 'Respuesta sintética',
+          responseChannel: 'EMAIL',
+          erasure: { confirm: true, expedienteIds: [] },
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'PRIVACY_ERASURE_TOO_MANY_CANDIDATES' },
+    });
+    expect(erasurePort.anonymize).not.toHaveBeenCalled();
   });
 
   it('resuelve revocación y agrega una fila REVOCATION con finalidad y referencia de cambio', async () => {

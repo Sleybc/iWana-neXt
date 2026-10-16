@@ -59,7 +59,7 @@ export function ExpedienteSections({
 }: ExpedienteSectionsProps) {
   const [leftAccordionOpenIds, setLeftAccordionOpenIds] = useState<Set<string>>(new Set());
 
-  if (expediente.privacyRestricted) {
+  if (expediente.privacyRestricted !== false) {
     return (
       <div
         role="status"

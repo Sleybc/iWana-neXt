@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
@@ -13,10 +12,12 @@ import {
   Query,
   Req,
   Res,
+  ServiceUnavailableException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
 import {
   ApiBearerAuth,
   ApiConsumes,
@@ -37,6 +38,8 @@ import {
   type PrivacyMark,
 } from '@iwana/shared';
 import { Request, Response } from 'express';
+import { DataSource } from 'typeorm';
+import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -96,6 +99,7 @@ import {
   ExpedienteSystemTimelineEventSwaggerDto,
   type ExpedienteTimelineQueryDto,
 } from './dto/expediente-timeline.dto';
+import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
 
 /**
  * Roles administrativos que pueden ver la IP registrada en un consentimiento.
@@ -125,6 +129,7 @@ export class ExpedientesController {
     private readonly detailBootstrapService: ExpedienteDetailBootstrapService,
     private readonly effectivePermissionsService: EffectivePermissionsService,
     private readonly auditService: AuditService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   @Post()
@@ -185,7 +190,7 @@ export class ExpedientesController {
           .length
       : undefined;
     if (user) {
-      await this.auditService.log({
+      const entry: Parameters<AuditService['log']>[0] = {
         action: AuditAction.LIST_ACCESS,
         entityType: 'ExpedienteList',
         entityId: 'N/A',
@@ -196,7 +201,12 @@ export class ExpedientesController {
           searchApplied: Boolean(search || documentNumber),
           ...(blockedServed !== undefined ? { blockedServed } : {}),
         },
-      });
+      };
+      if (blockedServed !== undefined && blockedServed > 0) {
+        await this.logBlockedDataAccess(entry);
+      } else {
+        await this.auditService.log(entry);
+      }
     }
     return {
       ...result,
@@ -290,6 +300,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/sections/:section')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -307,8 +318,6 @@ export class ExpedientesController {
       });
     }
 
-    await this.assertNotBlocked(id);
-
     const data = await this.expedienteService.updateSection(
       id,
       {
@@ -321,6 +330,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/status')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -367,6 +377,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/reactivate')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -377,12 +388,12 @@ export class ExpedientesController {
   }
 
   @Post(':id/retry-conversion')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Reintentar evento de conversión pendiente del expediente' })
   async retryConversion(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.retryConversionEvent(id, user.sub);
     return { data };
   }
@@ -491,6 +502,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/document-supports/:documentKey/upload')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @ApiConsumes('multipart/form-data')
@@ -504,7 +516,6 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.uploadDocumentSupport(
       id,
       documentKey,
@@ -516,6 +527,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/document-supports/:documentKey/:versionId/status')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -529,7 +541,6 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.updateDocumentSupportStatus(
       id,
       documentKey,
@@ -543,6 +554,7 @@ export class ExpedientesController {
   }
 
   @Delete(':id/document-supports/:documentKey/:versionId')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -554,7 +566,6 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.deleteDocumentSupport(
       id,
       documentKey,
@@ -591,6 +602,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/contact-attempts')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -600,7 +612,6 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(CreateContactAttemptSchema)) dto: CreateContactAttemptDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.createContactAttempt(id, dto, user.sub);
     return { data };
   }
@@ -632,6 +643,7 @@ export class ExpedientesController {
   }
 
   @Post(':id/consents')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -642,7 +654,6 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Req() request: Request,
   ) {
-    await this.assertNotBlocked(id);
     const forwardedFor = request.headers['x-forwarded-for'];
     const ipAddress = Array.isArray(forwardedFor)
       ? (forwardedFor[0] ?? request.ip ?? null)
@@ -677,6 +688,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/consents/:consentId/revoke')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -687,12 +699,12 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(RevokeConsentSchema)) dto: RevokeConsentDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.revokeConsent(id, consentId, dto.reason, user.sub);
     return { data };
   }
 
   @Post(':id/coverage-checks')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, PlatformRole.SYSTEM_ADMIN)
   @SkipAudit()
   @ApiOperation({ summary: 'Registrar verificación de cobertura del expediente' })
@@ -701,7 +713,6 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(CreateCoverageCheckSchema)) dto: CreateCoverageCheckDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.assertNotBlocked(id);
     const data = await this.expedienteService.createCoverageCheck(id, dto, user.sub);
     return { data };
   }
@@ -726,6 +737,7 @@ export class ExpedientesController {
   }
 
   @Patch(':id/installation-operational-refs')
+  @GuardBlockedTitular()
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()
@@ -798,7 +810,7 @@ export class ExpedientesController {
     blockedServed: number,
   ): Promise<void> {
     if (!access.blocked || !access.grantedBy) return;
-    await this.auditService.log({
+    await this.logBlockedDataAccess({
       action: AuditAction.LIST_ACCESS,
       entityType: 'ExpedienteRecord',
       entityId: id,
@@ -840,7 +852,7 @@ export class ExpedientesController {
     blocked: boolean,
     grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ',
   ): Promise<void> {
-    await this.auditService.log({
+    const entry: Parameters<AuditService['log']>[0] = {
       action: AuditAction.RECORD_ACCESS,
       entityType: 'ExpedienteRecord',
       entityId: id,
@@ -849,16 +861,24 @@ export class ExpedientesController {
         role: user.role,
         ...(blocked && grantedBy ? { privacyMark: 'DATOS_BLOQUEADOS', grantedBy } : {}),
       },
-    });
+    };
+    if (blocked && grantedBy) {
+      await this.logBlockedDataAccess(entry);
+      return;
+    }
+    await this.auditService.log(entry);
   }
 
-  private async assertNotBlocked(id: string): Promise<void> {
-    const expediente = await this.expedienteService.findById(id);
-    const marks = await this.expedienteService.getPrivacyMarksForExpediente(id);
-    if (this.isBlocked(marks, expediente.anonymizedAt)) {
-      throw new ConflictException({
-        code: 'PRIVACY_DATA_BLOCKED',
-        message: 'Los datos de este titular están bloqueados para edición.',
+  private async logBlockedDataAccess(entry: Parameters<AuditService['log']>[0]): Promise<void> {
+    try {
+      const { schemaName } = TenantContext.getOrThrow();
+      await runInTenantSchema(this.dataSource, schemaName, (queryRunner) =>
+        this.auditService.logWithin(entry, queryRunner.manager),
+      );
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_AUDIT_UNAVAILABLE',
+        message: 'No se pudo registrar el acceso a los datos protegidos.',
       });
     }
   }

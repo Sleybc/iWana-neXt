@@ -62,6 +62,7 @@ export const erasureBlockerSchema = z.enum([
   'CONSERVATION_DUTY',
   'UNRECONCILED_TITULAR',
   'ACTIVE_USER_ACCOUNT',
+  'TOO_MANY_CANDIDATES',
 ]);
 
 export const civilDateSchema = z
@@ -219,7 +220,7 @@ export const resolveRequestSchema = z
     erasure: z
       .object({
         confirm: z.literal(true),
-        expedienteIds: z.array(z.string().uuid()).max(50),
+        expedienteIds: z.array(z.string().uuid()).max(500),
       })
       .strict()
       .optional(),
@@ -247,7 +248,7 @@ export const erasurePreviewSchema = z
   .object({
     eligible: z.boolean(),
     blockers: z.array(erasureBlockerSchema),
-    candidateExpedienteIds: z.array(z.string().uuid()),
+    candidateExpedienteIds: z.array(z.string().uuid()).max(500),
     counts: z.record(erasureCategorySchema, z.number().int().nonnegative()),
     categories: z.array(erasureCategorySchema),
   })

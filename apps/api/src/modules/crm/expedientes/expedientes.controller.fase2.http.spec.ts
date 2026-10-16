@@ -1,7 +1,10 @@
 import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import request from 'supertest';
+import { TenantContext } from '@iwana/db';
+import * as IwanaDatabase from '@iwana/db';
 import { AccessPermissionKey, AuditAction, UserRole } from '@iwana/shared';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -15,6 +18,7 @@ import { StatusTransitionService } from './status-transition.service';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { PipelineRecommendationService } from './pipeline-recommendation.service';
 import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.service';
+import { ExpedientesBlockedTitularGuard } from './guards/expedientes-blocked-titular.guard';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -122,7 +126,22 @@ describe('ExpedientesController Fase2', () => {
     createCoverageCheck: jest.fn().mockResolvedValue({}),
     listCoverageChecks: jest.fn().mockResolvedValue([]),
   };
-  const auditMock = { log: jest.fn().mockResolvedValue(undefined) };
+  const auditMock = {
+    log: jest.fn().mockResolvedValue(undefined),
+    logWithin: jest.fn().mockResolvedValue(undefined),
+  };
+  const queryRunnerMock = {
+    connect: jest.fn().mockResolvedValue(undefined),
+    startTransaction: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn().mockResolvedValue(undefined),
+    commitTransaction: jest.fn().mockResolvedValue(undefined),
+    rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+    release: jest.fn().mockResolvedValue(undefined),
+    manager: {},
+  };
+  const dataSourceMock = { createQueryRunner: jest.fn(() => queryRunnerMock) };
+  let tenantContextSpy: jest.SpyInstance;
+  let runInTenantSchemaSpy: jest.SpyInstance;
   const statusMock = { validateTransition: jest.fn().mockResolvedValue({ valid: true }) };
   const completenessMock = {
     calculate: jest.fn().mockResolvedValue({
@@ -145,6 +164,8 @@ describe('ExpedientesController Fase2', () => {
         { provide: ExpedienteDetailBootstrapService, useValue: bootstrapMock },
         { provide: EffectivePermissionsService, useValue: permsMock },
         { provide: AuditService, useValue: auditMock },
+        { provide: getDataSourceToken(), useValue: dataSourceMock },
+        ExpedientesBlockedTitularGuard,
         Reflector,
         PermissionsGuard,
         JwtAuthGuard,
@@ -159,7 +180,18 @@ describe('ExpedientesController Fase2', () => {
     await app.close();
   });
   beforeEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
+    tenantContextSpy = jest.spyOn(TenantContext, 'getOrThrow').mockReturnValue({
+      tenantId: 'tenant-001',
+      schemaName: 'tenant_001',
+      tenantSlug: 'tenant-001',
+    });
+    runInTenantSchemaSpy = jest
+      .spyOn(IwanaDatabase, 'runInTenantSchema')
+      .mockImplementation((_dataSource, _schemaName, callback) =>
+        callback(queryRunnerMock as never),
+      );
     permsMock.getEffectivePermissionsForUser.mockReset();
   });
 
@@ -289,6 +321,7 @@ describe('ExpedientesController Fase2', () => {
 
         expect(route.method()).not.toHaveBeenCalled();
         expect(auditMock.log).not.toHaveBeenCalled();
+        expect(auditMock.logWithin).not.toHaveBeenCalled();
       },
     );
 
@@ -311,7 +344,13 @@ describe('ExpedientesController Fase2', () => {
             .expect(200);
 
           expect(route.method()).toHaveBeenCalled();
-          expect(auditMock.log).toHaveBeenCalledWith(
+          expect(tenantContextSpy).toHaveBeenCalled();
+          expect(runInTenantSchemaSpy).toHaveBeenCalledWith(
+            dataSourceMock,
+            'tenant_001',
+            expect.any(Function),
+          );
+          expect(auditMock.logWithin).toHaveBeenCalledWith(
             expect.objectContaining({
               action: route.action,
               newValue: expect.objectContaining({
@@ -321,7 +360,9 @@ describe('ExpedientesController Fase2', () => {
                 ...(route.grantedBy === 'list' ? { blockedServed: expect.any(Number) } : {}),
               }),
             }),
+            queryRunnerMock.manager,
           );
+          expect(auditMock.log).not.toHaveBeenCalled();
         },
       );
     }

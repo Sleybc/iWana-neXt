@@ -25,6 +25,7 @@ import { ResponsibilitiesModule } from '../responsibilities/responsibilities.mod
 import { ExpedienteDetailBootstrapService } from './expediente-detail-bootstrap.service';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { PrivacyModule } from '../../privacy/privacy.module';
+import { ExpedientesBlockedTitularGuard } from './guards/expedientes-blocked-titular.guard';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { PrivacyModule } from '../../privacy/privacy.module';
     ExpedienteSectionCompletenessService,
     PipelineRecommendationService,
     ExpedienteDetailBootstrapService,
+    ExpedientesBlockedTitularGuard,
     { provide: CrmActorReadPort, useClass: CrmActorReadAdapter },
     { provide: CrmQuoteReadPort, useClass: CrmQuoteReadAdapter },
   ],

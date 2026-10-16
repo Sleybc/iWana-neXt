@@ -5,6 +5,7 @@ import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { TitularAnonymizationMarker1500000000000 } from './150_titular_anonymization_marker';
 
 const SCHEMA = `tenant_privacy_marker_150_${randomBytes(5).toString('hex')}`;
+const SECOND_SCHEMA = `tenant_privacy_marker_150_other_${randomBytes(5).toString('hex')}`;
 const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -60,6 +61,15 @@ describeWithDb('Migración 150 — marca de anonimización en PostgreSQL real', 
     await bootstrap.connect();
     try {
       await bootstrap.query(`CREATE SCHEMA "${SCHEMA}"`);
+      await bootstrap.query(`CREATE SCHEMA "${SECOND_SCHEMA}"`);
+      await bootstrap.query(`
+        CREATE FUNCTION "${SECOND_SCHEMA}".titular_prevent_anonymization_rewrite()
+        RETURNS trigger LANGUAGE plpgsql AS $function$
+        BEGIN
+          RETURN NEW;
+        END;
+        $function$
+      `);
     } finally {
       await bootstrap.release();
     }
@@ -86,6 +96,7 @@ describeWithDb('Migración 150 — marca de anonimización en PostgreSQL real', 
       if (dataSource?.isInitialized) {
         const cleanup = dataSource.createQueryRunner();
         try {
+          await cleanup.query(`DROP SCHEMA IF EXISTS "${SECOND_SCHEMA}" CASCADE`);
           await cleanup.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`);
         } finally {
           await cleanup.release();
@@ -150,8 +161,17 @@ describeWithDb('Migración 150 — marca de anonimización en PostgreSQL real', 
     expect(remainingColumns).toEqual([]);
 
     await migration.up(active);
+    const schemasWithFunction = (await active.query(
+      `SELECT count(*)::int AS count FROM pg_proc
+       WHERE proname = 'titular_prevent_anonymization_rewrite'
+         AND pronamespace IN (to_regnamespace($1), to_regnamespace($2))`,
+      [SCHEMA, SECOND_SCHEMA],
+    )) as Array<{ count: number }>;
+    expect(schemasWithFunction[0]?.count).toBe(2);
     const remainingFunction = (await active.query(
-      `SELECT 1 FROM pg_proc WHERE proname = 'titular_prevent_anonymization_rewrite'`,
+      `SELECT 1 FROM pg_proc
+       WHERE proname = 'titular_prevent_anonymization_rewrite'
+         AND pronamespace = to_regnamespace(current_schema())`,
     )) as Array<{ '?column?': number }>;
     expect(remainingFunction).toHaveLength(1);
   });

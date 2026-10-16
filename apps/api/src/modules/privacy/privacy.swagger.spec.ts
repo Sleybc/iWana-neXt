@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { erasureCategorySchema } from '@iwana/shared';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
@@ -214,7 +215,19 @@ describe('Privacy OpenAPI', () => {
       'categories',
     ]);
     expect(previewProperties?.candidateExpedienteIds).toBeDefined();
-    expect(previewProperties?.counts).toBeDefined();
+    expect(
+      (previewProperties?.candidateExpedienteIds as Record<string, unknown> | undefined)?.maxItems,
+    ).toBe(500);
+    const countsSchema = previewProperties?.counts as Record<string, unknown> | undefined;
+    const countsProperties = countsSchema?.properties as Record<string, unknown> | undefined;
+    expect(countsSchema?.additionalProperties).toBe(false);
+    expect(countsSchema?.required).toEqual([]);
+    expect(Object.keys(countsProperties ?? {}).sort()).toEqual(
+      [...erasureCategorySchema.options].sort(),
+    );
+    for (const category of erasureCategorySchema.options) {
+      expect(countsProperties?.[category]).toMatchObject({ type: 'integer', minimum: 0 });
+    }
 
     const resolve = paths['/privacy/requests/{id}/resolve']?.post as SwaggerOperation | undefined;
     const resolveBody = getBodySchema(resolve);
@@ -222,5 +235,13 @@ describe('Privacy OpenAPI', () => {
 
     expect(resolveBody?.required).toEqual(['responseText', 'responseChannel']);
     expect(resolveProperties?.erasure).toBeDefined();
+    const erasureProperties = (resolveProperties?.erasure as Record<string, unknown> | undefined)
+      ?.properties as Record<string, unknown> | undefined;
+    expect(
+      (erasureProperties?.expedienteIds as Record<string, unknown> | undefined)?.maxItems,
+    ).toBe(500);
+    const blockerItems = (previewProperties?.blockers as Record<string, unknown> | undefined)
+      ?.items as Record<string, unknown> | undefined;
+    expect(blockerItems?.enum).toContain('TOO_MANY_CANDIDATES');
   });
 });

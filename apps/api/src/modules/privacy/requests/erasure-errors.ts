@@ -3,9 +3,9 @@ import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 /**
  * Errores de dominio de la supresión (Fase 1b, R2 a R5).
  *
- * Todo código cumple `^[A-Z][A-Z0-9_]{2,63}$` (§2.3). Los dos últimos los
- * lanza el puerto dentro de su transacción (los implementa B2); se definen
- * aquí para que el puerto y el servicio compartan el mismo contrato.
+ * Todo código cumple `^[A-Z][A-Z0-9_]{2,63}$` (§2.3). Los bloqueos de titular
+ * no conciliado y cuenta activa los lanza el puerto dentro de la transacción
+ * (implementación B2); se definen aquí para compartir el contrato.
  */
 export function erasureNotApplicable(): UnprocessableEntityException {
   return new UnprocessableEntityException({
@@ -51,6 +51,15 @@ export function erasureCandidatesChanged(): ConflictException {
     message:
       'Los expedientes del titular cambiaron desde la vista previa; ' +
       'revisa la vista previa antes de resolver la supresión.',
+  });
+}
+
+export function erasureTooManyCandidates(): ConflictException {
+  return new ConflictException({
+    code: 'PRIVACY_ERASURE_TOO_MANY_CANDIDATES',
+    message:
+      'Hay demasiados expedientes para resolver desde la pantalla. ' +
+      'Usa el procedimiento de emergencia del Oficial de protección de datos.',
   });
 }
 

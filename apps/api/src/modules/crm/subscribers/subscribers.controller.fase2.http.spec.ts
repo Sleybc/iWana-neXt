@@ -3,6 +3,8 @@ import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import { TenantContext } from '@iwana/db';
+import * as IwanaDatabase from '@iwana/db';
 import {
   AccessPermissionKey,
   CustomerSegment,
@@ -18,6 +20,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
 import { AuditService } from '../../audit/audit.service';
@@ -201,7 +204,19 @@ describe('SubscribersController Fase 2 — doble guard', () => {
     get360View: jest.fn().mockResolvedValue({ subscriber: { id: 'sub-001' } }),
     updateSection: jest.fn().mockResolvedValue({ id: 'sub-001' }),
   };
-  const auditMock = { log: jest.fn().mockResolvedValue(undefined) };
+  const auditMock = {
+    log: jest.fn().mockResolvedValue(undefined),
+    logWithin: jest.fn().mockResolvedValue(undefined),
+  };
+  const queryRunnerMock = {
+    connect: jest.fn().mockResolvedValue(undefined),
+    startTransaction: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn().mockResolvedValue(undefined),
+    commitTransaction: jest.fn().mockResolvedValue(undefined),
+    rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+    release: jest.fn().mockResolvedValue(undefined),
+    manager: {},
+  };
   const effectivePermissionsMock = { getEffectivePermissionsForUser: jest.fn() };
   const privacyMarksReadPortMock = {
     activeMarks: jest.fn().mockResolvedValue({}),
@@ -216,6 +231,10 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         { provide: AuditService, useValue: auditMock },
         { provide: EffectivePermissionsService, useValue: effectivePermissionsMock },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
+        {
+          provide: getDataSourceToken(),
+          useValue: { createQueryRunner: jest.fn(() => queryRunnerMock) },
+        },
         Reflector,
         PermissionsGuard,
         JwtAuthGuard,
@@ -232,6 +251,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
   });
 
   beforeEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
     privacyMarksReadPortMock.activeMarks.mockResolvedValue({});
     privacyMarksReadPortMock.partyIdsWithActiveMark.mockResolvedValue([]);
@@ -402,19 +422,35 @@ describe('SubscribersController Fase 2 — doble guard', () => {
     privacyMarksReadPortMock.activeMarks.mockResolvedValue({
       'party-001': ['DATOS_BLOQUEADOS'],
     });
+    const tenantContextSpy = jest.spyOn(TenantContext, 'getOrThrow').mockReturnValue({
+      tenantId: 'tenant-001',
+      schemaName: 'tenant_001',
+      tenantSlug: 'tenant-001',
+    });
+    const runInTenantSchemaSpy = jest
+      .spyOn(IwanaDatabase, 'runInTenantSchema')
+      .mockImplementation((_dataSource, _schemaName, callback) =>
+        callback(queryRunnerMock as never),
+      );
 
     const response = await request(app.getHttpServer())
       .get(`/api/v1/crm/subscribers/${id}`)
-      .set('Authorization', 'Bearer accountant-token')
-      .expect(200);
+      .set('Authorization', 'Bearer accountant-token');
 
+    expect(tenantContextSpy).toHaveBeenCalled();
+    expect(runInTenantSchemaSpy).toHaveBeenCalledWith(
+      expect.any(Object),
+      'tenant_001',
+      expect.any(Function),
+    );
+    expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({
       id,
       privacyRestricted: false,
       firstName: 'Ana',
       documentNumber: '12345678',
     });
-    expect(auditMock.log).toHaveBeenCalledWith(
+    expect(auditMock.logWithin).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'RECORD_ACCESS',
         newValue: expect.objectContaining({
@@ -422,6 +458,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
           grantedBy: 'CRM_BLOCKED_DATA_READ',
         }),
       }),
+      expect.any(Object),
     );
   });
 
@@ -443,6 +480,29 @@ describe('SubscribersController Fase 2 — doble guard', () => {
 
     expect(response.body).toMatchObject({ code: 'PRIVACY_DATA_BLOCKED' });
     expect(subscribersServiceMock.update).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /crm/subscribers/:id/section/:section — devuelve 409 sin datos para un titular bloqueado', async () => {
+    const id = '00000000-0000-4000-a000-000000000004';
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ]);
+    subscribersServiceMock.findById.mockResolvedValue({ id, partyId: 'party-001' });
+    privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+      'party-001': ['DATOS_BLOQUEADOS'],
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/crm/subscribers/${id}/section/contact`)
+      .set('Authorization', 'Bearer sales-token')
+      .send({})
+      .expect(409);
+
+    expect(response.body).toMatchObject({ code: 'PRIVACY_DATA_BLOCKED' });
+    expect(response.body).not.toHaveProperty('data');
+    expect(response.body).not.toHaveProperty('firstName');
+    expect(response.body).not.toHaveProperty('documentNumber');
+    expect(subscribersServiceMock.updateSection).not.toHaveBeenCalled();
   });
 
   it.each([

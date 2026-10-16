@@ -10,6 +10,7 @@ import { CommercialModule } from '../../commercial/commercial.module';
 import { TaxationModule } from '../../taxation/taxation.module';
 import { MediaModule } from '../../media/media.module';
 import { PrivacyModule } from '../../privacy/privacy.module';
+import { ContractsBlockedTitularGuard } from './guards/contracts-blocked-titular.guard';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { PrivacyModule } from '../../privacy/privacy.module';
     PrivacyModule,
   ],
   controllers: [ContractsController],
-  providers: [ContractsService, ContractSignGuard],
+  providers: [ContractsService, ContractSignGuard, ContractsBlockedTitularGuard],
   exports: [ContractsService],
 })
 export class ContractsModule {}

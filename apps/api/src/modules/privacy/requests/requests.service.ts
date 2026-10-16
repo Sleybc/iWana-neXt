@@ -52,6 +52,7 @@ import {
   erasureConfirmationRequired,
   erasureIdentityRequired,
   erasureNotApplicable,
+  erasureTooManyCandidates,
   erasureUnreconciledTitular,
 } from './erasure-errors';
 import {
@@ -505,13 +506,17 @@ export class PrivacyRequestsService {
       for (const blocker of plan.blockers) {
         if (!blockers.includes(blocker)) blockers.push(blocker);
       }
+      const tooManyCandidates = plan.candidateExpedienteIds.length > 500;
+      if (tooManyCandidates && !blockers.includes('TOO_MANY_CANDIDATES')) {
+        blockers.push('TOO_MANY_CANDIDATES');
+      }
       const categories = (Object.keys(plan.counts) as ErasureCategory[]).filter(
         (category) => (plan.counts[category] ?? 0) > 0,
       );
       return {
         eligible: blockers.length === 0,
         blockers,
-        candidateExpedienteIds: plan.candidateExpedienteIds,
+        candidateExpedienteIds: tooManyCandidates ? [] : plan.candidateExpedienteIds,
         counts: plan.counts,
         categories,
       };
@@ -980,9 +985,8 @@ export class PrivacyRequestsService {
    * Orden: identidad verificada, deber de conservación con Party, plan del
    * puerto (UNRECONCILED_TITULAR y ACTIVE_USER_ACCOUNT sin Party deciden por
    * el puerto), anonimización, registro de `erased_at`/`erasure_categories`,
-   * cierre de RECLAMO_EN_TRAMITE y auditoría con `{ erasure }` sin PII ni HMAC.
-   * Cualquier fallo revierte todo porque nada hace commit antes del cierre de
-   * `withPrivacyTenant`.
+   * cierre de marcas y auditoría sin PII ni HMAC dentro de la misma transacción.
+   * Cualquier fallo, incluido el de auditoría, revierte todo antes del commit.
    */
   private async resolveSuppression(
     manager: EntityManager,
@@ -1015,6 +1019,7 @@ export class PrivacyRequestsService {
     };
     const port = this.requireErasurePort();
     const plan = await port.plan(target, { manager });
+    if (plan.candidateExpedienteIds.length > 500) throw erasureTooManyCandidates();
     if (plan.blockers.includes('UNRECONCILED_TITULAR')) throw erasureUnreconciledTitular();
     if (plan.blockers.includes('ACTIVE_USER_ACCOUNT')) throw erasureActiveAccount();
     const result = await port.anonymize(
@@ -1043,12 +1048,21 @@ export class PrivacyRequestsService {
     if (partyId) {
       await this.closeActiveBlockedDataMark(manager, partyId, id, actorId);
     }
-    await this.audit(AuditAction.UPDATE, id, actorId, {
-      operation: 'REQUEST_TRANSITION',
-      action: 'resolve',
-      toStatus: nextStatus,
-      erasure: { categories: result.categories, changedRows: result.changedRows },
-    });
+    await this.auditService.logWithin(
+      {
+        action: AuditAction.UPDATE,
+        entityType: 'DataSubjectRequest',
+        entityId: id,
+        userId: actorId,
+        newValue: {
+          operation: 'REQUEST_TRANSITION',
+          action: 'resolve',
+          toStatus: nextStatus,
+          erasure: { categories: result.categories, changedRows: result.changedRows },
+        },
+      },
+      manager,
+    );
   }
 
   async completeTask(

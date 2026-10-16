@@ -27,7 +27,7 @@ function zeroCounts(): Record<(typeof ERASURE_CATEGORIES)[number], number> {
 }
 
 describe('contratos de supresión de privacidad (Fase 1b)', () => {
-  it('fija las nueve categorías y los cinco bloqueos de anonimización', () => {
+  it('fija las nueve categorías y los seis bloqueos de anonimización', () => {
     for (const category of ERASURE_CATEGORIES) {
       expect(erasureCategorySchema.safeParse(category).success).toBe(true);
     }
@@ -38,6 +38,7 @@ describe('contratos de supresión de privacidad (Fase 1b)', () => {
       'CONSERVATION_DUTY',
       'UNRECONCILED_TITULAR',
       'ACTIVE_USER_ACCOUNT',
+      'TOO_MANY_CANDIDATES',
     ]) {
       expect(erasureBlockerSchema.safeParse(blocker).success).toBe(true);
     }
@@ -66,7 +67,7 @@ describe('contratos de supresión de privacidad (Fase 1b)', () => {
         erasure: {
           confirm: true,
           expedienteIds: Array.from(
-            { length: 51 },
+            { length: 501 },
             (_, index) => `60000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
           ),
         },
@@ -105,6 +106,41 @@ describe('contratos de supresión de privacidad (Fase 1b)', () => {
     expect(erasurePreviewSchema.safeParse({ ...preview, categories: ['OTRA'] }).success).toBe(
       false,
     );
+  });
+
+  it('limita vista previa y resolve a 500 candidatos y alinea ambos contratos', () => {
+    const candidateExpedienteIds = Array.from(
+      { length: 500 },
+      (_, index) => `60000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    const preview = {
+      eligible: true,
+      blockers: [],
+      candidateExpedienteIds,
+      counts: zeroCounts(),
+      categories: [],
+    };
+    expect(erasurePreviewSchema.safeParse(preview).success).toBe(true);
+    expect(
+      resolveRequestSchema.safeParse({
+        responseText: 'Respuesta sintética',
+        responseChannel: 'EMAIL',
+        erasure: { confirm: true, expedienteIds: preview.candidateExpedienteIds },
+      }).success,
+    ).toBe(true);
+
+    const fiveHundredOne = [...candidateExpedienteIds, '60000000-0000-4000-8000-000000000500'];
+    expect(
+      erasurePreviewSchema.safeParse({ ...preview, candidateExpedienteIds: fiveHundredOne })
+        .success,
+    ).toBe(false);
+    expect(
+      resolveRequestSchema.safeParse({
+        responseText: 'Respuesta sintética',
+        responseChannel: 'EMAIL',
+        erasure: { confirm: true, expedienteIds: fiveHundredOne },
+      }).success,
+    ).toBe(false);
   });
 
   it('exige el plazo de traslado, el traslado tardío y la evidencia de supresión en resumen y detalle', () => {

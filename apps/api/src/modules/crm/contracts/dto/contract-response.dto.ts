@@ -33,7 +33,7 @@ export class ContractResponseDto {
   @ApiProperty({ format: 'uuid' })
   subscriberId: string;
 
-  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  @ApiProperty({ format: 'date-time', nullable: true })
   titularAnonymizedAt: string | null;
 
   @ApiProperty()

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
+import { Reflector } from '@nestjs/core';
 import { ContractsController } from '../contracts.controller';
 import { ContractsService } from '../contracts.service';
 import { ContractStatus } from '../../enums/contract-status.enum';
@@ -8,6 +9,7 @@ import { Contract } from '../entities/contract.entity';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 import { SKIP_AUDIT_KEY } from '../../../audit/decorators/skip-audit.decorator';
+import { ContractsBlockedTitularGuard } from '../guards/contracts-blocked-titular.guard';
 
 /** Factory de contrato mínimo para tests */
 function buildContract(overrides: Partial<Contract> = {}): Contract {
@@ -44,6 +46,7 @@ function buildContract(overrides: Partial<Contract> = {}): Contract {
 
 describe('ContractsController', () => {
   let controller: ContractsController;
+  const guardTargetId = '00000000-0000-4000-a000-000000000103';
 
   const serviceMock = {
     create: jest.fn(),
@@ -52,6 +55,7 @@ describe('ContractsController', () => {
     findOne: jest.fn(),
     findOneForRead: jest.fn(),
     assertContractNotBlocked: jest.fn(),
+    assertSubscriberNotBlockedForMutation: jest.fn(),
     update: jest.fn(),
     updateServicePoint: jest.fn(),
     uploadStratumEvidence: jest.fn(),
@@ -65,6 +69,18 @@ describe('ContractsController', () => {
     terminate: jest.fn(),
     archive: jest.fn(),
   };
+  const blockedTitularGuard = new ContractsBlockedTitularGuard(
+    new Reflector(),
+    serviceMock as never,
+  );
+  const guardedRequest = (
+    handler: keyof ContractsController,
+    request: { params?: Record<string, string>; body?: Record<string, unknown> },
+  ) =>
+    ({
+      getHandler: () => ContractsController.prototype[handler],
+      switchToHttp: () => ({ getRequest: () => request }),
+    }) as never;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -133,29 +149,35 @@ describe('ContractsController', () => {
   });
 
   it.each(['update', 'updateServicePoint', 'uploadStratumEvidence'] as const)(
-    'devuelve 409 y no muta el contrato bloqueado en %s',
+    'la guarda devuelve 409 y evita una mutación de contrato bloqueado en %s',
     async (handler) => {
       serviceMock.assertContractNotBlocked.mockRejectedValue(
         new ConflictException({ code: 'PRIVACY_DATA_BLOCKED' }),
       );
-      const actor = { sub: 'actor-1' } as JwtPayload;
-
-      const request =
-        handler === 'update'
-          ? controller.update('ctr-1', { alias: 'Alias sintético' }, actor)
-          : handler === 'updateServicePoint'
-            ? controller.updateServicePoint('ctr-1', { installationStratum: 2 }, actor)
-            : controller.uploadStratumEvidence(
-                'ctr-1',
-                { buffer: Buffer.from('synthetic') } as Express.Multer.File,
-                actor,
-              );
-
-      await expect(request).rejects.toThrow(ConflictException);
-      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      await expect(
+        blockedTitularGuard.canActivate(guardedRequest(handler, { params: { id: guardTargetId } })),
+      ).rejects.toThrow(ConflictException);
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith(guardTargetId);
       expect(serviceMock[handler]).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    ['createForSubscriber', { params: { subscriberId: guardTargetId } }],
+    ['createFromExpediente', { params: { subscriberId: guardTargetId } }],
+    ['create', { body: { subscriberId: guardTargetId } }],
+  ] as const)('resuelve el titular de %s antes de crear el contrato', async (handler, req) => {
+    serviceMock.assertSubscriberNotBlockedForMutation.mockRejectedValue(
+      new ConflictException({ code: 'PRIVACY_DATA_BLOCKED' }),
+    );
+
+    await expect(blockedTitularGuard.canActivate(guardedRequest(handler, req))).rejects.toThrow(
+      ConflictException,
+    );
+    expect(serviceMock.assertSubscriberNotBlockedForMutation).toHaveBeenCalledWith(guardTargetId);
+    expect(serviceMock.create).not.toHaveBeenCalled();
+    expect(serviceMock.createFromExpediente).not.toHaveBeenCalled();
+  });
 
   describe('findAll', () => {
     it('retorna contratos en envelope { data, meta }', async () => {
@@ -246,18 +268,18 @@ describe('ContractsController', () => {
       expect(serviceMock.uploadStratumEvidence).not.toHaveBeenCalled();
     });
 
-    it('verifica el bloqueo antes de cargar evidencia', async () => {
+    it('verifica el bloqueo antes de permitir cargar evidencia', async () => {
       serviceMock.assertContractNotBlocked.mockResolvedValue(undefined);
       serviceMock.uploadStratumEvidence.mockResolvedValue(buildContract());
 
-      await controller.uploadStratumEvidence(
-        'ctr-1',
-        { buffer: Buffer.from('synthetic') } as Express.Multer.File,
-        { sub: 'actor-1' } as JwtPayload,
-      );
+      await expect(
+        blockedTitularGuard.canActivate(
+          guardedRequest('uploadStratumEvidence', { params: { id: guardTargetId } }),
+        ),
+      ).resolves.toBe(true);
 
-      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
-      expect(serviceMock.uploadStratumEvidence).toHaveBeenCalled();
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith(guardTargetId);
+      expect(serviceMock.uploadStratumEvidence).not.toHaveBeenCalled();
     });
   });
 
@@ -318,29 +340,39 @@ describe('ContractsController', () => {
       expect(result.data.status).toBe(ContractStatus.ACTIVE);
     });
 
-    it('verifica el bloqueo aunque el actor tenga permiso de lectura de datos bloqueados', async () => {
+    it('aplica la guarda con independencia del permiso de lectura de datos bloqueados', async () => {
       serviceMock.assertContractNotBlocked.mockResolvedValue(undefined);
       serviceMock.updateServicePoint.mockResolvedValue(buildContract());
 
+      await expect(
+        blockedTitularGuard.canActivate(
+          guardedRequest('updateServicePoint', { params: { id: guardTargetId } }),
+        ),
+      ).resolves.toBe(true);
       await controller.updateServicePoint('ctr-1', { installationStratum: 2 }, {
         sub: 'actor-1',
       } as JwtPayload);
 
-      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith(guardTargetId);
       expect(serviceMock.updateServicePoint).toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
-    it('verifica el bloqueo antes de editar el contrato', async () => {
+    it('mantiene la comprobación de titular previa a la mutación', async () => {
       serviceMock.assertContractNotBlocked.mockResolvedValue(undefined);
       serviceMock.update.mockResolvedValue(buildContract());
 
+      await expect(
+        blockedTitularGuard.canActivate(
+          guardedRequest('update', { params: { id: guardTargetId } }),
+        ),
+      ).resolves.toBe(true);
       await controller.update('ctr-1', { alias: 'Alias sintético' }, {
         sub: 'actor-1',
       } as JwtPayload);
 
-      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith(guardTargetId);
       expect(serviceMock.update).toHaveBeenCalled();
     });
   });

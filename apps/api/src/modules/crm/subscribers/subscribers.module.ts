@@ -18,6 +18,7 @@ import { TaxationModule } from '../../taxation/taxation.module';
 import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { PrivacyModule } from '../../privacy/privacy.module';
+import { SubscribersBlockedTitularGuard } from './guards/subscribers-blocked-titular.guard';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { PrivacyModule } from '../../privacy/privacy.module';
     SubscriberActivationListener,
     SubscriberCancellationListener,
     SubscriberTaxProfileService,
+    SubscribersBlockedTitularGuard,
     { provide: CrmSubscriberReadPort, useExisting: SubscribersService },
   ],
   exports: [

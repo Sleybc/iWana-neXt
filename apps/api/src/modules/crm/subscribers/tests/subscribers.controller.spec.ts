@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import {
   PersonType,
   CustomerSegment,
@@ -19,6 +21,8 @@ import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 import { Subscriber } from '../entities/subscriber.entity';
 import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 import type { Request } from 'express';
+import { TenantContext } from '@iwana/db';
+import { SubscribersBlockedTitularGuard } from '../guards/subscribers-blocked-titular.guard';
 
 /**
  * Tests unitarios del SubscribersController.
@@ -27,6 +31,7 @@ import type { Request } from 'express';
  */
 describe('SubscribersController', () => {
   let controller: SubscribersController;
+  const guardTargetId = '00000000-0000-4000-a000-000000000101';
 
   // Mock del servicio con todos los métodos necesarios
   const subscribersServiceMock = {
@@ -41,7 +46,26 @@ describe('SubscribersController', () => {
     updateSection: jest.fn(),
     get360View: jest.fn(),
   };
-  const auditServiceMock = { log: jest.fn().mockResolvedValue(undefined) };
+  const auditServiceMock = {
+    log: jest.fn().mockResolvedValue(undefined),
+    logWithin: jest.fn().mockResolvedValue(undefined),
+  };
+  const dataSourceMock = {
+    createQueryRunner: jest.fn(() => ({
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {},
+    })),
+  };
+  const withTenantContext = <T>(run: () => Promise<T>) =>
+    TenantContext.run(
+      { tenantId: 'tenant-001', schemaName: 'tenant_test', tenantSlug: 'test' },
+      run,
+    );
   const privacyMarksReadPortMock = {
     activeMarks: jest.fn().mockResolvedValue({}),
     partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
@@ -126,6 +150,7 @@ describe('SubscribersController', () => {
           useValue: effectivePermissionsServiceMock,
         },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
+        { provide: getDataSourceToken(), useValue: dataSourceMock },
       ],
     }).compile();
 
@@ -463,10 +488,10 @@ describe('SubscribersController', () => {
         'crm.blocked_data.read',
       ]);
 
-      const result = await controller.findById('sub-001', mockUser);
+      const result = await withTenantContext(() => controller.findById('sub-001', mockUser));
 
       expect(result.data).toMatchObject({ privacyRestricted: false, firstName: 'Juan' });
-      expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'RECORD_ACCESS',
           newValue: expect.objectContaining({
@@ -474,7 +499,26 @@ describe('SubscribersController', () => {
             grantedBy: 'CRM_BLOCKED_DATA_READ',
           }),
         }),
+        expect.any(Object),
       );
+    });
+
+    it('no entrega la lectura privilegiada bloqueada si falla la auditoría transaccional', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      ]);
+      auditServiceMock.logWithin.mockRejectedValueOnce(new Error('synthetic audit failure'));
+
+      const request = withTenantContext(() => controller.findById('sub-001', mockUser));
+      const error = await request.catch((reason: unknown) => reason);
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as ServiceUnavailableException).getStatus()).toBe(503);
+      expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
+        code: 'PRIVACY_AUDIT_UNAVAILABLE',
+      });
     });
   });
 
@@ -518,10 +562,18 @@ describe('SubscribersController', () => {
       privacyMarksReadPortMock.activeMarks.mockResolvedValue({
         'party-test-001': ['DATOS_BLOQUEADOS'],
       });
-
-      await expect(controller.update('sub-001', { city: 'Cali' }, mockUser)).rejects.toThrow(
-        ConflictException,
+      const guard = new SubscribersBlockedTitularGuard(
+        new Reflector(),
+        subscribersServiceMock as never,
+        privacyMarksReadPortMock as never,
       );
+
+      await expect(
+        guard.canActivate({
+          getHandler: () => SubscribersController.prototype.update,
+          switchToHttp: () => ({ getRequest: () => ({ params: { id: guardTargetId } }) }),
+        } as never),
+      ).rejects.toThrow(ConflictException);
       expect(subscribersServiceMock.update).not.toHaveBeenCalled();
     });
 
@@ -542,6 +594,32 @@ describe('SubscribersController', () => {
         'user-001',
       );
       expect(result.data.id).toBe('sub-001');
+    });
+
+    it('rechaza con 409 la edición por sección de un titular bloqueado sin devolver sus datos', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      const guard = new SubscribersBlockedTitularGuard(
+        new Reflector(),
+        subscribersServiceMock as never,
+        privacyMarksReadPortMock as never,
+      );
+
+      let responseBody: unknown;
+      try {
+        await guard.canActivate({
+          getHandler: () => SubscribersController.prototype.updateSection,
+          switchToHttp: () => ({ getRequest: () => ({ params: { id: guardTargetId } }) }),
+        } as never);
+      } catch (error) {
+        responseBody = (error as ConflictException).getResponse();
+      }
+
+      expect(responseBody).toMatchObject({ code: 'PRIVACY_DATA_BLOCKED' });
+      expect(responseBody).not.toHaveProperty('firstName');
+      expect(responseBody).not.toHaveProperty('documentNumber');
+      expect(subscribersServiceMock.updateSection).not.toHaveBeenCalled();
     });
   });
 
@@ -625,7 +703,7 @@ describe('SubscribersController', () => {
         timelineSeed: [],
       });
 
-      const result = await controller.get360View('sub-001', mockUser);
+      const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
 
       expect(subscribersServiceMock.get360View).toHaveBeenCalledWith('sub-001');
       expect(auditServiceMock.log).toHaveBeenCalledWith(
@@ -658,7 +736,7 @@ describe('SubscribersController', () => {
         timelineSeed: [],
       });
 
-      const result = await controller.get360View('sub-001', mockUser);
+      const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
 
       expect(result.data.subscriber).toHaveProperty('partyId', null);
       const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
@@ -744,12 +822,12 @@ describe('SubscribersController', () => {
         timelineSeed: [],
       });
 
-      const result = await controller.get360View('sub-001', mockUser);
+      const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
 
       expect(result.data.subscriber.privacyRestricted).toBe(false);
       expect(result.data.subscriber.firstName).not.toBeNull();
       expect(result.data.contracts[0]).toMatchObject({ alias: 'Servicio sintético' });
-      expect(auditServiceMock.log).toHaveBeenCalledWith(
+      expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'RECORD_ACCESS',
           newValue: expect.objectContaining({
@@ -757,6 +835,7 @@ describe('SubscribersController', () => {
             grantedBy: 'PRIVACY_READ',
           }),
         }),
+        expect.any(Object),
       );
     });
   });

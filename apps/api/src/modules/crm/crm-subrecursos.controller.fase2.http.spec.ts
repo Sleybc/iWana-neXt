@@ -1,4 +1,9 @@
-import { ForbiddenException, INestApplication, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  INestApplication,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -13,6 +18,7 @@ import { ContactsController } from './contacts/contacts.controller';
 import { ContactsService } from './contacts/contacts.service';
 import { ContractsController } from './contracts/contracts.controller';
 import { ContractsService } from './contracts/contracts.service';
+import { ContractsBlockedTitularGuard } from './contracts/guards/contracts-blocked-titular.guard';
 import { HabeasDataController } from './habeas-data/habeas-data.controller';
 import { OpportunitiesController } from './opportunities/opportunities.controller';
 import { OpportunitiesService } from './opportunities/opportunities.service';
@@ -128,6 +134,7 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
   const contractsServiceMock = {
     findAllBySubscriber: jest.fn().mockResolvedValue(emptyList),
     create: jest.fn().mockResolvedValue({ id: 'ctr-001' }),
+    assertSubscriberNotBlockedForMutation: jest.fn().mockResolvedValue(undefined),
   };
   const reviewCoordinationServiceMock = {
     sendToReview: jest.fn().mockResolvedValue({ id: 'rev-001' }),
@@ -154,6 +161,7 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
         { provide: QuotesService, useValue: quotesServiceMock },
         { provide: ContactsService, useValue: contactsServiceMock },
         { provide: ContractsService, useValue: contractsServiceMock },
+        ContractsBlockedTitularGuard,
         { provide: ActivationService, useValue: {} },
         { provide: ReviewCoordinationService, useValue: reviewCoordinationServiceMock },
         { provide: CustomerOverviewService, useValue: customerOverviewServiceMock },
@@ -175,6 +183,7 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    contractsServiceMock.assertSubscriberNotBlockedForMutation.mockResolvedValue(undefined);
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([]);
   });
 
@@ -319,6 +328,27 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
         .expect(201);
     });
 
+    it('POST — 409 sin escribir cuando el suscriptor está bloqueado', async () => {
+      effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_EXPEDIENTES_MANAGE,
+      ]);
+      contractsServiceMock.assertSubscriberNotBlockedForMutation.mockRejectedValueOnce(
+        new ConflictException({ code: 'PRIVACY_DATA_BLOCKED' }),
+      );
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/crm/subscribers/${SUB_ID}/contracts`)
+        .set('Authorization', 'Bearer sales-token')
+        .send({ subscriberId: SUB_ID, planId: 'plan-1', planSnapshotJson: {} })
+        .expect(409)
+        .expect(({ body }) => expect(body.code).toBe('PRIVACY_DATA_BLOCKED'));
+
+      expect(contractsServiceMock.assertSubscriberNotBlockedForMutation).toHaveBeenCalledWith(
+        SUB_ID,
+      );
+      expect(contractsServiceMock.create).not.toHaveBeenCalled();
+    });
+
     it('POST — 403 sin permiso aunque rol pase', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/quotes')
@@ -410,6 +440,10 @@ describe('CRM subrecursos Fase 2 — doble guard', () => {
           planSnapshotJson: {},
         })
         .expect(201);
+      expect(contractsServiceMock.assertSubscriberNotBlockedForMutation).toHaveBeenCalledWith(
+        SUB_ID,
+      );
+      expect(contractsServiceMock.create).toHaveBeenCalled();
     });
 
     it('POST — 403 sin permiso aunque rol pase', async () => {

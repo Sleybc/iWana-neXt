@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { MediaUsage, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   AuditAction,
@@ -155,7 +155,8 @@ export class ContractsService {
         endDate: dto.endDate ?? null,
       });
 
-      return qr.manager.save(Contract, entity);
+      const saved = await qr.manager.save(Contract, entity);
+      return this.projectContractForMutation(saved, qr.manager);
     });
     await this.auditService.log({
       action: AuditAction.CREATE,
@@ -269,7 +270,8 @@ export class ContractsService {
         endDate: null,
       });
 
-      return qr.manager.save(Contract, entity);
+      const saved = await qr.manager.save(Contract, entity);
+      return this.projectContractForMutation(saved, qr.manager);
     });
     await this.auditService.log({
       action: AuditAction.CREATE,
@@ -402,7 +404,7 @@ export class ContractsService {
       actorId &&
       (await this.isContractSubscriberBlocked(projected.subscriberId))
     ) {
-      await this.auditService.log({
+      await this.logBlockedDataAccess({
         action: AuditAction.RECORD_ACCESS,
         entityType: 'Contract',
         entityId: id,
@@ -481,6 +483,14 @@ export class ContractsService {
     return { data, blockedServed };
   }
 
+  private async projectContractForMutation(
+    contract: Contract,
+    manager: EntityManager,
+  ): Promise<Contract> {
+    const projection = await this.projectContractsForRead(manager, [contract], false);
+    return projection.data[0] ?? contract;
+  }
+
   private async logBlockedContractListAccess(
     actorId: string | undefined,
     canSeeBlocked: boolean,
@@ -491,7 +501,7 @@ export class ContractsService {
     },
   ): Promise<void> {
     if (!actorId || !canSeeBlocked || result.blockedServed === 0) return;
-    await this.auditService.log({
+    await this.logBlockedDataAccess({
       action: AuditAction.LIST_ACCESS,
       entityType: 'ContractList',
       entityId: 'N/A',
@@ -502,6 +512,20 @@ export class ContractsService {
         blockedServed: result.blockedServed,
       },
     });
+  }
+
+  private async logBlockedDataAccess(entry: AuditEntryInput): Promise<void> {
+    try {
+      const { schemaName } = TenantContext.getOrThrow();
+      await runInTenantSchema(this.dataSource, schemaName, (queryRunner) =>
+        this.auditService.logWithin(entry, queryRunner.manager),
+      );
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_AUDIT_UNAVAILABLE',
+        message: 'No se pudo registrar el acceso a los datos protegidos.',
+      });
+    }
   }
 
   private async assertSubscriberNotBlocked(
@@ -630,9 +654,10 @@ export class ContractsService {
     if (dto.endDate !== undefined) entity.endDate = dto.endDate ?? null;
     if (dto.planSnapshotJson !== undefined) entity.planSnapshotJson = dto.planSnapshotJson;
 
-    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.save(Contract, entity),
-    );
+    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const saved = await qr.manager.save(Contract, entity);
+      return this.projectContractForMutation(saved, qr.manager);
+    });
     const changedFields = Object.keys(dto).filter((field) =>
       AUDITABLE_CONTRACT_UPDATE_FIELDS.has(field),
     );
@@ -701,8 +726,9 @@ export class ContractsService {
         entity.installationStratum = installationStratum;
         entity.vatSnapshot = await this._resolveVatSnapshot(entity);
 
+        const saved = await qr.manager.save(Contract, entity);
         return {
-          updated: await qr.manager.save(Contract, entity),
+          updated: await this.projectContractForMutation(saved, qr.manager),
           previousTreatment,
         };
       },
@@ -792,7 +818,7 @@ export class ContractsService {
           previousTreatment,
           entity.status === ContractStatus.ACTIVE,
         );
-        return saved;
+        return this.projectContractForMutation(saved, qr.manager);
       });
     } catch (error) {
       await this._softDeleteEvidenceAsset(asset.id, schemaName);
@@ -822,7 +848,12 @@ export class ContractsService {
 
         const previousAssetId = entity.stratumEvidenceMediaId;
         const previousTreatment = this._snapshotTreatment(entity.vatSnapshot);
-        if (!previousAssetId) return { updated: entity, previousAssetId: null };
+        if (!previousAssetId) {
+          return {
+            updated: await this.projectContractForMutation(entity, qr.manager),
+            previousAssetId: null,
+          };
+        }
 
         entity.stratumEvidenceMediaId = null;
         if (entity.status === ContractStatus.ACTIVE) {
@@ -836,7 +867,10 @@ export class ContractsService {
           previousTreatment,
           entity.status === ContractStatus.ACTIVE,
         );
-        return { updated: saved, previousAssetId };
+        return {
+          updated: await this.projectContractForMutation(saved, qr.manager),
+          previousAssetId,
+        };
       },
     );
 
@@ -859,10 +893,12 @@ export class ContractsService {
     id: string,
     actorId: string,
     canSeeBlocked = false,
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ',
   ): Promise<{ signedUrl: string; expiresAt: Date }> {
     const { schemaName } = TenantContext.getOrThrow();
     const contract = await this.findOne(id);
-    if (!canSeeBlocked && (await this.isContractSubscriberBlocked(contract.subscriberId))) {
+    const blocked = await this.isContractSubscriberBlocked(contract.subscriberId);
+    if (!canSeeBlocked && blocked) {
       throw new NotFoundException('Soporte del estrato no encontrado para este contrato.');
     }
     this._assertStratumEvidenceStorageIsPrivate();
@@ -872,13 +908,21 @@ export class ContractsService {
     }
 
     const signedUrl = await this.mediaService.getStratumEvidenceSignedUrl(mediaId, schemaName);
-    await this.auditService.log({
+    const auditEntry: AuditEntryInput = {
       action: AuditAction.RECORD_ACCESS,
       entityType: 'STRATUM_EVIDENCE_ACCESS',
       entityId: contract.id,
       userId: actorId,
-      newValue: { resource: 'stratumEvidence' },
-    });
+      newValue: {
+        resource: 'stratumEvidence',
+        ...(blocked && grantedBy ? { privacyMark: 'DATOS_BLOQUEADOS', grantedBy } : {}),
+      },
+    };
+    if (blocked && canSeeBlocked && grantedBy) {
+      await this.logBlockedDataAccess(auditEntry);
+    } else {
+      await this.auditService.log(auditEntry);
+    }
     return signedUrl;
   }
 
@@ -994,9 +1038,10 @@ export class ContractsService {
     const previousStatus = entity.status;
     entity.status = target;
 
-    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.save(Contract, entity),
-    );
+    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const saved = await qr.manager.save(Contract, entity);
+      return this.projectContractForMutation(saved, qr.manager);
+    });
     await this.auditService.log({
       action: AuditAction.UPDATE,
       entityType: 'Contract',

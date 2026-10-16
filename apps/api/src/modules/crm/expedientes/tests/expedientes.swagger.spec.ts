@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ExpedientesController } from '../expedientes.controller';
@@ -9,6 +10,7 @@ import { StatusTransitionService } from '../status-transition.service';
 import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { AuditService } from '../../../audit/audit.service';
+import { ExpedientesBlockedTitularGuard } from '../guards/expedientes-blocked-titular.guard';
 
 type OpenApiRecord = Record<string, unknown>;
 
@@ -24,11 +26,16 @@ describe('ExpedientesController Swagger', () => {
         { provide: CompletenessCalculator, useValue: {} },
         { provide: PipelineRecommendationService, useValue: {} },
         { provide: ExpedienteDetailBootstrapService, useValue: {} },
+        { provide: getDataSourceToken(), useValue: {} },
         {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
         },
-        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+        {
+          provide: AuditService,
+          useValue: { log: jest.fn().mockResolvedValue(undefined), logWithin: jest.fn() },
+        },
+        ExpedientesBlockedTitularGuard,
       ],
     }).compile();
 

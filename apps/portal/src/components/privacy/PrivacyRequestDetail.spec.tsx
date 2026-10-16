@@ -137,7 +137,7 @@ describe('PrivacyRequestDetail · supresión', () => {
     getErasurePreviewMock.mockResolvedValueOnce({
       ...eligiblePreview,
       eligible: false,
-      blockers: ['UNRECONCILED_TITULAR', 'ACTIVE_USER_ACCOUNT'],
+      blockers: ['UNRECONCILED_TITULAR', 'ACTIVE_USER_ACCOUNT', 'TOO_MANY_CANDIDATES'],
     });
     renderDetail();
 
@@ -149,7 +149,13 @@ describe('PrivacyRequestDetail · supresión', () => {
     expect(
       screen.getByText('La persona titular tiene una cuenta de usuario activa.'),
     ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Hay demasiados expedientes para resolver desde la pantalla. Usa el procedimiento de emergencia del Oficial de protección de datos',
+      ),
+    ).toBeVisible();
     expect(screen.queryByText('ACTIVE_USER_ACCOUNT')).not.toBeInTheDocument();
+    expect(screen.queryByText('TOO_MANY_CANDIDATES')).not.toBeInTheDocument();
 
     await user.click(
       screen.getByRole('checkbox', {

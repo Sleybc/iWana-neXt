@@ -1,5 +1,5 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
-import { ConsentChannel } from '@iwana/shared';
+import { ConsentChannel, erasureCategorySchema } from '@iwana/shared';
 
 const uuid: SchemaObject = { type: 'string', format: 'uuid' };
 const timestamp: SchemaObject = { type: 'string', format: 'date-time' };
@@ -221,18 +221,18 @@ export const requesterEvidenceResponseSchema = dataEnvelopeSchema(
 
 const erasureCategory = {
   type: 'string',
-  enum: [
-    'IDENTIFICACION',
-    'CONTACTO',
-    'UBICACION',
-    'FISCAL',
-    'COMERCIAL',
-    'EVIDENCIA_CONSENTIMIENTO',
-    'CUENTA_USUARIO',
-    'EVIDENCIA_DOCUMENTAL',
-    'OPERACION_CAMPO',
-  ],
+  enum: erasureCategorySchema.options,
 } satisfies SchemaObject;
+
+const erasureCounts = objectSchema(
+  Object.fromEntries(
+    erasureCategorySchema.options.map((category) => [
+      category,
+      { type: 'integer', minimum: 0 } satisfies SchemaObject,
+    ]),
+  ),
+  [],
+);
 
 const erasureBlocker = {
   type: 'string',
@@ -242,13 +242,14 @@ const erasureBlocker = {
     'CONSERVATION_DUTY',
     'UNRECONCILED_TITULAR',
     'ACTIVE_USER_ACCOUNT',
+    'TOO_MANY_CANDIDATES',
   ],
 } satisfies SchemaObject;
 
 export const resolveErasureBodySchema = objectSchema(
   {
     confirm: { type: 'boolean', enum: [true] },
-    expedienteIds: { type: 'array', maxItems: 50, items: uuid },
+    expedienteIds: { type: 'array', maxItems: 500, items: uuid },
   },
   ['confirm', 'expedienteIds'],
 );
@@ -271,8 +272,8 @@ export const erasurePreviewResponseSchema = dataEnvelopeSchema(
     {
       eligible: { type: 'boolean' },
       blockers: { type: 'array', items: erasureBlocker },
-      candidateExpedienteIds: { type: 'array', items: uuid },
-      counts: { type: 'object', additionalProperties: { type: 'integer', minimum: 0 } },
+      candidateExpedienteIds: { type: 'array', maxItems: 500, items: uuid },
+      counts: erasureCounts,
       categories: { type: 'array', items: erasureCategory },
     },
     ['eligible', 'blockers', 'candidateExpedienteIds', 'counts', 'categories'],

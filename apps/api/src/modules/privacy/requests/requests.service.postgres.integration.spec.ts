@@ -49,7 +49,10 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     suspendForImpersonation: jest.fn(),
   };
   const erasurePort = { plan: jest.fn(), anonymize: jest.fn() };
-  const auditService = { log: jest.fn().mockResolvedValue(undefined) };
+  const auditService = {
+    log: jest.fn().mockResolvedValue(undefined),
+    logWithin: jest.fn().mockResolvedValue(undefined),
+  };
   const effectivePermissionsService = { getEffectivePermissionsForUser: jest.fn() };
   const mediaService = { findOne: jest.fn(), getPrivacyEvidenceSignedUrl: jest.fn() };
   const configService = {
@@ -260,6 +263,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   beforeEach(() => {
     auditService.log.mockClear();
+    auditService.logWithin.mockReset().mockResolvedValue(undefined);
     impersonationPort.suspendForImpersonation.mockReset();
     impersonationPort.suspendForImpersonation.mockResolvedValue({
       suspendedContractIds: [suspendedContractId],
@@ -319,6 +323,46 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     )) as Array<{ count: number }>;
     expect(persisted[0]?.status).toBe('EN_TRAMITE');
     expect(probe[0]?.count).toBe(0);
+  });
+
+  it('revierte toda la supresión si falla logWithin dentro de la transacción', async () => {
+    const request = await createRequest({ kind: 'CONSULTA', right: 'SUPRIMIR' });
+    await inTenant(() => service.transition(request.request.id, 'complete', {}, actorId));
+    erasurePort.anonymize.mockImplementation(
+      async (_input: unknown, context: { manager: import('typeorm').EntityManager }) => {
+        await context.manager.query(`INSERT INTO privacy_erasure_probe (request_id) VALUES ($1)`, [
+          request.request.id,
+        ]);
+        return { categories: ['IDENTIFICACION'], changedRows: 1 };
+      },
+    );
+    auditService.logWithin.mockRejectedValueOnce(new Error('Fallo sintético de auditoría.'));
+
+    await expect(
+      inTenant(() =>
+        service.transition(
+          request.request.id,
+          'resolve',
+          {
+            responseText: 'Respuesta sintética',
+            responseChannel: 'EMAIL',
+            erasure: { confirm: true, expedienteIds: [] },
+          },
+          actorId,
+        ),
+      ),
+    ).rejects.toThrow('Fallo sintético de auditoría.');
+
+    const persisted = (await dataSource.query(
+      `SELECT status, erased_at FROM "${schemaName}".data_subject_requests WHERE id = $1`,
+      [request.request.id],
+    )) as Array<{ status: string; erased_at: Date | null }>;
+    const probe = (await dataSource.query(
+      `SELECT count(*)::int AS count FROM "${schemaName}".privacy_erasure_probe`,
+    )) as Array<{ count: number }>;
+    expect(persisted).toEqual([{ status: 'EN_TRAMITE', erased_at: null }]);
+    expect(probe[0]?.count).toBe(0);
+    expect(auditService.logWithin).toHaveBeenCalledTimes(1);
   });
 
   it('cierra DATOS_BLOQUEADOS al resolver la supresión tras vencer la retención', async () => {

@@ -75,6 +75,8 @@ export const ERASURE_BLOCKER_LABELS: Record<ErasureBlocker, string> = {
   CONSERVATION_DUTY: 'Existe un deber de conservación vigente para estos datos.',
   UNRECONCILED_TITULAR: 'No fue posible conciliar los datos con una única persona titular.',
   ACTIVE_USER_ACCOUNT: 'La persona titular tiene una cuenta de usuario activa.',
+  TOO_MANY_CANDIDATES:
+    'Hay demasiados expedientes para resolver desde la pantalla. Usa el procedimiento de emergencia del Oficial de protección de datos',
 };
 
 export const IDENTITY_METHOD_OPTIONS = [
