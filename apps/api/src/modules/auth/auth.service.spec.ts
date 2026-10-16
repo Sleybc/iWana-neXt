@@ -38,6 +38,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { MailerService } from '../mailer/mailer.service';
+import { hashEmail } from '../../common/crypto/hash-email.util';
 import {
   ChangePasswordDto,
   EmailVerifyDto,
@@ -186,6 +187,8 @@ function setupRunInTenantSchema(managerOverrides: Record<string, jest.Mock> = {}
 // ---------------------------------------------------------------------------
 
 describe('AuthService', () => {
+  const injectedPiiHashKeyHex = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+  const originalPiiHashKey = process.env.PII_HASH_KEY;
   let service: AuthService;
   let jwtService: jest.Mocked<JwtService>;
   let redis: Record<string, jest.Mock>;
@@ -203,6 +206,7 @@ describe('AuthService', () => {
   };
 
   beforeEach(async () => {
+    process.env.PII_HASH_KEY = injectedPiiHashKeyHex;
     mockRedis = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue('OK'),
@@ -245,6 +249,7 @@ describe('AuthService', () => {
             get: jest.fn().mockImplementation((key: string, def?: unknown) => {
               const map: Record<string, unknown> = {
                 APP_NAME: 'iWana Test',
+                PII_HASH_KEY: injectedPiiHashKeyHex,
               };
               return map[key] ?? def;
             }),
@@ -253,6 +258,9 @@ describe('AuthService', () => {
               // Clave de test con entropía no nula (no es secreto real)
               if (key === 'MFA_ENCRYPTION_KEY') {
                 return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+              }
+              if (key === 'PII_HASH_KEY') {
+                return injectedPiiHashKeyHex;
               }
               throw new Error(`ConfigService.getOrThrow: clave no mapeada en test: ${key}`);
             }),
@@ -291,6 +299,11 @@ describe('AuthService', () => {
   });
 
   afterEach(() => {
+    if (originalPiiHashKey === undefined) {
+      delete process.env.PII_HASH_KEY;
+    } else {
+      process.env.PII_HASH_KEY = originalPiiHashKey;
+    }
     jest.clearAllMocks();
   });
 
@@ -893,6 +906,75 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBe('mock.jwt.token');
       expect(result.mfaRequired).toBeUndefined();
+    });
+
+    it('usa la clave HMAC inyectada si PII_HASH_KEY no está en process.env', async () => {
+      const previousPiiHashKey = process.env.PII_HASH_KEY;
+      delete process.env.PII_HASH_KEY;
+      const email = 'admin-l1@example.test';
+      const expectedEmailHash = hashEmail(email, Buffer.from(injectedPiiHashKeyHex, 'hex'));
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-user-uuid-1',
+        emailHash: expectedEmailHash,
+        passwordHash: '$2b$12$hash',
+        role: 'system_admin',
+        status: UserStatus.ACTIVE,
+        mfaEnabled: false,
+        mfaSecret: null,
+        lastLoginAt: null,
+        passwordResetRequired: false,
+      });
+      platformUserRepo.update.mockResolvedValue({ affected: 1 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      try {
+        await service.loginPlatform({ email, password: 'Passw0rd!' });
+
+        expect(platformUserRepo.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { emailHash: expectedEmailHash } }),
+        );
+      } finally {
+        if (previousPiiHashKey === undefined) {
+          delete process.env.PII_HASH_KEY;
+        } else {
+          process.env.PII_HASH_KEY = previousPiiHashKey;
+        }
+      }
+    });
+
+    it('mantiene el HMAC cuando ConfigService y process.env tienen la misma clave', async () => {
+      const previousPiiHashKey = process.env.PII_HASH_KEY;
+      process.env.PII_HASH_KEY = injectedPiiHashKeyHex;
+      const email = 'admin-l1@example.test';
+      const expectedEmailHash = hashEmail(email, Buffer.from(injectedPiiHashKeyHex, 'hex'));
+      platformUserRepo.findOne.mockResolvedValue({
+        id: 'platform-user-uuid-1',
+        emailHash: expectedEmailHash,
+        passwordHash: '$2b$12$hash',
+        role: 'system_admin',
+        status: UserStatus.ACTIVE,
+        mfaEnabled: false,
+        mfaSecret: null,
+        lastLoginAt: null,
+        passwordResetRequired: false,
+      });
+      platformUserRepo.update.mockResolvedValue({ affected: 1 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      try {
+        expect(hashEmail(email)).toBe(expectedEmailHash);
+        await service.loginPlatform({ email, password: 'Passw0rd!' });
+
+        expect(platformUserRepo.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { emailHash: expectedEmailHash } }),
+        );
+      } finally {
+        if (previousPiiHashKey === undefined) {
+          delete process.env.PII_HASH_KEY;
+        } else {
+          process.env.PII_HASH_KEY = previousPiiHashKey;
+        }
+      }
     });
 
     it('lanza UnauthorizedException cuando el usuario de plataforma no existe', async () => {
@@ -2633,12 +2715,19 @@ describe('AuthService', () => {
           {
             provide: ConfigService,
             useValue: {
-              get: jest
-                .fn()
-                .mockImplementation((key: string, def?: unknown) => configMap[key] ?? def),
+              get: jest.fn().mockImplementation((key: string, def?: unknown) => {
+                if (key === 'PII_HASH_KEY') {
+                  return configMap[key] ?? injectedPiiHashKeyHex;
+                }
+
+                return configMap[key] ?? def;
+              }),
               getOrThrow: jest.fn().mockImplementation((key: string) => {
                 if (key === 'MFA_ENCRYPTION_KEY') {
                   return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+                }
+                if (key === 'PII_HASH_KEY') {
+                  return injectedPiiHashKeyHex;
                 }
                 throw new Error(`ConfigService.getOrThrow: clave no mapeada en test: ${key}`);
               }),

@@ -21,6 +21,7 @@ import {
   looksLikeEncryptedAesGcm,
 } from '../../common/crypto/aes-gcm.util';
 import { hashEmail } from '../../common/crypto/hash-email.util';
+import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { PlatformUserResponseDto } from './dto/platform-user-response.dto';
 import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-bootstrap.dto';
 import {
@@ -43,6 +44,7 @@ type PlatformUserWithProfile = PlatformUser & {
 export class PlatformUsersService {
   private readonly encryptionKey: Buffer;
   private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly piiHashKey: Buffer;
   private readonly logger = new Logger(PlatformUsersService.name);
 
   constructor(
@@ -54,6 +56,7 @@ export class PlatformUsersService {
     const keys = loadAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
+    this.piiHashKey = resolvePiiHashKey(this.configService);
   }
 
   async getProfile(userId: string): Promise<PlatformUserResponseDto> {
@@ -153,7 +156,7 @@ export class PlatformUsersService {
     }
 
     const normalizedEmail = dto.email.toLowerCase().trim();
-    const nextEmailHash = hashEmail(normalizedEmail);
+    const nextEmailHash = hashEmail(normalizedEmail, this.piiHashKey);
 
     if (nextEmailHash === user.emailHash) {
       throw new BadRequestException('Ingresa un correo de acceso diferente al actual.');
@@ -252,7 +255,7 @@ export class PlatformUsersService {
       throw new BadRequestException('Las contraseñas no coinciden.');
     }
 
-    const emailHash = hashEmail(dto.email);
+    const emailHash = hashEmail(dto.email, this.piiHashKey);
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     const user = this.platformUserRepo.create({

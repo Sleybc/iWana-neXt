@@ -10,6 +10,10 @@ import { CreatePlatformUserBootstrapDto } from './dto/create-platform-user-boots
 import { Repository } from 'typeorm';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformUsersService } from './platform-users.service';
+import { hashEmail } from '../../common/crypto/hash-email.util';
+
+const INJECTED_PII_HASH_KEY_HEX =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
@@ -52,6 +56,7 @@ function encryptPlatformEmail(
 }
 
 describe('PlatformUsersService', () => {
+  const originalPiiHashKey = process.env.PII_HASH_KEY;
   let service: PlatformUsersService;
   let repo: jest.Mocked<Repository<PlatformUser>>;
   // S-8: las operaciones de plataforma no tienen TenantContext; su trail es
@@ -59,6 +64,7 @@ describe('PlatformUsersService', () => {
   const platformAuditServiceMock = { log: jest.fn() };
 
   beforeEach(async () => {
+    process.env.PII_HASH_KEY = INJECTED_PII_HASH_KEY_HEX;
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PlatformUsersService,
@@ -85,6 +91,15 @@ describe('PlatformUsersService', () => {
 
     service = module.get<PlatformUsersService>(PlatformUsersService);
     repo = module.get(getRepositoryToken(PlatformUser));
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    if (originalPiiHashKey === undefined) {
+      delete process.env.PII_HASH_KEY;
+    } else {
+      process.env.PII_HASH_KEY = originalPiiHashKey;
+    }
     jest.clearAllMocks();
   });
 
@@ -129,6 +144,83 @@ describe('PlatformUsersService', () => {
       expect(platformAuditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ entityType: 'PlatformUser', action: AuditAction.CREATE }),
       );
+    });
+
+    it('crea el HMAC desde ConfigService sin depender de process.env', async () => {
+      const previousPiiHashKey = process.env.PII_HASH_KEY;
+      delete process.env.PII_HASH_KEY;
+      const dto: CreatePlatformUserBootstrapDto = {
+        email: 'admin@iwana.co',
+        password: 'Admin123!@#',
+        confirmPassword: 'Admin123!@#',
+      };
+      const expectedEmailHash = hashEmail(dto.email, Buffer.from(INJECTED_PII_HASH_KEY_HEX, 'hex'));
+      repo.count.mockResolvedValue(0);
+      repo.create.mockImplementation((data) => data as PlatformUser);
+      repo.save.mockImplementation(async (data) => ({ ...data, id: 'new-uuid' }) as PlatformUser);
+
+      try {
+        await service.createBootstrapUser(dto);
+
+        expect(repo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ emailHash: expectedEmailHash }),
+        );
+      } finally {
+        if (previousPiiHashKey === undefined) {
+          delete process.env.PII_HASH_KEY;
+        } else {
+          process.env.PII_HASH_KEY = previousPiiHashKey;
+        }
+      }
+    });
+
+    it('mantiene el HMAC de bootstrap cuando ConfigService y process.env coinciden', async () => {
+      process.env.PII_HASH_KEY = INJECTED_PII_HASH_KEY_HEX;
+      const dto: CreatePlatformUserBootstrapDto = {
+        email: 'admin@iwana.co',
+        password: 'Admin123!@#',
+        confirmPassword: 'Admin123!@#',
+      };
+      const expectedEmailHash = hashEmail(dto.email, Buffer.from(INJECTED_PII_HASH_KEY_HEX, 'hex'));
+      repo.count.mockResolvedValue(0);
+      repo.create.mockImplementation((data) => data as PlatformUser);
+      repo.save.mockImplementation(async (data) => ({ ...data, id: 'new-uuid' }) as PlatformUser);
+
+      expect(hashEmail(dto.email)).toBe(expectedEmailHash);
+      await service.createBootstrapUser(dto);
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ emailHash: expectedEmailHash }),
+      );
+    });
+
+    it('mantiene el HMAC de bootstrap si ConfigService y process.env coinciden', async () => {
+      const previousPiiHashKey = process.env.PII_HASH_KEY;
+      process.env.PII_HASH_KEY = INJECTED_PII_HASH_KEY_HEX;
+      const dto: CreatePlatformUserBootstrapDto = {
+        email: 'admin@iwana.co',
+        password: 'Admin123!@#',
+        confirmPassword: 'Admin123!@#',
+      };
+      const expectedEmailHash = hashEmail(dto.email, Buffer.from(INJECTED_PII_HASH_KEY_HEX, 'hex'));
+      repo.count.mockResolvedValue(0);
+      repo.create.mockImplementation((data) => data as PlatformUser);
+      repo.save.mockImplementation(async (data) => ({ ...data, id: 'new-uuid' }) as PlatformUser);
+
+      try {
+        expect(hashEmail(dto.email)).toBe(expectedEmailHash);
+        await service.createBootstrapUser(dto);
+
+        expect(repo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ emailHash: expectedEmailHash }),
+        );
+      } finally {
+        if (previousPiiHashKey === undefined) {
+          delete process.env.PII_HASH_KEY;
+        } else {
+          process.env.PII_HASH_KEY = previousPiiHashKey;
+        }
+      }
     });
 
     it('lanza ConflictException si ya existen usuarios', async () => {
@@ -302,6 +394,35 @@ describe('PlatformUsersService', () => {
 
     expect(result.email).toBe('nuevo.admin@iwana.co');
     expect(repo.save).toHaveBeenCalled();
+  });
+
+  it('cambia el email usando la clave HMAC inyectada sin process.env', async () => {
+    const previousPiiHashKey = process.env.PII_HASH_KEY;
+    delete process.env.PII_HASH_KEY;
+    const currentEmail = 'admin@iwana.co';
+    const nextEmail = 'nuevo-admin@example.test';
+    const entity = buildPlatformUser({ email: encryptPlatformEmail(currentEmail) });
+    repo.findOne.mockResolvedValueOnce(entity).mockResolvedValueOnce(null);
+    repo.save.mockImplementation(
+      async (data) => ({ ...entity, ...(data as object) }) as PlatformUser,
+    );
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    const expectedEmailHash = hashEmail(nextEmail, Buffer.from(INJECTED_PII_HASH_KEY_HEX, 'hex'));
+
+    try {
+      await service.changeLoginEmail(entity.id, {
+        email: nextEmail,
+        currentPassword: 'Passw0rd!Segura',
+      });
+
+      expect(repo.findOne).toHaveBeenNthCalledWith(2, { where: { emailHash: expectedEmailHash } });
+    } finally {
+      if (previousPiiHashKey === undefined) {
+        delete process.env.PII_HASH_KEY;
+      } else {
+        process.env.PII_HASH_KEY = previousPiiHashKey;
+      }
+    }
   });
 
   it('changeLoginEmail rechaza el cambio cuando el correo es igual al actual', async () => {

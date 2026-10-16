@@ -7,6 +7,7 @@ import { PlatformUser } from '@iwana/db';
 import { AuditAction, PlatformRole, UserStatus } from '@iwana/shared';
 import { encryptAes256Gcm, loadAesGcmKeyPair } from '../../common/crypto/aes-gcm.util';
 import { hashEmail } from '../../common/crypto/hash-email.util';
+import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { PLATFORM_USER_ENTITY_TYPE } from '../audit/audit.constants';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 
@@ -32,6 +33,7 @@ import { PlatformAuditService } from '../audit/platform-audit.service';
 export class PlatformBootstrapService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PlatformBootstrapService.name);
   private readonly encryptionKey: Buffer;
+  private readonly piiHashKey: Buffer;
 
   constructor(
     private readonly configService: ConfigService,
@@ -40,6 +42,7 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
     private readonly platformAuditService: PlatformAuditService,
   ) {
     this.encryptionKey = loadAesGcmKeyPair(this.configService).activeKey;
+    this.piiHashKey = resolvePiiHashKey(this.configService);
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -50,7 +53,7 @@ export class PlatformBootstrapService implements OnApplicationBootstrap {
       return;
     }
 
-    const emailHash = hashEmail(email);
+    const emailHash = hashEmail(email, this.piiHashKey);
     const existingUser = await this.platformUserRepository.findOne({
       where: { emailHash },
       withDeleted: false,

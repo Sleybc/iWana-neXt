@@ -28,6 +28,7 @@ import {
 } from '../audit/audit.constants';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
+import { resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 import { isAccountLocked, remainingLockoutMinutes } from '../../common/account-lockout.policy';
 import { MailerService } from '../mailer/mailer.service';
 import { emailVerificationTemplate } from '../mailer/templates/email-verification.template';
@@ -110,6 +111,7 @@ export class AuthService {
    */
   private readonly mfaEncryptionKey: Buffer;
   private readonly mfaEncryptionKeyPrevious: Buffer | null;
+  private readonly piiHashKey: Buffer;
 
   /**
    * TTL efectivo del access token en segundos (JWT_ACCESS_EXPIRATION, default 15 min).
@@ -151,6 +153,7 @@ export class AuthService {
     const keys = loadAesGcmKeyPair(this.configService);
     this.mfaEncryptionKey = keys.activeKey;
     this.mfaEncryptionKeyPrevious = keys.previousKey;
+    this.piiHashKey = resolvePiiHashKey(this.configService);
     this.accessTokenTtlSeconds = resolveAccessTokenTtlSeconds(this.configService);
     this.refreshTokenTtlSeconds = resolveRefreshTokenTtlSeconds(this.configService);
   }
@@ -189,7 +192,7 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<AuthResponse & { refreshToken?: string }> {
-    const emailHash = hashEmail(dto.email);
+    const emailHash = hashEmail(dto.email, this.piiHashKey);
 
     const user = await this.platformUserRepository.findOne({
       where: { emailHash },
@@ -351,7 +354,7 @@ export class AuthService {
     const { schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const emailHash = hashEmail(dto.email);
+      const emailHash = hashEmail(dto.email, this.piiHashKey);
 
       // Buscar usuario por hash para evitar busqueda por PII en texto plano
       const user = await qr.manager.findOne(User, {
@@ -905,7 +908,7 @@ export class AuthService {
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    const emailHash = hashEmail(dto.email);
+    const emailHash = hashEmail(dto.email, this.piiHashKey);
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const user = await qr.manager.findOne(User, { where: { emailHash } });
@@ -1229,7 +1232,7 @@ export class AuthService {
   async resendVerificationEmail(dto: ResendVerificationDto, schemaName: string): Promise<void> {
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // Buscar por hash del email (nunca por email plano — PII protegida)
-      const emailHash = hashEmail(dto.email);
+      const emailHash = hashEmail(dto.email, this.piiHashKey);
       const user = await qr.manager.findOne(User, {
         where: { emailHash, emailVerified: false },
       });
