@@ -34,7 +34,7 @@ import { hmacPii, resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  loadAesGcmKeyPair,
+  loadPiiAesGcmKeyPair,
 } from '../../../common/crypto/aes-gcm.util';
 import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
@@ -182,7 +182,7 @@ function toPublicRequest(row: DbRow): RequestPublicDto {
 @Injectable()
 export class PrivacyRequestsService {
   private readonly encryptionKey: Buffer;
-  private readonly previousEncryptionKey: Buffer | null;
+  private readonly previousEncryptionKeys: Buffer[];
   private readonly hashKey: Buffer;
 
   constructor(
@@ -194,9 +194,9 @@ export class PrivacyRequestsService {
     private readonly mediaService: MediaService,
     private readonly effectivePermissionsService?: EffectivePermissionsService,
   ) {
-    const keys = loadAesGcmKeyPair(configService);
+    const keys = loadPiiAesGcmKeyPair(configService);
     this.encryptionKey = keys.activeKey;
-    this.previousEncryptionKey = keys.previousKey;
+    this.previousEncryptionKeys = keys.previousKey;
     this.hashKey = resolvePiiHashKey(configService);
   }
 
@@ -947,7 +947,7 @@ export class PrivacyRequestsService {
     if (typeof value !== 'string') {
       throw new Error('La base de datos devolvió un campo cifrado inválido.');
     }
-    return decryptAes256Gcm(value, this.encryptionKey, this.previousEncryptionKey);
+    return decryptAes256Gcm(value, this.encryptionKey, this.previousEncryptionKeys);
   }
 
   private async audit(

@@ -16,7 +16,7 @@ import { ExpedienteRecord } from '../expedientes/entities/expediente-record.enti
 import { SubscribersService } from './subscribers.service';
 import { SubscriberConvertedEvent } from './events/subscriber-converted.event';
 import { AuditService } from '../../audit/audit.service';
-import { decryptAes256Gcm, loadAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
+import { decryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
 import { parseExpedienteNit } from '../../../common/crypto/nit-verification-digit.util';
 
@@ -37,7 +37,7 @@ import { parseExpedienteNit } from '../../../common/crypto/nit-verification-digi
 @Injectable()
 export class SubscriberCreationService {
   private readonly encryptionKey: Buffer;
-  private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly encryptionKeyPrevious: Buffer[];
   private readonly logger = new Logger(SubscriberCreationService.name);
 
   constructor(
@@ -47,7 +47,7 @@ export class SubscriberCreationService {
     private readonly eventEmitter: EventEmitter2,
     private readonly auditService: AuditService,
   ) {
-    const keys = loadAesGcmKeyPair(this.configService);
+    const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
   }

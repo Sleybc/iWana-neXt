@@ -146,6 +146,11 @@ services:
       # SEC-P1: sin PII_HASH_KEY el bootstrap Joi falla en producción (fail-fast).
       # Debe ser distinta por entorno (A1/A2) y nunca quedar en git ni en dumps.
       PII_HASH_KEY: ${PII_HASH_KEY:?PII_HASH_KEY is required}
+      # ADR-058 fase 2: PII usa una clave distinta de MFA; conservar lectura
+      # legada hasta que todos los tenants hayan pasado verify de K2.
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY is required}
+      PII_ENCRYPTION_KEY_PREVIOUS: ${PII_ENCRYPTION_KEY_PREVIOUS-}
+      PII_DECRYPT_LEGACY_MFA: ${PII_DECRYPT_LEGACY_MFA:-true}
       # Producción termina TLS 1.3 en nginx; las cookies de sesión deben ser
       # Secure y no se permite el default de desarrollo.
       COOKIE_SECURE: ${COOKIE_SECURE:?COOKIE_SECURE is required for TLS 1.3}
@@ -418,6 +423,11 @@ services:
       # (se inyecta por env-file o `docker compose run -e`; el CLI avisa si queda
       # activa sin contracts pendientes).
       PII_HASH_KEY: ${PII_HASH_KEY:?PII_HASH_KEY is required}
+      # El migrator ejecuta backfills y K2 con el mismo par PII/MFA y la misma
+      # bandera legada aprobada que recibe la API.
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY is required}
+      PII_ENCRYPTION_KEY_PREVIOUS: ${PII_ENCRYPTION_KEY_PREVIOUS-}
+      PII_DECRYPT_LEGACY_MFA: ${PII_DECRYPT_LEGACY_MFA:-true}
       IWANA_APPLY_PII_CONTRACT: ${IWANA_APPLY_PII_CONTRACT-}
     depends_on:
       postgres:

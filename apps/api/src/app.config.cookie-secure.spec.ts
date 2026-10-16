@@ -28,6 +28,7 @@ function buildProductionEnv(): Record<string, string> {
     JWT_PUBLIC_KEY: 'test-only-public-key-material',
     EXECUTION_ORDER_IDEMPOTENCY_SECRET: randomBytes(32).toString('hex'),
     MFA_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
+    PII_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
     PII_HASH_KEY: randomBytes(32).toString('hex'),
     STORAGE_DRIVER: 'minio',
     S3_ACCESS_KEY_ID: 'test-only-access-key-id',

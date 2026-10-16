@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  loadAesGcmKeyPair,
+  loadPiiAesGcmKeyPair,
 } from '../../common/crypto/aes-gcm.util';
 import { hmacPii, resolvePiiHashKey } from '../../common/crypto/pii-hash-key.util';
 
@@ -16,7 +16,7 @@ export interface PartyPiiCrypto {
 }
 
 export function createPartyPiiCrypto(config: ConfigService): PartyPiiCrypto {
-  const { activeKey, previousKey } = loadAesGcmKeyPair(config);
+  const { activeKey, previousKey } = loadPiiAesGcmKeyPair(config);
   const hashKey = resolvePiiHashKey(config);
 
   return {

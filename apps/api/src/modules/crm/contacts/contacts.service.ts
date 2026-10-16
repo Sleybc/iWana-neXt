@@ -3,7 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { ConfigService } from '@nestjs/config';
-import { encryptAes256Gcm, loadAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
+import { encryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { SubscriberContact } from './entities/subscriber-contact.entity';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
@@ -16,7 +16,7 @@ export class ContactsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
   ) {
-    this.encryptionKey = loadAesGcmKeyPair(this.configService).activeKey;
+    this.encryptionKey = loadPiiAesGcmKeyPair(this.configService).activeKey;
   }
 
   async create(subscriberId: string, dto: CreateContactDto): Promise<SubscriberContact> {

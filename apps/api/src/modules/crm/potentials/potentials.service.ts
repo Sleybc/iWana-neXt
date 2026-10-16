@@ -20,7 +20,7 @@ import { AuditService } from '../../audit/audit.service';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  loadAesGcmKeyPair,
+  loadPiiAesGcmKeyPair,
 } from '../../../common/crypto/aes-gcm.util';
 import { PotentialLead } from './entities/potential-lead.entity';
 import { ProspectCase } from '../prospects/entities/prospect-case.entity';
@@ -35,7 +35,7 @@ import { IPrivacyLegalTextReadPort } from '../../privacy/ports/privacy-legal-tex
 @Injectable()
 export class PotentialsService {
   private readonly encryptionKey: Buffer;
-  private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly encryptionKeyPrevious: Buffer[];
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -47,7 +47,7 @@ export class PotentialsService {
     @Inject(IPrivacyLegalTextReadPort)
     private readonly privacyLegalTextReadPort?: IPrivacyLegalTextReadPort,
   ) {
-    const keys = loadAesGcmKeyPair(this.configService);
+    const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
   }

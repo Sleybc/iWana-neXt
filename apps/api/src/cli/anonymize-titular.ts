@@ -10,7 +10,7 @@ import type { DataSource, QueryRunner } from 'typeorm';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  loadAesGcmKeyPair,
+  loadPiiAesGcmKeyPair,
 } from '../common/crypto/aes-gcm.util';
 import { hmacPii, resolvePiiHashKey } from '../common/crypto/pii-hash-key.util';
 
@@ -28,7 +28,7 @@ export interface AnonymizeTitularFlags {
 export interface AnonymizeTitularKeys {
   hashKey: Buffer;
   activeEncryptionKey: Buffer;
-  previousEncryptionKey: Buffer | null;
+  previousEncryptionKey: Buffer | readonly Buffer[] | null;
 }
 
 export interface AnonymizeTitularReport {
@@ -1217,7 +1217,7 @@ function ensureCliEnvLoaded(): void {
 }
 
 function loadKeys(config: ConfigService): AnonymizeTitularKeys {
-  const { activeKey, previousKey } = loadAesGcmKeyPair(config);
+  const { activeKey, previousKey } = loadPiiAesGcmKeyPair(config);
   return {
     hashKey: resolvePiiHashKey(config),
     activeEncryptionKey: activeKey,

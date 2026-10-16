@@ -11,7 +11,12 @@ const HASH_KEY_HEX = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876
 function makeConfig(previousKey?: string): ConfigService {
   return {
     getOrThrow: (key: string) => (key === 'PII_HASH_KEY' ? HASH_KEY_HEX : ACTIVE_KEY_HEX),
-    get: (key: string) => (key === 'MFA_ENCRYPTION_KEY_PREVIOUS' ? previousKey : undefined),
+    get: (key: string) => {
+      if (key === 'PII_ENCRYPTION_KEY') return ACTIVE_KEY_HEX;
+      if (key === 'PII_ENCRYPTION_KEY_PREVIOUS') return previousKey;
+      if (key === 'PII_DECRYPT_LEGACY_MFA') return false;
+      return undefined;
+    },
   } as unknown as ConfigService;
 }
 

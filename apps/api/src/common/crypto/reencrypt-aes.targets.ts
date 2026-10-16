@@ -169,38 +169,6 @@ export const TENANT_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
     idColumn: 'id',
     requireCiphertextShape: true,
   },
-  {
-    entityType: 'subscriberContact.emailEncrypted',
-    scope: 'tenant',
-    table: 'subscriber_contacts',
-    column: 'email_encrypted',
-    idColumn: 'id',
-    requireCiphertextShape: true,
-  },
-  {
-    entityType: 'subscriberContact.phoneEncrypted',
-    scope: 'tenant',
-    table: 'subscriber_contacts',
-    column: 'phone_encrypted',
-    idColumn: 'id',
-    requireCiphertextShape: true,
-  },
-  {
-    entityType: 'potentialLead.emailEncrypted',
-    scope: 'tenant',
-    table: 'potential_leads',
-    column: 'email_encrypted',
-    idColumn: 'id',
-    requireCiphertextShape: true,
-  },
-  {
-    entityType: 'potentialLead.phoneEncrypted',
-    scope: 'tenant',
-    table: 'potential_leads',
-    column: 'phone_encrypted',
-    idColumn: 'id',
-    requireCiphertextShape: true,
-  },
 ] as const;
 
 /**

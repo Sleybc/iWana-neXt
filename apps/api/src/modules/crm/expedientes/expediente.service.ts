@@ -44,7 +44,7 @@ import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  loadAesGcmKeyPair,
+  loadPiiAesGcmKeyPair,
   looksLikeEncryptedAesGcm,
 } from '../../../common/crypto/aes-gcm.util';
 import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
@@ -261,7 +261,7 @@ const DOCUMENT_SUPPORT_PERSON_TYPE_ALIASES: Readonly<
 @Injectable()
 export class ExpedienteService {
   private readonly encryptionKey: Buffer;
-  private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly encryptionKeyPrevious: Buffer[];
   private readonly piiHashKey: Buffer;
   private readonly documentSupportDir: string;
   private readonly logger = new Logger(ExpedienteService.name);
@@ -281,7 +281,7 @@ export class ExpedienteService {
     @Inject(IPrivacyMarksReadPort)
     private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
   ) {
-    const keys = loadAesGcmKeyPair(this.configService);
+    const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
     this.piiHashKey = resolvePiiHashKey(this.configService);

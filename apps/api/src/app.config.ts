@@ -6,6 +6,8 @@ import { SafeTypeOrmLogger } from '@iwana/db';
 import {
   mfaEncryptionKeyJoiSchema,
   mfaEncryptionKeyPreviousJoiSchema,
+  piiEncryptionKeyJoiSchema,
+  piiEncryptionKeyPreviousJoiSchema,
 } from './common/crypto/aes-gcm.util';
 import { piiHashKeyJoiSchema } from './common/crypto/pii-hash-key.util';
 import {
@@ -253,6 +255,18 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // Generar con: openssl rand -hex 32 — nunca usar placeholders de ceros.
     MFA_ENCRYPTION_KEY: mfaEncryptionKeyJoiSchema,
     MFA_ENCRYPTION_KEY_PREVIOUS: mfaEncryptionKeyPreviousJoiSchema,
+    // Clave independiente para PII (ADR-058 fase 2). En desarrollo se omite
+    // para permitir el fallback controlado del cargador; producción falla cerrado.
+    PII_ENCRYPTION_KEY: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: piiEncryptionKeyJoiSchema.required().invalid(Joi.ref('MFA_ENCRYPTION_KEY')).messages({
+        'any.required': 'PII_ENCRYPTION_KEY es obligatoria con NODE_ENV=production.',
+        'any.invalid': 'PII_ENCRYPTION_KEY debe ser distinta de MFA_ENCRYPTION_KEY en producción.',
+      }),
+      otherwise: piiEncryptionKeyJoiSchema.allow(''),
+    }),
+    PII_ENCRYPTION_KEY_PREVIOUS: piiEncryptionKeyPreviousJoiSchema,
+    PII_DECRYPT_LEGACY_MFA: Joi.boolean().default(true),
     // Clave HMAC-SHA-256 para búsquedas por PII (SEC-P1 / ADR-078 D3).
     // Independiente de MFA_ENCRYPTION_KEY — no derivar por HKDF (D-A).
     PII_HASH_KEY: piiHashKeyJoiSchema,

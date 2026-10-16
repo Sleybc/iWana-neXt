@@ -10,7 +10,23 @@
  * Las claves usadas son constantes de prueba sin valor: patrones hex repetidos,
  * nunca material criptográfico real ni proveniente del entorno.
  */
-import { parseArgs, resolveMode, loadKeys, CliFlags } from './reencrypt-aes';
+import {
+  parseArgs,
+  resolveMode,
+  loadKeys,
+  CliFlags,
+  getMfaTenantTargets,
+  validateCliFlags,
+  assertRegisteredMfaTenantSchema,
+  formatStartupLog,
+  logSafeFatalError,
+} from './reencrypt-aes';
+import {
+  PUBLIC_ENCRYPTED_TARGETS,
+  TENANT_ENCRYPTED_TARGETS,
+} from '../common/crypto/reencrypt-aes.targets';
+import { PII_ENCRYPTED_TARGETS } from './reencrypt-aes.pii';
+import { assertSafeDisposableIntegrationTarget } from './reencrypt-aes.integration-safety';
 
 /** 64 hex con entropía suficiente para no disparar el guard de clave débil. */
 const KEY_A = '0123456789abcdef'.repeat(4);
@@ -23,6 +39,8 @@ describe('CLI reencrypt-aes — parseArgs', () => {
     expect(parseArgs([])).toEqual({
       apply: false,
       verifyActiveOnly: false,
+      mfaToPii: false,
+      verifyPiiOnly: false,
       pageSize: 200,
       help: false,
     });
@@ -38,6 +56,14 @@ describe('CLI reencrypt-aes — parseArgs', () => {
 
   it('--verify-active-only se reconoce', () => {
     expect(parseArgs(['--verify-active-only']).verifyActiveOnly).toBe(true);
+  });
+
+  it('--mfa-to-pii selecciona el recifrado de objetivos PII', () => {
+    expect(parseArgs(['--mfa-to-pii']).mfaToPii).toBe(true);
+  });
+
+  it('--verify-pii-only selecciona la verificación PII activa', () => {
+    expect(parseArgs(['--verify-pii-only']).verifyPiiOnly).toBe(true);
   });
 
   it('--schema= recorta espacios alrededor del nombre', () => {
@@ -57,9 +83,11 @@ describe('CLI reencrypt-aes — parseArgs', () => {
 
   it('una flag desconocida fuerza la ayuda en vez de continuar a ciegas', () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const sentinel = '--unknown=synthetic-sensitive-sentinel';
 
-    expect(parseArgs(['--borrar-todo']).help).toBe(true);
+    expect(parseArgs([sentinel]).help).toBe(true);
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('Flag desconocida'));
+    expect(spy.mock.calls.flat().join('\n')).not.toContain(sentinel);
 
     spy.mockRestore();
   });
@@ -68,6 +96,8 @@ describe('CLI reencrypt-aes — parseArgs', () => {
     expect(parseArgs(['--apply', '--schema=tenant_x', '--page-size=10'])).toEqual({
       apply: true,
       verifyActiveOnly: false,
+      mfaToPii: false,
+      verifyPiiOnly: false,
       schema: 'tenant_x',
       pageSize: 10,
       help: false,
@@ -75,10 +105,139 @@ describe('CLI reencrypt-aes — parseArgs', () => {
   });
 });
 
+describe('CLI reencrypt-aes — validateCliFlags', () => {
+  it.each(['--mfa-to-pii', '--verify-pii-only'])(
+    '%s se rechaza sin un schema tenant explícito',
+    (flag) => {
+      expect(validateCliFlags(parseArgs([flag]))).toBe(
+        'Los modos PII requieren --schema=<tenant>.',
+      );
+    },
+  );
+
+  it.each(['--mfa-to-pii', '--verify-pii-only'])('%s acepta un schema tenant explícito', (flag) => {
+    expect(validateCliFlags(parseArgs([flag, '--schema=tenant_demo']))).toBeNull();
+  });
+
+  it('rechaza un schema vacío o el schema público en los modos PII', () => {
+    expect(validateCliFlags(parseArgs(['--mfa-to-pii', '--schema=  ']))).toBe(
+      'Los modos PII requieren --schema=<tenant>.',
+    );
+    expect(validateCliFlags(parseArgs(['--verify-pii-only', '--schema=public']))).toBe(
+      'Los modos PII solo aceptan un schema tenant.',
+    );
+    expect(validateCliFlags(parseArgs(['--mfa-to-pii', '--schema=tenant_demo;DROP_SCHEMA']))).toBe(
+      'Los modos PII solo aceptan un schema tenant.',
+    );
+  });
+
+  it('mantiene los modos MFA existentes sin schema obligatorio', () => {
+    expect(validateCliFlags(parseArgs([]))).toBeNull();
+    expect(validateCliFlags(parseArgs(['--apply']))).toBeNull();
+    expect(validateCliFlags(parseArgs(['--verify-active-only']))).toBeNull();
+  });
+
+  it('permite public en el ciclo MFA existente y rechaza schemas inválidos sin reflejarlos', () => {
+    const sentinel = 'synthetic-invalid-schema-sentinel';
+    const invalidSchemaError = validateCliFlags(parseArgs([`--schema=${sentinel}`]));
+
+    expect(validateCliFlags(parseArgs(['--schema=public']))).toBeNull();
+    expect(invalidSchemaError).toBe('El valor de --schema no es válido.');
+    expect(invalidSchemaError).not.toContain(sentinel);
+    expect(validateCliFlags(parseArgs(['--schema=  ']))).toBe('El valor de --schema no es válido.');
+  });
+
+  it('no refleja en log ni error un schema explícito sintético no registrado', () => {
+    const sentinel = 'tenant_synthetic_unregistered';
+    const log = formatStartupLog('dry-run', sentinel);
+    let thrown: unknown;
+    try {
+      assertRegisteredMfaTenantSchema(sentinel, ['tenant_registered']);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(log).toContain('schemaFilter=explicit');
+    expect(log).not.toContain(sentinel);
+    expect(formatStartupLog('dry-run')).toContain('schemaFilter=all');
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toBe('Schema tenant no registrado o no ACTIVE.');
+    expect(message).not.toContain(sentinel);
+  });
+});
+
+describe('CLI reencrypt-aes — errores fatales', () => {
+  it('no incluye en la salida el texto crudo del driver o constraint', () => {
+    const sentinel = 'synthetic-driver-error-sentinel';
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    logSafeFatalError(new Error(sentinel));
+
+    const output = spy.mock.calls.flat().join('\n');
+    expect(output).toBe('[REENCRYPT] Fatal: fallo inesperado; operación abortada.');
+    expect(output).not.toContain(sentinel);
+    spy.mockRestore();
+  });
+});
+
+describe('CLI reencrypt-aes — límites tenant MFA/PII', () => {
+  it('excluye del recifrado MFA los objetivos CRM migrados a PII y conserva MFA tenant', () => {
+    const piiColumns = new Set(
+      PII_ENCRYPTED_TARGETS.map(({ table, column }) => `${table}.${column}`),
+    );
+    const filteredTargets = getMfaTenantTargets();
+    const filteredColumns = filteredTargets.map(({ table, column }) => `${table}.${column}`);
+    const overlaps = TENANT_ENCRYPTED_TARGETS.filter(({ table, column }) =>
+      piiColumns.has(`${table}.${column}`),
+    );
+
+    expect(filteredTargets).toHaveLength(TENANT_ENCRYPTED_TARGETS.length - overlaps.length);
+    expect(filteredColumns.every((target) => !piiColumns.has(target))).toBe(true);
+    expect(filteredColumns).toContain('users.mfa_secret');
+    expect(filteredColumns).toContain('users.email');
+    expect(PUBLIC_ENCRYPTED_TARGETS.map(({ table, column }) => `${table}.${column}`)).toContain(
+      'platform_users.mfa_secret',
+    );
+  });
+
+  it.each(['127.0.0.1', 'localhost', '::1'])(
+    'acepta la dirección loopback %s para la integración desechable',
+    (databaseHost) => {
+      expect(() =>
+        assertSafeDisposableIntegrationTarget({
+          enabled: true,
+          databaseName: 'iwana_it_g7_synthetic',
+          databaseHost,
+        }),
+      ).not.toThrow();
+    },
+  );
+
+  it('usa loopback por defecto y rechaza un host externo antes de conectar', () => {
+    expect(() =>
+      assertSafeDisposableIntegrationTarget({
+        enabled: true,
+        databaseName: 'iwana_it_g7_synthetic',
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      assertSafeDisposableIntegrationTarget({
+        enabled: true,
+        databaseName: 'iwana_it_g7_synthetic',
+        databaseHost: 'external.example.invalid',
+      }),
+    ).toThrow('La integración K2 solo acepta un DB_HOST loopback.');
+  });
+});
+
 describe('CLI reencrypt-aes — resolveMode', () => {
   const base: CliFlags = {
     apply: false,
     verifyActiveOnly: false,
+    mfaToPii: false,
+    verifyPiiOnly: false,
     pageSize: 200,
     help: false,
   };
@@ -121,8 +280,28 @@ describe('CLI reencrypt-aes — loadKeys', () => {
     expect(() => loadKeys()).toThrow(/MFA_ENCRYPTION_KEY ausente, invalida o debil/);
   });
 
+  it('remite al procedimiento seguro del runbook sin recomendar una orden que imprima la clave', () => {
+    let thrown: unknown;
+    try {
+      loadKeys();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toContain('RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md §1');
+    expect(message).not.toMatch(/openssl|rand|stdout/iu);
+  });
+
   it('falla si la clave activa no mide 64 hex', () => {
     process.env['MFA_ENCRYPTION_KEY'] = 'abcd';
+
+    expect(() => loadKeys()).toThrow(/MFA_ENCRYPTION_KEY ausente, invalida o debil/);
+  });
+
+  it('falla si una clave activa de 64 caracteres contiene un valor no hexadecimal', () => {
+    process.env['MFA_ENCRYPTION_KEY'] = `${'a'.repeat(63)}g`;
 
     expect(() => loadKeys()).toThrow(/MFA_ENCRYPTION_KEY ausente, invalida o debil/);
   });

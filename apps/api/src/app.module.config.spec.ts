@@ -3,6 +3,71 @@ import { ConfigService } from '@nestjs/config';
 import { createApiTypeOrmOptions, createAppConfigurationSchema } from './app.config';
 
 describe('AppModule configuration', () => {
+  const validAesKey = '0123456789abcdef'.repeat(4);
+
+  function productionEnvironment(overrides: Record<string, string> = {}) {
+    return {
+      NODE_ENV: 'production',
+      DB_NAME: 'iwana_test',
+      DB_USER: 'iwana_app',
+      DB_PASSWORD: 'synthetic-test-password',
+      REDIS_PASSWORD: 'synthetic-test-redis-password',
+      INTERNAL_QUEUE_SIGNING_KEY: randomBytes(32).toString('base64'),
+      JWT_PRIVATE_KEY: 'synthetic-test-private-key',
+      JWT_PUBLIC_KEY: 'synthetic-test-public-key',
+      EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
+      MFA_ENCRYPTION_KEY: validAesKey,
+      PII_HASH_KEY: 'fedcba9876543210'.repeat(4),
+      STORAGE_DRIVER: 'minio',
+      S3_ACCESS_KEY_ID: 'synthetic-user',
+      S3_SECRET_ACCESS_KEY: 'synthetic-secret',
+      TYPESENSE_HOST: 'typesense',
+      TYPESENSE_API_KEY: 'synthetic-key',
+      CORS_ORIGIN: 'https://app.example.test',
+      FRONTEND_URL: 'https://app.example.test',
+      ...overrides,
+    };
+  }
+
+  it('falla cerrado en producción si falta PII_ENCRYPTION_KEY', () => {
+    const validation = createAppConfigurationSchema().validate(productionEnvironment(), {
+      abortEarly: false,
+    });
+
+    expect(validation.error?.details.map(({ path }) => path.join('.'))).toContain(
+      'PII_ENCRYPTION_KEY',
+    );
+  });
+
+  it('rechaza en producción PII_ENCRYPTION_KEY igual a MFA_ENCRYPTION_KEY', () => {
+    const validation = createAppConfigurationSchema().validate(
+      productionEnvironment({ PII_ENCRYPTION_KEY: validAesKey }),
+      { abortEarly: false },
+    );
+
+    expect(validation.error?.details.map(({ path }) => path.join('.'))).toContain(
+      'PII_ENCRYPTION_KEY',
+    );
+  });
+
+  it('permite fallback PII solo fuera de producción y habilita lectura legado por defecto', () => {
+    const validation = createAppConfigurationSchema().validate({
+      NODE_ENV: 'development',
+      DB_NAME: 'iwana_test',
+      DB_USER: 'iwana_app',
+      DB_PASSWORD: '',
+      REDIS_PASSWORD: 'synthetic-test-redis-password',
+      JWT_PRIVATE_KEY: 'synthetic-test-private-key',
+      JWT_PUBLIC_KEY: 'synthetic-test-public-key',
+      EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
+      MFA_ENCRYPTION_KEY: validAesKey,
+      PII_HASH_KEY: 'fedcba9876543210'.repeat(4),
+    });
+
+    expect(validation.error).toBeUndefined();
+    expect(validation.value.PII_DECRYPT_LEGACY_MFA).toBe(true);
+  });
+
   it.each([
     ['REDIS_PASSWORD', {}],
     ['REDIS_PASSWORD', { REDIS_PASSWORD: '   ' }],
@@ -109,6 +174,7 @@ describe('AppModule configuration', () => {
         JWT_PUBLIC_KEY: 'not-a-real-key',
         EXECUTION_ORDER_IDEMPOTENCY_SECRET: 'x'.repeat(32),
         MFA_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+        PII_ENCRYPTION_KEY: 'fedcba9876543210'.repeat(4),
         PII_HASH_KEY: 'fedcba9876543210'.repeat(4),
         STORAGE_DRIVER: 'minio',
         S3_ACCESS_KEY_ID: 'not-a-secret',

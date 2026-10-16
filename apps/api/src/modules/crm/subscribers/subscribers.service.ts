@@ -47,7 +47,7 @@ import { AuditService } from '../../audit/audit.service';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  loadAesGcmKeyPair,
+  loadPiiAesGcmKeyPair,
 } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { ConsentRecord } from '../expedientes/entities/consent-record-v2.entity';
@@ -146,7 +146,7 @@ function escapeLikePattern(value: string): string {
 @Injectable()
 export class SubscribersService {
   private readonly encryptionKey: Buffer;
-  private readonly encryptionKeyPrevious: Buffer | null;
+  private readonly encryptionKeyPrevious: Buffer[];
   private readonly piiHashKey: Buffer;
   private readonly logger = new Logger(SubscribersService.name);
 
@@ -173,7 +173,7 @@ export class SubscribersService {
     @Inject(IPrivacyRequestsReadPort)
     private readonly privacyRequestsReadPort?: IPrivacyRequestsReadPort,
   ) {
-    const keys = loadAesGcmKeyPair(this.configService);
+    const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
     this.piiHashKey = resolvePiiHashKey(this.configService);

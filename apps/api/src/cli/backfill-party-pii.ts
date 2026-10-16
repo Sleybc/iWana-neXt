@@ -5,6 +5,7 @@
  */
 
 import { resolve } from 'node:path';
+import { ConfigService } from '@nestjs/config';
 import {
   AppDataSource,
   hmacEmail,
@@ -19,15 +20,14 @@ import type { DataSource, QueryRunner } from 'typeorm';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
-  isWeakMfaEncryptionKeyHex,
-  parseEncryptionKeyHex,
+  loadPiiAesGcmKeyPair,
 } from '../common/crypto/aes-gcm.util';
 
 export type BackfillMode = 'dry-run' | 'apply';
 
 export interface PartyPiiBackfillKeys {
   activeEncryptionKey: Buffer;
-  previousEncryptionKey: Buffer | null;
+  previousEncryptionKey: Buffer | readonly Buffer[] | null;
   hashKey: Buffer;
 }
 
@@ -470,17 +470,10 @@ function ensureCliEnvLoaded(): void {
 }
 
 function loadKeys(): PartyPiiBackfillKeys {
-  const activeHex = process.env['MFA_ENCRYPTION_KEY']?.trim();
-  if (!activeHex || !/^[0-9a-fA-F]{64}$/u.test(activeHex) || isWeakMfaEncryptionKeyHex(activeHex)) {
-    throw new Error('MFA_ENCRYPTION_KEY ausente, inválida o débil.');
-  }
-  const previousHex = process.env['MFA_ENCRYPTION_KEY_PREVIOUS']?.trim();
-  if (previousHex && !/^[0-9a-fA-F]{64}$/u.test(previousHex)) {
-    throw new Error('MFA_ENCRYPTION_KEY_PREVIOUS debe tener 64 caracteres hexadecimales.');
-  }
+  const { activeKey, previousKey } = loadPiiAesGcmKeyPair(new ConfigService());
   return {
-    activeEncryptionKey: parseEncryptionKeyHex(activeHex),
-    previousEncryptionKey: previousHex ? parseEncryptionKeyHex(previousHex) : null,
+    activeEncryptionKey: activeKey,
+    previousEncryptionKey: previousKey,
     hashKey: loadPiiHashKeyFromEnv(),
   };
 }
