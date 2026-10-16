@@ -77,9 +77,13 @@ jest.mock('@/components/access-control/permissions-context', () => ({
 }));
 
 jest.mock('@/components/crm/expedientes/ExpedienteHeader', () => ({
-  ExpedienteHeader: ({ fullName }: { fullName?: string }) => (
-    <div>{fullName ?? 'Header expediente'}</div>
-  ),
+  ExpedienteHeader: ({
+    fullName,
+    privacyRestricted,
+  }: {
+    fullName?: string;
+    privacyRestricted?: boolean;
+  }) => <div>{privacyRestricted ? null : (fullName ?? 'Header expediente')}</div>,
 }));
 
 jest.mock('@/components/crm/expedientes/expediente-detail-cache', () => ({
@@ -234,6 +238,10 @@ function buildExpediente(overrides: Record<string, unknown> = {}) {
     id: 'exp-1',
     tenantId: 'tenant-1',
     status: 'NUEVO_POTENCIAL',
+    privacyRestricted: false,
+    privacyMarks: [],
+    anonymizedAt: null,
+    anonymizedRequestId: null,
     previousStatus: null,
     assignedTo: null,
     dataConsentRevoked: false,
@@ -342,6 +350,10 @@ function buildExpedienteBootstrapResponse(
       expediente: {
         id: 'exp-1',
         status: 'NUEVO_POTENCIAL',
+        privacyRestricted: false,
+        privacyMarks: [],
+        anonymizedAt: null,
+        anonymizedRequestId: null,
         previousStatus: null,
         statusChangedAt: '2026-06-01T10:00:00.000Z',
         createdAt: '2026-06-01T10:00:00.000Z',
@@ -553,7 +565,8 @@ describe('ExpedienteDetailPage', () => {
       expect(
         screen.queryByRole('button', { name: 'Reintentar conversión' }),
       ).not.toBeInTheDocument();
-      expect(hasPermission).not.toHaveBeenCalled();
+      expect(hasPermission).toHaveBeenCalledWith(AccessPermissionKey.PRIVACY_READ);
+      expect(hasPermission).not.toHaveBeenCalledWith(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE);
       expect(crmApiMock.retryExpedienteConversion).not.toHaveBeenCalled();
     },
   );
@@ -757,6 +770,21 @@ describe('ExpedienteDetailPage', () => {
     expect(crmApiMock.getAttributionHistory).not.toHaveBeenCalled();
     expect(crmApiMock.getResponsibility).not.toHaveBeenCalled();
     expect(crmApiMock.getResponsibilityHistory).not.toHaveBeenCalled();
+  });
+
+  it('bloquea un bootstrap sin privacyRestricted y no muestra datos personales', async () => {
+    const bootstrap = buildExpedienteBootstrapResponse({}, { fullName: 'SYNTHETIC_PERSONAL_NAME' });
+    const { privacyRestricted: _privacyRestricted, ...expediente } = bootstrap.data.expediente;
+    crmApiMock.getExpedienteBootstrap.mockResolvedValue({
+      ...bootstrap,
+      data: { ...bootstrap.data, expediente },
+    });
+
+    render(<ExpedienteDetailPage />);
+
+    expect(await screen.findByText('Datos bloqueados')).toBeInTheDocument();
+    expect(screen.queryByText('SYNTHETIC_PERSONAL_NAME')).not.toBeInTheDocument();
+    expect(crmApiMock.getExpediente).not.toHaveBeenCalled();
   });
 
   it('conserva dataConsentRevoked desde bootstrap sin cargar el detalle pesado', async () => {
