@@ -375,6 +375,77 @@ describe('ExpedienteDetailBootstrapService', () => {
     expect(resolved.conversionFailure).toBeNull();
   });
 
+  it('acepta flags booleanos serializados y mantiene la proyección segura sin fila raw', async () => {
+    const expediente = buildExpediente();
+    const projectionQuery = buildProjectionQuery(expediente);
+    projectionQuery.getRawAndEntities.mockResolvedValueOnce({
+      entities: [expediente],
+      raw: [
+        {
+          bootstrap_has_document_number: 'true',
+          bootstrap_has_phone_primary: 'true',
+          bootstrap_has_location: 'true',
+        },
+      ],
+    });
+    const manager = {
+      createQueryBuilder: jest.fn().mockReturnValue(projectionQuery),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+
+    const withSerializedFlags = await service.getDetailBootstrap('exp-1', 'actor-1');
+    expect(withSerializedFlags.expediente.hasLocation).toBe(true);
+    expect(completenessCalculatorMock.calculateFromContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sensitiveFieldPresence: expect.objectContaining({
+          documentNumber: true,
+          phonePrimary: true,
+          hasLocation: true,
+        }),
+      }),
+    );
+
+    projectionQuery.getRawAndEntities.mockResolvedValueOnce({ entities: [expediente], raw: [] });
+    const withoutRawRow = await service.getDetailBootstrap('exp-1', 'actor-1');
+    expect(withoutRawRow.expediente.hasLocation).toBe(false);
+    expect(completenessCalculatorMock.calculateFromContext).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sensitiveFieldPresence: expect.objectContaining({
+          documentNumber: false,
+          phonePrimary: false,
+          hasLocation: false,
+        }),
+      }),
+    );
+  });
+
+  it('usa metadatos vacíos sin consulta de actores si no hay actor creador ni auditoría', async () => {
+    const expediente = buildExpediente();
+    expediente.createdBy = undefined as unknown as string;
+    const projectionQuery = buildProjectionQuery(expediente);
+    const manager = {
+      createQueryBuilder: jest.fn().mockReturnValue(projectionQuery),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+
+    const result = await service.getDetailBootstrap('exp-1', 'actor-1');
+
+    expect(result.operationalMetadata).toEqual({
+      createdBy: { userId: null, name: null },
+      lastEditedBy: { userId: null, name: null },
+      lastActivityAt: expediente.updatedAt,
+    });
+    expect(crmActorReadPortMock.findByIds).not.toHaveBeenCalled();
+  });
+
   it('rechaza un expediente inexistente sin calcular ni enriquecer', async () => {
     const projectionQuery = buildProjectionQuery(null);
     mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>

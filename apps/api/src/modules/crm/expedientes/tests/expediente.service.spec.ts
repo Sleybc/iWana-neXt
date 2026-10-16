@@ -426,6 +426,216 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('persiste los campos opcionales de las secciones del expediente', async () => {
+    const expediente = buildExpediente({ id: 'exp-secciones-completas' });
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+          findOne: async () => expediente,
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 80,
+      legal: 50,
+      technical: 40,
+      operational: 30,
+      overall: 50,
+    });
+
+    const contact = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.CONTACT,
+        data: {
+          phonePrimary: '3000000001',
+          phoneSecondary: '3000000002',
+          emailPrimary: 'primario@sintetico.invalid',
+          emailSecondary: 'secundario@sintetico.invalid',
+          altContactName: 'Contacto alterno sintético',
+          altContactPhone: '3000000003',
+          contactPreference: 'EMAIL',
+          bestContactTime: '09:00-12:00',
+        },
+      },
+      'user-1',
+    );
+    expect(contact.emailSecondary).toBe('secundario@sintetico.invalid');
+    expect(contact.altContactName).toBe('Contacto alterno sintético');
+    expect(contact.contactPreference).toBe('EMAIL');
+    expect(contact.bestContactTime).toBe('09:00-12:00');
+
+    const location = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.LOCATION,
+        data: {
+          address: 'Dirección sintética',
+          municipality: 'Municipio sintético',
+          department: 'Departamento sintético',
+          postalCode: '00000',
+          stratum: 2,
+          neighborhood: 'Sector sintético',
+          latitude: 4.5,
+          longitude: -74,
+          coordinatesSource: 'GEOCODING',
+          coordinatesConfidence: 'HIGH',
+          accessReferences: 'Referencia de acceso',
+          zoneType: 'URBANA',
+        },
+      },
+      'user-1',
+    );
+    expect(location).toEqual(
+      expect.objectContaining({
+        address: 'Dirección sintética',
+        municipality: 'Municipio sintético',
+        department: 'Departamento sintético',
+        postalCode: '00000',
+        stratum: 2,
+        neighborhood: 'Sector sintético',
+        coordinatesSource: 'GEOCODING',
+        coordinatesConfidence: 'HIGH',
+        accessReferences: 'Referencia de acceso',
+        zoneType: 'URBANA',
+      }),
+    );
+
+    const commercial = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.COMMERCIAL_INTEREST,
+        data: {
+          acquisitionChannel: AcquisitionChannel.WEB,
+          sourceDetail: 'Campaña sintética',
+          source: 'Fuente manual',
+          interestedPlanId: 'plan-sintetico',
+          additionalProductIds: ['product-1'],
+          additionalServiceIds: ['service-1'],
+          campaign: 'campaña prueba',
+          casePriority: 'NORMAL',
+          customerSegment: CustomerSegment.RESIDENTIAL,
+          estimatedBudget: '50000',
+          commercialNotes: 'Nota comercial sintética',
+        },
+      },
+      'user-1',
+    );
+    expect(commercial).toEqual(
+      expect.objectContaining({
+        acquisitionChannel: AcquisitionChannel.WEB,
+        source: 'Fuente manual',
+        sourceDetail: 'Campaña sintética',
+        interestedPlanId: 'plan-sintetico',
+        additionalProductIds: ['product-1'],
+        additionalServiceIds: ['service-1'],
+        campaign: 'campaña prueba',
+        casePriority: 'NORMAL',
+        customerSegment: CustomerSegment.RESIDENTIAL,
+        estimatedBudget: 50000,
+        commercialNotes: 'Nota comercial sintética',
+      }),
+    );
+
+    const technical = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.TECHNICAL_FEASIBILITY,
+        data: {
+          coverageResult: 'VIABLE',
+          availableTechnology: 'FIBER',
+          estimatedDistanceM: '120',
+          feasibility: TechnicalViabilityResult.VIABLE,
+          candidateTechnologies: ['FIBER', 'RADIO'],
+          technicalConfidence: 'HIGH',
+          evaluationSource: 'SITE_SURVEY',
+          technicalObservations: 'Observación técnica sintética',
+          estimatedEquipment: 'Router sintético',
+        },
+      },
+      'user-1',
+    );
+    expect(technical).toEqual(
+      expect.objectContaining({
+        coverageResult: 'VIABLE',
+        availableTechnology: 'FIBER',
+        estimatedDistanceM: 120,
+        feasibility: TechnicalViabilityResult.VIABLE,
+        candidateTechnologies: ['FIBER', 'RADIO'],
+        technicalConfidence: 'HIGH',
+        evaluationSource: 'SITE_SURVEY',
+        technicalObservations: 'Observación técnica sintética',
+        estimatedEquipment: 'Router sintético',
+      }),
+    );
+
+    const legal = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.LEGAL_CONSENT,
+        data: { identityVerified: 'verified', legalComplianceStatus: 'COMPLIANT' },
+      },
+      'user-1',
+    );
+    expect(legal).toEqual(
+      expect.objectContaining({ identityVerified: 'verified', legalComplianceStatus: 'COMPLIANT' }),
+    );
+
+    const billing = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.BILLING,
+        data: {
+          paymentMethod: 'TRANSFER',
+          billingCycle: 'MONTHLY',
+          fiscalName: 'Titular sintético',
+          fiscalDocument: 'NIT-SINTETICO',
+          fiscalAddress: 'Dirección fiscal sintética',
+          rutReference: 'rut-ref-sintetica',
+        },
+      },
+      'user-1',
+    );
+    expect(billing).toEqual(
+      expect.objectContaining({
+        paymentMethod: 'TRANSFER',
+        billingCycle: 'MONTHLY',
+        fiscalName: 'Titular sintético',
+        fiscalDocument: 'NIT-SINTETICO',
+        fiscalAddress: 'Dirección fiscal sintética',
+        rutReference: 'rut-ref-sintetica',
+      }),
+    );
+
+    const installation = await service.updateSection(
+      expediente.id,
+      {
+        section: ExpedienteSection.INSTALLATION,
+        data: {
+          installationAddress: 'Dirección de instalación sintética',
+          availabilityWindow: 'Lunes en la mañana',
+          siteContactName: 'Contacto en sitio',
+          siteContactPhone: '3000000004',
+          specialAccessNotes: 'Acceso con portería',
+          requiredMaterials: 'Cable y router',
+        },
+      },
+      'user-1',
+    );
+    expect(installation).toEqual(
+      expect.objectContaining({
+        installationAddress: 'Dirección de instalación sintética',
+        availabilityWindow: 'Lunes en la mañana',
+        siteContactName: 'Contacto en sitio',
+        specialAccessNotes: 'Acceso con portería',
+        requiredMaterials: 'Cable y router',
+      }),
+    );
+    expect(installation.siteContactPhoneEncrypted).not.toContain('3000000004');
+  });
+
   it('lista soportes documentales canonicalizando aliases válidos del personType override', async () => {
     const expediente = buildExpediente({
       id: 'exp-doc-list-1',
@@ -1495,6 +1705,57 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it('registra el descarte con un manager sin factory y emite el motivo del evento', async () => {
+    const actorUserId = '6e2eb956-c266-4c14-b00d-0eea857f66cc';
+    const expediente = buildExpediente({
+      id: 'exp-discard-event',
+      status: ExpedienteStatus.NUEVO_POTENCIAL,
+    });
+    const savedStatusChanges: Array<Record<string, unknown>> = [];
+    const manager = {
+      save: async (entity: unknown, data: Record<string, unknown>) => {
+        if (entity === ExpedienteRecord) Object.assign(expediente, data);
+        if (entity === StatusChange) savedStatusChanges.push(data);
+        return data;
+      },
+      update: jest.fn().mockResolvedValue(undefined),
+      findOne: async () => expediente,
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 0,
+      legal: 0,
+      technical: 0,
+      operational: 0,
+      overall: 0,
+    });
+
+    await service.transitionStatus(
+      expediente.id,
+      { targetStatus: ExpedienteStatus.DESCARTADO, reason: 'Sin viabilidad comercial' },
+      actorUserId,
+    );
+
+    expect(savedStatusChanges).toEqual([
+      expect.objectContaining({
+        fromStatus: ExpedienteStatus.NUEVO_POTENCIAL,
+        toStatus: ExpedienteStatus.DESCARTADO,
+        changedBy: actorUserId,
+        reason: 'Sin viabilidad comercial',
+      }),
+    ]);
+    expect(eventEmitterMock.emitAsync).toHaveBeenCalledWith(
+      'crm.expediente.discarded',
+      expect.objectContaining({
+        expedienteId: expediente.id,
+        actorUserId,
+        reason: 'Sin viabilidad comercial',
+      }),
+    );
+  });
+
   it('rechaza CLIENTE_ACTIVO sin contacto del subscriber antes de guardar el expediente', async () => {
     const expediente = buildExpediente({
       id: 'exp-contact-pending',
@@ -2115,6 +2376,111 @@ describe('ExpedienteService', () => {
       expect(JSON.stringify(call)).not.toContain(plaintext);
     }
     warnSpy.mockRestore();
+  });
+
+  it('backfillDocumentNumberHashes usa el lote predeterminado y termina cuando no hay filas', async () => {
+    const take = jest.fn().mockReturnThis();
+    const getMany = jest.fn().mockResolvedValue([]);
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take,
+      getMany,
+    });
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { createQueryBuilder } }),
+    );
+
+    await expect(service.backfillDocumentNumberHashes()).resolves.toEqual({
+      processed: 0,
+      updated: 0,
+      skipped: 0,
+    });
+    expect(take).toHaveBeenCalledWith(100);
+  });
+
+  it('backfillDocumentNumberHashes omite ciphertext inválido y avanza por ID sin incluirlo en logs', async () => {
+    const invalidCipherRow = buildExpediente({
+      id: 'exp-invalid-cipher',
+      documentNumberEncrypted: 'ciphertext-sintetico-invalido',
+      documentNumberHash: null,
+    });
+    const emptyCipherRow = buildExpediente({
+      id: 'exp-empty-cipher',
+      documentNumberEncrypted: '',
+      documentNumberHash: null,
+    });
+    const getMany = jest
+      .fn()
+      .mockResolvedValueOnce([invalidCipherRow, emptyCipherRow])
+      .mockResolvedValueOnce([]);
+    const andWhere = jest.fn().mockReturnThis();
+    const createQueryBuilder = jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnThis(),
+      andWhere,
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany,
+    });
+    const warnSpy = jest.spyOn(
+      (service as unknown as { logger: { warn: jest.Mock } }).logger,
+      'warn',
+    );
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { createQueryBuilder, save: jest.fn() } }),
+    );
+
+    await expect(service.backfillDocumentNumberHashes(2)).resolves.toEqual({
+      processed: 2,
+      updated: 0,
+      skipped: 2,
+    });
+
+    expect(andWhere).toHaveBeenCalledWith('expediente.id > :afterId', {
+      afterId: emptyCipherRow.id,
+    });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('ciphertext-sintetico-invalido');
+    warnSpy.mockRestore();
+  });
+
+  it('descarga un soporte permitido y rechaza una versión ausente', async () => {
+    jest.spyOn(service, 'findById').mockResolvedValue(
+      buildExpediente({
+        id: 'exp-document-download',
+        personType: 'PERSONA_NATURAL',
+        documentSupports: {
+          identity_document: {
+            versions: [
+              {
+                id: 'version-synthetic',
+                fileName: 'identificacion.pdf',
+                storedFileName: 'stored-synthetic.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 128,
+                uploadedAt: '2026-10-15T10:00:00.000Z',
+                uploadedByUserId: 'user-synthetic',
+                uploadedByName: 'Equipo interno',
+                status: 'APPROVED',
+                note: null,
+              },
+            ],
+          },
+        } as never,
+      }),
+    );
+
+    const file = await service.getDocumentSupportFile(
+      'exp-document-download',
+      'identity_document',
+      'version-synthetic',
+    );
+    expect(file).toMatchObject({ fileName: 'identificacion.pdf', mimeType: 'application/pdf' });
+    expect(file.filePath).toContain('identity_document');
+
+    await expect(
+      service.getDocumentSupportFile('exp-document-download', 'identity_document', 'missing'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('listContactAttempts emite meta vía buildPageMeta (R3)', async () => {
@@ -3260,6 +3626,122 @@ describe('ExpedienteService', () => {
     );
   });
 
+  it.each([
+    {
+      label: 'requiere tecnologías candidatas para viable',
+      data: { feasibility: TechnicalViabilityResult.VIABLE },
+      code: 'CANDIDATE_TECHNOLOGIES_REQUIRED',
+    },
+    {
+      label: 'requiere certeza y fuente para viable',
+      data: {
+        feasibility: TechnicalViabilityResult.VIABLE,
+        candidateTechnologies: ['FIBER'],
+        availableTechnology: 'FIBER',
+      },
+      code: 'TECHNICAL_CONFIDENCE_AND_SOURCE_REQUIRED',
+    },
+    {
+      label: 'requiere candidata antes de evaluar validación pendiente',
+      data: { feasibility: TechnicalViabilityResult.VALIDATION_REQUIRED },
+      code: 'VALIDATION_REQUIRED_FIELDS_MISSING',
+    },
+    {
+      label: 'requiere certeza al evaluar validación pendiente',
+      data: {
+        feasibility: TechnicalViabilityResult.VALIDATION_REQUIRED,
+        candidateTechnologies: ['FIBER'],
+      },
+      code: 'VALIDATION_REQUIRED_FIELDS_MISSING',
+    },
+    {
+      label: 'requiere fuente al evaluar validación pendiente',
+      data: {
+        feasibility: TechnicalViabilityResult.VALIDATION_REQUIRED,
+        candidateTechnologies: ['FIBER'],
+        technicalConfidence: 'MEDIUM',
+      },
+      code: 'VALIDATION_REQUIRED_FIELDS_MISSING',
+    },
+    {
+      label: 'requiere observaciones al evaluar validación pendiente',
+      data: {
+        feasibility: TechnicalViabilityResult.VALIDATION_REQUIRED,
+        candidateTechnologies: ['FIBER'],
+        technicalConfidence: 'MEDIUM',
+        evaluationSource: 'MAP',
+      },
+      code: 'VALIDATION_REQUIRED_FIELDS_MISSING',
+    },
+    {
+      label: 'requiere fuente para una evaluación no viable',
+      data: { feasibility: TechnicalViabilityResult.NOT_VIABLE },
+      code: 'NOT_VIABLE_FIELDS_MISSING',
+    },
+    {
+      label: 'requiere observaciones para una evaluación no viable',
+      data: {
+        feasibility: TechnicalViabilityResult.NOT_VIABLE,
+        evaluationSource: 'MAP',
+      },
+      code: 'NOT_VIABLE_FIELDS_MISSING',
+    },
+  ])('rechaza la factibilidad técnica cuando $label', async ({ data, code }) => {
+    const expediente = buildExpediente({ id: 'exp-tech-requirements' });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+
+    await expect(
+      service.updateSection(
+        'exp-tech-requirements',
+        { section: ExpedienteSection.TECHNICAL_FEASIBILITY, data },
+        'user-tech',
+      ),
+    ).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
+  });
+
+  it('acepta validación requerida y evaluación no viable con sus campos obligatorios', async () => {
+    const expediente = buildExpediente({ id: 'exp-tech-supported' });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          update: jest.fn().mockResolvedValue(undefined),
+        },
+      }),
+    );
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 20,
+      legal: 20,
+      technical: 20,
+      operational: 0,
+      overall: 15,
+    });
+
+    for (const data of [
+      {
+        feasibility: TechnicalViabilityResult.VALIDATION_REQUIRED,
+        candidateTechnologies: ['FIBER'],
+        technicalConfidence: 'MEDIUM',
+        evaluationSource: 'MAP',
+        technicalObservations: 'Requiere visita técnica sintética.',
+      },
+      {
+        feasibility: TechnicalViabilityResult.NOT_VIABLE,
+        evaluationSource: 'MAP',
+        technicalObservations: 'No viable en la evaluación sintética.',
+      },
+    ]) {
+      await expect(
+        service.updateSection(
+          'exp-tech-supported',
+          { section: ExpedienteSection.TECHNICAL_FEASIBILITY, data },
+          'user-tech',
+        ),
+      ).resolves.toBeDefined();
+    }
+  });
+
   describe('linkInstallationOperationalRefs', () => {
     const TICKET_UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
     const WORK_ORDER_UUID = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';
@@ -3717,6 +4199,155 @@ describe('ExpedienteService', () => {
       });
       expect(update).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('resuelve nombres del expediente y conserva null para IDs ausentes en batch', async () => {
+    const manager = {
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 'exp-person',
+          fullName: '  ',
+          firstName: ' Ana ',
+          lastName: ' Torres ',
+          companyName: null,
+        },
+        {
+          id: 'exp-company',
+          fullName: null,
+          firstName: null,
+          lastName: null,
+          companyName: ' Empresa sintética ',
+        },
+      ]),
+    };
+
+    await expect(service.findDisplayNamesByIds(manager as never, [])).resolves.toEqual(new Map());
+    expect(manager.find).not.toHaveBeenCalled();
+
+    const names = await service.findDisplayNamesByIds(manager as never, [
+      'exp-person',
+      'exp-company',
+      'exp-person',
+      'exp-missing',
+    ]);
+
+    expect(manager.find).toHaveBeenCalledWith(
+      ExpedienteRecord,
+      expect.objectContaining({ where: { id: expect.anything() } }),
+    );
+    expect([...names]).toEqual([
+      ['exp-person', 'Ana Torres'],
+      ['exp-company', 'Empresa sintética'],
+      ['exp-missing', null],
+    ]);
+  });
+
+  it('valida el código corto y resuelve el nombre comercial cuando falta el nombre personal', async () => {
+    const getOne = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'ABCD1234-exp',
+        fullName: ' ',
+        firstName: null,
+        lastName: null,
+        companyName: ' Empresa sintética ',
+      })
+      .mockResolvedValueOnce(null);
+    const queryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne,
+    };
+    const manager = { createQueryBuilder: jest.fn().mockReturnValue(queryBuilder) };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager }),
+    );
+
+    await expect(service.findDisplayNameByShortCode('bad')).resolves.toBeNull();
+    expect(manager.createQueryBuilder).not.toHaveBeenCalled();
+
+    await expect(service.findDisplayNameByShortCode('abcd1234-extra')).resolves.toEqual({
+      id: 'ABCD1234-exp',
+      displayName: 'Empresa sintética',
+    });
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'UPPER(SUBSTRING(expediente.id::text, 1, 8)) = :code',
+      { code: 'ABCD1234' },
+    );
+    await expect(service.findDisplayNameByShortCode('ABCD1234')).resolves.toBeNull();
+  });
+
+  it('resuelve nombre personal antes de devolver null cuando falta el expediente', async () => {
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: jest.fn().mockResolvedValue({
+            fullName: '  ',
+            firstName: ' Luis ',
+            lastName: ' Gómez ',
+            companyName: 'Empresa sintética',
+          }),
+        },
+      }),
+    );
+
+    await expect(service.findDisplayNameById('exp-person-name')).resolves.toBe('Luis Gómez');
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: jest.fn().mockResolvedValue({
+            fullName: ' Nombre completo ',
+            firstName: 'Otro',
+            lastName: 'Nombre',
+            companyName: 'Empresa sintética',
+          }),
+        },
+      }),
+    );
+    await expect(service.findDisplayNameById('exp-full-name')).resolves.toBe('Nombre completo');
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: jest.fn().mockResolvedValue({
+            fullName: ' ',
+            firstName: null,
+            lastName: null,
+            companyName: null,
+          }),
+        },
+      }),
+    );
+    await expect(service.findDisplayNameById('exp-no-name')).resolves.toBeNull();
+
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne: jest.fn().mockResolvedValue(null) } }),
+    );
+    await expect(service.findDisplayNameById('exp-missing')).resolves.toBeNull();
+  });
+
+  it('no audita ni persiste secciones cuando el payload parcial no trae campos', async () => {
+    const expediente = buildExpediente({ id: 'exp-empty-section-update' });
+    jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+
+    for (const section of [
+      ExpedienteSection.CONTACT,
+      ExpedienteSection.LOCATION,
+      ExpedienteSection.COMMERCIAL_INTEREST,
+      ExpedienteSection.TECHNICAL_FEASIBILITY,
+      ExpedienteSection.LEGAL_CONSENT,
+      ExpedienteSection.BILLING,
+      ExpedienteSection.INSTALLATION,
+    ]) {
+      await expect(
+        service.updateSection('exp-empty-section-update', { section, data: {} }, 'user-1'),
+      ).resolves.toBe(expediente);
+    }
+
+    expect(auditServiceMock.log).not.toHaveBeenCalled();
+    expect(completenessCalculatorMock.calculate).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
   });
 });
 

@@ -35,6 +35,7 @@ describe('ExpedientesController', () => {
     transitionStatus: jest.fn(),
     reactivate: jest.fn(),
     createContactAttempt: jest.fn(),
+    createConsent: jest.fn(),
     listConsents: jest.fn(),
     getPipelineSummary: jest.fn(),
   };
@@ -366,6 +367,109 @@ describe('ExpedientesController', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('usa un mensaje genérico cuando la validación rechaza sin faltantes específicos', async () => {
+    statusTransitionServiceMock.validateTransition.mockResolvedValue({ valid: false });
+
+    await expect(
+      controller.transitionStatus(
+        '00000000-0000-4000-a000-000000000001',
+        { targetStatus: ExpedienteStatus.EN_COTIZACION },
+        { sub: 'user-synthetic' } as never,
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'INVALID_STATUS_TRANSITION',
+        message: 'La transición solicitada no está permitida para el expediente.',
+        missingFields: [],
+      },
+    });
+  });
+
+  it('devuelve advertencia nula cuando la transición válida no tiene advertencia', async () => {
+    statusTransitionServiceMock.validateTransition.mockResolvedValue({ valid: true });
+    expedienteServiceMock.transitionStatus.mockResolvedValue({ id: 'exp-synthetic' });
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      sectionCompleteness: [],
+      installationReadiness: null,
+      missingRequirements: [],
+    });
+    pipelineRecommendationServiceMock.getRecommendation.mockResolvedValue(null);
+
+    const result = await controller.transitionStatus(
+      '00000000-0000-4000-a000-000000000001',
+      { targetStatus: ExpedienteStatus.PRECALIFICADO },
+      { sub: 'user-synthetic' } as never,
+    );
+
+    expect(result.transitionWarning).toBeNull();
+  });
+
+  it('usa una lista vacía si la advertencia no trae faltantes', async () => {
+    statusTransitionServiceMock.validateTransition.mockResolvedValue({
+      valid: true,
+      warningTitle: 'Pendientes informativos',
+      warningMessage: 'Puedes continuar.',
+    });
+    expedienteServiceMock.transitionStatus.mockResolvedValue({ id: 'exp-synthetic' });
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      sectionCompleteness: [],
+      installationReadiness: null,
+      missingRequirements: [],
+    });
+    pipelineRecommendationServiceMock.getRecommendation.mockResolvedValue(null);
+
+    const result = await controller.transitionStatus(
+      '00000000-0000-4000-a000-000000000001',
+      { targetStatus: ExpedienteStatus.LISTO_PARA_INSTALACION },
+      { sub: 'user-synthetic' } as never,
+    );
+
+    expect(result.transitionWarning).toEqual({
+      title: 'Pendientes informativos',
+      message: 'Puedes continuar.',
+      missingRequirements: [],
+    });
+  });
+
+  it.each([
+    {
+      label: 'cabecera array',
+      forwardedFor: ['203.0.113.10'],
+      ip: '192.0.2.10',
+      expected: '203.0.113.10',
+    },
+    {
+      label: 'array vacío con IP de request',
+      forwardedFor: [],
+      ip: '192.0.2.11',
+      expected: '192.0.2.11',
+    },
+    { label: 'array vacío sin IP', forwardedFor: [], ip: undefined, expected: null },
+    {
+      label: 'lista de proxies',
+      forwardedFor: '198.51.100.10, 198.51.100.11',
+      ip: '192.0.2.12',
+      expected: '198.51.100.10',
+    },
+    { label: 'sin cabecera ni IP', forwardedFor: undefined, ip: undefined, expected: null },
+  ])('extrae la IP del consentimiento desde $label', async ({ forwardedFor, ip, expected }) => {
+    expedienteServiceMock.createConsent.mockResolvedValue({ id: 'consent-synthetic' });
+
+    await controller.createConsent(
+      '00000000-0000-4000-a000-000000000001',
+      {} as never,
+      { sub: 'user-synthetic' } as never,
+      { headers: { 'x-forwarded-for': forwardedFor }, ip } as never,
+    );
+
+    expect(expedienteServiceMock.createConsent).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001',
+      {},
+      'user-synthetic',
+      expected,
+    );
+  });
+
   it('devuelve advertencia estructurada cuando la transición a instalación avanza con pendientes', async () => {
     statusTransitionServiceMock.validateTransition.mockResolvedValue({
       valid: true,
@@ -498,6 +602,19 @@ describe('ExpedientesController', () => {
     expect(expedienteServiceMock.getTimelinePage).toHaveBeenCalledWith('exp-1', 2, 5, 'contact');
     expect(result).toEqual(
       expect.objectContaining({ meta: expect.objectContaining({ totalPages: 2 }) }),
+    );
+  });
+
+  it('usa el filtro all cuando el timeline paginado no especifica filtro', async () => {
+    expedienteServiceMock.getTimelinePage.mockResolvedValue({ data: { events: [] }, meta: {} });
+
+    await controller.getTimeline('exp-synthetic', { page: 1, limit: 10 });
+
+    expect(expedienteServiceMock.getTimelinePage).toHaveBeenCalledWith(
+      'exp-synthetic',
+      1,
+      10,
+      'all',
     );
   });
 

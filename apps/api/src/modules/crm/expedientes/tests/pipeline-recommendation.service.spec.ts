@@ -134,6 +134,181 @@ describe('PipelineRecommendationService', () => {
 
     expect(result.suggestedStatus).toBe(ExpedienteStatus.VALIDANDO_COBERTURA);
   });
+
+  it('usa coordenadas almacenadas cuando no hay flags de presencia proyectados', async () => {
+    const result = await service.getRecommendationFromContext(
+      buildExpediente({
+        status: ExpedienteStatus.NUEVO_POTENCIAL,
+        latitude: 4.5,
+        longitude: -74,
+      }),
+      buildCompleteness(),
+    );
+
+    expect(result.suggestedStatus).toBe(ExpedienteStatus.VALIDANDO_COBERTURA);
+    expect(result.recommendationReason).toContain('ubicación');
+  });
+
+  it('propone los hitos de instalación y activación según los vínculos y el avance funcional', async () => {
+    const pendingTicket = await service.getRecommendationFromContext(
+      buildExpediente({
+        status: ExpedienteStatus.NUEVO_POTENCIAL,
+        ticketId: 'ticket-sintetico',
+        workOrderId: 'ot-sintetica',
+      }),
+      buildCompleteness(),
+    );
+    expect(pendingTicket).toEqual(
+      expect.objectContaining({
+        suggestedStatus: ExpedienteStatus.INSTALACION_AGENDADA,
+        blockingRequirements: [],
+      }),
+    );
+
+    const atThreshold = await service.getRecommendationFromContext(
+      buildExpediente({ status: ExpedienteStatus.NUEVO_POTENCIAL }),
+      buildCompleteness({
+        sectionCompleteness: [
+          {
+            key: 'identification',
+            label: 'Identificación',
+            percentage: 75,
+            completedFields: 3,
+            totalFields: 4,
+            missingFields: [],
+          },
+          {
+            key: 'documentSupport',
+            label: 'Soportes',
+            percentage: 0,
+            completedFields: 0,
+            totalFields: 1,
+            missingFields: [],
+          },
+        ],
+      }),
+    );
+    expect(atThreshold.suggestedStatus).toBe(ExpedienteStatus.LISTO_PARA_INSTALACION);
+
+    const active = await service.getRecommendationFromContext(
+      buildExpediente({
+        status: ExpedienteStatus.NUEVO_POTENCIAL,
+        ticketId: 'ticket-sintetico',
+        workOrderId: 'ot-sintetica',
+      }),
+      buildCompleteness({
+        sectionCompleteness: [
+          {
+            key: 'identification',
+            label: 'Identificación',
+            percentage: 100,
+            completedFields: 4,
+            totalFields: 4,
+            missingFields: [],
+          },
+        ],
+      }),
+    );
+    expect(active).toEqual(
+      expect.objectContaining({
+        suggestedStatus: ExpedienteStatus.CLIENTE_ACTIVO,
+        recommendationReason: expect.stringContaining('datos funcionales completos'),
+      }),
+    );
+  });
+
+  it('alcanza PRECALIFICADO por identidad y contacto, y respeta flags negativos de proyección', async () => {
+    const qualified = await service.getRecommendationFromContext(
+      buildExpediente({
+        status: ExpedienteStatus.NUEVO_POTENCIAL,
+        documentType: 'CC',
+        documentNumberEncrypted: 'cipher-sintetico',
+        phonePrimaryEncrypted: 'cipher-telefono',
+      }),
+      buildCompleteness(),
+    );
+    expect(qualified.suggestedStatus).toBe(ExpedienteStatus.PRECALIFICADO);
+
+    const projectionWithoutLocation = await service.getRecommendationFromContext(
+      buildExpediente({
+        status: ExpedienteStatus.NUEVO_POTENCIAL,
+        latitude: 4.5,
+        longitude: -74,
+        address: 'Dirección sintética',
+        municipality: 'Municipio sintético',
+      }),
+      buildCompleteness(),
+      {
+        documentNumber: false,
+        phonePrimary: false,
+        emailPrimary: false,
+        altContactPhone: false,
+        hasAddress: false,
+        hasMunicipality: false,
+        hasLatitude: false,
+        hasLongitude: false,
+      } satisfies ExpedienteSensitiveFieldPresence,
+    );
+    expect(projectionWithoutLocation.suggestedStatus).toBeNull();
+  });
+
+  it('separa faltantes funcionales de soportes y no expone bloqueos si no hay avance', async () => {
+    const missingRequirements = [
+      {
+        sectionKey: 'identification',
+        sectionLabel: 'Identificación',
+        fieldKey: 'documentNumber',
+        fieldLabel: 'Documento',
+      },
+      {
+        sectionKey: 'contact',
+        sectionLabel: 'Contacto',
+        fieldKey: 'phonePrimary',
+        fieldLabel: 'Teléfono',
+      },
+      {
+        sectionKey: 'address',
+        sectionLabel: 'Dirección',
+        fieldKey: 'municipality',
+        fieldLabel: 'Municipio',
+      },
+      {
+        sectionKey: 'documentSupport',
+        sectionLabel: 'Soportes documentales',
+        fieldKey: 'identity_document',
+        fieldLabel: 'Documento de identidad',
+      },
+    ];
+    const completeness = buildCompleteness({ missingRequirements });
+    const expediente = buildExpediente({
+      status: ExpedienteStatus.NUEVO_POTENCIAL,
+      documentType: 'CC',
+      documentNumberEncrypted: 'cipher-documento',
+      phonePrimaryEncrypted: 'cipher-telefono',
+    });
+
+    const advancing = await service.getRecommendationFromContext(expediente, completeness);
+    expect(advancing).toEqual(
+      expect.objectContaining({
+        suggestedStatus: ExpedienteStatus.PRECALIFICADO,
+        blockingRequirements: missingRequirements.slice(0, 3),
+        informationalRequirements: [missingRequirements[3]],
+      }),
+    );
+
+    const alreadyAtMilestone = await service.getRecommendationFromContext(
+      buildExpediente({ ...expediente, status: ExpedienteStatus.PRECALIFICADO }),
+      completeness,
+    );
+    expect(alreadyAtMilestone).toEqual(
+      expect.objectContaining({
+        currentStatus: ExpedienteStatus.PRECALIFICADO,
+        suggestedStatus: null,
+        blockingRequirements: [],
+        informationalRequirements: [missingRequirements[3]],
+      }),
+    );
+  });
 });
 
 function buildCompleteness(overrides: Partial<CompletenessResult> = {}): CompletenessResult {
@@ -165,6 +340,12 @@ function buildExpediente(
       | 'documentNumberEncrypted'
       | 'phonePrimaryEncrypted'
       | 'emailPrimaryEncrypted'
+      | 'ticketId'
+      | 'workOrderId'
+      | 'latitude'
+      | 'longitude'
+      | 'address'
+      | 'municipality'
     >
   >,
 ): ExpedienteRecord {
@@ -176,5 +357,11 @@ function buildExpediente(
     documentNumberEncrypted: overrides.documentNumberEncrypted ?? null,
     phonePrimaryEncrypted: overrides.phonePrimaryEncrypted ?? null,
     emailPrimaryEncrypted: overrides.emailPrimaryEncrypted ?? null,
+    ticketId: overrides.ticketId ?? null,
+    workOrderId: overrides.workOrderId ?? null,
+    latitude: overrides.latitude ?? null,
+    longitude: overrides.longitude ?? null,
+    address: overrides.address ?? null,
+    municipality: overrides.municipality ?? null,
   } as ExpedienteRecord;
 }

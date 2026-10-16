@@ -39,4 +39,36 @@ describe('CrmQuoteReadAdapter', () => {
       select: ['id', 'expedienteId', 'status'],
     });
   });
+
+  it('usa el id solicitado cuando una cotización no trae expedienteId y omite batches vacíos', async () => {
+    const manager = {
+      find: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 'quote-legacy', expedienteId: null, status: 2 }]),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+    const adapter = new CrmQuoteReadAdapter({} as DataSource);
+
+    await expect(adapter.findByExpedienteId('tenant_schema', 'exp-requested')).resolves.toEqual([
+      { id: 'quote-legacy', expedienteId: 'exp-requested', status: '2' },
+    ]);
+    await expect(
+      adapter.findByExpedienteIds(manager as unknown as EntityManager, []),
+    ).resolves.toEqual([]);
+
+    expect(manager.find).toHaveBeenCalledTimes(1);
+  });
+
+  it('normaliza expedienteId ausente al proyectar resultados por lote', async () => {
+    const manager = {
+      find: jest.fn().mockResolvedValue([{ id: 'quote-legacy', expedienteId: null, status: null }]),
+    };
+    const adapter = new CrmQuoteReadAdapter({} as DataSource);
+
+    await expect(
+      adapter.findByExpedienteIds(manager as unknown as EntityManager, ['exp-sintetico']),
+    ).resolves.toEqual([{ id: 'quote-legacy', expedienteId: '', status: 'null' }]);
+  });
 });

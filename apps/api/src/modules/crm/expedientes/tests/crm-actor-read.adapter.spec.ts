@@ -14,6 +14,10 @@ jest.mock('@iwana/db', () => {
 });
 
 describe('CrmActorReadAdapter', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('selecciona únicamente campos operativos y devuelve null si no hay nombre compuesto', async () => {
     const manager = {
       find: jest
@@ -38,5 +42,66 @@ describe('CrmActorReadAdapter', () => {
       where: { id: expect.anything() },
       select: ['id', 'firstName', 'lastName'],
     });
+  });
+
+  it('devuelve vacío para búsquedas vacías y no consulta fuentes externas para un actor vacío', async () => {
+    const manager = { find: jest.fn() };
+    mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+    const adapter = new CrmActorReadAdapter({} as DataSource);
+
+    await expect(adapter.findByIds('tenant_test', [])).resolves.toEqual([]);
+    await expect(adapter.findById('tenant_test', '')).resolves.toBeNull();
+
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    expect(manager.find).not.toHaveBeenCalled();
+  });
+
+  it('combina actores tenant y evita consultar plataforma cuando todos coinciden', async () => {
+    const manager = {
+      find: jest
+        .fn()
+        .mockResolvedValueOnce([
+          { id: 'tenant-user-1', firstName: 'Asesora', lastName: 'Sintética', role: 'SALES' },
+        ]),
+    };
+    mockRunInTenantSchema.mockImplementationOnce(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+    const adapter = new CrmActorReadAdapter({} as DataSource);
+
+    await expect(adapter.findById('tenant_test', 'tenant-user-1')).resolves.toEqual({
+      id: 'tenant-user-1',
+      name: 'Asesora Sintética',
+      role: 'SALES',
+    });
+
+    expect(manager.find).toHaveBeenCalledTimes(1);
+    expect(manager.find).toHaveBeenCalledWith(User, expect.any(Object));
+  });
+
+  it('devuelve null para ids no encontrados y conserva un nombre con un solo componente', async () => {
+    const manager = {
+      find: jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'platform-user-2', firstName: 'Agente', lastName: null }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_dataSource, _schemaName, callback) =>
+      callback({ manager } as never),
+    );
+    const adapter = new CrmActorReadAdapter({} as DataSource);
+
+    await expect(adapter.findById('tenant_test', 'platform-user-2')).resolves.toEqual({
+      id: 'platform-user-2',
+      name: 'Agente',
+      role: null,
+    });
+    await expect(adapter.findById('tenant_test', 'missing-user')).resolves.toBeNull();
+
+    expect(manager.find).toHaveBeenCalledTimes(4);
   });
 });

@@ -128,6 +128,45 @@ describe('CompletenessCalculator', () => {
     await expect(service.calculate('exp-1')).rejects.toThrow(failure);
   });
 
+  it('rechaza el cálculo cuando no existe el expediente solicitado', async () => {
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne: async () => null } } as never),
+    );
+
+    await expect(service.calculate('exp-no-existente')).rejects.toThrow(
+      'Expediente exp-no-existente no encontrado',
+    );
+    expect(crmQuoteReadPortMock.findByExpedienteId).not.toHaveBeenCalled();
+  });
+
+  it('propaga errores operativos al leer consentimientos, cobertura y cotizaciones', async () => {
+    const failures = [
+      new Error('consent read unavailable'),
+      new Error('coverage read unavailable'),
+      new Error('quote read unavailable'),
+    ];
+
+    mockRunInTenantSchema.mockRejectedValueOnce(failures[0]);
+    await expect(service.loadRelatedContext('exp-1', 'tenant_test')).rejects.toThrow(failures[0]);
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { find: async () => [] } } as never),
+      )
+      .mockRejectedValueOnce(failures[1]);
+    await expect(service.loadRelatedContext('exp-1', 'tenant_test')).rejects.toThrow(failures[1]);
+
+    mockRunInTenantSchema
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { find: async () => [] } } as never),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { find: async () => [] } } as never),
+      );
+    crmQuoteReadPortMock.findByExpedienteId.mockRejectedValueOnce(failures[2]);
+    await expect(service.loadRelatedContext('exp-1', 'tenant_test')).rejects.toThrow(failures[2]);
+  });
+
   it('conserva consents y coverage cuando solo quotes no es compatible todavía', async () => {
     const consents = [{ id: 'consent-1', expedienteId: 'exp-1' } as ConsentRecord];
     const coverageChecks = [{ id: 'coverage-1', expedienteId: 'exp-1' } as CoverageCheck];
@@ -253,6 +292,215 @@ describe('CompletenessCalculator', () => {
       CoverageCheck,
       expect.objectContaining({ select: ['id', 'expedienteId', 'result'] }),
     );
+  });
+
+  it('devuelve un mapa vacío para un lote sin expedientes', async () => {
+    const manager = { find: jest.fn() };
+
+    await expect(service.calculateBatch(manager as never, 'tenant_test', [])).resolves.toEqual(
+      new Map(),
+    );
+    expect(manager.find).not.toHaveBeenCalled();
+    expect(crmQuoteReadPortMock.findByExpedienteIds).not.toHaveBeenCalled();
+  });
+
+  it('agrupa fuentes por expediente y conserva ambos resultados del lote', async () => {
+    const first = buildExpediente({ id: 'exp-first', fullName: 'Primera oportunidad' });
+    const second = buildExpediente({
+      id: 'exp-second',
+      fullName: '',
+      source: '',
+      acquisitionChannel: '',
+    });
+    const consent = {
+      id: 'consent-first',
+      expedienteId: 'exp-first',
+      consentType: 'TRATAMIENTO_DATOS',
+      status: 'ACEPTADO',
+    } as ConsentRecord;
+    const coverage = {
+      id: 'coverage-first',
+      expedienteId: 'exp-first',
+      result: 'VIABLE',
+    } as CoverageCheck;
+    const quote = { id: 'quote-first', expedienteId: 'exp-first', status: 'DRAFT' };
+    const manager = {
+      find: jest.fn().mockImplementation(async (entity: unknown) => {
+        if (entity === ExpedienteRecord) return [first, second];
+        if (entity === ConsentRecord) return [consent];
+        return [coverage];
+      }),
+    };
+    crmQuoteReadPortMock.findByExpedienteIds.mockResolvedValueOnce([quote, quote]);
+
+    const results = await service.calculateBatch(manager as never, 'tenant_test', [
+      'exp-first',
+      'exp-second',
+    ]);
+
+    expect([...results.keys()]).toEqual(['exp-first', 'exp-second']);
+    expect(results.get('exp-first')).toEqual(
+      expect.objectContaining({ commercial: 30, legal: 25, technical: 50 }),
+    );
+    expect(results.get('exp-second')).toEqual(
+      expect.objectContaining({ commercial: 0, legal: 0, technical: 0 }),
+    );
+  });
+
+  it('usa los valores persistidos si el resumen se interrumpe por una columna no migrada', async () => {
+    const expediente = buildExpediente({
+      completenessCommercial: 40,
+      completenessLegal: 25,
+      completenessTechnical: 50,
+      completenessOperational: 10,
+    });
+    const compatibilityError = Object.assign(new Error('column missing'), {
+      driverError: { code: '42703' },
+    });
+    jest.spyOn(sectionCompletenessService, 'calculateSummary').mockImplementationOnce(() => {
+      throw compatibilityError;
+    });
+
+    await expect(
+      service.calculateFromContext({ expediente, consents: [], quotes: [], coverageChecks: [] }),
+    ).resolves.toEqual(
+      expect.objectContaining({ commercial: 40, legal: 25, technical: 50, operational: 10 }),
+    );
+  });
+
+  it('propaga errores de cálculo que no sean de compatibilidad de esquema', async () => {
+    const failure = new Error('invalid calculation context');
+    jest.spyOn(sectionCompletenessService, 'calculateSummary').mockImplementationOnce(() => {
+      throw failure;
+    });
+
+    await expect(
+      service.calculateFromContext({
+        expediente: buildExpediente({}),
+        consents: [],
+        quotes: [],
+        coverageChecks: [],
+      }),
+    ).rejects.toThrow(failure);
+  });
+
+  it('calcula dimensiones completas desde consentimientos, soporte aprobado y datos sintéticos', async () => {
+    const expediente = buildExpediente({
+      fullName: 'Oportunidad sintética',
+      documentType: 'CC',
+      documentNumberEncrypted: 'cipher-documento',
+      phonePrimaryEncrypted: 'cipher-telefono',
+      emailPrimaryEncrypted: 'cipher-correo',
+      interestedPlanId: 'plan-sintetico',
+      casePriority: 'NORMAL',
+      identityVerified: 'verified',
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {
+        identity_document: { versions: [{ status: 'APPROVED' }] },
+        utility_bill: { versions: [{ status: 'APPROVED' }] },
+      },
+      feasibility: 'VIABLE',
+      candidateTechnologies: ['FIBER'],
+      technicalConfidence: 'HIGH',
+      evaluationSource: 'TECHNICAL_SITE_VISIT',
+      availableTechnology: 'FIBER',
+      estimatedEquipment: 'ROUTER',
+      paymentMethod: 'TRANSFER',
+      billingCycle: 'MONTHLY',
+      fiscalName: 'Titular sintético',
+    });
+    const consents = [
+      { consentType: 'TRATAMIENTO_DATOS', status: 'ACEPTADO' },
+      { consentType: 'CONTACTO_COMERCIAL', status: 'ACEPTADO' },
+    ] as ConsentRecord[];
+
+    await expect(
+      service.calculateFromContext({
+        expediente,
+        consents,
+        quotes: [{ id: 'quote-sintetica', expedienteId: expediente.id, status: 'DRAFT' }],
+        coverageChecks: [
+          {
+            id: 'coverage-sintetica',
+            expedienteId: expediente.id,
+            result: 'VIABLE',
+          } as CoverageCheck,
+        ],
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({ commercial: 100, legal: 100, technical: 100, operational: 100 }),
+    );
+  });
+
+  it('prioriza flags negativos sobre valores persistidos y distingue cobertura condicional', async () => {
+    const expediente = buildExpediente({
+      fullName: 'Oportunidad sintética',
+      documentType: 'CC',
+      documentNumberEncrypted: 'cipher-documento',
+      phonePrimaryEncrypted: 'cipher-telefono',
+      emailPrimaryEncrypted: 'cipher-correo',
+      interestedPlanId: null,
+      casePriority: null,
+      personType: 'PERSONA_NATURAL',
+      documentSupports: {
+        identity_document: { versions: [{ status: 'APPROVED' }] },
+        utility_bill: { versions: [{ status: 'APPROVED' }] },
+      },
+      feasibility: 'VALIDATION_REQUIRED',
+      candidateTechnologies: [],
+      technicalConfidence: null,
+      evaluationSource: null,
+      availableTechnology: null,
+      estimatedEquipment: null,
+      paymentMethod: 'TRANSFER',
+      billingCycle: 'MONTHLY',
+      fiscalName: 'Titular sintético',
+      identityVerified: 'pending',
+    });
+    const sensitiveFieldPresence: ExpedienteSensitiveFieldPresence = {
+      documentNumber: false,
+      phonePrimary: false,
+      emailPrimary: false,
+      altContactPhone: false,
+      paymentMethod: false,
+      billingCycle: false,
+      fiscalName: false,
+      documentSupportApproved: { identity_document: false, utility_bill: false },
+    };
+    const coverageChecks = [
+      { id: 'coverage-no', expedienteId: expediente.id, result: 'NO_COVERAGE' },
+      { id: 'coverage-conditional', expedienteId: expediente.id, result: 'CONDITIONAL' },
+    ] as CoverageCheck[];
+
+    await expect(
+      service.calculateFromContext({
+        expediente,
+        consents: [
+          { consentType: 'TRATAMIENTO_DATOS', status: 'PENDING' },
+          { consentType: 'CONTACTO_COMERCIAL', status: 'REVOCADO' },
+        ] as ConsentRecord[],
+        quotes: [],
+        coverageChecks,
+        sensitiveFieldPresence,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({ commercial: 30, legal: 0, technical: 50, operational: 0 }),
+    );
+  });
+
+  it('propaga una falla no-Error del cálculo sin convertirla en compatibilidad', async () => {
+    jest.spyOn(sectionCompletenessService, 'calculateSummary').mockImplementationOnce(() => {
+      throw 'fallo sintético';
+    });
+
+    await expect(
+      service.calculateFromContext({
+        expediente: buildExpediente({}),
+        consents: [],
+        quotes: [],
+        coverageChecks: [],
+      }),
+    ).rejects.toBe('fallo sintético');
   });
 
   it('usa completitud tecnica estructurada cuando supera el calculo tradicional', async () => {

@@ -78,6 +78,155 @@ describe('StatusTransitionService', () => {
     expect(result).toEqual({ valid: false, missingFields: ['Plan de interés seleccionado'] });
   });
 
+  it('permite EN_COTIZACION cuando se eligió un plan', async () => {
+    mockExpediente(buildExpediente({ interestedPlanId: 'plan-sintetico' }));
+
+    await expect(
+      service.validateTransition('exp-plan', ExpedienteStatus.EN_COTIZACION),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('valida cobertura con coordenadas, dirección o sin ubicación suficiente', async () => {
+    mockExpediente(buildExpediente({ latitude: null, longitude: null }));
+    await expect(
+      service.validateTransition('exp-sin-ubicacion', ExpedienteStatus.VALIDANDO_COBERTURA),
+    ).resolves.toEqual({
+      valid: false,
+      missingFields: ['Coordenadas (lat/lng) o Dirección completa'],
+    });
+
+    mockExpediente(
+      buildExpediente({ latitude: 4.5, longitude: -74, address: null, municipality: null }),
+    );
+    await expect(
+      service.validateTransition('exp-coordenadas', ExpedienteStatus.VALIDANDO_COBERTURA),
+    ).resolves.toEqual({ valid: true });
+
+    mockExpediente(
+      buildExpediente({
+        latitude: null,
+        longitude: null,
+        address: 'Dirección de prueba',
+        municipality: 'Municipio de prueba',
+      }),
+    );
+    await expect(
+      service.validateTransition('exp-direccion', ExpedienteStatus.VALIDANDO_COBERTURA),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('requiere ticket y orden antes de agendar, y permite descartar o volver al estado inicial', async () => {
+    mockExpediente(buildExpediente());
+    await expect(
+      service.validateTransition('exp-sin-vinculos', ExpedienteStatus.INSTALACION_AGENDADA),
+    ).resolves.toEqual({
+      valid: false,
+      missingFields: ['Ticket vinculado', 'Orden de trabajo vinculada'],
+    });
+
+    mockExpediente(buildExpediente({ ticketId: 'ticket-sintetico' }));
+    await expect(
+      service.validateTransition('exp-solo-ticket', ExpedienteStatus.INSTALACION_AGENDADA),
+    ).resolves.toEqual({ valid: false, missingFields: ['Orden de trabajo vinculada'] });
+
+    mockExpediente(buildExpediente({ ticketId: 'ticket-sintetico', workOrderId: 'ot-sintetica' }));
+    await expect(
+      service.validateTransition('exp-listo-agenda', ExpedienteStatus.INSTALACION_AGENDADA),
+    ).resolves.toEqual({ valid: true });
+
+    mockExpediente(buildExpediente());
+    await expect(
+      service.validateTransition('exp-descartado', ExpedienteStatus.DESCARTADO),
+    ).resolves.toEqual({ valid: true });
+    mockExpediente(buildExpediente({ status: ExpedienteStatus.PRECALIFICADO }));
+    await expect(
+      service.validateTransition('exp-regreso-nuevo', ExpedienteStatus.NUEVO_POTENCIAL),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('acepta correo como contacto mínimo, rechaza ubicación parcial y permite preparación completa', async () => {
+    mockExpediente(
+      buildExpediente({
+        documentType: 'CC',
+        documentNumberEncrypted: 'cipher-documento',
+        emailPrimaryEncrypted: 'cipher-correo',
+        address: 'Dirección sintética',
+        municipality: 'Municipio sintético',
+      }),
+    );
+    await expect(
+      service.validateTransition('exp-correo', ExpedienteStatus.PRECALIFICADO),
+    ).resolves.toEqual({ valid: true });
+
+    mockExpediente(buildExpediente({ latitude: 4.5, longitude: null, address: 'Dirección' }));
+    await expect(
+      service.validateTransition('exp-ubicacion-parcial', ExpedienteStatus.VALIDANDO_COBERTURA),
+    ).resolves.toEqual({
+      valid: false,
+      missingFields: ['Coordenadas (lat/lng) o Dirección completa'],
+    });
+
+    mockExpediente(buildExpediente());
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      sectionCompleteness: [],
+      missingRequirements: [],
+      installationReadiness: {
+        status: 'READY_COMPLETE',
+        canTransition: true,
+        title: 'Completo',
+        message: 'Listo para continuar.',
+      },
+    });
+    await expect(
+      service.validateTransition('exp-listo-completo', ExpedienteStatus.LISTO_PARA_INSTALACION),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('bloquea CLIENTE_ACTIVO si alguna sección funcional sigue incompleta', async () => {
+    mockExpediente(buildExpediente());
+    const requirement = {
+      sectionKey: 'contact',
+      sectionLabel: 'Contacto',
+      fieldKey: 'phonePrimary',
+      fieldLabel: 'Teléfono principal',
+    };
+    completenessCalculatorMock.calculate.mockResolvedValue({
+      commercial: 70,
+      legal: 100,
+      technical: 100,
+      operational: 100,
+      overall: 90,
+      sectionCompleteness: [
+        {
+          key: 'contact',
+          label: 'Contacto',
+          percentage: 50,
+          completedFields: 1,
+          totalFields: 2,
+          missingFields: [requirement],
+        },
+      ],
+      installationReadiness: {
+        status: 'READY_WITH_PENDING',
+        canTransition: true,
+        title: 'Avance permitido',
+        message: 'Hay información pendiente.',
+      },
+      missingRequirements: [requirement],
+    });
+
+    await expect(
+      service.validateTransition('exp-incompleto', ExpedienteStatus.CLIENTE_ACTIVO),
+    ).resolves.toEqual({
+      valid: false,
+      missingFields: [
+        'Completitud funcional = 100% en las 6 secciones (excluye soportes documentales)',
+        'Contacto: Teléfono principal',
+      ],
+      missingRequirements: [requirement],
+    });
+  });
+
   it('permite CLIENTE_ACTIVO con advertencia cuando solo faltan soportes documentales', async () => {
     mockExpediente(buildExpediente({ checklistCompleted: false }));
     completenessCalculatorMock.calculate.mockResolvedValue({
