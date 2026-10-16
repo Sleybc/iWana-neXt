@@ -24,6 +24,8 @@ import {
   USAGE,
 } from './restore-tenant.mjs';
 
+const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
+
 // Datos sinteticos: nunca PII real.
 const ROW = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -447,30 +449,45 @@ test('assertRollbackInPlacePreconditions rechaza si el tenant no esta SUSPENDED'
 });
 
 test('el gate --rollback-in-place se evalua en main antes de cualquier escritura', () => {
-  const src = main.toString();
-  const gate = src.indexOf('assertRollbackInPlacePreconditions({ schemaExists: targetSchemaExists');
-
-  assert.ok(gate !== -1, 'main invoca el gate de precondiciones');
-  for (const write of [
+  const src = normalizeWhitespace(main.toString());
+  const gateCall = 'assertRollbackInPlacePreconditions({ schemaExists: targetSchemaExists';
+  const writes = [
     'createDatabase(args.into)',
     'runPgRestore(effectiveDumpPath, args.into)',
     'injectTenantRow(args.into, sidecar)',
-  ]) {
-    const at = src.indexOf(write);
-    assert.ok(at !== -1, `main contiene ${write}`);
-    assert.ok(gate < at, `el gate precede a ${write}: un rechazo no escribe nada`);
-  }
+  ];
+  const gatePrecedesWrites = (source) => {
+    const gate = source.indexOf(gateCall);
+    return (
+      gate !== -1 &&
+      writes.every((write) => {
+        const at = source.indexOf(write);
+        return at !== -1 && gate < at;
+      })
+    );
+  };
+
+  assert.ok(gatePrecedesWrites(src), 'el gate precede a todas las escrituras');
+
+  const gateMovedAfterFirstWrite = src
+    .replace(gateCall, '')
+    .replace('createDatabase(args.into)', `createDatabase(args.into) ${gateCall}`);
+  assert.equal(
+    gatePrecedesWrites(gateMovedAfterFirstWrite),
+    false,
+    'el control negativo no satisface el orden exigido',
+  );
 });
 
 test('main omite assertNoRegistryConflicts e injectTenantRow en modo rollback', () => {
-  const src = main.toString();
+  const src = normalizeWhitespace(main.toString());
   const guard = src.indexOf('if (!args.rollbackInPlace)');
   const conflicts = src.indexOf('assertNoRegistryConflicts(args.into, sidecar)');
 
   assert.ok(guard !== -1 && conflicts !== -1 && conflicts > guard);
 
   const injectAt = src.indexOf('injectTenantRow(args.into, sidecar)');
-  const rollbackInjection = src.indexOf("if (args.rollbackInPlace) {\n    injection = 'conservada");
+  const rollbackInjection = src.indexOf("if (args.rollbackInPlace) { injection = 'conservada");
   assert.ok(rollbackInjection !== -1 && injectAt > rollbackInjection);
 });
 
