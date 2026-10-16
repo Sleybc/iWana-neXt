@@ -71,7 +71,7 @@ El lado módulo de G7 queda **listo sin condiciones**. G7 sigue diferido hasta l
 
 Desmontarlo no rompe nada.
 
-**D-OPP (decide el CTO):** AI-EM-ARCH recomienda **desmontarlo** con el mismo patrón que D-CONT (comentario, más un spec que fije el desmontaje). Si el pipeline de oportunidades sigue vigente en el roadmap, va con una fase propia y su migración.
+**D-OPP ✅ aprobado por el CTO y aplicado (2026-10-16):** se retiró de `crm.module.ts`, y `crm.module.spec.ts` fija el desmontaje; el código del módulo se conserva. Recomendación original: AI-EM-ARCH recomienda **desmontarlo** con el mismo patrón que D-CONT (comentario, más un spec que fije el desmontaje). Si el pipeline de oportunidades sigue vigente en el roadmap, va con una fase propia y su migración.
 
 ## 5. Decisiones del CTO pendientes para G7
 

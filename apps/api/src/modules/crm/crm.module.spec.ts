@@ -46,4 +46,14 @@ describe('CrmModule', () => {
       imports.some((module) => typeof module === 'function' && module.name === 'ContactsModule'),
     ).toBe(false);
   });
+
+  it('no monta OpportunitiesModule (D-OPP): su tabla opportunities no existe', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, CrmModule) as unknown[];
+
+    expect(
+      imports.some(
+        (module) => typeof module === 'function' && module.name === 'OpportunitiesModule',
+      ),
+    ).toBe(false);
+  });
 });

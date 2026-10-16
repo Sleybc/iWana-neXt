@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { HabeasDataModule } from './habeas-data/habeas-data.module';
-import { OpportunitiesModule } from './opportunities/opportunities.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { CoverageReadPort } from './ports/coverage-read.port';
@@ -39,7 +38,7 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     TenantModule,
     // D-CONT: ContactsModule desmontado; `subscriber_contacts` no tiene migración (ADR-030: usar party_contact).
     HabeasDataModule,
-    OpportunitiesModule,
+    // D-OPP: OpportunitiesModule desmontado; `opportunities` no tiene migración.
     QuotesModule,
     ContractsModule,
     ExpedientesModule,
