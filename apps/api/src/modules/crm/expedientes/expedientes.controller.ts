@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   ParseUUIDPipe,
@@ -392,9 +393,10 @@ export class ExpedientesController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.AUDITOR,
+    UserRole.TECHNICIAN,
+    UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Obtener timeline cronológico del expediente' })
   @ApiExtraModels(
     ExpedienteTimelineLegacyResponseSwaggerDto,
@@ -439,26 +441,31 @@ export class ExpedientesController {
   })
   async getTimeline(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
     @Query(new ZodValidationPipe(ExpedienteTimelineQuerySchema))
     query: ExpedienteTimelineQueryDto = {},
   ) {
+    const access = await this.assertSubresourceReadAccess(id, user);
+    let result: unknown;
     if (Object.keys(query).length === 0) {
       const timeline = await this.expedienteService.getTimelineSummary(id);
-      return {
+      result = {
         data: {
           changes: timeline.changes,
           activities: timeline.activities,
           metadata: timeline.metadata,
         },
       };
+    } else {
+      result = await this.expedienteService.getTimelinePage(
+        id,
+        query.page,
+        query.limit,
+        query.filter ?? 'all',
+      );
     }
-
-    return this.expedienteService.getTimelinePage(
-      id,
-      query.page,
-      query.limit,
-      query.filter ?? 'all',
-    );
+    await this.auditBlockedListAccess(id, user, access, this.countSubresourceRows(result));
+    return result;
   }
 
   @Get(':id/document-supports')
@@ -467,15 +474,19 @@ export class ExpedientesController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.AUDITOR,
+    UserRole.TECHNICIAN,
+    UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar soportes documentales del expediente' })
   async getDocumentSupports(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
+    const access = await this.assertSubresourceReadAccess(id, user);
     const data = await this.expedienteService.getDocumentSupports(id, personTypeOverride);
+    await this.auditBlockedListAccess(id, user, access, this.countSubresourceRows(data));
     return { data };
   }
 
@@ -493,6 +504,7 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.uploadDocumentSupport(
       id,
       documentKey,
@@ -517,6 +529,7 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.updateDocumentSupportStatus(
       id,
       documentKey,
@@ -541,6 +554,7 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Query('personType') personTypeOverride?: string,
   ) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.deleteDocumentSupport(
       id,
       documentKey,
@@ -557,17 +571,21 @@ export class ExpedientesController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.AUDITOR,
+    UserRole.TECHNICIAN,
+    UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Descargar una versión específica de soporte documental' })
   async getDocumentSupportFile(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('documentKey') documentKey: string,
     @Param('versionId') versionId: string,
+    @CurrentUser() user: JwtPayload,
     @Res() response: Response,
   ) {
+    const access = await this.assertSubresourceReadAccess(id, user);
     const file = await this.expedienteService.getDocumentSupportFile(id, documentKey, versionId);
+    if (access.blocked) await this.auditRecordAccess(id, user, true, access.grantedBy);
     response.setHeader('Content-Type', file.mimeType);
     return response.download(file.filePath, file.fileName);
   }
@@ -582,6 +600,7 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(CreateContactAttemptSchema)) dto: CreateContactAttemptDto,
     @CurrentUser() user: JwtPayload,
   ) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.createContactAttempt(id, dto, user.sub);
     return { data };
   }
@@ -592,19 +611,24 @@ export class ExpedientesController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.AUDITOR,
+    UserRole.TECHNICIAN,
+    UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar intentos de contacto del expediente' })
   @ApiExtraModels(CrmListPaginationDto)
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   async listContactAttempts(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
     @Query('page', CrmListPagePipe) page?: number,
     @Query('limit', CrmListLimitPipe) limit?: number,
   ) {
-    return this.expedienteService.listContactAttempts(id, page, limit);
+    const access = await this.assertSubresourceReadAccess(id, user);
+    const result = await this.expedienteService.listContactAttempts(id, page, limit);
+    await this.auditBlockedListAccess(id, user, access, this.countSubresourceRows(result));
+    return result;
   }
 
   @Post(':id/consents')
@@ -618,6 +642,7 @@ export class ExpedientesController {
     @CurrentUser() user: JwtPayload,
     @Req() request: Request,
   ) {
+    await this.assertNotBlocked(id);
     const forwardedFor = request.headers['x-forwarded-for'];
     const ipAddress = Array.isArray(forwardedFor)
       ? (forwardedFor[0] ?? request.ip ?? null)
@@ -633,12 +658,15 @@ export class ExpedientesController {
     UserRole.SALES,
     UserRole.SUPPORT,
     UserRole.AUDITOR,
+    UserRole.TECHNICIAN,
+    UserRole.ACCOUNTANT,
     PlatformRole.SYSTEM_ADMIN,
   )
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Listar consentimientos del expediente' })
   async listConsents(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const access = await this.assertSubresourceReadAccess(id, user);
     const data = await this.expedienteService.listConsents(id);
+    await this.auditBlockedListAccess(id, user, access, this.countSubresourceRows(data));
     const canViewIpAddress = ADMINISTRATIVE_ROLES.includes(user.role);
     return {
       data: data.map((consent) => ({
@@ -659,6 +687,7 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(RevokeConsentSchema)) dto: RevokeConsentDto,
     @CurrentUser() user: JwtPayload,
   ) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.revokeConsent(id, consentId, dto.reason, user.sub);
     return { data };
   }
@@ -672,15 +701,27 @@ export class ExpedientesController {
     @Body(new ZodBodyValidationPipe(CreateCoverageCheckSchema)) dto: CreateCoverageCheckDto,
     @CurrentUser() user: JwtPayload,
   ) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.createCoverageCheck(id, dto, user.sub);
     return { data };
   }
 
   @Get(':id/coverage-checks')
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.TECHNICIAN, PlatformRole.SYSTEM_ADMIN)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SALES,
+    UserRole.TECHNICIAN,
+    UserRole.ACCOUNTANT,
+    PlatformRole.SYSTEM_ADMIN,
+  )
   @ApiOperation({ summary: 'Listar verificaciones de cobertura del expediente' })
-  async listCoverageChecks(@Param('id', ParseUUIDPipe) id: string) {
+  async listCoverageChecks(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const access = await this.assertSubresourceReadAccess(id, user);
     const data = await this.expedienteService.listCoverageChecks(id);
+    await this.auditBlockedListAccess(id, user, access, this.countSubresourceRows(data));
     return { data };
   }
 
@@ -707,6 +748,13 @@ export class ExpedientesController {
     const permissions = new Set(
       await this.effectivePermissionsService.getEffectivePermissionsForUser(actorId),
     );
+    return this.blockedReadAccess(permissions);
+  }
+
+  private blockedReadAccess(permissions: ReadonlySet<AccessPermissionKey>): {
+    canSeeBlocked: boolean;
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ';
+  } {
     if (permissions.has(AccessPermissionKey.PRIVACY_READ)) {
       return { canSeeBlocked: true, grantedBy: 'PRIVACY_READ' };
     }
@@ -714,6 +762,69 @@ export class ExpedientesController {
       return { canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ' };
     }
     return { canSeeBlocked: false };
+  }
+
+  private async assertSubresourceReadAccess(
+    id: string,
+    user: JwtPayload,
+  ): Promise<{ blocked: boolean; grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ' }> {
+    const permissions = new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(user.sub),
+    );
+    const blockedAccess = this.blockedReadAccess(permissions);
+    const hasExpedienteRead = permissions.has(AccessPermissionKey.CRM_EXPEDIENTES_READ);
+    const expediente = await this.expedienteService.findById(id);
+    const marks = await this.expedienteService.getPrivacyMarksForExpediente(id);
+    const blocked = this.isBlocked(marks, expediente?.anonymizedAt);
+    if (blocked && !blockedAccess.canSeeBlocked) {
+      throw new ForbiddenException({
+        code: 'PRIVACY_DATA_BLOCKED',
+        message: 'Los datos de este titular están bloqueados para lectura.',
+      });
+    }
+    if (!hasExpedienteRead && (!blocked || !blockedAccess.canSeeBlocked)) {
+      throw new ForbiddenException({
+        code: 'CRM_EXPEDIENTES_READ_REQUIRED',
+        message: 'No tienes permiso para consultar este expediente.',
+      });
+    }
+    return { blocked, ...(blockedAccess.grantedBy ? { grantedBy: blockedAccess.grantedBy } : {}) };
+  }
+
+  private async auditBlockedListAccess(
+    id: string,
+    user: JwtPayload,
+    access: { blocked: boolean; grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ' },
+    blockedServed: number,
+  ): Promise<void> {
+    if (!access.blocked || !access.grantedBy) return;
+    await this.auditService.log({
+      action: AuditAction.LIST_ACCESS,
+      entityType: 'ExpedienteRecord',
+      entityId: id,
+      userId: user.sub,
+      newValue: {
+        role: user.role,
+        privacyMark: 'DATOS_BLOQUEADOS',
+        grantedBy: access.grantedBy,
+        blockedServed,
+      },
+    });
+  }
+
+  private countSubresourceRows(value: unknown): number {
+    if (Array.isArray(value)) return value.length;
+    if (typeof value !== 'object' || value === null) return 0;
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record['data'])) return record['data'].length;
+    if (Array.isArray(record['changes']) || Array.isArray(record['activities'])) {
+      const changes = Array.isArray(record['changes']) ? record['changes'].length : 0;
+      const activities = Array.isArray(record['activities']) ? record['activities'].length : 0;
+      return changes + activities;
+    }
+    return typeof record['data'] === 'object' && record['data'] !== null
+      ? this.countSubresourceRows(record['data'])
+      : 0;
   }
 
   private isBlocked(

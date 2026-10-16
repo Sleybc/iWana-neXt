@@ -1005,6 +1005,7 @@ describe('SubscribersService', () => {
 
   describe('createFromExpediente', () => {
     it('crea suscriptor y lo activa directamente', async () => {
+      privacyLegalTextReadPortMock.findByVersion.mockResolvedValue({ id: 'legal-text-fixture' });
       const created = buildSubscriber({
         id: 'sub-exp-001',
         personType: PersonType.NATURAL,
@@ -1033,6 +1034,7 @@ describe('SubscribersService', () => {
                 revokedAt: null,
                 ipAddress: null,
                 legalTextVersion: 'legacy-v1',
+                channel: 'UNKNOWN',
               },
             ]),
             findOne: async () => ({ ...created, status: SubscriberStatus.ACTIVE }),
@@ -1060,6 +1062,10 @@ describe('SubscribersService', () => {
 
       expect(result).toBeDefined();
       expect(result.id).toBe('sub-exp-001');
+      expect(privacyAuthorizationWritePortMock.record).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'LEGACY_IMPORT', channel: 'UNKNOWN' }),
+        expect.any(Object),
+      );
     });
   });
 

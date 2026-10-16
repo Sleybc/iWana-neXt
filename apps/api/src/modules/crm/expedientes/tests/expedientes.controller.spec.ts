@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AccessPermissionKey,
   PlatformRole,
   AcquisitionChannel,
   ContactChannel,
@@ -57,10 +58,27 @@ describe('ExpedientesController', () => {
   const detailBootstrapServiceMock = {
     getDetailBootstrap: jest.fn(),
   };
+  const effectivePermissionsMock = {
+    getEffectivePermissionsForUser: jest
+      .fn()
+      .mockResolvedValue([AccessPermissionKey.CRM_EXPEDIENTES_READ]),
+  };
+  const authenticatedReader = {
+    sub: 'reader-001',
+    email: 'reader@example.invalid',
+    role: UserRole.ADMIN,
+    tenantId: 'tenant-1',
+    schemaName: 'tenant_1',
+    jti: 'reader-jti',
+    type: 'tenant' as const,
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue([]);
+    effectivePermissionsMock.getEffectivePermissionsForUser
+      .mockReset()
+      .mockResolvedValue([AccessPermissionKey.CRM_EXPEDIENTES_READ]);
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ExpedientesController],
@@ -75,7 +93,7 @@ describe('ExpedientesController', () => {
         { provide: ExpedienteDetailBootstrapService, useValue: detailBootstrapServiceMock },
         {
           provide: EffectivePermissionsService,
-          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+          useValue: effectivePermissionsMock,
         },
         { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
@@ -643,7 +661,10 @@ describe('ExpedientesController', () => {
       },
     });
 
-    const result = (await controller.getTimeline('00000000-0000-4000-a000-000000000001')) as {
+    const result = (await controller.getTimeline(
+      '00000000-0000-4000-a000-000000000001',
+      authenticatedReader,
+    )) as {
       data: { activities: Array<{ type: string }>; metadata: { createdBy: { name: string } } };
     };
 
@@ -667,7 +688,7 @@ describe('ExpedientesController', () => {
       },
     });
 
-    const result = await controller.getTimeline('exp-1', {
+    const result = await controller.getTimeline('exp-1', authenticatedReader, {
       page: 2,
       limit: 5,
       filter: 'contact',
@@ -682,7 +703,7 @@ describe('ExpedientesController', () => {
   it('usa el filtro all cuando el timeline paginado no especifica filtro', async () => {
     expedienteServiceMock.getTimelinePage.mockResolvedValue({ data: { events: [] }, meta: {} });
 
-    await controller.getTimeline('exp-synthetic', { page: 1, limit: 10 });
+    await controller.getTimeline('exp-synthetic', authenticatedReader, { page: 1, limit: 10 });
 
     expect(expedienteServiceMock.getTimelinePage).toHaveBeenCalledWith(
       'exp-synthetic',
@@ -772,7 +793,10 @@ describe('ExpedientesController', () => {
       summary: { requiredCount: 2, uploadedCount: 0, approvedCount: 0, blockStatus: 'PENDIENTE' },
     });
 
-    const result = await controller.getDocumentSupports('00000000-0000-4000-a000-000000000001');
+    const result = await controller.getDocumentSupports(
+      '00000000-0000-4000-a000-000000000001',
+      authenticatedReader,
+    );
 
     expect(expedienteServiceMock.getDocumentSupports).toHaveBeenCalledWith(
       '00000000-0000-4000-a000-000000000001',
