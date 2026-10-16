@@ -9,6 +9,8 @@
 **Relacionado:** [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía de gates) · [ADR-078](../adrs/ADR-078-Reapertura-Dominio-Productivo-Por-PII-Real.md) (expediente de producción reabierto, Aprobado 2026-09-12) · [RUNBOOK-RELEASE-ROLLBACK-v1.0](../runbooks/RUNBOOK-RELEASE-ROLLBACK-v1.0.md) §6.2–§6.3
 **Destinatario de ejecución:** AI-PLAT-OPS (R) · AI-SR-QA (verificación) · AI-EM-ARCH (A)
 
+> **Supersesión parcial:** el punto del rollback (§3.2) quedó superado por [SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.1](SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.1.md) (modo `--rollback-in-place`, 2026-10-16). El resto de esta v1.0 sigue vigente sin cambios.
+
 ---
 
 ## 1. Problema

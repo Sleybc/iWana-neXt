@@ -3,7 +3,7 @@
  * Restore de UN tenant desde un backup por tenant: dump -Fc + sidecar
  * <schema>-<utc>.tenant.json generado por scripts/db/backup-tenant.mjs.
  *
- * Invariantes (SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.0 §3):
+ * Invariantes (SPEC-PLAT-OPS-RESTORE-POR-TENANT-v1.1 §3):
  *   - el schema se toma del dump y del sidecar (nunca de un argumento), se
  *     valida con el validador de @iwana/db y debe coincidir entre ambos;
  *   - modo ensayo por defecto: la base destino debe ser distinta de DB_NAME.
@@ -14,11 +14,16 @@
  *     reemplazo con DROP y CASCADE;
  *   - sin sidecar el dump no es restaurable: aborta con mensaje accionable en
  *     vez de dejar un schema huerfano.
+ *   - modo --rollback-in-place (v1.1 §3.2): tras el RENAME aprobado del
+ *     schema, con el tenant SUSPENDED y la fila de public.tenants intacta e
+ *     identica al sidecar, omite assertNoRegistryConflicts e injectTenantRow;
+ *     nunca modifica public.tenants ni elimina schemas.
  *
  * Requiere `pnpm --filter @iwana/db build` previo (validador compilado).
  *
  * Uso:
  *   node scripts/db/restore-tenant.mjs --file=<ruta.dump> --into=<base> [--force-same-database]
+ *   node scripts/db/restore-tenant.mjs --file=<ruta.dump> --into=<base> --force-same-database --rollback-in-place
  *   pnpm db:restore:tenant --file=<ruta.dump> --into=<base>
  *
  * Parametrizacion por env (misma familia que restore.mjs):
@@ -60,6 +65,14 @@ OPCIONES
                         DB_NAME (modo ensayo).
   --force-same-database Permite como destino la propia DB_NAME. Exige
                         confirmacion interactiva tecleando el schema exacto.
+  --rollback-in-place  Rollback sobre el schema renombrado (SPEC v1.1 §3.2):
+                        exige que el schema destino NO exista (se renombro
+                        antes), que la fila de public.tenants exista y
+                        coincida exactamente con el sidecar en id, slug y
+                        schema_name, y que el tenant este SUSPENDED. Omite
+                        assertNoRegistryConflicts e injectTenantRow; nunca
+                        modifica public.tenants. Cualquier precondicion
+                        incumplida aborta sin escribir nada.
   -h, --help            Esta ayuda.
 
 GUARDAS
@@ -67,6 +80,8 @@ GUARDAS
     ^tenant_[a-z][a-z0-9_]{0,54}$ y debe coincidir entre ambos.
   - Si el schema ya existe en destino, aborta: no elimina schemas ni usa un
     reemplazo destructivo. Siga el procedimiento con ventana del runbook §6.3.
+    En modo --rollback-in-place el schema debe estar ausente porque se
+    renombro antes (RENAME aprobado); si sigue presente, aborta.
   - Sin sidecar, o con checksum que no corresponde, aborta sin tocar la base.
 
 RESUMEN EMITIDO (sanitizado)
@@ -87,6 +102,7 @@ export function parseTenantRestoreArgs(argv) {
     file: undefined,
     into: undefined,
     forceSameDatabase: false,
+    rollbackInPlace: false,
     help: false,
   };
 
@@ -109,6 +125,8 @@ export function parseTenantRestoreArgs(argv) {
       parsed.into = value;
     } else if (arg === '--force-same-database') {
       parsed.forceSameDatabase = true;
+    } else if (arg === '--rollback-in-place') {
+      parsed.rollbackInPlace = true;
     } else {
       throw new CliError(`Argumento no reconocido: "${arg}". Use --help.`);
     }
@@ -339,6 +357,20 @@ function tenantsRegistryExists(database) {
   return rows[0] === 't';
 }
 
+/** Lectura del registro vigente para --rollback-in-place. Solo SELECT. */
+function fetchRollbackRegistryRow(database, schemaName) {
+  const lines = queryLines(buildRollbackRegistryLookupSql(), { schema: schemaName }, database);
+  return parseRollbackRegistryRow(
+    lines.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    }),
+  );
+}
+
 function assertNoRegistryConflicts(database, sidecar) {
   const rows = queryLines(
     `SELECT count(*) FROM public.tenants WHERE id::text = :'tenant_id' OR slug = :'tenant_slug' OR schema_name = :'schema'`,
@@ -351,6 +383,91 @@ function assertNoRegistryConflicts(database, sidecar) {
         '(mismo id, slug o schema_name). No se toco la base; revise el destino.',
     );
   }
+}
+
+/**
+ * Modo --rollback-in-place (SPEC v1.1 §3.2): gate de solo lectura.
+ *
+ * Tras el RENAME aprobado, el schema destino no existe, la fila de
+ * public.tenants sigue vigente y el tenant esta SUSPENDED con las escrituras
+ * congeladas. Esta funcion es PURA (recibe datos, nunca toca la base): cada
+ * rechazo aborta antes de cualquier escritura. Nunca modifica public.tenants
+ * ni elimina schemas — el CLI no contiene ninguna de esas operaciones.
+ */
+export function buildRollbackRegistryLookupSql() {
+  return `SELECT row_to_json(t) FROM public.tenants t WHERE t.schema_name = :'schema'`;
+}
+
+/**
+ * Fail-closed: 0 filas = registro ausente; 2+ filas = ambiguedad (el schema
+ * es unico por constraint, pero el comando no adivina ante lo inesperado).
+ */
+export function parseRollbackRegistryRow(rows) {
+  if (rows.length === 0) {
+    return null;
+  }
+  if (rows.length > 1) {
+    throw new CliError(
+      'public.tenants devuelve mas de una fila para el schema del backup; el estado del registro es ' +
+        'ambiguo y el comando no adivina. No se escribio nada; revise el destino.',
+    );
+  }
+  const row = rows[0];
+  if (
+    !row ||
+    typeof row !== 'object' ||
+    typeof row.id !== 'string' ||
+    typeof row.slug !== 'string' ||
+    typeof row.schema_name !== 'string' ||
+    typeof row.status !== 'string'
+  ) {
+    throw new CliError(
+      'la fila de public.tenants esta incompleta (id, slug, schema_name o status ausente); no es ' +
+        'comparable con el sidecar. No se escribio nada; revise el destino.',
+    );
+  }
+  return { id: row.id, slug: row.slug, schema_name: row.schema_name, status: row.status };
+}
+
+export function assertRollbackInPlacePreconditions({ schemaExists, registryRow, sidecar }) {
+  if (schemaExists) {
+    throw new CliError(
+      `modo --rollback-in-place: el schema "${sidecar.schemaName}" aun existe en la base destino. ` +
+        'El rollback exige renombrarlo antes con el RENAME aprobado (runbook §11); el comando nunca ' +
+        'elimina ni reemplaza schemas. No se escribio nada.',
+    );
+  }
+  if (!registryRow) {
+    throw new CliError(
+      'modo --rollback-in-place: no hay fila en public.tenants para el schema del backup. El rollback ' +
+        'en sitio exige el registro vigente; sin el, use el restore normal de ensayo. No se escribio nada.',
+    );
+  }
+  const mismatches = [];
+  if (registryRow.id !== sidecar.tenant.id) {
+    mismatches.push('id');
+  }
+  if (registryRow.slug !== sidecar.tenant.slug) {
+    mismatches.push('slug');
+  }
+  if (registryRow.schema_name !== sidecar.schemaName) {
+    mismatches.push('schema_name');
+  }
+  if (mismatches.length > 0) {
+    throw new CliError(
+      `modo --rollback-in-place: la fila de public.tenants no coincide exactamente con el sidecar ` +
+        `(${mismatches.join(', ')}). Restaurar otro tenant sobre este registro rompería el aislamiento; ` +
+        'el comando no adivina. No se escribio nada ni se modifico public.tenants.',
+    );
+  }
+  if (registryRow.status !== 'SUSPENDED') {
+    throw new CliError(
+      `modo --rollback-in-place: el tenant esta en estado "${registryRow.status}", no SUSPENDED. ` +
+        'El rollback exige suspenderlo y congelar escrituras antes del RENAME (runbook §11). ' +
+        'No se escribio nada.',
+    );
+  }
+  return registryRow;
 }
 
 /**
@@ -596,7 +713,33 @@ export async function main(argv = process.argv.slice(2), log = console) {
     }
 
     targetExisted = databaseExists(args.into);
-    if (!targetExisted) {
+    if (args.rollbackInPlace) {
+      // Modo --rollback-in-place (SPEC v1.1 §3.2): el schema se renombro
+      // antes con el RENAME aprobado y la fila vigente se conserva. Todo este
+      // gate es solo lectura; cualquier rechazo aborta sin escribir nada, sin
+      // crear la base, sin modificar public.tenants y sin eliminar schemas.
+      if (!targetExisted) {
+        throw new CliError(
+          `modo --rollback-in-place: la base destino "${args.into}" no existe. El rollback en sitio ` +
+            'opera sobre la base vigente (con su registro public.tenants); no crea bases. ' +
+            'No se escribio nada.',
+        );
+      }
+      const targetSchemaExists = schemaExists(args.into, schemaName);
+      const registryRow = tenantsRegistryExists(args.into)
+        ? fetchRollbackRegistryRow(args.into, schemaName)
+        : null;
+      assertRollbackInPlacePreconditions({
+        schemaExists: targetSchemaExists,
+        registryRow,
+        sidecar,
+      });
+      registryAvailable = false; // la fila vigente se conserva; nunca se reinyecta
+      log.log(
+        '[RESTORE-TENANT] modo --rollback-in-place: registro vigente verificado ' +
+          `(tenant SUSPENDED, schema "${schemaName}" libre).`,
+      );
+    } else if (!targetExisted) {
       createDatabase(args.into);
       log.log(
         `[RESTORE-TENANT] la base destino "${args.into}" no existia; se creo antes de restaurar.`,
@@ -610,9 +753,11 @@ export async function main(argv = process.argv.slice(2), log = console) {
       );
     }
 
-    registryAvailable = targetExisted && tenantsRegistryExists(args.into);
-    if (registryAvailable) {
-      assertNoRegistryConflicts(args.into, sidecar);
+    if (!args.rollbackInPlace) {
+      registryAvailable = targetExisted && tenantsRegistryExists(args.into);
+      if (registryAvailable) {
+        assertNoRegistryConflicts(args.into, sidecar);
+      }
     }
 
     log.log(`[RESTORE-TENANT] restaurando en modo ensayo sobre "${args.into}"...`);
@@ -628,7 +773,9 @@ export async function main(argv = process.argv.slice(2), log = console) {
   }
 
   let injection = 'omitida (la base destino no tiene public.tenants; ensayo aislado)';
-  if (registryAvailable) {
+  if (args.rollbackInPlace) {
+    injection = 'conservada (modo --rollback-in-place: public.tenants no se modifica)';
+  } else if (registryAvailable) {
     injectTenantRow(args.into, sidecar);
     injection = '1 fila en public.tenants';
   }

@@ -6,17 +6,22 @@ import { fileURLToPath } from 'node:url';
 import {
   assertDestinationAllowed,
   assertDumpMatchesSidecar,
+  assertRollbackInPlacePreconditions,
   assertSidecarAvailable,
   buildPgRestoreArgs,
   buildRestoreFailureMessage,
   buildRestoreSummaryLines,
+  buildRollbackRegistryLookupSql,
   buildTenantRegisterSql,
   confirmSameDatabaseRestore,
   deriveSidecarPath,
   isValidDatabaseName,
+  main,
   parseDumpSchemas,
+  parseRollbackRegistryRow,
   parseSidecar,
   parseTenantRestoreArgs,
+  USAGE,
 } from './restore-tenant.mjs';
 
 // Datos sinteticos: nunca PII real.
@@ -297,4 +302,185 @@ test('buildRestoreSummaryLines incluye el pendiente operativo de grants (H-1)', 
   );
   assert.match(summary, /base destino: dbiw_restore_test \(creada\)/);
   assert.match(summary, /duracion: 1\.2 s \| operador: operador-sintetico/);
+});
+
+// --- Modo --rollback-in-place (SPEC v1.1 §3.2). Datos sinteticos: nunca PII. ---
+
+const ROLLBACK_ROW = { ...ROW, status: 'SUSPENDED' };
+const SIDECAR_SUSPENDED = parseSidecar(
+  JSON.stringify({ ...JSON.parse(SIDECAR_OK), tenant: ROLLBACK_ROW }),
+);
+
+test('parseTenantRestoreArgs acepta --rollback-in-place y por defecto viene apagado', () => {
+  const withFlag = parseTenantRestoreArgs([
+    '--file=/tmp/tenant_demo_a.dump',
+    '--into=dbiw',
+    '--force-same-database',
+    '--rollback-in-place',
+  ]);
+  assert.equal(withFlag.rollbackInPlace, true);
+
+  const withoutFlag = parseTenantRestoreArgs(['--file=/tmp/x.dump', '--into=dbiw_test']);
+  assert.equal(withoutFlag.rollbackInPlace, false);
+});
+
+test('USAGE documenta --rollback-in-place y sus precondiciones', () => {
+  assert.match(USAGE, /--rollback-in-place/);
+  assert.match(USAGE, /SUSPENDED/);
+  assert.match(USAGE, /nunca\n?\s*modifica public\.tenants/);
+});
+
+test('buildRollbackRegistryLookupSql parametriza el schema (sin interpolacion)', () => {
+  const sql = buildRollbackRegistryLookupSql();
+
+  assert.match(sql, /public\.tenants/);
+  assert.match(sql, /:'schema'/);
+  assert.doesNotMatch(sql, /tenant_demo_a/);
+});
+
+test('parseRollbackRegistryRow devuelve null si no hay fila (registro ausente)', () => {
+  assert.equal(parseRollbackRegistryRow([]), null);
+});
+
+test('parseRollbackRegistryRow rechaza ambiguedad (2+ filas) sin adivinar', () => {
+  assert.throws(() => parseRollbackRegistryRow([ROLLBACK_ROW, ROLLBACK_ROW]), /ambiguo/);
+});
+
+test('parseRollbackRegistryRow rechaza una fila incompleta', () => {
+  assert.throws(
+    () => parseRollbackRegistryRow([{ id: ROLLBACK_ROW.id, slug: 'demo-a' }]),
+    /incompleta/,
+  );
+});
+
+test('parseRollbackRegistryRow expone id, slug, schema_name y status', () => {
+  assert.deepEqual(parseRollbackRegistryRow([ROLLBACK_ROW]), {
+    id: ROLLBACK_ROW.id,
+    slug: ROLLBACK_ROW.slug,
+    schema_name: ROLLBACK_ROW.schema_name,
+    status: ROLLBACK_ROW.status,
+  });
+});
+
+test('assertRollbackInPlacePreconditions acepta el camino feliz', () => {
+  const result = assertRollbackInPlacePreconditions({
+    schemaExists: false,
+    registryRow: ROLLBACK_ROW,
+    sidecar: SIDECAR_SUSPENDED,
+  });
+
+  assert.deepEqual(result, ROLLBACK_ROW);
+  assert.ok(!(result instanceof Promise), 'el gate es sincrono y puro: no toca la base');
+});
+
+test('assertRollbackInPlacePreconditions rechaza si el schema sigue presente', () => {
+  assert.throws(
+    () =>
+      assertRollbackInPlacePreconditions({
+        schemaExists: true,
+        registryRow: ROLLBACK_ROW,
+        sidecar: SIDECAR_SUSPENDED,
+      }),
+    (error) => {
+      assert.match(error.message, /aun existe/);
+      assert.match(error.message, /No se escribio nada/);
+      return true;
+    },
+  );
+});
+
+test('assertRollbackInPlacePreconditions rechaza si la fila esta ausente', () => {
+  assert.throws(
+    () =>
+      assertRollbackInPlacePreconditions({
+        schemaExists: false,
+        registryRow: null,
+        sidecar: SIDECAR_SUSPENDED,
+      }),
+    (error) => {
+      assert.match(error.message, /no hay fila en public\.tenants/);
+      assert.match(error.message, /No se escribio nada/);
+      return true;
+    },
+  );
+});
+
+for (const field of ['id', 'slug', 'schema_name']) {
+  test(`assertRollbackInPlacePreconditions rechaza si difiere ${field}`, () => {
+    const other =
+      field === 'id'
+        ? '22222222-2222-4222-8222-222222222222'
+        : field === 'slug'
+          ? 'demo-otro'
+          : 'tenant_demo_otro';
+    assert.throws(
+      () =>
+        assertRollbackInPlacePreconditions({
+          schemaExists: false,
+          registryRow: { ...ROLLBACK_ROW, [field]: other },
+          sidecar: SIDECAR_SUSPENDED,
+        }),
+      (error) => {
+        assert.match(error.message, new RegExp(field));
+        assert.match(error.message, /no coincide exactamente/);
+        assert.match(error.message, /se modifico public\.tenants/);
+        return true;
+      },
+    );
+  });
+}
+
+test('assertRollbackInPlacePreconditions rechaza si el tenant no esta SUSPENDED', () => {
+  assert.throws(
+    () =>
+      assertRollbackInPlacePreconditions({
+        schemaExists: false,
+        registryRow: { ...ROLLBACK_ROW, status: 'ACTIVE' },
+        sidecar: SIDECAR_SUSPENDED,
+      }),
+    (error) => {
+      assert.match(error.message, /no SUSPENDED/);
+      assert.match(error.message, /No se escribio nada/);
+      return true;
+    },
+  );
+});
+
+test('el gate --rollback-in-place se evalua en main antes de cualquier escritura', () => {
+  const src = main.toString();
+  const gate = src.indexOf('assertRollbackInPlacePreconditions({ schemaExists: targetSchemaExists');
+
+  assert.ok(gate !== -1, 'main invoca el gate de precondiciones');
+  for (const write of [
+    'createDatabase(args.into)',
+    'runPgRestore(effectiveDumpPath, args.into)',
+    'injectTenantRow(args.into, sidecar)',
+  ]) {
+    const at = src.indexOf(write);
+    assert.ok(at !== -1, `main contiene ${write}`);
+    assert.ok(gate < at, `el gate precede a ${write}: un rechazo no escribe nada`);
+  }
+});
+
+test('main omite assertNoRegistryConflicts e injectTenantRow en modo rollback', () => {
+  const src = main.toString();
+  const guard = src.indexOf('if (!args.rollbackInPlace)');
+  const conflicts = src.indexOf('assertNoRegistryConflicts(args.into, sidecar)');
+
+  assert.ok(guard !== -1 && conflicts !== -1 && conflicts > guard);
+
+  const injectAt = src.indexOf('injectTenantRow(args.into, sidecar)');
+  const rollbackInjection = src.indexOf("if (args.rollbackInPlace) {\n    injection = 'conservada");
+  assert.ok(rollbackInjection !== -1 && injectAt > rollbackInjection);
+});
+
+test('el script nunca modifica public.tenants ni elimina schemas', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('./restore-tenant.mjs', import.meta.url)),
+    'utf8',
+  );
+
+  assert.doesNotMatch(source, /DROP\s+SCHEMA/i);
+  assert.doesNotMatch(source, /UPDATE\s+public\.tenants/i);
+  assert.doesNotMatch(source, /DELETE\s+FROM\s+public\.tenants/i);
 });
