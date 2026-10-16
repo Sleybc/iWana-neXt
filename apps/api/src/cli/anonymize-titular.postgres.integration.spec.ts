@@ -65,6 +65,8 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
       full_name varchar(160) NOT NULL,
       address varchar(255),
       document_supports jsonb NOT NULL,
+      anonymized_at timestamptz,
+      anonymized_request_id uuid,
       updated_at timestamptz
     )
   `);
@@ -114,6 +116,8 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
       longitude numeric(10, 7),
       city varchar(120),
       department varchar(120),
+      anonymized_at timestamptz,
+      anonymized_request_id uuid,
       updated_at timestamptz,
       UNIQUE (document_type, document_number)
     )
@@ -170,6 +174,8 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
       manual_override_reason varchar(500),
       external_id varchar(160),
       status varchar(30),
+      anonymized_at timestamptz,
+      anonymized_request_id uuid,
       updated_at timestamptz
     )
   `);
@@ -398,6 +404,14 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         address: null,
         document_supports: {},
       });
+      expect(
+        await dataSource.query(
+          `SELECT anonymized_at IS NOT NULL AS marked,
+                anonymized_request_id = $2::uuid AS request_marked
+           FROM ${q}.expediente_records WHERE id = $1`,
+          [fixture.expedienteId, fixture.requestId],
+        ),
+      ).toEqual([{ marked: true, request_marked: true }]);
       expect(expediente[0]?.['document_number_hash']).toBeTruthy();
       const party = (await dataSource.query(
         `SELECT document_number, document_number_hmac, verification_digit, display_name, legal_name
@@ -413,6 +427,14 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         display_name: 'ANONIMIZADO',
         legal_name: null,
       });
+      expect(
+        await dataSource.query(
+          `SELECT anonymized_at IS NOT NULL AS marked,
+                anonymized_request_id = $2::uuid AS request_marked
+           FROM ${q}.party WHERE id = $1`,
+          [fixture.partyId, fixture.requestId],
+        ),
+      ).toEqual([{ marked: true, request_marked: true }]);
       expect(await dataSource.query(`SELECT notes FROM ${q}.contact_attempts`)).toEqual([
         { notes: null },
       ]);
@@ -466,6 +488,46 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         stratumMediaAssets: 0,
       });
     } finally {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+    }
+  });
+
+  it('retira evidencia de autorización no compartida por medio del scope interno del CLI', async () => {
+    const fixture = await createFixture(dataSource);
+    const q = quoteIdentifier(fixture.schema);
+    const mediaId = randomUUID();
+    try {
+      await dataSource.query(
+        `INSERT INTO public.media_assets
+          (id, tenant_schema, usage, original_filename, mime_type, ext, size_bytes, object_key)
+         VALUES ($1, $2, 'privacy_evidence', 'fixture.bin', 'application/octet-stream',
+           'bin', 1, $3)`,
+        [mediaId, fixture.schema, `${fixture.schema}/privacy_evidence/${mediaId}.bin`],
+      );
+      await dataSource.query(
+        `UPDATE ${q}.data_authorizations SET evidence_media_id = $1 WHERE party_id = $2`,
+        [mediaId, fixture.partyId],
+      );
+
+      const result = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [fixture.expedienteId],
+        false,
+        KEYS,
+        'apply',
+      );
+
+      expect(result).toMatchObject({ applied: true, verification: { activeMediaAssets: 0 } });
+      expect(
+        await dataSource.query(
+          `SELECT deleted_at IS NOT NULL AS deleted FROM public.media_assets WHERE id = $1`,
+          [mediaId],
+        ),
+      ).toEqual([{ deleted: true }]);
+    } finally {
+      await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
     }
   });
@@ -628,6 +690,485 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         ),
       ).toEqual([{ full_name: 'Prospecto sintético', address: 'Dirección sintética' }]);
     } finally {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+    }
+  });
+
+  it('anonimiza contratos y cotizaciones sin borrar el insumo ni claves no personales de snapshots', async () => {
+    const fixture = await createFixture(dataSource);
+    const q = quoteIdentifier(fixture.schema);
+    try {
+      const linked = await insertSubscriberAndUser(dataSource, fixture, new Date());
+      await dataSource.query(`
+        CREATE TABLE ${q}.contracts (
+          id uuid PRIMARY KEY,
+          subscriber_id uuid NOT NULL,
+          installation_address text,
+          installation_postal_code text,
+          installation_notes text,
+          fiscal_name text,
+          fiscal_document text,
+          fiscal_address text,
+          alias text,
+          stratum_evidence_media_id uuid,
+          vat_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+          plan_snapshot_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+          installation_city text,
+          installation_department text,
+          installation_stratum integer,
+          service_usage text,
+          customer_segment text,
+          status text NOT NULL
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.quotes (
+          id uuid PRIMARY KEY,
+          subscriber_id uuid,
+          expediente_id uuid,
+          plan_snapshot_json jsonb NOT NULL DEFAULT '{}'::jsonb
+        )
+      `);
+      const contractId = randomUUID();
+      const quoteBySubscriber = randomUUID();
+      const quoteByExpediente = randomUUID();
+      const mediaId = randomUUID();
+      await dataSource.query(
+        `INSERT INTO public.media_assets
+          (id, tenant_schema, usage, original_filename, mime_type, ext, size_bytes, object_key)
+         VALUES ($1, $2, 'stratum_evidence', 'fixture.bin', 'application/octet-stream',
+           'bin', 1, $3)`,
+        [mediaId, fixture.schema, `${fixture.schema}/stratum_evidence/${mediaId}.bin`],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.contracts
+          (id, subscriber_id, installation_address, installation_postal_code,
+           installation_notes, fiscal_name, fiscal_document, fiscal_address, alias,
+           stratum_evidence_media_id, vat_snapshot, plan_snapshot_json,
+           installation_city, installation_department, installation_stratum,
+           service_usage, customer_segment, status)
+         VALUES ($1, $2, 'fixture-address', 'fixture-postal', 'fixture-notes',
+           'fixture-fiscal-name', 'fixture-fiscal-document', 'fixture-fiscal-address',
+           'fixture-alias', $3, $4::jsonb, $5::jsonb, 'fixture-city',
+           'fixture-department', 3, 'RESIDENTIAL', 'STANDARD', 'ACTIVE')`,
+        [
+          contractId,
+          linked.subscriberId,
+          mediaId,
+          JSON.stringify({ fiscalName: 'remove', amount: 10 }),
+          JSON.stringify({ plan: { name: 'remove', documentType: 'remove' } }),
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.quotes (id, subscriber_id, plan_snapshot_json)
+         VALUES ($1, $2, $3::jsonb)`,
+        [
+          quoteBySubscriber,
+          linked.subscriberId,
+          JSON.stringify({ phonePrimary: 'remove', code: 'keep' }),
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.quotes (id, expediente_id, plan_snapshot_json)
+         VALUES ($1, $2, $3::jsonb)`,
+        [quoteByExpediente, fixture.expedienteId, JSON.stringify({ nested: { email: 'remove' } })],
+      );
+
+      const result = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [fixture.expedienteId],
+        false,
+        KEYS,
+        'apply',
+      );
+
+      expect(result.applied).toBe(true);
+      expect(
+        await dataSource.query(
+          `SELECT installation_address, installation_postal_code, installation_notes,
+                fiscal_name, fiscal_document, fiscal_address, alias,
+                stratum_evidence_media_id, vat_snapshot, plan_snapshot_json,
+                installation_city, installation_department, installation_stratum,
+                service_usage, customer_segment, status
+           FROM ${q}.contracts WHERE id = $1`,
+          [contractId],
+        ),
+      ).toEqual([
+        {
+          installation_address: null,
+          installation_postal_code: null,
+          installation_notes: null,
+          fiscal_name: null,
+          fiscal_document: null,
+          fiscal_address: null,
+          alias: 'ANONIMIZADO',
+          stratum_evidence_media_id: mediaId,
+          vat_snapshot: { amount: 10 },
+          plan_snapshot_json: { plan: {} },
+          installation_city: 'fixture-city',
+          installation_department: 'fixture-department',
+          installation_stratum: 3,
+          service_usage: 'RESIDENTIAL',
+          customer_segment: 'STANDARD',
+          status: 'ACTIVE',
+        },
+      ]);
+      const quotes = (await dataSource.query(
+        `SELECT id, plan_snapshot_json FROM ${q}.quotes`,
+      )) as Array<{ id: string; plan_snapshot_json: Record<string, unknown> }>;
+      expect(quotes).toHaveLength(2);
+      expect(quotes.find((quote) => quote.id === quoteBySubscriber)?.plan_snapshot_json).toEqual({
+        code: 'keep',
+      });
+      expect(quotes.find((quote) => quote.id === quoteByExpediente)?.plan_snapshot_json).toEqual({
+        nested: {},
+      });
+      expect(await dataSource.query(`SELECT COUNT(*)::int AS count FROM ${q}.contracts`)).toEqual([
+        { count: 1 },
+      ]);
+      expect(await dataSource.query(`SELECT COUNT(*)::int AS count FROM ${q}.quotes`)).toEqual([
+        { count: 2 },
+      ]);
+      expect(
+        await dataSource.query(
+          `SELECT deleted_at IS NOT NULL AS deleted FROM public.media_assets WHERE id = $1`,
+          [mediaId],
+        ),
+      ).toEqual([{ deleted: true }]);
+    } finally {
+      await dataSource.query(`DELETE FROM public.media_assets WHERE tenant_schema = $1`, [
+        fixture.schema,
+      ]);
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+    }
+  });
+
+  it('recorre la cadena de WFM y tasks y conserva sus relaciones operativas', async () => {
+    const fixture = await createFixture(dataSource);
+    const q = quoteIdentifier(fixture.schema);
+    const linked = await insertSubscriberAndUser(dataSource, fixture, new Date());
+    const visitId = randomUUID();
+    const scheduleId = randomUUID();
+    const workOrderId = randomUUID();
+    const workOrderTaskId = randomUUID();
+    const executionOrderId = randomUUID();
+    const operationalTaskId = randomUUID();
+    const crmTaskId = randomUUID();
+    const mediaId = randomUUID();
+    try {
+      await dataSource.query(`
+        CREATE TABLE ${q}.visit_requests (
+          id uuid PRIMARY KEY, expediente_id uuid, subscriber_id uuid,
+          title varchar(160) NOT NULL, description text, origin_label varchar(160),
+          address text, municipality text, sector text, latitude numeric, longitude numeric,
+          cancel_reason varchar(200), additional_reason text, origin_context text,
+          origin_ref varchar(160), schedule_event_id uuid, work_order_id uuid,
+          execution_order_id uuid
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.schedule_events (
+          id uuid PRIMARY KEY, expediente_id uuid, subscriber_id uuid,
+          title varchar(160) NOT NULL, description text, address text,
+          municipality text, sector text, latitude numeric, longitude numeric,
+          failure_reason text, review_notes text, work_order_id uuid, execution_order_id uuid
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.work_orders (
+          id uuid PRIMARY KEY, source_context text, source_ref varchar(160),
+          scheduled_event_id uuid, summary varchar(200) NOT NULL, notes text
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.work_order_tasks (
+          id uuid PRIMARY KEY, work_order_id uuid, title varchar(160) NOT NULL,
+          description text, result_notes text
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.schedule_reschedule_logs (
+          id uuid PRIMARY KEY, schedule_event_id uuid, notes text, reason varchar(160)
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.execution_orders (
+          id uuid PRIMARY KEY, visit_request_id uuid, schedule_event_id uuid,
+          subscriber_id varchar(160), customer_display_label varchar(200) NOT NULL,
+          work_summary varchar(200) NOT NULL, service_address text, municipality text,
+          sector text, work_instructions text, close_notes text, template_label text,
+          template_requirements_snapshot jsonb NOT NULL, task_id uuid
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.execution_order_activities (
+          id uuid PRIMARY KEY, execution_order_id uuid, description text NOT NULL
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.execution_order_evidence (
+          id uuid PRIMARY KEY, execution_order_id uuid, notes text,
+          file_name varchar(200), media_asset_id uuid
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.execution_order_status_transitions (
+          id uuid PRIMARY KEY, execution_order_id uuid, reason varchar(255), changed_by uuid
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.operational_tasks (
+          id uuid PRIMARY KEY, origin_context text, origin_ref_id varchar(160),
+          recipient_type varchar(30), recipient_ref_id varchar(160), schedule_event_id uuid,
+          work_order_id uuid, title varchar(200) NOT NULL, description text, recipient_label varchar(160)
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.task_timeline_events (
+          id uuid PRIMARY KEY, task_id uuid, payload jsonb NOT NULL
+        )
+      `);
+      await dataSource.query(`
+        CREATE TABLE ${q}.task_assignment_history (
+          id uuid PRIMARY KEY, task_id uuid, reason varchar(500)
+        )
+      `);
+      await dataSource.query(
+        `INSERT INTO public.media_assets
+          (id, tenant_schema, usage, original_filename, mime_type, ext, size_bytes, object_key)
+         VALUES ($1, $2, 'execution_evidence', 'fixture.bin', 'application/octet-stream',
+           'bin', 1, $3)`,
+        [mediaId, fixture.schema, `${fixture.schema}/execution_evidence/${mediaId}.bin`],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.visit_requests
+          (id, expediente_id, subscriber_id, title, description, origin_label, address,
+           municipality, sector, latitude, longitude, cancel_reason, additional_reason,
+           origin_context, origin_ref, schedule_event_id, work_order_id, execution_order_id)
+         VALUES ($1, $2, $3, 'fixture-visit', 'fixture-description', 'fixture-origin',
+           'fixture-address', 'fixture-city', 'fixture-sector', 1, 2, 'fixture-cancel',
+           'fixture-additional', 'TASKS', $4, $5, $6, $7)`,
+        [
+          visitId,
+          fixture.expedienteId,
+          linked.subscriberId,
+          operationalTaskId,
+          scheduleId,
+          workOrderId,
+          executionOrderId,
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.schedule_events
+          (id, expediente_id, subscriber_id, title, description, address, municipality,
+           sector, latitude, longitude, failure_reason, review_notes, work_order_id, execution_order_id)
+         VALUES ($1, $2, $3, 'fixture-event', 'fixture-description', 'fixture-address',
+           'fixture-city', 'fixture-sector', 1, 2, 'fixture-failure', 'fixture-review', $4, $5)`,
+        [scheduleId, fixture.expedienteId, linked.subscriberId, workOrderId, executionOrderId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.work_orders
+          (id, source_context, source_ref, scheduled_event_id, summary, notes)
+         VALUES ($1, 'CRM', $2, $3, 'fixture-summary', 'fixture-notes')`,
+        [workOrderId, fixture.expedienteId, scheduleId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.work_order_tasks (id, work_order_id, title, description, result_notes)
+         VALUES ($1, $2, 'fixture-task', 'fixture-description', 'fixture-result')`,
+        [workOrderTaskId, workOrderId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.schedule_reschedule_logs (id, schedule_event_id, notes, reason)
+         VALUES ($1, $2, 'fixture-notes', 'OPERATIONAL_REASON')`,
+        [randomUUID(), scheduleId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.execution_orders
+          (id, visit_request_id, schedule_event_id, subscriber_id, customer_display_label,
+           work_summary, service_address, municipality, sector, work_instructions, close_notes,
+           template_label, template_requirements_snapshot, task_id)
+         VALUES ($1, $2, $3, $4, 'fixture-customer', 'fixture-work', 'fixture-address',
+           'fixture-city', 'fixture-sector', 'fixture-instructions', 'fixture-close',
+           'fixture-template', $5::jsonb, $6)`,
+        [
+          executionOrderId,
+          visitId,
+          scheduleId,
+          linked.subscriberId,
+          JSON.stringify({ privateNote: 'remove' }),
+          operationalTaskId,
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.execution_order_activities (id, execution_order_id, description)
+         VALUES ($1, $2, 'fixture-activity')`,
+        [randomUUID(), executionOrderId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.execution_order_evidence
+          (id, execution_order_id, notes, file_name, media_asset_id)
+         VALUES ($1, $2, 'fixture-evidence-notes', 'fixture-file', $3)`,
+        [randomUUID(), executionOrderId, mediaId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.execution_order_status_transitions (id, execution_order_id, reason)
+         VALUES ($1, $2, 'fixture-transition-reason')`,
+        [randomUUID(), executionOrderId],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.operational_tasks
+          (id, origin_context, origin_ref_id, recipient_type, recipient_ref_id,
+           schedule_event_id, work_order_id, title, description, recipient_label)
+         VALUES
+          ($1, 'TASKS', 'fixture-origin', NULL, NULL, NULL, NULL,
+           'fixture-task-title', 'fixture-task-description', 'fixture-recipient'),
+          ($2, 'CRM', $3, 'SUBSCRIBER', $4, $5, $6,
+           'fixture-crm-task', 'fixture-task-description', 'fixture-recipient')`,
+        [
+          operationalTaskId,
+          crmTaskId,
+          fixture.expedienteId,
+          linked.subscriberId,
+          scheduleId,
+          workOrderId,
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.task_timeline_events (id, task_id, payload)
+         VALUES ($1, $2, $3::jsonb)`,
+        [randomUUID(), operationalTaskId, JSON.stringify({ description: 'fixture-timeline' })],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.task_assignment_history (id, task_id, reason)
+         VALUES ($1, $2, 'fixture-assignment-reason')`,
+        [randomUUID(), operationalTaskId],
+      );
+
+      const result = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [fixture.expedienteId],
+        false,
+        KEYS,
+        'apply',
+      );
+
+      expect(result).toMatchObject({
+        applied: true,
+        totals: { visitRequests: 1, scheduleEvents: 1, executionOrders: 1 },
+        changed: { visitRequests: 1, scheduleEvents: 1, executionOrders: 1 },
+        verification: { residualFields: 0, activeMediaAssets: 0 },
+      });
+      expect(
+        await dataSource.query(
+          `SELECT title, description, origin_label, address, municipality, sector,
+                latitude, longitude, cancel_reason, additional_reason
+           FROM ${q}.visit_requests WHERE id = $1`,
+          [visitId],
+        ),
+      ).toEqual([
+        {
+          title: 'ANONIMIZADO',
+          description: null,
+          origin_label: null,
+          address: null,
+          municipality: null,
+          sector: null,
+          latitude: null,
+          longitude: null,
+          cancel_reason: null,
+          additional_reason: null,
+        },
+      ]);
+      expect(
+        await dataSource.query(
+          `SELECT title, description, address, municipality, sector, latitude, longitude,
+                failure_reason, review_notes FROM ${q}.schedule_events WHERE id = $1`,
+          [scheduleId],
+        ),
+      ).toEqual([
+        {
+          title: 'ANONIMIZADO',
+          description: null,
+          address: null,
+          municipality: null,
+          sector: null,
+          latitude: null,
+          longitude: null,
+          failure_reason: null,
+          review_notes: null,
+        },
+      ]);
+      expect(
+        await dataSource.query(`SELECT summary, notes FROM ${q}.work_orders WHERE id = $1`, [
+          workOrderId,
+        ]),
+      ).toEqual([{ summary: 'ANONIMIZADO', notes: null }]);
+      expect(
+        await dataSource.query(
+          `SELECT title, description, result_notes FROM ${q}.work_order_tasks WHERE id = $1`,
+          [workOrderTaskId],
+        ),
+      ).toEqual([{ title: 'ANONIMIZADO', description: null, result_notes: null }]);
+      expect(
+        await dataSource.query(`SELECT reason, notes FROM ${q}.schedule_reschedule_logs`),
+      ).toEqual([{ reason: 'OPERATIONAL_REASON', notes: null }]);
+      expect(
+        await dataSource.query(
+          `SELECT customer_display_label, work_summary, service_address, municipality, sector,
+                work_instructions, close_notes, template_label, template_requirements_snapshot
+           FROM ${q}.execution_orders WHERE id = $1`,
+          [executionOrderId],
+        ),
+      ).toEqual([
+        {
+          customer_display_label: 'ANONIMIZADO',
+          work_summary: 'ANONIMIZADO',
+          service_address: null,
+          municipality: null,
+          sector: null,
+          work_instructions: null,
+          close_notes: null,
+          template_label: null,
+          template_requirements_snapshot: {},
+        },
+      ]);
+      expect(
+        await dataSource.query(`SELECT description FROM ${q}.execution_order_activities`),
+      ).toEqual([{ description: 'ANONIMIZADO' }]);
+      expect(
+        await dataSource.query(`SELECT notes, file_name FROM ${q}.execution_order_evidence`),
+      ).toEqual([{ notes: null, file_name: null }]);
+      expect(
+        await dataSource.query(`SELECT reason FROM ${q}.execution_order_status_transitions`),
+      ).toEqual([{ reason: null }]);
+      expect(
+        await dataSource.query(
+          `SELECT id, title, description, recipient_label FROM ${q}.operational_tasks`,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          { id: operationalTaskId, title: 'ANONIMIZADO', description: null, recipient_label: null },
+          { id: crmTaskId, title: 'ANONIMIZADO', description: null, recipient_label: null },
+        ]),
+      );
+      expect(await dataSource.query(`SELECT payload FROM ${q}.task_timeline_events`)).toEqual([
+        { payload: {} },
+      ]);
+      expect(await dataSource.query(`SELECT reason FROM ${q}.task_assignment_history`)).toEqual([
+        { reason: null },
+      ]);
+      expect(
+        await dataSource.query(
+          `SELECT deleted_at IS NOT NULL AS deleted FROM public.media_assets WHERE id = $1`,
+          [mediaId],
+        ),
+      ).toEqual([{ deleted: true }]);
+    } finally {
+      await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
     }
   });

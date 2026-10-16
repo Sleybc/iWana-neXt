@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   PlatformRole,
@@ -16,6 +16,7 @@ import { PipelineRecommendationService } from '../pipeline-recommendation.servic
 import { StatusTransitionService } from '../status-transition.service';
 import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
+import { AuditService } from '../../../audit/audit.service';
 
 describe('ExpedientesController', () => {
   let controller: ExpedientesController;
@@ -25,6 +26,7 @@ describe('ExpedientesController', () => {
     create: jest.fn(),
     findAll: jest.fn(),
     findById: jest.fn(),
+    getPrivacyMarksForExpediente: jest.fn().mockResolvedValue([]),
     getTimelineSummary: jest.fn(),
     getTimelinePage: jest.fn(),
     getDocumentSupports: jest.fn(),
@@ -34,6 +36,7 @@ describe('ExpedientesController', () => {
     updateSection: jest.fn(),
     transitionStatus: jest.fn(),
     reactivate: jest.fn(),
+    retryConversionEvent: jest.fn(),
     createContactAttempt: jest.fn(),
     createConsent: jest.fn(),
     listConsents: jest.fn(),
@@ -57,6 +60,7 @@ describe('ExpedientesController', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ExpedientesController],
@@ -73,6 +77,7 @@ describe('ExpedientesController', () => {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
         },
+        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -286,6 +291,75 @@ describe('ExpedientesController', () => {
         }),
       }),
     );
+  });
+
+  it('redacta la identidad y el contenido derivado del bootstrap bloqueado', async () => {
+    expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
+    detailBootstrapServiceMock.getDetailBootstrap.mockResolvedValue({
+      expediente: {
+        id: 'exp-1',
+        tenantId: 'tenant-1',
+        fullName: 'Identidad sintética',
+        anonymizedAt: null,
+        anonymizedRequestId: null,
+        privacyMarks: [],
+        privacyRestricted: false,
+        status: 'PRECALIFICADO',
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-10-02T00:00:00.000Z'),
+      },
+      completeness: { overall: 88 },
+      pipelineRecommendation: { suggestedStatus: 'EN_COTIZACION' },
+      operationalMetadata: { createdBy: { name: 'Usuario sintético' } },
+      currentAttribution: { actorName: 'Actor sintético' },
+      responsibility: { assigneeName: 'Responsable sintético' },
+      subscriberSummary: { fullName: 'Suscriptor sintético' },
+      conversionFailure: { errorCode: 'SAFE_CODE' },
+    });
+
+    const result = await controller.getBootstrap('exp-1', { sub: 'actor-1' } as never);
+
+    expect(result.data.expediente).toMatchObject({
+      id: 'exp-1',
+      privacyRestricted: true,
+      privacyMarks: ['DATOS_BLOQUEADOS'],
+      anonymizedAt: null,
+      anonymizedRequestId: null,
+      fullName: null,
+    });
+    expect(result.data).toMatchObject({
+      completeness: null,
+      pipelineRecommendation: null,
+      operationalMetadata: null,
+      currentAttribution: null,
+      responsibility: null,
+      subscriberSummary: null,
+      conversionFailure: null,
+    });
+  });
+
+  it('responde 409 al editar una sección de un expediente bloqueado', async () => {
+    expedienteServiceMock.findById.mockResolvedValue({ id: 'exp-1', anonymizedAt: null });
+    expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
+
+    await expect(
+      controller.updateSection('exp-1', 'identification', { data: {} }, {
+        sub: 'actor-1',
+      } as never),
+    ).rejects.toThrow(ConflictException);
+
+    expect(expedienteServiceMock.updateSection).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 al reintentar conversión de un expediente bloqueado', async () => {
+    expedienteServiceMock.findById.mockResolvedValue({ id: 'exp-1', anonymizedAt: null });
+    expedienteServiceMock.getPrivacyMarksForExpediente.mockResolvedValue(['DATOS_BLOQUEADOS']);
+
+    await expect(controller.retryConversion('exp-1', { sub: 'actor-1' } as never)).rejects.toThrow(
+      ConflictException,
+    );
+
+    expect(expedienteServiceMock.retryConversionEvent).not.toHaveBeenCalled();
   });
 
   it('acepta pipelineRecommendation nula según el contrato del bootstrap', async () => {

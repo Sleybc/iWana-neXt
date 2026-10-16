@@ -62,17 +62,28 @@ export type SearchSubscribersInput = z.infer<typeof SearchSubscribersSchema>;
  */
 export interface SubscriberListItem {
   id: string;
+  tenantId: string;
+  partyId: string | null;
+  userId: string | null;
+  privacyRestricted: boolean;
+  anonymizedAt: string | null;
+  anonymizedRequestId: string | null;
   status: SubscriberStatus;
   personType: PersonType;
   customerSegment: CustomerSegment;
   stratum: number | null;
   vatTreatment: VatTreatment;
+  taxRegime: string | null;
+  expedienteId: string | null;
+  convertedAt: string | null;
+  activatedAt: string | null;
   documentType: DocumentType | null;
   firstName: string | null;
   lastName: string | null;
   businessName: string | null;
   commercialName: string | null;
   createdAt: string;
+  updatedAt: string;
   contactPending: boolean;
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
   documentNumber?: string;

@@ -321,6 +321,44 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     expect(probe[0]?.count).toBe(0);
   });
 
+  it('cierra DATOS_BLOQUEADOS al resolver la supresión tras vencer la retención', async () => {
+    standingPort.standing.mockResolvedValue({
+      openContractIds: [],
+      lastTerminatedAt: '2010-01-01',
+    });
+    erasurePort.anonymize.mockResolvedValue({ categories: [], changedRows: 0 });
+    const request = await createRequest({ right: 'SUPRIMIR' });
+    await inTenant(() => service.transition(request.request.id, 'complete', {}, actorId));
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".party_privacy_marks
+        (party_id, mark, event, request_id, actor_id)
+       VALUES ($1, 'DATOS_BLOQUEADOS', 'OPEN', $2, $3)`,
+      [partyId, request.request.id, actorId],
+    );
+
+    const resolved = await inTenant(() =>
+      service.transition(
+        request.request.id,
+        'resolve',
+        {
+          responseText: 'Se resolvió la solicitud.',
+          responseChannel: 'EMAIL',
+          erasure: { confirm: true, expedienteIds: [] },
+        },
+        actorId,
+      ),
+    );
+
+    expect(resolved.request.status).toBe('RESUELTA');
+    const latestBlockedMark = (await dataSource.query(
+      `SELECT event FROM "${schemaName}".party_privacy_marks
+       WHERE party_id = $1 AND mark = 'DATOS_BLOQUEADOS'
+       ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+      [partyId],
+    )) as Array<{ event: string }>;
+    expect(latestBlockedMark).toEqual([{ event: 'CLOSE' }]);
+  });
+
   it('devuelve identidad pendiente sin evidencia y omite actores en el detalle', async () => {
     const filed = await createRequest({ right: 'CONOCER', unverified: true });
 

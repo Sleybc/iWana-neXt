@@ -5443,6 +5443,9 @@ export interface ExpedienteSubscriberSummary {
 export interface ExpedienteDetailSummary {
   id: string;
   status: ExpedienteStatus;
+  privacyRestricted: boolean;
+  anonymizedAt: string | null;
+  anonymizedRequestId: string | null;
   previousStatus: ExpedienteStatus | null;
   statusChangedAt: string;
   createdAt: string;
@@ -5492,6 +5495,9 @@ export interface ExpedienteRecord {
   id: string;
   tenantId: string;
   status: ExpedienteStatus;
+  privacyRestricted: boolean;
+  anonymizedAt: string | null;
+  anonymizedRequestId: string | null;
   previousStatus: ExpedienteStatus | null;
   assignedTo?: string | null;
   dataConsentRevoked?: boolean;
@@ -5608,7 +5614,10 @@ export interface ExpedienteDocumentSupportResponse {
   summary: ExpedienteDocumentSummary;
 }
 
-export interface SubscriberRecord {
+export interface SubscriberRecord extends Pick<
+  SubscriberListItem,
+  'privacyRestricted' | 'anonymizedAt' | 'anonymizedRequestId'
+> {
   id: string;
   tenantId: string;
   userId: string | null;

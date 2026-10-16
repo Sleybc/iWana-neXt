@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -37,6 +39,7 @@ import {
   SubscriberStatus,
   VatTreatment,
   UserRole,
+  type PrivacyMark,
 } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -59,6 +62,8 @@ import {
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { AuditService } from '../../audit/audit.service';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { AuditAction } from '@iwana/shared';
 import { projectSubscriberForList } from './subscriber-projection';
 import type { Request } from 'express';
@@ -76,6 +81,7 @@ type SubscriberWithDecryptedFields = Subscriber & {
   email?: string;
   phone?: string;
   altContactPhone?: string;
+  privacyMarks?: PrivacyMark[];
 };
 
 @ApiTags('crm')
@@ -86,6 +92,8 @@ export class SubscribersController {
   constructor(
     private readonly subscribersService: SubscribersService,
     private readonly auditService: AuditService,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
+    @Inject(IPrivacyMarksReadPort) private readonly privacyMarksReadPort: IPrivacyMarksReadPort,
   ) {}
 
   /**
@@ -161,14 +169,20 @@ export class SubscribersController {
       sortDir: sortDir ?? undefined,
     };
 
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const result = await this.subscribersService.findAll(filters);
+    const blockedServed = readAccess.canSeeBlocked
+      ? result.data.filter((subscriber) => this.isBlocked(subscriber)).length
+      : undefined;
 
     // ADR-067 §5: registro de acceso masivo a PII — se registran filtros y
     // dimensiones, nunca los datos leídos.
-    await this.logListAccess(user, filters, result.meta, result.data.length);
+    await this.logListAccess(user, filters, result.meta, result.data.length, blockedServed);
 
     return {
-      data: result.data.map((subscriber) => projectSubscriberForList(subscriber, user.role)),
+      data: result.data.map((subscriber) =>
+        projectSubscriberForList(subscriber, user.role, readAccess.canSeeBlocked),
+      ),
       total: result.total,
       meta: result.meta,
     };
@@ -300,6 +314,7 @@ export class SubscribersController {
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: 'asc' | 'desc',
   ) {
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const filters = {
       status: status ?? undefined,
       personType: personType ?? undefined,
@@ -312,15 +327,24 @@ export class SubscribersController {
     };
 
     if (body.search !== undefined) {
-      const result = await this.subscribersService.findAll({ ...filters, search: body.search });
+      const result = await this.subscribersService.findAll({
+        ...filters,
+        search: body.search,
+        excludeBlocked: !readAccess.canSeeBlocked,
+      });
       await this.logListAccess(
         user,
         { ...filters, searchApplied: true, exactCriteriaApplied: false },
         result.meta,
         result.data.length,
+        readAccess.canSeeBlocked
+          ? result.data.filter((subscriber) => this.isBlocked(subscriber)).length
+          : undefined,
       );
       return {
-        data: result.data.map((subscriber) => projectSubscriberForList(subscriber, user.role)),
+        data: result.data.map((subscriber) =>
+          projectSubscriberForList(subscriber, user.role, readAccess.canSeeBlocked),
+        ),
         total: result.total,
         meta: result.meta,
       };
@@ -332,15 +356,25 @@ export class SubscribersController {
       );
     }
 
-    const results = await this.subscribersService.search(body);
+    const results = await this.subscribersService.search({
+      ...body,
+      excludeBlocked: !readAccess.canSeeBlocked,
+    });
     await this.logListAccess(
       user,
       { ...filters, searchApplied: false, exactCriteriaApplied: true },
       null,
       results.length,
+      readAccess.canSeeBlocked
+        ? results.filter((subscriber) => this.isBlocked(subscriber)).length
+        : undefined,
     );
 
-    return { data: results.map((subscriber) => projectSubscriberForList(subscriber, user.role)) };
+    return {
+      data: results.map((subscriber) =>
+        projectSubscriberForList(subscriber, user.role, readAccess.canSeeBlocked),
+      ),
+    };
   }
 
   /**
@@ -361,8 +395,18 @@ export class SubscribersController {
   @ApiOperation({ summary: 'Obtener suscriptor por ID' })
   async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const subscriber = await this.subscribersService.findById(id);
-    await this.auditRecordAccess(id, user);
-    return { data: this.sanitizeResponse(subscriber) };
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
+    const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
+    const enrichedSubscriber = { ...subscriber, privacyMarks };
+    await this.auditRecordAccess(
+      id,
+      user,
+      this.isBlocked(enrichedSubscriber),
+      readAccess.grantedBy,
+    );
+    return {
+      data: this.sanitizeResponse(enrichedSubscriber, privacyMarks, readAccess.canSeeBlocked),
+    };
   }
 
   /**
@@ -380,8 +424,9 @@ export class SubscribersController {
     @Body(new ZodBodyValidationPipe(UpdateSubscriberSchema)) dto: UpdateSubscriberDto,
     @CurrentUser() user: JwtPayload,
   ) {
+    await this.assertNotBlocked(id);
     const subscriber = await this.subscribersService.update(id, dto, user.sub);
-    return { data: this.sanitizeResponse(subscriber) };
+    return { data: this.sanitizeResponse(subscriber, [], true) };
   }
 
   /**
@@ -400,7 +445,7 @@ export class SubscribersController {
     @CurrentUser() user: JwtPayload,
   ) {
     const updated = await this.subscribersService.updateSection(id, section, payload, user.sub);
-    return { data: this.sanitizeResponse(updated) };
+    return { data: this.sanitizeResponse(updated, [], true) };
   }
 
   /**
@@ -461,8 +506,47 @@ export class SubscribersController {
   @ApiOperation({ summary: 'Ficha 360° del suscriptor' })
   async get360View(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const view360 = await this.subscribersService.get360View(id);
-    await this.auditRecordAccess(id, user);
-    return { data: { ...view360, subscriber: this.sanitizeResponse(view360.subscriber) } };
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
+    const privacyMarks = view360.privacyMarks ?? [];
+    const enrichedSubscriber = { ...view360.subscriber, privacyMarks };
+    const blocked = this.isBlocked(enrichedSubscriber);
+    await this.auditRecordAccess(id, user, blocked, readAccess.grantedBy);
+    const privacyRestricted = blocked && !readAccess.canSeeBlocked;
+    return {
+      data: {
+        ...view360,
+        subscriber: this.sanitizeResponse(
+          enrichedSubscriber,
+          privacyMarks,
+          readAccess.canSeeBlocked,
+        ),
+        contracts: view360.contracts.map((contract) => {
+          const projected = {
+            ...contract,
+            titularAnonymizedAt: this.toIsoOrNull(view360.subscriber.anonymizedAt),
+          };
+          if (!privacyRestricted) return projected;
+          return {
+            ...projected,
+            alias: 'Datos bloqueados',
+            installationAddress: null,
+            installationCity: null,
+            installationDepartment: null,
+            installationPostalCode: null,
+            installationNotes: null,
+            installationStratum: null,
+            stratumEvidenceMediaId: null,
+            vatSnapshot: null,
+            fiscalName: null,
+            fiscalDocument: null,
+            fiscalAddress: null,
+          };
+        }),
+        expedienteSummary: privacyRestricted
+          ? this.redactExpedienteSummary(view360.expedienteSummary)
+          : view360.expedienteSummary,
+      },
+    };
   }
 
   private async logListAccess(
@@ -470,6 +554,7 @@ export class SubscribersController {
     filters: Record<string, unknown>,
     meta: { page?: number | null; limit?: number | null; total?: number | null } | null,
     totalServed: number,
+    blockedServed?: number,
   ): Promise<void> {
     const { searchApplied, exactCriteriaApplied, ...nonPersonalFilters } = filters;
     await this.auditService.log({
@@ -490,27 +575,99 @@ export class SubscribersController {
               limit: meta.limit ?? null,
               totalServed,
               totalAvailable: meta.total ?? null,
+              ...(blockedServed !== undefined ? { blockedServed } : {}),
             }
-          : { totalServed },
+          : { totalServed, ...(blockedServed !== undefined ? { blockedServed } : {}) },
       },
     });
   }
 
-  private async auditRecordAccess(id: string, user: JwtPayload): Promise<void> {
+  private async auditRecordAccess(
+    id: string,
+    user: JwtPayload,
+    blocked: boolean,
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ',
+  ): Promise<void> {
     await this.auditService.log({
       action: AuditAction.RECORD_ACCESS,
       entityType: 'Subscriber',
       entityId: id,
       userId: user.sub,
-      newValue: { role: user.role },
+      newValue: {
+        role: user.role,
+        ...(blocked && grantedBy ? { privacyMark: 'DATOS_BLOQUEADOS', grantedBy } : {}),
+      },
     });
+  }
+
+  private async resolveBlockedReadAccess(actorId: string): Promise<{
+    canSeeBlocked: boolean;
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ';
+  }> {
+    const permissions = new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actorId),
+    );
+    if (permissions.has(AccessPermissionKey.PRIVACY_READ)) {
+      return { canSeeBlocked: true, grantedBy: 'PRIVACY_READ' };
+    }
+    if (permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)) {
+      return { canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ' };
+    }
+    return { canSeeBlocked: false };
+  }
+
+  private async getPrivacyMarks(partyId: string | null): Promise<PrivacyMark[]> {
+    if (!partyId) return [];
+    const marksByParty = await this.privacyMarksReadPort.activeMarks([partyId]);
+    return marksByParty[partyId] ?? [];
+  }
+
+  private isBlocked(subscriber: SubscriberWithDecryptedFields): boolean {
+    return !subscriber.anonymizedAt && (subscriber.privacyMarks ?? []).includes('DATOS_BLOQUEADOS');
+  }
+
+  private async assertNotBlocked(subscriberId: string): Promise<void> {
+    const subscriber = await this.subscribersService.findById(subscriberId);
+    if (
+      this.isBlocked({
+        ...subscriber,
+        privacyMarks: await this.getPrivacyMarks(subscriber.partyId),
+      })
+    ) {
+      throw new ConflictException({
+        code: 'PRIVACY_DATA_BLOCKED',
+        message: 'Los datos de este titular están bloqueados para edición.',
+      });
+    }
+  }
+
+  private redactExpedienteSummary(
+    summary: Record<string, unknown> | null,
+  ): Record<string, unknown> | null {
+    if (!summary) return null;
+    const allowed = new Set(['id', 'status', 'source', 'createdAt', 'statusChangedAt']);
+    return Object.fromEntries(
+      Object.entries(summary).map(([key, value]) => [key, allowed.has(key) ? value : null]),
+    );
+  }
+
+  private toIsoOrNull(value: Date | string | null | undefined): string | null {
+    if (value == null) return null;
+    return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   }
 
   /**
    * Sanitiza la respuesta eliminando campos cifrados internos
    * y exponiendo solo los campos descifrados.
    */
-  private sanitizeResponse(subscriber: SubscriberWithDecryptedFields): Record<string, unknown> {
+  private sanitizeResponse(
+    subscriber: SubscriberWithDecryptedFields,
+    privacyMarks: PrivacyMark[] = subscriber.privacyMarks ?? [],
+    canSeeBlocked = false,
+  ): Record<string, unknown> {
+    const anonymizedAt = this.toIsoOrNull(subscriber.anonymizedAt);
+    const privacyRestricted =
+      anonymizedAt === null && privacyMarks.includes('DATOS_BLOQUEADOS') && !canSeeBlocked;
     const result: Record<string, unknown> = {
       id: subscriber.id,
       tenantId: subscriber.tenantId,
@@ -551,6 +708,10 @@ export class SubscribersController {
       createdAt: subscriber.createdAt,
       updatedAt: subscriber.updatedAt,
       deletedAt: subscriber.deletedAt,
+      privacyMarks,
+      privacyRestricted,
+      anonymizedAt,
+      anonymizedRequestId: subscriber.anonymizedRequestId ?? null,
     };
 
     // Campos descifrados (si existen en el objeto)
@@ -558,6 +719,39 @@ export class SubscribersController {
     if ('email' in subscriber) result.email = subscriber.email;
     if ('phone' in subscriber) result.phone = subscriber.phone;
     if ('altContactPhone' in subscriber) result.altContactPhone = subscriber.altContactPhone;
+
+    if (privacyRestricted) {
+      const allowed = new Set([
+        'id',
+        'tenantId',
+        'partyId',
+        'userId',
+        'personType',
+        'customerSegment',
+        'documentType',
+        'status',
+        'vatTreatment',
+        'taxRegime',
+        'expedienteId',
+        'convertedAt',
+        'activatedAt',
+        'createdAt',
+        'updatedAt',
+        'privacyMarks',
+        'privacyRestricted',
+        'anonymizedAt',
+        'anonymizedRequestId',
+        'contactPending',
+      ]);
+      for (const key of Object.keys(result)) {
+        if (!allowed.has(key)) result[key] = null;
+      }
+      result.contactPending = false;
+      result.documentNumber = null;
+      result.email = null;
+      result.phone = null;
+      result.altContactPhone = null;
+    }
 
     return result;
   }

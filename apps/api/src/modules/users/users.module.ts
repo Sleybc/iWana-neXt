@@ -13,6 +13,7 @@ import { UsersBulkCreateProcessor } from './users-bulk-create.processor';
 import { UsersService } from './users.service';
 import { SettingsPriorityUsersReadAdapter } from './ports/settings-priority-users-read.adapter';
 import { SettingsPriorityUsersReadPort } from './ports/settings-priority-users-read.port';
+import { UsersPrivacyModule } from './privacy/users-privacy.module';
 
 /**
  * Modulo de gestion de usuarios por tenant.
@@ -30,6 +31,7 @@ import { SettingsPriorityUsersReadPort } from './ports/settings-priority-users-r
     AuditModule,
     TenantModule,
     SearchQueueModule,
+    UsersPrivacyModule,
     BullModule.registerQueue({
       name: USERS_BULK_CREATE_QUEUE,
     }),
@@ -41,6 +43,6 @@ import { SettingsPriorityUsersReadPort } from './ports/settings-priority-users-r
     SettingsPriorityUsersReadAdapter,
     { provide: SettingsPriorityUsersReadPort, useExisting: SettingsPriorityUsersReadAdapter },
   ],
-  exports: [UsersService, SettingsPriorityUsersReadPort],
+  exports: [UsersService, SettingsPriorityUsersReadPort, UsersPrivacyModule],
 })
 export class UsersModule {}

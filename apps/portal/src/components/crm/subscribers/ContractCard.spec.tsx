@@ -23,6 +23,7 @@ const CONTRACT: Contract = {
   planId: 'plan-1',
   planSnapshotJson: { name: 'Plan Fibra 300' },
   status: 'ACTIVE',
+  titularAnonymizedAt: null,
   alias: 'Sede principal',
   installationAddress: 'Calle 1 # 2-3',
   installationCity: 'Bogotá',
@@ -91,5 +92,46 @@ describe('ContractCard — cazador de clic exterior en `--z-popover`', () => {
 
     expect(screen.queryByRole('button', { name: 'Terminar' })).not.toBeInTheDocument();
     expect(container.querySelector('div.fixed.inset-0')).toBeNull();
+  });
+
+  it('muestra la marca y conserva los datos operativos en un contrato anonimizado', () => {
+    const { container } = render(
+      <ContractCard
+        contract={{
+          ...CONTRACT,
+          titularAnonymizedAt: '2026-10-15T10:00:00.000Z',
+          alias: 'SENTINEL_PERSONAL',
+          installationAddress: 'SENTINEL_PERSONAL',
+        }}
+        anonymizedRequestId="request-id"
+        canReadPrivacy={false}
+        onTransition={jest.fn(async () => undefined)}
+        onRemove={jest.fn(async () => undefined)}
+        onViewDetail={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Anonimizado')).toBeInTheDocument();
+    expect(screen.getByText(/Titular anonimizado ·/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Ver solicitud de privacidad/ })).toBeNull();
+    expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
+    expect(screen.getByText('PSE · Mensual')).toBeInTheDocument();
+    expect(container.querySelector('div.fixed.inset-0')).toBeNull();
+  });
+
+  it('oculta datos y acciones de edición cuando el acceso está bloqueado', () => {
+    render(
+      <ContractCard
+        contract={{ ...CONTRACT, alias: 'SENTINEL_PERSONAL' }}
+        privacyRestricted
+        onTransition={jest.fn(async () => undefined)}
+        onRemove={jest.fn(async () => undefined)}
+        onViewDetail={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Datos bloqueados');
+    expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Acciones del contrato' })).toBeNull();
   });
 });

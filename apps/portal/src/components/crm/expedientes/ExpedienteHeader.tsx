@@ -4,6 +4,8 @@ import { Badge, ProgressMeter, cn } from '@iwana/ui';
 import { ArrowLeft, CalendarPlus, Radio, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { getStatusMeta } from './expediente-ui';
 import { ExpedienteStatus } from '@/lib/api-client';
 
@@ -14,6 +16,10 @@ interface DimensionProgress {
 
 interface ExpedienteHeaderProps {
   fullName: string;
+  privacyRestricted?: boolean;
+  anonymizedAt?: string | null;
+  anonymizedRequestId?: string | null;
+  canReadPrivacy?: boolean;
   status: ExpedienteStatus;
   overallProgress: number;
   subtitle?: string;
@@ -26,6 +32,10 @@ interface ExpedienteHeaderProps {
 
 export function ExpedienteHeader({
   fullName,
+  privacyRestricted = false,
+  anonymizedAt,
+  anonymizedRequestId,
+  canReadPrivacy = false,
   status,
   overallProgress,
   subtitle,
@@ -55,7 +65,10 @@ export function ExpedienteHeader({
 
           <div className="mb-1 flex flex-wrap items-center gap-3">
             <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white md:text-2xl">
-              {fullName}
+              {privacyDisplayValue(anonymizedAt ? null : fullName, {
+                privacyRestricted,
+                anonymizedAt,
+              })}
             </h2>
             <Badge
               variant={statusMeta.variant}
@@ -63,11 +76,18 @@ export function ExpedienteHeader({
             >
               {statusMeta.label}
             </Badge>
+            <PrivacyAnonymizedBadge
+              anonymizedAt={anonymizedAt}
+              anonymizedRequestId={anonymizedRequestId}
+              canReadPrivacy={canReadPrivacy}
+            />
           </div>
 
-          {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
+          {!privacyRestricted && subtitle && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
+          )}
 
-          {(createdAt || createdBy || acquisitionChannel) && (
+          {!privacyRestricted && (createdAt || createdBy || acquisitionChannel) && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               {createdAt && (
                 <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-400">
@@ -91,9 +111,11 @@ export function ExpedienteHeader({
           )}
         </div>
 
-        <div className="rounded-2xl border border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-dark-border dark:bg-dark-surface-3 lg:min-w-[260px]">
-          <ProgressMeter value={overallProgress} {...(dimensions ? { dimensions } : {})} />
-        </div>
+        {!privacyRestricted && (
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-dark-border dark:bg-dark-surface-3 lg:min-w-[260px]">
+            <ProgressMeter value={overallProgress} {...(dimensions ? { dimensions } : {})} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import {
@@ -581,6 +585,70 @@ describe('SubscribersService', () => {
         expect.stringContaining('s.firstName ILIKE :search'),
         { search: '%suscriptor sintético%' },
       );
+    });
+
+    it('excluye parties con marca activa de la búsqueda libre y adjunta marcas al resultado', async () => {
+      const allowedSubscriber = buildSubscriber({ partyId: 'party-allowed-test' });
+      const query = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[allowedSubscriber], 1]),
+      };
+      const privacyMarksReadPort = {
+        partyIdsWithActiveMark: jest.fn().mockResolvedValue(['party-blocked-test']),
+        activeMarks: jest.fn().mockResolvedValue({ 'party-allowed-test': [] }),
+      };
+      Object.assign(service, { privacyMarksReadPort });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { createQueryBuilder: () => query } }),
+      );
+
+      const result = await service.findAll({ search: 'consulta sintética', excludeBlocked: true });
+
+      expect(privacyMarksReadPort.partyIdsWithActiveMark).toHaveBeenCalledWith('DATOS_BLOQUEADOS');
+      expect(query.andWhere).toHaveBeenCalledWith(
+        '(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))',
+        { blockedPartyIds: ['party-blocked-test'] },
+      );
+      expect(result.data[0]?.privacyMarks).toEqual([]);
+    });
+  });
+
+  describe('search excluyendo titulares bloqueados', () => {
+    it('aplica el filtro parametrizado al lookup exacto', async () => {
+      const query = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      const privacyMarksReadPort = {
+        partyIdsWithActiveMark: jest.fn().mockResolvedValue(['party-blocked-test']),
+        activeMarks: jest.fn().mockResolvedValue({}),
+      };
+      Object.assign(service, { privacyMarksReadPort });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { createQueryBuilder: () => query } }),
+      );
+
+      await service.search({ nit: 'TEST-12345', excludeBlocked: true });
+
+      expect(query.andWhere).toHaveBeenCalledWith(
+        '(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))',
+        { blockedPartyIds: ['party-blocked-test'] },
+      );
+    });
+
+    it('falla cerrada si no está disponible el puerto de marcas', async () => {
+      Object.assign(service, { privacyMarksReadPort: undefined });
+
+      await expect(
+        service.search({ nit: 'TEST-12345', excludeBlocked: true }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
     });
   });
 

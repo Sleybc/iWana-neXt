@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import type { Contract, ContractStatus } from '@/lib/api-client';
 import { formatLocationLabel } from './subscriber-ui';
+import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 
 // ── Colores y labels por estado ───────────────────────────────────────────────
 
@@ -114,6 +116,9 @@ interface ContractCardProps {
   onTransition: (id: string, action: TransitionAction) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onViewDetail: (contract: Contract) => void;
+  privacyRestricted?: boolean;
+  anonymizedRequestId?: string | null;
+  canReadPrivacy?: boolean;
 }
 
 // ── Componente ────────────────────────────────────────────────────────────────
@@ -123,6 +128,9 @@ export function ContractCard({
   onTransition,
   onRemove,
   onViewDetail,
+  privacyRestricted = false,
+  anonymizedRequestId,
+  canReadPrivacy = false,
 }: ContractCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -155,7 +163,10 @@ export function ContractCard({
 
   const locationLine = [
     formatLocationLabel(contract.installationCity),
-    contract.installationAddress,
+    privacyDisplayValue(contract.titularAnonymizedAt ? null : contract.installationAddress, {
+      anonymizedAt: contract.titularAnonymizedAt,
+      emptyValue: contract.titularAnonymizedAt ? 'Anonimizado' : '',
+    }),
   ]
     .filter(Boolean)
     .join(' · ');
@@ -181,7 +192,20 @@ export function ContractCard({
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           {/* Alias */}
-          <p className="truncate font-semibold text-gray-900 dark:text-white">{contract.alias}</p>
+          <p className="truncate font-semibold text-gray-900 dark:text-white">
+            {privacyDisplayValue(
+              privacyRestricted || contract.titularAnonymizedAt ? null : contract.alias,
+              {
+                privacyRestricted,
+                anonymizedAt: contract.titularAnonymizedAt,
+              },
+            )}
+          </p>
+          <PrivacyAnonymizedBadge
+            anonymizedAt={contract.titularAnonymizedAt}
+            anonymizedRequestId={anonymizedRequestId}
+            canReadPrivacy={canReadPrivacy}
+          />
           {/* Plan */}
           <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">{planName}</p>
         </div>
@@ -199,20 +223,21 @@ export function ContractCard({
         </span>
 
         {/* Menú de acciones */}
-        <div className="relative">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setMenuOpen((o) => !o)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-40 dark:hover:bg-dark-border dark:hover:text-gray-300"
-            aria-label="Acciones del contrato"
-          >
-            <MoreVertical className="h-4 w-4" aria-hidden />
-          </button>
+        {!privacyRestricted && (
+          <div className="relative">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setMenuOpen((o) => !o)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-40 dark:hover:bg-dark-border dark:hover:text-gray-300"
+              aria-label="Acciones del contrato"
+            >
+              <MoreVertical className="h-4 w-4" aria-hidden />
+            </button>
 
-          {menuOpen && (
-            <>
-              {/*
+            {menuOpen && (
+              <>
+                {/*
                 Cazador de clic exterior y menú comparten el escalón `--z-popover`
                 (ADR-075 §2). El cazador NO es una capa visible: es una superficie
                 transparente de captura, y por eso no reclama un escalón propio —
@@ -225,67 +250,74 @@ export function ContractCard({
                 posterior con z > 0 y un clic sobre esa zona dejaba de cerrar el menú
                 (el contrato implícito de orden de documento que el ADR vino a matar).
               */}
-              <div
-                className="fixed inset-0 z-(--z-popover)"
-                onClick={() => setMenuOpen(false)}
-                aria-hidden
-              />
-              <div className="absolute right-0 top-9 z-(--z-popover) min-w-[160px] rounded-xl border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-border dark:bg-dark-surface">
-                {/* Acciones de transición */}
-                {actions.map((a) => (
-                  <button
-                    key={a.action}
-                    type="button"
-                    onClick={() => void handleAction(a.action)}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-border"
-                  >
-                    {a.icon}
-                    {a.label}
-                  </button>
-                ))}
-
-                {/* Separador + eliminar solo en DRAFT */}
-                {contract.status === 'DRAFT' && (
-                  <>
-                    <div className="my-1 border-t border-gray-100 dark:border-dark-border" />
+                <div
+                  className="fixed inset-0 z-(--z-popover)"
+                  onClick={() => setMenuOpen(false)}
+                  aria-hidden
+                />
+                <div className="absolute right-0 top-9 z-(--z-popover) min-w-[160px] rounded-xl border border-gray-100 bg-white py-1 shadow-lg dark:border-dark-border dark:bg-dark-surface">
+                  {/* Acciones de transición */}
+                  {actions.map((a) => (
                     <button
+                      key={a.action}
                       type="button"
-                      onClick={() => void handleRemove()}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                      onClick={() => void handleAction(a.action)}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-border"
                     >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      Eliminar borrador
+                      {a.icon}
+                      {a.label}
                     </button>
-                  </>
-                )}
+                  ))}
 
-                {/* Estado final sin acciones */}
-                {actions.length === 0 && contract.status !== 'DRAFT' && (
-                  <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-400">
-                    Sin acciones disponibles
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                  {/* Separador + eliminar solo en DRAFT */}
+                  {contract.status === 'DRAFT' && (
+                    <>
+                      <div className="my-1 border-t border-gray-100 dark:border-dark-border" />
+                      <button
+                        type="button"
+                        onClick={() => void handleRemove()}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        Eliminar borrador
+                      </button>
+                    </>
+                  )}
+
+                  {/* Estado final sin acciones */}
+                  {actions.length === 0 && contract.status !== 'DRAFT' && (
+                    <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-400">
+                      Sin acciones disponibles
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Detalles */}
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {locationLine && (
-          <DetailLine icon={<MapPin className="h-3.5 w-3.5" />} text={locationLine} />
-        )}
-        {billingLine && (
-          <DetailLine icon={<ChevronDown className="h-3.5 w-3.5" />} text={billingLine} />
-        )}
-        {contract.customerSegment && (
-          <DetailLine
-            icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-            text={contract.customerSegment}
-          />
-        )}
-      </div>
+      {privacyRestricted ? (
+        <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">
+          Datos bloqueados
+        </p>
+      ) : (
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {locationLine && (
+            <DetailLine icon={<MapPin className="h-3.5 w-3.5" />} text={locationLine} />
+          )}
+          {billingLine && (
+            <DetailLine icon={<ChevronDown className="h-3.5 w-3.5" />} text={billingLine} />
+          )}
+          {contract.customerSegment && (
+            <DetailLine
+              icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+              text={contract.customerSegment}
+            />
+          )}
+        </div>
+      )}
 
       {/* Fecha + acciones rápidas */}
       <div className="mt-3 flex items-center justify-between gap-2">

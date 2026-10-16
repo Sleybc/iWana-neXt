@@ -94,11 +94,20 @@ describe('C-API-3 contrato', () => {
       fiscalAddress: null,
       startDate: null,
       endDate: null,
+      titularAnonymizedAt: null,
       createdAt: '2026-10-12T00:00:00.000Z',
       updatedAt: '2026-10-12T00:00:00.000Z',
       deletedAt: null,
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it('valida la marca de anonimización del titular como fecha ISO o nula', () => {
+    const schema = ContractResponseSchema.shape.titularAnonymizedAt;
+
+    expect(schema.safeParse('2026-10-12T00:00:00.000Z').success).toBe(true);
+    expect(schema.safeParse(null).success).toBe(true);
+    expect(schema.safeParse('fecha-inválida').success).toBe(false);
   });
 });

@@ -194,6 +194,7 @@ export default function ExpedienteDetailPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { status: permissionsStatus, hasPermission } = usePermissions();
+  const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const id = params?.id as string;
   const tenantScope = resolveExpedienteCacheScope(user?.tenantId);
   const [timelineRevision, setTimelineRevision] = useState(0);
@@ -271,6 +272,7 @@ export default function ExpedienteDetailPage() {
   });
 
   const expediente = detailExpediente ?? bootstrapExpediente;
+  const isPrivacyRestricted = expediente?.privacyRestricted !== false;
 
   const effectivePersonType = draftValues.personType || null;
   const departmentValue = draftValues['department'];
@@ -1542,7 +1544,11 @@ export default function ExpedienteDetailPage() {
   return (
     <div className="space-y-6 pb-6">
       <ExpedienteHeader
-        fullName={expediente.fullName}
+        fullName={expediente.anonymizedAt ? '' : expediente.fullName}
+        privacyRestricted={isPrivacyRestricted}
+        anonymizedAt={expediente.anonymizedAt}
+        anonymizedRequestId={expediente.anonymizedRequestId}
+        canReadPrivacy={canReadPrivacy}
         status={expediente.status}
         overallProgress={overallProgress}
         subtitle="Gestión progresiva comercial y operativa."
@@ -1552,41 +1558,51 @@ export default function ExpedienteDetailPage() {
           currentAttribution?.acquisitionChannel ?? expediente.acquisitionChannel,
         )}
       />
-      <ExpedienteConversionBanner
-        status={expediente.status}
-        subscriberSummary={subscriberSummary}
-        conversionFailure={conversionFailure}
-        canRetryConversion={canRetryConversion}
-        isRetrying={isRetryingConversion}
-        retryError={conversionRetryError}
-        onRetryConversion={() => void handleRetryConversion()}
-      />
-      <ExpedienteTabsContainer
-        key={id}
-        defaultTab="vista-general"
-        onTabChange={handleTabChange}
-        loadingTabId={loadingTabId}
-        tabs={[
-          {
-            id: 'vista-general',
-            label: 'Vista general',
-            icon: <LayoutDashboard className="h-4 w-4" aria-hidden="true" />,
-            content: tabVistaGeneral,
-          },
-          {
-            id: 'gestion',
-            label: 'Gestión',
-            icon: <FileText className="h-4 w-4" aria-hidden="true" />,
-            content: renderLazyTab('gestion', tabSecciones),
-          },
-          {
-            id: 'seguimiento',
-            label: 'Seguimiento',
-            icon: <Phone className="h-4 w-4" aria-hidden="true" />,
-            content: renderLazyTab('seguimiento', tabSeguimiento),
-          },
-        ]}
-      />
+      {isPrivacyRestricted ? (
+        <PortalAlert
+          variant="warning"
+          title="Datos bloqueados"
+          description="La información personal está bloqueada y no se puede consultar ni editar desde esta oportunidad."
+        />
+      ) : (
+        <>
+          <ExpedienteConversionBanner
+            status={expediente.status}
+            subscriberSummary={subscriberSummary}
+            conversionFailure={conversionFailure}
+            canRetryConversion={canRetryConversion}
+            isRetrying={isRetryingConversion}
+            retryError={conversionRetryError}
+            onRetryConversion={() => void handleRetryConversion()}
+          />
+          <ExpedienteTabsContainer
+            key={id}
+            defaultTab="vista-general"
+            onTabChange={handleTabChange}
+            loadingTabId={loadingTabId}
+            tabs={[
+              {
+                id: 'vista-general',
+                label: 'Vista general',
+                icon: <LayoutDashboard className="h-4 w-4" aria-hidden="true" />,
+                content: tabVistaGeneral,
+              },
+              {
+                id: 'gestion',
+                label: 'Gestión',
+                icon: <FileText className="h-4 w-4" aria-hidden="true" />,
+                content: renderLazyTab('gestion', tabSecciones),
+              },
+              {
+                id: 'seguimiento',
+                label: 'Seguimiento',
+                icon: <Phone className="h-4 w-4" aria-hidden="true" />,
+                content: renderLazyTab('seguimiento', tabSeguimiento),
+              },
+            ]}
+          />
+        </>
+      )}
     </div>
   );
 }

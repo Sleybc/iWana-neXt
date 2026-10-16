@@ -13,6 +13,15 @@ import {
   loadPiiAesGcmKeyPair,
 } from '../common/crypto/aes-gcm.util';
 import { hmacPii, resolvePiiHashKey } from '../common/crypto/pii-hash-key.util';
+import { CrmPersonalDataErasureAdapter } from '../modules/crm/privacy-adapters/crm-personal-data-erasure.adapter';
+import { CrmTitularErasureParticipant } from '../modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
+import { MediaTitularErasureParticipant } from '../modules/media/privacy/media-titular-erasure.participant';
+import { PartyTitularErasureParticipant } from '../modules/parties/privacy/party-titular-erasure.participant';
+import { UserAccountErasureParticipant } from '../modules/users/privacy/user-account-erasure.participant';
+import { WfmTitularErasureParticipant } from '../modules/wfm/privacy/wfm-titular-erasure.participant';
+import { ExecutionOrderTitularErasureParticipant } from '../modules/tasks/privacy/execution-order-titular-erasure.participant';
+import { OperationalTaskTitularErasureParticipant } from '../modules/tasks/privacy/operational-task-titular-erasure.participant';
+import type { TitularErasureTableResult } from '../modules/crm/privacy-adapters/titular-erasure/titular-erasure.types';
 
 export type AnonymizeTitularMode = 'dry-run' | 'apply';
 
@@ -46,6 +55,9 @@ export interface AnonymizeTitularReport {
     privacyMediaAssets: number;
     stratumMediaAssets: number;
     unmatchedExpedientes: number;
+    visitRequests?: number;
+    scheduleEvents?: number;
+    executionOrders?: number;
   };
   changed: {
     expedienteRecords: number;
@@ -58,6 +70,9 @@ export interface AnonymizeTitularReport {
     users: number;
     privacyMediaAssets: number;
     stratumMediaAssets: number;
+    visitRequests?: number;
+    scheduleEvents?: number;
+    executionOrders?: number;
   };
   verification: {
     residualFields: number | null;
@@ -1049,12 +1064,37 @@ async function anonymizeTitularInTransaction(
     )) as SubscriberRow[];
   }
   const subscriberIds = subscriberRows.map((row) => row.id);
-  const userIds = [...new Set(subscriberRows.flatMap((row) => (row.user_id ? [row.user_id] : [])))];
+  const config = new ConfigService(process.env);
+  const crmParticipant = new CrmTitularErasureParticipant(config);
+  const userParticipant = new UserAccountErasureParticipant(config);
+  const adapter = new CrmPersonalDataErasureAdapter(
+    crmParticipant,
+    new PartyTitularErasureParticipant(config),
+    userParticipant,
+    new WfmTitularErasureParticipant(config),
+    new ExecutionOrderTitularErasureParticipant(config),
+    new OperationalTaskTitularErasureParticipant(config),
+    new MediaTitularErasureParticipant(),
+  );
+  const scope = await adapter.resolveCliScope(
+    {
+      requestId,
+      partyId,
+      requesterDocumentHmac: requestRow.requester_document_hmac,
+    },
+    expedienteIds,
+    queryRunner,
+    tenantSchema,
+    keys,
+  );
+  const userIds = scope.userIds;
   if (userIds.length > 0 && !tableExists(columns, 'users')) {
     throw new AnonymizeTitularCliError('No se puede comprobar la baja de las cuentas enlazadas.');
   }
   const users = await findUserRows(queryRunner, columns, userIds);
   const mediaIds = await mediaEvidenceIds(queryRunner, columns, partyId, subscriberIds);
+  scope.relatedIds ??= {};
+  scope.relatedIds.privacyEvidenceMediaIds = mediaIds.privacy;
   const privacyMedia = await safeUpdateMedia(
     queryRunner,
     mediaIds.privacy,
@@ -1103,68 +1143,50 @@ async function anonymizeTitularInTransaction(
   report.totals.unmatchedExpedientes = unmatchedExpedientes;
   report.verification.activeMediaAssets = privacyMedia.active + stratumMedia.active;
 
+  const participantResults = await adapter.applyScope(scope, queryRunner, mode);
+  for (const result of participantResults) {
+    if (result.selected > 0 && result.table === 'visit_requests') {
+      report.totals.visitRequests = result.selected;
+    }
+    if (result.selected > 0 && result.table === 'schedule_events') {
+      report.totals.scheduleEvents = result.selected;
+    }
+    if (result.selected > 0 && result.table === 'execution_orders') {
+      report.totals.executionOrders = result.selected;
+    }
+  }
   if (mode === 'dry-run') return report;
 
-  const tableCalls: Array<{
-    table: string;
-    ids: string[];
-    changedKey: keyof AnonymizeTitularReport['changed'];
-  }> = [
-    { table: 'expediente_records', ids: expedienteIds, changedKey: 'expedienteRecords' },
-    {
-      table: 'contact_attempts',
-      ids: await selectChildIds(queryRunner, columns, 'contact_attempts', expedienteIds),
-      changedKey: 'contactAttempts',
-    },
-    {
-      table: 'consent_records',
-      ids: await selectChildIds(queryRunner, columns, 'consent_records', expedienteIds),
-      changedKey: 'consentRecords',
-    },
-    {
-      table: 'coverage_checks',
-      ids: await selectChildIds(queryRunner, columns, 'coverage_checks', expedienteIds),
-      changedKey: 'coverageChecks',
-    },
-    { table: 'party', ids: partyRows.map((row) => row.id), changedKey: 'parties' },
-    { table: 'party_contact', ids: [], changedKey: 'partyContacts' },
-    { table: 'subscribers', ids: subscriberIds, changedKey: 'subscribers' },
-  ];
+  report.verification.activeMediaAssets = 0;
   let residualFields = 0;
-  for (const call of tableCalls) {
-    let ids = call.ids;
-    if (call.table === 'party_contact' && partyId && tableExists(columns, 'party_contact')) {
-      const contacts = (await queryRunner.query(
-        `SELECT id::text FROM party_contact WHERE party_id = $1 FOR UPDATE`,
-        [partyId],
-      )) as Array<{ id: string }>;
-      ids = contacts.map((row) => row.id);
+  const changedKeys: Partial<Record<string, keyof AnonymizeTitularReport['changed']>> = {
+    expediente_records: 'expedienteRecords',
+    contact_attempts: 'contactAttempts',
+    consent_records: 'consentRecords',
+    coverage_checks: 'coverageChecks',
+    party: 'parties',
+    party_contact: 'partyContacts',
+    subscribers: 'subscribers',
+    users: 'users',
+    'media_assets:privacy_evidence': 'privacyMediaAssets',
+    'media_assets:stratum_evidence': 'stratumMediaAssets',
+    visit_requests: 'visitRequests',
+    schedule_events: 'scheduleEvents',
+    execution_orders: 'executionOrders',
+  };
+  for (const result of participantResults) {
+    const key = changedKeys[result.table];
+    if (
+      key &&
+      (result.selected > 0 || !['visitRequests', 'scheduleEvents', 'executionOrders'].includes(key))
+    ) {
+      report.changed[key] = result.changed;
     }
-    const result = await anonymizeTable(queryRunner, call.table, ids, columns, keys, mode);
-    report.changed[call.changedKey] = result.changed;
     residualFields += result.residual;
+    if (result.table.startsWith('media_assets:')) {
+      report.verification.activeMediaAssets += result.residual;
+    }
   }
-  const userUnique = await updateUniqueUserFields(queryRunner, users, columns, keys, mode);
-  report.changed.users = userUnique.changed;
-  residualFields += userUnique.residual;
-
-  const mediaPrivacyApplied = await safeUpdateMedia(
-    queryRunner,
-    mediaIds.privacy,
-    tenantSchema,
-    'privacy_evidence',
-    'apply',
-  );
-  const mediaStratumApplied = await safeUpdateMedia(
-    queryRunner,
-    mediaIds.stratum,
-    tenantSchema,
-    'stratum_evidence',
-    'apply',
-  );
-  report.changed.privacyMediaAssets = mediaPrivacyApplied.changed;
-  report.changed.stratumMediaAssets = mediaStratumApplied.changed;
-  report.verification.activeMediaAssets = mediaPrivacyApplied.active + mediaStratumApplied.active;
   report.verification.residualFields = residualFields;
   report.applied = true;
   if (residualFields > 0 || report.verification.activeMediaAssets > 0) {

@@ -44,6 +44,7 @@ import { EVIDENCE_ASSET_PORT } from './ports/evidence-asset.port';
 import { TaskAssignmentService } from './services/task-assignment.service';
 import { TaskTimelineService } from './services/task-timeline.service';
 import { TasksService } from './services/tasks.service';
+import { TasksPrivacyModule } from './privacy/tasks-privacy.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { TasksService } from './services/tasks.service';
     MediaModule,
     OrganizationModule,
     RedisModule,
+    TasksPrivacyModule,
     TypeOrmModule.forFeature([
       OperationalTask,
       TaskTimelineEvent,
@@ -108,6 +110,7 @@ import { TasksService } from './services/tasks.service';
     ExecutionOrdersService,
     ExecutionOrderProjectionConvergenceService,
     EXECUTION_ORDER_SCHEDULING_PORT,
+    TasksPrivacyModule,
   ],
 })
 export class TasksModule {}

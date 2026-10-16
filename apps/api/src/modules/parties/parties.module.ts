@@ -11,6 +11,7 @@ import { IPartyWritePort } from './ports/party-write.port';
 import { Party } from './entities/party.entity';
 import { PartyRole } from './entities/party-role.entity';
 import { PartyContact } from './entities/party-contact.entity';
+import { PartiesPrivacyModule } from './privacy/parties-privacy.module';
 
 /**
  * Módulo Parties (MOD08) — Gestión unificada de terceros por tenant.
@@ -27,7 +28,7 @@ import { PartyContact } from './entities/party-contact.entity';
  * Ref: HLD-MOD08-PARTIES-v1.0 §3, §5
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Party, PartyRole, PartyContact])],
+  imports: [TypeOrmModule.forFeature([Party, PartyRole, PartyContact]), PartiesPrivacyModule],
   controllers: [PartiesController],
   providers: [
     PartyService,
@@ -44,6 +45,6 @@ import { PartyContact } from './entities/party-contact.entity';
       useExisting: PartyWriteAdapter,
     },
   ],
-  exports: [IPartyReadPort, IPartyWritePort, PartyService, PartyRoleService],
+  exports: [IPartyReadPort, IPartyWritePort, PartyService, PartyRoleService, PartiesPrivacyModule],
 })
 export class PartiesModule {}

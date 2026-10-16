@@ -10,6 +10,7 @@ import { MediaController } from './media.controller';
 import { EvidenceAssetProvider } from './evidence-asset.provider';
 import { EVIDENCE_ANALYSIS_QUEUE } from './evidence-asset.provider';
 import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
+import { MediaPrivacyModule } from './privacy/media-privacy.module';
 
 /**
  * Módulo Media — MOD03 Media/Assets.
@@ -30,6 +31,7 @@ import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
   imports: [
     TypeOrmModule.forFeature([MediaAsset]),
     ConfigModule,
+    MediaPrivacyModule,
     BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
   ],
   providers: [
@@ -79,6 +81,6 @@ import { EVIDENCE_ASSET_PORT } from '../tasks/ports/evidence-asset.port';
     },
   ],
   controllers: [MediaController],
-  exports: [MediaService, STORAGE_PORT, EVIDENCE_ASSET_PORT],
+  exports: [MediaService, STORAGE_PORT, EVIDENCE_ASSET_PORT, MediaPrivacyModule],
 })
 export class MediaModule {}

@@ -551,6 +551,7 @@ export class SubscribersService {
     customerSegment?: CustomerSegment | undefined;
     stratum?: number | undefined;
     search?: string | undefined;
+    excludeBlocked?: boolean | undefined;
     page?: number | undefined;
     limit?: number | undefined;
     sortBy?: string | undefined;
@@ -564,6 +565,7 @@ export class SubscribersService {
     // H-1 / D-2: tope de limit 100 antes de clampPage (Ley 1581 — no amplificar extracción PII).
     const cappedLimit = clampLimit(filters.limit);
     const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
+    const blockedPartyIds = filters.excludeBlocked ? await this.getBlockedPartyIds() : [];
 
     const { data, total, sortResult } = await runInTenantSchema(
       this.dataSource,
@@ -588,6 +590,15 @@ export class SubscribersService {
           query.andWhere(
             `(s.firstName ILIKE :search ${escapeClause} OR s.lastName ILIKE :search ${escapeClause} OR s.businessName ILIKE :search ${escapeClause} OR s.nit ILIKE :search ${escapeClause} OR s.commercialName ILIKE :search ${escapeClause})`,
             { search: searchPattern },
+          );
+        }
+
+        if (blockedPartyIds.length > 0) {
+          query.andWhere(
+            '(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))',
+            {
+              blockedPartyIds,
+            },
           );
         }
 
@@ -864,10 +875,12 @@ export class SubscribersService {
     nit?: string | undefined;
     email?: string | undefined;
     phone?: string | undefined;
+    excludeBlocked?: boolean | undefined;
   }): Promise<Subscriber[]> {
     const { schemaName } = TenantContext.getOrThrow();
+    const blockedPartyIds = query.excludeBlocked ? await this.getBlockedPartyIds() : [];
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const results = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager.createQueryBuilder(Subscriber, 's');
 
       const conditions: string[] = [];
@@ -899,9 +912,34 @@ export class SubscribersService {
       }
 
       qb.where(conditions.join(' AND '), params);
+      if (blockedPartyIds.length > 0) {
+        qb.andWhere('(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))', {
+          blockedPartyIds,
+        });
+      }
       const results = await qb.take(100).getMany();
-      return results.map((subscriber) => this.decryptSubscriberFields(subscriber));
+      return results;
     });
+
+    const hydrated = results.map((subscriber) => this.decryptSubscriberFields(subscriber));
+    const marksByParty = await this.privacyMarksReadPort?.activeMarks(
+      hydrated.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
+    );
+    return hydrated.map((subscriber) =>
+      Object.assign(subscriber, {
+        privacyMarks: subscriber.partyId ? (marksByParty?.[subscriber.partyId] ?? []) : [],
+      }),
+    );
+  }
+
+  private async getBlockedPartyIds(): Promise<string[]> {
+    if (!this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo aplicar la protección de privacidad a la búsqueda.',
+      });
+    }
+    return this.privacyMarksReadPort.partyIdsWithActiveMark('DATOS_BLOQUEADOS');
   }
 
   /**

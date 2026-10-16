@@ -52,6 +52,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'AddScheduleEventStatusExpired107',
   'AddPiiHmacColumns1080000000000',
   'DropPiiSha256HashColumns1090000000000',
+  'TitularAnonymizationMarker1500000000000',
 ];
 
 const EVIDENCE_RETENTION_MIGRATION = 'AlignExecutionOrderEvidenceIntentRetention1010000000000';

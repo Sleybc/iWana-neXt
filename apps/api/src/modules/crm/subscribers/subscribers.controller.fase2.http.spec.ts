@@ -22,6 +22,7 @@ import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
 import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 
 jest.mock('../../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -202,6 +203,10 @@ describe('SubscribersController Fase 2 — doble guard', () => {
   };
   const auditMock = { log: jest.fn().mockResolvedValue(undefined) };
   const effectivePermissionsMock = { getEffectivePermissionsForUser: jest.fn() };
+  const privacyMarksReadPortMock = {
+    activeMarks: jest.fn().mockResolvedValue({}),
+    partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
+  };
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -210,6 +215,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         { provide: SubscribersService, useValue: subscribersServiceMock },
         { provide: AuditService, useValue: auditMock },
         { provide: EffectivePermissionsService, useValue: effectivePermissionsMock },
+        { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
         Reflector,
         PermissionsGuard,
         JwtAuthGuard,
@@ -227,6 +233,8 @@ describe('SubscribersController Fase 2 — doble guard', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    privacyMarksReadPortMock.activeMarks.mockResolvedValue({});
+    privacyMarksReadPortMock.partyIdsWithActiveMark.mockResolvedValue([]);
     subscribersServiceMock.findAll.mockResolvedValue({
       data: [],
       total: 0,
@@ -332,7 +340,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         },
       ],
     });
-    expect(response.body.data[0]).not.toHaveProperty('tenantId');
+    expect(response.body.data[0]).toHaveProperty('tenantId', 'tenant-001');
     expect(response.body.data[0]).not.toHaveProperty('birthDate');
     const auditPayload = JSON.stringify(auditMock.log.mock.calls.at(-1)?.[0]);
     expect(auditPayload).toContain('(aplicado)');
@@ -353,9 +361,88 @@ describe('SubscribersController Fase 2 — doble guard', () => {
 
     expect(subscribersServiceMock.search).toHaveBeenCalledWith({
       documentNumber: '12345678',
+      excludeBlocked: true,
     });
     expect(response.body.data[0]).toHaveProperty('documentNumber', '12345678');
     expect(JSON.stringify(auditMock.log.mock.calls.at(-1)?.[0])).not.toContain('12345678');
+  });
+
+  it('GET /crm/subscribers/:id — devuelve una proyección redactada sin permiso especial', async () => {
+    const id = '00000000-0000-4000-a000-000000000001';
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    subscribersServiceMock.findById.mockResolvedValue({ ...listSubscriber, id });
+    privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+      'party-001': ['DATOS_BLOQUEADOS'],
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/crm/subscribers/${id}`)
+      .set('Authorization', 'Bearer admin-token')
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      id,
+      privacyRestricted: true,
+      firstName: null,
+      documentNumber: null,
+      email: null,
+      address: null,
+    });
+  });
+
+  it('GET /crm/subscribers/:id — permite y audita el permiso crm.blocked_data.read', async () => {
+    const id = '00000000-0000-4000-a000-000000000002';
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+    ]);
+    subscribersServiceMock.findById.mockResolvedValue({ ...listSubscriber, id });
+    privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+      'party-001': ['DATOS_BLOQUEADOS'],
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/crm/subscribers/${id}`)
+      .set('Authorization', 'Bearer accountant-token')
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      id,
+      privacyRestricted: false,
+      firstName: 'Ana',
+      documentNumber: '12345678',
+    });
+    expect(auditMock.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'RECORD_ACCESS',
+        newValue: expect.objectContaining({
+          privacyMark: 'DATOS_BLOQUEADOS',
+          grantedBy: 'CRM_BLOCKED_DATA_READ',
+        }),
+      }),
+    );
+  });
+
+  it('PATCH /crm/subscribers/:id — responde 409 y no ejecuta la edición si está bloqueado', async () => {
+    const id = '00000000-0000-4000-a000-000000000003';
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ]);
+    subscribersServiceMock.findById.mockResolvedValue({ ...listSubscriber, id });
+    privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+      'party-001': ['DATOS_BLOQUEADOS'],
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/crm/subscribers/${id}`)
+      .set('Authorization', 'Bearer sales-token')
+      .send({ city: 'Municipio sintético' })
+      .expect(409);
+
+    expect(response.body).toMatchObject({ code: 'PRIVACY_DATA_BLOCKED' });
+    expect(subscribersServiceMock.update).not.toHaveBeenCalled();
   });
 
   it.each([

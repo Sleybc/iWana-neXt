@@ -12,6 +12,7 @@ import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -504,18 +505,34 @@ function SubscribersListClientInner() {
                             className="group block"
                           >
                             <p className="font-semibold text-iwana-primary transition-colors group-hover:text-iwana-secondary-700 dark:text-white dark:group-hover:text-iwana-secondary-300">
-                              {formatSubscriberName(subscriber)}
+                              {privacyDisplayValue(
+                                subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
+                                {
+                                  privacyRestricted: subscriber.privacyRestricted,
+                                  anonymizedAt: subscriber.anonymizedAt,
+                                },
+                              )}
                             </p>
                             <PrivacyMarks marks={subscriber.privacyMarks ?? []} />
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {subscriber.contactPending
-                                ? 'Contacto pendiente'
-                                : subscriber.email || subscriber.phone || 'Sin contacto principal'}
+                              {subscriber.privacyRestricted
+                                ? 'Datos bloqueados'
+                                : subscriber.anonymizedAt
+                                  ? 'Anonimizado'
+                                  : subscriber.contactPending
+                                    ? 'Contacto pendiente'
+                                    : subscriber.email ||
+                                      subscriber.phone ||
+                                      'Sin contacto principal'}
                             </p>
                           </Link>
                         </td>
                         <td className={portalDataTableCellClassName}>
-                          {formatDocumentDisplay(subscriber)}
+                          {subscriber.privacyRestricted
+                            ? 'Datos bloqueados'
+                            : subscriber.anonymizedAt
+                              ? 'Anonimizado'
+                              : formatDocumentDisplay(subscriber)}
                         </td>
                         <td className={portalDataTableCellClassName}>
                           <Badge
@@ -534,7 +551,16 @@ function SubscribersListClientInner() {
                           </Badge>
                         </td>
                         <td className={portalDataTableCellClassName}>
-                          {formatSubscriberLocation(subscriber.city, subscriber.department)}
+                          {privacyDisplayValue(
+                            subscriber.privacyRestricted
+                              ? null
+                              : formatSubscriberLocation(subscriber.city, subscriber.department),
+                            {
+                              privacyRestricted: subscriber.privacyRestricted,
+                              anonymizedAt: subscriber.anonymizedAt,
+                              emptyValue: 'Sin ubicación registrada',
+                            },
+                          )}
                         </td>
                         <td className={portalDataTableCellClassName}>
                           <Badge

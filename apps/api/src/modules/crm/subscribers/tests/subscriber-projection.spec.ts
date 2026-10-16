@@ -46,6 +46,7 @@ const subscriber = {
   userId: 'user-1',
   status: SubscriberStatus.ACTIVE,
   createdAt: new Date('2026-10-12T12:00:00.000Z'),
+  updatedAt: new Date('2026-10-12T12:00:00.000Z'),
 } as unknown as Subscriber;
 
 describe('projectSubscriberForList', () => {
@@ -114,6 +115,12 @@ describe('projectSubscriberForList', () => {
 
     expect(projected).toMatchObject({
       id: 'sub-1',
+      tenantId: 'tenant-1',
+      partyId: 'party-1',
+      userId: 'user-1',
+      privacyRestricted: false,
+      anonymizedAt: null,
+      anonymizedRequestId: null,
       firstName: 'Ana',
       lastName: 'Prueba',
       businessName: 'Comercio de prueba',
@@ -122,14 +129,89 @@ describe('projectSubscriberForList', () => {
       createdAt: '2026-10-12T12:00:00.000Z',
       contactPending: false,
     });
-    expect(projected).not.toHaveProperty('tenantId');
-    expect(projected).not.toHaveProperty('partyId');
+    expect(projected).toHaveProperty('expedienteId', null);
+    expect(projected).toHaveProperty('convertedAt', null);
+    expect(projected).toHaveProperty('activatedAt', null);
+    expect(projected).toHaveProperty('updatedAt', '2026-10-12T12:00:00.000Z');
     expect(projected).not.toHaveProperty('birthDate');
     expect(projected).not.toHaveProperty('legalRepresentativeId');
     expect(projected).not.toHaveProperty('manualOverrideReason');
     expect(projected).not.toHaveProperty('externalId');
     expect(projected).not.toHaveProperty('createdBy');
-    expect(projected).not.toHaveProperty('userId');
+  });
+
+  it('redacta cada campo fuera de la lista blanca para titulares bloqueados', () => {
+    const projected = projectSubscriberForList(
+      {
+        ...subscriber,
+        anonymizedAt: null,
+        anonymizedRequestId: null,
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+      },
+      UserRole.ADMIN,
+    );
+    const allowedFields = new Set([
+      'id',
+      'tenantId',
+      'partyId',
+      'userId',
+      'personType',
+      'customerSegment',
+      'documentType',
+      'status',
+      'vatTreatment',
+      'taxRegime',
+      'expedienteId',
+      'convertedAt',
+      'activatedAt',
+      'createdAt',
+      'updatedAt',
+      'privacyMarks',
+      'privacyRestricted',
+      'anonymizedAt',
+      'anonymizedRequestId',
+      'contactPending',
+    ]);
+
+    expect(projected.privacyRestricted).toBe(true);
+    expect(projected.contactPending).toBe(false);
+    for (const [field, value] of Object.entries(projected)) {
+      if (!allowedFields.has(field) && field !== 'contactPending') {
+        expect(value).toBeNull();
+      }
+    }
+    expect(projected).toMatchObject({
+      id: 'sub-1',
+      tenantId: 'tenant-1',
+      partyId: 'party-1',
+      status: SubscriberStatus.ACTIVE,
+      firstName: null,
+      documentNumber: null,
+      email: null,
+      address: null,
+      latitude: null,
+    });
+  });
+
+  it('no redacta al titular bloqueado con permiso y marca anonimizaciones', () => {
+    const anonymizedAt = new Date('2026-10-14T00:00:00.000Z');
+    const projected = projectSubscriberForList(
+      {
+        ...subscriber,
+        anonymizedAt,
+        anonymizedRequestId: 'request-1',
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+      },
+      UserRole.ADMIN,
+      true,
+    );
+
+    expect(projected).toMatchObject({
+      privacyRestricted: false,
+      anonymizedAt: anonymizedAt.toISOString(),
+      anonymizedRequestId: 'request-1',
+      firstName: 'Ana',
+    });
   });
 
   it('fail-closed para un rol sin entrada en el mapa', () => {

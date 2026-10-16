@@ -7,6 +7,7 @@ import { PersonType } from '@iwana/shared';
 import type { UpdateSubscriberPayload } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import {
   DEPARTAMENTOS,
@@ -317,6 +318,58 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
 
   const parsedMapCoordinates = parseLatLngPair(addressDraft.coordinates);
   const municipalityOptions = getMunicipiosByDepartamento(addressDraft.department);
+
+  if (subscriber.privacyRestricted) {
+    return (
+      <div
+        role="status"
+        className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200"
+      >
+        Datos bloqueados
+      </div>
+    );
+  }
+
+  if (subscriber.anonymizedAt) {
+    const anonymized = privacyDisplayValue(null, { anonymizedAt: subscriber.anonymizedAt });
+    const fields = [
+      ['Nombre o razón social', anonymized],
+      ['Documento', anonymized],
+      ['Fecha de nacimiento', anonymized],
+      ['Correo principal', anonymized],
+      ['Teléfono principal', anonymized],
+      ['Contacto alternativo', anonymized],
+      ['Teléfono alternativo', anonymized],
+      ['Dirección', anonymized],
+      ['Barrio o sector', anonymized],
+      ['Municipio', anonymized],
+      ['Departamento', anonymized],
+      ['Código postal', anonymized],
+      ['Coordenadas', anonymized],
+    ];
+
+    return (
+      <section
+        aria-labelledby="subscriber-anonymized-data-title"
+        className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2"
+      >
+        <h2
+          id="subscriber-anonymized-data-title"
+          className="text-lg font-semibold text-gray-900 dark:text-white"
+        >
+          Datos del suscriptor
+        </h2>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          {fields.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</dt>
+              <dd className="mt-1 text-sm text-gray-800 dark:text-gray-200">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    );
+  }
 
   return (
     <div className="space-y-6">

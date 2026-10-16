@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import { AuditService } from '../../audit/audit.service';
 import { ExpedientesController } from './expedientes.controller';
 import { ExpedienteService } from './expediente.service';
 import { StatusTransitionService } from './status-transition.service';
@@ -86,6 +87,7 @@ describe('ExpedientesController Fase2', () => {
     findAll: jest.fn().mockResolvedValue({ data: [], meta: {} }),
     create: jest.fn().mockResolvedValue({ id: '1' }),
     findById: jest.fn().mockResolvedValue({ id: '1' }),
+    getPrivacyMarksForExpediente: jest.fn().mockResolvedValue([]),
     retryConversionEvent: jest.fn().mockResolvedValue({ retried: true, resolved: true }),
   };
   const statusMock = { validateTransition: jest.fn().mockResolvedValue({ valid: true }) };
@@ -109,6 +111,7 @@ describe('ExpedientesController Fase2', () => {
         { provide: PipelineRecommendationService, useValue: pipelineMock },
         { provide: ExpedienteDetailBootstrapService, useValue: bootstrapMock },
         { provide: EffectivePermissionsService, useValue: permsMock },
+        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
         Reflector,
         PermissionsGuard,
         JwtAuthGuard,

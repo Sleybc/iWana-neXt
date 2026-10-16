@@ -1,10 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import * as privacyPorts from './index';
 import * as requestPorts from '../requests';
-import {
-  ContractImpersonationUnavailableAdapter,
-  PersonalDataErasureUnavailableAdapter,
-} from './unavailable-privacy-ports.adapters';
+import { ContractImpersonationUnavailableAdapter } from './unavailable-privacy-ports.adapters';
 import { ContractStandingUnavailableAdapter } from '../requests/ports/unavailable-contract-standing.adapter';
 
 describe('puertos y adaptadores no instalados de privacidad', () => {
@@ -18,17 +15,11 @@ describe('puertos y adaptadores no instalados de privacidad', () => {
     expect(requestPorts.IPrivacyRequestsReadPort).toBeDefined();
   });
 
-  it('falla en modo cerrado al invocar una integración aún no instalada', async () => {
+  it('falla en modo cerrado al invocar integraciones aún no instaladas', async () => {
     await expect(
       new ContractImpersonationUnavailableAdapter().suspendForImpersonation(),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
-    await expect(new PersonalDataErasureUnavailableAdapter().plan()).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
-    );
-    await expect(new PersonalDataErasureUnavailableAdapter().anonymize()).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
-    );
     await expect(new ContractStandingUnavailableAdapter().standing()).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );

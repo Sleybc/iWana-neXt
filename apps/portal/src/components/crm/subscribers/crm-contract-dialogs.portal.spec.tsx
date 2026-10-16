@@ -28,6 +28,7 @@ const CONTRACT: Contract = {
   planId: 'plan-1',
   planSnapshotJson: { name: 'Plan Fibra 300' },
   status: 'ACTIVE',
+  titularAnonymizedAt: null,
   alias: 'Sede principal',
   installationAddress: 'Calle 1 # 2-3',
   installationCity: 'Bogotá',
@@ -153,6 +154,53 @@ describe('diálogos de contrato de CRM — capa única portalada (ADR-075 + C-DS
 
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('oculta datos al bloquear y marca campos personales vacíos al anonimizar', () => {
+      const restricted = render(
+        <ContractDetailDrawer
+          contract={{ ...CONTRACT, alias: 'SENTINEL_PERSONAL' }}
+          privacyRestricted
+          onClose={jest.fn()}
+          onReload={jest.fn(async () => undefined)}
+        />,
+      );
+
+      expect(screen.getAllByText('Datos bloqueados').length).toBeGreaterThan(0);
+      expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Editar contrato' })).toBeNull();
+      restricted.unmount();
+
+      render(
+        <ContractDetailDrawer
+          contract={{
+            ...CONTRACT,
+            titularAnonymizedAt: '2026-10-15T10:00:00.000Z',
+            alias: 'SENTINEL_PERSONAL',
+            installationAddress: 'SENTINEL_PERSONAL',
+            fiscalName: null,
+          }}
+          anonymizedRequestId="request-id"
+          canReadPrivacy
+          onClose={jest.fn()}
+          onReload={jest.fn(async () => undefined)}
+        />,
+      );
+
+      expect(screen.getAllByText('Anonimizado').length).toBeGreaterThan(0);
+      expect(screen.getByText('PSE')).toBeInTheDocument();
+      expect(screen.getByText('Mensual')).toBeInTheDocument();
+      expect(screen.getByText('Dirección fiscal')).toBeInTheDocument();
+      expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
+      expect(screen.getByRole('link', { name: /Ver solicitud de privacidad/ })).toHaveAttribute(
+        'href',
+        '/dashboard/privacy?requestId=request-id',
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Editar contrato' }));
+      const anonymizedFields = screen.getAllByPlaceholderText('Anonimizado');
+      expect(anonymizedFields.length).toBeGreaterThan(0);
+      expect(anonymizedFields.every((field) => (field as HTMLInputElement).readOnly)).toBe(true);
     });
   });
 

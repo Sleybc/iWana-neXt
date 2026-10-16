@@ -68,6 +68,9 @@ function subscriberFixture(
     email: `${id}@example.com`,
     phone: null,
     contactPending: false,
+    privacyRestricted: false,
+    anonymizedAt: null,
+    anonymizedRequestId: null,
     customerSegment: 'RESIDENTIAL',
     vatTreatment: 'STANDARD',
     status: 'ACTIVE',
@@ -162,6 +165,31 @@ describe('SubscribersListClient ADR-065', () => {
     expect(within(row).queryByText('0000000000')).not.toBeInTheDocument();
     expect(within(row).getByText('Activo')).toBeInTheDocument();
     expect(within(row).queryByText('ACTIVE')).not.toBeInTheDocument();
+  });
+
+  it('redacta los campos personales en filas con acceso bloqueado', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          'sub-restricted',
+          { firstName: 'SENTINEL_PERSONAL', lastName: 'SENTINEL_PERSONAL' },
+          {
+            privacyRestricted: true,
+            documentNumber: 'SENTINEL_PERSONAL',
+            email: 'SENTINEL_PERSONAL',
+            city: 'SENTINEL_PERSONAL',
+          },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const row = await screen.findByRole('row', { name: /Datos bloqueados/ });
+    expect(within(row).getAllByText('Datos bloqueados').length).toBeGreaterThan(0);
+    expect(within(row).queryByText('SENTINEL_PERSONAL')).toBeNull();
   });
 
   it('reemplaza la página: página 2 muestra filas distintas (no acumulación)', async () => {

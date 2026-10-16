@@ -300,5 +300,27 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
     );
     expect(activated.status).toBe(SubscriberStatus.ACTIVE);
     expect(projectSubscriberForList(activated, UserRole.ADMIN).contactPending).toBe(false);
+
+    const visibleBeforeBlock = await TenantContext.run(context(), () =>
+      subscribersService.search({ documentNumber: '77000001' }),
+    );
+    expect(visibleBeforeBlock).toHaveLength(1);
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.manager.save(
+        PartyPrivacyMarkEntity,
+        Object.assign(new PartyPrivacyMarkEntity(), {
+          partyId,
+          mark: 'DATOS_BLOQUEADOS',
+          event: 'OPEN',
+          requestId: null,
+          actorId,
+          occurredAt: new Date(),
+        }),
+      ),
+    );
+    const visibleAfterBlock = await TenantContext.run(context(), () =>
+      subscribersService.search({ documentNumber: '77000001', excludeBlocked: true }),
+    );
+    expect(visibleAfterBlock).toEqual([]);
   });
 });

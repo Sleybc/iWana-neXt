@@ -165,6 +165,7 @@ export const ContractResponseSchema = z
     fiscalAddress: z.string().nullable(),
     startDate: z.string().nullable(),
     endDate: z.string().nullable(),
+    titularAnonymizedAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     deletedAt: z.string().datetime().nullable(),

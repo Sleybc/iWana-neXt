@@ -658,6 +658,7 @@ export class ExpedienteService {
     search?: string | undefined;
     assignedTo?: string | undefined;
     documentNumber?: string | undefined;
+    excludeBlocked?: boolean | undefined;
     includeCompleted?: boolean | undefined;
     view?: ExpedienteListView | undefined;
     page?: number | undefined;
@@ -677,6 +678,7 @@ export class ExpedienteService {
     const assignedTo = filters.assignedTo;
     const documentNumber = filters.documentNumber?.trim();
     const includeCompleted = filters.includeCompleted ?? false;
+    const blockedPartyIds = filters.excludeBlocked ? await this.getBlockedPartyIds() : [];
 
     const {
       hydrated: hydratedData,
@@ -708,6 +710,17 @@ export class ExpedienteService {
         query.andWhere('expediente.documentNumberHash = :docHash', {
           docHash: hashDocumentNumber(documentNumber, this.piiHashKey),
         });
+      }
+
+      if (blockedPartyIds.length > 0) {
+        query.andWhere(
+          `NOT EXISTS (
+            SELECT 1 FROM subscribers blocked_subscriber
+             WHERE blocked_subscriber.expediente_id = expediente.id
+               AND blocked_subscriber.party_id = ANY(CAST(:blockedPartyIds AS uuid[]))
+          )`,
+          { blockedPartyIds },
+        );
       }
 
       // DEF-1: desempate por id para paginación offset estable.
@@ -962,6 +975,37 @@ export class ExpedienteService {
     }
 
     return entity;
+  }
+
+  /** Lee las marcas del titular enlazado sin exponer su identificador en la respuesta. */
+  async getPrivacyMarksForExpediente(expedienteId: string): Promise<PrivacyMark[]> {
+    if (!this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo aplicar la protección de privacidad al expediente.',
+      });
+    }
+    const { schemaName } = TenantContext.getOrThrow();
+    const linked = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT party_id FROM subscribers WHERE expediente_id = $1 AND party_id IS NOT NULL LIMIT 1`,
+        [expedienteId],
+      ),
+    )) as Array<{ party_id: string }>;
+    const partyId = linked[0]?.party_id;
+    if (!partyId) return [];
+    const marks = await this.privacyMarksReadPort.activeMarks([partyId]);
+    return marks[partyId] ?? [];
+  }
+
+  private async getBlockedPartyIds(): Promise<string[]> {
+    if (!this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo aplicar la protección de privacidad a la búsqueda.',
+      });
+    }
+    return this.privacyMarksReadPort.partyIdsWithActiveMark('DATOS_BLOQUEADOS');
   }
 
   async findDisplayNameById(id: string): Promise<string | null> {

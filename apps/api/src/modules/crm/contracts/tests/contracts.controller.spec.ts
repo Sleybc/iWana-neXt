@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, RequestMethod } from '@nestjs/common';
+import { BadRequestException, ConflictException, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { ContractsController } from '../contracts.controller';
 import { ContractsService } from '../contracts.service';
@@ -50,6 +50,8 @@ describe('ContractsController', () => {
     findAll: jest.fn(),
     findAllBySubscriber: jest.fn(),
     findOne: jest.fn(),
+    findOneForRead: jest.fn(),
+    assertContractNotBlocked: jest.fn(),
     update: jest.fn(),
     updateServicePoint: jest.fn(),
     uploadStratumEvidence: jest.fn(),
@@ -130,6 +132,31 @@ describe('ContractsController', () => {
     }
   });
 
+  it.each(['update', 'updateServicePoint', 'uploadStratumEvidence'] as const)(
+    'devuelve 409 y no muta el contrato bloqueado en %s',
+    async (handler) => {
+      serviceMock.assertContractNotBlocked.mockRejectedValue(
+        new ConflictException({ code: 'PRIVACY_DATA_BLOCKED' }),
+      );
+      const actor = { sub: 'actor-1' } as JwtPayload;
+
+      const request =
+        handler === 'update'
+          ? controller.update('ctr-1', { alias: 'Alias sintético' }, actor)
+          : handler === 'updateServicePoint'
+            ? controller.updateServicePoint('ctr-1', { installationStratum: 2 }, actor)
+            : controller.uploadStratumEvidence(
+                'ctr-1',
+                { buffer: Buffer.from('synthetic') } as Express.Multer.File,
+                actor,
+              );
+
+      await expect(request).rejects.toThrow(ConflictException);
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock[handler]).not.toHaveBeenCalled();
+    },
+  );
+
   describe('findAll', () => {
     it('retorna contratos en envelope { data, meta }', async () => {
       serviceMock.findAll.mockResolvedValue({
@@ -159,12 +186,16 @@ describe('ContractsController', () => {
 
       await controller.findAll(ContractStatus.ACTIVE, 'plan-1', 2, 10);
 
-      expect(serviceMock.findAll).toHaveBeenCalledWith({
-        status: ContractStatus.ACTIVE,
-        planId: 'plan-1',
-        page: 2,
-        limit: 10,
-      });
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        {
+          status: ContractStatus.ACTIVE,
+          planId: 'plan-1',
+          page: 2,
+          limit: 10,
+        },
+        false,
+        undefined,
+      );
     });
   });
 
@@ -189,7 +220,7 @@ describe('ContractsController', () => {
 
       const result = await controller.findAllBySubscriber('sub-1');
 
-      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1', {});
+      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1', {}, false, undefined);
       expect(result.data).toHaveLength(2);
     });
 
@@ -198,7 +229,12 @@ describe('ContractsController', () => {
 
       await controller.findAllBySubscriber('sub-1', 3, 25);
 
-      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith('sub-1', { page: 3, limit: 25 });
+      expect(serviceMock.findAllBySubscriber).toHaveBeenCalledWith(
+        'sub-1',
+        { page: 3, limit: 25 },
+        false,
+        undefined,
+      );
     });
   });
 
@@ -208,6 +244,20 @@ describe('ContractsController', () => {
         controller.uploadStratumEvidence('ctr-1', undefined, { sub: 'user-1' } as JwtPayload),
       ).rejects.toThrow(BadRequestException);
       expect(serviceMock.uploadStratumEvidence).not.toHaveBeenCalled();
+    });
+
+    it('verifica el bloqueo antes de cargar evidencia', async () => {
+      serviceMock.assertContractNotBlocked.mockResolvedValue(undefined);
+      serviceMock.uploadStratumEvidence.mockResolvedValue(buildContract());
+
+      await controller.uploadStratumEvidence(
+        'ctr-1',
+        { buffer: Buffer.from('synthetic') } as Express.Multer.File,
+        { sub: 'actor-1' } as JwtPayload,
+      );
+
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock.uploadStratumEvidence).toHaveBeenCalled();
     });
   });
 
@@ -266,6 +316,32 @@ describe('ContractsController', () => {
         'user-1',
       );
       expect(result.data.status).toBe(ContractStatus.ACTIVE);
+    });
+
+    it('verifica el bloqueo aunque el actor tenga permiso de lectura de datos bloqueados', async () => {
+      serviceMock.assertContractNotBlocked.mockResolvedValue(undefined);
+      serviceMock.updateServicePoint.mockResolvedValue(buildContract());
+
+      await controller.updateServicePoint('ctr-1', { installationStratum: 2 }, {
+        sub: 'actor-1',
+      } as JwtPayload);
+
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock.updateServicePoint).toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    it('verifica el bloqueo antes de editar el contrato', async () => {
+      serviceMock.assertContractNotBlocked.mockResolvedValue(undefined);
+      serviceMock.update.mockResolvedValue(buildContract());
+
+      await controller.update('ctr-1', { alias: 'Alias sintético' }, {
+        sub: 'actor-1',
+      } as JwtPayload);
+
+      expect(serviceMock.assertContractNotBlocked).toHaveBeenCalledWith('ctr-1');
+      expect(serviceMock.update).toHaveBeenCalled();
     });
   });
 

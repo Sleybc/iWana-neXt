@@ -65,6 +65,9 @@ function subscriberFixture(contactPending: boolean): SubscriberRecord {
     updatedAt: '2026-10-15T10:00:00.000Z',
     deletedAt: null,
     partyId: null,
+    privacyRestricted: false,
+    anonymizedAt: null,
+    anonymizedRequestId: null,
   };
 }
 
@@ -99,6 +102,26 @@ describe('MOD05 E3 contacto pendiente', () => {
     );
     expect(screen.queryByText('Contacto pendiente')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agregar contacto' })).not.toBeInTheDocument();
+  });
+
+  it('oculta el nombre y las acciones del encabezado cuando el titular está bloqueado', () => {
+    render(
+      <SubscriberHeader
+        subscriber={{
+          ...subscriberFixture(true),
+          firstName: 'SENTINEL_PERSONAL',
+          lastName: 'SENTINEL_PERSONAL',
+          privacyRestricted: true,
+        }}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Datos bloqueados' })).toBeInTheDocument();
+    expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Agregar contacto' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cambiar estado' })).toBeNull();
   });
 
   it('CA-E3-02: exige uno de los canales y permite crear con solo teléfono', async () => {

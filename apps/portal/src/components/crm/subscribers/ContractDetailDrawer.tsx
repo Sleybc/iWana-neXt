@@ -29,6 +29,8 @@ import {
 import type { Contract, ContractStatus } from '@/lib/api-client';
 import { ApiError, contractsApi } from '@/lib/api-client';
 import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { ServicePointFields } from './CreateContractDialog';
 import { stratumEvidenceUploadErrorMessage } from './stratum-evidence';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
@@ -181,18 +183,20 @@ interface EditForm {
 
 function buildEditForm(contract: Contract): EditForm {
   return {
-    alias: contract.alias,
-    installationAddress: contract.installationAddress ?? '',
+    alias: contract.titularAnonymizedAt ? '' : contract.alias,
+    installationAddress: contract.titularAnonymizedAt ? '' : (contract.installationAddress ?? ''),
     installationCity: contract.installationCity ?? '',
     installationDepartment: contract.installationDepartment ?? '',
-    installationPostalCode: contract.installationPostalCode ?? '',
-    installationNotes: contract.installationNotes ?? '',
+    installationPostalCode: contract.titularAnonymizedAt
+      ? ''
+      : (contract.installationPostalCode ?? ''),
+    installationNotes: contract.titularAnonymizedAt ? '' : (contract.installationNotes ?? ''),
     customerSegment: contract.customerSegment ?? '',
     paymentMethod: contract.paymentMethod ?? '',
     billingCycle: contract.billingCycle ?? '',
-    fiscalName: contract.fiscalName ?? '',
-    fiscalDocument: contract.fiscalDocument ?? '',
-    fiscalAddress: contract.fiscalAddress ?? '',
+    fiscalName: contract.titularAnonymizedAt ? '' : (contract.fiscalName ?? ''),
+    fiscalDocument: contract.titularAnonymizedAt ? '' : (contract.fiscalDocument ?? ''),
+    fiscalAddress: contract.titularAnonymizedAt ? '' : (contract.fiscalAddress ?? ''),
   };
 }
 
@@ -201,6 +205,9 @@ function buildEditForm(contract: Contract): EditForm {
 interface ContractDetailDrawerProps {
   contract: Contract;
   personType?: PersonType;
+  privacyRestricted?: boolean;
+  anonymizedRequestId?: string | null;
+  canReadPrivacy?: boolean;
   onClose: () => void;
   onReload: () => Promise<void>;
   onRemove?: (id: string) => Promise<void>;
@@ -208,14 +215,24 @@ interface ContractDetailDrawerProps {
 
 // ── Subcomponente campo de detalle ────────────────────────────────────────────
 
-function DetailField({ label, value }: { label: string; value: string | null | undefined }) {
-  if (!value) return null;
+function DetailField({
+  label,
+  value,
+  emptyValue,
+}: {
+  label: string;
+  value: string | null | undefined;
+  emptyValue?: string | undefined;
+}) {
+  if (!value && !emptyValue) return null;
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-400">
         {label}
       </p>
-      <p className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">{value}</p>
+      <p className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">
+        {privacyDisplayValue(value, { emptyValue })}
+      </p>
     </div>
   );
 }
@@ -300,6 +317,9 @@ const ACTION_BTN: Record<string, string> = {
 export function ContractDetailDrawer({
   contract,
   personType = PersonType.NATURAL,
+  privacyRestricted = false,
+  anonymizedRequestId,
+  canReadPrivacy = false,
   onClose,
   onReload,
   onRemove,
@@ -604,8 +624,19 @@ export function ContractDetailDrawer({
               id="drawer-contract-title"
               className="mt-0.5 truncate text-lg font-bold text-gray-900 dark:text-white"
             >
-              {contract.alias}
+              {privacyDisplayValue(
+                privacyRestricted || currentContract.titularAnonymizedAt ? null : contract.alias,
+                {
+                  privacyRestricted,
+                  anonymizedAt: currentContract.titularAnonymizedAt,
+                },
+              )}
             </h2>
+            <PrivacyAnonymizedBadge
+              anonymizedAt={currentContract.titularAnonymizedAt}
+              anonymizedRequestId={anonymizedRequestId}
+              canReadPrivacy={canReadPrivacy}
+            />
           </div>
           {/* Badge estado */}
           <span
@@ -637,529 +668,622 @@ export function ContractDetailDrawer({
 
         {/* Contenido scrollable */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* Errores */}
-          {(saveError ?? transitionError) && (
-            <div className="flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-              <span className="flex-1">{saveError ?? transitionError}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSaveError(null);
-                  setTransitionError(null);
-                }}
-                className="text-red-400 hover:text-red-600"
-                aria-label="Cerrar error"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </div>
-          )}
-
-          {/* ── Plan contratado ───────────────────────────────────────────── */}
-          <Section
-            icon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
-            title="Plan contratado"
-          >
-            <div className="sm:col-span-2">
-              <p className="font-semibold text-gray-900 dark:text-white">{planName}</p>
-              {(planDown ?? planUp) && (
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {planDown && `↓ ${planDown} Mbps`}
-                  {planDown && planUp && ' · '}
-                  {planUp && `↑ ${planUp} Mbps`}
-                </p>
-              )}
-              {planPrice !== undefined && (
-                <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {new Intl.NumberFormat('es-CO', {
-                    style: 'currency',
-                    currency: 'COP',
-                    maximumFractionDigits: 0,
-                  }).format(planPrice)}
-                  /mes
-                </p>
-              )}
-            </div>
-            {!isEditing && (
-              <>
-                <DetailField
-                  label="Segmento"
-                  value={
-                    contract.customerSegment
-                      ? (SEGMENT_LABELS[contract.customerSegment] ?? contract.customerSegment)
-                      : null
-                  }
-                />
-                <DetailField label="Creado" value={createdDate} />
-              </>
-            )}
-            {isEditing && (
-              <FormField label="Segmento del cliente">
-                <select
-                  value={form.customerSegment}
-                  onChange={handleField('customerSegment')}
-                  className={selectCls}
-                >
-                  <option value="">— Sin especificar —</option>
-                  {Object.entries(SEGMENT_LABELS).map(([val, lbl]) => (
-                    <option key={val} value={val}>
-                      {lbl}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            )}
-          </Section>
-
-          {/* ── Instalación ───────────────────────────────────────────────── */}
-          <Section icon={<MapPin className="h-3.5 w-3.5" aria-hidden />} title="Instalación">
-            {!isEditing ? (
-              <>
-                <DetailField label="Alias" value={contract.alias} />
-                <DetailField label="Dirección" value={contract.installationAddress} />
-                <DetailField
-                  label="Ciudad"
-                  value={formatLocationLabel(contract.installationCity)}
-                />
-                <DetailField
-                  label="Departamento"
-                  value={formatLocationLabel(contract.installationDepartment)}
-                />
-                <DetailField label="Código postal" value={contract.installationPostalCode} />
-                {contract.installationNotes && (
-                  <div className="sm:col-span-2">
-                    <DetailField label="Notas de instalación" value={contract.installationNotes} />
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <FormField label="Alias del servicio">
-                  <input
-                    type="text"
-                    value={form.alias}
-                    onChange={handleField('alias')}
-                    placeholder="Ej: Hogar Cra 10"
-                    className={inputCls}
-                  />
-                </FormField>
-                <FormField label="Dirección de instalación">
-                  <input
-                    type="text"
-                    value={form.installationAddress}
-                    onChange={handleField('installationAddress')}
-                    placeholder="Cra 10 #23-45"
-                    className={inputCls}
-                  />
-                </FormField>
-                <FormField label="Ciudad">
-                  <input
-                    type="text"
-                    value={form.installationCity}
-                    onChange={handleField('installationCity')}
-                    placeholder="Bogotá"
-                    className={inputCls}
-                  />
-                </FormField>
-                <FormField label="Departamento">
-                  <input
-                    type="text"
-                    value={form.installationDepartment}
-                    onChange={handleField('installationDepartment')}
-                    placeholder="Cundinamarca"
-                    className={inputCls}
-                  />
-                </FormField>
-                <FormField label="Código postal">
-                  <input
-                    type="text"
-                    value={form.installationPostalCode}
-                    onChange={handleField('installationPostalCode')}
-                    placeholder="110111"
-                    className={inputCls}
-                  />
-                </FormField>
-                <div className="sm:col-span-2">
-                  <FormField label="Notas de instalación">
-                    <textarea
-                      value={form.installationNotes}
-                      onChange={handleField('installationNotes')}
-                      rows={2}
-                      placeholder="Instrucciones de acceso, referencias, etc."
-                      className={[inputCls, 'resize-none'].join(' ')}
-                    />
-                  </FormField>
+          {privacyRestricted ? (
+            <PortalAlert
+              variant="warning"
+              title="Datos bloqueados"
+              description="La información personal de este contrato no está disponible para este perfil."
+            />
+          ) : (
+            <>
+              {/* Errores */}
+              {(saveError ?? transitionError) && (
+                <div className="flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                  <span className="flex-1">{saveError ?? transitionError}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSaveError(null);
+                      setTransitionError(null);
+                    }}
+                    className="text-red-400 hover:text-red-600"
+                    aria-label="Cerrar error"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
                 </div>
-              </>
-            )}
-          </Section>
+              )}
 
-          <Section
-            icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
-            title="Punto de servicio"
-          >
-            {isEditingServicePoint || (isEditing && contract.status === 'DRAFT') ? (
-              <div className="sm:col-span-2 space-y-3">
-                <ServicePointFields
-                  personType={personType}
-                  serviceUsage={serviceUsage}
-                  onServiceUsageChange={(value) => {
-                    setServiceUsage(value);
-                    setServiceUsageError(undefined);
-                    if (value !== ServiceUsage.RESIDENTIAL) {
-                      setInstallationStratum('');
-                      setPendingEvidenceFile(null);
-                      setEvidenceUploadError(null);
-                      setStratumError(undefined);
-                    }
-                  }}
-                  installationStratum={installationStratum}
-                  onInstallationStratumChange={(value) => {
-                    setInstallationStratum(value);
-                    setStratumError(undefined);
-                    if (!['1', '2', '3'].includes(value)) {
-                      setPendingEvidenceFile(null);
-                      setEvidenceUploadError(null);
-                    }
-                  }}
-                  hasStratumEvidence={hasStratumEvidence}
-                  pendingEvidenceFile={pendingEvidenceFile}
-                  onPendingEvidenceFileChange={(file) => {
-                    setPendingEvidenceFile(file);
-                    setEvidenceUploadError(null);
-                  }}
-                  {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
-                  onRemoveEvidence={async () => {
-                    const updated = await contractsApi.deleteStratumEvidence(contract.id);
-                    setCurrentContract(updated);
-                    setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
-                    setPendingEvidenceFile(null);
-                    await onReload();
-                  }}
-                  {...(serviceUsageError ? { usageError: serviceUsageError } : {})}
-                  {...(stratumError ? { stratumError } : {})}
-                  disabled={saving}
-                />
-                {servicePointError ? (
-                  <PortalAlert
-                    variant="error"
-                    title="No fue posible actualizar el punto de servicio"
-                    description={servicePointError}
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <>
-                <DetailField
-                  label="Uso del servicio"
-                  value={
-                    currentContract.serviceUsage === ServiceUsage.RESIDENTIAL
-                      ? 'Residencial'
-                      : currentContract.serviceUsage === ServiceUsage.NON_RESIDENTIAL
-                        ? 'No residencial'
-                        : 'Pendiente de definir'
-                  }
-                />
-                {currentContract.serviceUsage === ServiceUsage.RESIDENTIAL ? (
-                  <DetailField
-                    label="Estrato del predio de instalación"
-                    value={
-                      currentContract.installationStratum != null
-                        ? `Estrato ${currentContract.installationStratum}`
-                        : 'Pendiente de definir'
-                    }
-                  />
-                ) : null}
-                {hasStratumEvidence ? (
-                  <DetailField label="Soporte del estrato" value="Soporte cargado" />
-                ) : null}
-                {contract.status === 'ACTIVE' ? (
-                  <div className="sm:col-span-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setServiceUsage(currentContract.serviceUsage ?? '');
-                        setInstallationStratum(
-                          currentContract.installationStratum?.toString() ?? '',
-                        );
-                        setHasStratumEvidence(Boolean(currentContract.stratumEvidenceMediaId));
-                        setPendingEvidenceFile(null);
-                        setEvidenceUploadError(null);
-                        setIsEditingServicePoint(true);
-                      }}
-                      className={cn(
-                        'min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-iwana-secondary-700 transition hover:border-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-iwana-secondary-300',
-                        interactiveFocusClassName,
-                      )}
-                    >
-                      Actualizar punto de servicio
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </Section>
-
-          <Section
-            icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
-            title="IVA del contrato"
-          >
-            {currentContract.vatSnapshot ? (
-              <>
-                <DetailField
-                  label="Tratamiento y tarifa"
-                  value={`${vatTreatmentLabel(currentContract.vatSnapshot.treatment)} · ${currentContract.vatSnapshot.ratePercent} %`}
-                />
-                <DetailField
-                  label="Fundamento"
-                  value={vatLegalBasisLabel(currentContract.vatSnapshot.legalBasis)}
-                />
-                {currentContract.vatSnapshot.resolvedAt ? (
-                  <DetailField
-                    label="Fecha de cálculo"
-                    value={`Calculado el ${new Date(currentContract.vatSnapshot.resolvedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}`}
-                  />
-                ) : null}
-                {currentContract.vatSnapshot.requiresAccountantReview ? (
-                  <div className="sm:col-span-2">
-                    <PortalAlert
-                      variant="warning"
-                      title="Este concepto requiere revisión del contador."
-                      live="off"
-                    />
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="sm:col-span-2">
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {currentContract.status === 'DRAFT'
-                    ? 'El cálculo de IVA estará disponible cuando se active el contrato.'
-                    : 'El cálculo de IVA no está disponible para este contrato.'}
-                </p>
-              </div>
-            )}
-          </Section>
-
-          {/* ── Facturación ───────────────────────────────────────────────── */}
-          <Section icon={<CreditCard className="h-3.5 w-3.5" aria-hidden />} title="Facturación">
-            {!isEditing ? (
-              <>
-                <DetailField label="Método de pago" value={contract.paymentMethod} />
-                <DetailField label="Ciclo de facturación" value={contract.billingCycle} />
-              </>
-            ) : (
-              <>
-                <FormField label="Método de pago">
-                  <select
-                    value={form.paymentMethod}
-                    onChange={handleField('paymentMethod')}
-                    className={selectCls}
-                  >
-                    <option value="">— Sin especificar —</option>
-                    {PAYMENT_METHOD_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-                <FormField label="Ciclo de facturación">
-                  <select
-                    value={form.billingCycle}
-                    onChange={handleField('billingCycle')}
-                    className={selectCls}
-                  >
-                    <option value="">— Sin especificar —</option>
-                    {BILLING_CYCLE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-              </>
-            )}
-          </Section>
-
-          {/* ── Datos fiscales ────────────────────────────────────────────── */}
-          {(contract.fiscalName ??
-            contract.fiscalDocument ??
-            contract.fiscalAddress ??
-            isEditing) && (
-            <Section
-              icon={<Building2 className="h-3.5 w-3.5" aria-hidden />}
-              title="Datos fiscales"
-            >
-              {!isEditing ? (
-                <>
-                  <DetailField label="Nombre fiscal" value={contract.fiscalName} />
-                  <DetailField label="Documento fiscal" value={contract.fiscalDocument} />
-                  {contract.fiscalAddress && (
-                    <div className="sm:col-span-2">
-                      <DetailField label="Dirección fiscal" value={contract.fiscalAddress} />
-                    </div>
+              {/* ── Plan contratado ───────────────────────────────────────────── */}
+              <Section
+                icon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
+                title="Plan contratado"
+              >
+                <div className="sm:col-span-2">
+                  <p className="font-semibold text-gray-900 dark:text-white">{planName}</p>
+                  {(planDown ?? planUp) && (
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {planDown && `↓ ${planDown} Mbps`}
+                      {planDown && planUp && ' · '}
+                      {planUp && `↑ ${planUp} Mbps`}
+                    </p>
                   )}
-                </>
-              ) : (
-                <>
-                  <FormField label="Nombre fiscal">
-                    <input
-                      type="text"
-                      value={form.fiscalName}
-                      onChange={handleField('fiscalName')}
-                      placeholder="Razón social o nombre"
-                      className={inputCls}
+                  {planPrice !== undefined && (
+                    <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {new Intl.NumberFormat('es-CO', {
+                        style: 'currency',
+                        currency: 'COP',
+                        maximumFractionDigits: 0,
+                      }).format(planPrice)}
+                      /mes
+                    </p>
+                  )}
+                </div>
+                {!isEditing && (
+                  <>
+                    <DetailField
+                      label="Segmento"
+                      value={
+                        contract.customerSegment
+                          ? (SEGMENT_LABELS[contract.customerSegment] ?? contract.customerSegment)
+                          : null
+                      }
                     />
+                    <DetailField label="Creado" value={createdDate} />
+                  </>
+                )}
+                {isEditing && (
+                  <FormField label="Segmento del cliente">
+                    <select
+                      value={form.customerSegment}
+                      onChange={handleField('customerSegment')}
+                      className={selectCls}
+                    >
+                      <option value="">— Sin especificar —</option>
+                      {Object.entries(SEGMENT_LABELS).map(([val, lbl]) => (
+                        <option key={val} value={val}>
+                          {lbl}
+                        </option>
+                      ))}
+                    </select>
                   </FormField>
-                  <FormField label="Documento / NIT">
-                    <input
-                      type="text"
-                      value={form.fiscalDocument}
-                      onChange={handleField('fiscalDocument')}
-                      placeholder="900.123.456-7"
-                      className={inputCls}
+                )}
+              </Section>
+
+              {/* ── Instalación ───────────────────────────────────────────────── */}
+              <Section icon={<MapPin className="h-3.5 w-3.5" aria-hidden />} title="Instalación">
+                {!isEditing ? (
+                  <>
+                    <DetailField
+                      label="Alias"
+                      value={
+                        currentContract.titularAnonymizedAt
+                          ? null
+                          : privacyDisplayValue(contract.alias, {
+                              anonymizedAt: currentContract.titularAnonymizedAt,
+                            })
+                      }
+                      emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
                     />
-                  </FormField>
-                  <div className="sm:col-span-2">
-                    <FormField label="Dirección fiscal">
+                    <DetailField
+                      label="Dirección"
+                      value={
+                        currentContract.titularAnonymizedAt ? null : contract.installationAddress
+                      }
+                      emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+                    />
+                    <DetailField
+                      label="Ciudad"
+                      value={formatLocationLabel(contract.installationCity)}
+                    />
+                    <DetailField
+                      label="Departamento"
+                      value={formatLocationLabel(contract.installationDepartment)}
+                    />
+                    <DetailField
+                      label="Código postal"
+                      value={
+                        currentContract.titularAnonymizedAt ? null : contract.installationPostalCode
+                      }
+                      emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+                    />
+                    {(contract.installationNotes || currentContract.titularAnonymizedAt) && (
+                      <div className="sm:col-span-2">
+                        <DetailField
+                          label="Notas de instalación"
+                          value={
+                            currentContract.titularAnonymizedAt ? null : contract.installationNotes
+                          }
+                          emptyValue={
+                            currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined
+                          }
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <FormField label="Alias del servicio">
                       <input
                         type="text"
-                        value={form.fiscalAddress}
-                        onChange={handleField('fiscalAddress')}
-                        placeholder="Dirección de facturación"
+                        value={form.alias}
+                        onChange={handleField('alias')}
+                        readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                        placeholder={
+                          currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Alias del servicio'
+                        }
                         className={inputCls}
                       />
                     </FormField>
-                  </div>
-                </>
-              )}
-            </Section>
-          )}
+                    <FormField label="Dirección de instalación">
+                      <input
+                        type="text"
+                        value={form.installationAddress}
+                        onChange={handleField('installationAddress')}
+                        readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                        placeholder={
+                          currentContract.titularAnonymizedAt
+                            ? 'Anonimizado'
+                            : 'Dirección de instalación'
+                        }
+                        className={inputCls}
+                      />
+                    </FormField>
+                    <FormField label="Ciudad">
+                      <input
+                        type="text"
+                        value={form.installationCity}
+                        onChange={handleField('installationCity')}
+                        placeholder="Bogotá"
+                        className={inputCls}
+                      />
+                    </FormField>
+                    <FormField label="Departamento">
+                      <input
+                        type="text"
+                        value={form.installationDepartment}
+                        onChange={handleField('installationDepartment')}
+                        placeholder="Cundinamarca"
+                        className={inputCls}
+                      />
+                    </FormField>
+                    <FormField label="Código postal">
+                      <input
+                        type="text"
+                        value={form.installationPostalCode}
+                        onChange={handleField('installationPostalCode')}
+                        readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                        placeholder={
+                          currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Código postal'
+                        }
+                        className={inputCls}
+                      />
+                    </FormField>
+                    <div className="sm:col-span-2">
+                      <FormField label="Notas de instalación">
+                        <textarea
+                          value={form.installationNotes}
+                          onChange={handleField('installationNotes')}
+                          readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                          rows={2}
+                          placeholder={
+                            currentContract.titularAnonymizedAt
+                              ? 'Anonimizado'
+                              : 'Instrucciones de acceso, referencias, etc.'
+                          }
+                          className={[inputCls, 'resize-none'].join(' ')}
+                        />
+                      </FormField>
+                    </div>
+                  </>
+                )}
+              </Section>
 
-          {/* ── Metadatos ────────────────────────────────────────────────── */}
-          {!isEditing && (
-            <Section
-              icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
-              title="Información del contrato"
-            >
-              <DetailField label="Fecha de creación" value={createdDate} />
-              {contract.startDate && (
-                <DetailField
-                  label="Fecha de inicio"
-                  value={new Date(contract.startDate).toLocaleDateString('es-CO', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                />
+              <Section
+                icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+                title="Punto de servicio"
+              >
+                {isEditingServicePoint || (isEditing && contract.status === 'DRAFT') ? (
+                  <div className="sm:col-span-2 space-y-3">
+                    <ServicePointFields
+                      personType={personType}
+                      serviceUsage={serviceUsage}
+                      onServiceUsageChange={(value) => {
+                        setServiceUsage(value);
+                        setServiceUsageError(undefined);
+                        if (value !== ServiceUsage.RESIDENTIAL) {
+                          setInstallationStratum('');
+                          setPendingEvidenceFile(null);
+                          setEvidenceUploadError(null);
+                          setStratumError(undefined);
+                        }
+                      }}
+                      installationStratum={installationStratum}
+                      onInstallationStratumChange={(value) => {
+                        setInstallationStratum(value);
+                        setStratumError(undefined);
+                        if (!['1', '2', '3'].includes(value)) {
+                          setPendingEvidenceFile(null);
+                          setEvidenceUploadError(null);
+                        }
+                      }}
+                      hasStratumEvidence={hasStratumEvidence}
+                      pendingEvidenceFile={pendingEvidenceFile}
+                      onPendingEvidenceFileChange={(file) => {
+                        setPendingEvidenceFile(file);
+                        setEvidenceUploadError(null);
+                      }}
+                      {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
+                      onRemoveEvidence={async () => {
+                        const updated = await contractsApi.deleteStratumEvidence(contract.id);
+                        setCurrentContract(updated);
+                        setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+                        setPendingEvidenceFile(null);
+                        await onReload();
+                      }}
+                      {...(serviceUsageError ? { usageError: serviceUsageError } : {})}
+                      {...(stratumError ? { stratumError } : {})}
+                      disabled={saving}
+                    />
+                    {servicePointError ? (
+                      <PortalAlert
+                        variant="error"
+                        title="No fue posible actualizar el punto de servicio"
+                        description={servicePointError}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <DetailField
+                      label="Uso del servicio"
+                      value={
+                        currentContract.serviceUsage === ServiceUsage.RESIDENTIAL
+                          ? 'Residencial'
+                          : currentContract.serviceUsage === ServiceUsage.NON_RESIDENTIAL
+                            ? 'No residencial'
+                            : 'Pendiente de definir'
+                      }
+                    />
+                    {currentContract.serviceUsage === ServiceUsage.RESIDENTIAL ? (
+                      <DetailField
+                        label="Estrato del predio de instalación"
+                        value={
+                          currentContract.installationStratum != null
+                            ? `Estrato ${currentContract.installationStratum}`
+                            : 'Pendiente de definir'
+                        }
+                      />
+                    ) : null}
+                    {hasStratumEvidence ? (
+                      <DetailField label="Soporte del estrato" value="Soporte cargado" />
+                    ) : null}
+                    {contract.status === 'ACTIVE' ? (
+                      <div className="sm:col-span-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setServiceUsage(currentContract.serviceUsage ?? '');
+                            setInstallationStratum(
+                              currentContract.installationStratum?.toString() ?? '',
+                            );
+                            setHasStratumEvidence(Boolean(currentContract.stratumEvidenceMediaId));
+                            setPendingEvidenceFile(null);
+                            setEvidenceUploadError(null);
+                            setIsEditingServicePoint(true);
+                          }}
+                          className={cn(
+                            'min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-iwana-secondary-700 transition hover:border-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-iwana-secondary-300',
+                            interactiveFocusClassName,
+                          )}
+                        >
+                          Actualizar punto de servicio
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </Section>
+
+              <Section
+                icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+                title="IVA del contrato"
+              >
+                {currentContract.vatSnapshot ? (
+                  <>
+                    <DetailField
+                      label="Tratamiento y tarifa"
+                      value={`${vatTreatmentLabel(currentContract.vatSnapshot.treatment)} · ${currentContract.vatSnapshot.ratePercent} %`}
+                    />
+                    <DetailField
+                      label="Fundamento"
+                      value={vatLegalBasisLabel(currentContract.vatSnapshot.legalBasis)}
+                    />
+                    {currentContract.vatSnapshot.resolvedAt ? (
+                      <DetailField
+                        label="Fecha de cálculo"
+                        value={`Calculado el ${new Date(currentContract.vatSnapshot.resolvedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}`}
+                      />
+                    ) : null}
+                    {currentContract.vatSnapshot.requiresAccountantReview ? (
+                      <div className="sm:col-span-2">
+                        <PortalAlert
+                          variant="warning"
+                          title="Este concepto requiere revisión del contador."
+                          live="off"
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="sm:col-span-2">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      {currentContract.status === 'DRAFT'
+                        ? 'El cálculo de IVA estará disponible cuando se active el contrato.'
+                        : 'El cálculo de IVA no está disponible para este contrato.'}
+                    </p>
+                  </div>
+                )}
+              </Section>
+
+              {/* ── Facturación ───────────────────────────────────────────────── */}
+              <Section
+                icon={<CreditCard className="h-3.5 w-3.5" aria-hidden />}
+                title="Facturación"
+              >
+                {!isEditing ? (
+                  <>
+                    <DetailField label="Método de pago" value={contract.paymentMethod} />
+                    <DetailField label="Ciclo de facturación" value={contract.billingCycle} />
+                  </>
+                ) : (
+                  <>
+                    <FormField label="Método de pago">
+                      <select
+                        value={form.paymentMethod}
+                        onChange={handleField('paymentMethod')}
+                        className={selectCls}
+                      >
+                        <option value="">— Sin especificar —</option>
+                        {PAYMENT_METHOD_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Ciclo de facturación">
+                      <select
+                        value={form.billingCycle}
+                        onChange={handleField('billingCycle')}
+                        className={selectCls}
+                      >
+                        <option value="">— Sin especificar —</option>
+                        {BILLING_CYCLE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                  </>
+                )}
+              </Section>
+
+              {/* ── Datos fiscales ────────────────────────────────────────────── */}
+              {Boolean(
+                contract.fiscalName ||
+                contract.fiscalDocument ||
+                contract.fiscalAddress ||
+                isEditing ||
+                currentContract.titularAnonymizedAt,
+              ) && (
+                <Section
+                  icon={<Building2 className="h-3.5 w-3.5" aria-hidden />}
+                  title="Datos fiscales"
+                >
+                  {!isEditing ? (
+                    <>
+                      <DetailField
+                        label="Nombre fiscal"
+                        value={currentContract.titularAnonymizedAt ? null : contract.fiscalName}
+                        emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+                      />
+                      <DetailField
+                        label="Documento fiscal"
+                        value={currentContract.titularAnonymizedAt ? null : contract.fiscalDocument}
+                        emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+                      />
+                      {(contract.fiscalAddress || currentContract.titularAnonymizedAt) && (
+                        <div className="sm:col-span-2">
+                          <DetailField
+                            label="Dirección fiscal"
+                            value={
+                              currentContract.titularAnonymizedAt ? null : contract.fiscalAddress
+                            }
+                            emptyValue={
+                              currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined
+                            }
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <FormField label="Nombre fiscal">
+                        <input
+                          type="text"
+                          value={form.fiscalName}
+                          onChange={handleField('fiscalName')}
+                          readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                          placeholder={
+                            currentContract.titularAnonymizedAt
+                              ? 'Anonimizado'
+                              : 'Razón social o nombre'
+                          }
+                          className={inputCls}
+                        />
+                      </FormField>
+                      <FormField label="Documento / NIT">
+                        <input
+                          type="text"
+                          value={form.fiscalDocument}
+                          onChange={handleField('fiscalDocument')}
+                          readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                          placeholder={
+                            currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Documento fiscal'
+                          }
+                          className={inputCls}
+                        />
+                      </FormField>
+                      <div className="sm:col-span-2">
+                        <FormField label="Dirección fiscal">
+                          <input
+                            type="text"
+                            value={form.fiscalAddress}
+                            onChange={handleField('fiscalAddress')}
+                            readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                            placeholder={
+                              currentContract.titularAnonymizedAt
+                                ? 'Anonimizado'
+                                : 'Dirección de facturación'
+                            }
+                            className={inputCls}
+                          />
+                        </FormField>
+                      </div>
+                    </>
+                  )}
+                </Section>
               )}
-              {contract.endDate && (
-                <DetailField
-                  label="Fecha de fin"
-                  value={new Date(contract.endDate).toLocaleDateString('es-CO', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                />
+
+              {/* ── Metadatos ────────────────────────────────────────────────── */}
+              {!isEditing && (
+                <Section
+                  icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
+                  title="Información del contrato"
+                >
+                  <DetailField label="Fecha de creación" value={createdDate} />
+                  {contract.startDate && (
+                    <DetailField
+                      label="Fecha de inicio"
+                      value={new Date(contract.startDate).toLocaleDateString('es-CO', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    />
+                  )}
+                  {contract.endDate && (
+                    <DetailField
+                      label="Fecha de fin"
+                      value={new Date(contract.endDate).toLocaleDateString('es-CO', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    />
+                  )}
+                  {contract.additionalProductIds.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <DetailField
+                        label={`Productos adicionales (${contract.additionalProductIds.length})`}
+                        value={contract.additionalProductIds.join(', ')}
+                      />
+                    </div>
+                  )}
+                  {contract.additionalServiceIds.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <DetailField
+                        label={`Servicios adicionales (${contract.additionalServiceIds.length})`}
+                        value={contract.additionalServiceIds.join(', ')}
+                      />
+                    </div>
+                  )}
+                </Section>
               )}
-              {contract.additionalProductIds.length > 0 && (
-                <div className="sm:col-span-2">
-                  <DetailField
-                    label={`Productos adicionales (${contract.additionalProductIds.length})`}
-                    value={contract.additionalProductIds.join(', ')}
-                  />
-                </div>
-              )}
-              {contract.additionalServiceIds.length > 0 && (
-                <div className="sm:col-span-2">
-                  <DetailField
-                    label={`Servicios adicionales (${contract.additionalServiceIds.length})`}
-                    value={contract.additionalServiceIds.join(', ')}
-                  />
-                </div>
-              )}
-            </Section>
+            </>
           )}
         </div>
 
         {/* Footer con acciones */}
-        <div className="border-t border-gray-100 px-6 py-4 dark:border-dark-border">
-          {isEditing || isEditingServicePoint ? (
-            /* Modo edición: guardar / cancelar */
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={isEditingServicePoint ? handleCancelServicePoint : handleCancelEdit}
-                disabled={saving}
-                className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={isEditingServicePoint ? handleSaveServicePoint : handleSave}
-                disabled={saving}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : (
-                  <Save className="h-4 w-4" aria-hidden />
-                )}
-                {isEditingServicePoint ? 'Actualizar punto de servicio' : 'Guardar cambios'}
-              </button>
-            </div>
-          ) : (
-            /* Modo lectura: editar + transiciones */
-            <div className="space-y-3">
-              {/* Transiciones de estado */}
-              {actions.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {actions.map(({ label, action, icon, variant }) => (
-                    <button
-                      key={action}
-                      type="button"
-                      disabled={transitioning}
-                      onClick={() => handleTransition(action)}
-                      className={ACTION_BTN[variant]}
-                    >
-                      {transitioning ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                      ) : (
-                        icon
-                      )}
-                      {label}
-                    </button>
-                  ))}
-                  {contract.status === 'DRAFT' && onRemove && (
-                    <button
-                      type="button"
-                      disabled={transitioning}
-                      onClick={handleRemove}
-                      className={ACTION_BTN.danger}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      Eliminar borrador
-                    </button>
-                  )}
-                </div>
-              )}
-              {/* Botón editar */}
-              {contract.status !== 'ARCHIVED' && (
+        {!privacyRestricted && (
+          <div className="border-t border-gray-100 px-6 py-4 dark:border-dark-border">
+            {isEditing || isEditingServicePoint ? (
+              /* Modo edición: guardar / cancelar */
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-700 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200"
+                  onClick={isEditingServicePoint ? handleCancelServicePoint : handleCancelEdit}
+                  disabled={saving}
+                  className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
                 >
-                  <Edit2 className="h-4 w-4" aria-hidden />
-                  Editar contrato
+                  Cancelar
                 </button>
-              )}
-            </div>
-          )}
-        </div>
+                <button
+                  type="button"
+                  onClick={isEditingServicePoint ? handleSaveServicePoint : handleSave}
+                  disabled={saving}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Save className="h-4 w-4" aria-hidden />
+                  )}
+                  {isEditingServicePoint ? 'Actualizar punto de servicio' : 'Guardar cambios'}
+                </button>
+              </div>
+            ) : (
+              /* Modo lectura: editar + transiciones */
+              <div className="space-y-3">
+                {/* Transiciones de estado */}
+                {actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {actions.map(({ label, action, icon, variant }) => (
+                      <button
+                        key={action}
+                        type="button"
+                        disabled={transitioning}
+                        onClick={() => handleTransition(action)}
+                        className={ACTION_BTN[variant]}
+                      >
+                        {transitioning ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                        ) : (
+                          icon
+                        )}
+                        {label}
+                      </button>
+                    ))}
+                    {contract.status === 'DRAFT' && onRemove && (
+                      <button
+                        type="button"
+                        disabled={transitioning}
+                        onClick={handleRemove}
+                        className={ACTION_BTN.danger}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        Eliminar borrador
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/* Botón editar */}
+                {contract.status !== 'ARCHIVED' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-700 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200"
+                  >
+                    <Edit2 className="h-4 w-4" aria-hidden />
+                    Editar contrato
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </aside>
     </ModalLayer>
   );

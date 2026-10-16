@@ -106,6 +106,8 @@ import { PrivacyModule1460000000000 } from './146_privacy_module';
 import { SeedPrivacyPermissions1470000000000 } from './147_seed_privacy_permissions';
 import { SubscriberContactNullable1480000000000 } from './148_subscriber_contact_nullable';
 import { PrivacyErasureRecord1490000000000 } from './149_privacy_erasure_record';
+import { TitularAnonymizationMarker1500000000000 } from './150_titular_anonymization_marker';
+import { SeedBlockedDataPermission1510000000000 } from './151_seed_blocked_data_permission';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -293,6 +295,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SeedPrivacyPermissions1470000000000,
   SubscriberContactNullable1480000000000,
   PrivacyErasureRecord1490000000000,
+  TitularAnonymizationMarker1500000000000,
+  SeedBlockedDataPermission1510000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

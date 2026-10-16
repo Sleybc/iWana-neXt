@@ -1040,6 +1040,9 @@ export class PrivacyRequestsService {
     if (kind === 'RECLAMO' && partyId) {
       await this.appendMark(manager, partyId, 'RECLAMO_EN_TRAMITE', 'CLOSE', id, actorId);
     }
+    if (partyId) {
+      await this.closeActiveBlockedDataMark(manager, partyId, id, actorId);
+    }
     await this.audit(AuditAction.UPDATE, id, actorId, {
       operation: 'REQUEST_TRANSITION',
       action: 'resolve',
@@ -1137,6 +1140,23 @@ export class PrivacyRequestsService {
        VALUES ($1, $2, $3, $4, $5)`,
       [partyId, mark, event, requestId, actorId],
     );
+  }
+
+  private async closeActiveBlockedDataMark(
+    manager: EntityManager,
+    partyId: string,
+    requestId: string,
+    actorId: string,
+  ): Promise<void> {
+    const rows = (await manager.query(
+      `SELECT event FROM party_privacy_marks
+       WHERE party_id = $1 AND mark = 'DATOS_BLOQUEADOS'
+       ORDER BY occurred_at DESC, id DESC LIMIT 1 FOR UPDATE`,
+      [partyId],
+    )) as DbRow[];
+    if (rows[0]?.['event'] === 'OPEN') {
+      await this.appendMark(manager, partyId, 'DATOS_BLOQUEADOS', 'CLOSE', requestId, actorId);
+    }
   }
 
   private encryptField(value: string, label: string): string {

@@ -20,6 +20,9 @@ import type { ContractServicePointSnapshot } from '@iwana/shared';
   where: '"stratum_evidence_media_id" IS NOT NULL',
 })
 export class Contract {
+  /** Marca del suscriptor asociada a las proyecciones HTTP; no es columna de contracts. */
+  titularAnonymizedAt: string | null = null;
+
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

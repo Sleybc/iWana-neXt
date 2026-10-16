@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -26,7 +27,14 @@ import {
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
-import { AccessPermissionKey, PlatformRole, UserRole, ExpedienteStatus } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  AuditAction,
+  PlatformRole,
+  UserRole,
+  ExpedienteStatus,
+  type PrivacyMark,
+} from '@iwana/shared';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -35,8 +43,10 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
+import { AuditService } from '../../audit/audit.service';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
@@ -112,6 +122,8 @@ export class ExpedientesController {
     private readonly completenessCalculator: CompletenessCalculator,
     private readonly pipelineRecommendationService: PipelineRecommendationService,
     private readonly detailBootstrapService: ExpedienteDetailBootstrapService,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   @Post()
@@ -152,7 +164,9 @@ export class ExpedientesController {
     @Query('documentNumber') documentNumber?: string,
     @Query('includeCompleted') includeCompleted?: string,
     @Query('view') view?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
+    const readAccess = await this.resolveBlockedReadAccess(user?.sub);
     const result = await this.expedienteService.findAll({
       status: status as ExpedienteStatus | undefined,
       municipality: municipality ?? undefined,
@@ -161,10 +175,32 @@ export class ExpedientesController {
       limit,
       assignedTo: assignedTo ?? undefined,
       documentNumber: documentNumber ?? undefined,
+      excludeBlocked: Boolean(search || documentNumber) && !readAccess.canSeeBlocked,
       includeCompleted: includeCompleted === 'true',
       view: parseExpedienteListView(view),
     });
-    return result;
+    const blockedServed = readAccess.canSeeBlocked
+      ? result.data.filter((record) => this.isBlocked(record.privacyMarks, record.anonymizedAt))
+          .length
+      : undefined;
+    if (user) {
+      await this.auditService.log({
+        action: AuditAction.LIST_ACCESS,
+        entityType: 'ExpedienteList',
+        entityId: 'N/A',
+        userId: user.sub,
+        newValue: {
+          totalServed: result.data.length,
+          totalAvailable: result.total,
+          searchApplied: Boolean(search || documentNumber),
+          ...(blockedServed !== undefined ? { blockedServed } : {}),
+        },
+      });
+    }
+    return {
+      ...result,
+      data: result.data.map((record) => this.projectExpediente(record, readAccess.canSeeBlocked)),
+    };
   }
 
   @Get(':id/bootstrap')
@@ -180,7 +216,31 @@ export class ExpedientesController {
   @ApiParam({ name: 'id', type: String, format: 'uuid', required: true })
   @ApiOkResponse({ type: ExpedienteDetailBootstrapResponseDto })
   async getBootstrap(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    const data = await this.detailBootstrapService.getDetailBootstrap(id, user.sub);
+    const [data, privacyMarks] = await Promise.all([
+      this.detailBootstrapService.getDetailBootstrap(id, user.sub),
+      this.expedienteService.getPrivacyMarksForExpediente(id),
+    ]);
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
+    const blocked = this.isBlocked(privacyMarks, data.expediente.anonymizedAt);
+    const privacyRestricted = blocked && !readAccess.canSeeBlocked;
+    data.expediente.privacyMarks = privacyMarks;
+    data.expediente.privacyRestricted = privacyRestricted;
+    await this.auditRecordAccess(id, user, blocked, readAccess.grantedBy);
+    if (privacyRestricted) {
+      data.expediente = this.projectExpediente(data.expediente, false);
+      return {
+        data: {
+          ...data,
+          completeness: null,
+          pipelineRecommendation: null,
+          operationalMetadata: null,
+          currentAttribution: null,
+          responsibility: null,
+          subscriberSummary: null,
+          conversionFailure: null,
+        },
+      };
+    }
     return { data };
   }
 
@@ -194,12 +254,31 @@ export class ExpedientesController {
   )
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Obtener expediente por ID con relaciones' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
     const data = await this.expedienteService.findById(id);
+    const [privacyMarks, readAccess] = await Promise.all([
+      this.expedienteService.getPrivacyMarksForExpediente(id),
+      this.resolveBlockedReadAccess(user?.sub),
+    ]);
+    const blocked = this.isBlocked(privacyMarks, data.anonymizedAt);
+    const privacyRestricted = blocked && !readAccess.canSeeBlocked;
+    Object.assign(data, { privacyMarks, privacyRestricted });
+    if (user) await this.auditRecordAccess(id, user, blocked, readAccess.grantedBy);
     const completeness = await this.completenessCalculator.calculate(id);
     const pipelineRecommendation = await this.pipelineRecommendationService.getRecommendation(id);
+    if (privacyRestricted) {
+      return {
+        data: this.projectExpediente(data, false),
+        completeness: null,
+        sectionCompleteness: null,
+        installationReadiness: null,
+        provisioningReadiness: null,
+        missingRequirements: null,
+        pipelineRecommendation: null,
+      };
+    }
     return {
-      data,
+      data: this.projectExpediente(data, readAccess.canSeeBlocked),
       completeness,
       sectionCompleteness: completeness.sectionCompleteness,
       installationReadiness: completeness.installationReadiness,
@@ -226,6 +305,8 @@ export class ExpedientesController {
         message: 'La sección solicitada no pertenece al expediente único.',
       });
     }
+
+    await this.assertNotBlocked(id);
 
     const data = await this.expedienteService.updateSection(
       id,
@@ -300,6 +381,7 @@ export class ExpedientesController {
   @SkipAudit()
   @ApiOperation({ summary: 'Reintentar evento de conversión pendiente del expediente' })
   async retryConversion(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    await this.assertNotBlocked(id);
     const data = await this.expedienteService.retryConversionEvent(id, user.sub);
     return { data };
   }
@@ -615,6 +697,96 @@ export class ExpedientesController {
   ) {
     const data = await this.expedienteService.linkInstallationOperationalRefs(id, dto, user.sub);
     return { data };
+  }
+
+  private async resolveBlockedReadAccess(actorId?: string): Promise<{
+    canSeeBlocked: boolean;
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ';
+  }> {
+    if (!actorId) return { canSeeBlocked: false };
+    const permissions = new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actorId),
+    );
+    if (permissions.has(AccessPermissionKey.PRIVACY_READ)) {
+      return { canSeeBlocked: true, grantedBy: 'PRIVACY_READ' };
+    }
+    if (permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)) {
+      return { canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ' };
+    }
+    return { canSeeBlocked: false };
+  }
+
+  private isBlocked(
+    marks: PrivacyMark[] | undefined,
+    anonymizedAt: Date | string | null | undefined,
+  ): boolean {
+    return anonymizedAt == null && (marks ?? []).includes('DATOS_BLOQUEADOS');
+  }
+
+  private async auditRecordAccess(
+    id: string,
+    user: JwtPayload,
+    blocked: boolean,
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ',
+  ): Promise<void> {
+    await this.auditService.log({
+      action: AuditAction.RECORD_ACCESS,
+      entityType: 'ExpedienteRecord',
+      entityId: id,
+      userId: user.sub,
+      newValue: {
+        role: user.role,
+        ...(blocked && grantedBy ? { privacyMark: 'DATOS_BLOQUEADOS', grantedBy } : {}),
+      },
+    });
+  }
+
+  private async assertNotBlocked(id: string): Promise<void> {
+    const expediente = await this.expedienteService.findById(id);
+    const marks = await this.expedienteService.getPrivacyMarksForExpediente(id);
+    if (this.isBlocked(marks, expediente.anonymizedAt)) {
+      throw new ConflictException({
+        code: 'PRIVACY_DATA_BLOCKED',
+        message: 'Los datos de este titular están bloqueados para edición.',
+      });
+    }
+  }
+
+  private projectExpediente<T extends object>(expediente: T, canSeeBlocked: boolean): T {
+    const source = expediente as T & Record<string, unknown>;
+    const anonymizedAt = source['anonymizedAt'] as Date | string | null | undefined;
+    const privacyMarks = (source['privacyMarks'] as PrivacyMark[] | undefined) ?? [];
+    const privacyRestricted = this.isBlocked(privacyMarks, anonymizedAt) && !canSeeBlocked;
+    const result: Record<string, unknown> = {
+      ...source,
+      anonymizedAt: anonymizedAt ?? null,
+      anonymizedRequestId: source['anonymizedRequestId'] ?? null,
+      privacyMarks,
+      privacyRestricted,
+    };
+    if (privacyRestricted) {
+      const allowed = new Set([
+        'id',
+        'tenantId',
+        'status',
+        'previousStatus',
+        'statusChangedAt',
+        'createdAt',
+        'updatedAt',
+        'createdBy',
+        'assignedTo',
+        'currentResponsibleUserId',
+        'currentResponsibleAssignedAt',
+        'anonymizedAt',
+        'anonymizedRequestId',
+        'privacyMarks',
+        'privacyRestricted',
+      ]);
+      for (const key of Object.keys(result)) {
+        if (!allowed.has(key)) result[key] = null;
+      }
+    }
+    return result as unknown as T;
   }
 }
 

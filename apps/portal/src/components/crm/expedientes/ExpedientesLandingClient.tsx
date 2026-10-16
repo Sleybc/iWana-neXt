@@ -13,6 +13,7 @@ import { getSafeCrmErrorMessage } from './crm-error-message';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import {
   PortalAlert,
   PortalDataTableHead,
@@ -776,7 +777,13 @@ function ExpedientesLandingClientInner() {
                             href={`/dashboard/crm/expedientes/${expediente.id}`}
                             className="block min-w-0 truncate font-medium text-gray-900 transition-colors hover:text-iwana-primary dark:text-white dark:hover:text-iwana-primary-300"
                           >
-                            {expediente.fullName}
+                            {privacyDisplayValue(
+                              expediente.anonymizedAt ? null : expediente.fullName,
+                              {
+                                privacyRestricted: expediente.privacyRestricted,
+                                anonymizedAt: expediente.anonymizedAt,
+                              },
+                            )}
                           </Link>
                           <PrivacyMarks marks={expediente.privacyMarks ?? []} />
                         </div>
@@ -795,14 +802,25 @@ function ExpedientesLandingClientInner() {
                         <Badge variant="neutral">
                           {formatAcquisitionChannel(expediente.acquisitionChannel)}
                         </Badge>
-                        {expediente.sourceDetail ? (
+                        {expediente.sourceDetail &&
+                        !expediente.privacyRestricted &&
+                        !expediente.anonymizedAt ? (
                           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             {expediente.sourceDetail}
                           </p>
                         ) : null}
                       </td>
                       <td className={portalDataTableCellClassName}>
-                        {formatMunicipio(expediente.municipality || '') || 'Sin municipio'}
+                        {privacyDisplayValue(
+                          expediente.anonymizedAt
+                            ? null
+                            : formatMunicipio(expediente.municipality || ''),
+                          {
+                            privacyRestricted: expediente.privacyRestricted,
+                            anonymizedAt: expediente.anonymizedAt,
+                            emptyValue: 'Sin municipio',
+                          },
+                        )}
                       </td>
                       <td className={cn(portalDataTableCellClassName, 'font-mono tabular-nums')}>
                         {formatCrmDate(expediente.createdAt)}

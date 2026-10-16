@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException } from '@nestjs/common';
 import {
   PersonType,
   CustomerSegment,
@@ -8,6 +9,7 @@ import {
   DocumentType,
   UserRole,
   ConsentChannel,
+  AccessPermissionKey,
 } from '@iwana/shared';
 import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
@@ -15,6 +17,7 @@ import { AuditService } from '../../../audit/audit.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
 import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 import { Subscriber } from '../entities/subscriber.entity';
+import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 import type { Request } from 'express';
 
 /**
@@ -39,6 +42,13 @@ describe('SubscribersController', () => {
     get360View: jest.fn(),
   };
   const auditServiceMock = { log: jest.fn().mockResolvedValue(undefined) };
+  const privacyMarksReadPortMock = {
+    activeMarks: jest.fn().mockResolvedValue({}),
+    partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
+  };
+  const effectivePermissionsServiceMock = {
+    getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]),
+  };
   const mockRequest = { ip: '127.0.0.1', headers: { 'user-agent': 'test-agent' } } as Request;
 
   // Usuario autenticado de prueba
@@ -102,6 +112,9 @@ describe('SubscribersController', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    privacyMarksReadPortMock.activeMarks.mockResolvedValue({});
+    effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([]);
+    subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SubscribersController],
@@ -110,8 +123,9 @@ describe('SubscribersController', () => {
         { provide: AuditService, useValue: auditServiceMock },
         {
           provide: EffectivePermissionsService,
-          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+          useValue: effectivePermissionsServiceMock,
         },
+        { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
       ],
     }).compile();
 
@@ -330,10 +344,13 @@ describe('SubscribersController', () => {
 
       const result = await controller.search({ nit: '900123456-7' }, user);
 
-      expect(subscribersServiceMock.search).toHaveBeenCalledWith({ nit: '900123456-7' });
+      expect(subscribersServiceMock.search).toHaveBeenCalledWith({
+        nit: '900123456-7',
+        excludeBlocked: true,
+      });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toHaveProperty('email', 'juan@example.com');
-      expect(result.data[0]).not.toHaveProperty('tenantId');
+      expect(result.data[0]).toHaveProperty('tenantId', 'tenant-001');
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'LIST_ACCESS',
@@ -350,7 +367,10 @@ describe('SubscribersController', () => {
 
       const result = await controller.search({ email: 'juan@example.com' }, user);
 
-      expect(subscribersServiceMock.search).toHaveBeenCalledWith({ email: 'juan@example.com' });
+      expect(subscribersServiceMock.search).toHaveBeenCalledWith({
+        email: 'juan@example.com',
+        excludeBlocked: true,
+      });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).not.toHaveProperty('email');
       expect(result.data[0]).toHaveProperty('documentNumber', '12345678');
@@ -376,6 +396,7 @@ describe('SubscribersController', () => {
         sortBy: undefined,
         sortDir: undefined,
         search: 'Ana Privada',
+        excludeBlocked: true,
       });
       expect(result.data[0]).toHaveProperty('id', 'sub-001');
       const auditEntry = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
@@ -413,6 +434,48 @@ describe('SubscribersController', () => {
       const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
       expect(auditPayload).not.toContain('partyId');
     });
+
+    it('redacta una lectura individual bloqueada sin permiso especial', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+
+      const result = await controller.findById('sub-001', mockUser);
+
+      expect(result.data).toMatchObject({
+        privacyRestricted: true,
+        firstName: null,
+        documentNumber: null,
+        email: null,
+        address: null,
+        contactPending: false,
+      });
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
+      );
+    });
+
+    it('permite lectura bloqueada y audita el permiso CRM dedicado', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        'crm.blocked_data.read',
+      ]);
+
+      const result = await controller.findById('sub-001', mockUser);
+
+      expect(result.data).toMatchObject({ privacyRestricted: false, firstName: 'Juan' });
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'RECORD_ACCESS',
+          newValue: expect.objectContaining({
+            privacyMark: 'DATOS_BLOQUEADOS',
+            grantedBy: 'CRM_BLOCKED_DATA_READ',
+          }),
+        }),
+      );
+    });
   });
 
   // ── PATCH /crm/subscribers/:id ──
@@ -449,6 +512,36 @@ describe('SubscribersController', () => {
 
       expect(subscribersServiceMock.update).toHaveBeenCalledWith('sub-001', dto, 'user-001');
       expect(result.data.city).toBe('Medellín');
+    });
+
+    it('rechaza con 409 la edición de un titular bloqueado', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+
+      await expect(controller.update('sub-001', { city: 'Cali' }, mockUser)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(subscribersServiceMock.update).not.toHaveBeenCalled();
+    });
+
+    it('permite actualizar una sección cuando no hay marca activa', async () => {
+      subscribersServiceMock.updateSection.mockResolvedValue(mockSubscriber);
+
+      const result = await controller.updateSection(
+        'sub-001',
+        'contact',
+        { email: 'contact-test@example.invalid' },
+        mockUser,
+      );
+
+      expect(subscribersServiceMock.updateSection).toHaveBeenCalledWith(
+        'sub-001',
+        'contact',
+        { email: 'contact-test@example.invalid' },
+        'user-001',
+      );
+      expect(result.data.id).toBe('sub-001');
     });
   });
 
@@ -524,7 +617,7 @@ describe('SubscribersController', () => {
       subscribersServiceMock.get360View.mockResolvedValue({
         subscriber: mockSubscriber,
         contacts: [],
-        contracts: [],
+        contracts: [{ id: 'contract-1', alias: 'Servicio sintético' }],
         quotes: [],
         habeasData: [],
         arcoRequests: [],
@@ -545,7 +638,9 @@ describe('SubscribersController', () => {
       expect(auditPayload).not.toContain('partyId');
       expect(auditPayload).not.toContain('party-test-001');
       expect(result.data.contacts).toEqual([]);
-      expect(result.data.contracts).toEqual([]);
+      expect(result.data.contracts).toMatchObject([
+        { id: 'contract-1', alias: 'Servicio sintético', titularAnonymizedAt: null },
+      ]);
       expect(result.data.quotes).toEqual([]);
       expect(result.data.habeasData).toEqual([]);
       expect(result.data.arcoRequests).toEqual([]);
@@ -568,6 +663,101 @@ describe('SubscribersController', () => {
       expect(result.data.subscriber).toHaveProperty('partyId', null);
       const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
       expect(auditPayload).not.toContain('partyId');
+    });
+
+    it('redacta suscriptor y campos personales de contratos bloqueados en la ficha 360°', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: mockSubscriber,
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+        contacts: [],
+        contracts: [
+          {
+            id: 'contract-1',
+            alias: 'Alias libre',
+            installationAddress: 'Dirección de instalación',
+            installationCity: 'Ciudad',
+            installationDepartment: 'Departamento',
+            installationPostalCode: '00000',
+            installationNotes: 'Nota privada',
+            installationStratum: 3,
+            stratumEvidenceMediaId: 'asset-1',
+            vatSnapshot: { treatment: 'STANDARD' },
+            fiscalName: 'Nombre fiscal',
+            fiscalDocument: 'Documento fiscal',
+            fiscalAddress: 'Dirección fiscal',
+          },
+        ],
+        quotes: [],
+        habeasData: [],
+        arcoRequests: [],
+        expedienteSummary: {
+          id: 'exp-1',
+          fullName: 'Identidad expediente',
+          status: 'ACTIVO',
+        },
+        timelineSeed: [],
+      });
+
+      const result = await controller.get360View('sub-001', mockUser);
+
+      expect(result.data.subscriber).toMatchObject({ privacyRestricted: true, firstName: null });
+      expect(result.data.contracts[0]).toMatchObject({
+        alias: 'Datos bloqueados',
+        installationAddress: null,
+        installationCity: null,
+        installationDepartment: null,
+        installationPostalCode: null,
+        installationNotes: null,
+        installationStratum: null,
+        stratumEvidenceMediaId: null,
+        vatSnapshot: null,
+        fiscalName: null,
+        fiscalDocument: null,
+        fiscalAddress: null,
+      });
+      expect(result.data.expedienteSummary).toMatchObject({
+        id: 'exp-1',
+        fullName: null,
+        status: 'ACTIVO',
+      });
+    });
+
+    it('permite la lectura privilegiada bloqueada y registra PRIVACY_READ', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.PRIVACY_READ,
+      ]);
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: mockSubscriber,
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+        contacts: [],
+        contracts: [{ id: 'contract-1', alias: 'Servicio sintético' }],
+        quotes: [],
+        habeasData: [],
+        arcoRequests: [],
+        expedienteSummary: null,
+        timelineSeed: [],
+      });
+
+      const result = await controller.get360View('sub-001', mockUser);
+
+      expect(result.data.subscriber.privacyRestricted).toBe(false);
+      expect(result.data.subscriber.firstName).not.toBeNull();
+      expect(result.data.contracts[0]).toMatchObject({ alias: 'Servicio sintético' });
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'RECORD_ACCESS',
+          newValue: expect.objectContaining({
+            privacyMark: 'DATOS_BLOQUEADOS',
+            grantedBy: 'PRIVACY_READ',
+          }),
+        }),
+      );
     });
   });
 

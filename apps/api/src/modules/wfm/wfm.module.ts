@@ -35,6 +35,7 @@ import { WfmOrganizationSitesReadPort } from './ports/wfm-organization-sites-rea
 import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.adapter';
 import { FieldServiceWorkAdapter } from './ports/field-service-work.adapter';
 import { FieldServiceWorkPort } from '../assurance/ports/field-service-work.port';
+import { WfmPrivacyModule } from './privacy/wfm-privacy.module';
 
 /**
  * Modulo WFM — Fase 01: Agenda, Work Orders y disponibilidad de tecnicos.
@@ -50,6 +51,7 @@ import { FieldServiceWorkPort } from '../assurance/ports/field-service-work.port
     // Puerto tipado MOD09→MOD11 (ADR-047): módulo fino sin AssuranceModule,
     // evita el ciclo Health → Tasks → Assurance → Wfm → Tasks.
     ExecutionOrderSchedulingModule,
+    WfmPrivacyModule,
     TypeOrmModule.forFeature([
       NonRealizationCause,
       ScheduleEvent,
@@ -94,7 +96,7 @@ import { FieldServiceWorkPort } from '../assurance/ports/field-service-work.port
       useClass: FieldServiceWorkAdapter,
     },
   ],
-  exports: [WfmWorkOrderReadPort, FieldServiceWorkPort],
+  exports: [WfmWorkOrderReadPort, FieldServiceWorkPort, WfmPrivacyModule],
 })
 export class WfmModule implements OnModuleInit {
   constructor(

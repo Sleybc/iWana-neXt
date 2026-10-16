@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronUp, FileText, Plus, Wifi } from 'lucide-react';
+import { AccessPermissionKey } from '@iwana/shared';
 import type { Contract, ContractStatus, Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
 import { ContractCard } from './ContractCard';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
+import { usePermissions } from '@/components/access-control/permissions-context';
 
 // ── Tipos y constantes ────────────────────────────────────────────────────────
 
@@ -40,6 +42,9 @@ interface ServiciosTabProps {
 
 export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
   const { subscriber, contracts, expedienteSummary } = subscriber360;
+  const { hasPermission } = usePermissions();
+  const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
+  const privacyRestricted = subscriber.privacyRestricted;
 
   const [activeChip, setActiveChip] = useState<FilterChip>('todos');
   const [showExpedientePanel, setShowExpedientePanel] = useState(false);
@@ -211,7 +216,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       )}
 
       {/* Estado vacío — sin contratos, expediente con plan de interés */}
-      {canConvertFromExpediente && (
+      {canConvertFromExpediente && !privacyRestricted && (
         <div className="rounded-[20px] border border-iwana-secondary/40 bg-iwana-secondary/5 p-6 dark:border-iwana-secondary/30 dark:bg-iwana-secondary/10">
           <div className="flex items-start gap-4">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/20 text-iwana-secondary-700 dark:text-iwana-secondary-300">
@@ -238,7 +243,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       )}
 
       {/* Estado vacío total */}
-      {emptyNoExpediente && (
+      {emptyNoExpediente && !privacyRestricted && (
         <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-gray-200 bg-white py-16 text-center dark:border-dark-border dark:bg-dark-surface-2">
           <Wifi className="mb-3 h-10 w-10 text-gray-300 dark:text-gray-400" aria-hidden />
           <p className="font-medium text-gray-700 dark:text-gray-300">Sin servicios contratados</p>
@@ -292,27 +297,32 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
                   onTransition={handleTransition}
                   onRemove={handleRemove}
                   onViewDetail={setSelectedContract}
+                  privacyRestricted={privacyRestricted}
+                  anonymizedRequestId={subscriber.anonymizedRequestId}
+                  canReadPrivacy={canReadPrivacy}
                 />
               ))
             )}
           </div>
 
           {/* Botón agregar nuevo servicio */}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowCreateDialog(true)}
-              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              Agregar nuevo servicio
-            </button>
-          </div>
+          {!privacyRestricted && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCreateDialog(true)}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Agregar nuevo servicio
+              </button>
+            </div>
+          )}
         </>
       )}
 
       {/* Panel colapsable — interés del expediente (solo lectura) */}
-      {expedienteSummary && (
+      {expedienteSummary && !privacyRestricted && (
         <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
           <button
             type="button"
@@ -370,6 +380,9 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
         <ContractDetailDrawer
           contract={selectedContract}
           personType={subscriber.personType}
+          privacyRestricted={privacyRestricted}
+          anonymizedRequestId={subscriber.anonymizedRequestId}
+          canReadPrivacy={canReadPrivacy}
           onClose={() => setSelectedContract(null)}
           onReload={async () => {
             await onReload();
@@ -381,7 +394,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       )}
 
       {/* Diálogo crear nuevo contrato */}
-      {showCreateDialog && (
+      {showCreateDialog && !privacyRestricted && (
         <CreateContractDialog
           subscriberId={subscriber.id}
           personType={subscriber.personType}
@@ -394,7 +407,7 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       )}
 
       {/* Diálogo convertir expediente a contrato */}
-      {showConvertDialog && expedienteSummary && (
+      {showConvertDialog && expedienteSummary && !privacyRestricted && (
         <ConvertExpedienteToContractDialog
           subscriberId={subscriber.id}
           personType={subscriber.personType}

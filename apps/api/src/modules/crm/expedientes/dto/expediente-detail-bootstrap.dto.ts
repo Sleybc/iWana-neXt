@@ -11,6 +11,10 @@ import type {
 /** Proyección mínima para Vista general; las superficies pesadas se cargan bajo demanda. */
 export interface ExpedienteDetailProjection {
   id: string;
+  anonymizedAt: Date | null;
+  anonymizedRequestId: string | null;
+  privacyMarks: import('@iwana/shared').PrivacyMark[];
+  privacyRestricted: boolean;
   status: string;
   previousStatus: string | null;
   statusChangedAt: Date;
@@ -171,6 +175,18 @@ export class ExpedienteDetailActorDto {
 export class ExpedienteDetailProjectionDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  anonymizedAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  anonymizedRequestId!: string | null;
+
+  @ApiProperty({ type: [String] })
+  privacyMarks!: string[];
+
+  @ApiProperty({ type: Boolean })
+  privacyRestricted!: boolean;
 
   @ApiProperty({ type: String })
   status!: string;

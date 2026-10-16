@@ -144,7 +144,7 @@ describe('ExpedienteDetailBootstrapService', () => {
     expect(mockRunInTenantSchema.mock.calls.every((call) => call[1] === 'tenant_test')).toBe(true);
     const selectedProjectionFields = projectionQuery.select.mock.calls[0][0] as string[];
     for (const projectionField of Object.keys(result.expediente)) {
-      if (projectionField !== 'hasLocation') {
+      if (!['hasLocation', 'privacyMarks', 'privacyRestricted'].includes(projectionField)) {
         expect(selectedProjectionFields).toContain(`expediente.${projectionField}`);
       }
     }
@@ -576,6 +576,8 @@ function buildExpediente(): ExpedienteRecord {
   return {
     id: 'exp-1',
     tenantId: 'tenant-test',
+    anonymizedAt: null,
+    anonymizedRequestId: null,
     status: ExpedienteStatus.NUEVO_POTENCIAL,
     previousStatus: null,
     statusChangedAt: new Date('2026-08-20T10:00:00.000Z'),

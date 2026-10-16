@@ -165,6 +165,12 @@ export class Subscriber {
   @Column({ type: 'timestamptz', name: 'converted_at', nullable: true })
   convertedAt: Date | null;
 
+  @Column({ type: 'timestamptz', name: 'anonymized_at', nullable: true })
+  anonymizedAt: Date | null;
+
+  @Column({ type: 'uuid', name: 'anonymized_request_id', nullable: true })
+  anonymizedRequestId: string | null;
+
   @Column({ type: 'timestamptz', name: 'activated_at', nullable: true })
   activatedAt: Date | null;
 

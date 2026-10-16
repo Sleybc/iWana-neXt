@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button, SectionAccordion } from '@iwana/ui';
 import { FolderOpen } from 'lucide-react';
 import type { CompletenessResult, ExpedienteRecord } from '@/lib/api-client';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import {
   SECTIONS,
   calculateDocumentSupportCompletion,
@@ -57,6 +58,56 @@ export function ExpedienteSections({
   onDocumentSupportSaved,
 }: ExpedienteSectionsProps) {
   const [leftAccordionOpenIds, setLeftAccordionOpenIds] = useState<Set<string>>(new Set());
+
+  if (expediente.privacyRestricted) {
+    return (
+      <div
+        role="status"
+        className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200"
+      >
+        Datos bloqueados
+      </div>
+    );
+  }
+
+  if (expediente.anonymizedAt) {
+    const fields = [
+      'Nombre o razón social',
+      'Documento',
+      'Contacto principal',
+      'Teléfono principal',
+      'Correo principal',
+      'Dirección',
+      'Municipio',
+      'Departamento',
+      'Código postal',
+      'Coordenadas',
+    ];
+
+    return (
+      <section
+        aria-labelledby="expediente-anonymized-data-title"
+        className="rounded-2xl border border-gray-100 bg-white p-5 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2"
+      >
+        <h2
+          id="expediente-anonymized-data-title"
+          className="text-lg font-semibold text-gray-900 dark:text-white"
+        >
+          Datos de la oportunidad
+        </h2>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          {fields.map((label) => (
+            <div key={label}>
+              <dt className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</dt>
+              <dd className="mt-1 text-sm text-gray-800 dark:text-gray-200">
+                {privacyDisplayValue(null, { anonymizedAt: expediente.anonymizedAt })}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    );
+  }
 
   const effectivePersonType = draftValues.personType || null;
 

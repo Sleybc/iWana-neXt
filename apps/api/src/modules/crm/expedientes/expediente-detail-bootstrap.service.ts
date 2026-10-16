@@ -31,6 +31,8 @@ import { DOCUMENT_SUPPORT_KEYS, type DocumentSupportApprovedFlags } from './docu
 
 const BOOTSTRAP_CONTEXT_FIELDS: (keyof ExpedienteRecord)[] = [
   'id',
+  'anonymizedAt',
+  'anonymizedRequestId',
   'status',
   'previousStatus',
   'statusChangedAt',
@@ -426,6 +428,10 @@ export class ExpedienteDetailBootstrapService {
   ): ExpedienteDetailProjection {
     return {
       id: expediente.id,
+      anonymizedAt: expediente.anonymizedAt ?? null,
+      anonymizedRequestId: expediente.anonymizedRequestId ?? null,
+      privacyMarks: [],
+      privacyRestricted: false,
       status: expediente.status,
       previousStatus: expediente.previousStatus,
       statusChangedAt: expediente.statusChangedAt,

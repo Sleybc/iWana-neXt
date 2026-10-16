@@ -753,6 +753,8 @@ function buildExpediente(overrides: Partial<ExpedienteRecord>): ExpedienteRecord
   return {
     id: 'exp-1',
     tenantId: 'ten-1',
+    anonymizedAt: null,
+    anonymizedRequestId: null,
     status: 'NUEVO_POTENCIAL' as ExpedienteRecord['status'],
     previousStatus: null,
     statusChangedAt: new Date('2026-03-23T00:00:00Z'),

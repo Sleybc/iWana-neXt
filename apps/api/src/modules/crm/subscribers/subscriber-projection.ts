@@ -65,29 +65,79 @@ type SubscriberWithDecryptedFields = Subscriber & {
   phone?: string | null;
   altContactPhone?: string | null;
   privacyMarks?: PrivacyMark[];
+  anonymizedAt?: Date | null;
+  anonymizedRequestId?: string | null;
 };
+
+function toIsoOrNull(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
 
 /** Construye una lista cerrada; roles desconocidos solo reciben campos base. */
 export function projectSubscriberForList(
   subscriber: SubscriberWithDecryptedFields,
   role: string,
+  canSeeBlocked = false,
 ): SubscriberListItem {
+  const anonymizedAt = toIsoOrNull(subscriber.anonymizedAt);
+  const privacyRestricted =
+    anonymizedAt === null &&
+    (subscriber.privacyMarks ?? []).includes('DATOS_BLOQUEADOS') &&
+    !canSeeBlocked;
   const output: Record<string, unknown> = {
     id: subscriber.id,
+    tenantId: subscriber.tenantId,
+    partyId: subscriber.partyId,
+    userId: subscriber.userId ?? null,
+    privacyRestricted,
+    anonymizedAt,
+    anonymizedRequestId: subscriber.anonymizedRequestId ?? null,
     status: subscriber.status,
     personType: subscriber.personType,
     customerSegment: subscriber.customerSegment,
     stratum: subscriber.stratum,
     vatTreatment: subscriber.vatTreatment,
+    taxRegime: subscriber.taxRegime ?? null,
+    expedienteId: subscriber.expedienteId ?? null,
+    convertedAt: toIsoOrNull(subscriber.convertedAt),
+    activatedAt: toIsoOrNull(subscriber.activatedAt),
     documentType: subscriber.documentType,
     firstName: subscriber.firstName,
     lastName: subscriber.lastName,
     businessName: subscriber.businessName,
     commercialName: subscriber.commercialName,
     createdAt: subscriber.createdAt.toISOString(),
+    updatedAt: toIsoOrNull(subscriber.updatedAt) ?? subscriber.createdAt.toISOString(),
     contactPending: !hasRealContact(subscriber),
     privacyMarks: subscriber.privacyMarks ?? [],
   };
+
+  if (privacyRestricted) {
+    Object.assign(output, {
+      stratum: null,
+      firstName: null,
+      lastName: null,
+      businessName: null,
+      commercialName: null,
+      documentNumber: null,
+      nit: null,
+      nitVerificationDigit: null,
+      phone: null,
+      altContactPhone: null,
+      whatsapp: null,
+      email: null,
+      address: null,
+      neighborhood: null,
+      city: null,
+      department: null,
+      latitude: null,
+      longitude: null,
+      contactPending: false,
+    });
+    return output as unknown as SubscriberListItem;
+  }
+
   const allowedFields = SUBSCRIBER_LIST_FIELD_ROLE_MAP[role as UserRole] ?? [];
   const fieldValues: Record<SubscriberListField, unknown> = {
     documentNumber: subscriber.documentNumber,

@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
+import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
@@ -173,29 +174,32 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                   <BriefcaseBusiness className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
                   Facturación
                 </CardTitle>
-                {subscriber360?.expedienteSummary && !billingEditing && (
-                  <button
-                    aria-label="Editar facturación"
-                    className="flex items-center gap-1 rounded text-xs text-iwana-primary hover:underline"
-                    onClick={() => {
-                      const s = subscriber360.expedienteSummary!;
-                      setBillingDraft({
-                        paymentMethod: s.paymentMethod ?? '',
-                        billingCycle: s.billingCycle ?? '',
-                        fiscalName: s.fiscalName ?? '',
-                      });
-                      setBillingEditing(true);
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                    Editar
-                  </button>
-                )}
+                {subscriber360?.expedienteSummary &&
+                  !billingEditing &&
+                  !subscriber.privacyRestricted &&
+                  !subscriber.anonymizedAt && (
+                    <button
+                      aria-label="Editar facturación"
+                      className="flex items-center gap-1 rounded text-xs text-iwana-primary hover:underline"
+                      onClick={() => {
+                        const s = subscriber360.expedienteSummary!;
+                        setBillingDraft({
+                          paymentMethod: s.paymentMethod ?? '',
+                          billingCycle: s.billingCycle ?? '',
+                          fiscalName: s.fiscalName ?? '',
+                        });
+                        setBillingEditing(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                      Editar
+                    </button>
+                  )}
               </CardHeader>
               <CardContent className="text-sm text-gray-600 dark:text-gray-300">
                 {!subscriber360?.expedienteSummary ? (
                   <p className="italic">Sin oportunidad vinculada. Facturación no disponible.</p>
-                ) : billingEditing ? (
+                ) : billingEditing && !subscriber.anonymizedAt ? (
                   <div className="space-y-3">
                     <div className="grid gap-3 sm:grid-cols-3">
                       {(
@@ -294,7 +298,13 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                       <div key={label}>
                         <p className="text-xs font-medium text-gray-400">{label}</p>
                         <p>
-                          {value ?? <span className="italic text-gray-400">No configurado</span>}
+                          {label === 'Nombre fiscal' && subscriber.anonymizedAt
+                            ? privacyDisplayValue(null, {
+                                anonymizedAt: subscriber.anonymizedAt,
+                              })
+                            : (value ?? (
+                                <span className="italic text-gray-400">No configurado</span>
+                              ))}
                         </p>
                       </div>
                     ))}
@@ -419,6 +429,25 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     );
   }
 
+  if (!loading && subscriber?.privacyRestricted) {
+    return (
+      <div className="space-y-6 pb-6">
+        <SubscriberHeader
+          subscriber={subscriber}
+          marks={subscriber360?.privacyMarks ?? []}
+          canReadPrivacy={canReadPrivacy}
+          onChangeStatus={() => setDialogOpen(true)}
+          onAddContact={() => setActiveSubscriberTab('datos')}
+        />
+        <PortalAlert
+          variant="warning"
+          title="Datos bloqueados"
+          description="La información personal está bloqueada y no se puede editar desde este perfil."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-6">
       {loading && (
@@ -442,6 +471,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             <SubscriberHeader
               subscriber={subscriber}
               marks={subscriber360?.privacyMarks ?? []}
+              canReadPrivacy={canReadPrivacy}
               onChangeStatus={() => setDialogOpen(true)}
               onAddContact={() => setActiveSubscriberTab('datos')}
             />

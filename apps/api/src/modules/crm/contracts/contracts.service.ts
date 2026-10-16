@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { MediaUsage, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   AuditAction,
@@ -40,6 +40,8 @@ import { AuditService } from '../../audit/audit.service';
 import type { AuditEntryInput } from '../../audit/interfaces/audit-entry.interface';
 import { MediaService } from '../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
+import type { PrivacyMark } from '@iwana/shared';
 
 /** Transiciones de estado permitidas según máquina de estados del spec. */
 const ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
@@ -90,6 +92,9 @@ export class ContractsService {
     @Optional()
     @Inject(IPrivacyAuthorizationReadPort)
     private readonly privacyAuthorizationReadPort?: IPrivacyAuthorizationReadPort,
+    @Optional()
+    @Inject(IPrivacyMarksReadPort)
+    private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
   ) {}
 
   // ── Creación ────────────────────────────────────────────────────────────────
@@ -104,11 +109,12 @@ export class ContractsService {
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await qr.manager.findOne(Subscriber, {
         where: { id: dto.subscriberId, tenantId },
-        select: { id: true, tenantId: true, personType: true, partyId: true },
+        select: { id: true, tenantId: true, personType: true, partyId: true, anonymizedAt: true },
       });
       if (!subscriber) {
         throw new NotFoundException('Suscriptor del contrato no encontrado.');
       }
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
 
       const installationStratum = dto.installationStratum ?? null;
@@ -184,6 +190,7 @@ export class ContractsService {
       if (!subscriber) {
         throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado.`);
       }
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
 
       // Resolver el expediente: usar el del DTO si viene, o el del subscriber
@@ -280,17 +287,21 @@ export class ContractsService {
 
   // ── Consulta ────────────────────────────────────────────────────────────────
 
-  async findAll(filters: {
-    status?: ContractStatus;
-    planId?: string;
-    page?: number;
-    limit?: number;
-  }): Promise<ListResponse<Contract>> {
+  async findAll(
+    filters: {
+      status?: ContractStatus;
+      planId?: string;
+      page?: number;
+      limit?: number;
+    },
+    canSeeBlocked = false,
+    actorId?: string,
+  ): Promise<ListResponse<Contract>> {
     const { schemaName } = TenantContext.getOrThrow();
     const cappedLimit = clampLimit(filters.limit);
     const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(Contract, 'c')
         .orderBy('c.createdAt', 'DESC')
@@ -306,8 +317,10 @@ export class ContractsService {
       }
 
       const [data, total] = await qb.getManyAndCount();
+      const projection = await this.projectContractsForRead(qr.manager, data, canSeeBlocked);
       return {
-        data,
+        data: projection.data,
+        blockedServed: projection.blockedServed,
         meta: buildPageMeta({
           total,
           page,
@@ -317,17 +330,21 @@ export class ContractsService {
         }),
       };
     });
+    await this.logBlockedContractListAccess(actorId, canSeeBlocked, result);
+    return { data: result.data, meta: result.meta };
   }
 
   async findAllBySubscriber(
     subscriberId: string,
     filters: { page?: number; limit?: number } = {},
+    canSeeBlocked = false,
+    actorId?: string,
   ): Promise<ListResponse<Contract>> {
     const { schemaName } = TenantContext.getOrThrow();
     const cappedLimit = clampLimit(filters.limit);
     const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const [data, total] = await qr.manager
         .createQueryBuilder(Contract, 'c')
         .where('c.subscriberId = :subscriberId', { subscriberId })
@@ -337,8 +354,10 @@ export class ContractsService {
         .take(limit)
         .getManyAndCount();
 
+      const projection = await this.projectContractsForRead(qr.manager, data, canSeeBlocked);
       return {
-        data,
+        data: projection.data,
+        blockedServed: projection.blockedServed,
         meta: buildPageMeta({
           total,
           page,
@@ -348,6 +367,8 @@ export class ContractsService {
         }),
       };
     });
+    await this.logBlockedContractListAccess(actorId, canSeeBlocked, result);
+    return { data: result.data, meta: result.meta };
   }
 
   async findOne(id: string): Promise<Contract> {
@@ -359,6 +380,179 @@ export class ContractsService {
       throw new NotFoundException(`Contrato ${id} no encontrado.`);
     }
     return entity;
+  }
+
+  async findOneForRead(
+    id: string,
+    canSeeBlocked: boolean,
+    actorId?: string,
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ',
+  ): Promise<Contract> {
+    const { schemaName } = TenantContext.getOrThrow();
+    const projected = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(Contract, { where: { id } });
+      if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
+      const { data } = await this.projectContractsForRead(qr.manager, [entity], canSeeBlocked);
+      const projected = data[0];
+      return projected ?? entity;
+    });
+    if (
+      canSeeBlocked &&
+      grantedBy &&
+      actorId &&
+      (await this.isContractSubscriberBlocked(projected.subscriberId))
+    ) {
+      await this.auditService.log({
+        action: AuditAction.RECORD_ACCESS,
+        entityType: 'Contract',
+        entityId: id,
+        userId: actorId,
+        newValue: { privacyMark: 'DATOS_BLOQUEADOS', grantedBy },
+      });
+    }
+    return projected;
+  }
+
+  async assertContractNotBlocked(id: string): Promise<void> {
+    const contract = await this.findOne(id);
+    await this.assertContractSubscriberNotBlocked(contract.subscriberId);
+  }
+
+  async assertSubscriberNotBlockedForMutation(subscriberId: string): Promise<void> {
+    await this.assertContractSubscriberNotBlocked(subscriberId);
+  }
+
+  private async projectContractsForRead(
+    manager: import('typeorm').EntityManager,
+    contracts: Contract[],
+    canSeeBlocked: boolean,
+  ): Promise<{ data: Contract[]; blockedServed: number }> {
+    const subscriberIds = [...new Set(contracts.map((contract) => contract.subscriberId))];
+    const subscribers = subscriberIds.length
+      ? await manager.find(Subscriber, {
+          where: { id: In(subscriberIds) },
+          select: ['id', 'partyId', 'anonymizedAt'],
+        })
+      : [];
+    const subscriberById = new Map(subscribers.map((subscriber) => [subscriber.id, subscriber]));
+    const partyIds = [
+      ...new Set(subscribers.flatMap((item) => (item.partyId ? [item.partyId] : []))),
+    ];
+    if (partyIds.length > 0 && !this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo aplicar la protección de privacidad al contrato.',
+      });
+    }
+    const marksByParty = partyIds.length
+      ? await this.privacyMarksReadPort!.activeMarks(partyIds)
+      : {};
+
+    let blockedServed = 0;
+    const data = contracts.map((contract) => {
+      const subscriber = subscriberById.get(contract.subscriberId);
+      const anonymizedAt = subscriber?.anonymizedAt ?? null;
+      const marks: PrivacyMark[] = subscriber?.partyId
+        ? (marksByParty[subscriber.partyId] ?? [])
+        : [];
+      const blocked = anonymizedAt == null && marks.includes('DATOS_BLOQUEADOS');
+      if (blocked && canSeeBlocked) blockedServed += 1;
+      const projected = Object.assign(contract, {
+        titularAnonymizedAt: anonymizedAt?.toISOString() ?? null,
+      });
+      if (blocked && !canSeeBlocked) {
+        Object.assign(projected, {
+          alias: 'Datos bloqueados',
+          installationAddress: null,
+          installationCity: null,
+          installationDepartment: null,
+          installationPostalCode: null,
+          installationNotes: null,
+          installationStratum: null,
+          stratumEvidenceMediaId: null,
+          vatSnapshot: null,
+          fiscalName: null,
+          fiscalDocument: null,
+          fiscalAddress: null,
+        });
+      }
+      return projected;
+    });
+    return { data, blockedServed };
+  }
+
+  private async logBlockedContractListAccess(
+    actorId: string | undefined,
+    canSeeBlocked: boolean,
+    result: {
+      data: Contract[];
+      blockedServed: number;
+      meta: ListResponse<Contract>['meta'];
+    },
+  ): Promise<void> {
+    if (!actorId || !canSeeBlocked || result.blockedServed === 0) return;
+    await this.auditService.log({
+      action: AuditAction.LIST_ACCESS,
+      entityType: 'ContractList',
+      entityId: 'N/A',
+      userId: actorId,
+      newValue: {
+        totalServed: result.data.length,
+        totalAvailable: result.meta.total,
+        blockedServed: result.blockedServed,
+      },
+    });
+  }
+
+  private async assertSubscriberNotBlocked(
+    partyId: string | null,
+    anonymizedAt: Date | string | null,
+  ): Promise<void> {
+    if (anonymizedAt != null || !partyId) return;
+    if (!this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo verificar el estado de privacidad del titular.',
+      });
+    }
+    const marks = await this.privacyMarksReadPort.activeMarks([partyId]);
+    if ((marks[partyId] ?? []).includes('DATOS_BLOQUEADOS')) {
+      throw new ConflictException({
+        code: 'PRIVACY_DATA_BLOCKED',
+        message: 'Los datos de este titular están bloqueados para edición.',
+      });
+    }
+  }
+
+  private async assertContractSubscriberNotBlocked(subscriberId: string): Promise<void> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const subscriber = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.manager.findOne(Subscriber, {
+        where: { id: subscriberId, tenantId },
+        select: ['id', 'partyId', 'anonymizedAt'],
+      }),
+    );
+    if (!subscriber) throw new NotFoundException('Suscriptor del contrato no encontrado.');
+    await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+  }
+
+  private async isContractSubscriberBlocked(subscriberId: string): Promise<boolean> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const subscriber = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.manager.findOne(Subscriber, {
+        where: { id: subscriberId, tenantId },
+        select: ['id', 'partyId', 'anonymizedAt'],
+      }),
+    );
+    if (!subscriber || subscriber.anonymizedAt != null || !subscriber.partyId) return false;
+    if (!this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo verificar el estado de privacidad del titular.',
+      });
+    }
+    const marks = await this.privacyMarksReadPort.activeMarks([subscriber.partyId]);
+    return (marks[subscriber.partyId] ?? []).includes('DATOS_BLOQUEADOS');
   }
 
   // ── Actualización parcial ───────────────────────────────────────────────────
@@ -489,7 +683,7 @@ export class ContractsService {
 
         const subscriber = await qr.manager.findOne(Subscriber, {
           where: { id: entity.subscriberId, tenantId },
-          select: { id: true, tenantId: true, personType: true },
+          select: { id: true, tenantId: true, personType: true, partyId: true, anonymizedAt: true },
         });
         if (!subscriber) {
           throw new NotFoundException('Suscriptor del contrato no encontrado.');
@@ -555,7 +749,7 @@ export class ContractsService {
     const subscriber = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.manager.findOne(Subscriber, {
         where: { id: current.subscriberId, tenantId },
-        select: { id: true, tenantId: true, personType: true },
+        select: { id: true, tenantId: true, personType: true, partyId: true, anonymizedAt: true },
       }),
     );
     if (!subscriber) {
@@ -664,9 +858,13 @@ export class ContractsService {
   async getStratumEvidenceSignedUrl(
     id: string,
     actorId: string,
+    canSeeBlocked = false,
   ): Promise<{ signedUrl: string; expiresAt: Date }> {
     const { schemaName } = TenantContext.getOrThrow();
     const contract = await this.findOne(id);
+    if (!canSeeBlocked && (await this.isContractSubscriberBlocked(contract.subscriberId))) {
+      throw new NotFoundException('Soporte del estrato no encontrado para este contrato.');
+    }
     this._assertStratumEvidenceStorageIsPrivate();
     const mediaId = contract.stratumEvidenceMediaId;
     if (!mediaId || !(await this._hasVerifiedStratumEvidence(contract, schemaName))) {

@@ -8,6 +8,7 @@ import { PipelineRecommendationService } from '../pipeline-recommendation.servic
 import { StatusTransitionService } from '../status-transition.service';
 import { ExpedienteDetailBootstrapService } from '../expediente-detail-bootstrap.service';
 import { EffectivePermissionsService } from '../../../access-control/services/effective-permissions.service';
+import { AuditService } from '../../../audit/audit.service';
 
 type OpenApiRecord = Record<string, unknown>;
 
@@ -27,6 +28,7 @@ describe('ExpedientesController Swagger', () => {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
         },
+        { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

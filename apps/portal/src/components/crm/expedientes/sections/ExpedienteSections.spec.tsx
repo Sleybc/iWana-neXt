@@ -194,4 +194,57 @@ describe('ExpedienteSections', () => {
 
     expect(mockCommercialInterestMount).toHaveBeenCalledTimes(1);
   });
+
+  it('no monta controles ni datos personales cuando la oportunidad está bloqueada', () => {
+    render(
+      <ExpedienteSections
+        expediente={{ ...expediente, privacyRestricted: true } as ExpedienteRecord}
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn(async () => undefined)}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn(async () => undefined)}
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Datos bloqueados');
+    expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Mock identificación')).not.toBeInTheDocument();
+  });
+
+  it('muestra marcadores de anonimización en lugar de formularios editables', () => {
+    render(
+      <ExpedienteSections
+        expediente={
+          {
+            ...expediente,
+            privacyRestricted: false,
+            anonymizedAt: '2026-10-01T12:00:00.000Z',
+            anonymizedRequestId: 'request-1',
+          } as ExpedienteRecord
+        }
+        completeness={completeness}
+        draftValues={{}}
+        onDraftChange={jest.fn()}
+        onSaveSection={jest.fn(async () => undefined)}
+        onCandidateTechnologyToggle={jest.fn()}
+        lockedSections={new Set()}
+        onUnlockIdentification={jest.fn()}
+        savingSection={null}
+        actionMessage={null}
+        actionMessageTone="info"
+        onDocumentSupportSaved={jest.fn(async () => undefined)}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Datos de la oportunidad' })).toBeInTheDocument();
+    expect(screen.getAllByText('Anonimizado')).toHaveLength(10);
+    expect(screen.queryByText('Mock identificación')).not.toBeInTheDocument();
+  });
 });

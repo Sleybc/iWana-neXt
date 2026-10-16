@@ -38,6 +38,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { ContractStatus } from '../enums/contract-status.enum';
@@ -58,7 +59,10 @@ const rejectClientStratumEvidenceGuard = new RejectClientStratumEvidenceGuard();
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller()
 export class ContractsController {
-  constructor(private readonly contractsService: ContractsService) {}
+  constructor(
+    private readonly contractsService: ContractsService,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
+  ) {}
 
   // ── Endpoints anidados bajo /crm/subscribers/:subscriberId ─────────────────
 
@@ -95,11 +99,18 @@ export class ContractsController {
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
     @Query('page', CrmListPagePipe) page?: number,
     @Query('limit', CrmListLimitPipe) limit?: number,
+    @CurrentUser() actor?: JwtPayload,
   ): Promise<ListResponse<Contract>> {
-    return this.contractsService.findAllBySubscriber(subscriberId, {
-      ...(page !== undefined ? { page } : {}),
-      ...(limit !== undefined ? { limit } : {}),
-    });
+    const readAccess = await this.resolveBlockedReadAccess(actor?.sub);
+    return this.contractsService.findAllBySubscriber(
+      subscriberId,
+      {
+        ...(page !== undefined ? { page } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+      },
+      readAccess.canSeeBlocked,
+      actor?.sub,
+    );
   }
 
   @Post('crm/subscribers/:subscriberId/contracts/from-expediente')
@@ -157,13 +168,19 @@ export class ContractsController {
     @Query('planId') planId?: string,
     @Query('page', CrmListPagePipe) page?: number,
     @Query('limit', CrmListLimitPipe) limit?: number,
+    @CurrentUser() actor?: JwtPayload,
   ): Promise<ListResponse<Contract>> {
-    return this.contractsService.findAll({
-      ...(status !== undefined ? { status } : {}),
-      ...(planId !== undefined ? { planId } : {}),
-      ...(page !== undefined ? { page } : {}),
-      ...(limit !== undefined ? { limit } : {}),
-    });
+    const readAccess = await this.resolveBlockedReadAccess(actor?.sub);
+    return this.contractsService.findAll(
+      {
+        ...(status !== undefined ? { status } : {}),
+        ...(planId !== undefined ? { planId } : {}),
+        ...(page !== undefined ? { page } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+      },
+      readAccess.canSeeBlocked,
+      actor?.sub,
+    );
   }
 
   @Get('crm/contracts/:id')
@@ -176,8 +193,17 @@ export class ContractsController {
   )
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_READ)
   @ApiOperation({ summary: 'Consultar contrato por id' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: Contract }> {
-    const data = await this.contractsService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor?: JwtPayload,
+  ): Promise<{ data: Contract }> {
+    const readAccess = await this.resolveBlockedReadAccess(actor?.sub);
+    const data = await this.contractsService.findOneForRead(
+      id,
+      readAccess.canSeeBlocked,
+      actor?.sub,
+      readAccess.grantedBy,
+    );
     return { data };
   }
 
@@ -193,6 +219,7 @@ export class ContractsController {
     @Body() dto: UpdateContractDto,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: Contract }> {
+    await this.contractsService.assertContractNotBlocked(id);
     const data = await this.contractsService.update(id, dto, actor.sub);
     return { data };
   }
@@ -214,6 +241,7 @@ export class ContractsController {
     @Body() dto: UpdateServicePointDto,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: Contract }> {
+    await this.contractsService.assertContractNotBlocked(id);
     const data = await this.contractsService.updateServicePoint(id, dto, actor.sub);
     return { data };
   }
@@ -259,6 +287,7 @@ export class ContractsController {
     if (!file) {
       throw new BadRequestException('Se requiere el campo "file" con el soporte del estrato.');
     }
+    await this.contractsService.assertContractNotBlocked(id);
     const data = await this.contractsService.uploadStratumEvidence(id, file, actor.sub);
     return { data };
   }
@@ -314,8 +343,30 @@ export class ContractsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: { signedUrl: string; expiresAt: Date } }> {
-    const data = await this.contractsService.getStratumEvidenceSignedUrl(id, actor.sub);
+    const readAccess = await this.resolveBlockedReadAccess(actor.sub);
+    const data = await this.contractsService.getStratumEvidenceSignedUrl(
+      id,
+      actor.sub,
+      readAccess.canSeeBlocked,
+    );
     return { data };
+  }
+
+  private async resolveBlockedReadAccess(actorId?: string): Promise<{
+    canSeeBlocked: boolean;
+    grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ';
+  }> {
+    if (!actorId) return { canSeeBlocked: false };
+    const permissions = new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actorId),
+    );
+    if (permissions.has(AccessPermissionKey.PRIVACY_READ)) {
+      return { canSeeBlocked: true, grantedBy: 'PRIVACY_READ' };
+    }
+    if (permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)) {
+      return { canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ' };
+    }
+    return { canSeeBlocked: false };
   }
 
   @Delete('crm/contracts/:id')

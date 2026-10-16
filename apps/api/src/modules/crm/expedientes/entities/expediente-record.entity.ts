@@ -32,6 +32,12 @@ export class ExpedienteRecord {
   @Column({ type: 'uuid', name: 'tenant_id' })
   tenantId: string;
 
+  @Column({ type: 'timestamptz', name: 'anonymized_at', nullable: true })
+  anonymizedAt: Date | null;
+
+  @Column({ type: 'uuid', name: 'anonymized_request_id', nullable: true })
+  anonymizedRequestId: string | null;
+
   @Column({
     type: 'enum',
     enum: ExpedienteStatus,

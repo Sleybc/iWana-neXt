@@ -30,6 +30,7 @@ import { IInternetVatResolverPort } from '../../../taxation/ports/internet-vat-r
 import { AuditService } from '../../../audit/audit.service';
 import { MediaService } from '../../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../../privacy/ports/privacy-authorization-read.port';
+import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -59,6 +60,9 @@ jest.mock('@iwana/db', () => {
               department: 'Cundinamarca',
               postalCode: null,
             });
+          }
+          if (typeof queryRunner.manager['find'] !== 'function') {
+            queryRunner.manager['find'] = async () => [];
           }
           return callback(queryRunner);
         },
@@ -129,6 +133,10 @@ describe('ContractsService', () => {
     }),
     listForParty: jest.fn(),
   };
+  const privacyMarksReadPort = {
+    activeMarks: jest.fn().mockResolvedValue({}),
+    partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
+  };
   const configService = {
     get: jest.fn((key: string, fallback?: unknown) =>
       key === 'STORAGE_DRIVER' ? 'minio' : fallback,
@@ -137,6 +145,7 @@ describe('ContractsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    privacyMarksReadPort.activeMarks.mockResolvedValue({});
     configService.get.mockImplementation((key: string, fallback?: unknown) =>
       key === 'STORAGE_DRIVER' ? 'minio' : fallback,
     );
@@ -156,10 +165,88 @@ describe('ContractsService', () => {
         { provide: MediaService, useValue: mediaService },
         { provide: ConfigService, useValue: configService },
         { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
+        { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPort },
       ],
     }).compile();
 
     service = module.get<ContractsService>(ContractsService);
+  });
+
+  describe('findOneForRead', () => {
+    it('redacta el contrato bloqueado y conserva el marcador de anonimización nulo', async () => {
+      const contract = buildContract();
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async (entity: unknown) => (entity === Contract ? contract : null),
+            find: async () => [{ id: 'sub-1', partyId: 'party-1', anonymizedAt: null }],
+          },
+        }),
+      );
+      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({
+        'party-1': ['DATOS_BLOQUEADOS'],
+      });
+
+      const result = await service.findOneForRead('ctr-1', false);
+
+      expect(result).toMatchObject({
+        id: 'ctr-1',
+        alias: 'Datos bloqueados',
+        installationAddress: null,
+        installationCity: null,
+        installationDepartment: null,
+        installationPostalCode: null,
+        installationNotes: null,
+        installationStratum: null,
+        stratumEvidenceMediaId: null,
+        vatSnapshot: null,
+        fiscalName: null,
+        fiscalDocument: null,
+        fiscalAddress: null,
+        titularAnonymizedAt: null,
+      });
+    });
+
+    it('audita el acceso privilegiado al contrato de un titular bloqueado', async () => {
+      const contract = buildContract();
+      mockRunInTenantSchema
+        .mockImplementationOnce(async (_ds, _schema, callback) =>
+          callback({
+            manager: {
+              findOne: async (entity: unknown) => (entity === Contract ? contract : null),
+              find: async () => [{ id: 'sub-1', partyId: 'party-1', anonymizedAt: null }],
+            },
+          }),
+        )
+        .mockImplementationOnce(async (_ds, _schema, callback) =>
+          callback({
+            manager: {
+              findOne: async () => ({ id: 'sub-1', partyId: 'party-1', anonymizedAt: null }),
+            },
+          }),
+        );
+      privacyMarksReadPort.activeMarks
+        .mockResolvedValueOnce({ 'party-1': ['DATOS_BLOQUEADOS'] })
+        .mockResolvedValueOnce({ 'party-1': ['DATOS_BLOQUEADOS'] });
+
+      const result = await service.findOneForRead(
+        'ctr-1',
+        true,
+        'actor-1',
+        'CRM_BLOCKED_DATA_READ',
+      );
+
+      expect(result.alias).toBe(contract.alias);
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.RECORD_ACCESS,
+          entityType: 'Contract',
+          entityId: 'ctr-1',
+          userId: 'actor-1',
+          newValue: { privacyMark: 'DATOS_BLOQUEADOS', grantedBy: 'CRM_BLOCKED_DATA_READ' },
+        }),
+      );
+    });
   });
 
   describe('uploadStratumEvidence', () => {
@@ -800,9 +887,57 @@ describe('ContractsService', () => {
     });
   });
 
+  it('rechaza la creación de contrato con 409 si el titular está bloqueado', async () => {
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({
+        manager: {
+          findOne: async () => ({
+            id: 'sub-1',
+            tenantId: 'ten-1',
+            personType: PersonType.NATURAL,
+            partyId: 'party-1',
+            anonymizedAt: null,
+          }),
+        },
+      }),
+    );
+    privacyMarksReadPort.activeMarks.mockResolvedValueOnce({
+      'party-1': ['DATOS_BLOQUEADOS'],
+    });
+
+    await expect(
+      service.create({ subscriberId: 'sub-1', planId: 'plan-1', planSnapshotJson: {} }),
+    ).rejects.toMatchObject({ response: { code: 'PRIVACY_DATA_BLOCKED' } });
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
   // ── createFromExpediente ──────────────────────────────────────────────────
 
   describe('createFromExpediente', () => {
+    it('rechaza la creación desde expediente con 409 si el titular está bloqueado', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => ({
+              id: 'sub-1',
+              tenantId: 'ten-1',
+              personType: PersonType.NATURAL,
+              partyId: 'party-1',
+              anonymizedAt: null,
+            }),
+          },
+        }),
+      );
+      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({
+        'party-1': ['DATOS_BLOQUEADOS'],
+      });
+
+      await expect(service.createFromExpediente('sub-1', {})).rejects.toMatchObject({
+        response: { code: 'PRIVACY_DATA_BLOCKED' },
+      });
+      expect(auditService.log).not.toHaveBeenCalled();
+    });
+
     it('lanza NotFoundException cuando el subscriber no existe', async () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => null } }),
@@ -1140,6 +1275,42 @@ describe('ContractsService', () => {
       });
       expect(qb.skip).toHaveBeenCalledWith(5);
       expect(result.data).toHaveLength(1);
+    });
+
+    it('audita filas bloqueadas servidas sin redacción a un usuario con permiso', async () => {
+      const contract = buildContract();
+      const qb = {
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[contract], 1]),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            find: async () => [{ id: 'sub-1', partyId: 'party-1', anonymizedAt: null }],
+          },
+        }),
+      );
+      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({
+        'party-1': ['DATOS_BLOQUEADOS'],
+      });
+
+      const result = await service.findAll({}, true, 'actor-1');
+
+      expect(result.data[0]?.alias).toBe(contract.alias);
+      expect(result).not.toHaveProperty('blockedServed');
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.LIST_ACCESS,
+          entityType: 'ContractList',
+          userId: 'actor-1',
+          newValue: { totalServed: 1, totalAvailable: 1, blockedServed: 1 },
+        }),
+      );
     });
   });
 
