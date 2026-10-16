@@ -219,6 +219,66 @@ export const requesterEvidenceResponseSchema = dataEnvelopeSchema(
   ),
 );
 
+const erasureCategory = {
+  type: 'string',
+  enum: [
+    'IDENTIFICACION',
+    'CONTACTO',
+    'UBICACION',
+    'FISCAL',
+    'COMERCIAL',
+    'EVIDENCIA_CONSENTIMIENTO',
+    'CUENTA_USUARIO',
+    'EVIDENCIA_DOCUMENTAL',
+    'OPERACION_CAMPO',
+  ],
+} satisfies SchemaObject;
+
+const erasureBlocker = {
+  type: 'string',
+  enum: [
+    'IDENTITY_NOT_VERIFIED',
+    'INVALID_STATUS',
+    'CONSERVATION_DUTY',
+    'UNRECONCILED_TITULAR',
+    'ACTIVE_USER_ACCOUNT',
+  ],
+} satisfies SchemaObject;
+
+export const resolveErasureBodySchema = objectSchema(
+  {
+    confirm: { type: 'boolean', enum: [true] },
+    expedienteIds: { type: 'array', maxItems: 50, items: uuid },
+  },
+  ['confirm', 'expedienteIds'],
+);
+
+export const resolveDataSubjectRequestSchema = objectSchema(
+  {
+    responseText: { type: 'string', minLength: 1, maxLength: 4000 },
+    responseChannel: {
+      type: 'string',
+      enum: ['EMAIL', 'CORREO_FISICO', 'PRESENCIAL', 'PORTAL_ISP'],
+    },
+    dataChangeReference: { type: 'string', maxLength: 200 },
+    erasure: resolveErasureBodySchema,
+  },
+  ['responseText', 'responseChannel'],
+);
+
+export const erasurePreviewResponseSchema = dataEnvelopeSchema(
+  objectSchema(
+    {
+      eligible: { type: 'boolean' },
+      blockers: { type: 'array', items: erasureBlocker },
+      candidateExpedienteIds: { type: 'array', items: uuid },
+      counts: { type: 'object', additionalProperties: { type: 'integer', minimum: 0 } },
+      categories: { type: 'array', items: erasureCategory },
+    },
+    ['eligible', 'blockers', 'candidateExpedienteIds', 'counts', 'categories'],
+  ),
+);
+
 const privacyInventoryDatabase = objectSchema(
   {
     key: {

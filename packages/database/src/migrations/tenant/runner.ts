@@ -105,6 +105,7 @@ import { ContractStratumEvidenceUnique1450000000000 } from './145_contract_strat
 import { PrivacyModule1460000000000 } from './146_privacy_module';
 import { SeedPrivacyPermissions1470000000000 } from './147_seed_privacy_permissions';
 import { SubscriberContactNullable1480000000000 } from './148_subscriber_contact_nullable';
+import { PrivacyErasureRecord1490000000000 } from './149_privacy_erasure_record';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -291,6 +292,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   PrivacyModule1460000000000,
   SeedPrivacyPermissions1470000000000,
   SubscriberContactNullable1480000000000,
+  PrivacyErasureRecord1490000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

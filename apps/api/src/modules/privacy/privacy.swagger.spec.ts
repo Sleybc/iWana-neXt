@@ -117,6 +117,7 @@ describe('Privacy OpenAPI', () => {
       ['/privacy/requests/{id}/complete', 'post'],
       ['/privacy/requests/{id}/extend', 'post'],
       ['/privacy/requests/{id}/resolve', 'post'],
+      ['/privacy/requests/{id}/erasure-preview', 'get'],
       ['/privacy/requests/{id}/reject', 'post'],
       ['/privacy/requests/{id}/transfer', 'post'],
       ['/privacy/requests/{id}/tasks/{taskId}/complete', 'post'],
@@ -191,5 +192,35 @@ describe('Privacy OpenAPI', () => {
       type: 'object',
       required: ['generatedAt', 'databases'],
     });
+  });
+
+  it('documenta la vista previa y el cuerpo de supresión sin PII', () => {
+    const paths = document().paths;
+    const preview = paths['/privacy/requests/{id}/erasure-preview']?.get as
+      | SwaggerOperation
+      | undefined;
+    const previewSchema = getResponseSchema(preview, '200');
+    const previewData = (previewSchema?.properties as Record<string, unknown> | undefined)?.data as
+      | Record<string, unknown>
+      | undefined;
+    const previewProperties = previewData?.properties as Record<string, unknown> | undefined;
+
+    expect(previewSchema?.required).toEqual(['data']);
+    expect(previewData?.required).toEqual([
+      'eligible',
+      'blockers',
+      'candidateExpedienteIds',
+      'counts',
+      'categories',
+    ]);
+    expect(previewProperties?.candidateExpedienteIds).toBeDefined();
+    expect(previewProperties?.counts).toBeDefined();
+
+    const resolve = paths['/privacy/requests/{id}/resolve']?.post as SwaggerOperation | undefined;
+    const resolveBody = getBodySchema(resolve);
+    const resolveProperties = resolveBody?.properties as Record<string, unknown> | undefined;
+
+    expect(resolveBody?.required).toEqual(['responseText', 'responseChannel']);
+    expect(resolveProperties?.erasure).toBeDefined();
   });
 });

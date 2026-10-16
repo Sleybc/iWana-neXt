@@ -97,6 +97,10 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
   const impersonationPort = { suspendForImpersonation: jest.fn() };
   const standingPort = { standing: jest.fn() };
   const effectivePermissionsService = { getEffectivePermissionsForUser: jest.fn() };
+  const erasurePort = {
+    plan: jest.fn(),
+    anonymize: jest.fn(),
+  };
   let service: PrivacyRequestsService;
 
   beforeEach(() => {
@@ -116,6 +120,12 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     effectivePermissionsService.getEffectivePermissionsForUser
       .mockReset()
       .mockResolvedValue([AccessPermissionKey.PRIVACY_READ]);
+    erasurePort.plan.mockReset().mockResolvedValue({
+      candidateExpedienteIds: [],
+      blockers: [],
+      counts: {},
+    });
+    erasurePort.anonymize.mockReset().mockResolvedValue({ categories: [], changedRows: 0 });
     jest
       .spyOn(tenantQuery, 'withPrivacyTenant')
       .mockImplementation(async (_source, operation) => operation(manager as never));
@@ -136,6 +146,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       standingPort as unknown as IContractStandingReadPort,
       mediaService as unknown as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
+      erasurePort as never,
     );
     jest.spyOn(service, 'get').mockResolvedValue({} as never);
   });
@@ -495,26 +506,22 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       UnprocessableEntityException,
     );
 
-    manager.query
-      .mockReset()
-      .mockResolvedValueOnce([
-        requestRow({
-          identity_verified_at: '2026-10-14T15:00:00.000Z',
-          identity_verified_by: actorId,
-        }),
-      ]);
+    manager.query.mockReset().mockResolvedValueOnce([
+      requestRow({
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+        identity_verified_by: actorId,
+      }),
+    ]);
     await expect(
       service.transition(requestId, 'complete', { completedAt: '2026-10-13' }, actorId),
     ).rejects.toBeInstanceOf(ConflictException);
 
-    manager.query
-      .mockReset()
-      .mockResolvedValueOnce([
-        requestRow({
-          identity_verified_at: '2026-10-14T15:00:00.000Z',
-          identity_verified_by: actorId,
-        }),
-      ]);
+    manager.query.mockReset().mockResolvedValueOnce([
+      requestRow({
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+        identity_verified_by: actorId,
+      }),
+    ]);
     await expect(
       service.transition(requestId, 'complete', { completedAt: '2026-10-15' }, actorId),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -594,7 +601,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     ).rejects.toThrow('no admite prórroga');
   });
 
-  it('impide resolver supresión sin titular o cuando existe deber de conservación', async () => {
+  it('exige confirmación de supresión y mantiene el deber de conservación con titular', async () => {
     manager.query.mockResolvedValueOnce([requestRow({ status: 'EN_TRAMITE', right: 'SUPRIMIR' })]);
     await expect(
       service.transition(
@@ -603,25 +610,96 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
         { responseText: 'Resuelta', responseChannel: 'EMAIL' },
         actorId,
       ),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({
+      response: { code: 'PRIVACY_ERASURE_CONFIRMATION_REQUIRED' },
+    });
 
+    const erasureBody = {
+      responseText: 'Resuelta',
+      responseChannel: 'EMAIL',
+      erasure: {
+        confirm: true,
+        expedienteIds: ['60000000-0000-4000-8000-000000000010'],
+      },
+    };
     manager.query
       .mockReset()
       .mockResolvedValueOnce([
         requestRow({ status: 'EN_TRAMITE', right: 'SUPRIMIR', party_id: partyId }),
       ]);
+    await expect(
+      service.transition(requestId, 'resolve', erasureBody, actorId),
+    ).rejects.toMatchObject({
+      response: { code: 'PRIVACY_ERASURE_IDENTITY_REQUIRED' },
+    });
+
+    manager.query.mockReset().mockResolvedValueOnce([
+      requestRow({
+        status: 'EN_TRAMITE',
+        right: 'SUPRIMIR',
+        party_id: partyId,
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+      }),
+    ]);
     standingPort.standing.mockResolvedValueOnce({
       openContractIds: [contractId],
       lastTerminatedAt: null,
     });
-    await expect(
-      service.transition(
-        requestId,
-        'resolve',
-        { responseText: 'Resuelta', responseChannel: 'EMAIL' },
-        actorId,
+    await expect(service.transition(requestId, 'resolve', erasureBody, actorId)).rejects.toThrow(
+      'no procedencia por deber de conservación',
+    );
+  });
+
+  it('registra el evento RESOLVE y la auditoría al completar una supresión', async () => {
+    manager.query
+      .mockResolvedValueOnce([
+        requestRow({
+          kind: 'CONSULTA',
+          right: 'SUPRIMIR',
+          status: 'EN_TRAMITE',
+          identity_verified_at: '2026-10-14T15:00:00.000Z',
+        }),
+      ])
+      .mockResolvedValue([]);
+    erasurePort.plan.mockResolvedValue({
+      candidateExpedienteIds: [],
+      blockers: [],
+      counts: {},
+    });
+    erasurePort.anonymize.mockResolvedValue({
+      categories: ['IDENTIFICACION'],
+      changedRows: 2,
+    });
+
+    await service.transition(
+      requestId,
+      'resolve',
+      {
+        responseText: 'Se anonimizó la solicitud.',
+        responseChannel: 'EMAIL',
+        erasure: { confirm: true, expedienteIds: [] },
+      },
+      actorId,
+    );
+
+    expect(
+      manager.query.mock.calls.some(
+        ([sql, values]) =>
+          String(sql).includes('INSERT INTO data_subject_request_events') &&
+          String(sql).includes("'RESOLVE'") &&
+          (values as unknown[])[1] === 'EN_TRAMITE' &&
+          (values as unknown[])[2] === 'RESUELTA',
       ),
-    ).rejects.toThrow('no procedencia por deber de conservación');
+    ).toBe(true);
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.UPDATE,
+        newValue: expect.objectContaining({
+          operation: 'REQUEST_TRANSITION',
+          erasure: { categories: ['IDENTIFICACION'], changedRows: 2 },
+        }),
+      }),
+    );
   });
 
   it('resuelve revocación y agrega una fila REVOCATION con finalidad y referencia de cambio', async () => {
@@ -713,7 +791,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     );
   });
 
-  it('exige el fundamento contractual cuando hay contrato abierto y abre DATOS_BLOQUEADOS', async () => {
+  it('exige el fundamento contractual con contrato abierto y solo bloquea con deber legal', async () => {
     const suppression = requestRow({
       status: 'EN_TRAMITE',
       right: 'SUPRIMIR',
@@ -757,7 +835,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
           (values as unknown[])[1] === 'DATOS_BLOQUEADOS' &&
           (values as unknown[])[2] === 'OPEN',
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('aplica retención legal cuando el último contrato terminó dentro del periodo', async () => {
@@ -791,6 +869,14 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       expect.stringContaining('SELECT years FROM retention_policies'),
       ['IDENTIFICACION_DIRECCION_CONTRATO_SUSCRIPTOR'],
     );
+    expect(
+      manager.query.mock.calls.some(
+        ([sql, values]) =>
+          String(sql).includes('INSERT INTO party_privacy_marks') &&
+          (values as unknown[])[1] === 'DATOS_BLOQUEADOS' &&
+          (values as unknown[])[2] === 'OPEN',
+      ),
+    ).toBe(true);
   });
 
   it('rechaza un fundamento de conservación cuando no hay deber vigente', async () => {

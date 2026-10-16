@@ -123,6 +123,12 @@ export class DataSubjectRequestEntity {
   @Column({ name: 'transferred_to', type: 'varchar', length: 200, nullable: true })
   transferredTo: string | null;
 
+  @Column({ name: 'erased_at', type: 'timestamptz', nullable: true })
+  erasedAt: Date | null;
+
+  @Column({ name: 'erasure_categories', type: 'text', array: true, default: () => "'{}'" })
+  erasureCategories: string[];
+
   @Column({ name: 'legal_basis', type: 'text', nullable: true })
   legalBasis: string | null;
 }

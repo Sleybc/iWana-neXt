@@ -35,12 +35,8 @@ import { IPrivacyAuthorizationReadPort } from './ports/privacy-authorization-rea
 import { IPrivacyAuthorizationWritePort } from './ports/privacy-authorization-write.port';
 import { IPrivacyLegalTextReadPort } from './ports/privacy-legal-text-read.port';
 import { IPrivacyMarksReadPort } from './ports/privacy-marks-read.port';
-import { IPersonalDataBlockPort } from './ports/personal-data-block.port';
 import { IPersonalDataErasurePort } from './ports/personal-data-erasure.port';
-import {
-  PersonalDataBlockUnavailableAdapter,
-  PersonalDataErasureUnavailableAdapter,
-} from './ports/unavailable-privacy-ports.adapters';
+import { PersonalDataErasureUnavailableAdapter } from './ports/unavailable-privacy-ports.adapters';
 import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-adapters.module';
 import { PrivacyDueAlertsProcessor } from './alerts/privacy-due-alerts.processor';
 import { PrivacyDueAlertsMetrics } from './alerts/privacy-due-alerts.metrics';
@@ -107,11 +103,6 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
       provide: IPrivacyRequestsReadPort,
       useExisting: PrivacyRequestsReadAdapter,
     },
-    PersonalDataBlockUnavailableAdapter,
-    {
-      provide: IPersonalDataBlockPort,
-      useExisting: PersonalDataBlockUnavailableAdapter,
-    },
     PersonalDataErasureUnavailableAdapter,
     {
       provide: IPersonalDataErasurePort,
@@ -125,7 +116,6 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
     IPrivacyMarksReadPort,
     IPrivacyRequestsReadPort,
     CrmPrivacyAdaptersModule,
-    IPersonalDataBlockPort,
     IPersonalDataErasurePort,
   ],
 })

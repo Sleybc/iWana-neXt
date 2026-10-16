@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { addColombiaBusinessDays, type RequestSummary } from '@iwana/shared';
+import { addColombiaBusinessDays, type ErasureCategory, type RequestSummary } from '@iwana/shared';
 import { DataSource } from 'typeorm';
 import { bogotaCivilDate, withPrivacyTenant } from '../../ports/privacy-tenant-query';
 import { IPrivacyRequestsReadPort } from './privacy-requests-read.port';
@@ -14,6 +14,8 @@ type SummaryRow = {
   received_at: Date | string;
   due_at: Date | string;
   extended_until: Date | string | null;
+  erased_at: Date | string | null;
+  erasure_categories: string[] | null;
 };
 
 function dateOnly(value: Date | string): string {
@@ -29,31 +31,56 @@ export class PrivacyRequestsReadAdapter implements IPrivacyRequestsReadPort {
     const today = bogotaCivilDate(new Date());
     return withPrivacyTenant(this.dataSource, async (manager) => {
       const rows = (await manager.query(
-        `SELECT id::text, kind, "right", purpose, status, received_at, due_at, extended_until
+        `SELECT id::text, kind, "right", purpose, status, received_at, due_at, extended_until,
+                erased_at, erasure_categories
          FROM data_subject_requests WHERE party_id = $1
          ORDER BY received_at DESC, id DESC`,
         [partyId],
       )) as SummaryRow[];
+      const transferEvents =
+        rows.length === 0
+          ? []
+          : ((await manager.query(
+              `SELECT request_id::text AS request_id, occurred_at
+               FROM data_subject_request_events
+               WHERE request_id = ANY($1::uuid[]) AND to_status = 'TRASLADADA'`,
+              [rows.map((row) => row.id)],
+            )) as Array<{ request_id: string; occurred_at: Date | string }>);
+      const transferByRequest = new Map(
+        transferEvents.map((event) => [event.request_id, event.occurred_at]),
+      );
 
       return rows.map((row) => {
         const dueAt = dateOnly(row.due_at);
         const extendedUntil = row.extended_until ? dateOnly(row.extended_until) : null;
         const effectiveDueAt = extendedUntil && extendedUntil > dueAt ? extendedUntil : dueAt;
+        const receivedAt =
+          row.received_at instanceof Date
+            ? row.received_at.toISOString()
+            : new Date(row.received_at).toISOString();
+        const transferDueAt = addColombiaBusinessDays(bogotaCivilDate(new Date(receivedAt)), 2);
+        const transferOccurredAt = transferByRequest.get(row.id);
         return {
           id: row.id,
           kind: row.kind,
           right: row.right,
           purpose: row.purpose,
           status: row.status,
-          receivedAt:
-            row.received_at instanceof Date
-              ? row.received_at.toISOString()
-              : new Date(row.received_at).toISOString(),
+          receivedAt,
           dueAt,
           extendedUntil,
           isOverdue:
             !['DESISTIDA', 'RESUELTA', 'NO_PROCEDENTE', 'TRASLADADA'].includes(row.status) &&
             effectiveDueAt < today,
+          transferDueAt,
+          transferredLate:
+            transferOccurredAt === undefined
+              ? null
+              : bogotaCivilDate(new Date(transferOccurredAt)) > transferDueAt,
+          erasedAt: row.erased_at ? new Date(row.erased_at).toISOString() : null,
+          erasureCategories: (Array.isArray(row.erasure_categories)
+            ? row.erasure_categories
+            : []) as ErasureCategory[],
         };
       });
     });

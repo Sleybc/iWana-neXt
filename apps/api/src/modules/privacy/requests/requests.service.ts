@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +15,9 @@ import {
   AccessPermissionKey,
   CreateDataSubjectRequest,
   DocumentTypeParty,
+  ErasureBlocker,
+  ErasureCategory,
+  ErasurePreview,
   ListDataSubjectRequestsQuery,
   RequestKind,
   RequestLegalBasis,
@@ -41,7 +45,15 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { MediaService } from '../../media/media.service';
 import { MediaUsage } from '@iwana/db';
 import { IContractImpersonationPort } from '../ports/contract-impersonation.port';
+import { IPersonalDataErasurePort } from '../ports/personal-data-erasure.port';
 import { withPrivacyTenant, bogotaCivilDate } from '../ports/privacy-tenant-query';
+import {
+  erasureActiveAccount,
+  erasureConfirmationRequired,
+  erasureIdentityRequired,
+  erasureNotApplicable,
+  erasureUnreconciledTitular,
+} from './erasure-errors';
 import {
   calculateDesistAt,
   calculateExtendedUntil,
@@ -93,6 +105,10 @@ type RequestPublicDto = {
   resolvedBy: string | null;
   transferredTo: string | null;
   legalBasis: RequestLegalBasis | null;
+  transferDueAt: string;
+  transferredLate: boolean | null;
+  erasedAt: string | null;
+  erasureCategories: ErasureCategory[];
 };
 type RequestDetailDto = DataSubjectRequestDetail;
 type RequestCreateResponse = {
@@ -150,6 +166,9 @@ function toEvent(row: DbRow): RequestEventDto {
 }
 
 function toPublicRequest(row: DbRow): RequestPublicDto {
+  const receivedAt = stringValue(row['received_at']);
+  const categories = row['erasure_categories'];
+  const erasureCategories = (Array.isArray(categories) ? categories : []) as ErasureCategory[];
   return {
     id: stringValue(row['id']),
     partyId: nullableString(row['party_id']),
@@ -176,7 +195,22 @@ function toPublicRequest(row: DbRow): RequestPublicDto {
     resolvedBy: nullableString(row['resolved_by']),
     transferredTo: nullableString(row['transferred_to']),
     legalBasis: nullableString(row['legal_basis']) as RequestLegalBasis | null,
+    transferDueAt: transferDueAtFor(receivedAt),
+    transferredLate: null,
+    erasedAt: nullableString(row['erased_at']),
+    erasureCategories,
   };
+}
+
+/** Plazo de traslado: radicación + 2 días hábiles colombianos (R11, sin columna). */
+function transferDueAtFor(receivedAt: string): string {
+  return addColombiaBusinessDays(bogotaCivilDate(new Date(receivedAt)), 2);
+}
+
+/** Tardío si la fecha civil de Bogotá del traslado supera el plazo; null si no hay traslado. */
+function transferredLateFor(transferDueAt: string, trasladadaAt: string | null): boolean | null {
+  if (!trasladadaAt) return null;
+  return bogotaCivilDate(new Date(trasladadaAt)) > transferDueAt;
 }
 
 @Injectable()
@@ -193,6 +227,7 @@ export class PrivacyRequestsService {
     private readonly standingPort: IContractStandingReadPort,
     private readonly mediaService: MediaService,
     private readonly effectivePermissionsService?: EffectivePermissionsService,
+    private readonly erasurePort?: IPersonalDataErasurePort,
   ) {
     const keys = loadPiiAesGcmKeyPair(configService);
     this.encryptionKey = keys.activeKey;
@@ -401,9 +436,25 @@ export class PrivacyRequestsService {
       )) as DbRow[];
       const hasNext = rows.length > query.limit;
       const items = hasNext ? rows.slice(0, query.limit) : rows;
+      const transferEvents =
+        items.length === 0
+          ? []
+          : ((await manager.query(
+              `SELECT request_id::text AS request_id, occurred_at
+               FROM data_subject_request_events
+               WHERE request_id = ANY($1::uuid[]) AND to_status = 'TRASLADADA'`,
+              [items.map((row) => stringValue(row['id']))],
+            )) as Array<{ request_id: string; occurred_at: string | Date }>);
+      const transferByRequest = new Map(
+        transferEvents.map((event) => [event.request_id, stringValue(event.occurred_at)]),
+      );
       const data = items.map((row) => {
         const request = toPublicRequest(row);
         const effectiveDueAt = request.extendedUntil ?? request.dueAt;
+        request.transferredLate = transferredLateFor(
+          request.transferDueAt,
+          transferByRequest.get(request.id) ?? null,
+        );
         return {
           ...request,
           isOverdue: OPEN_STATUSES.includes(request.status) && effectiveDueAt < today,
@@ -424,6 +475,49 @@ export class PrivacyRequestsService {
     });
   }
 
+  async erasurePreview(id: string): Promise<ErasurePreview> {
+    return withPrivacyTenant(this.dataSource, async (manager) => {
+      const rows = (await manager.query(
+        `SELECT id, "right", status, party_id, requester_document_hmac, identity_verified_at
+         FROM data_subject_requests WHERE id = $1`,
+        [id],
+      )) as DbRow[];
+      const current = rows[0];
+      if (!current) throw new NotFoundException('No se encontró la solicitud indicada.');
+      if ((current['right'] as RequestRight) !== 'SUPRIMIR') throw erasureNotApplicable();
+
+      const blockers: ErasureBlocker[] = [];
+      if (!current['identity_verified_at']) blockers.push('IDENTITY_NOT_VERIFIED');
+      const status = current['status'] as RequestStatus;
+      if (status !== 'EN_TRAMITE' && status !== 'PRORROGADA') blockers.push('INVALID_STATUS');
+      const partyId = nullableString(current['party_id']);
+      if (partyId && (await this.hasConservationDuty(manager, partyId))) {
+        blockers.push('CONSERVATION_DUTY');
+      }
+      const plan = await this.requireErasurePort().plan(
+        {
+          requestId: id,
+          partyId,
+          requesterDocumentHmac: nullableString(current['requester_document_hmac']),
+        },
+        { manager },
+      );
+      for (const blocker of plan.blockers) {
+        if (!blockers.includes(blocker)) blockers.push(blocker);
+      }
+      const categories = (Object.keys(plan.counts) as ErasureCategory[]).filter(
+        (category) => (plan.counts[category] ?? 0) > 0,
+      );
+      return {
+        eligible: blockers.length === 0,
+        blockers,
+        candidateExpedienteIds: plan.candidateExpedienteIds,
+        counts: plan.counts,
+        categories,
+      };
+    });
+  }
+
   async get(id: string, actorId: string): Promise<RequestDetailDto> {
     const permissions =
       await this.effectivePermissionsService?.getEffectivePermissionsForUser(actorId);
@@ -438,6 +532,7 @@ export class PrivacyRequestsService {
                 complete_at, due_at, impersonation_complaint_due_at, suspended_contract_ids,
                 extended_until, info_required_at, desist_at, response_text, response_channel,
                 resolved_at, resolved_by, transferred_to, legal_basis,
+                erased_at, erasure_categories,
                 identity_verification_method, identity_verified_at,
                 requester_evidence_media_id IS NOT NULL AS has_requester_evidence
                 ${requesterProjection}
@@ -458,6 +553,12 @@ export class PrivacyRequestsService {
       )) as DbRow[];
       const identityVerifiedAt = nullableString(row['identity_verified_at']);
       const identityStatus = identityVerifiedAt ? ('VERIFICADA' as const) : ('PENDIENTE' as const);
+      const request = toPublicRequest(row);
+      const transferEvent = events.find((event) => event['to_status'] === 'TRASLADADA');
+      request.transferredLate = transferredLateFor(
+        request.transferDueAt,
+        transferEvent ? stringValue(transferEvent['occurred_at']) : null,
+      );
       const requester = canViewRequester
         ? {
             name: this.decryptField(row['requester_name_encrypted']),
@@ -468,7 +569,7 @@ export class PrivacyRequestsService {
         : null;
       return {
         request: {
-          ...toPublicRequest(row),
+          ...request,
           identityStatus,
           identityVerificationMethod:
             (row['identity_verification_method'] as IdentityVerificationMethod | null) ?? null,
@@ -705,9 +806,23 @@ export class PrivacyRequestsService {
           [id, nextStatus, extendedUntil, body['reason']],
         );
       } else if (action === 'resolve') {
+        if (right === 'SUPRIMIR') {
+          reasonCode = 'RESOLVE';
+          await this.resolveSuppression(manager, {
+            id,
+            current,
+            body,
+            actorId,
+            now,
+            nextStatus,
+            kind,
+            partyId,
+          });
+          return { status: nextStatus, kind, audited: true };
+        }
+        if (body['erasure'] !== undefined) throw erasureNotApplicable();
         const requiresConservationCheck =
-          right === 'SUPRIMIR' ||
-          (right === 'REVOCAR' && current['purpose'] === 'TRATAMIENTO_CONTRACTUAL');
+          right === 'REVOCAR' && current['purpose'] === 'TRATAMIENTO_CONTRACTUAL';
         if (requiresConservationCheck) {
           if (!partyId) {
             throw new ConflictException(
@@ -798,7 +913,7 @@ export class PrivacyRequestsService {
               'El fundamento de conservación solo aplica a revocación o supresión.',
             );
           }
-          if (right === 'SUPRIMIR') {
+          if (right === 'SUPRIMIR' && basis === 'DEBER_LEGAL_CONSERVACION') {
             if (!partyId)
               throw new ConflictException('No se puede abrir la marca sin identificar al titular.');
             await this.appendMark(manager, partyId, 'DATOS_BLOQUEADOS', 'OPEN', id, actorId);
@@ -830,15 +945,107 @@ export class PrivacyRequestsService {
          VALUES ($1, $2, $3, $4, $5)`,
         [id, currentStatus, nextStatus, actorId, reasonCode],
       );
-      return { status: nextStatus, kind };
+      const transferLate =
+        action === 'transfer'
+          ? today > transferDueAtFor(stringValue(current['received_at']))
+          : undefined;
+      return { status: nextStatus, kind, transferLate };
     });
 
-    await this.audit(AuditAction.UPDATE, id, actorId, {
+    const auditValue: Record<string, unknown> = {
       operation: 'REQUEST_TRANSITION',
       action,
       toStatus: result.status,
-    });
+    };
+    if (result.transferLate !== undefined) auditValue['late'] = result.transferLate;
+    if (!result.audited) {
+      await this.audit(AuditAction.UPDATE, id, actorId, auditValue);
+    }
     return this.get(id, actorId);
+  }
+
+  private requireErasurePort(): IPersonalDataErasurePort {
+    const port = this.erasurePort;
+    if (!port) {
+      throw new ServiceUnavailableException(
+        'La integración de anonimización aún no está instalada.',
+      );
+    }
+    return port;
+  }
+
+  /**
+   * Resuelve una supresión en la misma transacción (R2, §2.7).
+   *
+   * Orden: identidad verificada, deber de conservación con Party, plan del
+   * puerto (UNRECONCILED_TITULAR y ACTIVE_USER_ACCOUNT sin Party deciden por
+   * el puerto), anonimización, registro de `erased_at`/`erasure_categories`,
+   * cierre de RECLAMO_EN_TRAMITE y auditoría con `{ erasure }` sin PII ni HMAC.
+   * Cualquier fallo revierte todo porque nada hace commit antes del cierre de
+   * `withPrivacyTenant`.
+   */
+  private async resolveSuppression(
+    manager: EntityManager,
+    args: {
+      id: string;
+      current: DbRow;
+      body: Record<string, unknown>;
+      actorId: string;
+      now: Date;
+      nextStatus: RequestStatus;
+      kind: RequestKind;
+      partyId: string | null;
+    },
+  ): Promise<void> {
+    const { id, current, body, actorId, now, nextStatus, kind, partyId } = args;
+    const erasure = body['erasure'] as { confirm?: unknown; expedienteIds?: unknown } | undefined;
+    if (!erasure || erasure.confirm !== true || !Array.isArray(erasure.expedienteIds)) {
+      throw erasureConfirmationRequired();
+    }
+    if (!current['identity_verified_at']) throw erasureIdentityRequired();
+    if (partyId && (await this.hasConservationDuty(manager, partyId))) {
+      throw new ConflictException(
+        'La solicitud requiere una decisión de no procedencia por deber de conservación.',
+      );
+    }
+    const target = {
+      requestId: id,
+      partyId,
+      requesterDocumentHmac: nullableString(current['requester_document_hmac']),
+    };
+    const port = this.requireErasurePort();
+    const plan = await port.plan(target, { manager });
+    if (plan.blockers.includes('UNRECONCILED_TITULAR')) throw erasureUnreconciledTitular();
+    if (plan.blockers.includes('ACTIVE_USER_ACCOUNT')) throw erasureActiveAccount();
+    const result = await port.anonymize(
+      { ...target, expedienteIds: erasure.expedienteIds as string[], actorId },
+      { manager },
+    );
+    const dataChangeReference = body['dataChangeReference'];
+    const responseText =
+      typeof dataChangeReference === 'string' && dataChangeReference.length > 0
+        ? `${String(body['responseText'])}\n\nReferencia de cambio: ${dataChangeReference}`
+        : body['responseText'];
+    await manager.query(
+      `UPDATE data_subject_requests SET status = $2, response_text = $3,
+       response_channel = $4, resolved_at = $5, resolved_by = $6,
+       erased_at = $5, erasure_categories = $7 WHERE id = $1`,
+      [id, nextStatus, responseText, body['responseChannel'], now, actorId, result.categories],
+    );
+    await manager.query(
+      `INSERT INTO data_subject_request_events (request_id, from_status, to_status, actor_id, reason)
+       VALUES ($1, $2, $3, $4, 'RESOLVE')`,
+      [id, current['status'], nextStatus, actorId],
+    );
+    if (kind === 'RECLAMO' && partyId) {
+      await this.appendMark(manager, partyId, 'RECLAMO_EN_TRAMITE', 'CLOSE', id, actorId);
+    }
+    await this.audit(AuditAction.UPDATE, id, actorId, {
+      operation: 'REQUEST_TRANSITION',
+      action: 'resolve',
+      toStatus: nextStatus,
+      erasure: { categories: result.categories, changedRows: result.changedRows },
+    });
   }
 
   async completeTask(

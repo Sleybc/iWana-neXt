@@ -53,7 +53,11 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '@iwana/shared';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { PrivacyRequestsService } from './requests.service';
-import { requesterEvidenceResponseSchema } from '../privacy-openapi.schemas';
+import {
+  erasurePreviewResponseSchema,
+  requesterEvidenceResponseSchema,
+  resolveDataSubjectRequestSchema,
+} from '../privacy-openapi.schemas';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -120,6 +124,23 @@ export class PrivacyRequestsController {
     return { data };
   }
 
+  @Get(':id/erasure-preview')
+  @Roles(UserRole.ADMIN, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.PRIVACY_MANAGE)
+  @SkipAudit()
+  @ApiOperation({ summary: 'Previsualizar la anonimización de una supresión' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({
+    description:
+      'Elegibilidad, bloqueos, expedientes candidatos y conteos por categoría, sin PII ni HMAC.',
+    schema: erasurePreviewResponseSchema,
+  })
+  @ApiNotFoundResponse({ description: 'No existe la solicitud indicada.' })
+  async erasurePreview(@Param('id', ParseUUIDPipe) id: string) {
+    const data = await this.requestsService.erasurePreview(id);
+    return { data };
+  }
+
   @Post(':id/require-info')
   @Roles(UserRole.ADMIN, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.PRIVACY_MANAGE)
@@ -166,6 +187,7 @@ export class PrivacyRequestsController {
   @Permissions(AccessPermissionKey.PRIVACY_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Resolver una solicitud' })
+  @ApiBody({ schema: resolveDataSubjectRequestSchema })
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(resolveRequestSchema)) body: Record<string, unknown>,

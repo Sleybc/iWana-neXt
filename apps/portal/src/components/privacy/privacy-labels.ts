@@ -2,6 +2,8 @@ import {
   addColombiaBusinessDays,
   isColombiaBusinessDay,
   type DataPurpose,
+  type ErasureBlocker,
+  type ErasureCategory,
   type LegalTextType,
   type PrivacyMark,
   type RequestKind,
@@ -54,6 +56,26 @@ export const RESPONSE_CHANNEL_OPTIONS: ReadonlyArray<{ value: ResponseChannel; l
   { value: 'PRESENCIAL', label: 'Entrega presencial' },
   { value: 'PORTAL_ISP', label: 'Portal de la empresa' },
 ];
+
+export const ERASURE_CATEGORY_OPTIONS: ReadonlyArray<{ value: ErasureCategory; label: string }> = [
+  { value: 'IDENTIFICACION', label: 'Identificación' },
+  { value: 'CONTACTO', label: 'Contacto' },
+  { value: 'UBICACION', label: 'Ubicación' },
+  { value: 'FISCAL', label: 'Información fiscal' },
+  { value: 'COMERCIAL', label: 'Información comercial' },
+  { value: 'EVIDENCIA_CONSENTIMIENTO', label: 'Evidencia de autorización' },
+  { value: 'CUENTA_USUARIO', label: 'Cuenta de usuario' },
+  { value: 'EVIDENCIA_DOCUMENTAL', label: 'Documentos adjuntos' },
+  { value: 'OPERACION_CAMPO', label: 'Operación en campo' },
+];
+
+export const ERASURE_BLOCKER_LABELS: Record<ErasureBlocker, string> = {
+  IDENTITY_NOT_VERIFIED: 'La identidad de quien solicita aún no está verificada.',
+  INVALID_STATUS: 'La solicitud no está en un estado que permita resolverla.',
+  CONSERVATION_DUTY: 'Existe un deber de conservación vigente para estos datos.',
+  UNRECONCILED_TITULAR: 'No fue posible conciliar los datos con una única persona titular.',
+  ACTIVE_USER_ACCOUNT: 'La persona titular tiene una cuenta de usuario activa.',
+};
 
 export const IDENTITY_METHOD_OPTIONS = [
   { value: 'DOCUMENTO_PRESENCIAL', label: 'Validación presencial del documento' },

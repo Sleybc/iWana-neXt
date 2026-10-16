@@ -1,8 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Button } from '@iwana/ui';
-import type { DataSubjectRequestDetail, RequestLegalBasis, ResponseChannel } from '@iwana/shared';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  interactiveFocusClassName,
+} from '@iwana/ui';
+import type {
+  DataSubjectRequestDetail,
+  ErasurePreview,
+  RequestLegalBasis,
+  ResponseChannel,
+} from '@iwana/shared';
 import { ApiError, privacyApi } from '@/lib/api-client';
 import {
   PortalAlert,
@@ -17,6 +31,8 @@ import {
   getPurposeLabel,
   getLabel,
   DOCUMENT_TYPE_LABELS,
+  ERASURE_BLOCKER_LABELS,
+  ERASURE_CATEGORY_OPTIONS,
   IDENTITY_METHOD_OPTIONS,
   LEGAL_BASIS_OPTIONS,
   PRIVACY_REQUEST_KINDS,
@@ -93,8 +109,14 @@ export function PrivacyRequestDetail({
   const [dataChangeReference, setDataChangeReference] = useState('');
   const [identityMethod, setIdentityMethod] = useState('');
   const [evidenceMediaId, setEvidenceMediaId] = useState<string | null>(null);
+  const [erasurePreview, setErasurePreview] = useState<ErasurePreview | null>(null);
+  const [erasureDialogOpen, setErasureDialogOpen] = useState(false);
+  const [erasureLoading, setErasureLoading] = useState(false);
+  const [erasureError, setErasureError] = useState<string | null>(null);
+  const [erasureNotice, setErasureNotice] = useState<string | null>(null);
+  const [erasureConfirmed, setErasureConfirmed] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!requestId) return;
     setLoading(true);
     setError(null);
@@ -107,6 +129,25 @@ export function PrivacyRequestDetail({
     } finally {
       setLoading(false);
     }
+  }, [requestId]);
+
+  const loadErasurePreview = async (notice?: string) => {
+    if (!requestId) return;
+    setErasureLoading(true);
+    setErasureError(null);
+    if (notice) setErasureNotice(notice);
+    try {
+      setErasurePreview(await privacyApi.getErasurePreview(requestId));
+    } catch (previewError) {
+      setErasurePreview(null);
+      setErasureError(
+        previewError instanceof ApiError
+          ? previewError.message
+          : 'No fue posible cargar la vista previa de supresión.',
+      );
+    } finally {
+      setErasureLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -116,8 +157,13 @@ export function PrivacyRequestDetail({
       setAction(null);
       setNotice(null);
       setError(null);
+      setErasureDialogOpen(false);
+      setErasurePreview(null);
+      setErasureConfirmed(false);
+      setErasureError(null);
+      setErasureNotice(null);
     }
-  }, [open, requestId]);
+  }, [load, open, requestId]);
 
   const current = detail?.request;
   const editable = Boolean(current && !isClosed(current.status));
@@ -141,6 +187,7 @@ export function PrivacyRequestDetail({
     current?.identityStatus === 'PENDIENTE'
       ? LEGAL_BASIS_OPTIONS.filter((item) => item.value === 'SOLICITANTE_NO_LEGITIMADO')
       : LEGAL_BASIS_OPTIONS;
+  const showErasureDialog = action === 'resolve' && current?.right === 'SUPRIMIR';
 
   const submitAction = async () => {
     if (!current || !requestId || !action) return;
@@ -161,6 +208,14 @@ export function PrivacyRequestDetail({
           ...(dataChangeReference.trim()
             ? { dataChangeReference: dataChangeReference.trim() }
             : {}),
+          ...(current.right === 'SUPRIMIR' && erasurePreview
+            ? {
+                erasure: {
+                  confirm: true,
+                  expedienteIds: erasurePreview.candidateExpedienteIds,
+                },
+              }
+            : {}),
         });
       } else if (action === 'reject') {
         await privacyApi.rejectRequest(requestId, {
@@ -178,14 +233,31 @@ export function PrivacyRequestDetail({
         });
       }
       setAction(null);
+      setErasureDialogOpen(false);
+      setErasurePreview(null);
+      setErasureConfirmed(false);
       setNotice(
         action === 'resolve'
-          ? 'La respuesta quedó registrada. Confirma el envío por el canal elegido.'
+          ? current.right === 'SUPRIMIR'
+            ? 'La solicitud se resolvió y la supresión quedó registrada.'
+            : 'La respuesta quedó registrada. Confirma el envío por el canal elegido.'
           : 'El cambio quedó registrado.',
       );
       await load();
       onChanged();
     } catch (submitError) {
+      if (
+        action === 'resolve' &&
+        current.right === 'SUPRIMIR' &&
+        submitError instanceof ApiError &&
+        submitError.code === 'PRIVACY_ERASURE_CANDIDATES_CHANGED'
+      ) {
+        setErasureConfirmed(false);
+        await loadErasurePreview(
+          'El alcance cambió mientras revisabas la solicitud. Revisa el resumen actualizado antes de confirmar.',
+        );
+        return;
+      }
       setError(
         submitError instanceof ApiError
           ? submitError.message
@@ -212,7 +284,26 @@ export function PrivacyRequestDetail({
 
   const launch = (next: Action) => {
     setError(null);
+    if (next === 'resolve' && current?.right === 'SUPRIMIR') {
+      setAction('resolve');
+      setErasureDialogOpen(true);
+      setErasurePreview(null);
+      setErasureConfirmed(false);
+      setErasureError(null);
+      setErasureNotice(null);
+      setResponseText(getResponseTemplate('resolve', current.kind, legalBasis) ?? '');
+      void loadErasurePreview();
+      return;
+    }
     setAction(action === next ? null : next);
+  };
+
+  const closeErasureDialog = () => {
+    setErasureDialogOpen(false);
+    setAction(null);
+    setErasureConfirmed(false);
+    setErasureError(null);
+    setErasureNotice(null);
   };
 
   const insertTemplate = () => {
@@ -295,6 +386,15 @@ export function PrivacyRequestDetail({
               <span className="font-semibold">Fecha límite:</span>{' '}
               {formatCivilDate(current.extendedUntil ?? current.dueAt)}
             </p>
+            <p>
+              <span className="font-semibold">Plazo de traslado:</span>{' '}
+              {formatCivilDate(current.transferDueAt)}
+              {current.transferredLate ? (
+                <Badge variant="warning" className="ml-2">
+                  Traslado extemporáneo
+                </Badge>
+              ) : null}
+            </p>
             {current.impersonationComplaintDueAt ? (
               <p className="sm:col-span-2">
                 <span className="font-semibold">Fecha estimada para presentar la denuncia:</span>{' '}
@@ -307,6 +407,30 @@ export function PrivacyRequestDetail({
               </p>
             ) : null}
           </section>
+
+          {current.erasedAt ? (
+            <section
+              className="space-y-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-iwana-soft dark:border-dark-border dark:bg-dark-surface-2"
+              aria-labelledby="privacy-erasure-result-title"
+            >
+              <h3 id="privacy-erasure-result-title" className="font-semibold">
+                Supresión ejecutada
+              </h3>
+              <p className="text-sm">Fecha: {formatLocalDateTime(current.erasedAt)}</p>
+              {current.erasureCategories.length > 0 ? (
+                <ul className="list-inside list-disc text-sm">
+                  {current.erasureCategories.map((category) => (
+                    <li key={category}>
+                      {ERASURE_CATEGORY_OPTIONS.find((option) => option.value === category)
+                        ?.label ?? 'Información anonimizada'}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm">No había datos personales que anonimizar.</p>
+              )}
+            </section>
+          ) : null}
 
           {canManage ? (
             <section
@@ -464,7 +588,9 @@ export function PrivacyRequestDetail({
                   Solicitar prórroga
                 </Button>
               ) : null}
-              <Button onClick={() => launch('resolve')}>Responder y cerrar</Button>
+              <Button onClick={() => launch('resolve')}>
+                {current.right === 'SUPRIMIR' ? 'Resolver' : 'Responder y cerrar'}
+              </Button>
               {showReject ? (
                 <Button variant="secondary" onClick={() => launch('reject')}>
                   Indicar que no procede
@@ -478,7 +604,7 @@ export function PrivacyRequestDetail({
             </div>
           ) : null}
 
-          {action ? (
+          {action && !showErasureDialog ? (
             <section
               className="space-y-4 rounded-2xl border border-iwana-primary/20 bg-iwana-surface-soft p-4 dark:border-iwana-primary-300/30 dark:bg-dark-surface-3"
               aria-label="Datos del cambio"
@@ -703,6 +829,167 @@ export function PrivacyRequestDetail({
           ) : null}
         </div>
       ) : null}
+      <Dialog
+        open={erasureDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeErasureDialog();
+          else setErasureDialogOpen(true);
+        }}
+      >
+        <DialogContent aria-labelledby="privacy-erasure-title" className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle id="privacy-erasure-title">Revisar supresión de datos</DialogTitle>
+            <DialogDescription>
+              Confirma el alcance antes de anonimizar los datos personales de forma irreversible.
+            </DialogDescription>
+          </DialogHeader>
+
+          {erasureNotice ? (
+            <PortalAlert
+              variant="info"
+              title="Vista previa actualizada"
+              description={erasureNotice}
+            />
+          ) : null}
+          {erasureError ? (
+            <PortalAlert
+              variant="error"
+              title="No fue posible cargar la vista previa"
+              description={erasureError}
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={erasureLoading}
+                  onClick={() => void loadErasurePreview()}
+                >
+                  Reintentar
+                </Button>
+              }
+            />
+          ) : null}
+          {erasureLoading ? (
+            <div className="space-y-3" aria-busy="true" aria-live="polite">
+              <p className="text-sm text-gray-600 dark:text-gray-300">Cargando la vista previa…</p>
+              <PortalSkeletonBlock className="h-28" />
+            </div>
+          ) : null}
+          {erasurePreview ? (
+            <div className="space-y-4">
+              <section aria-label="Resumen de datos que se anonimizarán">
+                <p className="font-medium">
+                  Expedientes encontrados:{' '}
+                  <span className="font-mono tabular-nums">
+                    {erasurePreview.candidateExpedienteIds.length}
+                  </span>
+                </p>
+                <h3 className="mt-3 text-sm font-semibold">Conteo por categoría</h3>
+                <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 rounded-xl bg-iwana-surface-soft p-3 text-sm sm:grid-cols-2 dark:bg-dark-surface-3">
+                  {ERASURE_CATEGORY_OPTIONS.map((category) => (
+                    <div key={category.value} className="flex items-baseline justify-between gap-3">
+                      <dt>{category.label}</dt>
+                      <dd className="font-mono tabular-nums font-semibold">
+                        {erasurePreview.counts[category.value]}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+
+              {!erasurePreview.eligible ? (
+                <PortalAlert
+                  variant="warning"
+                  title="La solicitud aún no se puede resolver"
+                  description={
+                    <ul className="list-inside list-disc">
+                      {erasurePreview.blockers.map((blocker) => (
+                        <li key={blocker}>{ERASURE_BLOCKER_LABELS[blocker]}</li>
+                      ))}
+                    </ul>
+                  }
+                />
+              ) : (
+                <PortalAlert
+                  variant="info"
+                  title="Supresión disponible"
+                  description="Se anonimizarán los datos indicados arriba y no se podrán recuperar."
+                />
+              )}
+
+              <label className="flex min-h-11 items-start gap-3 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  className={`mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-iwana-primary ${interactiveFocusClassName}`}
+                  checked={erasureConfirmed}
+                  onChange={(event) => setErasureConfirmed(event.target.checked)}
+                  aria-describedby="privacy-erasure-confirmation-help"
+                />
+                <span>
+                  Entiendo que los datos personales se anonimizarán de forma irreversible
+                  <span id="privacy-erasure-confirmation-help" className="sr-only">
+                    La casilla debe estar marcada y la vista previa debe estar habilitada para
+                    continuar.
+                  </span>
+                </span>
+              </label>
+
+              <div className={labelClass}>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="privacy-erasure-response">Respuesta</label>
+                  <Button type="button" variant="ghost" onClick={insertTemplate}>
+                    Insertar plantilla
+                  </Button>
+                </div>
+                <textarea
+                  id="privacy-erasure-response"
+                  className={inputClass}
+                  maxLength={4000}
+                  value={responseText}
+                  onChange={(event) => setResponseText(event.target.value)}
+                />
+              </div>
+              <label className={labelClass}>
+                Canal de respuesta
+                <select
+                  className={inputClass}
+                  value={channel}
+                  onChange={(event) => setChannel(event.target.value as ResponseChannel)}
+                >
+                  {RESPONSE_CHANNEL_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={closeErasureDialog}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={
+                    busy ||
+                    erasureLoading ||
+                    !erasurePreview.eligible ||
+                    !erasureConfirmed ||
+                    !responseText.trim()
+                  }
+                  onClick={() => void submitAction()}
+                >
+                  {busy ? 'Anonimizando…' : 'Resolver y anonimizar'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </PortalSidePeek>
   );
 }

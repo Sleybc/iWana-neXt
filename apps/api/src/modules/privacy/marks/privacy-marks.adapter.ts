@@ -35,4 +35,26 @@ export class PrivacyMarksAdapter implements IPrivacyMarksReadPort {
       return result;
     });
   }
+
+  async partyIdsWithActiveMark(mark: PrivacyMark): Promise<string[]> {
+    return withPrivacyTenant(this.dataSource, async (manager) => {
+      const rows = await manager.getRepository(PartyPrivacyMarkEntity).find({
+        where: { mark },
+        order: { occurredAt: 'DESC', id: 'DESC' },
+      });
+      const latest = new Map<string, PartyPrivacyMarkEntity>();
+      for (const row of rows) {
+        if (!latest.has(`${row.partyId}:${row.mark}`)) {
+          latest.set(`${row.partyId}:${row.mark}`, row);
+        }
+      }
+      const blocked: string[] = [];
+      for (const row of latest.values()) {
+        if (row.event === 'OPEN') {
+          blocked.push(row.partyId);
+        }
+      }
+      return blocked;
+    });
+  }
 }

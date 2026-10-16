@@ -3,7 +3,6 @@ import * as privacyPorts from './index';
 import * as requestPorts from '../requests';
 import {
   ContractImpersonationUnavailableAdapter,
-  PersonalDataBlockUnavailableAdapter,
   PersonalDataErasureUnavailableAdapter,
 } from './unavailable-privacy-ports.adapters';
 import { ContractStandingUnavailableAdapter } from '../requests/ports/unavailable-contract-standing.adapter';
@@ -14,7 +13,6 @@ describe('puertos y adaptadores no instalados de privacidad', () => {
     expect(privacyPorts.IPrivacyAuthorizationWritePort).toBeDefined();
     expect(privacyPorts.IPrivacyLegalTextReadPort).toBeDefined();
     expect(privacyPorts.IPrivacyMarksReadPort).toBeDefined();
-    expect(privacyPorts.IPersonalDataBlockPort).toBeDefined();
     expect(privacyPorts.IPersonalDataErasurePort).toBeDefined();
     expect(requestPorts.IContractStandingReadPort).toBeDefined();
     expect(requestPorts.IPrivacyRequestsReadPort).toBeDefined();
@@ -25,10 +23,9 @@ describe('puertos y adaptadores no instalados de privacidad', () => {
       new ContractImpersonationUnavailableAdapter().suspendForImpersonation(),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
-    const blockAdapter = new PersonalDataBlockUnavailableAdapter();
-    await expect(blockAdapter.block()).rejects.toBeInstanceOf(ServiceUnavailableException);
-    await expect(blockAdapter.unblock()).rejects.toBeInstanceOf(ServiceUnavailableException);
-
+    await expect(new PersonalDataErasureUnavailableAdapter().plan()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
     await expect(new PersonalDataErasureUnavailableAdapter().anonymize()).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );

@@ -8,6 +8,7 @@ import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { MediaService } from '../../media/media.service';
 import { IContractImpersonationPort } from '../ports/contract-impersonation.port';
+import { IPersonalDataErasurePort } from '../ports/personal-data-erasure.port';
 import { PrivacyRequestsService } from './requests.service';
 import { IContractStandingReadPort } from './ports/contract-standing-read.port';
 import { PrivacyRequestsReadAdapter } from './ports/privacy-requests-read.adapter';
@@ -47,6 +48,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
   const impersonationPort: jest.Mocked<IContractImpersonationPort> = {
     suspendForImpersonation: jest.fn(),
   };
+  const erasurePort = { plan: jest.fn(), anonymize: jest.fn() };
   const auditService = { log: jest.fn().mockResolvedValue(undefined) };
   const effectivePermissionsService = { getEffectivePermissionsForUser: jest.fn() };
   const mediaService = { findOne: jest.fn(), getPrivacyEvidenceSignedUrl: jest.fn() };
@@ -157,6 +159,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
         transferred_to varchar(200),
         disputed_contract_ids uuid[] NOT NULL DEFAULT '{}',
         legal_basis text,
+        erased_at timestamptz,
+        erasure_categories text[] NOT NULL DEFAULT '{}',
         CONSTRAINT ck_data_subject_requests_verified_before_processing
           CHECK (status NOT IN ('EN_TRAMITE', 'PRORROGADA', 'RESUELTA') OR identity_verified_at IS NOT NULL),
         CONSTRAINT ck_data_subject_requests_unverified_not_procedent_basis
@@ -226,6 +230,11 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     await dataSource.query(
       `CREATE UNIQUE INDEX ON "${schemaName}".data_authorizations (source_ref) WHERE source_ref IS NOT NULL`,
     );
+    await dataSource.query(`
+      CREATE TABLE "${schemaName}".privacy_erasure_probe (
+        request_id uuid NOT NULL
+      )
+    `);
 
     service = new PrivacyRequestsService(
       dataSource,
@@ -235,6 +244,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       standingPort,
       mediaService as unknown as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
+      erasurePort as unknown as IPersonalDataErasurePort,
     );
   });
 
@@ -262,6 +272,53 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     effectivePermissionsService.getEffectivePermissionsForUser.mockResolvedValue([
       AccessPermissionKey.PRIVACY_READ,
     ]);
+    erasurePort.plan.mockReset().mockResolvedValue({
+      candidateExpedienteIds: [],
+      blockers: [],
+      counts: {},
+    });
+    erasurePort.anonymize.mockReset();
+  });
+
+  it('revierte la transacción cuando el participante escribe y luego falla la verificación', async () => {
+    const request = await createRequest({ kind: 'CONSULTA', right: 'SUPRIMIR' });
+    await inTenant(() => service.transition(request.request.id, 'complete', {}, actorId));
+    erasurePort.anonymize.mockImplementation(
+      async (_input: unknown, context: { manager: import('typeorm').EntityManager }) => {
+        await context.manager.query(`INSERT INTO privacy_erasure_probe (request_id) VALUES ($1)`, [
+          request.request.id,
+        ]);
+        throw new ConflictException({
+          code: 'PRIVACY_ERASURE_VERIFICATION_FAILED',
+          message: 'La verificación de residuales encontró datos pendientes.',
+        });
+      },
+    );
+
+    await expect(
+      inTenant(() =>
+        service.transition(
+          request.request.id,
+          'resolve',
+          {
+            responseText: 'Se revisará la solicitud.',
+            responseChannel: 'EMAIL',
+            erasure: { confirm: true, expedienteIds: [] },
+          },
+          actorId,
+        ),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PRIVACY_ERASURE_VERIFICATION_FAILED' } });
+
+    const persisted = (await dataSource.query(
+      `SELECT status FROM "${schemaName}".data_subject_requests WHERE id = $1`,
+      [request.request.id],
+    )) as Array<{ status: string }>;
+    const probe = (await dataSource.query(
+      `SELECT count(*)::int AS count FROM "${schemaName}".privacy_erasure_probe`,
+    )) as Array<{ count: number }>;
+    expect(persisted[0]?.status).toBe('EN_TRAMITE');
+    expect(probe[0]?.count).toBe(0);
   });
 
   it('devuelve identidad pendiente sin evidencia y omite actores en el detalle', async () => {
@@ -448,7 +505,11 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
         service.transition(
           request.request.id,
           'resolve',
-          { responseText: 'Se mantiene el dato por retención.', responseChannel: 'EMAIL' },
+          {
+            responseText: 'Se mantiene el dato por retención.',
+            responseChannel: 'EMAIL',
+            erasure: { confirm: true, expedienteIds: [] },
+          },
           actorId,
         ),
       ),

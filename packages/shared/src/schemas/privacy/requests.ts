@@ -45,8 +45,26 @@ export const requestTaskKindSchema = z.enum([
   'SUSPENDER_COBRO_EXTERNO',
   'ENTREGAR_COPIA_DOCUMENTOS',
 ]);
+export const erasureCategorySchema = z.enum([
+  'IDENTIFICACION',
+  'CONTACTO',
+  'UBICACION',
+  'FISCAL',
+  'COMERCIAL',
+  'EVIDENCIA_CONSENTIMIENTO',
+  'CUENTA_USUARIO',
+  'EVIDENCIA_DOCUMENTAL',
+  'OPERACION_CAMPO',
+]);
+export const erasureBlockerSchema = z.enum([
+  'IDENTITY_NOT_VERIFIED',
+  'INVALID_STATUS',
+  'CONSERVATION_DUTY',
+  'UNRECONCILED_TITULAR',
+  'ACTIVE_USER_ACCOUNT',
+]);
 
-const civilDateSchema = z
+export const civilDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/u)
   .refine((value) => {
@@ -198,6 +216,13 @@ export const resolveRequestSchema = z
     responseText: z.string().trim().min(1).max(4000),
     responseChannel: responseChannelSchema,
     dataChangeReference: z.string().trim().max(200).optional(),
+    erasure: z
+      .object({
+        confirm: z.literal(true),
+        expedienteIds: z.array(z.string().uuid()).max(50),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export const rejectRequestSchema = z
@@ -216,6 +241,16 @@ export const transferRequestSchema = z
   .strict();
 export const completeRequestTaskSchema = z
   .object({ note: z.string().trim().min(1).max(1000) })
+  .strict();
+
+export const erasurePreviewSchema = z
+  .object({
+    eligible: z.boolean(),
+    blockers: z.array(erasureBlockerSchema),
+    candidateExpedienteIds: z.array(z.string().uuid()),
+    counts: z.record(erasureCategorySchema, z.number().int().nonnegative()),
+    categories: z.array(erasureCategorySchema),
+  })
   .strict();
 
 export const requestEventSchema = z
@@ -250,6 +285,10 @@ export const dataSubjectRequestSummarySchema = z
     dueAt: civilDateSchema,
     extendedUntil: civilDateSchema.nullable(),
     isOverdue: z.boolean(),
+    transferDueAt: civilDateSchema,
+    transferredLate: z.boolean().nullable(),
+    erasedAt: z.string().datetime().nullable(),
+    erasureCategories: z.array(erasureCategorySchema),
   })
   .strict();
 
@@ -285,6 +324,10 @@ export const dataSubjectRequestDetailRequestSchema = z
     resolvedBy: z.string().uuid().nullable(),
     transferredTo: z.string().nullable(),
     legalBasis: requestLegalBasisSchema.nullable(),
+    transferDueAt: civilDateSchema,
+    transferredLate: z.boolean().nullable(),
+    erasedAt: z.string().datetime().nullable(),
+    erasureCategories: z.array(erasureCategorySchema),
     identityStatus: z.enum(['PENDIENTE', 'VERIFICADA']),
     identityVerificationMethod: identityVerificationMethodSchema.nullable(),
     identityVerifiedAt: z.string().datetime({ offset: true }).nullable(),
@@ -309,6 +352,10 @@ export type IdentityVerificationMethod = z.infer<typeof identityVerificationMeth
 export type ResponseChannel = z.infer<typeof responseChannelSchema>;
 export type RequestLegalBasis = z.infer<typeof requestLegalBasisSchema>;
 export type RequestTaskKind = z.infer<typeof requestTaskKindSchema>;
+export type ErasureCategory = z.infer<typeof erasureCategorySchema>;
+export type ErasureBlocker = z.infer<typeof erasureBlockerSchema>;
+export type ErasurePreview = z.infer<typeof erasurePreviewSchema>;
+export type ResolveDataSubjectRequest = z.infer<typeof resolveRequestSchema>;
 export type CreateDataSubjectRequest = z.infer<typeof createDataSubjectRequestSchema>;
 export type VerifyIdentityRequest = z.infer<typeof verifyIdentityRequestSchema>;
 export type ListDataSubjectRequestsQuery = z.infer<typeof listDataSubjectRequestsQuerySchema>;

@@ -42,4 +42,29 @@ describe('PrivacyMarksAdapter', () => {
     await expect(adapter.activeMarks([])).resolves.toEqual({});
     expect(dataSource.getRepository).not.toHaveBeenCalled();
   });
+
+  it('lista los titulares con la marca activa (el último evento es OPEN)', async () => {
+    const repository = {
+      find: jest.fn().mockResolvedValue([
+        { partyId: partyA, mark: 'DATOS_BLOQUEADOS', event: 'OPEN' },
+        { partyId: partyA, mark: 'DATOS_BLOQUEADOS', event: 'CLOSE' },
+        { partyId: partyB, mark: 'DATOS_BLOQUEADOS', event: 'CLOSE' },
+        { partyId: partyB, mark: 'DATOS_BLOQUEADOS', event: 'OPEN' },
+        { partyId: unknownParty, mark: 'DATOS_BLOQUEADOS', event: 'OPEN' },
+      ]),
+    };
+    const manager = { getRepository: jest.fn(() => repository) };
+    jest
+      .spyOn(tenantQuery, 'withPrivacyTenant')
+      .mockImplementation(async (_source, operation) => operation(manager as never));
+    const adapter = new PrivacyMarksAdapter({} as never);
+
+    await expect(adapter.partyIdsWithActiveMark('DATOS_BLOQUEADOS')).resolves.toEqual([
+      partyA,
+      unknownParty,
+    ]);
+    expect(repository.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { mark: 'DATOS_BLOQUEADOS' } }),
+    );
+  });
 });

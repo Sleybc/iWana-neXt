@@ -135,6 +135,7 @@ import {
   dataAuthorizationViewSchema,
   dataSubjectRequestDetailSchema,
   dataSubjectRequestSummarySchema,
+  erasurePreviewSchema,
   legalTextSchema,
   privacyEvidenceResponseSchema,
   privacyIncidentSchema,
@@ -148,6 +149,7 @@ import {
   type CreatePrivacyIncident,
   type DataAuthorizationView,
   type DataSubjectRequestDetail,
+  type ErasurePreview,
   type LegalText,
   type LegalTextType,
   type PrivacyEvidenceResponse,
@@ -160,6 +162,7 @@ import {
   type RequestStatus,
   type ResponseChannel,
   type RequestSummary,
+  type ResolveDataSubjectRequest,
   type VerifyIdentityRequest,
 } from '@iwana/shared';
 import type {
@@ -9857,6 +9860,11 @@ export const privacyApi = {
     return dataSubjectRequestDetailSchema.parse(detail);
   },
 
+  getErasurePreview: async (id: string): Promise<ErasurePreview> => {
+    const preview = await request<unknown>(`/privacy/requests/${id}/erasure-preview`);
+    return erasurePreviewSchema.parse(preview);
+  },
+
   createRequest: (payload: CreateDataSubjectRequest) =>
     request<{
       request: { id: string; status: string; dueAt: string };
@@ -9888,14 +9896,7 @@ export const privacyApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  resolveRequest: (
-    id: string,
-    payload: {
-      responseText: string;
-      responseChannel: ResponseChannel;
-      dataChangeReference?: string;
-    },
-  ) =>
+  resolveRequest: (id: string, payload: ResolveDataSubjectRequest) =>
     request<unknown>(`/privacy/requests/${id}/resolve`, {
       method: 'POST',
       body: JSON.stringify(payload),
