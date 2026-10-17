@@ -79,7 +79,7 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
     });
   });
 
-  it('registra el participante, la fase y el SQLSTATE con stack, sin los parámetros de la consulta', async () => {
+  it('registra participante, fase y SQLSTATE sin stack ni parámetros de la consulta', async () => {
     wfm.plan.mockRejectedValueOnce(queryFailed('42703'));
 
     await expect(adapter.plan(target, { manager })).rejects.toBeInstanceOf(
@@ -87,11 +87,11 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
     );
 
     expect(loggerError).toHaveBeenCalledTimes(1);
-    const [message, stack] = loggerError.mock.calls[0] as [string, string];
+    const [message] = loggerError.mock.calls[0] as [string];
     expect(message).toContain('participant=wfm');
     expect(message).toContain('phase=plan');
     expect(message).toContain('sqlstate=42703');
-    expect(typeof stack).toBe('string');
+    expect(loggerError.mock.calls[0]).toHaveLength(1);
     expect(JSON.stringify(loggerError.mock.calls)).not.toContain('valor-sensible');
   });
 

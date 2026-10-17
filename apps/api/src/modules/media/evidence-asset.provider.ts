@@ -13,7 +13,7 @@ import { validateMagicBytes } from './magic-bytes';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { MediaAsset, MediaUsage } from '@iwana/db';
+import { MediaAsset, MediaUsage, summarizeErrorForLog } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import {
   EVIDENCE_ASSET_CONSTRAINTS,
@@ -161,7 +161,7 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     try {
       saved = await mediaRepo.save(asset);
     } catch (err: unknown) {
-      this.logger.error(`Error al persistir metadata de evidencia: ${String(err)}`);
+      this.logger.error(`Error al persistir metadata de evidencia: ${summarizeErrorForLog(err)}`);
       throw new BadRequestException({
         code: 'EVIDENCE_METADATA_PERSIST_FAILED',
         message: 'Error al registrar el asset de evidencia.',
@@ -183,7 +183,9 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
     } catch (err: unknown) {
       // Compensación: revertir el registro en BD
       await mediaRepo.delete(saved.id);
-      this.logger.error(`Fallo al subir objeto a storage [assetId=${saved.id}]: ${String(err)}`);
+      this.logger.error(
+        `Fallo al subir objeto a storage [assetId=${saved.id}]: ${summarizeErrorForLog(err)}`,
+      );
       throw new BadRequestException({
         code: 'EVIDENCE_STORAGE_WRITE_FAILED',
         message: 'Error al almacenar el archivo de evidencia.',
@@ -303,7 +305,9 @@ export class EvidenceAssetProvider implements IEvidenceAssetPort {
       this.logger.log(`Signed URL generada [assetId=${mediaAssetId} ttl=${clampedTtl}s]`);
       return signedUrl;
     } catch (err: unknown) {
-      this.logger.error(`Error al generar signed URL [assetId=${mediaAssetId}]: ${String(err)}`);
+      this.logger.error(
+        `Error al generar signed URL [assetId=${mediaAssetId}]: ${summarizeErrorForLog(err)}`,
+      );
       throw new BadRequestException({
         code: 'EVIDENCE_SIGNED_URL_FAILED',
         message: 'Error al generar la URL de descarga.',

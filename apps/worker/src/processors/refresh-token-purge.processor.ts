@@ -1,4 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, UnrecoverableError } from 'bullmq';
@@ -65,6 +66,7 @@ export class RefreshTokenPurgeProcessor extends WorkerHost {
    * Procesa el job de purga de refresh tokens expirados.
    * Se invoca diariamente a las 3am UTC (10pm hora Colombia).
    */
+  @SanitizeFailedReason()
   async process(_job: Job): Promise<void> {
     this.logger.log('[purge] Iniciando purga de refresh tokens expirados...');
 

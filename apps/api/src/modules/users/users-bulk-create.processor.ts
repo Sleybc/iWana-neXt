@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
+import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
 import type { Job } from 'bullmq';
 import {
   USERS_BULK_CREATE_JOB,
@@ -24,6 +25,7 @@ export class UsersBulkCreateProcessor extends WorkerHost {
     super();
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<UsersBulkCreateJobPayload>): Promise<void> {
     if (job.name !== USERS_BULK_CREATE_JOB) {
       this.logger.warn(`Job de bulk users no soportado: ${job.name}`);

@@ -1,4 +1,5 @@
 import { BullRegistrar, InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
@@ -82,6 +83,12 @@ function safeErrorType(value: unknown): string {
   return typeof value === 'string' && SAFE_EXECUTION_ERROR_TYPES.has(value)
     ? value
     : 'EXECUTION_EVENT_FAILURE';
+}
+
+function safeInventoryDlqErrorType(error: unknown): string {
+  return error instanceof Error && SAFE_INVENTORY_ERROR_TYPES.has(error.name)
+    ? error.name
+    : 'INVENTORY_DLQ_FAILURE';
 }
 
 function safeFailureTimestamp(value: unknown): string {
@@ -345,6 +352,7 @@ export class ExecutionOrderDlqProcessor
     return removed;
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<ExecutionOrderDlqJob>): Promise<void> {
     const data: Record<string, unknown> = isRecord(job.data) ? job.data : {};
     if (data['kind'] === 'execution-order-dlq-cleanup') {
@@ -538,10 +546,7 @@ export class ExecutionOrderDlqProcessor
       );
     } catch (error) {
       if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
-      const errorType =
-        error instanceof Error && SAFE_INVENTORY_ERROR_TYPES.has(error.name)
-          ? error.name
-          : 'INVENTORY_DLQ_FAILURE';
+      const errorType = safeInventoryDlqErrorType(error);
       this.logger.error(
         `[execution-dlq] inventory_dlq_processing_failed event=${diagnostic.eventId} ` +
           `tenant=${diagnostic.tenantId} ot=${diagnostic.executionOrderId} ` +

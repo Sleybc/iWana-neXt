@@ -32,6 +32,8 @@ jest.mock('@iwana/db', () => {
     applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
     grantTenantSchemaAppPrivileges: (...args: unknown[]) =>
       mockGrantTenantSchemaAppPrivileges(...args),
+    summarizeErrorForLog: (error: unknown) =>
+      `class=${error instanceof Error ? error.constructor.name : 'UnknownError'} sqlstate=none`,
     resolveMigrationDbCredentials,
     resolveAppDbRole: () =>
       (process.env['DB_APP_USER'] ?? process.env['DB_USER'] ?? 'iwana_app').trim(),
@@ -236,7 +238,7 @@ describe('TenantProvisioningProcessor', () => {
           tenantSlug: 'isp-test',
         },
       } as never),
-    ).rejects.toThrow('rol app ausente');
+    ).rejects.toMatchObject({ message: 'class=Error sqlstate=none' });
 
     expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
     expect(tenantSeedService.seedTaxPresets).not.toHaveBeenCalled();

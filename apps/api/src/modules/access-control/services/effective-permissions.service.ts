@@ -7,6 +7,7 @@ import {
   User,
   UserAccessProfile,
   runInTenantSchema,
+  summarizeErrorForLog,
 } from '@iwana/db';
 import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { DataSource, In, LessThanOrEqual, MoreThanOrEqual, IsNull } from 'typeorm';
@@ -58,9 +59,7 @@ export class EffectivePermissionsService {
         }
       }
     } catch (error) {
-      this.logger.warn(
-        `Cache get fallo para ${cacheKey}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`Cache get fallo para ${cacheKey}: ${summarizeErrorForLog(error)}`);
     }
 
     const result = await this.computeEffectivePermissions(
@@ -73,9 +72,7 @@ export class EffectivePermissionsService {
     try {
       await this.redis.set(cacheKey, JSON.stringify(result), 'EX', CACHE_TTL_SECONDS);
     } catch (error) {
-      this.logger.warn(
-        `Cache set fallo para ${cacheKey}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`Cache set fallo para ${cacheKey}: ${summarizeErrorForLog(error)}`);
     }
 
     return result;
@@ -167,9 +164,7 @@ export class EffectivePermissionsService {
     try {
       await this.redis.del(key);
     } catch (error) {
-      this.logger.warn(
-        `Cache del fallo para ${key}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`Cache del fallo para ${key}: ${summarizeErrorForLog(error)}`);
     }
   }
 
@@ -179,9 +174,7 @@ export class EffectivePermissionsService {
     try {
       await this.redis.del(...keys);
     } catch (error) {
-      this.logger.warn(
-        `Cache del fan-out fallo para ${tenantId}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`Cache del fan-out fallo para ${tenantId}: ${summarizeErrorForLog(error)}`);
     }
   }
 
@@ -203,9 +196,7 @@ export class EffectivePermissionsService {
       });
       await this.invalidateUsersPermissions(tenantId, userIds);
     } catch (error) {
-      this.logger.warn(
-        `Fan-out por perfil ${profileId} fallo: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.warn(`Fan-out por perfil ${profileId} fallo: ${summarizeErrorForLog(error)}`);
     }
   }
 
@@ -225,7 +216,7 @@ export class EffectivePermissionsService {
       await this.invalidateUsersPermissions(tenantId, userIds);
     } catch (error) {
       this.logger.warn(
-        `ACCESS_CACHE_FANOUT_FAILED fan-out por perfiles: ${error instanceof Error ? error.message : String(error)}`,
+        `ACCESS_CACHE_FANOUT_FAILED fan-out por perfiles: ${summarizeErrorForLog(error)}`,
       );
     }
   }

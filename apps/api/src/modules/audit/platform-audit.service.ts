@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Brackets, DataSource } from 'typeorm';
-import { PlatformAuditLog } from '@iwana/db';
+import { PlatformAuditLog, summarizeErrorForLog } from '@iwana/db';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { AuditEntryInput } from './interfaces/audit-entry.interface';
 import { AuditActorResolver } from './audit-actor.resolver';
@@ -67,7 +67,7 @@ export class PlatformAuditService {
     } catch (err) {
       this.logger.warn(
         `Fallo al registrar platform audit entry ` +
-          `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]: ${String(err)}`,
+          `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]: ${summarizeErrorForLog(err)}`,
       );
     }
   }

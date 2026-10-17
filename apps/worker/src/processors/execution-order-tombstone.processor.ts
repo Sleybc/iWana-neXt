@@ -1,10 +1,11 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
 import { OPERATIONS_EXECUTION_TOMBSTONE_QUEUE } from '@iwana/shared';
-import { isValidSchemaName } from '@iwana/db';
+import { isValidSchemaName, summarizeErrorForLog } from '@iwana/db';
 
 /**
  * Fila de conteos que devuelve `purge_execution_order_retention_batch`
@@ -82,6 +83,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
     );
   }
 
+  @SanitizeFailedReason()
   async process(_job: Job): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -122,7 +124,7 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
               `status_transitions_anonymized=${counts.status_transitions_anonymized}`,
           );
         } catch (error: unknown) {
-          const reason = error instanceof Error ? error.message : 'unknown error';
+          const reason = summarizeErrorForLog(error);
           tenantErrors.push(new Error(`schema=${tenant.schema_name}: ${reason}`));
         }
       }
@@ -175,9 +177,11 @@ export class ExecutionOrderTombstoneProcessor extends WorkerHost implements OnAp
       return toPurgeCounts(purge);
     } catch (error) {
       await client.query('ROLLBACK');
-      const reason = error instanceof Error ? error.message : 'unknown error';
-      // Sin PII: solo schema_name y el mensaje del error (códigos 42883/42P01).
-      this.logger.error(`[execution-tombstone] Fallo procesando schema=${schemaName}: ${reason}`);
+      const errorSummary = summarizeErrorForLog(error);
+      // Sin PII: solo schema_name, clase y códigos estructurados del error.
+      this.logger.error(
+        `[execution-tombstone] Fallo procesando schema=${schemaName}: ${errorSummary}`,
+      );
       throw error;
     }
   }

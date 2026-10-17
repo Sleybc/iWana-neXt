@@ -24,6 +24,7 @@ jest.mock('@iwana/db', () => ({
   TenantContext: { run: jest.fn((_context, callback: () => unknown) => callback()) },
   isValidSchemaName: jest.fn(() => true),
   runInTenantSchema: jest.fn(),
+  summarizeErrorForLog: jest.fn(() => 'class=Error sqlstate=none'),
 }));
 
 const TENANT_ID = '10000000-0000-4000-8000-000000000001';

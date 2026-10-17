@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
+import { AuditLog, runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { sanitizeAuditPayload } from './audit-sanitize.policy';
 import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
 import { PlatformAuditService } from './platform-audit.service';
@@ -133,7 +133,7 @@ export class AuditService {
       // Audit failure NUNCA debe bloquear la operacion principal
       this.logger.warn(
         `Fallo al registrar audit entry ` +
-          `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]: ${String(err)}`,
+          `[action=${entry.action} entity=${entry.entityType}:${entry.entityId}]: ${summarizeErrorForLog(err)}`,
       );
     }
   }

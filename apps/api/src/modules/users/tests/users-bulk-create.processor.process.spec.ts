@@ -53,11 +53,12 @@ describe('UsersBulkCreateProcessor.process', () => {
     expect(usersService.executeBulkCreateJob).not.toHaveBeenCalled();
   });
 
-  it('propaga el fallo del servicio para que BullMQ pueda reintentar', async () => {
+  it('propaga un fallo resumido para que BullMQ reintente sin persistir su mensaje', async () => {
     usersService.executeBulkCreateJob.mockRejectedValue(new Error('Redis no disponible'));
 
-    await expect(processor.process(buildJob(USERS_BULK_CREATE_JOB, PAYLOAD))).rejects.toThrow(
-      'Redis no disponible',
+    await expect(processor.process(buildJob(USERS_BULK_CREATE_JOB, PAYLOAD))).rejects.toMatchObject(
+      { message: 'class=Error sqlstate=none' },
     );
+    expect(usersService.executeBulkCreateJob).toHaveBeenCalledTimes(1);
   });
 });

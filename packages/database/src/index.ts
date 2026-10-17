@@ -19,6 +19,7 @@ export type { DbCredentials } from './db-credentials';
 // Diagnóstico TypeORM sin consultas, parámetros ni excepciones crudas (D11).
 export { SafeTypeOrmLogger } from './safe-typeorm.logger';
 export type { SafeTypeOrmLogSink } from './safe-typeorm.logger';
+export { summarizeErrorForLog } from './summarize-error-for-log';
 
 // Grants post-DDL de provisioning (SEC-04) — schema tenant → rol app
 export {

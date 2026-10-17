@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { ErasureBlocker, ErasureCategory } from '@iwana/shared';
 import { QueryFailedError, type EntityManager, type QueryRunner } from 'typeorm';
+import { summarizeErrorForLog } from '@iwana/db';
 import {
   IPersonalDataErasurePort,
   type PersonalDataErasurePlan,
@@ -286,9 +287,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
 
   /**
    * Ejecuta un paso de un participante. Un fallo de esquema esperable se
-   * registra con participante, fase, SQLSTATE y stack —nunca la consulta ni
-   * sus parámetros, que pueden llevar HMAC o identificadores— y se responde
-   * con un código de dominio. Cualquier otro error se propaga intacto.
+   * registra con participante, fase y un resumen sin datos del driver; se
+   * responde con un código de dominio. Cualquier otro error se propaga intacto.
    */
   private async runParticipant<T>(
     entry: NamedParticipant,
@@ -300,11 +300,9 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     } catch (error) {
       const sqlState = this.schemaSqlState(error);
       if (!sqlState) throw error;
-      // Solo los marcos del stack: la primera línea repite el mensaje del
-      // driver, que puede citar el valor rechazado.
       this.logger.error(
-        `PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE participant=${entry.name} phase=${phase} sqlstate=${sqlState}`,
-        (error as Error).stack?.split('\n').slice(1).join('\n'),
+        `PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE participant=${entry.name} phase=${phase} ` +
+          summarizeErrorForLog(error),
       );
       throw new ServiceUnavailableException({
         code: 'PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE',

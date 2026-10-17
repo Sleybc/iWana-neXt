@@ -119,7 +119,10 @@ describe('RefreshTokenPurgeProcessor', () => {
 
     const processor = buildProcessor();
 
-    await expect(processor.process({} as never)).rejects.toThrow('connection reset');
+    await expect(processor.process({} as never)).rejects.toMatchObject({
+      name: 'Error',
+      message: 'class=Error sqlstate=none',
+    });
 
     // El cliente debe liberarse siempre (bloque finally garantiza esto)
     expect(mockClient.release).toHaveBeenCalledTimes(1);

@@ -16,8 +16,7 @@ import * as crypto from 'crypto';
 import Redis from 'ioredis';
 import { DataSource, FindOptionsWhere, In, MoreThan } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { User } from '@iwana/db';
-import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { User, runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import {
   AuditAction,
   DocumentType,
@@ -842,7 +841,7 @@ export class UsersService {
       credentialsClaimed: reclamado,
     };
     if (state === 'failed') {
-      response.errorMessage = String(job.failedReason ?? 'Error en la importación');
+      response.errorMessage = 'Error en la importación';
     }
     return response;
   }
@@ -1797,7 +1796,7 @@ export class UsersService {
    */
   private fireAndForget(task: PromiseLike<unknown> | unknown, context: string): void {
     void Promise.resolve(task).catch((err: unknown) => {
-      this.logger.warn(`Fallo en ${context}: ${String(err)}`);
+      this.logger.warn(`Fallo en ${context}: ${summarizeErrorForLog(err)}`);
     });
   }
 
@@ -1903,7 +1902,9 @@ export class UsersService {
     }
 
     if (error instanceof Error) {
-      this.logger.error(`Fallo inesperado al crear usuario en lote: ${error.message}`);
+      this.logger.error(
+        `Fallo inesperado al crear usuario en lote: ${summarizeErrorForLog(error)}`,
+      );
     }
 
     return 'Error desconocido al crear el usuario.';
@@ -1938,8 +1939,9 @@ export class UsersService {
         tenantSlug: tenant.slug,
       };
     } catch (error: unknown) {
-      const detalle = error instanceof Error ? error.message : String(error);
-      this.logger.error(`No fue posible resolver el contexto del job bulk: ${detalle}`);
+      this.logger.error(
+        `No fue posible resolver el contexto del job bulk: ${summarizeErrorForLog(error)}`,
+      );
       return null;
     }
   }

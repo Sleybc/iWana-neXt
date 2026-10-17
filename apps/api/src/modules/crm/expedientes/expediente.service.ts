@@ -16,7 +16,7 @@ import * as crypto from 'crypto';
 import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { DataSource, EntityManager, In, IsNull, Like } from 'typeorm';
-import { AuditLog, runInTenantSchema, TenantContext } from '@iwana/db';
+import { AuditLog, runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { ExpedienteListView, resolveExpedienteStatusesForView } from './expediente-list-view';
 import {
   AcquisitionChannel,
@@ -500,11 +500,8 @@ export class ExpedienteService {
         try {
           await rename(pendingDeleteFilePath, targetFilePath);
         } catch (rollbackError) {
-          const rollbackMessage =
-            rollbackError instanceof Error ? rollbackError.message : 'Error desconocido';
           this.logger.error(
-            `No se pudo revertir la eliminación física ${pendingDeleteFilePath} tras fallar la persistencia del soporte documental: ${rollbackMessage}`,
-            rollbackError instanceof Error ? rollbackError.stack : undefined,
+            `No se pudo revertir la eliminación física ${pendingDeleteFilePath} tras fallar la persistencia del soporte documental: ${summarizeErrorForLog(rollbackError)}`,
           );
         }
       }
@@ -516,9 +513,8 @@ export class ExpedienteService {
         // Una vez persistida la eliminación, la limpieza física pasa a ser best-effort.
         await unlink(pendingDeleteFilePath);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
         this.logger.warn(
-          `No se pudo limpiar el soporte documental ${pendingDeleteFilePath} tras persistir su eliminación: ${errorMessage}`,
+          `No se pudo limpiar el soporte documental ${pendingDeleteFilePath} tras persistir su eliminación: ${summarizeErrorForLog(error)}`,
         );
       }
     }
@@ -970,7 +966,7 @@ export class ExpedienteService {
     } catch (err) {
       // El resumen del suscriptor es enriquecimiento opcional; no bloquear la lectura del expediente
       this.logger.warn(
-        `No se pudo obtener subscriberSummary para expediente ${id}: ${(err as Error).message}`,
+        `No se pudo obtener subscriberSummary para expediente ${id}: ${summarizeErrorForLog(err)}`,
       );
     }
 
@@ -3269,7 +3265,7 @@ export class ExpedienteService {
     } catch (error) {
       // No bloquear la operación de negocio por fallos en trazabilidad histórica.
       this.logger.warn(
-        `[${params.contextLabel}] Falló persistencia de status_change para expediente ${params.expedienteId}: ${String(error)}`,
+        `[${params.contextLabel}] Falló persistencia de status_change para expediente ${params.expedienteId}: ${summarizeErrorForLog(error)}`,
       );
     }
   }

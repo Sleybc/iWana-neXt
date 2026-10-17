@@ -592,7 +592,7 @@ describe('UsersService — regresiones de la Ola F (bulkCreate async)', () => {
       expect(serializado).not.toContain('tenant_*');
     });
 
-    it('el detalle tecnico si queda registrado en el log del servidor', async () => {
+    it('resume el error interno sin registrar el detalle técnico', async () => {
       const logError = jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
       fallosInternos.set('con-detalle@empresa-demo.test', 'Detalle interno de infraestructura');
 
@@ -602,7 +602,12 @@ describe('UsersService — regresiones de la Ola F (bulkCreate async)', () => {
       );
 
       expect(logError).toHaveBeenCalledWith(
-        expect.stringContaining('Detalle interno de infraestructura'),
+        expect.stringContaining(
+          'Fallo inesperado al crear usuario en lote: class=Error sqlstate=none',
+        ),
+      );
+      expect(logError.mock.calls.flat().join(' ')).not.toContain(
+        'Detalle interno de infraestructura',
       );
       logError.mockRestore();
     });

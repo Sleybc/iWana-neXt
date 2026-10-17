@@ -1,4 +1,5 @@
 import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -182,6 +183,7 @@ export class InventoryExecutionRequestProcessor
     );
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<unknown>): Promise<void> {
     if (job.name === INVENTORY_SOURCE_CLEANUP_JOB) {
       await this.removeExpiredInventorySourceJobs();

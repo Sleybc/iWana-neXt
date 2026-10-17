@@ -14,6 +14,7 @@ import {
   isValidSchemaName,
   loadPiiHashKeyFromEnv,
   runInTenantSchema,
+  summarizeErrorForLog,
 } from '@iwana/db';
 import { DocumentTypeParty, normalizeDocumentNumber, PartyContactType } from '@iwana/shared';
 import type { DataSource, QueryRunner } from 'typeorm';
@@ -546,8 +547,7 @@ async function main(): Promise<void> {
 
 if (require.main === module) {
   main().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'error desconocido';
-    process.stderr.write(`[BACKFILL] Fatal: ${message}\n`);
+    process.stderr.write(`[BACKFILL] Fatal: ${summarizeErrorForLog(error)}\n`);
     process.exitCode = 1;
   });
 }

@@ -1,4 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
@@ -22,6 +23,7 @@ export class AssuranceFieldServiceProcessor extends WorkerHost {
     super();
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<FieldServiceRequest>): Promise<void> {
     if (job.name !== 'request-field-service') {
       this.logger.warn(`Job Assurance no soportado: ${job.name}`);

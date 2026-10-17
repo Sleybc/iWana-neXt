@@ -1,4 +1,5 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -150,6 +151,7 @@ export class PrivacyDueAlertsProcessor extends WorkerHost implements OnApplicati
     this.logger.log('[privacy-due-alerts] Job repetible registrado (07:00 America/Bogota).');
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<unknown>): Promise<void> {
     if (job.name === PRIVACY_DUE_ALERTS_SWEEP_JOB) {
       await this.enqueueActiveTenants();

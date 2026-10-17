@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { summarizeErrorForLog } from '@iwana/db';
 import { TenantStatus, TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantResponseDto } from './dto/tenant.dto';
@@ -66,7 +67,7 @@ export class TenantProvisioningService {
       );
     } catch (error) {
       this.logger.error(
-        `Fallo al encolar provisioning para tenant ${payload.tenantId}: ${(error as Error).message}`,
+        `Fallo al encolar provisioning para tenant ${payload.tenantId}: ${summarizeErrorForLog(error)}`,
       );
 
       // Marcar el tenant como fallo de provisioning con cache consistente.

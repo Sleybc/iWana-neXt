@@ -441,7 +441,10 @@ describe('EvidenceOrphanDetectionProcessor', () => {
         processor.process({
           data: { operation: 'detect-and-clean', correlationId: 'corr-fault' },
         } as Job<{ operation: 'detect-and-clean'; correlationId: string }>),
-      ).rejects.toThrow('DB connection lost');
+      ).rejects.toMatchObject({
+        name: 'Error',
+        message: 'class=Error sqlstate=none',
+      });
 
       expect(errorClient.release).toHaveBeenCalled();
     });

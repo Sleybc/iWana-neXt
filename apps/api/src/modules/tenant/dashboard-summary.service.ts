@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
-import { Tenant, User, AuditLog, runInTenantSchema } from '@iwana/db';
+import { Tenant, User, AuditLog, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
 import { TenantStatus, UserStatus } from '@iwana/shared';
 import {
   DashboardAlertDto,
@@ -71,12 +71,12 @@ export class DashboardSummaryService {
 
     if (usersMetricsResult.status === 'rejected') {
       this.logger.warn(
-        `No se pudo contar usuarios/MFA para tenant ${tenantId}: ${String(usersMetricsResult.reason)}`,
+        `No se pudo contar usuarios/MFA para tenant ${tenantId}: ${summarizeErrorForLog(usersMetricsResult.reason)}`,
       );
     }
     if (auditEventsLast7d.status === 'rejected') {
       this.logger.warn(
-        `No se pudo contar audit events para tenant ${tenantId}: ${String(auditEventsLast7d.reason)}`,
+        `No se pudo contar audit events para tenant ${tenantId}: ${summarizeErrorForLog(auditEventsLast7d.reason)}`,
       );
     }
 

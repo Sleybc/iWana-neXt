@@ -1,4 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, UnrecoverableError } from 'bullmq';
@@ -40,6 +41,7 @@ export class TenantSchemaPurgeProcessor extends WorkerHost {
     });
   }
 
+  @SanitizeFailedReason()
   async process(_job: Job): Promise<void> {
     const retentionDays = this.getRetentionDays();
     const batchSize = this.getBatchSize();

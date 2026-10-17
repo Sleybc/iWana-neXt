@@ -413,9 +413,10 @@ describe('ExecutionOrderDlqProcessor', () => {
         },
       } as Job;
 
-      await expect(processor.process(dlqJob)).rejects.toThrow(
-        'Execution order DLQ diagnostic persistence failed',
-      );
+      await expect(processor.process(dlqJob)).rejects.toMatchObject({
+        name: 'Error',
+        message: 'class=Error sqlstate=none',
+      });
       expect(loggerError.mock.calls.flat().join(' ')).not.toContain(rawConnectionError);
       expect(poolClient.release).not.toHaveBeenCalled();
     });
@@ -440,9 +441,10 @@ describe('ExecutionOrderDlqProcessor', () => {
         },
       } as Job;
 
-      await expect(processor.process(dlqJob)).rejects.toThrow(
-        'Execution order DLQ diagnostic persistence failed',
-      );
+      await expect(processor.process(dlqJob)).rejects.toMatchObject({
+        name: 'Error',
+        message: 'class=Error sqlstate=none',
+      });
       expect(loggerError.mock.calls.flat().join(' ')).not.toContain('DB connection pool exhausted');
     });
 

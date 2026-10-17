@@ -5,6 +5,7 @@ import type { Job } from 'bullmq';
 import { createHash } from 'node:crypto';
 import { Pool } from 'pg';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 
 export const EVIDENCE_ANALYSIS_QUEUE = 'evidence-analysis';
 
@@ -36,6 +37,7 @@ export class EvidenceAnalysisProcessor extends WorkerHost {
     });
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<EvidenceAnalysisJobData>): Promise<void> {
     const data = job.data;
     if (!isValidJobData(data)) throw new Error('EVIDENCE_ANALYSIS_INVALID_JOB');

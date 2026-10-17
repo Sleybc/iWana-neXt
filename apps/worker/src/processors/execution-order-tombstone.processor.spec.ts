@@ -122,14 +122,10 @@ describe('ExecutionOrderTombstoneProcessor', () => {
       expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
       expect(mockClient.query).toHaveBeenCalledWith(`SET LOCAL search_path TO "tenant_sano"`);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('schema=tenant_roto'));
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('does not exist'));
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('does not exist'));
       expect(error).toBeInstanceOf(AggregateError);
-      if (error instanceof AggregateError) {
-        expect(error.errors).toHaveLength(1);
-        expect(error.errors[0]).toBeInstanceOf(Error);
-        expect((error.errors[0] as Error).message).toContain('schema=tenant_roto');
-        expect((error.errors[0] as Error).message).toContain('does not exist');
-      }
+      expect(error).toMatchObject({ message: 'class=AggregateError sqlstate=none' });
+      expect(String(error)).not.toContain('does not exist');
       expect(mockClient.release).toHaveBeenCalledTimes(1);
     } finally {
       errorSpy.mockRestore();
@@ -140,7 +136,10 @@ describe('ExecutionOrderTombstoneProcessor', () => {
     mockClient.query.mockRejectedValueOnce(new Error('connection reset'));
 
     const processor = buildProcessor();
-    await expect(processor.process({} as never)).rejects.toThrow('connection reset');
+    await expect(processor.process({} as never)).rejects.toMatchObject({
+      name: 'Error',
+      message: 'class=Error sqlstate=none',
+    });
 
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });

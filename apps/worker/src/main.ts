@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { summarizeErrorForLog } from '@iwana/db';
 import { Buffer } from 'node:buffer';
 import { WorkerModule } from './worker.module';
 
@@ -47,10 +48,9 @@ async function bootstrap(): Promise<void> {
     const app = await NestFactory.create(WorkerModule);
     await app.init();
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Falló el arranque del worker.';
-    console.error(message);
+    console.error(`WORKER_STARTUP_FAILED ${summarizeErrorForLog(error)}`);
     process.exitCode = 1;
   }
 }
 
-bootstrap();
+void bootstrap();

@@ -1,4 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Job, UnrecoverableError } from 'bullmq';
@@ -12,6 +13,7 @@ import {
   TENANT_MIGRATIONS,
   Tenant,
   isValidSchemaName,
+  summarizeErrorForLog,
 } from '@iwana/db';
 import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import type { ProvisioningJobPayload } from '@iwana/shared';
@@ -84,6 +86,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
   /**
    * Procesa un job de provisioning de schema de tenant.
    */
+  @SanitizeFailedReason()
   async process(job: Job<ProvisioningJobPayload>): Promise<void> {
     const { tenantId, schemaName, tenantSlug, adminEmail } = job.data;
 
@@ -201,7 +204,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
       this.logger.log(`[provisioning] Tenant ${tenantSlug} activado exitosamente (status=ACTIVE)`);
     } catch (error) {
       this.logger.error(
-        `[provisioning] Fallo al provisionar schema "${schemaName}" para tenant ${tenantId}: ${(error as Error).message}`,
+        `[provisioning] Fallo al provisionar schema "${schemaName}" para tenant ${tenantId}: ${summarizeErrorForLog(error)}`,
       );
 
       await this.rollbackProvisioning(schemaName, tenantId, error as Error);
@@ -225,7 +228,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
         .execute();
     } catch (updateError) {
       this.logger.error(
-        `[provisioning] No se pudo actualizar status a PROVISIONING_FAILED para tenant ${tenantId}: ${(updateError as Error).message}`,
+        `[provisioning] No se pudo actualizar status a PROVISIONING_FAILED para tenant ${tenantId}: ${summarizeErrorForLog(updateError)}`,
       );
     }
   }
@@ -287,7 +290,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
     } catch (error) {
       this.logger.warn(
         `[provisioning] No se pudo verificar el estado de migraciones de "${schemaName}": ` +
-          `${(error as Error).message}. Se asume incompleto.`,
+          `${summarizeErrorForLog(error)}. Se asume incompleto.`,
       );
       return false;
     }
@@ -394,7 +397,7 @@ export class TenantProvisioningProcessor extends WorkerHost {
     error: Error,
   ): Promise<void> {
     this.logger.error(
-      `[provisioning] Rollback iniciado para schema "${schemaName}": ${error.message}`,
+      `[provisioning] Rollback iniciado para schema "${schemaName}": ${summarizeErrorForLog(error)}`,
     );
     // Eliminar el schema parcialmente creado para que un reintento parta de cero
     await this.pgPool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);

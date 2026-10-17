@@ -539,18 +539,19 @@ describe('UsersService — flujo asincrono de bulkCreate (Ola E)', () => {
       expect(respuesta.jobId).toBe(JOB_ID);
     });
 
-    it('un job fallido expone el motivo de fallo', async () => {
+    it('no expone el failedReason de BullMQ en la respuesta del estado', async () => {
       queue.seed(
         JOB_ID,
         buildPayload(TENANT_A, ['a@empresa-demo.test']),
         'failed',
-        'Conexion perdida con la base de datos',
+        'driver detail CENTINELA-FAILED-REASON-0001',
       );
 
       const respuesta = await TenantContext.run(TENANT_A, () => service.getBulkJobStatus(JOB_ID));
 
       expect(respuesta.status).toBe('failed');
-      expect(respuesta.errorMessage).toBe('Conexion perdida con la base de datos');
+      expect(respuesta.errorMessage).toBe('Error en la importación');
+      expect(JSON.stringify(respuesta)).not.toContain('CENTINELA-FAILED-REASON-0001');
       expect(respuesta.summary).toBeNull();
     });
 

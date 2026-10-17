@@ -141,7 +141,10 @@ describe('TenantSchemaPurgeProcessor', () => {
 
     const processor = buildProcessor();
 
-    await expect(processor.process({} as never)).rejects.toThrow('drop failed');
+    await expect(processor.process({} as never)).rejects.toMatchObject({
+      name: 'Error',
+      message: 'class=Error sqlstate=none',
+    });
     expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
     expect(mockClient.query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1, $2)', [
       43,

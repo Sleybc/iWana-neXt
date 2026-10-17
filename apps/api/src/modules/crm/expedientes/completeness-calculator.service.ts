@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
-import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { ExpedienteRecord } from './entities/expediente-record.entity';
 import { ConsentRecord } from './entities/consent-record-v2.entity';
 import { CoverageCheck } from './entities/coverage-check.entity';
@@ -160,8 +160,7 @@ export class CompletenessCalculator {
       };
     } catch (error) {
       this.logger.error(
-        `Error calculating completeness for expediente ${expedienteId}: ${error instanceof Error ? error.message : String(error)}`,
-        error instanceof Error ? error.stack : undefined,
+        `Error calculating completeness for expediente ${expedienteId}: ${summarizeErrorForLog(error)}`,
       );
       if (this.isSchemaCompatibilityError(error)) {
         this.logger.warn(
@@ -293,8 +292,7 @@ export class CompletenessCalculator {
         });
       } catch (error) {
         this.logger.error(
-          `Error calculating completeness for expediente ${expediente.id}: ${error instanceof Error ? error.message : String(error)}`,
-          error instanceof Error ? error.stack : undefined,
+          `Error calculating completeness for expediente ${expediente.id}: ${summarizeErrorForLog(error)}`,
         );
         result.set(expediente.id, this.buildFallbackFromStoredCompleteness(expediente));
       }

@@ -1,10 +1,11 @@
 import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { createHmac, randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
-import { isValidSchemaName } from '@iwana/db';
+import { isValidSchemaName, summarizeErrorForLog } from '@iwana/db';
 import {
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
@@ -284,6 +285,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     });
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<ExecutionEventJob>): Promise<void> {
     const { tenantId, envelope } = job.data;
 
@@ -1033,7 +1035,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       // Se registra y el reconciliador lo detectará.
       this.logger.warn(
         `[execution-events] no se pudo actualizar Task para OT ${executionOrderId}: ` +
-          `${error instanceof Error ? error.message : 'unknown'}`,
+          `${summarizeErrorForLog(error)}`,
       );
     }
   }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { TenantContext, runInTenantSchema } from '@iwana/db';
+import { TenantContext, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
 import { ScheduleEventStatus, VisitRequestStatus, WorkOrderPriority } from '@iwana/shared';
 
 /** Carga de un tecnico para el resumen del dashboard. */
@@ -247,7 +247,7 @@ export class WfmDashboardService {
       } catch (error) {
         this.logger.warn(
           `No fue posible resolver el resumen de bandeja pendiente para el tenant ${tenantId}.`,
-          error instanceof Error ? error.message : String(error),
+          summarizeErrorForLog(error),
         );
       }
 

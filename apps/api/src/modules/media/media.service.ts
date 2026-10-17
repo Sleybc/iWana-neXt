@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
-import { MediaAsset, MediaUsage } from '@iwana/db';
+import { MediaAsset, MediaUsage, summarizeErrorForLog } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
 import { imageSize } from 'image-size';
 import { validateMagicBytes } from './magic-bytes';
@@ -272,7 +272,9 @@ export class MediaService {
     } catch (err) {
       // Rollback del registro en BD si falla el storage
       await this.mediaRepo.delete(saved.id);
-      this.logger.error(`Fallo al subir objeto a storage [assetId=${saved.id}]: ${String(err)}`);
+      this.logger.error(
+        `Fallo al subir objeto a storage [assetId=${saved.id}]: ${summarizeErrorForLog(err)}`,
+      );
       throw new BadRequestException('Error al almacenar el archivo. Intenta de nuevo.');
     }
 

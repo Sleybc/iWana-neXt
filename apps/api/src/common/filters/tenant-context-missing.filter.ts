@@ -1,7 +1,12 @@
-import { ArgumentsHost, Catch, Logger } from '@nestjs/common';
+import { ArgumentsHost, Catch, HttpException, Logger } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Response } from 'express';
-import { isTenantContextMissingError } from '@iwana/db';
+import { isTenantContextMissingError, summarizeErrorForLog } from '@iwana/db';
+
+function requestPathWithoutQuery(originalUrl?: string, url?: string): string {
+  const path = (originalUrl ?? url ?? '?').split('?', 1)[0] ?? '?';
+  return path.replace(/[\r\n]/gu, '?') || '/';
+}
 
 /**
  * Convierte la falta de contexto de tenant en un 400 explicativo.
@@ -33,27 +38,64 @@ export class TenantContextMissingFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(TenantContextMissingFilter.name);
 
   override catch(exception: unknown, host: ArgumentsHost): void {
-    if (!isTenantContextMissingError(exception)) {
+    if (isTenantContextMissingError(exception)) {
+      const ctx = host.switchToHttp();
+      const response = ctx.getResponse<Response>();
+      const request = ctx.getRequest<{
+        method?: string;
+        originalUrl?: string;
+        url?: string;
+      }>();
+
+      // Se registra porque, aunque la respuesta sea 4xx, alcanzar este punto
+      // significa que la ruta exige tenant y el middleware no lo resolvió: puede
+      // ser uso incorrecto del cliente o una ruta mal clasificada en
+      // `modules/tenant/public-routes.ts`.
+      this.logger.warn(
+        `Contexto de tenant ausente en ${request.method ?? '?'} ${requestPathWithoutQuery(request.originalUrl, request.url)}`,
+      );
+
+      response.status(400).json({
+        message: 'Debe indicar el tenant via header X-Tenant-Slug para este endpoint.',
+        error: 'Bad Request',
+        statusCode: 400,
+      });
+      return;
+    }
+
+    if (exception instanceof HttpException) {
       super.catch(exception, host);
       return;
     }
 
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<{ method?: string; originalUrl?: string }>();
+    const request = ctx.getRequest<{ method?: string; originalUrl?: string; url?: string }>();
+    const requestMethod = request.method ?? '';
+    const method = /^[A-Z]{1,16}$/u.test(requestMethod) ? requestMethod : '?';
+    const path = requestPathWithoutQuery(request.originalUrl, request.url);
+    const stack = process.env.NODE_ENV === 'production' ? undefined : this.applicationStack();
+    const message = `UNHANDLED_ERROR method=${method} path=${path} ${summarizeErrorForLog(exception)}`;
 
-    // Se registra porque, aunque la respuesta sea 4xx, alcanzar este punto
-    // significa que la ruta exige tenant y el middleware no lo resolvió: puede
-    // ser uso incorrecto del cliente o una ruta mal clasificada en
-    // `modules/tenant/public-routes.ts`.
-    this.logger.warn(
-      `Contexto de tenant ausente en ${request.method ?? '?'} ${request.originalUrl ?? '?'}`,
-    );
+    if (stack) {
+      this.logger.error(message, stack);
+    } else {
+      this.logger.error(message);
+    }
 
-    response.status(400).json({
-      message: 'Debe indicar el tenant via header X-Tenant-Slug para este endpoint.',
-      error: 'Bad Request',
-      statusCode: 400,
+    response.status(500).json({
+      statusCode: 500,
+      message: 'Internal server error',
     });
+  }
+
+  private applicationStack(): string | undefined {
+    const applicationFrames = new Error().stack
+      ?.split('\n')
+      .slice(2)
+      .filter((frame) => /[\\/]apps[\\/]api[\\/]src[\\/]/u.test(frame));
+    return applicationFrames && applicationFrames.length > 0
+      ? applicationFrames.join('\n')
+      : undefined;
   }
 }

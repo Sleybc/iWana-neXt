@@ -1,9 +1,10 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
-import { isValidSchemaName } from '@iwana/db';
+import { isValidSchemaName, summarizeErrorForLog } from '@iwana/db';
 import { SCHEDULE_EVENTS_SWEEP_QUEUE } from '@iwana/shared';
 
 /**
@@ -72,6 +73,7 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
     );
   }
 
+  @SanitizeFailedReason()
   async process(_job: Job): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -90,7 +92,7 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
           const count = await this.processTenant(client, tenant.schema_name);
           totalMarked += count;
         } catch (error: unknown) {
-          const reason = error instanceof Error ? error.message : 'unknown error';
+          const reason = summarizeErrorForLog(error);
           tenantErrors.push(new Error(`schema=${tenant.schema_name}: ${reason}`));
         }
       }
@@ -144,8 +146,8 @@ export class ExpiredScheduleEventsProcessor extends WorkerHost implements OnAppl
       return marked;
     } catch (error) {
       await client.query('ROLLBACK');
-      const reason = error instanceof Error ? error.message : 'unknown error';
-      this.logger.error(`[expired-sweep] Fallo procesando schema=${schemaName}: ${reason}`);
+      const errorSummary = summarizeErrorForLog(error);
+      this.logger.error(`[expired-sweep] Fallo procesando schema=${schemaName}: ${errorSummary}`);
       throw error;
     }
   }

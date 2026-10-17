@@ -3,7 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import Redis from 'ioredis';
-import { isValidSchemaName, runInTenantSchema, TenantContext } from '@iwana/db';
+import {
+  isValidSchemaName,
+  runInTenantSchema,
+  summarizeErrorForLog,
+  TenantContext,
+} from '@iwana/db';
 import type { OperationalEventEnvelopeV1 } from '@iwana/shared';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 
@@ -236,9 +241,7 @@ export class ExecutionOrderProjectionConvergenceService {
         });
       } catch (error) {
         this.logger.warn(
-          `No se pudo recolectar telemetría del relay para un tenant: ${
-            error instanceof Error ? error.message : 'unknown'
-          }`,
+          `No se pudo recolectar telemetría del relay para un tenant: ${summarizeErrorForLog(error)}`,
         );
       }
     }

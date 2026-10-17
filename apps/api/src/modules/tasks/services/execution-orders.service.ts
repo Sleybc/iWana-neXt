@@ -26,6 +26,7 @@ import {
   ExecutionOrderTemplateRequirement as DbTemplateRequirement,
   TenantContext,
   runInTenantSchema,
+  summarizeErrorForLog,
 } from '@iwana/db';
 import {
   ExecutionOrderResult,
@@ -2616,11 +2617,9 @@ export class ExecutionOrdersService {
           });
         });
       } catch (compensationError: unknown) {
-        // Sin `message`: los QueryFailedError de TypeORM incluyen el volcado de
-        // parámetros de la sentencia y eso no puede acabar en un log.
         this.logger.warn(
           `No se pudo marcar el intent de evidencia ${intent.intent.id} como FAILED ` +
-            `(${compensationError instanceof Error ? compensationError.name : 'unknown'}); ` +
+            `(${summarizeErrorForLog(compensationError)}); ` +
             `queda para reconciliación por expiración.`,
         );
       }

@@ -5,6 +5,8 @@ import { Job, Queue } from 'bullmq';
 import { Pool, PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
+import { summarizeErrorForLog } from '@iwana/db';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 
 /**
  * Nombre de la cola para la detección de assets de evidencia huérfanos.
@@ -80,6 +82,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
     this.logger.log('Job recurrente de detección de huérfanos programado (cada 6h)');
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<OrphanDetectionJobData>): Promise<void> {
     const correlationId = job.data?.correlationId ?? randomUUID();
     this.logger.log(`Iniciando detección de huérfanos [correlationId=${correlationId}]`);
@@ -99,7 +102,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       await this.physicalDeleteRetained(client, correlationId);
     } catch (error: unknown) {
       this.logger.error(
-        `Error en detección de huérfanos [correlationId=${correlationId}]: ${String(error)}`,
+        `Error en detección de huérfanos [correlationId=${correlationId}]: ${summarizeErrorForLog(error)}`,
       );
       throw error;
     } finally {
@@ -287,7 +290,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
       }
     } catch (error: unknown) {
       await client.query('ROLLBACK');
-      this.logger.error(`Error en soft-delete de huérfanos: ${String(error)}`);
+      this.logger.error(`Error en soft-delete de huérfanos: ${summarizeErrorForLog(error)}`);
       throw error;
     }
   }
@@ -394,7 +397,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
         );
       }
     } catch (error: unknown) {
-      this.logger.error(`Error en liberación de claims huérfanos: ${String(error)}`);
+      this.logger.error(`Error en liberación de claims huérfanos: ${summarizeErrorForLog(error)}`);
       throw error;
     }
   }
@@ -458,7 +461,7 @@ export class EvidenceOrphanDetectionProcessor extends WorkerHost implements OnAp
           // El error de rollback no debe ocultar el fallo original.
         }
         this.logger.error(
-          `Error al borrar objeto retenido [assetId=${candidate.id}]: ${String(error)}`,
+          `Error al borrar objeto retenido [assetId=${candidate.id}]: ${summarizeErrorForLog(error)}`,
         );
       }
     }

@@ -170,6 +170,9 @@ describe('EvidenceAnalysisProcessor', () => {
         mediaAssetId: string;
         correlationId: string;
       }>),
-    ).rejects.toThrow('EVIDENCE_ANALYSIS_INVALID_JOB');
+    ).rejects.toMatchObject({
+      name: 'Error',
+      message: 'class=Error sqlstate=none',
+    });
   });
 });

@@ -1,4 +1,5 @@
 import type { Logger } from 'typeorm';
+import { extractSqlState } from './summarize-error-for-log';
 
 export interface SafeTypeOrmLogSink {
   error(message: string): void;
@@ -21,20 +22,6 @@ function queryOperation(query: string): string {
   return operation?.[1]?.toUpperCase() ?? 'UNKNOWN';
 }
 
-function sqlState(error: string | Error): string {
-  if (typeof error !== 'object' || error === null) {
-    return 'UNKNOWN';
-  }
-  // QueryFailedError conserva el código en driverError; el driver se recibe
-  // directamente en PostgresQueryRunner.logQueryError antes de crear ese wrapper.
-  const source =
-    'driverError' in error && typeof error.driverError === 'object' && error.driverError !== null
-      ? error.driverError
-      : error;
-  const code = 'code' in source ? source.code : undefined;
-  return typeof code === 'string' && /^[0-9A-Z]{5}$/u.test(code) ? code : 'UNKNOWN';
-}
-
 /**
  * Diagnóstico TypeORM compartido conforme a D11. No delega al logger por
  * defecto: incluso las rutas de migración pueden recibir el mensaje crudo.
@@ -46,7 +33,7 @@ export class SafeTypeOrmLogger implements Logger {
 
   logQueryError(error: string | Error, query: string, _parameters?: unknown[]): void {
     this.sink.error(
-      `TYPEORM_QUERY_ERROR operation=${queryOperation(query)} sqlstate=${sqlState(error)}`,
+      `TYPEORM_QUERY_ERROR operation=${queryOperation(query)} sqlstate=${extractSqlState(error) ?? 'UNKNOWN'}`,
     );
   }
 

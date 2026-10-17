@@ -1229,9 +1229,12 @@ describe('ExpedienteService', () => {
       expect.stringMatching(/[/\\]tenant_test[/\\]exp-doc-delete-rollback[/\\]rut[/\\]ver-2\.pdf$/),
     );
     expect(loggerErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('No se pudo revertir la eliminación física'),
-      rollbackError.stack,
+      expect.stringMatching(
+        /No se pudo revertir la eliminación física .+ tras fallar la persistencia del soporte documental: class=Error sqlstate=none$/,
+      ),
     );
+    expect(loggerErrorSpy.mock.calls[0]).toHaveLength(1);
+    expect(loggerErrorSpy.mock.calls[0]?.[0]).not.toContain(rollbackError.message);
     expect(unlink).not.toHaveBeenCalled();
     expect(auditServiceMock.log).not.toHaveBeenCalled();
   });

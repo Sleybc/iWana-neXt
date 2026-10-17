@@ -251,7 +251,10 @@ describe('ExecutionOrderEventsProcessor', () => {
             }),
           },
         } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>),
-      ).rejects.toThrow('No se encontró la OT para proyectar su evento de agenda.');
+      ).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: 'class=UnrecoverableError sqlstate=none',
+      });
 
       const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
       expect(queries).toContain('ROLLBACK');
@@ -634,9 +637,10 @@ describe('ExecutionOrderEventsProcessor', () => {
         opts: { attempts: 8 },
       } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
 
-      await expect(testProcessor.process(job)).rejects.toThrow(
-        'Connection terminated unexpectedly',
-      );
+      await expect(testProcessor.process(job)).rejects.toMatchObject({
+        name: 'Error',
+        message: 'class=Error sqlstate=none',
+      });
 
       const rollbackCalls = failOnceClient.query.mock.calls.filter(([query]) =>
         String(query).includes('ROLLBACK'),
@@ -663,9 +667,10 @@ describe('ExecutionOrderEventsProcessor', () => {
         },
       } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>;
 
-      await expect(processor.process(job)).rejects.toThrow(
-        'Payload fuera del aggregate del evento.',
-      );
+      await expect(processor.process(job)).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: 'class=UnrecoverableError sqlstate=none',
+      });
 
       const queries = poolClient.query.mock.calls.map(([sql]: [string]) => String(sql));
       expect(queries.some((sql) => sql.includes('SELECT schedule_event_id'))).toBe(false);
@@ -821,7 +826,10 @@ describe('ExecutionOrderEventsProcessor', () => {
           tenantId: string;
           envelope: OperationalEventEnvelopeV1;
         }>),
-      ).rejects.toThrow('INVENTORY_OUTBOX_EVENT_MISMATCH');
+      ).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: 'class=UnrecoverableError sqlstate=none',
+      });
 
       expect(inventoryRequestsQueue.add).not.toHaveBeenCalled();
       expect(
@@ -879,7 +887,10 @@ describe('ExecutionOrderEventsProcessor', () => {
           tenantId: string;
           envelope: OperationalEventEnvelopeV1;
         }>),
-      ).rejects.toThrow('INVENTORY_OUTBOX_EVENT_MISMATCH');
+      ).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: 'class=UnrecoverableError sqlstate=none',
+      });
 
       expect(inventoryRequestsQueue.add).not.toHaveBeenCalled();
       expect(poolClient.query).toHaveBeenLastCalledWith('ROLLBACK');
@@ -931,7 +942,10 @@ describe('ExecutionOrderEventsProcessor', () => {
           tenantId: string;
           envelope: OperationalEventEnvelopeV1;
         }>),
-      ).rejects.toThrow('INVENTORY_OUTBOX_EVENT_MISMATCH');
+      ).rejects.toMatchObject({
+        name: 'UnrecoverableError',
+        message: 'class=UnrecoverableError sqlstate=none',
+      });
 
       expect(inventoryRequestsQueue.add).not.toHaveBeenCalled();
       expect(poolClient.query).toHaveBeenLastCalledWith('ROLLBACK');

@@ -25,6 +25,8 @@ jest.mock('@iwana/db', () => ({
   isValidSchemaName: jest
     .fn()
     .mockImplementation((name: string) => /^[a-z][a-z0-9_]*$/i.test(name)),
+  summarizeErrorForLog: (error: unknown) =>
+    `class=${error instanceof Error ? error.constructor.name : 'UnknownError'} sqlstate=none`,
 }));
 
 // Mock del cliente pg — se reutiliza entre tests

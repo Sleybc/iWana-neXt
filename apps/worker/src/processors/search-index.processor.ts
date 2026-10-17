@@ -1,4 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import {
@@ -19,6 +20,7 @@ export class SearchIndexProcessor extends WorkerHost {
     super();
   }
 
+  @SanitizeFailedReason()
   async process(job: Job): Promise<void> {
     switch (job.name) {
       case SEARCH_INDEX_JOB_REBUILD:
