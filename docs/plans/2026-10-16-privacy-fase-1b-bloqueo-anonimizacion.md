@@ -1,6 +1,6 @@
 # `privacy` Fase 1b — Bloqueo, anonimización y plazo de traslado · Plan de orquestación
 
-**Fecha:** 2026-10-16 · **Versión:** 1.5 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-16 · **Versión:** 1.6 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Prompt:** [PROMPT-PRIVACY-FASE-1B-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.0.md) · **Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md)
 **Autoridad:**
 - [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md);
@@ -221,3 +221,21 @@ El launcher es [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY
 - **Corrección:** la afirmación de v1.4 de que «`dbiw` no tiene la 149 ni la 150 en ninguno de sus 21 schemas» se apoyó en `information_schema.columns`, que oculta las columnas sin permiso para el rol de solo lectura. La comprobación correcta (`pg_attribute` y `typeorm_migrations`) muestra que los **3 tenants ACTIVE** tienen la 149 a la 151. Los otros 18 schemas son tenants no ACTIVE (QA y E2E), que `db:migrate:all` no recorre.
 - **Ejecutado por orden del CTO:** `pnpm db:backup` (`.backups/dbiw-2026-10-16T23-45-00-410Z.dump`, 14 MB) y luego `pnpm db:migrate:all`, que terminó con exit 0, lock global, 3 tenants y `apply-least-privilege: OK`.
 - **Consecuencia para V1:** la suite E2E corre sobre un tenant **ACTIVE** migrado. Los tenants de E2E no ACTIVE no tienen la Fase 1b.
+
+### v1.6 (2026-10-17): CI verde, V1 y FIX-PREVIEW
+
+- **G6.5 (evidencia):** el CI [`38983191847`](https://github.com/Sleybc/iWana-neXt/actions/runs/38983191847) de `1214ea02` terminó en **verde en sus 5 jobs**, con todos los pasos ejecutados: unit tests, integraciones de db, API y worker, E2E operativo, build de imágenes y citas ADR. Es el primer CI totalmente verde desde el 2026-10-15.
+- **V1 v1.7:** 3/4. La vista previa de la supresión daba HTTP 500.
+- **[FIX-PREVIEW](../informes/INFORME-PRIVACY-FASE-1B-FIX-PREVIEW-v1.0.md):**
+  - **Causa:** `22P02` en `wfm-titular-erasure.participant.ts`, por comparar `origin_context` con `'TASKS'`, valor que no existe en el enum de la base.
+  - **Segundo defecto destapado:** `42883` en `operational_tasks`, columnas de texto comparadas como uuid.
+  - **Corrección:** las dos comparaciones se hacen como texto. Un fallo de esquema esperable de un participante responde 503 `PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE` en vez de 500.
+  - **Test nuevo:** `privacy-erasure-api.postgres.integration.spec.ts`, con el adaptador real y el schema creado con las migraciones reales. Antes ningún test cubría la vista previa ni `resolve` por la API con el adaptador real contra Postgres.
+
+**Deuda escalada (fuera de la Fase 1b):**
+
+| Severidad | Deuda | Dueño |
+| --- | --- | --- |
+| P1 (a verificar) | `WorkOrderSourceContext.TASKS` está en `@iwana/shared`, pero no en el enum `work_order_source_context` de la base (030, sin `ADD VALUE`). Lo usan WFM, `tasks` y el portal: crear una visita o una orden con origen `TASKS` fallaría con `22P02`. Decisión del CTO: migración `ADD VALUE 'TASKS'` (recomendada, porque la funcionalidad existe en API y portal) o retirarlo del contrato | MOD11 / WFM |
+| P2 | Ante un `QueryFailedError` inesperado, el log global de Nest imprime la consulta con sus parámetros, que pueden incluir un HMAC | `sec-eng` + backend |
+| P3 | Los demás tests de supresión crean las tablas a mano y no ven los tipos reales; deben pasar al patrón de migraciones reales | `sr-qa` |

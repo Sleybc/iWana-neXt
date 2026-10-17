@@ -77,7 +77,9 @@ export class OperationalTaskTitularErasureParticipant implements TitularErasureP
     if (recipientRef && columns.has('operational_tasks.recipient_type')) {
       predicates.push(`("recipient_type" IN ('SUBSCRIBER', 'PROSPECT') AND ${recipientRef})`);
     }
-    const scheduleEvent = uuidMembership(
+    // `schedule_event_id` y `work_order_id` son varchar en `operational_tasks`
+    // (referencias entre módulos sin FK); compararlos con `uuid[]` falla (42883).
+    const scheduleEvent = textMembership(
       'operational_tasks',
       'schedule_event_id',
       related.scheduleEventIds ?? [],
@@ -85,7 +87,7 @@ export class OperationalTaskTitularErasureParticipant implements TitularErasureP
       parameters,
     );
     if (scheduleEvent) predicates.push(scheduleEvent);
-    const workOrder = uuidMembership(
+    const workOrder = textMembership(
       'operational_tasks',
       'work_order_id',
       related.workOrderIds ?? [],

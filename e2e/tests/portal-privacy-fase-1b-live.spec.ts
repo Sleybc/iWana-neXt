@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
 import { seedPortalSession } from './helpers/portal-session';
@@ -20,7 +20,9 @@ interface Actor {
 
 interface TestSession {
   tenantSlug: string;
+  planId: string;
   admin: Actor;
+  blockedReaderAdmin: Actor;
   tag: string;
   createdActors: Actor[];
 }
@@ -71,6 +73,17 @@ function unwrapData<T>(value: unknown): T {
 
 function syntheticTag(): string {
   return randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase();
+}
+
+function deriveFixturePassword(
+  masterPassword: string,
+  tenantSlug: string,
+  purpose: string,
+): string {
+  const digest = createHmac('sha256', masterPassword)
+    .update(`privacy-fase-1b:${purpose}:${tenantSlug}`)
+    .digest('hex');
+  return `Qa9-${digest}!zA`;
 }
 
 function baseHeaders(tenantSlug: string, token?: string): Record<string, string> {
@@ -169,18 +182,57 @@ async function login(
 }
 
 async function createSession(page: Page): Promise<TestSession> {
-  const tenantSlug = requiredEnv('E2E_TENANT_SLUG');
-  const adminEmail = requiredEnv('E2E_PRIVACY_ADMIN_EMAIL');
-  const adminPassword = requiredEnv('E2E_PRIVACY_ADMIN_PASSWORD');
-  const admin = await login(page, tenantSlug, adminEmail, adminPassword);
+  const tenantSlug = requiredEnv('E2E_PRIVACY_1B_TENANT_SLUG');
+  const privacyAdminEmail = requiredEnv('E2E_PRIVACY_ADMIN_EMAIL');
+  const privacyAdminPassword = requiredEnv('E2E_PRIVACY_ADMIN_PASSWORD');
+  const privacyAdmin = await login(page, tenantSlug, privacyAdminEmail, privacyAdminPassword);
+  expect(privacyAdmin.role, 'El actor privacy debe tener el perfil de auditoría compatible.').toBe(
+    'AUDITOR',
+  );
+  const privacyPermissions = await api<{ effectivePermissions: string[] }>(
+    page,
+    { tenantSlug },
+    privacyAdmin,
+    'GET',
+    '/access-control/me/effective-permissions',
+  );
+  for (const permission of [
+    'privacy.manage',
+    'privacy.read',
+    'crm.subscribers.read',
+    'crm.subscribers.manage',
+    'crm.expedientes.read',
+    'crm.expedientes.manage',
+  ]) {
+    expect(privacyPermissions.effectivePermissions).toContain(permission);
+  }
+
+  const suffix = tenantSlug.slice('e2e-privacy-1b-'.length);
+  const admin = await login(
+    page,
+    tenantSlug,
+    `qa-privacy-runner-${suffix}@example.invalid`,
+    deriveFixturePassword(privacyAdminPassword, tenantSlug, 'runner'),
+  );
+  const blockedReaderAdmin = await login(
+    page,
+    tenantSlug,
+    `qa-privacy-blocked-reader-${suffix}@example.invalid`,
+    deriveFixturePassword(privacyAdminPassword, tenantSlug, 'blocked-reader'),
+  );
   const session: TestSession = {
     tenantSlug,
+    planId: '',
     admin,
+    blockedReaderAdmin,
     tag: syntheticTag(),
     createdActors: [],
   };
   sessionForCleanup = session;
-  expect(admin.role, 'La credencial E2E de administración debe ser ADMIN.').toBe('ADMIN');
+  expect(admin.role, 'El actor E2E de gestión debe tener rol ADMIN.').toBe('ADMIN');
+  expect(blockedReaderAdmin.role, 'El actor de lectura bloqueada debe tener rol ADMIN.').toBe(
+    'ADMIN',
+  );
   const permissions = await api<{ effectivePermissions: string[] }>(
     page,
     session,
@@ -190,6 +242,32 @@ async function createSession(page: Page): Promise<TestSession> {
   );
   expect(permissions.effectivePermissions).toContain('privacy.manage');
   expect(permissions.effectivePermissions).toContain('privacy.read');
+  const blockedReaderPermissions = await api<{ effectivePermissions: string[] }>(
+    page,
+    session,
+    blockedReaderAdmin,
+    'GET',
+    '/access-control/me/effective-permissions',
+  );
+  expect(blockedReaderPermissions.effectivePermissions).toContain('crm.blocked_data.read');
+  expect(blockedReaderPermissions.effectivePermissions).toContain('privacy.read');
+  const catalog = record(
+    await api<JsonRecord>(
+      page,
+      session,
+      admin,
+      'GET',
+      '/commercial/catalog?type=PLAN&isActive=true&limit=100',
+    ),
+  );
+  const activePlans = Array.isArray(catalog['data']) ? catalog['data'].map(record) : [];
+  const planId = activePlans.find((plan) => plan['type'] === 'PLAN' && plan['isActive'] === true)?.[
+    'id'
+  ];
+  if (typeof planId !== 'string') {
+    throw new Error('El seed E2E no dejó un plan activo para el fixture sintético.');
+  }
+  session.planId = planId;
   await seedPortalSession(page, { token: admin.token, tenantSlug });
   return session;
 }
@@ -212,6 +290,11 @@ async function createRoleActor(
   const suffix = `${session.tag}-${label}`;
   const email = `qa-${suffix.toLowerCase()}@example.invalid`;
   const password = `Qv9!${randomUUID().replaceAll('-', '')}zA`;
+  const roleProfileName = {
+    SALES: 'Acceso estándar Comercial',
+    TECHNICIAN: 'Acceso estándar Técnico',
+    ACCOUNTANT: 'Acceso estándar Contable',
+  }[role];
   const created = await api<{ id: string }>(
     page,
     session,
@@ -238,6 +321,20 @@ async function createRoleActor(
       token: '',
       role,
     }) - 1;
+  const profiles = await api<Array<JsonRecord>>(
+    page,
+    session,
+    session.admin,
+    'GET',
+    '/access-control/profiles',
+  );
+  const roleProfile = profiles.find((profile) => profile['name'] === roleProfileName);
+  if (typeof roleProfile?.['id'] !== 'string') {
+    throw new Error(`No está disponible el perfil sintético de ${role}.`);
+  }
+  await api(page, session, session.admin, 'PUT', `/access-control/users/${created.id}/profiles`, {
+    profileIds: [roleProfile['id']],
+  });
   const actor = await login(page, session.tenantSlug, email, password);
   if (actor.id !== created.id || actor.role !== role) {
     throw new Error('El usuario sintético no conserva el rol solicitado.');
@@ -258,8 +355,9 @@ async function assignBillingProfile(
     'GET',
     '/access-control/profiles',
   );
+  const standard = profiles.find((profile) => profile['name'] === 'Acceso estándar Contable');
   const billing = profiles.find((profile) => profile['name'] === 'Facturación y cobro');
-  if (!billing || typeof billing['id'] !== 'string') {
+  if (typeof standard?.['id'] !== 'string' || typeof billing?.['id'] !== 'string') {
     throw new Error('No está disponible el perfil sintético de facturación y cobro (tenant 151).');
   }
   const permissions = Array.isArray(billing['permissions']) ? billing['permissions'] : [];
@@ -275,7 +373,7 @@ async function assignBillingProfile(
     'PUT',
     `/access-control/users/${accountant.id}/profiles`,
     {
-      profileIds: [billing['id']],
+      profileIds: [standard['id'], billing['id']],
     },
   );
 }
@@ -305,7 +403,9 @@ async function createProspect(
   const suffix = `${session.tag}-${syntheticTag()}`;
   const name = `Titular Sintético ${suffix}`;
   const email = `qa-${suffix.toLowerCase()}@example.invalid`;
-  const document = `QA${suffix}`;
+  const document = BigInt(`0x${randomUUID().replaceAll('-', '')}`)
+    .toString()
+    .slice(0, 12);
   const address = `Dirección de prueba ${suffix}`;
   const expediente = await api<{ id: string }>(
     page,
@@ -357,7 +457,7 @@ async function createProspect(
   await patchSection('commercial_interest', {
     acquisitionChannel: 'WEB',
     sourceDetail: `${FIXTURE_PREFIX} ${suffix}`,
-    interestedPlanId: requiredEnv('E2E_PRIVACY_PLAN_ID'),
+    interestedPlanId: session.planId,
   });
   await patchSection('technical_feasibility', {
     feasibility: 'VIABLE',
@@ -428,7 +528,7 @@ async function convertToParty(
     throw new Error('La conversión sintética no vinculó un titular.');
   }
 
-  const planId = requiredEnv('E2E_PRIVACY_PLAN_ID');
+  const planId = session.planId;
   const plan = record(
     await api<JsonRecord>(page, session, session.admin, 'GET', `/commercial/catalog/${planId}`),
   );
@@ -467,6 +567,7 @@ async function filePrivacyRequest(
   fixture: ProspectFixture,
   partyId?: string,
   receivedAt?: string,
+  complete = true,
 ): Promise<PrivacyRequestFixture> {
   const created = await api<{ request: { id: string } }>(
     page,
@@ -491,7 +592,9 @@ async function filePrivacyRequest(
   await api(page, session, session.admin, 'POST', `/privacy/requests/${id}/verify-identity`, {
     identityVerificationMethod: 'DOCUMENTO_PRESENCIAL',
   });
-  await api(page, session, session.admin, 'POST', `/privacy/requests/${id}/complete`, {});
+  if (complete) {
+    await api(page, session, session.admin, 'POST', `/privacy/requests/${id}/complete`, {});
+  }
   return { id };
 }
 
@@ -506,9 +609,9 @@ async function uploadSyntheticDocument(
       headers: baseHeaders(session.tenantSlug, session.admin.token),
       multipart: {
         file: {
-          name: `synthetic-${session.tag}.txt`,
-          mimeType: 'text/plain',
-          buffer: Buffer.from('Contenido sintético de prueba. Sin datos personales.'),
+          name: `synthetic-${session.tag}.pdf`,
+          mimeType: 'application/pdf',
+          buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
         },
       },
     },
@@ -532,46 +635,40 @@ async function findOpenInstallationSlot(
   page: Page,
   session: TestSession,
   technicianId: string,
-): Promise<{ start: string; end: string }> {
+  offset: number,
+): Promise<{ start: string; end: string } | null> {
   const todayUtc = new Date();
-  for (let offset = 1; offset <= 30; offset += 1) {
-    const date = new Date(todayUtc.getTime() + offset * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-    const window = record(
-      await api<JsonRecord>(page, session, session.admin, 'POST', '/wfm/operating-window/resolve', {
-        dateLocal: date,
-        technicianId,
-      }),
-    );
-    const startTime = window['startTime'];
-    const endTime = window['endTime'];
-    if (
-      window['status'] !== 'OPEN' ||
-      typeof startTime !== 'string' ||
-      typeof endTime !== 'string'
-    ) {
-      continue;
-    }
-    const toMinutes = (time: string) => {
-      const match = /^(\d{2}):(\d{2})(?::\d{2})?$/u.exec(time);
-      if (!match) return null;
-      return Number(match[1]) * 60 + Number(match[2]);
-    };
-    const startMinutes = toMinutes(startTime);
-    const endMinutes = toMinutes(endTime);
-    if (startMinutes === null || endMinutes === null || endMinutes - startMinutes < 60) continue;
-    const startHour = String(Math.floor(startMinutes / 60)).padStart(2, '0');
-    const startMinute = String(startMinutes % 60).padStart(2, '0');
-    const finishMinutes = startMinutes + 60;
-    const endHour = String(Math.floor(finishMinutes / 60)).padStart(2, '0');
-    const finishMinute = String(finishMinutes % 60).padStart(2, '0');
-    return {
-      start: `${date}T${startHour}:${startMinute}:00-05:00`,
-      end: `${date}T${endHour}:${finishMinute}:00-05:00`,
-    };
+  const date = new Date(todayUtc.getTime() + offset * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const window = record(
+    await api<JsonRecord>(page, session, session.admin, 'POST', '/wfm/operating-window/resolve', {
+      dateLocal: date,
+      technicianId,
+    }),
+  );
+  const startTime = window['startTime'];
+  const endTime = window['endTime'];
+  if (window['status'] !== 'OPEN' || typeof startTime !== 'string' || typeof endTime !== 'string') {
+    return null;
   }
-  throw new Error('No hay una ventana operativa disponible para crear el fixture WFM.');
+  const toMinutes = (time: string) => {
+    const match = /^(\d{2}):(\d{2})(?::\d{2})?$/u.exec(time);
+    if (!match) return null;
+    return Number(match[1]) * 60 + Number(match[2]);
+  };
+  const startMinutes = toMinutes(startTime);
+  const endMinutes = toMinutes(endTime);
+  if (startMinutes === null || endMinutes === null || endMinutes - startMinutes < 60) return null;
+  const startHour = String(Math.floor(startMinutes / 60)).padStart(2, '0');
+  const startMinute = String(startMinutes % 60).padStart(2, '0');
+  const finishMinutes = startMinutes + 60;
+  const endHour = String(Math.floor(finishMinutes / 60)).padStart(2, '0');
+  const finishMinute = String(finishMinutes % 60).padStart(2, '0');
+  return {
+    start: `${date}T${startHour}:${startMinute}:00-05:00`,
+    end: `${date}T${endHour}:${finishMinute}:00-05:00`,
+  };
 }
 
 async function createVisitAndOrder(
@@ -586,13 +683,13 @@ async function createVisitAndOrder(
     'GET',
     '/wfm/eligible-assignees',
   );
-  const technicianId = assignees.find((assignee) => assignee['isOperationalResource'] === true)?.[
-    'id'
-  ];
-  if (typeof technicianId !== 'string') {
+  const technicianIds = assignees
+    .filter((assignee) => assignee['isOperationalResource'] === true)
+    .map((assignee) => assignee['id'])
+    .filter((id): id is string => typeof id === 'string');
+  if (technicianIds.length === 0) {
     throw new Error('No hay una persona operativa agendable para el fixture WFM.');
   }
-  const slot = await findOpenInstallationSlot(page, session, technicianId);
   const visit = record(
     await api<JsonRecord>(page, session, session.admin, 'POST', '/wfm/visit-requests', {
       originContext: 'CRM',
@@ -611,22 +708,38 @@ async function createVisitAndOrder(
   );
   const visitId = visit['id'];
   if (typeof visitId !== 'string') throw new Error('No se creó la solicitud sintética de visita.');
-  const scheduled = record(
-    await api<JsonRecord>(
-      page,
-      session,
-      session.admin,
-      'POST',
-      `/wfm/visit-requests/${visitId}/schedule`,
-      {
-        scheduledStartAt: slot.start,
-        scheduledEndAt: slot.end,
-        assignedUserId: technicianId,
-        createWorkOrder: true,
-        workOrderSummary: `Orden sintética ${session.tag}`,
-      },
-    ),
-  );
+  let scheduled: JsonRecord | null = null;
+  for (const technicianId of technicianIds) {
+    for (let offset = 1; offset <= 30 && !scheduled; offset += 1) {
+      const slot = await findOpenInstallationSlot(page, session, technicianId, offset);
+      if (!slot) continue;
+      const result = await apiResult<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'POST',
+        `/wfm/visit-requests/${visitId}/schedule`,
+        {
+          scheduledStartAt: slot.start,
+          scheduledEndAt: slot.end,
+          assignedUserId: technicianId,
+          createWorkOrder: true,
+          workOrderSummary: `Orden sintética ${session.tag}`,
+        },
+      );
+      if (result.status >= 200 && result.status < 300 && result.body) {
+        scheduled = record(result.body);
+        break;
+      }
+      if (result.status !== 400) {
+        throw new Error(`No se pudo agendar el fixture WFM (HTTP ${result.status}).`);
+      }
+    }
+    if (scheduled) break;
+  }
+  if (!scheduled) {
+    throw new Error('No se encontró una ventana sin conflictos para el fixture WFM.');
+  }
   const scheduleEventId = scheduled['scheduleEventId'];
   const workOrderId = scheduled['workOrderId'];
   const executionOrderId = scheduled['executionOrderId'];
@@ -743,14 +856,16 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
         `/wfm/visit-requests/${work.visitId}`,
       ),
     );
+    // Anexo A del runbook (D1 Fase 1b): el título queda con el marcador y la
+    // dirección pasa a NULL en visitas, eventos y órdenes de ejecución.
     expect(visit['title']).toBe('ANONIMIZADO');
-    expect(visit['address']).toBe('ANONIMIZADO');
+    expect(visit['address']).toBeNull();
     expect(visit['customerDisplayName']).not.toBe(prospect.name);
     const scheduleEvent = record(
       await api<JsonRecord>(page, session, session.admin, 'GET', `/wfm/events/${work.eventId}`),
     );
     expect(scheduleEvent['title']).toBe('ANONIMIZADO');
-    expect(scheduleEvent['address']).toBe('ANONIMIZADO');
+    expect(scheduleEvent['address']).toBeNull();
     const workOrder = record(
       await api<JsonRecord>(
         page,
@@ -770,8 +885,12 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
         `/tasks/execution-orders/${work.executionOrderId}`,
       ),
     );
-    expect(executionOrder['customerDisplayLabel']).toBe('ANONIMIZADO');
-    expect(executionOrder['serviceAddress']).toBe('ANONIMIZADO');
+    // `ExecutionOrderDetail` no publica la etiqueta del cliente ni la dirección
+    // de servicio (solo `site`, la sede del operador): se verifica que el
+    // detalle exista y no exponga el nombre del titular.
+    expect(executionOrder['id']).toBe(work.executionOrderId);
+    expect(JSON.stringify(executionOrder)).not.toContain(prospect.name);
+    expect(JSON.stringify(executionOrder)).not.toContain(prospect.address);
 
     const retainedConsents = await api<Array<JsonRecord>>(
       page,
@@ -780,7 +899,9 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
       'GET',
       `/crm/expedientes/${prospect.id}/consents`,
     );
-    expect(retainedConsents.some((consent) => consent['status'] === 'ACCEPTED')).toBe(true);
+    // La lectura devuelve el valor canónico de `ConsentStatus`; 'ACCEPTED' solo
+    // se admite como alias heredado al crear.
+    expect(retainedConsents.some((consent) => consent['status'] === 'ACEPTADO')).toBe(true);
     await page.goto(`/dashboard/crm/expedientes/${prospect.id}`);
     await expect(page.getByRole('heading', { name: 'Anonimizado' })).toBeVisible();
     await expect(page.getByText(/Titular anonimizado/u)).toBeVisible();
@@ -844,6 +965,15 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
     }
 
     for (const actor of [sales, billingAccountant]) {
+      const beforeMutation = record(
+        await api<JsonRecord>(
+          page,
+          session,
+          session.admin,
+          'GET',
+          `/crm/subscribers/${party.subscriberId}`,
+        ),
+      );
       const mutation = await apiResult(
         page,
         session,
@@ -852,9 +982,87 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
         `/crm/subscribers/${party.subscriberId}`,
         { city: 'Municipio sintético no aplicado' },
       );
-      expect(mutation.status, `${actor.role} no puede modificar un titular bloqueado`).toBe(409);
-      expect(mutation.code).toBe('PRIVACY_DATA_BLOCKED');
+      if (actor === billingAccountant) {
+        expect(
+          mutation.status,
+          'La lectura de datos bloqueados no concede permisos de escritura',
+        ).toBe(403);
+        expect(mutation.code).toBe('FORBIDDEN');
+      } else {
+        expect(mutation.status, `${actor.role} no puede modificar un titular bloqueado`).toBe(409);
+        expect(mutation.code).toBe('PRIVACY_DATA_BLOCKED');
+      }
+      const afterMutation = record(
+        await api<JsonRecord>(
+          page,
+          session,
+          session.admin,
+          'GET',
+          `/crm/subscribers/${party.subscriberId}`,
+        ),
+      );
+      expect(afterMutation['city']).toBe(beforeMutation['city']);
+      expect(afterMutation['status']).toBe(beforeMutation['status']);
     }
+
+    const subscriberBeforeTransition = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'GET',
+        `/crm/subscribers/${party.subscriberId}`,
+      ),
+    );
+    const statusTransition = await apiResult(
+      page,
+      session,
+      session.blockedReaderAdmin,
+      'PATCH',
+      `/crm/subscribers/${party.subscriberId}/status`,
+      { targetStatus: 'SUSPENDED', reason: 'Transición sintética R10 v1.4.' },
+    );
+    expect(statusTransition.status).toBe(409);
+    expect(statusTransition.code).toBe('PRIVACY_DATA_BLOCKED');
+    const subscriberAfterTransition = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'GET',
+        `/crm/subscribers/${party.subscriberId}`,
+      ),
+    );
+    expect(subscriberAfterTransition['status']).toBe(subscriberBeforeTransition['status']);
+
+    const contractBeforeArchive = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'GET',
+        `/crm/contracts/${party.contractId}`,
+      ),
+    );
+    const archiveContract = await apiResult(
+      page,
+      session,
+      session.blockedReaderAdmin,
+      'POST',
+      `/crm/contracts/${party.contractId}/archive`,
+    );
+    expect(archiveContract.status).toBe(409);
+    expect(archiveContract.code).toBe('PRIVACY_DATA_BLOCKED');
+    const contractAfterArchive = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'GET',
+        `/crm/contracts/${party.contractId}`,
+      ),
+    );
+    expect(contractAfterArchive['status']).toBe(contractBeforeArchive['status']);
 
     const requestPath = (path: string) =>
       path.replace('{versionId}', documentVersionId).replace('{expedienteId}', party.id);
@@ -979,7 +1187,7 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
     const consentVersion = await publishedConsentVersion(page, session);
     const prospect = await createProspect(page, session, consentVersion);
     const daysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const request = await filePrivacyRequest(page, session, prospect, undefined, daysAgo);
+    const request = await filePrivacyRequest(page, session, prospect, undefined, daysAgo, false);
     await api(page, session, session.admin, 'POST', `/privacy/requests/${request.id}/transfer`, {
       transferredTo: `Entidad de prueba ${session.tag}`,
       reason: 'Traslado sintético para verificar el plazo legal.',

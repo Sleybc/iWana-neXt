@@ -1,6 +1,6 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { ErasureBlocker, ErasureCategory } from '@iwana/shared';
-import type { EntityManager, QueryRunner } from 'typeorm';
+import { QueryFailedError, type EntityManager, type QueryRunner } from 'typeorm';
 import {
   IPersonalDataErasurePort,
   type PersonalDataErasurePlan,
@@ -33,6 +33,21 @@ const CATEGORIES = [
   'OPERACION_CAMPO',
 ] as const satisfies readonly ErasureCategory[];
 
+/**
+ * SQLSTATE que delatan una deriva entre el SQL de un participante y el esquema
+ * tenant (tabla o columna ausente, literal fuera del enum, tipos incompatibles).
+ * Son fallos esperables del alcance: se responden con código de dominio y no
+ * como 500 genérico.
+ */
+const PARTICIPANT_SCHEMA_SQLSTATES = new Set(['42P01', '42703', '22P02', '42883', '42804']);
+
+type ParticipantPhase = 'resolveScope' | 'plan' | 'apply';
+
+interface NamedParticipant {
+  name: string;
+  participant: TitularErasureParticipant;
+}
+
 interface ResolvedScope {
   scope: TitularErasureScope;
   candidateExpedienteIds: string[];
@@ -42,7 +57,8 @@ interface ResolvedScope {
 
 @Injectable()
 export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
-  private readonly participants: readonly TitularErasureParticipant[];
+  private readonly logger = new Logger(CrmPersonalDataErasureAdapter.name);
+  private readonly participants: readonly NamedParticipant[];
 
   constructor(
     private readonly crm: CrmTitularErasureParticipant,
@@ -54,7 +70,15 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     private readonly media: MediaTitularErasureParticipant,
   ) {
     super();
-    this.participants = [crm, party, users, wfm, executionOrders, operationalTasks, media];
+    this.participants = [
+      { name: 'crm', participant: crm },
+      { name: 'party', participant: party },
+      { name: 'users', participant: users },
+      { name: 'wfm', participant: wfm },
+      { name: 'execution-orders', participant: executionOrders },
+      { name: 'operational-tasks', participant: operationalTasks },
+      { name: 'media', participant: media },
+    ];
   }
 
   async plan(
@@ -106,8 +130,12 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     }
 
     const applied: TitularErasureTableResult[] = [];
-    for (const participant of this.participants) {
-      applied.push(...(await participant.apply(resolved.scope, qr, 'apply')));
+    for (const entry of this.participants) {
+      applied.push(
+        ...(await this.runParticipant(entry, 'apply', () =>
+          entry.participant.apply(resolved.scope, qr, 'apply'),
+        )),
+      );
     }
     const residual = applied.reduce((sum, result) => sum + result.residual, 0);
     if (residual > 0) {
@@ -145,7 +173,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
       }
     }
     const results: TitularErasureTableResult[] = [];
-    for (const participant of this.participants) {
+    for (const { participant } of this.participants) {
       results.push(...(await participant.apply(scope, qr, mode)));
     }
     return results;
@@ -221,10 +249,12 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     const activeAccountCount = await this.users.activeAccountCount(userIds, qr);
     if (activeAccountCount > 0) blockers.push('ACTIVE_USER_ACCOUNT');
 
-    await this.resolveParticipants(scope, qr);
+    await this.resolveParticipants(scope, qr, true);
     const results: TitularErasureTableResult[] = [];
-    for (const participant of this.participants) {
-      results.push(...(await participant.plan(scope, qr)));
+    for (const entry of this.participants) {
+      results.push(
+        ...(await this.runParticipant(entry, 'plan', () => entry.participant.plan(scope, qr))),
+      );
     }
     return { scope, candidateExpedienteIds, blockers, results };
   }
@@ -237,10 +267,57 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     return qr;
   }
 
-  private async resolveParticipants(scope: TitularErasureScope, qr: QueryRunner): Promise<void> {
-    for (const participant of this.participants) {
-      await participant.resolveScope?.(scope, qr);
+  /** El CLI conserva el error original (`domainErrors = false`); la API lo traduce. */
+  private async resolveParticipants(
+    scope: TitularErasureScope,
+    qr: QueryRunner,
+    domainErrors = false,
+  ): Promise<void> {
+    for (const entry of this.participants) {
+      const resolveScope = entry.participant.resolveScope?.bind(entry.participant);
+      if (!resolveScope) continue;
+      if (domainErrors) {
+        await this.runParticipant(entry, 'resolveScope', () => resolveScope(scope, qr));
+      } else {
+        await resolveScope(scope, qr);
+      }
     }
+  }
+
+  /**
+   * Ejecuta un paso de un participante. Un fallo de esquema esperable se
+   * registra con participante, fase, SQLSTATE y stack —nunca la consulta ni
+   * sus parámetros, que pueden llevar HMAC o identificadores— y se responde
+   * con un código de dominio. Cualquier otro error se propaga intacto.
+   */
+  private async runParticipant<T>(
+    entry: NamedParticipant,
+    phase: ParticipantPhase,
+    step: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await step();
+    } catch (error) {
+      const sqlState = this.schemaSqlState(error);
+      if (!sqlState) throw error;
+      // Solo los marcos del stack: la primera línea repite el mensaje del
+      // driver, que puede citar el valor rechazado.
+      this.logger.error(
+        `PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE participant=${entry.name} phase=${phase} sqlstate=${sqlState}`,
+        (error as Error).stack?.split('\n').slice(1).join('\n'),
+      );
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE',
+        message:
+          'No se pudo calcular el alcance de la supresión en este momento; no se aplicaron cambios.',
+      });
+    }
+  }
+
+  private schemaSqlState(error: unknown): string | null {
+    if (!(error instanceof QueryFailedError)) return null;
+    const code = (error.driverError as { code?: unknown } | undefined)?.code;
+    return typeof code === 'string' && PARTICIPANT_SCHEMA_SQLSTATES.has(code) ? code : null;
   }
 
   private sameSet(left: string[], right: string[]): boolean {

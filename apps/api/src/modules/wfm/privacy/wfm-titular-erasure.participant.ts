@@ -218,9 +218,12 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
       columns.has('visit_requests.origin_context') &&
       columns.has('visit_requests.origin_ref')
     ) {
+      // `TASKS` existe en el contrato compartido pero no en el enum persistido
+      // `work_order_source_context`; comparar como texto evita el 22P02 del
+      // literal y sigue valiendo cuando la migración agregue el valor.
       const rows = (await qr.query(
         `SELECT "origin_ref"::text AS value FROM "visit_requests"
-          WHERE "id" = ANY($1::uuid[]) AND "origin_context" = 'TASKS'
+          WHERE "id" = ANY($1::uuid[]) AND "origin_context"::text = 'TASKS'
             AND "origin_ref" IS NOT NULL FOR UPDATE`,
         [related.visitRequestIds],
       )) as Array<{ value: string }>;
