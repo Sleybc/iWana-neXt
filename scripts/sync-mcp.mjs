@@ -10,6 +10,10 @@
  * `command` (argv literal) o `url` (+ `headers`). `{env:VAR}` es la referencia a una
  * variable de entorno; Claude Code la recibe como `${VAR}`.
  *
+ * Opcionales solo OpenCode (forma nativa V2 `mcp.servers`; Claude Code los ignora):
+ * `timeout` (objeto { startup?, catalog?, execution? } en ms, enteros positivos) y
+ * `oauth: false` (solo remoto con header propio, sin discovery OAuth).
+ *
  * Claude Code en Windows nativo no resuelve `pnpm.cmd` sin shell: los `package`
  * se lanzan con `cmd /c`. El repo se opera en Windows; el resto de clientes usa argv.
  *
@@ -41,6 +45,23 @@ export function validateServer(name, server) {
   if (server.package && !/@\d+\.\d+\.\d+$/.test(server.package)) {
     throw new Error(`${name}: package debe fijar una versión exacta (pkg@x.y.z)`);
   }
+  if (server.timeout !== undefined) {
+    const entries = Object.entries(server.timeout);
+    const valid = ['startup', 'catalog', 'execution'];
+    if (
+      typeof server.timeout !== 'object' ||
+      server.timeout === null ||
+      entries.length === 0 ||
+      entries.some(([key, value]) => !valid.includes(key) || !Number.isInteger(value) || value <= 0)
+    ) {
+      throw new Error(
+        `${name}: timeout debe ser { startup?, catalog?, execution? } en ms enteros positivos`,
+      );
+    }
+  }
+  if (server.oauth !== undefined && (typeof server.oauth !== 'boolean' || !('url' in server))) {
+    throw new Error(`${name}: oauth solo admite booleano en servidor remoto (url)`);
+  }
 }
 
 export function toClaude(server) {
@@ -58,16 +79,21 @@ export function toClaude(server) {
 }
 
 export function toOpencode(server) {
+  const extra = {
+    disabled: false,
+    ...(server.timeout ? { timeout: server.timeout } : {}),
+  };
   if (server.url) {
     return {
       type: 'remote',
       url: server.url,
-      enabled: true,
+      ...extra,
       ...(server.headers ? { headers: server.headers } : {}),
+      ...(server.oauth !== undefined ? { oauth: server.oauth } : {}),
     };
   }
   const command = server.package ? ['pnpm', 'dlx', server.package] : server.command;
-  return { type: 'local', command, enabled: true };
+  return { type: 'local', command, ...extra };
 }
 
 export function buildClientConfigs(source) {
@@ -96,7 +122,7 @@ async function main() {
   writer.emit(CLAUDE_TARGET, await formatJson(claude, CLAUDE_TARGET));
 
   const opencodeConfig = JSON.parse(readFileSync(OPENCODE_TARGET, 'utf8'));
-  opencodeConfig.mcp = opencode;
+  opencodeConfig.mcp = { servers: opencode };
   writer.emit(OPENCODE_TARGET, await formatJson(opencodeConfig, OPENCODE_TARGET));
 
   finish({
@@ -104,7 +130,7 @@ async function main() {
     check,
     drift: writer.drift,
     fixCommand: 'pnpm sync:mcp',
-    summary: `${Object.keys(claude.mcpServers).length} servidores MCP → .mcp.json, ${Object.keys(opencode).length} → .opencode/opencode.json`,
+    summary: `${Object.keys(claude.mcpServers).length} servidores MCP → .mcp.json, ${Object.keys(opencode).length} → .opencode/opencode.json#mcp.servers`,
   });
 }
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "Fuente única de servidores MCP del repo (ADR-092). Genera .mcp.json (Claude Code) y la clave mcp de .opencode/opencode.json con `pnpm sync:mcp`; nunca editar los generados a mano. `package` = paquete npm ejecutado con pnpm dlx (versión fijada); `command` = comando literal; `{env:VAR}` = variable de entorno.",
+  "$comment": "Fuente única de servidores MCP del repo (ADR-092). Genera .mcp.json (Claude Code) y la clave mcp de .opencode/opencode.json con `pnpm sync:mcp`; nunca editar los generados a mano. `package` = paquete npm ejecutado con pnpm dlx (versión fijada); `command` = comando literal; `{env:VAR}` = variable de entorno. Opcionales solo OpenCode (forma nativa V2 `mcp.servers`): `timeout` = objeto { startup?, catalog?, execution? } en ms; `oauth: false` = remoto con solo header, sin discovery OAuth.",
   "servers": {
     "chrome-devtools": {
       "description": "Inspección de navegador vía Chrome DevTools.",
@@ -17,7 +17,8 @@
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
         "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}"
-      }
+      },
+      "oauth": false
     },
     "playwright": {
       "description": "Navegación y snapshots de accesibilidad de web (3001) y portal (3002).",
@@ -38,7 +39,8 @@
         ".claude/mcp-postgres.local.env",
         "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
         "--access-mode=restricted"
-      ]
+      ],
+      "timeout": { "startup": 120000 }
     },
     "redis-dev": {
       "description": "Redis de desarrollo en solo lectura (colas BullMQ, claves bull:*) con el usuario ACL iwana_readonly; credencial generada por `pnpm dev:redis-readonly-user`. La imagen expone escrituras: el ACL del servidor es la barrera.",
@@ -53,7 +55,8 @@
         "--env-file",
         ".claude/mcp-redis.local.env",
         "mcp/redis@sha256:e886a7e9990a084a20d46adcea8e7c89d539271f1b453ffabdce4c3f96f27fa0"
-      ]
+      ],
+      "timeout": { "startup": 120000 }
     }
   }
 }

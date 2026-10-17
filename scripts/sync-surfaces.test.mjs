@@ -23,7 +23,7 @@ test('sync-mcp: package se lanza con pnpm dlx (cmd /c en Claude Code)', () => {
   assert.deepEqual(toOpencode(server), {
     type: 'local',
     command: ['pnpm', 'dlx', '@playwright/mcp@0.0.82'],
-    enabled: true,
+    disabled: false,
   });
 });
 
@@ -36,6 +36,44 @@ test('sync-mcp: {env:VAR} se traduce a ${VAR} solo para Claude Code', () => {
   assert.equal(toClaude(server).headers.Authorization, 'Bearer ${TOKEN}');
   assert.equal(toOpencode(server).headers.Authorization, 'Bearer {env:TOKEN}');
   assert.equal(toOpencode(server).type, 'remote');
+});
+
+test('sync-mcp: timeout y oauth se propagan a OpenCode y se ignoran en Claude Code', () => {
+  const server = {
+    clients: ['claude', 'opencode'],
+    command: ['docker', 'run', 'img'],
+    timeout: { startup: 120000 },
+  };
+  assert.deepEqual(toOpencode(server).timeout, { startup: 120000 });
+  assert.equal('timeout' in toClaude(server), false);
+
+  const remote = {
+    clients: ['opencode'],
+    url: 'https://example.test/mcp',
+    oauth: false,
+    timeout: { startup: 60000, catalog: 30000 },
+  };
+  assert.equal(toOpencode(remote).oauth, false);
+  assert.deepEqual(toOpencode(remote).timeout, { startup: 60000, catalog: 30000 });
+
+  const plain = { clients: ['opencode'], command: ['x'] };
+  assert.equal('timeout' in toOpencode(plain), false);
+  assert.equal('oauth' in toOpencode(plain), false);
+});
+
+test('sync-mcp: rechaza timeout u oauth mal formados', () => {
+  assert.throws(
+    () => validateServer('t1', { clients: ['opencode'], command: ['x'], timeout: { bogus: 1 } }),
+    /timeout/,
+  );
+  assert.throws(
+    () => validateServer('t2', { clients: ['opencode'], command: ['x'], timeout: { startup: -5 } }),
+    /timeout/,
+  );
+  assert.throws(
+    () => validateServer('o1', { clients: ['opencode'], command: ['x'], oauth: false }),
+    /oauth/,
+  );
 });
 
 test('sync-mcp: rechaza versiones sin fijar, clientes desconocidos y tipos ambiguos', () => {

@@ -5,59 +5,68 @@
     "paths": [".agents/skills"]
   },
   "mcp": {
-    "chrome-devtools": {
-      "type": "local",
-      "command": ["pnpm", "dlx", "chrome-devtools-mcp@1.10.1"],
-      "enabled": true
-    },
-    "context7": {
-      "type": "local",
-      "command": ["pnpm", "dlx", "@upstash/context7-mcp@4.1.1"],
-      "enabled": true
-    },
-    "github": {
-      "type": "remote",
-      "url": "https://api.githubcopilot.com/mcp/",
-      "enabled": true,
-      "headers": {
-        "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+    "servers": {
+      "chrome-devtools": {
+        "type": "local",
+        "command": ["pnpm", "dlx", "chrome-devtools-mcp@1.10.1"],
+        "disabled": false
+      },
+      "context7": {
+        "type": "local",
+        "command": ["pnpm", "dlx", "@upstash/context7-mcp@4.1.1"],
+        "disabled": false
+      },
+      "github": {
+        "type": "remote",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "disabled": false,
+        "headers": {
+          "Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+        },
+        "oauth": false
+      },
+      "playwright": {
+        "type": "local",
+        "command": ["pnpm", "dlx", "@playwright/mcp@0.0.82"],
+        "disabled": false
+      },
+      "postgres-dev": {
+        "type": "local",
+        "command": [
+          "docker",
+          "run",
+          "-i",
+          "--rm",
+          "--network",
+          "container:iwana_postgres_dev",
+          "--env-file",
+          ".claude/mcp-postgres.local.env",
+          "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
+          "--access-mode=restricted"
+        ],
+        "disabled": false,
+        "timeout": {
+          "startup": 120000
+        }
+      },
+      "redis-dev": {
+        "type": "local",
+        "command": [
+          "docker",
+          "run",
+          "-i",
+          "--rm",
+          "--network",
+          "container:iwana_redis_dev",
+          "--env-file",
+          ".claude/mcp-redis.local.env",
+          "mcp/redis@sha256:e886a7e9990a084a20d46adcea8e7c89d539271f1b453ffabdce4c3f96f27fa0"
+        ],
+        "disabled": false,
+        "timeout": {
+          "startup": 120000
+        }
       }
-    },
-    "playwright": {
-      "type": "local",
-      "command": ["pnpm", "dlx", "@playwright/mcp@0.0.82"],
-      "enabled": true
-    },
-    "postgres-dev": {
-      "type": "local",
-      "command": [
-        "docker",
-        "run",
-        "-i",
-        "--rm",
-        "--network",
-        "container:iwana_postgres_dev",
-        "--env-file",
-        ".claude/mcp-postgres.local.env",
-        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
-        "--access-mode=restricted"
-      ],
-      "enabled": true
-    },
-    "redis-dev": {
-      "type": "local",
-      "command": [
-        "docker",
-        "run",
-        "-i",
-        "--rm",
-        "--network",
-        "container:iwana_redis_dev",
-        "--env-file",
-        ".claude/mcp-redis.local.env",
-        "mcp/redis@sha256:e886a7e9990a084a20d46adcea8e7c89d539271f1b453ffabdce4c3f96f27fa0"
-      ],
-      "enabled": true
     }
   }
 }

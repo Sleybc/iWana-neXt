@@ -10,8 +10,11 @@ SELECT 'CREATE ROLE iwana_readonly'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'iwana_readonly')
 \gexec
 
+-- Límite 10 (subido de 3 el 2026-10-15): concurren Claude Code + OpenCode +
+-- probes puntuales, y cada postgres-mcp abre un pool. Solo dev; el modo
+-- lectura y el SELECT por columna no cambian.
 ALTER ROLE iwana_readonly WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
-  NOBYPASSRLS NOINHERIT CONNECTION LIMIT 3 PASSWORD :'readonly_pass';
+  NOBYPASSRLS NOINHERIT CONNECTION LIMIT 10 PASSWORD :'readonly_pass';
 ALTER ROLE iwana_readonly SET default_transaction_read_only = on;
 ALTER ROLE iwana_readonly SET statement_timeout = '15s';
 
