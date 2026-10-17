@@ -58,6 +58,11 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'FiscalDocumentEncryption1550000000000',
 ];
 
+/** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */
+export const MIGRATIONS_WITH_ROLLBACK_PREFLIGHT: readonly string[] = [
+  'SubscriberFiscalCompleteness1570000000000',
+];
+
 const EVIDENCE_RETENTION_MIGRATION = 'AlignExecutionOrderEvidenceIntentRetention1010000000000';
 const EVIDENCE_IDEMPOTENCY_MIGRATION = 'LinkExecutionOrderEvidenceIdempotency1000000000000';
 
@@ -68,6 +73,8 @@ export interface TenantRevertStep {
   registryId: number;
   /** El `down()` de esta migración exige `DESTRUCTIVE_DOWN_ENV_VAR=true`. */
   requiresDestructiveFlag: boolean;
+  /** El `down()` de esta migración reporta e inspecciona datos antes de alterar el schema. */
+  hasRollbackPreflight: boolean;
 }
 
 export interface TenantRevertPlan {
@@ -165,6 +172,7 @@ export async function planTenantRevert(
       name: row.name,
       registryId: row.id,
       requiresDestructiveFlag: MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG.includes(row.name),
+      hasRollbackPreflight: MIGRATIONS_WITH_ROLLBACK_PREFLIGHT.includes(row.name),
     })),
   };
 
@@ -252,9 +260,14 @@ export async function revertTenantMigrations(
         const flagNote = step.requiresDestructiveFlag
           ? ` (exige ${DESTRUCTIVE_DOWN_ENV_VAR}=true)`
           : '';
+        const preflightNote = step.hasRollbackPreflight
+          ? ' (preflight: comprueba vat_responsibility NULL)'
+          : '';
 
         if (dryRun) {
-          logger.log(`[REVERT] [dry-run] revertiría ${schemaName} <- ${step.name}${flagNote}`);
+          logger.log(
+            `[REVERT] [dry-run] revertiría ${schemaName} <- ${step.name}${flagNote}${preflightNote}`,
+          );
           index += 1;
           continue;
         }
@@ -272,7 +285,7 @@ export async function revertTenantMigrations(
           continue;
         }
 
-        logger.log(`[REVERT] ${schemaName} <- ${step.name}${flagNote}`);
+        logger.log(`[REVERT] ${schemaName} <- ${step.name}${flagNote}${preflightNote}`);
         await revertSingleStep(queryRunner, step);
         logger.log(`[REVERT] ${schemaName} <- ${step.name}: revertida`);
         index += 1;

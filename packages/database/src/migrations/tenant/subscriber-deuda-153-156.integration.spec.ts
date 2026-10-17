@@ -8,6 +8,7 @@ import { SubscriberVatResponsibility1530000000000 } from './153_subscriber_vat_r
 import { SubscriberLegalRepresentativeParty1540000000000 } from './154_subscriber_legal_representative_party';
 import { FiscalDocumentEncryption1550000000000 } from './155_fiscal_document_encryption';
 import { SubscriberExpedienteForeignKey1560000000000 } from './156_subscriber_expediente_fk';
+import { SubscriberFiscalCompleteness1570000000000 } from './157_subscriber_fiscal_completeness';
 
 jest.setTimeout(600_000);
 
@@ -91,6 +92,7 @@ describeWithDb('Migraciones tenant MOD05 153–156 — dos schemas reales, up/do
       runners.push(runner);
 
       // Deja cada schema en el estado previo a la expansión para poder sembrar filas heredadas.
+      await new SubscriberFiscalCompleteness1570000000000().down(runner);
       await new SubscriberExpedienteForeignKey1560000000000().down(runner);
       await new FiscalDocumentEncryption1550000000000().down(runner);
       await new SubscriberLegalRepresentativeParty1540000000000().down(runner);
@@ -280,6 +282,65 @@ describeWithDb('Migraciones tenant MOD05 153–156 — dos schemas reales, up/do
       ).rejects.toThrow();
       await migration.down(runner);
       await migration.up(runner);
+    },
+  );
+
+  it.each(schemaCases)(
+    '%s acepta persona jurídica prospecto sin representante y bloquea activar sin datos fiscales; down/re-up',
+    async (_schema, index) => {
+      const runner = runners[index];
+      const fixture = fixtures[index];
+      if (!runner || !fixture) throw new Error('QueryRunner o fixture del tenant no inicializado.');
+      const migration = new SubscriberFiscalCompleteness1570000000000();
+      const convertedSubscriberId = randomUUID();
+
+      await migration.up(runner);
+      await runner.query(
+        `INSERT INTO subscribers (
+           id, tenant_id, person_type, customer_segment, nit, business_name,
+           email_encrypted, phone_encrypted, vat_treatment, vat_responsibility,
+           address, created_by, status
+         ) VALUES (
+           $1, $2, 'JURIDICA', 'CORPORATE', 'nit-sintetico', 'Empresa sintética',
+           'email-cipher-synthetic', 'phone-cipher-synthetic', 'STANDARD', NULL,
+           'Dirección sintética', $3, 'PROSPECT'
+         )`,
+        [convertedSubscriberId, fixture.tenantId, fixture.createdBy],
+      );
+
+      const converted = (await runner.query(
+        `SELECT status::text AS status, vat_responsibility::text AS vat_responsibility,
+                legal_representative_party_id
+           FROM subscribers WHERE id = $1`,
+        [convertedSubscriberId],
+      )) as Array<{
+        status: string;
+        vat_responsibility: string | null;
+        legal_representative_party_id: string | null;
+      }>;
+      expect(converted).toEqual([
+        { status: 'PROSPECT', vat_responsibility: null, legal_representative_party_id: null },
+      ]);
+
+      await expect(
+        runner.query(`UPDATE subscribers SET status = 'ACTIVE' WHERE id = $1`, [
+          convertedSubscriberId,
+        ]),
+      ).rejects.toThrow();
+
+      await runner.query(
+        `UPDATE subscribers SET vat_responsibility = 'RESPONSABLE' WHERE id = $1`,
+        [convertedSubscriberId],
+      );
+      await migration.down(runner);
+      await migration.up(runner);
+      const reUpConstraint = (await runner.query(
+        `SELECT COUNT(*)::int AS constraint_count
+           FROM pg_constraint
+          WHERE conname = 'ck_subscribers_fiscal_complete_when_active'
+            AND connamespace = current_schema()::regnamespace`,
+      )) as Array<{ constraint_count: number }>;
+      expect(reUpConstraint[0]?.constraint_count).toBe(1);
     },
   );
 });

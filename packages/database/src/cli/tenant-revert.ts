@@ -4,6 +4,7 @@ import { AppDataSource } from '../data-source';
 import {
   DESTRUCTIVE_DOWN_ENV_VAR,
   MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG,
+  MIGRATIONS_WITH_ROLLBACK_PREFLIGHT,
   revertTenantMigrations,
 } from '../migrations/tenant/revert';
 
@@ -60,6 +61,9 @@ REQUISITO DE ENTORNO PARA MIGRACIONES DESTRUCTIVAS
 
   Migraciones que hoy exigen el flag:
 ${MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG.map((name) => `      - ${name}`).join('\n')}
+
+Migraciones que inspeccionan datos antes del down() y pueden abortar:
+${MIGRATIONS_WITH_ROLLBACK_PREFLIGHT.map((name) => `      - ${name}`).join('\n')}
 
 EJEMPLOS
   # Ver que se revertiria, sin tocar nada

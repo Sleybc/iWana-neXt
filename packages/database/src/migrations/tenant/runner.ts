@@ -113,6 +113,7 @@ import { SubscriberVatResponsibility1530000000000 } from './153_subscriber_vat_r
 import { SubscriberLegalRepresentativeParty1540000000000 } from './154_subscriber_legal_representative_party';
 import { FiscalDocumentEncryption1550000000000 } from './155_fiscal_document_encryption';
 import { SubscriberExpedienteForeignKey1560000000000 } from './156_subscriber_expediente_fk';
+import { SubscriberFiscalCompleteness1570000000000 } from './157_subscriber_fiscal_completeness';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -307,6 +308,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SubscriberLegalRepresentativeParty1540000000000,
   FiscalDocumentEncryption1550000000000,
   SubscriberExpedienteForeignKey1560000000000,
+  SubscriberFiscalCompleteness1570000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
