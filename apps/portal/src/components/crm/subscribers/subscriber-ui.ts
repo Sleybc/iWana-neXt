@@ -5,7 +5,6 @@ import {
   PersonType,
   type SubscriberListItem,
   SubscriberStatus,
-  TaxRegime,
   VatTreatment,
 } from '@iwana/shared';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
@@ -136,11 +135,6 @@ export const VAT_TREATMENT_META: Record<
     description: 'Tarifa general vigente.',
     accentClass: 'border-rose-400 text-rose-700 dark:text-rose-300',
   },
-};
-
-export const TAX_REGIME_META: Record<TaxRegime, { label: string }> = {
-  SIMPLIFIED: { label: 'Simplificado' },
-  COMMON: { label: 'Común' },
 };
 
 export const DOCUMENT_TYPE_OPTIONS = [

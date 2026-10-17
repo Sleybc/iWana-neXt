@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button, Card, CardContent, CardHeader, CardTitle, FormStatus, Select } from '@iwana/ui';
 import {
@@ -9,8 +9,10 @@ import {
   CreateSubscriberSchema,
   type CreateSubscriberPayload,
   PersonType,
+  type RutResponsibility,
   type UpdateSubscriberPayload,
   UpdateSubscriberSchema,
+  type VatResponsibility,
 } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { privacyApi } from '@/lib/api-client';
@@ -20,6 +22,8 @@ import { JuridicaPersonFields } from './JuridicaPersonFields';
 import { NaturalPersonFields } from './NaturalPersonFields';
 import { PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import { SharedPersonFields } from './SharedPersonFields';
+import { SubscriberFiscalFields } from './SubscriberFiscalFields';
+import { validateNitVerificationDigit } from './subscriber-fiscal';
 import { VatTreatmentBanner } from './VatTreatmentBanner';
 
 const CONSENT_CHANNEL_OPTIONS = [
@@ -43,7 +47,11 @@ export interface SubscriberFormValues {
   nitVerificationDigit: string;
   businessName: string;
   commercialName: string;
-  legalRepresentativeId: string;
+  legalRepresentativeFullName: string;
+  legalRepresentativeDocumentType: string;
+  legalRepresentativeDocumentNumber: string;
+  vatResponsibility: VatResponsibility | '';
+  rutResponsibilities: RutResponsibility[];
   email: string;
   phone: string;
   whatsapp: string;
@@ -74,7 +82,12 @@ function buildDefaults(initialData?: SubscriberRecord | null): SubscriberFormVal
     nitVerificationDigit: initialData?.nitVerificationDigit ?? '',
     businessName: initialData?.businessName ?? '',
     commercialName: initialData?.commercialName ?? '',
-    legalRepresentativeId: initialData?.legalRepresentativeId ?? '',
+    // El documento del representante no viaja en la respuesta: se captura solo para cambiarlo.
+    legalRepresentativeFullName: '',
+    legalRepresentativeDocumentType: '',
+    legalRepresentativeDocumentNumber: '',
+    vatResponsibility: initialData?.vatResponsibility ?? '',
+    rutResponsibilities: initialData?.rutResponsibilities ?? [],
     email: initialData?.email ?? '',
     phone: initialData?.phone ?? '',
     whatsapp: initialData?.whatsapp ?? '',
@@ -84,6 +97,39 @@ function buildDefaults(initialData?: SubscriberRecord | null): SubscriberFormVal
     department: initialData?.department ?? '',
     postalCode: initialData?.postalCode ?? '',
   };
+}
+
+// Mensajes visibles para los campos cuyo error de Zod no es apto para el usuario final.
+const FIELD_MESSAGES: Partial<Record<keyof SubscriberFormValues, string>> = {
+  vatResponsibility: 'Selecciona la responsabilidad de IVA.',
+  rutResponsibilities: 'Selecciona al menos una responsabilidad del RUT.',
+  legalRepresentativeFullName: 'Ingresa el nombre completo del representante legal.',
+  legalRepresentativeDocumentType: 'Selecciona el tipo de documento del representante legal.',
+  legalRepresentativeDocumentNumber: 'Ingresa el número de documento del representante legal.',
+};
+
+const LEGAL_REPRESENTATIVE_FIELDS: Record<string, keyof SubscriberFormValues> = {
+  fullName: 'legalRepresentativeFullName',
+  documentType: 'legalRepresentativeDocumentType',
+  documentNumber: 'legalRepresentativeDocumentNumber',
+};
+
+function resolveIssueField(path: readonly PropertyKey[]): keyof SubscriberFormValues | null {
+  const [root, child] = path;
+  if (root === 'legalRepresentative') {
+    return typeof child === 'string'
+      ? (LEGAL_REPRESENTATIVE_FIELDS[child] ?? 'legalRepresentativeFullName')
+      : 'legalRepresentativeFullName';
+  }
+  return typeof root === 'string' ? (root as keyof SubscriberFormValues) : null;
+}
+
+function buildLegalRepresentative(values: SubscriberFormValues, required: boolean) {
+  const fullName = values.legalRepresentativeFullName.trim();
+  const documentType = values.legalRepresentativeDocumentType;
+  const documentNumber = values.legalRepresentativeDocumentNumber.trim();
+  if (!required && !fullName && !documentType && !documentNumber) return undefined;
+  return { fullName, documentType, documentNumber };
 }
 
 function stripEmptyValues<T extends Record<string, unknown>>(value: T): Partial<T> {
@@ -161,6 +207,9 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
     const common = {
       personType: values.personType,
       customerSegment: values.customerSegment,
+      vatResponsibility: values.vatResponsibility || undefined,
+      rutResponsibilities:
+        editing && values.rutResponsibilities.length === 0 ? undefined : values.rutResponsibilities,
       email: values.email.trim(),
       phone: values.phone.trim(),
       whatsapp: values.whatsapp.trim() || undefined,
@@ -180,7 +229,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
             nitVerificationDigit: values.nitVerificationDigit.trim() || undefined,
             businessName: values.businessName.trim(),
             commercialName: values.commercialName.trim() || undefined,
-            legalRepresentativeId: values.legalRepresentativeId.trim() || undefined,
+            legalRepresentative: buildLegalRepresentative(values, !editing),
           })
         : stripEmptyValues({
             ...common,
@@ -222,7 +271,17 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
       ? UpdateSubscriberSchema.safeParse(payload)
       : CreateSubscriberSchema.safeParse(payload);
 
-    if (!result.success) {
+    const digitShouldBeChecked =
+      values.personType === PersonType.JURIDICA &&
+      (!editing || Boolean(values.nitVerificationDigit.trim()));
+    const digitError = digitShouldBeChecked
+      ? validateNitVerificationDigit(values.nit, values.nitVerificationDigit)
+      : null;
+
+    if (!result.success || digitError) {
+      if (digitError) setError('nitVerificationDigit', { type: 'manual', message: digitError });
+      if (result.success) return;
+
       const contactMissing = !editing && !common.email?.trim() && !common.phone?.trim();
 
       if (contactMissing) {
@@ -232,10 +291,9 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
       }
 
       result.error.issues.forEach((issue) => {
-        const field = issue.path[0];
-        if (typeof field === 'string') {
-          setError(field as keyof SubscriberFormValues, { type: 'manual', message: issue.message });
-        }
+        const field = resolveIssueField(issue.path);
+        if (!field || (field === 'nitVerificationDigit' && digitError)) return;
+        setError(field, { type: 'manual', message: FIELD_MESSAGES[field] ?? issue.message });
       });
 
       const firstFormIssue = result.error.issues.find(
@@ -289,12 +347,52 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
           </div>
 
           {personType === PersonType.JURIDICA ? (
-            <JuridicaPersonFields register={register} errors={errors} />
+            <JuridicaPersonFields
+              register={register}
+              errors={errors}
+              nitValue={watch('nit')}
+              digitValue={watch('nitVerificationDigit')}
+            />
           ) : (
             <NaturalPersonFields control={control} register={register} errors={errors} />
           )}
 
           <SharedPersonFields register={register} errors={errors} />
+
+          <section aria-labelledby="subscriber-fiscal-data-title" className="space-y-3">
+            <h3
+              id="subscriber-fiscal-data-title"
+              className="text-base font-semibold text-gray-900 dark:text-white"
+            >
+              Datos fiscales
+            </h3>
+            <Controller
+              name="vatResponsibility"
+              control={control}
+              render={({ field: vatField }) => (
+                <Controller
+                  name="rutResponsibilities"
+                  control={control}
+                  render={({ field: rutField }) => (
+                    <SubscriberFiscalFields
+                      vatResponsibility={vatField.value}
+                      rutResponsibilities={rutField.value}
+                      onVatResponsibilityChange={(value) => {
+                        vatField.onChange(value);
+                        clearErrors('vatResponsibility');
+                      }}
+                      onRutResponsibilitiesChange={(value) => {
+                        rutField.onChange(value);
+                        clearErrors('rutResponsibilities');
+                      }}
+                      vatError={errors.vatResponsibility?.message}
+                      rutError={errors.rutResponsibilities?.message}
+                    />
+                  )}
+                />
+              )}
+            />
+          </section>
 
           {!editing ? (
             <fieldset className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-dark-border">
@@ -396,8 +494,8 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
 
           {initialData && (
             <VatTreatmentBanner
-              vatTreatment={initialData.vatTreatment}
-              taxRegime={initialData.taxRegime}
+              vatResponsibility={initialData.vatResponsibility}
+              rutResponsibilities={initialData.rutResponsibilities ?? []}
             />
           )}
 

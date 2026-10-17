@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button, FormStatus, Input, Select } from '@iwana/ui';
-import { MapPin, Phone, UserRound } from 'lucide-react';
-import { PersonType } from '@iwana/shared';
-import type { UpdateSubscriberPayload } from '@iwana/shared';
+import { Landmark, MapPin, Phone, UserRound } from 'lucide-react';
+import { DocumentType, PersonType } from '@iwana/shared';
+import type { RutResponsibility, UpdateSubscriberPayload, VatResponsibility } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
+import { SubscriberFiscalFields } from './SubscriberFiscalFields';
+import { validateNitVerificationDigit } from './subscriber-fiscal';
 import {
   DEPARTAMENTOS,
   getMunicipiosByDepartamento,
@@ -37,15 +39,22 @@ function SectionCard({
   error: string | null;
   children: React.ReactNode;
 }) {
+  const titleId = useId();
+
   return (
-    <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
+    <section
+      aria-labelledby={titleId}
+      className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2"
+    >
       {/* Cabecera: icono + título + descripción */}
       <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
           <Icon className="h-5 w-5" aria-hidden={true} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-base font-bold text-gray-900 dark:text-white">{title}</p>
+          <h3 id={titleId} className="text-base font-bold text-gray-900 dark:text-white">
+            {title}
+          </h3>
           <p className="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
@@ -69,7 +78,7 @@ function SectionCard({
           </Button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -156,7 +165,9 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     nitVerificationDigit: string;
     businessName: string;
     commercialName: string;
-    legalRepresentativeId: string;
+    legalRepresentativeFullName: string;
+    legalRepresentativeDocumentType: string;
+    legalRepresentativeDocumentNumber: string;
   }>({
     personType: subscriber.personType ?? PersonType.NATURAL,
     documentType: subscriber.documentType ?? '',
@@ -167,10 +178,27 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     nitVerificationDigit: subscriber.nitVerificationDigit ?? '',
     businessName: subscriber.businessName ?? '',
     commercialName: subscriber.commercialName ?? '',
-    legalRepresentativeId: subscriber.legalRepresentativeId ?? '',
+    legalRepresentativeFullName: '',
+    legalRepresentativeDocumentType: '',
+    legalRepresentativeDocumentNumber: '',
   });
   const [savingIdent, setSavingIdent] = useState(false);
   const [errorIdent, setErrorIdent] = useState<string | null>(null);
+
+  // ── Estado sección Datos fiscales ────────────────────────────────────────────
+  const [fiscal, setFiscal] = useState<{
+    vatResponsibility: VatResponsibility | '';
+    rutResponsibilities: RutResponsibility[];
+  }>({
+    vatResponsibility: subscriber.vatResponsibility ?? '',
+    rutResponsibilities: subscriber.rutResponsibilities ?? [],
+  });
+  const [fiscalErrors, setFiscalErrors] = useState<{
+    vat?: string | undefined;
+    rut?: string | undefined;
+  }>({});
+  const [savingFiscal, setSavingFiscal] = useState(false);
+  const [errorFiscal, setErrorFiscal] = useState<string | null>(null);
 
   // ── Estado sección Contacto ──────────────────────────────────────────────────
   const [contact, setContact] = useState({
@@ -209,8 +237,15 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       nitVerificationDigit: subscriber.nitVerificationDigit ?? '',
       businessName: subscriber.businessName ?? '',
       commercialName: subscriber.commercialName ?? '',
-      legalRepresentativeId: subscriber.legalRepresentativeId ?? '',
+      legalRepresentativeFullName: '',
+      legalRepresentativeDocumentType: '',
+      legalRepresentativeDocumentNumber: '',
     });
+    setFiscal({
+      vatResponsibility: subscriber.vatResponsibility ?? '',
+      rutResponsibilities: subscriber.rutResponsibilities ?? [],
+    });
+    setFiscalErrors({});
     setContact({
       email: subscriber.email ?? '',
       phone: subscriber.phone ?? '',
@@ -231,10 +266,38 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   }, [subscriber]);
 
   const isJuridica = ident.personType === PersonType.JURIDICA;
+  const liveDigitError =
+    isJuridica && ident.nit.trim() && ident.nitVerificationDigit.trim()
+      ? validateNitVerificationDigit(ident.nit, ident.nitVerificationDigit)
+      : null;
+  const legalRepresentativeTouched = Boolean(
+    ident.legalRepresentativeFullName.trim() ||
+    ident.legalRepresentativeDocumentType ||
+    ident.legalRepresentativeDocumentNumber.trim(),
+  );
 
   // ── Guardar sección Identificación ──────────────────────────────────────────
   const saveIdent = async () => {
     setErrorIdent(null);
+    if (isJuridica && ident.nitVerificationDigit.trim()) {
+      const digitError = validateNitVerificationDigit(ident.nit, ident.nitVerificationDigit);
+      if (digitError) {
+        setErrorIdent(digitError);
+        return;
+      }
+    }
+    if (
+      isJuridica &&
+      legalRepresentativeTouched &&
+      (!ident.legalRepresentativeFullName.trim() ||
+        !ident.legalRepresentativeDocumentType ||
+        ident.legalRepresentativeDocumentNumber.trim().length < 3)
+    ) {
+      setErrorIdent(
+        'Completa el nombre, el tipo y el número de documento del representante legal.',
+      );
+      return;
+    }
     setSavingIdent(true);
     try {
       const partial: Partial<UpdateSubscriberPayload> = {
@@ -246,10 +309,15 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
         partial.nitVerificationDigit = ident.nitVerificationDigit || undefined;
         partial.businessName = ident.businessName || undefined;
         partial.commercialName = ident.commercialName || undefined;
-        partial.legalRepresentativeId = ident.legalRepresentativeId || undefined;
+        if (legalRepresentativeTouched) {
+          partial.legalRepresentative = {
+            fullName: ident.legalRepresentativeFullName.trim(),
+            documentType: ident.legalRepresentativeDocumentType as DocumentType,
+            documentNumber: ident.legalRepresentativeDocumentNumber.trim(),
+          };
+        }
       } else {
-        partial.documentType =
-          (ident.documentType as import('@iwana/shared').DocumentType) || undefined;
+        partial.documentType = (ident.documentType as DocumentType) || undefined;
         partial.documentNumber = ident.documentNumber || undefined;
         partial.firstName = ident.firstName || undefined;
         partial.lastName = ident.lastName || undefined;
@@ -260,6 +328,30 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       setErrorIdent('No fue posible guardar la identificación.');
     } finally {
       setSavingIdent(false);
+    }
+  };
+
+  // ── Guardar sección Datos fiscales ──────────────────────────────────────────
+  const saveFiscal = async () => {
+    setErrorFiscal(null);
+    const nextErrors: { vat?: string | undefined; rut?: string | undefined } = {};
+    if (!fiscal.vatResponsibility) nextErrors.vat = 'Selecciona la responsabilidad de IVA.';
+    if (fiscal.rutResponsibilities.length === 0) {
+      nextErrors.rut = 'Selecciona al menos una responsabilidad del RUT.';
+    }
+    setFiscalErrors(nextErrors);
+    if (nextErrors.vat || nextErrors.rut || !fiscal.vatResponsibility) return;
+
+    setSavingFiscal(true);
+    try {
+      await onSave({
+        vatResponsibility: fiscal.vatResponsibility,
+        rutResponsibilities: fiscal.rutResponsibilities,
+      });
+    } catch {
+      setErrorFiscal('No fue posible guardar los datos fiscales.');
+    } finally {
+      setSavingFiscal(false);
     }
   };
 
@@ -387,123 +479,211 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
 
       {/* Grid 2 columnas: Identificación | Contacto + Dirección */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Columna izquierda: Identificación */}
-        <SectionCard
-          icon={UserRound}
-          title="Identificación"
-          description="Datos base del titular o razón social."
-          saving={savingIdent}
-          onSave={saveIdent}
-          error={errorIdent}
-        >
-          <div className="space-y-4">
-            {/* Fila 1: tipo persona + documento */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <Select
-                label="Tipo de persona"
-                value={ident.personType}
-                onChange={(e) =>
-                  setIdent((prev) => ({ ...prev, personType: e.target.value as PersonType }))
-                }
-              >
-                {PERSON_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </Select>
-
-              {isJuridica ? (
-                <>
-                  <Input
-                    label="NIT"
-                    value={ident.nit}
-                    placeholder="Ej: 9001234567"
-                    onChange={(e) => setIdent((prev) => ({ ...prev, nit: e.target.value }))}
-                  />
-                  <Input
-                    label="Dígito de verificación"
-                    value={ident.nitVerificationDigit}
-                    placeholder="Dígito"
-                    onChange={(e) =>
-                      setIdent((prev) => ({ ...prev, nitVerificationDigit: e.target.value }))
-                    }
-                  />
-                </>
-              ) : (
-                <>
-                  <Select
-                    label="Tipo de documento"
-                    value={ident.documentType}
-                    onChange={(e) =>
-                      setIdent((prev) => ({ ...prev, documentType: e.target.value }))
-                    }
-                  >
-                    <option value="">Selecciona</option>
-                    {DOCUMENT_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input
-                    label="Número de documento"
-                    value={ident.documentNumber}
-                    placeholder="Número de identificación"
-                    onChange={(e) =>
-                      setIdent((prev) => ({ ...prev, documentNumber: e.target.value }))
-                    }
-                  />
-                </>
-              )}
-            </div>
-
-            {/* Fila 2: nombre / razón social */}
-            {isJuridica ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Input
-                  label="Razón social"
-                  value={ident.businessName}
-                  placeholder="Nombre legal de la empresa"
-                  onChange={(e) => setIdent((prev) => ({ ...prev, businessName: e.target.value }))}
-                />
-                <Input
-                  label="Nombre comercial"
-                  value={ident.commercialName}
-                  placeholder="Nombre de marca o comercial"
+        {/* Columna izquierda: Identificación + Datos fiscales */}
+        <div className="space-y-6">
+          <SectionCard
+            icon={UserRound}
+            title="Identificación"
+            description="Datos base del titular o razón social."
+            saving={savingIdent}
+            onSave={saveIdent}
+            error={errorIdent}
+          >
+            <div className="space-y-4">
+              {/* Fila 1: tipo persona + documento */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <Select
+                  label="Tipo de persona"
+                  value={ident.personType}
                   onChange={(e) =>
-                    setIdent((prev) => ({ ...prev, commercialName: e.target.value }))
+                    setIdent((prev) => ({ ...prev, personType: e.target.value as PersonType }))
                   }
-                />
-                <div className="md:col-span-2">
+                >
+                  {PERSON_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </Select>
+
+                {isJuridica ? (
+                  <>
+                    <Input
+                      label="NIT"
+                      value={ident.nit}
+                      placeholder="Ej: 9001234567"
+                      onChange={(e) => setIdent((prev) => ({ ...prev, nit: e.target.value }))}
+                    />
+                    <div>
+                      <Input
+                        label="Dígito de verificación"
+                        value={ident.nitVerificationDigit}
+                        placeholder="Dígito"
+                        inputMode="numeric"
+                        maxLength={1}
+                        aria-invalid={liveDigitError ? true : undefined}
+                        onChange={(e) =>
+                          setIdent((prev) => ({ ...prev, nitVerificationDigit: e.target.value }))
+                        }
+                      />
+                      {liveDigitError && (
+                        <p role="alert" className="mt-1 text-xs text-rose-600">
+                          {liveDigitError}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Select
+                      label="Tipo de documento"
+                      value={ident.documentType}
+                      onChange={(e) =>
+                        setIdent((prev) => ({ ...prev, documentType: e.target.value }))
+                      }
+                    >
+                      <option value="">Selecciona</option>
+                      {DOCUMENT_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <Input
+                      label="Número de documento"
+                      value={ident.documentNumber}
+                      placeholder="Número de identificación"
+                      onChange={(e) =>
+                        setIdent((prev) => ({ ...prev, documentNumber: e.target.value }))
+                      }
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Fila 2: nombre / razón social */}
+              {isJuridica ? (
+                <div className="grid gap-4 md:grid-cols-2">
                   <Input
-                    label="Representante legal"
-                    value={ident.legalRepresentativeId}
-                    placeholder="Nombre del representante legal"
+                    label="Razón social"
+                    value={ident.businessName}
+                    placeholder="Nombre legal de la empresa"
                     onChange={(e) =>
-                      setIdent((prev) => ({ ...prev, legalRepresentativeId: e.target.value }))
+                      setIdent((prev) => ({ ...prev, businessName: e.target.value }))
                     }
+                  />
+                  <Input
+                    label="Nombre comercial"
+                    value={ident.commercialName}
+                    placeholder="Nombre de marca o comercial"
+                    onChange={(e) =>
+                      setIdent((prev) => ({ ...prev, commercialName: e.target.value }))
+                    }
+                  />
+                  <fieldset className="space-y-3 md:col-span-2">
+                    <legend className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Representante legal
+                    </legend>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      {subscriber.legalRepresentative ? (
+                        <>
+                          Actual:{' '}
+                          <span className="font-semibold text-gray-900 dark:text-white">
+                            {subscriber.legalRepresentative.displayName}
+                          </span>
+                          . Para cambiarlo, registra los datos del nuevo representante.
+                        </>
+                      ) : (
+                        'Sin representante legal registrado. Regístralo para activar o contratar.'
+                      )}
+                    </p>
+                    <Input
+                      label="Nombre completo del representante legal"
+                      value={ident.legalRepresentativeFullName}
+                      placeholder="Nombre y apellidos"
+                      onChange={(e) =>
+                        setIdent((prev) => ({
+                          ...prev,
+                          legalRepresentativeFullName: e.target.value,
+                        }))
+                      }
+                    />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Select
+                        label="Tipo de documento del representante"
+                        value={ident.legalRepresentativeDocumentType}
+                        onChange={(e) =>
+                          setIdent((prev) => ({
+                            ...prev,
+                            legalRepresentativeDocumentType: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Selecciona</option>
+                        {DOCUMENT_TYPE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </Select>
+                      <Input
+                        label="Número de documento del representante"
+                        value={ident.legalRepresentativeDocumentNumber}
+                        placeholder="Número de identificación"
+                        onChange={(e) =>
+                          setIdent((prev) => ({
+                            ...prev,
+                            legalRepresentativeDocumentNumber: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </fieldset>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Input
+                    label="Nombre"
+                    value={ident.firstName}
+                    placeholder="Nombre del titular"
+                    onChange={(e) => setIdent((prev) => ({ ...prev, firstName: e.target.value }))}
+                  />
+                  <Input
+                    label="Apellido"
+                    value={ident.lastName}
+                    placeholder="Apellido del titular"
+                    onChange={(e) => setIdent((prev) => ({ ...prev, lastName: e.target.value }))}
                   />
                 </div>
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Input
-                  label="Nombre"
-                  value={ident.firstName}
-                  placeholder="Nombre del titular"
-                  onChange={(e) => setIdent((prev) => ({ ...prev, firstName: e.target.value }))}
-                />
-                <Input
-                  label="Apellido"
-                  value={ident.lastName}
-                  placeholder="Apellido del titular"
-                  onChange={(e) => setIdent((prev) => ({ ...prev, lastName: e.target.value }))}
-                />
-              </div>
-            )}
-          </div>
-        </SectionCard>
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            icon={Landmark}
+            title="Datos fiscales"
+            description="Responsabilidad de IVA y responsabilidades que figuran en el RUT."
+            saving={savingFiscal}
+            onSave={saveFiscal}
+            error={errorFiscal}
+          >
+            <SubscriberFiscalFields
+              vatResponsibility={fiscal.vatResponsibility}
+              rutResponsibilities={fiscal.rutResponsibilities}
+              onVatResponsibilityChange={(value) => {
+                setFiscal((prev) => ({ ...prev, vatResponsibility: value }));
+                setFiscalErrors((prev) => ({ ...prev, vat: undefined }));
+              }}
+              onRutResponsibilitiesChange={(value) => {
+                setFiscal((prev) => ({ ...prev, rutResponsibilities: value }));
+                setFiscalErrors((prev) => ({ ...prev, rut: undefined }));
+              }}
+              vatError={fiscalErrors.vat}
+              rutError={fiscalErrors.rut}
+              layout="stacked"
+            />
+          </SectionCard>
+        </div>
 
         {/* Columna derecha: Contacto + Dirección */}
         <div className="space-y-6">

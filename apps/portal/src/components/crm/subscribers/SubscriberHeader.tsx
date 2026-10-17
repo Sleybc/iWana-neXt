@@ -15,6 +15,7 @@ import {
   SUBSCRIBER_STATUS_META,
   formatSubscriberName,
 } from './subscriber-ui';
+import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
 import { VatTreatmentBanner } from './VatTreatmentBanner';
 
 interface SubscriberHeaderProps {
@@ -23,6 +24,7 @@ interface SubscriberHeaderProps {
   canReadPrivacy?: boolean;
   onChangeStatus: () => void;
   onAddContact: () => void;
+  onCompleteFiscalData?: () => void;
 }
 
 export function SubscriberHeader({
@@ -31,6 +33,7 @@ export function SubscriberHeader({
   canReadPrivacy = false,
   onChangeStatus,
   onAddContact,
+  onCompleteFiscalData,
 }: SubscriberHeaderProps) {
   const router = useRouter();
   const name = privacyDisplayValue(
@@ -43,6 +46,10 @@ export function SubscriberHeader({
   const statusMeta = SUBSCRIBER_STATUS_META[subscriber.status as SubscriberStatus];
   const personMeta = PERSON_TYPE_META[subscriber.personType as PersonType];
   const canEditSubscriber = !subscriber.privacyRestricted && !subscriber.anonymizedAt;
+  const fiscalIncomplete =
+    canEditSubscriber &&
+    subscriber.status !== SubscriberStatus.CANCELLED &&
+    subscriber.fiscalCompleteness?.complete === false;
 
   return (
     <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
@@ -100,8 +107,15 @@ export function SubscriberHeader({
 
       {!subscriber.privacyRestricted && (
         <VatTreatmentBanner
-          vatTreatment={subscriber.vatTreatment}
-          taxRegime={subscriber.taxRegime}
+          vatResponsibility={subscriber.vatResponsibility}
+          rutResponsibilities={subscriber.rutResponsibilities ?? []}
+        />
+      )}
+
+      {fiscalIncomplete && (
+        <FiscalDataIncompleteAlert
+          missing={subscriber.fiscalCompleteness.missing}
+          onComplete={onCompleteFiscalData}
         />
       )}
 

@@ -14,14 +14,17 @@ import {
 } from '@iwana/ui';
 import { ApiError } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
-import { SubscriberStatus } from '@iwana/shared';
+import { SubscriberStatus, type SubscriberFiscalMissingField } from '@iwana/shared';
 import { ALLOWED_TRANSITIONS, SUBSCRIBER_STATUS_OPTIONS } from './subscriber-ui';
+import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
+import { readFiscalDataIncompleteError } from './subscriber-fiscal';
 
 interface SubscriberStatusTransitionDialogProps {
   currentStatus: SubscriberStatus;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddContact: () => void;
+  onCompleteFiscalData?: () => void;
   onTransition: (targetStatus: SubscriberStatus, reason?: string) => Promise<void>;
 }
 
@@ -30,6 +33,7 @@ export function SubscriberStatusTransitionDialog({
   open,
   onOpenChange,
   onAddContact,
+  onCompleteFiscalData,
   onTransition,
 }: SubscriberStatusTransitionDialogProps) {
   const [targetStatus, setTargetStatus] = useState('');
@@ -37,11 +41,13 @@ export function SubscriberStatusTransitionDialog({
   const [submitting, setSubmitting] = useState(false);
   const [contactRequired, setContactRequired] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [fiscalMissing, setFiscalMissing] = useState<SubscriberFiscalMissingField[] | null>(null);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setContactRequired(false);
       setTransitionError(null);
+      setFiscalMissing(null);
     }
     onOpenChange(nextOpen);
   };
@@ -76,6 +82,19 @@ export function SubscriberStatusTransitionDialog({
               description={transitionError}
             />
           )}
+          {fiscalMissing && (
+            <FiscalDataIncompleteAlert
+              missing={fiscalMissing}
+              onComplete={
+                onCompleteFiscalData
+                  ? () => {
+                      handleOpenChange(false);
+                      onCompleteFiscalData();
+                    }
+                  : undefined
+              }
+            />
+          )}
           {contactRequired && (
             <PortalAlert
               variant="warning"
@@ -104,6 +123,7 @@ export function SubscriberStatusTransitionDialog({
               setTargetStatus(event.target.value);
               setContactRequired(false);
               setTransitionError(null);
+              setFiscalMissing(null);
             }}
             options={allowedOptions}
           >
@@ -131,13 +151,17 @@ export function SubscriberStatusTransitionDialog({
                 setSubmitting(true);
                 setContactRequired(false);
                 setTransitionError(null);
+                setFiscalMissing(null);
                 try {
                   await onTransition(targetStatus as SubscriberStatus, reason.trim() || undefined);
                   handleOpenChange(false);
                   setTargetStatus('');
                   setReason('');
                 } catch (error) {
-                  if (
+                  const missing = readFiscalDataIncompleteError(error);
+                  if (missing) {
+                    setFiscalMissing(missing);
+                  } else if (
                     error instanceof ApiError &&
                     error.status === 422 &&
                     error.code === 'SUBSCRIBER_CONTACT_REQUIRED'

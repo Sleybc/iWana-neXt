@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ConsentChannel,
@@ -6,7 +6,7 @@ import {
   DocumentType,
   PersonType,
   SubscriberStatus,
-  TaxRegime,
+  VatResponsibility,
   VatTreatment,
 } from '@iwana/shared';
 import { ApiError, privacyApi } from '@/lib/api-client';
@@ -37,7 +37,7 @@ function subscriberFixture(contactPending: boolean): SubscriberRecord {
     nitVerificationDigit: null,
     businessName: null,
     commercialName: null,
-    legalRepresentativeId: null,
+    legalRepresentative: null,
     altContactName: null,
     altContactPhone: null,
     email: null,
@@ -45,7 +45,10 @@ function subscriberFixture(contactPending: boolean): SubscriberRecord {
     contactPending,
     whatsapp: null,
     vatTreatment: VatTreatment.STANDARD,
-    taxRegime: TaxRegime.COMMON,
+    taxRegime: null,
+    vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+    rutResponsibilities: ['R-99-PN'],
+    fiscalCompleteness: { complete: true, missing: [] },
     address: null,
     neighborhood: null,
     city: null,
@@ -151,6 +154,8 @@ describe('MOD05 E3 contacto pendiente', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Ana');
     await user.type(screen.getByLabelText('Apellido'), 'Pérez');
     await user.type(screen.getByLabelText('Dirección'), 'Calle 10 # 20-30');
+    await user.click(screen.getByRole('radio', { name: 'No responsable' }));
+    await user.click(screen.getByRole('checkbox', { name: /No aplica, otros/ }));
     await user.click(
       screen.getByRole('checkbox', { name: /prestar, facturar y dar soporte al servicio/i }),
     );
@@ -230,7 +235,11 @@ describe('MOD05 E3 contacto pendiente', () => {
       );
 
     render(<SubscriberSections subscriber={subscriberFixture(true)} onSave={onSave} />);
-    await userEvent.click(screen.getAllByRole('button', { name: 'Guardar cambios' })[1]!);
+    await userEvent.click(
+      within(screen.getByRole('region', { name: 'Contacto' })).getByRole('button', {
+        name: 'Guardar cambios',
+      }),
+    );
 
     expect(
       await screen.findByText('Un suscriptor activo necesita al menos un teléfono o un correo.'),

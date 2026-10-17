@@ -474,6 +474,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               canReadPrivacy={canReadPrivacy}
               onChangeStatus={() => setDialogOpen(true)}
               onAddContact={() => setActiveSubscriberTab('datos')}
+              onCompleteFiscalData={() => setActiveSubscriberTab('datos')}
             />
           </div>
 
@@ -493,6 +494,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               setDialogOpen(false);
               setActiveSubscriberTab('datos');
             }}
+            onCompleteFiscalData={() => setActiveSubscriberTab('datos')}
             onTransition={async (targetStatus, reason) => {
               await subscribersApi.transitionStatus(subscriber.id, {
                 targetStatus,

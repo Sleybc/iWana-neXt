@@ -8,7 +8,7 @@ import {
   TaxAssignmentStatus,
   TaxCategory,
   TaxProfileStatus,
-  TaxRegime,
+  VatResponsibility,
   TaxTreatment,
   VatLegalBasis,
   VatTreatment,
@@ -520,9 +520,17 @@ describe('MOD05 — criterios UX IVA por punto de servicio', () => {
 
   it('CA-UX-IVA-19 no muestra el tratamiento tributario legado en el banner', () => {
     const { container } = render(
-      <VatTreatmentBanner vatTreatment={VatTreatment.STANDARD} taxRegime={TaxRegime.COMMON} />,
+      <VatTreatmentBanner
+        vatResponsibility={VatResponsibility.RESPONSABLE}
+        rutResponsibilities={['O-13']}
+      />,
     );
-    expect(container).toBeEmptyDOMElement();
+    // Sin régimen tributario ni tratamiento de IVA por suscriptor (ADR-093 D6).
+    expect(container).not.toHaveTextContent(
+      /Común|Simplificado|COMMON|SIMPLIFIED|Estándar|Exento|Excluido|STANDARD|EXEMPT|EXCLUDED/,
+    );
+    expect(screen.getByText('Responsable')).toBeInTheDocument();
+    expect(screen.getByText('Gran contribuyente')).toBeInTheDocument();
   });
 
   it('CA-UX-IVA-20 oculta asignaciones IVA, conserva otros tributos y navega a Servicios', async () => {

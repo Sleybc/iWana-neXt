@@ -35,7 +35,6 @@ import {
   NetworkType,
   TechnicalConfidence,
   TechnicalViabilityResult,
-  TaxRegime,
   TechnicianAvailabilityType,
   TechnologyOption,
   VisitRequestStatus,
@@ -104,6 +103,7 @@ import {
   type ListMeta,
   type ListResponse,
   type SearchSubscribersInput,
+  type SubscriberDetail,
   type SubscriberListItem,
   type StockIssuePickableItem,
   type StockIssueLineSerialRef,
@@ -5615,8 +5615,15 @@ export interface ExpedienteDocumentSupportResponse {
 }
 
 export interface SubscriberRecord extends Pick<
-  SubscriberListItem,
-  'privacyRestricted' | 'anonymizedAt' | 'anonymizedRequestId'
+  SubscriberDetail,
+  | 'privacyRestricted'
+  | 'anonymizedAt'
+  | 'anonymizedRequestId'
+  | 'vatResponsibility'
+  | 'rutResponsibilities'
+  | 'legalRepresentative'
+  | 'fiscalCompleteness'
+  | 'taxRegime'
 > {
   id: string;
   tenantId: string;
@@ -5633,7 +5640,6 @@ export interface SubscriberRecord extends Pick<
   nitVerificationDigit: string | null;
   businessName: string | null;
   commercialName: string | null;
-  legalRepresentativeId: string | null;
   altContactName: string | null;
   altContactPhone?: string | null;
   email?: string | null;
@@ -5641,7 +5647,6 @@ export interface SubscriberRecord extends Pick<
   contactPending: boolean;
   whatsapp: string | null;
   vatTreatment: VatTreatment;
-  taxRegime: TaxRegime;
   address: string | null;
   neighborhood: string | null;
   city: string | null;

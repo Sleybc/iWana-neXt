@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ConsentChannel, CustomerSegment, DocumentType, PersonType } from '@iwana/shared';
 import { crmApi, privacyApi } from '@/lib/api-client';
@@ -186,7 +186,10 @@ describe('captura del medio de autorización', () => {
     render(<SubscriberForm onSave={onSave} />);
 
     await screen.findByText(`Texto vigente · versión ${legalText.version}`);
-    const checkboxes = screen.getAllByRole('checkbox');
+    // Las finalidades viven en su propio grupo; las responsabilidades del RUT son otro control.
+    const checkboxes = within(
+      screen.getByRole('group', { name: 'Autorizaciones para el tratamiento de datos' }),
+    ).getAllByRole('checkbox');
     expect(checkboxes).toHaveLength(3);
     expect(checkboxes.every((checkbox) => !(checkbox as HTMLInputElement).checked)).toBe(true);
 
@@ -217,6 +220,8 @@ describe('captura del medio de autorización', () => {
     await user.type(screen.getByLabelText('Correo'), 'ana@example.test');
     await user.type(screen.getByLabelText('Teléfono'), '3001234567');
     await user.type(screen.getByLabelText('Dirección'), 'Calle 10 # 20-30');
+    await user.click(screen.getByRole('radio', { name: 'No responsable' }));
+    await user.click(screen.getByRole('checkbox', { name: /No aplica, otros/ }));
     await user.click(screen.getByRole('checkbox', { name: /prestar, facturar y dar soporte/i }));
     fireEvent.change(channelSelect, { target: { value: ConsentChannel.TELEFONO } });
     await user.click(screen.getByRole('button', { name: 'Crear suscriptor' }));

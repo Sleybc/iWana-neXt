@@ -6,6 +6,9 @@ import { PersonType, ServiceUsage } from '@iwana/shared';
 import { FormStatus, ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
 import type { Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
+import type { SubscriberFiscalMissingField } from '@iwana/shared';
+import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
+import { readFiscalDataIncompleteError } from './subscriber-fiscal';
 import { ServicePointFields } from './CreateContractDialog';
 import { stratumEvidenceUploadErrorMessage } from './stratum-evidence';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
@@ -39,6 +42,7 @@ export function ConvertExpedienteToContractDialog({
   usePortalModalDrawerBroadcast(true);
 
   const [error, setError] = useState<string | null>(null);
+  const [fiscalMissing, setFiscalMissing] = useState<SubscriberFiscalMissingField[] | null>(null);
   const [serviceUsage, setServiceUsage] = useState<ServiceUsage | ''>('');
   const [installationStratum, setInstallationStratum] = useState('');
   const [hasStratumEvidence, setHasStratumEvidence] = useState(false);
@@ -126,6 +130,7 @@ export function ConvertExpedienteToContractDialog({
     }
     setLoading(true);
     setError(null);
+    setFiscalMissing(null);
     try {
       const created = await contractsApi.createFromExpediente(subscriberId, {
         expedienteId: expedienteSummary.id,
@@ -150,7 +155,10 @@ export function ConvertExpedienteToContractDialog({
       }
       await onSuccess();
     } catch (err) {
-      if (
+      const fiscalMissingFields = readFiscalDataIncompleteError(err);
+      if (fiscalMissingFields) {
+        setFiscalMissing(fiscalMissingFields);
+      } else if (
         err instanceof ApiError &&
         err.status === 422 &&
         /installationStratum/i.test(err.message)
@@ -301,6 +309,7 @@ export function ConvertExpedienteToContractDialog({
         </div>
 
         {/* Error */}
+        {fiscalMissing && <FiscalDataIncompleteAlert missing={fiscalMissing} />}
         <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
 
         {/* Acciones */}

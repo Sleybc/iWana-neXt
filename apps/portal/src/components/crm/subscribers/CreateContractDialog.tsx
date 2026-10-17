@@ -2,11 +2,18 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
-import { CustomerSegment, PersonType, ServiceUsage } from '@iwana/shared';
+import {
+  CustomerSegment,
+  PersonType,
+  ServiceUsage,
+  type SubscriberFiscalMissingField,
+} from '@iwana/shared';
 import { FormField, FormStatus, ModalLayer, Select, overlayEdgeClassName, cn } from '@iwana/ui';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
 import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
+import { readFiscalDataIncompleteError } from './subscriber-fiscal';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import {
@@ -129,6 +136,7 @@ export function CreateContractDialog({
   const [planResolving, setPlanResolving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [fiscalMissing, setFiscalMissing] = useState<SubscriberFiscalMissingField[] | null>(null);
   const [serviceUsage, setServiceUsage] = useState<ServiceUsage | ''>('');
   const [installationStratum, setInstallationStratum] = useState('');
   const [hasStratumEvidence, setHasStratumEvidence] = useState(false);
@@ -259,6 +267,7 @@ export function CreateContractDialog({
 
     setSaving(true);
     setSaveError(null);
+    setFiscalMissing(null);
     try {
       const planSnapshotJson: Record<string, unknown> = {
         id: form.selectedPlan.id,
@@ -316,7 +325,10 @@ export function CreateContractDialog({
 
       await onSuccess();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
+      const fiscalMissingFields = readFiscalDataIncompleteError(err);
+      if (fiscalMissingFields) {
+        setFiscalMissing(fiscalMissingFields);
+      } else if (err instanceof ApiError && err.status === 422) {
         const detail = `${err.message} ${JSON.stringify(err.details ?? '')}`.toLowerCase();
         if (detail.includes('installationstratum')) {
           setStratumError('Revisa el estrato del predio de instalación.');
@@ -390,6 +402,7 @@ export function CreateContractDialog({
         {/* Formulario */}
         <form onSubmit={handleSubmit} id="create-contract-form" className="flex-1 overflow-y-auto">
           <div className="space-y-6 p-6">
+            {fiscalMissing && <FiscalDataIncompleteAlert missing={fiscalMissing} />}
             <FormStatus status={saveError ? 'error' : 'idle'} message={saveError ?? undefined} />
 
             {/* ── Plan ─────────────────────────────────────────────────── */}
