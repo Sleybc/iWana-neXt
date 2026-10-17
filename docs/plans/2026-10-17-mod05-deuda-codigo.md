@@ -90,3 +90,12 @@ El launcher es [PROMPT-MOD05-DEUDA-CODIGO-LAUNCH-v1.0.md](../prompts/PROMPT-MOD0
 - **Ola 1:** B0; tras S1, B1 ∥ B2; tras S2, B3.
 - **Ola 2:** V1 ∥ V2 ∥ V3, después V4 y V5.
 - **Precondición:** el CTO aprueba D-M03, D-M04 y D-FIS; `main` en `48529fd0` o posterior.
+
+### v1.1 (2026-10-17): bloqueo de B1 y D-M05
+
+- **B1:** publicó los esquemas (S2) y se bloqueó con razón. La conversión desde el expediente no tiene responsabilidades del RUT ni identidad del representante, y hoy **infiere** el régimen. Es un defecto del emisor: la pasada regla → campo no trazó la conversión.
+- **B2:** R5 a R8 implementadas; falta la integración. El agente no alcanzó PostgreSQL (arriba en `:5433`) y probó Redis en 6399, cuando está en 6380.
+- **D-M05 (pendiente del CTO):** exigir los datos fiscales al **activar y al contratar** (A, recomendada), y crear el prospecto convertido sin inventar nada. Delta: [PROMPT-MOD05-DEUDA-CODIGO-v1.1.md](../prompts/PROMPT-MOD05-DEUDA-CODIGO-v1.1.md), con la migración 157.
+
+- **✅ D-M05 = A** (el CTO lanzó B0, B1 y B2 con esa opción, 2026-10-17): los datos fiscales se exigen al activar y al contratar; la conversión no infiere nada.
+- **Ola 1, estado:** B0 v1.2 (157, 10/10 de integración en dos schemas), B1 v1.1 y B2 v1.1 completos. API con 5 294 tests y 0 fallos; integración de la API con 97 tests; `crm/subscribers` por encima de su línea base en las cuatro métricas. El portal tiene 3 tests en rojo por el contrato nuevo, que corresponden a B3.
