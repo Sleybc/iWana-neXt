@@ -69,4 +69,4 @@ Las lecciones quedaron en la memoria del emisor y en la sección de evidencia ob
 - El criterio #1 del checklist de la [re-auditoría](INFORME-MOD05-SUBSCRIBERS-REAUDITORIA-v1.0.md) deja de depender de la mitigación D-1B.
 - El [runbook manual](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) pasa a vía de emergencia: casos de más de 500 expedientes, o cuando un participante no está disponible.
 
-**HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (Propuesto) describe lo construido en la Fase 1b; espera la aprobación del CTO.
+**HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (aprobado por el CTO el 2026-10-17) describe lo construido en la Fase 1b.

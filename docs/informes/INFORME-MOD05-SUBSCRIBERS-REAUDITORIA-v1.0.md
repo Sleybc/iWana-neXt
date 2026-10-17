@@ -143,7 +143,7 @@ Si el CTO prefiere no asumir ese riesgo, la Fase 1b pasa delante de G7 y entra e
 - **D-1B queda cumplida antes de producción.** El [runbook manual](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) pasa a vía de emergencia (más de 500 expedientes, o un participante no disponible).
 - **Criterio #1 → ✅:** sin críticos ni altos abiertos. V2″ de `sec-eng`: GO.
 - **Criterio #10 → ⚠:** la fase 2 de ADR-058 está **implementada y revisada** (K1/K2 en `785b50c7`, GO de `sec-eng` en K3, recifrado ensayado con datos en M2d). Solo falta desplegarla, que es G7, diferido hasta la beta ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md)).
-- **HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (Propuesto) reemplaza a la v1.0.
+- **HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (aprobado el 2026-10-17) reemplaza a la v1.0.
 
 **Checklist: 10 ✅ · 4 ⚠ · 0 ❌.** Los ⚠ (#2, #4, #10 y #12) dependen de G7 por tenant o del dictamen del contador. *Recuento hecho fila por fila sobre la tabla de §3: los totales escritos en §3 y §7 tenían un ✅ de menos (tras E-3 eran 9 ✅ · 3 ⚠ · 2 ❌).*
 

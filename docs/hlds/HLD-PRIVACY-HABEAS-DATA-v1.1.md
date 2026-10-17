@@ -1,7 +1,7 @@
 # HLD — `privacy` · Protección de datos personales (Habeas Data)
 
 **Versión:** 1.1 (reemplaza a [v1.0](HLD-PRIVACY-HABEAS-DATA-v1.0.md))
-**Estado:** Propuesto (pendiente de aprobación del CTO)
+**Estado:** Aprobado por el CTO el 2026-10-17
 **Fecha:** 2026-10-17
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
@@ -193,7 +193,7 @@ flowchart LR
 1. la beta mínima ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md));
 2. los dictámenes de ADR-094 §7.3;
 3. la ejecución por tenant: migraciones 146 a 152, conciliación del backfill y publicación del texto de autorización;
-4. la aprobación de este HLD v1.1 por el CTO.
+4. ~~la aprobación de este HLD v1.1 por el CTO~~ ✅ aprobado el 2026-10-17.
 
 **D-1B queda cumplida antes de producción:** la supresión y el bloqueo ya no dependen del runbook manual, que pasa a vía de emergencia.
 
