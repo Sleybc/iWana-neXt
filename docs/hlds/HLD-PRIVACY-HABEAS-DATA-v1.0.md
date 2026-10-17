@@ -1,7 +1,7 @@
 # HLD — `privacy` · Protección de datos personales (Habeas Data)
 
 **Versión:** 1.0
-**Estado:** Aprobado por el CTO el 2026-10-15
+**Estado:** Aprobado por el CTO el 2026-10-15 · Reemplazado por [v1.1](HLD-PRIVACY-HABEAS-DATA-v1.1.md) (2026-10-17, Fase 1b)
 **Fecha:** 2026-10-15
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH

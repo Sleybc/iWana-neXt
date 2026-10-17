@@ -1,6 +1,6 @@
 # `privacy` Fase 1b — Bloqueo, anonimización y plazo de traslado · Plan de orquestación
 
-**Fecha:** 2026-10-16 · **Versión:** 1.6 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-16 · **Versión:** 1.7 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Prompt:** [PROMPT-PRIVACY-FASE-1B-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-v1.0.md) · **Launcher:** [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md)
 **Autoridad:**
 - [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md);
@@ -239,3 +239,11 @@ El launcher es [PROMPT-PRIVACY-FASE-1B-LAUNCH-v1.0.md](../prompts/PROMPT-PRIVACY
 | P1 (a verificar) | `WorkOrderSourceContext.TASKS` está en `@iwana/shared`, pero no en el enum `work_order_source_context` de la base (030, sin `ADD VALUE`). Lo usan WFM, `tasks` y el portal: crear una visita o una orden con origen `TASKS` fallaría con `22P02`. Decisión del CTO: migración `ADD VALUE 'TASKS'` (recomendada, porque la funcionalidad existe en API y portal) o retirarlo del contrato | MOD11 / WFM |
 | P2 | Ante un `QueryFailedError` inesperado, el log global de Nest imprime la consulta con sus parámetros, que pueden incluir un HMAC | `sec-eng` + backend |
 | P3 | Los demás tests de supresión crean las tablas a mano y no ven los tipos reales; deben pasar al patrón de migraciones reales | `sr-qa` |
+
+### v1.7 (2026-10-17): cierre
+
+- **G6.5: GO.** CI [`38992139163`](https://github.com/Sleybc/iWana-neXt/actions/runs/38992139163) sobre `34e66adc`, con 5/5 jobs y todos los pasos ejecutados (integraciones de db, API y worker; migración 152 y su paridad). `48529fd0` (MCP) también quedó verde.
+- **Fase 1b cerrada:** G4, G6 y G6.5 en GO ([cierre](../informes/INFORME-PRIVACY-FASE-1B-CIERRE-G6-v1.0.md)).
+- **HLD:** [v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (Propuesto, espera aprobación del CTO); la v1.0 queda reemplazada.
+- **Re-auditoría MOD05 §8:** SUB-A06 y criterio #1 → ✅; checklist 10 ✅ · 4 ⚠ · 0 ❌.
+- **`dbiw`:** migrada hasta la 152 en sus 4 tenants ACTIVE (respaldo `.backups/dbiw-2026-10-17T01-44-43-287Z.dump`).

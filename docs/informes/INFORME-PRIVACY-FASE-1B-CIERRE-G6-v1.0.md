@@ -5,7 +5,7 @@
 **Estado:**
 - **G4: GO.**
 - **G6: GO.**
-- **G6.5: pendiente**, hasta el CI del commit que incluye FIX-PREVIEW y la suite E2E. El último CI verde completo es [`38983191847`](https://github.com/Sleybc/iWana-neXt/actions/runs/38983191847), sobre `1214ea02`.
+- **G6.5: GO.** CI [`38992139163`](https://github.com/Sleybc/iWana-neXt/actions/runs/38992139163) sobre `34e66adc`, verde en sus 5 jobs, con todos los pasos ejecutados: integraciones de db, API (incluida `privacy-erasure-api.postgres.integration.spec.ts`) y worker, y la migración 152 con su paridad. El commit siguiente (`48529fd0`, solo MCP) también quedó verde.
 - G7 no se evalúa: está diferido hasta la beta ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md)).
 
 ## 1. Qué entrega la fase
@@ -31,7 +31,7 @@
 | G4: boundaries y contratos | [V3](INFORME-PRIVACY-FASE-1B-V3-REV-v1.0.md) y [V3′](INFORME-PRIVACY-FASE-1B-V3-REV-v1.1.md): sin violaciones de boundary; la deriva quedó corregida (H4 a H6 y H13) | GO |
 | G6: E2E contra la API real | [V1 v1.8](INFORME-PRIVACY-FASE-1B-V1-QA-v1.8.md): **4/4** con `--retries=0`, sobre el tenant `e2e-privacy-1b-a114bf06` (migrado hasta la 151) | GO |
 | G6: suites y cobertura | [V4″](INFORME-PRIVACY-FASE-1B-V4-GATES-v1.2.md) y [FIX-PREVIEW](INFORME-PRIVACY-FASE-1B-FIX-PREVIEW-v1.0.md): API con 5 241 tests y 0 fallos; integración de la API con 92 tests, incluido el test nuevo de supresión con el adaptador real; `privacy/**` con 94,61 % de statements y 82,73 % de branches; `crm/subscribers` sin bajar de su línea base | GO |
-| G6.5 | CI completo de `1214ea02` en verde, con todos sus pasos ejecutados. Falta el SHA final de la fase | Pendiente |
+| G6.5 | CI [`38992139163`](https://github.com/Sleybc/iWana-neXt/actions/runs/38992139163) sobre `34e66adc` (SHA final de la fase): 5/5 jobs verdes y todos los pasos ejecutados | GO |
 
 **Cobertura R1–R16:**
 - R5, R13 y R14 no son casos E2E. Los cubren la integración del CLI (`anonymize-titular.postgres.integration.spec.ts`) y la integración de la API con el adaptador real.
@@ -69,4 +69,4 @@ Las lecciones quedaron en la memoria del emisor y en la sección de evidencia ob
 - El criterio #1 del checklist de la [re-auditoría](INFORME-MOD05-SUBSCRIBERS-REAUDITORIA-v1.0.md) deja de depender de la mitigación D-1B.
 - El [runbook manual](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) pasa a vía de emergencia: casos de más de 500 expedientes, o cuando un participante no está disponible.
 
-**Pendiente:** el HLD v1.1 (retiro del puerto de bloqueo, R10 como regla y lectura auditada) se actualiza después de G6.5.
+**HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (Propuesto) describe lo construido en la Fase 1b; espera la aprobación del CTO.

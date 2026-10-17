@@ -134,3 +134,22 @@ Si el CTO prefiere no asumir ese riesgo, la Fase 1b pasa delante de G7 y entra e
 
 **Checklist: 8 ✅ · 4 ⚠ · 2 ❌.** Siguen abiertos el #1 (A06, mitigado por D-1B y el runbook) y el #10 (ADR-058 fase 2). G6.5 de E-3: ✅ GO (CI [`38793545136`](https://github.com/Sleybc/iWana-neXt/actions/runs/38793545136)).
 
+
+## 8. Actualización tras la Fase 1b de privacidad (2026-10-17)
+
+[Cierre de la Fase 1b](INFORME-PRIVACY-FASE-1B-CIERRE-G6-v1.0.md): G4, G6 y G6.5 en **GO** (CI [`38992139163`](https://github.com/Sleybc/iWana-neXt/actions/runs/38992139163), `34e66adc`).
+
+- **SUB-A06 → ✅.** La supresión procedente anonimiza en la misma transacción que `resolve`, en CRM, Party, usuarios dados de baja, Media, WFM y `tasks`. El bloqueo se aplica en lectura, en búsqueda y en toda mutación. E2E 4/4 contra la API real.
+- **D-1B queda cumplida antes de producción.** El [runbook manual](../runbooks/RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) pasa a vía de emergencia (más de 500 expedientes, o un participante no disponible).
+- **Criterio #1 → ✅:** sin críticos ni altos abiertos. V2″ de `sec-eng`: GO.
+- **Criterio #10 → ⚠:** la fase 2 de ADR-058 está **implementada y revisada** (K1/K2 en `785b50c7`, GO de `sec-eng` en K3, recifrado ensayado con datos en M2d). Solo falta desplegarla, que es G7, diferido hasta la beta ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md)).
+- **HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.1](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.1.md) (Propuesto) reemplaza a la v1.0.
+
+**Checklist: 10 ✅ · 4 ⚠ · 0 ❌.** Los ⚠ (#2, #4, #10 y #12) dependen de G7 por tenant o del dictamen del contador. *Recuento hecho fila por fila sobre la tabla de §3: los totales escritos en §3 y §7 tenían un ✅ de menos (tras E-3 eran 9 ✅ · 3 ⚠ · 2 ❌).*
+
+**Deuda de código MOD05 que sigue abierta**, para la fase siguiente:
+- M03: responsabilidad de IVA y responsabilidades del RUT (ADR-093);
+- M04: dígito de verificación del NIT y representante legal obligatorio;
+- `contracts.fiscal_document` en claro (P2, hallado en la Fase 1b);
+- B02: llaves foráneas;
+- B04: tipos enum.
