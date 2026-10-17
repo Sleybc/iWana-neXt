@@ -109,6 +109,10 @@ import { PrivacyErasureRecord1490000000000 } from './149_privacy_erasure_record'
 import { TitularAnonymizationMarker1500000000000 } from './150_titular_anonymization_marker';
 import { SeedBlockedDataPermission1510000000000 } from './151_seed_blocked_data_permission';
 import { WorkOrderSourceContextTasks1520000000000 } from './152_work_order_source_context_tasks';
+import { SubscriberVatResponsibility1530000000000 } from './153_subscriber_vat_responsibility';
+import { SubscriberLegalRepresentativeParty1540000000000 } from './154_subscriber_legal_representative_party';
+import { FiscalDocumentEncryption1550000000000 } from './155_fiscal_document_encryption';
+import { SubscriberExpedienteForeignKey1560000000000 } from './156_subscriber_expediente_fk';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -299,6 +303,10 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   TitularAnonymizationMarker1500000000000,
   SeedBlockedDataPermission1510000000000,
   WorkOrderSourceContextTasks1520000000000,
+  SubscriberVatResponsibility1530000000000,
+  SubscriberLegalRepresentativeParty1540000000000,
+  FiscalDocumentEncryption1550000000000,
+  SubscriberExpedienteForeignKey1560000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
