@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { PersonType, CustomerSegment, VatTreatment, TaxRegime, DocumentType } from '@iwana/shared';
+import { PersonType, CustomerSegment, VatTreatment, DocumentType } from '@iwana/shared';
 import { VatTreatmentService } from './vat-treatment.service';
 import { Subscriber } from './entities/subscriber.entity';
 
@@ -114,16 +114,6 @@ describe('VatTreatmentService', () => {
 
       // Todos deben ser EXEMPT porque estrato 2 es EXEMPT independientemente del segmento
       expect(resultados.every((r) => r === VatTreatment.EXEMPT)).toBe(true);
-    });
-  });
-
-  describe('resolveTaxRegime', () => {
-    it('NATURAL → SIMPLIFIED', () => {
-      expect(service.resolveTaxRegime(PersonType.NATURAL)).toBe(TaxRegime.SIMPLIFIED);
-    });
-
-    it('JURIDICA → COMMON', () => {
-      expect(service.resolveTaxRegime(PersonType.JURIDICA)).toBe(TaxRegime.COMMON);
     });
   });
 
@@ -276,22 +266,19 @@ describe('VatTreatmentService', () => {
   });
 
   describe('applyTaxFields', () => {
-    it('NATURAL estrato 2 RESIDENTIAL → EXEMPT + SIMPLIFIED', () => {
+    it('NATURAL estrato 2 RESIDENTIAL → EXEMPT', () => {
       const result = service.applyTaxFields(PersonType.NATURAL, 2, CustomerSegment.RESIDENTIAL);
       expect(result.vatTreatment).toBe(VatTreatment.EXEMPT);
-      expect(result.taxRegime).toBe(TaxRegime.SIMPLIFIED);
     });
 
-    it('JURIDICA GOVERNMENT → STANDARD + COMMON', () => {
+    it('JURIDICA GOVERNMENT → STANDARD', () => {
       const result = service.applyTaxFields(PersonType.JURIDICA, null, CustomerSegment.GOVERNMENT);
       expect(result.vatTreatment).toBe(VatTreatment.STANDARD);
-      expect(result.taxRegime).toBe(TaxRegime.COMMON);
     });
 
-    it('NATURAL estrato 4 CORPORATE → STANDARD + SIMPLIFIED', () => {
+    it('NATURAL estrato 4 CORPORATE → STANDARD', () => {
       const result = service.applyTaxFields(PersonType.NATURAL, 4, CustomerSegment.CORPORATE);
       expect(result.vatTreatment).toBe(VatTreatment.STANDARD);
-      expect(result.taxRegime).toBe(TaxRegime.SIMPLIFIED);
     });
   });
 });

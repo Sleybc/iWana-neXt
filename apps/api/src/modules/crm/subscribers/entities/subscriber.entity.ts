@@ -14,6 +14,7 @@ import {
   TaxRegime,
   SubscriberStatus,
   DocumentType,
+  VatResponsibility,
 } from '@iwana/shared';
 
 /**
@@ -50,11 +51,16 @@ export class Subscriber {
   partyId: string | null;
 
   // ── Dimensión fiscal (régimen tributario colombiano) ──
-  @Column({ type: 'varchar', length: 20, name: 'person_type' })
+  @Column({ type: 'enum', enum: PersonType, enumName: 'person_type_enum', name: 'person_type' })
   personType: PersonType;
 
   // ── Dimensión de negocio (segmento ISP) ──
-  @Column({ type: 'varchar', length: 20, name: 'customer_segment' })
+  @Column({
+    type: 'enum',
+    enum: CustomerSegment,
+    enumName: 'customer_segment_enum',
+    name: 'customer_segment',
+  })
   customerSegment: CustomerSegment;
 
   // ── Persona Natural ──
@@ -103,6 +109,12 @@ export class Subscriber {
   @Column({ type: 'uuid', name: 'legal_representative_id', nullable: true })
   legalRepresentativeId: string | null;
 
+  @Column({ type: 'uuid', name: 'legal_representative_party_id', nullable: true })
+  legalRepresentativePartyId: string | null;
+
+  /** Nombre de presentación hidratado por IPartyReadPort; no es columna de subscribers. */
+  legalRepresentativeDisplayName: string | null = null;
+
   // ── Compartido (ambos tipos) ──
   @Column({ type: 'varchar', length: 500, name: 'email_encrypted', nullable: true })
   emailEncrypted: string | null;
@@ -126,11 +138,35 @@ export class Subscriber {
   whatsappHmac: string | null;
 
   // ── Fiscal (calculado automáticamente por VatTreatmentService) ──
-  @Column({ type: 'varchar', length: 20, name: 'vat_treatment' })
+  @Column({
+    type: 'enum',
+    enum: VatTreatment,
+    enumName: 'vat_treatment_enum',
+    name: 'vat_treatment',
+  })
   vatTreatment: VatTreatment;
 
-  @Column({ type: 'varchar', length: 20, name: 'tax_regime' })
-  taxRegime: TaxRegime;
+  @Column({
+    type: 'enum',
+    enum: VatResponsibility,
+    enumName: 'vat_responsibility_enum',
+    name: 'vat_responsibility',
+    nullable: true,
+  })
+  vatResponsibility: VatResponsibility | null;
+
+  @Column({ type: 'text', array: true, name: 'rut_responsibilities', default: () => "'{}'" })
+  rutResponsibilities: string[];
+
+  /** @deprecated Columna conservada para lectura de datos legados; no se escribe. */
+  @Column({
+    type: 'enum',
+    enum: TaxRegime,
+    enumName: 'tax_regime_enum',
+    name: 'tax_regime',
+    nullable: true,
+  })
+  taxRegime: TaxRegime | null;
 
   // ── Ubicación ──
   @Column({ type: 'varchar', length: 500, name: 'address' })
@@ -179,8 +215,9 @@ export class Subscriber {
 
   // ── Ciclo de vida ──
   @Column({
-    type: 'varchar',
-    length: 20,
+    type: 'enum',
+    enum: SubscriberStatus,
+    enumName: 'subscriber_status_enum',
     name: 'status',
     default: SubscriberStatus.LEAD,
   })

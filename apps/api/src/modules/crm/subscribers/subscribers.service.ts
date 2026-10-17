@@ -34,10 +34,13 @@ import {
   PartyType,
   ConsentStatus,
   ConsentType,
+  VatResponsibility,
+  RUT_RESPONSIBILITIES,
   type DataPurpose,
   type DataAuthorizationView,
   type PrivacyMark,
   type RequestSummary,
+  type RutResponsibility,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
@@ -53,6 +56,7 @@ import { ExpedienteRecord } from '../expedientes/entities/expediente-record.enti
 import { ConsentRecord } from '../expedientes/entities/consent-record-v2.entity';
 import { Contract } from '../contracts/entities/contract.entity';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
+import { IPartyReadPort } from '../../parties/ports/party-read.port';
 import { IPrivacyAuthorizationWritePort } from '../../privacy/ports/privacy-authorization-write.port';
 import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
 import { IPrivacyLegalTextReadPort } from '../../privacy/ports/privacy-legal-text-read.port';
@@ -80,7 +84,16 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
       nitVerificationDigit: z.string().max(1).optional(),
       businessName: z.string().min(1).max(300).optional(),
       commercialName: z.string().max(300).optional(),
-      legalRepresentativeId: z.string().uuid().optional(),
+      legalRepresentative: z
+        .object({
+          fullName: z.string().min(1).max(300),
+          documentType: z.nativeEnum(DocumentType),
+          documentNumber: z.string().min(3).max(50),
+        })
+        .strict()
+        .optional(),
+      vatResponsibility: z.nativeEnum(VatResponsibility).optional(),
+      rutResponsibilities: z.array(z.enum(RUT_RESPONSIBILITIES)).optional(),
     })
     .strict(),
   contact: z
@@ -172,6 +185,9 @@ export class SubscribersService {
     @Optional()
     @Inject(IPrivacyRequestsReadPort)
     private readonly privacyRequestsReadPort?: IPrivacyRequestsReadPort,
+    @Optional()
+    @Inject(IPartyReadPort)
+    private readonly partyReadPort?: IPartyReadPort,
   ) {
     const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -200,7 +216,11 @@ export class SubscribersService {
       nitVerificationDigit?: string | undefined;
       businessName?: string | undefined;
       commercialName?: string | undefined;
-      legalRepresentativeId?: string | undefined;
+      legalRepresentative?:
+        | { fullName: string; documentType: DocumentType; documentNumber: string }
+        | undefined;
+      vatResponsibility?: VatResponsibility | null | undefined;
+      rutResponsibilities?: RutResponsibility[] | undefined;
       // Compartido
       email?: string | undefined;
       phone?: string | undefined;
@@ -263,8 +283,23 @@ export class SubscribersService {
       });
     }
 
+    if (!isConversion && (!dto.vatResponsibility || !dto.rutResponsibilities?.length)) {
+      throw new BadRequestException({
+        code: 'SUBSCRIBER_FISCAL_DATA_REQUIRED',
+        message:
+          'El alta manual requiere responsabilidad de IVA y al menos una responsabilidad del RUT.',
+      });
+    }
+    if (
+      !isConversion &&
+      dto.rutResponsibilities &&
+      new Set(dto.rutResponsibilities).size !== dto.rutResponsibilities.length
+    ) {
+      throw new BadRequestException('No repitas responsabilidades del RUT.');
+    }
+
     // Calcular tratamiento IVA y régimen tributario
-    const { vatTreatment, taxRegime } = this.vatTreatmentService.applyTaxFields(
+    const { vatTreatment } = this.vatTreatmentService.applyTaxFields(
       dto.personType,
       dto.stratum ?? null,
       dto.customerSegment,
@@ -279,6 +314,23 @@ export class SubscribersService {
     const parsedNit = dto.nit ? parseExpedienteNit(dto.nit) : null;
     const nit = parsedNit?.nit ?? dto.nit ?? null;
     const nitVerificationDigit = parsedNit?.verificationDigit ?? dto.nitVerificationDigit ?? null;
+    if (
+      parsedNit?.verificationDigit &&
+      dto.nitVerificationDigit &&
+      parsedNit.verificationDigit !== dto.nitVerificationDigit
+    ) {
+      throw new BadRequestException('El dígito de verificación del NIT no coincide.');
+    }
+    if (
+      !isConversion &&
+      dto.personType === PersonType.JURIDICA &&
+      (!nit || !nitVerificationDigit)
+    ) {
+      throw new BadRequestException('El NIT y su dígito de verificación son obligatorios.');
+    }
+    if (!isConversion && dto.personType === PersonType.JURIDICA && !dto.legalRepresentative) {
+      throw new BadRequestException('El representante legal es obligatorio para persona jurídica.');
+    }
     if (
       nit &&
       nitVerificationDigit &&
@@ -322,7 +374,8 @@ export class SubscribersService {
     entity.nitVerificationDigit = nitVerificationDigit;
     entity.businessName = dto.businessName ?? null;
     entity.commercialName = dto.commercialName ?? null;
-    entity.legalRepresentativeId = dto.legalRepresentativeId ?? null;
+    entity.legalRepresentativeId = null;
+    entity.legalRepresentativePartyId = null;
     entity.emailEncrypted = emailEncrypted;
     entity.phoneEncrypted = phoneEncrypted;
     entity.altContactName = dto.altContactName ?? null;
@@ -331,7 +384,8 @@ export class SubscribersService {
     entity.whatsappEncrypted = dto.whatsapp ? this.encryptValue(dto.whatsapp) : null;
     entity.whatsappHmac = dto.whatsapp ? this.hmacPhoneHash(dto.whatsapp.trim()) : null;
     entity.vatTreatment = vatTreatment;
-    entity.taxRegime = taxRegime;
+    entity.vatResponsibility = dto.vatResponsibility ?? null;
+    entity.rutResponsibilities = dto.rutResponsibilities ?? [];
     entity.address = dto.address;
     entity.neighborhood = dto.neighborhood ?? null;
     entity.city = dto.city ?? null;
@@ -401,6 +455,26 @@ export class SubscribersService {
           });
         }
         const partyId = entity.partyId;
+
+        if (!isConversion && dto.personType === PersonType.JURIDICA && dto.legalRepresentative) {
+          const representativeName = dto.legalRepresentative.fullName.trim();
+          const representative = await this.partyWritePort.ensurePartyWithRole(
+            {
+              partyType: PartyType.NATURAL,
+              documentType: this.toPartyDocumentType(
+                dto.legalRepresentative.documentType,
+                PersonType.NATURAL,
+              ),
+              documentNumber: dto.legalRepresentative.documentNumber,
+              displayName: representativeName.slice(0, 160),
+              legalName: representativeName,
+            },
+            PartyRoleType.LEGAL_REPRESENTATIVE,
+            { manager: qr.manager, actorUserId: actorId },
+          );
+          entity.legalRepresentativePartyId = representative.partyId;
+          entity.legalRepresentativeDisplayName = representative.identity.displayName;
+        }
 
         const authorizationWriter = this.requireAuthorizationWriter();
         if (isConversion && dto.expedienteId) {
@@ -530,7 +604,6 @@ export class SubscribersService {
         personType: dto.personType,
         customerSegment: dto.customerSegment,
         vatTreatment,
-        taxRegime,
         status: entity.status,
         expedienteId: entity.expedienteId,
         convertedAt: entity.convertedAt,
@@ -614,6 +687,7 @@ export class SubscribersService {
 
     // Descifrar PII para respuesta
     const hydratedData = data.map((s) => this.decryptSubscriberFields(s));
+    await this.hydrateLegalRepresentativeDisplayNames(hydratedData);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydratedData.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
     );
@@ -652,7 +726,9 @@ export class SubscribersService {
       throw new NotFoundException(`Suscriptor ${id} no encontrado`);
     }
 
-    return this.decryptSubscriberFields(entity);
+    const hydrated = this.decryptSubscriberFields(entity);
+    await this.hydrateLegalRepresentativeDisplayNames([hydrated]);
+    return hydrated;
   }
 
   /**
@@ -673,7 +749,11 @@ export class SubscribersService {
       nitVerificationDigit?: string | undefined;
       businessName?: string | undefined;
       commercialName?: string | undefined;
-      legalRepresentativeId?: string | undefined;
+      legalRepresentative?:
+        | { fullName: string; documentType: DocumentType; documentNumber: string }
+        | undefined;
+      vatResponsibility?: VatResponsibility | undefined;
+      rutResponsibilities?: RutResponsibility[] | undefined;
       email?: string | null | undefined;
       phone?: string | null | undefined;
       altContactName?: string | undefined;
@@ -724,13 +804,12 @@ export class SubscribersService {
     const effectiveSegment = dto.customerSegment ?? entity.customerSegment;
 
     if (dto.personType || dto.stratum !== undefined || dto.customerSegment) {
-      const { vatTreatment, taxRegime } = this.vatTreatmentService.applyTaxFields(
+      const { vatTreatment } = this.vatTreatmentService.applyTaxFields(
         effectivePersonType,
         effectiveStratum,
         effectiveSegment,
       );
       entity.vatTreatment = vatTreatment;
-      entity.taxRegime = taxRegime;
     }
 
     // Actualizar campos
@@ -764,8 +843,8 @@ export class SubscribersService {
     }
     if (dto.businessName !== undefined) entity.businessName = dto.businessName;
     if (dto.commercialName !== undefined) entity.commercialName = dto.commercialName;
-    if (dto.legalRepresentativeId !== undefined)
-      entity.legalRepresentativeId = dto.legalRepresentativeId;
+    if (dto.vatResponsibility !== undefined) entity.vatResponsibility = dto.vatResponsibility;
+    if (dto.rutResponsibilities !== undefined) entity.rutResponsibilities = dto.rutResponsibilities;
     if (dto.email !== undefined) {
       entity.emailEncrypted = nextEmailEncrypted;
       entity.emailHash = dto.email ? hashEmail(dto.email, this.piiHashKey) : null;
@@ -806,6 +885,28 @@ export class SubscribersService {
     }
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      if (dto.legalRepresentative) {
+        if (effectivePersonType !== PersonType.JURIDICA) {
+          throw new BadRequestException('El representante legal solo aplica a persona jurídica.');
+        }
+        const representativeName = dto.legalRepresentative.fullName.trim();
+        const representative = await this.partyWritePort.ensurePartyWithRole(
+          {
+            partyType: PartyType.NATURAL,
+            documentType: this.toPartyDocumentType(
+              dto.legalRepresentative.documentType,
+              PersonType.NATURAL,
+            ),
+            documentNumber: dto.legalRepresentative.documentNumber,
+            displayName: representativeName.slice(0, 160),
+            legalName: representativeName,
+          },
+          PartyRoleType.LEGAL_REPRESENTATIVE,
+          { manager: qr.manager, actorUserId: actorId },
+        );
+        entity.legalRepresentativePartyId = representative.partyId;
+        entity.legalRepresentativeDisplayName = representative.identity.displayName;
+      }
       await qr.manager.save(Subscriber, entity);
     });
 
@@ -940,6 +1041,28 @@ export class SubscribersService {
       });
     }
     return this.privacyMarksReadPort.partyIdsWithActiveMark('DATOS_BLOQUEADOS');
+  }
+
+  private async hydrateLegalRepresentativeDisplayNames(subscribers: Subscriber[]): Promise<void> {
+    const partyIds = [
+      ...new Set(
+        subscribers.flatMap((subscriber) =>
+          subscriber.legalRepresentativePartyId ? [subscriber.legalRepresentativePartyId] : [],
+        ),
+      ),
+    ];
+    if (partyIds.length === 0) {
+      subscribers.forEach((subscriber) => (subscriber.legalRepresentativeDisplayName = null));
+      return;
+    }
+
+    const parties = this.partyReadPort ? await this.partyReadPort.getByIds(partyIds) : [];
+    const displayNames = new Map(parties.map((party) => [party.id, party.displayName]));
+    for (const subscriber of subscribers) {
+      subscriber.legalRepresentativeDisplayName = subscriber.legalRepresentativePartyId
+        ? (displayNames.get(subscriber.legalRepresentativePartyId) ?? null)
+        : null;
+    }
   }
 
   /**

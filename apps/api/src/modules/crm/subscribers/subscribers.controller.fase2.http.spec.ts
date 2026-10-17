@@ -13,6 +13,7 @@ import {
   SubscriberStatus,
   UserRole,
   VatTreatment,
+  VatResponsibility,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
@@ -710,6 +711,8 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         firstName: 'Test',
         lastName: 'User',
         stratum: 3,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
         email: 'test@example.com',
         phone: '3001234567',
         address: 'Calle 123',
@@ -732,6 +735,8 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         firstName: 'Test',
         lastName: 'User',
         stratum: 3,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
         email: 'test@example.com',
         phone: '3001234567',
         address: 'Calle 123',
@@ -759,6 +764,8 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         firstName: 'Test',
         lastName: 'User',
         stratum: 3,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
         email: 'test@example.com',
         phone: '3001234567',
         address: 'Calle 123',
@@ -781,6 +788,8 @@ describe('SubscribersController Fase 2 — doble guard', () => {
         firstName: 'Test',
         lastName: 'User',
         stratum: 3,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
         email: 'test@example.com',
         phone: '3001234567',
         address: 'Calle 123',

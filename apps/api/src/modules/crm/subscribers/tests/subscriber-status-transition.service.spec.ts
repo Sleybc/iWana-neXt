@@ -7,10 +7,12 @@ import {
   PersonType,
   CustomerSegment,
   DocumentType,
+  VatResponsibility,
 } from '@iwana/shared';
 import { AuditService } from '../../../audit/audit.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
 import { Subscriber } from '../entities/subscriber.entity';
+import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 
 // Mocks para multi-tenant
 const mockRunInTenantSchema = jest.fn();
@@ -40,6 +42,7 @@ describe('SubscriberStatusTransitionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriberStatusTransitionService,
+        SubscriberFiscalCompletenessService,
         { provide: DataSource, useValue: {} },
         { provide: AuditService, useValue: auditService },
       ],
@@ -209,6 +212,26 @@ describe('SubscriberStatusTransitionService', () => {
       await expect(
         service.transition('sub-1', SubscriberStatus.ACTIVE, null, 'actor-1'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza 422 con los campos faltantes antes de persistir PROSPECT → ACTIVE', async () => {
+      const subscriber = buildSubscriber({
+        status: SubscriberStatus.PROSPECT,
+        vatResponsibility: null,
+        rutResponsibilities: [],
+      });
+      mockSubscriber(subscriber);
+
+      await expect(
+        service.transition('sub-1', SubscriberStatus.ACTIVE, null, 'actor-1'),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
+          missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+        },
+      });
+      expect(auditService.log).not.toHaveBeenCalled();
     });
 
     it('lanza BadRequestException si SUSPENDED sin motivo', async () => {
@@ -584,6 +607,9 @@ function buildSubscriber(overrides: Partial<Subscriber> = {}): Subscriber {
     whatsapp: null,
     vatTreatment: 'EXCLUDED',
     taxRegime: 'SIMPLIFIED',
+    vatResponsibility: VatResponsibility.RESPONSABLE,
+    rutResponsibilities: ['O-13'],
+    legalRepresentativePartyId: null,
     address: 'Calle 1 #2-3',
     neighborhood: null,
     city: null,

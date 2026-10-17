@@ -12,6 +12,7 @@ import {
   SubscriberStatus,
   TaxRegime,
   UserRole,
+  VatResponsibility,
   VatTreatment,
 } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -187,6 +188,7 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
     subscriber.whatsappEncrypted = null;
     subscriber.whatsappHmac = null;
     subscriber.vatTreatment = VatTreatment.EXCLUDED;
+    subscriber.vatResponsibility = VatResponsibility.RESPONSABLE;
     subscriber.taxRegime = TaxRegime.SIMPLIFIED;
     subscriber.address = 'Calle inicial';
     subscriber.neighborhood = null;

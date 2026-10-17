@@ -15,6 +15,10 @@ import {
   DocumentType,
   ExpedienteStatus,
   ConsentChannel,
+  PartyRoleType,
+  PartyType,
+  VatResponsibility,
+  RutResponsibility,
 } from '@iwana/shared';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { hashEmail } from '../../../../common/crypto/hash-email.util';
@@ -22,9 +26,11 @@ import { hmacPii } from '../../../../common/crypto/pii-hash-key.util';
 import { SubscribersService } from '../subscribers.service';
 import { VatTreatmentService } from '../vat-treatment.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
+import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 import { Subscriber } from '../entities/subscriber.entity';
 import { AuditService } from '../../../audit/audit.service';
 import { IPartyWritePort } from '../../../parties/ports/party-write.port';
+import { IPartyReadPort } from '../../../parties/ports/party-read.port';
 import { IPrivacyAuthorizationWritePort } from '../../../privacy/ports/privacy-authorization-write.port';
 import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
 import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.util';
@@ -42,6 +48,7 @@ const partyWritePortMock = {
     identity: { contacts: [] },
   }),
 };
+const partyReadPortMock = { getByIds: jest.fn().mockResolvedValue([]) };
 const privacyAuthorizationWritePortMock = {
   record: jest.fn().mockResolvedValue({ authorizationId: 'auth-test-id', created: true }),
 };
@@ -73,6 +80,7 @@ describe('SubscribersService', () => {
     jest.clearAllMocks();
     auditServiceMock.log.mockResolvedValue(undefined);
     partyWritePortMock.ensurePartyWithRole.mockClear();
+    partyReadPortMock.getByIds.mockReset().mockResolvedValue([]);
     privacyAuthorizationWritePortMock.record.mockClear();
     mockTenantContextGetOrThrow.mockReturnValue({
       schemaName: 'tenant_test',
@@ -84,9 +92,11 @@ describe('SubscribersService', () => {
         SubscribersService,
         VatTreatmentService,
         SubscriberStatusTransitionService,
+        SubscriberFiscalCompletenessService,
         { provide: DataSource, useValue: {} },
         { provide: AuditService, useValue: auditServiceMock },
         { provide: IPartyWritePort, useValue: partyWritePortMock },
+        { provide: IPartyReadPort, useValue: partyReadPortMock },
         { provide: IPrivacyAuthorizationWritePort, useValue: privacyAuthorizationWritePortMock },
         { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
         {
@@ -185,6 +195,8 @@ describe('SubscribersService', () => {
       email: 'synthetic@example.invalid',
       phone: '3000000000',
       address: 'Dirección sintética',
+      vatResponsibility: VatResponsibility.RESPONSABLE,
+      rutResponsibilities: ['O-13'] as RutResponsibility[],
       authorizationChannel: ConsentChannel.TELEFONO,
       authorizations: [
         {
@@ -218,6 +230,60 @@ describe('SubscribersService', () => {
       });
 
       expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
+    });
+
+    it('rechaza el alta manual sin responsabilidad de IVA o del RUT antes de escribir', async () => {
+      const {
+        vatResponsibility: _vatResponsibility,
+        rutResponsibilities: _rutResponsibilities,
+        ...input
+      } = minimumCreateInput;
+
+      await expect(service.create(input, 'actor-1')).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'SUBSCRIBER_FISCAL_DATA_REQUIRED',
+        }),
+      });
+
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
+    });
+
+    it('asegura Party natural con rol de representante dentro de la transacción del alta', async () => {
+      const manager = {
+        save: async () => buildSubscriber(),
+        findOne: async () => buildSubscriber(),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+      const nit = '900111222';
+      const dto = {
+        ...minimumCreateInput,
+        personType: PersonType.JURIDICA,
+        customerSegment: CustomerSegment.CORPORATE,
+        nit,
+        nitVerificationDigit: calculateNitVerificationDigit(nit),
+        businessName: 'Empresa sintética',
+        legalRepresentative: {
+          fullName: 'Representante sintético',
+          documentType: DocumentType.CC,
+          documentNumber: 'doc-sintetico-01',
+        },
+      };
+
+      await service.create(dto, 'actor-1');
+
+      const representativeCall = partyWritePortMock.ensurePartyWithRole.mock.calls.find(
+        (call) => call[1] === PartyRoleType.LEGAL_REPRESENTATIVE,
+      );
+      expect(representativeCall).toBeDefined();
+      expect(representativeCall?.[0]).toMatchObject({
+        partyType: PartyType.NATURAL,
+        documentNumber: 'doc-sintetico-01',
+        displayName: 'Representante sintético',
+      });
+      expect(representativeCall?.[2].manager).toBe(manager);
     });
 
     it('rechaza un dígito de verificación NIT que no coincide antes de escribir', async () => {
@@ -280,16 +346,20 @@ describe('SubscribersService', () => {
   });
 
   describe('Cálculo automático de IVA', () => {
-    it('NATURAL estrato 2 RESIDENTIAL → EXEMPT + SIMPLIFIED al crear', async () => {
-      const savedSubscriber = buildSubscriber({
-        personType: PersonType.NATURAL,
-        customerSegment: CustomerSegment.RESIDENTIAL,
-        stratum: 2,
-        vatTreatment: VatTreatment.EXEMPT,
-        taxRegime: TaxRegime.SIMPLIFIED,
-      });
-
-      mockSave(savedSubscriber);
+    it('NATURAL estrato 2 RESIDENTIAL → EXEMPT sin persistir tax_regime', async () => {
+      const savedSubscriber = buildSubscriber();
+      let persisted: Subscriber | undefined;
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            save: async (_entity: unknown, value: Subscriber) => {
+              persisted = value;
+              return savedSubscriber;
+            },
+            findOne: async () => savedSubscriber,
+          },
+        }),
+      );
 
       await service.create(
         {
@@ -303,6 +373,8 @@ describe('SubscribersService', () => {
           email: 'juan@example.com',
           phone: '3001234567',
           address: 'Calle 1 #2-3',
+          vatResponsibility: VatResponsibility.RESPONSABLE,
+          rutResponsibilities: ['O-13'],
           authorizationChannel: ConsentChannel.EMAIL,
           authorizations: [
             {
@@ -319,13 +391,14 @@ describe('SubscribersService', () => {
       expect(vatTreatmentService.resolve(PersonType.NATURAL, 2, CustomerSegment.RESIDENTIAL)).toBe(
         VatTreatment.EXEMPT,
       );
+      expect(persisted?.vatTreatment).toBe(VatTreatment.EXEMPT);
+      expect(persisted?.taxRegime).toBeUndefined();
     });
 
     it('JURIDICA GOVERNMENT → STANDARD + COMMON al crear', async () => {
       expect(
         vatTreatmentService.resolve(PersonType.JURIDICA, null, CustomerSegment.GOVERNMENT),
       ).toBe(VatTreatment.STANDARD);
-      expect(vatTreatmentService.resolveTaxRegime(PersonType.JURIDICA)).toBe(TaxRegime.COMMON);
     });
 
     it('NATURAL estrato 3 → EXCLUDED (fuera del régimen IVA)', () => {
@@ -340,7 +413,7 @@ describe('SubscribersService', () => {
       );
     });
 
-    it('applyTaxFields retorna ambos campos correctamente', () => {
+    it('applyTaxFields retorna solo el tratamiento de IVA', () => {
       const result = vatTreatmentService.applyTaxFields(
         PersonType.NATURAL,
         1,
@@ -348,7 +421,6 @@ describe('SubscribersService', () => {
       );
       expect(result).toEqual({
         vatTreatment: VatTreatment.EXEMPT,
-        taxRegime: TaxRegime.SIMPLIFIED,
       });
     });
   });
@@ -674,6 +746,22 @@ describe('SubscribersService', () => {
       expect((result as any).phone).toBe(phone);
     });
 
+    it('proyecta el nombre del Party representante sin leer su documento', async () => {
+      const subscriber = buildSubscriber({
+        id: 'sub-with-legal-representative',
+        legalRepresentativePartyId: 'party-representative',
+      });
+      mockFindOne(subscriber);
+      partyReadPortMock.getByIds.mockResolvedValue([
+        { id: 'party-representative', displayName: 'Representante sintético' },
+      ]);
+
+      const result = await service.findById(subscriber.id);
+
+      expect(partyReadPortMock.getByIds).toHaveBeenCalledWith(['party-representative']);
+      expect(result.legalRepresentativeDisplayName).toBe('Representante sintético');
+    });
+
     it('lanza NotFoundException si no existe', async () => {
       mockFindOne(null);
 
@@ -681,9 +769,60 @@ describe('SubscribersService', () => {
     });
   });
 
+  describe('transitionStatus', () => {
+    it('delega la transición y devuelve el suscriptor actualizado', async () => {
+      const subscriber = buildSubscriber({ id: 'sub-transition-status' });
+      const transitions = (service as any)
+        .statusTransitionService as SubscriberStatusTransitionService;
+      const transition = jest.spyOn(transitions, 'transition').mockResolvedValue({
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.ACTIVE,
+        reason: null,
+      });
+      const findById = jest.spyOn(service, 'findById').mockResolvedValue(subscriber);
+
+      const result = await service.transitionStatus(
+        subscriber.id,
+        SubscriberStatus.ACTIVE,
+        null,
+        'actor-1',
+      );
+
+      expect(transition).toHaveBeenCalledWith(
+        subscriber.id,
+        SubscriberStatus.ACTIVE,
+        null,
+        'actor-1',
+      );
+      expect(findById).toHaveBeenCalledWith(subscriber.id);
+      expect(result).toBe(subscriber);
+    });
+  });
+
   // ── update ──
 
   describe('update', () => {
+    it('rechaza representante legal cuando el suscriptor es persona natural', async () => {
+      const existing = buildSubscriber({ personType: PersonType.NATURAL });
+      mockFindOne(existing);
+
+      await expect(
+        service.update(
+          existing.id,
+          {
+            legalRepresentative: {
+              fullName: 'Representante sintético',
+              documentType: DocumentType.CC,
+              documentNumber: 'documento-rep-sintetico',
+            },
+          },
+          'actor-1',
+        ),
+      ).rejects.toThrow('El representante legal solo aplica a persona jurídica.');
+
+      expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
+    });
+
     it('rechaza quitar el último contacto de un suscriptor activo antes de guardar', async () => {
       const activeWithEmail = buildSubscriber({
         status: SubscriberStatus.ACTIVE,
@@ -800,9 +939,15 @@ describe('SubscribersService', () => {
         stratum: 4,
         birthDate: '1990-01-02',
         nit: `${nit}-${calculateNitVerificationDigit(nit)}`,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'] as RutResponsibility[],
         businessName: 'Empresa sintética',
         commercialName: 'Comercial sintético',
-        legalRepresentativeId: 'representante-1',
+        legalRepresentative: {
+          fullName: 'Representante sintético',
+          documentType: DocumentType.CC,
+          documentNumber: 'documento-rep-sintetico',
+        },
         email: 'updated@example.invalid',
         phone: '3000000001',
         altContactName: '  Contacto alterno  ',
@@ -832,9 +977,12 @@ describe('SubscribersService', () => {
         stratum: 4,
         nit,
         nitVerificationDigit: calculateNitVerificationDigit(nit),
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
         businessName: dto.businessName,
         commercialName: dto.commercialName,
-        legalRepresentativeId: dto.legalRepresentativeId,
+        legalRepresentativeId: null,
+        legalRepresentativePartyId: 'party-test-uuid',
         altContactName: 'Contacto alterno',
         address: dto.address,
         neighborhood: dto.neighborhood,
@@ -1572,11 +1720,15 @@ function buildSubscriber(overrides: Partial<Subscriber> = {}): Subscriber {
     businessName: null,
     commercialName: null,
     legalRepresentativeId: null,
+    legalRepresentativePartyId: null,
+    legalRepresentativeDisplayName: null,
     emailEncrypted: 'encrypted-email',
     phoneEncrypted: 'encrypted-phone',
     whatsapp: null,
     vatTreatment: VatTreatment.EXCLUDED,
     taxRegime: TaxRegime.SIMPLIFIED,
+    vatResponsibility: VatResponsibility.RESPONSABLE,
+    rutResponsibilities: ['O-13'],
     address: 'Calle 1 #2-3',
     neighborhood: null,
     city: null,

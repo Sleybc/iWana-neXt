@@ -80,9 +80,28 @@ export class SubscriberCreationService {
     }
 
     // 1. Buscar expediente
-    const expediente = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.findOne(ExpedienteRecord, { where: { id: expedienteId } }),
-    );
+    const expediente = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const found = await qr.manager.findOne(ExpedienteRecord, { where: { id: expedienteId } });
+      if (found && typeof qr.manager.query === 'function') {
+        const [fiscalRow] = (await qr.manager.query(
+          `SELECT fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+             FROM expediente_records WHERE id = $1::uuid`,
+          [expedienteId],
+        )) as Array<{
+          fiscal_document: string | null;
+          fiscal_document_encrypted: string | null;
+          fiscal_document_hmac: string | null;
+        }>;
+        if (fiscalRow) {
+          found.fiscalDocumentEncrypted = fiscalRow.fiscal_document_encrypted;
+          found.fiscalDocumentHmac = fiscalRow.fiscal_document_hmac;
+          found.fiscalDocument = fiscalRow.fiscal_document_encrypted
+            ? this.decryptValue(fiscalRow.fiscal_document_encrypted)
+            : fiscalRow.fiscal_document;
+        }
+      }
+      return found;
+    });
 
     if (!expediente) {
       throw new Error(`Expediente ${expedienteId} no encontrado para creación de subscriber`);
@@ -100,7 +119,7 @@ export class SubscriberCreationService {
     const rawDocumentNumber = this.resolveDocumentNumber(expediente);
     const parsedNit =
       personType === PersonType.JURIDICA
-        ? parseExpedienteNit(expediente.fiscalDocument ?? rawDocumentNumber)
+        ? parseExpedienteNit(this.resolveFiscalDocument(expediente) ?? rawDocumentNumber)
         : null;
     const documentNumber =
       personType === PersonType.JURIDICA
@@ -231,11 +250,17 @@ export class SubscriberCreationService {
     }
 
     // Inferir por datos: si tiene NIT o companyName → JURIDICA
-    if (expediente.fiscalDocument || expediente.companyName) {
+    if (this.resolveFiscalDocument(expediente) || expediente.companyName) {
       return PersonType.JURIDICA;
     }
 
     return PersonType.NATURAL;
+  }
+
+  private resolveFiscalDocument(expediente: ExpedienteRecord): string | null {
+    return expediente.fiscalDocumentEncrypted
+      ? this.decryptValue(expediente.fiscalDocumentEncrypted)
+      : expediente.fiscalDocument;
   }
 
   /**

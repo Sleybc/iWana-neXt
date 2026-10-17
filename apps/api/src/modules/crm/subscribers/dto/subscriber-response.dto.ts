@@ -1,3 +1,9 @@
+import type {
+  RutResponsibility,
+  SubscriberFiscalCompleteness,
+  VatResponsibility,
+} from '@iwana/shared';
+
 /**
  * DTO de respuesta del suscriptor con PII descifrado.
  * Se usa para serializar la respuesta del controller.
@@ -22,7 +28,7 @@ export class SubscriberResponseDto {
   nitVerificationDigit!: string | null;
   businessName!: string | null;
   commercialName!: string | null;
-  legalRepresentativeId!: string | null;
+  legalRepresentative!: { partyId: string; displayName: string } | null;
 
   // Compartido
   email!: string;
@@ -33,7 +39,11 @@ export class SubscriberResponseDto {
 
   // Fiscal
   vatTreatment!: string;
-  taxRegime!: string;
+  vatResponsibility!: VatResponsibility | null;
+  rutResponsibilities!: RutResponsibility[];
+  fiscalCompleteness!: SubscriberFiscalCompleteness;
+  /** @deprecated Columna legada que la API ya no escribe. */
+  taxRegime!: string | null;
 
   // Ubicación
   address!: string;

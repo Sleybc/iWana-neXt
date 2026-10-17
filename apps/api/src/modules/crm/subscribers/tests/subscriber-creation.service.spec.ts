@@ -449,6 +449,37 @@ describe('SubscriberCreationService', () => {
       );
     });
 
+    it('no infiere responsabilidades fiscales ni representante al convertir expediente jurídico', async () => {
+      const expedienteSinDV = {
+        ...mockExpedienteJuridica,
+        fiscalDocument: '900123456',
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => expedienteSinDV } }),
+      );
+      subscribersServiceMock.createFromExpediente.mockResolvedValue({
+        id: 'sub-prospect-fiscal-incomplete',
+        status: SubscriberStatus.PROSPECT,
+      });
+
+      await service.createFromExpediente('exp-fiscal-incomplete', 'actor-1');
+
+      const [, convertedInput] = subscribersServiceMock.createFromExpediente.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(convertedInput).toEqual(
+        expect.objectContaining({
+          personType: PersonType.JURIDICA,
+          nit: '900123456',
+          nitVerificationDigit: undefined,
+        }),
+      );
+      expect(convertedInput).not.toHaveProperty('vatResponsibility');
+      expect(convertedInput).not.toHaveProperty('rutResponsibilities');
+      expect(convertedInput).not.toHaveProperty('legalRepresentative');
+    });
+
     it('lanza error si expediente no existe', async () => {
       // Mock: expediente no encontrado
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>

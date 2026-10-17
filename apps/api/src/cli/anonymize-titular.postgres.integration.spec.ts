@@ -62,6 +62,9 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
       document_number_hmac text,
       document_number_encrypted varchar(500),
       document_number_hash varchar(64) NOT NULL,
+      fiscal_document text,
+      fiscal_document_encrypted varchar(500),
+      fiscal_document_hmac varchar(64),
       full_name varchar(160) NOT NULL,
       address varchar(255),
       document_supports jsonb NOT NULL,
@@ -223,13 +226,16 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
   await dataSource.query(
     `INSERT INTO ${q}.expediente_records
       (id, document_number_hmac, document_number_encrypted, document_number_hash,
+       fiscal_document, fiscal_document_encrypted, fiscal_document_hmac,
        full_name, address, document_supports)
-     VALUES ($1, $2, $3, $4, 'Prospecto sintético', 'Dirección sintética', $5::jsonb)`,
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, 'Prospecto sintético', 'Dirección sintética', $7::jsonb)`,
     [
       expedienteId,
       documentHmac,
       encryptAes256Gcm('synthetic-document-value', ENCRYPTION_KEY),
       'a'.repeat(64),
+      encryptAes256Gcm('synthetic-fiscal-value', ENCRYPTION_KEY),
+      hmacPii('SYNTHETICFISCALVALUE', HASH_KEY),
       JSON.stringify({ synthetic: 'evidence' }),
     ],
   );
@@ -393,7 +399,8 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       });
       const expediente = (await dataSource.query(
         `SELECT full_name, document_number_encrypted, document_number_hmac,
-                document_number_hash, address, document_supports
+                document_number_hash, fiscal_document, fiscal_document_encrypted,
+                fiscal_document_hmac, address, document_supports
            FROM ${q}.expediente_records WHERE id = $1`,
         [fixture.expedienteId],
       )) as Array<Record<string, unknown>>;
@@ -401,6 +408,9 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         full_name: 'ANONIMIZADO',
         document_number_encrypted: null,
         document_number_hmac: null,
+        fiscal_document: null,
+        fiscal_document_encrypted: null,
+        fiscal_document_hmac: null,
         address: null,
         document_supports: {},
       });
@@ -770,6 +780,8 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           fiscal_address text,
           alias text,
           stratum_evidence_media_id uuid,
+          fiscal_document_encrypted varchar(500),
+          fiscal_document_hmac varchar(64),
           vat_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
           plan_snapshot_json jsonb NOT NULL DEFAULT '{}'::jsonb,
           installation_city text,
@@ -802,17 +814,20 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       await dataSource.query(
         `INSERT INTO ${q}.contracts
           (id, subscriber_id, installation_address, installation_postal_code,
-           installation_notes, fiscal_name, fiscal_document, fiscal_address, alias,
+           installation_notes, fiscal_name, fiscal_document, fiscal_address,
+           fiscal_document_encrypted, fiscal_document_hmac, alias,
            stratum_evidence_media_id, vat_snapshot, plan_snapshot_json,
            installation_city, installation_department, installation_stratum,
            service_usage, customer_segment, status)
          VALUES ($1, $2, 'fixture-address', 'fixture-postal', 'fixture-notes',
-           'fixture-fiscal-name', 'fixture-fiscal-document', 'fixture-fiscal-address',
-           'fixture-alias', $3, $4::jsonb, $5::jsonb, 'fixture-city',
-           'fixture-department', 3, 'RESIDENTIAL', 'STANDARD', 'ACTIVE')`,
+           'fixture-fiscal-name', NULL, 'fixture-fiscal-address', $3, $4, 'fixture-alias',
+           $5, $6::jsonb, $7::jsonb, 'fixture-city', 'fixture-department', 3,
+           'RESIDENTIAL', 'STANDARD', 'ACTIVE')`,
         [
           contractId,
           linked.subscriberId,
+          encryptAes256Gcm('synthetic-contract-fiscal-value', ENCRYPTION_KEY),
+          hmacPii('SYNTHETICCONTRACTFISCALVALUE', HASH_KEY),
           mediaId,
           JSON.stringify({ fiscalName: 'remove', amount: 10 }),
           JSON.stringify({ plan: { name: 'remove', documentType: 'remove' } }),
@@ -847,7 +862,8 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       expect(
         await dataSource.query(
           `SELECT installation_address, installation_postal_code, installation_notes,
-                fiscal_name, fiscal_document, fiscal_address, alias,
+                fiscal_name, fiscal_document, fiscal_address,
+                fiscal_document_encrypted, fiscal_document_hmac, alias,
                 stratum_evidence_media_id, vat_snapshot, plan_snapshot_json,
                 installation_city, installation_department, installation_stratum,
                 service_usage, customer_segment, status
@@ -862,6 +878,8 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           fiscal_name: null,
           fiscal_document: null,
           fiscal_address: null,
+          fiscal_document_encrypted: null,
+          fiscal_document_hmac: null,
           alias: 'ANONIMIZADO',
           stratum_evidence_media_id: mediaId,
           vat_snapshot: { amount: 10 },

@@ -149,6 +149,7 @@ describe('Revert de migraciones tenant — planTenantRevert', () => {
         name: 'AlignExecutionOrderEvidenceIntentRetention1010000000000',
         registryId: 101,
         requiresDestructiveFlag: true,
+        hasRollbackPreflight: false,
       },
     ]);
   });
@@ -158,11 +159,13 @@ describe('Revert de migraciones tenant — planTenantRevert', () => {
       name: 'AlignExecutionOrderEvidenceIntentRetention1010000000000',
       registryId: 101,
       requiresDestructiveFlag: true,
+      hasRollbackPreflight: false,
     };
     const idempotencyStep = {
       name: 'LinkExecutionOrderEvidenceIdempotency1000000000000',
       registryId: 100,
       requiresDestructiveFlag: true,
+      hasRollbackPreflight: false,
     };
 
     expect(orderTenantRevertExecutionSteps([retentionStep, idempotencyStep])).toEqual([

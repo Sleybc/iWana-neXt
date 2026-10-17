@@ -42,6 +42,14 @@ import { MediaService } from '../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import type { PrivacyMark } from '@iwana/shared';
+import { SubscriberFiscalCompletenessService } from '../subscribers/subscriber-fiscal-completeness.service';
+import {
+  createFiscalDocumentCrypto,
+  hydrateFiscalDocument,
+  prepareFiscalDocumentForSave,
+  setFiscalDocumentStorage,
+  type FiscalDocumentCrypto,
+} from '../../../common/crypto/fiscal-document.util';
 
 /** Transiciones de estado permitidas según máquina de estados del spec. */
 const ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
@@ -81,6 +89,7 @@ const AUDITABLE_CONTRACT_UPDATE_FIELDS = new Set([
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
+  private readonly fiscalDocumentCrypto: FiscalDocumentCrypto;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -89,13 +98,16 @@ export class ContractsService {
     private readonly auditService: AuditService,
     private readonly mediaService: MediaService,
     private readonly configService: ConfigService,
+    private readonly subscriberFiscalCompletenessService: SubscriberFiscalCompletenessService,
     @Optional()
     @Inject(IPrivacyAuthorizationReadPort)
     private readonly privacyAuthorizationReadPort?: IPrivacyAuthorizationReadPort,
     @Optional()
     @Inject(IPrivacyMarksReadPort)
     private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
-  ) {}
+  ) {
+    this.fiscalDocumentCrypto = createFiscalDocumentCrypto(this.configService);
+  }
 
   // ── Creación ────────────────────────────────────────────────────────────────
 
@@ -109,13 +121,25 @@ export class ContractsService {
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await qr.manager.findOne(Subscriber, {
         where: { id: dto.subscriberId, tenantId },
-        select: { id: true, tenantId: true, personType: true, partyId: true, anonymizedAt: true },
+        select: {
+          id: true,
+          tenantId: true,
+          personType: true,
+          partyId: true,
+          anonymizedAt: true,
+          vatResponsibility: true,
+          rutResponsibilities: true,
+          nit: true,
+          nitVerificationDigit: true,
+          legalRepresentativePartyId: true,
+        },
       });
       if (!subscriber) {
         throw new NotFoundException('Suscriptor del contrato no encontrado.');
       }
       await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
+      this.subscriberFiscalCompletenessService.assertComplete(subscriber);
 
       const installationStratum = dto.installationStratum ?? null;
       const serviceUsage = dto.serviceUsage ?? null;
@@ -149,11 +173,12 @@ export class ContractsService {
         paymentMethod: dto.paymentMethod ?? null,
         billingCycle: dto.billingCycle ?? null,
         fiscalName: dto.fiscalName ?? null,
-        fiscalDocument: dto.fiscalDocument ?? null,
+        fiscalDocument: null,
         fiscalAddress: dto.fiscalAddress ?? null,
         startDate: dto.startDate ?? null,
         endDate: dto.endDate ?? null,
       });
+      setFiscalDocumentStorage(entity, dto.fiscalDocument, this.fiscalDocumentCrypto);
 
       const saved = await qr.manager.save(Contract, entity);
       return this.projectContractForMutation(saved, qr.manager);
@@ -193,6 +218,7 @@ export class ContractsService {
       }
       await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
+      this.subscriberFiscalCompletenessService.assertComplete(subscriber);
 
       // Resolver el expediente: usar el del DTO si viene, o el del subscriber
       const expedienteId = dto.expedienteId ?? subscriber.expedienteId ?? null;
@@ -208,6 +234,7 @@ export class ContractsService {
       if (!expediente) {
         throw new NotFoundException(`Expediente ${expedienteId} no encontrado.`);
       }
+      await this.hydrateExpedienteFiscalDocument(qr.manager, expediente);
       const planId = this._requirePlanId(
         expediente.interestedPlanId,
         'El expediente no tiene un plan de interés registrado. Crea el contrato de forma directa.',
@@ -269,6 +296,7 @@ export class ContractsService {
         startDate: null,
         endDate: null,
       });
+      setFiscalDocumentStorage(entity, expediente.fiscalDocument, this.fiscalDocumentCrypto);
 
       const saved = await qr.manager.save(Contract, entity);
       return this.projectContractForMutation(saved, qr.manager);
@@ -375,9 +403,11 @@ export class ContractsService {
 
   async findOne(id: string): Promise<Contract> {
     const { schemaName } = TenantContext.getOrThrow();
-    const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.findOne(Contract, { where: { id } }),
-    );
+    const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const found = await qr.manager.findOne(Contract, { where: { id } });
+      if (found) await this.hydrateContractFiscalDocuments(qr.manager, [found]);
+      return found;
+    });
     if (!entity) {
       throw new NotFoundException(`Contrato ${id} no encontrado.`);
     }
@@ -429,6 +459,7 @@ export class ContractsService {
     contracts: Contract[],
     canSeeBlocked: boolean,
   ): Promise<{ data: Contract[]; blockedServed: number }> {
+    await this.hydrateContractFiscalDocuments(manager, contracts);
     const subscriberIds = [...new Set(contracts.map((contract) => contract.subscriberId))];
     const subscribers = subscriberIds.length
       ? await manager.find(Subscriber, {
@@ -489,6 +520,59 @@ export class ContractsService {
   ): Promise<Contract> {
     const projection = await this.projectContractsForRead(manager, [contract], false);
     return projection.data[0] ?? contract;
+  }
+
+  private async hydrateContractFiscalDocuments(
+    manager: EntityManager,
+    contracts: Contract[],
+  ): Promise<void> {
+    if (contracts.length === 0 || typeof manager.query !== 'function') return;
+    const rows = (await manager.query(
+      `SELECT id::text AS id, fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+         FROM contracts WHERE id = ANY($1::uuid[])`,
+      [contracts.map((contract) => contract.id)],
+    )) as Array<{
+      id: string;
+      fiscal_document: string | null;
+      fiscal_document_encrypted: string | null;
+      fiscal_document_hmac: string | null;
+    }>;
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+    for (const contract of contracts) {
+      const row = rowById.get(contract.id);
+      if (!row) continue;
+      hydrateFiscalDocument(
+        contract,
+        row.fiscal_document_encrypted,
+        row.fiscal_document_hmac,
+        row.fiscal_document,
+        this.fiscalDocumentCrypto,
+      );
+    }
+  }
+
+  private async hydrateExpedienteFiscalDocument(
+    manager: EntityManager,
+    expediente: ExpedienteRecord,
+  ): Promise<void> {
+    if (typeof manager.query !== 'function') return;
+    const [row] = (await manager.query(
+      `SELECT fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+         FROM expediente_records WHERE id = $1::uuid`,
+      [expediente.id],
+    )) as Array<{
+      fiscal_document: string | null;
+      fiscal_document_encrypted: string | null;
+      fiscal_document_hmac: string | null;
+    }>;
+    if (!row) return;
+    hydrateFiscalDocument(
+      expediente,
+      row.fiscal_document_encrypted,
+      row.fiscal_document_hmac,
+      row.fiscal_document,
+      this.fiscalDocumentCrypto,
+    );
   }
 
   private async logBlockedContractListAccess(
@@ -653,6 +737,9 @@ export class ContractsService {
     if (dto.startDate !== undefined) entity.startDate = dto.startDate ?? null;
     if (dto.endDate !== undefined) entity.endDate = dto.endDate ?? null;
     if (dto.planSnapshotJson !== undefined) entity.planSnapshotJson = dto.planSnapshotJson;
+
+    if (dto.fiscalDocument === undefined) prepareFiscalDocumentForSave(entity);
+    else setFiscalDocumentStorage(entity, dto.fiscalDocument, this.fiscalDocumentCrypto);
 
     const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const saved = await qr.manager.save(Contract, entity);
@@ -1039,6 +1126,7 @@ export class ContractsService {
     entity.status = target;
 
     const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      prepareFiscalDocumentForSave(entity);
       const saved = await qr.manager.save(Contract, entity);
       return this.projectContractForMutation(saved, qr.manager);
     });

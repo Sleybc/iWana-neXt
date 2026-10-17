@@ -1,4 +1,10 @@
-import { CreateSubscriberSchema, CustomerSegment, DocumentType, PersonType } from '@iwana/shared';
+import {
+  CreateSubscriberSchema,
+  CustomerSegment,
+  DocumentType,
+  PersonType,
+  VatResponsibility,
+} from '@iwana/shared';
 
 const baseSubscriber = {
   personType: PersonType.NATURAL,
@@ -9,6 +15,8 @@ const baseSubscriber = {
   lastName: 'Sintetica',
   stratum: 3,
   address: 'Dirección de prueba',
+  vatResponsibility: VatResponsibility.RESPONSABLE,
+  rutResponsibilities: ['O-13'],
 };
 
 describe('CreateSubscriberSchema contact contract', () => {

@@ -49,6 +49,13 @@ import {
 } from '../../../common/crypto/aes-gcm.util';
 import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
 import { resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.util';
+import {
+  createFiscalDocumentCryptoFromKeys,
+  hydrateFiscalDocument,
+  prepareFiscalDocumentForSave,
+  setFiscalDocumentStorage,
+  type FiscalDocumentCrypto,
+} from '../../../common/crypto/fiscal-document.util';
 import { CompletenessCalculator } from './completeness-calculator.service';
 import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
@@ -263,6 +270,7 @@ export class ExpedienteService {
   private readonly encryptionKey: Buffer;
   private readonly encryptionKeyPrevious: Buffer[];
   private readonly piiHashKey: Buffer;
+  private readonly fiscalDocumentCrypto: FiscalDocumentCrypto;
   private readonly documentSupportDir: string;
   private readonly logger = new Logger(ExpedienteService.name);
 
@@ -285,6 +293,11 @@ export class ExpedienteService {
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
     this.piiHashKey = resolvePiiHashKey(this.configService);
+    this.fiscalDocumentCrypto = createFiscalDocumentCryptoFromKeys({
+      activeEncryptionKey: this.encryptionKey,
+      previousEncryptionKeys: this.encryptionKeyPrevious,
+      hashKey: this.piiHashKey,
+    });
     const configuredDocumentSupportDir = (
       this.configService as ConfigService & { get?: (key: string) => string | undefined }
     ).get?.('EXPEDIENTE_DOCUMENTS_DIR');
@@ -895,12 +908,33 @@ export class ExpedienteService {
   async findById(id: string): Promise<ExpedienteRecord> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.findOne(ExpedienteRecord, {
+    const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const found = await qr.manager.findOne(ExpedienteRecord, {
         where: { id },
         relations: ['contactAttempts', 'consents', 'coverageChecks', 'statusChanges'],
-      }),
-    );
+      });
+      if (found && typeof qr.manager.query === 'function') {
+        const [fiscalRow] = (await qr.manager.query(
+          `SELECT fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+             FROM expediente_records WHERE id = $1::uuid`,
+          [id],
+        )) as Array<{
+          fiscal_document: string | null;
+          fiscal_document_encrypted: string | null;
+          fiscal_document_hmac: string | null;
+        }>;
+        if (fiscalRow) {
+          hydrateFiscalDocument(
+            found,
+            fiscalRow.fiscal_document_encrypted,
+            fiscalRow.fiscal_document_hmac,
+            fiscalRow.fiscal_document,
+            this.fiscalDocumentCrypto,
+          );
+        }
+      }
+      return found;
+    });
 
     if (!entity) {
       throw new NotFoundException('Expediente no encontrado');
@@ -1098,7 +1132,19 @@ export class ExpedienteService {
       this.validateTechnicalFeasibilityConsistency(projected);
     }
 
+    const fiscalDocumentChanged = Object.hasOwn(effectiveUpdateData, 'fiscalDocument');
     Object.assign(entity, effectiveUpdateData);
+    if (fiscalDocumentChanged) {
+      setFiscalDocumentStorage(
+        entity,
+        typeof effectiveUpdateData['fiscalDocument'] === 'string'
+          ? effectiveUpdateData['fiscalDocument']
+          : null,
+        this.fiscalDocumentCrypto,
+      );
+    } else {
+      prepareFiscalDocumentForSave(entity);
+    }
 
     const actorName = await this.resolveActorName(schemaName, actorUserId);
 
@@ -1210,6 +1256,7 @@ export class ExpedienteService {
     }
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      prepareFiscalDocumentForSave(entity);
       await qr.manager.save(ExpedienteRecord, entity);
     });
 
@@ -1293,6 +1340,7 @@ export class ExpedienteService {
     entity.discardReason = null;
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      prepareFiscalDocumentForSave(entity);
       await qr.manager.save(ExpedienteRecord, entity);
     });
 
@@ -1703,6 +1751,7 @@ export class ExpedienteService {
     }
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      prepareFiscalDocumentForSave(entity);
       await qr.manager.save(ExpedienteRecord, entity);
     });
 

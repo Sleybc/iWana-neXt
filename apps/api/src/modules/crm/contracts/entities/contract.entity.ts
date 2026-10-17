@@ -110,6 +110,24 @@ export class Contract {
   @Column({ type: 'varchar', length: 30, name: 'fiscal_document', nullable: true })
   fiscalDocument: string | null;
 
+  @Column({
+    type: 'varchar',
+    length: 500,
+    name: 'fiscal_document_encrypted',
+    nullable: true,
+    select: false,
+  })
+  fiscalDocumentEncrypted?: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 64,
+    name: 'fiscal_document_hmac',
+    nullable: true,
+    select: false,
+  })
+  fiscalDocumentHmac?: string | null;
+
   @Column({ type: 'varchar', length: 255, name: 'fiscal_address', nullable: true })
   fiscalAddress: string | null;
 

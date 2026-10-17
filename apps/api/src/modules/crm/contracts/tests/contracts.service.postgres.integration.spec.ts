@@ -18,6 +18,7 @@ import { STORAGE_PORT } from '@iwana/storage';
 import {
   AuditAction,
   CustomerSegment,
+  DocumentTypeParty,
   NetworkType,
   PersonType,
   ServiceUsage,
@@ -26,10 +27,14 @@ import {
   VatConcept,
   VatLegalBasis,
   VatTreatment,
+  normalizeDocumentNumber,
 } from '@iwana/shared';
+import { hmacPiiValue } from '@iwana/db';
+import { decryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
 import { ContractsController } from '../contracts.controller';
 import { MediaController } from '../../../media/media.controller';
 import { ContractsService } from '../contracts.service';
+import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
 import { Contract } from '../entities/contract.entity';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
@@ -52,6 +57,7 @@ import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
 const describeWithDb = dbAvailable && integrationTenantSlug ? describe : describe.skip;
+const integrationCryptoKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () => {
   let app: INestApplication;
@@ -121,9 +127,10 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
           'id, tenant_id, party_id, person_type, customer_segment,',
           'document_type, document_number_encrypted, first_name, last_name, stratum,',
           'nit, business_name, email_encrypted, phone_encrypted,',
-          'vat_treatment, tax_regime, address, created_by',
+          'vat_treatment, tax_regime, vat_responsibility, rut_responsibilities, address, created_by',
           ') VALUES (',
-          '$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18',
+          '$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,',
+          "'RESPONSABLE', ARRAY['O-13']::text[], $17, $18",
           ')',
         ].join('\n'),
         [
@@ -262,6 +269,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
       controllers: [ContractsController, MediaController],
       providers: [
         ContractsService,
+        SubscriberFiscalCompletenessService,
         AuditService,
         // Mismo interceptor global que AppModule: la prueba debe cubrir la ruta de auditoría
         // automática, que es por donde se filtró la PII (S-T7-01).
@@ -273,7 +281,12 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
           provide: ConfigService,
           useValue: {
             get: (key: string, fallback?: unknown) =>
-              key === 'STORAGE_DRIVER' ? 'minio' : fallback,
+              key === 'STORAGE_DRIVER'
+                ? 'minio'
+                : key === 'PII_ENCRYPTION_KEY'
+                  ? integrationCryptoKeyHex
+                  : fallback,
+            getOrThrow: () => integrationCryptoKeyHex,
           },
         },
         MediaService,
@@ -460,8 +473,8 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
   it('audita crear, activar y /service-point sin persistir nombre ni documento fiscales', async () => {
     const { id: subscriberId } = await insertSubscriber();
 
-    const fiscalNameMarker = 'pii-name-marker';
-    const fiscalDocumentMarker = 'pii-document-marker';
+    const fiscalNameMarker = 'synthetic-fiscal-name';
+    const fiscalDocumentMarker = 'synthetic-fiscal-created';
     const createResponse = await TenantContext.run(tenantContext(), () =>
       request(app.getHttpServer())
         .post('/api/v1/crm/contracts')
@@ -476,7 +489,66 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
         }),
     );
     expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.fiscalDocument).toBe(fiscalDocumentMarker);
     const contractId = createResponse.body.data.id as string;
+
+    const createdFiscalRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        `SELECT fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+           FROM contracts WHERE id = $1`,
+        [contractId],
+      ),
+    )) as Array<{
+      fiscal_document: string | null;
+      fiscal_document_encrypted: string;
+      fiscal_document_hmac: string;
+    }>;
+    expect(createdFiscalRows[0]?.fiscal_document).toBeNull();
+    expect(
+      decryptAes256Gcm(
+        createdFiscalRows[0]!.fiscal_document_encrypted,
+        Buffer.from(integrationCryptoKeyHex, 'hex'),
+      ),
+    ).toBe(fiscalDocumentMarker);
+    expect(createdFiscalRows[0]?.fiscal_document_hmac).toBe(
+      hmacPiiValue(
+        normalizeDocumentNumber(DocumentTypeParty.OTHER, fiscalDocumentMarker),
+        Buffer.from(integrationCryptoKeyHex, 'hex'),
+      ),
+    );
+
+    const updatedFiscalDocumentMarker = 'synthetic-fiscal-updated';
+    const updateResponse = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer())
+        .patch(`/api/v1/crm/contracts/${contractId}`)
+        .send({ fiscalDocument: updatedFiscalDocumentMarker }),
+    );
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.fiscalDocument).toBe(updatedFiscalDocumentMarker);
+    const updatedFiscalRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        `SELECT fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+           FROM contracts WHERE id = $1`,
+        [contractId],
+      ),
+    )) as Array<{
+      fiscal_document: string | null;
+      fiscal_document_encrypted: string;
+      fiscal_document_hmac: string;
+    }>;
+    expect(updatedFiscalRows[0]?.fiscal_document).toBeNull();
+    expect(
+      decryptAes256Gcm(
+        updatedFiscalRows[0]!.fiscal_document_encrypted,
+        Buffer.from(integrationCryptoKeyHex, 'hex'),
+      ),
+    ).toBe(updatedFiscalDocumentMarker);
+    expect(updatedFiscalRows[0]?.fiscal_document_hmac).toBe(
+      hmacPiiValue(
+        normalizeDocumentNumber(DocumentTypeParty.OTHER, updatedFiscalDocumentMarker),
+        Buffer.from(integrationCryptoKeyHex, 'hex'),
+      ),
+    );
 
     const activateResponse = await TenantContext.run(tenantContext(), () =>
       request(app.getHttpServer()).post(`/api/v1/crm/contracts/${contractId}/activate`),
@@ -505,9 +577,10 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
       new_value: unknown;
     }>;
 
-    // Exactamente una fila por operación: ni el interceptor ni la respuesta duplican la auditoría.
+    // Una fila por cada alta, edición, activación y cambio del punto de servicio.
     const contractRows = auditRows.filter((row) => row.entity_id === contractId);
     expect(contractRows.map((row) => row.entity_type)).toEqual([
+      'Contract',
       'Contract',
       'Contract',
       'ContractServicePoint',

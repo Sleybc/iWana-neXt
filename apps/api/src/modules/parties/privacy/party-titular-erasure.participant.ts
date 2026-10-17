@@ -15,7 +15,7 @@ import type {
 } from '../../crm/privacy-adapters/titular-erasure/titular-erasure.types';
 
 const PARTY_RULES: FieldRule[] = [
-  { column: 'document_type', kind: 'null' },
+  { column: 'document_type', kind: 'marker', marker: 'OTHER' },
   { column: 'document_number', kind: 'encrypted-marker', marker: 'ANONIMIZADO' },
   { column: 'document_number_hmac', kind: 'null' },
   { column: 'document_number_hash', kind: 'legacy-hash', marker: 'party-document' },

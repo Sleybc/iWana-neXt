@@ -11,6 +11,7 @@ import { TaxationModule } from '../../taxation/taxation.module';
 import { MediaModule } from '../../media/media.module';
 import { PrivacyModule } from '../../privacy/privacy.module';
 import { ContractsBlockedTitularGuard } from './guards/contracts-blocked-titular.guard';
+import { SubscribersModule } from '../subscribers/subscribers.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ContractsBlockedTitularGuard } from './guards/contracts-blocked-titular
     TaxationModule,
     MediaModule,
     PrivacyModule,
+    SubscribersModule,
   ],
   controllers: [ContractsController],
   providers: [ContractsService, ContractSignGuard, ContractsBlockedTitularGuard],

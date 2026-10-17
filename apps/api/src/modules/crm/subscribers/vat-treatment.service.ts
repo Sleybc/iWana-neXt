@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PersonType, VatTreatment, TaxRegime, CustomerSegment } from '@iwana/shared';
+import { PersonType, VatTreatment, CustomerSegment } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
 
@@ -48,13 +48,6 @@ export class VatTreatmentService {
   }
 
   /**
-   * Calcula el régimen tributario según tipo de persona.
-   */
-  resolveTaxRegime(personType: PersonType): TaxRegime {
-    return personType === PersonType.JURIDICA ? TaxRegime.COMMON : TaxRegime.SIMPLIFIED;
-  }
-
-  /**
    * Valida que los campos obligatorios según tipo de persona estén presentes.
    * Retorna un array de errores. Vacío = válido.
    */
@@ -98,13 +91,7 @@ export class VatTreatmentService {
     personType: PersonType,
     stratum: number | null,
     segment: CustomerSegment,
-  ): {
-    vatTreatment: VatTreatment;
-    taxRegime: TaxRegime;
-  } {
-    return {
-      vatTreatment: this.resolve(personType, stratum, segment),
-      taxRegime: this.resolveTaxRegime(personType),
-    };
+  ): { vatTreatment: VatTreatment } {
+    return { vatTreatment: this.resolve(personType, stratum, segment) };
   }
 }

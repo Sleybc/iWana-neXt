@@ -14,6 +14,7 @@ export * from './enums/document-type.enum';
 export * from './enums/person-type.enum';
 export * from './enums/customer-segment.enum';
 export * from './enums/vat-treatment.enum';
+export * from './enums/vat-responsibility.enum';
 export * from './enums/tax-regime.enum';
 export * from './enums/subscriber-status.enum';
 export * from './enums/crm';

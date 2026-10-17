@@ -428,10 +428,14 @@ describe('ExpedienteService', () => {
 
   it('persiste los campos opcionales de las secciones del expediente', async () => {
     const expediente = buildExpediente({ id: 'exp-secciones-completas' });
+    const savedEntities: ExpedienteRecord[] = [];
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {
-          save: async (_entity: unknown, data: ExpedienteRecord) => data,
+          save: async (_entity: unknown, data: ExpedienteRecord) => {
+            savedEntities.push(data);
+            return data;
+          },
           update: jest.fn().mockResolvedValue(undefined),
           findOne: async () => expediente,
         },
@@ -603,11 +607,14 @@ describe('ExpedienteService', () => {
         paymentMethod: 'TRANSFER',
         billingCycle: 'MONTHLY',
         fiscalName: 'Titular sintético',
-        fiscalDocument: 'NIT-SINTETICO',
+        fiscalDocument: null,
         fiscalAddress: 'Dirección fiscal sintética',
         rutReference: 'rut-ref-sintetica',
       }),
     );
+    expect(savedEntities.at(-1)?.fiscalDocument).toBeNull();
+    expect(Reflect.get(savedEntities.at(-1)!, 'fiscalDocumentEncrypted')).toBeDefined();
+    expect(Reflect.get(savedEntities.at(-1)!, 'fiscalDocumentHmac')).toHaveLength(64);
 
     const installation = await service.updateSection(
       expediente.id,

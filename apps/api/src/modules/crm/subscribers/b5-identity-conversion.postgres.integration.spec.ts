@@ -12,6 +12,7 @@ import {
   PartyStatus,
   PartyType,
   SubscriberStatus,
+  VatResponsibility,
   TaxRegime,
   VatTreatment,
   ConsentStatus,
@@ -29,6 +30,7 @@ import { PartyWriteAdapter } from '../../parties/adapters/party-write.adapter';
 import { PartyService } from '../../parties/services/party.service';
 import { Subscriber } from './entities/subscriber.entity';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
+import { SubscriberFiscalCompletenessService } from './subscriber-fiscal-completeness.service';
 import { SubscribersService } from './subscribers.service';
 import { SubscriberCreationService } from './subscriber-creation.service';
 import { VatTreatmentService } from './vat-treatment.service';
@@ -251,7 +253,11 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     auditService: AuditService,
     marksAdapter = new PrivacyMarksAdapter(dataSource),
   ): SubscribersService {
-    const statusTransitions = new SubscriberStatusTransitionService(dataSource, auditService);
+    const statusTransitions = new SubscriberStatusTransitionService(
+      dataSource,
+      auditService,
+      new SubscriberFiscalCompletenessService(),
+    );
     const privacyAuthorizationAdapter = new PrivacyAuthorizationAdapter(dataSource);
     return new SubscribersService(
       dataSource,
@@ -425,6 +431,53 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     }
   });
 
+  it('convierte persona jurídica sin inventar responsabilidades, representante ni DV ausente', async () => {
+    const auditService = makeAuditService();
+    const conversion = new SubscriberCreationService(
+      dataSource,
+      testConfig,
+      makeSubscribersService(auditService),
+      new EventEmitter2(),
+      auditService,
+    );
+    const expediente = await createExpediente({
+      personType: 'PERSONA_JURIDICA',
+      documentType: 'NIT',
+      documentNumberEncrypted: null,
+      companyName: 'Empresa sintética MOD05',
+      fiscalDocumentEncrypted: encryptAes256Gcm('900123456', encryptionKey),
+    });
+
+    const subscriberId = await TenantContext.run(context(), () =>
+      conversion.createFromExpediente(expediente.id, actorId),
+    );
+    const rows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        `SELECT status, vat_responsibility, rut_responsibilities,
+                legal_representative_party_id, nit, nit_verification_digit
+           FROM subscribers WHERE id = $1`,
+        [subscriberId],
+      ),
+    )) as Array<{
+      status: string;
+      vat_responsibility: string | null;
+      rut_responsibilities: string[];
+      legal_representative_party_id: string | null;
+      nit: string | null;
+      nit_verification_digit: string | null;
+    }>;
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: SubscriberStatus.PROSPECT,
+      vat_responsibility: null,
+      rut_responsibilities: [],
+      legal_representative_party_id: null,
+      nit: '900123456',
+      nit_verification_digit: null,
+    });
+  });
+
   it('deduplica Party por HMAC cuando el formato del documento cambia', async () => {
     const auditService = makeAuditService();
     const subscribersService = makeSubscribersService(auditService);
@@ -441,19 +494,33 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     const second = await createExpediente({
       documentNumberEncrypted: encryptAes256Gcm('1234567', encryptionKey),
     });
+    const partyCountBefore = await countRows('party');
+    const subscriberCountBefore = await countRows('subscribers');
 
     await TenantContext.run(context(), () => conversion.createFromExpediente(first.id, actorId));
     await TenantContext.run(context(), () => conversion.createFromExpediente(second.id, actorId));
 
-    expect(await countRows('party')).toBe(1);
-    expect(await countRows('subscribers')).toBe(2);
+    expect(await countRows('party')).toBe(partyCountBefore + 1);
+    expect(await countRows('subscribers')).toBe(subscriberCountBefore + 2);
+    const subscriberRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT party_id FROM subscribers WHERE expediente_id = ANY($1::uuid[])', [
+        [first.id, second.id],
+      ]),
+    )) as Array<{ party_id: string }>;
+    const partyIds = subscriberRows.map((row) => row.party_id);
     const partyRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
-      qr.query('SELECT document_number, document_number_hmac FROM party'),
+      qr.query(
+        'SELECT document_number, document_number_hmac FROM party WHERE id = ANY($1::uuid[])',
+        [partyIds],
+      ),
     )) as Array<{ document_number: string; document_number_hmac: string }>;
     expect(partyRows[0]?.document_number).not.toContain('1234567');
     expect(partyRows[0]?.document_number_hmac).toMatch(/^[a-f0-9]{64}$/u);
     const contactRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
-      qr.query('SELECT value, value_encrypted, value_hmac FROM party_contact'),
+      qr.query(
+        'SELECT value, value_encrypted, value_hmac FROM party_contact WHERE party_id = ANY($1::uuid[])',
+        [partyIds],
+      ),
     )) as Array<{ value: string | null; value_encrypted: string; value_hmac: string }>;
     expect(contactRows).toHaveLength(2);
     for (const contact of contactRows) {
@@ -616,6 +683,8 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
           phone: '3000000001',
           whatsapp: '3000000001',
           address: 'Dirección sintética',
+          vatResponsibility: VatResponsibility.RESPONSABLE,
+          rutResponsibilities: ['O-13'],
           expedienteId: expediente.id,
           initialStatus: SubscriberStatus.CANCELLED,
           authorizationChannel: ConsentChannel.PRESENCIAL,
@@ -659,7 +728,11 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
   it('no restaura un suscriptor que ya estuvo ACTIVE según activatedAt', async () => {
     const auditService = makeAuditService();
     const subscribersService = makeSubscribersService(auditService);
-    const statusTransitionService = new SubscriberStatusTransitionService(dataSource, auditService);
+    const statusTransitionService = new SubscriberStatusTransitionService(
+      dataSource,
+      auditService,
+      new SubscriberFiscalCompletenessService(),
+    );
     const expediente = await createExpediente({
       status: ExpedienteStatus.DESCARTADO,
       previousStatus: ExpedienteStatus.CLIENTE_ACTIVO,
@@ -678,6 +751,8 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
           email: 'previously-active@example.test',
           phone: '3000000002',
           address: 'Dirección sintética',
+          vatResponsibility: VatResponsibility.RESPONSABLE,
+          rutResponsibilities: ['O-13'],
           expedienteId: expediente.id,
           initialStatus: SubscriberStatus.CANCELLED,
           authorizationChannel: ConsentChannel.PRESENCIAL,

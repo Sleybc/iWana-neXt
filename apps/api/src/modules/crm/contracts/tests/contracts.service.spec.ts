@@ -31,6 +31,14 @@ import { AuditService } from '../../../audit/audit.service';
 import { MediaService } from '../../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../../privacy/ports/privacy-authorization-read.port';
 import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
+import { encryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
+import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
+import { Subscriber } from '../../subscribers/entities/subscriber.entity';
+
+const syntheticFiscalCryptoKey = Buffer.from(
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  'hex',
+);
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
@@ -45,22 +53,37 @@ jest.mock('@iwana/db', () => {
         dataSource,
         schemaName,
         (queryRunner: { manager: Record<string, unknown> }) => {
-          if (typeof queryRunner.manager['findOne'] !== 'function') {
-            queryRunner.manager['findOne'] = async (
-              _entity: unknown,
-              options?: { where?: { id?: string } },
-            ) => ({
-              id: options?.where?.id ?? 'sub-1',
-              tenantId: 'ten-1',
-              personType: PersonType.NATURAL,
-              partyId: 'party-test-uuid',
-              expedienteId: 'exp-1',
-              address: 'Dirección sintética',
-              city: 'Bogotá',
-              department: 'Cundinamarca',
-              postalCode: null,
-            });
-          }
+          const originalFindOne = queryRunner.manager['findOne'] as
+            | ((entity: unknown, options?: { where?: { id?: string } }) => Promise<unknown>)
+            | undefined;
+          queryRunner.manager['findOne'] = async (
+            entity: unknown,
+            options?: { where?: { id?: string } },
+          ) => {
+            const result = originalFindOne
+              ? await originalFindOne(entity, options)
+              : {
+                  id: options?.where?.id ?? 'sub-1',
+                  tenantId: 'ten-1',
+                  personType: PersonType.NATURAL,
+                  partyId: 'party-test-uuid',
+                  expedienteId: 'exp-1',
+                  address: 'Dirección sintética',
+                  city: 'Bogotá',
+                  department: 'Cundinamarca',
+                  postalCode: null,
+                };
+            if (!result || typeof result !== 'object') return result;
+            if (entity !== Subscriber) return result;
+            return {
+              vatResponsibility: 'RESPONSABLE',
+              rutResponsibilities: ['O-13'],
+              legalRepresentativePartyId: null,
+              nit: null,
+              nitVerificationDigit: null,
+              ...(result as Record<string, unknown>),
+            };
+          };
           if (typeof queryRunner.manager['find'] !== 'function') {
             queryRunner.manager['find'] = async () => [];
           }
@@ -138,16 +161,24 @@ describe('ContractsService', () => {
     partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
   };
   const configService = {
-    get: jest.fn((key: string, fallback?: unknown) =>
-      key === 'STORAGE_DRIVER' ? 'minio' : fallback,
-    ),
+    get: jest.fn((key: string, fallback?: unknown) => {
+      if (key === 'STORAGE_DRIVER') return 'minio';
+      if (key === 'PII_ENCRYPTION_KEY')
+        return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+      return fallback;
+    }),
+    getOrThrow: jest.fn(() => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     privacyMarksReadPort.activeMarks.mockResolvedValue({});
     configService.get.mockImplementation((key: string, fallback?: unknown) =>
-      key === 'STORAGE_DRIVER' ? 'minio' : fallback,
+      key === 'STORAGE_DRIVER'
+        ? 'minio'
+        : key === 'PII_ENCRYPTION_KEY'
+          ? '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+          : fallback,
     );
     mediaService.findOne.mockResolvedValue({ usage: MediaUsage.STRATUM_EVIDENCE });
     mockTenantContextGetOrThrow.mockReturnValue({
@@ -158,6 +189,7 @@ describe('ContractsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractsService,
+        SubscriberFiscalCompletenessService,
         { provide: DataSource, useValue: {} },
         { provide: CommercialCatalogReadPort, useValue: commercialCatalogPort },
         { provide: IInternetVatResolverPort, useValue: internetVatResolver },
@@ -205,6 +237,36 @@ describe('ContractsService', () => {
         fiscalAddress: null,
         titularAnonymizedAt: null,
       });
+    });
+
+    it('descifra el documento fiscal al proyectar un contrato', async () => {
+      const contract = buildContract();
+      const encryptedDocument = encryptAes256Gcm(
+        'synthetic-contract-fiscal-read',
+        syntheticFiscalCryptoKey,
+      );
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => contract,
+            find: async () => [],
+            query: async () => [
+              {
+                id: contract.id,
+                fiscal_document: null,
+                fiscal_document_encrypted: encryptedDocument,
+                fiscal_document_hmac: 'synthetic-hmac',
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await service.findOneForRead(contract.id, false);
+
+      expect(result.fiscalDocument).toBe('synthetic-contract-fiscal-read');
+      expect(Reflect.get(result, 'fiscalDocumentEncrypted')).toBe(encryptedDocument);
+      expect(JSON.stringify(result)).not.toContain(encryptedDocument);
     });
 
     it('audita el acceso privilegiado al contrato de un titular bloqueado', async () => {
@@ -720,6 +782,39 @@ describe('ContractsService', () => {
       );
     });
 
+    it('rechaza el alta de contrato cuando faltan responsabilidades fiscales', async () => {
+      const save = jest.fn();
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'sub-1',
+          tenantId: 'ten-1',
+          personType: PersonType.NATURAL,
+          partyId: 'party-test-uuid',
+          vatResponsibility: null,
+          rutResponsibilities: [],
+        }),
+        create: jest.fn(),
+        save,
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      await expect(
+        service.create(
+          { subscriberId: 'sub-1', planId: 'plan-1', planSnapshotJson: {} },
+          'actor-1',
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
+          missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+        },
+        status: 422,
+      });
+      expect(save).not.toHaveBeenCalled();
+    });
+
     it('audita la creación con IDs y estado, sin copiar valores fiscales ni notas', async () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({
@@ -915,8 +1010,10 @@ describe('ContractsService', () => {
         additionalProductIds: ['product-1'],
         additionalServiceIds: ['service-1'],
         fiscalName: 'Titular de prueba',
-        fiscalDocument: 'documento-hash-fixture',
+        fiscalDocument: null,
       });
+      expect(Reflect.get(savedData, 'fiscalDocumentEncrypted')).toBeDefined();
+      expect(Reflect.get(savedData, 'fiscalDocumentHmac')).toHaveLength(64);
       expect(savedData.alias).toBe('Punto principal');
     });
   });
@@ -1056,6 +1153,120 @@ describe('ContractsService', () => {
       expect(savedEntity.serviceUsage).toBeNull();
       expect(savedEntity.installationStratum).toBe(4);
       expect(Array.isArray(savedEntity.additionalProductIds)).toBe(true);
+    });
+
+    it('descifra el documento fiscal heredado/cifrado antes de cifrarlo en el contrato', async () => {
+      const sourceDocument = 'synthetic-expediente-fiscal-read';
+      const encryptedSourceDocument = encryptAes256Gcm(sourceDocument, syntheticFiscalCryptoKey);
+      const subscriber = {
+        id: 'sub-1',
+        partyId: 'party-test-uuid',
+        expedienteId: 'exp-1',
+        address: 'Dirección sintética',
+        city: 'Bogotá',
+        department: null,
+        postalCode: null,
+        customerSegment: null,
+      };
+      const expediente = {
+        id: 'exp-1',
+        interestedPlanId: 'plan-fibra-100',
+        additionalProductIds: [],
+        additionalServiceIds: [],
+        paymentMethod: null,
+        billingCycle: null,
+        fiscalName: null,
+        fiscalDocument: null,
+        address: 'Dirección sintética',
+        municipality: 'Bogotá',
+        department: null,
+        postalCode: null,
+      };
+      let savedEntity: Record<string, unknown> = {};
+      const mockManager = {
+        findOne: jest.fn().mockResolvedValueOnce(subscriber).mockResolvedValueOnce(expediente),
+        find: jest.fn().mockResolvedValue([]),
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              fiscal_document: null,
+              fiscal_document_encrypted: encryptedSourceDocument,
+              fiscal_document_hmac: 'synthetic-source-hmac',
+            },
+          ])
+          .mockImplementationOnce(async () => [
+            {
+              id: 'ctr-fiscal-conversion',
+              fiscal_document: null,
+              fiscal_document_encrypted: Reflect.get(
+                savedEntity,
+                'fiscalDocumentEncrypted',
+              ) as string,
+              fiscal_document_hmac: Reflect.get(savedEntity, 'fiscalDocumentHmac') as string,
+            },
+          ]),
+        create: (_entity: unknown, data: Record<string, unknown>) => data,
+        save: async (_entity: unknown, data: Record<string, unknown>) => {
+          savedEntity = data;
+          return { ...data, id: 'ctr-fiscal-conversion' };
+        },
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: mockManager }),
+      );
+
+      const result = await service.createFromExpediente('sub-1', {});
+
+      expect(savedEntity.fiscalDocument).toBeNull();
+      expect(Reflect.get(savedEntity, 'fiscalDocumentEncrypted')).toBeDefined();
+      expect(Reflect.get(savedEntity, 'fiscalDocumentHmac')).toHaveLength(64);
+      expect(result.fiscalDocument).toBe(sourceDocument);
+    });
+
+    it('continúa la conversión si el SELECT fiscal secundario no devuelve fila', async () => {
+      const subscriber = {
+        id: 'sub-1',
+        partyId: 'party-test-uuid',
+        expedienteId: 'exp-1',
+        address: null,
+        city: null,
+        department: null,
+        postalCode: null,
+        customerSegment: null,
+      };
+      const expediente = {
+        id: 'exp-1',
+        interestedPlanId: 'plan-fibra-100',
+        additionalProductIds: [],
+        additionalServiceIds: [],
+        fiscalName: null,
+        fiscalDocument: null,
+        address: null,
+        municipality: null,
+        department: null,
+        postalCode: null,
+      };
+      let savedEntity: Record<string, unknown> = {};
+      const mockManager = {
+        findOne: jest.fn().mockResolvedValueOnce(subscriber).mockResolvedValueOnce(expediente),
+        find: jest.fn().mockResolvedValue([]),
+        query: jest.fn().mockResolvedValue([]),
+        create: (_entity: unknown, data: Record<string, unknown>) => data,
+        save: async (_entity: unknown, data: Record<string, unknown>) => {
+          savedEntity = data;
+          return { ...data, id: 'ctr-without-fiscal-row' };
+        },
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: mockManager }),
+      );
+
+      const result = await service.createFromExpediente('sub-1', {});
+
+      expect(result.id).toBe('ctr-without-fiscal-row');
+      expect(savedEntity.fiscalDocument).toBeNull();
+      expect(mockManager.query).toHaveBeenCalledTimes(2);
     });
 
     it('recorta el interés del expediente antes de usarlo como planId y en la instantánea', async () => {
@@ -1309,6 +1520,40 @@ describe('ContractsService', () => {
       });
       expect(qb.skip).toHaveBeenCalledWith(5);
       expect(result.data).toHaveLength(1);
+    });
+
+    it('resuelve el documento fiscal heredado y deja intactos contratos sin fila fiscal', async () => {
+      const legacyContract = buildContract({ id: 'ctr-legacy' });
+      const missingFiscalRow = buildContract({ id: 'ctr-no-fiscal' });
+      const qb = {
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[legacyContract, missingFiscalRow], 2]),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            createQueryBuilder: () => qb,
+            find: async () => [],
+            query: async () => [
+              {
+                id: legacyContract.id,
+                fiscal_document: 'synthetic-legacy-fiscal',
+                fiscal_document_encrypted: null,
+                fiscal_document_hmac: null,
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await service.findAll({ page: 1, limit: 5 });
+
+      expect(result.data[0]?.fiscalDocument).toBe('synthetic-legacy-fiscal');
+      expect(result.data[1]?.fiscalDocument).toBeNull();
     });
 
     it('audita filas bloqueadas servidas sin redacción a un usuario con permiso', async () => {

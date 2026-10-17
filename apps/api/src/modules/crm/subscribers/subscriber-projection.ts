@@ -98,6 +98,15 @@ export function projectSubscriberForList(
     customerSegment: subscriber.customerSegment,
     stratum: subscriber.stratum,
     vatTreatment: subscriber.vatTreatment,
+    vatResponsibility: subscriber.vatResponsibility ?? null,
+    rutResponsibilities: subscriber.rutResponsibilities ?? [],
+    legalRepresentative:
+      subscriber.legalRepresentativePartyId && subscriber.legalRepresentativeDisplayName
+        ? {
+            partyId: subscriber.legalRepresentativePartyId,
+            displayName: subscriber.legalRepresentativeDisplayName,
+          }
+        : null,
     taxRegime: subscriber.taxRegime ?? null,
     expedienteId: subscriber.expedienteId ?? null,
     convertedAt: toIsoOrNull(subscriber.convertedAt),
@@ -120,6 +129,7 @@ export function projectSubscriberForList(
       lastName: null,
       businessName: null,
       commercialName: null,
+      legalRepresentative: null,
       documentNumber: null,
       nit: null,
       nitVerificationDigit: null,

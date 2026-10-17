@@ -53,6 +53,7 @@ import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 import { SubscribersService } from './subscribers.service';
 import { hasRealContact } from './subscriber-contact.util';
+import { evaluateSubscriberFiscalCompleteness } from './subscriber-fiscal-completeness.service';
 import { CreateSubscriberDto, CreateSubscriberSchema } from './dto/create-subscriber.dto';
 import { UpdateSubscriberDto, UpdateSubscriberSchema } from './dto/update-subscriber.dto';
 import { Subscriber } from './entities/subscriber.entity';
@@ -712,10 +713,19 @@ export class SubscribersController {
       nitVerificationDigit: subscriber.nitVerificationDigit,
       businessName: subscriber.businessName,
       commercialName: subscriber.commercialName,
-      legalRepresentativeId: subscriber.legalRepresentativeId,
+      legalRepresentative:
+        subscriber.legalRepresentativePartyId && subscriber.legalRepresentativeDisplayName
+          ? {
+              partyId: subscriber.legalRepresentativePartyId,
+              displayName: subscriber.legalRepresentativeDisplayName,
+            }
+          : null,
       altContactName: subscriber.altContactName,
       whatsapp: subscriber.whatsapp,
       vatTreatment: subscriber.vatTreatment,
+      vatResponsibility: subscriber.vatResponsibility,
+      rutResponsibilities: subscriber.rutResponsibilities ?? [],
+      fiscalCompleteness: evaluateSubscriberFiscalCompleteness(subscriber),
       taxRegime: subscriber.taxRegime,
       address: subscriber.address,
       neighborhood: subscriber.neighborhood,

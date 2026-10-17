@@ -4,6 +4,8 @@ import {
   CustomerSegment,
   ConsentChannel,
   DocumentType,
+  VatResponsibility,
+  type RutResponsibility,
   type DataPurpose,
 } from '@iwana/shared';
 
@@ -51,7 +53,17 @@ export class CreateSubscriberDto {
   commercialName?: string;
 
   @Allow()
-  legalRepresentativeId?: string;
+  legalRepresentative?: {
+    fullName: string;
+    documentType: DocumentType;
+    documentNumber: string;
+  };
+
+  @Allow()
+  vatResponsibility!: VatResponsibility;
+
+  @Allow()
+  rutResponsibilities!: RutResponsibility[];
 
   @Allow()
   email?: string;

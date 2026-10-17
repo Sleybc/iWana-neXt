@@ -8,6 +8,7 @@ import {
   ConsentType,
   ExpedienteStatus,
   SubscriberStatus,
+  VatResponsibility,
   UserRole,
 } from '@iwana/shared';
 import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
@@ -25,6 +26,7 @@ import { PartyRole } from '../../parties/entities/party-role.entity';
 import { PartyWriteAdapter } from '../../parties/adapters/party-write.adapter';
 import { Subscriber } from './entities/subscriber.entity';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
+import { SubscriberFiscalCompletenessService } from './subscriber-fiscal-completeness.service';
 import { SubscriberCreationService } from './subscriber-creation.service';
 import { SubscribersService } from './subscribers.service';
 import { VatTreatmentService } from './vat-treatment.service';
@@ -129,7 +131,11 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       dataSource,
       testConfig,
       new VatTreatmentService(),
-      new SubscriberStatusTransitionService(dataSource, auditService),
+      new SubscriberStatusTransitionService(
+        dataSource,
+        auditService,
+        new SubscriberFiscalCompletenessService(),
+      ),
       auditService,
       new PartyWriteAdapter(testConfig),
       privacyAuthorizationAdapter,
@@ -272,7 +278,13 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       TenantContext.run(context(), () =>
         subscribersService.transitionStatus(subscriberId, SubscriberStatus.ACTIVE, null, actorId),
       ),
-    ).rejects.toMatchObject({ response: { code: 'SUBSCRIBER_CONTACT_REQUIRED' } });
+    ).rejects.toMatchObject({
+      status: 422,
+      response: {
+        code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
+        missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+      },
+    });
     await expect(
       TenantContext.run(context(), () =>
         expedienteService.transitionStatus(
@@ -293,7 +305,15 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
     ).toBe(SubscriberStatus.PROSPECT);
 
     await TenantContext.run(context(), () =>
-      subscribersService.update(subscriberId, { email: 'synthetic-contact@example.test' }, actorId),
+      subscribersService.update(
+        subscriberId,
+        {
+          email: 'synthetic-contact@example.test',
+          vatResponsibility: VatResponsibility.RESPONSABLE,
+          rutResponsibilities: ['O-13'],
+        },
+        actorId,
+      ),
     );
     const activated = await TenantContext.run(context(), () =>
       subscribersService.transitionStatus(subscriberId, SubscriberStatus.ACTIVE, null, actorId),

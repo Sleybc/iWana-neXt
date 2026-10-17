@@ -12,6 +12,8 @@ import {
   UserRole,
   ConsentChannel,
   AccessPermissionKey,
+  VatResponsibility,
+  type RutResponsibility,
 } from '@iwana/shared';
 import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
@@ -105,10 +107,14 @@ describe('SubscribersController', () => {
     businessName: null,
     commercialName: null,
     legalRepresentativeId: null,
+    legalRepresentativePartyId: null,
+    legalRepresentativeDisplayName: null,
     emailEncrypted: 'enc:email',
     phoneEncrypted: 'enc:phone',
     whatsapp: null,
     vatTreatment: VatTreatment.EXCLUDED,
+    vatResponsibility: VatResponsibility.RESPONSABLE,
+    rutResponsibilities: ['O-13'],
     taxRegime: TaxRegime.SIMPLIFIED,
     address: 'Calle 1 #2-3',
     neighborhood: null,
@@ -202,6 +208,8 @@ describe('SubscribersController', () => {
         email: 'juan@example.com',
         phone: '3001234567',
         address: 'Calle 1 #2-3',
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'] as RutResponsibility[],
         authorizationChannel: ConsentChannel.TELEFONO,
         authorizations: [
           {
@@ -227,6 +235,7 @@ describe('SubscribersController', () => {
       expect(result.data.email).toBe('juan@example.com');
       expect(result.data.phone).toBe('3001234567');
       expect(result.data.documentNumber).toBe('12345678');
+      expect(result.data.fiscalCompleteness).toEqual({ complete: true, missing: [] });
     });
 
     it('crea un suscriptor persona jurídica y delega al servicio', async () => {
@@ -250,6 +259,8 @@ describe('SubscribersController', () => {
         email: 'contacto@empresa.co',
         phone: '6011234567',
         address: 'Av. El Dorado #50-20',
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'] as RutResponsibility[],
         authorizationChannel: ConsentChannel.EMAIL,
         authorizations: [
           {
@@ -879,7 +890,9 @@ describe('SubscribersController', () => {
         nit: '900123456-7',
         businessName: 'Empresa XYZ',
         commercialName: 'Empresa XYZ Comercial',
-        legalRepresentativeId: 'rep-001',
+        legalRepresentativeId: null,
+        legalRepresentativePartyId: 'rep-001',
+        legalRepresentativeDisplayName: 'Representante sintético',
       };
 
       const result = sanitizeResponse(juridicaSubscriber);
@@ -887,7 +900,11 @@ describe('SubscribersController', () => {
       expect(result.nit).toBe('900123456-7');
       expect(result.businessName).toBe('Empresa XYZ');
       expect(result.commercialName).toBe('Empresa XYZ Comercial');
-      expect(result.legalRepresentativeId).toBe('rep-001');
+      expect(result.legalRepresentative).toEqual({
+        partyId: 'rep-001',
+        displayName: 'Representante sintético',
+      });
+      expect(result.legalRepresentative).not.toHaveProperty('documentNumber');
     });
 
     it('no incluye campos descifrados si no existen en el objeto', () => {

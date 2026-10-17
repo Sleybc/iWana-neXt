@@ -11,6 +11,7 @@ import { AuditAction, SubscriberStatus } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
+import { SubscriberFiscalCompletenessService } from './subscriber-fiscal-completeness.service';
 
 /**
  * Transiciones permitidas del ciclo de vida del suscriptor.
@@ -71,6 +72,7 @@ export class SubscriberStatusTransitionService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
+    private readonly fiscalCompletenessService: SubscriberFiscalCompletenessService,
   ) {}
 
   /**
@@ -148,6 +150,10 @@ export class SubscriberStatusTransitionService {
         `Transición no permitida: ${fromStatus} → ${targetStatus}. ` +
           `Estados permitidos desde ${fromStatus}: ${[...(ALLOWED_TRANSITIONS.get(fromStatus) || [])].join(', ')}`,
       );
+    }
+
+    if (targetStatus === SubscriberStatus.ACTIVE) {
+      this.fiscalCompletenessService.assertComplete(subscriber);
     }
 
     if (targetStatus === SubscriberStatus.ACTIVE && !hasRealContact(subscriber)) {

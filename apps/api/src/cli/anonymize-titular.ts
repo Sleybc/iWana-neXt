@@ -180,6 +180,8 @@ const PERSONAL_RULES: Record<string, FieldRule[]> = {
     { column: 'document_supports', kind: 'null', notNullFallback: 'empty-json' },
     { column: 'fiscal_name', kind: 'null' },
     { column: 'fiscal_document', kind: 'null' },
+    { column: 'fiscal_document_encrypted', kind: 'null' },
+    { column: 'fiscal_document_hmac', kind: 'null' },
     { column: 'fiscal_address', kind: 'null' },
     { column: 'rut_reference', kind: 'null' },
     { column: 'installation_address', kind: 'null' },

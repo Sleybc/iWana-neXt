@@ -2,10 +2,11 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
-import { resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
+import { hmacPiiValue, resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { AccessPermissionKey, DocumentTypeParty, normalizeDocumentNumber } from '@iwana/shared';
 import { hmacPii } from '../../../common/crypto/pii-hash-key.util';
+import { encryptAes256Gcm } from '../../../common/crypto/aes-gcm.util';
 import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { MediaService } from '../../media/media.service';
@@ -50,6 +51,9 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
   const technicianId = randomUUID();
   const ids = {
     expediente: randomUUID(),
+    party: randomUUID(),
+    subscriber: randomUUID(),
+    contract: randomUUID(),
     consent: randomUUID(),
     visit: randomUUID(),
     event: randomUUID(),
@@ -85,13 +89,62 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
       normalizeDocumentNumber(DocumentTypeParty.CC, documentNumber),
       Buffer.from(keyHex, 'hex'),
     );
-    // Prospecto sin Party: el vínculo con la solicitud es solo el HMAC del documento.
+    const syntheticFiscalDocument = 'synthetic-fiscal-fixture';
+    const encryptedFiscalDocument = encryptAes256Gcm(
+      syntheticFiscalDocument,
+      Buffer.from(keyHex, 'hex'),
+    );
+    const fiscalDocumentHmac = hmacPiiValue(
+      normalizeDocumentNumber(DocumentTypeParty.OTHER, syntheticFiscalDocument),
+      Buffer.from(keyHex, 'hex'),
+    );
+    // El expediente se localiza por HMAC; Party permite verificar contratos enlazados.
     await dataSource.query(
       `INSERT INTO ${q}.expediente_records
-         (id, tenant_id, full_name, document_type, document_number_hmac, address,
-          municipality, created_by)
-       VALUES ($1, $2, 'Prospecto ficticio', 'CC', $3, 'Calle ficticia 1', 'Municipio ficticio', $4)`,
-      [ids.expediente, tenantId, documentHmac, actorId],
+         (id, tenant_id, full_name, document_type, document_number_hmac,
+          fiscal_document_encrypted, fiscal_document_hmac, address, municipality, created_by)
+       VALUES ($1, $2, 'Prospecto ficticio', 'CC', $3, $4, $5,
+         'Calle ficticia 1', 'Municipio ficticio', $6)`,
+      [
+        ids.expediente,
+        tenantId,
+        documentHmac,
+        encryptedFiscalDocument,
+        fiscalDocumentHmac,
+        actorId,
+      ],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.party
+         (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', $2, 'Titular ficticio')`,
+      [ids.party, encryptAes256Gcm('synthetic-party-document', Buffer.from(keyHex, 'hex'))],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.subscribers
+         (id, tenant_id, party_id, person_type, customer_segment, document_type,
+          document_number_encrypted, first_name, last_name, stratum, email_encrypted,
+          phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
+       VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4,
+         'Nombre ficticio', 'Apellido ficticio', 2, $5, $6, 'STANDARD', 'COMMON',
+         'RESPONSABLE', 'Dirección ficticia', $7)`,
+      [
+        ids.subscriber,
+        tenantId,
+        ids.party,
+        encryptAes256Gcm('synthetic-subscriber-document', Buffer.from(keyHex, 'hex')),
+        encryptAes256Gcm('synthetic-email', Buffer.from(keyHex, 'hex')),
+        encryptAes256Gcm('synthetic-phone', Buffer.from(keyHex, 'hex')),
+        actorId,
+      ],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.contracts
+         (id, tenant_id, subscriber_id, plan_id, plan_snapshot_json,
+          fiscal_name, fiscal_document_encrypted, fiscal_document_hmac)
+       VALUES ($1, $2, $3, 'synthetic-plan', '{}'::jsonb,
+         'Nombre fiscal ficticio', $4, $5)`,
+      [ids.contract, tenantId, ids.subscriber, encryptedFiscalDocument, fiscalDocumentHmac],
     );
     await dataSource.query(
       `INSERT INTO ${q}.consent_records
@@ -151,6 +204,7 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
         {
           kind: 'CONSULTA',
           right: 'SUPRIMIR',
+          partyId: ids.party,
           requesterKind: 'TITULAR',
           requesterName: 'Titular ficticio de integración',
           requesterDocumentType: DocumentTypeParty.CC,
@@ -273,10 +327,16 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
     expect(preview.blockers).toEqual([]);
     expect(preview.candidateExpedienteIds).toEqual([ids.expediente]);
     expect(preview.counts.IDENTIFICACION).toBeGreaterThan(0);
+    expect(preview.counts.FISCAL).toBeGreaterThan(0);
     expect(preview.counts.EVIDENCIA_CONSENTIMIENTO).toBeGreaterThan(0);
     expect(preview.counts.OPERACION_CAMPO).toBeGreaterThan(0);
     expect(preview.categories).toEqual(
-      expect.arrayContaining(['IDENTIFICACION', 'EVIDENCIA_CONSENTIMIENTO', 'OPERACION_CAMPO']),
+      expect.arrayContaining([
+        'IDENTIFICACION',
+        'FISCAL',
+        'EVIDENCIA_CONSENTIMIENTO',
+        'OPERACION_CAMPO',
+      ]),
     );
 
     await inTenant(() =>
@@ -305,7 +365,8 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
 
     expect(
       await dataSource.query(
-        `SELECT full_name, document_number_hmac, address,
+        `SELECT full_name, document_number_hmac, fiscal_document,
+                fiscal_document_encrypted, fiscal_document_hmac, address,
                 anonymized_at IS NOT NULL AS marked, anonymized_request_id::text AS request_id
            FROM ${q}.expediente_records WHERE id = $1`,
         [ids.expediente],
@@ -314,10 +375,22 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
       {
         full_name: 'ANONIMIZADO',
         document_number_hmac: null,
+        fiscal_document: null,
+        fiscal_document_encrypted: null,
+        fiscal_document_hmac: null,
         address: null,
         marked: true,
         request_id: requestId,
       },
+    ]);
+    expect(
+      await dataSource.query(
+        `SELECT fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
+           FROM ${q}.contracts WHERE id = $1`,
+        [ids.contract],
+      ),
+    ).toEqual([
+      { fiscal_document: null, fiscal_document_encrypted: null, fiscal_document_hmac: null },
     ]);
     expect(
       await dataSource.query(`SELECT ip_address FROM ${q}.consent_records WHERE id = $1`, [

@@ -1,5 +1,11 @@
 import { Allow } from 'class-validator';
-import { PersonType, CustomerSegment, DocumentType } from '@iwana/shared';
+import {
+  PersonType,
+  CustomerSegment,
+  DocumentType,
+  VatResponsibility,
+  type RutResponsibility,
+} from '@iwana/shared';
 
 export { UpdateSubscriberSchema } from '@iwana/shared';
 
@@ -41,7 +47,17 @@ export class UpdateSubscriberDto {
   commercialName?: string;
 
   @Allow()
-  legalRepresentativeId?: string;
+  legalRepresentative?: {
+    fullName: string;
+    documentType: DocumentType;
+    documentNumber: string;
+  };
+
+  @Allow()
+  vatResponsibility?: VatResponsibility;
+
+  @Allow()
+  rutResponsibilities?: RutResponsibility[];
 
   @Allow()
   email?: string;

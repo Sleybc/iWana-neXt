@@ -5,6 +5,7 @@ import { SubscriberTaxProfile } from './entities/subscriber-tax-profile.entity';
 import { SubscriberTaxAssignment } from './entities/subscriber-tax-assignment.entity';
 import { VatTreatmentService } from './vat-treatment.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
+import { SubscriberFiscalCompletenessService } from './subscriber-fiscal-completeness.service';
 import { SubscribersService } from './subscribers.service';
 import { SubscribersController } from './subscribers.controller';
 import { SubscriberCreationService } from './subscriber-creation.service';
@@ -32,6 +33,7 @@ import { SubscribersBlockedTitularGuard } from './guards/subscribers-blocked-tit
   controllers: [SubscribersController, SubscriberTaxController],
   providers: [
     VatTreatmentService,
+    SubscriberFiscalCompletenessService,
     SubscriberStatusTransitionService,
     SubscribersService,
     SubscriberCreationService,
@@ -46,6 +48,7 @@ import { SubscribersBlockedTitularGuard } from './guards/subscribers-blocked-tit
     CrmSubscriberReadPort,
     SubscriberCreationService,
     VatTreatmentService,
+    SubscriberFiscalCompletenessService,
     SubscriberTaxProfileService,
   ],
 })

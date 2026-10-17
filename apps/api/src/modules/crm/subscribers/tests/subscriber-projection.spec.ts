@@ -175,7 +175,9 @@ describe('projectSubscriberForList', () => {
 
     expect(projected.privacyRestricted).toBe(true);
     expect(projected.contactPending).toBe(false);
+    expect(projected.rutResponsibilities).toEqual([]);
     for (const [field, value] of Object.entries(projected)) {
+      if (field === 'rutResponsibilities') continue;
       if (!allowedFields.has(field) && field !== 'contactPending') {
         expect(value).toBeNull();
       }

@@ -5,6 +5,11 @@ import { CustomerSegment } from '../enums/customer-segment.enum';
 import { DocumentType } from '../enums/document-type.enum';
 import { SubscriberStatus } from '../enums/subscriber-status.enum';
 import { VatTreatment } from '../enums/vat-treatment.enum';
+import {
+  RUT_RESPONSIBILITIES,
+  RutResponsibility,
+  VatResponsibility,
+} from '../enums/vat-responsibility.enum';
 import { ConsentChannel } from '../enums/crm/consent-channel.enum';
 import { dataPurposeSchema } from './privacy/authorizations';
 
@@ -17,6 +22,21 @@ const subscriberAuthorizationSchema = z
   .strict();
 
 const authorizationsSchema = z.array(subscriberAuthorizationSchema).optional();
+
+const rutResponsibilitiesSchema = z
+  .array(z.enum(RUT_RESPONSIBILITIES))
+  .min(1, 'Selecciona al menos una responsabilidad del RUT')
+  .refine((responsibilities) => new Set(responsibilities).size === responsibilities.length, {
+    message: 'No repitas responsabilidades del RUT',
+  });
+
+const legalRepresentativeSchema = z
+  .object({
+    fullName: z.string().min(1).max(300),
+    documentType: z.nativeEnum(DocumentType),
+    documentNumber: z.string().min(3).max(50),
+  })
+  .strict();
 
 /**
  * C-API-1 v1.1 body contract for POST /crm/subscribers/search.
@@ -56,6 +76,20 @@ export const SearchSubscribersSchema = z
 
 export type SearchSubscribersInput = z.infer<typeof SearchSubscribersSchema>;
 
+export const SUBSCRIBER_FISCAL_DATA_INCOMPLETE = 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE' as const;
+export const SUBSCRIBER_FISCAL_MISSING_FIELDS = [
+  'VAT_RESPONSIBILITY',
+  'RUT_RESPONSIBILITIES',
+  'NIT_VERIFICATION_DIGIT',
+  'LEGAL_REPRESENTATIVE',
+] as const;
+export type SubscriberFiscalMissingField = (typeof SUBSCRIBER_FISCAL_MISSING_FIELDS)[number];
+
+export interface SubscriberFiscalCompleteness {
+  complete: boolean;
+  missing: SubscriberFiscalMissingField[];
+}
+
 /**
  * Frozen, role-filtered list projection contract shared by API and portal.
  * Restricted fields are omitted entirely when the caller's role is not allowed to see them.
@@ -73,7 +107,11 @@ export interface SubscriberListItem {
   customerSegment: CustomerSegment;
   stratum: number | null;
   vatTreatment: VatTreatment;
+  /** @deprecated Se conserva nullable durante la expansión del contrato. */
   taxRegime: string | null;
+  vatResponsibility: VatResponsibility | null;
+  rutResponsibilities: RutResponsibility[];
+  legalRepresentative: { partyId: string; displayName: string } | null;
   expedienteId: string | null;
   convertedAt: string | null;
   activatedAt: string | null;
@@ -99,6 +137,11 @@ export interface SubscriberListItem {
   department?: string;
   latitude?: number;
   longitude?: number;
+}
+
+/** Campos adicionales que el detalle del suscriptor expone para completar o activar. */
+export interface SubscriberDetail extends SubscriberListItem {
+  fiscalCompleteness: SubscriberFiscalCompleteness;
 }
 
 /**
@@ -144,6 +187,8 @@ export const naturalSubscriberSchema = z.object({
   manualOverrideReason: z.string().min(10).max(500).optional(),
   authorizations: authorizationsSchema,
   authorizationChannel: z.nativeEnum(ConsentChannel).optional(),
+  vatResponsibility: z.nativeEnum(VatResponsibility),
+  rutResponsibilities: rutResponsibilitiesSchema,
 });
 
 /**
@@ -154,10 +199,10 @@ export const juridicaSubscriberSchema = z.object({
   personType: z.literal(PersonType.JURIDICA),
   customerSegment: z.nativeEnum(CustomerSegment),
   nit: z.string().min(5, 'El NIT debe tener al menos 5 caracteres').max(20),
-  nitVerificationDigit: z.string().max(1).optional(),
+  nitVerificationDigit: z.string().regex(/^\d$/, 'El dígito de verificación debe ser un número'),
   businessName: z.string().min(1, 'La razón social es requerida').max(300),
   commercialName: z.string().max(300).optional(),
-  legalRepresentativeId: z.string().uuid().optional(),
+  legalRepresentative: legalRepresentativeSchema,
   email: z
     .string()
     .min(1, 'El correo es requerido')
@@ -181,6 +226,8 @@ export const juridicaSubscriberSchema = z.object({
   manualOverrideReason: z.string().min(10).max(500).optional(),
   authorizations: authorizationsSchema,
   authorizationChannel: z.nativeEnum(ConsentChannel).optional(),
+  vatResponsibility: z.nativeEnum(VatResponsibility),
+  rutResponsibilities: rutResponsibilitiesSchema,
 });
 
 /**
@@ -222,7 +269,7 @@ export const UpdateSubscriberSchema = z.object({
   nitVerificationDigit: z.string().max(1).optional(),
   businessName: z.string().min(1).max(300).optional(),
   commercialName: z.string().max(300).optional(),
-  legalRepresentativeId: z.string().uuid().optional(),
+  legalRepresentative: legalRepresentativeSchema.optional(),
   email: z.string().email().max(500).optional(),
   phone: z.string().min(5).max(100).optional(),
   altContactName: z.string().max(160).optional(),
@@ -239,6 +286,8 @@ export const UpdateSubscriberSchema = z.object({
   externalId: z.string().max(160).optional(),
   expedienteId: z.string().uuid().nullable().optional(),
   manualOverrideReason: z.string().min(10).max(500).nullable().optional(),
+  vatResponsibility: z.nativeEnum(VatResponsibility).optional(),
+  rutResponsibilities: rutResponsibilitiesSchema.optional(),
 });
 
 /**
