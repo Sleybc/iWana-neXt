@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { PersonType, ServiceUsage } from '@iwana/shared';
-import { FormStatus, ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
+import { Button, FormStatus, ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
 import type { Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
 import type { SubscriberFiscalMissingField } from '@iwana/shared';
@@ -322,15 +322,15 @@ export function ConvertExpedienteToContractDialog({
           >
             Cancelar
           </button>
-          <button
+          <Button
+            loading={loading}
             type="button"
             onClick={() => void handleConvert()}
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl bg-iwana-secondary-700 px-5 py-2 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-60"
+            className="min-h-11"
           >
-            {loading && <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />}
-            {loading ? 'Convirtiendo...' : 'Convertir a contrato'}
-          </button>
+            Convertir a contrato
+          </Button>
         </div>
       </div>
     </ModalLayer>

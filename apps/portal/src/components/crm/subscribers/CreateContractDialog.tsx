@@ -1,17 +1,29 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import {
   CustomerSegment,
   PersonType,
   ServiceUsage,
   type SubscriberFiscalMissingField,
 } from '@iwana/shared';
-import { FormField, FormStatus, ModalLayer, Select, overlayEdgeClassName, cn } from '@iwana/ui';
+import {
+  Button,
+  FormField,
+  FormStatus,
+  ModalLayer,
+  Select,
+  overlayEdgeClassName,
+  cn,
+} from '@iwana/ui';
 import type { PlanCatalogItem } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '@/lib/api-client';
-import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
+import {
+  PortalSkeletonBlock,
+  PortalAlert,
+  interactiveFocusClassName,
+} from '@/components/shared/portal-ui';
 import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
 import { readFiscalDataIncompleteError } from './subscriber-fiscal';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
@@ -425,10 +437,9 @@ export function CreateContractDialog({
                 disabled={saving || planResolving}
               />
               {planResolving && (
-                <p className="mt-1.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  Cargando detalle del plan…
-                </p>
+                <div role="status" aria-label="Cargando detalle del plan" className="mt-1.5">
+                  <PortalSkeletonBlock className="h-4 w-48 rounded" />
+                </div>
               )}
               {form.selectedPlan && !planResolving && (
                 <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -685,19 +696,16 @@ export function CreateContractDialog({
           >
             Cancelar
           </button>
-          <button
+          <Button
+            loading={saving}
             type="submit"
             form="create-contract-form"
             disabled={saving || planResolving || (!form.planId && !savedDraftId)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
+            className="min-h-11 flex-1"
           >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <Plus className="h-4 w-4" aria-hidden />
-            )}
+            {!saving && <Plus className="h-4 w-4" aria-hidden />}
             Crear servicio en borrador
-          </button>
+          </Button>
         </div>
       </div>
     </ModalLayer>

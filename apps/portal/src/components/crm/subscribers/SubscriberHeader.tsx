@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Badge, Button } from '@iwana/ui';
 import { AlertTriangle, ArrowLeft, Plus, RefreshCw } from 'lucide-react';
 import { PersonType, SubscriberStatus } from '@iwana/shared';
@@ -35,7 +35,6 @@ export function SubscriberHeader({
   onAddContact,
   onCompleteFiscalData,
 }: SubscriberHeaderProps) {
-  const router = useRouter();
   const name = privacyDisplayValue(
     subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
     {
@@ -56,22 +55,18 @@ export function SubscriberHeader({
   return (
     <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
       <div>
-        <button
-          type="button"
-          onClick={() => router.push('/dashboard/crm/subscribers')}
-          className="mb-2 flex items-center text-sm font-medium text-gray-500 transition-colors hover:text-iwana-primary"
+        <Link
+          href="/dashboard/crm/subscribers"
+          className="mb-2 flex items-center text-sm font-medium text-gray-500 transition-colors hover:text-iwana-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary"
         >
           <ArrowLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
           Volver a suscriptores
-        </button>
+        </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white md:text-2xl">
             {name}
           </h2>
-          <Badge
-            variant={statusMeta.variant}
-            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-          >
+          <Badge variant={statusMeta.variant} className="rounded-full">
             {statusMeta.label}
           </Badge>
           <PrivacyAnonymizedBadge
@@ -80,31 +75,18 @@ export function SubscriberHeader({
             canReadPrivacy={canReadPrivacy}
           />
           {subscriber.contactPending && (
-            <Badge
-              variant="warning"
-              className="rounded-full px-3 py-1 text-[10px] font-bold tracking-wide"
-            >
+            <Badge variant="warning" className="rounded-full">
               <AlertTriangle className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
               Contacto pendiente
             </Badge>
           )}
-          <Badge
-            variant={personMeta.variant}
-            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-          >
-            {personMeta.label}
-          </Badge>
-          <Badge
-            variant="neutral"
-            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-          >
-            {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
-          </Badge>
         </div>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          {personMeta.label} · {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
+        </p>
         <div className="mt-3">
           <PrivacyMarks marks={marks} />
         </div>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Suscriptor de la empresa</p>
       </div>
 
       <VatTreatmentBanner

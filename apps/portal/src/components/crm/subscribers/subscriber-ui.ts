@@ -1,3 +1,4 @@
+import type { ContractStatus } from '@/lib/api-client';
 import {
   CustomerSegment,
   DocumentType,
@@ -97,6 +98,17 @@ export const SUBSCRIBER_STATUS_META: Record<
   ACTIVE: { label: 'Activo', variant: portalActiveBadgeVariant },
   SUSPENDED: { label: 'Suspendido', variant: 'warning' },
   CANCELLED: { label: 'Cancelado', variant: 'error' },
+};
+
+export const CONTRACT_STATUS_META: Record<
+  ContractStatus,
+  { label: string; variant: SubscriberBadgeVariant }
+> = {
+  DRAFT: { label: 'Borrador', variant: 'neutral' },
+  ACTIVE: { label: 'Activo', variant: portalActiveBadgeVariant },
+  SUSPENDED: { label: 'Suspendido', variant: 'warning' },
+  TERMINATED: { label: 'Terminado', variant: 'error' },
+  ARCHIVED: { label: 'Archivado', variant: 'neutral' },
 };
 
 export const PERSON_TYPE_META: Record<

@@ -14,7 +14,9 @@ import { SubscriberDetailClient } from './SubscriberDetailClient';
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'subscriber-synthetic' }),
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  usePathname: () => '/dashboard/crm/subscribers/subscriber-synthetic',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/components/access-control/permissions-context', () => ({

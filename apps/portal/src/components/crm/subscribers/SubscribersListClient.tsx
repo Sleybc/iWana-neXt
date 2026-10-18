@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Select, cn } from '@iwana/ui';
+import { Badge, Button, Input, Select, cn } from '@iwana/ui';
 import type { ListMeta, SubscriberListItem } from '@iwana/shared';
 import { CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
 import { CircleDashed, Plus } from 'lucide-react';
@@ -20,7 +20,6 @@ import {
   PortalEmptyState,
   PortalPageSizeSelect,
   PortalPanel,
-  PortalSearchField,
   PortalSkeletonBlock,
   PortalTablePager,
   portalDataBusyRegionClassName,
@@ -46,7 +45,27 @@ import {
 
 const SUBSCRIBERS_RESOURCE = { singular: 'suscriptor', plural: 'suscriptores' } as const;
 
-const FILTER_KEYS = ['search', 'status', 'personType', 'customerSegment', 'stratum'] as const;
+const FILTER_KEYS = [
+  'search',
+  'status',
+  'personType',
+  'customerSegment',
+  'stratum',
+  'mode',
+] as const;
+
+const SEARCH_MODES = [
+  { value: 'text', label: 'Texto', placeholder: 'Nombre, razón social o NIT', empty: 'texto' },
+  {
+    value: 'document',
+    label: 'Documento',
+    placeholder: 'Cédula, NIT o pasaporte',
+    empty: 'documento',
+  },
+  { value: 'phone', label: 'Teléfono', placeholder: 'Teléfono', empty: 'teléfono' },
+  { value: 'email', label: 'Correo', placeholder: 'Correo', empty: 'correo' },
+] as const;
+type SearchMode = (typeof SEARCH_MODES)[number]['value'];
 
 /** Rótulos visibles por campo lógico — solo se activan si `sortableFields` los autoriza. */
 const SORTABLE_COLUMN_LABELS: Record<string, string> = {
@@ -95,6 +114,8 @@ function SubscribersListClientInner() {
   const tableShellRef = useRef<HTMLDivElement | null>(null);
   const outOfRangeShownRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const searchInFlightRef = useRef(false);
 
   const {
     page,
@@ -119,7 +140,19 @@ function SubscribersListClientInner() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
-  const [searchDraft, setSearchDraft] = useState(filters.search ?? '');
+  const [searchDraft, setSearchDraft] = useState(() =>
+    SEARCH_MODES.some((item) => item.value === filters.mode && item.value !== 'text')
+      ? ''
+      : (filters.search ?? ''),
+  );
+  const [exactSearched, setExactSearched] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const urlMode = (SEARCH_MODES.find((item) => item.value === filters.mode) ?? SEARCH_MODES[0])
+    .value;
+  const [selectedMode, setSelectedMode] = useState<SearchMode>(urlMode);
+  const selectedModeRef = useRef<SearchMode>(urlMode);
+  const mode = SEARCH_MODES.find((item) => item.value === selectedMode) ?? SEARCH_MODES[0];
+  const exactMode = mode.value !== 'text';
 
   const urlSearch = filters.search ?? '';
   const statusFilter = filters.status ?? '';
@@ -132,10 +165,28 @@ function SubscribersListClientInner() {
   const activeSort = sort && sortableFields.includes(sort.by) ? sort : null;
 
   useEffect(() => {
-    setSearchDraft(urlSearch);
-  }, [urlSearch]);
+    // La confirmación de una navegación propia no vuelve a limpiar la entrada.
+    // Atrás y Adelante sí sincronizan una selección distinta desde la URL.
+    if (selectedModeRef.current !== urlMode) {
+      selectedModeRef.current = urlMode;
+      setSelectedMode(urlMode);
+      setSearchDraft('');
+    }
+  }, [urlMode]);
 
   useEffect(() => {
+    if (!exactMode && selectedMode === urlMode) setSearchDraft(urlSearch);
+  }, [urlSearch, exactMode, selectedMode, urlMode]);
+
+  useEffect(
+    () => () => {
+      ++requestIdRef.current;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (exactMode) return;
     const timeout = window.setTimeout(() => {
       const next = searchDraft.trim();
       if (next === urlSearch) return;
@@ -143,7 +194,7 @@ function SubscribersListClientInner() {
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [searchDraft, setFilters, urlSearch]);
+  }, [searchDraft, setFilters, urlSearch, exactMode]);
 
   const listParams = useMemo((): ListSubscribersParams => {
     const params: ListSubscribersParams = {
@@ -175,6 +226,7 @@ function SubscribersListClientInner() {
 
   const loadPage = useCallback(
     async (params: ListSubscribersParams, opts?: { soft?: boolean }) => {
+      const requestId = ++requestIdRef.current;
       const soft = opts?.soft === true && hasLoadedOnceRef.current;
       if (soft) {
         setRefreshing(true);
@@ -185,6 +237,7 @@ function SubscribersListClientInner() {
 
       try {
         const response = await subscribersApi.list(params);
+        if (requestId !== requestIdRef.current) return;
         const nextMeta = normalizeListMeta(response.meta, {
           dataLength: response.data.length,
           ...(params.limit !== undefined ? { limit: params.limit } : {}),
@@ -217,22 +270,106 @@ function SubscribersListClientInner() {
         );
         hasLoadedOnceRef.current = true;
       } catch (loadError) {
+        if (requestId !== requestIdRef.current) return;
         setError(mapError(loadError));
         if (!soft) {
           setRecords([]);
           setMeta(EMPTY_LIST_META);
         }
       } finally {
-        setInitialLoading(false);
-        setRefreshing(false);
+        if (requestId === requestIdRef.current) {
+          setInitialLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [setQuery],
   );
 
   useEffect(() => {
+    if (exactMode) return;
+    const requestIdState = requestIdRef;
     void loadPage(listParams, { soft: true });
-  }, [listParams, loadPage]);
+    return () => {
+      ++requestIdState.current;
+    };
+  }, [listParams, loadPage, exactMode]);
+
+  useEffect(() => {
+    if (exactMode) {
+      ++requestIdRef.current;
+      searchInFlightRef.current = false;
+      setRecords([]);
+      setMeta(EMPTY_LIST_META);
+      setInitialLoading(false);
+      setRefreshing(false);
+      setError(null);
+      setExactSearched(false);
+      return;
+    }
+  }, [exactMode, mode.value]);
+
+  function changeMode(nextMode: SearchMode) {
+    if (nextMode === mode.value) return;
+    ++requestIdRef.current;
+    searchInFlightRef.current = false;
+    selectedModeRef.current = nextMode;
+    setSelectedMode(nextMode);
+    setSearchDraft('');
+    setRecords([]);
+    setMeta(EMPTY_LIST_META);
+    setError(null);
+    setValidationError(null);
+    setOutOfRangeNotice(null);
+    setInitialLoading(false);
+    setRefreshing(false);
+    setExactSearched(false);
+    setFilters({ mode: nextMode === 'text' ? null : nextMode, search: null });
+  }
+
+  async function searchExact() {
+    if (!exactMode || searchInFlightRef.current) return;
+    const value = searchDraft.trim();
+    const invalid =
+      mode.value === 'email'
+        ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+        : value.length < 3 || value.length > 50;
+    if (invalid) {
+      setValidationError(
+        mode.value === 'email' ? 'Escribe un correo válido.' : 'Escribe entre 3 y 50 caracteres.',
+      );
+      return;
+    }
+    setValidationError(null);
+    setError(null);
+    setRecords([]);
+    setInitialLoading(true);
+    setExactSearched(false);
+    searchInFlightRef.current = true;
+    const requestId = ++requestIdRef.current;
+    // Heurística acordada para NIT: nueve dígitos, con DV opcional separado por guion.
+    const params =
+      mode.value === 'document'
+        ? /^\d{9}(?:-\d)?$/.test(value)
+          ? { nit: value.replace(/-\d$/, '') }
+          : { documentNumber: value }
+        : mode.value === 'phone'
+          ? { phone: value }
+          : { email: value };
+    try {
+      const response = await subscribersApi.search(params);
+      if (requestId !== requestIdRef.current) return;
+      setRecords(response.data);
+      setExactSearched(true);
+    } catch (searchError) {
+      if (requestId === requestIdRef.current) setError(mapError(searchError));
+    } finally {
+      if (requestId === requestIdRef.current) {
+        searchInFlightRef.current = false;
+        setInitialLoading(false);
+      }
+    }
+  }
 
   const prevPageRef = useRef(page);
   useEffect(() => {
@@ -260,7 +397,7 @@ function SubscribersListClientInner() {
     total: meta.total,
   });
 
-  const showPager = !initialLoading && meta.total > 0;
+  const showPager = !exactMode && !initialLoading && meta.total > 0;
   const showPageSize = showPager && meta.total > Math.min(...[10, 20, 50]);
 
   function clearFilters() {
@@ -275,7 +412,7 @@ function SubscribersListClientInner() {
   }
 
   function renderHead(field: string | null, label: string) {
-    if (field && sortableFields.includes(field)) {
+    if (!exactMode && field && sortableFields.includes(field)) {
       return (
         <PortalDataTableSortableHead
           field={field}
@@ -315,14 +452,16 @@ function SubscribersListClientInner() {
           title="No fue posible cargar los suscriptores"
           description={error}
           action={
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => void loadPage(listParams)}
-            >
-              Reintentar
-            </Button>
+            !exactMode ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void loadPage(listParams)}
+              >
+                Reintentar
+              </Button>
+            ) : undefined
           }
         />
       ) : null}
@@ -338,77 +477,162 @@ function SubscribersListClientInner() {
 
       <PortalPanel className="overflow-hidden p-0" contentClassName="p-0">
         <div className="flex flex-col gap-3 px-5 py-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <PortalSearchField
-              id="subscriber-search"
-              value={searchDraft}
-              onChange={setSearchDraft}
-              placeholder="Buscar por nombre, NIT o razón social"
-              label="Buscar suscriptor"
-              className="min-w-0 flex-1"
-            />
+          <div className="space-y-2">
+            <span id="subscriber-search-mode-label" className="text-sm font-medium">
+              Buscar por
+            </span>
+            <div
+              role="radiogroup"
+              aria-labelledby="subscriber-search-mode-label"
+              className="flex flex-wrap gap-1"
+            >
+              {SEARCH_MODES.map((item, index) => (
+                <Button
+                  key={item.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode.value === item.value}
+                  tabIndex={mode.value === item.value ? 0 : -1}
+                  variant={mode.value === item.value ? 'primary' : 'ghost'}
+                  className="min-h-11"
+                  onClick={() => changeMode(item.value)}
+                  onKeyDown={(event) => {
+                    const next =
+                      event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? SEARCH_MODES.length - 1
+                          : ['ArrowRight', 'ArrowDown'].includes(event.key)
+                            ? (index + 1) % SEARCH_MODES.length
+                            : ['ArrowLeft', 'ArrowUp'].includes(event.key)
+                              ? (index + SEARCH_MODES.length - 1) % SEARCH_MODES.length
+                              : null;
+                    if (next === null) return;
+                    event.preventDefault();
+                    changeMode(SEARCH_MODES[next]!.value);
+                    (
+                      event.currentTarget.parentElement?.children[next] as
+                        | HTMLButtonElement
+                        | undefined
+                    )?.focus();
+                  }}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <form
+            className="flex flex-col gap-3 sm:flex-row sm:items-center"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void searchExact();
+            }}
+          >
+            <div className="min-w-0 flex-1">
+              <label htmlFor="subscriber-search" className="sr-only">
+                Buscar suscriptor
+              </label>
+              <Input
+                id="subscriber-search"
+                type="search"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder={mode.placeholder}
+                aria-invalid={validationError ? true : undefined}
+                aria-describedby={validationError ? 'subscriber-search-error' : undefined}
+                className="h-12"
+              />
+            </div>
+            {exactMode ? (
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={initialLoading}
+                className="min-h-11"
+              >
+                Buscar
+              </Button>
+            ) : null}
             <Button asChild size="sm" className="h-11 min-h-11 w-full shrink-0 px-3 sm:w-auto">
               <Link href="/dashboard/crm/subscribers/new">
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 Nuevo suscriptor
               </Link>
             </Button>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] xl:items-center">
-            <Select
-              id="subscriber-status-filter"
-              aria-label="Estado"
-              className="h-12 min-w-0"
-              value={statusFilter}
-              onChange={(event) => setFilters({ status: event.target.value || null })}
-              options={SUBSCRIBER_STATUS_OPTIONS}
+          </form>
+          {validationError ? (
+            <p
+              id="subscriber-search-error"
+              role="alert"
+              className="text-sm text-error-700 dark:text-error-400"
             >
-              <option value="">Todos los estados</option>
-            </Select>
+              {validationError}
+            </p>
+          ) : null}
+          {exactMode && exactSearched ? (
+            <p role="status" className="text-sm">
+              Coincidencia exacta · {records.length}{' '}
+              {records.length === 1 ? 'resultado' : 'resultados'}
+            </p>
+          ) : null}
 
-            <Select
-              id="subscriber-person-type-filter"
-              aria-label="Tipo de persona"
-              className="h-12 min-w-0"
-              value={personTypeFilter}
-              onChange={(event) => setFilters({ personType: event.target.value || null })}
-              options={[...PERSON_TYPE_OPTIONS]}
-            >
-              <option value="">Todos los tipos</option>
-            </Select>
+          {!exactMode ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] xl:items-center">
+              <Select
+                id="subscriber-status-filter"
+                aria-label="Estado"
+                className="h-12 min-w-0"
+                value={statusFilter}
+                onChange={(event) => setFilters({ status: event.target.value || null })}
+                options={SUBSCRIBER_STATUS_OPTIONS}
+              >
+                <option value="">Todos los estados</option>
+              </Select>
 
-            <Select
-              id="subscriber-segment-filter"
-              aria-label="Segmento"
-              className="h-12 min-w-0"
-              value={segmentFilter}
-              onChange={(event) => setFilters({ customerSegment: event.target.value || null })}
-              options={[...CUSTOMER_SEGMENT_OPTIONS]}
-            >
-              <option value="">Todos los segmentos</option>
-            </Select>
+              <Select
+                id="subscriber-person-type-filter"
+                aria-label="Tipo de persona"
+                className="h-12 min-w-0"
+                value={personTypeFilter}
+                onChange={(event) => setFilters({ personType: event.target.value || null })}
+                options={[...PERSON_TYPE_OPTIONS]}
+              >
+                <option value="">Todos los tipos</option>
+              </Select>
 
-            <Select
-              id="subscriber-stratum-filter"
-              aria-label="Estrato"
-              className="h-12 min-w-0"
-              value={stratumFilter}
-              onChange={(event) => setFilters({ stratum: event.target.value || null })}
-              options={[...STRATUM_OPTIONS]}
-            >
-              <option value="">Todos los estratos</option>
-            </Select>
+              <Select
+                id="subscriber-segment-filter"
+                aria-label="Segmento"
+                className="h-12 min-w-0"
+                value={segmentFilter}
+                onChange={(event) => setFilters({ customerSegment: event.target.value || null })}
+                options={[...CUSTOMER_SEGMENT_OPTIONS]}
+              >
+                <option value="">Todos los segmentos</option>
+              </Select>
 
-            {hasActiveFilters ? (
-              <Button type="button" variant="ghost" onClick={clearFilters} className="h-12">
-                Limpiar filtros
-              </Button>
-            ) : null}
-          </div>
+              <Select
+                id="subscriber-stratum-filter"
+                aria-label="Estrato"
+                className="h-12 min-w-0"
+                value={stratumFilter}
+                onChange={(event) => setFilters({ stratum: event.target.value || null })}
+                options={[...STRATUM_OPTIONS]}
+              >
+                <option value="">Todos los estratos</option>
+              </Select>
+
+              {hasActiveFilters ? (
+                <Button type="button" variant="ghost" onClick={clearFilters} className="h-12">
+                  Limpiar filtros
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
-        {canSort ? (
+        {!exactMode && canSort ? (
           <div className="px-5 pb-3 sm:hidden">
             <Select
               id="subscriber-mobile-sort"
@@ -468,19 +692,34 @@ function SubscribersListClientInner() {
                       <td colSpan={7} className={cn(portalDataTableCellClassName, 'py-12')}>
                         <PortalEmptyState
                           title={
-                            hasActiveFilters
-                              ? 'No se encontraron resultados'
-                              : 'Aún no hay suscriptores'
+                            exactMode
+                              ? exactSearched
+                                ? `No hay suscriptores con ese ${mode.empty}`
+                                : 'Busca un suscriptor'
+                              : hasActiveFilters
+                                ? 'No se encontraron resultados'
+                                : 'Aún no hay suscriptores'
                           }
                           description={
-                            hasActiveFilters
-                              ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
-                              : 'Registra el primero para iniciar el ciclo comercial y postventa.'
+                            exactMode
+                              ? 'Escribe el dato y selecciona Buscar para consultar una coincidencia exacta.'
+                              : hasActiveFilters
+                                ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
+                                : 'Registra el primero para iniciar el ciclo comercial y postventa.'
                           }
                           icon={CircleDashed}
                           className="w-full text-left"
                           action={
-                            hasActiveFilters ? (
+                            exactMode ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => changeMode('text')}
+                              >
+                                Buscar como texto
+                              </Button>
+                            ) : hasActiveFilters ? (
                               <Button
                                 type="button"
                                 variant="outline"

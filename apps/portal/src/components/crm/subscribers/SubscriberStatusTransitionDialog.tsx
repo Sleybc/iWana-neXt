@@ -121,6 +121,13 @@ export function SubscriberStatusTransitionDialog({
             value={targetStatus}
             onChange={(event) => {
               setTargetStatus(event.target.value);
+              if (
+                ![SubscriberStatus.SUSPENDED, SubscriberStatus.CANCELLED].includes(
+                  event.target.value as SubscriberStatus,
+                )
+              ) {
+                setReason('');
+              }
               setContactRequired(false);
               setTransitionError(null);
               setFiscalMissing(null);
@@ -130,13 +137,18 @@ export function SubscriberStatusTransitionDialog({
             <option value="">Selecciona</option>
           </Select>
 
-          <Input
-            label="Razón"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder="Motivo de la transición"
-            className="h-11"
-          />
+          {requiresReason && (
+            <Input
+              required
+              aria-required="true"
+              requiredIndicator
+              label="Razón"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Motivo de la transición"
+              className="h-11"
+            />
+          )}
 
           <div className="flex justify-end gap-3">
             <DialogClose asChild>
@@ -146,6 +158,7 @@ export function SubscriberStatusTransitionDialog({
             </DialogClose>
             <Button
               type="button"
+              loading={submitting}
               disabled={!targetStatus || (requiresReason && !reason.trim()) || submitting}
               onClick={async () => {
                 setSubmitting(true);
@@ -169,7 +182,9 @@ export function SubscriberStatusTransitionDialog({
                     setContactRequired(true);
                   } else {
                     setTransitionError(
-                      'No fue posible completar la transición. Inténtalo de nuevo.',
+                      error instanceof ApiError
+                        ? error.message
+                        : 'No fue posible completar la transición. Inténtalo de nuevo.',
                     );
                   }
                 } finally {
@@ -177,7 +192,7 @@ export function SubscriberStatusTransitionDialog({
                 }
               }}
             >
-              {submitting ? 'Aplicando...' : 'Confirmar'}
+              Confirmar
             </Button>
           </div>
         </div>

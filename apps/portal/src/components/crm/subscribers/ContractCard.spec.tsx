@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { Contract } from '@/lib/api-client';
+import { badgeVariants } from '@iwana/ui';
+import { CONTRACT_STATUS_META } from './subscriber-ui';
 import { ContractCard } from './ContractCard';
 
 /**
@@ -134,4 +136,24 @@ describe('ContractCard — cazador de clic exterior en `--z-popover`', () => {
     expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Acciones del contrato' })).toBeNull();
   });
+});
+
+describe('QW5 — ContractCard comparte la escala del suscriptor', () => {
+  it.each(['DRAFT', 'ACTIVE', 'SUSPENDED', 'TERMINATED', 'ARCHIVED'] as const)(
+    'renderiza %s con Badge y texto',
+    (status) => {
+      render(
+        <ContractCard
+          contract={{ ...CONTRACT, status }}
+          onTransition={jest.fn()}
+          onRemove={jest.fn()}
+          onViewDetail={jest.fn()}
+        />,
+      );
+      const meta = CONTRACT_STATUS_META[status];
+      expect(screen.getByText(meta.label)).toHaveClass(
+        ...badgeVariants({ variant: meta.variant }).split(' '),
+      );
+    },
+  );
 });

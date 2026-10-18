@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  TaxCategory,
+  TaxAssignmentRateSource,
+  TaxAssignmentStatus,
+  TaxProfileStatus,
   ConsentChannel,
   CustomerSegment,
   DocumentType,
@@ -13,9 +17,10 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import type { Contract, Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
-import { ApiError, privacyApi } from '@/lib/api-client';
+import { ApiError, commercialApi, subscriberTaxApi, privacyApi } from '@/lib/api-client';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
+import { TaxProfileBlock } from './TaxProfileBlock';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
@@ -903,5 +908,159 @@ describe('MOD05 deuda CD-04 — detalle restringido con campos fiscales autoriza
     const alert = screen.getByText(FISCAL_TITLE).closest('[role="status"]') as HTMLElement;
     await user.click(within(alert).getByRole('button', { name: 'Completar datos fiscales' }));
     expect(onCompleteFiscalData).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('QW6 — carga de acciones y bloques', () => {
+  it('la conversión expone aria-busy y mantiene su nombre', async () => {
+    mockCreateFromExpediente.mockImplementation(() => new Promise(() => undefined));
+    render(
+      <ConvertExpedienteToContractDialog
+        subscriberId="subscriber-1"
+        expedienteSummary={EXPEDIENTE_SUMMARY}
+        onClose={jest.fn()}
+        onSuccess={jest.fn(async () => undefined)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Convertir a contrato' }));
+    expect(screen.getByRole('button', { name: 'Convertir a contrato' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+  it('reserva el detalle del plan con skeleton mientras carga', async () => {
+    mockGetPlanById.mockImplementation(() => new Promise(() => undefined));
+    render(
+      <CreateContractDialog
+        subscriberId="subscriber-1"
+        onClose={jest.fn()}
+        onSuccess={jest.fn(async () => undefined)}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: /^Plan/ }), { target: { value: 'Fi' } });
+    fireEvent.click(await screen.findByRole('option', { name: /Plan Fibra 200/i }));
+    const loading = await screen.findByRole('status', { name: 'Cargando detalle del plan' });
+    expect(loading.querySelector('.animate-pulse')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Crear servicio en borrador' })).toBeDisabled();
+  });
+  it('la creación expone aria-busy al guardar', async () => {
+    mockCreateForSubscriber.mockImplementation(() => new Promise(() => undefined));
+    render(
+      <CreateContractDialog
+        subscriberId="subscriber-1"
+        onClose={jest.fn()}
+        onSuccess={jest.fn(async () => undefined)}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: /^Plan/ }), { target: { value: 'Fi' } });
+    fireEvent.click(await screen.findByRole('option', { name: /Plan Fibra 200/i }));
+    await waitFor(() => expect(mockGetPlanById).toHaveBeenCalledWith('plan-1'));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Uso del servicio' }));
+    fireEvent.click(
+      within(await screen.findByRole('listbox')).getByRole('option', { name: 'No residencial' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Crear servicio en borrador' }));
+    expect(screen.getByRole('button', { name: 'Crear servicio en borrador' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+  function mockProfile() {
+    jest.spyOn(subscriberTaxApi, 'getProfile').mockResolvedValue({
+      id: 'profile-1',
+      subscriberId: 'subscriber-1',
+      segment: 'RESIDENTIAL',
+      stratum: 2,
+      profileStatus: TaxProfileStatus.CONFIGURED,
+      confirmedAt: null,
+      confirmedBy: null,
+      updatedAt: '2026-10-18T12:00:00Z',
+      assignments: [
+        {
+          id: 'assignment-1',
+          taxDefinitionId: 'definition-1',
+          taxName: 'Retención municipal',
+          taxCategory: TaxCategory.WITHHOLDING,
+          effectiveRate: '2.5',
+          rateSource: TaxAssignmentRateSource.CATALOG,
+          treatment: null,
+          status: TaxAssignmentStatus.SUGGESTED,
+          reason: null,
+          updatedAt: '2026-10-18T12:00:00Z',
+        },
+      ],
+    });
+    jest
+      .spyOn(subscriberTaxApi, 'updateAssignment')
+      .mockImplementation(() => new Promise(() => undefined));
+  }
+  it('confirmar un tributo expone aria-busy', async () => {
+    mockProfile();
+    render(<TaxProfileBlock subscriberId="subscriber-1" onNavigateToServices={jest.fn()} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Confirmar tributo Retención municipal' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Confirmar tributo Retención municipal' }),
+    ).toHaveAttribute('aria-busy', 'true');
+  });
+  it('guardar el ajuste expone aria-busy', async () => {
+    mockProfile();
+    render(<TaxProfileBlock subscriberId="subscriber-1" onNavigateToServices={jest.fn()} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ajustar tributo Retención municipal' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar ajuste' }));
+    expect(screen.getByRole('button', { name: 'Guardar ajuste' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+  });
+  it('agregar tributos expone aria-busy', async () => {
+    mockProfile();
+    jest.spyOn(commercialApi, 'listTaxDefinitions').mockResolvedValue({
+      data: [
+        {
+          id: 'definition-2',
+          tenantId: 'tenant-1',
+          code: 'TEST',
+          name: 'Tributo sintético',
+          category: 'WITHHOLDING',
+          jurisdictionLevel: 'NATIONAL',
+          municipalityCode: null,
+          baseRate: '1',
+          treatment: 'STANDARD',
+          context: 'SALES',
+          origin: 'CUSTOM',
+          isActive: true,
+          notes: null,
+          createdAt: '2026-10-18T12:00:00Z',
+          updatedAt: '2026-10-18T12:00:00Z',
+        },
+      ],
+      meta: {
+        nextCursor: null,
+        total: 1,
+        totalIsEstimate: false,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        hasMore: false,
+        mode: 'page',
+        capabilities: { randomAccess: true, sortableFields: [] },
+        sort: null,
+      },
+    });
+    jest
+      .spyOn(subscriberTaxApi, 'saveAssignments')
+      .mockImplementation(() => new Promise(() => undefined));
+    render(<TaxProfileBlock subscriberId="subscriber-1" onNavigateToServices={jest.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar tributos del catálogo' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Tributo sintético/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar (1)' }));
+    expect(screen.getByRole('button', { name: 'Agregar (1)' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
   });
 });

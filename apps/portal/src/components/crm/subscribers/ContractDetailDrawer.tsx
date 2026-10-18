@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   CreditCard,
   Edit2,
-  Loader2,
   MapPin,
   PauseCircle,
   PlayCircle,
@@ -18,7 +17,7 @@ import {
   XCircle,
   ShieldCheck,
 } from 'lucide-react';
-import { ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
+import { Badge, Button, ModalLayer, overlayEdgeClassName, cn } from '@iwana/ui';
 import {
   CustomerSegment,
   PersonType,
@@ -35,45 +34,9 @@ import { ServicePointFields } from './CreateContractDialog';
 import { stratumEvidenceUploadErrorMessage } from './stratum-evidence';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
-import { formatLocationLabel } from './subscriber-ui';
+import { CONTRACT_STATUS_META, formatLocationLabel } from './subscriber-ui';
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<ContractStatus, string> = {
-  DRAFT: 'Borrador',
-  ACTIVE: 'Activo',
-  SUSPENDED: 'Suspendido',
-  TERMINATED: 'Terminado',
-  ARCHIVED: 'Archivado',
-};
-
-const STATUS_COLORS: Record<ContractStatus, { bg: string; text: string; dot: string }> = {
-  DRAFT: {
-    bg: 'bg-gray-100 dark:bg-dark-surface-3',
-    text: 'text-gray-600 dark:text-gray-300',
-    dot: 'bg-gray-400',
-  },
-  ACTIVE: {
-    bg: 'bg-green-50 dark:bg-green-900/20',
-    text: 'text-green-700 dark:text-green-400',
-    dot: 'bg-green-500',
-  },
-  SUSPENDED: {
-    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-    text: 'text-yellow-700 dark:text-yellow-400',
-    dot: 'bg-yellow-400',
-  },
-  TERMINATED: {
-    bg: 'bg-red-50 dark:bg-red-900/20',
-    text: 'text-red-700 dark:text-red-400',
-    dot: 'bg-red-500',
-  },
-  ARCHIVED: {
-    bg: 'bg-gray-100 dark:bg-dark-surface-4/40',
-    text: 'text-gray-500 dark:text-gray-400',
-    dot: 'bg-gray-400',
-  },
-};
 
 type TransitionAction = 'activate' | 'suspend' | 'reactivate' | 'terminate' | 'archive';
 
@@ -352,7 +315,7 @@ export function ContractDetailDrawer({
   const [transitioning, setTransitioning] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
-  const colors = STATUS_COLORS[contract.status];
+  const statusMeta = CONTRACT_STATUS_META[contract.status];
   const planName = (contract.planSnapshotJson?.name as string | undefined) ?? contract.planId;
   const planPrice = contract.planSnapshotJson?.basePrice as number | undefined;
   const planDown = contract.planSnapshotJson?.downloadSpeedMbps as number | undefined;
@@ -639,16 +602,9 @@ export function ContractDetailDrawer({
             />
           </div>
           {/* Badge estado */}
-          <span
-            className={[
-              'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-              colors.bg,
-              colors.text,
-            ].join(' ')}
-          >
-            <span className={['h-1.5 w-1.5 rounded-full', colors.dot].join(' ')} />
-            {STATUS_LABELS[contract.status]}
-          </span>
+          <Badge variant={statusMeta.variant} className="shrink-0">
+            {statusMeta.label}
+          </Badge>
           {/* Botón cerrar */}
           <button
             type="button"
@@ -1220,19 +1176,16 @@ export function ContractDetailDrawer({
                 >
                   Cancelar
                 </button>
-                <button
+                <Button
+                  loading={saving}
                   type="button"
                   onClick={isEditingServicePoint ? handleSaveServicePoint : handleSave}
                   disabled={saving}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-iwana-secondary-700 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90 disabled:opacity-40"
+                  className="min-h-11 flex-1"
                 >
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Save className="h-4 w-4" aria-hidden />
-                  )}
+                  {!saving && <Save className="h-4 w-4" aria-hidden />}
                   {isEditingServicePoint ? 'Actualizar punto de servicio' : 'Guardar cambios'}
-                </button>
+                </Button>
               </div>
             ) : (
               /* Modo lectura: editar + transiciones */
@@ -1241,20 +1194,18 @@ export function ContractDetailDrawer({
                 {actions.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {actions.map(({ label, action, icon, variant }) => (
-                      <button
+                      <Button
+                        loading={transitioning}
                         key={action}
                         type="button"
                         disabled={transitioning}
                         onClick={() => handleTransition(action)}
-                        className={ACTION_BTN[variant]}
+                        variant={variant === 'danger' ? 'softDestructive' : 'secondary'}
+                        className="min-h-11"
                       >
-                        {transitioning ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                        ) : (
-                          icon
-                        )}
+                        {!transitioning && icon}
                         {label}
-                      </button>
+                      </Button>
                     ))}
                     {contract.status === 'DRAFT' && onRemove && (
                       <button

@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge } from '@iwana/ui';
 import { useState } from 'react';
 import {
   Archive,
@@ -13,47 +14,11 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { Contract, ContractStatus } from '@/lib/api-client';
-import { formatLocationLabel } from './subscriber-ui';
+import { CONTRACT_STATUS_META, formatLocationLabel } from './subscriber-ui';
 import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 
 // ── Colores y labels por estado ───────────────────────────────────────────────
-
-const STATUS_LABELS: Record<ContractStatus, string> = {
-  DRAFT: 'Borrador',
-  ACTIVE: 'Activo',
-  SUSPENDED: 'Suspendido',
-  TERMINATED: 'Terminado',
-  ARCHIVED: 'Archivado',
-};
-
-const STATUS_COLORS: Record<ContractStatus, { bg: string; text: string; dot: string }> = {
-  DRAFT: {
-    bg: 'bg-gray-100 dark:bg-dark-surface-3',
-    text: 'text-gray-600 dark:text-gray-300',
-    dot: 'bg-gray-400',
-  },
-  ACTIVE: {
-    bg: 'bg-green-50 dark:bg-green-900/20',
-    text: 'text-green-700 dark:text-green-400',
-    dot: 'bg-green-500',
-  },
-  SUSPENDED: {
-    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-    text: 'text-yellow-700 dark:text-yellow-400',
-    dot: 'bg-yellow-400',
-  },
-  TERMINATED: {
-    bg: 'bg-red-50 dark:bg-red-900/20',
-    text: 'text-red-700 dark:text-red-400',
-    dot: 'bg-red-500',
-  },
-  ARCHIVED: {
-    bg: 'bg-gray-100 dark:bg-dark-surface-4/40',
-    text: 'text-gray-500 dark:text-gray-400',
-    dot: 'bg-gray-400',
-  },
-};
 
 // ── Acciones disponibles por estado ──────────────────────────────────────────
 
@@ -135,7 +100,7 @@ export function ContractCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const colors = STATUS_COLORS[contract.status];
+  const statusMeta = CONTRACT_STATUS_META[contract.status];
   const actions = ACTIONS_BY_STATUS[contract.status];
 
   const handleAction = async (action: TransitionAction) => {
@@ -211,16 +176,9 @@ export function ContractCard({
         </div>
 
         {/* Badge estado */}
-        <span
-          className={[
-            'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-            colors.bg,
-            colors.text,
-          ].join(' ')}
-        >
-          <span className={['h-1.5 w-1.5 rounded-full', colors.dot].join(' ')} />
-          {STATUS_LABELS[contract.status]}
-        </span>
+        <Badge variant={statusMeta.variant} className="shrink-0">
+          {statusMeta.label}
+        </Badge>
 
         {/* Menú de acciones */}
         {!privacyRestricted && (

@@ -1,4 +1,9 @@
-import { formatLocationLabel, formatSubscriberLocation } from './subscriber-ui';
+import {
+  CONTRACT_STATUS_META,
+  SUBSCRIBER_STATUS_META,
+  formatLocationLabel,
+  formatSubscriberLocation,
+} from './subscriber-ui';
 
 describe('subscriber-ui location formatting', () => {
   it('should format known municipality codes using the catalog label', () => {
@@ -17,5 +22,17 @@ describe('subscriber-ui location formatting', () => {
     );
     expect(formatSubscriberLocation(null, 'CUNDINAMARCA')).toBe('Cundinamarca');
     expect(formatSubscriberLocation('', '')).toBe('Sin ubicación');
+  });
+});
+
+describe('QW5 — escala de estados del contrato', () => {
+  it.each([
+    ['DRAFT', 'Borrador', 'neutral'],
+    ['ACTIVE', 'Activo', SUBSCRIBER_STATUS_META.ACTIVE.variant],
+    ['SUSPENDED', 'Suspendido', SUBSCRIBER_STATUS_META.SUSPENDED.variant],
+    ['TERMINATED', 'Terminado', SUBSCRIBER_STATUS_META.CANCELLED.variant],
+    ['ARCHIVED', 'Archivado', 'neutral'],
+  ] as const)('mapea %s al badge %s', (status, label, variant) => {
+    expect(CONTRACT_STATUS_META[status]).toEqual({ label, variant });
   });
 });

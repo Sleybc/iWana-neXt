@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
+import { contractsApi } from '@/lib/api-client';
 import type { Contract, Subscriber360Response } from '@/lib/api-client';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
@@ -327,5 +328,44 @@ describe('diálogos de contrato de CRM — capa única portalada (ADR-075 + C-DS
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(onClose).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('QW6 — acciones pendientes del detalle de contrato', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it('anuncia aria-busy al guardar cambios', async () => {
+    jest.spyOn(contractsApi, 'update').mockImplementation(() => new Promise(() => undefined));
+    render(
+      <ContractDetailDrawer
+        contract={CONTRACT}
+        onClose={jest.fn()}
+        onReload={jest.fn(async () => undefined)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Editar contrato' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Guardar cambios' })).toHaveAttribute(
+        'aria-busy',
+        'true',
+      ),
+    );
+  });
+  it('anuncia aria-busy durante la transición', async () => {
+    jest.spyOn(contractsApi, 'suspend').mockImplementation(() => new Promise(() => undefined));
+    render(
+      <ContractDetailDrawer
+        contract={CONTRACT}
+        onClose={jest.fn()}
+        onReload={jest.fn(async () => undefined)}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Suspender' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Suspender' })).toHaveAttribute(
+        'aria-busy',
+        'true',
+      ),
+    );
   });
 });

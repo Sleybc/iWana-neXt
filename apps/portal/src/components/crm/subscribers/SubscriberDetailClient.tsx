@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey, PersonType } from '@iwana/shared';
-import { Card, CardContent, CardHeader, CardTitle } from '@iwana/ui';
-import { BriefcaseBusiness, Pencil, Users, X } from 'lucide-react';
+import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
+import { BriefcaseBusiness, Pencil, X } from 'lucide-react';
 import type { CreateSubscriberPayload, UpdateSubscriberPayload } from '@iwana/shared';
 import { ApiError, Subscriber360Response, crmApi, subscribersApi } from '@/lib/api-client';
 import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
@@ -27,30 +27,6 @@ interface SubscriberDetailClientProps {
   mode: 'create' | 'detail';
 }
 
-function StubCard({
-  title,
-  description,
-  icon: Icon,
-}: {
-  title: string;
-  description: string;
-  icon: typeof Users;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function mapError(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
@@ -64,9 +40,16 @@ function toSentenceCase(value: string): string {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+const SUBSCRIBER_TAB_IDS = ['vista-general', 'datos', 'tributario', 'servicios', 'cumplimiento'];
+
 export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const queryString = searchParams?.toString() ?? '';
+  const requestedTab = searchParams?.get('tab') ?? 'vista-general';
+  const urlTab = SUBSCRIBER_TAB_IDS.includes(requestedTab) ? requestedTab : 'vista-general';
   const { hasPermission } = usePermissions();
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
@@ -75,37 +58,63 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const [loading, setLoading] = useState(mode === 'detail');
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [activeSubscriberTab, setActiveSubscriberTab] = useState('vista-general');
+  const [activeSubscriberTab, setActiveSubscriberTab] = useState(urlTab);
+  const selectSubscriberTab = useCallback(
+    (tabId: string) => {
+      setActiveSubscriberTab(tabId);
+      const next = new URLSearchParams(queryString);
+      next.set('tab', tabId);
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    },
+    [pathname, queryString, router],
+  );
+
+  useEffect(() => {
+    setActiveSubscriberTab(urlTab);
+  }, [urlTab]);
+
+  useEffect(() => {
+    if (requestedTab !== urlTab) {
+      const next = new URLSearchParams(queryString);
+      next.set('tab', urlTab);
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    }
+  }, [urlTab, requestedTab, pathname, queryString, router]);
 
   // Estado de edición del panel Facturación en la vista 360
   const [billingEditing, setBillingEditing] = useState(false);
   const [billingSaving, setBillingSaving] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingSuccess, setBillingSuccess] = useState('');
   const [billingDraft, setBillingDraft] = useState({
     paymentMethod: '',
     billingCycle: '',
     fiscalName: '',
   });
 
-  const loadSubscriber = async (preserveContent = false) => {
-    if (mode !== 'detail' || !subscriberId) {
-      return;
-    }
+  const loadSubscriber = useCallback(
+    async (preserveContent = false) => {
+      if (mode !== 'detail' || !subscriberId) {
+        return;
+      }
 
-    if (!preserveContent) setLoading(true);
-    setError(null);
-    try {
-      const response = await subscribersApi.get360(subscriberId);
-      setSubscriber360(response);
-    } catch (loadError) {
-      setError(mapError(loadError));
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (!preserveContent) setLoading(true);
+      setError(null);
+      try {
+        const response = await subscribersApi.get360(subscriberId);
+        setSubscriber360(response);
+      } catch (loadError) {
+        setError(mapError(loadError));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [mode, subscriberId],
+  );
 
   useEffect(() => {
     void loadSubscriber();
-  }, [mode, subscriberId]);
+  }, [loadSubscriber]);
 
   const subscriber = subscriber360?.subscriber ?? null;
 
@@ -178,9 +187,10 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                   !billingEditing &&
                   !subscriber.privacyRestricted &&
                   !subscriber.anonymizedAt && (
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
                       aria-label="Editar facturación"
-                      className="flex items-center gap-1 rounded text-xs text-iwana-primary hover:underline"
                       onClick={() => {
                         const s = subscriber360.expedienteSummary!;
                         setBillingDraft({
@@ -188,15 +198,28 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                           billingCycle: s.billingCycle ?? '',
                           fiscalName: s.fiscalName ?? '',
                         });
+                        setBillingError(null);
+                        setBillingSuccess('');
                         setBillingEditing(true);
                       }}
                     >
                       <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                       Editar
-                    </button>
+                    </Button>
                   )}
               </CardHeader>
-              <CardContent className="text-sm text-gray-600 dark:text-gray-300">
+              <CardContent className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                <p aria-live="polite" role="status">
+                  {billingSuccess}
+                </p>
+                {billingError && (
+                  <PortalAlert
+                    variant="error"
+                    live="assertive"
+                    title="No fue posible guardar la facturación"
+                    description={billingError}
+                  />
+                )}
                 {!subscriber360?.expedienteSummary ? (
                   <p className="italic">Sin oportunidad vinculada. Facturación no disponible.</p>
                 ) : billingEditing && !subscriber.anonymizedAt ? (
@@ -225,9 +248,9 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                           <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                             {label}
                           </span>
-                          <input
+                          <Input
                             aria-label={label}
-                            className="rounded border border-gray-300 px-2.5 py-1.5 text-sm dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white"
+                            disabled={billingSaving}
                             placeholder={placeholder}
                             type="text"
                             value={billingDraft[key]}
@@ -239,10 +262,10 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                       ))}
                     </div>
                     <div className="flex gap-2 pt-1">
-                      <button
+                      <Button
+                        type="button"
                         aria-label="Guardar facturación"
-                        className="rounded bg-iwana-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                        disabled={billingSaving}
+                        loading={billingSaving}
                         onClick={async () => {
                           const expedienteId = subscriber360.expedienteSummary!.id;
                           const payload: Record<string, unknown> = {};
@@ -253,28 +276,32 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                           if (billingDraft.fiscalName.trim())
                             payload.fiscalName = billingDraft.fiscalName.trim();
                           setBillingSaving(true);
+                          setBillingError(null);
+                          setBillingSuccess('');
                           try {
                             await crmApi.updateExpedienteSection(expedienteId, 'billing', payload);
-                            await loadSubscriber();
+                            await loadSubscriber(true);
                             setBillingEditing(false);
+                            setBillingSuccess('Facturación guardada.');
                           } catch (saveErr) {
-                            // El error se muestra en consola; en una próxima iteración agregar toast
-                            console.error('Error guardando facturación:', saveErr);
+                            setBillingError(mapError(saveErr));
                           } finally {
                             setBillingSaving(false);
                           }
                         }}
                       >
-                        {billingSaving ? 'Guardando...' : 'Guardar'}
-                      </button>
-                      <button
+                        Guardar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={billingSaving}
                         aria-label="Cancelar edición de facturación"
-                        className="flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
                         onClick={() => setBillingEditing(false)}
                       >
                         <X className="h-3.5 w-3.5" aria-hidden="true" />
                         Cancelar
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ) : (
@@ -334,7 +361,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         content: (
           <TaxProfileBlock
             subscriberId={subscriber.id}
-            onNavigateToServices={() => setActiveSubscriberTab('servicios')}
+            onNavigateToServices={() => selectSubscriberTab('servicios')}
           />
         ),
       },
@@ -344,17 +371,6 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         content: subscriber360 ? (
           <ServiciosTab subscriber360={subscriber360} onReload={loadSubscriber} />
         ) : null,
-      },
-      {
-        id: 'financiero',
-        label: 'Financiero',
-        content: (
-          <StubCard
-            title="Financiero"
-            description="Facturas, pagos y estado de cuenta aún no integrados en esta fase."
-            icon={Users}
-          />
-        ),
       },
       {
         id: 'cumplimiento',
@@ -388,17 +404,6 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           />
         ),
       },
-      {
-        id: 'seguimiento',
-        label: 'Seguimiento',
-        content: (
-          <StubCard
-            title="Seguimiento"
-            description="Timeline consolidado de conversión y cambios de estado del suscriptor."
-            icon={Users}
-          />
-        ),
-      },
     ];
   }, [
     subscriber,
@@ -406,6 +411,9 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     billingEditing,
     billingDraft,
     billingSaving,
+    billingError,
+    billingSuccess,
+    selectSubscriberTab,
     loadSubscriber,
     canManagePrivacy,
     canReadPrivacy,
@@ -437,7 +445,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           marks={subscriber360?.privacyMarks ?? []}
           canReadPrivacy={canReadPrivacy}
           onChangeStatus={() => setDialogOpen(true)}
-          onAddContact={() => setActiveSubscriberTab('datos')}
+          onAddContact={() => selectSubscriberTab('datos')}
         />
         <PortalAlert
           variant="warning"
@@ -473,8 +481,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               marks={subscriber360?.privacyMarks ?? []}
               canReadPrivacy={canReadPrivacy}
               onChangeStatus={() => setDialogOpen(true)}
-              onAddContact={() => setActiveSubscriberTab('datos')}
-              onCompleteFiscalData={() => setActiveSubscriberTab('datos')}
+              onAddContact={() => selectSubscriberTab('datos')}
+              onCompleteFiscalData={() => selectSubscriberTab('datos')}
             />
           </div>
 
@@ -482,7 +490,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             <SubscriberTabsContainer
               tabs={tabs}
               activeTab={activeSubscriberTab}
-              onActiveTabChange={setActiveSubscriberTab}
+              onActiveTabChange={selectSubscriberTab}
             />
           </div>
 
@@ -492,9 +500,9 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             onOpenChange={setDialogOpen}
             onAddContact={() => {
               setDialogOpen(false);
-              setActiveSubscriberTab('datos');
+              selectSubscriberTab('datos');
             }}
-            onCompleteFiscalData={() => setActiveSubscriberTab('datos')}
+            onCompleteFiscalData={() => selectSubscriberTab('datos')}
             onTransition={async (targetStatus, reason) => {
               await subscribersApi.transitionStatus(subscriber.id, {
                 targetStatus,

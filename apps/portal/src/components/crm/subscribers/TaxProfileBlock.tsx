@@ -15,7 +15,7 @@ import {
   DialogTitle,
   FormStatus,
 } from '@iwana/ui';
-import { Check, Loader2, Plus, ShieldCheck, Pencil, X } from 'lucide-react';
+import { Check, Plus, ShieldCheck, Pencil, X } from 'lucide-react';
 import { TaxCategory } from '@iwana/shared';
 import {
   ApiError,
@@ -252,14 +252,15 @@ function AddTributosModal({
               Cancelar
             </button>
           </DialogClose>
-          <button
+          <Button
+            loading={saving}
             disabled={saving || selected.size === 0}
             onClick={() => void handleSave()}
-            className="flex items-center gap-2 rounded-lg bg-iwana-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            className="min-h-11"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {!saving && <Check className="h-4 w-4" aria-hidden />}
             {selected.size > 0 ? `Agregar (${selected.size})` : 'Agregar'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -347,19 +348,16 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
 
         {assignment.status !== 'CONFIRMED' && !adjusting && (
           <div className="flex shrink-0 items-center gap-2">
-            <button
+            <Button
+              loading={savingConfirm}
               aria-label={`Confirmar tributo ${assignment.taxName}`}
               disabled={savingConfirm}
               onClick={() => void handleConfirm()}
-              className="flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+              className="min-h-11"
             >
-              {savingConfirm ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <Check className="h-3 w-3" aria-hidden="true" />
-              )}
+              {!savingConfirm && <Check className="h-3 w-3" aria-hidden="true" />}
               Confirmar
-            </button>
+            </Button>
             <button
               aria-label={`Ajustar tributo ${assignment.taxName}`}
               onClick={() => setAdjusting(true)}
@@ -407,19 +405,16 @@ function AssignmentRow({ assignment, subscriberId, onUpdated }: AssignmentRowPro
             </label>
           </div>
           <div className="flex gap-2">
-            <button
+            <Button
+              loading={savingAdjust}
               aria-label="Guardar ajuste"
               disabled={savingAdjust}
               onClick={() => void handleSaveAdjust()}
-              className="flex items-center gap-1 rounded-lg bg-iwana-primary px-3 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              className="min-h-11"
             >
-              {savingAdjust ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <Check className="h-3 w-3" aria-hidden="true" />
-              )}
+              {!savingAdjust && <Check className="h-3 w-3" aria-hidden="true" />}
               Guardar ajuste
-            </button>
+            </Button>
             <button
               aria-label="Cancelar ajuste"
               onClick={() => {
