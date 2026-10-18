@@ -19,6 +19,10 @@ import { applySort } from '../../../common/pagination/apply-sort';
 import { buildPageMeta } from '../../../common/pagination/build-page-meta';
 import { hashDocumentNumber } from '../../../common/crypto/hash-document.util';
 import { hashEmail } from '../../../common/crypto/hash-email.util';
+import {
+  createFiscalDocumentCrypto,
+  type FiscalDocumentCrypto,
+} from '../../../common/crypto/fiscal-document.util';
 import { hmacPii, resolvePiiHashKey } from '../../../common/crypto/pii-hash-key.util';
 import {
   PersonType,
@@ -35,12 +39,14 @@ import {
   ConsentStatus,
   ConsentType,
   VatResponsibility,
-  RUT_RESPONSIBILITIES,
   type DataPurpose,
   type DataAuthorizationView,
   type PrivacyMark,
   type RequestSummary,
   type RutResponsibility,
+  legalRepresentativeSchema,
+  nitVerificationDigitSchema,
+  rutResponsibilitiesSchema,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
@@ -55,6 +61,7 @@ import {
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { ConsentRecord } from '../expedientes/entities/consent-record-v2.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import { projectContractsForRead } from '../contracts/contract-read-projection';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
 import { IPartyReadPort } from '../../parties/ports/party-read.port';
 import { IPrivacyAuthorizationWritePort } from '../../privacy/ports/privacy-authorization-write.port';
@@ -65,7 +72,7 @@ import { IPrivacyRequestsReadPort } from '../../privacy/requests/ports/privacy-r
 import {
   calculateNitVerificationDigit,
   parseExpedienteNit,
-} from '../../../common/crypto/nit-verification-digit.util';
+} from '../../../common/crypto/nit-verification-digit.adapter';
 import {
   evaluateProvisioningReadiness,
   isBlockingLegalComplianceStatus,
@@ -81,19 +88,12 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
       lastName: z.string().min(1).max(300).optional(),
       birthDate: z.string().optional(),
       nit: z.string().min(5).max(20).optional(),
-      nitVerificationDigit: z.string().max(1).optional(),
+      nitVerificationDigit: nitVerificationDigitSchema.optional(),
       businessName: z.string().min(1).max(300).optional(),
       commercialName: z.string().max(300).optional(),
-      legalRepresentative: z
-        .object({
-          fullName: z.string().min(1).max(300),
-          documentType: z.nativeEnum(DocumentType),
-          documentNumber: z.string().min(3).max(50),
-        })
-        .strict()
-        .optional(),
+      legalRepresentative: legalRepresentativeSchema.optional(),
       vatResponsibility: z.nativeEnum(VatResponsibility).optional(),
-      rutResponsibilities: z.array(z.enum(RUT_RESPONSIBILITIES)).optional(),
+      rutResponsibilities: rutResponsibilitiesSchema.optional(),
     })
     .strict(),
   contact: z
@@ -161,6 +161,7 @@ export class SubscribersService {
   private readonly encryptionKey: Buffer;
   private readonly encryptionKeyPrevious: Buffer[];
   private readonly piiHashKey: Buffer;
+  private readonly fiscalDocumentCrypto: FiscalDocumentCrypto;
   private readonly logger = new Logger(SubscribersService.name);
 
   constructor(
@@ -193,6 +194,7 @@ export class SubscribersService {
     this.encryptionKey = keys.activeKey;
     this.encryptionKeyPrevious = keys.previousKey;
     this.piiHashKey = resolvePiiHashKey(this.configService);
+    this.fiscalDocumentCrypto = createFiscalDocumentCrypto(this.configService);
   }
 
   // ── CRUD ──
@@ -281,21 +283,6 @@ export class SubscribersService {
         code: 'SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED',
         message: 'Se requiere autorización vigente para el tratamiento contractual.',
       });
-    }
-
-    if (!isConversion && (!dto.vatResponsibility || !dto.rutResponsibilities?.length)) {
-      throw new BadRequestException({
-        code: 'SUBSCRIBER_FISCAL_DATA_REQUIRED',
-        message:
-          'El alta manual requiere responsabilidad de IVA y al menos una responsabilidad del RUT.',
-      });
-    }
-    if (
-      !isConversion &&
-      dto.rutResponsibilities &&
-      new Set(dto.rutResponsibilities).size !== dto.rutResponsibilities.length
-    ) {
-      throw new BadRequestException('No repitas responsabilidades del RUT.');
     }
 
     // Calcular tratamiento IVA y régimen tributario
@@ -625,6 +612,7 @@ export class SubscribersService {
     stratum?: number | undefined;
     search?: string | undefined;
     excludeBlocked?: boolean | undefined;
+    canSeeBlocked?: boolean | undefined;
     page?: number | undefined;
     limit?: number | undefined;
     sortBy?: string | undefined;
@@ -687,7 +675,7 @@ export class SubscribersService {
 
     // Descifrar PII para respuesta
     const hydratedData = data.map((s) => this.decryptSubscriberFields(s));
-    await this.hydrateLegalRepresentativeDisplayNames(hydratedData);
+    await this.hydrateLegalRepresentativeDisplayNames(hydratedData, filters.canSeeBlocked);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydratedData.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
     );
@@ -715,7 +703,7 @@ export class SubscribersService {
   /**
    * Obtener suscriptor por ID con PII descifrado.
    */
-  async findById(id: string): Promise<Subscriber> {
+  async findById(id: string, canSeeBlocked = false): Promise<Subscriber> {
     const { schemaName } = TenantContext.getOrThrow();
 
     const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
@@ -727,7 +715,7 @@ export class SubscribersService {
     }
 
     const hydrated = this.decryptSubscriberFields(entity);
-    await this.hydrateLegalRepresentativeDisplayNames([hydrated]);
+    await this.hydrateLegalRepresentativeDisplayNames([hydrated], canSeeBlocked);
     return hydrated;
   }
 
@@ -835,6 +823,19 @@ export class SubscribersService {
       const nextNit = parsedNit?.nit ?? dto.nit ?? entity.nit;
       const nextDigit =
         parsedNit?.verificationDigit ?? dto.nitVerificationDigit ?? entity.nitVerificationDigit;
+      const nitChanged = dto.nit !== undefined && nextNit !== entity.nit;
+      if (
+        nitChanged &&
+        parsedNit?.verificationDigit == null &&
+        dto.nitVerificationDigit === undefined
+      ) {
+        throw new BadRequestException(
+          'El dígito de verificación del NIT es obligatorio al cambiarlo.',
+        );
+      }
+      if (nitChanged && (!nextDigit || !/^\d$/u.test(nextDigit))) {
+        throw new BadRequestException('El dígito de verificación del NIT no es válido.');
+      }
       if (nextNit && nextDigit && calculateNitVerificationDigit(nextNit) !== nextDigit) {
         throw new BadRequestException('El dígito de verificación del NIT no coincide.');
       }
@@ -977,6 +978,7 @@ export class SubscribersService {
     email?: string | undefined;
     phone?: string | undefined;
     excludeBlocked?: boolean | undefined;
+    canSeeBlocked?: boolean | undefined;
   }): Promise<Subscriber[]> {
     const { schemaName } = TenantContext.getOrThrow();
     const blockedPartyIds = query.excludeBlocked ? await this.getBlockedPartyIds() : [];
@@ -1023,6 +1025,7 @@ export class SubscribersService {
     });
 
     const hydrated = results.map((subscriber) => this.decryptSubscriberFields(subscriber));
+    await this.hydrateLegalRepresentativeDisplayNames(hydrated, query.canSeeBlocked);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydrated.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
     );
@@ -1043,7 +1046,10 @@ export class SubscribersService {
     return this.privacyMarksReadPort.partyIdsWithActiveMark('DATOS_BLOQUEADOS');
   }
 
-  private async hydrateLegalRepresentativeDisplayNames(subscribers: Subscriber[]): Promise<void> {
+  private async hydrateLegalRepresentativeDisplayNames(
+    subscribers: Subscriber[],
+    canSeeBlocked = false,
+  ): Promise<void> {
     const partyIds = [
       ...new Set(
         subscribers.flatMap((subscriber) =>
@@ -1057,7 +1063,25 @@ export class SubscribersService {
     }
 
     const parties = this.partyReadPort ? await this.partyReadPort.getByIds(partyIds) : [];
-    const displayNames = new Map(parties.map((party) => [party.id, party.displayName]));
+    if (!this.privacyMarksReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'PRIVACY_MARKS_UNAVAILABLE',
+        message: 'No se pudo aplicar la protección de privacidad al representante legal.',
+      });
+    }
+    const marksByParty = await this.privacyMarksReadPort.activeMarks(partyIds);
+    const displayNames = new Map(
+      parties.map((party) => {
+        const anonymized = party.displayName === 'ANONIMIZADO';
+        const blocked = (marksByParty[party.id] ?? []).includes('DATOS_BLOQUEADOS');
+        const displayName = anonymized
+          ? 'Anonimizado'
+          : blocked && !canSeeBlocked
+            ? 'Datos bloqueados'
+            : party.displayName;
+        return [party.id, displayName] as const;
+      }),
+    );
     for (const subscriber of subscribers) {
       subscriber.legalRepresentativeDisplayName = subscriber.legalRepresentativePartyId
         ? (displayNames.get(subscriber.legalRepresentativePartyId) ?? null)
@@ -1282,7 +1306,10 @@ export class SubscribersService {
     return this.findById(subscriber.id);
   }
 
-  async get360View(id: string): Promise<{
+  async get360View(
+    id: string,
+    canSeeBlocked = false,
+  ): Promise<{
     subscriber: Subscriber;
     contacts: unknown[];
     contracts: Contract[];
@@ -1294,7 +1321,7 @@ export class SubscribersService {
     timelineSeed: Array<Record<string, unknown>>;
     provisioningReadiness: ProvisioningReadinessSummary;
   }> {
-    const subscriber = await this.findById(id);
+    const subscriber = await this.findById(id, canSeeBlocked);
     let expedienteSummary: Record<string, unknown> | null = null;
     let expedienteRecord: ExpedienteRecord | null = null;
 
@@ -1335,12 +1362,20 @@ export class SubscribersService {
 
     // Cargar contratos/servicios contratados del subscriber
     const { schemaName } = TenantContext.getOrThrow();
-    const contracts = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.find(Contract, {
+    const contracts = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = await qr.manager.find(Contract, {
         where: { subscriberId: id },
         order: { createdAt: 'DESC' },
-      }),
-    );
+      });
+      const projection = await projectContractsForRead(
+        qr.manager,
+        rows,
+        canSeeBlocked,
+        this.fiscalDocumentCrypto,
+        this.privacyMarksReadPort,
+      );
+      return projection.data;
+    });
     let habeasData: DataAuthorizationView[] = [];
     let arcoRequests: RequestSummary[] = [];
     let marksByParty: Record<string, PrivacyMark[]> = {};

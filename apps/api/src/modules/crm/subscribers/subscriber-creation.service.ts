@@ -18,7 +18,7 @@ import { SubscriberConvertedEvent } from './events/subscriber-converted.event';
 import { AuditService } from '../../audit/audit.service';
 import { decryptAes256Gcm, loadPiiAesGcmKeyPair } from '../../../common/crypto/aes-gcm.util';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
-import { parseExpedienteNit } from '../../../common/crypto/nit-verification-digit.util';
+import { parseExpedienteNit } from '../../../common/crypto/nit-verification-digit.adapter';
 
 /**
  * Listener que crea un Subscriber automáticamente cuando un expediente

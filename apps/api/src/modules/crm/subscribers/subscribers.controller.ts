@@ -37,8 +37,10 @@ import {
   PersonType,
   CustomerSegment,
   DocumentType,
+  RUT_RESPONSIBILITIES,
   SubscriberStatus,
   VatTreatment,
+  VatResponsibility,
   UserRole,
   type PrivacyMark,
 } from '@iwana/shared';
@@ -176,7 +178,10 @@ export class SubscribersController {
     };
 
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
-    const result = await this.subscribersService.findAll(filters);
+    const result = await this.subscribersService.findAll({
+      ...filters,
+      canSeeBlocked: readAccess.canSeeBlocked,
+    });
     const blockedServed = readAccess.canSeeBlocked
       ? result.data.filter((subscriber) => this.isBlocked(subscriber)).length
       : undefined;
@@ -264,6 +269,42 @@ export class SubscribersController {
             ],
             properties: {
               id: { type: 'string', format: 'uuid' },
+              vatResponsibility: {
+                type: 'string',
+                enum: Object.values(VatResponsibility),
+                nullable: true,
+              },
+              rutResponsibilities: {
+                type: 'array',
+                items: { type: 'string', enum: [...RUT_RESPONSIBILITIES] },
+              },
+              fiscalCompleteness: {
+                type: 'object',
+                required: ['complete', 'missing'],
+                properties: {
+                  complete: { type: 'boolean' },
+                  missing: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: [
+                        'VAT_RESPONSIBILITY',
+                        'RUT_RESPONSIBILITIES',
+                        'NIT_VERIFICATION_DIGIT',
+                        'LEGAL_REPRESENTATIVE',
+                      ],
+                    },
+                  },
+                },
+              },
+              legalRepresentative: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  partyId: { type: 'string', format: 'uuid' },
+                  displayName: { type: 'string' },
+                },
+              },
               status: { type: 'string', enum: Object.values(SubscriberStatus) },
               personType: { type: 'string', enum: Object.values(PersonType) },
               customerSegment: { type: 'string', enum: Object.values(CustomerSegment) },
@@ -337,6 +378,7 @@ export class SubscribersController {
         ...filters,
         search: body.search,
         excludeBlocked: !readAccess.canSeeBlocked,
+        canSeeBlocked: readAccess.canSeeBlocked,
       });
       await this.logListAccess(
         user,
@@ -365,6 +407,7 @@ export class SubscribersController {
     const results = await this.subscribersService.search({
       ...body,
       excludeBlocked: !readAccess.canSeeBlocked,
+      canSeeBlocked: readAccess.canSeeBlocked,
     });
     await this.logListAccess(
       user,
@@ -400,8 +443,8 @@ export class SubscribersController {
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Obtener suscriptor por ID' })
   async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    const subscriber = await this.subscribersService.findById(id);
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
+    const subscriber = await this.subscribersService.findById(id, readAccess.canSeeBlocked);
     const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
     const enrichedSubscriber = { ...subscriber, privacyMarks };
     await this.auditRecordAccess(
@@ -524,8 +567,8 @@ export class SubscribersController {
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Ficha 360° del suscriptor' })
   async get360View(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    const view360 = await this.subscribersService.get360View(id);
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
+    const view360 = await this.subscribersService.get360View(id, readAccess.canSeeBlocked);
     const privacyMarks = view360.privacyMarks ?? [];
     const enrichedSubscriber = { ...view360.subscriber, privacyMarks };
     const blocked = this.isBlocked(enrichedSubscriber);
@@ -539,28 +582,7 @@ export class SubscribersController {
           privacyMarks,
           readAccess.canSeeBlocked,
         ),
-        contracts: view360.contracts.map((contract) => {
-          const projected = {
-            ...contract,
-            titularAnonymizedAt: this.toIsoOrNull(view360.subscriber.anonymizedAt),
-          };
-          if (!privacyRestricted) return projected;
-          return {
-            ...projected,
-            alias: 'Datos bloqueados',
-            installationAddress: null,
-            installationCity: null,
-            installationDepartment: null,
-            installationPostalCode: null,
-            installationNotes: null,
-            installationStratum: null,
-            stratumEvidenceMediaId: null,
-            vatSnapshot: null,
-            fiscalName: null,
-            fiscalDocument: null,
-            fiscalAddress: null,
-          };
-        }),
+        contracts: view360.contracts,
         expedienteSummary: privacyRestricted
           ? this.redactExpedienteSummary(view360.expedienteSummary)
           : view360.expedienteSummary,
@@ -779,6 +801,9 @@ export class SubscribersController {
         'anonymizedAt',
         'anonymizedRequestId',
         'contactPending',
+        'vatResponsibility',
+        'rutResponsibilities',
+        'fiscalCompleteness',
       ]);
       for (const key of Object.keys(result)) {
         if (!allowed.has(key)) result[key] = null;

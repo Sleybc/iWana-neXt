@@ -1,4 +1,5 @@
 import { Allow } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   PersonType,
   CustomerSegment,
@@ -8,6 +9,17 @@ import {
 } from '@iwana/shared';
 
 export { UpdateSubscriberSchema } from '@iwana/shared';
+
+export class UpdateSubscriberLegalRepresentativeDto {
+  @Allow()
+  fullName!: string;
+
+  @Allow()
+  documentType!: DocumentType;
+
+  @Allow()
+  documentNumber!: string;
+}
 
 export class UpdateSubscriberDto {
   @Allow()
@@ -47,11 +59,8 @@ export class UpdateSubscriberDto {
   commercialName?: string;
 
   @Allow()
-  legalRepresentative?: {
-    fullName: string;
-    documentType: DocumentType;
-    documentNumber: string;
-  };
+  @Type(() => UpdateSubscriberLegalRepresentativeDto)
+  legalRepresentative?: UpdateSubscriberLegalRepresentativeDto;
 
   @Allow()
   vatResponsibility?: VatResponsibility;

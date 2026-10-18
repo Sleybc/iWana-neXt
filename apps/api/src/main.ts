@@ -1,5 +1,4 @@
 import { join } from 'node:path';
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -7,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
 
 /**
  * Bootstrap de la aplicacion iWana neXt API — MOD01 produccion.
@@ -41,14 +41,7 @@ async function bootstrap(): Promise<void> {
   }
 
   // Validacion global de DTOs: rechaza propiedades desconocidas y transforma tipos
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true, // Elimina propiedades no declaradas en el DTO
-      forbidNonWhitelisted: true, // HTTP 400 si llegan propiedades extra
-      transform: true, // Convierte tipos primitivos (string → number en @Query)
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
+  app.useGlobalPipes(createGlobalValidationPipe());
 
   // Helmet: headers HTTP de seguridad — debe aplicarse antes de cualquier otro middleware
   // Configura: Content-Security-Policy, HSTS, X-Frame-Options, X-Content-Type-Options, etc.

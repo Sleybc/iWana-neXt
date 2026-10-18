@@ -6,7 +6,7 @@ import { Party } from '../entities/party.entity';
 import { PartyRole } from '../entities/party-role.entity';
 import { PartyContact } from '../entities/party-contact.entity';
 import { createPartyPiiCrypto, partyContactStorageValue } from '../party-pii.util';
-import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verification-digit.util';
+import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verification-digit.adapter';
 import {
   IPartyWritePort,
   EnsurePartyInput,

@@ -322,6 +322,7 @@ describe('SubscribersController', () => {
         limit: 20,
         sortBy: undefined,
         sortDir: undefined,
+        canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -366,6 +367,7 @@ describe('SubscribersController', () => {
         limit: undefined,
         sortBy: undefined,
         sortDir: undefined,
+        canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
     });
@@ -383,6 +385,7 @@ describe('SubscribersController', () => {
       expect(subscribersServiceMock.search).toHaveBeenCalledWith({
         nit: '900123456-7',
         excludeBlocked: true,
+        canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toHaveProperty('email', 'juan@example.com');
@@ -406,6 +409,7 @@ describe('SubscribersController', () => {
       expect(subscribersServiceMock.search).toHaveBeenCalledWith({
         email: 'juan@example.com',
         excludeBlocked: true,
+        canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).not.toHaveProperty('email');
@@ -433,6 +437,7 @@ describe('SubscribersController', () => {
         sortDir: undefined,
         search: 'Ana Privada',
         excludeBlocked: true,
+        canSeeBlocked: false,
       });
       expect(result.data[0]).toHaveProperty('id', 'sub-001');
       const auditEntry = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
@@ -449,7 +454,7 @@ describe('SubscribersController', () => {
 
       const result = await controller.findById('sub-001', mockUser);
 
-      expect(subscribersServiceMock.findById).toHaveBeenCalledWith('sub-001');
+      expect(subscribersServiceMock.findById).toHaveBeenCalledWith('sub-001', false);
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
       );
@@ -485,6 +490,9 @@ describe('SubscribersController', () => {
         email: null,
         address: null,
         contactPending: false,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
+        fiscalCompleteness: { complete: true, missing: [] },
       });
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
@@ -706,7 +714,7 @@ describe('SubscribersController', () => {
       subscribersServiceMock.get360View.mockResolvedValue({
         subscriber: mockSubscriber,
         contacts: [],
-        contracts: [{ id: 'contract-1', alias: 'Servicio sintético' }],
+        contracts: [{ id: 'contract-1', alias: 'Servicio sintético', titularAnonymizedAt: null }],
         quotes: [],
         habeasData: [],
         arcoRequests: [],
@@ -716,7 +724,7 @@ describe('SubscribersController', () => {
 
       const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
 
-      expect(subscribersServiceMock.get360View).toHaveBeenCalledWith('sub-001');
+      expect(subscribersServiceMock.get360View).toHaveBeenCalledWith('sub-001', false);
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
       );
@@ -765,18 +773,19 @@ describe('SubscribersController', () => {
         contracts: [
           {
             id: 'contract-1',
-            alias: 'Alias libre',
-            installationAddress: 'Dirección de instalación',
-            installationCity: 'Ciudad',
-            installationDepartment: 'Departamento',
-            installationPostalCode: '00000',
-            installationNotes: 'Nota privada',
-            installationStratum: 3,
-            stratumEvidenceMediaId: 'asset-1',
-            vatSnapshot: { treatment: 'STANDARD' },
-            fiscalName: 'Nombre fiscal',
-            fiscalDocument: 'Documento fiscal',
-            fiscalAddress: 'Dirección fiscal',
+            alias: 'Datos bloqueados',
+            installationAddress: null,
+            installationCity: null,
+            installationDepartment: null,
+            installationPostalCode: null,
+            installationNotes: null,
+            installationStratum: null,
+            stratumEvidenceMediaId: null,
+            vatSnapshot: null,
+            fiscalName: null,
+            fiscalDocument: null,
+            fiscalAddress: null,
+            titularAnonymizedAt: null,
           },
         ],
         quotes: [],

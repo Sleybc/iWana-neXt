@@ -5,7 +5,7 @@ import {
   type SubscriberFiscalCompleteness,
   type SubscriberFiscalMissingField,
 } from '@iwana/shared';
-import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verification-digit.util';
+import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verification-digit.adapter';
 
 export interface SubscriberFiscalData {
   personType: PersonType;

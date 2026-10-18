@@ -1,6 +1,6 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import { PersonType, VatResponsibility } from '@iwana/shared';
-import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.util';
+import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.adapter';
 import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 
 describe('SubscriberFiscalCompletenessService', () => {

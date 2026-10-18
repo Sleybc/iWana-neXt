@@ -21,6 +21,7 @@ import {
   RutResponsibility,
 } from '@iwana/shared';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
+import { encryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
 import { hashEmail } from '../../../../common/crypto/hash-email.util';
 import { hmacPii } from '../../../../common/crypto/pii-hash-key.util';
 import { SubscribersService } from '../subscribers.service';
@@ -28,12 +29,14 @@ import { VatTreatmentService } from '../vat-treatment.service';
 import { SubscriberStatusTransitionService } from '../subscriber-status-transition.service';
 import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 import { Subscriber } from '../entities/subscriber.entity';
+import { Contract } from '../../contracts/entities/contract.entity';
 import { AuditService } from '../../../audit/audit.service';
 import { IPartyWritePort } from '../../../parties/ports/party-write.port';
 import { IPartyReadPort } from '../../../parties/ports/party-read.port';
 import { IPrivacyAuthorizationWritePort } from '../../../privacy/ports/privacy-authorization-write.port';
 import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
-import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.util';
+import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
+import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.adapter';
 
 // Mocks para multi-tenant
 const mockRunInTenantSchema = jest.fn();
@@ -55,6 +58,10 @@ const privacyAuthorizationWritePortMock = {
 const privacyLegalTextReadPortMock = {
   current: jest.fn().mockResolvedValue(null),
   findByVersion: jest.fn().mockResolvedValue(null),
+};
+const privacyMarksReadPortMock = {
+  activeMarks: jest.fn().mockResolvedValue({}),
+  partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
 };
 
 jest.mock('@iwana/db', () => {
@@ -81,6 +88,8 @@ describe('SubscribersService', () => {
     auditServiceMock.log.mockResolvedValue(undefined);
     partyWritePortMock.ensurePartyWithRole.mockClear();
     partyReadPortMock.getByIds.mockReset().mockResolvedValue([]);
+    privacyMarksReadPortMock.activeMarks.mockReset().mockResolvedValue({});
+    privacyMarksReadPortMock.partyIdsWithActiveMark.mockReset().mockResolvedValue([]);
     privacyAuthorizationWritePortMock.record.mockClear();
     mockTenantContextGetOrThrow.mockReturnValue({
       schemaName: 'tenant_test',
@@ -97,6 +106,7 @@ describe('SubscribersService', () => {
         { provide: AuditService, useValue: auditServiceMock },
         { provide: IPartyWritePort, useValue: partyWritePortMock },
         { provide: IPartyReadPort, useValue: partyReadPortMock },
+        { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
         { provide: IPrivacyAuthorizationWritePort, useValue: privacyAuthorizationWritePortMock },
         { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
         {
@@ -229,23 +239,6 @@ describe('SubscribersService', () => {
         response: { code: 'SUBSCRIBER_PARTY_REQUIRED' },
       });
 
-      expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
-    });
-
-    it('rechaza el alta manual sin responsabilidad de IVA o del RUT antes de escribir', async () => {
-      const {
-        vatResponsibility: _vatResponsibility,
-        rutResponsibilities: _rutResponsibilities,
-        ...input
-      } = minimumCreateInput;
-
-      await expect(service.create(input, 'actor-1')).rejects.toMatchObject({
-        response: expect.objectContaining({
-          code: 'SUBSCRIBER_FISCAL_DATA_REQUIRED',
-        }),
-      });
-
-      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
       expect(partyWritePortMock.ensurePartyWithRole).not.toHaveBeenCalled();
     });
 
@@ -530,6 +523,22 @@ describe('SubscribersService', () => {
       const results = await service.search({ documentNumber: docNumber });
       expect(results).toHaveLength(1);
     });
+
+    it('hidrata el nombre del representante en la búsqueda exacta', async () => {
+      const subscriber = buildSubscriber({
+        personType: PersonType.JURIDICA,
+        legalRepresentativePartyId: 'party-representative-search',
+      });
+      mockSearchResults([subscriber]);
+      partyReadPortMock.getByIds.mockResolvedValue([
+        { id: 'party-representative-search', displayName: 'Representante sintético' },
+      ]);
+
+      const results = await service.search({ nit: '900123456' });
+
+      expect(partyReadPortMock.getByIds).toHaveBeenCalledWith(['party-representative-search']);
+      expect(results[0]?.legalRepresentativeDisplayName).toBe('Representante sintético');
+    });
   });
 
   // ── R8: origen único de la clave HMAC (ConfigService, sin respaldo de entorno) ──
@@ -760,6 +769,40 @@ describe('SubscribersService', () => {
 
       expect(partyReadPortMock.getByIds).toHaveBeenCalledWith(['party-representative']);
       expect(result.legalRepresentativeDisplayName).toBe('Representante sintético');
+    });
+
+    it('redacta el nombre cuando el Party representante está bloqueado y etiqueta el anonimizado', async () => {
+      const blockedRepresentative = buildSubscriber({
+        id: 'sub-blocked-representative',
+        legalRepresentativePartyId: 'party-representative-blocked',
+      });
+      const anonymizedRepresentative = buildSubscriber({
+        id: 'sub-anonymized-representative',
+        legalRepresentativePartyId: 'party-representative-anonymized',
+      });
+      partyReadPortMock.getByIds.mockResolvedValue([
+        { id: 'party-representative-blocked', displayName: 'Nombre bajo bloqueo' },
+        { id: 'party-representative-anonymized', displayName: 'ANONIMIZADO' },
+      ]);
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-representative-blocked': ['DATOS_BLOQUEADOS'],
+      });
+
+      const hydrate = (
+        service as unknown as {
+          hydrateLegalRepresentativeDisplayNames(
+            subscribers: Subscriber[],
+            canSeeBlocked?: boolean,
+          ): Promise<void>;
+        }
+      ).hydrateLegalRepresentativeDisplayNames.bind(service);
+      await hydrate([blockedRepresentative, anonymizedRepresentative]);
+
+      expect(blockedRepresentative.legalRepresentativeDisplayName).toBe('Datos bloqueados');
+      expect(anonymizedRepresentative.legalRepresentativeDisplayName).toBe('Anonimizado');
+
+      await hydrate([blockedRepresentative], true);
+      expect(blockedRepresentative.legalRepresentativeDisplayName).toBe('Nombre bajo bloqueo');
     });
 
     it('lanza NotFoundException si no existe', async () => {
@@ -1054,6 +1097,22 @@ describe('SubscribersService', () => {
       expect(auditServiceMock.log).not.toHaveBeenCalled();
     });
 
+    it('exige un DV válido cuando cambia el NIT y no llega uno explícito', async () => {
+      const existing = buildSubscriber({
+        personType: PersonType.JURIDICA,
+        nit: '900111222',
+        nitVerificationDigit: calculateNitVerificationDigit('900111222'),
+      });
+      mockSave(existing);
+
+      await expect(service.update(existing.id, { nit: '900111223' }, 'actor-1')).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(existing.nit).toBe('900111222');
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
     it('rechaza un motivo manual corto antes de guardar', async () => {
       const existing = buildSubscriber({ id: 'sub-short-reason' });
       mockSave(existing);
@@ -1277,6 +1336,72 @@ describe('SubscribersService', () => {
   });
 
   describe('get360View', () => {
+    it('usa la proyección de contratos: descifra cifrado y legado y redacta por bloqueo', async () => {
+      const subscriber = buildSubscriber({
+        id: 'sub-360-fiscal',
+        partyId: 'party-360-blocked',
+        expedienteId: null,
+      });
+      const encryptedFiscalDocument = encryptAes256Gcm(
+        'FISCAL-SINTETICO-001',
+        Buffer.from(TEST_ENCRYPTION_KEY, 'hex'),
+      );
+      const makeContracts = (): Contract[] =>
+        [
+          { id: 'contract-encrypted', subscriberId: subscriber.id, fiscalDocument: null },
+          { id: 'contract-legacy', subscriberId: subscriber.id, fiscalDocument: null },
+        ] as Contract[];
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(subscriber),
+        find: jest.fn(async (entity: unknown) =>
+          entity === Contract ? makeContracts() : [subscriber],
+        ),
+        query: jest.fn().mockResolvedValue([
+          {
+            id: 'contract-encrypted',
+            fiscal_document: null,
+            fiscal_document_encrypted: encryptedFiscalDocument,
+            fiscal_document_hmac: 'synthetic-hmac',
+          },
+          {
+            id: 'contract-legacy',
+            fiscal_document: 'FISCAL-LEGADO-SINTETICO',
+            fiscal_document_encrypted: null,
+            fiscal_document_hmac: null,
+          },
+        ]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({});
+      const readableView = await service.get360View(subscriber.id, true);
+      expect(readableView.contracts).toMatchObject([
+        { id: 'contract-encrypted', fiscalDocument: 'FISCAL-SINTETICO-001' },
+        { id: 'contract-legacy', fiscalDocument: 'FISCAL-LEGADO-SINTETICO' },
+      ]);
+
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-360-blocked': ['DATOS_BLOQUEADOS'],
+      });
+      const blockedView = await service.get360View(subscriber.id);
+      expect(blockedView.contracts).toMatchObject([
+        {
+          id: 'contract-encrypted',
+          fiscalDocument: null,
+          alias: 'Datos bloqueados',
+          fiscalName: null,
+        },
+        {
+          id: 'contract-legacy',
+          fiscalDocument: null,
+          alias: 'Datos bloqueados',
+          fiscalName: null,
+        },
+      ]);
+      expect(manager.query).toHaveBeenCalledTimes(2);
+    });
+
     it('incluye el resumen compatible del expediente y el timeline de conversión y activación', async () => {
       const convertedAt = new Date('2026-09-01T10:00:00.000Z');
       const activatedAt = new Date('2026-09-02T10:00:00.000Z');

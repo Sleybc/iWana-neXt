@@ -1,4 +1,5 @@
 import { Allow } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   PersonType,
   CustomerSegment,
@@ -10,6 +11,28 @@ import {
 } from '@iwana/shared';
 
 export { CreateSubscriberSchema } from '@iwana/shared';
+
+export class CreateSubscriberLegalRepresentativeDto {
+  @Allow()
+  fullName!: string;
+
+  @Allow()
+  documentType!: DocumentType;
+
+  @Allow()
+  documentNumber!: string;
+}
+
+export class CreateSubscriberAuthorizationDto {
+  @Allow()
+  purpose!: DataPurpose;
+
+  @Allow()
+  granted!: boolean;
+
+  @Allow()
+  legalTextId!: string;
+}
 
 /**
  * Clase DTO para NestJS (compatible con class-validator pipe).
@@ -53,11 +76,8 @@ export class CreateSubscriberDto {
   commercialName?: string;
 
   @Allow()
-  legalRepresentative?: {
-    fullName: string;
-    documentType: DocumentType;
-    documentNumber: string;
-  };
+  @Type(() => CreateSubscriberLegalRepresentativeDto)
+  legalRepresentative?: CreateSubscriberLegalRepresentativeDto;
 
   @Allow()
   vatResponsibility!: VatResponsibility;
@@ -117,5 +137,6 @@ export class CreateSubscriberDto {
   authorizationChannel?: ConsentChannel;
 
   @Allow()
-  authorizations?: Array<{ purpose: DataPurpose; granted: boolean; legalTextId: string }>;
+  @Type(() => CreateSubscriberAuthorizationDto)
+  authorizations?: CreateSubscriberAuthorizationDto[];
 }

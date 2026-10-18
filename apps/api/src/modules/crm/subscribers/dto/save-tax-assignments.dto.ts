@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Allow } from 'class-validator';
+import { Type } from 'class-transformer';
 import { UpsertTaxAssignmentDto } from './upsert-tax-assignment.dto';
 
 /**
@@ -14,5 +15,6 @@ export class SaveTaxAssignmentsDto {
     description: 'Lista de asignaciones tributarias a guardar. Se hace upsert por taxDefinitionId.',
   })
   @Allow()
+  @Type(() => UpsertTaxAssignmentDto)
   assignments!: UpsertTaxAssignmentDto[];
 }

@@ -383,6 +383,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
     expect(subscribersServiceMock.search).toHaveBeenCalledWith({
       documentNumber: '12345678',
       excludeBlocked: true,
+      canSeeBlocked: false,
     });
     expect(response.body.data[0]).toHaveProperty('documentNumber', '12345678');
     expect(JSON.stringify(auditMock.log.mock.calls.at(-1)?.[0])).not.toContain('12345678');

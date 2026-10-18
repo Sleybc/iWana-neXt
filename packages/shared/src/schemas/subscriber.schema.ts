@@ -23,20 +23,24 @@ const subscriberAuthorizationSchema = z
 
 const authorizationsSchema = z.array(subscriberAuthorizationSchema).optional();
 
-const rutResponsibilitiesSchema = z
+export const rutResponsibilitiesSchema = z
   .array(z.enum(RUT_RESPONSIBILITIES))
   .min(1, 'Selecciona al menos una responsabilidad del RUT')
   .refine((responsibilities) => new Set(responsibilities).size === responsibilities.length, {
     message: 'No repitas responsabilidades del RUT',
   });
 
-const legalRepresentativeSchema = z
+export const legalRepresentativeSchema = z
   .object({
     fullName: z.string().min(1).max(300),
     documentType: z.nativeEnum(DocumentType),
     documentNumber: z.string().min(3).max(50),
   })
   .strict();
+
+export const nitVerificationDigitSchema = z
+  .string()
+  .regex(/^\d$/u, 'El dígito de verificación debe ser un número');
 
 /**
  * C-API-1 v1.1 body contract for POST /crm/subscribers/search.
@@ -199,7 +203,7 @@ export const juridicaSubscriberSchema = z.object({
   personType: z.literal(PersonType.JURIDICA),
   customerSegment: z.nativeEnum(CustomerSegment),
   nit: z.string().min(5, 'El NIT debe tener al menos 5 caracteres').max(20),
-  nitVerificationDigit: z.string().regex(/^\d$/, 'El dígito de verificación debe ser un número'),
+  nitVerificationDigit: nitVerificationDigitSchema,
   businessName: z.string().min(1, 'La razón social es requerida').max(300),
   commercialName: z.string().max(300).optional(),
   legalRepresentative: legalRepresentativeSchema,
@@ -266,7 +270,7 @@ export const UpdateSubscriberSchema = z.object({
   stratum: z.number().int().min(1).max(6).nullable().optional(),
   birthDate: z.string().optional(),
   nit: z.string().min(5).max(20).optional(),
-  nitVerificationDigit: z.string().max(1).optional(),
+  nitVerificationDigit: nitVerificationDigitSchema.optional(),
   businessName: z.string().min(1).max(300).optional(),
   commercialName: z.string().max(300).optional(),
   legalRepresentative: legalRepresentativeSchema.optional(),

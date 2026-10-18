@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { MediaUsage, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   AuditAction,
@@ -41,7 +41,6 @@ import type { AuditEntryInput } from '../../audit/interfaces/audit-entry.interfa
 import { MediaService } from '../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
-import type { PrivacyMark } from '@iwana/shared';
 import { SubscriberFiscalCompletenessService } from '../subscribers/subscriber-fiscal-completeness.service';
 import {
   createFiscalDocumentCrypto,
@@ -50,6 +49,10 @@ import {
   setFiscalDocumentStorage,
   type FiscalDocumentCrypto,
 } from '../../../common/crypto/fiscal-document.util';
+import {
+  hydrateContractFiscalDocuments,
+  projectContractsForRead,
+} from './contract-read-projection';
 
 /** Transiciones de estado permitidas según máquina de estados del spec. */
 const ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
@@ -405,7 +408,8 @@ export class ContractsService {
     const { schemaName } = TenantContext.getOrThrow();
     const entity = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const found = await qr.manager.findOne(Contract, { where: { id } });
-      if (found) await this.hydrateContractFiscalDocuments(qr.manager, [found]);
+      if (found)
+        await hydrateContractFiscalDocuments(qr.manager, [found], this.fiscalDocumentCrypto);
       return found;
     });
     if (!entity) {
@@ -459,59 +463,13 @@ export class ContractsService {
     contracts: Contract[],
     canSeeBlocked: boolean,
   ): Promise<{ data: Contract[]; blockedServed: number }> {
-    await this.hydrateContractFiscalDocuments(manager, contracts);
-    const subscriberIds = [...new Set(contracts.map((contract) => contract.subscriberId))];
-    const subscribers = subscriberIds.length
-      ? await manager.find(Subscriber, {
-          where: { id: In(subscriberIds) },
-          select: ['id', 'partyId', 'anonymizedAt'],
-        })
-      : [];
-    const subscriberById = new Map(subscribers.map((subscriber) => [subscriber.id, subscriber]));
-    const partyIds = [
-      ...new Set(subscribers.flatMap((item) => (item.partyId ? [item.partyId] : []))),
-    ];
-    if (partyIds.length > 0 && !this.privacyMarksReadPort) {
-      throw new ServiceUnavailableException({
-        code: 'PRIVACY_MARKS_UNAVAILABLE',
-        message: 'No se pudo aplicar la protección de privacidad al contrato.',
-      });
-    }
-    const marksByParty = partyIds.length
-      ? await this.privacyMarksReadPort!.activeMarks(partyIds)
-      : {};
-
-    let blockedServed = 0;
-    const data = contracts.map((contract) => {
-      const subscriber = subscriberById.get(contract.subscriberId);
-      const anonymizedAt = subscriber?.anonymizedAt ?? null;
-      const marks: PrivacyMark[] = subscriber?.partyId
-        ? (marksByParty[subscriber.partyId] ?? [])
-        : [];
-      const blocked = anonymizedAt == null && marks.includes('DATOS_BLOQUEADOS');
-      if (blocked && canSeeBlocked) blockedServed += 1;
-      const projected = Object.assign(contract, {
-        titularAnonymizedAt: anonymizedAt?.toISOString() ?? null,
-      });
-      if (blocked && !canSeeBlocked) {
-        Object.assign(projected, {
-          alias: 'Datos bloqueados',
-          installationAddress: null,
-          installationCity: null,
-          installationDepartment: null,
-          installationPostalCode: null,
-          installationNotes: null,
-          installationStratum: null,
-          stratumEvidenceMediaId: null,
-          vatSnapshot: null,
-          fiscalName: null,
-          fiscalDocument: null,
-          fiscalAddress: null,
-        });
-      }
-      return projected;
-    });
-    return { data, blockedServed };
+    return projectContractsForRead(
+      manager,
+      contracts,
+      canSeeBlocked,
+      this.fiscalDocumentCrypto,
+      this.privacyMarksReadPort,
+    );
   }
 
   private async projectContractForMutation(
@@ -520,35 +478,6 @@ export class ContractsService {
   ): Promise<Contract> {
     const projection = await this.projectContractsForRead(manager, [contract], false);
     return projection.data[0] ?? contract;
-  }
-
-  private async hydrateContractFiscalDocuments(
-    manager: EntityManager,
-    contracts: Contract[],
-  ): Promise<void> {
-    if (contracts.length === 0 || typeof manager.query !== 'function') return;
-    const rows = (await manager.query(
-      `SELECT id::text AS id, fiscal_document, fiscal_document_encrypted, fiscal_document_hmac
-         FROM contracts WHERE id = ANY($1::uuid[])`,
-      [contracts.map((contract) => contract.id)],
-    )) as Array<{
-      id: string;
-      fiscal_document: string | null;
-      fiscal_document_encrypted: string | null;
-      fiscal_document_hmac: string | null;
-    }>;
-    const rowById = new Map(rows.map((row) => [row.id, row]));
-    for (const contract of contracts) {
-      const row = rowById.get(contract.id);
-      if (!row) continue;
-      hydrateFiscalDocument(
-        contract,
-        row.fiscal_document_encrypted,
-        row.fiscal_document_hmac,
-        row.fiscal_document,
-        this.fiscalDocumentCrypto,
-      );
-    }
   }
 
   private async hydrateExpedienteFiscalDocument(
