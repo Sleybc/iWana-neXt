@@ -55,6 +55,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['@iwana/ui', '@iwana/shared'],
   cacheComponents: true,
+  partialPrefetching: false,
+  agentRules: false,
   turbopack: {},
   allowedDevOrigins: ['127.0.0.1', 'localhost', '0.0.0.0'],
   async headers() {

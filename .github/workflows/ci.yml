@@ -269,6 +269,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Gate «No critical vulnerabilities» (AGENTS.md → Gates Before Merge).
+      # Solo dependencias de producción. Una advisoría crítica deja el job en rojo.
+      - name: Auditar dependencias de producción (critical)
+        run: pnpm audit --prod --audit-level critical
+
       - name: Validate development tooling
         run: pnpm test:tooling
 

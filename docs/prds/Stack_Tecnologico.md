@@ -1,6 +1,6 @@
 # Stack Tecnológico — iWana neXt Platform
 
-**Última actualización:** 2026-08-03 (Node 24.13.1 convergido por ADR-071)
+**Última actualización:** 2026-10-18 (Node 24.13.1 convergido por ADR-071; Next.js 16.4.2 por PLAT-DEPS-CRITICAS, D1-A)
 **Fuente:** Documentación oficial de cada proyecto (verificado)
 
 > ⚠️ **IMPORTANTE — Dos capas de versiones:**
@@ -50,7 +50,7 @@
 
 | Paquete                 | Versión Latest (Abr 2026) | Notas                                         |
 | ----------------------- | ------------------------- | --------------------------------------------- |
-| Next.js                 | **16.1.6**                | <https://nextjs.org/blog>                     |
+| Next.js                 | **16.4.2**                | <https://nextjs.org/blog>                     |
 | React                   | **19.2**                  | <https://react.dev/versions>                  |
 | Tailwind CSS            | **4.x** ⚠️                | <https://tailwindcss.com/blog/tailwindcss-v4> |
 | shadcn/ui               | **2.5.0+**                | <https://ui.shadcn.com/docs/changelog>        |
@@ -148,7 +148,7 @@ El proyecto adopta un **baseline moderno alineado con latest stable** para las c
 | **NestJS 11.1.x**               | Adecuado y maduro                                              | **Adoptar** como baseline                                               |
 | **TypeORM 0.3.28**              | Adecuado para Modulith + migraciones versionadas               | **Adoptar** como baseline                                               |
 | **BullMQ 5.71.x**               | Adecuado para jobs de provisioning, billing y ETL              | **Adoptar** como baseline                                               |
-| **Next.js 16.1.x**              | Adecuado para App Router, portales multirol y RSC              | **Adoptar** como baseline                                               |
+| **Next.js 16.4.x**              | Adecuado para App Router, portales multirol y RSC              | **Adoptar** como baseline                                               |
 | **React 19.2**                  | Coherente con Next.js 16                                       | **Adoptar** como baseline                                               |
 | **Tailwind CSS 4.x**            | Adecuado y consistente con el enfoque CSS-first ya documentado | **Adoptar** como baseline                                               |
 | **shadcn/ui 2.5+**              | Muy adecuado para velocidad de desarrollo y consistencia de UI | **Adoptar** como baseline                                               |
@@ -189,7 +189,7 @@ El baseline sugerido para el siguiente sprint, alineado con la decisión actual 
 | Runtime         | Node.js 24.13.1 LTS                                             |
 | Package manager | pnpm 10.32.x                                                    |
 | Backend         | NestJS 11.1.x + TypeORM 0.3.28 + BullMQ 5.71.x                  |
-| Frontend        | Next.js 16.1.x + React 19.2 + Tailwind CSS 4.x + shadcn/ui 2.5+ |
+| Frontend        | Next.js 16.4.x + React 19.2 + Tailwind CSS 4.x + shadcn/ui 2.5+ |
 | Validación      | Zod 4.0.1 (en proyecto activo: 3.24.2)                          |
 | Auth/MFA        | otplib 13.3.x + bcryptjs 3.0.x                                  |
 | Infra de datos  | PostgreSQL 18.3                                                 |

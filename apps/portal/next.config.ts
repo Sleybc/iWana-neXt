@@ -53,10 +53,14 @@ const contentSecurityPolicy = `default-src 'self';
   .replace(/\s+/g, ' ')
   .trim();
 
+const cacheComponents = process.env.IWANA_DISABLE_CACHE_COMPONENTS !== '1';
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['@iwana/ui', '@iwana/shared'],
-  cacheComponents: process.env.IWANA_DISABLE_CACHE_COMPONENTS !== '1',
+  cacheComponents,
+  ...(cacheComponents ? { partialPrefetching: false } : {}),
+  agentRules: false,
   allowedDevOrigins: ['127.0.0.1'],
   turbopack: {},
   async headers() {
