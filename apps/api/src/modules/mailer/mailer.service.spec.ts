@@ -154,6 +154,16 @@ describe('MailerService', () => {
         }),
       ).resolves.not.toThrow();
     });
+
+    it('rechaza un destinatario invalido tambien en modo dev', async () => {
+      await expect(
+        service.sendMail({
+          to: 'no-es-un-correo',
+          subject: 'Destinatario invalido en dev',
+          html: '<p>HTML</p>',
+        }),
+      ).rejects.toThrow('Destinatario de correo inválido');
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -243,6 +253,77 @@ describe('MailerService', () => {
           html: '<p>HTML</p>',
         }),
       ).rejects.toThrow('Transporter SMTP no inicializado');
+    });
+
+    describe('validacion del destinatario', () => {
+      const contenido = { subject: 'Asunto de validacion', html: '<p>HTML</p>' };
+
+      it('acepta un correo valido y entrega el mensaje al transporter', async () => {
+        await expect(
+          service.sendMail({ to: 'usuario.valido+prueba@prueba.co', ...contenido }),
+        ).resolves.toBeUndefined();
+
+        expect(mockSendMail).toHaveBeenCalledWith(
+          expect.objectContaining({ to: 'usuario.valido+prueba@prueba.co' }),
+        );
+      });
+
+      it('acepta varios correos separados por comas, como las alertas de privacidad', async () => {
+        const lista = 'titular.uno@prueba.co, titular.dos@prueba.co';
+
+        await expect(service.sendMail({ to: lista, ...contenido })).resolves.toBeUndefined();
+
+        expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ to: lista }));
+      });
+
+      it.each([
+        ['vacio', ''],
+        ['sin arroba', 'sin-arroba.prueba.co'],
+        ['con nombre visible', 'Nombre <usuario@prueba.co>'],
+        ['lista con un correo invalido', 'a@prueba.co, sin-arroba'],
+        ['con espacio', 'a b@prueba.co'],
+        ['con salto de linea (inyeccion de cabecera)', 'a@prueba.co\r\nBcc: x@prueba.co'],
+      ])('rechaza un destinatario %s sin llamar al transporter', async (_nombre, to) => {
+        await expect(service.sendMail({ to, ...contenido })).rejects.toThrow(
+          'Destinatario de correo inválido',
+        );
+        expect(mockSendMail).not.toHaveBeenCalled();
+      });
+
+      it('rechaza un correo de mas de 254 caracteres', async () => {
+        const demasiadoLargo = `${'a'.repeat(250)}@prueba.co`;
+
+        await expect(service.sendMail({ to: demasiadoLargo, ...contenido })).rejects.toThrow(
+          'Destinatario de correo inválido',
+        );
+        expect(mockSendMail).not.toHaveBeenCalled();
+      });
+
+      it('rechaza un campo to de mas de 4096 caracteres', async () => {
+        const lista = Array.from({ length: 300 }, (_, i) => `usuario${i}@prueba.co`).join(', ');
+
+        await expect(service.sendMail({ to: lista, ...contenido })).rejects.toThrow(
+          'Destinatario de correo inválido',
+        );
+        expect(mockSendMail).not.toHaveBeenCalled();
+      });
+
+      it('rechaza un valor que no es texto', async () => {
+        await expect(
+          service.sendMail({ to: undefined as unknown as string, ...contenido }),
+        ).rejects.toThrow('Destinatario de correo inválido');
+        expect(mockSendMail).not.toHaveBeenCalled();
+      });
+
+      it('no incluye el destinatario en el mensaje de error (PII)', async () => {
+        const destinatario = 'pii-ficticio sin-arroba@prueba.co';
+        const error = await service
+          .sendMail({ to: destinatario, ...contenido })
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).not.toContain(destinatario);
+      });
     });
   });
 });

@@ -5,7 +5,7 @@
  * Solo existe en memoria durante el envio — NUNCA se persiste ni se loguea en produccion.
  */
 export interface MailOptions {
-  to: string; // Email en texto plano — solo en memoria, nunca se persiste ni se loguea en produccion
+  to: string; // Uno o varios correos separados por comas, en texto plano — solo en memoria, nunca se persiste ni se loguea en produccion
   subject: string;
   html: string;
   text?: string; // Version plain text opcional

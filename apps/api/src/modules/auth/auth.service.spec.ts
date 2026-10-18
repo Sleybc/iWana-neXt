@@ -868,6 +868,37 @@ describe('AuthService', () => {
         }),
       );
     });
+
+    it('no propaga un rechazo de SMTP y lo registra sin incluir el destinatario', async () => {
+      const user = buildUser({
+        emailVerified: false,
+        emailVerificationToken: 'token-anterior',
+      } as Partial<User>);
+
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        save: jest.fn().mockResolvedValue({}),
+      });
+
+      const mailerService = (service as unknown as { mailerService: { sendMail: jest.Mock } })
+        .mailerService;
+      // El mensaje de error del SMTP puede repetir el destinatario: no debe llegar al log
+      mailerService.sendMail.mockRejectedValueOnce(new Error('SMTP rechazo usuario@example.com'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      const dto: ResendVerificationDto = { email: 'usuario@example.com' };
+      await expect(service.resendVerificationEmail(dto, 'tenant_test')).resolves.toBeUndefined();
+
+      // El rechazo se observa en la siguiente vuelta del event loop
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Fallo en correo de verificacion de email'),
+      );
+      const registrado = warnSpy.mock.calls.map((llamada) => String(llamada[0])).join(' ');
+      expect(registrado).not.toContain('usuario@example.com');
+      warnSpy.mockRestore();
+    });
   });
 
   // ---------------------------------------------------------------------------

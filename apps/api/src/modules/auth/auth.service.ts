@@ -18,7 +18,7 @@ import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 import { PlatformUser, RefreshToken, User } from '@iwana/db';
 import { UserRole, UserStatus, AuditAction } from '@iwana/shared';
-import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AuditService } from '../audit/audit.service';
@@ -945,7 +945,10 @@ export class AuthService {
       const plainEmail = dto.email.toLowerCase().trim();
 
       // Enviar correo de recuperacion (fire-and-forget — no bloquea la respuesta al cliente)
-      void this.mailerService.sendMail({ to: plainEmail, ...template });
+      this.fireAndForget(
+        this.mailerService.sendMail({ to: plainEmail, ...template }),
+        'correo de recuperacion de contrasena',
+      );
     });
   }
 
@@ -1006,7 +1009,10 @@ export class AuthService {
       const plainEmail = dto.email.toLowerCase().trim();
       const template = passwordResetConfirmTemplate();
       // Fire-and-forget — no bloquea la respuesta al cliente
-      void this.mailerService.sendMail({ to: plainEmail, ...template });
+      this.fireAndForget(
+        this.mailerService.sendMail({ to: plainEmail, ...template }),
+        'correo de confirmacion de cambio de contrasena',
+      );
     }
   }
 
@@ -1255,7 +1261,10 @@ export class AuthService {
       });
 
       // Enviar correo de verificacion (fire-and-forget — no bloquea la respuesta al cliente)
-      void this.mailerService.sendMail({ to: plainEmail, ...template });
+      this.fireAndForget(
+        this.mailerService.sendMail({ to: plainEmail, ...template }),
+        'correo de verificacion de email',
+      );
     });
   }
 
@@ -1570,5 +1579,17 @@ export class AuthService {
   private async verifyTotp(secret: string, token: string): Promise<boolean> {
     const result = await this.totp.verify(token, { secret, epochTolerance: 30 });
     return result.valid;
+  }
+
+  /**
+   * Fire-and-forget con registro visible de fallo (H-13), igual que UsersService.
+   * No interrumpe la peticion; solo deja de silenciar el rechazo. Sin catch, un rechazo
+   * de SMTP no manejado termina el proceso en Node 24 (dictamen B6, O-1).
+   * Promise.resolve tolera mocks que no devuelven una Promise.
+   */
+  private fireAndForget(task: PromiseLike<unknown> | unknown, context: string): void {
+    void Promise.resolve(task).catch((err: unknown) => {
+      this.logger.warn(`Fallo en ${context}: ${summarizeErrorForLog(err)}`);
+    });
   }
 }

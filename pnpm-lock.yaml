@@ -46,11 +46,6 @@ overrides:
   multer@>=1.0.0 <2.2.0: '>=2.2.0'
   multer@>=2.0.0-alpha.1 <2.2.0: '>=2.2.0'
   nanoid@<3.3.18: '>=3.3.18 <4.0.0'
-  nodemailer@<8.0.4: '>=8.0.4'
-  nodemailer@<=8.0.4: '>=8.0.5'
-  nodemailer@<=8.0.7: '>=8.0.8'
-  nodemailer@<=8.0.8: '>=8.0.9'
-  nodemailer@<=9.0.0: '>=9.0.1'
   path-to-regexp@>=8.0.0 <8.4.0: '>=8.4.0'
   picomatch@<2.3.2: '>=2.3.2'
   picomatch@>=4.0.0 <4.0.4: '>=4.0.4'
@@ -204,8 +199,8 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       nodemailer:
-        specifier: ^9.1.1
-        version: 9.1.1
+        specifier: ^10.0.9
+        version: 10.1.6
       otplib:
         specifier: ^13.3.0
         version: 13.3.0
@@ -270,9 +265,6 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.0
-      '@types/nodemailer':
-        specifier: ^7.0.11
-        version: 7.0.11
       '@types/passport-jwt':
         specifier: ^4.0.1
         version: 4.0.1
@@ -4060,12 +4052,6 @@ packages:
         integrity: sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw==,
       }
 
-  '@types/nodemailer@7.0.11':
-    resolution:
-      {
-        integrity: sha512-E+U4RzR2dKrx+u3N4DlsmLaDC6mMZOM/TPROxA0UAPiTgI0y4CEFBmZE+coGWTjakDriRsXG368lNk1u9Q0a2g==,
-      }
-
   '@types/passport-jwt@4.0.1':
     resolution:
       {
@@ -7814,12 +7800,12 @@ packages:
       }
     engines: { node: '>=18' }
 
-  nodemailer@9.1.1:
+  nodemailer@10.1.6:
     resolution:
       {
-        integrity: sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ==,
+        integrity: sha512-8j/UEmA4AXr51URr3Ob0h+RCBtr0NKJ76Y2P9wJT6Eu3dRyruj2ULh2e6aiKrGg8nlUj1oX6N5h8dHA82EouaQ==,
       }
-    engines: { node: '>=6.0.0' }
+    engines: { node: '>=20.0.0' }
 
   normalize-path@3.0.0:
     resolution:
@@ -12486,10 +12472,6 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
-  '@types/nodemailer@7.0.11':
-    dependencies:
-      '@types/node': 24.12.0
-
   '@types/passport-jwt@4.0.1':
     dependencies:
       '@types/jsonwebtoken': 9.0.10
@@ -14882,7 +14864,7 @@ snapshots:
 
   node-releases@2.0.59: {}
 
-  nodemailer@9.1.1: {}
+  nodemailer@10.1.6: {}
 
   normalize-path@3.0.0: {}
 

@@ -1,7 +1,30 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { isEmail } from 'class-validator';
 import { createTransport, Transporter } from 'nodemailer';
 import { MailOptions } from './interfaces/mail-options.interface';
+
+/** Longitud maxima de una direccion de correo (RFC 5321). */
+const MAX_RECIPIENT_LENGTH = 254;
+
+/** Longitud maxima del campo `to` completo. Se comprueba antes de parsear la lista. */
+const MAX_TO_FIELD_LENGTH = 4096;
+
+/**
+ * Destinatarios validos: uno o varios correos separados por comas, porque las alertas de
+ * privacidad envian a todos los titulares en un solo `to`. Cada correo tiene como mucho
+ * 254 caracteres y formato de correo, con el mismo criterio que los DTO (`@IsEmail`).
+ * El tope del campo va primero para no aplicar la expresion de formato a una entrada enorme.
+ */
+function isValidRecipients(to: unknown): to is string {
+  if (typeof to !== 'string' || to.length > MAX_TO_FIELD_LENGTH) {
+    return false;
+  }
+  return to.split(',').every((direccion) => {
+    const limpia = direccion.trim();
+    return limpia.length > 0 && limpia.length <= MAX_RECIPIENT_LENGTH && isEmail(limpia);
+  });
+}
 
 /**
  * Servicio de envio de correos electronicos de iWana neXt.
@@ -64,10 +87,17 @@ export class MailerService {
    *
    * En modo dev: imprime solo el asunto en consola para depuracion local.
    * En modo produccion: envia via Nodemailer al servidor SMTP configurado.
+   * Lanza Error si `to` no contiene correos validos (uno o varios, separados por comas),
+   * en cualquier modo.
    *
    * SEGURIDAD: Nunca loguear options.to (PII) ni options.html en ningun modo.
+   * El error de destinatario tampoco incluye el valor.
    */
   async sendMail(options: MailOptions): Promise<void> {
+    if (!isValidRecipients(options.to)) {
+      throw new Error('Destinatario de correo inválido');
+    }
+
     if (this.devMode) {
       // En desarrollo: no exponer destinatarios ni contenido, que puede incluir
       // enlaces de recuperación o tokens de un solo uso.
