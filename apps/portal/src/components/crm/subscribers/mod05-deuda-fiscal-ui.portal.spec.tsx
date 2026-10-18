@@ -5,6 +5,8 @@ import {
   CustomerSegment,
   DocumentType,
   PersonType,
+  calculateNitVerificationDigit,
+  NitFormatError,
   SUBSCRIBER_FISCAL_DATA_INCOMPLETE,
   SubscriberStatus,
   VatResponsibility,
@@ -18,11 +20,7 @@ import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
-import {
-  calculateNitVerificationDigit,
-  readFiscalDataIncompleteError,
-  validateNitVerificationDigit,
-} from './subscriber-fiscal';
+import { readFiscalDataIncompleteError, validateNitVerificationDigit } from './subscriber-fiscal';
 
 const mockCreateForSubscriber = jest.fn();
 const mockCreateFromExpediente = jest.fn();
@@ -53,6 +51,8 @@ jest.mock('@/lib/api-client', () => {
 // NIT sintético con su DV calculado por la regla DIAN (900123456 → 8).
 const SYNTHETIC_NIT = '900123456';
 const SYNTHETIC_NIT_DIGIT = '8';
+const LONG_SYNTHETIC_NIT = '123456789012345';
+const LONG_SYNTHETIC_NIT_DIGIT = '2';
 const FISCAL_TITLE = 'Faltan datos fiscales para activar o contratar';
 const TECHNICAL_MESSAGE = 'Mensaje técnico del servidor';
 
@@ -242,10 +242,14 @@ async function fillNaturalIdentity(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Dirección'), 'Calle 1 # 2-3');
 }
 
-async function fillJuridicaIdentity(user: ReturnType<typeof userEvent.setup>, digit: string) {
+async function fillJuridicaIdentity(
+  user: ReturnType<typeof userEvent.setup>,
+  digit: string,
+  nit = SYNTHETIC_NIT,
+) {
   await user.click(screen.getByText('Persona jurídica'));
   await chooseOption(user, 'Segmento', 'PyME');
-  await user.type(screen.getByLabelText('NIT'), SYNTHETIC_NIT);
+  await user.type(screen.getByLabelText('NIT'), nit);
   if (digit) await user.type(screen.getByLabelText(/^Dígito de verificación/), digit);
   await user.type(screen.getByLabelText('Razón social'), 'Empresa Sintética SAS');
   await user.type(screen.getByLabelText('Teléfono'), '3000000002');
@@ -279,9 +283,9 @@ describe('MOD05 deuda B3 — regla del DV y lectura del 422 fiscal', () => {
     expect(calculateNitVerificationDigit('800197268')).toBe('4');
     expect(calculateNitVerificationDigit('860034313')).toBe('7');
     // 15 dígitos usan todos los pesos; 16 dígitos los rechaza la API.
-    expect(calculateNitVerificationDigit('123456789012345')).toBe('2');
-    expect(calculateNitVerificationDigit('1234567890123456')).toBeNull();
-    expect(calculateNitVerificationDigit('')).toBeNull();
+    expect(calculateNitVerificationDigit(LONG_SYNTHETIC_NIT)).toBe(LONG_SYNTHETIC_NIT_DIGIT);
+    expect(() => calculateNitVerificationDigit('1234567890123456')).toThrow(NitFormatError);
+    expect(() => calculateNitVerificationDigit('')).toThrow(NitFormatError);
   });
 
   it('valida el DV con mensajes de negocio', () => {
@@ -448,6 +452,51 @@ describe('MOD05 deuda B3 — punto 2: persona jurídica con DV y representante l
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it('separa un NIT-DV válido de 15 dígitos antes de crear el suscriptor', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    mockLegalText();
+    render(<SubscriberForm onSave={onSave} />);
+    await screen.findByText('Texto vigente · versión v1.0');
+
+    await fillJuridicaIdentity(user, '', '123.456.789.012.345-2');
+    expect(screen.getByLabelText('NIT')).toHaveValue(LONG_SYNTHETIC_NIT);
+    expect(screen.getByLabelText(/^Dígito de verificación/)).toHaveValue(LONG_SYNTHETIC_NIT_DIGIT);
+    await user.type(
+      screen.getByLabelText(/^Nombre completo del representante legal/),
+      'Representante Sintético',
+    );
+    await chooseOption(user, 'Tipo de documento del representante', 'Cédula de ciudadanía');
+    await user.type(screen.getByLabelText(/^Número de documento del representante/), '1000000009');
+    await user.click(screen.getByRole('radio', { name: 'Responsable' }));
+    await user.click(screen.getByRole('checkbox', { name: /Autorretenedor/ }));
+    await fillAuthorization(user);
+    await user.click(screen.getByRole('button', { name: 'Crear suscriptor' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        nit: LONG_SYNTHETIC_NIT,
+        nitVerificationDigit: LONG_SYNTHETIC_NIT_DIGIT,
+      }),
+    );
+  });
+
+  it('no envía un NIT-DV cuyo dígito no coincide', async () => {
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    mockLegalText();
+    render(<SubscriberForm onSave={onSave} />);
+    await screen.findByText('Texto vigente · versión v1.0');
+    fireEvent.click(screen.getByText('Persona jurídica'));
+    fireEvent.change(screen.getByLabelText('NIT'), { target: { value: '900123456-7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear suscriptor' }));
+
+    expect(
+      await screen.findByText('Revisa el NIT y su dígito de verificación.'),
+    ).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('envía el representante como identidad y nunca un legalRepresentativeId', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
@@ -455,7 +504,7 @@ describe('MOD05 deuda B3 — punto 2: persona jurídica con DV y representante l
     render(<SubscriberForm onSave={onSave} />);
     await screen.findByText('Texto vigente · versión v1.0');
 
-    await fillJuridicaIdentity(user, SYNTHETIC_NIT_DIGIT);
+    await fillJuridicaIdentity(user, '', '123.456.789.012.345-2');
     await user.type(
       screen.getByLabelText(/^Nombre completo del representante legal/),
       'Representante Sintético',
@@ -472,8 +521,8 @@ describe('MOD05 deuda B3 — punto 2: persona jurídica con DV y representante l
     expect(payload).toEqual(
       expect.objectContaining({
         personType: PersonType.JURIDICA,
-        nit: SYNTHETIC_NIT,
-        nitVerificationDigit: SYNTHETIC_NIT_DIGIT,
+        nit: LONG_SYNTHETIC_NIT,
+        nitVerificationDigit: LONG_SYNTHETIC_NIT_DIGIT,
         legalRepresentative: {
           fullName: 'Representante Sintético',
           documentType: DocumentType.CC,
@@ -788,5 +837,71 @@ describe('MOD05 deuda B3 — punto 4: completitud fiscal (D-M05)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Convertir a contrato' }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(FISCAL_TITLE)).toBeNull();
+  });
+});
+
+describe('MOD05 deuda CD-04 — detalle restringido con campos fiscales autorizados', () => {
+  it('muestra IVA, RUT y el aviso de faltantes en solo lectura cuando el detalle está restringido', () => {
+    render(
+      <SubscriberHeader
+        subscriber={subscriberFixture({
+          privacyRestricted: true,
+          contactPending: true,
+          firstName: 'SENTINEL_PERSONAL',
+          vatResponsibility: VatResponsibility.RESPONSABLE,
+          rutResponsibilities: ['O-13', 'O-23'],
+          fiscalCompleteness: {
+            complete: false,
+            missing: ['NIT_VERIFICATION_DIGIT', 'LEGAL_REPRESENTATIVE'],
+          },
+        })}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+        onCompleteFiscalData={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Responsabilidad de IVA')).toBeInTheDocument();
+    expect(screen.getByText('Responsable')).toBeInTheDocument();
+    expect(screen.getByText('Gran contribuyente · Agente de retención de IVA')).toBeInTheDocument();
+
+    const alert = screen.getByText(FISCAL_TITLE).closest('[role="status"]') as HTMLElement;
+    expect(
+      within(alert)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Dígito de verificación del NIT', 'Representante legal']);
+    expect(within(alert).queryByRole('button', { name: 'Completar datos fiscales' })).toBeNull();
+
+    // Los demás campos personales siguen bloqueados y sin acciones de edición.
+    expect(screen.getByRole('heading', { name: 'Datos bloqueados' })).toBeInTheDocument();
+    expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cambiar estado' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Agregar contacto' })).toBeNull();
+  });
+
+  it('mantiene el aviso con botón de completar cuando el detalle no está restringido', async () => {
+    const user = userEvent.setup();
+    const onCompleteFiscalData = jest.fn();
+    render(
+      <SubscriberHeader
+        subscriber={subscriberFixture({
+          vatResponsibility: null,
+          rutResponsibilities: [],
+          fiscalCompleteness: {
+            complete: false,
+            missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+          },
+        })}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+        onCompleteFiscalData={onCompleteFiscalData}
+      />,
+    );
+
+    expect(screen.getByText('Pendiente de completar')).toBeInTheDocument();
+    const alert = screen.getByText(FISCAL_TITLE).closest('[role="status"]') as HTMLElement;
+    await user.click(within(alert).getByRole('button', { name: 'Completar datos fiscales' }));
+    expect(onCompleteFiscalData).toHaveBeenCalledTimes(1);
   });
 });

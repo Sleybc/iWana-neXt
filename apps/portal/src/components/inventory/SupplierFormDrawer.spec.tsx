@@ -117,3 +117,45 @@ describe('SupplierFormDrawer — recuperación de sesión', () => {
     expect(screen.queryByRole('button', { name: 'Iniciar sesión' })).not.toBeInTheDocument();
   });
 });
+
+describe('SupplierFormDrawer — NIT y dígito de verificación', () => {
+  it('normaliza un NIT-DV de 15 dígitos antes de crear el proveedor', async () => {
+    const { onCreate } = renderDrawer({}, null);
+    await screen.findByRole('dialog', { name: 'Nuevo proveedor' });
+
+    const nitInput = screen.getByLabelText('Número de NIT');
+    fireEvent.change(nitInput, { target: { value: '123.456.789.012.345-2' } });
+    expect(nitInput).toHaveValue('123456789012345');
+    expect(screen.getByLabelText('Dígito de verificación calculado')).toHaveTextContent('2');
+    fireEvent.change(screen.getByLabelText('Nombre'), {
+      target: { value: 'Proveedor Sintético' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Crear proveedor' }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(onCreate.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ documentNumber: '123456789012345' }),
+    );
+  });
+
+  it('impide continuar cuando el DV escrito no coincide con el NIT', async () => {
+    const { onCreate } = renderDrawer({}, null);
+    await screen.findByRole('dialog', { name: 'Nuevo proveedor' });
+    fireEvent.change(screen.getByLabelText('Número de NIT'), {
+      target: { value: '900123456-7' },
+    });
+    fireEvent.change(screen.getByLabelText('Nombre'), {
+      target: { value: 'Proveedor Sintético' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+
+    expect(
+      await screen.findByText('Revisa el NIT y su dígito de verificación.'),
+    ).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeInTheDocument();
+  });
+});

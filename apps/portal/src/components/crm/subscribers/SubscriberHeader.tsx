@@ -46,8 +46,10 @@ export function SubscriberHeader({
   const statusMeta = SUBSCRIBER_STATUS_META[subscriber.status as SubscriberStatus];
   const personMeta = PERSON_TYPE_META[subscriber.personType as PersonType];
   const canEditSubscriber = !subscriber.privacyRestricted && !subscriber.anonymizedAt;
+  // CD-04: la API mantiene IVA, RUT y completitud en la lista blanca del detalle restringido;
+  // el aviso de faltantes se muestra en solo lectura, sin el botón de completar.
   const fiscalIncomplete =
-    canEditSubscriber &&
+    !subscriber.anonymizedAt &&
     subscriber.status !== SubscriberStatus.CANCELLED &&
     subscriber.fiscalCompleteness?.complete === false;
 
@@ -105,17 +107,15 @@ export function SubscriberHeader({
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Suscriptor de la empresa</p>
       </div>
 
-      {!subscriber.privacyRestricted && (
-        <VatTreatmentBanner
-          vatResponsibility={subscriber.vatResponsibility}
-          rutResponsibilities={subscriber.rutResponsibilities ?? []}
-        />
-      )}
+      <VatTreatmentBanner
+        vatResponsibility={subscriber.vatResponsibility}
+        rutResponsibilities={subscriber.rutResponsibilities ?? []}
+      />
 
       {fiscalIncomplete && (
         <FiscalDataIncompleteAlert
           missing={subscriber.fiscalCompleteness.missing}
-          onComplete={onCompleteFiscalData}
+          onComplete={canEditSubscriber ? onCompleteFiscalData : undefined}
         />
       )}
 

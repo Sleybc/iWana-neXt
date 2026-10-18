@@ -7,6 +7,8 @@ import { Button, Card, CardContent, CardHeader, CardTitle, FormStatus, Select } 
 import {
   ConsentChannel,
   CreateSubscriberSchema,
+  NitFormatError,
+  parseExpedienteNit,
   type CreateSubscriberPayload,
   PersonType,
   type RutResponsibility,
@@ -157,6 +159,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
     control,
     register,
     handleSubmit,
+    setValue,
     reset,
     setError,
     clearErrors,
@@ -169,6 +172,25 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
   const personType = watch('personType');
   const emailValue = watch('email');
   const phoneValue = watch('phone');
+
+  function handleNitChange(rawValue: string) {
+    if (rawValue.includes('-')) {
+      try {
+        const parsed = parseExpedienteNit(rawValue);
+        if (parsed?.verificationDigit) {
+          setValue('nit', parsed.nit, { shouldDirty: true });
+          setValue('nitVerificationDigit', parsed.verificationDigit, { shouldDirty: true });
+          clearErrors(['nit', 'nitVerificationDigit']);
+          return;
+        }
+      } catch (error) {
+        if (!(error instanceof NitFormatError)) throw error;
+      }
+    }
+
+    setValue('nit', rawValue, { shouldDirty: true });
+    clearErrors('nit');
+  }
 
   useEffect(() => {
     if (!emailValue?.trim() && !phoneValue?.trim()) return;
@@ -204,6 +226,30 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
     clearErrors();
     setSubmitError(null);
 
+    let nit = values.nit.trim();
+    let nitVerificationDigit = values.nitVerificationDigit.trim();
+    if (values.personType === PersonType.JURIDICA && nit.includes('-')) {
+      try {
+        const parsed = parseExpedienteNit(nit);
+        if (!parsed?.verificationDigit) {
+          setError('nit', {
+            type: 'manual',
+            message: 'Revisa el NIT y su dígito de verificación.',
+          });
+          return;
+        }
+        nit = parsed.nit;
+        nitVerificationDigit = parsed.verificationDigit;
+      } catch (error) {
+        if (!(error instanceof NitFormatError)) throw error;
+        setError('nit', {
+          type: 'manual',
+          message: 'Revisa el NIT y su dígito de verificación.',
+        });
+        return;
+      }
+    }
+
     const common = {
       personType: values.personType,
       customerSegment: values.customerSegment,
@@ -225,8 +271,8 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
         ? stripEmptyValues({
             ...common,
             personType: PersonType.JURIDICA,
-            nit: values.nit.trim(),
-            nitVerificationDigit: values.nitVerificationDigit.trim() || undefined,
+            nit,
+            nitVerificationDigit: nitVerificationDigit || undefined,
             businessName: values.businessName.trim(),
             commercialName: values.commercialName.trim() || undefined,
             legalRepresentative: buildLegalRepresentative(values, !editing),
@@ -272,10 +318,9 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
       : CreateSubscriberSchema.safeParse(payload);
 
     const digitShouldBeChecked =
-      values.personType === PersonType.JURIDICA &&
-      (!editing || Boolean(values.nitVerificationDigit.trim()));
+      values.personType === PersonType.JURIDICA && (!editing || Boolean(nitVerificationDigit));
     const digitError = digitShouldBeChecked
-      ? validateNitVerificationDigit(values.nit, values.nitVerificationDigit)
+      ? validateNitVerificationDigit(nit, nitVerificationDigit)
       : null;
 
     if (!result.success || digitError) {
@@ -352,6 +397,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
               errors={errors}
               nitValue={watch('nit')}
               digitValue={watch('nitVerificationDigit')}
+              onNitChange={handleNitChange}
             />
           ) : (
             <NaturalPersonFields control={control} register={register} errors={errors} />

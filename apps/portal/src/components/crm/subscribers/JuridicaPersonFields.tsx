@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { Input, Select } from '@iwana/ui';
 import type { FieldErrors, UseFormRegister } from 'react-hook-form';
 import type { SubscriberFormValues } from './SubscriberForm';
@@ -11,6 +12,7 @@ interface JuridicaPersonFieldsProps {
   errors: FieldErrors<SubscriberFormValues>;
   nitValue: string;
   digitValue: string;
+  onNitChange: (value: string) => void;
 }
 
 export function JuridicaPersonFields({
@@ -18,7 +20,9 @@ export function JuridicaPersonFields({
   errors,
   nitValue,
   digitValue,
+  onNitChange,
 }: JuridicaPersonFieldsProps) {
+  const nitErrorId = useId();
   // Validación en vivo con la misma regla que la API, solo cuando ya hay algo que validar.
   const liveDigitError =
     nitValue.trim() && digitValue.trim()
@@ -30,8 +34,19 @@ export function JuridicaPersonFields({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <Input label="NIT" className="h-11" inputMode="numeric" {...register('nit')} />
-          {errors.nit && <p className="mt-1 text-xs text-rose-600">{errors.nit.message}</p>}
+          <Input
+            label="NIT"
+            className="h-11"
+            inputMode="numeric"
+            aria-invalid={errors.nit ? true : undefined}
+            aria-describedby={errors.nit ? nitErrorId : undefined}
+            {...register('nit', { onChange: (event) => onNitChange(event.target.value) })}
+          />
+          {errors.nit && (
+            <p id={nitErrorId} role="alert" className="mt-1 text-xs text-rose-600">
+              {errors.nit.message}
+            </p>
+          )}
         </div>
         <div>
           <Input

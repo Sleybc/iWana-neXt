@@ -30,6 +30,14 @@ const MIGRATIONS = [
   'TitularAnonymizationMarker1500000000000',
   'SeedBlockedDataPermission1510000000000',
 ];
+// MOD05 deuda de código (V1): la suite portal-mod05-deuda-fiscal-live exige 153–157.
+const MOD05_DEUDA_MIGRATIONS = [
+  'SubscriberVatResponsibility1530000000000',
+  'SubscriberLegalRepresentativeParty1540000000000',
+  'FiscalDocumentEncryption1550000000000',
+  'SubscriberExpedienteForeignKey1560000000000',
+  'SubscriberFiscalCompleteness1570000000000',
+];
 const ADMIN_PROFILE = 'Administrador general';
 const PRIVACY_PROFILE = 'Oficial de protección de datos';
 const BILLING_PROFILE = 'Facturación y cobro';
@@ -442,6 +450,15 @@ async function seedUsersAndProfiles(tenant, slug, suffix, adminPassword) {
       MIGRATIONS.every((name) => applied.has(name)),
       'El tenant no acredita migraciones 149–151.',
     );
+    const mod05Migrations = await db.query(
+      `SELECT name FROM ${schema}.typeorm_migrations WHERE name=ANY($1::text[])`,
+      [MOD05_DEUDA_MIGRATIONS],
+    );
+    const mod05Applied = new Set(mod05Migrations.rows.map((row) => row.name));
+    assert(
+      MOD05_DEUDA_MIGRATIONS.every((name) => mod05Applied.has(name)),
+      'El tenant no acredita migraciones 153–157 (MOD05 deuda de código).',
+    );
 
     const tenantId = tenant.id;
     const profileNames = {
@@ -638,7 +655,7 @@ async function seedUsersAndProfiles(tenant, slug, suffix, adminPassword) {
   return {
     tenantSlug: slug,
     tenantStatus: 'ACTIVE',
-    migrations: [149, 150, 151],
+    migrations: [149, 150, 151, 153, 154, 155, 156, 157],
     authorizationText: 'published',
     catalogPlan: 'active',
     actorRoles: [

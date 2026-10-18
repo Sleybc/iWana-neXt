@@ -528,6 +528,13 @@ async function convertToParty(
     throw new Error('La conversión sintética no vinculó un titular.');
   }
 
+  // D-M05 (MOD05 deuda de código, delta v1.1): la conversión no infiere datos
+  // fiscales y el alta de contrato exige completitud. Persona natural: IVA y RUT.
+  await api(page, session, session.admin, 'PATCH', `/crm/subscribers/${subscriberId}`, {
+    vatResponsibility: 'NO_RESPONSABLE',
+    rutResponsibilities: ['R-99-PN'],
+  });
+
   const planId = session.planId;
   const plan = record(
     await api<JsonRecord>(page, session, session.admin, 'GET', `/commercial/catalog/${planId}`),

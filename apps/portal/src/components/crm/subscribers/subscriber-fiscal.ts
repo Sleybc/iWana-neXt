@@ -1,4 +1,6 @@
 import {
+  calculateNitVerificationDigit,
+  NitFormatError,
   RUT_RESPONSIBILITIES,
   type RutResponsibility,
   SUBSCRIBER_FISCAL_DATA_INCOMPLETE,
@@ -44,21 +46,6 @@ export function formatVatResponsibility(value: VatResponsibility | null | undefi
   return value ? VAT_RESPONSIBILITY_LABELS[value] : 'Pendiente de completar';
 }
 
-// Espejo de `calculateNitVerificationDigit` de la API (apps/api/src/common/crypto):
-// mismos pesos DIAN y mismo límite de 15 dígitos. Si la API cambia, este espejo cambia con ella.
-const NIT_WEIGHTS_FROM_RIGHT = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
-
-export function calculateNitVerificationDigit(nit: string): string | null {
-  const digits = nit.replace(/\D/gu, '');
-  if (digits.length === 0 || digits.length > NIT_WEIGHTS_FROM_RIGHT.length) return null;
-
-  const weightedSum = [...digits]
-    .reverse()
-    .reduce((sum, digit, index) => sum + Number(digit) * NIT_WEIGHTS_FROM_RIGHT[index]!, 0);
-  const remainder = weightedSum % 11;
-  return String(remainder < 2 ? remainder : 11 - remainder);
-}
-
 /**
  * Valida el dígito de verificación con la misma regla que la API.
  * Devuelve el mensaje de error visible o `null` si el dígito es válido.
@@ -67,8 +54,15 @@ export function validateNitVerificationDigit(nit: string, digit: string): string
   const normalizedDigit = digit.trim();
   if (!normalizedDigit) return 'Ingresa el dígito de verificación del NIT.';
   if (!/^\d$/u.test(normalizedDigit)) return 'El dígito de verificación debe ser un número.';
-  const expected = calculateNitVerificationDigit(nit);
-  if (expected === null) return 'Revisa el NIT antes de validar el dígito de verificación.';
+  let expected: string;
+  try {
+    expected = calculateNitVerificationDigit(nit);
+  } catch (error) {
+    if (error instanceof NitFormatError) {
+      return 'Revisa el NIT antes de validar el dígito de verificación.';
+    }
+    throw error;
+  }
   if (expected !== normalizedDigit) return 'El dígito de verificación no coincide con el NIT.';
   return null;
 }

@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Input, ModalLayer, Select, overlayEdgeClassName, cn } from '@iwana/ui';
 import {
+  calculateNitVerificationDigit,
   DocumentTypeParty,
   IncotermCode,
+  NitFormatError,
   PartyContactType,
   PartyType,
   SupplierProfileStatus,
+  parseExpedienteNit,
 } from '@iwana/shared';
 import type {
   CreateSupplierDto,
@@ -85,17 +88,22 @@ const INCOTERM_OPTIONS: { value: IncotermCode; label: string }[] = [
   { value: IncotermCode.CIF, label: 'CIF — Costo, seguro y flete' },
 ];
 
-// Algoritmo DIAN para el dígito de verificación del NIT (Resolución 000139/2012)
-const NIT_WEIGHTS = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47] as const;
+function normalizeNitDocumentNumber(value: string): { value: string; invalid: boolean } {
+  try {
+    return { value: parseExpedienteNit(value)?.nit ?? '', invalid: false };
+  } catch (error) {
+    if (error instanceof NitFormatError) return { value, invalid: true };
+    throw error;
+  }
+}
 
-function calculateNitVerificationDigit(nit: string): string | null {
-  const digits = nit.replace(/\D/g, '');
-  if (digits.length === 0) return null;
-  const sum = [...digits]
-    .reverse()
-    .reduce((acc, digit, index) => acc + Number(digit) * (NIT_WEIGHTS[index] ?? 0), 0);
-  const remainder = sum % 11;
-  return String(remainder === 0 || remainder === 1 ? remainder : 11 - remainder);
+function getNitVerificationDigit(nit: string): string | null {
+  try {
+    return calculateNitVerificationDigit(nit);
+  } catch (error) {
+    if (error instanceof NitFormatError) return null;
+    throw error;
+  }
 }
 
 function parseCoordinates(raw: string): { latitude: number | null; longitude: number | null } {
@@ -329,6 +337,17 @@ export function SupplierFormDrawer({
     setIdentityForm((current) => ({ ...current, [key]: value }));
   }
 
+  function handleDocumentNumberChange(value: string) {
+    if (identityForm.documentType === DocumentTypeParty.NIT) {
+      const parsed = normalizeNitDocumentNumber(value);
+      updateIdentity('documentNumber', parsed.value);
+    } else {
+      updateIdentity('documentNumber', value);
+    }
+    setDocumentSearchError(null);
+    setValidationError(null);
+  }
+
   function updateCommercial<K extends keyof CommercialFormState>(
     key: K,
     value: CommercialFormState[K],
@@ -337,11 +356,21 @@ export function SupplierFormDrawer({
   }
 
   async function handleSearchDocument() {
-    const documentNumber = identityForm.documentNumber.trim();
+    let documentNumber = identityForm.documentNumber.trim();
 
     if (!documentNumber) {
       setDocumentSearchError('Ingresa el número de documento para buscar.');
       return;
+    }
+
+    if (identityForm.documentType === DocumentTypeParty.NIT) {
+      const parsed = normalizeNitDocumentNumber(documentNumber);
+      if (parsed.invalid) {
+        setDocumentSearchError('Revisa el NIT y su dígito de verificación.');
+        return;
+      }
+      documentNumber = parsed.value;
+      updateIdentity('documentNumber', documentNumber);
     }
 
     setIsSearchingDocument(true);
@@ -415,6 +444,15 @@ export function SupplierFormDrawer({
     if (!identityForm.documentNumber.trim()) {
       setValidationError('Completa el número de documento.');
       return false;
+    }
+
+    if (identityForm.documentType === DocumentTypeParty.NIT) {
+      const parsed = normalizeNitDocumentNumber(identityForm.documentNumber.trim());
+      if (parsed.invalid) {
+        setValidationError('Revisa el NIT y su dígito de verificación.');
+        return false;
+      }
+      updateIdentity('documentNumber', parsed.value);
     }
 
     if (!identityForm.displayName.trim()) {
@@ -674,13 +712,16 @@ export function SupplierFormDrawer({
                 containerClassName="flex-1"
                 value={identityForm.documentNumber}
                 disabled={identityDisabled}
-                onChange={(event) => updateIdentity('documentNumber', event.target.value)}
+                onChange={(event) => handleDocumentNumberChange(event.target.value)}
               />
               <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">DV</span>
-                <div className="flex h-10 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
-                  {calculateNitVerificationDigit(identityForm.documentNumber) ?? '—'}
-                </div>
+                <output
+                  aria-label="Dígito de verificación calculado"
+                  className="flex h-10 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200"
+                >
+                  {getNitVerificationDigit(identityForm.documentNumber) ?? '—'}
+                </output>
               </div>
             </div>
           ) : (
@@ -688,7 +729,7 @@ export function SupplierFormDrawer({
               label="Número de documento"
               value={identityForm.documentNumber}
               disabled={identityDisabled}
-              onChange={(event) => updateIdentity('documentNumber', event.target.value)}
+              onChange={(event) => handleDocumentNumberChange(event.target.value)}
             />
           )}
         </div>
