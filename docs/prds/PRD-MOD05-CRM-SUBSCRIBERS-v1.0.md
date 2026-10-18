@@ -163,10 +163,10 @@ NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | RF-SUB-01 | Subscriber tiene dos dimensiones obligatorias: personType (NATURAL/JURIDICA) y customerSegment (RESIDENTIAL/SOHO/PYME/CORPORATE/GOVERNMENT/WHOLESALE)       | MVP       |
 | RF-SUB-02 | Persona Natural requiere: documentType, documentNumber (cifrado), firstName, lastName, stratum (1-6), birthDate opcional                                    | MVP       |
-| RF-SUB-03 | Persona Jurídica requiere: nit (cifrado), nitVerificationDigit, businessName, commercialName opcional, legalRepresentativeId (FK a otro subscriber NATURAL) | MVP       |
+| RF-SUB-03 | Persona Jurídica requiere: nit (cifrado), nitVerificationDigit, businessName, commercialName opcional, legalRepresentativeId (FK a otro subscriber NATURAL) — **reemplazado por RF-SUB-03′** ([Fase 04 §11](PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md)) | MVP       |
 | RF-SUB-04 | Ambos tipos comparten: email (cifrado), phone (cifrado), whatsapp opcional, address, neighborhood, city, department, postalCode, latitude/longitude         | MVP       |
 | RF-SUB-05 | vatTreatment se calcula automáticamente según personType + stratum y NO es editable manualmente                                                             | MVP       |
-| RF-SUB-06 | taxRegime se asigna automáticamente: NATURAL → SIMPLIFIED, JURIDICA → COMMON                                                                                | MVP       |
+| RF-SUB-06 | taxRegime se asigna automáticamente: NATURAL → SIMPLIFIED, JURIDICA → COMMON — **reemplazado por RF-SUB-06′** ([Fase 04 §11](PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md))                                                                                | MVP       |
 | RF-SUB-07 | Subscriber tiene ciclo de vida: LEAD → PROSPECT → ACTIVE → SUSPENDED → CANCELLED                                                                            | MVP       |
 | RF-SUB-08 | Subscriber tiene relación 1:1 opcional con User (userId nullable — se crea al activar portal)                                                               | MVP       |
 | RF-SUB-09 | Subscriber tiene externalId para trazabilidad con sistemas origen durante migración                                                                         | MVP       |

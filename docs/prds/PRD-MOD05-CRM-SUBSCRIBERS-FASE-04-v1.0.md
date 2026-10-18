@@ -385,3 +385,15 @@ Por tanto esta fase **retira el anuncio** y nada más. Tres razones cierran tamb
 - [ ] `pnpm audit:adr-citations` en `BLOQUEANTE: 0`
 - [ ] `INFORME-MOD05-CIERRE-MODULO-v1.0.md` con **G6 y G6.5 registrados por separado**; G7 diferido por ADR-070 (superado)
 - [ ] Deuda residual declarada por severidad, con el hallazgo S-3 de ADR-078 (propuesto) explícitamente registrado
+
+## 11. Adenda 2026-10-17 — Datos fiscales del suscriptor y representante legal
+
+Origen: [plan de deuda de código MOD05](../plans/2026-10-17-mod05-deuda-codigo.md), decisiones del CTO D-M03, D-M04 (A), D-M05 (A) y D-FIS, y [ADR-093](../adrs/ADR-093-Tratamiento-IVA-Internet-por-Punto-y-Linea-de-Servicio.md) D6. Reemplaza RF-SUB-03 y RF-SUB-06 del [PRD v1.0](PRD-MOD05-CRM-SUBSCRIBERS-v1.0.md) (superado).
+
+| ID | Requisito |
+| --- | --- |
+| RF-SUB-03′ | **Persona jurídica:** NIT y dígito de verificación **obligatorios en el alta manual**; el DV se valida con `calculateNitVerificationDigit` (`@iwana/shared`). El **representante legal** es un **Party** de tipo natural con el rol `LEGAL_REPRESENTATIVE`. Se captura por nombre completo, tipo y número de documento, se deduplica por HMAC del documento y se guarda en `legal_representative_party_id`. La respuesta muestra solo `displayName`, que respeta las marcas de privacidad del Party del representante |
+| RF-SUB-06′ | `taxRegime` queda **deprecado** (Ley 1943 de 2018). Lo reemplazan `vatResponsibility` (`RESPONSABLE \| NO_RESPONSABLE`) y `rutResponsibilities[]`, cuyo catálogo provisional (`O-13`, `O-15`, `O-23`, `O-47`, `R-99-PN`) está sujeto al dictamen del contador. Los dos son obligatorios en el alta manual. La migración 153 mapeó los heredados: `SIMPLIFIED → NO_RESPONSABLE` y `COMMON → RESPONSABLE` |
+| RF-SUB-14 | **Completitud fiscal:** la conversión desde un expediente crea el `PROSPECT` **sin inferir** datos fiscales. Pasar a `ACTIVE`, o crear cualquier contrato, exige `vatResponsibility`, al menos una responsabilidad del RUT y, si es persona jurídica, DV válido y representante legal. Si falta algo: 422 `SUBSCRIBER_FISCAL_DATA_INCOMPLETE` con `missing`. El detalle expone `fiscalCompleteness` |
+| RF-SUB-15 | El **documento fiscal** de contratos y expedientes se guarda cifrado (AES-256-GCM) y con HMAC (ADR-058). Las filas heredadas se migran con `backfill-fiscal-document`; la columna en claro se elimina en G7 |
+| RF-SUB-16 | `subscribers.nit` (persona jurídica) queda en claro: el NIT de una empresa no es dato personal (D-FIS) |

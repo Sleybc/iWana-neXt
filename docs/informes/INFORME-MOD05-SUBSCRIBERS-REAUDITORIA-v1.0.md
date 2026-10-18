@@ -153,3 +153,11 @@ Si el CTO prefiere no asumir ese riesgo, la Fase 1b pasa delante de G7 y entra e
 - `contracts.fiscal_document` en claro (P2, hallado en la Fase 1b);
 - B02: llaves foráneas;
 - B04: tipos enum.
+
+## 9. Actualización tras la fase de deuda de código (2026-10-18)
+
+[Cierre G6 de la deuda de código](INFORME-MOD05-DEUDA-CIERRE-G6-v1.0.md):
+- **SUB-M03, SUB-M04, SUB-B02 y SUB-B04 → ✅.**
+- **Hallazgo preexistente corregido:** el alta manual de suscriptores no funcionaba por HTTP desde `15bda462` (DEF-01).
+
+No queda deuda de código abierta de §8. El checklist sigue en 10 ✅ · 4 ⚠ · 0 ❌; los ⚠ dependen de G7 por tenant o del dictamen del contador.

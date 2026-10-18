@@ -99,3 +99,23 @@ El launcher es [PROMPT-MOD05-DEUDA-CODIGO-LAUNCH-v1.0.md](../prompts/PROMPT-MOD0
 
 - **✅ D-M05 = A** (el CTO lanzó B0, B1 y B2 con esa opción, 2026-10-17): los datos fiscales se exigen al activar y al contratar; la conversión no infiere nada.
 - **Ola 1, estado:** B0 v1.2 (157, 10/10 de integración en dos schemas), B1 v1.1 y B2 v1.1 completos. API con 5 294 tests y 0 fallos; integración de la API con 97 tests; `crm/subscribers` por encima de su línea base en las cuatro métricas. El portal tiene 3 tests en rojo por el contrato nuevo, que corresponden a B3.
+
+### v1.2 (2026-10-17): Ola 2 y correcciones
+
+- **CI de la Ola 1:** [`39054256748`](https://github.com/Sleybc/iWana-neXt/actions/runs/39054256748) sobre `e2348a42`, verde en 5/5. `main` volvió a verde tras el rojo de `09af7f60` (migración `NOT NULL` subida antes que su código).
+- **Ola 2:**
+  - V1: 9/12, con **DEF-01 crítica preexistente** (el alta manual de suscriptores está rota por HTTP desde `15bda462`) y DEF-02 alta (el 360° no descifra el documento fiscal);
+  - V2: GO, con un medio (M-1);
+  - V3: NO-GO por CD-01;
+  - V4: verde, pero con las integraciones omitidas porque Docker estaba caído;
+  - V5: NO-GO por la redacción del launcher, ya corregida.
+- **Delta:** [PROMPT-MOD05-DEUDA-CODIGO-v1.2.md](../prompts/PROMPT-MOD05-DEUDA-CODIGO-v1.2.md):
+  - DEF-01 y el patrón de los 7 DTO, con una guardia;
+  - DEF-02, CD-01 a CD-08, B-01 y M-1;
+  - el DV del NIT en `@iwana/shared`;
+  - decisión CD-04: los campos fiscales entran en la lista blanca del detalle bloqueado.
+
+### v1.3 (2026-10-18): cierre G6
+
+- **Fase cerrada:** G4 y G6 en GO ([cierre](../informes/INFORME-MOD05-DEUDA-CIERRE-G6-v1.0.md)). G6.5 queda pendiente del CI del commit de cierre.
+- **PRD:** se agregó la adenda §11 al PRD vigente ([Fase 04](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md)): RF-SUB-03′, RF-SUB-06′ y RF-SUB-14 a 16. El PRD v1.0 (superado) solo se anotó.
