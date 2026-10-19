@@ -21,7 +21,7 @@ Secuencia autorizada: F1 ∥ F2 ∥ F3 → G1 → V1 ∥ V2 ∥ V3 → V4 → G6
 | G3 | GO de V2 tras corrección | Contraste 7,19:1 claro/5,98:1 oscuro; P0-P3 0 |
 | G4 | GO de V3 | 3 suites/42 tests focales sin caché; sin fugas nuevas |
 | G5 | GO tras remediación | Auditoría: 0 críticas y 0 altas tras `a6ca8e3f` (CI verde, run 39158140592) y `f867cbd2`. V4 repetido: 307 suites, 3121 tests aprobados/1 omitido, lint y typecheck, Cached 0. Cobertura: umbrales configurados cumplen; objetivo integral ≥80 no acreditado, deuda P3 |
-| G6 | Cerrado | Commit en `main` con los archivos de la fase, sin push; ver «Cierre G6» |
+| G6 | Cerrado | Commit `d5b5c92d` en `origin/main` (push 2026-10-18), CI y E2E smoke en verde; ver «Cierre G6» |
 
 ## Preservación del workspace
 
@@ -167,7 +167,7 @@ Base: `main` local en `f867cbd2`. Incluye `a6ca8e3f` (Next ≥16.4, `proxy-addr`
 
 Condiciones del CTO cumplidas: 0 críticas en `pnpm audit --prod --audit-level critical`, V4 repetido sin caché sobre Next 16.4 y CI de `a6ca8e3f` en verde ([run 39158140592](https://github.com/Sleybc/iWana-neXt/actions/runs/39158140592): Lint + Typecheck + Build + Unit tests, imágenes de producción, E2E operativo R4.1, integridad de citas ADR y conteo de deuda E2E en verde).
 
-- **Commit:** solo los archivos de esta fase: código y specs de `apps/portal/src/components/crm/subscribers/`, `e2e/tests/portal-crm-suscriptores-ux-qw-live.spec.ts`, la spec, el plan, el encargo, los launchers v1.0 y v1.1 y este informe. Quedan fuera los cambios ajenos (`.gitignore`, `apps/portal/next-env.d.ts`, `apps/web/next-env.d.ts`, el informe y el plan de deuda MOD05 del 2026-10-17). Sin push.
+- **Commit:** solo los archivos de esta fase: código y specs de `apps/portal/src/components/crm/subscribers/`, `e2e/tests/portal-crm-suscriptores-ux-qw-live.spec.ts`, la spec, el plan, el encargo, los launchers v1.0 y v1.1 y este informe. Quedan fuera los cambios ajenos (`.gitignore`, `apps/portal/next-env.d.ts`, `apps/web/next-env.d.ts`, el informe y el plan de deuda MOD05 del 2026-10-17). Commit `d5b5c92d`, publicado en `origin/main` junto con `f867cbd2`; [CI](https://github.com/Sleybc/iWana-neXt/actions/runs/39162335207) y [E2E Web Admin Smoke](https://github.com/Sleybc/iWana-neXt/actions/runs/39162335128) en verde.
 - **Launchers:** la v1.0 conserva el lanzamiento de las Olas 1 y 2; la v1.1 es la reanudación del cierre tras el NO-GO de G5.
 - **Deuda abierta:** P3 de pruebas para `sr-qa` (`ContractCard`, `ContractDetailDrawer`, `ConvertExpedienteToContractDialog` y `CreateContractDialog` por debajo de 80 % de líneas) y P3 de advertencias `act()` en los tests del listado.
 - **Siguiente fase recomendada** (plan §6): E4, el addendum al PRD sobre la relación entre el estado del suscriptor y el de sus contratos, con la suspensión unificada.
