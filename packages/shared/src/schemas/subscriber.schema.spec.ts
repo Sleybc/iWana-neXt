@@ -364,6 +364,24 @@ describe('subscriber shared schemas · MOD05 deuda · alta, autorizaciones y edi
     expect(TransitionSubscriberStatusSchema.safeParse({ targetStatus: 'NO_EXISTE' }).success).toBe(
       false,
     );
+    expect(
+      TransitionSubscriberStatusSchema.safeParse({
+        targetStatus: SubscriberStatus.CANCELLED,
+        reasonCode: 'SOLICITUD_TITULAR',
+      }).success,
+    ).toBe(true);
+    expect(
+      TransitionSubscriberStatusSchema.safeParse({
+        targetStatus: SubscriberStatus.CANCELLED,
+        reason: 'texto libre que no es un código',
+      }).success,
+    ).toBe(false);
+    expect(
+      TransitionSubscriberStatusSchema.safeParse({
+        targetStatus: SubscriberStatus.CANCELLED,
+        reasonCode: 'DESCARTE_EXPEDIENTE',
+      }).success,
+    ).toBe(false);
   });
 
   it('fija el contrato de completitud fiscal consumido por alta, activación y contratación', () => {

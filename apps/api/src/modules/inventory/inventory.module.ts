@@ -53,6 +53,7 @@ import {
 import { SupplierPartyPort, SupplierPartyPortAdapter } from './ports/supplier-party.port';
 import { TenantContactPort } from './ports/tenant-contact.port';
 import { TenantContactPortAdapter } from './ports/tenant-contact.adapter';
+import { AssetLoanReadPort, AssetLoanReadPortAdapter } from './ports/asset-loan-read.port';
 import { InventoryController } from './inventory.controller';
 import { PurchasingController } from './purchasing.controller';
 import { AssetLifecycleService } from './services/asset-lifecycle.service';
@@ -170,6 +171,7 @@ import { InventoryExecutionRequestProcessor } from './services/inventory-executi
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,
     TenantContactPortAdapter,
+    AssetLoanReadPortAdapter,
     {
       provide: INVENTORY_MOVEMENT_PORT,
       useExisting: InventoryMovementPortAdapter,
@@ -185,6 +187,10 @@ import { InventoryExecutionRequestProcessor } from './services/inventory-executi
     {
       provide: TenantContactPort,
       useExisting: TenantContactPortAdapter,
+    },
+    {
+      provide: AssetLoanReadPort,
+      useExisting: AssetLoanReadPortAdapter,
     },
   ],
   exports: [
@@ -218,6 +224,7 @@ import { InventoryExecutionRequestProcessor } from './services/inventory-executi
     CommercialProductReferencePort,
     SupplierPartyPort,
     TenantContactPort,
+    AssetLoanReadPort,
   ],
 })
 export class InventoryModule {}

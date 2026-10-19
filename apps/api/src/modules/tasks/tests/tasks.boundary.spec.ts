@@ -78,6 +78,26 @@ describe('TasksModule — Boundaries (P0-3)', () => {
     const entitiesInForFeature = forFeatureMatch![1];
     expect(entitiesInForFeature).not.toContain('MediaAsset');
   });
+
+  it('ExecutionOrderSchedulingModule publica el puerto sin importar el grafo de Tasks o CRM', () => {
+    const schedulingModuleSource = readFileSync(
+      join(__dirname, '../execution-order-scheduling.module.ts'),
+      'utf8',
+    );
+    const executionOrdersSource = readFileSync(
+      join(__dirname, '../services/execution-orders.service.ts'),
+      'utf8',
+    );
+
+    expect(schedulingModuleSource).toContain(
+      '{ provide: EXECUTION_ORDER_READ_PORT, useExisting: ExecutionOrdersService }',
+    );
+    expect(schedulingModuleSource).toMatch(/exports:\s*\[[^\]]*EXECUTION_ORDER_READ_PORT/s);
+    expect(schedulingModuleSource).not.toMatch(
+      /from ['"][^'"]*(?:crm|assurance|wfm|tasks\.module)/i,
+    );
+    expect(executionOrdersSource).not.toMatch(/from ['"][^'"]*(?:\/crm\/|crm\.module)/i);
+  });
 });
 
 /**

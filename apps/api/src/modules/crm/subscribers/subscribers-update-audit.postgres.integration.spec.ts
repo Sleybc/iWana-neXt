@@ -29,6 +29,7 @@ import { Subscriber } from './entities/subscriber.entity';
 import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
+import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { VatTreatmentService } from './vat-treatment.service';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -122,6 +123,18 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
           },
         },
         { provide: SubscriberStatusTransitionService, useValue: {} },
+        {
+          provide: SubscriberLifecycleService,
+          useValue: {
+            suspend: jest.fn(),
+            reactivate: jest.fn(),
+            terminate: jest.fn(),
+            cancelSubscriber: jest.fn(),
+            listHistory: jest.fn(),
+            preview: jest.fn(),
+            transitionContract: jest.fn(),
+          },
+        },
         {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },

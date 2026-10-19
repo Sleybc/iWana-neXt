@@ -29,6 +29,8 @@ const CONTRACT: Contract = {
   planId: 'plan-1',
   planSnapshotJson: { name: 'Plan Fibra 300' },
   status: 'ACTIVE',
+  statusReasonCode: null,
+  statusChangedAt: null,
   titularAnonymizedAt: null,
   alias: 'Sede principal',
   installationAddress: 'Calle 1 # 2-3',
@@ -351,21 +353,17 @@ describe('QW6 — acciones pendientes del detalle de contrato', () => {
       ),
     );
   });
-  it('anuncia aria-busy durante la transición', async () => {
-    jest.spyOn(contractsApi, 'suspend').mockImplementation(() => new Promise(() => undefined));
+  it('abre el flujo de ciclo de vida al solicitar una suspensión', async () => {
+    const onOpenLifecycle = jest.fn();
     render(
       <ContractDetailDrawer
         contract={CONTRACT}
         onClose={jest.fn()}
         onReload={jest.fn(async () => undefined)}
+        onOpenLifecycle={onOpenLifecycle}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Suspender' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Suspender' })).toHaveAttribute(
-        'aria-busy',
-        'true',
-      ),
-    );
+    expect(onOpenLifecycle).toHaveBeenCalledWith('SUSPEND', CONTRACT.id);
   });
 });

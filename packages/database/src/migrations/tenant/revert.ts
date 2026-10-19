@@ -56,6 +56,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'SubscriberVatResponsibility1530000000000',
   'SubscriberLegalRepresentativeParty1540000000000',
   'FiscalDocumentEncryption1550000000000',
+  'CreateCrmLifecycleChanges1580000000000',
 ];
 
 /** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */

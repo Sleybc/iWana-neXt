@@ -1,7 +1,9 @@
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import { getDataSourceToken } from '@nestjs/typeorm';
-import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {
   PersonType,
   CustomerSegment,
@@ -25,6 +27,7 @@ import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read
 import type { Request } from 'express';
 import { TenantContext } from '@iwana/db';
 import { SubscribersBlockedTitularGuard } from '../guards/subscribers-blocked-titular.guard';
+import { SubscriberLifecycleService } from '../subscriber-lifecycle.service';
 
 /**
  * Tests unitarios del SubscribersController.
@@ -74,6 +77,14 @@ describe('SubscribersController', () => {
   };
   const effectivePermissionsServiceMock = {
     getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]),
+  };
+  const subscriberLifecycleServiceMock = {
+    cancelSubscriber: jest.fn().mockResolvedValue({
+      id: 'sub-001',
+      status: SubscriberStatus.CANCELLED,
+      fromStatus: SubscriberStatus.PROSPECT,
+    }),
+    listHistory: jest.fn().mockResolvedValue({ data: [], meta: {} }),
   };
   const mockRequest = { ip: '127.0.0.1', headers: { 'user-agent': 'test-agent' } } as Request;
 
@@ -144,6 +155,8 @@ describe('SubscribersController', () => {
     jest.clearAllMocks();
     privacyMarksReadPortMock.activeMarks.mockResolvedValue({});
     effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([]);
+    subscriberLifecycleServiceMock.cancelSubscriber.mockClear();
+    subscriberLifecycleServiceMock.listHistory.mockClear();
     subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -155,6 +168,7 @@ describe('SubscribersController', () => {
           provide: EffectivePermissionsService,
           useValue: effectivePermissionsServiceMock,
         },
+        { provide: SubscriberLifecycleService, useValue: subscriberLifecycleServiceMock },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
         { provide: getDataSourceToken(), useValue: dataSourceMock },
       ],
@@ -189,6 +203,50 @@ describe('SubscribersController', () => {
       UserRole.SUPPORT,
       UserRole.ACCOUNTANT,
     ]);
+  });
+
+  it('documenta hasLiveContracts como campo requerido de los resultados de búsqueda', async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [SubscribersController],
+      providers: [
+        { provide: SubscribersService, useValue: subscribersServiceMock },
+        { provide: AuditService, useValue: auditServiceMock },
+        { provide: EffectivePermissionsService, useValue: effectivePermissionsServiceMock },
+        { provide: SubscriberLifecycleService, useValue: subscriberLifecycleServiceMock },
+        { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
+        { provide: getDataSourceToken(), useValue: dataSourceMock },
+      ],
+    }).compile();
+    const app: INestApplication = moduleRef.createNestApplication();
+    await app.init();
+
+    try {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('CRM subscribers test').setVersion('1.0').build(),
+      );
+      const response = document.paths['/crm/subscribers/search']?.post?.responses?.['200'] as
+        | {
+            content?: Record<
+              string,
+              {
+                schema?: {
+                  properties?: Record<
+                    string,
+                    { items?: { required?: string[]; properties?: Record<string, unknown> } }
+                  >;
+                };
+              }
+            >;
+          }
+        | undefined;
+      const itemSchema = response?.content?.['application/json']?.schema?.properties?.data?.items;
+
+      expect(itemSchema?.required).toContain('hasLiveContracts');
+      expect(itemSchema?.properties?.hasLiveContracts).toEqual({ type: 'boolean' });
+    } finally {
+      await app.close();
+    }
   });
 
   // ── POST /crm/subscribers ──
@@ -377,7 +435,9 @@ describe('SubscribersController', () => {
 
   describe('search', () => {
     it('busca suscriptor por NIT', async () => {
-      subscribersServiceMock.search.mockResolvedValue([mockSubscriber]);
+      subscribersServiceMock.search.mockResolvedValue([
+        { ...mockSubscriber, hasLiveContracts: true },
+      ]);
       const user = { ...mockUser, role: UserRole.ADMIN } as JwtPayload;
 
       const result = await controller.search({ nit: '900123456-7' }, user);
@@ -388,6 +448,7 @@ describe('SubscribersController', () => {
         canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toHaveProperty('hasLiveContracts', true);
       expect(result.data[0]).toHaveProperty('email', 'juan@example.com');
       expect(result.data[0]).toHaveProperty('tenantId', 'tenant-001');
       expect(auditServiceMock.log).toHaveBeenCalledWith(
@@ -668,7 +729,7 @@ describe('SubscribersController', () => {
       subscribersServiceMock.transitionStatus.mockResolvedValue(transitionedSubscriber);
 
       const dto = {
-        targetStatus: SubscriberStatus.PROSPECT,
+        targetStatus: SubscriberStatus.PROSPECT as const,
         reason: 'Documentación completa',
       };
 
@@ -683,27 +744,117 @@ describe('SubscribersController', () => {
       expect(result.data.status).toBe(SubscriberStatus.PROSPECT);
     });
 
-    it('transiciona estado sin motivo (opcional)', async () => {
-      const transitionedSubscriber = {
-        ...mockSubscriber,
-        status: SubscriberStatus.ACTIVE,
-      };
+    it('rechaza cambios directos a estados derivados', async () => {
+      const dto = { targetStatus: SubscriberStatus.SUSPENDED as const };
 
-      subscribersServiceMock.transitionStatus.mockResolvedValue(transitionedSubscriber);
+      await expect(controller.transitionStatus('sub-001', dto, mockUser)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'SUBSCRIBER_STATUS_DERIVED' }),
+      });
+      expect(subscribersServiceMock.transitionStatus).not.toHaveBeenCalled();
+    });
+  });
 
-      const dto = {
-        targetStatus: SubscriberStatus.ACTIVE,
-      };
+  // ── GET /crm/subscribers/:id/lifecycle-changes ──
 
-      const result = await controller.transitionStatus('sub-001', dto, mockUser);
+  describe('lifecycleChanges', () => {
+    it('expone la nota a CRM_SUBSCRIBERS_MANAGE para un suscriptor no bloqueado y audita acceso', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      ]);
 
-      expect(subscribersServiceMock.transitionStatus).toHaveBeenCalledWith(
-        'sub-001',
-        SubscriberStatus.ACTIVE,
-        null,
-        'user-001',
+      const result = await withTenantContext(() =>
+        controller.lifecycleChanges('sub-001', mockUser, 1, 10),
       );
-      expect(result.data.status).toBe(SubscriberStatus.ACTIVE);
+
+      expect(result).toEqual({ data: [], meta: {} });
+      expect(subscribersServiceMock.findById).toHaveBeenCalledWith('sub-001', false);
+      expect(subscriberLifecycleServiceMock.listHistory).toHaveBeenCalledWith('sub-001', {
+        page: 1,
+        limit: 10,
+        canReadNote: true,
+      });
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
+      );
+    });
+
+    it('audita y deniega todo el historial bloqueado sin permiso de privacidad aunque tenga gestión CRM', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      ]);
+
+      await expect(
+        withTenantContext(() => controller.lifecycleChanges('sub-001', mockUser)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(subscriberLifecycleServiceMock.listHistory).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'RECORD_ACCESS',
+          entityId: 'sub-001',
+          newValue: expect.objectContaining({ role: UserRole.ADMIN }),
+        }),
+      );
+      expect(auditServiceMock.logWithin).not.toHaveBeenCalled();
+    });
+
+    it('permite historial bloqueado con PRIVACY_READ y audita DATOS_BLOQUEADOS', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+        AccessPermissionKey.PRIVACY_READ,
+      ]);
+
+      await withTenantContext(() => controller.lifecycleChanges('sub-001', mockUser));
+
+      expect(subscribersServiceMock.findById).toHaveBeenCalledWith('sub-001', true);
+      expect(subscriberLifecycleServiceMock.listHistory).toHaveBeenCalledWith('sub-001', {
+        canReadNote: true,
+      });
+      expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'RECORD_ACCESS',
+          entityId: 'sub-001',
+          newValue: expect.objectContaining({
+            privacyMark: 'DATOS_BLOQUEADOS',
+            grantedBy: 'PRIVACY_READ',
+          }),
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('permite historial bloqueado con CRM_BLOCKED_DATA_READ y audita el permiso dedicado', async () => {
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        'party-test-001': ['DATOS_BLOQUEADOS'],
+      });
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+        AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      ]);
+
+      await withTenantContext(() => controller.lifecycleChanges('sub-001', mockUser));
+
+      expect(subscribersServiceMock.findById).toHaveBeenCalledWith('sub-001', true);
+      expect(subscriberLifecycleServiceMock.listHistory).toHaveBeenCalledWith('sub-001', {
+        canReadNote: true,
+      });
+      expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'RECORD_ACCESS',
+          entityId: 'sub-001',
+          newValue: expect.objectContaining({
+            privacyMark: 'DATOS_BLOQUEADOS',
+            grantedBy: 'CRM_BLOCKED_DATA_READ',
+          }),
+        }),
+        expect.any(Object),
+      );
     });
   });
 
@@ -714,7 +865,14 @@ describe('SubscribersController', () => {
       subscribersServiceMock.get360View.mockResolvedValue({
         subscriber: mockSubscriber,
         contacts: [],
-        contracts: [{ id: 'contract-1', alias: 'Servicio sintético', titularAnonymizedAt: null }],
+        contracts: [
+          {
+            id: 'contract-1',
+            status: 'ACTIVE',
+            alias: 'Servicio sintético',
+            titularAnonymizedAt: null,
+          },
+        ],
         quotes: [],
         habeasData: [],
         arcoRequests: [],
@@ -730,13 +888,19 @@ describe('SubscribersController', () => {
       );
       expect(result.data.subscriber).toBeDefined();
       expect(result.data.subscriber.id).toBe('sub-001');
+      expect(result.data.subscriber).toHaveProperty('hasLiveContracts', true);
       expect(result.data.subscriber.partyId).toBe('party-test-001');
       const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
       expect(auditPayload).not.toContain('partyId');
       expect(auditPayload).not.toContain('party-test-001');
       expect(result.data.contacts).toEqual([]);
       expect(result.data.contracts).toMatchObject([
-        { id: 'contract-1', alias: 'Servicio sintético', titularAnonymizedAt: null },
+        {
+          id: 'contract-1',
+          status: 'ACTIVE',
+          alias: 'Servicio sintético',
+          titularAnonymizedAt: null,
+        },
       ]);
       expect(result.data.quotes).toEqual([]);
       expect(result.data.habeasData).toEqual([]);

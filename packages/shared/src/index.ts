@@ -75,5 +75,6 @@ export * from './utils/normalize-document-number';
 // Schemas Zod (frontend)
 export * from './schemas/auth.schema';
 export * from './schemas/subscriber.schema';
+export * from './schemas/lifecycle.schema';
 export * from './schemas/contract.schema';
 export * from './schemas/tax-profile-snapshot';

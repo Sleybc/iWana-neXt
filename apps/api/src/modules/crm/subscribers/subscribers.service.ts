@@ -618,7 +618,7 @@ export class SubscribersService {
     sortBy?: string | undefined;
     sortDir?: 'asc' | 'desc' | undefined;
   }): Promise<{
-    data: Array<Subscriber & { privacyMarks: PrivacyMark[] }>;
+    data: Array<Subscriber & { privacyMarks: PrivacyMark[]; hasLiveContracts: boolean }>;
     total: number;
     meta: ReturnType<typeof buildPageMeta>;
   }> {
@@ -633,6 +633,17 @@ export class SubscribersService {
       schemaName,
       async (qr) => {
         const query = qr.manager.createQueryBuilder(Subscriber, 's');
+        query.addSelect(
+          `EXISTS (
+            SELECT 1
+              FROM contracts lifecycle_contract
+             WHERE lifecycle_contract.subscriber_id = s.id
+               AND lifecycle_contract.tenant_id = s.tenant_id
+               AND lifecycle_contract.deleted_at IS NULL
+               AND lifecycle_contract.status::text IN ('ACTIVE', 'SUSPENDED')
+          )`,
+          's_has_live_contracts',
+        );
 
         if (filters.status) query.andWhere('s.status = :status', { status: filters.status });
         if (filters.personType)
@@ -668,19 +679,33 @@ export class SubscribersService {
         const sortResult = applySort(query, SORTABLE_FIELDS, filters.sortBy, filters.sortDir);
         query.skip((page - 1) * limit).take(limit);
 
-        const [rows, count] = await query.getManyAndCount();
+        const [result, count] = await Promise.all([
+          query.getRawAndEntities(),
+          query.clone().getCount(),
+        ]);
+        const rows = result.entities.map((subscriber, index) => {
+          const value = result.raw[index]?.s_has_live_contracts;
+          const hasLiveContracts = value === true || value === 'true' || value === 't';
+          return Object.assign(subscriber, { hasLiveContracts });
+        });
         return { data: rows, total: count, sortResult };
       },
     );
 
     // Descifrar PII para respuesta
-    const hydratedData = data.map((s) => this.decryptSubscriberFields(s));
+    const hydratedData = data.map((s) =>
+      Object.assign(this.decryptSubscriberFields(s), {
+        hasLiveContracts:
+          (s as Subscriber & { hasLiveContracts?: boolean }).hasLiveContracts === true,
+      }),
+    );
     await this.hydrateLegalRepresentativeDisplayNames(hydratedData, filters.canSeeBlocked);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydratedData.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
     );
     const dataWithMarks = hydratedData.map((subscriber) =>
       Object.assign(subscriber, {
+        hasLiveContracts: subscriber.hasLiveContracts,
         privacyMarks: subscriber.partyId ? (marksByParty?.[subscriber.partyId] ?? []) : [],
       }),
     );
@@ -979,7 +1004,7 @@ export class SubscribersService {
     phone?: string | undefined;
     excludeBlocked?: boolean | undefined;
     canSeeBlocked?: boolean | undefined;
-  }): Promise<Subscriber[]> {
+  }): Promise<Array<Subscriber & { hasLiveContracts: boolean }>> {
     const { schemaName } = TenantContext.getOrThrow();
     const blockedPartyIds = query.excludeBlocked ? await this.getBlockedPartyIds() : [];
 
@@ -1015,16 +1040,35 @@ export class SubscribersService {
       }
 
       qb.where(conditions.join(' AND '), params);
+      qb.addSelect(
+        `EXISTS (
+          SELECT 1
+            FROM contracts lifecycle_contract
+           WHERE lifecycle_contract.subscriber_id = s.id
+             AND lifecycle_contract.tenant_id = s.tenant_id
+             AND lifecycle_contract.deleted_at IS NULL
+             AND lifecycle_contract.status::text IN ('ACTIVE', 'SUSPENDED')
+        )`,
+        's_has_live_contracts',
+      );
       if (blockedPartyIds.length > 0) {
         qb.andWhere('(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))', {
           blockedPartyIds,
         });
       }
-      const results = await qb.take(100).getMany();
-      return results;
+      const result = await qb.take(100).getRawAndEntities();
+      return result.entities.map((subscriber, index) => {
+        const value = result.raw[index]?.s_has_live_contracts;
+        const hasLiveContracts = value === true || value === 'true' || value === 't';
+        return Object.assign(subscriber, { hasLiveContracts });
+      });
     });
 
-    const hydrated = results.map((subscriber) => this.decryptSubscriberFields(subscriber));
+    const hydrated = results.map((subscriber) =>
+      Object.assign(this.decryptSubscriberFields(subscriber), {
+        hasLiveContracts: subscriber.hasLiveContracts,
+      }),
+    );
     await this.hydrateLegalRepresentativeDisplayNames(hydrated, query.canSeeBlocked);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydrated.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),

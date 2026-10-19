@@ -25,6 +25,8 @@ const CONTRACT: Contract = {
   planId: 'plan-1',
   planSnapshotJson: { name: 'Plan Fibra 300' },
   status: 'ACTIVE',
+  statusReasonCode: null,
+  statusChangedAt: null,
   titularAnonymizedAt: null,
   alias: 'Sede principal',
   installationAddress: 'Calle 1 # 2-3',
@@ -135,6 +137,41 @@ describe('ContractCard — cazador de clic exterior en `--z-popover`', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Datos bloqueados');
     expect(screen.queryByText('SENTINEL_PERSONAL')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Acciones del contrato' })).toBeNull();
+  });
+});
+
+describe('ContractCard — historial de suspensión', () => {
+  it('muestra la fecha local y la etiqueta de motivo para una suspensión', () => {
+    render(
+      <ContractCard
+        contract={{
+          ...CONTRACT,
+          status: 'SUSPENDED',
+          statusReasonCode: 'MORA',
+          statusChangedAt: '2026-10-12T10:00:00.000Z',
+        }}
+        onTransition={jest.fn()}
+        onRemove={jest.fn()}
+        onViewDetail={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/^Suspendido el /)).toBeInTheDocument();
+    expect(screen.getByText('Motivo: Mora en el pago')).toBeInTheDocument();
+  });
+
+  it('usa guion si el dato histórico no está disponible', () => {
+    render(
+      <ContractCard
+        contract={{ ...CONTRACT, status: 'SUSPENDED' }}
+        onTransition={jest.fn()}
+        onRemove={jest.fn()}
+        onViewDetail={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Suspendido el —')).toBeInTheDocument();
+    expect(screen.getByText('Motivo: —')).toBeInTheDocument();
   });
 });
 

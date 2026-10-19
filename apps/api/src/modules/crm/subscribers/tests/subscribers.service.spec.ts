@@ -479,6 +479,21 @@ describe('SubscribersService', () => {
       expect(results[0]!.nit).toBe('900123456-7');
     });
 
+    it('search exacta calcula contratos vigentes desde la fila cruda', async () => {
+      const subscriber = Object.assign(buildSubscriber({ nit: '900123456-7' }), {
+        hasLiveContracts: true,
+      });
+      const query = mockSearchResults([subscriber]);
+
+      const results = await service.search({ nit: '900123456-7' });
+
+      expect(query.addSelect).toHaveBeenCalledWith(
+        expect.stringContaining("status::text IN ('ACTIVE', 'SUSPENDED')"),
+        's_has_live_contracts',
+      );
+      expect(results[0]).toMatchObject({ hasLiveContracts: true });
+    });
+
     it('search sin parámetros retorna array vacío', async () => {
       mockSearchResults([]);
       const results = await service.search({});
@@ -550,11 +565,11 @@ describe('SubscribersService', () => {
       try {
         const where = jest.fn().mockReturnThis();
         const take = jest.fn().mockReturnThis();
-        const getMany = jest.fn().mockResolvedValue([]);
+        const getRawAndEntities = jest.fn().mockResolvedValue({ entities: [], raw: [] });
         mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
           callback({
             manager: {
-              createQueryBuilder: () => ({ where, take, getMany }),
+              createQueryBuilder: () => ({ where, take, addSelect: jest.fn(), getRawAndEntities }),
             },
           }),
         );
@@ -613,11 +628,13 @@ describe('SubscribersService', () => {
     it('escapa %, _ y backslash para búsqueda literal con ILIKE', async () => {
       const chainable: Record<string, jest.Mock> = {};
       chainable.andWhere = jest.fn().mockReturnThis();
+      chainable.addSelect = jest.fn().mockReturnThis();
       chainable.orderBy = jest.fn().mockReturnThis();
       chainable.addOrderBy = jest.fn().mockReturnThis();
       chainable.skip = jest.fn().mockReturnThis();
       chainable.take = jest.fn().mockReturnThis();
-      chainable.getManyAndCount = jest.fn().mockResolvedValue([[], 0]);
+      chainable.getRawAndEntities = jest.fn().mockResolvedValue({ entities: [], raw: [] });
+      chainable.clone = jest.fn().mockReturnValue({ getCount: jest.fn().mockResolvedValue(0) });
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({ manager: { createQueryBuilder: () => chainable } }),
       );
@@ -632,12 +649,14 @@ describe('SubscribersService', () => {
 
     it('aplica en conjunto filtros de estado, tipo, segmento, estrato y búsqueda libre', async () => {
       const query = {
+        addSelect: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+        getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
+        clone: jest.fn().mockReturnValue({ getCount: jest.fn().mockResolvedValue(0) }),
       };
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({ manager: { createQueryBuilder: () => query } }),
@@ -669,14 +688,21 @@ describe('SubscribersService', () => {
     });
 
     it('excluye parties con marca activa de la búsqueda libre y adjunta marcas al resultado', async () => {
-      const allowedSubscriber = buildSubscriber({ partyId: 'party-allowed-test' });
+      const allowedSubscriber = Object.assign(buildSubscriber({ partyId: 'party-allowed-test' }), {
+        hasLiveContracts: true,
+      });
       const query = {
+        addSelect: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         addOrderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
-        getManyAndCount: jest.fn().mockResolvedValue([[allowedSubscriber], 1]),
+        getRawAndEntities: jest.fn().mockResolvedValue({
+          entities: [allowedSubscriber],
+          raw: [{ s_has_live_contracts: true }],
+        }),
+        clone: jest.fn().mockReturnValue({ getCount: jest.fn().mockResolvedValue(1) }),
       };
       const privacyMarksReadPort = {
         partyIdsWithActiveMark: jest.fn().mockResolvedValue(['party-blocked-test']),
@@ -695,6 +721,11 @@ describe('SubscribersService', () => {
         { blockedPartyIds: ['party-blocked-test'] },
       );
       expect(result.data[0]?.privacyMarks).toEqual([]);
+      expect(result.data[0]?.hasLiveContracts).toBe(true);
+      expect(query.addSelect).toHaveBeenCalledWith(
+        expect.stringContaining("status::text IN ('ACTIVE', 'SUSPENDED')"),
+        's_has_live_contracts',
+      );
     });
   });
 
@@ -703,8 +734,9 @@ describe('SubscribersService', () => {
       const query = {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([]),
+        getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
       };
       const privacyMarksReadPort = {
         partyIdsWithActiveMark: jest.fn().mockResolvedValue(['party-blocked-test']),
@@ -1728,11 +1760,19 @@ describe('SubscribersService', () => {
     // Mock encadenado para QueryBuilder: .createQueryBuilder().andWhere().andWhere()...orderBy().skip().take().getManyAndCount()
     const chainable: Record<string, any> = {};
     chainable.andWhere = () => chainable;
+    chainable.addSelect = () => chainable;
     chainable.orderBy = () => chainable;
     chainable.addOrderBy = () => chainable;
     chainable.skip = () => chainable;
     chainable.take = () => chainable;
-    chainable.getManyAndCount = async () => [subscribers, total];
+    chainable.getRawAndEntities = async () => ({
+      entities: subscribers,
+      raw: subscribers.map((subscriber) => ({
+        s_has_live_contracts:
+          (subscriber as Subscriber & { hasLiveContracts?: boolean }).hasLiveContracts ?? false,
+      })),
+    });
+    chainable.clone = () => ({ getCount: async () => total });
     chainable.getMany = async () => subscribers;
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
@@ -1748,12 +1788,18 @@ describe('SubscribersService', () => {
    * Mock para búsqueda por hash (search method).
    * El search usa .where() en lugar de .andWhere() encadenado.
    */
-  function mockSearchResults(subscribers: Subscriber[]): void {
+  function mockSearchResults(subscribers: Array<Subscriber & { hasLiveContracts?: boolean }>) {
     const chainable: Record<string, any> = {};
     chainable.where = () => chainable;
     chainable.andWhere = () => chainable;
+    chainable.addSelect = jest.fn(() => chainable);
     chainable.take = () => chainable;
-    chainable.getMany = async () => subscribers;
+    chainable.getRawAndEntities = async () => ({
+      entities: subscribers,
+      raw: subscribers.map((subscriber) => ({
+        s_has_live_contracts: subscriber.hasLiveContracts ?? false,
+      })),
+    });
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
@@ -1762,6 +1808,7 @@ describe('SubscribersService', () => {
         },
       }),
     );
+    return chainable;
   }
 
   // ── buildProvisioningReadiness ──

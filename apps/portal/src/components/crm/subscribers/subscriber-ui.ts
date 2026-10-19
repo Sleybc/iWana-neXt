@@ -179,10 +179,10 @@ export const STRATUM_OPTIONS = [1, 2, 3, 4, 5, 6].map((value) => ({
 }));
 
 export const ALLOWED_TRANSITIONS: Record<SubscriberStatus, SubscriberStatus[]> = {
-  LEAD: [SubscriberStatus.PROSPECT, SubscriberStatus.CANCELLED],
-  PROSPECT: [SubscriberStatus.ACTIVE, SubscriberStatus.SUSPENDED, SubscriberStatus.CANCELLED],
-  ACTIVE: [SubscriberStatus.SUSPENDED, SubscriberStatus.CANCELLED],
-  SUSPENDED: [SubscriberStatus.ACTIVE, SubscriberStatus.CANCELLED],
+  LEAD: [SubscriberStatus.PROSPECT],
+  PROSPECT: [],
+  ACTIVE: [],
+  SUSPENDED: [],
   CANCELLED: [],
 };
 

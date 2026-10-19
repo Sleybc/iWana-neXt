@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ConflictException,
   Delete,
   ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  Headers,
   Inject,
   NotFoundException,
   Param,
@@ -43,6 +45,7 @@ import {
   VatResponsibility,
   UserRole,
   type PrivacyMark,
+  type TransitionStatusPayload,
 } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -59,10 +62,7 @@ import { evaluateSubscriberFiscalCompleteness } from './subscriber-fiscal-comple
 import { CreateSubscriberDto, CreateSubscriberSchema } from './dto/create-subscriber.dto';
 import { UpdateSubscriberDto, UpdateSubscriberSchema } from './dto/update-subscriber.dto';
 import { Subscriber } from './entities/subscriber.entity';
-import {
-  TransitionSubscriberStatusDto,
-  TransitionSubscriberStatusSchema,
-} from './dto/transition-subscriber-status.dto';
+import { TransitionSubscriberStatusSchema } from './dto/transition-subscriber-status.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
 import { AuditService } from '../../audit/audit.service';
@@ -74,6 +74,8 @@ import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
+import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
+import { ContractStatus } from '../enums/contract-status.enum';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -100,6 +102,7 @@ export class SubscribersController {
     private readonly subscribersService: SubscribersService,
     private readonly auditService: AuditService,
     private readonly effectivePermissionsService: EffectivePermissionsService,
+    private readonly subscriberLifecycleService: SubscriberLifecycleService,
     @Inject(IPrivacyMarksReadPort) private readonly privacyMarksReadPort: IPrivacyMarksReadPort,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
@@ -266,6 +269,7 @@ export class SubscribersController {
               'businessName',
               'commercialName',
               'createdAt',
+              'hasLiveContracts',
             ],
             properties: {
               id: { type: 'string', format: 'uuid' },
@@ -320,6 +324,7 @@ export class SubscribersController {
               businessName: { type: 'string', nullable: true },
               commercialName: { type: 'string', nullable: true },
               createdAt: { type: 'string', format: 'date-time' },
+              hasLiveContracts: { type: 'boolean' },
               documentNumber: { type: 'string' },
               nit: { type: 'string' },
               nitVerificationDigit: { type: 'string' },
@@ -529,24 +534,118 @@ export class SubscribersController {
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Transición de estado del suscriptor' })
+  @ApiBody({
+    schema: {
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['targetStatus', 'reasonCode'],
+          properties: {
+            targetStatus: { type: 'string', enum: [SubscriberStatus.CANCELLED] },
+            reasonCode: {
+              type: 'string',
+              enum: [
+                'SOLICITUD_TITULAR',
+                'MORA_PROLONGADA',
+                'TRASLADO_SIN_COBERTURA',
+                'USO_INDEBIDO',
+                'DUPLICADO',
+              ],
+            },
+            note: { type: 'string', maxLength: 500 },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
+          required: ['targetStatus'],
+          properties: {
+            targetStatus: {
+              type: 'string',
+              enum: [
+                SubscriberStatus.LEAD,
+                SubscriberStatus.PROSPECT,
+                SubscriberStatus.ACTIVE,
+                SubscriberStatus.SUSPENDED,
+              ],
+            },
+            reason: { type: 'string', maxLength: 255 },
+          },
+        },
+      ],
+    },
+  })
   async transitionStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodBodyValidationPipe(TransitionSubscriberStatusSchema))
-    dto: TransitionSubscriberStatusDto,
+    dto: TransitionStatusPayload,
     @CurrentUser() user: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
-    const subscriber = await this.subscribersService.transitionStatus(
-      id,
-      dto.targetStatus,
-      dto.reason ?? null,
-      user.sub,
-    );
+    let subscriber: Subscriber;
+    if (
+      dto.targetStatus === SubscriberStatus.ACTIVE ||
+      dto.targetStatus === SubscriberStatus.SUSPENDED
+    ) {
+      throw new ConflictException({
+        code: 'SUBSCRIBER_STATUS_DERIVED',
+        message:
+          'El estado se deriva de los servicios. Usa la acción de ciclo de vida correspondiente.',
+      });
+    }
+    if (dto.targetStatus === SubscriberStatus.CANCELLED) {
+      await this.subscriberLifecycleService.cancelSubscriber(id, dto, user.sub, idempotencyKey);
+      subscriber = await this.subscribersService.findById(id, readAccess.canSeeBlocked);
+    } else {
+      subscriber = await this.subscribersService.transitionStatus(
+        id,
+        dto.targetStatus,
+        dto.reason ?? null,
+        user.sub,
+      );
+    }
     const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
     const blocked = this.isBlocked({ ...subscriber, privacyMarks });
     if (blocked) await this.auditRecordAccess(id, user, true, readAccess.grantedBy);
     return {
       data: this.sanitizeResponse(subscriber, privacyMarks, readAccess.canSeeBlocked),
+    };
+  }
+
+  @Get(':id/lifecycle-changes')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
+  @ApiOperation({ summary: 'Consultar el historial de cambios de ciclo de vida' })
+  @ApiQuery({ name: 'page', required: false, type: Number, minimum: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100 })
+  async lifecycleChanges(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('page', CrmListPagePipe) page?: number,
+    @Query('limit', CrmListLimitPipe) limit?: number,
+  ) {
+    const readAccess = await this.resolveBlockedReadAccess(user.sub);
+    const subscriber = await this.subscribersService.findById(id, readAccess.canSeeBlocked);
+    const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
+    const blocked = this.isBlocked({ ...subscriber, privacyMarks });
+    await this.auditRecordAccess(id, user, blocked, readAccess.grantedBy);
+    if (blocked && !readAccess.canSeeBlocked) {
+      throw new ForbiddenException({
+        code: 'BLOCKED_DATA_READ_FORBIDDEN',
+        message: 'No tiene permiso para consultar el historial de un titular con datos bloqueados.',
+      });
+    }
+    const canReadNote =
+      readAccess.permissions.has(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE) &&
+      (!blocked || readAccess.canSeeBlocked);
+    return {
+      ...(await this.subscriberLifecycleService.listHistory(id, {
+        ...(page !== undefined ? { page } : {}),
+        ...(limit !== undefined ? { limit } : {}),
+        canReadNote,
+      })),
     };
   }
 
@@ -574,14 +673,19 @@ export class SubscribersController {
     const blocked = this.isBlocked(enrichedSubscriber);
     await this.auditRecordAccess(id, user, blocked, readAccess.grantedBy);
     const privacyRestricted = blocked && !readAccess.canSeeBlocked;
+    const hasLiveContracts = view360.contracts.some(
+      ({ status }) => status === ContractStatus.ACTIVE || status === ContractStatus.SUSPENDED,
+    );
+    const subscriberResponse = this.sanitizeResponse(
+      enrichedSubscriber,
+      privacyMarks,
+      readAccess.canSeeBlocked,
+    );
+    subscriberResponse.hasLiveContracts = hasLiveContracts;
     return {
       data: {
         ...view360,
-        subscriber: this.sanitizeResponse(
-          enrichedSubscriber,
-          privacyMarks,
-          readAccess.canSeeBlocked,
-        ),
+        subscriber: subscriberResponse,
         contracts: view360.contracts,
         expedienteSummary: privacyRestricted
           ? this.redactExpedienteSummary(view360.expedienteSummary)
@@ -667,18 +771,19 @@ export class SubscribersController {
 
   private async resolveBlockedReadAccess(actorId: string): Promise<{
     canSeeBlocked: boolean;
+    permissions: ReadonlySet<string>;
     grantedBy?: 'PRIVACY_READ' | 'CRM_BLOCKED_DATA_READ';
   }> {
     const permissions = new Set(
       await this.effectivePermissionsService.getEffectivePermissionsForUser(actorId),
     );
     if (permissions.has(AccessPermissionKey.PRIVACY_READ)) {
-      return { canSeeBlocked: true, grantedBy: 'PRIVACY_READ' };
+      return { canSeeBlocked: true, grantedBy: 'PRIVACY_READ', permissions };
     }
     if (permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)) {
-      return { canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ' };
+      return { canSeeBlocked: true, grantedBy: 'CRM_BLOCKED_DATA_READ', permissions };
     }
-    return { canSeeBlocked: false };
+    return { canSeeBlocked: false, permissions };
   }
 
   private async getPrivacyMarks(partyId: string | null): Promise<PrivacyMark[]> {

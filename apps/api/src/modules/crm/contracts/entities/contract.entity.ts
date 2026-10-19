@@ -44,6 +44,12 @@ export class Contract {
   @Column({ type: 'enum', enum: ContractStatus, name: 'status', default: ContractStatus.DRAFT })
   status: ContractStatus;
 
+  @Column({ type: 'varchar', length: 40, name: 'status_reason_code', nullable: true })
+  statusReasonCode: string | null;
+
+  @Column({ type: 'timestamptz', name: 'status_changed_at', nullable: true })
+  statusChangedAt: Date | null;
+
   /** Alias visible del servicio. Obligatorio; autogenerado si no se provee. */
   @Column({ type: 'varchar', length: 120, name: 'alias' })
   alias: string;

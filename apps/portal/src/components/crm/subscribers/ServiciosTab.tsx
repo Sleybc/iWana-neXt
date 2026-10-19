@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, FileText, Plus, Wifi } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Plus, Wifi } from 'lucide-react';
 import { AccessPermissionKey } from '@iwana/shared';
+import type { LifecycleAction } from '@iwana/shared';
 import type { Contract, ContractStatus, Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
 import { ContractCard } from './ContractCard';
@@ -10,6 +11,7 @@ import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
 import { usePermissions } from '@/components/access-control/permissions-context';
+import { PortalAlert } from '@/components/shared/portal-ui';
 
 // ── Tipos y constantes ────────────────────────────────────────────────────────
 
@@ -36,11 +38,12 @@ const CHIP_STATUSES: Record<FilterChip, ContractStatus[] | null> = {
 interface ServiciosTabProps {
   subscriber360: Subscriber360Response;
   onReload: () => Promise<void>;
+  onOpenLifecycle: (action: LifecycleAction, contractId?: string) => void;
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
+export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: ServiciosTabProps) {
   const { subscriber, contracts, expedienteSummary } = subscriber360;
   const { hasPermission } = usePermissions();
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
@@ -51,7 +54,11 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
-  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [transitionError, setTransitionError] = useState<{
+    title: string;
+    description: string;
+    action?: 'dismiss' | 'draft';
+  } | null>(null);
 
   // Resolución puntual por ID (sin soft-cap / prefetch de catálogo).
   const [planNameById, setPlanNameById] = useState<Record<string, string>>({});
@@ -166,16 +173,47 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
     action: 'activate' | 'suspend' | 'reactivate' | 'terminate' | 'archive',
   ) => {
     setTransitionError(null);
+    if (action === 'suspend' || action === 'reactivate' || action === 'terminate') {
+      onOpenLifecycle(
+        action === 'suspend' ? 'SUSPEND' : action === 'reactivate' ? 'REACTIVATE' : 'TERMINATE',
+        id,
+      );
+      return;
+    }
+
     try {
       await contractsApi[action](id);
       await onReload();
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.code === 'SUBSCRIBER_CANCELLED') {
+        setTransitionError({
+          title: 'No puedes crear ni activar servicios',
+          description: 'No puedes crear ni activar servicios para un suscriptor cancelado.',
+          action: 'dismiss',
+        });
+        return;
+      }
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.code === 'SUBSCRIBER_SUSPENDED_FOR_DELINQUENCY'
+      ) {
+        setTransitionError({
+          title: 'No puedes activar este servicio',
+          description:
+            'No puedes activar este servicio porque el suscriptor está suspendido por mora. Puedes guardarlo como borrador.',
+          action: 'draft',
+        });
+        return;
+      }
       const message = err instanceof ApiError ? err.message : 'Error al cambiar estado.';
-      setTransitionError(
-        action === 'activate' && err instanceof ApiError && err.status === 422
-          ? `${message} Revisa el concepto de cobro del plan y sus complementos en el catálogo.`
-          : message,
-      );
+      setTransitionError({
+        title: 'No fue posible cambiar el servicio',
+        description:
+          action === 'activate' && err instanceof ApiError && err.status === 422
+            ? `${message} Revisa el concepto de cobro del plan y sus complementos en el catálogo.`
+            : message,
+      });
     }
   };
 
@@ -185,7 +223,10 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       await contractsApi.remove(id);
       await onReload();
     } catch (err) {
-      setTransitionError(err instanceof ApiError ? err.message : 'Error al eliminar contrato.');
+      setTransitionError({
+        title: 'No fue posible eliminar el borrador',
+        description: err instanceof ApiError ? err.message : 'Error al eliminar contrato.',
+      });
     }
   };
 
@@ -199,20 +240,32 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
+      {subscriber.hasLiveContracts === false && (
+        <PortalAlert
+          variant="info"
+          title="Sin servicios vigentes"
+          description="Este suscriptor no tiene servicios activos ni suspendidos."
+        />
+      )}
       {/* Banner de error de transición */}
       {transitionError && (
-        <div className="flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
-          <span>{transitionError}</span>
-          <button
-            type="button"
-            onClick={() => setTransitionError(null)}
-            className="ml-auto text-red-400 hover:text-red-600"
-            aria-label="Cerrar error"
-          >
-            ✕
-          </button>
-        </div>
+        <PortalAlert
+          variant="error"
+          live="assertive"
+          title={transitionError.title}
+          description={transitionError.description}
+          action={
+            transitionError.action ? (
+              <button
+                type="button"
+                className="min-h-11 rounded-lg px-3 text-sm font-semibold text-iwana-secondary-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:text-iwana-secondary-300"
+                onClick={() => setTransitionError(null)}
+              >
+                {transitionError.action === 'draft' ? 'Dejar como borrador' : 'Cerrar'}
+              </button>
+            ) : undefined
+          }
+        />
       )}
 
       {/* Estado vacío — sin contratos, expediente con plan de interés */}
@@ -246,10 +299,6 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
       {emptyNoExpediente && !privacyRestricted && (
         <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-gray-200 bg-white py-16 text-center dark:border-dark-border dark:bg-dark-surface-2">
           <Wifi className="mb-3 h-10 w-10 text-gray-300 dark:text-gray-400" aria-hidden />
-          <p className="font-medium text-gray-700 dark:text-gray-300">Sin servicios contratados</p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Este suscriptor aún no tiene contratos registrados.
-          </p>
           <button
             type="button"
             onClick={() => setShowCreateDialog(true)}
@@ -386,6 +435,10 @@ export function ServiciosTab({ subscriber360, onReload }: ServiciosTabProps) {
           onClose={() => setSelectedContract(null)}
           onReload={async () => {
             await onReload();
+          }}
+          onOpenLifecycle={(action, contractId) => {
+            setSelectedContract(null);
+            onOpenLifecycle(action, contractId);
           }}
           onRemove={async (id) => {
             await handleRemove(id);

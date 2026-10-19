@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey, PersonType } from '@iwana/shared';
+import type { LifecycleAction, TransitionStatusPayload } from '@iwana/shared';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
 import { BriefcaseBusiness, Pencil, X } from 'lucide-react';
 import type { CreateSubscriberPayload, UpdateSubscriberPayload } from '@iwana/shared';
@@ -21,6 +22,7 @@ import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDi
 import { SubscriberTabsContainer } from './SubscriberTabsContainer';
 import { TaxProfileBlock } from './TaxProfileBlock';
 import { ServiciosTab } from './ServiciosTab';
+import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
 import { CUSTOMER_SEGMENT_META, PERSON_TYPE_META, SUBSCRIBER_STATUS_META } from './subscriber-ui';
 
 interface SubscriberDetailClientProps {
@@ -41,6 +43,7 @@ function toSentenceCase(value: string): string {
 }
 
 const SUBSCRIBER_TAB_IDS = ['vista-general', 'datos', 'tributario', 'servicios', 'cumplimiento'];
+const INITIAL_LOADING_SKELETON_DELAY_MS = 300;
 
 export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const params = useParams<{ id: string }>();
@@ -56,8 +59,16 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const subscriberId = typeof params?.id === 'string' ? params.id : '';
   const [subscriber360, setSubscriber360] = useState<Subscriber360Response | null>(null);
   const [loading, setLoading] = useState(mode === 'detail');
+  const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [statusDialogMode, setStatusDialogMode] = useState<'advance' | 'cancel'>('advance');
+  const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
+  const [lifecycleContractId, setLifecycleContractId] = useState<string | null>(null);
+  const [lifecycleSuccess, setLifecycleSuccess] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
   const [activeSubscriberTab, setActiveSubscriberTab] = useState(urlTab);
   const selectSubscriberTab = useCallback(
     (tabId: string) => {
@@ -91,6 +102,19 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     billingCycle: '',
     fiscalName: '',
   });
+
+  useEffect(() => {
+    if (!loading) {
+      setShowLoadingSkeleton(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(
+      () => setShowLoadingSkeleton(true),
+      INITIAL_LOADING_SKELETON_DELAY_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [loading]);
 
   const loadSubscriber = useCallback(
     async (preserveContent = false) => {
@@ -369,7 +393,15 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         id: 'servicios',
         label: 'Servicios',
         content: subscriber360 ? (
-          <ServiciosTab subscriber360={subscriber360} onReload={loadSubscriber} />
+          <ServiciosTab
+            subscriber360={subscriber360}
+            onReload={loadSubscriber}
+            onOpenLifecycle={(action, contractId) => {
+              setLifecycleAction(action);
+              setLifecycleContractId(contractId ?? null);
+              setLifecycleSuccess(null);
+            }}
+          />
         ) : null,
       },
       {
@@ -445,6 +477,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           marks={subscriber360?.privacyMarks ?? []}
           canReadPrivacy={canReadPrivacy}
           onChangeStatus={() => setDialogOpen(true)}
+          onOpenLifecycle={() => undefined}
+          onCancelSubscriber={() => undefined}
           onAddContact={() => selectSubscriberTab('datos')}
         />
         <PortalAlert
@@ -458,9 +492,18 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
 
   return (
     <div className="space-y-6 pb-6">
-      {loading && (
+      {loading && showLoadingSkeleton && (
         <div className="space-y-4" aria-busy="true">
           <PortalSkeletonBlock className="h-24 rounded-2xl" />
+          <section className="space-y-3" aria-label="Servicios">
+            <p className="text-sm text-gray-600 dark:text-gray-300" role="status">
+              Cargando servicios…
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PortalSkeletonBlock className="h-28 rounded-xl" />
+              <PortalSkeletonBlock className="h-28 rounded-xl" />
+            </div>
+          </section>
           <PortalSkeletonBlock className="h-64 rounded-2xl" />
         </div>
       )}
@@ -478,9 +521,22 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           <div>
             <SubscriberHeader
               subscriber={subscriber}
+              contracts={subscriber360?.contracts ?? []}
               marks={subscriber360?.privacyMarks ?? []}
               canReadPrivacy={canReadPrivacy}
-              onChangeStatus={() => setDialogOpen(true)}
+              onChangeStatus={() => {
+                setStatusDialogMode('advance');
+                setDialogOpen(true);
+              }}
+              onOpenLifecycle={(action) => {
+                setLifecycleAction(action);
+                setLifecycleContractId(null);
+                setLifecycleSuccess(null);
+              }}
+              onCancelSubscriber={() => {
+                setStatusDialogMode('cancel');
+                setDialogOpen(true);
+              }}
               onAddContact={() => selectSubscriberTab('datos')}
               onCompleteFiscalData={() => selectSubscriberTab('datos')}
             />
@@ -496,21 +552,67 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
 
           <SubscriberStatusTransitionDialog
             currentStatus={subscriber.status}
+            mode={statusDialogMode}
             open={dialogOpen}
             onOpenChange={setDialogOpen}
+            onGoToServices={() => selectSubscriberTab('servicios')}
             onAddContact={() => {
               setDialogOpen(false);
               selectSubscriberTab('datos');
             }}
             onCompleteFiscalData={() => selectSubscriberTab('datos')}
-            onTransition={async (targetStatus, reason) => {
-              await subscribersApi.transitionStatus(subscriber.id, {
-                targetStatus,
-                ...(reason ? { reason } : {}),
-              });
-              await loadSubscriber();
+            onTransition={async (payload: TransitionStatusPayload) => {
+              await subscribersApi.transitionStatus(subscriber.id, payload);
+              await loadSubscriber(true);
             }}
           />
+          {lifecycleAction && subscriber360 && (
+            <SubscriberLifecycleDialog
+              open={Boolean(lifecycleAction)}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setLifecycleAction(null);
+                  setLifecycleContractId(null);
+                }
+              }}
+              subscriberId={subscriber.id}
+              contracts={subscriber360.contracts}
+              action={lifecycleAction}
+              contractId={lifecycleContractId}
+              onGoToServices={() => selectSubscriberTab('servicios')}
+              onSuccess={async (action, affectedCount) => {
+                await loadSubscriber(true);
+                const subject = affectedCount === 1 ? 'servicio' : 'servicios';
+                const verb = affectedCount === 1 ? 'suspendió' : 'suspendieron';
+                const title =
+                  action === 'SUSPEND'
+                    ? 'Servicios suspendidos'
+                    : action === 'REACTIVATE'
+                      ? 'Servicios reactivados'
+                      : affectedCount === 1
+                        ? 'Servicio terminado'
+                        : 'Servicios terminados';
+                const description =
+                  action === 'SUSPEND'
+                    ? `Se ${verb} ${affectedCount} ${subject}.`
+                    : action === 'REACTIVATE'
+                      ? affectedCount === 1
+                        ? 'Se reactivó 1 servicio.'
+                        : `Se reactivaron ${affectedCount} servicios.`
+                      : affectedCount === 1
+                        ? 'Se terminó 1 servicio.'
+                        : `Se terminaron ${affectedCount} servicios.`;
+                setLifecycleSuccess({ title, description });
+              }}
+            />
+          )}
+          {lifecycleSuccess && (
+            <PortalAlert
+              variant="success"
+              title={lifecycleSuccess.title}
+              description={lifecycleSuccess.description}
+            />
+          )}
         </>
       )}
     </div>

@@ -27,6 +27,7 @@ import {
 } from '@iwana/shared';
 import type { Contract, ContractStatus } from '@/lib/api-client';
 import { ApiError, contractsApi } from '@/lib/api-client';
+import type { LifecycleAction } from '@iwana/shared';
 import { PortalAlert, interactiveFocusClassName } from '@/components/shared/portal-ui';
 import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
@@ -173,6 +174,7 @@ interface ContractDetailDrawerProps {
   canReadPrivacy?: boolean;
   onClose: () => void;
   onReload: () => Promise<void>;
+  onOpenLifecycle?: (action: LifecycleAction, contractId: string) => void;
   onRemove?: (id: string) => Promise<void>;
 }
 
@@ -285,6 +287,7 @@ export function ContractDetailDrawer({
   canReadPrivacy = false,
   onClose,
   onReload,
+  onOpenLifecycle = () => undefined,
   onRemove,
 }: ContractDetailDrawerProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -313,7 +316,11 @@ export function ContractDetailDrawer({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
-  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [transitionError, setTransitionError] = useState<{
+    title: string;
+    description: string;
+    action?: 'close' | 'draft';
+  } | null>(null);
 
   const statusMeta = CONTRACT_STATUS_META[contract.status];
   const planName = (contract.planSnapshotJson?.name as string | undefined) ?? contract.planId;
@@ -521,6 +528,14 @@ export function ContractDetailDrawer({
   // ── Transiciones de estado ───────────────────────────────────────────────
 
   const handleTransition = async (action: TransitionAction) => {
+    if (action === 'suspend' || action === 'reactivate' || action === 'terminate') {
+      onClose();
+      onOpenLifecycle(
+        action === 'suspend' ? 'SUSPEND' : action === 'reactivate' ? 'REACTIVATE' : 'TERMINATE',
+        contract.id,
+      );
+      return;
+    }
     setTransitioning(true);
     setTransitionError(null);
     try {
@@ -528,7 +543,29 @@ export function ContractDetailDrawer({
       await onReload();
       onClose();
     } catch (err) {
-      setTransitionError(err instanceof ApiError ? err.message : 'Error al cambiar estado.');
+      if (err instanceof ApiError && err.status === 409 && err.code === 'SUBSCRIBER_CANCELLED') {
+        setTransitionError({
+          title: 'No puedes crear ni activar servicios',
+          description: 'No puedes crear ni activar servicios para un suscriptor cancelado.',
+          action: 'close',
+        });
+      } else if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.code === 'SUBSCRIBER_SUSPENDED_FOR_DELINQUENCY'
+      ) {
+        setTransitionError({
+          title: 'No puedes activar este servicio',
+          description:
+            'No puedes activar este servicio porque el suscriptor está suspendido por mora. Puedes guardarlo como borrador.',
+          action: 'draft',
+        });
+      } else {
+        setTransitionError({
+          title: 'No fue posible cambiar el servicio',
+          description: err instanceof ApiError ? err.message : 'Error al cambiar estado.',
+        });
+      }
     } finally {
       setTransitioning(false);
     }
@@ -633,9 +670,9 @@ export function ContractDetailDrawer({
           ) : (
             <>
               {/* Errores */}
-              {(saveError ?? transitionError) && (
+              {saveError && (
                 <div className="flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                  <span className="flex-1">{saveError ?? transitionError}</span>
+                  <span className="flex-1">{saveError}</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -648,6 +685,26 @@ export function ContractDetailDrawer({
                     <X className="h-3.5 w-3.5" aria-hidden />
                   </button>
                 </div>
+              )}
+              {transitionError && (
+                <PortalAlert
+                  variant="error"
+                  live="assertive"
+                  title={transitionError.title}
+                  description={transitionError.description}
+                  action={
+                    transitionError.action ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="min-h-11"
+                        onClick={() => setTransitionError(null)}
+                      >
+                        {transitionError.action === 'draft' ? 'Dejar como borrador' : 'Cerrar'}
+                      </Button>
+                    ) : undefined
+                  }
+                />
               )}
 
               {/* ── Plan contratado ───────────────────────────────────────────── */}

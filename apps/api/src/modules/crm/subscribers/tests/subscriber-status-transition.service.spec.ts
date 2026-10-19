@@ -1,4 +1,4 @@
-import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import {
@@ -33,11 +33,13 @@ jest.mock('@iwana/db', () => {
 describe('SubscriberStatusTransitionService', () => {
   let service: SubscriberStatusTransitionService;
   let auditService: { log: jest.Mock };
+  let loggerLog: jest.SpyInstance;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockTenantContextGetOrThrow.mockReturnValue({ schemaName: 'tenant_test' });
     auditService = { log: jest.fn().mockResolvedValue(undefined) };
+    loggerLog = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,6 +52,8 @@ describe('SubscriberStatusTransitionService', () => {
 
     service = module.get<SubscriberStatusTransitionService>(SubscriberStatusTransitionService);
   });
+
+  afterEach(() => loggerLog.mockRestore());
 
   // ── canTransition ──
 
@@ -191,6 +195,36 @@ describe('SubscriberStatusTransitionService', () => {
   // ── transition (integración con DB mock) ──
 
   describe('transition', () => {
+    it('LEAD → PROSPECT conserva reason en retorno sin persistirlo ni registrarlo', async () => {
+      const subscriber = buildSubscriber({ status: SubscriberStatus.LEAD });
+      mockSubscriber(subscriber);
+      const privateReason = 'Texto de motivo sintético y privado';
+
+      const result = await service.transition(
+        subscriber.id,
+        SubscriberStatus.PROSPECT,
+        privateReason,
+        'actor-1',
+      );
+
+      expect(result).toEqual({
+        fromStatus: SubscriberStatus.LEAD,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: privateReason,
+      });
+      expect(auditService.log).toHaveBeenCalledTimes(1);
+      const auditPayload = JSON.stringify(auditService.log.mock.calls[0]?.[0]);
+      expect(auditPayload).not.toContain(privateReason);
+      expect(auditService.log.mock.calls[0]?.[0]).toMatchObject({
+        newValue: {
+          fromStatus: SubscriberStatus.LEAD,
+          toStatus: SubscriberStatus.PROSPECT,
+        },
+      });
+      expect(auditService.log.mock.calls[0]?.[0].newValue).not.toHaveProperty('reason');
+      expect(JSON.stringify(loggerLog.mock.calls)).not.toContain(privateReason);
+    });
+
     it('no-op si ya está en el estado destino', async () => {
       const subscriber = buildSubscriber({ status: SubscriberStatus.LEAD });
       mockSubscriber(subscriber);

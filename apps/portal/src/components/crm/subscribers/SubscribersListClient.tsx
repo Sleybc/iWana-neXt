@@ -752,6 +752,11 @@ function SubscribersListClientInner() {
                                 },
                               )}
                             </p>
+                            {subscriber.hasLiveContracts === false && (
+                              <p className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+                                Sin servicios vigentes
+                              </p>
+                            )}
                             <PrivacyMarks marks={subscriber.privacyMarks ?? []} />
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                               {subscriber.privacyRestricted

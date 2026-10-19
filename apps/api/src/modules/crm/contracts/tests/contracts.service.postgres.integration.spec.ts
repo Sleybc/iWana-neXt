@@ -35,6 +35,7 @@ import { ContractsController } from '../contracts.controller';
 import { MediaController } from '../../../media/media.controller';
 import { ContractsService } from '../contracts.service';
 import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
+import { SubscriberLifecycleService } from '../../subscribers/subscriber-lifecycle.service';
 import { Contract } from '../entities/contract.entity';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
@@ -269,6 +270,18 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
       controllers: [ContractsController, MediaController],
       providers: [
         ContractsService,
+        {
+          provide: SubscriberLifecycleService,
+          useValue: {
+            transitionContract: jest.fn(),
+            preview: jest.fn(),
+            suspend: jest.fn(),
+            reactivate: jest.fn(),
+            terminate: jest.fn(),
+            cancelSubscriber: jest.fn(),
+            listHistory: jest.fn(),
+          },
+        },
         SubscriberFiscalCompletenessService,
         AuditService,
         // Mismo interceptor global que AppModule: la prueba debe cubrir la ruta de auditoría

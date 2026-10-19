@@ -1,4 +1,8 @@
-import { encryptAes256Gcm, parseEncryptionKeyHex } from '../common/crypto/aes-gcm.util';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  parseEncryptionKeyHex,
+} from '../common/crypto/aes-gcm.util';
 import { EncryptedColumnTarget } from '../common/crypto/reencrypt-aes.targets';
 import { ReencryptDbPort } from '../common/crypto/reencrypt-aes.orchestrator';
 import {
@@ -93,6 +97,7 @@ describe('reencrypt-aes PII inventory and runner', () => {
     expect(names).toEqual(
       expect.arrayContaining([
         'subscribers.whatsapp_encrypted',
+        'crm_lifecycle_changes.note_encrypted',
         'party.document_number',
         'party_contact.value_encrypted',
         'data_subject_requests.requester_name_encrypted',
@@ -130,6 +135,35 @@ describe('reencrypt-aes PII inventory and runner', () => {
     expect(() => loadMfaToPiiKeys(config, MFA_KEY, MFA_PREVIOUS_KEY)).toThrow(
       /PII_ENCRYPTION_KEY debe ser distinta/u,
     );
+  });
+
+  it('recifra una nota vacía de PII previa sin incluir ciphertext en el reporte', async () => {
+    const previousCiphertext = encryptAes256Gcm('', PII_PREVIOUS_KEY);
+    const lifecycleTarget = PII_ENCRYPTED_TARGETS.find(
+      (candidate) =>
+        candidate.table === 'crm_lifecycle_changes' && candidate.column === 'note_encrypted',
+    );
+    expect(lifecycleTarget).toBeDefined();
+    const db = new MemoryDb([
+      {
+        table: 'crm_lifecycle_changes',
+        column: 'note_encrypted',
+        rows: [{ id: 'change-1', value: previousCiphertext }],
+      },
+    ]);
+
+    const report = await runMfaToPii(db, {
+      mode: 'apply',
+      keys,
+      targets: lifecycleTarget ? [lifecycleTarget] : [],
+    });
+
+    expect(report.totals).toMatchObject({ candidates: 1, reencrypted: 1, decryptErrors: 0 });
+    expect(db.updates).toHaveLength(1);
+    expect(db.updates[0]?.table).toBe('crm_lifecycle_changes');
+    expect(db.updates[0]?.value).not.toBe(previousCiphertext);
+    expect(decryptAes256Gcm(db.updates[0]!.value, PII_KEY)).toBe('');
+    expect(formatMfaToPiiReport(report)).not.toContain(previousCiphertext);
   });
 
   it('dry-run no escribe, aplica MFA→PII por lotes, conserva NULL e idempotencia', async () => {

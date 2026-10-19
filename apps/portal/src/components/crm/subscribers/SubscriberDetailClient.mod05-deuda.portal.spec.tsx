@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   CustomerSegment,
@@ -8,8 +8,8 @@ import {
   VatResponsibility,
   VatTreatment,
 } from '@iwana/shared';
-import type { Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
-import { subscribersApi } from '@/lib/api-client';
+import type { Contract, Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
+import { contractsApi, subscribersApi } from '@/lib/api-client';
 import { SubscriberDetailClient } from './SubscriberDetailClient';
 
 jest.mock('next/navigation', () => ({
@@ -68,6 +68,7 @@ function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberR
     activatedAt: null,
     manualOverrideReason: null,
     status: SubscriberStatus.ACTIVE,
+    hasLiveContracts: false,
     externalId: null,
     createdBy: null,
     createdAt: '2026-10-18T10:00:00.000Z',
@@ -81,11 +82,14 @@ function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberR
   };
 }
 
-function buildSubscriber360(subscriber: SubscriberRecord): Subscriber360Response {
+function buildSubscriber360(
+  subscriber: SubscriberRecord,
+  contracts: Contract[] = [],
+): Subscriber360Response {
   return {
     subscriber,
     contacts: [],
-    contracts: [],
+    contracts,
     quotes: [],
     habeasData: [],
     arcoRequests: [],
@@ -95,9 +99,89 @@ function buildSubscriber360(subscriber: SubscriberRecord): Subscriber360Response
   };
 }
 
+function buildSuspendedContract(): Contract {
+  return {
+    id: 'contract-suspended',
+    tenantId: 'tenant-synthetic',
+    quoteId: null,
+    subscriberId: 'subscriber-synthetic',
+    planId: 'plan-synthetic',
+    planSnapshotJson: { name: 'Plan sintético' },
+    status: 'SUSPENDED',
+    statusReasonCode: 'MORA',
+    statusChangedAt: '2026-10-18T10:00:00.000Z',
+    titularAnonymizedAt: null,
+    alias: 'Punto sintético',
+    installationAddress: 'Dirección sintética',
+    installationCity: 'Bogotá',
+    installationDepartment: 'Cundinamarca',
+    installationPostalCode: null,
+    installationNotes: null,
+    customerSegment: null,
+    serviceUsage: null,
+    installationStratum: null,
+    stratumEvidenceMediaId: null,
+    vatSnapshot: null,
+    additionalProductIds: [],
+    additionalServiceIds: [],
+    paymentMethod: null,
+    billingCycle: null,
+    fiscalName: null,
+    fiscalDocument: null,
+    fiscalAddress: null,
+    startDate: null,
+    endDate: null,
+    createdAt: '2026-10-15T10:00:00.000Z',
+    updatedAt: '2026-10-18T10:00:00.000Z',
+    deletedAt: null,
+  };
+}
+
 describe('SubscriberDetailClient — MOD05 deuda CD-04', () => {
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it('CA-UX-LC-P0-01: no muestra el skeleton si la ficha carga antes de 300 ms', async () => {
+    jest.spyOn(subscribersApi, 'get360').mockResolvedValue(buildSubscriber360(buildSubscriber()));
+
+    render(<SubscriberDetailClient mode="detail" />);
+
+    expect(screen.queryByText('Cargando servicios…')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Titular sintético Apellido sintético' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Cargando servicios…')).not.toBeInTheDocument();
+  });
+
+  it('CA-UX-LC-P0-01: muestra el skeleton de servicios al superar 300 ms de carga', async () => {
+    jest.useFakeTimers();
+    let resolveGet360: (response: Subscriber360Response) => void = () => undefined;
+    jest.spyOn(subscribersApi, 'get360').mockReturnValue(
+      new Promise<Subscriber360Response>((resolve) => {
+        resolveGet360 = resolve;
+      }),
+    );
+
+    render(<SubscriberDetailClient mode="detail" />);
+
+    expect(screen.queryByText('Cargando servicios…')).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(299));
+    expect(screen.queryByText('Cargando servicios…')).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando servicios…');
+    expect(screen.getByText('Cargando servicios…').closest('[aria-busy="true"]')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Suspender servicios' })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveGet360(buildSubscriber360(buildSubscriber()));
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole('heading', { name: 'Titular sintético Apellido sintético' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Cargando servicios…')).not.toBeInTheDocument();
   });
 
   it('muestra los datos fiscales autorizados en el detalle restringido y conserva el bloqueo personal', async () => {
@@ -168,5 +252,69 @@ describe('SubscriberDetailClient — MOD05 deuda CD-04', () => {
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Datos bloqueados' })).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe('SubscriberDetailClient — reactivación individual de un servicio', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('abre motivo y vista previa desde la tarjeta y aplica solo el contrato elegido', async () => {
+    const user = userEvent.setup();
+    const contract = buildSuspendedContract();
+    const preview = jest.spyOn(subscribersApi, 'previewServices').mockResolvedValue({
+      action: 'REACTIVATE',
+      affectedContracts: [{ id: contract.id, fromStatus: 'SUSPENDED', toStatus: 'ACTIVE' }],
+      subscriberStatus: { from: SubscriberStatus.SUSPENDED, to: SubscriberStatus.ACTIVE },
+      hasLiveContracts: true,
+      warnings: [],
+    });
+    const reactivate = jest
+      .spyOn(contractsApi, 'reactivate')
+      .mockResolvedValue({ ...contract, status: 'ACTIVE' });
+    const bulkReactivate = jest
+      .spyOn(subscribersApi, 'reactivateServices')
+      .mockResolvedValue(undefined);
+    jest
+      .spyOn(subscribersApi, 'get360')
+      .mockResolvedValue(
+        buildSubscriber360(
+          buildSubscriber({ status: SubscriberStatus.SUSPENDED, hasLiveContracts: true }),
+          [contract],
+        ),
+      );
+
+    render(<SubscriberDetailClient mode="detail" />);
+
+    await user.click(await screen.findByRole('tab', { name: 'Servicios' }));
+    await user.click(screen.getByRole('button', { name: 'Acciones del contrato' }));
+    await user.click(screen.getByRole('button', { name: 'Reactivar' }));
+
+    const lifecycleDialog = await screen.findByRole('dialog');
+    expect(
+      within(lifecycleDialog).getByRole('heading', { name: 'Reactivar servicios' }),
+    ).toBeInTheDocument();
+    expect(within(lifecycleDialog).getByText('Se incluirá 1 servicio')).toBeInTheDocument();
+    expect(within(lifecycleDialog).getByText('Punto sintético')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Motivo *' }));
+    await user.click(await screen.findByRole('option', { name: 'Pago registrado' }));
+    await user.click(screen.getByRole('button', { name: 'Ver vista previa' }));
+    await screen.findByRole('heading', { name: 'Revisa el cambio' });
+
+    expect(preview).toHaveBeenCalledWith('subscriber-synthetic', {
+      action: 'REACTIVATE',
+      reasonCode: 'PAGO_REGISTRADO',
+      contractIds: [contract.id],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Reactivar 1 servicio' }));
+
+    await waitFor(() =>
+      expect(reactivate).toHaveBeenCalledWith(contract.id, {
+        reasonCode: 'PAGO_REGISTRADO',
+      }),
+    );
+    expect(bulkReactivate).not.toHaveBeenCalled();
   });
 });

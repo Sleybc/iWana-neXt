@@ -65,6 +65,7 @@ type SubscriberWithDecryptedFields = Subscriber & {
   phone?: string | null;
   altContactPhone?: string | null;
   privacyMarks?: PrivacyMark[];
+  hasLiveContracts?: boolean;
   anonymizedAt?: Date | null;
   anonymizedRequestId?: string | null;
 };
@@ -119,6 +120,7 @@ export function projectSubscriberForList(
     createdAt: subscriber.createdAt.toISOString(),
     updatedAt: toIsoOrNull(subscriber.updatedAt) ?? subscriber.createdAt.toISOString(),
     contactPending: !hasRealContact(subscriber),
+    hasLiveContracts: subscriber.hasLiveContracts === true,
     privacyMarks: subscriber.privacyMarks ?? [],
   };
 

@@ -47,6 +47,7 @@ function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberR
     activatedAt: null,
     manualOverrideReason: null,
     status: 'ACTIVE' as SubscriberRecord['status'],
+    hasLiveContracts: false,
     externalId: null,
     createdBy: null,
     createdAt: '2026-10-01T00:00:00.000Z',

@@ -1,7 +1,11 @@
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ForbiddenException } from '@nestjs/common';
+import { AccessPermissionKey } from '@iwana/shared';
 import { ContractsController } from '../contracts.controller';
 import { ContractsService } from '../contracts.service';
 import { ContractStatus } from '../../enums/contract-status.enum';
@@ -10,6 +14,7 @@ import { EffectivePermissionsService } from '../../../access-control/services/ef
 import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
 import { SKIP_AUDIT_KEY } from '../../../audit/decorators/skip-audit.decorator';
 import { ContractsBlockedTitularGuard } from '../guards/contracts-blocked-titular.guard';
+import { PermissionsGuard } from '../../../access-control/guards/permissions.guard';
 
 /** Factory de contrato mínimo para tests */
 function buildContract(overrides: Partial<Contract> = {}): Contract {
@@ -67,6 +72,7 @@ describe('ContractsController', () => {
     suspend: jest.fn(),
     reactivate: jest.fn(),
     terminate: jest.fn(),
+    previewSubscriberServices: jest.fn(),
     archive: jest.fn(),
   };
   const blockedTitularGuard = new ContractsBlockedTitularGuard(
@@ -390,22 +396,32 @@ describe('ContractsController', () => {
 
     it('suspend retorna contrato con status SUSPENDED', async () => {
       serviceMock.suspend.mockResolvedValue(buildContract({ status: ContractStatus.SUSPENDED }));
-      const result = await controller.suspend('ctr-1', { sub: 'actor-1' } as JwtPayload);
-      expect(serviceMock.suspend).toHaveBeenCalledWith('ctr-1', 'actor-1');
+      const command = { reasonCode: 'MORA' } as const;
+      const result = await controller.suspend('ctr-1', command, { sub: 'actor-1' } as JwtPayload);
+      expect(serviceMock.suspend).toHaveBeenCalledWith('ctr-1', command, 'actor-1', undefined);
       expect(result.data.status).toBe(ContractStatus.SUSPENDED);
     });
 
     it('reactivate retorna contrato con status ACTIVE', async () => {
       serviceMock.reactivate.mockResolvedValue(buildContract({ status: ContractStatus.ACTIVE }));
-      const result = await controller.reactivate('ctr-1', { sub: 'actor-1' } as JwtPayload);
-      expect(serviceMock.reactivate).toHaveBeenCalledWith('ctr-1', 'actor-1');
+      const command = { reasonCode: 'PAGO_REGISTRADO' } as const;
+      const result = await controller.reactivate('ctr-1', command, {
+        sub: 'actor-1',
+      } as JwtPayload);
+      expect(serviceMock.reactivate).toHaveBeenCalledWith('ctr-1', command, 'actor-1', undefined);
       expect(result.data.status).toBe(ContractStatus.ACTIVE);
     });
 
     it('terminate retorna contrato con status TERMINATED', async () => {
       serviceMock.terminate.mockResolvedValue(buildContract({ status: ContractStatus.TERMINATED }));
-      const result = await controller.terminate('ctr-1', { sub: 'actor-1' } as JwtPayload);
-      expect(serviceMock.terminate).toHaveBeenCalledWith('ctr-1', 'actor-1');
+      const command = { reasonCode: 'SOLICITUD_TITULAR' } as const;
+      const result = await controller.terminate('ctr-1', command, { sub: 'actor-1' } as JwtPayload);
+      expect(serviceMock.terminate).toHaveBeenCalledWith(
+        'ctr-1',
+        { ...command, contractIds: ['ctr-1'] },
+        'actor-1',
+        undefined,
+      );
       expect(result.data.status).toBe(ContractStatus.TERMINATED);
     });
 
@@ -415,6 +431,94 @@ describe('ContractsController', () => {
       expect(serviceMock.archive).toHaveBeenCalledWith('ctr-1', 'actor-1');
       expect(result.data.status).toBe(ContractStatus.ARCHIVED);
     });
+  });
+
+  describe('CA-LC-09 permisos de ciclo de vida', () => {
+    it('devuelve 403 si el actor solo tiene CRM_EXPEDIENTES_MANAGE', async () => {
+      const reflector = new Reflector();
+      const guard = new PermissionsGuard(reflector, {
+        getEffectivePermissionsForUser: jest
+          .fn()
+          .mockResolvedValue([AccessPermissionKey.CRM_EXPEDIENTES_MANAGE]),
+      } as never);
+      const actor = { sub: 'actor-test', type: 'tenant' };
+      const transitions = ['suspend', 'reactivate', 'terminate'] as const;
+
+      for (const transition of transitions) {
+        const context = {
+          getHandler: () => ContractsController.prototype[transition],
+          getClass: () => ContractsController,
+          switchToHttp: () => ({ getRequest: () => ({ user: actor }) }),
+        };
+        await expect(guard.canActivate(context as never)).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+        await expect(guard.canActivate(context as never)).rejects.toMatchObject({
+          response: { code: 'FORBIDDEN' },
+        });
+      }
+    });
+  });
+
+  it('documenta las rutas y payloads de ciclo de vida en OpenAPI', async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ContractsController],
+      providers: [
+        { provide: ContractsService, useValue: serviceMock },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+      ],
+    }).compile();
+    const app: INestApplication = moduleRef.createNestApplication();
+    await app.init();
+
+    try {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('CRM lifecycle test').setVersion('1.0').build(),
+      );
+      const preview = document.paths['/crm/subscribers/{subscriberId}/services/preview']?.post;
+      const suspend = document.paths['/crm/subscribers/{subscriberId}/services/suspend']?.post;
+      const terminate = document.paths['/crm/contracts/{id}/terminate']?.post;
+      const previewRequestBody = preview?.requestBody as
+        | { content?: Record<string, { schema?: unknown }> }
+        | undefined;
+      const suspendRequestBody = suspend?.requestBody as
+        | { content?: Record<string, { schema?: unknown }> }
+        | undefined;
+      const previewSchema = previewRequestBody?.content?.['application/json']?.schema;
+      const suspendSchema = suspendRequestBody?.content?.['application/json']?.schema;
+
+      expect(preview).toBeDefined();
+      expect(previewSchema).toMatchObject({ oneOf: expect.any(Array) });
+      expect(suspend).toBeDefined();
+      expect(suspendSchema).toMatchObject({
+        type: 'object',
+        required: ['reasonCode'],
+      });
+      expect(terminate).toBeDefined();
+
+      const contractResponse = document.components?.schemas?.ContractResponseDto as
+        | {
+            required?: string[];
+            properties?: Record<string, { nullable?: boolean; maxLength?: number }>;
+          }
+        | undefined;
+      expect(contractResponse?.required).toEqual(
+        expect.arrayContaining(['statusReasonCode', 'statusChangedAt']),
+      );
+      expect(contractResponse?.properties?.statusReasonCode).toMatchObject({
+        nullable: true,
+        maxLength: 40,
+      });
+      expect(contractResponse?.properties?.statusChangedAt).toMatchObject({
+        nullable: true,
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   describe('remove', () => {

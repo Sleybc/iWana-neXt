@@ -134,6 +134,31 @@ export class AssetLoanService {
     };
   }
 
+  /**
+   * Devuelve solo los contratos seleccionados que conservan un comodato abierto.
+   * Tenant y schema se obtienen del contexto autenticado del request.
+   */
+  async findOpenContractIds(contractIds: string[]): Promise<string[]> {
+    if (contractIds.length === 0) {
+      return [];
+    }
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = await qr.manager
+        .createQueryBuilder(AssetLoanAssignment, 'loan')
+        .select('loan.contractRefId', 'contractId')
+        .where('loan.tenantId = :tenantId', { tenantId })
+        .andWhere('loan.removedAt IS NULL')
+        .andWhere('loan.contractRefId IN (:...contractIds)', { contractIds })
+        .distinct(true)
+        .getRawMany<{ contractId: string }>();
+
+      return rows.map(({ contractId }) => contractId);
+    });
+  }
+
   async list(
     query: ListLoansQueryInput,
   ): Promise<{ data: AssetLoanRecord[]; total: number; page: number; limit: number }> {

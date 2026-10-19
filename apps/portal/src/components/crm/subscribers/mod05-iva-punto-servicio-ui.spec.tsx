@@ -112,6 +112,8 @@ function contractFixture(overrides: Partial<Contract> = {}): Contract {
     planId: 'plan-1',
     planSnapshotJson: { name: 'Fibra 300' },
     status: 'ACTIVE',
+    statusReasonCode: null,
+    statusChangedAt: null,
     titularAnonymizedAt: null,
     alias: 'Sede principal',
     installationAddress: 'Calle 1 # 2-3',

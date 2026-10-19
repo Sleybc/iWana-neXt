@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Headers,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -29,7 +30,22 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { AccessPermissionKey, PlatformRole, UserRole, type ListResponse } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  PlatformRole,
+  SubscriberStatus,
+  UserRole,
+  LIFECYCLE_REASON_CODES_BY_ACTION,
+  LifecycleSuspendCommandSchema,
+  LifecycleReactivateCommandSchema,
+  LifecycleTerminateCommandSchema,
+  LifecyclePreviewRequestSchema,
+  type LifecyclePreviewRequest,
+  type LifecycleSuspendCommand,
+  type LifecycleReactivateCommand,
+  type LifecycleTerminateCommand,
+  type ListResponse,
+} from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ListMetaDto } from '../../../common/pagination';
@@ -52,8 +68,68 @@ import { Contract } from './entities/contract.entity';
 import { RejectClientStratumEvidenceGuard } from './guards/reject-client-stratum-evidence.guard';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
+import { ZodBodyValidationPipe } from '../pipes/zod-body-validation.pipe';
 
 const rejectClientStratumEvidenceGuard = new RejectClientStratumEvidenceGuard();
+
+function lifecycleBodySchema(
+  reasonCodes: readonly string[],
+  contractIds: 'none' | 'optional' | 'required',
+) {
+  return {
+    type: 'object' as const,
+    additionalProperties: false,
+    required: ['reasonCode', ...(contractIds === 'required' ? ['contractIds'] : [])],
+    properties: {
+      reasonCode: { type: 'string', enum: [...reasonCodes] },
+      note: { type: 'string', maxLength: 500 },
+      ...(contractIds !== 'none'
+        ? {
+            contractIds: {
+              type: 'array',
+              minItems: 1,
+              uniqueItems: true,
+              items: { type: 'string', format: 'uuid' },
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+function lifecyclePreviewBodySchema() {
+  const option = (
+    action: 'SUSPEND' | 'REACTIVATE' | 'TERMINATE',
+    reasonCodes: readonly string[],
+    contractIds: 'optional' | 'required',
+  ) => ({
+    type: 'object',
+    additionalProperties: false,
+    required: ['action', 'reasonCode', ...(contractIds === 'required' ? ['contractIds'] : [])],
+    properties: {
+      action: { type: 'string', enum: [action] },
+      reasonCode: { type: 'string', enum: [...reasonCodes] },
+      note: { type: 'string', maxLength: 500 },
+      ...(contractIds === 'required' || action !== 'TERMINATE'
+        ? {
+            contractIds: {
+              type: 'array',
+              minItems: 1,
+              uniqueItems: true,
+              items: { type: 'string', format: 'uuid' },
+            },
+          }
+        : {}),
+    },
+  });
+  return {
+    oneOf: [
+      option('SUSPEND', LIFECYCLE_REASON_CODES_BY_ACTION.suspend, 'optional'),
+      option('REACTIVATE', LIFECYCLE_REASON_CODES_BY_ACTION.reactivate, 'optional'),
+      option('TERMINATE', LIFECYCLE_REASON_CODES_BY_ACTION.terminate, 'required'),
+    ],
+  };
+}
 
 @ApiTags('contracts')
 @ApiBearerAuth('access-token')
@@ -66,6 +142,154 @@ export class ContractsController {
   ) {}
 
   // ── Endpoints anidados bajo /crm/subscribers/:subscriberId ─────────────────
+
+  @Post('crm/subscribers/:subscriberId/services/preview')
+  @GuardBlockedTitular('params.subscriberId')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @SkipAudit()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Previsualizar el efecto de un cambio de ciclo de vida' })
+  @ApiBody({ schema: lifecyclePreviewBodySchema() })
+  @ApiResponse({
+    status: 200,
+    description: 'Efecto calculado sin escribir cambios',
+    schema: {
+      type: 'object',
+      required: ['data'],
+      properties: {
+        data: {
+          type: 'object',
+          required: [
+            'action',
+            'affectedContracts',
+            'subscriberStatus',
+            'hasLiveContracts',
+            'warnings',
+          ],
+          properties: {
+            action: { type: 'string', enum: ['SUSPEND', 'REACTIVATE', 'TERMINATE'] },
+            affectedContracts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'fromStatus', 'toStatus'],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  fromStatus: { type: 'string', enum: ['ACTIVE', 'SUSPENDED', 'TERMINATED'] },
+                  toStatus: { type: 'string', enum: ['ACTIVE', 'SUSPENDED', 'TERMINATED'] },
+                },
+              },
+            },
+            subscriberStatus: {
+              type: 'object',
+              required: ['from', 'to'],
+              properties: {
+                from: { type: 'string', enum: Object.values(SubscriberStatus) },
+                to: { type: 'string', enum: Object.values(SubscriberStatus) },
+              },
+            },
+            hasLiveContracts: { type: 'boolean' },
+            warnings: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['code', 'contractIds'],
+                properties: {
+                  code: { type: 'string', enum: ['EQUIPMENT_ON_LOAN', 'OPEN_WITHDRAWAL_ORDERS'] },
+                  contractIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  async previewSubscriberServices(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Body(new ZodBodyValidationPipe(LifecyclePreviewRequestSchema)) dto: LifecyclePreviewRequest,
+  ) {
+    const data = await this.contractsService.previewSubscriberServices(subscriberId, dto);
+    return { data };
+  }
+
+  @Post('crm/subscribers/:subscriberId/services/suspend')
+  @GuardBlockedTitular('params.subscriberId')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @SkipAudit()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Suspender servicios de un suscriptor' })
+  @ApiBody({ schema: lifecycleBodySchema(LIFECYCLE_REASON_CODES_BY_ACTION.suspend, 'optional') })
+  @ApiResponse({
+    status: 409,
+    description: 'El estado del servicio cambió o no hay servicios elegibles',
+  })
+  async suspendSubscriberServices(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Body(new ZodBodyValidationPipe(LifecycleSuspendCommandSchema)) dto: LifecycleSuspendCommand,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const data = await this.contractsService.suspendSubscriberServices(
+      subscriberId,
+      dto,
+      actor.sub,
+      idempotencyKey,
+    );
+    return { data };
+  }
+
+  @Post('crm/subscribers/:subscriberId/services/reactivate')
+  @GuardBlockedTitular('params.subscriberId')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @SkipAudit()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reactivar servicios de un suscriptor' })
+  @ApiBody({ schema: lifecycleBodySchema(LIFECYCLE_REASON_CODES_BY_ACTION.reactivate, 'optional') })
+  @ApiResponse({ status: 409, description: 'El servicio cambió o el suscriptor está cancelado' })
+  async reactivateSubscriberServices(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Body(new ZodBodyValidationPipe(LifecycleReactivateCommandSchema))
+    dto: LifecycleReactivateCommand,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const data = await this.contractsService.reactivateSubscriberServices(
+      subscriberId,
+      dto,
+      actor.sub,
+      idempotencyKey,
+    );
+    return { data };
+  }
+
+  @Post('crm/subscribers/:subscriberId/services/terminate')
+  @GuardBlockedTitular('params.subscriberId')
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @SkipAudit()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Terminar servicios seleccionados de un suscriptor' })
+  @ApiBody({ schema: lifecycleBodySchema(LIFECYCLE_REASON_CODES_BY_ACTION.terminate, 'required') })
+  @ApiResponse({ status: 409, description: 'El estado de uno o más servicios cambió' })
+  async terminateSubscriberServices(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Body(new ZodBodyValidationPipe(LifecycleTerminateCommandSchema))
+    dto: LifecycleTerminateCommand,
+    @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    const data = await this.contractsService.terminateSubscriberServices(
+      subscriberId,
+      dto,
+      actor.sub,
+      idempotencyKey,
+    );
+    return { data };
+  }
 
   @Post('crm/subscribers/:subscriberId/contracts')
   @GuardBlockedTitular('params.subscriberId')
@@ -410,46 +634,63 @@ export class ContractsController {
 
   @Post('crm/contracts/:id/suspend')
   @GuardBlockedTitular('params.id')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Suspender contrato (ACTIVE → SUSPENDED)' })
+  @ApiBody({ schema: lifecycleBodySchema(LIFECYCLE_REASON_CODES_BY_ACTION.suspend, 'none') })
   async suspend(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(LifecycleSuspendCommandSchema.omit({ contractIds: true })))
+    dto: Omit<LifecycleSuspendCommand, 'contractIds'>,
     @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<{ data: Contract }> {
-    const data = await this.contractsService.suspend(id, actor.sub);
+    const data = await this.contractsService.suspend(id, dto, actor.sub, idempotencyKey);
     return { data };
   }
 
   @Post('crm/contracts/:id/reactivate')
   @GuardBlockedTitular('params.id')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reactivar contrato (SUSPENDED → ACTIVE)' })
+  @ApiBody({ schema: lifecycleBodySchema(LIFECYCLE_REASON_CODES_BY_ACTION.reactivate, 'none') })
   async reactivate(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(LifecycleReactivateCommandSchema.omit({ contractIds: true })))
+    dto: Omit<LifecycleReactivateCommand, 'contractIds'>,
     @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<{ data: Contract }> {
-    const data = await this.contractsService.reactivate(id, actor.sub);
+    const data = await this.contractsService.reactivate(id, dto, actor.sub, idempotencyKey);
     return { data };
   }
 
   @Post('crm/contracts/:id/terminate')
   @GuardBlockedTitular('params.id')
-  @Roles(UserRole.ADMIN, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
-  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
+  @Roles(UserRole.ADMIN, UserRole.SUPPORT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
   @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Terminar contrato (ACTIVE | SUSPENDED → TERMINATED)' })
+  @ApiBody({ schema: lifecycleBodySchema(LIFECYCLE_REASON_CODES_BY_ACTION.terminate, 'none') })
   async terminate(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(LifecycleTerminateCommandSchema.omit({ contractIds: true })))
+    dto: Omit<LifecycleTerminateCommand, 'contractIds'>,
     @CurrentUser() actor: JwtPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<{ data: Contract }> {
-    const data = await this.contractsService.terminate(id, actor.sub);
+    const data = await this.contractsService.terminate(
+      id,
+      { ...dto, contractIds: [id] },
+      actor.sub,
+      idempotencyKey,
+    );
     return { data };
   }
 

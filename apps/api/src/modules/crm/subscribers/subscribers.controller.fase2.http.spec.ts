@@ -24,6 +24,7 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
+import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
@@ -229,6 +230,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
       controllers: [SubscribersController],
       providers: [
         { provide: SubscribersService, useValue: subscribersServiceMock },
+        { provide: SubscriberLifecycleService, useValue: {} },
         { provide: AuditService, useValue: auditMock },
         { provide: EffectivePermissionsService, useValue: effectivePermissionsMock },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },

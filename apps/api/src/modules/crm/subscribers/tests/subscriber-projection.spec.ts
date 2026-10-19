@@ -90,6 +90,7 @@ describe('projectSubscriberForList', () => {
 
   it.each(Object.entries(allowed))('aplica la lista permitida para %s', (role, expected) => {
     const projected = projectSubscriberForList(subscriber, role);
+    expect(projected.hasLiveContracts).toBe(false);
 
     for (const field of [
       'documentNumber',
@@ -168,6 +169,7 @@ describe('projectSubscriberForList', () => {
       'updatedAt',
       'privacyMarks',
       'privacyRestricted',
+      'hasLiveContracts',
       'anonymizedAt',
       'anonymizedRequestId',
       'contactPending',

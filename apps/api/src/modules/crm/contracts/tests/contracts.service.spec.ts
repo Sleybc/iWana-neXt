@@ -20,6 +20,7 @@ import {
   VatConcept,
   VatLegalBasis,
   VatTreatment,
+  type LifecycleTerminateCommand,
 } from '@iwana/shared';
 import { ContractsService } from '../contracts.service';
 import { CONTRACT_PLAN_ID_MAX_LENGTH } from '../utils/contract-plan-id.util';
@@ -33,6 +34,7 @@ import { IPrivacyAuthorizationReadPort } from '../../../privacy/ports/privacy-au
 import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 import { encryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
 import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
+import { SubscriberLifecycleService } from '../../subscribers/subscriber-lifecycle.service';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
 
 const syntheticFiscalCryptoKey = Buffer.from(
@@ -42,6 +44,7 @@ const syntheticFiscalCryptoKey = Buffer.from(
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
+let mockLockedContractStatus = 'DRAFT';
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
@@ -52,7 +55,10 @@ jest.mock('@iwana/db', () => {
       return mockRunInTenantSchema(
         dataSource,
         schemaName,
-        (queryRunner: { manager: Record<string, unknown> }) => {
+        (queryRunner: {
+          manager: Record<string, unknown>;
+          query?: (sql: string, parameters?: unknown[]) => Promise<unknown>;
+        }) => {
           const originalFindOne = queryRunner.manager['findOne'] as
             | ((entity: unknown, options?: { where?: { id?: string } }) => Promise<unknown>)
             | undefined;
@@ -73,6 +79,10 @@ jest.mock('@iwana/db', () => {
                   department: 'Cundinamarca',
                   postalCode: null,
                 };
+            if (entity === Contract && result && typeof result === 'object') {
+              const status = (result as { status?: unknown }).status;
+              if (typeof status === 'string') mockLockedContractStatus = status;
+            }
             if (!result || typeof result !== 'object') return result;
             if (entity !== Subscriber) return result;
             return {
@@ -87,6 +97,22 @@ jest.mock('@iwana/db', () => {
           if (typeof queryRunner.manager['find'] !== 'function') {
             queryRunner.manager['find'] = async () => [];
           }
+          if (typeof queryRunner.manager['save'] !== 'function') {
+            queryRunner.manager['save'] = async (_entity: unknown, entity: unknown) => entity;
+          }
+          if (typeof queryRunner.manager['create'] !== 'function') {
+            queryRunner.manager['create'] = (_entity: unknown, entity: unknown) => entity;
+          }
+          queryRunner.query = async (sql: string, parameters?: unknown[]) => {
+            if (sql.includes('SELECT status::text AS status') && sql.includes('FROM contracts')) {
+              return [{ status: mockLockedContractStatus }];
+            }
+            if (sql.includes('SELECT id FROM subscribers')) {
+              return [{ id: parameters?.[0] ?? 'sub-1' }];
+            }
+            if (sql.includes('FROM crm_lifecycle_changes')) return [];
+            return [];
+          };
           return callback(queryRunner);
         },
       );
@@ -169,10 +195,16 @@ describe('ContractsService', () => {
     }),
     getOrThrow: jest.fn(() => '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
   };
+  const subscriberLifecycleService = {
+    transitionContract: jest.fn().mockResolvedValue(undefined),
+    preview: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockLockedContractStatus = ContractStatus.DRAFT;
     privacyMarksReadPort.activeMarks.mockResolvedValue({});
+    subscriberLifecycleService.transitionContract.mockResolvedValue(undefined);
     configService.get.mockImplementation((key: string, fallback?: unknown) =>
       key === 'STORAGE_DRIVER'
         ? 'minio'
@@ -198,6 +230,7 @@ describe('ContractsService', () => {
         { provide: ConfigService, useValue: configService },
         { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPort },
+        { provide: SubscriberLifecycleService, useValue: subscriberLifecycleService },
       ],
     }).compile();
 
@@ -1671,14 +1704,17 @@ describe('ContractsService', () => {
         'tenant_test',
         contract.planId,
       );
-      expect(auditService.log).toHaveBeenCalledWith({
-        action: AuditAction.UPDATE,
-        entityType: 'Contract',
-        entityId: contract.id,
-        userId: 'actor-1',
-        oldValue: { status: ContractStatus.DRAFT },
-        newValue: { status: ContractStatus.ACTIVE },
-      });
+      expect(auditService.logWithin).toHaveBeenCalledWith(
+        {
+          action: AuditAction.UPDATE,
+          entityType: 'Contract',
+          entityId: contract.id,
+          userId: 'actor-1',
+          oldValue: { status: ContractStatus.DRAFT },
+          newValue: { status: ContractStatus.ACTIVE },
+        },
+        expect.any(Object),
+      );
     });
 
     it('lanza ConflictException si el contrato no está en DRAFT', async () => {
@@ -1740,90 +1776,69 @@ describe('ContractsService', () => {
 
   describe('suspend', () => {
     it('transiciona ACTIVE → SUSPENDED', async () => {
-      const contract = buildContract({ status: ContractStatus.ACTIVE });
-      mockRunInTenantSchema
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { findOne: async () => contract } }),
-        )
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { save: async (_e: unknown, e: Contract) => e } }),
-        );
-
-      const result = await service.suspend('ctr-1');
-      expect(result.status).toBe(ContractStatus.SUSPENDED);
+      const resultContract = buildContract({ status: ContractStatus.SUSPENDED });
+      jest.spyOn(service, 'findOne').mockResolvedValue(resultContract);
+      const result = await service.suspend('ctr-1', { reasonCode: 'MORA' }, 'actor-1');
+      expect(subscriberLifecycleService.transitionContract).toHaveBeenCalledWith(
+        'ctr-1',
+        'SUSPEND',
+        { reasonCode: 'MORA' },
+        'actor-1',
+        undefined,
+      );
+      expect(result).toBe(resultContract);
     });
   });
 
   describe('reactivate', () => {
     it('transiciona SUSPENDED → ACTIVE', async () => {
-      const contract = buildContract({
-        status: ContractStatus.SUSPENDED,
-        serviceUsage: ServiceUsage.NON_RESIDENTIAL,
-      });
-      commercialCatalogPort.getPlanById.mockResolvedValue({
-        id: contract.planId,
-        name: 'Plan',
-        vatConcept: VatConcept.INTERNET_ACCESS,
-        networkType: NetworkType.FIXED,
-      });
-      internetVatResolver.resolve.mockReturnValue({
-        status: 'RESOLVED',
-        treatment: VatTreatment.STANDARD,
-        legalBasis: VatLegalBasis.ET_468,
-        ratePercent: 19,
-        requiresAccountantReview: false,
-      });
-      mockRunInTenantSchema
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { findOne: async () => contract } }),
-        )
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({
-            manager: {
-              findOne: async () => ({
-                id: 'sub-1',
-                tenantId: 'ten-1',
-                personType: PersonType.NATURAL,
-              }),
-            },
-          }),
-        )
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { save: async (_e: unknown, e: Contract) => e } }),
-        );
-
-      const result = await service.reactivate('ctr-1');
-      expect(result.status).toBe(ContractStatus.ACTIVE);
+      const resultContract = buildContract({ status: ContractStatus.ACTIVE });
+      jest.spyOn(service, 'findOne').mockResolvedValue(resultContract);
+      const result = await service.reactivate(
+        'ctr-1',
+        { reasonCode: 'PAGO_REGISTRADO' },
+        'actor-1',
+      );
+      expect(subscriberLifecycleService.transitionContract).toHaveBeenCalledWith(
+        'ctr-1',
+        'REACTIVATE',
+        { reasonCode: 'PAGO_REGISTRADO' },
+        'actor-1',
+        undefined,
+        expect.any(Function),
+      );
+      expect(result).toBe(resultContract);
     });
   });
 
   describe('terminate', () => {
     it('transiciona ACTIVE → TERMINATED', async () => {
-      const contract = buildContract({ status: ContractStatus.ACTIVE });
-      mockRunInTenantSchema
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { findOne: async () => contract } }),
-        )
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { save: async (_e: unknown, e: Contract) => e } }),
-        );
-
-      const result = await service.terminate('ctr-1');
-      expect(result.status).toBe(ContractStatus.TERMINATED);
+      const resultContract = buildContract({ status: ContractStatus.TERMINATED });
+      jest.spyOn(service, 'findOne').mockResolvedValue(resultContract);
+      const command: LifecycleTerminateCommand = {
+        reasonCode: 'SOLICITUD_TITULAR',
+        contractIds: ['ctr-1'],
+      };
+      const result = await service.terminate('ctr-1', command, 'actor-1');
+      expect(subscriberLifecycleService.transitionContract).toHaveBeenCalledWith(
+        'ctr-1',
+        'TERMINATE',
+        command,
+        'actor-1',
+        undefined,
+      );
+      expect(result).toBe(resultContract);
     });
 
     it('transiciona SUSPENDED → TERMINATED', async () => {
-      const contract = buildContract({ status: ContractStatus.SUSPENDED });
-      mockRunInTenantSchema
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { findOne: async () => contract } }),
-        )
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { save: async (_e: unknown, e: Contract) => e } }),
-        );
-
-      const result = await service.terminate('ctr-1');
-      expect(result.status).toBe(ContractStatus.TERMINATED);
+      const resultContract = buildContract({ status: ContractStatus.TERMINATED });
+      jest.spyOn(service, 'findOne').mockResolvedValue(resultContract);
+      const command: LifecycleTerminateCommand = {
+        reasonCode: 'SOLICITUD_TITULAR',
+        contractIds: ['ctr-1'],
+      };
+      const result = await service.terminate('ctr-1', command, 'actor-1');
+      expect(result).toBe(resultContract);
     });
   });
 

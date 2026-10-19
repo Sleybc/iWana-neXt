@@ -127,6 +127,8 @@ export interface SubscriberListItem {
   createdAt: string;
   updatedAt: string;
   contactPending: boolean;
+  /** true si existe al menos un contrato ACTIVE o SUSPENDED. */
+  hasLiveContracts: boolean;
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
   documentNumber?: string;
   nit?: string;
@@ -298,10 +300,36 @@ export const UpdateSubscriberSchema = z.object({
  * Schema Zod para transición de estado del suscriptor.
  * reason es obligatorio para SUSPENDED y CANCELLED (validación en UI).
  */
-export const TransitionSubscriberStatusSchema = z.object({
-  targetStatus: z.nativeEnum(SubscriberStatus),
-  reason: z.string().max(255).optional(),
-});
+export const SUBSCRIBER_CANCELLATION_REASON_CODES = [
+  'SOLICITUD_TITULAR',
+  'MORA_PROLONGADA',
+  'TRASLADO_SIN_COBERTURA',
+  'USO_INDEBIDO',
+  'DUPLICADO',
+] as const;
+
+export const SubscriberCancellationCommandSchema = z
+  .object({
+    targetStatus: z.literal(SubscriberStatus.CANCELLED),
+    reasonCode: z.enum(SUBSCRIBER_CANCELLATION_REASON_CODES),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+export const TransitionSubscriberStatusSchema = z.discriminatedUnion('targetStatus', [
+  SubscriberCancellationCommandSchema,
+  z
+    .object({
+      targetStatus: z.enum([
+        SubscriberStatus.LEAD,
+        SubscriberStatus.PROSPECT,
+        SubscriberStatus.ACTIVE,
+        SubscriberStatus.SUSPENDED,
+      ]),
+      reason: z.string().max(255).optional(),
+    })
+    .strict(),
+]);
 
 // ── Tipos inferidos ──
 
@@ -310,3 +338,4 @@ export type JuridicaSubscriberPayload = z.infer<typeof juridicaSubscriberSchema>
 export type CreateSubscriberPayload = z.infer<typeof CreateSubscriberSchema>;
 export type UpdateSubscriberPayload = z.infer<typeof UpdateSubscriberSchema>;
 export type TransitionStatusPayload = z.infer<typeof TransitionSubscriberStatusSchema>;
+export type SubscriberCancellationCommand = z.infer<typeof SubscriberCancellationCommandSchema>;

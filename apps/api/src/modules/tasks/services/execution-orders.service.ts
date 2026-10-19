@@ -94,6 +94,7 @@ import type {
   LinkExecutionOrderToScheduleInput,
   RescheduleExecutionOrderInput,
 } from '../ports/execution-order-scheduling.port';
+import type { ExecutionOrderReadPort } from '../ports/execution-order-read.port';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
@@ -141,6 +142,15 @@ const LIST_RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRAC
 const EXECUTION_ORDER_LIST_SORTABLE_FIELDS: string[] = [];
 
 const EXECUTION_ORDER_LIST_DEFAULT_LIMIT = 20;
+
+/** Estados que mantienen abierta una OT de retiro para el aviso de MOD05. */
+const OPEN_WITHDRAWAL_ORDER_STATUSES: readonly ExecutionOrderStatus[] = [
+  ExecutionOrderStatus.CREATED,
+  ExecutionOrderStatus.ASSIGNED,
+  ExecutionOrderStatus.EN_ROUTE,
+  ExecutionOrderStatus.IN_PROGRESS,
+  ExecutionOrderStatus.BLOCKED,
+];
 
 /** ADR-068 §Eventos mínimos: solo eventos cuyo owner es MOD11 son redriveables. */
 const REDRIVE_ALLOWED_EVENT_TYPES = new Set<OperationalEventTypeV1>([
@@ -292,7 +302,7 @@ export interface ReverseExecutionOrderItemUsageReceipt {
 }
 
 @Injectable()
-export class ExecutionOrdersService {
+export class ExecutionOrdersService implements ExecutionOrderReadPort {
   private readonly logger = new Logger(ExecutionOrdersService.name);
 
   constructor(
@@ -334,6 +344,31 @@ export class ExecutionOrdersService {
         throw new NotFoundException('OT de ejecución no encontrada');
       }
       return order;
+    });
+  }
+
+  /**
+   * Puerto de lectura MOD11 para MOD05. Devuelve únicamente existencia, sin
+   * exponer datos de la OT. El tenant y schema proceden del JWT verificado vía
+   * TenantContext; el suscriptor solo se usa como parámetro de consulta.
+   */
+  async hasOpenWithdrawalOrders(subscriberId: string): Promise<boolean> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT 1
+           FROM execution_orders
+          WHERE tenant_id = $1
+            AND subscriber_id = $2
+            AND work_type = $3::wfm_work_type
+            AND status = ANY($4::execution_order_status[])
+            AND is_annulled = FALSE
+          LIMIT 1`,
+        [tenantId, subscriberId, WfmWorkType.RETIREMENT, OPEN_WITHDRAWAL_ORDER_STATUSES],
+      )) as unknown[];
+
+      return rows.length > 0;
     });
   }
 

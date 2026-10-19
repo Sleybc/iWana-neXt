@@ -340,6 +340,12 @@ export function CreateContractDialog({
       const fiscalMissingFields = readFiscalDataIncompleteError(err);
       if (fiscalMissingFields) {
         setFiscalMissing(fiscalMissingFields);
+      } else if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        err.code === 'SUBSCRIBER_CANCELLED'
+      ) {
+        setSaveError('No puedes crear ni activar servicios para un suscriptor cancelado.');
       } else if (err instanceof ApiError && err.status === 422) {
         const detail = `${err.message} ${JSON.stringify(err.details ?? '')}`.toLowerCase();
         if (detail.includes('installationstratum')) {

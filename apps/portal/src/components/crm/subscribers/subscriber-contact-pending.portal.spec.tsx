@@ -62,6 +62,7 @@ function subscriberFixture(contactPending: boolean): SubscriberRecord {
     activatedAt: null,
     manualOverrideReason: null,
     status: SubscriberStatus.PROSPECT,
+    hasLiveContracts: false,
     externalId: null,
     createdBy: null,
     createdAt: '2026-10-15T10:00:00.000Z',
@@ -127,6 +128,100 @@ describe('MOD05 E3 contacto pendiente', () => {
     expect(screen.queryByRole('button', { name: 'Cambiar estado' })).toBeNull();
   });
 
+  it('bloquea la cancelación si quedan servicios vigentes y explica la causa', async () => {
+    const user = userEvent.setup();
+    const onCancelSubscriber = jest.fn();
+    render(
+      <SubscriberHeader
+        subscriber={{ ...subscriberFixture(false), hasLiveContracts: true }}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+        onCancelSubscriber={onCancelSubscriber}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Más acciones' }));
+    const explanation = 'Termina primero todos los servicios vigentes para cancelar al suscriptor.';
+    const explanationItem = screen.getByRole('menuitem', { name: explanation });
+    const cancelButton = screen.getByRole('menuitem', { name: 'Cancelar suscriptor' });
+
+    expect(cancelButton).toBeDisabled();
+    expect(cancelButton).toHaveAttribute('aria-describedby', 'subscriber-cancellation-disabled');
+    expect(explanationItem).toBeEnabled();
+    expect(explanationItem).toHaveAttribute('id', 'subscriber-cancellation-disabled');
+    await user.keyboard('{ArrowDown}');
+    await waitFor(() => expect(explanationItem).toHaveFocus());
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    await user.click(cancelButton);
+
+    expect(onCancelSubscriber).not.toHaveBeenCalled();
+  });
+
+  it('deshabilita la acción primaria cuando no hay servicios que suspender', async () => {
+    const onOpenLifecycle = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <SubscriberHeader
+        subscriber={{ ...subscriberFixture(false), status: SubscriberStatus.ACTIVE }}
+        contracts={[]}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+        onOpenLifecycle={onOpenLifecycle}
+      />,
+    );
+
+    const action = screen.getByRole('button', { name: 'Suspender servicios' });
+    expect(action).toBeDisabled();
+    expect(action).toHaveAttribute('aria-describedby', 'subscriber-suspend-disabled');
+    expect(screen.getByText('No hay servicios activos para suspender.')).toBeInTheDocument();
+    await user.click(action);
+    expect(onOpenLifecycle).not.toHaveBeenCalled();
+  });
+
+  it('deshabilita la acción primaria cuando no hay servicios que reactivar', async () => {
+    const onOpenLifecycle = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <SubscriberHeader
+        subscriber={{ ...subscriberFixture(false), status: SubscriberStatus.SUSPENDED }}
+        contracts={[]}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+        onOpenLifecycle={onOpenLifecycle}
+      />,
+    );
+
+    const action = screen.getByRole('button', { name: 'Reactivar servicios' });
+    expect(action).toBeDisabled();
+    expect(action).toHaveAttribute('aria-describedby', 'subscriber-reactivate-disabled');
+    expect(screen.getByText('No hay servicios suspendidos para reactivar.')).toBeInTheDocument();
+    await user.click(action);
+    expect(onOpenLifecycle).not.toHaveBeenCalled();
+  });
+
+  it('usa DropdownMenu y conserva el foco de teclado al abrir y cerrar', async () => {
+    const user = userEvent.setup();
+    render(
+      <SubscriberHeader
+        subscriber={subscriberFixture(false)}
+        onChangeStatus={jest.fn()}
+        onAddContact={jest.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Más acciones' });
+    await user.click(trigger);
+    expect(await screen.findByRole('menu')).toBeInTheDocument();
+    await user.keyboard('{ArrowDown}');
+    const cancellation = screen.getByRole('menuitem', { name: 'Cancelar suscriptor' });
+    await waitFor(() => expect(cancellation).toHaveFocus());
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
   it('CA-E3-02: exige uno de los canales y permite crear con solo teléfono', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
@@ -189,42 +284,21 @@ describe('MOD05 E3 contacto pendiente', () => {
     );
   });
 
-  it('CA-E3-03: el 422 de activación muestra el mensaje y permite agregar contacto', async () => {
-    const user = userEvent.setup();
-    const onAddContact = jest.fn();
-    const onOpenChange = jest.fn();
-    const onTransition = jest
-      .fn()
-      .mockRejectedValue(
-        new ApiError(
-          422,
-          'SUBSCRIBER_CONTACT_REQUIRED',
-          'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
-        ),
-      );
-
+  it('la transición heredada no ofrece activar desde Prospecto', async () => {
     render(
       <SubscriberStatusTransitionDialog
         currentStatus={SubscriberStatus.PROSPECT}
         open
-        onOpenChange={onOpenChange}
-        onAddContact={onAddContact}
-        onTransition={onTransition}
+        onOpenChange={jest.fn()}
+        onAddContact={jest.fn()}
+        onTransition={jest.fn(async () => undefined)}
       />,
     );
 
-    await user.click(screen.getByRole('combobox', { name: 'Estado destino' }));
-    await user.click(screen.getByRole('option', { name: 'Activo' }));
-    await user.click(screen.getByRole('button', { name: 'Confirmar' }));
-
-    expect(
-      await screen.findByText(
-        'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
-      ),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Agregar contacto' }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(onAddContact).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Estado destino' }));
+    expect(screen.queryByRole('option', { name: 'Activo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Suspendido' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Cancelado' })).not.toBeInTheDocument();
   });
 
   it('muestra el mensaje de contacto requerido al intentar guardar sin canales', async () => {

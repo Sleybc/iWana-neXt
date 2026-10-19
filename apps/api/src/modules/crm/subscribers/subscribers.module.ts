@@ -20,21 +20,33 @@ import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { PrivacyModule } from '../../privacy/privacy.module';
 import { SubscribersBlockedTitularGuard } from './guards/subscribers-blocked-titular.guard';
+import { CrmLifecycleChange } from './entities/crm-lifecycle-change.entity';
+import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
+import { InventoryModule } from '../../inventory/inventory.module';
+import { ExecutionOrderSchedulingModule } from '../../tasks/execution-order-scheduling.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscriber, SubscriberTaxProfile, SubscriberTaxAssignment]),
+    TypeOrmModule.forFeature([
+      Subscriber,
+      SubscriberTaxProfile,
+      SubscriberTaxAssignment,
+      CrmLifecycleChange,
+    ]),
     AuditModule,
     PartiesModule,
     TaxationModule,
     AccessControlModule,
     PrivacyModule,
+    InventoryModule,
+    ExecutionOrderSchedulingModule,
   ],
   controllers: [SubscribersController, SubscriberTaxController],
   providers: [
     VatTreatmentService,
     SubscriberFiscalCompletenessService,
     SubscriberStatusTransitionService,
+    SubscriberLifecycleService,
     SubscribersService,
     SubscriberCreationService,
     SubscriberActivationListener,
@@ -50,6 +62,7 @@ import { SubscribersBlockedTitularGuard } from './guards/subscribers-blocked-tit
     VatTreatmentService,
     SubscriberFiscalCompletenessService,
     SubscriberTaxProfileService,
+    SubscriberLifecycleService,
   ],
 })
 export class SubscribersModule {}

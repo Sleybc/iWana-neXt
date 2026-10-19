@@ -119,6 +119,7 @@ function subscriberFixture(overrides: Partial<SubscriberRecord> = {}): Subscribe
     activatedAt: null,
     manualOverrideReason: null,
     status: SubscriberStatus.PROSPECT,
+    hasLiveContracts: false,
     externalId: null,
     createdBy: null,
     createdAt: '2026-10-17T10:00:00.000Z',
@@ -163,6 +164,8 @@ function contractFixture(): Contract {
     planId: 'plan-1',
     planSnapshotJson: { name: 'Plan Fibra 200' },
     status: 'DRAFT',
+    statusReasonCode: null,
+    statusChangedAt: null,
     titularAnonymizedAt: null,
     alias: 'Sede sintética',
     installationAddress: null,
@@ -742,39 +745,25 @@ describe('MOD05 deuda B3 — punto 4: completitud fiscal (D-M05)', () => {
     );
   });
 
-  it('la activación muestra el mismo aviso ante el 422 sin exponer el error técnico', async () => {
+  it('no ofrece activar directamente a un prospecto desde el diálogo de estado', async () => {
     const user = userEvent.setup();
-    const onCompleteFiscalData = jest.fn();
     const onOpenChange = jest.fn();
+    const onTransition = jest.fn();
     render(
       <SubscriberStatusTransitionDialog
         currentStatus={SubscriberStatus.PROSPECT}
         open
         onOpenChange={onOpenChange}
         onAddContact={jest.fn()}
-        onCompleteFiscalData={onCompleteFiscalData}
-        onTransition={jest
-          .fn()
-          .mockRejectedValue(
-            fiscalIncompleteError(['RUT_RESPONSIBILITIES', 'LEGAL_REPRESENTATIVE']),
-          )}
+        onTransition={onTransition}
       />,
     );
 
     await user.click(screen.getByRole('combobox', { name: 'Estado destino' }));
-    await user.click(screen.getByRole('option', { name: 'Activo' }));
-    await user.click(screen.getByRole('button', { name: 'Confirmar' }));
-
-    expect(await screen.findByText(FISCAL_TITLE)).toBeInTheDocument();
-    expect(screen.getByText('Responsabilidades del RUT')).toBeInTheDocument();
-    expect(screen.getByText('Representante legal')).toBeInTheDocument();
-    expect(screen.queryByText(TECHNICAL_MESSAGE)).toBeNull();
-    expect(screen.queryByText(SUBSCRIBER_FISCAL_DATA_INCOMPLETE)).toBeNull();
-    expect(screen.queryByText('No fue posible cambiar el estado')).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: 'Completar datos fiscales' }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(onCompleteFiscalData).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('option', { name: 'Activo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(onTransition).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it('el alta de contrato muestra el mismo aviso ante el 422 sin exponer el error técnico', async () => {

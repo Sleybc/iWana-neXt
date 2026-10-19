@@ -191,6 +191,8 @@ export class SubscriberStatusTransitionService {
     });
 
     // GSEC-01: audit manual mínimo (handler con @SkipAudit). Sin PII.
+    const reasonIsPrivate =
+      fromStatus === SubscriberStatus.LEAD && targetStatus === SubscriberStatus.PROSPECT;
     await this.auditService.log({
       action: AuditAction.UPDATE,
       entityType: 'Subscriber',
@@ -199,12 +201,13 @@ export class SubscriberStatusTransitionService {
       newValue: {
         fromStatus,
         toStatus: targetStatus,
-        reason,
+        ...(!reasonIsPrivate ? { reason } : {}),
       },
     });
 
+    const reasonSuffix = !reasonIsPrivate && reason ? ` (${reason})` : '';
     this.logger.log(
-      `Suscriptor ${subscriberId}: ${fromStatus} → ${targetStatus}${reason ? ` (${reason})` : ''} [actor: ${actorId}]`,
+      `Suscriptor ${subscriberId}: ${fromStatus} → ${targetStatus}${reasonSuffix} [actor: ${actorId}]`,
     );
 
     return { fromStatus, toStatus: targetStatus, reason };

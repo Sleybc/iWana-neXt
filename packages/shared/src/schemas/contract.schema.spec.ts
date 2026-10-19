@@ -68,6 +68,8 @@ describe('C-API-3 contrato', () => {
       planId: 'plan-1',
       planSnapshotJson: {},
       status: 'ACTIVE',
+      statusReasonCode: null,
+      statusChangedAt: null,
       alias: 'Servicio',
       installationAddress: null,
       installationCity: null,

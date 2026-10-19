@@ -45,6 +45,12 @@ export class ContractResponseDto {
   @ApiProperty({ enum: ContractStatus })
   status: ContractStatus;
 
+  @ApiProperty({ nullable: true, maxLength: 40 })
+  statusReasonCode: string | null;
+
+  @ApiProperty({ format: 'date-time', nullable: true })
+  statusChangedAt: Date | null;
+
   @ApiProperty()
   alias: string;
 

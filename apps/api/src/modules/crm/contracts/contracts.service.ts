@@ -11,14 +11,21 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsSelect, In, QueryRunner } from 'typeorm';
 import { MediaUsage, TenantContext, runInTenantSchema } from '@iwana/db';
 import {
   AuditAction,
   PersonType,
+  SubscriberStatus,
   ServiceUsage,
   type InternetVatResult,
   type ListResponse,
+  type LifecycleAction,
+  type LifecyclePreviewRequest,
+  type LifecyclePreviewResponse,
+  type LifecycleReactivateCommand,
+  type LifecycleSuspendCommand,
+  type LifecycleTerminateCommand,
 } from '@iwana/shared';
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
@@ -42,6 +49,8 @@ import { MediaService } from '../../media/media.service';
 import { IPrivacyAuthorizationReadPort } from '../../privacy/ports/privacy-authorization-read.port';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { SubscriberFiscalCompletenessService } from '../subscribers/subscriber-fiscal-completeness.service';
+import { SubscriberLifecycleService } from '../subscribers/subscriber-lifecycle.service';
+import type { LifecycleCommandResponse } from '../subscribers/subscriber-lifecycle.service';
 import {
   createFiscalDocumentCrypto,
   hydrateFiscalDocument,
@@ -102,6 +111,7 @@ export class ContractsService {
     private readonly mediaService: MediaService,
     private readonly configService: ConfigService,
     private readonly subscriberFiscalCompletenessService: SubscriberFiscalCompletenessService,
+    private readonly subscriberLifecycleService: SubscriberLifecycleService,
     @Optional()
     @Inject(IPrivacyAuthorizationReadPort)
     private readonly privacyAuthorizationReadPort?: IPrivacyAuthorizationReadPort,
@@ -122,11 +132,14 @@ export class ContractsService {
     );
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const subscriber = await qr.manager.findOne(Subscriber, {
-        where: { id: dto.subscriberId, tenantId },
-        select: {
+      const subscriber = await this.lockSubscriberForContractCreation(
+        qr,
+        dto.subscriberId,
+        tenantId,
+        {
           id: true,
           tenantId: true,
+          status: true,
           personType: true,
           partyId: true,
           anonymizedAt: true,
@@ -136,9 +149,9 @@ export class ContractsService {
           nitVerificationDigit: true,
           legalRepresentativePartyId: true,
         },
-      });
-      if (!subscriber) {
-        throw new NotFoundException('Suscriptor del contrato no encontrado.');
+      );
+      if (subscriber.status === SubscriberStatus.CANCELLED) {
+        throw this.cancelledSubscriberConflict();
       }
       await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
@@ -213,11 +226,27 @@ export class ContractsService {
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       // Verificar que el subscriber existe en el tenant
-      const subscriber = await qr.manager.findOne(Subscriber, {
-        where: { id: subscriberId },
+      const subscriber = await this.lockSubscriberForContractCreation(qr, subscriberId, tenantId, {
+        id: true,
+        tenantId: true,
+        status: true,
+        personType: true,
+        partyId: true,
+        anonymizedAt: true,
+        vatResponsibility: true,
+        rutResponsibilities: true,
+        nit: true,
+        nitVerificationDigit: true,
+        legalRepresentativePartyId: true,
+        expedienteId: true,
+        address: true,
+        city: true,
+        department: true,
+        postalCode: true,
+        customerSegment: true,
       });
-      if (!subscriber) {
-        throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado.`);
+      if (subscriber.status === SubscriberStatus.CANCELLED) {
+        throw this.cancelledSubscriberConflict();
       }
       await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
@@ -943,18 +972,100 @@ export class ContractsService {
   }
 
   /** ACTIVE → SUSPENDED */
-  async suspend(id: string, actorId?: string): Promise<Contract> {
-    return this._transition(id, ContractStatus.SUSPENDED, actorId);
+  async suspend(
+    id: string,
+    command: LifecycleSuspendCommand,
+    actorId: string,
+    idempotencyKey?: string,
+  ): Promise<Contract> {
+    await this.subscriberLifecycleService.transitionContract(
+      id,
+      'SUSPEND',
+      command,
+      actorId,
+      idempotencyKey,
+    );
+    return this.findOne(id);
   }
 
   /** SUSPENDED → ACTIVE */
-  async reactivate(id: string, actorId?: string): Promise<Contract> {
-    return this._transition(id, ContractStatus.ACTIVE, actorId);
+  async reactivate(
+    id: string,
+    command: LifecycleReactivateCommand,
+    actorId: string,
+    idempotencyKey?: string,
+  ): Promise<Contract> {
+    await this.subscriberLifecycleService.transitionContract(
+      id,
+      'REACTIVATE',
+      command,
+      actorId,
+      idempotencyKey,
+      (qr, contractIds) => this.prepareLifecycleActivation(qr, contractIds),
+    );
+    return this.findOne(id);
   }
 
   /** ACTIVE | SUSPENDED → TERMINATED */
-  async terminate(id: string, actorId?: string): Promise<Contract> {
-    return this._transition(id, ContractStatus.TERMINATED, actorId);
+  async terminate(
+    id: string,
+    command: LifecycleTerminateCommand,
+    actorId: string,
+    idempotencyKey?: string,
+  ): Promise<Contract> {
+    await this.subscriberLifecycleService.transitionContract(
+      id,
+      'TERMINATE',
+      command,
+      actorId,
+      idempotencyKey,
+    );
+    return this.findOne(id);
+  }
+
+  async suspendSubscriberServices(
+    subscriberId: string,
+    command: LifecycleSuspendCommand,
+    actorId: string,
+    idempotencyKey?: string,
+  ): Promise<LifecycleCommandResponse> {
+    return this.subscriberLifecycleService.suspend(subscriberId, command, actorId, idempotencyKey);
+  }
+
+  async reactivateSubscriberServices(
+    subscriberId: string,
+    command: LifecycleReactivateCommand,
+    actorId: string,
+    idempotencyKey?: string,
+  ): Promise<LifecycleCommandResponse> {
+    return this.subscriberLifecycleService.reactivate(
+      subscriberId,
+      command,
+      actorId,
+      idempotencyKey,
+      (qr, contractIds) => this.prepareLifecycleActivation(qr, contractIds),
+    );
+  }
+
+  async terminateSubscriberServices(
+    subscriberId: string,
+    command: LifecycleTerminateCommand,
+    actorId: string,
+    idempotencyKey?: string,
+  ): Promise<LifecycleCommandResponse> {
+    return this.subscriberLifecycleService.terminate(
+      subscriberId,
+      command,
+      actorId,
+      idempotencyKey,
+    );
+  }
+
+  previewSubscriberServices(
+    subscriberId: string,
+    request: LifecyclePreviewRequest,
+  ): Promise<LifecyclePreviewResponse> {
+    return this.subscriberLifecycleService.preview(subscriberId, request);
   }
 
   /** SUSPENDED | TERMINATED → ARCHIVED */
@@ -1012,6 +1123,91 @@ export class ContractsService {
     }
   }
 
+  private async lockSubscriberForContractCreation(
+    qr: QueryRunner,
+    subscriberId: string,
+    tenantId: string,
+    select: FindOptionsSelect<Subscriber> = {
+      id: true,
+      tenantId: true,
+      status: true,
+      personType: true,
+    },
+  ): Promise<Subscriber> {
+    const rows = (await qr.query(
+      `SELECT id FROM subscribers
+        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+        FOR UPDATE`,
+      [subscriberId, tenantId],
+    )) as Array<{ id: string }>;
+    if (!rows[0]) throw new NotFoundException('Suscriptor del contrato no encontrado.');
+    const subscriber = await qr.manager.findOne(Subscriber, {
+      where: { id: subscriberId, tenantId },
+      select,
+    });
+    if (!subscriber) throw new NotFoundException('Suscriptor del contrato no encontrado.');
+    if (subscriber.status === SubscriberStatus.CANCELLED) {
+      throw this.cancelledSubscriberConflict();
+    }
+    return subscriber;
+  }
+
+  private async assertNotSuspendedForDelinquency(
+    qr: QueryRunner,
+    tenantId: string,
+    subscriberId: string,
+  ): Promise<void> {
+    const rows = (await qr.query(
+      `SELECT to_status, reason_code
+         FROM crm_lifecycle_changes
+        WHERE tenant_id = $1 AND subscriber_id = $2 AND entity_type = 'SUBSCRIBER'
+        ORDER BY changed_at DESC, id DESC
+        LIMIT 1`,
+      [tenantId, subscriberId],
+    )) as Array<{ to_status: string; reason_code: string }>;
+    if (rows[0]?.to_status === SubscriberStatus.SUSPENDED && rows[0].reason_code === 'MORA') {
+      throw new ConflictException({
+        code: 'SUBSCRIBER_SUSPENDED_FOR_DELINQUENCY',
+        message:
+          'No puedes activar un servicio nuevo mientras el suscriptor siga suspendido por mora.',
+      });
+    }
+  }
+
+  private cancelledSubscriberConflict(): ConflictException {
+    return new ConflictException({
+      code: 'SUBSCRIBER_CANCELLED',
+      message: 'No puedes crear ni activar servicios para un suscriptor cancelado.',
+    });
+  }
+
+  private async prepareLifecycleActivation(
+    qr: QueryRunner,
+    contractIds: readonly string[],
+  ): Promise<void> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const contracts = await qr.manager.find(Contract, {
+      where: { id: In([...contractIds]), tenantId },
+    });
+    for (const contract of contracts) {
+      const subscriber = await qr.manager.findOne(Subscriber, {
+        where: { id: contract.subscriberId, tenantId },
+        select: { id: true, tenantId: true, status: true, personType: true },
+      });
+      if (!subscriber) throw new NotFoundException('Suscriptor del contrato no encontrado.');
+      if (subscriber.status === SubscriberStatus.CANCELLED) {
+        throw this.cancelledSubscriberConflict();
+      }
+      this._validateActivationInputs(
+        contract.serviceUsage,
+        contract.installationStratum,
+        subscriber.personType,
+      );
+      contract.vatSnapshot = await this._resolveVatSnapshot(contract);
+      await qr.manager.save(Contract, contract);
+    }
+  }
+
   private async _transition(
     id: string,
     target: ContractStatus,
@@ -1019,53 +1215,71 @@ export class ContractsService {
   ): Promise<Contract> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const entity = await this.findOne(id);
-    const allowed = ALLOWED_TRANSITIONS[entity.status];
-
-    if (!allowed.includes(target)) {
-      throw new ConflictException(
-        `INVALID_STATE_TRANSITION: No se puede pasar de ${entity.status} a ${target}.`,
-      );
-    }
-
-    if (target === ContractStatus.ACTIVE) {
-      if (!entity.serviceUsage) {
-        throw new UnprocessableEntityException({
-          code: 'SERVICE_USAGE_REQUIRED',
-          message: 'serviceUsage es obligatorio para activar el contrato.',
+    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const locked = (await qr.query(
+        `SELECT status::text AS status
+             FROM contracts
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+            FOR UPDATE`,
+        [id, tenantId],
+      )) as Array<{ status: ContractStatus }>;
+      const currentStatus = locked[0]?.status;
+      if (!currentStatus) throw new NotFoundException(`Contrato ${id} no encontrado.`);
+      if (currentStatus !== entity.status) {
+        throw new ConflictException({
+          code: 'LIFECYCLE_CONTRACT_STATE_CHANGED',
+          message: 'El estado del servicio cambió. Actualiza la ficha e inténtalo de nuevo.',
         });
       }
-      const subscriber = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
-        qr.manager.findOne(Subscriber, {
-          where: { id: entity.subscriberId, tenantId },
-          select: { id: true, tenantId: true, personType: true },
-        }),
-      );
-      if (!subscriber) {
-        throw new NotFoundException('Suscriptor del contrato no encontrado.');
+      const allowed = ALLOWED_TRANSITIONS[currentStatus];
+      if (!allowed.includes(target)) {
+        throw new ConflictException(
+          `INVALID_STATE_TRANSITION: No se puede pasar de ${currentStatus} a ${target}.`,
+        );
       }
-      this._validateActivationInputs(
-        entity.serviceUsage,
-        entity.installationStratum,
-        subscriber.personType,
-      );
-      entity.vatSnapshot = await this._resolveVatSnapshot(entity);
-    }
 
-    const previousStatus = entity.status;
-    entity.status = target;
+      if (target === ContractStatus.ACTIVE) {
+        const subscriber = await this.lockSubscriberForContractCreation(
+          qr,
+          entity.subscriberId,
+          tenantId,
+        );
+        if (subscriber.status === SubscriberStatus.CANCELLED) {
+          throw this.cancelledSubscriberConflict();
+        }
+        if (
+          currentStatus === ContractStatus.DRAFT &&
+          subscriber.status === SubscriberStatus.SUSPENDED
+        ) {
+          await this.assertNotSuspendedForDelinquency(qr, tenantId, entity.subscriberId);
+        }
+        this._validateActivationInputs(
+          entity.serviceUsage,
+          entity.installationStratum,
+          subscriber.personType,
+        );
+        entity.vatSnapshot = await this._resolveVatSnapshot(entity);
+      }
 
-    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const previousStatus = currentStatus;
+      entity.status = target;
+      entity.statusReasonCode = null;
+      entity.statusChangedAt = new Date();
       prepareFiscalDocumentForSave(entity);
       const saved = await qr.manager.save(Contract, entity);
-      return this.projectContractForMutation(saved, qr.manager);
-    });
-    await this.auditService.log({
-      action: AuditAction.UPDATE,
-      entityType: 'Contract',
-      entityId: updated.id,
-      userId: actorId ?? null,
-      oldValue: { status: previousStatus },
-      newValue: { status: updated.status },
+      const projected = await this.projectContractForMutation(saved, qr.manager);
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: 'Contract',
+          entityId: projected.id,
+          userId: actorId ?? null,
+          oldValue: { status: previousStatus },
+          newValue: { status: projected.status },
+        },
+        qr.manager,
+      );
+      return projected;
     });
     return updated;
   }

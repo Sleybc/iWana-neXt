@@ -17,6 +17,7 @@ import type { Contract, ContractStatus } from '@/lib/api-client';
 import { CONTRACT_STATUS_META, formatLocationLabel } from './subscriber-ui';
 import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
+import { formatLifecycleDate, lifecycleReasonLabel } from './subscriber-lifecycle-ui';
 
 // ── Colores y labels por estado ───────────────────────────────────────────────
 
@@ -187,7 +188,7 @@ export function ContractCard({
               type="button"
               disabled={busy}
               onClick={() => setMenuOpen((o) => !o)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-40 dark:hover:bg-dark-border dark:hover:text-gray-300"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary disabled:opacity-40 dark:hover:bg-dark-border dark:hover:text-gray-200"
               aria-label="Acciones del contrato"
             >
               <MoreVertical className="h-4 w-4" aria-hidden />
@@ -220,7 +221,7 @@ export function ContractCard({
                       key={a.action}
                       type="button"
                       onClick={() => void handleAction(a.action)}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-border"
+                      className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-iwana-primary dark:text-gray-300 dark:hover:bg-dark-border"
                     >
                       {a.icon}
                       {a.label}
@@ -234,7 +235,7 @@ export function ContractCard({
                       <button
                         type="button"
                         onClick={() => void handleRemove()}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-iwana-primary dark:text-red-400 dark:hover:bg-red-900/20"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         Eliminar borrador
@@ -262,6 +263,12 @@ export function ContractCard({
         </p>
       ) : (
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {contract.status === 'SUSPENDED' && (
+            <div className="text-xs text-gray-600 dark:text-gray-300 sm:col-span-2">
+              <p>Suspendido el {formatLifecycleDate(contract.statusChangedAt)}</p>
+              <p>Motivo: {lifecycleReasonLabel(contract.statusReasonCode)}</p>
+            </div>
+          )}
           {locationLine && (
             <DetailLine icon={<MapPin className="h-3.5 w-3.5" />} text={locationLine} />
           )}

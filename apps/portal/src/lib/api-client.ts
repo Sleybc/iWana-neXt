@@ -127,6 +127,13 @@ import {
   type ExecutionOrderEvidence,
   type Page,
 } from '@iwana/shared';
+import type {
+  LifecyclePreviewRequest,
+  LifecyclePreviewResponse,
+  LifecycleReactivateCommand,
+  LifecycleSuspendCommand,
+  LifecycleTerminateCommand,
+} from '@iwana/shared';
 import {
   createDataSubjectRequestSchema,
   createLegalTextSchema,
@@ -5660,6 +5667,7 @@ export interface SubscriberRecord extends Pick<
   activatedAt: string | null;
   manualOverrideReason: string | null;
   status: SubscriberStatus;
+  hasLiveContracts: boolean;
   externalId: string | null;
   createdBy: string | null;
   createdAt: string;
@@ -6538,6 +6546,46 @@ export const subscribersApi = {
       tenantSlug,
     ),
 
+  previewServices: (id: string, payload: LifecyclePreviewRequest, tenantSlug?: string) =>
+    request<LifecyclePreviewResponse>(
+      `/crm/subscribers/${id}/services/preview`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
+
+  suspendServices: (id: string, payload: LifecycleSuspendCommand, tenantSlug?: string) =>
+    request<unknown>(
+      `/crm/subscribers/${id}/services/suspend`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  reactivateServices: (id: string, payload: LifecycleReactivateCommand, tenantSlug?: string) =>
+    request<unknown>(
+      `/crm/subscribers/${id}/services/reactivate`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
+  terminateServices: (id: string, payload: LifecycleTerminateCommand, tenantSlug?: string) =>
+    request<unknown>(
+      `/crm/subscribers/${id}/services/terminate`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
+
   get360: (id: string, tenantSlug?: string) =>
     request<Subscriber360Response>(`/crm/subscribers/${id}/360`, undefined, tenantSlug),
 };
@@ -6718,16 +6766,40 @@ export const contractsApi = {
     request<Contract>(`/crm/contracts/${id}/activate`, { method: 'POST' }, tenantSlug),
 
   /** Transiciona ACTIVE ? SUSPENDED. */
-  suspend: (id: string, tenantSlug?: string) =>
-    request<Contract>(`/crm/contracts/${id}/suspend`, { method: 'POST' }, tenantSlug),
+  suspend: (id: string, payload: LifecycleSuspendCommand, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}/suspend`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
 
   /** Transiciona SUSPENDED ? ACTIVE. */
-  reactivate: (id: string, tenantSlug?: string) =>
-    request<Contract>(`/crm/contracts/${id}/reactivate`, { method: 'POST' }, tenantSlug),
+  reactivate: (id: string, payload: LifecycleReactivateCommand, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}/reactivate`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
 
   /** Transiciona ACTIVE|SUSPENDED ? TERMINATED. */
-  terminate: (id: string, tenantSlug?: string) =>
-    request<Contract>(`/crm/contracts/${id}/terminate`, { method: 'POST' }, tenantSlug),
+  terminate: (id: string, payload: LifecycleTerminateCommand, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}/terminate`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      },
+      tenantSlug,
+    ),
 
   /** Transiciona TERMINATED|SUSPENDED ? ARCHIVED. */
   archive: (id: string, tenantSlug?: string) =>

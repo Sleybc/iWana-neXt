@@ -26,7 +26,9 @@ export function looksLikeEncryptedAesGcm(value: string): boolean {
   const [iv, authTag, ciphertext] = parts;
   // IV 12 bytes → 24 hex; authTag 16 bytes → 32 hex; ciphertext variable
   return (
-    isHexSegment(iv ?? '', 24) && isHexSegment(authTag ?? '', 32) && isHexSegment(ciphertext ?? '')
+    isHexSegment(iv ?? '', 24) &&
+    isHexSegment(authTag ?? '', 32) &&
+    ((ciphertext ?? '').length === 0 || isHexSegment(ciphertext ?? ''))
   );
 }
 

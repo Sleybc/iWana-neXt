@@ -145,6 +145,8 @@ export const ContractResponseSchema = z
     planId: z.string(),
     planSnapshotJson: z.record(z.unknown()),
     status: z.enum(['DRAFT', 'ACTIVE', 'SUSPENDED', 'TERMINATED', 'ARCHIVED']),
+    statusReasonCode: z.string().max(40).nullable(),
+    statusChangedAt: z.string().datetime().nullable(),
     alias: z.string(),
     installationAddress: z.string().nullable(),
     installationCity: z.string().nullable(),

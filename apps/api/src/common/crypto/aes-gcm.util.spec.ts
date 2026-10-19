@@ -3,6 +3,7 @@ import {
   encryptAes256Gcm,
   isWeakMfaEncryptionKeyHex,
   loadPiiAesGcmKeyPair,
+  looksLikeEncryptedAesGcm,
   mfaEncryptionKeyJoiSchema,
   mfaEncryptionKeyPreviousJoiSchema,
   parseEncryptionKeyHex,
@@ -201,6 +202,13 @@ describe('aes-gcm.util (SEC-02)', () => {
     it('descifra ciphertext legado con PREVIOUS cuando falla la activa', () => {
       const legacy = encryptAes256Gcm('legado-mfa', previousKey);
       expect(decryptAes256Gcm(legacy, activeKey, previousKey)).toBe('legado-mfa');
+    });
+
+    it('reconoce y descifra ciphertext de una nota vacía', () => {
+      const emptyNote = encryptAes256Gcm('', previousKey);
+      expect(looksLikeEncryptedAesGcm(emptyNote)).toBe(true);
+      expect(decryptAes256Gcm(emptyNote, activeKey, previousKey)).toBe('');
+      expect(looksLikeEncryptedAesGcm('texto plano')).toBe(false);
     });
 
     it('no usa previous si la activa ya descifra', () => {

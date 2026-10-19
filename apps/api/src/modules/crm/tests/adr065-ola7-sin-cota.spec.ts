@@ -11,6 +11,7 @@ import { QuotesService } from '../../crm/quotes/quotes.service';
 import { PlanCatalogReadPort } from '../../crm/ports/plan-catalog-read.port';
 import { ContractsService } from '../../crm/contracts/contracts.service';
 import { SubscriberFiscalCompletenessService } from '../../crm/subscribers/subscriber-fiscal-completeness.service';
+import { SubscriberLifecycleService } from '../../crm/subscribers/subscriber-lifecycle.service';
 import { PurchasingService } from '../../inventory/services/purchasing.service';
 import { PurchasingPolicyService } from '../../inventory/services/purchasing-policy.service';
 import { RfqService } from '../../inventory/services/rfq.service';
@@ -138,6 +139,7 @@ describe('ADR-065 Ola 7 — endpoints sin cota', () => {
         { provide: MediaService, useValue: {} },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: SubscriberFiscalCompletenessService, useValue: { assertComplete: jest.fn() } },
+        { provide: SubscriberLifecycleService, useValue: {} },
       ],
     }).compile();
     const service = module.get(ContractsService);

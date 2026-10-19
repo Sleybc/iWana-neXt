@@ -96,6 +96,7 @@ function subscriberFixture(
     customerSegment: CustomerSegment.RESIDENTIAL,
     vatTreatment: VatTreatment.STANDARD,
     status: SubscriberStatus.ACTIVE,
+    hasLiveContracts: true,
     city: 'Bogotá',
     department: 'Cundinamarca',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -137,6 +138,25 @@ describe('SubscribersListClient ADR-065', () => {
     replaceMock.mockImplementation((href: string) => {
       searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
     });
+  });
+
+  it('muestra Sin servicios vigentes en la fila cuando la proyección indica cero servicios activos o suspendidos', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          'sub-no-live-services',
+          { firstName: 'Ana', lastName: 'Pérez' },
+          { hasLiveContracts: false },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const row = await screen.findByRole('row', { name: /Ana Pérez/ });
+    expect(within(row).getByText('Sin servicios vigentes')).toBeInTheDocument();
   });
 
   it('CA-UX-IVA-18 retira el IVA del listado y conserva el fallback de ubicación', async () => {

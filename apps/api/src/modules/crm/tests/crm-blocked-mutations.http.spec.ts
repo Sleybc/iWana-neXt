@@ -18,6 +18,7 @@ import { AuditService } from '../../audit/audit.service';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { SubscribersController } from '../subscribers/subscribers.controller';
 import { SubscribersService } from '../subscribers/subscribers.service';
+import { SubscriberLifecycleService } from '../subscribers/subscriber-lifecycle.service';
 import { ContractsController } from '../contracts/contracts.controller';
 import { ContractsService } from '../contracts/contracts.service';
 import { ExpedientesController } from '../expedientes/expedientes.controller';
@@ -147,6 +148,7 @@ describe('CRM blocked titular mutation guard over HTTP', () => {
           useValue: effectivePermissionsService,
         },
         { provide: SubscribersService, useValue: subscriberService },
+        { provide: SubscriberLifecycleService, useValue: {} },
         { provide: ContractsService, useValue: contractService },
         { provide: ExpedienteService, useValue: expedienteService },
         {
