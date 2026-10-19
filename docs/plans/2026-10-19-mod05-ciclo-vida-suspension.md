@@ -4,7 +4,7 @@
 **Definición:** [PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.2.md](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.2.md) (Aprobado, 2026-10-19)
 **Prompt:** [PROMPT-MOD05-CICLO-VIDA-v1.2.md](../prompts/PROMPT-MOD05-CICLO-VIDA-v1.2.md) · **Launcher:** [PROMPT-MOD05-CICLO-VIDA-LAUNCH-v1.2.md](../prompts/PROMPT-MOD05-CICLO-VIDA-LAUNCH-v1.2.md)
 **Base:** `main` en `a3c5539e`. Se trabaja en `main`, sin ramas. Se preservan cambios preexistentes del arreglo de portal; no se mezclan con E4.
-**Estado:** En cierre. G0-G6 verificados (G6 con gates locales, corregido el 2026-10-19). G7: commit y push en curso; la fase se declara cerrada con el CI de `main` en verde.
+**Estado:** **Cerrado (G7, 2026-10-19).** G0-G6 verificados (G6 con gates locales, corregido el 2026-10-19). Commits `27625542` (AuthReadyGate), `a583e9f0` (E4) y `3c8a9fff` (carrera de foco detectada por el CI); CI de `main` en verde sobre `3c8a9fff`. Cierre en el [informe](../informes/INFORME-MOD05-CICLO-VIDA-CIERRE-v1.0.md).
 
 **Convención ADR:** ADR-097 conserva el identificador secuencial canónico del registro de arquitectura. El validador `audit-adr-citations.mjs` indexa los ADR por archivos `ADR-###-*`; renombrarlo conforme a la plantilla documental genérica perdería la resolución de citas y rompería referencias existentes. Se mantiene bajo `docs/adrs/`; el módulo, fase y versión figuran en su título y metadatos.
 
@@ -125,4 +125,4 @@ Encargos y skills por bloque: docs/prompts/PROMPT-MOD05-CICLO-VIDA-v1.2.md y tab
 
 - **AuthReadyGate (arreglo transversal fuera de E4):** el SSR ahora cierra el stream y mantiene el contenido protegido fuera del HTML inicial hasta validar la sesión. Se verificó en portal y web con specs SSR/layout, typecheck, lint focal, builds y smoke Chromium. Los componentes gate/layout y [su informe](../informes/INFORME-PORTAL-FIX-INSTANTNAV-v1.0.md) permanecen fuera del commit E4.
 - **V5 / G6:** GO (corrección del CTO del 2026-10-19: G6 exigía un CI que solo existe tras el push, y el commit estaba en G7; el CI pasa a G7). Gates locales: suites sin caché, cobertura de `subscriber-lifecycle.service.ts` (95,79 % líneas; 82,50 % ramas), lint, typecheck, audit crítico, OpenAPI, UI, builds, migración y `git diff --check` pasan. GitHub solo tiene CI verde para `d5b5c92`; el HEAD local `a3c5539` y los cambios locales aún no tienen CI asociado. Ese CI se verifica en G7, tras el push.
-- **G7:** en curso. Orden: commit del arreglo `AuthReadyGate` (los journeys Chromium de E4 dependen de él), commit de E4, push, CI de `main` en verde y commit de docs con el informe de cierre.
+- **G7:** cerrado. El CI de `a583e9f0` falló por una carrera de foco en `SubscriberLifecycleDialog` (frame no cancelado); `fe-platform` la corrigió en `3c8a9fff` con tests de regresión y el CI de `main` quedó en verde ([run 39292342570](https://github.com/Sleybc/iWana-neXt/actions/runs/39292342570)). Detalle en el informe de cierre §2.1.

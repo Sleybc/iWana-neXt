@@ -191,12 +191,12 @@ NUEVO_POTENCIAL → PRECALIFICADO → VALIDANDO_COBERTURA → EN_COTIZACION
 | --------- | ------------------------------------------------------------------------------------------------------------ | --------- |
 | RF-STA-01 | LEAD → PROSPECT: requiere datos básicos completos (documento, nombre, contacto)                              | MVP       |
 | RF-STA-02 | PROSPECT → ACTIVE: se activa al completar el proceso de instalación (evento desde Expediente o Provisioning) | MVP       |
-| RF-STA-03 | ACTIVE → SUSPENDED: por mora (evento desde Billing) o manual con justificación — **reemplazado** ([Fase 05](PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.0.md) §9.3)                             | MVP       |
-| RF-STA-04 | SUSPENDED → ACTIVE: por pago registrado (evento desde Billing) o manual con justificación — **reemplazado** ([Fase 05](PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.0.md) §9.3)                  | MVP       |
+| RF-STA-03 | ACTIVE → SUSPENDED: por mora (evento desde Billing) o manual con justificación — **reemplazado** ([Fase 05](PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.2.md) §9.3)                             | MVP       |
+| RF-STA-04 | SUSPENDED → ACTIVE: por pago registrado (evento desde Billing) o manual con justificación — **reemplazado** ([Fase 05](PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.2.md) §9.3)                  | MVP       |
 | RF-STA-05 | ACTIVE → CANCELLED: cancelación voluntaria o forzosa con justificación obligatoria                           | MVP       |
 | RF-STA-06 | Cualquier estado → CANCELLED: con justificación obligatoria                                                  | MVP       |
 | RF-STA-07 | CANCELLED no tiene retorno — es estado terminal                                                              | MVP       |
-| RF-STA-08 | Toda transición de estado genera registro en StatusChange (reutiliza entidad existente del expediente) — **reemplazado** ([Fase 05](PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.0.md) §9.3)     | MVP       |
+| RF-STA-08 | Toda transición de estado genera registro en StatusChange (reutiliza entidad existente del expediente) — **reemplazado** ([Fase 05](PRD-MOD05-CRM-SUBSCRIBERS-FASE-05-v1.2.md) §9.3)     | MVP       |
 
 ### 4.4 Integración con Expediente
 

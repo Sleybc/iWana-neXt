@@ -4,6 +4,7 @@
 **Estado:** Aprobado  
 **Fecha:** 2026-09-04  
 **Historial:** v2.2 (2026-09-04) corrige el ciclo de vida del subscriber contra ADR-027 y promueve los puertos de inventario y ticketing de stub a lectura real, conforme a PRD Fase 04 §9.5 y §7.3.  
+**Addendum Fase 05 (2026-10-19):** el ciclo de vida suscriptor ↔ contrato (estado del suscriptor derivado de sus contratos, historial `crm_lifecycle_changes` y puertos de lectura MOD12/MOD11) se describe en [HLD-MOD05-FASE-05-v1.1](HLD-MOD05-FASE-05-v1.1.md) y [ADR-097](../adrs/ADR-097-Puertos-de-lectura-para-avisos-de-terminacion-MOD05.md); prevalece sobre la descripción del ciclo de vida de este documento.  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
 **PRD de referencia:** docs/prds/PRD-MOD05-CRM-DEFINICION-v2.0.md  
