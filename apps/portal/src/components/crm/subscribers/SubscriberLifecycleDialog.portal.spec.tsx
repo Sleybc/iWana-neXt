@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SubscriberStatus, type LifecycleAction } from '@iwana/shared';
 import type { LifecyclePreviewResponse } from '@iwana/shared';
@@ -78,7 +78,7 @@ function renderDialog(
 ) {
   const onOpenChange = options.onOpenChange ?? jest.fn();
   const onSuccess = options.onSuccess ?? jest.fn();
-  render(
+  const { unmount } = render(
     <SubscriberLifecycleDialog
       open
       onOpenChange={onOpenChange}
@@ -90,12 +90,47 @@ function renderDialog(
       onGoToServices={jest.fn()}
     />,
   );
-  return { onOpenChange, onSuccess };
+  return { onOpenChange, onSuccess, unmount };
 }
 
 async function chooseReason(user: ReturnType<typeof userEvent.setup>, label = 'Mora en el pago') {
   await user.click(screen.getByRole('combobox', { name: 'Motivo *' }));
   await user.click(await screen.findByRole('option', { name: label }));
+}
+
+/**
+ * Retiene los `requestAnimationFrame` hasta que el test decide ejecutarlos, y
+ * respeta `cancelAnimationFrame`. Así se reproduce sin depender de la carga del
+ * runner un frame de foco que llega tarde (CI de main, run 39282324929).
+ */
+function holdAnimationFrames() {
+  const pending = new Map<number, FrameRequestCallback>();
+  let nextId = 0;
+  const rafSpy = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    nextId += 1;
+    pending.set(nextId, callback);
+    return nextId;
+  });
+  const cancelSpy = jest.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+    pending.delete(id);
+  });
+
+  return {
+    pendingCount() {
+      return pending.size;
+    },
+    flush() {
+      const callbacks = [...pending.values()];
+      pending.clear();
+      act(() => {
+        callbacks.forEach((callback) => callback(0));
+      });
+    },
+    restore() {
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    },
+  };
 }
 
 describe('SubscriberLifecycleDialog · RF-LC-25..29', () => {
@@ -374,6 +409,81 @@ describe('SubscriberLifecycleDialog · RF-LC-25..29', () => {
     expect(terminate).toHaveBeenCalledWith('contract-1', {
       reasonCode: 'DUPLICADO',
       contractIds: ['contract-1'],
+    });
+  });
+
+  describe('foco al cambiar de paso', () => {
+    it('un frame pendiente de un diálogo desmontado no cierra el motivo del diálogo siguiente', async () => {
+      const frames = holdAnimationFrames();
+      jest.spyOn(subscribersApi, 'previewServices').mockResolvedValue(previewFixture());
+      const user = userEvent.setup();
+
+      // Diálogo anterior: pasa a la vista previa y deja programado el foco del
+      // cambio de paso sin ejecutarlo, como cuando el runner va cargado.
+      const first = renderDialog();
+      frames.flush();
+      await chooseReason(user);
+      await user.click(screen.getByRole('button', { name: 'Ver vista previa' }));
+      await screen.findByRole('heading', { name: 'Revisa el cambio' });
+      expect(frames.pendingCount()).toBe(1);
+      first.unmount();
+      // Desmontar cancela el frame del cambio de paso: no queda nada que caiga
+      // sobre el diálogo siguiente.
+      expect(frames.pendingCount()).toBe(0);
+
+      // Diálogo nuevo: el operador abre el motivo antes de que llegue ese frame.
+      renderDialog();
+      const reason = screen.getByRole('combobox', { name: 'Motivo *' });
+      await user.click(reason);
+      expect(await screen.findByRole('option', { name: 'Mora en el pago' })).toBeInTheDocument();
+
+      frames.flush();
+
+      expect(reason).toHaveFocus();
+      expect(reason).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('option', { name: 'Mora en el pago' })).toBeInTheDocument();
+      frames.restore();
+    });
+
+    it('no le quita el foco al motivo si el operador lo abre antes del frame al volver a editar', async () => {
+      const frames = holdAnimationFrames();
+      jest.spyOn(subscribersApi, 'previewServices').mockResolvedValue(previewFixture());
+      const user = userEvent.setup();
+      renderDialog();
+      frames.flush();
+      await chooseReason(user);
+      await user.click(screen.getByRole('button', { name: 'Ver vista previa' }));
+      await screen.findByRole('heading', { name: 'Revisa el cambio' });
+      await user.click(screen.getByRole('button', { name: 'Volver' }));
+
+      const reason = screen.getByRole('combobox', { name: 'Motivo *' });
+      await user.click(reason);
+      expect(await screen.findByRole('option', { name: 'Mora en el pago' })).toBeInTheDocument();
+
+      frames.flush();
+
+      expect(reason).toHaveFocus();
+      expect(reason).toHaveAttribute('aria-expanded', 'true');
+      frames.restore();
+    });
+
+    it('lleva el foco al título del paso cuando nadie lo reclamó', async () => {
+      const frames = holdAnimationFrames();
+      jest.spyOn(subscribersApi, 'previewServices').mockResolvedValue(previewFixture());
+      const user = userEvent.setup();
+      renderDialog();
+      frames.flush();
+      await chooseReason(user);
+      await user.click(screen.getByRole('button', { name: 'Ver vista previa' }));
+      const reviewTitle = await screen.findByRole('heading', { name: 'Revisa el cambio' });
+
+      frames.flush();
+      expect(reviewTitle).toHaveFocus();
+
+      await user.click(screen.getByRole('button', { name: 'Volver' }));
+      frames.flush();
+      expect(screen.getByRole('heading', { name: 'Suspender servicios' })).toHaveFocus();
+      frames.restore();
     });
   });
 });
