@@ -366,6 +366,24 @@ async function setupMocks(page: Page, opts: MockOptions = {}) {
       return;
     }
 
+    // Conteos de las bandejas del listado de suscriptores.
+    if (url.includes('/crm/subscribers/queue-counts') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            active: 3,
+            suspended: 2,
+            contactPending: 1,
+            fiscalIncomplete: 1,
+            withoutLiveServices: 0,
+          },
+        }),
+      });
+      return;
+    }
+
     // ── Suscriptores (listado paginado) ──
     if (
       url.includes('/crm/subscribers') &&
