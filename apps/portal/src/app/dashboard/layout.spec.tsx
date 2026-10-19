@@ -1,11 +1,20 @@
 import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
-import PortalDashboardLayout from './layout';
+import PortalDashboardLayout from './layout-client';
 import { PortalSidePeek } from '@/components/shared/portal-ui';
 import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
 
 const replaceMock = jest.fn();
 const getMeMock = jest.fn();
+// Gate de navegación instantánea: el mock de useAuth es mutable para poder
+// recorrer los estados de sesión (loading / no autenticado / autenticado) sin
+// romper los tests previos, que fijan el estado autenticado por default.
+interface MockAuthState {
+  user: { id: string; role: string } | null;
+  isLoading: boolean;
+}
+
+let currentAuth: MockAuthState = { user: { id: 'user-1', role: 'ADMIN' }, isLoading: false };
 let latestSidebarProps: {
   mobileOpen?: boolean;
   setMobileOpen?: (open: boolean) => void;
@@ -20,11 +29,7 @@ jest.mock('next/navigation', () => ({
 }));
 
 jest.mock('@/components/auth/AuthProvider', () => ({
-  useAuth: () => ({
-    // Rol operativo: el layout solo carga getMe() para ADMIN/NOC/ACCOUNTANT/SUPPORT
-    user: { id: 'user-1', role: 'ADMIN' },
-    isLoading: false,
-  }),
+  useAuth: () => currentAuth,
 }));
 
 jest.mock('@/lib/api-client', () => ({
@@ -54,9 +59,87 @@ jest.mock('@/components/layout/TopHeader', () => ({
 describe('PortalDashboardLayout', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Rol operativo por default (los tests previos lo asumían estático):
+    // el layout solo carga getMe() para ADMIN/NOC/ACCOUNTANT/SUPPORT.
+    currentAuth = { user: { id: 'user-1', role: 'ADMIN' }, isLoading: false };
     latestSidebarProps = {};
     latestTopHeaderProps = {};
     document.title = 'Inicial';
+  });
+
+  it('mientras se valida la sesión renderiza el fallback y NO monta chrome ni hijos', () => {
+    currentAuth = { user: null, isLoading: true };
+
+    render(
+      <PortalDashboardLayout>
+        <div>Contenido protegido</div>
+      </PortalDashboardLayout>,
+    );
+
+    expect(screen.getByText('Validando sesión...')).toBeInTheDocument();
+    // Ni el chrome del layout ni los hijos del subárbol protegido quedan montados
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+    expect(screen.queryByText('Contenido protegido')).toBeNull();
+    // El effect de branding hace guard por user: sin sesión no consulta tenants/me
+    expect(getMeMock).not.toHaveBeenCalled();
+    // El redirect solo dispara cuando la validación termina (isLoading=false)
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión termina en redirect al login', async () => {
+    currentAuth = { user: null, isLoading: false };
+
+    render(
+      <PortalDashboardLayout>
+        <div>Contenido protegido</div>
+      </PortalDashboardLayout>,
+    );
+
+    // La puerta real del effect del layout: replace a /auth/login
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith('/auth/login');
+    });
+    // El fallback queda en el sitio mientras la ruta se reemplaza
+    expect(screen.getByText('Validando sesión...')).toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+    expect(screen.queryByText('Contenido protegido')).toBeNull();
+  });
+
+  it('resuelve el gate y monta el árbol cuando el usuario queda autenticado', async () => {
+    currentAuth = { user: null, isLoading: true };
+    getMeMock.mockResolvedValue({
+      id: 'tenant-1',
+      name: 'iWana',
+      showTenantName: true,
+    });
+
+    const { rerender } = render(
+      <PortalDashboardLayout>
+        <div>Contenido protegido</div>
+      </PortalDashboardLayout>,
+    );
+
+    // Presesión: solo el fallback
+    expect(screen.getByText('Validando sesión...')).toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+    expect(screen.queryByText('Contenido protegido')).toBeNull();
+
+    // Sesión resuelta: el gate entrega el árbol y se reemplaza el fallback
+    await act(async () => {
+      currentAuth = { user: { id: 'user-1', role: 'ADMIN' }, isLoading: false };
+      rerender(
+        <PortalDashboardLayout>
+          <div>Contenido protegido</div>
+        </PortalDashboardLayout>,
+      );
+    });
+
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('top-header')).toBeInTheDocument();
+    expect(screen.getByText('Contenido protegido')).toBeInTheDocument();
+    expect(screen.queryByText('Validando sesión...')).toBeNull();
+    // Con sesión el layout no redirige
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it('actualiza document.title usando brandingMetadataTitle de la empresa autenticada', async () => {
