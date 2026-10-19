@@ -1,8 +1,8 @@
 # Skills activas de iWana neXt
 
-- **Version:** 1.6
+- **Version:** 1.7
 - **Estado:** Aprobado
-- **Fecha:** 2026-10-09
+- **Fecha:** 2026-10-19
 
 Este directorio contiene el catalogo activo de skills del proyecto. La fuente maestra de gobernanza es `AGENTS.md`; el indice operativo del catalogo es `.agents/skills/INDEX.md`.
 
@@ -12,6 +12,8 @@ La disponibilidad efectiva puede variar segun el cliente:
 - OpenCode consume el catalogo del workspace desde `skills.paths`.
 - Codex usa el catalogo segun el mecanismo de skills disponible en la sesion activa.
 - Claude Code descubre las skills desde `.claude/skills/`, que contiene **punteros generados** por `pnpm sync:skills` (ADR-092): mismo frontmatter que aqui y un cuerpo que remite al `SKILL.md` de este directorio. El contenido vive solo aqui. Toda alta, baja o cambio de frontmatter exige `pnpm sync:skills`; CI lo verifica con `pnpm sync:skills:check`.
+
+**Skills externas de plugin.** Claude Code recibe ademas skills de plugins y de la cuenta (`engineering:*`, `design:*`, `anthropic-skills:*`, etc.) que no viven en este directorio. Solo se usan como apoyo, con las reglas y la tabla de `INDEX.md` → «Skills externas de plugin (solo Claude Code)»; no se copian aqui.
 
 Si una skill existe en este directorio pero un cliente no la expone en su sesion, prevalece la capacidad real del cliente, no una suposicion documental.
 

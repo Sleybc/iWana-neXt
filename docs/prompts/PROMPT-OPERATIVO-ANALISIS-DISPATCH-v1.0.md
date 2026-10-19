@@ -62,12 +62,13 @@ Para cada bloque, tres listas. Las tres son obligatorias — **la tercera tambie
 | **De apoyo** | Se consultan si aparece el caso que cubren. Se citan con su condicion (*si el bloque toca formularios*), nunca sueltas. |
 | **Descartadas con motivo** | Las que el dominio sugiere pero **no** aplican, y por que. Es la lista que evita que el agente las abra por su cuenta y amplie alcance. |
 
-Cuatro reglas que no se omiten:
+Cinco reglas que no se omiten:
 
 1. **Verificar cada skill contra el disco antes de citarla.** El `INDEX.md` puede ir por delante del filesystem. La comprobacion es `ls .agents/skills/<nombre>/SKILL.md`; si no existe, la skill no se cita y la divergencia se reporta contra el `INDEX.md`.
 2. **Claude Code, Copilot y Codex leen el `SKILL.md` como documentacion**, no lo invocan como tool nativa (`AGENTS.md` → Matriz operativa). El encargo lo dice literalmente: *leer antes de escribir codigo*, con la ruta.
 3. **`ui-ux-pro-max` va siempre subordinada** a `iwana-identity-ui-review`, `core-components`, `tailwind-patterns` y los tokens reales del repo. Nunca fundamenta por si sola la severidad de un hallazgo.
 4. **Los scripts ejecutables que el plan exige como gate** (por ejemplo `audit-ui.mjs`) se declaran junto a las skills, con el comando exacto. Una skill no sustituye a un gate ejecutable.
+5. **Las skills externas de plugin (`plugin:skill`, solo Claude Code) solo van en la lista de apoyo**, con su condicion y el sufijo `(solo Claude Code)`; nunca en obligatorias, porque Copilot, OpenCode y Codex no las tienen. Se verifican contra la lista de skills de la sesion, no contra el disco, y solo se citan las admitidas en `.agents/skills/INDEX.md` → «Skills externas de plugin (solo Claude Code)». Las que esa seccion deja fuera del dispatch van en descartadas cuando el dominio las sugiere (por ejemplo `design:accessibility-review`: audita WCAG 2.1, el repo exige 2.2 AA).
 
 ### Formato en el plan de orquestacion
 
@@ -101,7 +102,7 @@ El **launcher** es el artefacto que arranca la ejecucion: un bloque copiar-pegar
 
 ## Anti-patrones
 
-- Citar una skill sin haber comprobado que existe en disco.
+- Citar una skill sin haber comprobado que existe en disco (o, si es externa, en la sesion).
 - Omitir la lista de skills descartadas: el agente las abre igual, y con peor criterio.
 - Asignar un bloque a dos agentes "para que se coordinen": el reparto esta mal cortado.
 - Un launcher de 150 lineas que duplica el plan — deja de ser lanzamiento y vuelve a ser lectura.

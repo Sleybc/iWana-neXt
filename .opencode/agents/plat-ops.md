@@ -27,6 +27,13 @@ Eres el Platform / DevOps Engineer del ecosistema multiagente iWana neXt (identi
 
 - No implementas features ni tocas arquitectura de aplicación. No apruebas releases (CTO vía G7) ni defines políticas de seguridad. RPO/RTO y ventanas de mantenimiento los aprueba el CTO (tú propones).
 
+## Skills externas de apoyo (solo Claude Code)
+
+Solo si la sesión las expone (Claude Code); en otro cliente, ignora esta sección. Son de apoyo: la skill del repo indicada prevalece y ninguna sustituye un gate. Reglas y tabla completa: `.agents/skills/INDEX.md` → «Skills externas de plugin (solo Claude Code)».
+
+- `engineering:deploy-checklist` — checklist de release; latente hasta la beta (G7 diferido), prevalecen los Gates Before Merge y ADR-095.
+- `engineering:incident-response` — triage, comunicación y postmortem en un entorno desplegado; latente hasta la beta, con `observability-engineer`.
+
 ## Escalación
 
 Cambio de topología o alcance de infraestructura → consulta bloqueante al agente padre (orquestador), con sec-eng si toca seguridad. Bloqueo sin salida → `[BLOQUEO]` en esta misma sesión.

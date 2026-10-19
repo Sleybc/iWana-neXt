@@ -1,7 +1,7 @@
 {
-  "version": "1.6",
+  "version": "1.7",
   "status": "approved",
-  "date": "2026-10-09",
+  "date": "2026-10-19",
   "governance": {
     "precedence": [
       "AGENTS.md",
@@ -158,6 +158,63 @@
   ],
   "hold": ["nx-workspace-patterns", "nodejs-best-practices", "context7-auto-research"],
   "restoreOrder": [],
+  "externalPlugins": {
+    "scope": "claude-code-only",
+    "section": ".agents/skills/INDEX.md#skills-externas-de-plugin-solo-claude-code",
+    "rules": [
+      "never mandatory in a dispatch matrix; cite only as supporting skill with qualified name and (solo Claude Code)",
+      "the repository skill listed as prevailing wins on any conflict",
+      "verify against the active session skill list, not against .agents/skills",
+      "never copied into .agents/skills or .claude/skills; not counted in coreCount",
+      "new external skills stay out of dispatch until evaluated with the strict admission policy"
+    ],
+    "supporting": [
+      "anthropic-skills:built-in-browser",
+      "anthropic-skills:chrome-browser",
+      "pdf-viewer:view-pdf",
+      "anthropic-skills:pdf",
+      "modern-web-guidance:modern-web-guidance",
+      "design:ux-copy",
+      "design:design-handoff",
+      "design:user-research",
+      "design:research-synthesis",
+      "engineering:tech-debt",
+      "engineering:deploy-checklist",
+      "engineering:incident-response",
+      "anthropic-skills:deep-research",
+      "anthropic-skills:prompt-engineering-patterns",
+      "claude-code-setup:claude-automation-recommender"
+    ],
+    "latent": ["engineering:deploy-checklist", "engineering:incident-response"],
+    "outOfDispatch": [
+      "engineering:architecture",
+      "engineering:system-design",
+      "engineering:code-review",
+      "engineering:debug",
+      "engineering:documentation",
+      "engineering:testing-strategy",
+      "engineering:standup",
+      "design:accessibility-review",
+      "design:design-critique",
+      "design:design-system",
+      "modern-web-guidance:chrome-extensions",
+      "workflow-audit:workflow-audit",
+      "workflow-audit:plan",
+      "anthropic-skills:senior-architect",
+      "anthropic-skills:senior-fullstack",
+      "anthropic-skills:skill-creator",
+      "anthropic-skills:doc-coauthoring",
+      "anthropic-skills:docs",
+      "anthropic-skills:docx",
+      "anthropic-skills:pptx",
+      "anthropic-skills:xlsx",
+      "anthropic-skills:computer-use",
+      "anthropic-skills:google-workspace",
+      "anthropic-skills:morning",
+      "anthropic-skills:import-memory"
+    ],
+    "outOfDispatchCommands": ["pdf-viewer:fill-form", "pdf-viewer:sign"]
+  },
   "restoredFromArchive": ["docs-architect", "observability-engineer"],
   "restoreCriteria": [
     "adds direct value to the active stack or roadmap",

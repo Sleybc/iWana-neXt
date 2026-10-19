@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.6
+**Version:** 1.7
 **Estado:** Aprobado
-**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; ver change-log)
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; **v1.7: 2026-10-19 — gobierno de las skills externas de plugin (solo Claude Code), catálogo core sin cambios**; ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -749,3 +749,35 @@ Catalogo activo: **49 skills core**, 0 candidatas, 6 revisadas archivadas, 3 en 
 **Verificacion:** skills unicas en `MANIFEST.core`: **51** · directorios con `SKILL.md`: **51** · `summary.coreCount`: **51** · divergencias: **ninguna** · `pnpm sync:skills:check` OK (51 punteros). Claude Code listo las dos como `/comando` en la misma sesion.
 
 **Estado posterior:** catalogo activo de **51 skills core**.
+
+## Actualizacion 2026-10-19 — Gobierno de las skills externas de plugin (core sin cambios: 51)
+
+**Modo activo:** ejecutor · **Autor:** Claude Code · **Origen:** pedido del usuario del 2026-10-19 («analizar las skills recien instaladas, vincularlas al catalogo y documentarlas para que los agentes las ejecuten cuando sea necesario»)
+
+### Hallazgo
+
+El catalogo del repo estaba alineado (51 directorios, 51 punteros, sin cambios desde el 2026-10-09). Lo nuevo vivia **fuera del repo**: la cuenta sincronizo en Claude Code, el 2026-10-16/17, **40 skills externas**: 23 de seis plugins con skills (`engineering` 10, `design` 7, `modern-web-guidance` 2, `workflow-audit` 2, `claude-code-setup` 1, `pdf-viewer` 1 con cuatro comandos) y 17 de claude.ai (`anthropic-skills:*`). Los plugins `github` y `playwright` solo aportan MCP. Ningun artefacto del repo las mencionaba, asi que los agentes podian activarlas por descripcion sin criterio: `modern-web-guidance` se declara obligatoria «primero» para todo HTML/CSS/JS, `design:accessibility-review` audita WCAG 2.1 (el repo exige 2.2 AA) y `anthropic-skills:skill-creator` comparte nombre con la `skill-creator` del repo.
+
+### Decision ejecutada
+
+Nuevo nivel **externo** en el catalogo, distinto del core: no se copian al repo, no cuentan en `coreCount` y no pasan por `pnpm sync:skills`. Cada skill se evaluo con la politica de admision estricta (caso de uso recurrente, relacion con el catalogo, dependencias disponibles):
+
+- **15 admitidas como apoyo**, con disparador, skill del repo que prevalece, subagente y restriccion: `anthropic-skills:built-in-browser`, `anthropic-skills:chrome-browser`, `pdf-viewer:view-pdf`, `anthropic-skills:pdf`, `modern-web-guidance:modern-web-guidance`, `design:ux-copy`, `design:design-handoff`, `design:user-research`, `design:research-synthesis`, `engineering:tech-debt`, `engineering:deploy-checklist` y `engineering:incident-response` (ambas latentes hasta la beta, por G7 diferido), `anthropic-skills:deep-research`, `anthropic-skills:prompt-engineering-patterns` y `claude-code-setup:claude-automation-recommender`.
+- **25 fuera del dispatch**, con motivo: 13 duplican una skill core (`engineering:architecture`, `:system-design`, `:code-review`, `:debug`, `:documentation`, `:testing-strategy`, `design:design-critique`, `:design-system`, `workflow-audit:plan`, `anthropic-skills:skill-creator`, `:doc-coauthoring`, `:docs` y `design:accessibility-review`, que ademas audita contra una version de WCAG menor), 3 estan fuera del stack (`workflow-audit:workflow-audit` es SwiftUI; `anthropic-skills:senior-architect` y `:senior-fullstack` empujan Express, GraphQL y scaffolding propio), 1 sin caso de uso en el roadmap (`modern-web-guidance:chrome-extensions`), 4 son formatos de oficina o control de escritorio (`docx`, `pptx`, `xlsx`, `computer-use`) y 4 son de uso personal (`engineering:standup`, `google-workspace`, `morning`, `import-memory`).
+
+Reglas del nivel externo: solo Claude Code; **nunca obligatorias** en una matriz de dispatch (Copilot, OpenCode y Codex no las tienen), solo de apoyo con el sufijo `(solo Claude Code)`; la skill del repo prevalece ante cualquier conflicto; se verifican contra la lista de skills de la sesion, no contra disco; sin efectos externos sin confirmacion del usuario; toda skill externa nueva queda fuera del dispatch hasta evaluarse.
+
+`modern-web-guidance` entra con restriccion propia: no es obligatoria «primero»; se consultan antes sus 218 guias locales sin red; `npx -y modern-web-guidance@latest` (codigo de npm sin version fijada) solo corre con aprobacion del usuario y no se agrega al repo.
+
+### Archivos actualizados
+
+- `.agents/skills/INDEX.md` — v1.6 -> **v1.7**; nueva seccion «Skills externas de plugin (solo Claude Code)» con reglas, tabla de admitidas y tabla de fuera del dispatch.
+- `.agents/skills/MANIFEST.json` — v1.6 -> **v1.7**; nueva clave `externalPlugins` (`supporting` 15, `latent` 2, `outOfDispatch` 25); `summary.coreCount` sin cambios (**51**).
+- `.agents/skills/README.md` — v1.7; parrafo que remite a la seccion externa.
+- `AGENTS.md` → Skills Dispatch — atajos por dominio a las externas admitidas y excepcion de verificacion (sesion, no disco) en el parrafo de la matriz de dispatch.
+- `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md` — quinta regla: externas solo en apoyo, con sufijo; las de fuera del dispatch van a descartadas cuando el dominio las sugiere.
+- `.claude/agents/` — seccion «Skills externas de apoyo (solo Claude Code)» en `fe-platform`, `prod-ux`, `ds-owner`, `sr-qa`, `plat-ops`, `sec-eng`, `data-eng` y `sr-backend`; `.opencode/agents/` y `.codex/agents/` regenerados con `pnpm sync:agents`.
+
+### Estado posterior
+
+Catalogo core: **51 skills**, sin cambios. Nivel externo gobernado: **15 de apoyo** (2 latentes) y **25 fuera del dispatch**, sobre 40 skills externas.

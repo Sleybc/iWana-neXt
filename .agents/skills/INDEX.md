@@ -1,8 +1,10 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.6
+**Version:** 1.7
 **Estado:** Aprobado
-**Fecha:** 2026-10-09
+**Fecha:** 2026-10-19
+
+**Cambio v1.6 → v1.7 (2026-10-19):** se gobiernan por primera vez las **skills externas de plugin**: 40 skills que Claude Code recibe de la cuenta (23 de 6 plugins con skills y 17 sincronizadas de claude.ai, el 2026-10-16/17) y que no viven en el repo. Nueva seccion [Skills externas de plugin (solo Claude Code)](#skills-externas-de-plugin-solo-claude-code): 15 se admiten como **apoyo** con disparador, skill del repo que prevalece y subagente; 25 quedan **fuera del dispatch** con su motivo. No entran al catalogo core: `coreCount` sigue en 51 y `pnpm sync:skills` no las toca. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.
 
 **Cambio v1.5 → v1.6 (2026-10-09):** alta de dos skills propias del repo (segunda pasada de `claude-code-setup`): `iwana-matriz-motivos` (testing; matriz motivo de rechazo → test integrado con conteo real para encargos MOD11↔MOD12, norma del CTO del 2026-10-08; se apoya en `iwana-test-evidence`) e `iwana-queue-inspect` (backend; inspeccion de solo lectura de las colas BullMQ de Redis dev, via el MCP `redis-dev` o `redis-cli`; complementa a `bullmq-specialist`, que es de patrones). `coreCount` pasa de 49 a 51. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`.
 
@@ -150,6 +152,74 @@ Estados admitidos:
 ### Mantenimiento y dependencias
 
 - codebase-cleanup-deps-audit
+
+## Skills externas de plugin (solo Claude Code)
+
+Claude Code recibe skills que **no viven en este repo**: plugins instalados en la cuenta (`~/.claude/plugins/synced/…`) y skills sincronizadas de claude.ai (`~/.claude/skills/synced/…`). Aparecen en la sesion con nombre calificado `plugin:skill` y se actualizan solas cuando cambia la cuenta. Esta seccion decide cuales se usan en el proyecto y en que condiciones.
+
+### Reglas del nivel externo
+
+1. **Solo Claude Code.** Copilot, OpenCode y Codex no las tienen. Por eso **nunca son obligatorias** en una matriz de dispatch: se citan solo como skill **de apoyo**, con su nombre calificado, el sufijo `(solo Claude Code)` y su condicion. Un bloque nunca puede depender de una skill externa para cumplir un gate.
+2. **La skill del repo prevalece.** Si una externa choca con el repo en stack, tenancy, seguridad, accesibilidad (WCAG 2.2 AA), idioma (texto visible en español), formato documental o comandos (`pnpm` exclusivamente), manda la skill del repo de la columna «Prevalece» y `AGENTS.md`.
+3. **Se verifican contra la sesion, no contra disco.** Antes de citarla, comprobar que figura en la lista de skills de la sesion activa. No existe `.agents/skills/<nombre>/`, y no debe existir: **no se copian** a `.agents/skills/` ni a `.claude/skills/`, no cuentan en `coreCount` y `pnpm sync:skills` no las toca.
+4. **Sin efectos externos sin confirmacion.** Publicar, enviar, firmar, subir o descargar desde una skill externa exige el «si» explicito del usuario en el chat, igual que cualquier otra accion.
+5. **Altas futuras.** Una skill externa nueva queda **fuera del dispatch** hasta que se evalua aqui con la politica de admision estricta (caso de uso recurrente, relacion con el catalogo, prioridad). Si un plugin se desinstala o cambia de version mayor, se revisa esta tabla.
+
+### Admitidas como apoyo
+
+| Skill externa | Disparador en este repo | Prevalece | Subagente / modo | Restriccion |
+| --- | --- | --- | --- | --- |
+| `anthropic-skills:built-in-browser` | Antes del primer uso del navegador integrado para evidencia visual de `apps/portal` o `apps/web` (cierre de modulo, verificacion de UI en el dev server) | `playwright-skill` para E2E automatizado | `fe-platform`, `sr-qa` | Las sesiones del navegador son del usuario: no cerrar sesion ni cambiar credenciales |
+| `anthropic-skills:chrome-browser` | Solo cuando el usuario pide expresamente su Chrome real | `anthropic-skills:built-in-browser` (por defecto) | `sr-qa` | No es el navegador por defecto; nunca credenciales reales fuera de entornos de prueba |
+| `pdf-viewer:view-pdf` (comandos `open`, `annotate`) | Revisar visualmente un PDF generado por el sistema (contratos, facturas, D-PDF) y marcar defectos con el usuario | `testing-patterns` (la asercion automatizada sigue siendo el gate) | `sr-qa` | `fill-form` y `sign` quedan fuera: no se firman ni rellenan documentos en nombre de nadie |
+| `anthropic-skills:pdf` | Extraer texto o tablas de un PDF generado para contrastarlo con el contrato de datos, o leer un PDF normativo aportado por el usuario | `testing-patterns` | `sr-qa`, `data-eng` | Datos personales del PDF: solo en el chat, nunca en logs ni en informes |
+| `modern-web-guidance:modern-web-guidance` | Al implementar una API de plataforma del navegador que el catalogo no cubre: `<dialog>`, popover, anchor positioning, container queries, `:has()`, View Transitions, scroll-driven animations, INP/LCP | `frontend-dev-guidelines`, `nextjs-app-router-patterns`, `core-components`, `tailwind-patterns` | `fe-platform` | Ver «Restriccion de `modern-web-guidance`» abajo |
+| `design:ux-copy` | Estructura de mensajes de error, estados vacios, confirmaciones destructivas y CTA | `system-vocabulary-review` (vocabulario, español, sentence case, sin enums crudos) | `prod-ux`, `fe-platform` | Sus ejemplos estan en ingles; se aplica el patron, nunca el texto |
+| `design:design-handoff` | Al redactar la seccion de estados, breakpoints y casos borde de una spec en `docs/specs/` para `fe-platform` | `iwana-identity-ui-review`, `core-components`; formato de `docs/specs/` | `prod-ux`, `ds-owner` | No inventa tokens: solo cita los de `packages/ui` |
+| `design:user-research` | Plan de entrevistas, guion de prueba de usabilidad o encuesta con operadores ISP | — (sin equivalente en el catalogo) | `prod-ux` | Datos de participantes bajo Ley 1581: anonimizar antes de versionar |
+| `design:research-synthesis` | Sintetizar entrevistas, tickets de soporte o notas de usabilidad en hallazgos para un PRD o una spec | — (sin equivalente en el catalogo) | `prod-ux` | Igual que `design:user-research` |
+| `engineering:tech-debt` | Inventario y priorizacion de deuda tecnica de un modulo para un INFORME de deuda o un plan (`docs/plans/`) | `codebase-cleanup-deps-audit` (deuda de dependencias) | AI-EM-ARCH, `sr-backend`, `fe-platform` | El entregable sigue el formato `INFORME-*`/plan del repo, no el suyo |
+| `engineering:deploy-checklist` | Preparar una release o despliegue de la beta | `AGENTS.md` → Gates Before Merge; ADR-095 | `plat-ops` | **Latente:** G7 y produccion estan diferidos hasta la beta minima (CTO, 2026-10-16) |
+| `engineering:incident-response` | Incidente en un entorno desplegado: triage, comunicacion y postmortem | `observability-engineer` | `plat-ops`, `sec-eng` | **Latente** hasta que exista un entorno desplegado; un incidente con datos personales escala a `sec-eng` |
+| `anthropic-skills:deep-research` | Investigacion multi-fuente para un PRD, HLD o ADR: normativa (Ley 1581, Ley 2573, DIAN, CRC), comparativa de proveedores o tecnologias | `architecture-decision-records`, `docs-architect` | AI-EM-ARCH, `data-eng` | Coordina subagentes de investigacion: solo cuando el usuario la pide. El resultado alimenta el artefacto del repo; no lo sustituye |
+| `anthropic-skills:prompt-engineering-patterns` | Redactar o depurar un `PROMPT-*` cuando un encargo se ejecuto mal por ambiguedad del prompt | `iwana-cierre-fase`, `docs/prompts/PROMPT-OPERATIVO-*` | AI-EM-ARCH | El formato y la carpeta los fija `AGENTS.md` → Documentation Rules |
+| `claude-code-setup:claude-automation-recommender` | Revisar las automatizaciones de Claude Code del repo (hooks, subagentes, skills, MCP) | `writing-skills`, `skill-creator` (del repo) | AI-EM-ARCH | Toda recomendacion aprobada se registra en `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md` |
+
+#### Restriccion de `modern-web-guidance`
+
+Su `SKILL.md` se declara obligatoria «primero» para todo HTML/CSS/JS de cliente. **En este repo no lo es:** prevalecen las skills de frontend del catalogo y la consulta es de apoyo, solo para APIs de plataforma del navegador. Ademas:
+
+- **Primero, las guias locales.** El plugin trae 218 guias en markdown en `guides/` (dentro de `~/.claude/plugins/synced/<cuenta>/modern-web-guidance/skills/modern-web-guidance/`); se buscan con Grep y se leen sin red.
+- **`npx -y modern-web-guidance@latest` descarga y ejecuta codigo de npm sin version fijada.** Solo con aprobacion explicita del usuario en el chat. No se agrega como dependencia ni como script del repo.
+- Next.js resuelve imagenes, fuentes y carga de scripts: una guia que lo contradiga cede ante `nextjs-app-router-patterns`.
+
+### Fuera del dispatch
+
+No se citan en matrices de dispatch ni se activan en trabajo del repo. Siguen disponibles si el usuario las pide expresamente para algo ajeno al codigo.
+
+| Skill externa | Motivo |
+| --- | --- |
+| `engineering:architecture` | Duplica `architecture-decision-records`; su plantilla de ADR no usa el vocabulario de estado del repo |
+| `engineering:system-design` | Duplica `architect-review` y `monorepo-architect` |
+| `engineering:code-review` | Duplica `requesting-code-review` y los revisores `boundary-reviewer` / `contract-drift-reviewer` |
+| `engineering:debug` | Duplica `systematic-debugging` |
+| `engineering:documentation` | Duplica `docs-architect`; no conoce las Documentation Rules |
+| `engineering:testing-strategy` | Duplica `testing-patterns` |
+| `engineering:standup` | Uso personal; sin caso de uso en el repo |
+| `design:accessibility-review` | Audita WCAG 2.1 AA; el repo exige 2.2 AA (`wcag-audit-patterns`) |
+| `design:design-critique` | Duplica el modo review de `iwana-identity-ui-review` |
+| `design:design-system` | Duplica `core-components`; el contrato del DS es de `ds-owner` |
+| `modern-web-guidance:chrome-extensions` | Sin extensiones de navegador en el roadmap |
+| `workflow-audit:workflow-audit` | Especifica de SwiftUI/iOS; no aplica al stack |
+| `workflow-audit:plan` | Duplica `writing-plans` e `iwana-cierre-fase` |
+| `anthropic-skills:senior-architect`, `anthropic-skills:senior-fullstack` | Empujan stack fuera del baseline (Express, GraphQL, React Native, scaffolding propio); duplican `architect-review` y `nestjs-expert` |
+| `anthropic-skills:skill-creator` | Mismo nombre que la `skill-creator` del repo, que prevalece |
+| `anthropic-skills:doc-coauthoring`, `anthropic-skills:docs` | La documentacion del repo vive en `docs/` con `docs-architect`; los Claude Docs son para documentos que el usuario comparte fuera del repo |
+| `anthropic-skills:docx`, `anthropic-skills:pptx`, `anthropic-skills:xlsx` | Formatos de oficina: solo si el usuario pide ese archivo |
+| `anthropic-skills:computer-use` | Control del escritorio; las pruebas usan navegador o Playwright |
+| `anthropic-skills:google-workspace`, `anthropic-skills:morning`, `anthropic-skills:import-memory` | Uso personal; sin caso de uso en el repo |
+
+Los comandos `pdf-viewer:fill-form` y `pdf-viewer:sign` del plugin `pdf-viewer` tambien quedan fuera: rellenar o firmar documentos no es tarea de un agente del repo.
 
 ## Skills restaurables priorizadas
 

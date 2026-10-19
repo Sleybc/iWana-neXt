@@ -226,7 +226,19 @@ Arquitectura, docs y flujo de trabajo:
 
 Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritativa vigente).
 
-**Este mapa se resuelve por bloque, no por modulo.** Al cerrar la definicion de una fase, AI-EM-ARCH emite la **matriz de dispatch** dentro del plan de orquestacion (perfil v2.5 §3.6): una fila por bloque con su subagente de `.claude/agents/` y tres listas de skills — **obligatorias** (leer antes de escribir codigo), **de apoyo** con su condicion, y **descartadas con su motivo**. **El mapa de arriba es un atajo por dominio, no el limite de lo citable:** la matriz puede asignar cualquier skill del catalogo de `.agents/skills/INDEX.md`, que es la lista autoritativa. Cada skill se verifica contra disco (`ls .agents/skills/<nombre>/SKILL.md`) antes de citarse: el `INDEX.md` puede ir por delante del filesystem. Procedimiento: `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`.
+Skills externas de plugin (solo Claude Code; siempre **de apoyo**, nunca obligatorias, y la skill del repo indicada prevalece):
+
+- Evidencia visual en el navegador integrado: `anthropic-skills:built-in-browser` (con `playwright-skill` para lo automatizado)
+- APIs de plataforma del navegador (`<dialog>`, popover, container queries, View Transitions, INP): `modern-web-guidance:modern-web-guidance`, guias locales primero y `npx` solo con aprobacion del usuario
+- Estructura de errores, estados vacios y confirmaciones: `design:ux-copy`, subordinada a `system-vocabulary-review`
+- Investigacion con usuarios y sintesis para PRD/spec: `design:user-research` + `design:research-synthesis`; handoff de spec: `design:design-handoff`
+- Revision visual de PDFs generados: `pdf-viewer:view-pdf` + `anthropic-skills:pdf`
+- Deuda tecnica de un modulo: `engineering:tech-debt`; release e incidentes (latentes hasta la beta): `engineering:deploy-checklist` / `engineering:incident-response`
+- Investigacion normativa o comparativa para PRD/HLD/ADR: `anthropic-skills:deep-research`
+
+Tabla completa, restricciones y skills externas fuera del dispatch: `.agents/skills/INDEX.md` → «Skills externas de plugin (solo Claude Code)».
+
+**Este mapa se resuelve por bloque, no por modulo.** Al cerrar la definicion de una fase, AI-EM-ARCH emite la **matriz de dispatch** dentro del plan de orquestacion (perfil v2.5 §3.6): una fila por bloque con su subagente de `.claude/agents/` y tres listas de skills — **obligatorias** (leer antes de escribir codigo), **de apoyo** con su condicion, y **descartadas con su motivo**. **El mapa de arriba es un atajo por dominio, no el limite de lo citable:** la matriz puede asignar cualquier skill del catalogo de `.agents/skills/INDEX.md`, que es la lista autoritativa. Cada skill se verifica contra disco (`ls .agents/skills/<nombre>/SKILL.md`) antes de citarse: el `INDEX.md` puede ir por delante del filesystem. Las skills externas de plugin (`plugin:skill`) son la excepcion: se verifican contra la lista de skills de la sesion y solo entran en la lista **de apoyo**, con el sufijo `(solo Claude Code)`. Procedimiento: `docs/prompts/PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md`.
 
 ---
 
