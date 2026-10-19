@@ -25,6 +25,7 @@ import { EffectivePermissionsService } from '../../access-control/services/effec
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import { encryptAes256Gcm, parseEncryptionKeyHex } from '../../../common/crypto/aes-gcm.util';
 import { IPartyWritePort } from '../../parties/ports/party-write.port';
+import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
 import { Subscriber } from './entities/subscriber.entity';
 import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
@@ -94,10 +95,17 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
     await dataSource.query(
       `CREATE TABLE ${testSchema}.audit_logs (LIKE ${sourceSchema}.audit_logs INCLUDING ALL)`,
     );
-    // The development tenant predates the already-merged B1 DDL; keep this
-    // isolated fixture compatible with the current entity without migrating it.
+    // The development tenant predates subscriber DDL for anonymization,
+    // WhatsApp, VAT responsibility, and legal-representative Party. Keep this
+    // isolated copy aligned with the current entity without migrating the
+    // source tenant.
     await dataSource.query(
       `ALTER TABLE ${testSchema}.subscribers
+         ADD COLUMN IF NOT EXISTS anonymized_at timestamptz,
+         ADD COLUMN IF NOT EXISTS anonymized_request_id uuid,
+         ADD COLUMN IF NOT EXISTS legal_representative_party_id uuid,
+         ADD COLUMN IF NOT EXISTS vat_responsibility varchar(30),
+         ADD COLUMN IF NOT EXISTS rut_responsibilities text[] NOT NULL DEFAULT '{}',
          ADD COLUMN IF NOT EXISTS whatsapp_encrypted varchar(500),
          ADD COLUMN IF NOT EXISTS whatsapp_hmac varchar(64)`,
     );
@@ -147,6 +155,15 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
           },
         },
         { provide: IPartyWritePort, useValue: { ensurePartyWithRole: jest.fn() } },
+        {
+          provide: PlanCatalogReadPort,
+          useValue: {
+            getActivePlans: jest.fn().mockResolvedValue([]),
+            getPlansByIds: jest.fn().mockResolvedValue(new Map()),
+            getPlanById: jest.fn().mockResolvedValue(null),
+            createSnapshot: jest.fn(),
+          },
+        },
         {
           provide: PlatformAuditService,
           useValue: { log: jest.fn().mockResolvedValue(undefined) },
