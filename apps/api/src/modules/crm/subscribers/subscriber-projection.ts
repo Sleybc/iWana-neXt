@@ -68,6 +68,8 @@ type SubscriberWithDecryptedFields = Subscriber & {
   hasLiveContracts?: boolean;
   anonymizedAt?: Date | null;
   anonymizedRequestId?: string | null;
+  primaryService?: SubscriberListItem['primaryService'];
+  otherLiveServicesCount?: number;
 };
 
 function toIsoOrNull(value: Date | string | null | undefined): string | null {
@@ -86,6 +88,14 @@ export function projectSubscriberForList(
     anonymizedAt === null &&
     (subscriber.privacyMarks ?? []).includes('DATOS_BLOQUEADOS') &&
     !canSeeBlocked;
+  const redactServiceLocation = privacyRestricted || anonymizedAt !== null;
+  const primaryService = subscriber.primaryService
+    ? {
+        ...subscriber.primaryService,
+        city: redactServiceLocation ? null : subscriber.primaryService.city,
+        alias: redactServiceLocation ? null : subscriber.primaryService.alias,
+      }
+    : null;
   const output: Record<string, unknown> = {
     id: subscriber.id,
     tenantId: subscriber.tenantId,
@@ -121,10 +131,12 @@ export function projectSubscriberForList(
     updatedAt: toIsoOrNull(subscriber.updatedAt) ?? subscriber.createdAt.toISOString(),
     contactPending: !hasRealContact(subscriber),
     hasLiveContracts: subscriber.hasLiveContracts === true,
+    primaryService,
+    otherLiveServicesCount: subscriber.otherLiveServicesCount ?? 0,
     privacyMarks: subscriber.privacyMarks ?? [],
   };
 
-  if (privacyRestricted) {
+  if (privacyRestricted || anonymizedAt !== null) {
     Object.assign(output, {
       stratum: null,
       firstName: null,

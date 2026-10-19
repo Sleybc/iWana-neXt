@@ -120,7 +120,7 @@ Que el operador resuelva desde la lista lo que hoy le obliga a abrir la ficha: v
 
 | ID | Requerimiento |
 | --- | --- |
-| RNF-LO-01 | Lista con 100 filas (tope actual): como máximo **tres** consultas por página (filas, conteo total y planes por lote). Se verifica con un test que cuenta las consultas |
+| RNF-LO-01 | Lista con 100 filas (tope actual): como máximo **tres consultas principales** por página (filas, conteo total y planes por lote). Las lecturas delegadas en los puertos de Party/Privacy se miden y reportan por separado; no forman parte de este límite. La verificación cuenta ambas categorías |
 | RNF-LO-02 | La subconsulta del principal usa el índice existente `idx_contracts_tenant_subscriber`; `EXPLAIN` sin barrido secuencial de `contracts` en el tenant de desarrollo |
 | RNF-LO-03 | Sin PII nueva en logs ni en la URL: `?peek=` lleva el id del suscriptor, nunca documento, nombre ni contacto |
 | RNF-LO-04 | Vista lateral y chips según SPEC-PORTAL-SIDEPEEK-A11Y y las recetas §2 y §9 de `iwana-identity-ui-review`; `audit-ui.mjs` en 0 |
@@ -157,7 +157,7 @@ Sin migraciones: todo se deriva de columnas existentes.
 | CA | Criterio |
 | --- | --- |
 | CA-LO-01 | Un suscriptor con un contrato activo y uno suspendido muestra el activo como principal y «+1 servicio» |
-| CA-LO-02 | Una página de 100 filas hace como máximo tres consultas (RNF-LO-01) |
+| CA-LO-02 | Una página de 100 filas hace como máximo tres consultas principales (filas, conteo total y planes por lote); las lecturas de Party/Privacy se contabilizan y reportan aparte (RNF-LO-01) |
 | CA-LO-03 | Un plan borrado del catálogo muestra «Plan no disponible» sin romper la fila |
 | CA-LO-04 | Los cinco conteos coinciden con la lista filtrada por cada chip sobre los mismos datos, y `fiscalIncomplete` coincide con el servicio de completitud (test de paridad) |
 | CA-LO-05 | Cambiar de chip actualiza la URL; recargar conserva el chip y la vista lateral abierta |

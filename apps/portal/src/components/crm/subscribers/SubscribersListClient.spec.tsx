@@ -39,11 +39,18 @@ jest.mock('@/lib/api-client', () => {
       ...actual.subscribersApi,
       list: jest.fn(),
       search: jest.fn(),
+      queueCounts: jest.fn(),
+      getById: jest.fn(),
+    },
+    contractsApi: {
+      ...actual.contractsApi,
+      listBySubscriber: jest.fn(),
     },
   };
 });
 
 const listMock = subscribersApi.list as jest.Mock;
+const queueCountsMock = subscribersApi.queueCounts as jest.Mock;
 
 function mockMatchMediaSmUp(matches: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -97,6 +104,8 @@ function subscriberFixture(
     vatTreatment: VatTreatment.STANDARD,
     status: SubscriberStatus.ACTIVE,
     hasLiveContracts: true,
+    primaryService: null,
+    otherLiveServicesCount: 0,
     city: 'Bogotá',
     department: 'Cundinamarca',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -132,6 +141,7 @@ describe('SubscribersListClient ADR-065', () => {
     mockMatchMediaSmUp(true);
     Element.prototype.scrollIntoView = jest.fn();
     searchParamsMock = new URLSearchParams();
+    queueCountsMock.mockImplementation(() => new Promise(() => undefined));
     pushMock.mockImplementation((href: string) => {
       searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
     });
@@ -159,13 +169,124 @@ describe('SubscribersListClient ADR-065', () => {
     expect(within(row).getByText('Sin servicios vigentes')).toBeInTheDocument();
   });
 
+  it('marca la región de tabla ocupada durante la carga inicial', () => {
+    listMock.mockImplementation(() => new Promise(() => undefined));
+
+    render(<SubscribersListClient />);
+
+    const table = screen.getByRole('table', { name: 'Listado de suscriptores' });
+    expect(table.parentElement).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('difiere el skeleton de filas hasta 300 ms y lo retira al cargar los datos', async () => {
+    jest.useFakeTimers();
+    let resolveList!: (value: Awaited<ReturnType<typeof subscribersApi.list>>) => void;
+    listMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveList = resolve;
+        }),
+    );
+
+    try {
+      render(<SubscribersListClient />);
+      const table = screen.getByRole('table', { name: 'Listado de suscriptores' });
+      const bodyRows = () => table.querySelectorAll('tbody tr');
+
+      expect(bodyRows()).toHaveLength(0);
+      act(() => jest.advanceTimersByTime(299));
+      expect(bodyRows()).toHaveLength(0);
+      act(() => jest.advanceTimersByTime(1));
+      expect(bodyRows()).toHaveLength(5);
+
+      await act(async () => {
+        resolveList({
+          data: [subscriberFixture('sub-delayed', { firstName: 'Ana', lastName: 'Tardía' })],
+          total: 1,
+          meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+        });
+        await Promise.resolve();
+      });
+      expect(screen.getByRole('row', { name: /Ana Tardía/ })).toBeInTheDocument();
+      expect(bodyRows()).toHaveLength(1);
+      expect(table.parentElement).not.toHaveAttribute('aria-busy', 'true');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('no muestra el skeleton si la carga inicial responde antes de 300 ms', async () => {
+    jest.useFakeTimers();
+    listMock.mockResolvedValue({
+      data: [subscriberFixture('sub-fast', { firstName: 'Ana', lastName: 'Rápida' })],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    try {
+      render(<SubscribersListClient />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const table = screen.getByRole('table', { name: 'Listado de suscriptores' });
+      expect(screen.getByRole('row', { name: /Ana Rápida/ })).toBeInTheDocument();
+      expect(table.querySelectorAll('tbody tr')).toHaveLength(1);
+      act(() => jest.advanceTimersByTime(300));
+      expect(table.querySelectorAll('tbody tr')).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('CA-LO-03 muestra Plan no disponible si el catálogo no devuelve el nombre del plan', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          '00000000-0000-4000-8000-000000000023',
+          { firstName: 'Ana', lastName: 'Pérez' },
+          {
+            primaryService: {
+              contractId: '00000000-0000-4000-8000-000000000024',
+              planName: null,
+              status: 'ACTIVE',
+              city: 'Bogotá',
+              alias: null,
+            },
+          },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const row = await screen.findByRole('row', { name: /Ana Pérez/ });
+    expect(within(row).getByText('Plan no disponible')).toBeInTheDocument();
+    expect(within(row).getByText('Bogotá')).toBeInTheDocument();
+    expect(within(row).getByText('Activo')).toBeInTheDocument();
+  });
+
   it('CA-UX-IVA-18 retira el IVA del listado y conserva el fallback de ubicación', async () => {
     listMock.mockResolvedValue({
       data: [
         subscriberFixture(
           'sub-iva',
           { firstName: 'Ana', lastName: 'Pérez' },
-          { vatTreatment: 'EXCLUDED', city: undefined, department: undefined },
+          {
+            vatTreatment: 'EXCLUDED',
+            city: undefined,
+            department: undefined,
+            primaryService: {
+              contractId: '00000000-0000-4000-8000-000000000011',
+              planName: 'Plan sintético',
+              status: 'ACTIVE',
+              city: null,
+              alias: null,
+            },
+          },
         ),
       ],
       total: 1,
@@ -180,8 +301,15 @@ describe('SubscribersListClient ADR-065', () => {
     expect(within(row).getByText('Sin ubicación')).toBeInTheDocument();
   });
 
-  it('CA-E3-04 muestra el contacto pendiente sin revelar placeholders ni enums crudos', async () => {
+  it('presenta contacto pendiente en la cola sin exponer placeholders en la fila', async () => {
     const placeholder = 'expediente-sub-1@placeholder.iwana.co';
+    queueCountsMock.mockResolvedValue({
+      active: 8,
+      suspended: 2,
+      contactPending: 1,
+      fiscalIncomplete: 3,
+      withoutLiveServices: 4,
+    });
     listMock.mockResolvedValue({
       data: [
         subscriberFixture(
@@ -202,7 +330,9 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     const row = await screen.findByRole('row', { name: /Ana Pérez/ });
-    expect(within(row).getByText('Contacto pendiente')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Contacto pendiente, 1 suscriptor' }),
+    ).toBeInTheDocument();
     expect(within(row).queryByText(placeholder)).not.toBeInTheDocument();
     expect(within(row).queryByText('0000000000')).not.toBeInTheDocument();
     expect(within(row).getByText('Activo')).toBeInTheDocument();
@@ -335,6 +465,7 @@ describe('SubscribersListClient ADR-065', () => {
       expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
     });
 
+    await user.click(screen.getByRole('button', { name: 'Más filtros' }));
     await user.click(screen.getByRole('combobox', { name: 'Estado' }));
     await user.click(await screen.findByRole('option', { name: /Activo/i }));
 
@@ -344,6 +475,92 @@ describe('SubscribersListClient ADR-065', () => {
     const href = String(replaceMock.mock.calls.at(-1)?.[0]);
     expect(href).toContain('status=ACTIVE');
     expect(href).not.toContain('page=');
+  });
+
+  it('CA-LO-05 selecciona una cola en URL y combina la búsqueda local con filtros', async () => {
+    queueCountsMock.mockResolvedValue({
+      active: 8,
+      suspended: 2,
+      contactPending: 1,
+      fiscalIncomplete: 3,
+      withoutLiveServices: 4,
+    });
+    listMock.mockResolvedValue({
+      data: [subscriberFixture('sub-1', { firstName: 'Ana', lastName: 'Pérez' })],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+    searchParamsMock = new URLSearchParams('page=3&size=10&status=ACTIVE');
+    const user = userEvent.setup();
+    const { rerender } = render(<SubscribersListClient />);
+    await user.type(screen.getByRole('searchbox'), 'FIBRA');
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'FIBRA' })),
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Contacto pendiente, 1 suscriptor' }),
+    );
+
+    const href = String(replaceMock.mock.calls.at(-1)?.[0]);
+    const params = new URLSearchParams(href.split('?')[1] ?? '');
+    expect(params.get('queue')).toBe('contactPending');
+    expect(params.get('search')).toBeNull();
+    expect(params.get('status')).toBe('ACTIVE');
+    expect(params.get('size')).toBe('10');
+    expect(params.get('page')).toBeNull();
+
+    searchParamsMock = params;
+    rerender(<SubscribersListClient />);
+    await waitFor(() => {
+      expect(listMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          search: 'FIBRA',
+          status: SubscriberStatus.ACTIVE,
+          contactPending: true,
+        }),
+      );
+    });
+  });
+
+  it('elimina una búsqueda heredada de URL sin perder filtros no personales', async () => {
+    searchParamsMock = new URLSearchParams('queue=suspended&search=DOCUMENTO_PERSONAL');
+    render(<SubscribersListClient />);
+
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    const href = String(replaceMock.mock.calls.at(-1)?.[0]);
+    const params = new URLSearchParams(href.split('?')[1] ?? '');
+    expect(params.has('search')).toBe(false);
+    expect(params.get('queue')).toBe('suspended');
+    expect(href).not.toContain('DOCUMENTO_PERSONAL');
+  });
+
+  it('abre la vista lateral desde la fila con el teclado acotado a la tabla', async () => {
+    const firstId = '00000000-0000-4000-8000-000000000021';
+    const secondId = '00000000-0000-4000-8000-000000000022';
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(firstId, { firstName: 'Ana', lastName: 'Primera' }),
+        subscriberFixture(secondId, { firstName: 'Luis', lastName: 'Segunda' }),
+      ],
+      total: 2,
+      meta: pageMeta({ page: 1, total: 2, totalPages: 1 }),
+    });
+    const user = userEvent.setup();
+    render(<SubscribersListClient />);
+
+    const firstRow = await screen.findByRole('row', { name: /Ana Primera/ });
+    const secondRow = screen.getByRole('row', { name: /Luis Segunda/ });
+    act(() => firstRow.focus());
+    await user.keyboard('{ArrowDown}');
+    expect(secondRow).toHaveFocus();
+    expect(secondRow).toHaveAttribute('tabindex', '0');
+    await user.keyboard('{Enter}');
+
+    const href = String(pushMock.mock.calls.at(-1)?.[0]);
+    expect(href).toContain(`peek=${secondId}`);
+    expect(href).not.toContain('search=');
   });
 
   it('corrige página fuera de rango con replace y aviso una sola vez', async () => {
@@ -525,6 +742,7 @@ describe('SubscribersListClient QW1', () => {
     jest.clearAllMocks();
     mockMatchMediaSmUp(true);
     searchParamsMock = new URLSearchParams();
+    queueCountsMock.mockImplementation(() => new Promise(() => undefined));
     replaceMock.mockImplementation((href: string) => {
       searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
     });
@@ -544,14 +762,11 @@ describe('SubscribersListClient QW1', () => {
     await user.type(screen.getByRole('searchbox'), 'SYNTHETIC');
     expect(replaceMock).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining('search=SYNTHETIC'), {
-        scroll: false,
-      }),
+      expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'SYNTHETIC' })),
     );
+    expect(replaceMock).not.toHaveBeenCalled();
     rerender(<SubscribersListClient />);
-    await waitFor(() =>
-      expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ search: 'SYNTHETIC' })),
-    );
+    expect(searchParamsMock.has('search')).toBe(false);
     expect(searchMock).not.toHaveBeenCalled();
   });
 
@@ -734,7 +949,9 @@ describe('SubscribersListClient QW1', () => {
     await user.click(screen.getByRole('radio', { name: 'Documento' }));
     await user.type(screen.getByRole('searchbox'), 'DOC-SYNTHETIC');
     await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(await screen.findByText('Consulta no disponible')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No fue posible cargar los suscriptores. Intenta de nuevo.'),
+    ).toBeInTheDocument();
     searchMock.mockResolvedValue({
       data: [
         subscriberFixture(

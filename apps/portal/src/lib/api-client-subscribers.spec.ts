@@ -94,4 +94,50 @@ describe('subscribersApi.search', () => {
     expect(init?.method).toBe('POST');
     expect(JSON.parse(String(init?.body))).toEqual({ search: 'persona@example.test' });
   });
+
+  it('envía los filtros de las colas como parámetros no personales', async () => {
+    const fetchMock = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit): Promise<MockResponse> =>
+        createJsonResponse(200, { data: [], total: 0 }),
+    );
+    Reflect.set(globalThis, 'fetch', fetchMock);
+
+    await subscribersApi.list(
+      {
+        contactPending: true,
+        fiscalIncomplete: true,
+        withoutLiveServices: true,
+      },
+      'tenant-demo',
+    );
+
+    const [input] = fetchMock.mock.calls[0] ?? [];
+    const url = new URL(String(input), 'http://portal.example.test');
+    expect(url.pathname).toBe('/api/v1/crm/subscribers');
+    expect(url.searchParams.get('contactPending')).toBe('true');
+    expect(url.searchParams.get('fiscalIncomplete')).toBe('true');
+    expect(url.searchParams.get('withoutLiveServices')).toBe('true');
+  });
+
+  it('lee conteos globales sin incluirlos en la URL de la lista', async () => {
+    const counts = {
+      active: 8,
+      suspended: 2,
+      contactPending: 1,
+      fiscalIncomplete: 3,
+      withoutLiveServices: 4,
+    };
+    const fetchMock = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit): Promise<MockResponse> =>
+        createJsonResponse(200, { data: counts }),
+    );
+    Reflect.set(globalThis, 'fetch', fetchMock);
+
+    await expect(subscribersApi.queueCounts('tenant-demo')).resolves.toEqual(counts);
+
+    const [input] = fetchMock.mock.calls[0] ?? [];
+    const url = new URL(String(input), 'http://portal.example.test');
+    expect(url.pathname).toBe('/api/v1/crm/subscribers/queue-counts');
+    expect(url.search).toBe('');
+  });
 });

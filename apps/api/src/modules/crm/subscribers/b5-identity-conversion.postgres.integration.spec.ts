@@ -266,6 +266,7 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       statusTransitions,
       auditService,
       new PartyWriteAdapter(testConfig),
+      { getPlansByIds: async () => new Map() } as never,
       privacyAuthorizationAdapter,
       privacyAuthorizationAdapter,
       new LegalTextsService(dataSource, auditService),

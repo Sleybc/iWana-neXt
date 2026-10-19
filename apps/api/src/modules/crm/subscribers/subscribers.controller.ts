@@ -12,6 +12,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  ParseBoolPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -30,7 +31,9 @@ import {
   ApiQuery,
   ApiResponse,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
+import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import {
   AccessPermissionKey,
   SearchSubscribersInput,
@@ -65,6 +68,7 @@ import { Subscriber } from './entities/subscriber.entity';
 import { TransitionSubscriberStatusSchema } from './dto/transition-subscriber-status.dto';
 import { CrmListLimitPipe, CrmListPagePipe } from '../pipes/crm-list-pagination.pipe';
 import { CrmListPaginationDto } from '../dto/crm-list-pagination.dto';
+import { ListMetaDto } from '../../../common/pagination/list-meta.dto';
 import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
@@ -91,6 +95,125 @@ type SubscriberWithDecryptedFields = Subscriber & {
   phone?: string;
   altContactPhone?: string;
   privacyMarks?: PrivacyMark[];
+};
+
+const SUBSCRIBER_LIST_ITEM_OPENAPI_SCHEMA: SchemaObject = {
+  type: 'object',
+  title: 'SubscriberListItem',
+  required: [
+    'id',
+    'tenantId',
+    'partyId',
+    'userId',
+    'privacyRestricted',
+    'anonymizedAt',
+    'anonymizedRequestId',
+    'status',
+    'personType',
+    'customerSegment',
+    'stratum',
+    'vatTreatment',
+    'taxRegime',
+    'vatResponsibility',
+    'rutResponsibilities',
+    'legalRepresentative',
+    'expedienteId',
+    'convertedAt',
+    'activatedAt',
+    'documentType',
+    'firstName',
+    'lastName',
+    'businessName',
+    'commercialName',
+    'createdAt',
+    'updatedAt',
+    'contactPending',
+    'hasLiveContracts',
+    'primaryService',
+    'otherLiveServicesCount',
+  ],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    tenantId: { type: 'string', format: 'uuid' },
+    partyId: { type: 'string', format: 'uuid', nullable: true },
+    userId: { type: 'string', format: 'uuid', nullable: true },
+    privacyRestricted: { type: 'boolean' },
+    anonymizedAt: { type: 'string', format: 'date-time', nullable: true },
+    anonymizedRequestId: { type: 'string', format: 'uuid', nullable: true },
+    status: { type: 'string', enum: Object.values(SubscriberStatus) },
+    personType: { type: 'string', enum: Object.values(PersonType) },
+    customerSegment: { type: 'string', enum: Object.values(CustomerSegment) },
+    stratum: { type: 'number', nullable: true },
+    vatTreatment: {
+      type: 'string',
+      enum: Object.values(VatTreatment),
+      deprecated: true,
+    },
+    taxRegime: { type: 'string', nullable: true, deprecated: true },
+    vatResponsibility: {
+      type: 'string',
+      enum: Object.values(VatResponsibility),
+      nullable: true,
+    },
+    rutResponsibilities: {
+      type: 'array',
+      items: { type: 'string', enum: [...RUT_RESPONSIBILITIES] },
+    },
+    legalRepresentative: {
+      type: 'object',
+      nullable: true,
+      required: ['partyId', 'displayName'],
+      properties: {
+        partyId: { type: 'string', format: 'uuid' },
+        displayName: { type: 'string' },
+      },
+    },
+    expedienteId: { type: 'string', format: 'uuid', nullable: true },
+    convertedAt: { type: 'string', format: 'date-time', nullable: true },
+    activatedAt: { type: 'string', format: 'date-time', nullable: true },
+    documentType: { type: 'string', enum: Object.values(DocumentType), nullable: true },
+    firstName: { type: 'string', nullable: true },
+    lastName: { type: 'string', nullable: true },
+    businessName: { type: 'string', nullable: true },
+    commercialName: { type: 'string', nullable: true },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+    contactPending: { type: 'boolean' },
+    hasLiveContracts: { type: 'boolean' },
+    primaryService: {
+      nullable: true,
+      type: 'object',
+      required: ['contractId', 'planName', 'status', 'city', 'alias'],
+      properties: {
+        contractId: { type: 'string', format: 'uuid' },
+        planName: { type: 'string', nullable: true },
+        status: { type: 'string', enum: ['ACTIVE', 'SUSPENDED', 'DRAFT'] },
+        city: { type: 'string', nullable: true },
+        alias: { type: 'string', nullable: true },
+      },
+    },
+    otherLiveServicesCount: { type: 'integer', minimum: 0 },
+    privacyMarks: {
+      type: 'array',
+      items: {
+        type: 'string',
+        enum: ['RECLAMO_EN_TRAMITE', 'VICTIMA_FALSEDAD_PERSONAL', 'DATOS_BLOQUEADOS'],
+      },
+    },
+    documentNumber: { type: 'string', nullable: true },
+    nit: { type: 'string', nullable: true },
+    nitVerificationDigit: { type: 'string', nullable: true },
+    phone: { type: 'string', nullable: true },
+    altContactPhone: { type: 'string', nullable: true },
+    whatsapp: { type: 'string', nullable: true },
+    email: { type: 'string', format: 'email', nullable: true },
+    address: { type: 'string', nullable: true },
+    neighborhood: { type: 'string', nullable: true },
+    city: { type: 'string', nullable: true },
+    department: { type: 'string', nullable: true },
+    latitude: { type: 'number', nullable: true },
+    longitude: { type: 'number', nullable: true },
+  },
 };
 
 @ApiTags('crm')
@@ -149,7 +272,22 @@ export class SubscribersController {
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Listar suscriptores con filtros' })
-  @ApiExtraModels(CrmListPaginationDto)
+  @ApiExtraModels(CrmListPaginationDto, ListMetaDto)
+  @ApiResponse({
+    status: 200,
+    schema: {
+      type: 'object',
+      required: ['data', 'total', 'meta'],
+      properties: {
+        data: {
+          type: 'array',
+          items: SUBSCRIBER_LIST_ITEM_OPENAPI_SCHEMA,
+        },
+        total: { type: 'integer', minimum: 0 },
+        meta: { $ref: getSchemaPath(ListMetaDto) },
+      },
+    },
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, maximum: 100 })
   @ApiQuery({ name: 'status', required: false, enum: SubscriberStatus })
@@ -158,6 +296,9 @@ export class SubscribersController {
   @ApiQuery({ name: 'stratum', required: false, type: Number })
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortDir', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'contactPending', required: false, type: Boolean })
+  @ApiQuery({ name: 'fiscalIncomplete', required: false, type: Boolean })
+  @ApiQuery({ name: 'withoutLiveServices', required: false, type: Boolean })
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: SubscriberStatus,
@@ -168,6 +309,10 @@ export class SubscribersController {
     @Query('limit', CrmListLimitPipe) limit?: number,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: 'asc' | 'desc',
+    @Query('contactPending', new ParseBoolPipe({ optional: true })) contactPending?: boolean,
+    @Query('fiscalIncomplete', new ParseBoolPipe({ optional: true })) fiscalIncomplete?: boolean,
+    @Query('withoutLiveServices', new ParseBoolPipe({ optional: true }))
+    withoutLiveServices?: boolean,
   ) {
     const filters = {
       status: status ?? undefined,
@@ -178,6 +323,9 @@ export class SubscribersController {
       limit,
       sortBy: sortBy ?? undefined,
       sortDir: sortDir ?? undefined,
+      contactPending,
+      fiscalIncomplete,
+      withoutLiveServices,
     };
 
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
@@ -202,6 +350,35 @@ export class SubscribersController {
     };
   }
 
+  /** Conteos globales de las colas operativas, sin PII en la respuesta. */
+  @Get('queue-counts')
+  @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT)
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
+  @ApiOperation({ summary: 'Consultar conteos globales de la cola de suscriptores' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      type: 'object',
+      required: [
+        'active',
+        'suspended',
+        'contactPending',
+        'fiscalIncomplete',
+        'withoutLiveServices',
+      ],
+      properties: {
+        active: { type: 'integer', minimum: 0 },
+        suspended: { type: 'integer', minimum: 0 },
+        contactPending: { type: 'integer', minimum: 0 },
+        fiscalIncomplete: { type: 'integer', minimum: 0 },
+        withoutLiveServices: { type: 'integer', minimum: 0 },
+      },
+    },
+  })
+  async getQueueCounts() {
+    return this.subscribersService.getQueueCounts();
+  }
+
   /**
    * Ruta retirada explícitamente para que `/search` no caiga en el ParseUUIDPipe de `:id`.
    */
@@ -222,6 +399,7 @@ export class SubscribersController {
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Buscar suscriptores para listado y lookup exacto' })
+  @ApiExtraModels(ListMetaDto)
   @ApiBody({
     schema: {
       oneOf: [
@@ -253,96 +431,10 @@ export class SubscribersController {
       properties: {
         data: {
           type: 'array',
-          items: {
-            type: 'object',
-            title: 'SubscriberListItem',
-            required: [
-              'id',
-              'status',
-              'personType',
-              'customerSegment',
-              'stratum',
-              'vatTreatment',
-              'documentType',
-              'firstName',
-              'lastName',
-              'businessName',
-              'commercialName',
-              'createdAt',
-              'hasLiveContracts',
-            ],
-            properties: {
-              id: { type: 'string', format: 'uuid' },
-              vatResponsibility: {
-                type: 'string',
-                enum: Object.values(VatResponsibility),
-                nullable: true,
-              },
-              rutResponsibilities: {
-                type: 'array',
-                items: { type: 'string', enum: [...RUT_RESPONSIBILITIES] },
-              },
-              fiscalCompleteness: {
-                type: 'object',
-                required: ['complete', 'missing'],
-                properties: {
-                  complete: { type: 'boolean' },
-                  missing: {
-                    type: 'array',
-                    items: {
-                      type: 'string',
-                      enum: [
-                        'VAT_RESPONSIBILITY',
-                        'RUT_RESPONSIBILITIES',
-                        'NIT_VERIFICATION_DIGIT',
-                        'LEGAL_REPRESENTATIVE',
-                      ],
-                    },
-                  },
-                },
-              },
-              legalRepresentative: {
-                type: 'object',
-                nullable: true,
-                properties: {
-                  partyId: { type: 'string', format: 'uuid' },
-                  displayName: { type: 'string' },
-                },
-              },
-              status: { type: 'string', enum: Object.values(SubscriberStatus) },
-              personType: { type: 'string', enum: Object.values(PersonType) },
-              customerSegment: { type: 'string', enum: Object.values(CustomerSegment) },
-              stratum: { type: 'number', nullable: true },
-              vatTreatment: { type: 'string', enum: Object.values(VatTreatment), deprecated: true },
-              documentType: {
-                type: 'string',
-                enum: Object.values(DocumentType),
-                nullable: true,
-              },
-              firstName: { type: 'string', nullable: true },
-              lastName: { type: 'string', nullable: true },
-              businessName: { type: 'string', nullable: true },
-              commercialName: { type: 'string', nullable: true },
-              createdAt: { type: 'string', format: 'date-time' },
-              hasLiveContracts: { type: 'boolean' },
-              documentNumber: { type: 'string' },
-              nit: { type: 'string' },
-              nitVerificationDigit: { type: 'string' },
-              phone: { type: 'string' },
-              altContactPhone: { type: 'string' },
-              whatsapp: { type: 'string' },
-              email: { type: 'string', format: 'email' },
-              address: { type: 'string' },
-              neighborhood: { type: 'string' },
-              city: { type: 'string' },
-              department: { type: 'string' },
-              latitude: { type: 'number' },
-              longitude: { type: 'number' },
-            },
-          },
+          items: SUBSCRIBER_LIST_ITEM_OPENAPI_SCHEMA,
         },
-        total: { type: 'number' },
-        meta: { type: 'object' },
+        total: { type: 'integer', minimum: 0 },
+        meta: { $ref: getSchemaPath(ListMetaDto) },
       },
     },
   })
@@ -354,6 +446,9 @@ export class SubscribersController {
   @ApiQuery({ name: 'stratum', required: false, type: Number })
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortDir', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'contactPending', required: false, type: Boolean })
+  @ApiQuery({ name: 'fiscalIncomplete', required: false, type: Boolean })
+  @ApiQuery({ name: 'withoutLiveServices', required: false, type: Boolean })
   async search(
     @Body(new ZodBodyValidationPipe(SearchSubscribersSchema)) body: SearchSubscribersInput,
     @CurrentUser() user: JwtPayload,
@@ -365,6 +460,10 @@ export class SubscribersController {
     @Query('limit', CrmListLimitPipe) limit?: number,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: 'asc' | 'desc',
+    @Query('contactPending', new ParseBoolPipe({ optional: true })) contactPending?: boolean,
+    @Query('fiscalIncomplete', new ParseBoolPipe({ optional: true })) fiscalIncomplete?: boolean,
+    @Query('withoutLiveServices', new ParseBoolPipe({ optional: true }))
+    withoutLiveServices?: boolean,
   ) {
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const filters = {
@@ -376,6 +475,9 @@ export class SubscribersController {
       limit,
       sortBy: sortBy ?? undefined,
       sortDir: sortDir ?? undefined,
+      contactPending,
+      fiscalIncomplete,
+      withoutLiveServices,
     };
 
     if (body.search !== undefined) {
@@ -884,7 +986,7 @@ export class SubscribersController {
     if ('phone' in subscriber) result.phone = subscriber.phone;
     if ('altContactPhone' in subscriber) result.altContactPhone = subscriber.altContactPhone;
 
-    if (privacyRestricted) {
+    if (privacyRestricted || anonymizedAt !== null) {
       const allowed = new Set([
         'id',
         'tenantId',

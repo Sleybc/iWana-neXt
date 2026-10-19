@@ -1,12 +1,22 @@
 # PROMPT — MOD05 · Lista operativa de Suscriptores (E1 + E2) y P3 de la Fase 05
 
-**Versión:** 1.0 · **Fecha:** 2026-10-19 · **Emisor:** AI-EM-ARCH · **Estado:** Contrato congelado; G0 aprobado por el CTO el 2026-10-19 (D-F6-1 A (sin zona; ciudad del servicio principal), D-F6-2 regla RF-LO-02, D-F6-3 conteos globales, D-F6-4 diferir vistas guardadas, D-F6-5 teclado solo con foco en la tabla y D-F6-6 incluir los P3; [PRD Fase 06](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md) §9.1)
+**Versión:** 1.0 · **Fecha:** 2026-10-19 · **Emisor:** AI-EM-ARCH · **Estado:** Aprobado; G0 aprobado por el CTO el 2026-10-19 (D-F6-1 A (sin zona; ciudad del servicio principal), D-F6-2 regla RF-LO-02, D-F6-3 conteos globales, D-F6-4 diferir vistas guardadas, D-F6-5 teclado solo con foco en la tabla y D-F6-6 incluir los P3; [PRD Fase 06](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md) §9.1)
 **Plan:** [2026-10-19-mod05-lista-operativa.md](../plans/2026-10-19-mod05-lista-operativa.md)
-**Base:** `main` en `ea49fb4c`. Se trabaja en `main`, sin ramas. **Ningún agente commitea**: lo hace AI-EM-ARCH en G7.
+**Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) (v1.2, En revisión; la estructura y el destino obligatorio se respaldan por `AGENTS.md` → Documentation Rules).
+**Base:** `main` en `ec0e4e16`. Se trabaja en `main`, sin ramas. **Ningún agente commitea**: lo hace AI-EM-ARCH en G7.
+
+## Artefactos de entrada obligatorios
+
+- **PRD:** [MOD05 CRM Suscriptores — Fase 06](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md) (Aprobado).
+- **HLD:** [MOD05 Arquitectura v2.0](../hlds/HLD-MOD05-ARQUITECTURA-v2.0.md) y [MOD05 Fase 05 v1.1](../hlds/HLD-MOD05-FASE-05-v1.1.md).
+- **ADRs aplicables según el PRD:** [ADR-065](../adrs/ADR-065-Paginacion-Numerada-Tablas-Operativas.md), [ADR-067](../adrs/ADR-067-Proyeccion-PII-Listados-Operativos.md), [ADR-075](../adrs/ADR-075-Contrato-Capas-Z-Portal.md), [ADR-083](../adrs/ADR-083-Convergencia-RBAC-Granular-Modulos-Operativos.md) y [ADR-097](../adrs/ADR-097-Puertos-de-lectura-para-avisos-de-terminacion-MOD05.md).
+- **Plan de sprint:** no hay plan de sprint específico para Fase 06; la ejecución se coordina con el [plan de orquestación](../plans/2026-10-19-mod05-lista-operativa.md).
+- **Prompt arquitectónico de origen:** [Activar AI-EM-ARCH](PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md) y [análisis de dispatch](PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md).
+- **Artefactos faltantes:** no se detectan HLD ni ADR aplicables faltantes; no existe plan de sprint F06 dedicado. El alcance no requiere un ADR nuevo.
 
 ## 0. Reglas comunes
 
-1. Lee `AGENTS.md`, el PRD Fase 06 completo, el plan y tu § antes de tocar código.
+1. Lee `AGENTS.md`, los artefactos de entrada obligatorios, el plan y tu § antes de tocar código.
 2. Lee los `SKILL.md` de tu fila en el plan §3 como documentación, no como tool.
 3. Solo editas los archivos de tu fila en §2. Si necesitas otro, emite `[BLOQUEO]` y para.
 4. TDD: el test de cada RF se escribe primero y se ve fallar.
@@ -19,7 +29,7 @@
 
 H1-H9 del PRD §1. Anclas:
 - `apps/api/src/modules/crm/subscribers/subscribers.service.ts:621-700` (lista con la subconsulta `has_live_contracts`);
-- `apps/api/src/modules/commercial/ports/plan-catalog-read.port.ts:31-40` y su adaptador `apps/api/src/modules/tenant/tenant-crm-read-adapter.service.ts` (`TenantPlanCatalogReadAdapter`);
+- `apps/api/src/modules/commercial/ports/plan-catalog-read.port.ts:31-40`, implementado por el adaptador activo `apps/api/src/modules/commercial/ports/commercial-catalog-read.adapter.ts`; `TenantPlanCatalogReadAdapter` en `apps/api/src/modules/tenant/tenant-crm-read-adapter.service.ts` es una implementación legado no registrada en runtime;
 - `apps/api/src/modules/crm/subscribers/subscriber-fiscal-completeness.service.ts:22-34` (regla que `fiscalIncomplete` replica en SQL);
 - `apps/portal/src/components/shared/portal-ui.tsx:1583` (`PortalSidePeek`);
 - seis sitios con la guarda de foco: `packages/ui/src/components/Dialog.tsx`, `packages/ui/src/components/OperationalSidePeek.tsx`, `apps/portal/src/components/shared/portal-ui.tsx`, `apps/portal/src/components/shared/use-portal-side-drawer-a11y.ts`, `apps/portal/src/components/auth/SessionRecoveryModal.tsx`, `apps/portal/src/components/crm/subscribers/SubscriberLifecycleDialog.tsx`.
@@ -30,7 +40,7 @@ H1-H9 del PRD §1. Anclas:
 | --- | --- | --- |
 | P0 | — | `docs/specs/2026-10-19-mod05-lista-operativa-ux-spec.md` |
 | D0 | — | `docs/specs/2026-10-19-ds-deferred-initial-focus-contract.md` |
-| B0 | `packages/shared/src/schemas/subscriber.schema.ts` (y su spec), `apps/api/src/modules/crm/subscribers/**`, `apps/api/src/modules/commercial/ports/plan-catalog-read.port.ts`, `apps/api/src/modules/tenant/tenant-crm-read-adapter.service.ts` (solo el método nuevo), OpenAPI de suscriptores | specs unitarios, de paridad e integrados |
+| B0 | `packages/shared/src/schemas/subscriber.schema.ts` (y su spec), `apps/api/src/modules/crm/subscribers/**`, `apps/api/src/modules/commercial/ports/plan-catalog-read.port.ts`, `apps/api/src/modules/commercial/ports/commercial-catalog-read.adapter.ts`, `apps/api/src/modules/tenant/tenant-crm-read-adapter.service.ts` (solo el método nuevo), OpenAPI de suscriptores | specs unitarios, de paridad e integrados |
 | Q0 | — | `apps/api/src/modules/crm/contracts/tests/contracts.controller.http.spec.ts` |
 | F1 | `packages/ui/src/components/Dialog.tsx`, `packages/ui/src/components/OperationalSidePeek.tsx`, `packages/ui/src/index.ts`, la guarda de foco de `apps/portal/src/components/shared/portal-ui.tsx`, `use-portal-side-drawer-a11y.ts`, `SessionRecoveryModal.tsx`, `SubscriberLifecycleDialog.tsx` | `packages/ui/src/hooks/use-deferred-initial-focus.ts` y su spec |
 | F2 | `apps/portal/src/components/crm/subscribers/SubscribersListClient.tsx` (y su spec), `subscriber-ui.ts`, `apps/portal/src/lib/api-client.ts` (solo métodos de suscriptores) | `SubscriberPeek.tsx`, `SubscriberQueueChips.tsx`, `SubscriberMoreFilters.tsx` y sus specs; E2E `e2e/tests/portal-mod05-lista-operativa.spec.ts` |
@@ -50,11 +60,11 @@ Define `useDeferredInitialFocus` (RF-LO-21): firma, cuándo se considera «intac
 ## B0 — Proyección, conteos y puerto de planes · `sr-backend`
 
 1. **Primero (S1):** en `@iwana/shared`, `primaryService`, `otherLiveServicesCount`, `SubscriberQueueCountsSchema` y los filtros `contactPending`, `fiscalIncomplete` y `withoutLiveServices`. Avisa al orquestador.
-2. `PlanCatalogReadPort.getPlansByIds` y su implementación en el adaptador de tenant, en una sola consulta.
+2. `PlanCatalogReadPort.getPlansByIds` y sus implementaciones en una sola consulta por lote: `CommercialCatalogReadAdapter` es el provider activo usado por contratos; mantener también la implementación legado de `TenantPlanCatalogReadAdapter` para cumplir el contrato abstracto. No cambiar el wiring del token.
 3. Proyección del principal (RF-LO-01 a RF-LO-05) en la lista y en el lookup exacto, con una subconsulta lateral que use `idx_contracts_tenant_subscriber`, y planes resueltos por lote.
 4. `GET /crm/subscribers/queue-counts` (RF-LO-06 a RF-LO-09) con `COUNT(*) FILTER`, y los tres filtros nuevos con la misma regla SQL.
 5. OpenAPI actualizado.
-**Tests:** CA-LO-01 a CA-LO-04; un test que cuente las consultas de una página de 100 filas (RNF-LO-01); el test de paridad de `fiscalIncomplete` contra el servicio de completitud; tests integrados contra Postgres para la regla del principal y los conteos.
+**Tests:** CA-LO-01 a CA-LO-04; un test que cuente las consultas principales de una página de 100 filas (filas, conteo total y lote de planes) y mida aparte las lecturas de Party/Privacy (RNF-LO-01); el test de paridad de `fiscalIncomplete` contra el servicio de completitud; tests integrados contra Postgres para la regla del principal y los conteos.
 **Cierras cuando:** tests verdes con conteo real, typecheck verde y `EXPLAIN` de la lista anexado (RNF-LO-02).
 
 ## Q0 — Prueba HTTP de CA-LC-09 · `sr-qa`

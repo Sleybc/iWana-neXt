@@ -105,6 +105,7 @@ import {
   type SearchSubscribersInput,
   type SubscriberDetail,
   type SubscriberListItem,
+  type SubscriberQueueCounts,
   type StockIssuePickableItem,
   type StockIssueLineSerialRef,
   type ExecutorCustodyResponse as ExecutorCustodyResponseContract,
@@ -5681,6 +5682,9 @@ export interface ListSubscribersParams {
   personType?: PersonType;
   customerSegment?: CustomerSegment;
   stratum?: number;
+  contactPending?: boolean;
+  fiscalIncomplete?: boolean;
+  withoutLiveServices?: boolean;
   search?: string;
   page?: number;
   limit?: number;
@@ -6452,6 +6456,15 @@ export const subscribersApi = {
     if (params?.personType) searchParams.set('personType', params.personType);
     if (params?.customerSegment) searchParams.set('customerSegment', params.customerSegment);
     if (params?.stratum !== undefined) searchParams.set('stratum', String(params.stratum));
+    if (params?.contactPending !== undefined) {
+      searchParams.set('contactPending', String(params.contactPending));
+    }
+    if (params?.fiscalIncomplete !== undefined) {
+      searchParams.set('fiscalIncomplete', String(params.fiscalIncomplete));
+    }
+    if (params?.withoutLiveServices !== undefined) {
+      searchParams.set('withoutLiveServices', String(params.withoutLiveServices));
+    }
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
@@ -6501,6 +6514,9 @@ export const subscribersApi = {
       },
       tenantSlug,
     ),
+
+  queueCounts: (tenantSlug?: string) =>
+    request<SubscriberQueueCounts>('/crm/subscribers/queue-counts', undefined, tenantSlug),
 
   getById: (id: string, tenantSlug?: string) =>
     request<SubscriberRecord>(`/crm/subscribers/${id}`, undefined, tenantSlug),

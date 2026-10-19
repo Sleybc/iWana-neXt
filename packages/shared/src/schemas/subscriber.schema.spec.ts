@@ -10,6 +10,9 @@ import {
   legalRepresentativeSchema,
   nitVerificationDigitSchema,
   rutResponsibilitiesSchema,
+  SubscriberListFiltersSchema,
+  SubscriberPrimaryServiceSchema,
+  SubscriberQueueCountsSchema,
   SearchSubscribersSchema,
   SUBSCRIBER_FISCAL_DATA_INCOMPLETE,
   SUBSCRIBER_FISCAL_MISSING_FIELDS,
@@ -50,6 +53,77 @@ const juridicalSubscriber = {
 };
 
 describe('subscriber shared schemas · MOD05 B1', () => {
+  it('expone el contrato del servicio principal y permite null cuando no hay contratos elegibles', () => {
+    expect(
+      SubscriberPrimaryServiceSchema.parse({
+        contractId: '00000000-0000-4000-8000-000000000001',
+        planName: 'Plan sintético',
+        status: 'ACTIVE',
+        city: 'Ciudad sintética',
+        alias: 'Servicio sintético',
+      }),
+    ).toEqual({
+      contractId: '00000000-0000-4000-8000-000000000001',
+      planName: 'Plan sintético',
+      status: 'ACTIVE',
+      city: 'Ciudad sintética',
+      alias: 'Servicio sintético',
+    });
+    expect(SubscriberPrimaryServiceSchema.nullable().parse(null)).toBeNull();
+    expect(
+      SubscriberPrimaryServiceSchema.safeParse({
+        contractId: 'invalid',
+        planName: null,
+        status: 'TERMINATED',
+        city: null,
+        alias: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('valida conteos de cola enteros no negativos', () => {
+    expect(
+      SubscriberQueueCountsSchema.parse({
+        active: 1,
+        suspended: 2,
+        contactPending: 3,
+        fiscalIncomplete: 4,
+        withoutLiveServices: 5,
+      }),
+    ).toEqual({
+      active: 1,
+      suspended: 2,
+      contactPending: 3,
+      fiscalIncomplete: 4,
+      withoutLiveServices: 5,
+    });
+    expect(
+      SubscriberQueueCountsSchema.safeParse({
+        active: -1,
+        suspended: 2,
+        contactPending: 3,
+        fiscalIncomplete: 4,
+        withoutLiveServices: 5,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('tipa los tres filtros de cola como booleanos opcionales', () => {
+    expect(
+      SubscriberListFiltersSchema.parse({
+        contactPending: true,
+        fiscalIncomplete: false,
+        withoutLiveServices: true,
+      }),
+    ).toEqual({
+      contactPending: true,
+      fiscalIncomplete: false,
+      withoutLiveServices: true,
+    });
+    expect(SubscriberListFiltersSchema.safeParse({ contactPending: 'true' }).success).toBe(false);
+    expect(SubscriberListFiltersSchema.parse({})).toEqual({});
+  });
+
   it('fija el contrato de completitud fiscal que consume API y portal', () => {
     expect(SUBSCRIBER_FISCAL_DATA_INCOMPLETE).toBe('SUBSCRIBER_FISCAL_DATA_INCOMPLETE');
     expect(SUBSCRIBER_FISCAL_MISSING_FIELDS).toEqual([

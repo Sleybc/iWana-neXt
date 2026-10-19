@@ -1,6 +1,6 @@
 # LAUNCH — MOD05 · Lista operativa de Suscriptores (E1 + E2)
 
-**Plan:** `docs/plans/2026-10-19-mod05-lista-operativa.md` v1.0 · **PRD:** `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md` v1.0
+**Plan:** `docs/plans/2026-10-19-mod05-lista-operativa.md` v1.0 · **PRD:** `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md` v1.0 · **Estado:** Aprobado
 **Olas:** 1 (P0 ∥ D0 ∥ B0 ∥ Q0) → 2 (F1 tras S3 ∥ F2 tras S1+S2) → 3 (V1 ∥ V2 ∥ V3 ∥ V4 → V5) → G7 · **Gate previo:** G0 (D-F6-1..6) aprobado el 2026-10-19
 **Bloqueos abiertos:** ninguno. Estado al arrancar: Fase 05 cerrada con CI verde; nada de la Fase 06 implementado.
 

@@ -80,6 +80,43 @@ export const SearchSubscribersSchema = z
 
 export type SearchSubscribersInput = z.infer<typeof SearchSubscribersSchema>;
 
+/** Servicio elegido por la regla determinista de la lista operativa. */
+export const SubscriberPrimaryServiceSchema = z
+  .object({
+    contractId: z.string().uuid(),
+    planName: z.string().nullable(),
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'DRAFT']),
+    city: z.string().nullable(),
+    alias: z.string().nullable(),
+  })
+  .strict();
+
+export type SubscriberPrimaryService = z.infer<typeof SubscriberPrimaryServiceSchema>;
+
+/** Conteos globales que alimentan las colas operativas de suscriptores. */
+export const SubscriberQueueCountsSchema = z
+  .object({
+    active: z.number().int().min(0),
+    suspended: z.number().int().min(0),
+    contactPending: z.number().int().min(0),
+    fiscalIncomplete: z.number().int().min(0),
+    withoutLiveServices: z.number().int().min(0),
+  })
+  .strict();
+
+export type SubscriberQueueCounts = z.infer<typeof SubscriberQueueCountsSchema>;
+
+/** Filtros opcionales de la lista; se validan después de parsear los query params HTTP. */
+export const SubscriberListFiltersSchema = z
+  .object({
+    contactPending: z.boolean().optional(),
+    fiscalIncomplete: z.boolean().optional(),
+    withoutLiveServices: z.boolean().optional(),
+  })
+  .strict();
+
+export type SubscriberListFilters = z.infer<typeof SubscriberListFiltersSchema>;
+
 export const SUBSCRIBER_FISCAL_DATA_INCOMPLETE = 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE' as const;
 export const SUBSCRIBER_FISCAL_MISSING_FIELDS = [
   'VAT_RESPONSIBILITY',
@@ -96,7 +133,7 @@ export interface SubscriberFiscalCompleteness {
 
 /**
  * Frozen, role-filtered list projection contract shared by API and portal.
- * Restricted fields are omitted entirely when the caller's role is not allowed to see them.
+ * Role-restricted fields are omitted; privacy-restricted and anonymized fields are returned as null.
  */
 export interface SubscriberListItem {
   id: string;
@@ -129,20 +166,22 @@ export interface SubscriberListItem {
   contactPending: boolean;
   /** true si existe al menos un contrato ACTIVE o SUSPENDED. */
   hasLiveContracts: boolean;
+  primaryService: SubscriberPrimaryService | null;
+  otherLiveServicesCount: number;
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
-  documentNumber?: string;
-  nit?: string;
-  nitVerificationDigit?: string;
-  phone?: string;
-  altContactPhone?: string;
-  whatsapp?: string;
-  email?: string;
-  address?: string;
-  neighborhood?: string;
-  city?: string;
-  department?: string;
-  latitude?: number;
-  longitude?: number;
+  documentNumber?: string | null;
+  nit?: string | null;
+  nitVerificationDigit?: string | null;
+  phone?: string | null;
+  altContactPhone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  address?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  department?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /** Campos adicionales que el detalle del suscriptor expone para completar o activar. */

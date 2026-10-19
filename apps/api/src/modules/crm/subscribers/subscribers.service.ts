@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, SelectQueryBuilder } from 'typeorm';
 import { z } from 'zod';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { clampPage } from '../../../common/pagination/clamp-page';
@@ -44,12 +44,20 @@ import {
   type PrivacyMark,
   type RequestSummary,
   type RutResponsibility,
+  SubscriberQueueCountsSchema,
+  type SubscriberQueueCounts,
+  type SubscriberPrimaryService,
   legalRepresentativeSchema,
   nitVerificationDigitSchema,
   rutResponsibilitiesSchema,
 } from '@iwana/shared';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
+import {
+  CONTACT_PENDING_SQL,
+  FISCAL_INCOMPLETE_SQL,
+  HAS_LIVE_SERVICES_SQL,
+} from './subscriber-queue-predicates';
 import { VatTreatmentService } from './vat-treatment.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
 import { AuditService } from '../../audit/audit.service';
@@ -78,6 +86,7 @@ import {
   isBlockingLegalComplianceStatus,
   type ProvisioningReadinessSummary,
 } from '../provisioning-readiness';
+import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
@@ -148,6 +157,121 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
  */
 const SORTABLE_FIELDS: string[] = [];
 
+type OperationalSubscriber = Subscriber & {
+  hasLiveContracts: boolean;
+  primaryService: SubscriberPrimaryService | null;
+  otherLiveServicesCount: number;
+  primaryServicePlanId: string | null;
+  privacyMarks?: PrivacyMark[];
+};
+
+interface PrimaryServiceProjectionRaw {
+  contractId: string;
+  planId: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'DRAFT';
+  city: string | null;
+  alias: string | null;
+  liveCount: string | number;
+}
+
+interface OperationalServiceRaw {
+  primary_service_projection?: string | PrimaryServiceProjectionRaw | null;
+  // Alias de compatibilidad con fixtures de las pruebas unitarias.
+  primary_service_contract_id?: string | null;
+  primary_service_plan_id?: string | null;
+  primary_service_status?: 'ACTIVE' | 'SUSPENDED' | 'DRAFT' | null;
+  primary_service_city?: string | null;
+  primary_service_alias?: string | null;
+  primary_service_live_count?: string | number | null;
+}
+
+export const PRIMARY_SERVICE_PROJECTION_SQL = `(
+  SELECT jsonb_build_object(
+    'contractId', primary_contract.id,
+    'planId', primary_contract.plan_id,
+    'status', primary_contract.status::text,
+    'city', primary_contract.installation_city,
+    'alias', primary_contract.alias,
+    'liveCount', primary_contract.live_count
+  )
+    FROM (
+      SELECT contract.id,
+             contract.plan_id,
+             contract.status,
+             contract.installation_city,
+             contract.alias,
+             COUNT(*) FILTER (
+               WHERE contract.status::text IN ('ACTIVE', 'SUSPENDED')
+             ) OVER () AS live_count
+        FROM contracts contract
+       WHERE contract.subscriber_id = s.id
+         AND contract.tenant_id = s.tenant_id
+         AND contract.deleted_at IS NULL
+         AND contract.status::text IN ('ACTIVE', 'SUSPENDED', 'DRAFT')
+       ORDER BY CASE contract.status::text
+                  WHEN 'ACTIVE' THEN 0
+                  WHEN 'SUSPENDED' THEN 1
+                  ELSE 2
+                END,
+                CASE
+                  WHEN contract.status::text IN ('ACTIVE', 'SUSPENDED')
+                  THEN contract.start_date
+                END ASC NULLS LAST,
+                CASE
+                  WHEN contract.status::text = 'DRAFT'
+                  THEN contract.start_date
+                END DESC NULLS LAST,
+                contract.created_at ASC,
+                contract.id ASC
+    ) primary_contract
+   LIMIT 1
+)`;
+
+function addPrimaryServiceProjection(query: SelectQueryBuilder<Subscriber>): void {
+  query.addSelect(PRIMARY_SERVICE_PROJECTION_SQL, 'primary_service_projection');
+}
+
+function mapOperationalRows(
+  entities: Subscriber[],
+  rawRows: OperationalServiceRaw[],
+): OperationalSubscriber[] {
+  return entities.map((subscriber, index) => {
+    const raw = rawRows[index] ?? {};
+    const projection =
+      typeof raw.primary_service_projection === 'string'
+        ? (JSON.parse(raw.primary_service_projection) as PrimaryServiceProjectionRaw)
+        : raw.primary_service_projection;
+    const legacyProjection = projection ? null : raw;
+    const contractId =
+      projection?.contractId ?? legacyProjection?.primary_service_contract_id ?? null;
+    const planId = projection?.planId ?? legacyProjection?.primary_service_plan_id ?? null;
+    const status = projection?.status ?? legacyProjection?.primary_service_status ?? null;
+    const liveCount = Number(
+      projection?.liveCount ?? legacyProjection?.primary_service_live_count ?? 0,
+    );
+    const primaryService =
+      contractId && status
+        ? {
+            contractId,
+            planName: null,
+            status,
+            city: projection?.city ?? legacyProjection?.primary_service_city ?? null,
+            alias: projection?.alias ?? legacyProjection?.primary_service_alias ?? null,
+          }
+        : null;
+
+    return Object.assign(subscriber, {
+      hasLiveContracts: liveCount > 0,
+      primaryService,
+      primaryServicePlanId: planId,
+      otherLiveServicesCount: Math.max(
+        0,
+        liveCount - (status === 'ACTIVE' || status === 'SUSPENDED' ? 1 : 0),
+      ),
+    });
+  });
+}
+
 function isConsentChannel(value: string): value is ConsentChannel {
   return Object.values(ConsentChannel).includes(value as ConsentChannel);
 }
@@ -171,6 +295,8 @@ export class SubscribersService {
     private readonly statusTransitionService: SubscriberStatusTransitionService,
     private readonly auditService: AuditService,
     private readonly partyWritePort: IPartyWritePort,
+    @Inject(PlanCatalogReadPort)
+    private readonly planCatalogReadPort: PlanCatalogReadPort,
     @Optional()
     @Inject(IPrivacyAuthorizationWritePort)
     private readonly privacyAuthorizationWritePort?: IPrivacyAuthorizationWritePort,
@@ -611,6 +737,9 @@ export class SubscribersService {
     customerSegment?: CustomerSegment | undefined;
     stratum?: number | undefined;
     search?: string | undefined;
+    contactPending?: boolean | undefined;
+    fiscalIncomplete?: boolean | undefined;
+    withoutLiveServices?: boolean | undefined;
     excludeBlocked?: boolean | undefined;
     canSeeBlocked?: boolean | undefined;
     page?: number | undefined;
@@ -618,11 +747,11 @@ export class SubscribersService {
     sortBy?: string | undefined;
     sortDir?: 'asc' | 'desc' | undefined;
   }): Promise<{
-    data: Array<Subscriber & { privacyMarks: PrivacyMark[]; hasLiveContracts: boolean }>;
+    data: OperationalSubscriber[];
     total: number;
     meta: ReturnType<typeof buildPageMeta>;
   }> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
     // H-1 / D-2: tope de limit 100 antes de clampPage (Ley 1581 — no amplificar extracción PII).
     const cappedLimit = clampLimit(filters.limit);
     const { page, limit } = clampPage(filters.page ?? 1, cappedLimit);
@@ -633,19 +762,19 @@ export class SubscribersService {
       schemaName,
       async (qr) => {
         const query = qr.manager.createQueryBuilder(Subscriber, 's');
-        query.addSelect(
-          `EXISTS (
-            SELECT 1
-              FROM contracts lifecycle_contract
-             WHERE lifecycle_contract.subscriber_id = s.id
-               AND lifecycle_contract.tenant_id = s.tenant_id
-               AND lifecycle_contract.deleted_at IS NULL
-               AND lifecycle_contract.status::text IN ('ACTIVE', 'SUSPENDED')
-          )`,
-          's_has_live_contracts',
-        );
+        addPrimaryServiceProjection(query);
 
-        if (filters.status) query.andWhere('s.status = :status', { status: filters.status });
+        query.andWhere('s.tenantId = :tenantId', { tenantId });
+
+        if (filters.status) {
+          query.andWhere('s.status = :status', { status: filters.status });
+          if (
+            filters.status === SubscriberStatus.ACTIVE ||
+            filters.status === SubscriberStatus.SUSPENDED
+          ) {
+            query.andWhere('s.anonymizedAt IS NULL');
+          }
+        }
         if (filters.personType)
           query.andWhere('s.personType = :personType', { personType: filters.personType });
         if (filters.customerSegment)
@@ -653,6 +782,22 @@ export class SubscribersService {
             customerSegment: filters.customerSegment,
           });
         if (filters.stratum) query.andWhere('s.stratum = :stratum', { stratum: filters.stratum });
+
+        if (filters.contactPending !== undefined) {
+          query.andWhere(
+            `(s.anonymized_at IS NULL AND ${filters.contactPending ? CONTACT_PENDING_SQL : `NOT ${CONTACT_PENDING_SQL}`})`,
+          );
+        }
+        if (filters.fiscalIncomplete !== undefined) {
+          query.andWhere(
+            `(s.anonymized_at IS NULL AND ${filters.fiscalIncomplete ? FISCAL_INCOMPLETE_SQL : `NOT ${FISCAL_INCOMPLETE_SQL}`})`,
+          );
+        }
+        if (filters.withoutLiveServices !== undefined) {
+          query.andWhere(
+            `(s.anonymized_at IS NULL AND ${filters.withoutLiveServices ? `NOT ${HAS_LIVE_SERVICES_SQL}` : HAS_LIVE_SERVICES_SQL})`,
+          );
+        }
 
         // La entrada libre llega por el body POST. Escapamos también el carácter
         // escape para que %, _ y \\ se interpreten literalmente en ILIKE.
@@ -683,27 +828,24 @@ export class SubscribersService {
           query.getRawAndEntities(),
           query.clone().getCount(),
         ]);
-        const rows = result.entities.map((subscriber, index) => {
-          const value = result.raw[index]?.s_has_live_contracts;
-          const hasLiveContracts = value === true || value === 'true' || value === 't';
-          return Object.assign(subscriber, { hasLiveContracts });
-        });
+        const rows = mapOperationalRows(result.entities, result.raw as OperationalServiceRaw[]);
         return { data: rows, total: count, sortResult };
       },
     );
 
+    await this.hydratePrimaryServicePlanNames(data, tenantId, schemaName);
+
     // Descifrar PII para respuesta
-    const hydratedData = data.map((s) =>
-      Object.assign(this.decryptSubscriberFields(s), {
-        hasLiveContracts:
-          (s as Subscriber & { hasLiveContracts?: boolean }).hasLiveContracts === true,
-      }),
-    );
+    const hydratedData: OperationalSubscriber[] = data.map((subscriber: OperationalSubscriber) => {
+      this.decryptSubscriberFields(subscriber);
+      subscriber.hasLiveContracts = subscriber.hasLiveContracts === true;
+      return subscriber;
+    });
     await this.hydrateLegalRepresentativeDisplayNames(hydratedData, filters.canSeeBlocked);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydratedData.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
     );
-    const dataWithMarks = hydratedData.map((subscriber) =>
+    const dataWithMarks: OperationalSubscriber[] = hydratedData.map((subscriber) =>
       Object.assign(subscriber, {
         hasLiveContracts: subscriber.hasLiveContracts,
         privacyMarks: subscriber.partyId ? (marksByParty?.[subscriber.partyId] ?? []) : [],
@@ -723,6 +865,63 @@ export class SubscribersService {
         sortDir: sortResult.appliedSortDir ?? undefined,
       }),
     };
+  }
+
+  /** Conteos globales del tenant en una sola agregación PostgreSQL. */
+  async getQueueCounts(): Promise<SubscriberQueueCounts> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE s.status::text = 'ACTIVE') AS active,
+           COUNT(*) FILTER (WHERE s.status::text = 'SUSPENDED') AS suspended,
+           COUNT(*) FILTER (WHERE ${CONTACT_PENDING_SQL}) AS contact_pending,
+           COUNT(*) FILTER (WHERE ${FISCAL_INCOMPLETE_SQL}) AS fiscal_incomplete,
+           COUNT(*) FILTER (WHERE NOT ${HAS_LIVE_SERVICES_SQL}) AS without_live_services
+         FROM subscribers s
+         WHERE s.tenant_id = $1
+           AND s.deleted_at IS NULL
+           AND s.anonymized_at IS NULL`,
+        [tenantId],
+      )) as Array<{
+        active: string | number;
+        suspended: string | number;
+        contact_pending: string | number;
+        fiscal_incomplete: string | number;
+        without_live_services: string | number;
+      }>;
+      const counts = rows[0];
+      return SubscriberQueueCountsSchema.parse({
+        active: Number(counts?.active ?? 0),
+        suspended: Number(counts?.suspended ?? 0),
+        contactPending: Number(counts?.contact_pending ?? 0),
+        fiscalIncomplete: Number(counts?.fiscal_incomplete ?? 0),
+        withoutLiveServices: Number(counts?.without_live_services ?? 0),
+      });
+    });
+  }
+
+  private async hydratePrimaryServicePlanNames(
+    subscribers: OperationalSubscriber[],
+    tenantId: string,
+    schemaName: string,
+  ): Promise<void> {
+    const ids = [
+      ...new Set(
+        subscribers.flatMap((subscriber) =>
+          subscriber.primaryServicePlanId ? [subscriber.primaryServicePlanId] : [],
+        ),
+      ),
+    ];
+    if (ids.length === 0) return;
+    const plansById = await this.planCatalogReadPort.getPlansByIds(tenantId, schemaName, ids);
+    for (const subscriber of subscribers) {
+      const primaryService = subscriber.primaryService;
+      const planId = subscriber.primaryServicePlanId;
+      if (!primaryService || !planId) continue;
+      const plan = plansById.get(planId);
+      primaryService.planName = plan?.active ? plan.name : null;
+    }
   }
 
   /**
@@ -1004,44 +1203,49 @@ export class SubscribersService {
     phone?: string | undefined;
     excludeBlocked?: boolean | undefined;
     canSeeBlocked?: boolean | undefined;
-  }): Promise<Array<Subscriber & { hasLiveContracts: boolean }>> {
-    const { schemaName } = TenantContext.getOrThrow();
+  }): Promise<OperationalSubscriber[]> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
     const blockedPartyIds = query.excludeBlocked ? await this.getBlockedPartyIds() : [];
 
-    const results = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const qb = qr.manager.createQueryBuilder(Subscriber, 's');
+    const results: OperationalSubscriber[] = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr) => {
+        const qb = qr.manager.createQueryBuilder(Subscriber, 's');
+        addPrimaryServiceProjection(qb);
 
-      const conditions: string[] = [];
-      const params: Record<string, string> = {};
+        const conditions: string[] = [];
+        const params: Record<string, string> = {};
 
-      // Búsqueda por HMAC (columnas *_hmac)
-      if (query.documentNumber) {
-        conditions.push('s.documentNumberHash = :docHash');
-        params.docHash = hashDocumentNumber(query.documentNumber, this.piiHashKey);
-      }
+        // Búsqueda por HMAC (columnas *_hmac)
+        if (query.documentNumber) {
+          conditions.push('s.documentNumberHash = :docHash');
+          params.docHash = hashDocumentNumber(query.documentNumber, this.piiHashKey);
+        }
 
-      if (query.nit) {
-        conditions.push('s.nit = :nit');
-        params.nit = query.nit;
-      }
+        if (query.nit) {
+          conditions.push('s.nit = :nit');
+          params.nit = query.nit;
+        }
 
-      if (query.email) {
-        conditions.push('s.emailHash = :emailHash');
-        params.emailHash = hashEmail(query.email, this.piiHashKey);
-      }
+        if (query.email) {
+          conditions.push('s.emailHash = :emailHash');
+          params.emailHash = hashEmail(query.email, this.piiHashKey);
+        }
 
-      if (query.phone) {
-        conditions.push('s.phoneHash = :phoneHash');
-        params.phoneHash = this.hmacPhoneHash(query.phone);
-      }
+        if (query.phone) {
+          conditions.push('s.phoneHash = :phoneHash');
+          params.phoneHash = this.hmacPhoneHash(query.phone);
+        }
 
-      if (conditions.length === 0) {
-        return [];
-      }
+        if (conditions.length === 0) {
+          return [];
+        }
 
-      qb.where(conditions.join(' AND '), params);
-      qb.addSelect(
-        `EXISTS (
+        qb.where(conditions.join(' AND '), params);
+        qb.andWhere('s.tenantId = :tenantId', { tenantId });
+        qb.addSelect(
+          `EXISTS (
           SELECT 1
             FROM contracts lifecycle_contract
            WHERE lifecycle_contract.subscriber_id = s.id
@@ -1049,26 +1253,28 @@ export class SubscribersService {
              AND lifecycle_contract.deleted_at IS NULL
              AND lifecycle_contract.status::text IN ('ACTIVE', 'SUSPENDED')
         )`,
-        's_has_live_contracts',
-      );
-      if (blockedPartyIds.length > 0) {
-        qb.andWhere('(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))', {
-          blockedPartyIds,
+          's_has_live_contracts',
+        );
+        if (blockedPartyIds.length > 0) {
+          qb.andWhere('(s.partyId IS NULL OR s.partyId <> ALL(CAST(:blockedPartyIds AS uuid[])))', {
+            blockedPartyIds,
+          });
+        }
+        const result = await qb.take(100).getRawAndEntities();
+        const rows = mapOperationalRows(result.entities, result.raw as OperationalServiceRaw[]);
+        return rows.map((subscriber, index) => {
+          const value = result.raw[index]?.s_has_live_contracts;
+          subscriber.hasLiveContracts = value === true || value === 'true' || value === 't';
+          return subscriber;
         });
-      }
-      const result = await qb.take(100).getRawAndEntities();
-      return result.entities.map((subscriber, index) => {
-        const value = result.raw[index]?.s_has_live_contracts;
-        const hasLiveContracts = value === true || value === 'true' || value === 't';
-        return Object.assign(subscriber, { hasLiveContracts });
-      });
-    });
-
-    const hydrated = results.map((subscriber) =>
-      Object.assign(this.decryptSubscriberFields(subscriber), {
-        hasLiveContracts: subscriber.hasLiveContracts,
-      }),
+      },
     );
+
+    await this.hydratePrimaryServicePlanNames(results, tenantId, schemaName);
+    const hydrated: OperationalSubscriber[] = results.map((subscriber) => {
+      this.decryptSubscriberFields(subscriber);
+      return subscriber;
+    });
     await this.hydrateLegalRepresentativeDisplayNames(hydrated, query.canSeeBlocked);
     const marksByParty = await this.privacyMarksReadPort?.activeMarks(
       hydrated.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),

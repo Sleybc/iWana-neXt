@@ -1,9 +1,10 @@
 # MOD05 — Lista operativa de Suscriptores (E1 + E2) · Plan de orquestación
 
-**Fecha:** 2026-10-19 · **Versión:** 1.0 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-19 · **Versión:** 1.0 · **Estado:** Aprobado · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Definición:** [PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-06-v1.0.md) (Aprobado, 2026-10-19)
 **Prompt:** [PROMPT-MOD05-LISTA-OPERATIVA-v1.0.md](../prompts/PROMPT-MOD05-LISTA-OPERATIVA-v1.0.md) · **Launcher:** [PROMPT-MOD05-LISTA-OPERATIVA-LAUNCH-v1.0.md](../prompts/PROMPT-MOD05-LISTA-OPERATIVA-LAUNCH-v1.0.md)
-**Base:** `main` en `ea49fb4c`. Se trabaja en `main`, sin ramas.
+**Base:** `main` en `ec0e4e16`. Se trabaja en `main`, sin ramas.
+**Estado al lanzamiento:** Fase 05 cerrada con CI verde; nada de Fase 06 implementado. El checkout tiene cambios locales preexistentes ajenos a Fase 06 que se preservan.
 
 ## 0. Alcance
 
@@ -39,6 +40,8 @@ flowchart LR
   - S1: B0 publica en `@iwana/shared` `primaryService`, `otherLiveServicesCount`, `SubscriberQueueCountsSchema` y los filtros nuevos, y avisa;
   - S2: P0 entrega la spec UX;
   - S3: D0 entrega el contrato del hook.
+  - Ajuste aprobado durante la ejecución (CTO, 2026-10-19): `PlanCatalogReadPort` se resuelve en runtime por `CommercialCatalogReadAdapter`; B0 amplía su propiedad a ese adaptador para implementar el batch real de contratos y conserva el método en el adaptador legado de Tenant por compatibilidad. El wiring del token no cambia.
+  - Aclaración aprobada durante la ejecución (CTO, 2026-10-19): RNF-LO-01/CA-LO-02 limitan a tres las consultas principales de filas, conteo total y lote de planes. Las lecturas delegadas en puertos de Party/Privacy se miden y reportan aparte; no se ocultan en la medición total. El tenant de desarrollo mostró seis `SELECT/WITH` en una página de 100 filas con titular y representante legal: tres principales y tres de Party/Privacy.
 - **Archivos compartidos:** `SubscriberLifecycleDialog.tsx` lo edita **solo F1** (RF-LO-22); F2 lo consume sin editarlo. `PortalSidePeek` (`portal-ui.tsx`) lo edita solo F1 en su guarda de foco; F2 lo consume.
 
 ## 3. Matriz de dispatch (agente × skill)

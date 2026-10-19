@@ -23,7 +23,6 @@ export async function projectContractsForRead(
   fiscalDocumentCrypto: FiscalDocumentCrypto,
   privacyMarksReadPort?: IPrivacyMarksReadPort,
 ): Promise<ContractReadProjection> {
-  await hydrateContractFiscalDocuments(manager, contracts, fiscalDocumentCrypto);
   const subscriberIds = [...new Set(contracts.map((contract) => contract.subscriberId))];
   const subscribers = subscriberIds.length
     ? await manager.find(Subscriber, {
@@ -34,9 +33,17 @@ export async function projectContractsForRead(
   const subscriberById = new Map(subscribers.map((subscriber) => [subscriber.id, subscriber]));
   const partyIds = [
     ...new Set(
-      subscribers.flatMap((subscriber) => (subscriber.partyId ? [subscriber.partyId] : [])),
+      subscribers.flatMap((subscriber) =>
+        subscriber.anonymizedAt == null && subscriber.partyId ? [subscriber.partyId] : [],
+      ),
     ),
   ];
+
+  await hydrateContractFiscalDocuments(
+    manager,
+    contracts.filter((contract) => subscriberById.get(contract.subscriberId)?.anonymizedAt == null),
+    fiscalDocumentCrypto,
+  );
 
   if (partyIds.length > 0 && !privacyMarksReadPort) {
     throw new ServiceUnavailableException({
@@ -58,7 +65,33 @@ export async function projectContractsForRead(
     const projected = Object.assign(contract, {
       titularAnonymizedAt: anonymizedAt?.toISOString() ?? null,
     });
-    if (blocked && !canSeeBlocked) {
+    if (anonymizedAt != null) {
+      Object.assign(projected, {
+        quoteId: null,
+        statusReasonCode: null,
+        statusChangedAt: null,
+        alias: 'Anonimizado',
+        installationAddress: null,
+        installationCity: null,
+        installationDepartment: null,
+        installationPostalCode: null,
+        installationNotes: null,
+        customerSegment: null,
+        serviceUsage: null,
+        installationStratum: null,
+        stratumEvidenceMediaId: null,
+        vatSnapshot: null,
+        additionalProductIds: [],
+        additionalServiceIds: [],
+        paymentMethod: null,
+        billingCycle: null,
+        fiscalName: null,
+        fiscalDocument: null,
+        fiscalAddress: null,
+        startDate: null,
+        endDate: null,
+      });
+    } else if (blocked && !canSeeBlocked) {
       Object.assign(projected, {
         alias: 'Datos bloqueados',
         installationAddress: null,

@@ -93,7 +93,7 @@ export const SUBSCRIBER_STATUS_META: Record<
   SubscriberStatus,
   { label: string; variant: SubscriberBadgeVariant }
 > = {
-  LEAD: { label: 'Lead', variant: 'neutral' },
+  LEAD: { label: 'Contacto inicial', variant: 'neutral' },
   PROSPECT: { label: 'Prospecto', variant: 'info' },
   ACTIVE: { label: 'Activo', variant: portalActiveBadgeVariant },
   SUSPENDED: { label: 'Suspendido', variant: 'warning' },
@@ -121,7 +121,7 @@ export const PERSON_TYPE_META: Record<
 
 export const CUSTOMER_SEGMENT_META: Record<CustomerSegment, { label: string }> = {
   RESIDENTIAL: { label: 'Residencial' },
-  SOHO: { label: 'SOHO' },
+  SOHO: { label: 'Micronegocio' },
   PYME: { label: 'PyME' },
   CORPORATE: { label: 'Corporativo' },
   GOVERNMENT: { label: 'Gobierno' },

@@ -18,6 +18,12 @@ export * from './lib/utils';
 export { headerIconControlClassName, interactiveFocusClassName } from './focus';
 export { SkeletonBlock } from './skeleton';
 export type { SkeletonBlockProps } from './skeleton';
+export {
+  useDeferredInitialFocus,
+  type DeferredFocusCleanup,
+  type DeferredFocusEligibility,
+  type DeferredFocusScheduler,
+} from './hooks/use-deferred-initial-focus';
 
 // Componentes
 export * from './components/Button';

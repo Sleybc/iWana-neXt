@@ -134,6 +134,45 @@ describe('CommercialCatalogReadAdapter', () => {
     );
   });
 
+  it('resuelve planes por lote con una consulta y conserva el estado activo', async () => {
+    const activeId = '00000000-0000-4000-a000-000000000101';
+    const inactiveId = '00000000-0000-4000-a000-000000000102';
+    const find = jest.fn().mockResolvedValue([
+      { id: activeId, name: 'Plan activo sintético', isActive: true },
+      { id: inactiveId, name: 'Plan inactivo sintético', isActive: false },
+    ]);
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+      callback({ manager: { find } }),
+    );
+
+    const result = await adapter.getPlansByIds('ten-caller', 'tenant_caller', [
+      activeId,
+      inactiveId,
+    ]);
+
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(
+      new Map([
+        [activeId, { id: activeId, name: 'Plan activo sintético', active: true }],
+        [inactiveId, { id: inactiveId, name: 'Plan inactivo sintético', active: false }],
+      ]),
+    );
+    expect(mockRunInTenantSchema).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant_ctx',
+      expect.any(Function),
+    );
+  });
+
+  it('no consulta el catálogo cuando el lote de planes está vacío', async () => {
+    const find = jest.fn();
+    await expect(adapter.getPlansByIds('ten-caller', 'tenant_caller', [])).resolves.toEqual(
+      new Map(),
+    );
+    expect(find).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+  });
+
   it('devuelve null cuando getPlanById no encuentra el plan', async () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({

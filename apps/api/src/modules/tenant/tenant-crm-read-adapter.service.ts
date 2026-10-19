@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { runInTenantSchema } from '@iwana/db';
+import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { CoverageReadPort, type CoverageNode } from '../crm/ports/coverage-read.port';
 import {
   PlanCatalogReadPort,
   type PlanCatalogItem,
+  type PlanCatalogLookupItem,
   type PlanSnapshot,
 } from '../crm/ports/plan-catalog-read.port';
 import { CommercialNode } from './entities/commercial-node.entity';
@@ -86,6 +87,27 @@ export class TenantPlanCatalogReadAdapter extends PlanCatalogReadPort {
     });
   }
 
+  async getPlansByIds(
+    _tenantId: string,
+    _schemaName: string,
+    ids: string[],
+  ): Promise<Map<string, PlanCatalogLookupItem>> {
+    const ctx = TenantContext.getOrThrow();
+    const validIds = [...new Set(ids)].filter((id) => UUID_PATTERN.test(id));
+    if (validIds.length === 0) return new Map();
+
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+      const items = await qr.manager.find(TenantPlanCatalogItem, {
+        where: { tenantId: ctx.tenantId, id: In(validIds) },
+        select: { id: true, name: true, isActive: true },
+      });
+
+      return new Map(
+        items.map((item) => [item.id, { id: item.id, name: item.name, active: item.isActive }]),
+      );
+    });
+  }
+
   async getPlanById(
     tenantId: string,
     schemaName: string,
@@ -117,3 +139,5 @@ export class TenantPlanCatalogReadAdapter extends PlanCatalogReadPort {
     };
   }
 }
+
+const UUID_PATTERN = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/iu;

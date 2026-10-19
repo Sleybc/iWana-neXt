@@ -14,6 +14,7 @@ import {
   OtpInput,
   cn,
   overlayEdgeClassName,
+  useDeferredInitialFocus,
 } from '@iwana/ui';
 import { SESSION_EXPIRED_EVENT, ApiError, clearTerminalSessionError } from '@/lib/api-client';
 import { resolveTenantSlug } from '@/lib/tenant-resolution';
@@ -126,6 +127,7 @@ export function SessionRecoveryModal() {
     layerIdRef.current = registerNextLayerId();
   }
   const layerId = layerIdRef.current;
+  const scheduleInitialFocus = useDeferredInitialFocus();
 
   // En rutas de autenticación el modal no aporta nada (ya hay un login en
   // pantalla): el evento se ignora y el modal permanece cerrado.
@@ -186,23 +188,9 @@ export function SessionRecoveryModal() {
     // Foco inicial en el primer campo del formulario (regla de accesibilidad
     // del modal de re-autenticación).
     const focusTarget = getFocusableElements(container)[0] ?? container;
-    const focusFrame = window.requestAnimationFrame(() => {
-      if (!isTopMostPortalSideDrawerLayer(layerId)) {
-        return;
-      }
-
-      const active = document.activeElement;
-      const untouched =
-        active == null ||
-        active === document.body ||
-        active === document.documentElement ||
-        active === opener;
-      if (!untouched) {
-        return;
-      }
-
-      focusTarget.focus();
-    });
+    const cancelInitialFocus = scheduleInitialFocus(focusTarget, () =>
+      isTopMostPortalSideDrawerLayer(layerId),
+    );
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isTopMostPortalSideDrawerLayer(layerId)) {
@@ -263,11 +251,11 @@ export function SessionRecoveryModal() {
 
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
+      cancelInitialFocus();
       document.removeEventListener('keydown', onKeyDown);
       unregisterPortalSideDrawerLayer(layerId);
     };
-  }, [layerId, open]);
+  }, [layerId, open, scheduleInitialFocus]);
 
   // Chrome inerte bajo el velo y bloqueo de scroll, con identidad propia de
   // dueño para coexistir con drawers ya abiertos (p. ej. el de proveedores):

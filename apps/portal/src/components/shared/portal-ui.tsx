@@ -42,6 +42,7 @@ import {
   cn,
   interactiveFocusClassName,
   overlayEdgeClassName,
+  useDeferredInitialFocus,
 } from '@iwana/ui';
 import {
   usePortalModalDrawerBroadcast,
@@ -1596,6 +1597,7 @@ export function PortalSidePeek({
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const layerIdRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
+  const scheduleInitialFocus = useDeferredInitialFocus();
 
   if (layerIdRef.current === null) {
     nextSidePeekLayerId += 1;
@@ -1628,31 +1630,9 @@ export function PortalSidePeek({
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     previousActiveElementRef.current = opener;
 
-    const focusFrame = window.requestAnimationFrame(() => {
-      // Misma carrera que `OperationalSidePeek`, `usePortalSideDrawerA11y` y
-      // `Dialog`: el frame diferido puede caer DESPUÉS de la primera
-      // interacción del operador y arrastrar el foco fuera del control en uso
-      // —cerrando el desplegable recién abierto o descartando lo tecleado—.
-      // Solo se reubica el foco si nadie lo reclamó entretanto.
-      const active = document.activeElement;
-      const untouched =
-        active == null ||
-        active === document.body ||
-        active === document.documentElement ||
-        active === opener;
-
-      if (!untouched) {
-        return;
-      }
-
-      const focusTarget = getFocusableElements()[0] ?? panelRef.current;
-      focusTarget?.focus();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-    };
-  }, [getFocusableElements, open]);
+    const focusTarget = getFocusableElements()[0] ?? panelRef.current;
+    return scheduleInitialFocus(focusTarget);
+  }, [getFocusableElements, open, scheduleInitialFocus]);
 
   useEffect(() => {
     if (!open) {

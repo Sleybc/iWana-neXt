@@ -2,16 +2,16 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Badge, Button, Input, Select, cn } from '@iwana/ui';
 import type { ListMeta, SubscriberListItem } from '@iwana/shared';
 import { CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
 import { CircleDashed, Plus } from 'lucide-react';
-import { ApiError, type ListSubscribersParams, subscribersApi } from '@/lib/api-client';
+import { type ListSubscribersParams, subscribersApi } from '@/lib/api-client';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import {
   PortalAlert,
@@ -22,6 +22,7 @@ import {
   PortalPanel,
   PortalSkeletonBlock,
   PortalTablePager,
+  interactiveFocusClassName,
   portalDataBusyRegionClassName,
   portalDataTableBodyClassName,
   portalDataTableCellClassName,
@@ -38,10 +39,17 @@ import {
   SUBSCRIBER_STATUS_META,
   SUBSCRIBER_STATUS_OPTIONS,
   formatDocumentDisplay,
-  formatSubscriberLocation,
   formatSubscriberDate,
   formatSubscriberName,
+  formatLocationLabel,
 } from './subscriber-ui';
+import { SubscriberMoreFilters, type SubscriberActiveFilter } from './SubscriberMoreFilters';
+import { SubscriberPeek } from './SubscriberPeek';
+import {
+  SubscriberQueueChips,
+  SUBSCRIBER_QUEUE_OPTIONS,
+  type SubscriberQueueKey,
+} from './SubscriberQueueChips';
 
 const SUBSCRIBERS_RESOURCE = { singular: 'suscriptor', plural: 'suscriptores' } as const;
 
@@ -52,6 +60,8 @@ const FILTER_KEYS = [
   'customerSegment',
   'stratum',
   'mode',
+  'queue',
+  'peek',
 ] as const;
 
 const SEARCH_MODES = [
@@ -76,12 +86,11 @@ const SORTABLE_COLUMN_LABELS: Record<string, string> = {
 };
 
 const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última página disponible.';
+const SUBSCRIBER_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function mapError(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-
+  void error;
   return 'No fue posible cargar los suscriptores. Intenta de nuevo.';
 }
 
@@ -111,11 +120,15 @@ function buildPageMetaFixture(
 }
 
 function SubscribersListClientInner() {
+  const router = useRouter();
   const tableShellRef = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const peekOriginRef = useRef<{ subscriberId: string; index: number } | null>(null);
   const outOfRangeShownRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
   const requestIdRef = useRef(0);
   const searchInFlightRef = useRef(false);
+  const queueCountsRequestIdRef = useRef(0);
 
   const {
     page,
@@ -137,14 +150,19 @@ function SubscribersListClientInner() {
   const [records, setRecords] = useState<SubscriberListItem[]>([]);
   const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [showInitialSkeleton, setShowInitialSkeleton] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queueCounts, setQueueCounts] = useState<Awaited<
+    ReturnType<typeof subscribersApi.queueCounts>
+  > | null>(null);
+  const [queueCountsLoading, setQueueCountsLoading] = useState(true);
+  const [queueCountsError, setQueueCountsError] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
-  const [searchDraft, setSearchDraft] = useState(() =>
-    SEARCH_MODES.some((item) => item.value === filters.mode && item.value !== 'text')
-      ? ''
-      : (filters.search ?? ''),
-  );
+  const [searchDraft, setSearchDraft] = useState('');
+  const [textSearch, setTextSearch] = useState('');
   const [exactSearched, setExactSearched] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const urlMode = (SEARCH_MODES.find((item) => item.value === filters.mode) ?? SEARCH_MODES[0])
@@ -154,11 +172,27 @@ function SubscribersListClientInner() {
   const mode = SEARCH_MODES.find((item) => item.value === selectedMode) ?? SEARCH_MODES[0];
   const exactMode = mode.value !== 'text';
 
-  const urlSearch = filters.search ?? '';
+  const legacyUrlSearch = filters.search ?? '';
   const statusFilter = filters.status ?? '';
   const personTypeFilter = filters.personType ?? '';
   const segmentFilter = filters.customerSegment ?? '';
   const stratumFilter = filters.stratum ?? '';
+  const queueFilter = filters.queue ?? '';
+  const queueSlug = SUBSCRIBER_QUEUE_OPTIONS.some((item) => item.value === queueFilter)
+    ? (queueFilter as SubscriberQueueKey)
+    : null;
+  const peekParam = filters.peek ?? '';
+  const peekId = SUBSCRIBER_ID_PATTERN.test(peekParam) ? peekParam : null;
+
+  const queueStatus =
+    queueSlug === 'active'
+      ? SubscriberStatus.ACTIVE
+      : queueSlug === 'suspended'
+        ? SubscriberStatus.SUSPENDED
+        : null;
+  const statusIntersectionIsEmpty = Boolean(
+    queueStatus && statusFilter && statusFilter !== queueStatus,
+  );
 
   const sortableFields = meta.capabilities.sortableFields;
   const canSort = sortableFields.length > 0;
@@ -171,12 +205,13 @@ function SubscribersListClientInner() {
       selectedModeRef.current = urlMode;
       setSelectedMode(urlMode);
       setSearchDraft('');
+      setTextSearch('');
     }
   }, [urlMode]);
 
   useEffect(() => {
-    if (!exactMode && selectedMode === urlMode) setSearchDraft(urlSearch);
-  }, [urlSearch, exactMode, selectedMode, urlMode]);
+    if (legacyUrlSearch) setFilters({ search: null });
+  }, [legacyUrlSearch, setFilters]);
 
   useEffect(
     () => () => {
@@ -189,23 +224,28 @@ function SubscribersListClientInner() {
     if (exactMode) return;
     const timeout = window.setTimeout(() => {
       const next = searchDraft.trim();
-      if (next === urlSearch) return;
-      setFilters({ search: next || null });
+      if (next === textSearch) return;
+      setTextSearch(next);
+      if (page !== 1) setQuery({ page: 1 }, { history: 'replace' });
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [searchDraft, setFilters, urlSearch, exactMode]);
+  }, [searchDraft, setQuery, page, textSearch, exactMode]);
 
   const listParams = useMemo((): ListSubscribersParams => {
     const params: ListSubscribersParams = {
       page,
       limit: pageSize,
     };
-    if (urlSearch) params.search = urlSearch;
-    if (statusFilter) params.status = statusFilter as SubscriberStatus;
+    if (textSearch) params.search = textSearch;
+    if (queueStatus) params.status = queueStatus;
+    else if (statusFilter) params.status = statusFilter as SubscriberStatus;
     if (personTypeFilter) params.personType = personTypeFilter as PersonType;
     if (segmentFilter) params.customerSegment = segmentFilter as CustomerSegment;
     if (stratumFilter) params.stratum = Number(stratumFilter);
+    if (queueSlug === 'contactPending') params.contactPending = true;
+    if (queueSlug === 'fiscalIncomplete') params.fiscalIncomplete = true;
+    if (queueSlug === 'withoutLiveServices') params.withoutLiveServices = true;
     // El BE ignora sortBy fuera de sortableFields (Ola 2 deuda: hoy []).
     if (sortBy && sortDir) {
       params.sortBy = sortBy;
@@ -221,8 +261,36 @@ function SubscribersListClientInner() {
     sortDir,
     statusFilter,
     stratumFilter,
-    urlSearch,
+    textSearch,
+    queueSlug,
+    queueStatus,
   ]);
+
+  const loadQueueCounts = useCallback(async () => {
+    const requestId = ++queueCountsRequestIdRef.current;
+    setQueueCountsLoading(true);
+    setQueueCountsError(false);
+    try {
+      const counts = await subscribersApi.queueCounts();
+      if (requestId === queueCountsRequestIdRef.current) setQueueCounts(counts);
+    } catch {
+      if (requestId === queueCountsRequestIdRef.current) {
+        setQueueCounts(null);
+        setQueueCountsError(true);
+      }
+    } finally {
+      if (requestId === queueCountsRequestIdRef.current) setQueueCountsLoading(false);
+    }
+  }, []);
+
+  const invalidateQueueCountsRequest = useCallback(() => {
+    ++queueCountsRequestIdRef.current;
+  }, []);
+
+  useEffect(() => {
+    void loadQueueCounts();
+    return invalidateQueueCountsRequest;
+  }, [invalidateQueueCountsRequest, loadQueueCounts]);
 
   const loadPage = useCallback(
     async (params: ListSubscribersParams, opts?: { soft?: boolean }) => {
@@ -287,13 +355,36 @@ function SubscribersListClientInner() {
   );
 
   useEffect(() => {
+    if (!initialLoading || records.length > 0) {
+      setShowInitialSkeleton(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setShowInitialSkeleton(true), 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [initialLoading, records.length]);
+
+  const refreshAfterLifecycle = useCallback(async () => {
+    await Promise.all([loadPage(listParams, { soft: true }), loadQueueCounts()]);
+  }, [listParams, loadPage, loadQueueCounts]);
+
+  useEffect(() => {
     if (exactMode) return;
+    if (statusIntersectionIsEmpty) {
+      ++requestIdRef.current;
+      setRecords([]);
+      setMeta(buildPageMetaFixture({ page: 1, limit: pageSize, total: 0 }, 0, pageSize));
+      setInitialLoading(false);
+      setRefreshing(false);
+      setError(null);
+      return;
+    }
     const requestIdState = requestIdRef;
     void loadPage(listParams, { soft: true });
     return () => {
       ++requestIdState.current;
     };
-  }, [listParams, loadPage, exactMode]);
+  }, [listParams, loadPage, exactMode, statusIntersectionIsEmpty, pageSize]);
 
   useEffect(() => {
     if (exactMode) {
@@ -316,6 +407,7 @@ function SubscribersListClientInner() {
     selectedModeRef.current = nextMode;
     setSelectedMode(nextMode);
     setSearchDraft('');
+    setTextSearch('');
     setRecords([]);
     setMeta(EMPTY_LIST_META);
     setError(null);
@@ -386,7 +478,7 @@ function SubscribersListClientInner() {
   }, [page]);
 
   const hasActiveFilters = Boolean(
-    urlSearch || statusFilter || personTypeFilter || segmentFilter || stratumFilter,
+    textSearch || queueSlug || statusFilter || personTypeFilter || segmentFilter || stratumFilter,
   );
 
   const pageCount = meta.totalPages ?? (meta.total > 0 ? 1 : 0);
@@ -402,13 +494,131 @@ function SubscribersListClientInner() {
 
   function clearFilters() {
     setSearchDraft('');
+    setTextSearch('');
     setFilters({
       search: null,
+      queue: null,
       status: null,
       personType: null,
       customerSegment: null,
       stratum: null,
     });
+  }
+
+  function selectQueue(queue: SubscriberQueueKey) {
+    setFilters({ queue: queueSlug === queue ? null : queue });
+  }
+
+  const activeFilterItems: SubscriberActiveFilter[] = [];
+  if (queueSlug) {
+    const option = SUBSCRIBER_QUEUE_OPTIONS.find((item) => item.value === queueSlug);
+    if (option) activeFilterItems.push({ key: 'queue', label: 'Cola', value: option.label });
+  }
+  if (textSearch) {
+    activeFilterItems.push({ key: 'search', label: 'Búsqueda', value: textSearch });
+  }
+  if (statusFilter) {
+    activeFilterItems.push({
+      key: 'status',
+      label: 'Estado',
+      value: SUBSCRIBER_STATUS_OPTIONS.find((item) => item.value === statusFilter)?.label ?? '',
+    });
+  }
+  if (personTypeFilter) {
+    activeFilterItems.push({
+      key: 'personType',
+      label: 'Tipo de persona',
+      value: PERSON_TYPE_OPTIONS.find((item) => item.value === personTypeFilter)?.label ?? '',
+    });
+  }
+  if (segmentFilter) {
+    activeFilterItems.push({
+      key: 'customerSegment',
+      label: 'Segmento',
+      value: CUSTOMER_SEGMENT_OPTIONS.find((item) => item.value === segmentFilter)?.label ?? '',
+    });
+  }
+  if (stratumFilter) {
+    activeFilterItems.push({
+      key: 'stratum',
+      label: 'Estrato',
+      value: STRATUM_OPTIONS.find((item) => item.value === stratumFilter)?.label ?? '',
+    });
+  }
+
+  function removeFilter(key: string) {
+    if (key === 'search') {
+      setSearchDraft('');
+      setTextSearch('');
+      return;
+    }
+    setFilters({ [key]: null });
+  }
+
+  function openPeek(subscriberId: string, index: number) {
+    peekOriginRef.current = { subscriberId, index };
+    setActiveRowId(subscriberId);
+    setQuery({ filters: { peek: subscriberId } }, { history: 'push' });
+  }
+
+  function closePeek() {
+    setQuery({ filters: { peek: null } }, { history: 'replace' });
+    window.requestAnimationFrame(() => {
+      const origin = peekOriginRef.current;
+      const originRow = origin ? rowRefs.current.get(origin.subscriberId) : null;
+      if (originRow?.isConnected) {
+        originRow.focus();
+        return;
+      }
+
+      const fallbackIndex = Math.min(origin?.index ?? 0, records.length - 1);
+      const fallbackSubscriber = records[fallbackIndex];
+      if (fallbackSubscriber) {
+        rowRefs.current.get(fallbackSubscriber.id)?.focus();
+        return;
+      }
+
+      tableShellRef.current?.focus();
+    });
+  }
+
+  useEffect(() => {
+    if (!peekParam || peekId) return;
+    setQuery({ filters: { peek: null } }, { history: 'replace' });
+  }, [peekId, peekParam, setQuery]);
+
+  useEffect(() => {
+    if (records.length === 0) {
+      setActiveRowId(null);
+      return;
+    }
+    if (!activeRowId || !records.some((record) => record.id === activeRowId)) {
+      setActiveRowId(records[0]?.id ?? null);
+    }
+  }, [activeRowId, records]);
+
+  function handleRowKeyDown(
+    event: React.KeyboardEvent<HTMLTableRowElement>,
+    subscriberId: string,
+    index: number,
+  ) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      openPeek(subscriberId, index);
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    event.preventDefault();
+    const nextIndex = Math.max(
+      0,
+      Math.min(records.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)),
+    );
+    const next = records[nextIndex];
+    if (!next) return;
+    setActiveRowId(next.id);
+    rowRefs.current.get(next.id)?.focus();
   }
 
   function renderHead(field: string | null, label: string) {
@@ -578,56 +788,30 @@ function SubscribersListClientInner() {
           ) : null}
 
           {!exactMode ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] xl:items-center">
-              <Select
-                id="subscriber-status-filter"
-                aria-label="Estado"
-                className="h-12 min-w-0"
-                value={statusFilter}
-                onChange={(event) => setFilters({ status: event.target.value || null })}
-                options={SUBSCRIBER_STATUS_OPTIONS}
-              >
-                <option value="">Todos los estados</option>
-              </Select>
-
-              <Select
-                id="subscriber-person-type-filter"
-                aria-label="Tipo de persona"
-                className="h-12 min-w-0"
-                value={personTypeFilter}
-                onChange={(event) => setFilters({ personType: event.target.value || null })}
-                options={[...PERSON_TYPE_OPTIONS]}
-              >
-                <option value="">Todos los tipos</option>
-              </Select>
-
-              <Select
-                id="subscriber-segment-filter"
-                aria-label="Segmento"
-                className="h-12 min-w-0"
-                value={segmentFilter}
-                onChange={(event) => setFilters({ customerSegment: event.target.value || null })}
-                options={[...CUSTOMER_SEGMENT_OPTIONS]}
-              >
-                <option value="">Todos los segmentos</option>
-              </Select>
-
-              <Select
-                id="subscriber-stratum-filter"
-                aria-label="Estrato"
-                className="h-12 min-w-0"
-                value={stratumFilter}
-                onChange={(event) => setFilters({ stratum: event.target.value || null })}
-                options={[...STRATUM_OPTIONS]}
-              >
-                <option value="">Todos los estratos</option>
-              </Select>
-
-              {hasActiveFilters ? (
-                <Button type="button" variant="ghost" onClick={clearFilters} className="h-12">
-                  Limpiar filtros
-                </Button>
-              ) : null}
+            <div className="space-y-4">
+              <SubscriberQueueChips
+                counts={queueCounts}
+                loading={queueCountsLoading}
+                error={queueCountsError}
+                selected={queueSlug}
+                onSelect={selectQueue}
+                onRetry={() => void loadQueueCounts()}
+              />
+              <SubscriberMoreFilters
+                expanded={filtersExpanded}
+                onExpandedChange={setFiltersExpanded}
+                status={statusFilter}
+                personType={personTypeFilter}
+                segment={segmentFilter}
+                stratum={stratumFilter}
+                onStatusChange={(value) => setFilters({ status: value || null })}
+                onPersonTypeChange={(value) => setFilters({ personType: value || null })}
+                onSegmentChange={(value) => setFilters({ customerSegment: value || null })}
+                onStratumChange={(value) => setFilters({ stratum: value || null })}
+                activeFilters={activeFilterItems}
+                onRemoveFilter={removeFilter}
+                onClearFilters={clearFilters}
+              />
             </div>
           ) : null}
         </div>
@@ -657,39 +841,38 @@ function SubscribersListClientInner() {
         ) : null}
 
         <div className="px-5 pb-5">
-          <div ref={tableShellRef} className={portalDataTableShellClassName}>
+          <div ref={tableShellRef} tabIndex={-1} className={portalDataTableShellClassName}>
             <div
               className={
-                refreshing ? `overflow-x-auto ${portalDataBusyRegionClassName}` : 'overflow-x-auto'
+                initialLoading || refreshing
+                  ? `overflow-x-auto ${portalDataBusyRegionClassName}`
+                  : 'overflow-x-auto'
               }
-              aria-busy={refreshing || undefined}
+              aria-busy={initialLoading || refreshing || undefined}
             >
               <table className="w-full text-sm" aria-label="Listado de suscriptores">
                 <thead className={portalDataTableHeadRowClassName}>
                   <tr>
                     {renderHead(null, 'Suscriptor')}
-                    {renderHead(null, 'Documento / NIT')}
-                    {renderHead('personType', 'Tipo')}
-                    {renderHead('customerSegment', 'Segmento')}
-                    {renderHead(null, 'Ubicación')}
+                    {renderHead(null, 'Servicio principal')}
                     {renderHead('status', 'Estado')}
                     {renderHead('createdAt', 'Creado')}
                   </tr>
                 </thead>
                 <tbody className={portalDataTableBodyClassName}>
-                  {initialLoading && records.length === 0
+                  {initialLoading && showInitialSkeleton && records.length === 0
                     ? Array.from({ length: 5 }, (_, index) => (
                         <tr key={`subscriber-skeleton-${index}`}>
-                          <td className={portalDataTableCellClassName} colSpan={7}>
+                          <td className={portalDataTableCellClassName} colSpan={4}>
                             <PortalSkeletonBlock className="h-10 w-full rounded-xl" />
                           </td>
                         </tr>
                       ))
                     : null}
 
-                  {!initialLoading && records.length === 0 ? (
+                  {!initialLoading && !error && records.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className={cn(portalDataTableCellClassName, 'py-12')}>
+                      <td colSpan={4} className={cn(portalDataTableCellClassName, 'py-12')}>
                         <PortalEmptyState
                           title={
                             exactMode
@@ -736,89 +919,121 @@ function SubscribersListClientInner() {
                   ) : null}
 
                   {!initialLoading &&
-                    records.map((subscriber) => (
-                      <tr key={subscriber.id} className={portalTableRowHoverClassName}>
-                        <td className={portalDataTableCellClassName}>
-                          <Link
-                            href={`/dashboard/crm/subscribers/${subscriber.id}`}
-                            className="group block"
-                          >
-                            <p className="font-semibold text-iwana-primary transition-colors group-hover:text-iwana-secondary-700 dark:text-white dark:group-hover:text-iwana-secondary-300">
-                              {privacyDisplayValue(
-                                subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
-                                {
-                                  privacyRestricted: subscriber.privacyRestricted,
-                                  anonymizedAt: subscriber.anonymizedAt,
-                                },
-                              )}
-                            </p>
-                            {subscriber.hasLiveContracts === false && (
-                              <p className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-300">
-                                Sin servicios vigentes
+                    records.map((subscriber, index) => {
+                      const privacyRedacted =
+                        subscriber.privacyRestricted || Boolean(subscriber.anonymizedAt);
+                      const documentAvailable =
+                        subscriber.personType === PersonType.JURIDICA
+                          ? Boolean(subscriber.nit?.trim())
+                          : Boolean(subscriber.documentNumber?.trim());
+                      const identityDetails = privacyRedacted
+                        ? ''
+                        : [
+                            ...(documentAvailable ? [formatDocumentDisplay(subscriber)] : []),
+                            PERSON_TYPE_META[subscriber.personType].label,
+                            CUSTOMER_SEGMENT_META[subscriber.customerSegment].label,
+                          ].join(' · ');
+                      const service = subscriber.primaryService;
+                      const serviceSubline = !service
+                        ? 'Sin servicios vigentes'
+                        : service.status === 'DRAFT'
+                          ? [
+                              ...(!privacyRedacted
+                                ? [formatLocationLabel(service.city) || 'Sin ubicación']
+                                : []),
+                              'Borrador',
+                              'Sin servicios vigentes',
+                            ].join(' · ')
+                          : [
+                              ...(!privacyRedacted
+                                ? [formatLocationLabel(service.city) || 'Sin ubicación']
+                                : []),
+                              ...(subscriber.otherLiveServicesCount > 0
+                                ? [
+                                    `+${subscriber.otherLiveServicesCount} ${subscriber.otherLiveServicesCount === 1 ? 'servicio' : 'servicios'}`,
+                                  ]
+                                : []),
+                            ].join(' · ');
+
+                      return (
+                        <tr
+                          key={subscriber.id}
+                          ref={(node) => {
+                            if (node) rowRefs.current.set(subscriber.id, node);
+                            else rowRefs.current.delete(subscriber.id);
+                          }}
+                          tabIndex={activeRowId === subscriber.id ? 0 : -1}
+                          onFocus={() => setActiveRowId(subscriber.id)}
+                          onKeyDown={(event) => handleRowKeyDown(event, subscriber.id, index)}
+                          onClick={(event) => {
+                            const target = event.target;
+                            if (
+                              target instanceof Element &&
+                              target.closest('a,button,input,select,textarea')
+                            ) {
+                              return;
+                            }
+                            event.currentTarget.focus();
+                            openPeek(subscriber.id, index);
+                          }}
+                          className={cn(portalTableRowHoverClassName, interactiveFocusClassName)}
+                        >
+                          <td className={portalDataTableCellClassName}>
+                            <Link
+                              href={`/dashboard/crm/subscribers/${encodeURIComponent(subscriber.id)}`}
+                              className="group block min-h-11"
+                            >
+                              <p className="font-semibold text-iwana-primary transition-colors group-hover:text-iwana-secondary-700 dark:text-white dark:group-hover:text-iwana-secondary-300">
+                                {privacyDisplayValue(
+                                  subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
+                                  {
+                                    privacyRestricted: subscriber.privacyRestricted,
+                                    anonymizedAt: subscriber.anonymizedAt,
+                                  },
+                                )}
                               </p>
+                              {identityDetails ? (
+                                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                                  {identityDetails}
+                                </p>
+                              ) : null}
+                            </Link>
+                          </td>
+                          <td className={portalDataTableCellClassName}>
+                            {service ? (
+                              <>
+                                <p className="font-medium">
+                                  {service.planName || 'Plan no disponible'}
+                                </p>
+                                {serviceSubline ? (
+                                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                                    {serviceSubline}
+                                  </p>
+                                ) : null}
+                              </>
+                            ) : (
+                              <>
+                                <p className="font-medium">Sin servicio principal</p>
+                                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                                  Sin servicios vigentes
+                                </p>
+                              </>
                             )}
-                            <PrivacyMarks marks={subscriber.privacyMarks ?? []} />
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {subscriber.privacyRestricted
-                                ? 'Datos bloqueados'
-                                : subscriber.anonymizedAt
-                                  ? 'Anonimizado'
-                                  : subscriber.contactPending
-                                    ? 'Contacto pendiente'
-                                    : subscriber.email ||
-                                      subscriber.phone ||
-                                      'Sin contacto principal'}
-                            </p>
-                          </Link>
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {subscriber.privacyRestricted
-                            ? 'Datos bloqueados'
-                            : subscriber.anonymizedAt
-                              ? 'Anonimizado'
-                              : formatDocumentDisplay(subscriber)}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          <Badge
-                            variant={PERSON_TYPE_META[subscriber.personType].variant}
-                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-                          >
-                            {PERSON_TYPE_META[subscriber.personType].label}
-                          </Badge>
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          <Badge
-                            variant="neutral"
-                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-                          >
-                            {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
-                          </Badge>
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {privacyDisplayValue(
-                            subscriber.privacyRestricted
-                              ? null
-                              : formatSubscriberLocation(subscriber.city, subscriber.department),
-                            {
-                              privacyRestricted: subscriber.privacyRestricted,
-                              anonymizedAt: subscriber.anonymizedAt,
-                              emptyValue: 'Sin ubicación registrada',
-                            },
-                          )}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          <Badge
-                            variant={SUBSCRIBER_STATUS_META[subscriber.status].variant}
-                            className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-                          >
-                            {SUBSCRIBER_STATUS_META[subscriber.status].label}
-                          </Badge>
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {formatSubscriberDate(subscriber.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className={portalDataTableCellClassName}>
+                            <Badge
+                              variant={SUBSCRIBER_STATUS_META[subscriber.status].variant}
+                              className="rounded-full px-3 py-1 text-xs font-semibold"
+                            >
+                              {SUBSCRIBER_STATUS_META[subscriber.status].label}
+                            </Badge>
+                          </td>
+                          <td className={portalDataTableCellClassName}>
+                            {formatSubscriberDate(subscriber.createdAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -848,6 +1063,16 @@ function SubscribersListClientInner() {
           </div>
         </div>
       </PortalPanel>
+      <SubscriberPeek
+        open={Boolean(peekId)}
+        subscriberId={peekId}
+        onClose={closePeek}
+        onChanged={refreshAfterLifecycle}
+        onGoToServices={() => {
+          if (!peekId) return;
+          router.push(`/dashboard/crm/subscribers/${encodeURIComponent(peekId)}?tab=servicios`);
+        }}
+      />
     </div>
   );
 }

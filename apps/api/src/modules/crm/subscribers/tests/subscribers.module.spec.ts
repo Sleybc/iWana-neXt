@@ -2,6 +2,7 @@ import { MODULE_METADATA } from '@nestjs/common/constants';
 import { InventoryModule } from '../../../inventory/inventory.module';
 import { TasksModule } from '../../../tasks/tasks.module';
 import { ExecutionOrderSchedulingModule } from '../../../tasks/execution-order-scheduling.module';
+import { CommercialModule } from '../../../commercial/commercial.module';
 import { SubscribersModule } from '../subscribers.module';
 import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 
@@ -29,6 +30,7 @@ describe('SubscribersModule', () => {
     const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, SubscribersModule) as unknown[];
     expect(imports).toContain(InventoryModule);
     expect(imports).toContain(ExecutionOrderSchedulingModule);
+    expect(imports).toContain(CommercialModule);
     expect(imports).not.toContain(TasksModule);
   });
 });

@@ -8,6 +8,7 @@ import {
 } from '@iwana/shared';
 import { Subscriber } from '../entities/subscriber.entity';
 import { projectSubscriberForList } from '../subscriber-projection';
+import type { SubscriberListItem } from '@iwana/shared';
 
 const subscriber = {
   id: 'sub-1',
@@ -173,6 +174,7 @@ describe('projectSubscriberForList', () => {
       'anonymizedAt',
       'anonymizedRequestId',
       'contactPending',
+      'otherLiveServicesCount',
     ]);
 
     expect(projected.privacyRestricted).toBe(true);
@@ -197,11 +199,37 @@ describe('projectSubscriberForList', () => {
     });
   });
 
-  it('no redacta al titular bloqueado con permiso y marca anonimizaciones', () => {
+  it('redacta PII al anonimizar aunque el usuario pueda ver partes bloqueadas', () => {
     const anonymizedAt = new Date('2026-10-14T00:00:00.000Z');
+    const primaryService: NonNullable<SubscriberListItem['primaryService']> = {
+      contractId: '00000000-0000-4000-8000-000000000102',
+      planName: 'Plan permitido',
+      status: 'ACTIVE',
+      city: 'CITY-SENTINEL',
+      alias: 'ALIAS-SENTINEL',
+    };
     const projected = projectSubscriberForList(
       {
         ...subscriber,
+        documentNumber: 'DOCUMENT-SENTINEL',
+        firstName: 'FIRSTNAME-SENTINEL',
+        lastName: 'LASTNAME-SENTINEL',
+        businessName: 'BUSINESS-SENTINEL',
+        commercialName: 'COMMERCIAL-SENTINEL',
+        nit: 'NIT-SENTINEL',
+        nitVerificationDigit: 'DIGIT-SENTINEL',
+        email: 'EMAIL-SENTINEL',
+        phone: 'PHONE-SENTINEL',
+        altContactPhone: 'ALT-PHONE-SENTINEL',
+        whatsapp: 'WHATSAPP-SENTINEL',
+        address: 'ADDRESS-SENTINEL',
+        neighborhood: 'NEIGHBORHOOD-SENTINEL',
+        city: 'CITY-PII-SENTINEL',
+        department: 'DEPARTMENT-SENTINEL',
+        latitude: 11.111,
+        longitude: -22.222,
+        stratum: 5,
+        primaryService,
         anonymizedAt,
         anonymizedRequestId: 'request-1',
         privacyMarks: ['DATOS_BLOQUEADOS'],
@@ -214,8 +242,71 @@ describe('projectSubscriberForList', () => {
       privacyRestricted: false,
       anonymizedAt: anonymizedAt.toISOString(),
       anonymizedRequestId: 'request-1',
-      firstName: 'Ana',
+      firstName: null,
+      lastName: null,
+      businessName: null,
+      commercialName: null,
+      stratum: null,
+      documentNumber: null,
+      nit: null,
+      nitVerificationDigit: null,
+      email: null,
+      phone: null,
+      altContactPhone: null,
+      whatsapp: null,
+      address: null,
+      neighborhood: null,
+      city: null,
+      department: null,
+      latitude: null,
+      longitude: null,
+      contactPending: false,
+      primaryService: {
+        ...primaryService,
+        city: null,
+        alias: null,
+      },
     });
+    expect(JSON.stringify(projected)).not.toContain('SENTINEL');
+  });
+
+  it('conserva estado y plan del servicio, pero redacta ciudad y alias si está restringido o anonimizado', () => {
+    const primaryService: NonNullable<SubscriberListItem['primaryService']> = {
+      contractId: '00000000-0000-4000-8000-000000000101',
+      planName: 'Plan sintético',
+      status: 'ACTIVE',
+      city: 'Ciudad sintética',
+      alias: 'Alias sintético',
+    };
+    const restricted = projectSubscriberForList(
+      {
+        ...subscriber,
+        primaryService,
+        otherLiveServicesCount: 2,
+        anonymizedAt: null,
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+      },
+      UserRole.ADMIN,
+    );
+    const anonymized = projectSubscriberForList(
+      {
+        ...subscriber,
+        primaryService,
+        otherLiveServicesCount: 2,
+        anonymizedAt: new Date('2026-10-14T00:00:00.000Z'),
+      },
+      UserRole.ADMIN,
+      true,
+    );
+
+    for (const projected of [restricted, anonymized]) {
+      expect(projected.primaryService).toEqual({
+        ...primaryService,
+        city: null,
+        alias: null,
+      });
+      expect(projected.otherLiveServicesCount).toBe(2);
+    }
   });
 
   it('fail-closed para un rol sin entrada en el mapa', () => {

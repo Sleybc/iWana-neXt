@@ -272,6 +272,79 @@ describe('ContractsService', () => {
       });
     });
 
+    it('redacta los datos del contrato anonimizado aunque el lector pueda ver datos bloqueados', async () => {
+      const anonymizedAt = new Date('2026-10-15T12:00:00.000Z');
+      const contract = buildContract({
+        quoteId: 'quote-sensitive',
+        planSnapshotJson: { name: 'Fibra segura' },
+        status: ContractStatus.ACTIVE,
+        statusReasonCode: 'SENSITIVE_REASON',
+        statusChangedAt: new Date('2026-10-14T12:00:00.000Z'),
+        alias: 'ALIAS_CENTINELA',
+        installationAddress: 'DIRECCION_CENTINELA',
+        installationCity: 'CIUDAD_CENTINELA',
+        installationDepartment: 'DEPARTAMENTO_CENTINELA',
+        installationPostalCode: 'CODIGO_POSTAL_CENTINELA',
+        installationNotes: 'NOTAS_CENTINELA',
+        customerSegment: CustomerSegment.PYME,
+        serviceUsage: ServiceUsage.NON_RESIDENTIAL,
+        installationStratum: 4,
+        stratumEvidenceMediaId: 'evidence-sensitive',
+        vatSnapshot: { treatment: 'STANDARD' } as Contract['vatSnapshot'],
+        additionalProductIds: ['product-sensitive'],
+        additionalServiceIds: ['service-sensitive'],
+        paymentMethod: 'PAYMENT_CENTINELA',
+        billingCycle: 'CYCLE_CENTINELA',
+        fiscalName: 'RAZON_SOCIAL_CENTINELA',
+        fiscalDocument: 'DOCUMENTO_FISCAL_CENTINELA',
+        fiscalAddress: 'DIRECCION_FISCAL_CENTINELA',
+        startDate: '2026-01-01',
+        endDate: '2026-12-31',
+      });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => contract,
+            find: async () => [{ id: 'sub-1', partyId: 'party-1', anonymizedAt }],
+          },
+        }),
+      );
+      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({ 'party-1': [] });
+
+      const result = await service.findOneForRead('ctr-1', true);
+
+      expect(result).toMatchObject({
+        planSnapshotJson: { name: 'Fibra segura' },
+        status: ContractStatus.ACTIVE,
+        titularAnonymizedAt: anonymizedAt.toISOString(),
+        quoteId: null,
+        statusReasonCode: null,
+        statusChangedAt: null,
+        alias: 'Anonimizado',
+        installationAddress: null,
+        installationCity: null,
+        installationDepartment: null,
+        installationPostalCode: null,
+        installationNotes: null,
+        customerSegment: null,
+        serviceUsage: null,
+        installationStratum: null,
+        stratumEvidenceMediaId: null,
+        vatSnapshot: null,
+        additionalProductIds: [],
+        additionalServiceIds: [],
+        paymentMethod: null,
+        billingCycle: null,
+        fiscalName: null,
+        fiscalDocument: null,
+        fiscalAddress: null,
+        startDate: null,
+        endDate: null,
+      });
+      expect(JSON.stringify(result)).not.toContain('CENTINELA');
+      expect(JSON.stringify(result)).not.toContain('SENSITIVE_REASON');
+    });
+
     it('descifra el documento fiscal al proyectar un contrato', async () => {
       const contract = buildContract();
       const encryptedDocument = encryptAes256Gcm(
@@ -1989,7 +2062,7 @@ describe('ContractsService', () => {
       expect(result.alias).toBe('Nuevo alias');
     });
 
-    it('incluye titularAnonymizedAt en la respuesta al editar un contrato anonimizado', async () => {
+    it('redacta la respuesta al editar un contrato anonimizado y conserva el plan y estado', async () => {
       const contract = buildContract({ status: ContractStatus.DRAFT });
       const anonymizedAt = new Date('2026-10-15T12:00:00.000Z');
       mockRunInTenantSchema
@@ -2009,7 +2082,14 @@ describe('ContractsService', () => {
       const result = await service.update('ctr-1', { alias: 'Alias corregido' }, 'actor-1');
 
       expect(result).toMatchObject({
-        alias: 'Alias corregido',
+        alias: 'Anonimizado',
+        planSnapshotJson: { id: 'plan-fibra-300' },
+        status: ContractStatus.DRAFT,
+        installationAddress: null,
+        installationCity: null,
+        fiscalName: null,
+        fiscalDocument: null,
+        fiscalAddress: null,
         titularAnonymizedAt: anonymizedAt.toISOString(),
       });
     });

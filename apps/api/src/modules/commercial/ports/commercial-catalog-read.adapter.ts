@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { CatalogItemType, CustomerSegment, NetworkType } from '@iwana/shared';
 import { CatalogItem } from '../entities/catalog-item.entity';
@@ -13,6 +13,7 @@ import {
   CommercialItemSnapshot,
   CommercialProductReference,
 } from './commercial-catalog-read.port';
+import type { PlanCatalogLookupItem } from './plan-catalog-read.port';
 
 /**
  * Adaptador real del puerto CommercialCatalogReadPort.
@@ -50,6 +51,32 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
         order: { name: 'ASC' },
       });
       return this.mapPlans(qr.manager, items);
+    });
+  }
+
+  async getPlansByIds(
+    tenantId: string,
+    schemaName: string,
+    ids: string[],
+  ): Promise<Map<string, PlanCatalogLookupItem>> {
+    const ctx = this.scopedTenant(tenantId, schemaName);
+    const validIds = [...new Set(ids)].filter((id) => UUID_PATTERN.test(id));
+    if (validIds.length === 0) return new Map();
+
+    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
+      const items = await qr.manager.find(CatalogItem, {
+        where: {
+          id: In(validIds),
+          tenantId: ctx.tenantId,
+          type: CatalogItemType.PLAN,
+          deletedAt: IsNull(),
+        },
+        select: { id: true, name: true, isActive: true },
+      });
+
+      return new Map(
+        items.map((item) => [item.id, { id: item.id, name: item.name, active: item.isActive }]),
+      );
     });
   }
 
@@ -237,3 +264,5 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     });
   }
 }
+
+const UUID_PATTERN = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/iu;

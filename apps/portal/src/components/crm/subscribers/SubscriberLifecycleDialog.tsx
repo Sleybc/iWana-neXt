@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   Select,
+  useDeferredInitialFocus,
 } from '@iwana/ui';
 import {
   type LifecycleAction,
@@ -201,9 +202,8 @@ export function SubscriberLifecycleDialog({
 }: SubscriberLifecycleDialogProps) {
   const applyingRef = useRef(false);
   const previousStepRef = useRef<1 | 2>(1);
-  // `DialogTitle` no expone `ref` en su tipo: el título se busca dentro de este
-  // bloque, acotado a la instancia, en lugar de por un id global.
-  const titleBlockRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const scheduleInitialFocus = useDeferredInitialFocus();
   const eligibleContracts = useMemo(
     () =>
       contracts.filter(
@@ -249,30 +249,8 @@ export function SubscriberLifecycleDialog({
     if (previousStepRef.current === step) return;
     previousStepRef.current = step;
 
-    // Al cambiar de paso el foco va al título (accesibilidad), pero se difiere un
-    // frame para que el paso nuevo ya esté pintado, y ese frame puede llegar
-    // después de que el operador toque otro control: reubicarlo cerraría el menú
-    // portalado del `Select` (su `onBlurCapture` lo cierra al perder el foco) o le
-    // quitaría el foco a lo que está tecleando. Solo se enfoca si el foco sigue
-    // donde estaba al cambiar de paso. Misma guarda que `Dialog` de `@iwana/ui`
-    // (commit 8fe22a87). El frame se cancela al cambiar de nuevo o al desmontar:
-    // sin eso caía sobre el diálogo siguiente (CI de main, run 39282324929).
-    const focusedAtStepChange = document.activeElement;
-    const focusFrame = window.requestAnimationFrame(() => {
-      const active = document.activeElement;
-      const untouched =
-        active == null ||
-        active === document.body ||
-        active === document.documentElement ||
-        active === focusedAtStepChange;
-      if (!untouched) return;
-      titleBlockRef.current?.querySelector<HTMLHeadingElement>('h2')?.focus();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-    };
-  }, [step]);
+    return scheduleInitialFocus(titleRef.current);
+  }, [scheduleInitialFocus, step]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && applyingRef.current) return;
@@ -374,8 +352,10 @@ export function SubscriberLifecycleDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto">
         <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-          <div ref={titleBlockRef} className="min-w-0 space-y-1">
-            <DialogTitle tabIndex={-1}>{title}</DialogTitle>
+          <div className="min-w-0 space-y-1">
+            <DialogTitle ref={titleRef} tabIndex={-1}>
+              {title}
+            </DialogTitle>
             <DialogDescription>
               {step === 1
                 ? ACTION_COPY[action].description

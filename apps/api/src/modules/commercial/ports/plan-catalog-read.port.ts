@@ -23,6 +23,12 @@ export interface PlanCatalogItem {
   isActive: boolean;
 }
 
+export interface PlanCatalogLookupItem {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 /**
  * Token de lectura de planes. Owner: CommercialModule.
  * CRM re-exporta este archivo para no romper imports existentes.
@@ -30,6 +36,12 @@ export interface PlanCatalogItem {
 @Injectable()
 export abstract class PlanCatalogReadPort {
   abstract getActivePlans(tenantId: string, schemaName: string): Promise<PlanCatalogItem[]>;
+
+  abstract getPlansByIds(
+    tenantId: string,
+    schemaName: string,
+    ids: string[],
+  ): Promise<Map<string, PlanCatalogLookupItem>>;
 
   abstract getPlanById(
     tenantId: string,

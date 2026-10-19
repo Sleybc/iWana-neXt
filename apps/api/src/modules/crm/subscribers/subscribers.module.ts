@@ -24,6 +24,7 @@ import { CrmLifecycleChange } from './entities/crm-lifecycle-change.entity';
 import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { InventoryModule } from '../../inventory/inventory.module';
 import { ExecutionOrderSchedulingModule } from '../../tasks/execution-order-scheduling.module';
+import { CommercialModule } from '../../commercial/commercial.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ExecutionOrderSchedulingModule } from '../../tasks/execution-order-sche
     PrivacyModule,
     InventoryModule,
     ExecutionOrderSchedulingModule,
+    CommercialModule,
   ],
   controllers: [SubscribersController, SubscriberTaxController],
   providers: [

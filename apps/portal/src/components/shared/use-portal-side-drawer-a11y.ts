@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type RefObject } from 'react';
+import { useDeferredInitialFocus } from '@iwana/ui';
 import {
   isTopMostPortalSideDrawerLayer,
   registerPortalSideDrawerLayer,
@@ -38,6 +39,7 @@ export function usePortalSideDrawerA11y(
   }
 
   const layerId = layerIdRef.current;
+  const scheduleInitialFocus = useDeferredInitialFocus();
 
   // `onClose` viaja por ref para que NO sea dependencia del efecto de foco y
   // trap. Los consumidores lo reciben de `useDiscardChangesGuard`, cuyo
@@ -80,25 +82,9 @@ export function usePortalSideDrawerA11y(
 
     const focusable = getFocusableElements(container);
     const focusTarget = focusable[0] ?? container;
-    const focusFrame = window.requestAnimationFrame(() => {
-      if (!isTopMostPortalSideDrawerLayer(layerId)) {
-        return;
-      }
-      // El foco inicial se difiere un frame, y ese frame puede caer DESPUÉS de
-      // la primera interacción del operador. Reubicarlo entonces cierra el
-      // desplegable recién abierto o le arranca el foco al campo que está
-      // tecleando. Solo se enfoca si nadie más reclamó el foco entretanto.
-      const active = document.activeElement;
-      const untouched =
-        active == null ||
-        active === document.body ||
-        active === document.documentElement ||
-        active === opener;
-      if (!untouched) {
-        return;
-      }
-      focusTarget.focus();
-    });
+    const cancelInitialFocus = scheduleInitialFocus(focusTarget, () =>
+      isTopMostPortalSideDrawerLayer(layerId),
+    );
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isTopMostPortalSideDrawerLayer(layerId)) {
@@ -156,9 +142,9 @@ export function usePortalSideDrawerA11y(
 
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
+      cancelInitialFocus();
       document.removeEventListener('keydown', onKeyDown);
       unregisterPortalSideDrawerLayer(layerId);
     };
-  }, [containerRef, layerId, open]);
+  }, [containerRef, layerId, open, scheduleInitialFocus]);
 }

@@ -29,6 +29,16 @@ import { TenantContext } from '@iwana/db';
 import { SubscribersBlockedTitularGuard } from '../guards/subscribers-blocked-titular.guard';
 import { SubscriberLifecycleService } from '../subscriber-lifecycle.service';
 
+type OpenApiSchemaShape = {
+  $ref?: string;
+  type?: string;
+  format?: string;
+  nullable?: boolean;
+  required?: string[];
+  properties?: Record<string, OpenApiSchemaShape>;
+  items?: OpenApiSchemaShape;
+};
+
 /**
  * Tests unitarios del SubscribersController.
  * Se mockea SubscribersService para probar la lógica del controlador
@@ -47,6 +57,7 @@ describe('SubscribersController', () => {
     remove: jest.fn(),
     transitionStatus: jest.fn(),
     search: jest.fn(),
+    getQueueCounts: jest.fn(),
     createFromExpediente: jest.fn(),
     updateSection: jest.fn(),
     get360View: jest.fn(),
@@ -157,6 +168,13 @@ describe('SubscribersController', () => {
     effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([]);
     subscriberLifecycleServiceMock.cancelSubscriber.mockClear();
     subscriberLifecycleServiceMock.listHistory.mockClear();
+    subscribersServiceMock.getQueueCounts.mockResolvedValue({
+      active: 1,
+      suspended: 2,
+      contactPending: 3,
+      fiscalIncomplete: 4,
+      withoutLiveServices: 5,
+    });
     subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -205,7 +223,7 @@ describe('SubscribersController', () => {
     ]);
   });
 
-  it('documenta hasLiveContracts como campo requerido de los resultados de búsqueda', async () => {
+  it('documenta el envelope y el contrato completo de los resultados del listado', async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [SubscribersController],
       providers: [
@@ -225,25 +243,142 @@ describe('SubscribersController', () => {
         app,
         new DocumentBuilder().setTitle('CRM subscribers test').setVersion('1.0').build(),
       );
-      const response = document.paths['/crm/subscribers/search']?.post?.responses?.['200'] as
-        | {
-            content?: Record<
-              string,
-              {
-                schema?: {
-                  properties?: Record<
-                    string,
-                    { items?: { required?: string[]; properties?: Record<string, unknown> } }
-                  >;
-                };
-              }
-            >;
-          }
+      const searchResponse = document.paths['/crm/subscribers/search']?.post?.responses?.['200'] as
+        | { content?: Record<string, { schema?: OpenApiSchemaShape }> }
         | undefined;
-      const itemSchema = response?.content?.['application/json']?.schema?.properties?.data?.items;
+      const responseSchema = searchResponse?.content?.['application/json']?.schema;
+      const itemSchema = responseSchema?.properties?.data?.items;
 
       expect(itemSchema?.required).toContain('hasLiveContracts');
+      expect(itemSchema?.required).toContain('anonymizedAt');
+      expect(itemSchema?.required).toContain('primaryService');
+      expect(itemSchema?.required).toContain('otherLiveServicesCount');
       expect(itemSchema?.properties?.hasLiveContracts).toEqual({ type: 'boolean' });
+      expect(itemSchema?.properties?.vatTreatment).not.toHaveProperty('nullable');
+      expect(itemSchema?.properties?.anonymizedAt).toEqual({
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+      });
+      expect(itemSchema?.properties?.primaryService).toMatchObject({
+        type: 'object',
+        nullable: true,
+      });
+      expect(itemSchema?.properties?.otherLiveServicesCount).toEqual({
+        type: 'integer',
+        minimum: 0,
+      });
+      expect(itemSchema?.properties).not.toHaveProperty('fiscalCompleteness');
+
+      const listResponse = document.paths['/crm/subscribers']?.get?.responses?.['200'] as
+        | { content?: Record<string, { schema?: OpenApiSchemaShape }> }
+        | undefined;
+      const listSchema = listResponse?.content?.['application/json']?.schema;
+      expect(listSchema?.required).toEqual(expect.arrayContaining(['data', 'total', 'meta']));
+      expect(listSchema?.properties?.total).toMatchObject({ type: 'integer', minimum: 0 });
+      expect(listSchema?.properties?.meta?.$ref).toContain('ListMetaDto');
+      const listItem = listSchema?.properties?.data?.items;
+      expect(listItem?.properties?.vatTreatment).not.toHaveProperty('nullable');
+      expect(listItem?.required).toEqual([
+        'id',
+        'tenantId',
+        'partyId',
+        'userId',
+        'privacyRestricted',
+        'anonymizedAt',
+        'anonymizedRequestId',
+        'status',
+        'personType',
+        'customerSegment',
+        'stratum',
+        'vatTreatment',
+        'taxRegime',
+        'vatResponsibility',
+        'rutResponsibilities',
+        'legalRepresentative',
+        'expedienteId',
+        'convertedAt',
+        'activatedAt',
+        'documentType',
+        'firstName',
+        'lastName',
+        'businessName',
+        'commercialName',
+        'createdAt',
+        'updatedAt',
+        'contactPending',
+        'hasLiveContracts',
+        'primaryService',
+        'otherLiveServicesCount',
+      ]);
+      expect(Object.keys(listItem?.properties ?? {}).sort()).toEqual(
+        [
+          'privacyMarks',
+          'documentNumber',
+          'nit',
+          'nitVerificationDigit',
+          'phone',
+          'altContactPhone',
+          'whatsapp',
+          'email',
+          'address',
+          'neighborhood',
+          'city',
+          'department',
+          'latitude',
+          'longitude',
+          'id',
+          'tenantId',
+          'partyId',
+          'userId',
+          'privacyRestricted',
+          'anonymizedAt',
+          'anonymizedRequestId',
+          'status',
+          'personType',
+          'customerSegment',
+          'stratum',
+          'vatTreatment',
+          'taxRegime',
+          'vatResponsibility',
+          'rutResponsibilities',
+          'legalRepresentative',
+          'expedienteId',
+          'convertedAt',
+          'activatedAt',
+          'documentType',
+          'firstName',
+          'lastName',
+          'businessName',
+          'commercialName',
+          'createdAt',
+          'updatedAt',
+          'contactPending',
+          'hasLiveContracts',
+          'primaryService',
+          'otherLiveServicesCount',
+        ].sort(),
+      );
+      expect(itemSchema).toEqual(listItem);
+
+      const listOperation = document.paths['/crm/subscribers']?.get as
+        | { parameters?: Array<{ name: string; in: string }> }
+        | undefined;
+      expect(listOperation?.parameters?.map(({ name }) => name)).toEqual(
+        expect.arrayContaining(['contactPending', 'fiscalIncomplete', 'withoutLiveServices']),
+      );
+      const queueSchema = document.paths['/crm/subscribers/queue-counts']?.get?.responses?.[
+        '200'
+      ] as { content?: Record<string, { schema?: { properties?: Record<string, unknown> } }> };
+      expect(queueSchema.content?.['application/json']?.schema?.properties).toEqual(
+        expect.objectContaining({
+          active: expect.objectContaining({ type: 'integer' }),
+          suspended: expect.objectContaining({ type: 'integer' }),
+          contactPending: expect.objectContaining({ type: 'integer' }),
+          fiscalIncomplete: expect.objectContaining({ type: 'integer' }),
+          withoutLiveServices: expect.objectContaining({ type: 'integer' }),
+        }),
+      );
     } finally {
       await app.close();
     }
@@ -380,6 +515,9 @@ describe('SubscribersController', () => {
         limit: 20,
         sortBy: undefined,
         sortDir: undefined,
+        contactPending: undefined,
+        fiscalIncomplete: undefined,
+        withoutLiveServices: undefined,
         canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
@@ -425,10 +563,112 @@ describe('SubscribersController', () => {
         limit: undefined,
         sortBy: undefined,
         sortDir: undefined,
+        contactPending: undefined,
+        fiscalIncomplete: undefined,
+        withoutLiveServices: undefined,
         canSeeBlocked: false,
       });
       expect(result.data).toHaveLength(1);
     });
+
+    it('redacta PII de suscriptores anonimizados en listado y búsqueda exacta', async () => {
+      const anonymizedAt = new Date('2026-10-14T00:00:00.000Z');
+      const anonymizedSubscriber = {
+        ...mockSubscriber,
+        anonymizedAt,
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+        documentNumber: 'DOCUMENT-SENTINEL',
+        firstName: 'FIRSTNAME-SENTINEL',
+        email: 'EMAIL-SENTINEL',
+        stratum: 5,
+        primaryService: {
+          contractId: '00000000-0000-4000-8000-000000000102',
+          planName: 'Plan permitido',
+          status: 'ACTIVE',
+          city: 'CITY-SENTINEL',
+          alias: 'ALIAS-SENTINEL',
+        },
+      } as unknown as Subscriber;
+      subscribersServiceMock.findAll.mockResolvedValue({
+        data: [anonymizedSubscriber],
+        total: 1,
+        meta: {},
+      });
+      subscribersServiceMock.search.mockResolvedValue([anonymizedSubscriber]);
+
+      const listResult = await controller.findAll(
+        mockUser,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+      const searchResult = await controller.search({ nit: 'NIT-SENTINEL' }, mockUser);
+
+      for (const result of [listResult, searchResult]) {
+        expect(result.data[0]).toMatchObject({
+          privacyRestricted: false,
+          anonymizedAt: anonymizedAt.toISOString(),
+          documentNumber: null,
+          firstName: null,
+          email: null,
+          stratum: null,
+          primaryService: {
+            planName: 'Plan permitido',
+            status: 'ACTIVE',
+            city: null,
+            alias: null,
+          },
+        });
+        expect(JSON.stringify(result.data[0])).not.toContain('SENTINEL');
+      }
+    });
+
+    it('acepta y delega los filtros operativos booleanos', async () => {
+      subscribersServiceMock.findAll.mockResolvedValue({ data: [], total: 0, meta: {} });
+      await controller.findAll(
+        mockUser,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        false,
+        true,
+      );
+
+      expect(subscribersServiceMock.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contactPending: true,
+          fiscalIncomplete: false,
+          withoutLiveServices: true,
+          canSeeBlocked: false,
+        }),
+      );
+    });
+  });
+
+  it('devuelve conteos globales y protege el endpoint con el permiso de lectura', async () => {
+    const result = await controller.getQueueCounts();
+    expect(result).toEqual({
+      active: 1,
+      suspended: 2,
+      contactPending: 3,
+      fiscalIncomplete: 4,
+      withoutLiveServices: 5,
+    });
+    expect(subscribersServiceMock.getQueueCounts).toHaveBeenCalledTimes(1);
+    expect(Reflect.getMetadata('permissions', controller.getQueueCounts as object)).toEqual([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
   });
 
   // ── GET /crm/subscribers/search ──
@@ -496,6 +736,9 @@ describe('SubscribersController', () => {
         limit: undefined,
         sortBy: undefined,
         sortDir: undefined,
+        contactPending: undefined,
+        fiscalIncomplete: undefined,
+        withoutLiveServices: undefined,
         search: 'Ana Privada',
         excludeBlocked: true,
         canSeeBlocked: false,
@@ -1093,6 +1336,60 @@ describe('SubscribersController', () => {
       expect(result).not.toHaveProperty('documentNumber');
       expect(result).not.toHaveProperty('email');
       expect(result).not.toHaveProperty('phone');
+    });
+
+    it('redacta PII de titulares anonimizados aunque no estén bloqueados', () => {
+      const anonymizedSubscriber = {
+        ...mockSubscriber,
+        anonymizedAt: new Date('2026-10-19T12:00:00.000Z'),
+        anonymizedRequestId: 'request-anonymization-001',
+        firstName: 'CENTINELA_NOMBRE',
+        lastName: 'CENTINELA_APELLIDO',
+        documentNumber: 'CENTINELA_DOCUMENTO',
+        email: 'centinela@example.invalid',
+        phone: 'CENTINELA_TELEFONO',
+        altContactPhone: 'CENTINELA_TELEFONO_ALT',
+        nit: 'CENTINELA_NIT',
+        businessName: 'CENTINELA_RAZON_SOCIAL',
+        commercialName: 'CENTINELA_NOMBRE_COMERCIAL',
+        legalRepresentativePartyId: 'party-representative-001',
+        legalRepresentativeDisplayName: 'CENTINELA_REPRESENTANTE',
+        altContactName: 'CENTINELA_CONTACTO',
+        whatsapp: 'CENTINELA_WHATSAPP',
+        address: 'CENTINELA_DIRECCION',
+        neighborhood: 'CENTINELA_BARRIO',
+        city: 'CENTINELA_CIUDAD',
+        department: 'CENTINELA_DEPARTAMENTO',
+        externalId: 'CENTINELA_IDENTIFICADOR',
+        manualOverrideReason: 'CENTINELA_MOTIVO',
+      };
+
+      const result = sanitizeResponse(anonymizedSubscriber);
+
+      expect(result.privacyRestricted).toBe(false);
+      expect(result.anonymizedAt).toBe('2026-10-19T12:00:00.000Z');
+      expect(result.anonymizedRequestId).toBe('request-anonymization-001');
+      expect(result.contactPending).toBe(false);
+      expect(result).toMatchObject({
+        firstName: null,
+        lastName: null,
+        documentNumber: null,
+        email: null,
+        phone: null,
+        altContactPhone: null,
+        nit: null,
+        businessName: null,
+        commercialName: null,
+        legalRepresentative: null,
+        altContactName: null,
+        whatsapp: null,
+        address: null,
+        neighborhood: null,
+        city: null,
+        department: null,
+        externalId: null,
+        manualOverrideReason: null,
+      });
     });
   });
 
