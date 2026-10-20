@@ -13,7 +13,7 @@
  * AWARD_ALREADY_ORDERED, costos derivados del servidor y cobertura awardCoverage. Sin PII real.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { AxeBuilder } from '@axe-core/playwright';
 import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
@@ -950,6 +950,47 @@ async function openAwardsMatrix(page: import('@playwright/test').Page) {
   return { main, workbench };
 }
 
+/** Espera las transiciones CSS del control antes de medir sus colores con axe. */
+async function waitForButtonTransitions(button: Locator): Promise<void> {
+  await button.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+  });
+}
+
+async function expectAccordionAxeClear(page: Page, workbench: Locator): Promise<void> {
+  const accordionButton = workbench.getByRole('button', { name: 'Por cotización' });
+  await accordionButton.click();
+  await expect(accordionButton).toHaveAttribute('aria-pressed', 'true');
+  await waitForButtonTransitions(accordionButton);
+
+  const expectTabpanelAxeClear = async () => {
+    const axeResult = await new AxeBuilder({ page })
+      .include('[role="dialog"] [role="tabpanel"]')
+      .analyze();
+    expect(axeResult.violations).toEqual([]);
+  };
+
+  await accordionButton.hover();
+  await page.mouse.down();
+  expect(await accordionButton.evaluate((element) => element.matches(':active'))).toBe(true);
+  await waitForButtonTransitions(accordionButton);
+  await expectTabpanelAxeClear();
+
+  // Soltar fuera del control evita disparar un segundo click sobre la vista activa.
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+  await expect(accordionButton).toHaveAttribute('aria-pressed', 'true');
+  expect(await accordionButton.evaluate((element) => element.matches(':active'))).toBe(false);
+  expect(await accordionButton.evaluate((element) => element.matches(':hover'))).toBe(false);
+  await waitForButtonTransitions(accordionButton);
+  await expectTabpanelAxeClear();
+
+  await accordionButton.hover();
+  expect(await accordionButton.evaluate((element) => element.matches(':hover'))).toBe(true);
+  await waitForButtonTransitions(accordionButton);
+  await expectTabpanelAxeClear();
+}
+
 /** Navega por fase + tab del workbench (los tabs viven bajo su fase: Decidir/Abastecer). */
 async function gotoWorkbenchTab(
   workbench: import('@playwright/test').Locator,
@@ -1220,12 +1261,21 @@ test.describe('Portal Inventario / Compras — Adjudicación en matriz (Fase 30)
     await page.keyboard.press('Space');
     await expect(workbench.getByText('Se generarán 2 órdenes de compra')).toBeVisible();
 
-    // Acordeón: misma superficie, sin violaciones.
-    await workbench.getByRole('button', { name: 'Por cotización' }).click();
-    const accordionAxe = await new AxeBuilder({ page })
-      .include('[role="dialog"] [role="tabpanel"]')
-      .analyze();
-    expect(accordionAxe.violations).toEqual([]);
+    // Acordeón: axe se ejecuta tras el cambio de variante y el fin de su transición CSS.
+    await expectAccordionAxeClear(page, workbench);
+  });
+
+  test.describe('Contraste del acordeón en tema oscuro', () => {
+    test.use({ colorScheme: 'dark' });
+
+    test('CA-311/CA-UX-08: la variante primaria conserva contraste AA al pasar a acordeón', async ({
+      page,
+    }) => {
+      const { workbench } = await openAwardsMatrix(page);
+      await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+
+      await expectAccordionAxeClear(page, workbench);
+    });
   });
 
   test('CA-UX-09 + §7: en viewport angosto el acordeón conserva la selección; la escotilla exige costo', async ({

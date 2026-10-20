@@ -15,7 +15,7 @@ Spec §3: triaje de los 125 fallos E2E del portal, entorno y capturas, correcci�
 
 Las seis de la spec §6. Recomendación de AI-EM-ARCH: **D-SP-1 A** (bloqueante, 0 fallos fuera de cuarentena), **D-SP-2** cuarentena acotada, **D-SP-3** omitir `-live` con motivo, **D-SP-4** capturas generadas en el contenedor y revisadas, **D-SP-5** cuarentena en módulos con auditoría pendiente, **D-SP-6** B5 con migraciones.
 
-**Estado:** ✅ G0 aprobado por el CTO el 2026-10-20 con las seis recomendaciones. Ola 1 y Ola 2 cerradas; J0 cerró el job bloqueante y el gate de omisiones. V1 dio GO G2: dos corridas locales consecutivas y una corrida completa en el contenedor oficial, cada una con 304 casos, 284 aprobados, 20 omitidos y 0 fallidos. V2 dio GO G5. V3 dio GO G6 local: lint/typecheck, API y Portal sin caché, B5 17/17, cobertura de contratos, cuarentena y boundaries verificados. G7, commit/push y CI de `main`, pendiente.
+**Estado:** ✅ G0 aprobado por el CTO el 2026-10-20 con las seis recomendaciones. Ola 1 y Ola 2 cerradas; J0 cerró el job bloqueante y el gate de omisiones. Los GO anteriores de V1/G2 y V3/G6 se obtuvieron antes de integrar la corrección dark descrita abajo y se consideran evidencia histórica. El CI `39465599851` detectó una falta de contraste en hover dark de Button; R0 la corrigió con tokens AA y regresión Axe para tema oscuro y estados activo/reposo/hover. V1/G2 cerró sobre el árbol final: dos corridas locales y una full en el contenedor oficial dieron 305 casos, 285 pasados, 20 omitidos y 0 fallidos/flaky; el fallo intermitente de PR-0002 durante una full Linux intermedia pasó aislado, con sus 92 predecesores y en la full final. V2/G5 dio GO sin bloqueantes (auditorías documentales: 0 bloqueantes); V3/G6 dio GO: lint/typecheck y suites sin caché verdes, B5 17/17, cobertura por línea ≥80% en las cuatro fuentes, cuarentena 2/2. La integración API amplia local quedó roja por setup de DB/tenant `test` ausente en `dbiw` (12 suites/44 tests fallidos; B5 dirigido pasó); se registra como incidencia de entorno y CI la comprobará en G7. G7, commit/push y CI de `main`, pendiente; CA-SP-02 exige dos corridas de CI consecutivas verdes en el mismo commit.
 
 ## 2. Bloques y dependencias
 
@@ -78,7 +78,7 @@ flowchart LR
 | G4   | Cuatro componentes ≥80 % de líneas                                                                                                                       | `sr-qa`                              |
 | G5   | Documentación conforme                                                                                                                                   | `docs-governance`                    |
 | G6   | Gates Before Merge en local, sin caché                                                                                                                   | `gate-verifier`                      |
-| G7   | Commit y push; **CI de `main` en verde con el job «E2E portal» ya bloqueante**; informe `docs/informes/INFORME-TRANSVERSAL-SALUD-PRUEBAS-CIERRE-v1.0.md` | AI-EM-ARCH                           |
+| G7   | Commit y push; **dos corridas CI consecutivas del mismo commit con el job «E2E portal» bloqueante y 0 fallos no cuarentenados** (CA-SP-02), CI de `main` en verde (CA-SP-07); informe `docs/informes/INFORME-TRANSVERSAL-SALUD-PRUEBAS-CIERRE-v1.0.md` | AI-EM-ARCH |
 
 ## 5. Riesgos
 
