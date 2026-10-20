@@ -21,6 +21,8 @@ export interface RequirementChecklistProps {
   unattributedConsumptionHistory?: ReactNode;
   /** Contador y paginación de historial con alcance global a la OT. */
   historyFooter?: ReactNode;
+  /** Muestra la ayuda de solo lectura correspondiente al pre-inicio. */
+  showPreStartHints?: boolean;
   progress?: number;
   mode: 'readonly' | 'action';
   loading?: boolean;
@@ -36,6 +38,7 @@ export function RequirementChecklist({
   historyFooter,
   progress,
   mode,
+  showPreStartHints = false,
   loading,
   refreshing,
   offline,
@@ -43,6 +46,13 @@ export function RequirementChecklist({
   selectedRequirementKey,
   onSelectRequirement,
 }: RequirementChecklistProps) {
+  const preStartHintsByKind: Partial<Record<string, string>> = {
+    ACTIVITY: 'Inicia la ejecución para registrar el trabajo realizado',
+    MATERIAL: 'Inicia la ejecución para registrar equipos y materiales',
+    EVIDENCE: 'Inicia la ejecución para registrar evidencia',
+  };
+  const hintedKinds = new Set<string>();
+
   return (
     <section aria-label="Requisitos" aria-busy={loading || refreshing} className="space-y-3">
       <SectionHeader icon={ListChecks} title="Requisitos" headingLevel={3} size="sm" />
@@ -78,6 +88,11 @@ export function RequirementChecklist({
             aria-label="Requisitos de la orden"
           >
             {items.map((item) => {
+              const preStartHint =
+                showPreStartHints && mode === 'readonly' && !hintedKinds.has(item.kind)
+                  ? preStartHintsByKind[item.kind]
+                  : undefined;
+              if (preStartHint) hintedKinds.add(item.kind);
               const state =
                 item.state === 'satisfied'
                   ? 'Cumplido'
@@ -111,6 +126,9 @@ export function RequirementChecklist({
                   </div>
                   {item.reason && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">{item.reason}</p>
+                  )}
+                  {preStartHint && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{preStartHint}</p>
                   )}
                   {!item.required && item.kind === 'ACTIVITY' && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">

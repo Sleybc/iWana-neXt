@@ -302,6 +302,11 @@ async function fulfillJson(route: import('@playwright/test').Route, body: unknow
   });
 }
 
+function isExecutorCustodyRequest(request: import('@playwright/test').Request) {
+  const { pathname } = new URL(request.url());
+  return request.method() === 'GET' && pathname.endsWith('/inventory/custody');
+}
+
 async function setupTask8Mocks(page: import('@playwright/test').Page, state: FlowState) {
   const users = [
     {
@@ -1014,23 +1019,43 @@ async function gotoAuthedDashboard(page: import('@playwright/test').Page, path: 
 }
 
 async function runOperationsCloseFlow(page: import('@playwright/test').Page, state: FlowState) {
+  const custodyRequests: string[] = [];
+  page.on('request', (request) => {
+    if (isExecutorCustodyRequest(request)) custodyRequests.push(request.url());
+  });
+
   await gotoAuthedDashboard(page, `/dashboard/operations?executionOrderId=${EXECUTION_ORDER_ID}`);
   await expect(page.getByRole('heading', { name: 'Operaciones' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
+  expect(custodyRequests).toHaveLength(0);
 
   await page.getByRole('button', { name: 'Iniciar ejecución' }).click();
   await expect(
     page.getByRole('region', { name: 'Compromiso' }).getByText('En progreso', { exact: true }),
   ).toBeVisible();
+  expect(custodyRequests).toHaveLength(0);
 
   const materialAction = page.getByRole('button', {
     name: /^Registrar equipos instalados en el sitio del cliente para /,
   });
   await expect(materialAction).toBeVisible();
+  const custodyRequest = page.waitForRequest(isExecutorCustodyRequest);
   await materialAction.click();
+  const request = await custodyRequest;
+  expect(request.method()).toBe('GET');
+  expect(new URL(request.url()).pathname).toMatch(/\/inventory\/custody$/);
+  expect(custodyRequests).toHaveLength(1);
   const materialRegion = page.getByRole('region', {
     name: 'Registrar equipos instalados en el sitio del cliente',
   });
+  await expect(
+    materialRegion.getByText(
+      /Desde Custodia técnico soporte · Se registrará como instalado en el sitio del cliente/,
+    ),
+  ).toBeVisible();
+  await expect(
+    materialRegion.getByRole('combobox', { name: /custodia|destino|acción/i }),
+  ).toHaveCount(0);
   await expect(materialRegion.getByText('ONT-FIELD-001')).toBeVisible();
   await materialRegion.getByRole('radio', { name: /Serial ONT-FIELD-001/ }).click();
   await materialRegion.getByRole('button', { name: 'Registrar equipo' }).click();
@@ -1156,22 +1181,49 @@ test('operaciones — la URL canónica abre la OT por deep link sin rebotar al l
 test('operaciones pre-inicio — bloques 3/4/5 en solo lectura con hints y única CTA de inicio', async ({
   page,
 }) => {
-  test.fixme(true, 'QUARANTINE: INVENTORY-PRESTART-CUSTODY-HIDDEN');
   const state = createFlowState();
+  const template = state.executionOrder.template as JsonRecord;
+  const completion = state.executionOrder.completion as JsonRecord;
+  const activityRequirement: JsonRecord = {
+    key: 'installation-activity',
+    label: 'Trabajo realizado',
+    required: true,
+    kind: 'ACTIVITY',
+    activityType: 'INSTALLATION',
+  };
+  state.executionOrder.template = {
+    ...template,
+    requirements: [activityRequirement, ...(template.requirements as JsonRecord[])],
+  };
+  state.executionOrder.completion = {
+    ...completion,
+    total: 3,
+    requirements: [
+      {
+        requirementId: 'installation-activity',
+        label: 'Trabajo realizado',
+        kind: 'ACTIVITY',
+        satisfied: false,
+        reason: 'No se ha registrado una actividad de instalación.',
+      },
+      ...(completion.requirements as JsonRecord[]),
+    ],
+  };
   await setupTask8Mocks(page, state);
   await seedPortalSession(page);
+  const custodyRequests: string[] = [];
+  page.on('request', (request) => {
+    if (isExecutorCustodyRequest(request)) custodyRequests.push(request.url());
+  });
 
   // Caso original de la remediación MOD11 (PROMPT §7.2): OT ASSIGNED abierta
   // por query param → nada registrable hasta "Iniciar ejecución".
   await gotoAuthedDashboard(page, `/dashboard/operations?executionOrderId=${EXECUTION_ORDER_ID}`);
   await expect(page.getByRole('heading', { name: 'OT-0001' })).toBeVisible();
+  expect(custodyRequests).toHaveLength(0);
 
-  // Custodia del ejecutor (MOD12, CA-3): lectura pura visible también pre-inicio.
-  await expect(page.getByText('En custodia del ejecutor')).toBeVisible();
-  await expect(page.getByText('Custodia técnico soporte', { exact: true })).toBeVisible();
-  await expect(page.getByText('ONT-FIELD-001', { exact: true })).toBeVisible();
-  await expect(page.getByText(/ONT-HG8245 · ONT Huawei HG8245 · Asignado a técnico/)).toBeVisible();
-  await expect(page.getByText('Cantidad disponible: 1')).toBeVisible();
+  // MOD11 §6: la custodia solo se consulta al abrir el acto de consumo.
+  await expect(page.getByText('En custodia del ejecutor')).toHaveCount(0);
 
   // Hint informativo por bloque (patrón del checklist).
   await expect(
@@ -1183,7 +1235,7 @@ test('operaciones pre-inicio — bloques 3/4/5 en solo lectura con hints y únic
   await expect(page.getByText('Inicia la ejecución para registrar evidencia')).toBeVisible();
 
   // Checklist atenuado con hint en estado ASSIGNED.
-  await expect(page.getByText('Inicia ejecución para habilitar el checklist')).toBeVisible();
+  await expect(page.getByText('Inicia la ejecución para habilitar el checklist')).toBeVisible();
 
   // Sin controles de registro ni de envío en bloques 3/4/5.
   await expect(page.getByRole('button', { name: 'Registrar actividad' })).toHaveCount(0);
@@ -1191,5 +1243,5 @@ test('operaciones pre-inicio — bloques 3/4/5 en solo lectura con hints y únic
   await expect(page.getByText('Adjuntar evidencia')).toHaveCount(0);
 
   // Única CTA hacia la ejecución.
-  await expect(page.getByRole('button', { name: 'Iniciar ejecución' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Iniciar ejecución' })).toHaveCount(1);
 });

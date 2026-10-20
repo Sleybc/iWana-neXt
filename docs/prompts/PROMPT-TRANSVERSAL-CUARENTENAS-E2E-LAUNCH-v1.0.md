@@ -1,14 +1,15 @@
 # LAUNCH — TRANSVERSAL · Resolución de las cuarentenas E2E
 
 **Plan:** `docs/plans/2026-10-20-transversal-cuarentenas-e2e.md` v1.0 · **Spec:** `docs/specs/2026-10-20-transversal-cuarentenas-e2e-spec.md` v1.0
-**Olas:** 1 (K1 ∥ W1) → 2 (K2 tras K1 ∥ W2 tras W1) → Z (orquestador) → 3 (V1 ∥ V2 condicional → V3) → G7 · **Gate previo:** G0 (D-CQ-1..3) aprobado el 2026-10-20
+**Olas:** 1 (K1 ∥ W1) → 2 (K2-P tras K1 → K2; W2 tras W1) → Z (orquestador) → 3 (V1 ∥ V2 condicional → V3) → G7 · **Gate previo:** G0 (D-CQ-1..3) aprobado el 2026-10-20; D-CQ-4 sobre hints aprobado durante K2
 **Plazo:** CI de `main` en verde con tope de cuarentena 0 **antes del 2026-11-19**.
-**Bloqueos abiertos:** ninguno. Estado al arrancar: `main` en `e39d9bd3`; 2 cuarentenas que vencen el 2026-11-19.
+**Bloqueos abiertos:** ninguno. Estado al arrancar: `main` en `4dc44550`; 2 cuarentenas que vencen el 2026-11-19.
 
 | # | Subagente | Encargo | Skills a leer antes de actuar | Contrato |
 | --- | --- | --- | --- | --- |
 | K1 | `prod-ux` | `PROMPT-TRANSVERSAL-CUARENTENAS-E2E-v1.0.md` §K1 | `iwana-identity-ui-review` | spec §3.1 |
-| K2 | `sr-qa` | §K2 | `playwright-skill`, `e2e-testing-patterns`, `iwana-test-evidence` | spec MOD11 v1.5 §6 |
+| K2-P | `fe-platform` | §K2-P | `frontend-dev-guidelines`, `core-components`, `iwana-identity-ui-review`, `system-vocabulary-review` | spec RQ-K-02/RQ-K-05 |
+| K2 | `sr-qa` (tras K2-P) | §K2 | `playwright-skill`, `e2e-testing-patterns`, `iwana-test-evidence` | spec MOD11 v1.5 §6 y RQ-K-02 |
 | W1 | `fe-platform` | §W1 | `systematic-debugging`, `test-driven-development`, `frontend-dev-guidelines` | spec §3.2 |
 | W2 | `sr-qa` | §W2 | `playwright-skill`, `iwana-test-evidence` | spec RQ-W-04 |
 | V1 | `sr-qa` | §V1 | `playwright-skill`, `iwana-test-evidence`, `verification-before-completion` | spec §3.3 |
@@ -22,7 +23,7 @@
 
 ### Bloque copiar-pegar
 
-> Actúa como `{subagente}` para el bloque `{K1|K2|W1|W2|V1|V2|V3}`. Lee `AGENTS.md`, la spec
+> Actúa como `{subagente}` para el bloque `{K1|K2-P|K2|W1|W2|V1|V2|V3}`. Lee `AGENTS.md`, la spec
 > `docs/specs/2026-10-20-transversal-cuarentenas-e2e-spec.md`, el plan
 > `docs/plans/2026-10-20-transversal-cuarentenas-e2e.md` y tu § en
 > `docs/prompts/PROMPT-TRANSVERSAL-CUARENTENAS-E2E-v1.0.md`.

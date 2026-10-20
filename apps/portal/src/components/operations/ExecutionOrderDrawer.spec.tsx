@@ -1700,12 +1700,33 @@ describe('ExecutionOrderDrawer', () => {
         expect(screen.queryByText('Todavía no hay evidencias para este requisito')).toBeNull();
       },
     );
+    it.each(preStartStatuses)('muestra los tres hints sin sumar CTA (%s)', (status) => {
+      renderDrawer({ order: detailFactory({ status }) });
+
+      expect(
+        screen.getByText('Inicia la ejecución para registrar el trabajo realizado'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Inicia la ejecución para registrar equipos y materiales'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Inicia la ejecución para registrar evidencia')).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Iniciar ejecución' })).toHaveLength(1);
+      expect(screen.queryByRole('button', { name: /^Registrar actividad/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Registrar serial ONT/ })).toBeNull();
+    });
     it('habilita el índice de acciones solo después del inicio', () => {
       renderDrawer({ order: detailFactory({ status: ExecutionOrderStatus.IN_PROGRESS }) });
       expect(
         screen.getByRole('button', { name: /^Registrar actividad para / }),
       ).toBeInTheDocument();
       expect(screen.queryByText('Inicia la ejecución para habilitar el checklist')).toBeNull();
+      expect(
+        screen.queryByText('Inicia la ejecución para registrar el trabajo realizado'),
+      ).toBeNull();
+      expect(
+        screen.queryByText('Inicia la ejecución para registrar equipos y materiales'),
+      ).toBeNull();
+      expect(screen.queryByText('Inicia la ejecución para registrar evidencia')).toBeNull();
     });
   });
 

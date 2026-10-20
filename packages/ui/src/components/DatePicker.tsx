@@ -21,6 +21,7 @@ export interface DatePickerProps {
   helperText?: string | undefined;
   placeholder?: string;
   requiredIndicator?: boolean;
+  preserveSelectionOnReselect?: boolean;
   formatLabel?: (date: Date) => string;
   className?: string;
   buttonClassName?: string;
@@ -38,6 +39,7 @@ export function DatePicker({
   helperText,
   placeholder = 'Seleccionar fecha',
   requiredIndicator = false,
+  preserveSelectionOnReselect = false,
   formatLabel,
   className,
   buttonClassName,
@@ -106,8 +108,9 @@ export function DatePicker({
         >
           <Calendar
             mode="single"
+            required={preserveSelectionOnReselect}
             selected={value}
-            onSelect={(date) => {
+            onSelect={(date: Date | undefined) => {
               onChange?.(date);
               setOpen(false);
             }}

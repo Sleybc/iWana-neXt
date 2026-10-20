@@ -6,8 +6,9 @@ import {
   WorkOrderSourceContext,
   WfmWorkType,
 } from '@iwana/shared';
-import type { ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import type { InternalUser, WfmScheduleRecommendation } from '@/lib/api-client';
+import type { MatrixManualScheduleDraft } from './matrix-scheduling-selection';
 import { VisitRequestRecommendationPanel } from './VisitRequestRecommendationPanel';
 
 const useOperatingWindowMock = jest.fn();
@@ -220,6 +221,31 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
     expect(onOpenConfirm).not.toHaveBeenCalled();
   });
 
+  it('impide confirmar una franja manual que ya quedó en el pasado', async () => {
+    const onOpenConfirm = jest.fn();
+    render(
+      <VisitRequestRecommendationPanel
+        {...buildPanelProps({
+          onOpenConfirm,
+          selectedVisitRequest: buildVisitRequest({
+            requestedWindowStartAt: '2026-07-09T13:00:00.000Z',
+          }),
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Prefiero agendar manualmente/i }));
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Técnico' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Luisa Campos' }));
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar agenda manual' }));
+
+    expect(
+      await screen.findByText(/No se pueden agendar tareas en una fecha u hora anterior/i),
+    ).toBeInTheDocument();
+    expect(onOpenConfirm).not.toHaveBeenCalled();
+  });
+
   it('ofrece duración rápida y duración personalizada en horas y minutos', async () => {
     render(<VisitRequestRecommendationPanel {...buildPanelProps()} />);
 
@@ -273,6 +299,80 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
     expect(onCancelRecommendations).toHaveBeenCalledTimes(1);
   });
 
+  it('solicita recomendaciones con la duración, el horizonte y el contexto guardado', async () => {
+    const onSaveContext = jest.fn().mockResolvedValue(undefined);
+    const onRecommend = jest.fn().mockResolvedValue(undefined);
+    render(
+      <VisitRequestRecommendationPanel {...buildPanelProps({ onSaveContext, onRecommend })} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calcular recomendaciones' }));
+
+    await waitFor(() => {
+      expect(onSaveContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          address: 'Cra 10 # 10 - 10',
+          municipality: 'Bogotá',
+          sector: 'Chapinero',
+        }),
+      );
+      expect(onRecommend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          durationMinutes: 120,
+          searchHorizonDays: 7,
+          municipality: 'Bogotá',
+          sector: 'Chapinero',
+        }),
+      );
+    });
+  });
+
+  it('selecciona una recomendación y permite confirmar su franja desde la agenda manual', async () => {
+    const recommendation: WfmScheduleRecommendation = {
+      technicianId: 'tech-1',
+      scheduledStartAt: '2026-07-15T15:00:00.000Z',
+      scheduledEndAt: '2026-07-15T17:00:00.000Z',
+      score: 90,
+      labels: ['Continuidad de ruta'],
+      scoreBreakdown: {
+        distance: 20,
+        municipality: 20,
+        sector: 20,
+        routeContinuity: 20,
+        load: 5,
+        earliest: 5,
+      },
+      distanceKm: null,
+      nearestEventId: null,
+      totalScheduledMinutes: 120,
+      eventCount: 1,
+    };
+    const recommendationKey = 'tech-1::2026-07-15T15:00:00.000Z';
+    const onSelectRecommendation = jest.fn();
+    const onOpenConfirm = jest.fn();
+    render(
+      <VisitRequestRecommendationPanel
+        {...buildPanelProps({
+          recommendations: [recommendation],
+          selectedRecommendationId: recommendationKey,
+          onSelectRecommendation,
+          onOpenConfirm,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Luisa Campos/ }));
+    expect(onSelectRecommendation).toHaveBeenCalledWith(recommendationKey);
+
+    fireEvent.click(screen.getByRole('button', { name: /Prefiero agendar manualmente/i }));
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Técnico' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Luisa Campos' }));
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar agenda manual' }));
+
+    await waitFor(() => expect(onOpenConfirm).toHaveBeenCalledTimes(1));
+  });
+
   it('precarga el contexto operativo guardado en la solicitud', async () => {
     render(<VisitRequestRecommendationPanel {...buildPanelProps()} />);
 
@@ -281,6 +381,68 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
     expect(await screen.findByLabelText('Dirección operativa')).toHaveValue('Cra 10 # 10 - 10');
     expect(screen.getByLabelText('Municipio')).toHaveValue('Bogotá');
     expect(screen.getByLabelText('Sector')).toHaveValue('Chapinero');
+  });
+
+  it('limpia los campos opcionales y muestra el error si falla el guardado del contexto', async () => {
+    const onSaveContext = jest
+      .fn()
+      .mockRejectedValue(new Error('No fue posible guardar el contexto ahora.'));
+    render(<VisitRequestRecommendationPanel {...buildPanelProps({ onSaveContext })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
+    fireEvent.change(screen.getByLabelText('Dirección operativa'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Municipio'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Sector'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Nota operativa'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar formulario' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar contexto' }));
+
+    await waitFor(() => {
+      expect(onSaveContext).toHaveBeenCalledWith({
+        description: null,
+        address: null,
+        municipality: null,
+        sector: null,
+        requestedWindowStartAt: null,
+        requestedWindowEndAt: null,
+      });
+    });
+    expect(
+      await screen.findByText('No fue posible guardar el contexto ahora.'),
+    ).toBeInTheDocument();
+  });
+
+  it('guarda los cambios de fecha y hora de la franja preferida del cliente', async () => {
+    const onSaveContext = jest.fn().mockResolvedValue(undefined);
+    render(<VisitRequestRecommendationPanel {...buildPanelProps({ onSaveContext })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Ajustes de contexto/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Desde (fecha)' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: '16' }).querySelector('button')!);
+    fireEvent.click(
+      screen.getByRole('combobox', { name: 'Desde qué hora puede recibir la visita' }),
+    );
+    fireEvent.click(await screen.findByRole('option', { name: '10:00' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hasta (fecha)' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: '17' }).querySelector('button')!);
+    fireEvent.click(
+      screen.getByRole('combobox', { name: 'Hasta qué hora puede recibir la visita' }),
+    );
+    fireEvent.click(await screen.findByRole('option', { name: '16:00' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar contexto' }));
+
+    await waitFor(() => {
+      expect(onSaveContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestedWindowStartAt: new Date(2026, 6, 16, 10).toISOString(),
+          requestedWindowEndAt: new Date(2026, 6, 17, 16).toISOString(),
+        }),
+      );
+    });
   });
 
   it('prepara el draft manual y abre la confirmación con técnico, fecha, hora y duración válidas', async () => {
@@ -317,6 +479,106 @@ describe('VisitRequestRecommendationPanel - agenda manual', () => {
     expect(payload.startTime).toBe('10:00');
     expect(payload.duration).toBe('120');
     expect(payload.source).toBe('manual');
+  });
+
+  it('conserva la fecha elegida en la agenda manual y la valida con el borrador controlado', async () => {
+    const onOpenConfirm = jest.fn();
+    const onManualSelectionChange = jest.fn();
+    const props = buildPanelProps({
+      onOpenConfirm,
+      selectedVisitRequest: buildVisitRequest({
+        requestedWindowStartAt: '2026-07-11T13:00:00.000Z',
+      }),
+    });
+
+    function StatefulPanel() {
+      const [manualSelectionDraft, setManualSelectionDraft] =
+        useState<MatrixManualScheduleDraft | null>(null);
+
+      return (
+        <VisitRequestRecommendationPanel
+          {...props}
+          manualSelectionDraft={manualSelectionDraft}
+          onManualSelectionChange={(draft) => {
+            onManualSelectionChange(draft);
+            setManualSelectionDraft(draft);
+          }}
+        />
+      );
+    }
+
+    render(<StatefulPanel />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Prefiero agendar manualmente/i }));
+
+    const techSelect = await screen.findByRole('combobox', { name: 'Técnico' });
+    fireEvent.click(techSelect);
+    fireEvent.click(await screen.findByRole('option', { name: 'Luisa Campos' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fecha' }));
+    const selectedDay = screen.getByRole('gridcell', { name: '11' });
+    fireEvent.click(selectedDay.querySelector('button') as HTMLButtonElement);
+
+    expect(screen.getByRole('button', { name: 'Fecha' })).toHaveTextContent('11/07/2026');
+
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar agenda manual' }));
+
+    await waitFor(() => {
+      expect(onOpenConfirm).toHaveBeenCalledTimes(1);
+      expect(onManualSelectionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ date: '2026-07-11' }),
+      );
+    });
+  });
+
+  it('expone los riesgos de la selección de matriz y el aviso de una hora libre', () => {
+    const matrixCellSelection = {
+      technicianId: 'tech-retirado',
+      date: '2026-07-15',
+      dayLabel: 'Miércoles 15 de julio',
+      availabilityLabel: 'Con cruces pendientes',
+      riskMessages: ['Hay una orden abierta en esta franja.'],
+    };
+    const manualSelectionDraft: MatrixManualScheduleDraft = {
+      ...matrixCellSelection,
+      startTime: '10:00',
+      duration: '120',
+      source: 'manual',
+    };
+    render(
+      <VisitRequestRecommendationPanel
+        {...buildPanelProps({ matrixCellSelection, manualSelectionDraft })}
+      />,
+    );
+
+    expect(screen.getByText('tech-retirado · Miércoles 15 de julio')).toBeInTheDocument();
+    expect(screen.getByText('Con cruces pendientes')).toBeInTheDocument();
+    expect(screen.getByText('Hay una orden abierta en esta franja.')).toBeInTheDocument();
+    expect(screen.getByText('Hora definida manualmente')).toBeInTheDocument();
+    expect(screen.getByText('10:00 · libre')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Confirmar agenda seleccionada' }),
+    ).toBeInTheDocument();
+  });
+
+  it('bloquea recomendaciones cuando la ventana operativa está cerrada', () => {
+    useOperatingWindowMock.mockReturnValue({
+      operatingWindow: {
+        status: 'CLOSED',
+        source: 'COMPANY_HOURS',
+        startTime: null,
+        endTime: null,
+        reason: 'La fecha no tiene horario de atención.',
+      },
+      isLoadingOperatingWindow: false,
+      operatingWindowError: null,
+    });
+    render(<VisitRequestRecommendationPanel {...buildPanelProps()} />);
+
+    expect(screen.getByText('Fecha cerrada para recomendar')).toBeInTheDocument();
+    expect(screen.getAllByText('La fecha no tiene horario de atención.')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Calcular recomendaciones' })).toBeDisabled();
   });
 
   it('usa los controles visuales iWana en lugar de calendarios nativos', async () => {

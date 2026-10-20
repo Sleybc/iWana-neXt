@@ -56,6 +56,40 @@ describe('RequirementChecklist', () => {
     expect(screen.getByText('Falta la foto publicada.')).toBeInTheDocument();
     expect(screen.getAllByText('Opcional')).toHaveLength(1);
   });
+  it('muestra una vez cada hint de registro solo cuando se habilita el pre-inicio', () => {
+    const preStartItems: RequirementChecklistItem[] = [
+      { ...items()[0]!, kind: 'ACTIVITY' },
+      { key: 'material', label: 'Equipo', kind: 'MATERIAL', required: true, state: 'pending' },
+      { ...items()[1]!, kind: 'EVIDENCE' },
+      {
+        key: 'second-evidence',
+        label: 'Foto adicional',
+        kind: 'EVIDENCE',
+        required: true,
+        state: 'pending',
+      },
+    ];
+
+    const { rerender } = render(
+      <RequirementChecklist items={preStartItems} mode="readonly" showPreStartHints />,
+    );
+
+    expect(
+      screen.getByText('Inicia la ejecución para registrar el trabajo realizado'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Inicia la ejecución para registrar equipos y materiales'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Inicia la ejecución para registrar evidencia')).toBeInTheDocument();
+    expect(screen.getAllByText('Inicia la ejecución para registrar evidencia')).toHaveLength(1);
+    expect(screen.queryByRole('button')).toBeNull();
+
+    rerender(<RequirementChecklist items={preStartItems} mode="readonly" />);
+    expect(screen.queryByText(/Inicia la ejecución para registrar/)).toBeNull();
+
+    rerender(<RequirementChecklist items={preStartItems} mode="action" showPreStartHints />);
+    expect(screen.queryByText(/Inicia la ejecución para registrar/)).toBeNull();
+  });
   it('no convierte una evaluación opcional en una obligación de cierre', () => {
     render(<RequirementChecklist items={[items()[2]!]} mode="readonly" />);
     expect(screen.getByText('Sin registrar')).toBeInTheDocument();

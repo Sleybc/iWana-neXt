@@ -12,6 +12,8 @@
 
 La fase cerró con CA-SP-01 a CA-SP-07 satisfechos. `main` quedó con el job «E2E portal» bloqueante y sin retries; las dos corridas consecutivas de CI del commit de código `e42d78ea` terminaron verdes. La matriz de triage clasificó 125/125 fallos del run inicial, se corrigieron los fallos asignados, quedaron dos cuarentenas acotadas y se incorporaron B5 y su gate de omisiones a CI.
 
+**Actualización de vigencia (2026-10-20):** La fase posterior de cuarentenas cerró las dos filas y bajó el tope a 0. La prueba de custodia pre-inicio se reclasificó como obsoleta porque el CA-3 del prompt MOD12-MOD11 de agosto quedó superado por la spec MOD11 v1.5 §6; el E2E ahora valida que no se consulta custodia antes de iniciar. Se aprobó D-CQ-4 para añadir los tres hints pre-inicio que exigía RQ-K-02. WFM corrigió la pérdida de fecha en `DatePicker`, conservó el borrado de fechas opcionales por defecto y habilitó prevención de deselección solo en la agenda manual; la prueba del flujo se rehabilitó. La suite completa local y en contenedor, y el CI final, se documentarán con sus conteos en el informe de cierre de la fase actual.
+
 ## E2E Portal
 
 V1 ejecutó el suite completo dos veces en local y una vez en el contenedor oficial, sobre el árbol corregido. Cada ejecución descubrió 305 pruebas en 51 archivos: **285 pasaron, 20 se omitieron, 0 fallaron**, con `retries=0`. Las 20 omisiones fueron 18 pruebas `-live` con motivo por guards vacíos y las 2 cuarentenas aprobadas. Los casos SCM #92 y #93 pasaron en las tres full runs.

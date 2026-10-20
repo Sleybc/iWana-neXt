@@ -9,6 +9,8 @@
 **Agentes destinatarios:** AI-SR-FULL (backend MOD12 + contrato), AI-FE-PLATFORM (portal), AI-SR-QA (verificación)
 **Origen de la decisión:** sesión 2026-08-31 — el bloque solo mostraba consumos registrados; el producto requiere ver la custodia del ejecutor. Decisión aprobada por el solicitante: Opción B (custodia del ejecutor). Alternativa C (pick-list por OT) queda como backlog futuro, no se implementa aquí.
 
+> **Aviso de vigencia (2026-10-20):** El CA-3 de este prompt quedó superado por la spec aprobada de MOD11 v1.5 §6. La custodia no se muestra ni se consulta antes de iniciar la OT; se consulta al abrir «Registrar equipo instalado» desde el requisito MATERIAL. Se conserva el contenido histórico de este prompt.
+
 ---
 
 ## 0. Contexto y hechos verificados

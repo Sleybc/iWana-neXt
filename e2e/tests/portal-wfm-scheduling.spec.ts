@@ -1580,7 +1580,6 @@ test('admin abre el formulario manual y valida campos obligatorios', async ({ pa
 
 test('admin agenda manualmente sin pasar por recomendaciones', async ({ page }) => {
   // El calendario cierra con el día visible seleccionado, pero el valor controlado queda vacío.
-  test.fixme(true, 'QUARANTINE: WFM-MANUAL-DATE-NOT-SELECTED');
 
   await seedPortalSession(page, 'ADMIN', 'admin-001');
   await setupSchedulingMocks(page, 'ADMIN');

@@ -1129,6 +1129,7 @@ export function VisitRequestRecommendationPanel({
                   id="visit-request-manual-date"
                   label="Fecha"
                   value={toDateFromLocalDateValue(manualDate)}
+                  preserveSelectionOnReselect
                   disabled={isTerminalVisitRequest}
                   onChange={(date) => {
                     setManualDate(date ? toLocalDateValue(date) : '');

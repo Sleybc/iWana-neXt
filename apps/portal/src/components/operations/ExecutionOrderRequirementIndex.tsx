@@ -163,6 +163,7 @@ export function ExecutionOrderRequirementIndex({
       unattributedConsumptionHistory={unattributedHistory}
       historyFooter={historyFooter}
       mode={moment === 'in-progress' ? 'action' : 'readonly'}
+      showPreStartHints={moment === 'pre-start'}
       offline={offline}
       selectedRequirementKey={selectedAction?.requirementKey}
       onSelectRequirement={(key) => {

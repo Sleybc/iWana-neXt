@@ -6,6 +6,8 @@
 **Productora:** AI-PROD-UX (prod-ux)  
 **Alcance:** R0 de la consola + UX de E4 para OT sin ventana; adendas de producto §§14–17 para la deuda del historial de consumos R3, la ratificación de copy R2, la captura compacta de equipos y materiales y el orden de captura de la firma.
 
+**Ratificación de custodia (2026-10-20):** La spec MOD11 §6 prevalece y supera el CA-3 de `PROMPT-MOD12-MOD11-CUSTODIA-EJECUTOR-BLOQUE-OT-v1.0` (2026-08-31): la custodia no se muestra ni consulta antes de iniciar; se consulta solo al abrir «Registrar equipo instalado» desde el requisito MATERIAL con permiso `REGISTER_ITEM_USAGE`.
+
 ## Trazabilidad y contratos de entrada
 
 - Encargo: [PROMPT-MOD11-CONSOLA-OT-OLA2-R0-PROD-UX-v1.0](../prompts/PROMPT-MOD11-CONSOLA-OT-OLA2-R0-PROD-UX-v1.0.md), incluidas las adendas A1 y A2.

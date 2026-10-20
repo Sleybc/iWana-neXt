@@ -1,8 +1,8 @@
 # PROMPT — TRANSVERSAL · Resolución de las cuarentenas E2E (custodia pre-inicio y fecha de la agenda manual)
 
-**Versión:** 1.0 · **Fecha:** 2026-10-20 · **Emisor:** AI-EM-ARCH · **Estado:** Contrato congelado; G0 aprobado por el CTO el 2026-10-20 (D-CQ-1 A (prevalece la spec MOD11 v1.5 §6), D-CQ-2 arreglar en la capa de la causa y D-CQ-3 no abrir la auditoría de Inventario; [spec](../specs/2026-10-20-transversal-cuarentenas-e2e-spec.md) §6)
+**Versión:** 1.0 · **Fecha:** 2026-10-20 · **Emisor:** AI-EM-ARCH · **Estado:** G0 aprobado por el CTO el 2026-10-20 (D-CQ-1 A (prevalece la spec MOD11 v1.5 §6), D-CQ-2 arreglar en la capa de la causa y D-CQ-3 no abrir la auditoría de Inventario); aclaración aprobada durante K2: añadir los tres hints pre-inicio que exige RQ-K-02; [spec](../specs/2026-10-20-transversal-cuarentenas-e2e-spec.md) §6)
 **Plan:** [2026-10-20-transversal-cuarentenas-e2e.md](../plans/2026-10-20-transversal-cuarentenas-e2e.md)
-**Base:** `main` en `e39d9bd3`. Se trabaja en `main`, sin ramas. **Ningún agente commitea**: lo hace AI-EM-ARCH en G7.
+**Base:** `main` en `4dc44550`. Se trabaja en `main`, sin ramas. **Ningún agente commitea**: lo hace AI-EM-ARCH en G7.
 **Plazo:** antes del 2026-11-19.
 
 ## 0. Reglas comunes
@@ -23,6 +23,7 @@ H1-H10 de la spec §1.
 | Bloque | Edita | Crea |
 | --- | --- | --- |
 | K1 | — | ratificación en `docs/specs/2026-10-05-mod11-consola-ot-requisito-ux.md` como adenda de una línea en el encabezado, o `[BLOQUEO]` razonado |
+| K2-P | componentes MOD11 en `apps/portal/src/components/operations/` y sus specs de componente | — |
 | K2 | `e2e/tests/portal-field-flow-ticket-ot-inventory.spec.ts` (el test cuarentenado y los mocks que use) | — |
 | W1 | `apps/portal/src/components/scheduling/VisitRequestRecommendationPanel.tsx` y su spec; si la causa está ahí, `packages/ui/src/components/DatePicker.tsx` y su spec | prueba de componente de regresión |
 | W2 | `e2e/tests/portal-wfm-scheduling.spec.ts` (solo quitar el `test.fixme`; sin cambiar aserciones) | — |
@@ -34,9 +35,14 @@ H1-H10 de la spec §1.
 Contrasta la spec MOD11 v1.5 §6 (L77, L130, L134, L199, L211) con el CA-3 de `PROMPT-MOD12-MOD11-CUSTODIA-EJECUTOR-BLOQUE-OT-v1.0` (L111). Confirma por escrito, como adenda breve del encabezado de la spec MOD11, que el contrato vigente es el de §6 y que supera ese CA-3. Si encuentras un motivo de producto para mantener el CA-3, emite `[BLOQUEO]` con el argumento: no lo resuelvas tú.
 **Cierras cuando:** la adenda está escrita (RQ-K-01).
 
-## K2 — E2E de custodia al contrato vigente · `sr-qa` (tras K1)
+## K2-P — Hints de pre-inicio · `fe-platform` (tras K1)
 
-RQ-K-02 y RQ-K-05. Reescribe el test cuarentenado: en pre-inicio no aparece «En custodia del ejecutor», **no hay petición a `/inventory/custody`** (afírmalo sobre la red interceptada), siguen los hints por bloque y la única CTA «Iniciar ejecución». Agrega o reutiliza el caso en ejecución donde abrir «Registrar equipo instalado» consulta la custodia y la muestra como contexto de solo lectura. Quita el `test.fixme`.
+RQ-K-02 y RQ-K-05, según D-CQ-4 aprobado por el CTO el 2026-10-20. Añade únicamente en los bloques de trabajo, equipos/materiales y evidencia, antes de iniciar, los textos: «Inicia la ejecución para registrar el trabajo realizado», «Inicia la ejecución para registrar equipos y materiales» y «Inicia la ejecución para registrar evidencia». Conserva la única CTA «Iniciar ejecución», no muestres/consultes custodia y no cambies otros textos ni comportamiento. Añade pruebas de componente para el estado pre-inicio y confirma que el hint global del checklist existente se conserva.
+**Cierras cuando:** pruebas enfocadas pasan y reportas archivos, comandos y conteos.
+
+## K2 — E2E de custodia al contrato vigente · `sr-qa` (tras K1 y K2-P)
+
+RQ-K-02. Reescribe el test cuarentenado: en pre-inicio no aparece «En custodia del ejecutor», **no hay petición a `/inventory/custody`** (afírmalo sobre la red interceptada), siguen los hints por bloque y la única CTA «Iniciar ejecución». Agrega o reutiliza el caso en ejecución donde abrir «Registrar equipo instalado» consulta la custodia y la muestra como contexto de solo lectura. Quita el `test.fixme`.
 **Cierras cuando:** la spec pasa en dos corridas, y anexas el rojo que produce reintroducir temporalmente la consulta pre-inicio (sin commitearlo).
 
 ## W1 — Fecha de la agenda manual · `fe-platform`

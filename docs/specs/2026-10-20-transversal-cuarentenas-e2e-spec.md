@@ -1,6 +1,6 @@
 # TRANSVERSAL — Resolución de las cuarentenas E2E (custodia pre-inicio y fecha de la agenda manual) · Spec
 
-**Fecha:** 2026-10-20 · **Versión:** 1.0 · **Estado:** Aprobado — G0 del CTO, 2026-10-20: D-CQ-1 A (prevalece la spec MOD11 v1.5 §6), D-CQ-2 arreglar en la capa de la causa y D-CQ-3 no abrir la auditoría de Inventario
+**Fecha:** 2026-10-20 · **Versión:** 1.0 · **Estado:** Aprobado — G0 del CTO, 2026-10-20: D-CQ-1 A (prevalece la spec MOD11 v1.5 §6), D-CQ-2 arreglar en la capa de la causa y D-CQ-3 no abrir la auditoría de Inventario; aclaración K2 aprobada el 2026-10-20: añadir solo los hints pre-inicio que faltan
 **Emisor:** AI-EM-ARCH
 **Plan:** [2026-10-20-transversal-cuarentenas-e2e.md](../plans/2026-10-20-transversal-cuarentenas-e2e.md)
 **Origen:**
@@ -49,7 +49,7 @@ Las dos cuarentenas cerradas y el tope de cuarentena en **0** antes del 2026-11-
 | RQ-K-02 | El E2E se reescribe al contrato vigente: **pre-inicio** sin bloque de custodia ni consulta a `/inventory/custody`, con los hints por bloque y la única CTA «Iniciar ejecución»; **en ejecución**, al abrir «Registrar equipo instalado» se consulta la custodia y aparece como contexto de solo lectura. La prueba debe fallar si el drawer vuelve a consultar la custodia antes de iniciar |
 | RQ-K-03 | Se retira `INVENTORY-PRESTART-CUSTODY-HIDDEN` de `e2e/QUARANTINE.md` y el `test.fixme` |
 | RQ-K-04 | El prompt y el informe MOD12-MOD11 de custodia se anotan con un aviso de «CA-3 superado por la spec MOD11 v1.5 §6», sin reescribir su contenido histórico. El triaje y el cierre de salud de pruebas registran la reclasificación (prueba desactualizada, no regresión) |
-| RQ-K-05 | Sin cambios de producto en `apps/portal/src/components/operations/` |
+| RQ-K-05 | Cambio de producto limitado a añadir los tres hints por bloque que RQ-K-02 exige en pre-inicio: «Inicia la ejecución para registrar el trabajo realizado», «Inicia la ejecución para registrar equipos y materiales» y «Inicia la ejecución para registrar evidencia». No se cambia el contrato ni la consulta de custodia, la CTA única, otros textos o el diseño de MOD11 |
 
 ### 3.2 Fecha de la agenda manual
 
@@ -82,12 +82,13 @@ Las dos cuarentenas cerradas y el tope de cuarentena en **0** antes del 2026-11-
 - La auditoría pendiente de Inventario (incluido H22). La custodia pre-inicio no es de Inventario (H1), así que esta fase no abre su turno (D-CQ-3).
 - Cualquier rediseño de la consola de OT o del panel de agendamiento.
 
-## 6. Decisiones del CTO (G0) — aprobadas el 2026-10-20
+## 6. Decisiones del CTO — G0 y aclaración durante ejecución (2026-10-20)
 
-**✅ Las tres decisiones se aprobaron con la recomendación de AI-EM-ARCH.** §3 y §4 quedan como contrato congelado.
+**✅ Las tres decisiones se aprobaron con la recomendación de AI-EM-ARCH.** El 2026-10-20, ante la contradicción entre RQ-K-02 y RQ-K-05, el CTO aprobó añadir los tres hints pre-inicio faltantes. Se ajusta RQ-K-05 según D-CQ-4; el resto de §3 y §4 se conserva.
 
 | # | Decisión | Opciones | Recomendación de AI-EM-ARCH | Motivo |
 | --- | --- | --- | --- | --- |
 | D-CQ-1 | Contrato vigente de la custodia en pre-inicio | **A:** la spec MOD11 v1.5 §6 (no se muestra ni se consulta antes de iniciar). **B:** el CA-3 del prompt MOD12-MOD11 de agosto (mostrarla en solo lectura también antes de iniciar), lo que obliga a cambiar el producto | **A** | Es el documento más reciente, está aprobado y es específico de esa pantalla. El código ya lo cumple. B reintroduce una consulta a inventario en cada apertura de OT que la spec retiró a propósito |
 | D-CQ-2 | Dónde arreglar la fecha si la causa está en `DatePicker` | Arreglar `@iwana/ui` con pruebas de todos sus consumidores vs. un parche local en el panel | **En la capa de la causa** | Un parche local dejaría el defecto en los demás formularios con fecha |
-| D-CQ-3 | ¿Abrir ahora la auditoría de Inventario? | No (esta fase no la necesita) vs. sí | **No** | La cuarentena que parecía de Inventario es de MOD11 y no requiere cambios de producto; la auditoría de Inventario conserva su turno y su alcance (H22) |
+| D-CQ-3 | ¿Abrir ahora la auditoría de Inventario? | No (esta fase no la necesita) vs. sí | **No** | La cuarentena y los hints corresponden a MOD11; no se consultan tablas de Inventario ni se abre su auditoría, que conserva su turno y alcance (H22) |
+| D-CQ-4 (aclaración durante ejecución) | Resolver la contradicción entre RQ-K-02 (hints por bloque) y RQ-K-05 (sin cambio de producto) | Añadir los tres hints faltantes vs. cambiar RQ-K-02 al copy actual | **Añadir los tres hints** | El CTO autorizó el cambio acotado. MOD11 ya debe ofrecer una CTA única de inicio; los hints explicitan por bloque por qué el registro está bloqueado y satisfacen las aserciones aprobadas |

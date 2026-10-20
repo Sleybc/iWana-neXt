@@ -6,6 +6,8 @@
 **Prompt de ejecución:** `docs/prompts/PROMPT-MOD12-MOD11-CUSTODIA-EJECUTOR-BLOQUE-OT-v1.0.md`
 **Generado por:** AI-EM-ARCH (consolidación de tracks B1/B2/B3)
 
+> **Aviso de vigencia (2026-10-20):** El CA-3 documentado en este informe quedó superado por la spec aprobada de MOD11 v1.5 §6. La custodia no se muestra ni se consulta antes de iniciar; se consulta al abrir «Registrar equipo instalado» desde el requisito MATERIAL. Este informe conserva su registro histórico.
+
 ---
 
 ## 1. Síntoma y decisión
