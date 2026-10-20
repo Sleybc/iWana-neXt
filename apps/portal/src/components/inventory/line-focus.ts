@@ -20,11 +20,14 @@ export function focusElementById(id: string): void {
  * coincide con la recién agregada. La búsqueda ocurre en el siguiente frame,
  * cuando React ya confirmó la fila nueva en el DOM.
  */
-export function focusLastMatchingInput(prefix: string): void {
+export function focusLastMatchingInput(prefix: string, shouldFocus?: () => boolean): void {
   if (typeof document === 'undefined' || typeof requestAnimationFrame === 'undefined') {
     return;
   }
   requestAnimationFrame(() => {
+    if (shouldFocus && !shouldFocus()) {
+      return;
+    }
     const nodes = document.querySelectorAll<HTMLElement>(`input[id^="${prefix}"]`);
     nodes[nodes.length - 1]?.focus();
   });

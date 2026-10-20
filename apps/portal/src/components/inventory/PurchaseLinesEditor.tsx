@@ -121,7 +121,16 @@ export function usePurchaseLinesEditorSections({
       ),
     );
     // Fase 27: el foco sigue a la cantidad de la línea recién agregada.
-    focusLastMatchingInput('purchase-draft-qty-');
+    const activeElementBeforeDeferredFocus = document.activeElement;
+    focusLastMatchingInput('purchase-draft-qty-', () => {
+      const activeElementAfterSelection = document.activeElement;
+      return (
+        activeElementAfterSelection === activeElementBeforeDeferredFocus ||
+        (activeElementBeforeDeferredFocus instanceof HTMLElement &&
+          !activeElementBeforeDeferredFocus.isConnected &&
+          activeElementAfterSelection === document.body)
+      );
+    });
     onLineAdded?.();
   }
 
