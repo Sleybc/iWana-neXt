@@ -6,6 +6,11 @@ import { seedPortalSession } from './helpers/portal-session';
 const API_PREFIX = '/api/v1';
 const FIXTURE_PREFIX = 'E2E-PRIVACY-FASE-1B';
 const BLOCKED_DATA_PERMISSION = 'crm.blocked_data.read';
+const missingLiveEnvironment = [
+  !process.env.E2E_PRIVACY_1B_TENANT_SLUG?.trim() ? 'E2E_PRIVACY_1B_TENANT_SLUG' : null,
+  !process.env.E2E_PRIVACY_ADMIN_EMAIL?.trim() ? 'E2E_PRIVACY_ADMIN_EMAIL' : null,
+  !process.env.E2E_PRIVACY_ADMIN_PASSWORD?.trim() ? 'E2E_PRIVACY_ADMIN_PASSWORD' : null,
+].filter((name): name is string => name !== null);
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 type JsonRecord = Record<string, unknown>;
@@ -795,6 +800,11 @@ const blockedSubresources = [
 ] as const;
 
 test.describe('Privacidad fase 1b contra API real de un tenant', () => {
+  test.skip(
+    missingLiveEnvironment.length > 0,
+    `Entorno E2E real omitido; faltan variables: ${missingLiveEnvironment.join(', ')}.`,
+  );
+
   test.setTimeout(180_000);
 
   test.afterEach(async ({ page }) => {

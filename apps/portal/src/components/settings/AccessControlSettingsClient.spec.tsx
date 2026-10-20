@@ -2016,4 +2016,24 @@ describe('AccessControlSettingsClient', () => {
     expect(visibleOrder).toEqual([...CANONICAL_SUGGESTED_NAMES]);
     expect(peek.getByRole('button', { name: 'Empezar desde cero' })).toBeInTheDocument();
   });
+
+  it('selecciona perfiles con controles accesibles separados de las acciones', async () => {
+    renderAsAdmin();
+
+    const selectionButtons = await screen.findAllByRole('button', {
+      name: 'Gestionar accesos de Perfil NOC lectura',
+    });
+
+    expect(selectionButtons).toHaveLength(2);
+    for (const selectionButton of selectionButtons) {
+      expect(selectionButton.tagName).toBe('BUTTON');
+      expect(selectionButton).toHaveAttribute('aria-pressed', 'true');
+      expect(selectionButton.querySelector('button, a, input, select, textarea')).toBeNull();
+      expect(selectionButton.closest('[role="button"]')).toBeNull();
+      expect(selectionButton).toHaveClass(
+        'dark:focus-visible:ring-iwana-primary-300',
+        'dark:focus-visible:ring-offset-dark-surface-2',
+      );
+    }
+  });
 });

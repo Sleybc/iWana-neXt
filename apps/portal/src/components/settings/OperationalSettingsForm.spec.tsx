@@ -74,6 +74,34 @@ describe('OperationalSettingsForm', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('apila la nota y el botón hasta tener espacio para una fila de escritorio', () => {
+    render(
+      <OperationalSettingsForm
+        settings={{
+          timezone: 'America/Bogota',
+          currency: 'COP',
+          language: 'es-CO',
+          country: 'CO',
+          fiberInstallationThresholdMeters: 200,
+          features: {
+            billing: false,
+            mfa_required_all: true,
+          },
+        }}
+        canEdit={true}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    const note = screen.getByText('Los cambios se aplicarán de inmediato al portal.');
+    const footer = note.closest('div.flex');
+    const saveButton = screen.getByRole('button', { name: 'Guardar configuración operativa' });
+
+    expect(footer).toHaveClass('flex-col', '2xl:flex-row');
+    expect(note).toHaveClass('min-w-0', 'break-words', '2xl:flex-1');
+    expect(saveButton).toHaveClass('w-full', '2xl:w-auto', '2xl:shrink-0');
+  });
+
   it('submits changed regional preferences and shows a success notice', async () => {
     const onUpdated = jest.fn();
     const updated = {

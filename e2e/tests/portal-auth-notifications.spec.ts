@@ -239,9 +239,9 @@ test.describe('Portal auth + notifications', () => {
 
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(
-      page.getByRole('heading', { name: /bienvenido, isp prueba colombia/i }),
+      page.getByRole('heading', { level: 1, name: 'ISP Prueba Colombia' }),
     ).toBeVisible();
-    await expect(page.getByText('Panel de administración empresarial')).toBeVisible();
+    await expect(page.getByText(/Última lectura:/)).toBeVisible();
     await page.waitForLoadState('networkidle');
 
     // Validación WCAG 2.1 AA en dashboard del portal
@@ -250,12 +250,16 @@ test.describe('Portal auth + notifications', () => {
 
     // Check básico de navegación en dashboard autenticado.
     await expect(
-      page.getByRole('heading', { name: /bienvenido, isp prueba colombia/i }),
+      page.getByRole('heading', { level: 1, name: 'ISP Prueba Colombia' }),
     ).toBeVisible();
 
     await page.getByRole('button', { name: 'Notificaciones' }).click();
     await expect(page.getByText('Notificaciones del portal')).toBeVisible();
-    await expect(page.getByText('Inicio de sesión · Usuario')).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Centro de actividad del portal' })
+        .getByText('Inicio de sesión', { exact: true }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Menú de usuario' }).click();
     await page.getByRole('menuitem', { name: 'Cerrar sesión' }).click();

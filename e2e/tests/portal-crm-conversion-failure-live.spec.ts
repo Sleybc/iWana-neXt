@@ -36,6 +36,17 @@ const REQUIRED_R8_MESSAGE =
   'Para pasar a Listo para instalación, registra la autorización de tratamiento de datos en Consentimientos.';
 const INTERNAL_OR_PLACEHOLDER =
   /@placeholder\.iwana\.co|0000000000|SUBSCRIBER_DATA_AUTHORIZATION_REQUIRED|crm\.expediente\.ready-for-installation|\b(?:NUEVO_POTENCIAL|EN_COTIZACION|LISTO_PARA_INSTALACION|PROSPECT|ACTIVE)\b/u;
+const missingLiveEnvironment = [
+  !process.env.DB_NAME?.trim() ? 'DB_NAME' : null,
+  !process.env.DB_USER?.trim() ? 'DB_USER' : null,
+  !process.env.DB_PASSWORD?.trim() ? 'DB_PASSWORD' : null,
+  !(process.env.E2E_PLATFORM_EMAIL?.trim() || process.env.PLATFORM_SUPER_ADMIN_EMAIL?.trim())
+    ? 'E2E_PLATFORM_EMAIL o PLATFORM_SUPER_ADMIN_EMAIL'
+    : null,
+  !(process.env.E2E_PLATFORM_PASSWORD?.trim() || process.env.PLATFORM_SUPER_ADMIN_PASSWORD?.trim())
+    ? 'E2E_PLATFORM_PASSWORD o PLATFORM_SUPER_ADMIN_PASSWORD'
+    : null,
+].filter((name): name is string => name !== null);
 
 let api: APIRequestContext | undefined;
 let db: PgClient | undefined;
@@ -364,6 +375,11 @@ async function seedPendingConversionFailure(expedienteId: string): Promise<void>
 test.use({ trace: 'off', screenshot: 'off', video: 'off' });
 
 test.describe('MOD05 E3 — fallo de conversión y reintento contra servicios reales', () => {
+  test.skip(
+    missingLiveEnvironment.length > 0,
+    `Entorno E2E real omitido; faltan variables: ${missingLiveEnvironment.join(', ')}.`,
+  );
+
   test.setTimeout(240_000);
 
   test.beforeAll(async () => {

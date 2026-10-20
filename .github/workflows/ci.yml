@@ -513,39 +513,173 @@ jobs:
           fi
           echo "✅ Suite de integración 089 ejecutada contra PostgreSQL real"
 
-      # Integración del API (hallazgo A-2, ADR-065): el spec de concurrencia R2.3
-      # exige `E2E_TENANT_SLUG` y el script lleva `--passWithNoTests`; sin el slug
-      # emite `describe.skip` y el paso saldría VERDE sin ejercitar nada. En este
-      # punto del job el tenant ACTIVE `test` (schema tenant_test) ya existe y está
-      # migrado (paso "Run tenant migrations"), así que el spec R2.3 debe correr
-      # contra PostgreSQL real. La configuración también descubre dos specs
-      # sintéticos que se omiten correctamente con DB_NAME=test; por eso el gate
-      # comprueba el PASS del spec R2.3 en vez de rechazar cualquier `skipped`.
-      # El spec borra en afterAll los ids que crea (tracking interno); deja fuera
-      # de su alcance los eventos outbox generados por createFromScheduling,
-      # residuo de laboratorio en una DB efímera del runner. Gate rojo: sin
-      # continue-on-error.
-      - name: Integration tests — API R2.3 concurrencia contra PostgreSQL real
+      # La base está arriba, migrada y el tenant ACTIVE `test` existe en este
+      # punto. Marca explícitamente el destino disponible: sin esta bandera, las
+      # suites que usan `describe.skip` al faltar DB se contarían como PASS.
+      # Jest deja un JSON temporal para detectar archivos ausentes y suites
+      # omitidas completas. No se publica el reporte bruto.
+      - name: Integration tests — API (PostgreSQL real)
         shell: bash
         run: |
-          set -o pipefail
-          E2E_TENANT_SLUG=test pnpm --filter @iwana/api test:integration 2>&1 | tee /tmp/api-integration.log
+          set -uo pipefail
+          report=/tmp/api-integration-report.json
+          log=/tmp/api-integration.log
+          rm -f "$report" "$log"
 
-          # El spec omite la suite si le falta E2E_TENANT_SLUG o si el probe no
-          # alcanzó la DB. En CI ambas condiciones son fallos de infraestructura.
-          if grep -qi "suite omitida" /tmp/api-integration.log; then
-            echo "❌ Suite de integración API OMITIDA: PostgreSQL o tenant 'test' no disponibles en CI."
-            exit 1
+          IWANA_DB_INTEGRATION_AVAILABLE=true E2E_TENANT_SLUG=test \
+            pnpm --filter @iwana/api exec jest \
+              --config jest.integration.config.js \
+              --passWithNoTests \
+              --json \
+              --outputFile="$report" 2>&1 | tee "$log"
+          jest_status=${PIPESTATUS[0]}
+          if (( jest_status != 0 )); then
+            exit "$jest_status"
           fi
-          # Esta config incluye specs sintéticos que se omiten de forma esperada
-          # con DB_NAME=test. El PASS exacto prueba que la suite real R2.3 corrió;
-          # si se omitió, Jest la reporta como SKIP y esta compuerta falla.
-          if grep -qE "^Tests:[[:space:]]+0 total" /tmp/api-integration.log || \
-             ! grep -qF "PASS src/modules/tasks/tests/execution-orders.postgres.integration.spec.ts" /tmp/api-integration.log; then
-            echo "❌ Suite de integración API R2.3 no ejecutó tests reales contra PostgreSQL."
-            exit 1
-          fi
-          echo "✅ Suite de integración API R2.3 ejecutada contra PostgreSQL real (tenant test)"
+
+          node --input-type=module <<'API_INTEGRATION_GATE'
+          import { readdir, readFile } from 'node:fs/promises';
+          import path from 'node:path';
+          import process from 'node:process';
+
+          const repositoryRoot = process.env.API_INTEGRATION_REPOSITORY_ROOT ?? process.cwd();
+          const apiSourceRoot = process.env.API_INTEGRATION_SOURCE_ROOT ??
+            path.join(repositoryRoot, 'apps/api/src');
+          const reportPath = process.env.API_INTEGRATION_REPORT_PATH ?? '/tmp/api-integration-report.json';
+          const expectedSkipsPath = process.env.API_INTEGRATION_EXPECTED_SKIPS_PATH ??
+            path.join(repositoryRoot, 'apps/api/integration-expected-skips.json');
+          const errors = [];
+
+          async function listIntegrationSpecs(directory) {
+            const entries = await readdir(directory, { withFileTypes: true });
+            const nested = await Promise.all(entries.map(async (entry) => {
+              const entryPath = path.join(directory, entry.name);
+              if (entry.isDirectory()) return listIntegrationSpecs(entryPath);
+              return entry.isFile() && entry.name.endsWith('.postgres.integration.spec.ts')
+                ? [entryPath]
+                : [];
+            }));
+            return nested.flat();
+          }
+
+          function repositoryRelative(filePath) {
+            const absolutePath = path.isAbsolute(filePath)
+              ? filePath
+              : path.resolve(repositoryRoot, filePath);
+            return path.relative(repositoryRoot, absolutePath).split(path.sep).join('/');
+          }
+
+          let report;
+          let manifest;
+          try {
+            [report, manifest] = await Promise.all([
+              readFile(reportPath, 'utf8').then(JSON.parse),
+              readFile(expectedSkipsPath, 'utf8').then(JSON.parse),
+            ]);
+          } catch (error) {
+            console.error(`No se pudo leer el reporte o la lista de omisiones esperadas: ${error.message}`);
+            process.exit(1);
+          }
+
+          const expectedEntries = manifest.expectedSkips;
+          if (!Array.isArray(expectedEntries)) {
+            console.error('integration-expected-skips.json debe definir expectedSkips como una lista.');
+            process.exit(1);
+          }
+
+          const expectedBySpec = new Map();
+          for (const entry of expectedEntries) {
+            if (
+              !entry ||
+              typeof entry.spec !== 'string' ||
+              !/^apps\/api\/src\/.+\.postgres\.integration\.spec\.ts$/u.test(entry.spec) ||
+              typeof entry.reason !== 'string' ||
+              entry.reason.trim().length === 0
+            ) {
+              errors.push('Cada omisión esperada necesita ruta apps/api/src/**/*.postgres.integration.spec.ts y motivo no vacío.');
+              continue;
+            }
+            if (expectedBySpec.has(entry.spec)) errors.push(`Omisión esperada duplicada: ${entry.spec}`);
+            expectedBySpec.set(entry.spec, entry.reason.trim());
+          }
+
+          const specFiles = await listIntegrationSpecs(apiSourceRoot);
+          const discovered = new Set(
+            specFiles.map((filePath) => repositoryRelative(filePath)),
+          );
+          if (discovered.size === 0) errors.push('No se encontró ninguna spec PostgreSQL de API.');
+
+          const results = new Map(
+            (report.testResults ?? []).map((testResult) => [
+              repositoryRelative(testResult.name),
+              testResult,
+            ]),
+          );
+          const completelySkipped = new Set();
+          const missingFromReport = new Set();
+
+          for (const spec of discovered) {
+            const result = results.get(spec);
+            if (!result) {
+              missingFromReport.add(spec);
+              continue;
+            }
+            const assertions = result.assertionResults ?? [];
+            const total = assertions.length;
+            const passed = assertions.filter((assertion) => assertion.status === 'passed').length;
+            const failed = assertions.filter((assertion) => assertion.status === 'failed').length;
+            const pending = assertions.filter((assertion) => assertion.status === 'pending').length;
+            const todo = assertions.filter((assertion) => assertion.status === 'todo').length;
+            if (
+              result.status === 'skipped' ||
+              (total > 0 && passed === 0 && failed === 0 && pending + todo >= total)
+            ) {
+              completelySkipped.add(spec);
+            }
+          }
+
+          for (const spec of [...missingFromReport, ...completelySkipped]) {
+            if (!expectedBySpec.has(spec)) errors.push(`Omisión completa no declarada: ${spec}`);
+          }
+
+          for (const spec of expectedBySpec.keys()) {
+            if (!discovered.has(spec)) errors.push(`La omisión declarada ya no existe: ${spec}`);
+            else if (!missingFromReport.has(spec) && !completelySkipped.has(spec)) {
+              errors.push(`La omisión declarada ya ejecuta tests; retire la excepción: ${spec}`);
+            }
+          }
+
+          const b5Spec = 'apps/api/src/modules/crm/subscribers/b5-identity-conversion.postgres.integration.spec.ts';
+          const b5 = results.get(b5Spec);
+          const b5Assertions = b5?.assertionResults ?? [];
+          const b5Passed = b5Assertions.filter((assertion) => assertion.status === 'passed').length;
+          const b5Failed = b5Assertions.filter((assertion) => assertion.status === 'failed').length;
+          const b5Pending = b5Assertions.filter((assertion) => assertion.status === 'pending').length;
+          const b5Todo = b5Assertions.filter((assertion) => assertion.status === 'todo').length;
+          if (
+            !b5 ||
+            b5.status !== 'passed' ||
+            b5Assertions.length !== 17 ||
+            b5Passed !== 17 ||
+            b5Failed !== 0 ||
+            b5Pending !== 0 ||
+            b5Todo !== 0
+          ) {
+            errors.push('B5 debe aparecer ejecutada con exactamente 17/17 tests aprobados y 0 omitidos.');
+          }
+
+          if (errors.length > 0) {
+            console.error('Gate de omisiones de integración API: FAIL');
+            for (const error of errors) console.error(`- ${error}`);
+            process.exit(1);
+          }
+
+          const omittedCount = missingFromReport.size + completelySkipped.size;
+          const omittedLabel = omittedCount === 1 ? 'omisión declarada' : 'omisiones declaradas';
+          console.log(
+            `Gate de omisiones de integración API: PASS (${discovered.size} specs; ${omittedCount} ${omittedLabel}; B5 17/17)`,
+          );
+          API_INTEGRATION_GATE
 
       # Integración del worker (R0.3): el spec exige `R0_3_REAL_DB=1` y tira error
       # si no está; crea su propio schema efímero tenant_r03_relay_* y lo limpia en
@@ -863,36 +997,17 @@ jobs:
             --profile e2e \
             down --remove-orphans --volumes --timeout 30 2>/dev/null || true
 
-  # ── E2E-PORTAL-DEBT: conteo de la deuda E2E portal (informativo) ─────────
-  # La suite E2E portal completa (36 specs, 232 casos) arrastra fallos
-  # PREEXISTENTES — specs sin mock de `me/effective-permissions` desde
-  # d5db6239, 98 fallos al 2026-09-13 — ajenos a los módulos en curso.
-  # Este job corre la suite completa en Linux SOLO PARA CONTAR: publica
-  # passed/failed/skipped/flaky en el resumen del run y avisa si la deuda
-  # crece respecto al baseline. NO es un gate: continue-on-error mantiene el
-  # run verde mientras la deuda exista (un contador de deuda no puede ser la
-  # razón de un rojo, ni su ruido puede tapar los gates reales). Cuando la
-  # deuda se pague: actualizar el baseline hacia abajo y retirar el
-  # continue-on-error para convertir este conteo en compuerta.
-  # No se archivan reportes crudos (contienen payloads de error): solo los
-  # conteos publicados aquí.
-  e2e-portal-debt-counter:
-    name: Conteo deuda E2E portal (informativo, no bloqueante)
+  # Suite completa bloqueante: un fallo no cuarentenado, una omisión sin motivo o
+  # cualquier flaky falla el job. El resumen publica conteos, nunca reportes crudos.
+  e2e-portal:
+    name: E2E portal
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    continue-on-error: true
 
     env:
       CI: true
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: '1'
-      # Baseline del trinquete: ÚLTIMA MEDICIÓN ESTABLE DEL CONTADOR EN CI
-      # (Linux). La primera medición (run 34791789744) dio 100 fallos / 257
-      # casos, flaky=0, skipped=0; el baseline local previo (98, Windows,
-      # OLA 4) disparaba un falso aviso de crecimiento por diferencia de
-      # plataforma. Si la deuda baja, el propio job emite ::notice para
-      # actualizar este número hacia abajo.
-      E2E_PORTAL_DEBT_BASELINE: '100'
 
     steps:
       - name: Checkout
@@ -936,90 +1051,146 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
-      # Suite completa con reporte list (legible en el log) + JSON a archivo
-      # temporal (solo para contar). El exit code de la suite se tolera a
-      # propósito: los fallos preexistentes son la deuda que se está midiendo.
-      - name: Ejecutar suite E2E portal completa (solo conteo)
-        shell: bash
-        run: |
-          set -o pipefail
-          PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/portal-e2e-report.json \
-            pnpm test:e2e:portal --reporter=list,json || true
-
-      # Convierte el reporte JSON en conteos y los publica. Sin volcar
-      # errores, payloads ni rutas de test-results al log ni al resumen.
-      - name: Publicar conteo de deuda E2E portal (resumen sanitizado)
-        if: always()
+      - name: Validate E2E quarantine
+        id: quarantine
         shell: bash
         run: |
           set -euo pipefail
-          node -e '
-            const fs = require("node:fs");
-            // Ruta sobreescrible para testear el parser fuera de Linux.
-            const report = process.env.E2E_PORTAL_REPORT_PATH ?? "/tmp/portal-e2e-report.json";
-            const baseline = Number(process.env.E2E_PORTAL_DEBT_BASELINE ?? "0");
+          node scripts/check-e2e-quarantine.mjs
+          count="$(node --input-type=module -e '
+            import { validateQuarantine } from "./scripts/check-e2e-quarantine.mjs";
+            const result = await validateQuarantine();
+            if (result.errors.length > 0) process.exit(1);
+            process.stdout.write(String(result.quarantineCount));
+          ')"
+          [[ "$count" =~ ^[0-9]+$ ]] || { echo "Conteo de cuarentena inválido" >&2; exit 1; }
+          echo "count=$count" >> "$GITHUB_OUTPUT"
 
-            let stats = null;
-            if (fs.existsSync(report)) {
-              try {
-                const parsed = JSON.parse(fs.readFileSync(report, "utf8"));
-                if (parsed && parsed.stats) {
-                  const s = parsed.stats;
-                  const passed = Number(s.expected ?? 0);
-                  const failed = Number(s.unexpected ?? 0);
-                  const flaky = Number(s.flaky ?? 0);
-                  const skipped = Number(s.skipped ?? 0);
-                  stats = {
-                    // El reporter JSON no publica «total»: se deriva de los cuatro outcomes.
-                    total: passed + failed + flaky + skipped,
-                    passed,
-                    failed,
-                    flaky,
-                    skipped,
-                    durationMs: Number(s.duration ?? 0),
-                  };
-                }
-              } catch {
-                stats = null;
+      - name: Run blocking Portal E2E suite
+        id: portal-e2e
+        shell: bash
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: /tmp/portal-e2e-report.json
+        run: |
+          set -euo pipefail
+          pnpm test:e2e:portal --reporter=list,json --retries=0 2>&1 | tee /tmp/portal-e2e.log
+
+      - name: Publish sanitized Portal E2E summary
+        if: always()
+        shell: bash
+        env:
+          E2E_QUARANTINE_COUNT: ${{ steps.quarantine.outputs.count }}
+        run: |
+          node --input-type=module <<'E2E_SUMMARY'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          import process from 'node:process';
+
+          const reportPath = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? '/tmp/portal-e2e-report.json';
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          const summary = [];
+          const fail = (message) => {
+            console.error(message);
+            if (summaryPath) appendFileSync(summaryPath, `${message}\n`);
+            process.exitCode = 1;
+          };
+
+          if (!existsSync(reportPath)) {
+            summary.push(
+              '### E2E portal — resumen bloqueante',
+              '',
+              'No se generó el reporte JSON; revisar el paso de ejecución. El job queda en rojo.',
+              '',
+            );
+            if (summaryPath) appendFileSync(summaryPath, `${summary.join('\n')}\n`);
+            fail('No existe el reporte JSON de Playwright.');
+            process.exit(1);
+          }
+
+          let report;
+          try {
+            report = JSON.parse(readFileSync(reportPath, 'utf8'));
+          } catch {
+            fail('El reporte JSON de Playwright no se pudo interpretar.');
+            process.exit(1);
+          }
+
+          const stats = report?.stats;
+          if (!stats || !Array.isArray(report.suites)) {
+            fail('El reporte JSON de Playwright no contiene stats/suites.');
+            process.exit(1);
+          }
+
+          const counts = {
+            passed: Number(stats.expected ?? 0),
+            failed: Number(stats.unexpected ?? 0),
+            skipped: Number(stats.skipped ?? 0),
+            flaky: Number(stats.flaky ?? 0),
+            quarantined: Number(process.env.E2E_QUARANTINE_COUNT ?? Number.NaN),
+          };
+          const skipReasons = new Map();
+          const quarantineReasons = new Map();
+          for (const line of readFileSync('e2e/QUARANTINE.md', 'utf8').split(/\r?\n/u)) {
+            const cells = line.trim().replace(/^\|/u, '').replace(/\|$/u, '').split('|').map((cell) => cell.trim());
+            if (cells.length === 7 && /^[A-Z0-9][A-Z0-9_-]*$/u.test(cells[0]) && cells[0] !== 'ID') {
+              quarantineReasons.set(cells[0], cells[4]);
+            }
+          }
+
+          function visitSuite(suite) {
+            for (const spec of suite.specs ?? []) {
+              for (const test of spec.tests ?? []) {
+                const resultStatus = test.status ?? test.results?.at(-1)?.status;
+                if (resultStatus !== 'skipped' && test.expectedStatus !== 'skipped') continue;
+                const annotations = test.annotations ?? [];
+                const fixme = annotations.find((annotation) => annotation.type === 'fixme');
+                const quarantineId = fixme?.description?.match(/^QUARANTINE:\s*([A-Z0-9][A-Z0-9_-]*)$/u)?.[1];
+                const descriptions = annotations
+                  .filter((annotation) => annotation.type === 'skip')
+                  .map((annotation) => annotation.description)
+                  .filter((description) => typeof description === 'string' && description.trim().length > 0);
+                const reason = quarantineId
+                  ? quarantineReasons.get(quarantineId) ?? `Motivo no disponible para la cuarentena ${quarantineId}`
+                  : descriptions.length > 0
+                  ? [...new Set(descriptions)].join('; ').replace(/[\r\n|]/gu, ' ').slice(0, 300)
+                  : 'Motivo no informado por Playwright';
+                skipReasons.set(reason, (skipReasons.get(reason) ?? 0) + 1);
               }
             }
+            for (const child of suite.suites ?? []) visitSuite(child);
+          }
+          for (const suite of report.suites) visitSuite(suite);
 
-            const summary = process.env.GITHUB_STEP_SUMMARY;
-            const lines = [];
+          const skipReasonCount = [...skipReasons.values()].reduce((sum, count) => sum + count, 0);
+          const missingSkipReasons = [...skipReasons.keys()].some((reason) => reason.startsWith('Motivo no '));
+          const total = counts.passed + counts.failed + counts.skipped + counts.flaky;
+          summary.push(
+            '### E2E portal — resumen bloqueante',
+            '',
+            '| Pasadas | Fallidas | Omitidas | Cuarentenadas | Flaky |',
+            '| ---: | ---: | ---: | ---: | ---: |',
+            `| ${counts.passed} | ${counts.failed} | ${counts.skipped} | ${Number.isFinite(counts.quarantined) ? counts.quarantined : 'no disponible'} | ${counts.flaky} |`,
+            '',
+            '#### Motivos de omisión',
+            '',
+          );
 
-            if (!stats) {
-              lines.push("### Deuda E2E portal (E2E-PORTAL-DEBT)", "", "La suite no produjo reporte conteable (arranque de webServer fallido o suite interrumpida). Revisar el paso anterior.");
-              if (summary) fs.appendFileSync(summary, lines.join("\n") + "\n");
-              console.log("::warning title=Deuda E2E portal::Sin reporte conteable — la suite no llegó a publicar estadísticas.");
-              process.exit(0);
-            }
+          if (skipReasons.size === 0) summary.push('Ninguna prueba omitida.', '');
+          else {
+            for (const [reason, count] of skipReasons) summary.push(`- ${count}: ${reason}`);
+            summary.push('');
+          }
 
-            console.log(`E2E_PORTAL_DEBT_TOTAL=${stats.total}`);
-            console.log(`E2E_PORTAL_DEBT_PASSED=${stats.passed}`);
-            console.log(`E2E_PORTAL_DEBT_FAILED=${stats.failed}`);
-            console.log(`E2E_PORTAL_DEBT_SKIPPED=${stats.skipped}`);
-            console.log(`E2E_PORTAL_DEBT_FLAKY=${stats.flaky}`);
-            console.log(`E2E_PORTAL_DEBT_BASELINE=${baseline}`);
-            console.log(`E2E_PORTAL_DEBT_DURATION_MS=${stats.durationMs}`);
+          if (skipReasonCount !== counts.skipped) {
+            fail(`El reporte enumera ${skipReasonCount} omisiones con motivo para ${counts.skipped} omitidas.`);
+          }
+          if (total === 0) fail('La suite no reportó pruebas ejecutadas u omitidas.');
+          if (missingSkipReasons) fail('Hay pruebas omitidas sin motivo.');
+          if (counts.failed > 0) fail(`La suite dejó ${counts.failed} pruebas fallidas.`);
+          if (counts.flaky > 0) fail(`La suite reportó ${counts.flaky} pruebas flaky.`);
+          if (!Number.isFinite(counts.quarantined)) fail('No se pudo determinar el conteo validado de cuarentenas.');
 
-            lines.push(
-              "### Deuda E2E portal (conteo en CI, no bloqueante)",
-              "",
-              "| total | passed | failed | skipped | flaky | baseline | duración (s) |",
-              "| --- | --- | --- | --- | --- | --- | --- |",
-              `| ${stats.total} | ${stats.passed} | ${stats.failed} | ${stats.skipped} | ${stats.flaky} | ${baseline} | ${Math.round(stats.durationMs / 1000)} |`,
-              "",
-            );
-
-            if (stats.failed > baseline) {
-              lines.push(`⚠️ La deuda CRECIÓ: ${stats.failed} fallos vs baseline ${baseline}. Posible regresión nueva en specs portal — no es deuda preexistente.`);
-              console.log(`::warning title=Deuda E2E portal creció::${stats.failed} fallos vs baseline ${baseline}. Revisar specs portal nuevas.`);
-            } else if (stats.failed < baseline) {
-              lines.push(`✅ La deuda bajó: ${stats.failed} fallos vs baseline ${baseline}. Actualizar E2E_PORTAL_DEBT_BASELINE en ci.yml.`);
-              console.log(`::notice title=Deuda E2E portal bajó::${stats.failed} fallos vs baseline ${baseline} — actualizar el baseline del workflow.`);
-            } else {
-              lines.push(`Deuda estable en el baseline (${baseline} fallos).`);
-            }
-
-            if (summary) fs.appendFileSync(summary, lines.join("\n") + "\n");
-          '
+          if (summaryPath) appendFileSync(summaryPath, `${summary.join('\n')}\n`);
+          console.log(
+            `E2E portal: passed=${counts.passed}, failed=${counts.failed}, skipped=${counts.skipped}, quarantined=${counts.quarantined}, flaky=${counts.flaky}`,
+          );
+          E2E_SUMMARY

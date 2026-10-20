@@ -134,6 +134,14 @@ async function openStockIssueComposer(main: import('@playwright/test').Locator) 
   await expect(main.getByRole('heading', { name: 'Nueva salida' })).toBeVisible();
 }
 
+async function revealOptionalJustification(main: import('@playwright/test').Locator) {
+  const justification = main.getByLabel('Justificación');
+  if (!(await justification.isVisible().catch(() => false))) {
+    await main.getByRole('button', { name: 'Agregar justificación (opcional)' }).click();
+  }
+  await expect(justification).toBeVisible();
+}
+
 function extractSkuTokenFromPattern(pattern: RegExp): string {
   const tokens = pattern.source.match(/[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*/g) ?? [];
   return tokens.at(-1) ?? 'CA';
@@ -766,7 +774,7 @@ async function createConsumableSaleIssue(
     'BOD-01 · Bodega principal (Bodega principal)',
   );
   await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*CAB-DROP/i]);
-  await main.getByLabel(/Cantidad .*CAB-DROP/i).fill(quantity);
+  await main.getByLabel(/Cantidad Cable drop/i).fill(quantity);
   await main.getByLabel('Referencia comercial (opcional)').fill('REF-RESERVA-E2E');
   await main.getByRole('button', { name: 'Crear salida' }).click();
 }
@@ -1130,6 +1138,33 @@ async function setupInventoryMocks(
       return;
     }
 
+    if (pathname.endsWith('/access-control/me/effective-permissions') && method === 'GET') {
+      expect((await request.allHeaders())['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
+      const sessionPayload = resolveMockSessionPayload(request);
+      const role: 'NOC' | 'ADMIN' = sessionPayload?.role ?? sessionRole;
+      const userId = sessionPayload?.sub ?? (role === 'ADMIN' ? ADMIN_USER_ID : NOC_USER_ID);
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            userId,
+            role,
+            effectivePermissions: [
+              'inventory.stock.read',
+              'inventory.stock.manage',
+              'inventory.purchasing.read',
+              'inventory.purchasing.manage',
+            ],
+            recoveryPermissions: [],
+            profileSources: [],
+          },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith('/tenants/me') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -1296,6 +1331,84 @@ async function setupInventoryMocks(
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(options),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/inventory/issues/pickable-items') && method === 'GET') {
+      const sourceLocationId = url.searchParams.get('sourceLocationId') ?? '';
+      const search = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+      const scope = url.searchParams.get('scope') ?? 'with-stock';
+      const items = state.catalogItems
+        .filter((item) => item.status === 'ACTIVE')
+        .filter((item) => {
+          if (!search) return true;
+          return (
+            String(item.sku).toLowerCase().includes(search) ||
+            String(item.name).toLowerCase().includes(search)
+          );
+        })
+        .map((item) => {
+          const balances = state.balances.filter(
+            (balance) => balance.itemId === item.id && balance.locationId === sourceLocationId,
+          );
+          const availability = balances.map((balance) => {
+            const quantityOnHand = Number.parseFloat(String(balance.quantityOnHand ?? '0'));
+            const quantityReserved = Number.parseFloat(String(balance.quantityReserved ?? '0'));
+            return {
+              condition: balance.condition,
+              quantityOnHand: String(balance.quantityOnHand ?? '0'),
+              quantityReserved: String(balance.quantityReserved ?? '0'),
+              available: String(Math.max(0, quantityOnHand - quantityReserved)),
+            };
+          });
+          const totalAvailable = availability.reduce(
+            (sum, balance) => sum + Number.parseFloat(balance.available),
+            0,
+          );
+          const availableSerialCount = state.serializedAssets.filter(
+            (asset) =>
+              asset.inventoryItemId === item.id &&
+              asset.currentLocationId === sourceLocationId &&
+              ['AVAILABLE', 'AVAILABLE_REFURBISHED'].includes(String(asset.currentStatus)),
+          ).length;
+          return {
+            itemId: item.id,
+            sku: item.sku,
+            name: item.name,
+            categoryId: item.categoryId ?? null,
+            categoryName: item.categoryName ?? null,
+            unitOfMeasure: item.unitOfMeasure,
+            trackingMode: item.trackingMode,
+            assetControlled: item.assetControlled === true,
+            availability,
+            totalAvailable: totalAvailable.toFixed(2),
+            lots: [],
+            availableSerialCount,
+          };
+        })
+        .filter((item) => scope === 'catalog' || Number.parseFloat(item.totalAvailable) > 0);
+      const page = Number.parseInt(url.searchParams.get('page') ?? '1', 10);
+      const limit = Number.parseInt(url.searchParams.get('limit') ?? '20', 10);
+      const offset = (page - 1) * limit;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: items.slice(offset, offset + limit),
+          meta: {
+            nextCursor: null,
+            total: items.length,
+            totalIsEstimate: false,
+            page,
+            limit,
+            totalPages: Math.ceil(items.length / limit),
+            hasMore: offset + limit < items.length,
+            mode: 'page',
+            capabilities: { randomAccess: true, sortableFields: [] },
+            sort: null,
+          },
+        }),
       });
       return;
     }
@@ -3590,7 +3703,14 @@ test.describe('Portal Inventario / SCM', () => {
     await openPurchaseComposer(main);
     await addCatalogProductToDraft(page, main, 'Patch cord', /Patch cord 24m/i);
     await main.getByLabel('Título').fill('Compra patch cord');
-    await main.getByLabel('Área solicitante').fill('Operaciones');
+    const requestingArea = main.getByRole('textbox', {
+      name: 'Área solicitante',
+      exact: true,
+    });
+    await requestingArea.fill('Operaciones');
+    await expect(requestingArea).toHaveValue('Operaciones');
+    await expect(main.getByRole('textbox', { name: /Cantidad .*Patch cord 24m/ })).toHaveValue('1');
+    await revealOptionalJustification(main);
     await main
       .getByLabel('Justificación')
       .fill('Reposición de patch cords para cuadrillas de campo');
@@ -3626,12 +3746,14 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Nuevo producto' }).click();
 
     const productDrawer = page.getByRole('dialog');
-    await productDrawer.getByLabel('Nombre').fill('Cable fibra 12 hilos');
     await selectComboboxOption(
       page,
       productDrawer.getByRole('combobox', { name: 'Categoría' }),
       'Fibra óptica',
     );
+    const productName = productDrawer.getByLabel('Nombre');
+    await productName.fill('Cable fibra 12 hilos');
+    await expect(productName).toHaveValue('Cable fibra 12 hilos');
     await productDrawer.getByRole('button', { name: 'Crear producto' }).click();
 
     await expect(main.getByText('Cable fibra 12 hilos').first()).toBeVisible();
@@ -3640,6 +3762,7 @@ test.describe('Portal Inventario / SCM', () => {
     await addCatalogProductToDraft(page, main, 'Cable fibra', /Cable fibra 12 hilos/i);
     await main.getByLabel('Título').fill('Compra fibra proyecto norte');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
+    await revealOptionalJustification(main);
     await main
       .getByLabel('Justificación')
       .fill('Material de fibra para ampliación de red troncal en zona norte');
@@ -3672,6 +3795,7 @@ test.describe('Portal Inventario / SCM', () => {
     await addCatalogProductToDraft(page, main, 'ONT', /ONT-HG8245 - ONT Huawei HG8245/i);
     await main.getByLabel('Título').fill('Compra ONT marzo');
     await main.getByLabel('Área solicitante').fill('Operaciones');
+    await revealOptionalJustification(main);
     await main
       .getByLabel('Justificación')
       .fill('Reposición programada por consumo de campo en zona norte');
@@ -3690,7 +3814,7 @@ test.describe('Portal Inventario / SCM', () => {
     await main.getByRole('button', { name: 'Salidas' }).click();
     await expect(main.getByRole('heading', { name: 'Salidas', exact: true })).toBeVisible();
 
-    await main.getByRole('button', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos', exact: true }).click();
     await expect(main.getByText('SN-001').first()).toBeVisible();
     await expect(main.getByRole('cell', { name: 'Disponible' }).first()).toBeVisible();
   });
@@ -3699,7 +3823,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos', exact: true }).click();
     await main.getByRole('button', { name: 'Ver detalle' }).click();
 
     const drawer = page.getByTestId('serialized-asset-detail-drawer');
@@ -3717,7 +3841,7 @@ test.describe('Portal Inventario / SCM', () => {
     await page.goto('/dashboard/inventory');
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos', exact: true }).click();
     await main.getByRole('tab', { name: 'Vida útil' }).click();
 
     const panel = main.getByTestId('useful-life-alerts-panel');
@@ -3776,7 +3900,7 @@ test.describe('Portal Inventario / SCM', () => {
 
     const main = page.locator('main');
 
-    await main.getByRole('button', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos', exact: true }).click();
     await main.getByRole('tab', { name: 'Comodatos' }).click();
 
     const loansPanel = main.getByTestId('asset-loans-panel');
@@ -3809,7 +3933,7 @@ test.describe('Portal Inventario / SCM', () => {
     await expect(main.getByText(/Devolución registrada/i)).toBeVisible();
     expect(state.loans.some((loan) => loan.status === 'cerrado')).toBe(true);
 
-    await main.getByRole('button', { name: 'Activos' }).click();
+    await main.getByRole('button', { name: 'Activos', exact: true }).click();
     await main.getByRole('tab', { name: 'Comodatos' }).click();
     await main.getByTestId('asset-loans-panel').getByRole('button', { name: 'Actualizar' }).click();
 
@@ -3946,6 +4070,15 @@ test.describe('Portal Inventario / SCM', () => {
       workbench.getByRole('combobox', { name: 'Ubicación destino' }),
       'BOD-01 · Bodega principal',
     );
+    await workbench
+      .getByLabel('Seriales')
+      .fill(
+        Array.from(
+          { length: 10 },
+          (_, index) => `E2E-ONT-RECEIPT-${String(index + 1).padStart(2, '0')}`,
+        ).join(', '),
+      );
+    await expect(workbench.getByText('Se esperaban 10 seriales; hay 0.')).toHaveCount(0);
     await workbench.getByRole('button', { name: 'Registrar recepción' }).click();
     await expect(workbench.getByText('Recepción GR-000001 registrada')).toBeVisible();
 
@@ -4019,6 +4152,7 @@ test.describe('Portal Inventario / SCM', () => {
       .fill('Cableado auxiliar de ampliación');
     await main.getByLabel('Título').fill('Proyecto ampliación red');
     await main.getByLabel('Área solicitante').fill('Ingeniería');
+    await revealOptionalJustification(main);
     await main
       .getByLabel('Justificación')
       .fill('Adquisición de materiales para ampliación de red en zona norte del municipio');
@@ -4401,9 +4535,12 @@ test.describe('Portal Inventario / SCM', () => {
     const workbench = page.getByRole('dialog').filter({ hasText: 'Trabajar solicitud' });
     await expect(workbench.getByText(/Adjudica las líneas/i)).toBeVisible();
     await workbench.getByRole('tab', { name: 'Adjudicación' }).click();
-    await workbench.getByRole('button', { name: /Usar COT-AWARD-01/i }).click();
-    await workbench.getByRole('button', { name: 'Adjudicar líneas' }).click();
-    await expect(workbench.getByText('Adjudicaciones registradas')).toBeVisible();
+    await workbench
+      .getByRole('radio', { name: 'Adjudicar ONT Huawei HG8245 a Proveedor Demo' })
+      .click();
+    await workbench.getByRole('button', { name: 'Guardar adjudicación' }).click();
+    expect(state.purchaseAwards).toHaveLength(1);
+    await workbench.getByRole('button', { name: 'Abastecer' }).click();
 
     // Órdenes vive en fase Abastecer; el CTA del footer dispara el drawer sin cambiar de tab.
     await workbench.getByRole('button', { name: 'Generar órdenes desde adjudicación' }).click();
@@ -4512,7 +4649,7 @@ test.describe('Portal Inventario / Existencias', () => {
     await page.goto('/dashboard/inventory?tab=stock');
     const main = page.locator('main');
 
-    await expect(main.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+    await expect(main.getByRole('button', { name: 'Existencias', exact: true })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -4526,7 +4663,7 @@ test.describe('Portal Inventario / Existencias', () => {
     await page.goto('/dashboard/inventory?tab=locations&custody=mobile');
     const main = page.locator('main');
 
-    await expect(main.getByRole('button', { name: 'Existencias' })).toHaveAttribute(
+    await expect(main.getByRole('button', { name: 'Existencias', exact: true })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -4678,8 +4815,10 @@ test.describe('Portal Inventario / Existencias', () => {
     const workbench = page.getByRole('dialog', { name: 'Trabajar solicitud' });
     await expect(workbench).toBeVisible();
     // DRAFT abre en Cotizar (next-action); las líneas de reposición alimentan el borrador de cotización.
-    await expect(workbench.getByText('Cable drop')).toBeVisible();
-    await expect(workbench.getByRole('cell', { name: '40' })).toBeVisible();
+    await workbench.getByRole('button', { name: 'Preparar' }).click();
+    await workbench.getByRole('tab', { name: 'Líneas' }).click();
+    await expect(workbench.getByText(/CAB-DROP.*Cable drop/i)).toBeVisible();
+    await expect(workbench.getByText('40 METER · Abierta')).toBeVisible();
     await expect(
       main.getByRole('button', { name: /PR-\d+ Reposición sugerida .+ — 1 ítem/ }),
     ).toBeVisible();
@@ -4785,7 +4924,7 @@ test.describe('Portal Inventario / Bodegas', () => {
       'TEC-01 · Custodia técnico (Técnico en campo)',
     );
     await addIssueCatalogItemsToDraft(page, main, [/Seleccionar .*CAB-DROP/i]);
-    await main.getByLabel(/Cantidad .*CAB-DROP/i).fill('99');
+    await main.getByLabel(/Cantidad Cable drop/i).fill('99');
 
     await expect(main.getByText(/Supera el material disponible en origen/i)).toBeVisible();
     await main.getByRole('button', { name: 'Crear salida' }).click();

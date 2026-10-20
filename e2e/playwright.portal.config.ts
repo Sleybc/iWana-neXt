@@ -57,24 +57,21 @@ export default defineConfig({
     video: useSystemChrome ? 'off' : 'retain-on-failure',
   },
   webServer: {
-    // Turbopack dev hangs compiling /dashboard/assurance on Windows in this suite.
-    // Webpack dev matches the production build result and keeps E2E navigation stable.
-    // Se invoca el wrapper `scripts/next-dev.mjs` en lugar de `next dev` directo
-    // para que el servidor de E2E respete el binding a loopback (ADR-078 D2).
-    command:
-      'pnpm --filter @iwana/portal exec node ../../scripts/next-dev.mjs --webpack --port 3002',
+    // La suite corre contra un build standalone de producción. Así, los mocks
+    // page.route no activan el indicador de caché de Next dev en las capturas.
+    // El wrapper conserva el bind a loopback y copia los assets al standalone.
+    command: 'node ../scripts/next-standalone-e2e.mjs --port 3002',
     url: 'http://127.0.0.1:3002',
-    reuseExistingServer: !process.env.PW_FORCE_FRESH_SERVER && !process.env.CI,
-    // C-4 / OLA1-b: el bundle del navegador debe usar same-origin `/api/v1` para
-    // que page.route() intercepte sin CORS/CSP connect-src. Si el shell o
-    // `.env.development` definen NEXT_PUBLIC_PORTAL_API_URL absoluta (p. ej.
-    // http://127.0.0.1:3000/api/v1), Next la bakea y AuthProvider queda bloqueado
-    // por connect-src 'self'. Forzamos vacío en el webServer de la suite.
+    // No se reutiliza un servidor existente: podría ser next dev y contaminar
+    // las capturas con el indicador de desarrollo.
+    reuseExistingServer: false,
     env: {
       ...process.env,
+      NODE_ENV: 'production',
+      IWANA_DISABLE_CACHE_COMPONENTS: '0',
       NEXT_PUBLIC_PORTAL_API_URL: '',
     },
-    timeout: 120_000,
+    timeout: 300_000,
   },
   projects: [
     {

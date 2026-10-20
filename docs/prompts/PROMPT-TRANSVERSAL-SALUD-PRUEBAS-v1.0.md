@@ -13,6 +13,7 @@
 5. Nunca payloads de error, tokens ni datos personales en reportes, logs ni capturas.
 6. Evidencia: comando exacto y conteo real, sin caché. Las corridas E2E se reportan con pasadas, fallidas, omitidas y flaky.
 7. Una cuarentena es `test.fixme(true, 'QUARANTINE: <id>')` en la spec **más** la fila que reportas al orquestador (id, spec, test, categoría, motivo, dueño propuesto). Tú no editas `e2e/QUARANTINE.md`.
+8. El orquestador es dueño de `e2e/playwright.portal.config.ts` y `scripts/next-standalone-e2e.mjs`; la suite Portal construye y sirve el standalone de producción en local y CI para conservar los mocks `page.route` sin el indicador de caché de Next dev.
 
 ## 1. Hechos de partida
 
@@ -20,17 +21,17 @@ H1-H9 de la spec §1. Fallos por spec del run `39339080296` (spec H4) y por tipo
 
 ## 2. Propiedad de archivos
 
-| Bloque | Edita | Crea |
-| --- | --- | --- |
-| T0 | — (solo lectura; puede re-ejecutar specs aisladas) | — |
-| B0 | `apps/api/src/modules/crm/subscribers/b5-identity-conversion.postgres.integration.spec.ts` y helpers de prueba de integración en `apps/api/src/**/testing/` si hace falta | — |
-| C0 | specs de `ContractCard`, `ContractDetailDrawer`, `ConvertExpedienteToContractDialog` y `CreateContractDialog` en `apps/portal/src/components/crm/subscribers/` | specs nuevas de esos cuatro componentes |
-| Q0 | — | `scripts/check-e2e-quarantine.mjs` y su test, `e2e/QUARANTINE.md` (solo encabezado y formato), `e2e/quarantine-cap.json` |
-| E0 | specs `portal-*-live.spec.ts` (`mod05-deuda-fiscal-live`, `privacy-fase-1b-live`, `privacy-live`, `crm-suscriptores-ux-qw-live`, `crm-conversion-failure-live`, `crm-contact-pending-live`), `portal-settings-organization-ui.spec.ts` | capturas de referencia de Linux en `e2e/tests/portal-settings-organization-ui.spec.ts-snapshots/` |
-| PA | el resto de specs `portal-*.spec.ts` con fallos que no son de E0 ni de PB (CRM, Commercial, Settings, Privacy, Auth, Dashboard, Assurance, Tax) y sus helpers de mock en `e2e/` | — |
-| PB | `portal-wfm-scheduling`, `portal-inventory-scm`, `portal-inventory-scm-federated`, `portal-field-flow-ticket-ot-inventory`, `portal-operations-consola-ot-r3` | — |
-| R0 | solo los archivos de producto que el orquestador le asigne desde la matriz de triaje, en módulos cerrados | tests de regresión |
-| J0 | `.github/workflows/ci.yml` (job E2E del portal y gate de la suite de integración de la API) | lista de omisiones esperadas de integración (`apps/api/integration-expected-skips.json`) |
+| Bloque | Edita                                                                                                                                                                                                                                  | Crea                                                                                                                                                         |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T0     | — (solo lectura; puede re-ejecutar specs aisladas)                                                                                                                                                                                     | —                                                                                                                                                            |
+| B0     | `apps/api/src/modules/crm/subscribers/b5-identity-conversion.postgres.integration.spec.ts` y helpers de prueba de integración en `apps/api/src/**/testing/` si hace falta                                                              | —                                                                                                                                                            |
+| C0     | specs de `ContractCard`, `ContractDetailDrawer`, `ConvertExpedienteToContractDialog` y `CreateContractDialog` en `apps/portal/src/components/crm/subscribers/`                                                                         | specs nuevas de esos cuatro componentes                                                                                                                      |
+| Q0     | —                                                                                                                                                                                                                                      | `scripts/check-e2e-quarantine.mjs` y su test, `e2e/QUARANTINE.md` (solo encabezado y formato), `e2e/quarantine-cap.json`                                     |
+| E0     | specs `portal-*-live.spec.ts` (`mod05-deuda-fiscal-live`, `privacy-fase-1b-live`, `privacy-live`, `crm-suscriptores-ux-qw-live`, `crm-conversion-failure-live`, `crm-contact-pending-live`), `portal-settings-organization-ui.spec.ts` | capturas de referencia de Linux en `e2e/tests/portal-settings-organization-ui.spec.ts-snapshots/` y `e2e/tests/portal-settings-access-ui.spec.ts-snapshots/` |
+| PA     | el resto de specs `portal-*.spec.ts` con fallos que no son de E0 ni de PB (CRM, Commercial, Settings, Privacy, Auth, Dashboard, Assurance, Tax) y sus helpers de mock en `e2e/`                                                        | —                                                                                                                                                            |
+| PB     | `portal-wfm-scheduling`, `portal-inventory-scm`, `portal-inventory-scm-federated`, `portal-field-flow-ticket-ot-inventory`, `portal-operations-consola-ot-r3`                                                                          | —                                                                                                                                                            |
+| R0     | solo los archivos de producto que el orquestador le asigne desde la matriz de triaje, en módulos cerrados                                                                                                                              | tests de regresión                                                                                                                                           |
+| J0     | `.github/workflows/ci.yml` (job E2E del portal y gate de la suite de integración de la API)                                                                                                                                            | lista de omisiones esperadas de integración (`apps/api/integration-expected-skips.json`)                                                                     |
 
 Si un helper de mock de `e2e/` lo necesitan PA y PB a la vez, es de PA; PB emite `[BLOQUEO]`.
 
@@ -58,8 +59,8 @@ RQ-Q-01 y RQ-Q-02: `e2e/QUARANTINE.md` con la tabla vacía y su formato; `script
 
 ## E0 — Entorno y capturas · `sr-qa` (tras S1)
 
-RQ-E-01: cada spec `-live` se omite con `test.skip` y un motivo cuando falta su variable. RQ-E-02: capturas de Linux generadas en el contenedor oficial `mcr.microsoft.com/playwright` de la versión del repo; pasa las imágenes a `ds-owner` por medio del orquestador antes de darlas por buenas.
-**Cierras cuando:** sin variables, las specs `-live` dan 0 fallos y N omitidas con motivo, y `portal-settings-organization-ui` pasa en el contenedor.
+RQ-E-01: cada spec `-live` se omite con `test.skip` y un motivo cuando falta su variable. RQ-E-02: capturas de Linux de `portal-settings-organization-ui` y `portal-settings-access-ui` generadas en el contenedor oficial `mcr.microsoft.com/playwright` de la versión del repo, usando el servidor standalone que configura la suite; pasa ambos juegos de imágenes a `ds-owner` por medio del orquestador antes de darlos por buenos. Access UI se amplía porque, tras la corrección de Axe, sus seis pruebas de screenshot también deben pasar en Linux y no había baselines Linux.
+**Cierras cuando:** sin variables, las specs `-live` dan 0 fallos y N omitidas con motivo, y ambas suites de Settings UI pasan en el contenedor con los baselines revisados.
 
 ## PA — CRM, Commercial, Settings y resto · `sr-qa` (tras S1 y S2)
 
@@ -84,12 +85,15 @@ RQ-J-01 a RQ-J-04: el job se llama «E2E portal», sin `continue-on-error` ni `|
 ---
 
 ## V1 — `sr-qa`
+
 `pnpm test:e2e:portal` dos veces en local y una en el contenedor de Playwright: 0 fallos fuera de cuarentena. Revisa el diff de cada spec corregida contra RQ-P-01. Veredicto GO/NO-GO.
 
 ## V2 — `docs-governance`
+
 Spec, plan, prompts, matriz de triaje y `e2e/QUARANTINE.md` conformes a «Documentation Rules».
 
 ## V3 — `gate-verifier`
+
 Gates Before Merge en local sin caché sobre `@iwana/api`, `@iwana/portal` y los paquetes tocados; B5 17/17; cobertura de los cuatro componentes; script de cuarentena en verde. El CI de `main` se verifica en G7, después del push.
 
 ## 3. Formato de reporte

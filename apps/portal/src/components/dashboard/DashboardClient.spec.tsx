@@ -1574,4 +1574,26 @@ describe('DashboardClient', () => {
     expect(screen.getByRole('heading', { name: 'Foco de hoy' })).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
+
+  it('mantiene el inicio usable cuando el resumen de programación no trae bandeja pendiente', async () => {
+    wfmGetSummary.mockResolvedValue({
+      todayCount: 3,
+      overdueCount: 0,
+      upcomingCount: 0,
+      activeCount: 0,
+      enRouteCount: 0,
+      atRiskCount: 0,
+      alerts: [],
+      technicianLoad: [],
+    });
+
+    render(<DashboardClient />);
+
+    await waitFor(() => {
+      expect(document.querySelector('time')).not.toBeNull();
+    });
+    expect(screen.getByRole('heading', { name: 'Foco de hoy' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Solicitudes por programar/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Programación, Sin dato' })).toBeInTheDocument();
+  });
 });

@@ -238,6 +238,26 @@ describe('OrganizationSettingsClient', () => {
     expect(screen.queryByText('Ir a Calendario operativo y jornadas →')).not.toBeInTheDocument();
   });
 
+  it('mantiene las tarjetas de organización dentro del ancho disponible', async () => {
+    render(<OrganizationSettingsClient />);
+
+    await screen.findByRole('row', { name: /Sede centro/i });
+
+    const profileCard = screen.getByText('Perfil empresarial').closest('.rounded-2xl');
+    const operationalCard = screen.getByText('Preferencias regionales').closest('.rounded-2xl');
+    const profileCell = profileCard?.parentElement;
+    const operationalCell = operationalCard?.parentElement;
+    const cardsGrid = profileCell?.parentElement;
+
+    expect(cardsGrid).toHaveClass(
+      'min-w-0',
+      'grid-cols-1',
+      'xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]',
+    );
+    expect(profileCell).toHaveClass('min-w-0', 'w-full');
+    expect(operationalCell).toHaveClass('min-w-0', 'w-full');
+  });
+
   it('places the create-site action in the sites panel instead of the page header', async () => {
     render(<OrganizationSettingsClient />);
     expect(await screen.findByRole('row', { name: /Sede centro/i })).toBeInTheDocument();

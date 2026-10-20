@@ -3,6 +3,7 @@
  * No sustituye sesión humana con tenant real; valida UI real en Chromium con summary con 3 alertas.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -74,6 +75,11 @@ const summaryWithThreeAlerts = {
 
 async function setAuthSession(page: Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: 'user-uuid-admin-gate',
+    role: 'ADMIN',
+    effectivePermissions: ['commercial.catalog.read', 'commercial.catalog.manage'],
+  });
 }
 
 async function setupGateMocks(page: Page) {
@@ -207,6 +213,7 @@ test.describe('Gate navegador — alertas comerciales sobre tabs (Fase F)', () =
 
     const alertsRegion = page.getByRole('region', { name: 'Alertas operativas' });
     await expect(alertsRegion).toBeVisible();
+    await alertsRegion.getByRole('button', { name: 'Ver 2 alertas más' }).click();
     await expect(page.getByText('Ofertas en riesgo')).toBeVisible();
     await expect(page.getByText('Catálogo incompleto')).toBeVisible();
     await expect(page.getByText('Reglas incompletas')).toBeVisible();
@@ -215,9 +222,11 @@ test.describe('Gate navegador — alertas comerciales sobre tabs (Fase F)', () =
     const stripAlerts = alertsRegion.locator('[role="alert"], [role="status"]');
     await expect(stripAlerts).toHaveCount(0);
 
-    for (const section of ['Planes', 'Reemplazos', 'Impuestos'] as const) {
+    for (const section of ['Planes', 'Productos', 'Servicios', 'Combos', 'Promociones'] as const) {
       await page.getByRole('button', { name: section, exact: true }).click();
       await expect(alertsRegion).toBeVisible();
+      const expandAlerts = alertsRegion.getByRole('button', { name: 'Ver 2 alertas más' });
+      if (await expandAlerts.isVisible()) await expandAlerts.click();
       await expect(page.getByText('Ofertas en riesgo')).toBeVisible();
     }
 

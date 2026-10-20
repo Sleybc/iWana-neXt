@@ -33,6 +33,17 @@ const TENANT_SLUG = `srqa-mod05-e3-${RUN_ID}`;
 const TENANT_ADMIN_EMAIL = `srqa-mod05-e3-${RUN_ID}@example.invalid`;
 const PLACEHOLDER_OR_RAW_ENUM =
   /@placeholder\.iwana\.co|0000000000|\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b(?:PROSPECT|ACTIVE)\b/u;
+const missingLiveEnvironment = [
+  !process.env.DB_NAME?.trim() ? 'DB_NAME' : null,
+  !process.env.DB_USER?.trim() ? 'DB_USER' : null,
+  !process.env.DB_PASSWORD?.trim() ? 'DB_PASSWORD' : null,
+  !(process.env.E2E_PLATFORM_EMAIL?.trim() || process.env.PLATFORM_SUPER_ADMIN_EMAIL?.trim())
+    ? 'E2E_PLATFORM_EMAIL o PLATFORM_SUPER_ADMIN_EMAIL'
+    : null,
+  !(process.env.E2E_PLATFORM_PASSWORD?.trim() || process.env.PLATFORM_SUPER_ADMIN_PASSWORD?.trim())
+    ? 'E2E_PLATFORM_PASSWORD o PLATFORM_SUPER_ADMIN_PASSWORD'
+    : null,
+].filter((name): name is string => name !== null);
 
 let api: APIRequestContext | undefined;
 let db: PgClient | undefined;
@@ -427,6 +438,11 @@ async function loginInPortal(page: Page): Promise<void> {
 test.use({ trace: 'off', screenshot: 'off', video: 'off' });
 
 test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () => {
+  test.skip(
+    missingLiveEnvironment.length > 0,
+    `Entorno E2E real omitido; faltan variables: ${missingLiveEnvironment.join(', ')}.`,
+  );
+
   test.setTimeout(180_000);
 
   test.beforeAll(async () => {

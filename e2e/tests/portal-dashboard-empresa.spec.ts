@@ -18,6 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -247,19 +248,6 @@ async function setupDashboardMocks(page: Page, options: MockOptions = {}) {
           mfaEnabled: true,
           emailVerified: true,
           createdAt: '2026-01-15T00:00:00.000Z',
-        },
-      });
-      return;
-    }
-
-    if (/\/access-control\/users\/[^/]+\/effective-permissions$/.test(url) && method === 'GET') {
-      await json(route, {
-        data: {
-          userId: `user-uuid-${role.toLowerCase()}-test`,
-          role,
-          effectivePermissions: ['settings.read'],
-          recoveryPermissions: [],
-          profileSources: [],
         },
       });
       return;
@@ -550,6 +538,34 @@ async function setAuthSession(page: Page, role: TenantRole = 'ADMIN') {
     token: buildAccessToken(role),
     tenantSlug: MOCK_TENANT_SLUG,
   });
+  const permissionsByRole: Record<TenantRole, string[]> = {
+    ADMIN: [
+      'settings.read',
+      'users.read',
+      'commercial.catalog.read',
+      'assurance.tickets.read',
+      'crm.expedientes.read',
+      'crm.subscribers.read',
+      'wfm.schedule.read',
+      'operations.execution_orders.read',
+      'operations.tasks.read',
+      'inventory.stock.read',
+    ],
+    NOC: [
+      'assurance.tickets.read',
+      'wfm.schedule.read',
+      'operations.execution_orders.read',
+      'operations.tasks.read',
+      'inventory.stock.read',
+    ],
+    SALES: ['commercial.catalog.read', 'crm.expedientes.read', 'crm.subscribers.read'],
+    TECHNICIAN: ['wfm.schedule.read', 'operations.execution_orders.read', 'operations.tasks.read'],
+  };
+  await mockEffectivePermissions(page, {
+    userId: `user-uuid-${role.toLowerCase()}-test`,
+    role,
+    effectivePermissions: permissionsByRole[role],
+  });
 }
 
 async function gotoDashboard(page: Page) {
@@ -816,19 +832,17 @@ test.describe('D-1 / D-2 · Axe en temas y estados', () => {
   });
 
   test('estado actualizando · tema oscuro', async ({ page }) => {
-    const options: MockOptions = { failWfm: true };
+    const options: MockOptions = {};
+    const initialTime = new Date();
     await applyTheme(page, 'dark');
     await setupDashboardMocks(page, options);
+    await page.clock.setFixedTime(initialTime);
     await setAuthSession(page);
     await gotoDashboard(page);
     await expectLoadedDashboard(page);
     await expectThemeApplied(page, 'dark');
 
-    const retry = page.getByRole('button', { name: /Reintentar/i }).first();
-    await expect(retry).toBeVisible();
-
     let release: () => void = () => undefined;
-    options.failWfm = false;
     options.holdWfm = {
       wait: () =>
         new Promise<void>((resolve) => {
@@ -836,7 +850,8 @@ test.describe('D-1 / D-2 · Axe en temas y estados', () => {
         }),
     };
 
-    await retry.click();
+    await page.clock.setFixedTime(new Date(initialTime.getTime() + 6 * 60 * 1000));
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(page.getByText(/Actualizando/i).first()).toBeVisible({ timeout: 10_000 });
 
     try {
@@ -1021,7 +1036,7 @@ test.describe('Dashboard empresarial — CA-V2-05 hidratación destino', () => {
     // I-7 — oportunidades view=open
     await page.getByRole('link', { name: /Oportunidades en seguimiento/i }).click();
     await expect(page).toHaveURL(/\/dashboard\/crm\/expedientes\?.*view=open/);
-    await expect(page.getByRole('button', { name: /Abiertas/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('tab', { name: /Abiertas/i })).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await expect(page).toHaveURL(/view=open/);
     await page.locator('#sidebar').getByRole('link', { name: 'Inicio' }).click();

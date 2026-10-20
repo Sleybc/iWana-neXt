@@ -78,6 +78,10 @@ function makeDetail(kind: 'CONSULTA' | 'SUPLANTACION' = 'CONSULTA'): MockRequest
       receivedAt: '2026-10-14T14:00:00.000Z',
       completeAt: null,
       dueAt: '2026-10-28',
+      transferDueAt: '2026-10-16',
+      transferredLate: null,
+      erasedAt: null,
+      erasureCategories: [],
       impersonationComplaintDueAt: null,
       suspendedContractIds: [],
       extendedUntil: null,
@@ -119,6 +123,10 @@ function makeSummary(kind: 'CONSULTA' | 'SUPLANTACION' = 'CONSULTA') {
     dueAt: '2026-10-28',
     extendedUntil: null,
     isOverdue: false,
+    transferDueAt: '2026-10-16',
+    transferredLate: null,
+    erasedAt: null,
+    erasureCategories: [],
   };
 }
 

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -46,6 +47,11 @@ type CatalogItem = {
 
 async function setAuthSession(page: import('@playwright/test').Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: 'user-uuid-admin-test',
+    role: 'ADMIN',
+    effectivePermissions: ['commercial.catalog.read', 'commercial.catalog.manage'],
+  });
 }
 
 async function setupCommercialMocks(page: import('@playwright/test').Page) {
@@ -80,6 +86,7 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
   ];
 
   const capturedPriceUpdates: string[] = [];
+  const capturedCatalogTypes: string[] = [];
 
   await page.route('**/api/v1/**', async (route) => {
     const requestUrl = route.request().url();
@@ -255,6 +262,7 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
       await assertTenantHeader(route);
       expect(method).toBe('GET');
       const type = url.searchParams.get('type');
+      capturedCatalogTypes.push(type ?? 'UNKNOWN');
 
       if (type === 'PLAN') {
         await route.fulfill({
@@ -369,6 +377,7 @@ async function setupCommercialMocks(page: import('@playwright/test').Page) {
 
   return {
     getCapturedPriceUpdates: () => capturedPriceUpdates,
+    getCapturedCatalogTypes: () => capturedCatalogTypes,
   };
 }
 
@@ -398,6 +407,7 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
       'aria-current',
       'page',
     );
+    await expect.poll(() => mocks.getCapturedCatalogTypes()).toContain('SERVICE');
     await expect(page.getByText('IP publica fija')).toBeVisible();
     await expect(page.getByText(/25\.000/)).toBeVisible();
 
@@ -407,6 +417,10 @@ test.describe('Portal Comercial - Catalogo de productos y servicios', () => {
     await dialog.getByLabel('Nombre').fill('Visita tecnica prioritaria');
     await dialog.getByRole('combobox', { name: 'Tipo de cobro' }).click();
     await page.getByRole('option', { name: 'Bajo demanda' }).click();
+    await dialog.getByRole('combobox', { name: 'Concepto de cobro' }).click();
+    await page
+      .getByRole('option', { name: /Servicio independiente \(mantenimiento, soporte o IP fija\)/ })
+      .click();
     await dialog.getByLabel('Precio base (COP)').fill('45000');
     await dialog.getByLabel('Cargo de instalación (COP)').fill('5000');
     await dialog.getByRole('button', { name: 'Guardar' }).click();

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -41,6 +42,11 @@ const EVIDENCE_DIR = path.join(
 
 async function setAuthSession(page: Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: 'user-uuid-admin-test',
+    role: 'ADMIN',
+    effectivePermissions: ['commercial.catalog.read', 'commercial.catalog.manage'],
+  });
 }
 
 async function setupCommercialEvidenceMocks(page: Page) {

@@ -98,6 +98,7 @@ const item = (id: string, sku: string, name: string) => ({
   sku,
   name,
   status: 'ACTIVE',
+  trackingMode: 'SERIALIZED',
   categoryId: 'cat-cpe',
   categoryCode: 'CPE',
 });
@@ -260,7 +261,9 @@ test.describe('R3 consumo y custodia bajo demanda (HTTP simulado)', () => {
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-r3-progress');
 
     const drawer = page.getByRole('dialog');
-    const trigger = drawer.getByRole('button', { name: /^Registrar equipo instalado para / });
+    const trigger = drawer.getByRole('button', {
+      name: /^Registrar equipos instalados en el sitio del cliente para /,
+    });
     await expect(trigger).toBeVisible();
     // El historial del requisito se ve, la custodia disponible todavía no.
     await expect(drawer.getByText('ONT-INSTALADA-0007')).toBeVisible();
@@ -269,16 +272,23 @@ test.describe('R3 consumo y custodia bajo demanda (HTTP simulado)', () => {
     await evidence(page, 'r3-navegador-material-cerrado');
 
     await trigger.click();
-    const act = drawer.getByRole('region', { name: 'Registrar equipo instalado' });
+    const act = drawer.getByRole('region', {
+      name: 'Registrar equipos instalados en el sitio del cliente',
+    });
     await expect(act.getByText('ONT-E2E-0001')).toBeVisible();
-    await expect(act.getByText('En custodia del ejecutor')).toBeVisible();
-    await expect(act.getByText('Cantidad disponible: 4')).toBeVisible();
+    await expect(
+      act.getByText(
+        /^Desde Bodega móvil de .+ · Se registrará como instalado en el sitio del cliente$/,
+      ),
+    ).toBeVisible();
+    const installedAssetRadio = act.getByRole('radio', {
+      name: /ONT de fibra Serial ONT-E2E-0001 CPE-ONT-01/,
+    });
+    await expect(installedAssetRadio).toBeVisible();
+    const registerButton = act.getByRole('button', { name: 'Registrar equipo', exact: true });
+    await expect(registerButton).toBeDisabled();
     // La herramienta de la primera página no es de la categoría: no se ofrece.
     await expect(act.getByText('HERR-0001')).toHaveCount(0);
-    await expect(act.getByRole('combobox', { name: 'Destino' })).toBeDisabled();
-    await expect(act.getByRole('combobox', { name: 'Destino' })).toContainText(
-      'Instalado en cliente',
-    );
     await expect(page.getByRole('dialog')).toHaveCount(1);
 
     const custodyCalls = mocks.inventoryCalls.filter((call) => call.includes('/inventory/custody'));
@@ -291,16 +301,9 @@ test.describe('R3 consumo y custodia bajo demanda (HTTP simulado)', () => {
     await act.scrollIntoViewIfNeeded();
     await evidence(page, 'r3-navegador-material-abierto');
 
-    await act.getByRole('combobox', { name: 'Ítem' }).click();
-    await expect(page.getByRole('option')).toHaveText([
-      'CPE-ONT-01 · ONT de fibra',
-      'CPE-RTR-01 · Router WiFi',
-    ]);
-    await evidence(page, 'r3-navegador-material-selector');
-    await page.getByRole('option', { name: 'CPE-ONT-01 · ONT de fibra' }).click();
-    await expect(act.getByRole('combobox', { name: 'Ítem' })).toContainText(
-      'CPE-ONT-01 · ONT de fibra',
-    );
+    await installedAssetRadio.check();
+    await expect(installedAssetRadio).toBeChecked();
+    await expect(registerButton).toBeEnabled();
 
     // La disponibilidad vive en el acto y el historial en el requisito, por separado.
     const history = drawer.getByRole('region', { name: 'Equipos y materiales' });
@@ -336,16 +339,23 @@ test.describe('R3 consumo y custodia bajo demanda (HTTP simulado)', () => {
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-r3-progress');
 
     const drawer = page.getByRole('dialog');
-    await drawer.getByRole('button', { name: /^Registrar equipo instalado para / }).click();
-    const act = drawer.getByRole('region', { name: 'Registrar equipo instalado' });
-    await expect(act.getByText('Custodia no disponible')).toBeVisible();
-    await expect(act.getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
+    await drawer
+      .getByRole('button', {
+        name: /^Registrar equipos instalados en el sitio del cliente para /,
+      })
+      .click();
+    const act = drawer.getByRole('region', {
+      name: 'Registrar equipos instalados en el sitio del cliente',
+    });
+    await expect(act.getByText('No pudimos cargar los equipos de tu custodia.')).toBeVisible();
+    await expect(act.getByRole('radio')).toHaveCount(0);
+    await expect(act.getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
     await expect(drawer.getByText('OTE-20261005-R3').first()).toBeVisible();
     await evidence(page, 'r3-navegador-material-error');
 
     await act.getByRole('button', { name: 'Reintentar' }).click();
     await expect(act.getByText('ONT-E2E-0001')).toBeVisible();
-    await expect(act.getByText('Custodia no disponible')).toHaveCount(0);
+    await expect(act.getByText('No pudimos cargar los equipos de tu custodia.')).toHaveCount(0);
   });
 
   test('sin equipos de la categoría: copy de UX y selector sin opciones', async ({ page }) => {
@@ -356,13 +366,20 @@ test.describe('R3 consumo y custodia bajo demanda (HTTP simulado)', () => {
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-r3-progress');
 
     const drawer = page.getByRole('dialog');
-    await drawer.getByRole('button', { name: /^Registrar equipo instalado para / }).click();
-    const act = drawer.getByRole('region', { name: 'Registrar equipo instalado' });
-    await expect(act.getByText('No hay equipos de esta categoría en tu custodia')).toBeVisible();
+    await drawer
+      .getByRole('button', {
+        name: /^Registrar equipos instalados en el sitio del cliente para /,
+      })
+      .click();
+    const act = drawer.getByRole('region', {
+      name: 'Registrar equipos instalados en el sitio del cliente',
+    });
+    await expect(act.getByText('No hay equipos de esta categoría en tu custodia.')).toBeVisible();
     await expect(
       act.getByText('Contacta a supervisión para revisar la disponibilidad.'),
     ).toBeVisible();
-    await expect(act.getByRole('combobox', { name: 'Ítem' })).toBeDisabled();
+    await expect(act.getByRole('radio')).toHaveCount(0);
+    await expect(act.getByRole('button', { name: 'Registrar equipo' })).toBeDisabled();
     await evidence(page, 'r3-navegador-material-vacio-movil');
   });
 });

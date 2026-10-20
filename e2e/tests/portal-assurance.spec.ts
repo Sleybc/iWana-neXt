@@ -9,6 +9,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession as seedPortalSessionByCookie } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'tenant-assurance-demo';
@@ -99,6 +100,11 @@ type MockTimelineEvent = {
 
 async function seedPortalSession(page: import('@playwright/test').Page) {
   await seedPortalSessionByCookie(page, { token: buildToken(), tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: SUPPORT_USER_ID,
+    role: 'SUPPORT',
+    effectivePermissions: ['assurance.tickets.read', 'assurance.tickets.manage'],
+  });
 }
 
 async function setupAssuranceMocks(page: import('@playwright/test').Page) {

@@ -10,6 +10,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TOKEN =
@@ -115,6 +116,11 @@ function pageEnvelope(
 
 async function seedSession(page: Page) {
   await seedPortalSession(page, { token: MOCK_TOKEN, tenantSlug: MOCK_TENANT });
+  await mockEffectivePermissions(page, {
+    userId: 'user-admin-uuid-001',
+    role: 'ADMIN',
+    effectivePermissions: ['crm.subscribers.read', 'crm.subscribers.manage'],
+  });
 }
 
 async function setupMocks(page: Page) {
@@ -328,8 +334,8 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
   });
 
   test('recorrido página · tamaño · filtro · deep-link', async ({ page }) => {
-    await seedSession(page);
     await setupMocks(page);
+    await seedSession(page);
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/dashboard/crm/subscribers');
@@ -356,13 +362,14 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await page.getByRole('option', { name: '10' }).click();
     await expect(page).toHaveURL(/size=10/);
     await expect(page).not.toHaveURL(/page=/);
-    await expect(pageSizeSelect).toHaveValue('10');
+    await expect(pageSizeSelect).toHaveText('10');
     await expect(visiblePagerCount(page, 'Mostrando 1–10 de 45 suscriptores')).toBeVisible();
 
+    await page.getByRole('button', { name: 'Más filtros' }).click();
     await page.getByRole('combobox', { name: 'Estado' }).click();
     await page.getByRole('option', { name: /Suspendido/i }).click();
     await expect(page).toHaveURL(/status=SUSPENDED/);
-    await expect(page.getByText('No hay suscriptores con estos filtros.')).toBeVisible();
+    await expect(page.getByText('No se encontraron resultados', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Limpiar filtros' })).toBeVisible();
     await captureEvidence(page, '1280-empty-filtered-light.png');
 

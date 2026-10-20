@@ -205,7 +205,7 @@ async function setupTaxMocks(page: Page) {
       return;
     }
 
-    if (pathname.endsWith('/commercial/tax-rules') && method === 'GET') {
+    if (pathname.endsWith('/taxation/tax-rules') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -225,7 +225,7 @@ async function setupTaxMocks(page: Page) {
       return;
     }
 
-    if (pathname.endsWith('/commercial/tax-rule-applications') && method === 'GET') {
+    if (pathname.endsWith('/taxation/tax-rule-applications') && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -246,10 +246,10 @@ async function setupTaxMocks(page: Page) {
       return;
     }
 
-    if (pathname.endsWith('/commercial/tax/simulate') && method === 'POST') {
+    if (pathname.endsWith('/taxation/tax/simulate') && method === 'POST') {
       await assertTenantHeader(route);
       expect(method).toBe('POST');
-      expect(route.request().url()).toContain('/commercial/tax/simulate');
+      expect(route.request().url()).toContain('/taxation/tax/simulate');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -278,10 +278,13 @@ async function setupTaxMocks(page: Page) {
   });
 }
 
-async function openTaxationSection(page: Page) {
-  await page.goto('/dashboard/commercial');
+async function openRulesTab(
+  page: Page,
+  tab: 'tax-catalog' | 'tax-rules-app' | 'tax-simulator' = 'tax-catalog',
+) {
+  const query = tab === 'tax-catalog' ? '' : `?tab=${tab}`;
+  await page.goto(`/dashboard/settings/rules${query}`);
   await page.waitForLoadState('networkidle');
-  await page.getByRole('button', { name: 'Impuestos', exact: true }).click();
 }
 
 test.describe('Portal tributario — simulador', () => {
@@ -291,10 +294,10 @@ test.describe('Portal tributario — simulador', () => {
   });
 
   test('simulador tributario muestra resultado para segmento RESIDENTIAL', async ({ page }) => {
-    await openTaxationSection(page);
-    await page.getByRole('button', { name: 'Simulador', exact: true }).click();
+    await openRulesTab(page, 'tax-simulator');
 
     await expect(page.getByRole('heading', { name: 'Simulador' })).toBeVisible();
+    await page.getByLabel('Estrato').fill('2');
     await page.getByRole('button', { name: 'Simular' }).click();
 
     await expect(page.getByText(/Resultado —/i)).toBeVisible();
@@ -303,24 +306,23 @@ test.describe('Portal tributario — simulador', () => {
   });
 
   test('catálogo de impuestos muestra presets SYSTEM', async ({ page }) => {
-    await openTaxationSection(page);
+    await openRulesTab(page);
 
     await expect(page.getByRole('button', { name: 'Impuestos', exact: true })).toHaveAttribute(
       'aria-current',
       'page',
     );
     await expect(page.getByText('IVA general')).toBeVisible();
-    await expect(page.getByText('IVA_19')).toBeVisible();
+    await expect(page.getByText('19,00%', { exact: true })).toBeVisible();
   });
 
   test('reglas de aplicación carga sin error', async ({ page }) => {
-    await openTaxationSection(page);
-    await page.getByRole('button', { name: 'Aplicación de impuestos', exact: true }).click();
+    await openRulesTab(page, 'tax-rules-app');
 
     await expect(
       page.getByRole('button', { name: 'Aplicación de impuestos', exact: true }),
     ).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByText(/iva · 19% · estratos 1–6 · residential/i)).toBeVisible();
-    await expect(page.getByText('IVA general (IVA_19)')).toBeVisible();
+    await expect(page.getByText('IVA · 19,00% · Estratos 1–6 · Residencial')).toBeVisible();
+    await expect(page.getByText('IVA general', { exact: true })).toBeVisible();
   });
 });

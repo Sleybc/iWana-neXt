@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Contract } from '@/lib/api-client';
 import { badgeVariants } from '@iwana/ui';
 import { CONTRACT_STATUS_META } from './subscriber-ui';
@@ -193,4 +193,90 @@ describe('QW5 — ContractCard comparte la escala del suscriptor', () => {
       );
     },
   );
+});
+
+describe('ContractCard — acciones del servicio', () => {
+  it('inicia la activación y bloquea nuevas acciones mientras la solicitud está pendiente', async () => {
+    let completeTransition: (() => void) | undefined;
+    const transition = new Promise<void>((resolve) => {
+      completeTransition = resolve;
+    });
+    const onTransition = jest.fn(() => transition);
+    render(
+      <ContractCard
+        contract={{ ...CONTRACT, status: 'DRAFT' }}
+        onTransition={onTransition}
+        onRemove={jest.fn(async () => undefined)}
+        onViewDetail={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acciones del contrato' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Activar' }));
+
+    expect(onTransition).toHaveBeenCalledWith(CONTRACT.id, 'activate');
+    expect(screen.getByRole('button', { name: 'Acciones del contrato' })).toBeDisabled();
+
+    await act(async () => {
+      completeTransition?.();
+      await transition;
+    });
+
+    expect(screen.getByRole('button', { name: 'Acciones del contrato' })).toBeEnabled();
+  });
+
+  it('elimina un borrador desde el menú y vuelve a habilitar acciones al terminar', async () => {
+    let completeRemoval: (() => void) | undefined;
+    const removal = new Promise<void>((resolve) => {
+      completeRemoval = resolve;
+    });
+    const onRemove = jest.fn(() => removal);
+    render(
+      <ContractCard
+        contract={{ ...CONTRACT, status: 'DRAFT' }}
+        onTransition={jest.fn(async () => undefined)}
+        onRemove={onRemove}
+        onViewDetail={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acciones del contrato' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar borrador' }));
+
+    expect(onRemove).toHaveBeenCalledWith(CONTRACT.id);
+    expect(screen.getByRole('button', { name: 'Acciones del contrato' })).toBeDisabled();
+
+    await act(async () => {
+      completeRemoval?.();
+      await removal;
+    });
+
+    expect(screen.getByRole('button', { name: 'Acciones del contrato' })).toBeEnabled();
+  });
+
+  it('abre el detalle solicitado y ofrece un estado sin acciones para contratos archivados', () => {
+    const onViewDetail = jest.fn();
+    const { rerender } = render(
+      <ContractCard
+        contract={CONTRACT}
+        onTransition={jest.fn(async () => undefined)}
+        onRemove={jest.fn(async () => undefined)}
+        onViewDetail={onViewDetail}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle →' }));
+    expect(onViewDetail).toHaveBeenCalledWith(CONTRACT);
+
+    rerender(
+      <ContractCard
+        contract={{ ...CONTRACT, status: 'ARCHIVED' }}
+        onTransition={jest.fn(async () => undefined)}
+        onRemove={jest.fn(async () => undefined)}
+        onViewDetail={onViewDetail}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Acciones del contrato' }));
+    expect(screen.getByText('Sin acciones disponibles')).toBeInTheDocument();
+  });
 });

@@ -705,7 +705,7 @@ function OrganizationSettingsClientInner() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <PageHeader
         title={ORGANIZATION_SETTINGS_COPY.pageTitle}
         subtitle={ORGANIZATION_SETTINGS_COPY.pageSubtitle}
@@ -735,13 +735,21 @@ function OrganizationSettingsClientInner() {
         />
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[3fr_2fr]">
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {profile ? (
-          <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+          <div className="min-w-0 w-full">
+            <CompanyProfileForm profile={profile} canEdit={canEdit} onUpdated={setProfile} />
+          </div>
         ) : null}
 
         {settings ? (
-          <OperationalSettingsForm settings={settings} canEdit={canEdit} onUpdated={setSettings} />
+          <div className="min-w-0 w-full">
+            <OperationalSettingsForm
+              settings={settings}
+              canEdit={canEdit}
+              onUpdated={setSettings}
+            />
+          </div>
         ) : null}
       </div>
 

@@ -1,4 +1,5 @@
 import { expect, test, type Request, type Response } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -33,6 +34,7 @@ const mockExpediente = {
   tenantId: 'tenant-uuid-test',
   status: 'NUEVO_POTENCIAL',
   previousStatus: null,
+  privacyRestricted: false,
   assignedTo: 'advisor-uuid-1',
   dataConsentRevoked: true,
   statusChangedAt: '2026-03-26T12:00:00.000Z',
@@ -132,6 +134,19 @@ const mockUsers = [
 
 async function setAuthSession(page: import('@playwright/test').Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: 'user-uuid-admin-test',
+    role: 'ADMIN',
+    effectivePermissions: [
+      'crm.expedientes.read',
+      'crm.expedientes.manage',
+      'crm.subscribers.read',
+      'crm.subscribers.manage',
+      'privacy.read',
+      'commercial.catalog.read',
+      'users.read',
+    ],
+  });
 }
 
 async function setupCrmMocks(
@@ -258,6 +273,7 @@ async function setupCrmMocks(
           documentType: record.documentType,
           personType: record.personType,
           dataConsentRevoked: Boolean(record.dataConsentRevoked),
+          privacyRestricted: false,
           hasLocation: Boolean(record.address),
           source: record.source,
           acquisitionChannel: record.acquisitionChannel,
@@ -1216,6 +1232,7 @@ async function setupCrmMocks(
     // (el test de conversión solo valida el banner, no los datos secundarios)
     if (pathname.includes(`/crm/expedientes/${convertedExpediente.id}/`) && method === 'GET') {
       const isTimeline = pathname.endsWith('/timeline');
+      const isConsents = pathname.endsWith('/consents');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1232,7 +1249,9 @@ async function setupCrmMocks(
                   },
                 },
               }
-            : { data: null },
+            : isConsents
+              ? { data: [] }
+              : { data: null },
         ),
       });
       return;
@@ -1495,7 +1514,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page).toHaveURL(new RegExp(`/dashboard/crm/expedientes/${mockExpediente.id}`));
     await expect(page.getByRole('heading', { name: /empresa demo sas/i })).toBeVisible();
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
       '1012345678',
     );
@@ -1575,7 +1594,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await expect(page.getByText('1012345678')).toHaveCount(0);
     await page.getByRole('link', { name: /empresa demo sas/i }).click();
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Número de documento' })).toHaveValue(
       '1012345678',
     );
@@ -1640,7 +1659,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
     await page.getByText('Viabilidad técnica', { exact: true }).scrollIntoViewIfNeeded();
     await page.locator('#technical-feasibility').click();
     await page.getByRole('option', { name: 'Viable', exact: true }).click();
@@ -1674,7 +1693,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
 
     await page.getByRole('button', { name: /soportes documentales/i }).click();
     await expect(page.getByText('Soportes requeridos para persona natural')).toBeVisible();
@@ -1718,7 +1737,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
     await expect(page.getByLabel('Nombres')).toBeVisible();
     await expect(page.getByLabel('Nombres')).toHaveValue('Usuario');
     await expect(page.getByLabel('Apellidos')).toBeVisible();
@@ -1743,7 +1762,7 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Tipo de persona' })).toContainText(
       'Persona jurídica',
     );

@@ -4,6 +4,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { AuditLog, dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
 import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
+import {
   CustomerSegment,
   DocumentType,
   DocumentTypeParty,
@@ -54,21 +58,22 @@ import { PrivacyMarksAdapter } from '../../privacy/marks/privacy-marks.adapter';
 import { CrmContractImpersonationAdapter } from '../privacy-adapters/crm-contract-impersonation.adapter';
 import { CrmContractStandingReadAdapter } from '../privacy-adapters/crm-contract-standing-read.adapter';
 import { UnprocessableEntityException } from '@nestjs/common';
-import { PrivacyModule1460000000000 } from '../../../../../../packages/database/src/migrations/tenant/146_privacy_module';
-import { SubscriberContactNullable1480000000000 } from '../../../../../../packages/database/src/migrations/tenant/148_subscriber_contact_nullable';
 import { ExpedienteReadyForInstallationEvent } from '../expedientes/events/expediente-pipeline.events';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
 const describeWithDb = dbAvailable && integrationTenantSlug ? describe : describe.skip;
+const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
+const allowedDatabaseHosts = new Set(['localhost', '127.0.0.1', '::1']);
 
 describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', () => {
   const encryptionKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
   const hashKeyHex = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
   const encryptionKey = parseEncryptionKeyHex(encryptionKeyHex);
   let dataSource: DataSource;
+  let tenantDataSource: DataSource | undefined;
   let tenantId: string;
-  let sourceSchemaName: string;
+  let tenantSlug: string;
   let testSchemaName: string;
 
   const actorId = '00000000-0000-4000-8000-0000000000b5';
@@ -84,7 +89,7 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
   const context = () => ({
     tenantId,
     schemaName: testSchemaName,
-    tenantSlug: integrationTenantSlug!,
+    tenantSlug,
   });
 
   function quoteIdentifier(value: string): string {
@@ -299,6 +304,18 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
   }
 
   beforeAll(async () => {
+    const databaseName = process.env['DB_NAME'] ?? '';
+    const databaseHost = (process.env['DB_HOST'] ?? 'localhost').toLowerCase();
+    if (!allowedDatabaseName.test(databaseName)) {
+      throw new Error(
+        'Integración B5: DB_NAME debe ser dbiw, test o iwana_it_*; solo se crea y elimina un schema efímero.',
+      );
+    }
+    if (!allowedDatabaseHosts.has(databaseHost)) {
+      throw new Error(
+        'Integración B5: DB_HOST debe apuntar al loopback local; no se permiten servidores externos.',
+      );
+    }
     dataSource = new DataSource({
       ...dataSourceOptions,
       entities: [
@@ -325,110 +342,47 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     });
     await dataSource.initialize();
 
-    const tenants = (await dataSource.query(
-      'SELECT id, schema_name FROM public.tenants WHERE slug = $1 LIMIT 1',
-      [integrationTenantSlug],
-    )) as Array<{ id: string; schema_name: string }>;
-    if (!tenants[0]) throw new Error(`No existe el tenant '${integrationTenantSlug}'.`);
-    tenantId = tenants[0].id;
-    sourceSchemaName = tenants[0].schema_name;
+    tenantId = randomUUID();
     testSchemaName = `tenant_b5_${randomUUID().replace(/-/g, '')}`;
-
+    tenantSlug = `b5-${testSchemaName.slice(-16)}`;
     const target = quoteIdentifier(testSchemaName);
-    const source = quoteIdentifier(sourceSchemaName);
     await dataSource.query(`CREATE SCHEMA ${target}`);
-    for (const table of [
-      'party',
-      'party_role',
-      'party_contact',
-      'subscribers',
-      'expediente_records',
-      'contact_attempts',
-      'consent_records',
-      'coverage_checks',
-      'status_changes',
-      'sales_attributions',
-      'audit_logs',
-      'contracts',
-    ]) {
-      await dataSource.query(
-        `CREATE TABLE IF NOT EXISTS ${target}.${quoteIdentifier(table)} (LIKE ${source}.${quoteIdentifier(table)} INCLUDING ALL)`,
-      );
-    }
-
-    // R6: LIKE INCLUDING ALL copia los índices del origen con nombre autogenerado
-    // (p. ej. subscribers_expediente_id_idx). Producción reconoce el conflicto
-    // de concurrencia por el nombre uq_subscribers_expediente, así que se
-    // eliminan los duplicados: el fixture no depende del estado de migración.
-    const duplicateExpedienteIndexes = (await dataSource.query(
-      `SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND tablename = 'subscribers' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%(expediente_id)%' AND indexname <> 'uq_subscribers_expediente'`,
-      [testSchemaName],
-    )) as Array<{ indexname: string }>;
-    for (const duplicate of duplicateExpedienteIndexes) {
-      await dataSource.query(
-        `DROP INDEX IF EXISTS ${target}.${quoteIdentifier(duplicate.indexname)}`,
-      );
-    }
-
-    await runInTenantSchema(dataSource, testSchemaName, (migrationRunner) =>
-      new PrivacyModule1460000000000().up(migrationRunner),
-    );
-
-    // R6: el tenant de origen ya puede estar migrado (143/144 aplicadas). El clon
-    // con LIKE trae esas columnas, asi que cada alta usa IF NOT EXISTS para no
-    // fallar con 42701 en CI. No cambia lo verificado por los tests.
     await dataSource.query(
-      `ALTER TABLE ${target}.party ADD COLUMN IF NOT EXISTS document_number_hmac varchar(64)`,
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, 'B5 integración sintética', $2, $3, 'ACTIVE', $4)`,
+      [tenantId, tenantSlug, testSchemaName, `${tenantSlug}@example.invalid`],
     );
+
+    tenantDataSource = createTenantDataSource(dataSource, testSchemaName, `b5-${testSchemaName}`);
+    await tenantDataSource.initialize();
+    try {
+      // Crea el esquema vacío con toda la cadena vigente del runner tenant.
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+      tenantDataSource = undefined;
+    }
+
     await dataSource.query(
       `INSERT INTO ${target}.legal_texts (id, type, version, sha256, content, published_at)
        VALUES ('00000000-0000-4000-8000-000000000099', 'AUTORIZACION', 'privacy-v1', repeat('a', 64), 'Texto legal sintético', now())`,
-    );
-    await dataSource.query(
-      `ALTER TABLE ${target}.party_contact ADD COLUMN IF NOT EXISTS value_encrypted varchar(500), ADD COLUMN IF NOT EXISTS value_hmac varchar(64)`,
-    );
-    await runInTenantSchema(dataSource, testSchemaName, (contactMigrationRunner) =>
-      new SubscriberContactNullable1480000000000().up(contactMigrationRunner),
-    );
-    await dataSource.query(
-      `ALTER TABLE ${target}.subscribers ADD COLUMN IF NOT EXISTS whatsapp_encrypted varchar(500), ADD COLUMN IF NOT EXISTS whatsapp_hmac varchar(64)`,
-    );
-    await dataSource.query(
-      `ALTER TABLE ${target}.contracts
-         ADD COLUMN IF NOT EXISTS service_usage varchar(20),
-         ADD COLUMN IF NOT EXISTS installation_stratum smallint,
-         ADD COLUMN IF NOT EXISTS stratum_evidence_media_id uuid,
-         ADD COLUMN IF NOT EXISTS vat_snapshot jsonb`,
-    );
-    await dataSource.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS uq_party_document_hmac_active ON ${target}.party (document_type, document_number_hmac) WHERE deleted_at IS NULL AND status <> 'MERGED' AND document_number_hmac IS NOT NULL`,
-    );
-    await dataSource.query(
-      `CREATE UNIQUE INDEX IF NOT EXISTS uq_subscribers_expediente ON ${target}.subscribers (expediente_id) WHERE expediente_id IS NOT NULL AND deleted_at IS NULL`,
-    );
-    await dataSource.query(
-      `CREATE TABLE IF NOT EXISTS ${target}.crm_conversion_failures (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        expediente_id uuid NOT NULL REFERENCES ${target}.expediente_records(id),
-        event_name varchar(80) NOT NULL,
-        error_code varchar(80) NOT NULL,
-        attempts int NOT NULL DEFAULT 1,
-        first_failed_at timestamptz NOT NULL DEFAULT now(),
-        last_failed_at timestamptz NOT NULL DEFAULT now(),
-        resolved_at timestamptz NULL,
-        resolved_by uuid NULL,
-        CONSTRAINT uq_crm_conversion_failure UNIQUE (expediente_id, event_name)
-      )`,
     );
   });
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
-      if (testSchemaName) {
-        await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(testSchemaName)} CASCADE`);
+      try {
+        if (tenantDataSource?.isInitialized) await tenantDataSource.destroy();
+        if (testSchemaName) {
+          await dataSource.query(
+            `DROP SCHEMA IF EXISTS ${quoteIdentifier(testSchemaName)} CASCADE`,
+          );
+        }
+        if (tenantId)
+          await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+      } finally {
+        await dataSource.destroy();
       }
-      await dataSource.destroy();
     }
   });
 

@@ -5,6 +5,12 @@ const tenantSlug = process.env.E2E_TENANT_SLUG;
 const auditorEmail = process.env.E2E_AUDITOR_EMAIL;
 const auditorPassword = process.env.E2E_AUDITOR_PASSWORD;
 const planId = process.env.E2E_PRIVACY_PLAN_ID;
+const missingLiveEnvironment = [
+  !tenantSlug?.trim() ? 'E2E_TENANT_SLUG' : null,
+  !auditorEmail?.trim() ? 'E2E_AUDITOR_EMAIL' : null,
+  !auditorPassword?.trim() ? 'E2E_AUDITOR_PASSWORD' : null,
+  !planId?.trim() ? 'E2E_PRIVACY_PLAN_ID' : null,
+].filter((name): name is string => name !== null);
 
 function requireFixture(value: string | undefined, name: string): string {
   if (!value) throw new Error(`Falta configurar ${name} en .env.development.local.`);
@@ -207,6 +213,11 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
 }
 
 test.describe('Privacidad contra API real y tenant sintético', () => {
+  test.skip(
+    missingLiveEnvironment.length > 0,
+    `Entorno E2E real omitido; faltan variables: ${missingLiveEnvironment.join(', ')}.`,
+  );
+
   test.setTimeout(90_000);
 
   test('radica, verifica identidad, completa y resuelve una consulta', async ({ page }) => {

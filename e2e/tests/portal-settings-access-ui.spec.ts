@@ -579,7 +579,8 @@ test.describe('Portal settings access UI', () => {
     expect(firstRowBox!.height).toBeGreaterThanOrEqual(44);
 
     await suggestedRows.first().click();
-    await expect(peek.getByRole('heading', { name: 'Lo que permite este perfil' })).toBeVisible();
+    await expect(peek.getByRole('heading', { name: 'Administrador general' })).toBeVisible();
+    await expect(peek.getByText('Lo que permite este perfil')).toBeVisible();
     await expect(peek.getByRole('button', { name: 'Usar este perfil' })).toBeVisible();
     await expect(peek.getByRole('button', { name: 'Volver a la lista' })).toBeVisible();
     await peek.getByRole('button', { name: 'Usar este perfil' }).click();

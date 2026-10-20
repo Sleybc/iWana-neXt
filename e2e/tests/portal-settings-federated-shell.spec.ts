@@ -529,8 +529,8 @@ test.describe('Portal settings federated shell', () => {
     await expect(shellPanel().getByRole('link', { name: /Seguridad/i })).toHaveCount(0);
     await expect(shellPanel().getByRole('link', { name: /Marca/i })).toBeVisible();
     await expect(shellPanel().getByRole('link', { name: /Operación de campo/i })).toBeVisible();
-    await expect(shellPanel().getByRole('link', { name: /^Reglas$/ })).toBeVisible();
-    await expect(shellPanel().getByRole('link', { name: /^Reglas$/ })).toHaveAttribute(
+    await expect(shellPanel().getByRole('link', { name: /Reglas\b/ })).toBeVisible();
+    await expect(shellPanel().getByRole('link', { name: /Reglas\b/ })).toHaveAttribute(
       'href',
       '/dashboard/settings/rules',
     );

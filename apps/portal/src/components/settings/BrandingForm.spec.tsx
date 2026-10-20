@@ -105,6 +105,14 @@ describe('BrandingForm', () => {
     validateBrandingFileForUploadMock.mockResolvedValue(null);
   });
 
+  it('mantiene el CTA de guardado en un tono AA al pasar el cursor en dark', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Guardar marca' })).toHaveClass(
+      'dark:hover:bg-iwana-primary-500',
+    );
+  });
+
   it('envia payload incremental de URL externa al guardar branding', async () => {
     const updatedProfile = buildProfile({
       sealLightUrl: 'https://cdn.demo.co/branding/seal-light.svg',
@@ -525,7 +533,13 @@ describe('BrandingForm', () => {
       />,
     );
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Eliminar imagen' })[0] as HTMLElement);
+    const deleteButton = screen.getAllByRole('button', {
+      name: 'Eliminar imagen',
+    })[0] as HTMLElement;
+    expect(deleteButton).toHaveClass('text-iwana-error-700');
+    expect(deleteButton).not.toHaveClass('text-red-600');
+
+    fireEvent.click(deleteButton);
 
     await waitFor(() => {
       expect(tenantSelfApiMock.updateBranding).toHaveBeenCalledWith({
@@ -537,6 +551,24 @@ describe('BrandingForm', () => {
     expect(screen.getAllByText('Se eliminó la imagen de variante clara.').length).toBeGreaterThan(
       0,
     );
+  });
+
+  it('mantiene el color del CTA de eliminación al habilitar un slot vacío', () => {
+    render(<BrandingForm profile={buildProfile()} canEdit onUpdated={jest.fn()} />);
+
+    const deleteButton = screen.getAllByRole('button', {
+      name: 'Eliminar imagen',
+    })[0] as HTMLElement;
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveClass('disabled:text-iwana-error-700');
+    expect(deleteButton).not.toHaveClass('disabled:text-red-300');
+
+    fireEvent.change(screen.getByLabelText('URL HTTPS para sello compacto · variante clara'), {
+      target: { value: 'http://x' },
+    });
+
+    expect(deleteButton).toBeEnabled();
+    expect(deleteButton).toHaveClass('text-iwana-error-700');
   });
 
   it('muestra el error del servidor cuando guardar la marca falla', async () => {

@@ -314,13 +314,14 @@ export function OperationalSettingsForm({
             />
 
             {/* Footer y CTA */}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+              <p className="min-w-0 break-words text-xs text-gray-500 dark:text-gray-400 2xl:flex-1">
                 {ORGANIZATION_SETTINGS_COPY.operationalEditableHint}
               </p>
               <Button
                 type="submit"
                 size="lg"
+                className="w-full 2xl:w-auto 2xl:shrink-0"
                 loading={isSubmitting}
                 disabled={isSubmitting || !isDirty}
               >

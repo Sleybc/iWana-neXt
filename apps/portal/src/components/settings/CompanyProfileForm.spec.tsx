@@ -81,6 +81,25 @@ describe('CompanyProfileForm', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('evita recortes en móvil y da espacio al dígito de verificación en desktop', () => {
+    render(<CompanyProfileForm profile={buildProfile()} canEdit={true} onUpdated={jest.fn()} />);
+
+    const verificationDigit = screen.getByLabelText('Dígito de verificación (DV)');
+    const identityGrid = screen.getByLabelText('NIT').closest('div.grid');
+    const verificationDigitColumn = verificationDigit.closest('div[class*="xl:col-span"]');
+    const footer = screen
+      .getByText('Solo se guardan los campos que puedes editar en esta sección.')
+      .closest('div.flex');
+    const saveButton = screen.getByRole('button', { name: 'Guardar perfil empresarial' });
+    const card = saveButton.closest('.rounded-2xl');
+
+    expect(identityGrid).toHaveClass('xl:grid-cols-6');
+    expect(verificationDigitColumn).toHaveClass('xl:col-span-2');
+    expect(footer).toHaveClass('flex-col', 'sm:flex-row');
+    expect(saveButton).toHaveClass('w-full', 'sm:w-auto');
+    expect(card).toHaveClass('min-w-0', 'w-full');
+  });
+
   it('submits editable profile fields and shows a success notice', async () => {
     const onUpdated = jest.fn();
     const updated = { ...buildProfile(), contactEmail: 'ops@isp-demo.com' };

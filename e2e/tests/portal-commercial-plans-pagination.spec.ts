@@ -7,6 +7,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { seedPortalSession } from './helpers/portal-session';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 
 const MOCK_TOKEN =
   'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
@@ -119,6 +120,11 @@ function visiblePagerCount(page: Page, text: string) {
 
 async function seedSession(page: Page) {
   await seedPortalSession(page, { token: MOCK_TOKEN, tenantSlug: MOCK_TENANT });
+  await mockEffectivePermissions(page, {
+    userId: 'user-admin-uuid-001',
+    role: 'ADMIN',
+    effectivePermissions: ['commercial.catalog.read', 'commercial.catalog.manage'],
+  });
 }
 
 async function setupMocks(page: Page) {
@@ -305,8 +311,8 @@ async function setupMocks(page: Page) {
 
 test.describe('MOD06 — Planes paginación numerada', () => {
   test('recorrido página · tamaño · deep-link · productos siguen Cargar más', async ({ page }) => {
-    await seedSession(page);
     await setupMocks(page);
+    await seedSession(page);
     await page.setViewportSize({ width: 1280, height: 800 });
 
     await page.goto('/dashboard/commercial');

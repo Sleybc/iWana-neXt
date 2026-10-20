@@ -1,0 +1,16 @@
+{
+  "expectedSkips": [
+    {
+      "spec": "apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts",
+      "reason": "La integración K2 requiere IWANA_K2_REENCRYPT_INTEGRATION=true y una base iwana_it_g7_* desechable de loopback; CI usa DB_NAME=test y no habilita ese opt-in."
+    },
+    {
+      "spec": "apps/api/src/modules/inventory/tests/inventory-execution-request.ola3d.postgres.integration.spec.ts",
+      "reason": "La suite requiere la base sintética i4_qa_20261006_a1 y Redis DB 15; el job API usa DB_NAME=test y no provisiona esa infraestructura de fixture."
+    },
+    {
+      "spec": "apps/api/src/modules/tasks/tests/execution-orders.item-usage-projection.postgres.integration.spec.ts",
+      "reason": "La suite exige DB_NAME=i4_qa_20261006_a1; el job API ejecuta contra su base efímera test y no apunta a la base sintética compartida."
+    }
+  ]
+}

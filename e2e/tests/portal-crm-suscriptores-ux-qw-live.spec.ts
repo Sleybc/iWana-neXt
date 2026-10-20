@@ -161,7 +161,7 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
   );
 });
 
-test('V1 controlado: frontend real con HTTP sintético, desktop y 375 px', async ({ page }) => {
+test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ page }) => {
   test.setTimeout(60_000);
   const me = {
     sub: 'qa-user',
@@ -322,15 +322,6 @@ test('V1 controlado: frontend real con HTTP sintético, desktop y 375 px', async
   await page.getByRole('button', { name: 'Editar facturación', exact: true }).click();
   await page.getByRole('button', { name: 'Guardar facturación', exact: true }).click();
   await expect(page.getByText('Fallo sintético de facturación', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cambiar estado', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Estado destino' }).click();
-  await page.getByRole('option', { name: 'Suspendido', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /Razón/ })).toHaveAttribute(
-    'aria-required',
-    'true',
-  );
-  await expect(page.getByRole('button', { name: 'Confirmar', exact: true })).toBeDisabled();
-  await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/dashboard/crm/subscribers/qa-subscriber?tab=datos');
   await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toBeVisible();

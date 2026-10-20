@@ -503,7 +503,7 @@ test.describe('Portal settings branding smoke (G6 a11y)', () => {
     // El mensaje vive a la vez en el PortalAlert visible y en la región live
     // sr-only (que precede al alert en el DOM); `.last()` es la descripción
     // del alert visible de éxito.
-    await expect(page.getByText('Marca actualizada', { exact: true })).toBeVisible();
+    await expect(page.getByText('Marca actualizada.', { exact: true })).toBeVisible();
     await expect(
       page.getByText('El activo se subió y asignó correctamente.', { exact: true }).last(),
     ).toBeVisible();

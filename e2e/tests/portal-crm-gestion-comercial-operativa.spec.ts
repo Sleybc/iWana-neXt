@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -35,6 +36,7 @@ const mockExpediente = {
   tenantId: 'tenant-uuid-test',
   status: 'NUEVO_POTENCIAL',
   previousStatus: null,
+  privacyRestricted: false,
   assignedTo: 'advisor-uuid-1',
   dataConsentRevoked: true,
   statusChangedAt: '2026-03-26T12:00:00.000Z',
@@ -122,6 +124,16 @@ const mockUsers = [
 
 async function setAuthSession(page: import('@playwright/test').Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: 'user-uuid-admin-test',
+    role: 'ADMIN',
+    effectivePermissions: [
+      'crm.expedientes.read',
+      'crm.expedientes.manage',
+      'commercial.catalog.read',
+      'users.read',
+    ],
+  });
 }
 
 async function pickSearchableUser(
@@ -417,6 +429,7 @@ async function setupMocks(page: import('@playwright/test').Page) {
               documentType: mockExpediente.documentType,
               personType: mockExpediente.personType,
               dataConsentRevoked: mockExpediente.dataConsentRevoked,
+              privacyRestricted: false,
               hasLocation: true,
               source: mockExpediente.source,
               acquisitionChannel: mockExpediente.acquisitionChannel,

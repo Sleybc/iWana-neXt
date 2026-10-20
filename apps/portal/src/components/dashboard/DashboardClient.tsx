@@ -219,7 +219,7 @@ function metricValue(metricId: DashboardMetricId, sources: DashboardSourcesState
     case 'I-1':
       return sources.wfm.data?.todayCount ?? null;
     case 'I-2':
-      return sources.wfm.data?.pendingInbox.readyToScheduleCount ?? null;
+      return sources.wfm.data?.pendingInbox?.readyToScheduleCount ?? null;
     case 'I-3':
       return sources.assurance.data?.openCount ?? null;
     case 'I-4':
@@ -248,7 +248,7 @@ function metricDelta(
     if (today > 0) return { label: 'Sin vencidas', tone: 'progress' };
   }
   if (metricId === 'I-2') {
-    const overdueSla = sources.wfm.data?.pendingInbox.overdueSlaCount ?? 0;
+    const overdueSla = sources.wfm.data?.pendingInbox?.overdueSlaCount ?? 0;
     if (overdueSla > 0) return { label: `${overdueSla} con atención vencida`, tone: 'warning' };
   }
   if (metricId === 'I-3') {
@@ -284,7 +284,7 @@ function buildModuleHealthSnapshot(
     requestedSources: new Set(requestedSources),
     sourceStatus: (id) => sources[id].status,
     todayLocalDate,
-    wfm: sources.wfm.data
+    wfm: sources.wfm.data?.pendingInbox
       ? {
           overdueCount: sources.wfm.data.overdueCount,
           readyToScheduleCount: sources.wfm.data.pendingInbox.readyToScheduleCount,

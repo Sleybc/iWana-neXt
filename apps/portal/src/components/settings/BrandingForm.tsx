@@ -616,6 +616,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                   size="sm"
                   loading={isSubmitting}
                   disabled={isSubmitting || !isDirty}
+                  className="dark:hover:bg-iwana-primary-500"
                 >
                   <Save className="h-4 w-4" aria-hidden="true" />
                   Guardar marca
@@ -840,6 +841,7 @@ export function BrandingForm({ profile, canEdit, onUpdated }: BrandingFormProps)
                                 type="button"
                                 variant="softDestructive"
                                 size="sm"
+                                className="text-iwana-error-700 disabled:text-iwana-error-700"
                                 onClick={() => void handleClearSlot(variant)}
                                 disabled={
                                   !canEdit || !hasConfiguredValue || isSlotClearing || isSubmitting

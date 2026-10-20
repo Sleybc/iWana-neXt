@@ -119,23 +119,23 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
   };
 
   return (
-    <Card className="rounded-2xl border border-gray-200 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
+    <Card className="min-w-0 w-full rounded-2xl border border-gray-200 shadow-iwana-card dark:border-dark-border dark:bg-dark-surface-2">
       <CardHeader>
         <PortalSectionHeader
-          className="gap-0"
+          className="min-w-0 gap-0"
           title={ORGANIZATION_SETTINGS_COPY.companyProfileTitle}
           description={ORGANIZATION_SETTINGS_COPY.companyProfileDescription}
         />
       </CardHeader>
-      <CardContent className="space-y-5">
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
+      <CardContent className="min-w-0 space-y-5">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="min-w-0 space-y-6">
           <div className="space-y-6">
-            <section className="space-y-4">
+            <section className="min-w-0 space-y-4">
               <p className={SECTION_LABEL}>
                 {ORGANIZATION_SETTINGS_COPY.companyProfileContactSection}
               </p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
-                <div className="xl:col-span-6">
+              <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="min-w-0 xl:col-span-6">
                   <Input
                     id="contactEmail"
                     label="Correo de contacto"
@@ -146,7 +146,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('contactEmail')}
                   />
                 </div>
-                <div className="xl:col-span-6">
+                <div className="min-w-0 xl:col-span-6">
                   <Input
                     id="legalName"
                     label="Razón social"
@@ -156,7 +156,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('legalName')}
                   />
                 </div>
-                <div className="xl:col-span-4">
+                <div className="min-w-0 xl:col-span-4">
                   <Input
                     id="phone"
                     label="Teléfono"
@@ -167,7 +167,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('phone')}
                   />
                 </div>
-                <div className="xl:col-span-8">
+                <div className="min-w-0 xl:col-span-8">
                   <Input
                     id="website"
                     label="Sitio web"
@@ -181,12 +181,12 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
               </div>
             </section>
 
-            <section className="space-y-4">
+            <section className="min-w-0 space-y-4">
               <p className={SECTION_LABEL}>
                 {ORGANIZATION_SETTINGS_COPY.companyProfileIdentitySection}
               </p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-12">
-                <div className="xl:col-span-4">
+              <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+                <div className="min-w-0 xl:col-span-2">
                   <Input
                     id="nit"
                     label="NIT"
@@ -196,7 +196,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('nit')}
                   />
                 </div>
-                <div className="xl:col-span-2">
+                <div className="min-w-0 xl:col-span-2">
                   <Input
                     id="nitDv"
                     label="Dígito de verificación (DV)"
@@ -207,7 +207,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('nitDv')}
                   />
                 </div>
-                <div className="xl:col-span-3">
+                <div className="min-w-0 xl:col-span-2">
                   <Input
                     id="countryCode"
                     label="País de registro"
@@ -218,7 +218,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('countryCode')}
                   />
                 </div>
-                <div className="xl:col-span-6">
+                <div className="min-w-0 xl:col-span-3">
                   <Input
                     id="city"
                     label="Ciudad"
@@ -228,7 +228,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
                     {...register('city')}
                   />
                 </div>
-                <div className="xl:col-span-6">
+                <div className="min-w-0 xl:col-span-3">
                   <Input
                     id="department"
                     label="Departamento"
@@ -259,8 +259,8 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
             }
           />
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="min-w-0 break-words text-xs text-gray-500 dark:text-gray-400">
               {canEdit
                 ? ORGANIZATION_SETTINGS_COPY.companyProfileEditableHint
                 : ORGANIZATION_SETTINGS_COPY.companyProfileReadOnlyHint}
@@ -269,6 +269,7 @@ export function CompanyProfileForm({ profile, canEdit, onUpdated }: CompanyProfi
               <Button
                 type="submit"
                 size="lg"
+                className="w-full shrink-0 sm:w-auto"
                 loading={isSubmitting}
                 disabled={isSubmitting || !isDirty}
               >

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { mockEffectivePermissions } from './helpers/effective-permissions';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -33,6 +34,7 @@ const mockExpediente = {
   tenantId: 'tenant-uuid-test',
   status: 'NUEVO_POTENCIAL',
   previousStatus: null,
+  privacyRestricted: false,
   assignedTo: 'advisor-uuid-1',
   dataConsentRevoked: false,
   statusChangedAt: '2026-03-26T12:00:00.000Z',
@@ -108,6 +110,16 @@ const mockUsers = [
 
 async function setAuthSession(page: import('@playwright/test').Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+  await mockEffectivePermissions(page, {
+    userId: 'user-uuid-admin-test',
+    role: 'ADMIN',
+    effectivePermissions: [
+      'crm.expedientes.read',
+      'crm.expedientes.manage',
+      'crm.subscribers.read',
+      'crm.subscribers.manage',
+    ],
+  });
 }
 
 async function setupContactSectionMocks(page: import('@playwright/test').Page) {
@@ -392,6 +404,7 @@ async function setupContactSectionMocks(page: import('@playwright/test').Page) {
               documentType: mockExpediente.documentType,
               personType: mockExpediente.personType,
               dataConsentRevoked: mockExpediente.dataConsentRevoked,
+              privacyRestricted: false,
               hasLocation: true,
               source: mockExpediente.source,
               acquisitionChannel: mockExpediente.acquisitionChannel,
@@ -596,7 +609,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
 
     const altContactNameInput = page.getByLabel(/nombre contacto alternativo/i);
     const altContactPhoneInput = page.getByLabel(/teléfono contacto alternativo/i);
@@ -621,7 +634,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await page.reload();
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
 
     await expect(altContactNameInput).toHaveValue('Contacto alterno sintético');
     await expect(altContactPhoneInput).toHaveValue('3001234567');
@@ -644,7 +657,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await page.reload();
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
 
     await expect(altContactNameInput).toHaveValue('');
     await expect(altContactPhoneInput).toHaveValue('');
@@ -656,7 +669,7 @@ test.describe('CRM Expedientes - Sección Contacto: altContactName y altContactP
     await page.goto(`http://127.0.0.1:3002/dashboard/crm/expedientes/${mockExpediente.id}`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Gestión' }).click();
-    await expect(page.getByText('Secciones de la oportunidad', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tablist', { name: 'Secciones de la oportunidad' })).toBeVisible();
 
     const altContactPhoneInput = page.getByLabel(/teléfono contacto alternativo/i);
     await expect(altContactPhoneInput).toBeVisible();

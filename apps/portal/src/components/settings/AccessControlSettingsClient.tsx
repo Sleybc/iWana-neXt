@@ -1081,28 +1081,26 @@ export function AccessControlSettingsClient() {
                       return (
                         <div
                           key={`${profile.id}-mobile`}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Gestionar accesos de ${profile.name}`}
-                          aria-selected={isSelected}
-                          onClick={() => selectProfile(profile)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              selectProfile(profile);
-                            }
-                          }}
-                          className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-offset-2 ${isSelected ? 'border-l-4 border-l-iwana-secondary bg-iwana-surface-soft pl-3' : ''}`}
+                          className={`rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2 ${isSelected ? 'border-l-4 border-l-iwana-secondary bg-iwana-surface-soft pl-3' : ''}`}
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
+                            <button
+                              type="button"
+                              aria-label={`Gestionar accesos de ${profile.name}`}
+                              aria-pressed={isSelected}
+                              onClick={() => selectProfile(profile)}
+                              className={cn(
+                                'min-w-0 flex-1 cursor-pointer text-left',
+                                interactiveFocusClassName,
+                              )}
+                            >
                               <p className="font-medium text-gray-900 dark:text-white">
                                 {profile.name}
                               </p>
                               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                 {profile.description || 'Sin descripción'}
                               </p>
-                            </div>
+                            </button>
                             <div className="flex flex-wrap items-center justify-end gap-2">
                               <Badge variant={getPortalActiveBadgeVariant(profile.isActive)}>
                                 {profile.isActive ? 'Activo' : 'Inactivo'}
@@ -1131,10 +1129,7 @@ export function AccessControlSettingsClient() {
                               size="sm"
                               aria-label={`Editar perfil ${profile.name}`}
                               className="min-h-11 min-w-11 justify-center rounded-2xl"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openEditDialog(profile);
-                              }}
+                              onClick={() => openEditDialog(profile)}
                             >
                               <Pencil className="h-4 w-4" aria-hidden={true} />
                             </Button>
@@ -1145,10 +1140,7 @@ export function AccessControlSettingsClient() {
                                 size="sm"
                                 aria-label={`Eliminar perfil ${profile.name}`}
                                 className="w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 min-h-11 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  requestProfileDeletion(profile);
-                                }}
+                                onClick={() => requestProfileDeletion(profile)}
                               >
                                 <Trash2 className="h-4 w-4" aria-hidden={true} />
                               </Button>
@@ -1179,20 +1171,8 @@ export function AccessControlSettingsClient() {
                           return (
                             <tr
                               key={profile.id}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`Gestionar accesos de ${profile.name}`}
-                              aria-selected={isSelected}
-                              onClick={() => selectProfile(profile)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault();
-                                  selectProfile(profile);
-                                }
-                              }}
                               className={cn(
                                 portalTableRowHoverClassName,
-                                'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary focus-visible:ring-inset',
                                 isSelected && 'bg-iwana-surface-soft dark:bg-dark-surface-3/60',
                               )}
                             >
@@ -1204,14 +1184,23 @@ export function AccessControlSettingsClient() {
                                     : 'border-l-4 border-transparent',
                                 )}
                               >
-                                <div className="flex flex-col gap-0.5">
+                                <button
+                                  type="button"
+                                  aria-label={`Gestionar accesos de ${profile.name}`}
+                                  aria-pressed={isSelected}
+                                  onClick={() => selectProfile(profile)}
+                                  className={cn(
+                                    'block w-full min-w-0 cursor-pointer rounded-lg text-left focus-visible:ring-inset',
+                                    interactiveFocusClassName,
+                                  )}
+                                >
                                   <p className="font-medium text-gray-900 dark:text-white">
                                     {profile.name}
                                   </p>
                                   <p className="text-xs text-gray-500 dark:text-gray-400">
                                     {profile.description || 'Sin descripción'}
                                   </p>
-                                </div>
+                                </button>
                               </td>
                               <td className={portalDataTableCellClassName}>
                                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-dark-border dark:bg-dark-surface-3 dark:text-gray-200">
@@ -1243,10 +1232,7 @@ export function AccessControlSettingsClient() {
                                     size="sm"
                                     aria-label={`Editar perfil ${profile.name}`}
                                     className="min-h-11 min-w-11 justify-center rounded-2xl"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openEditDialog(profile);
-                                    }}
+                                    onClick={() => openEditDialog(profile)}
                                   >
                                     <Pencil className="h-4 w-4" aria-hidden={true} />
                                   </Button>
@@ -1257,10 +1243,7 @@ export function AccessControlSettingsClient() {
                                       size="sm"
                                       aria-label={`Eliminar perfil ${profile.name}`}
                                       className="min-h-11 w-full justify-center rounded-2xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300 sm:w-auto"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        requestProfileDeletion(profile);
-                                      }}
+                                      onClick={() => requestProfileDeletion(profile)}
                                     >
                                       <Trash2 className="h-4 w-4" aria-hidden={true} />
                                     </Button>

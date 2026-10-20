@@ -23,6 +23,17 @@ import { seedPortalSession } from './helpers/portal-session';
 const API_PREFIX = '/api/v1';
 const FIXTURE_PREFIX = 'E2E-MOD05-DEUDA';
 const SCHEMA_PATTERN = /^tenant_[a-z][a-z0-9_]{0,54}$/u;
+const missingLiveEnvironment = [
+  !process.env.DB_NAME?.trim() ? 'DB_NAME' : null,
+  !process.env.E2E_PRIVACY_1B_TENANT_SLUG?.trim() ? 'E2E_PRIVACY_1B_TENANT_SLUG' : null,
+  !process.env.E2E_PRIVACY_ADMIN_PASSWORD?.trim() ? 'E2E_PRIVACY_ADMIN_PASSWORD' : null,
+  !process.env.DB_USER?.trim() && !process.env.DB_MIGRATOR_USER?.trim()
+    ? 'DB_USER o DB_MIGRATOR_USER'
+    : null,
+  !process.env.DB_PASSWORD?.trim() && !process.env.DB_MIGRATOR_PASSWORD?.trim()
+    ? 'DB_PASSWORD o DB_MIGRATOR_PASSWORD'
+    : null,
+].filter((name): name is string => name !== null);
 const MOD05_DEUDA_MIGRATIONS = [
   'SubscriberVatResponsibility1530000000000',
   'SubscriberLegalRepresentativeParty1540000000000',
@@ -632,6 +643,11 @@ async function representativeEvidence(
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
 test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
+  test.skip(
+    missingLiveEnvironment.length > 0,
+    `Entorno E2E real omitido; faltan variables: ${missingLiveEnvironment.join(', ')}.`,
+  );
+
   test.setTimeout(180_000);
 
   test('precondición: el tenant acredita las migraciones 153 a 157 y el rol LEGAL_REPRESENTATIVE', async ({

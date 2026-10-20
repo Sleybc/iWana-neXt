@@ -48,8 +48,85 @@ async function seedPortalSession(
 }
 
 async function mockInventoryApis(page: import('@playwright/test').Page) {
+  await page.route('**/api/v1/auth/me', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          sub: NOC_USER_ID,
+          email: 'hash-noc',
+          role: 'NOC',
+          tenantId: 'tenant-inventory-001',
+          schemaName: 'tenant_inventory_001',
+          jti: 'jti-noc',
+          type: 'tenant',
+        },
+      }),
+    });
+  });
+  await page.route('**/api/v1/tenants/public-branding*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          displayName: 'ISP Inventario Demo',
+          productName: 'iWana Empresa',
+          surfaceName: 'Portal empresarial',
+          metadataTitle: 'iWana Empresa',
+          metadataDescription: 'Portal empresarial tenant-aware',
+          showTenantName: true,
+          logoLightUrl: null,
+          logoDarkUrl: null,
+          sealLightUrl: null,
+          sealDarkUrl: null,
+          faviconLightUrl: null,
+          faviconDarkUrl: null,
+          loginBackgroundLightUrl: null,
+          loginBackgroundDarkUrl: null,
+        },
+      }),
+    });
+  });
+  await page.route('**/api/v1/users/me', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          id: NOC_USER_ID,
+          email: 'noc@inventory.example.test',
+          role: 'NOC',
+          status: 'ACTIVE',
+          firstName: 'Monitoreo',
+          lastName: 'Operativo',
+          phone: null,
+          jobTitle: 'Monitoreo operativo',
+          avatarUrl: null,
+          mfaEnabled: true,
+          emailVerified: true,
+          createdAt: '2026-10-01T00:00:00.000Z',
+        },
+      }),
+    });
+  });
+
   await page.route('**/api/v1/inventory/**', async (route) => {
     const url = route.request().url();
+    if (
+      url.includes('/inventory/replenishment/suggestions') &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
     if (url.includes('/inventory/items') && route.request().method() === 'GET') {
       await assertTenantHeader(route);
       expect(route.request().method()).toBe('GET');
@@ -121,15 +198,24 @@ async function mockInventoryApis(page: import('@playwright/test').Page) {
     });
   });
   await page.route('**/api/v1/access-control/me/effective-permissions', async (route) => {
+    await assertTenantHeader(route);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        effectivePermissions: [
-          'inventory.stock.read',
-          'settings.read',
-          'inventory.purchasing.read',
-        ],
+        data: {
+          userId: NOC_USER_ID,
+          role: 'NOC',
+          effectivePermissions: [
+            'inventory.stock.read',
+            'inventory.stock.manage',
+            'inventory.purchasing.read',
+            'inventory.purchasing.manage',
+            'settings.read',
+          ],
+          recoveryPermissions: [],
+          profileSources: [],
+        },
       }),
     });
   });
@@ -180,7 +266,7 @@ test.describe('SCM federado Settings — maestros', () => {
       });
       // Al menos un tab maestro debe estar visible
       await expect(
-        page.getByRole('tab', { name: /Catálogo|Proveedores|Bodegas/i }).first(),
+        page.getByRole('button', { name: /Catálogo|Proveedores|Bodegas/i }).first(),
       ).toBeVisible({ timeout: 10000 });
     });
 
@@ -208,6 +294,6 @@ test.describe('SCM federado Settings — maestros', () => {
   }) => {
     await page.goto('/dashboard/inventory?tab=catalog');
     await expect(page.getByRole('heading', { name: 'Inventario' })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('tab', { name: /Catálogo/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Catálogo/i })).toBeVisible({ timeout: 10000 });
   });
 });
