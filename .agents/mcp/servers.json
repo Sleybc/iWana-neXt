@@ -26,20 +26,9 @@
       "package": "@playwright/mcp@0.0.82"
     },
     "postgres-dev": {
-      "description": "Base de desarrollo en solo lectura con iwana_readonly; credencial generada por `pnpm db:dev:readonly-role`.",
+      "description": "Base de desarrollo en solo lectura con iwana_readonly; el launcher mapea IWANA_MCP_DATABASE_URI al contenedor sin ponerla en argv.",
       "clients": ["claude", "opencode"],
-      "command": [
-        "docker",
-        "run",
-        "-i",
-        "--rm",
-        "--network",
-        "container:iwana_postgres_dev",
-        "--env-file",
-        ".claude/mcp-postgres.local.env",
-        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
-        "--access-mode=restricted"
-      ],
+      "command": ["node", "scripts/mcp/postgres-dev.mjs"],
       "timeout": { "startup": 120000 }
     },
     "redis-dev": {

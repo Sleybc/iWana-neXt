@@ -32,18 +32,7 @@
       },
       "postgres-dev": {
         "type": "local",
-        "command": [
-          "docker",
-          "run",
-          "-i",
-          "--rm",
-          "--network",
-          "container:iwana_postgres_dev",
-          "--env-file",
-          ".claude/mcp-postgres.local.env",
-          "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
-          "--access-mode=restricted"
-        ],
+        "command": ["node", "scripts/mcp/postgres-dev.mjs"],
         "disabled": false,
         "timeout": {
           "startup": 120000

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Crea o re-sincroniza `iwana_readonly` en la base de DESARROLLO y escribe la
- * credencial que usa el MCP `postgres-dev` de Claude Code.
+ * Crea, rota o re-sincroniza `iwana_readonly` en la base de DESARROLLO y escribe
+ * la credencial que usa el MCP `postgres-dev`.
  *
  * Fail-closed: solo corre en modo docker, contra un contenedor `*_dev` y fuera de
  * NODE_ENV=production. La contraseña se genera una vez y se reutiliza en
- * re-ejecuciones; nunca se imprime. Vive en `.claude/mcp-postgres.local.env`
- * (ignorado por git), que `.mcp.json` pasa al contenedor con `--env-file`.
+ * re-ejecuciones; `--rotate` genera una nueva. Nunca se imprime. Vive en
+ * `.claude/mcp-postgres.local.env` (ignorado por git), y el launcher MCP la
+ * pasa al contenedor bajo el nombre `DATABASE_URI`.
  *
- * Uso: pnpm db:dev:readonly-role   (re-ejecutar tras crear tenants nuevos)
+ * Uso: pnpm db:dev:readonly-role [--rotate]
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -29,8 +30,25 @@ export function buildDatabaseUri(password, dbName) {
 }
 
 export function readExistingPassword(content) {
-  const match = content.match(/^DATABASE_URI=postgresql:\/\/iwana_readonly:([^@]+)@/m);
+  const match = content.match(
+    /^(?:IWANA_MCP_DATABASE_URI|DATABASE_URI)=postgresql:\/\/iwana_readonly:([^@]+)@/m,
+  );
   return match?.[1] ?? null;
+}
+
+export function parseArgs(args) {
+  let rotate = false;
+  for (const arg of args) {
+    if (arg === '--rotate') {
+      if (rotate) throw new CliError('Usa --rotate una sola vez.');
+      rotate = true;
+    } else if (arg === '--help' || arg === '-h') {
+      return { help: true, rotate: false };
+    } else {
+      throw new CliError(`Argumento desconocido: ${arg.split('=')[0]}`);
+    }
+  }
+  return { help: false, rotate };
 }
 
 export function assertDevelopmentTarget(env, nodeEnv) {
@@ -46,22 +64,40 @@ export function assertDevelopmentTarget(env, nodeEnv) {
 }
 
 function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    process.stdout.write(
+      'Crea o resincroniza iwana_readonly en PostgreSQL de desarrollo.\n\n' +
+        'Uso: pnpm db:dev:readonly-role [--rotate]\n' +
+        '--rotate  Genera una credencial nueva e invalida la anterior para nuevas conexiones.\n',
+    );
+    return;
+  }
+
   const env = loadTenantToolingEnv(repoRoot);
   assertDevelopmentTarget(env, process.env.NODE_ENV);
 
   const previous = existsSync(credentialPath)
     ? readExistingPassword(readFileSync(credentialPath, 'utf8'))
     : null;
-  const password = previous ?? randomBytes(24).toString('base64url');
+  const password = args.rotate ? randomBytes(32).toString('base64url') : previous;
+  const nextPassword = password ?? randomBytes(32).toString('base64url');
 
   runPsqlQuery(
     env,
-    readFileSync(sqlPath, 'utf8'),
-    { readonly_pass: password },
+    `\\set readonly_pass ${nextPassword}\n${readFileSync(sqlPath, 'utf8')}`,
+    {},
     {
       asScript: true,
       failureHint: '¿Está arriba el compose de desarrollo y migrada la base?',
     },
+  );
+
+  writeFileSync(
+    credentialPath,
+    `# GENERADO por scripts/db/dev-readonly-role.mjs — credencial local de dev, no versionar.\n` +
+      `IWANA_MCP_DATABASE_URI=${buildDatabaseUri(nextPassword, env.dbName)}\n`,
+    { encoding: 'utf8', mode: 0o600 },
   );
 
   const summary = runPsqlQuery(
@@ -72,20 +108,15 @@ function main() {
       WHERE grantee = 'iwana_readonly';`,
   ).trim();
 
-  writeFileSync(
-    credentialPath,
-    `# GENERADO por scripts/db/dev-readonly-role.mjs — credencial local de dev, no versionar.\n` +
-      `DATABASE_URI=${buildDatabaseUri(password, env.dbName)}\n`,
-    { encoding: 'utf8', mode: 0o600 },
-  );
-
   console.log(
-    `dev-readonly-role: iwana_readonly ${previous ? 're-sincronizado' : 'creado'} (${summary}).`,
+    `dev-readonly-role: iwana_readonly ${args.rotate ? 'rotado' : previous ? 're-sincronizado' : 'creado'} (${summary}).`,
   );
   console.log(
     'dev-readonly-role: credencial en .claude/mcp-postgres.local.env (ignorado por git).',
   );
-  console.log('dev-readonly-role: reinicia la sesión de Claude Code para conectar postgres-dev.');
+  console.log(
+    'dev-readonly-role: reinicia las sesiones Claude Code y OpenCode para liberar pools antiguos.',
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
