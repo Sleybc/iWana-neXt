@@ -7,6 +7,7 @@ import { OperatingWindowResolverService } from '../services/operating-window-res
 import { ScheduleEventsService } from '../services/schedule-events.service';
 import { ScheduleConflictService } from '../services/schedule-conflict.service';
 import { WorkOrdersService } from '../services/work-orders.service';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 
 jest.mock('@iwana/db', () => ({
   TenantContext: {
@@ -56,6 +57,7 @@ describe('ScheduleEventsService', () => {
     rescheduleFromSchedulingWithManager: jest.Mock;
     cancelFromSchedulingWithManager: jest.Mock;
   };
+  let mockCrmSubscriberReadPort: { findExpedienteId: jest.Mock };
 
   const adminActor = {
     sub: 'admin-001',
@@ -149,6 +151,9 @@ describe('ScheduleEventsService', () => {
         .fn()
         .mockResolvedValue({ id: 'eo-test', status: 'CANCELLED' }),
     };
+    mockCrmSubscriberReadPort = {
+      findExpedienteId: jest.fn().mockResolvedValue(null),
+    };
 
     service = new ScheduleEventsService(
       mockDataSource as DataSource,
@@ -156,6 +161,7 @@ describe('ScheduleEventsService', () => {
       mockOperatingWindowResolver as unknown as OperatingWindowResolverService,
       mockConflictService,
       mockWorkOrdersService,
+      mockCrmSubscriberReadPort as unknown as CrmSubscriberReadPort,
       mockExecutionOrdersService,
     );
   });
@@ -526,6 +532,45 @@ describe('ScheduleEventsService', () => {
       expect(result.data).toEqual([{ id: 'evt-expediente', expedienteId }]);
       expect(result.meta.total).toBe(1);
       expect(result.meta.mode).toBe('page');
+    });
+  });
+
+  describe('list — subscriber filter', () => {
+    it('matches subscriber or CRM expediente and excludes ticket-origin events', async () => {
+      const subscriberId = '550e8400-e29b-41d4-a716-446655440011';
+      const expedienteId = '550e8400-e29b-41d4-a716-446655440012';
+      mockCrmSubscriberReadPort.findExpedienteId.mockResolvedValue(expedienteId);
+      const andWhereMock = jest.fn().mockReturnThis();
+
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) => {
+        const mockQr = {
+          manager: {
+            createQueryBuilder: () => ({
+              where: jest.fn().mockReturnThis(),
+              andWhere: andWhereMock,
+              orderBy: jest.fn().mockReturnThis(),
+              addOrderBy: jest.fn().mockReturnThis(),
+              skip: jest.fn().mockReturnThis(),
+              take: jest.fn().mockReturnThis(),
+              getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+            }),
+          },
+        };
+        return fn(mockQr as any);
+      });
+
+      await service.list({ subscriberId } as never, adminActor as any);
+
+      expect(mockCrmSubscriberReadPort.findExpedienteId).toHaveBeenCalledWith(
+        adminActor.tenantId,
+        adminActor.schemaName,
+        subscriberId,
+      );
+      expect(andWhereMock).toHaveBeenCalledWith(
+        '(se.subscriber_id = :subscriberId OR se.expediente_id = :subscriberExpedienteId)',
+        { subscriberId, subscriberExpedienteId: expedienteId },
+      );
+      expect(andWhereMock).toHaveBeenCalledWith('se.ticket_id IS NULL');
     });
   });
 

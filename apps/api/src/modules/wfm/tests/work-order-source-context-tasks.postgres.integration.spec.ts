@@ -98,6 +98,7 @@ describeWithDb('WFM — origen TASKS sobre el schema tenant migrado', () => {
       workOrders,
       { findDisplayNamesByIds: jest.fn().mockResolvedValue(new Map()) } as never,
       {} as never,
+      { findExpedienteId: jest.fn().mockResolvedValue(null) } as never,
     );
   }, 180_000);
 

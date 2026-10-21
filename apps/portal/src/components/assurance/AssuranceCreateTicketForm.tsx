@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,7 +12,14 @@ import {
   TicketSource,
   TicketType,
 } from '@iwana/shared';
-import type { AssuranceSlaPolicy, CreateAssuranceTicketDto, InternalUser } from '@/lib/api-client';
+import {
+  subscribersApi,
+  type AssuranceSlaPolicy,
+  type CreateAssuranceTicketDto,
+  type InternalUser,
+} from '@/lib/api-client';
+import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
+import { formatSubscriberName } from '@/components/crm/subscribers/subscriber-ui';
 import {
   ASSURANCE_FIELD_DECISION_OPTIONS,
   ASSURANCE_QUEUE_OPTIONS,
@@ -25,22 +32,48 @@ import {
 } from './assurance-labels';
 import { assuranceTextareaClassName } from './assurance-ui';
 
-const assuranceTicketFormSchema = z.object({
-  type: z.nativeEnum(TicketType),
-  priority: z.nativeEnum(TicketPriority),
-  source: z.nativeEnum(TicketSource),
-  subject: z.string().trim().min(1, 'El asunto es obligatorio.').max(200, 'Máximo 200 caracteres.'),
-  description: z.string().trim().max(2000, 'Máximo 2000 caracteres.').optional().or(z.literal('')),
-  requesterType: z.nativeEnum(TicketRequesterType),
-  requesterRefId: z.string().trim().max(160, 'Máximo 160 caracteres.').optional().or(z.literal('')),
-  subjectType: z.string().optional().default(''),
-  subjectRefId: z.string().trim().max(160, 'Máximo 160 caracteres.').optional().or(z.literal('')),
-  assignedUserId: z.string().optional().default(''),
-  queueName: z.string().optional().default(''),
-  fieldDecision: z.nativeEnum(TicketFieldDecision),
-  followUpAction: z.enum(['ticket-only', 'schedule-now', 'send-to-pending']).default('ticket-only'),
-  slaPolicyId: z.string().optional().default(''),
-});
+const assuranceTicketFormSchema = z
+  .object({
+    type: z.nativeEnum(TicketType),
+    priority: z.nativeEnum(TicketPriority),
+    source: z.nativeEnum(TicketSource),
+    subject: z
+      .string()
+      .trim()
+      .min(1, 'El asunto es obligatorio.')
+      .max(200, 'Máximo 200 caracteres.'),
+    description: z
+      .string()
+      .trim()
+      .max(2000, 'Máximo 2000 caracteres.')
+      .optional()
+      .or(z.literal('')),
+    requesterType: z.nativeEnum(TicketRequesterType),
+    requesterRefId: z
+      .string()
+      .trim()
+      .max(160, 'Máximo 160 caracteres.')
+      .optional()
+      .or(z.literal('')),
+    subjectType: z.string().optional().default(''),
+    subjectRefId: z.string().trim().max(160, 'Máximo 160 caracteres.').optional().or(z.literal('')),
+    assignedUserId: z.string().optional().default(''),
+    queueName: z.string().optional().default(''),
+    fieldDecision: z.nativeEnum(TicketFieldDecision),
+    followUpAction: z
+      .enum(['ticket-only', 'schedule-now', 'send-to-pending'])
+      .default('ticket-only'),
+    slaPolicyId: z.string().optional().default(''),
+  })
+  .superRefine((values, context) => {
+    if (values.requesterType === TicketRequesterType.SUBSCRIBER && !values.requesterRefId?.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['requesterRefId'],
+        message: 'Selecciona un suscriptor',
+      });
+    }
+  });
 
 type AssuranceTicketFormValues = z.infer<typeof assuranceTicketFormSchema>;
 
@@ -54,13 +87,15 @@ export interface AssuranceCreateTicketSubmitPayload {
 interface AssuranceCreateTicketFormProps {
   assignees: InternalUser[];
   slaPolicies: AssuranceSlaPolicy[];
+  subscriber?: SearchablePickerItem | null;
+  allowWfmFollowUp?: boolean;
   onSubmit: (payload: AssuranceCreateTicketSubmitPayload) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
 }
 
-function buildDefaultValues(): AssuranceTicketFormValues {
+function buildDefaultValues(subscriberId?: string): AssuranceTicketFormValues {
   return {
     type: TicketType.CUSTOMER_INCIDENT,
     priority: TicketPriority.NORMAL,
@@ -68,7 +103,7 @@ function buildDefaultValues(): AssuranceTicketFormValues {
     subject: '',
     description: '',
     requesterType: TicketRequesterType.SUBSCRIBER,
-    requesterRefId: '',
+    requesterRefId: subscriberId ?? '',
     subjectType: '',
     subjectRefId: '',
     assignedUserId: '',
@@ -82,6 +117,8 @@ function buildDefaultValues(): AssuranceTicketFormValues {
 export function AssuranceCreateTicketForm({
   assignees,
   slaPolicies,
+  subscriber = null,
+  allowWfmFollowUp = false,
   onSubmit,
   onCancel,
   isSubmitting,
@@ -101,16 +138,48 @@ export function AssuranceCreateTicketForm({
     [slaPolicies],
   );
 
+  const [selectedSubscriberItem, setSelectedSubscriberItem] = useState<Pick<
+    SearchablePickerItem,
+    'label' | 'sublabel'
+  > | null>(null);
+
+  const searchSubscribers = useCallback(async (query: string, signal: AbortSignal) => {
+    const response = await subscribersApi.list({ search: query, page: 1, limit: 20 }, undefined, {
+      signal,
+    });
+
+    return {
+      items: response.data.map((item) => ({
+        id: item.id,
+        label: item.commercialName?.trim() || formatSubscriberName(item),
+        sublabel: item.city?.trim() || item.email?.trim() || item.documentNumber?.trim() || null,
+      })),
+      total: response.total,
+    };
+  }, []);
+
   const {
     register,
     control,
     handleSubmit,
     watch,
+    setValue,
+    clearErrors,
+    getValues,
     formState: { errors },
   } = useForm<AssuranceTicketFormValues>({
     resolver: zodResolver(assuranceTicketFormSchema),
-    defaultValues: buildDefaultValues(),
+    defaultValues: buildDefaultValues(subscriber?.id),
   });
+
+  const requesterType = watch('requesterType');
+
+  useEffect(() => {
+    if (getValues('requesterType') === TicketRequesterType.SUBSCRIBER) {
+      setValue('requesterRefId', subscriber?.id ?? '', { shouldValidate: true });
+    }
+    setSelectedSubscriberItem(null);
+  }, [getValues, setValue, subscriber?.id]);
 
   return (
     <form
@@ -123,12 +192,16 @@ export function AssuranceCreateTicketForm({
           priority: values.priority,
           source: values.source,
           subject: values.subject.trim(),
-          requesterType: values.requesterType,
+          requesterType: subscriber ? TicketRequesterType.SUBSCRIBER : values.requesterType,
           fieldDecision: values.fieldDecision,
         };
 
         if (values.description?.trim()) payload.description = values.description.trim();
-        if (values.requesterRefId?.trim()) payload.requesterRefId = values.requesterRefId.trim();
+        const requesterRefId =
+          values.requesterType === TicketRequesterType.SUBSCRIBER
+            ? (subscriber?.id ?? values.requesterRefId?.trim())
+            : values.requesterRefId?.trim();
+        if (requesterRefId) payload.requesterRefId = requesterRefId;
         if (values.subjectType)
           payload.subjectType = values.subjectType as CreateAssuranceTicketDto['subjectType'];
         if (values.subjectRefId?.trim()) payload.subjectRefId = values.subjectRefId.trim();
@@ -195,17 +268,70 @@ export function AssuranceCreateTicketForm({
               label="Tipo de solicitante"
               value={field.value}
               options={ASSURANCE_REQUESTER_TYPE_OPTIONS}
-              onChange={(event) => field.onChange(event.target.value)}
+              disabled={Boolean(subscriber)}
+              onChange={(event) => {
+                const nextType = event.target.value as TicketRequesterType;
+                field.onChange(nextType);
+                setValue(
+                  'requesterRefId',
+                  nextType === TicketRequesterType.SUBSCRIBER ? (subscriber?.id ?? '') : '',
+                  { shouldDirty: true, shouldValidate: false },
+                );
+                setSelectedSubscriberItem(null);
+                clearErrors('requesterRefId');
+              }}
               error={errors.requesterType?.message ?? ''}
             />
           )}
         />
-        <Input
-          label="Referencia del solicitante"
-          placeholder="Ej. subscriber-001"
-          error={errors.requesterRefId?.message}
-          {...register('requesterRefId')}
-        />
+        {requesterType === TicketRequesterType.SUBSCRIBER ? (
+          subscriber ? (
+            <Input
+              label="Suscriptor"
+              value={subscriber.label}
+              readOnly
+              helperText={subscriber.sublabel ?? undefined}
+            />
+          ) : (
+            <div className="space-y-1">
+              <SearchablePicker
+                id="assurance-ticket-subscriber"
+                label="Suscriptor"
+                resource={{ singular: 'suscriptor', plural: 'suscriptores' }}
+                value={watch('requesterRefId') || null}
+                selectedItem={selectedSubscriberItem}
+                onChange={(item) => {
+                  setValue('requesterRefId', item?.id ?? '', {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setSelectedSubscriberItem(item);
+                }}
+                onSearch={searchSubscribers}
+                placeholder="Nombre, razón social o NIT"
+                labels={{
+                  empty: () => 'No hay suscriptores que coincidan',
+                  error: () => 'No fue posible cargar suscriptores',
+                }}
+              />
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Busca y selecciona el suscriptor al que quedará vinculado este ticket
+              </p>
+              {errors.requesterRefId?.message && (
+                <p className="text-xs text-red-600 dark:text-red-400" role="alert">
+                  {errors.requesterRefId.message}
+                </p>
+              )}
+            </div>
+          )
+        ) : (
+          <Input
+            label="Referencia del solicitante"
+            placeholder="Ej. subscriber-001"
+            error={errors.requesterRefId?.message}
+            {...register('requesterRefId')}
+          />
+        )}
       </div>
 
       <Input
@@ -270,25 +396,26 @@ export function AssuranceCreateTicketForm({
         />
       </div>
 
-      {watch('fieldDecision') === TicketFieldDecision.FIELD_SERVICE_REQUIRED && (
-        <Controller
-          name="followUpAction"
-          control={control}
-          render={({ field }) => (
-            <Select
-              id="assurance-follow-up-action"
-              label="Siguiente paso"
-              value={field.value}
-              options={[
-                { value: 'schedule-now', label: 'Agendar ahora' },
-                { value: 'send-to-pending', label: 'Enviar a pendientes' },
-                { value: 'ticket-only', label: 'Crear ticket sin visita todavía' },
-              ]}
-              onChange={(event) => field.onChange(event.target.value)}
-            />
-          )}
-        />
-      )}
+      {watch('fieldDecision') === TicketFieldDecision.FIELD_SERVICE_REQUIRED &&
+        allowWfmFollowUp && (
+          <Controller
+            name="followUpAction"
+            control={control}
+            render={({ field }) => (
+              <Select
+                id="assurance-follow-up-action"
+                label="Siguiente paso"
+                value={field.value}
+                options={[
+                  { value: 'schedule-now', label: 'Agendar ahora' },
+                  { value: 'send-to-pending', label: 'Enviar a pendientes' },
+                  { value: 'ticket-only', label: 'Crear ticket sin visita todavía' },
+                ]}
+                onChange={(event) => field.onChange(event.target.value)}
+              />
+            )}
+          />
+        )}
 
       <div>
         <label

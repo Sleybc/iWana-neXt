@@ -128,6 +128,13 @@ export class AssuranceController {
   @ApiOperation({ summary: 'Listar tickets del tenant' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiQuery({
+    name: 'subscriberId',
+    required: false,
+    type: String,
+    format: 'uuid',
+    description: 'Limita los tickets al suscriptor y a sus contratos.',
+  })
   listTickets(
     @Query(new ZodValidationPipe(ListTicketsQuerySchema)) query: ListTicketsQueryDto,
     @CurrentUser() actor: JwtPayload,

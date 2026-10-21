@@ -12,6 +12,8 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 import { WfmController } from '../wfm.controller';
 import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
@@ -213,6 +215,10 @@ describe('WfmController tenant isolation', () => {
           },
         },
         ScheduleEventsService,
+        {
+          provide: CrmSubscriberReadPort,
+          useValue: { findExpedienteId: jest.fn().mockResolvedValue(null) },
+        },
         { provide: DataSource, useValue: {} },
         {
           provide: ScheduleConflictService,
@@ -235,8 +241,12 @@ describe('WfmController tenant isolation', () => {
         { provide: OperatingWindowResolverService, useValue: { resolve: jest.fn() } },
         JwtAuthGuard,
         RolesGuard,
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
       ],
-    }).compile();
+    })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -252,7 +262,7 @@ describe('WfmController tenant isolation', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
   });
 
   beforeEach(() => {

@@ -13,6 +13,7 @@ import { ScheduleConflictService } from './schedule-conflict.service';
 import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 import { EXECUTION_ORDER_SCHEDULING_PORT } from '../../tasks/ports/execution-order-scheduling.port';
 import {
   UserRole,
@@ -181,6 +182,10 @@ describe('VisitRequestsService — remediación auditoría MOD09 (B1/B4)', () =>
             findDisplayNameByShortCode: jest.fn().mockResolvedValue(null),
             findDisplayNamesByIds: jest.fn().mockResolvedValue(new Map()),
           },
+        },
+        {
+          provide: CrmSubscriberReadPort,
+          useValue: { findExpedienteId: jest.fn().mockResolvedValue(null) },
         },
         { provide: UsersService, useValue: usersService },
         {

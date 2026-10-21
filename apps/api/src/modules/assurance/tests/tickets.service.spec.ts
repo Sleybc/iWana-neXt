@@ -75,6 +75,7 @@ describe('TicketsService', () => {
   let pqrService: jest.Mocked<PqrService>;
   let timelineService: jest.Mocked<TimelineService>;
   let fieldServicePort: jest.Mocked<AssuranceFieldServicePort>;
+  let crmSubscriberReadPort: { listContractIds: jest.Mock };
 
   const actor: JwtPayload = {
     sub: 'support-001',
@@ -126,6 +127,7 @@ describe('TicketsService', () => {
     fieldServicePort = {
       requestFieldService: jest.fn().mockResolvedValue(undefined),
     } as jest.Mocked<AssuranceFieldServicePort>;
+    crmSubscriberReadPort = { listContractIds: jest.fn().mockResolvedValue([]) };
 
     service = new TicketsService(
       {} as DataSource,
@@ -133,7 +135,21 @@ describe('TicketsService', () => {
       pqrService,
       timelineService,
       fieldServicePort,
+      crmSubscriberReadPort as never,
     );
+  });
+
+  it('acepta subscriberId solo como UUID opcional en el listado', () => {
+    const subscriberId = '11111111-1111-4111-8111-111111111111';
+
+    expect(ListTicketsQuerySchema.safeParse({ subscriberId })).toMatchObject({
+      success: true,
+      data: { subscriberId },
+    });
+    expect(ListTicketsQuerySchema.safeParse({ subscriberId: 'subscriber-001' }).success).toBe(
+      false,
+    );
+    expect(ListTicketsQuerySchema.safeParse({}).success).toBe(true);
   });
 
   it('creates a typed ticket with requester and subject references', async () => {
@@ -447,6 +463,31 @@ describe('TicketsService', () => {
       for (const forbidden of SLA_CASE_FORBIDDEN_MARKERS) {
         expect(caseExpr).not.toContain(forbidden);
       }
+    });
+
+    it('obtiene contratos por el puerto CRM usando el tenant y schema del contexto', async () => {
+      const subscriberId = '11111111-1111-4111-8111-111111111111';
+      crmSubscriberReadPort.listContractIds.mockResolvedValue([
+        '22222222-2222-4222-8222-222222222222',
+      ]);
+      mockListQueryBuilder({});
+
+      await service.list({ subscriberId, page: 1, limit: 20 }, adminActor);
+
+      expect(crmSubscriberReadPort.listContractIds).toHaveBeenCalledTimes(1);
+      expect(crmSubscriberReadPort.listContractIds).toHaveBeenCalledWith(
+        'tenant-001',
+        'tenant_001',
+        subscriberId,
+      );
+    });
+
+    it('no consulta al puerto CRM cuando el listado no filtra por suscriptor', async () => {
+      mockListQueryBuilder({});
+
+      await service.list({ page: 1, limit: 20 }, adminActor);
+
+      expect(crmSubscriberReadPort.listContractIds).not.toHaveBeenCalled();
     });
 
     it.each(SLA_CASE_STATUS_VARIANTS)(

@@ -11,11 +11,14 @@ import {
 } from '@iwana/db';
 import { ASSURANCE_FIELD_SERVICE_QUEUE } from '@iwana/shared';
 import { WfmModule } from '../wfm/wfm.module';
+import { SubscribersModule } from '../crm/subscribers/subscribers.module';
 import { AssuranceController } from './assurance.controller';
 import { AccessControlModule } from '../access-control/access-control.module';
 import { AssuranceExecutionOrderNotifierAdapter } from './ports/assurance-execution-order-notifier.adapter';
 import { AssuranceFieldServiceAdapter } from './ports/assurance-field-service.adapter';
 import { AssuranceFieldServicePort } from './ports/assurance-field-service.port';
+import { AssuranceSubscriberTicketLinksReadAdapter } from './ports/assurance-subscriber-ticket-links-read.adapter';
+import { AssuranceSubscriberTicketLinksReadPort } from './ports/assurance-subscriber-ticket-links-read.port';
 import { ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT } from '../tasks/ports/assurance-execution-order-notifier.port';
 import { AssuranceDashboardService } from './services/assurance-dashboard.service';
 import { CommentsService } from './services/comments.service';
@@ -27,6 +30,7 @@ import { TimelineService } from './services/timeline.service';
 @Module({
   imports: [
     forwardRef(() => WfmModule),
+    SubscribersModule,
     TypeOrmModule.forFeature([
       SupportTicket,
       TicketComment,
@@ -49,6 +53,10 @@ import { TimelineService } from './services/timeline.service';
     PqrService,
     AssuranceDashboardService,
     {
+      provide: AssuranceSubscriberTicketLinksReadPort,
+      useClass: AssuranceSubscriberTicketLinksReadAdapter,
+    },
+    {
       provide: AssuranceFieldServicePort,
       useClass: AssuranceFieldServiceAdapter,
     },
@@ -57,6 +65,6 @@ import { TimelineService } from './services/timeline.service';
       useClass: AssuranceExecutionOrderNotifierAdapter,
     },
   ],
-  exports: [ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT],
+  exports: [ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT, AssuranceSubscriberTicketLinksReadPort],
 })
 export class AssuranceModule {}

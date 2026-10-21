@@ -40,6 +40,16 @@ export class ListScheduleEventsQueryDto {
   @IsUUID()
   expedienteId?: string;
 
+  @ApiPropertyOptional({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    format: 'uuid',
+    description:
+      'Filtrar por suscriptor vinculado directamente o por su expediente CRM; excluye eventos originados en tickets',
+  })
+  @IsOptional()
+  @IsUUID()
+  subscriberId?: string;
+
   @ApiPropertyOptional({ enum: WfmWorkType, description: 'Filtrar por tipo de trabajo' })
   @IsOptional()
   @IsEnum(WfmWorkType)

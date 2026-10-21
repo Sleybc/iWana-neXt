@@ -58,6 +58,7 @@ import { OperatingWindowResolverService } from './operating-window-resolver.serv
 import { ScheduleConflictService } from './schedule-conflict.service';
 import { assertScheduleStartNotInPast } from './schedule-past-guard';
 import { WorkOrdersService } from './work-orders.service';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 
 /** Roles restringidos — solo ven sus propios eventos. */
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
@@ -133,6 +134,8 @@ export class ScheduleEventsService {
     private readonly operatingWindowResolver: OperatingWindowResolverService,
     private readonly conflictService: ScheduleConflictService,
     private readonly workOrdersService: WorkOrdersService,
+    @Inject(CrmSubscriberReadPort)
+    private readonly crmSubscriberReadPort: CrmSubscriberReadPort,
     @Optional()
     @Inject(EXECUTION_ORDER_SCHEDULING_PORT)
     private readonly executionOrdersService?: ExecutionOrderSchedulingPort,
@@ -174,6 +177,9 @@ export class ScheduleEventsService {
     actor: JwtPayload,
   ): Promise<ListResponse<ScheduleEvent>> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const subscriberExpedienteId = query.subscriberId
+      ? await this.crmSubscriberReadPort.findExpedienteId(tenantId, schemaName, query.subscriberId)
+      : null;
     const cappedLimit = clampLimit(query.limit);
     const { page, limit } = clampPage(query.page ?? 1, cappedLimit);
 
@@ -208,6 +214,20 @@ export class ScheduleEventsService {
       }
       if (query.expedienteId) {
         qb.andWhere('se.expediente_id = :expedienteId', { expedienteId: query.expedienteId });
+      }
+      if (query.subscriberId) {
+        if (subscriberExpedienteId) {
+          qb.andWhere(
+            '(se.subscriber_id = :subscriberId OR se.expediente_id = :subscriberExpedienteId)',
+            {
+              subscriberId: query.subscriberId,
+              subscriberExpedienteId,
+            },
+          );
+        } else {
+          qb.andWhere('se.subscriber_id = :subscriberId', { subscriberId: query.subscriberId });
+        }
+        qb.andWhere('se.ticket_id IS NULL');
       }
       if (query.type) {
         qb.andWhere('se.type = :type', { type: query.type });

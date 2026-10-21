@@ -2,7 +2,7 @@
 
 **Versión:** 1.0 · **Fecha:** 2026-10-20 · **Emisor:** AI-EM-ARCH · **Estado:** Contrato congelado; G0 aprobado por el CTO el 2026-10-20 (D-E6-1 A (composición en el portal con el permiso de cada módulo), D-E6-2 tres vías de vínculo del ticket, D-E6-3 visitas por subscriber_id o expediente, D-E6-4 OT fuera, D-E6-5 solo informar y D-E6-6 incluir el buscador del formulario de MOD10; [PRD Fase 07](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-07-v1.0.md) §9.1)
 **Plan:** [2026-10-20-mod05-pestana-soporte.md](../plans/2026-10-20-mod05-pestana-soporte.md)
-**Base:** `main` en `b6c50fef`. Última migración tenant: `158`. Se trabaja en `main`, sin ramas. **Ningún agente commitea**: lo hace AI-EM-ARCH en G7.
+**Base:** `main` en `90b05217`. Última migración tenant: `158`. Se trabaja en `main`, sin ramas. **Ningún agente commitea**: lo hace AI-EM-ARCH en G7.
 
 ## 0. Reglas comunes
 

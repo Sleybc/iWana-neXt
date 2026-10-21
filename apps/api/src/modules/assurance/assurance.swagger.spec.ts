@@ -74,6 +74,16 @@ describe('AssuranceController Swagger', () => {
 
     expect(listTickets).toBeDefined();
     expect(listTickets?.summary).toBe('Listar tickets del tenant');
+    expect(listTickets?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'subscriberId',
+          in: 'query',
+          required: false,
+          schema: expect.objectContaining({ type: 'string', format: 'uuid' }),
+        }),
+      ]),
+    );
 
     expect(createTicket).toBeDefined();
     expect(createTicket?.summary).toBe('Crear ticket de service assurance');

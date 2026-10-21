@@ -87,6 +87,7 @@ describe('Assurance tenant isolation', () => {
       {
         requestFieldService: jest.fn(),
       } as AssuranceFieldServicePort,
+      { listContractIds: jest.fn().mockResolvedValue([]) } as never,
     );
   });
 

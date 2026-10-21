@@ -3,7 +3,7 @@
 **Fecha:** 2026-10-20 · **Versión:** 1.0 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Definición:** [PRD-MOD05-CRM-SUBSCRIBERS-FASE-07-v1.0.md](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-07-v1.0.md) (Aprobado, 2026-10-20)
 **Prompt:** [PROMPT-MOD05-PESTANA-SOPORTE-v1.0.md](../prompts/PROMPT-MOD05-PESTANA-SOPORTE-v1.0.md) · **Launcher:** [PROMPT-MOD05-PESTANA-SOPORTE-LAUNCH-v1.0.md](../prompts/PROMPT-MOD05-PESTANA-SOPORTE-LAUNCH-v1.0.md)
-**Base:** `main` en `b6c50fef`. Se trabaja en `main`, sin ramas. Última migración tenant: `158`.
+**Base al arrancar:** `main` en `90b05217`. Se trabaja en `main`, sin ramas. Última migración tenant: `158`.
 
 ## 0. Alcance
 

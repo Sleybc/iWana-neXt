@@ -205,6 +205,7 @@ describeWithDb('MOD11 E3 — vinculación de OT desde agenda en PostgreSQL real'
       {} as never,
       new ScheduleConflictService(dataSource),
       {} as never,
+      { findExpedienteId: jest.fn().mockResolvedValue(null) } as never,
       executionOrders,
     );
   });

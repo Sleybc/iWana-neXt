@@ -931,7 +931,16 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
     const consentVersion = await publishedConsentVersion(page, session);
     const prospect = await createProspect(page, session, consentVersion);
     const party = await convertToParty(page, session, prospect);
-    await api(page, session, session.admin, 'POST', `/crm/contracts/${party.contractId}/terminate`);
+    await api(
+      page,
+      session,
+      session.admin,
+      'POST',
+      `/crm/contracts/${party.contractId}/terminate`,
+      {
+        reasonCode: 'SOLICITUD_TITULAR',
+      },
+    );
     const documentVersionId = await uploadSyntheticDocument(page, session, party);
     const request = await filePrivacyRequest(page, session, party, party.partyId);
 

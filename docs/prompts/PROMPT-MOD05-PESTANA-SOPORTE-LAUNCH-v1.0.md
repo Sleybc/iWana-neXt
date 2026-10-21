@@ -2,7 +2,7 @@
 
 **Plan:** `docs/plans/2026-10-20-mod05-pestana-soporte.md` v1.0 · **PRD:** `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-07-v1.0.md` v1.0
 **Olas:** 1 (P0 ∥ B0) → 2 (B1 ∥ B2 ∥ B3 tras S1; F1 ∥ F2 tras S2+S3) → 3 (V1 ∥ V2 ∥ V3 ∥ V4 → V5) → G7 · **Gate previo:** G0 (D-E6-1..6) aprobado el 2026-10-20
-**Bloqueos abiertos:** ninguno. Estado al arrancar: `main` en `b6c50fef`; última migración tenant 158; E2E portal bloqueante y sin cuarentenas.
+**Bloqueos abiertos:** ninguno. Estado al arrancar: `main` en `90b05217`; última migración tenant 158; E2E portal bloqueante y sin cuarentenas.
 
 | # | Subagente | Encargo | Skills a leer antes de codificar | Contrato congelado |
 | --- | --- | --- | --- | --- |

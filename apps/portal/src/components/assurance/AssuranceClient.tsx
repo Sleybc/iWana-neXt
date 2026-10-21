@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@iwana/ui';
-import { UserRole, TicketFieldDecision } from '@iwana/shared';
+import { AccessPermissionKey, UserRole, TicketFieldDecision } from '@iwana/shared';
 import type { ListMeta } from '@iwana/shared';
 import type {
   AddAssuranceCommentDto,
@@ -40,6 +40,7 @@ import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-m
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/components/access-control/permissions-context';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -122,6 +123,8 @@ function AssuranceSkeleton() {
 function AssuranceClientInner() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageWfmSchedule = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
   const outOfRangeShownRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
 
@@ -671,6 +674,7 @@ function AssuranceClientInner() {
             <AssuranceCreateTicketForm
               assignees={assignees}
               slaPolicies={slaPolicies}
+              allowWfmFollowUp={canManageWfmSchedule}
               error={createError}
               isSubmitting={isCreateSubmitting}
               onCancel={() => setIsCreateOpen(false)}
@@ -683,7 +687,8 @@ function AssuranceClientInner() {
 
                   if (
                     ticket.fieldDecision !== TicketFieldDecision.FIELD_SERVICE_REQUIRED ||
-                    followUpAction === 'ticket-only'
+                    followUpAction === 'ticket-only' ||
+                    !canManageWfmSchedule
                   ) {
                     setIsCreateOpen(false);
                     setFeedback(

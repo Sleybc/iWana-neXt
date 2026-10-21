@@ -8,7 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, QueryFailedError } from 'typeorm';
+import { Brackets, DataSource, EntityManager, In, QueryFailedError } from 'typeorm';
 import {
   SupportTicket,
   TenantContext,
@@ -56,6 +56,7 @@ import { FieldServiceWorkPort } from '../ports/field-service-work.port';
 import { PqrService } from './pqr.service';
 import { AT_RISK_THRESHOLD_RATIO, SlaService } from './sla.service';
 import { TimelineService } from './timeline.service';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 
 const RESTRICTED_ROLES: UserRole[] = [UserRole.TECHNICIAN, UserRole.CONTRACTOR];
 const TICKET_NUMBER_RETRY_LIMIT = 3;
@@ -136,6 +137,8 @@ export class TicketsService {
     private readonly pqrService: PqrService,
     private readonly timelineService: TimelineService,
     private readonly fieldServicePort: AssuranceFieldServicePort,
+    @Inject(CrmSubscriberReadPort)
+    private readonly crmSubscriberReadPort: CrmSubscriberReadPort,
     @Optional()
     @Inject(FieldServiceWorkPort)
     private readonly fieldServiceWorkPort?: FieldServiceWorkPort,
@@ -283,6 +286,13 @@ export class TicketsService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const validated = ListTicketsQuerySchema.parse(query);
     const { page, limit } = clampPage(validated.page, validated.limit);
+    const subscriberContractIds = validated.subscriberId
+      ? await this.crmSubscriberReadPort.listContractIds(
+          tenantId,
+          schemaName,
+          validated.subscriberId,
+        )
+      : [];
 
     // CASE espejo de SlaService.deriveBreachStatus (DEF-2 D-1 / ADR-065 DEF-4).
     // Emite solo literales SlaBreachStatus sobre columnas reales — nunca sla_due_at.
@@ -360,6 +370,38 @@ export class TicketsService {
         qb.andWhere('st.requester_ref_id = :requesterRefId', {
           requesterRefId: validated.requesterRefId,
         });
+      }
+
+      if (validated.subscriberId) {
+        qb.andWhere(
+          new Brackets((subscriberQuery) => {
+            subscriberQuery
+              .where(
+                '(st.requester_type = :subscriberRequesterType AND st.requester_ref_id = :subscriberId)',
+                {
+                  subscriberRequesterType: TicketRequesterType.SUBSCRIBER,
+                  subscriberId: validated.subscriberId,
+                },
+              )
+              .orWhere(
+                '(st.subject_type = :subscriberSubjectType AND st.subject_ref_id = :subscriberId)',
+                {
+                  subscriberSubjectType: TicketSubjectType.SUBSCRIBER,
+                  subscriberId: validated.subscriberId,
+                },
+              );
+
+            if (subscriberContractIds.length > 0) {
+              subscriberQuery.orWhere(
+                '(st.subject_type = :contractSubjectType AND st.subject_ref_id IN (:...subscriberContractIds))',
+                {
+                  contractSubjectType: TicketSubjectType.CONTRACT,
+                  subscriberContractIds,
+                },
+              );
+            }
+          }),
+        );
       }
 
       // Bajar filtro slaBreachStatus al WHERE (DEF-4)

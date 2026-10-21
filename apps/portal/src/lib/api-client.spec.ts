@@ -455,6 +455,48 @@ describe('usersApi.list', () => {
   });
 });
 
+describe('subscriberId query serialization across support lists', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('sends subscriberId in Assurance tickets and WFM visit/event list requests', async () => {
+    const fetchMock = jest.fn(async (_input: RequestInfo | URL) =>
+      createJsonResponse(200, {
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+      }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { assuranceApi, wfmApi } = await import('./api-client');
+    const subscriberId = 'd4d65035-f6c2-4afd-95f2-cc12f00a4cc9';
+
+    await assuranceApi.tickets.list({ subscriberId }, 'isp-demo');
+    await wfmApi.visitRequests.list({ subscriberId }, 'isp-demo');
+    await wfmApi.events.list({ subscriberId }, 'isp-demo');
+
+    const requestedPaths = fetchMock.mock.calls.map(([input]) => {
+      const url = new URL(String(input), 'http://portal.local');
+      return `${url.pathname}${url.search}`;
+    });
+    expect(requestedPaths).toEqual([
+      `/api/v1/assurance/tickets?subscriberId=${subscriberId}`,
+      `/api/v1/wfm/visit-requests?subscriberId=${subscriberId}`,
+      `/api/v1/wfm/events?subscriberId=${subscriberId}`,
+    ]);
+  });
+});
+
 describe('tasksApi execution order payloads', () => {
   beforeEach(() => {
     jest.resetModules();

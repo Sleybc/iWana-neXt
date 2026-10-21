@@ -8,6 +8,7 @@ import { ScheduleConflictService } from './schedule-conflict.service';
 import { OperatingWindowResolverService } from './operating-window-resolver.service';
 import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 import { EXECUTION_ORDER_SCHEDULING_PORT } from '../../tasks/ports/execution-order-scheduling.port';
 import {
   PlatformRole,
@@ -89,6 +90,7 @@ describe('VisitRequestsService', () => {
   let operatingWindowResolver: { resolveWithManager: jest.Mock };
   let usersService: { findAll: jest.Mock };
   let executionOrdersService: { createFromSchedulingWithManager: jest.Mock };
+  let crmSubscriberReadPort: { findExpedienteId: jest.Mock };
 
   beforeEach(async () => {
     jest.useFakeTimers({ advanceTimers: true });
@@ -137,6 +139,9 @@ describe('VisitRequestsService', () => {
     executionOrdersService = {
       createFromSchedulingWithManager: jest.fn(),
     };
+    crmSubscriberReadPort = {
+      findExpedienteId: jest.fn().mockResolvedValue(null),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -148,6 +153,7 @@ describe('VisitRequestsService', () => {
         { provide: WorkOrdersService, useValue: workOrdersService },
         { provide: ExpedienteService, useValue: expedienteService },
         { provide: UsersService, useValue: usersService },
+        { provide: CrmSubscriberReadPort, useValue: crmSubscriberReadPort },
         { provide: EXECUTION_ORDER_SCHEDULING_PORT, useValue: executionOrdersService },
       ],
     }).compile();
@@ -547,6 +553,33 @@ describe('VisitRequestsService', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('vr.expediente_id = :expedienteId', {
       expedienteId,
     });
+  });
+
+  it('filtra por suscriptor o expediente CRM y excluye las visitas originadas en tickets', async () => {
+    const subscriberId = '550e8400-e29b-41d4-a716-446655440011';
+    const expedienteId = '550e8400-e29b-41d4-a716-446655440012';
+    crmSubscriberReadPort.findExpedienteId.mockResolvedValue(expedienteId);
+    const qb = buildEntityQueryBuilder([], 0);
+    const manager = buildManager({ createQueryBuilder: jest.fn().mockReturnValue(qb) });
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schemaName, callback) =>
+      callback({ manager }),
+    );
+
+    await service.listVisitRequests(
+      { page: 1, limit: 20, subscriberId } as never,
+      { sub: 'admin-001', role: UserRole.ADMIN } as never,
+    );
+
+    expect(crmSubscriberReadPort.findExpedienteId).toHaveBeenCalledWith(
+      TENANT_CONTEXT.tenantId,
+      TENANT_CONTEXT.schemaName,
+      subscriberId,
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      '(vr.subscriber_id = :subscriberId OR vr.expediente_id = :subscriberExpedienteId)',
+      { subscriberId, subscriberExpedienteId: expedienteId },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith('vr.ticket_id IS NULL');
   });
 
   it('restringe listado de SALES a orígenes CRM', async () => {

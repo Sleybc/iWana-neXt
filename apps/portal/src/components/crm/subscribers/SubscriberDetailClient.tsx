@@ -23,6 +23,7 @@ import { SubscriberTabsContainer } from './SubscriberTabsContainer';
 import { TaxProfileBlock } from './TaxProfileBlock';
 import { ServiciosTab } from './ServiciosTab';
 import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
+import { SubscriberSupportTab } from './SubscriberSupportTab';
 import { CUSTOMER_SEGMENT_META, PERSON_TYPE_META, SUBSCRIBER_STATUS_META } from './subscriber-ui';
 
 interface SubscriberDetailClientProps {
@@ -42,7 +43,14 @@ function toSentenceCase(value: string): string {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-const SUBSCRIBER_TAB_IDS = ['vista-general', 'datos', 'tributario', 'servicios', 'cumplimiento'];
+const SUBSCRIBER_TAB_IDS = [
+  'vista-general',
+  'servicios',
+  'soporte',
+  'datos',
+  'tributario',
+  'cumplimiento',
+];
 const INITIAL_LOADING_SKELETON_DELAY_MS = 300;
 
 export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
@@ -367,6 +375,26 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         ),
       },
       {
+        id: 'servicios',
+        label: 'Servicios',
+        content: subscriber360 ? (
+          <ServiciosTab
+            subscriber360={subscriber360}
+            onReload={loadSubscriber}
+            onOpenLifecycle={(action, contractId) => {
+              setLifecycleAction(action);
+              setLifecycleContractId(contractId ?? null);
+              setLifecycleSuccess(null);
+            }}
+          />
+        ) : null,
+      },
+      {
+        id: 'soporte',
+        label: 'Soporte',
+        content: <SubscriberSupportTab subscriber={subscriber} />,
+      },
+      {
         id: 'datos',
         label: 'Datos',
         content: (
@@ -388,21 +416,6 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             onNavigateToServices={() => selectSubscriberTab('servicios')}
           />
         ),
-      },
-      {
-        id: 'servicios',
-        label: 'Servicios',
-        content: subscriber360 ? (
-          <ServiciosTab
-            subscriber360={subscriber360}
-            onReload={loadSubscriber}
-            onOpenLifecycle={(action, contractId) => {
-              setLifecycleAction(action);
-              setLifecycleContractId(contractId ?? null);
-              setLifecycleSuccess(null);
-            }}
-          />
-        ) : null,
       },
       {
         id: 'cumplimiento',

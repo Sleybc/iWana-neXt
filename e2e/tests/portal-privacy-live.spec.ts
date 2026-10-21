@@ -1,20 +1,44 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
-const tenantSlug = process.env.E2E_TENANT_SLUG;
-const auditorEmail = process.env.E2E_AUDITOR_EMAIL;
-const auditorPassword = process.env.E2E_AUDITOR_PASSWORD;
-const planId = process.env.E2E_PRIVACY_PLAN_ID;
+const privacyFixtureTenant = process.env.E2E_PRIVACY_1B_TENANT_SLUG;
+const privacyFixtureAdminEmail = process.env.E2E_PRIVACY_ADMIN_EMAIL;
+const privacyFixtureAdminPassword = process.env.E2E_PRIVACY_ADMIN_PASSWORD;
+const privacyFixtureSuffix = privacyFixtureTenant?.startsWith('e2e-privacy-1b-')
+  ? privacyFixtureTenant.slice('e2e-privacy-1b-'.length)
+  : null;
+const privacyRunnerEmail = privacyFixtureSuffix
+  ? `qa-privacy-runner-${privacyFixtureSuffix}@example.invalid`
+  : null;
+const privacyRunnerPassword =
+  privacyFixtureTenant && privacyFixtureAdminPassword && privacyFixtureSuffix
+    ? deriveFixturePassword(privacyFixtureAdminPassword, privacyFixtureTenant, 'runner')
+    : null;
+const usePrivacyFixture = Boolean(
+  privacyFixtureTenant && privacyFixtureAdminEmail && privacyRunnerEmail && privacyRunnerPassword,
+);
+const tenantSlug = usePrivacyFixture ? privacyFixtureTenant : process.env.E2E_TENANT_SLUG;
+const auditorEmail = usePrivacyFixture ? privacyRunnerEmail : process.env.E2E_AUDITOR_EMAIL;
+const auditorPassword = usePrivacyFixture
+  ? privacyRunnerPassword
+  : process.env.E2E_AUDITOR_PASSWORD;
+const configuredPlanId = process.env.E2E_PRIVACY_PLAN_ID;
 const missingLiveEnvironment = [
   !tenantSlug?.trim() ? 'E2E_TENANT_SLUG' : null,
   !auditorEmail?.trim() ? 'E2E_AUDITOR_EMAIL' : null,
   !auditorPassword?.trim() ? 'E2E_AUDITOR_PASSWORD' : null,
-  !planId?.trim() ? 'E2E_PRIVACY_PLAN_ID' : null,
 ].filter((name): name is string => name !== null);
 
 function requireFixture(value: string | undefined, name: string): string {
   if (!value) throw new Error(`Falta configurar ${name} en .env.development.local.`);
   return value;
+}
+
+function deriveFixturePassword(masterPassword: string, slug: string, purpose: string): string {
+  const digest = createHmac('sha256', masterPassword)
+    .update(`privacy-fase-1b:${purpose}:${slug}`)
+    .digest('hex');
+  return `Qa9-${digest}!zA`;
 }
 
 function tenantHeaders(): Record<string, string> {
@@ -58,7 +82,21 @@ async function authenticatePortal(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
-async function createExpedienteFixture(page: Page): Promise<{ id: string; suffix: string }> {
+async function resolvePlan(page: Page): Promise<{ id: string; name: string }> {
+  const catalog = await apiJson<{
+    data: Array<{ id: string; name: string }>;
+  }>(page, '/api/v1/commercial/catalog?type=PLAN&isActive=true&limit=100', 'GET');
+  const plan = catalog.data.find((item) => item.id === configuredPlanId) ?? catalog.data[0] ?? null;
+  if (!plan) {
+    throw new Error('El catálogo del tenant sintético no tiene planes activos para el E2E.');
+  }
+  return plan;
+}
+
+async function createExpedienteFixture(
+  page: Page,
+  planId: string,
+): Promise<{ id: string; suffix: string; planId: string }> {
   const suffix = randomUUID().slice(0, 8);
   const name = `Expediente Sintético E2E ${suffix}`;
   const email = `privacy-expediente-${suffix}@example.invalid`;
@@ -100,7 +138,7 @@ async function createExpedienteFixture(page: Page): Promise<{ id: string; suffix
   await updateSection('commercial_interest', {
     acquisitionChannel: 'WEB',
     sourceDetail: `Fixture E2E ${suffix}`,
-    interestedPlanId: requireFixture(planId, 'E2E_PRIVACY_PLAN_ID'),
+    interestedPlanId: planId,
   });
   await updateSection('technical_feasibility', {
     feasibility: 'VIABLE',
@@ -114,7 +152,7 @@ async function createExpedienteFixture(page: Page): Promise<{ id: string; suffix
     legalComplianceStatus: 'APPROVED',
   });
 
-  return { id: newExpediente.id, suffix, email, subscriberName: `Prueba ${suffix}` };
+  return { id: newExpediente.id, suffix, email, planId, subscriberName: `Prueba ${suffix}` };
 }
 
 async function searchConvertedSubscriber(page: Page, email: string): Promise<string | null> {
@@ -133,7 +171,8 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
   partyId: string;
   subscriberName: string;
 }> {
-  const expediente = await createExpedienteFixture(page);
+  const plan = await resolvePlan(page);
+  const expediente = await createExpedienteFixture(page, plan.id);
   await page.goto(`/dashboard/crm/expedientes/${expediente.id}`);
   await expect(page.getByRole('heading', { name: 'Consentimientos (Ley 1581)' })).toBeVisible();
   await expect(page.getByText('Texto vigente · versión', { exact: false })).toBeVisible();
@@ -179,19 +218,20 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
     convertedProfile.habeasData.some((authorization) => authorization.channel === 'TELEFONO'),
   ).toBe(true);
 
-  const plan = await apiJson<{ name: string }>(
-    page,
-    `/api/v1/commercial/catalog/${requireFixture(planId, 'E2E_PRIVACY_PLAN_ID')}`,
-    'GET',
-  );
+  // El alta del contrato exige los datos fiscales mínimos de persona natural.
+  await apiJson(page, `/api/v1/crm/subscribers/${subscriberId}`, 'PATCH', {
+    vatResponsibility: 'NO_RESPONSABLE',
+    rutResponsibilities: ['R-99-PN'],
+  });
+
   const contract = await apiJson<{ id: string }>(
     page,
     `/api/v1/crm/subscribers/${subscriberId}/contracts`,
     'POST',
     {
       subscriberId,
-      planId,
-      planSnapshotJson: { id: planId, name: plan.name, vatConcept: 'INTERNET_ACCESS' },
+      planId: expediente.planId,
+      planSnapshotJson: { id: expediente.planId, name: plan.name, vatConcept: 'INTERNET_ACCESS' },
       alias: 'Servicio E2E',
       serviceUsage: 'RESIDENTIAL',
       installationStratum: 3,

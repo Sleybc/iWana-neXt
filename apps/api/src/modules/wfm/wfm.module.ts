@@ -13,6 +13,7 @@ import {
 import { OrganizationModule } from '../organization/organization.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { ExpedientesModule } from '../crm/expedientes/expedientes.module';
+import { SubscribersModule } from '../crm/subscribers/subscribers.module';
 import { UsersModule } from '../users/users.module';
 import { ExecutionOrderSchedulingModule } from '../tasks/execution-order-scheduling.module';
 import { WfmController } from './wfm.controller';
@@ -36,6 +37,7 @@ import { WfmOrganizationSitesAdapter } from './services/wfm-organization-sites.a
 import { FieldServiceWorkAdapter } from './ports/field-service-work.adapter';
 import { FieldServiceWorkPort } from '../assurance/ports/field-service-work.port';
 import { WfmPrivacyModule } from './privacy/wfm-privacy.module';
+import { AccessControlModule } from '../access-control/access-control.module';
 
 /**
  * Modulo WFM — Fase 01: Agenda, Work Orders y disponibilidad de tecnicos.
@@ -47,11 +49,13 @@ import { WfmPrivacyModule } from './privacy/wfm-privacy.module';
     TenantModule,
     OrganizationModule,
     ExpedientesModule,
+    SubscribersModule,
     UsersModule,
     // Puerto tipado MOD09→MOD11 (ADR-047): módulo fino sin AssuranceModule,
     // evita el ciclo Health → Tasks → Assurance → Wfm → Tasks.
     ExecutionOrderSchedulingModule,
     WfmPrivacyModule,
+    AccessControlModule,
     TypeOrmModule.forFeature([
       NonRealizationCause,
       ScheduleEvent,

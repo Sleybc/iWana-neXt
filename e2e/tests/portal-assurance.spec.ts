@@ -25,6 +25,7 @@ async function assertTenantHeader(route: import('@playwright/test').Route) {
 }
 const SUPPORT_USER_ID = '11111111-1111-4111-8111-111111111111';
 const ASSIGNEE_ID = '22222222-2222-4222-8222-222222222222';
+const SUBSCRIBER_ID = '44444444-4444-4444-8444-444444444444';
 const WORK_ORDER_ID = '33333333-3333-4333-8333-333333333333';
 
 function buildToken(): string {
@@ -103,7 +104,11 @@ async function seedPortalSession(page: import('@playwright/test').Page) {
   await mockEffectivePermissions(page, {
     userId: SUPPORT_USER_ID,
     role: 'SUPPORT',
-    effectivePermissions: ['assurance.tickets.read', 'assurance.tickets.manage'],
+    effectivePermissions: [
+      'assurance.tickets.read',
+      'assurance.tickets.manage',
+      'crm.subscribers.read',
+    ],
   });
 }
 
@@ -316,6 +321,32 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (pathname.endsWith('/crm/subscribers/search') && method === 'POST') {
+      await assertTenantHeader(route);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: SUBSCRIBER_ID,
+              personType: 'NATURAL',
+              commercialName: null,
+              businessName: null,
+              firstName: 'Ada',
+              lastName: 'Sintética',
+              city: 'Bogotá',
+              email: null,
+              documentNumber: null,
+            },
+          ],
+          total: 1,
+          meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+        }),
+      });
+      return;
+    }
+
     if (pathname.endsWith(`/users/${SUPPORT_USER_ID}`) && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -382,6 +413,8 @@ async function setupAssuranceMocks(page: import('@playwright/test').Page) {
       const payload = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
       expect(payload).toHaveProperty('type');
       expect(payload).toHaveProperty('subject');
+      expect(payload.requesterType).toBe('SUBSCRIBER');
+      expect(payload.requesterRefId).toBe(SUBSCRIBER_ID);
       const ticketId = `ticket-${tickets.length + 1}`;
       const ticket: MockTicket = {
         id: ticketId,
@@ -584,8 +617,10 @@ test('support can create, comment, escalate to field service and resolve a ticke
   await page.getByRole('button', { name: 'Nuevo ticket' }).first().click();
 
   await expect(page.getByRole('heading', { name: 'Crear ticket' })).toBeVisible();
+  const subscriberPicker = page.getByRole('combobox', { name: 'Suscriptor' });
+  await subscriberPicker.fill('Ada');
+  await page.getByRole('option', { name: 'Ada Sintética — Bogotá' }).click();
   await page.getByLabel('Asunto operativo').fill('Intermitencia de acceso en sede principal');
-  await page.getByLabel('Referencia del solicitante').fill('subscriber-001');
   await page.getByLabel('Referencia del objeto').fill('service-001');
   await page.getByRole('button', { name: 'Crear ticket' }).click();
 

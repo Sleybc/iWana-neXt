@@ -3056,6 +3056,7 @@ export interface ListAssuranceTicketsParams {
   slaBreachStatus?: SlaBreachStatus | undefined;
   queueName?: TicketQueue | undefined;
   requesterRefId?: string | undefined;
+  subscriberId?: string | undefined;
   assignedUserId?: string | undefined;
   page?: number | undefined;
   limit?: number | undefined;
@@ -3103,6 +3104,7 @@ export const assuranceApi = {
       if (params?.slaBreachStatus) searchParams.set('slaBreachStatus', params.slaBreachStatus);
       if (params?.queueName) searchParams.set('queueName', params.queueName);
       if (params?.requesterRefId) searchParams.set('requesterRefId', params.requesterRefId);
+      if (params?.subscriberId) searchParams.set('subscriberId', params.subscriberId);
       if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.limit) searchParams.set('limit', String(params.limit));
@@ -3360,6 +3362,7 @@ export interface ListWfmScheduleEventsParams {
   to?: string | undefined;
   assignedUserId?: string | undefined;
   expedienteId?: string | undefined;
+  subscriberId?: string | undefined;
   type?: WfmWorkType | undefined;
   status?: ScheduleEventStatus | undefined;
   municipality?: string | undefined;
@@ -3515,6 +3518,7 @@ export interface ListWfmVisitRequestsParams {
   originRef?: string | undefined;
   /** Filtro por expediente CRM (columna dedicada; complementa originRef). */
   expedienteId?: string | undefined;
+  subscriberId?: string | undefined;
   from?: string | undefined;
   to?: string | undefined;
   page?: number | undefined;
@@ -4029,6 +4033,7 @@ export const wfmApi = {
       if (params?.sector) searchParams.set('sector', params.sector);
       if (params?.originRef) searchParams.set('originRef', params.originRef);
       if (params?.expedienteId) searchParams.set('expedienteId', params.expedienteId);
+      if (params?.subscriberId) searchParams.set('subscriberId', params.subscriberId);
       if (params?.from) searchParams.set('from', params.from);
       if (params?.to) searchParams.set('to', params.to);
       if (params?.page !== undefined) searchParams.set('page', String(params.page));
@@ -4115,6 +4120,7 @@ export const wfmApi = {
       if (params?.to) searchParams.set('to', params.to);
       if (params?.assignedUserId) searchParams.set('assignedUserId', params.assignedUserId);
       if (params?.expedienteId) searchParams.set('expedienteId', params.expedienteId);
+      if (params?.subscriberId) searchParams.set('subscriberId', params.subscriberId);
       if (params?.type) searchParams.set('type', params.type);
       if (params?.status) searchParams.set('status', params.status);
       if (params?.municipality) searchParams.set('municipality', params.municipality);

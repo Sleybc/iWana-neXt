@@ -11,6 +11,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { WfmController } from '../wfm.controller';
 import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
@@ -133,10 +134,14 @@ describe('Wfm organization sites HTTP', () => {
         { provide: WfmTenantSettingsReadPort, useValue: {} },
         { provide: OperatingWindowResolverService, useValue: {} },
         { provide: WfmOrganizationSitesReadPort, useValue: wfmOrganizationSitesReadPortMock },
+        { provide: PermissionsGuard, useValue: { canActivate: () => true } },
         JwtAuthGuard,
         RolesGuard,
       ],
-    }).compile();
+    })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -151,7 +156,7 @@ describe('Wfm organization sites HTTP', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
   });
 
   beforeEach(() => {

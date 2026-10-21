@@ -66,6 +66,45 @@ async function mockInventoryApis(page: import('@playwright/test').Page) {
       }),
     });
   });
+  await page.route('**/api/v1/tenants/me', async (route) => {
+    await assertTenantHeader(route);
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          id: 'tenant-inventory-001',
+          name: 'ISP Inventario Demo',
+          slug: MOCK_TENANT_SLUG,
+          status: 'ACTIVE',
+          contactEmail: 'tenant@inventory.example.test',
+          legalName: 'ISP Inventario Demo S.A.S.',
+          nit: '900123456',
+          nitDv: '1',
+          city: 'Bogotá',
+          department: 'Cundinamarca',
+          countryCode: 'CO',
+          phone: null,
+          website: null,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          logoLightUrl: null,
+          logoLightAssetId: null,
+          logoDarkUrl: null,
+          logoDarkAssetId: null,
+          sealLightUrl: null,
+          sealLightAssetId: null,
+          sealDarkUrl: null,
+          sealDarkAssetId: null,
+          faviconLightUrl: null,
+          faviconLightAssetId: null,
+          faviconDarkUrl: null,
+          faviconDarkAssetId: null,
+          loginBackgroundLightUrl: null,
+          loginBackgroundDarkUrl: null,
+        },
+      }),
+    });
+  });
   await page.route('**/api/v1/tenants/public-branding*', async (route) => {
     await route.fulfill({
       status: 200,

@@ -322,6 +322,28 @@ describe('AssuranceController HTTP', () => {
       });
   });
 
+  it('passes the validated subscriberId filter to Assurance ticket listing', async () => {
+    const subscriberId = '11111111-1111-4111-8111-111111111111';
+    ticketsServiceMock.list.mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 } as never);
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/assurance/tickets?subscriberId=${subscriberId}`)
+      .set('Authorization', 'Bearer support-token')
+      .expect(200);
+
+    expect(ticketsServiceMock.list).toHaveBeenCalledWith(
+      expect.objectContaining({ subscriberId }),
+      expect.objectContaining({ sub: 'support-001' }),
+    );
+  });
+
+  it('rejects a non-UUID subscriberId at the HTTP boundary', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/assurance/tickets?subscriberId=not-a-uuid')
+      .set('Authorization', 'Bearer support-token')
+      .expect(400);
+  });
+
   it('returns 400 when creating a ticket without required subject field (boundary validation)', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/assurance/tickets')

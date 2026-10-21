@@ -105,6 +105,7 @@ export const ListTicketsQuerySchema = z.object({
   slaBreachStatus: z.nativeEnum(SlaBreachStatus).optional(),
   queueName: z.nativeEnum(TicketQueue).optional(),
   requesterRefId: z.string().max(160).optional(),
+  subscriberId: z.string().uuid().optional(),
   assignedUserId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
@@ -355,6 +356,10 @@ export class ListTicketsQueryDto {
   @ApiPropertyOptional({ maxLength: 160 })
   @Allow()
   requesterRefId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @Allow()
+  subscriberId?: string;
 
   @ApiPropertyOptional({ format: 'uuid' })
   @Allow()

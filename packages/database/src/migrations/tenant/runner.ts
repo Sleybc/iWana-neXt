@@ -115,6 +115,7 @@ import { FiscalDocumentEncryption1550000000000 } from './155_fiscal_document_enc
 import { SubscriberExpedienteForeignKey1560000000000 } from './156_subscriber_expediente_fk';
 import { SubscriberFiscalCompleteness1570000000000 } from './157_subscriber_fiscal_completeness';
 import { CreateCrmLifecycleChanges1580000000000 } from './158_crm_lifecycle_changes';
+import { AddSubscriberSupportLookupIndexes1590000000000 } from './159_subscriber_support_lookup_indexes';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -311,6 +312,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SubscriberExpedienteForeignKey1560000000000,
   SubscriberFiscalCompleteness1570000000000,
   CreateCrmLifecycleChanges1580000000000,
+  AddSubscriberSupportLookupIndexes1590000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

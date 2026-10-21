@@ -34,6 +34,8 @@ export const ListVisitRequestsQuerySchema = z.object({
   originRef: z.string().max(160).optional(),
   /** Filtro por expediente CRM (columna dedicada; complementa originRef). */
   expedienteId: z.string().uuid().optional(),
+  /** Filtra por el suscriptor directamente vinculado o por su expediente CRM. */
+  subscriberId: z.string().uuid().optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   /** Alcance del listado. actionable: bandeja "Pendientes por programar" sin trabajo ya agendado. */
@@ -105,6 +107,16 @@ export class ListVisitRequestsQueryDto {
   @IsOptional()
   @IsUUID()
   expedienteId?: string;
+
+  @ApiPropertyOptional({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    format: 'uuid',
+    description:
+      'Filtrar por suscriptor vinculado directamente o por el expediente CRM del suscriptor; excluye solicitudes originadas en tickets',
+  })
+  @IsOptional()
+  @IsUUID()
+  subscriberId?: string;
 
   @ApiPropertyOptional({
     example: '2026-06-01T00:00:00Z',

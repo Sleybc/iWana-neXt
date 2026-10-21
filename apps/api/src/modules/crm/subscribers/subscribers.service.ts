@@ -87,6 +87,7 @@ import {
   type ProvisioningReadinessSummary,
 } from '../provisioning-readiness';
 import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
+import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
@@ -281,7 +282,7 @@ function escapeLikePattern(value: string): string {
 }
 
 @Injectable()
-export class SubscribersService {
+export class SubscribersService implements CrmSubscriberReadPort {
   private readonly encryptionKey: Buffer;
   private readonly encryptionKeyPrevious: Buffer[];
   private readonly piiHashKey: Buffer;
@@ -1456,6 +1457,71 @@ export class SubscribersService {
       status: subscriber.status,
       fullName,
     };
+  }
+
+  async listContractIds(
+    tenantId: string,
+    schemaName: string,
+    subscriberId: string,
+  ): Promise<string[]> {
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT id::text AS id
+           FROM contracts
+          WHERE tenant_id = $1
+            AND subscriber_id = $2
+            AND deleted_at IS NULL
+          ORDER BY id`,
+        [tenantId, subscriberId],
+      ),
+    )) as Array<{ id: string }>;
+
+    return rows.map(({ id }) => id);
+  }
+
+  async findExpedienteId(
+    tenantId: string,
+    schemaName: string,
+    subscriberId: string,
+  ): Promise<string | null> {
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT expediente_id::text AS expediente_id
+           FROM subscribers
+          WHERE tenant_id = $1
+            AND id = $2
+            AND deleted_at IS NULL
+          LIMIT 1`,
+        [tenantId, subscriberId],
+      ),
+    )) as Array<{ expediente_id: string | null }>;
+
+    return rows[0]?.expediente_id ?? null;
+  }
+
+  async findExistingSubscriberIds(
+    tenantId: string,
+    schemaName: string,
+    subscriberIds: string[],
+  ): Promise<string[]> {
+    const normalizedIds = [...new Set(subscriberIds.map((id) => id.toLowerCase()))].filter((id) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(id),
+    );
+    if (normalizedIds.length === 0) return [];
+
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT id::text AS id
+           FROM subscribers
+          WHERE tenant_id = $1::uuid
+            AND deleted_at IS NULL
+            AND id = ANY($2::uuid[])
+          ORDER BY id`,
+        [tenantId, normalizedIds],
+      ),
+    )) as Array<{ id: string }>;
+
+    return rows.map(({ id }) => id);
   }
 
   async activateFromExpediente(expedienteId: string, actorId: string): Promise<Subscriber | null> {

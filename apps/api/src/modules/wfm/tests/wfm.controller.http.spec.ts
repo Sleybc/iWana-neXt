@@ -8,11 +8,21 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { UserRole, ScheduleEventStatus, WorkOrderStatus } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  UserRole,
+  ScheduleEventStatus,
+  WorkOrderStatus,
+  WorkOrderSourceContext,
+  WfmWorkType,
+} from '@iwana/shared';
+import { Reflector } from '@nestjs/core';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { WfmController } from '../wfm.controller';
 import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
 import { NonRealizationCausesService } from '../services/non-realization-causes.service';
@@ -189,6 +199,9 @@ describe('WfmController HTTP', () => {
   const scheduleRecommendationsServiceMock = {
     recommend: jest.fn(),
   };
+  const effectivePermissionsServiceMock = {
+    getEffectivePermissionsForUser: jest.fn(),
+  };
 
   const EVENT_UUID = '11111111-1111-1111-1111-111111111111';
   const EXPEDIENTE_UUID = '5acea022-2419-453a-a324-1a762853383f';
@@ -239,6 +252,9 @@ describe('WfmController HTTP', () => {
         { provide: WfmOrganizationSitesReadPort, useValue: { listDispatchSites: jest.fn() } },
         { provide: WfmTenantSettingsReadPort, useValue: { getTimezone: jest.fn() } },
         { provide: OperatingWindowResolverService, useValue: { resolve: jest.fn() } },
+        { provide: EffectivePermissionsService, useValue: effectivePermissionsServiceMock },
+        Reflector,
+        PermissionsGuard,
         JwtAuthGuard,
         RolesGuard,
       ],
@@ -263,6 +279,85 @@ describe('WfmController HTTP', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.WFM_SCHEDULE_READ,
+      AccessPermissionKey.WFM_SCHEDULE_MANAGE,
+    ]);
+  });
+
+  describe('Permisos de agenda', () => {
+    it('deniega GET visit-requests sin WFM_SCHEDULE_READ aunque el rol esté permitido', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({ subscriberId: '11111111-1111-4111-8111-111111111111' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(403);
+      expect(visitRequestsServiceMock.listVisitRequests).not.toHaveBeenCalled();
+    });
+
+    it('permite GET visit-requests con WFM_SCHEDULE_READ', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.WFM_SCHEDULE_READ,
+      ]);
+      visitRequestsServiceMock.listVisitRequests.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({ subscriberId: '11111111-1111-4111-8111-111111111111' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+      expect(visitRequestsServiceMock.listVisitRequests).toHaveBeenCalled();
+    });
+
+    it('deniega GET events sin WFM_SCHEDULE_READ', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .query({ subscriberId: '11111111-1111-4111-8111-111111111111' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(403);
+      expect(scheduleEventsServiceMock.list).not.toHaveBeenCalled();
+    });
+
+    it('deniega POST visit-requests sin WFM_SCHEDULE_MANAGE', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.WFM_SCHEDULE_READ,
+      ]);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/visit-requests')
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          originContext: WorkOrderSourceContext.ASSURANCE,
+          workType: WfmWorkType.SUPPORT,
+          title: 'Visita vinculada',
+          ticketId: 'ticket-001',
+        })
+        .expect(403);
+      expect(visitRequestsServiceMock.createVisitRequest).not.toHaveBeenCalled();
+    });
+
+    it('permite POST visit-requests con WFM_SCHEDULE_MANAGE', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.WFM_SCHEDULE_MANAGE,
+      ]);
+      visitRequestsServiceMock.createVisitRequest.mockResolvedValue({ id: 'visit-001' });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/wfm/visit-requests')
+        .set('Authorization', 'Bearer admin-token')
+        .send({
+          originContext: WorkOrderSourceContext.ASSURANCE,
+          workType: WfmWorkType.SUPPORT,
+          title: 'Visita vinculada',
+          ticketId: 'ticket-001',
+        })
+        .expect(201);
+      expect(visitRequestsServiceMock.createVisitRequest).toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/v1/wfm/schedule-recommendations', () => {
@@ -435,6 +530,30 @@ describe('WfmController HTTP', () => {
             expect.objectContaining({ sub: 'admin-001', role: UserRole.ADMIN }),
           );
         });
+    });
+
+    it('accepts subscriberId as a UUID filter', async () => {
+      const subscriberId = '550e8400-e29b-41d4-a716-446655440011';
+      scheduleEventsServiceMock.list.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .query({ subscriberId })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+
+      expect(scheduleEventsServiceMock.list).toHaveBeenCalledWith(
+        expect.objectContaining({ subscriberId }),
+        expect.objectContaining({ sub: 'admin-001', role: UserRole.ADMIN }),
+      );
+    });
+
+    it('rejects invalid subscriberId filters', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/events')
+        .query({ subscriberId: 'not-a-uuid' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
     });
 
     it('rejects invalid expedienteId filters', async () => {

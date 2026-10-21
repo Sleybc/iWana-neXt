@@ -880,7 +880,7 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
     await expect(page.getByText('Faltan datos fiscales para activar o contratar')).toHaveCount(0);
   });
 
-  test('conversión desde expediente: PROSPECT sin datos fiscales, aviso, activar → 422 con missing; completar y activar → ACTIVE', async ({
+  test('conversión desde expediente: PROSPECT sin datos fiscales, aviso, contrato bloqueado; completar y activar contrato → ACTIVE', async ({
     page,
   }) => {
     const session = await createSession(page);
@@ -938,23 +938,23 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
     }
     await expect(page.getByText('Responsabilidades del RUT pendientes de completar')).toBeVisible();
 
-    // R13: activar sin datos → 422 con missing exacto y sin PII.
-    const activation = await raw(
+    // El estado del suscriptor es derivado; sin datos fiscales se bloquea el alta del contrato.
+    const incompleteContract = await raw(
       page,
       session,
       session.admin,
-      'PATCH',
-      `/crm/subscribers/${subscriberId}/status`,
-      {
-        targetStatus: 'ACTIVE',
-        reason: 'Activación sintética sin datos fiscales.',
-      },
+      'POST',
+      `/crm/subscribers/${subscriberId}/contracts`,
+      contractPayload(session, subscriberId, expediente.address, {
+        fiscalName: `Empresa Sintética ${session.tag}`,
+        fiscalDocument: `${expediente.nit!}-${nitVerificationDigit(expediente.nit!)}`,
+      }),
     );
-    expect(activation.status).toBe(422);
-    expect(activation.code).toBe('SUBSCRIBER_FISCAL_DATA_INCOMPLETE');
-    expect(findMissing(activation.body)).toEqual([...ALL_MISSING]);
-    expect(JSON.stringify(activation.body)).not.toContain(expediente.nit!);
-    expect(JSON.stringify(activation.body)).not.toContain(expediente.email);
+    expect(incompleteContract.status).toBe(422);
+    expect(incompleteContract.code).toBe('SUBSCRIBER_FISCAL_DATA_INCOMPLETE');
+    expect(findMissing(incompleteContract.body)).toEqual([...ALL_MISSING]);
+    expect(JSON.stringify(incompleteContract.body)).not.toContain(expediente.nit!);
+    expect(JSON.stringify(incompleteContract.body)).not.toContain(expediente.email);
     expect((await subscriberDetail(page, session, subscriberId))['status']).toBe('PROSPECT');
 
     // Completar por partes: con IVA y RUT siguen faltando DV y representante.
@@ -962,19 +962,23 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
       vatResponsibility: 'RESPONSABLE',
       rutResponsibilities: ['O-15'],
     });
-    const partial = await raw(
+    const partialContract = await raw(
       page,
       session,
       session.admin,
-      'PATCH',
-      `/crm/subscribers/${subscriberId}/status`,
-      {
-        targetStatus: 'ACTIVE',
-        reason: 'Activación sintética con datos parciales.',
-      },
+      'POST',
+      `/crm/subscribers/${subscriberId}/contracts`,
+      contractPayload(session, subscriberId, expediente.address, {
+        fiscalName: `Empresa Sintética ${session.tag}`,
+        fiscalDocument: `${expediente.nit!}-${nitVerificationDigit(expediente.nit!)}`,
+      }),
     );
-    expect(partial.status).toBe(422);
-    expect(findMissing(partial.body)).toEqual(['NIT_VERIFICATION_DIGIT', 'LEGAL_REPRESENTATIVE']);
+    expect(partialContract.status).toBe(422);
+    expect(partialContract.code).toBe('SUBSCRIBER_FISCAL_DATA_INCOMPLETE');
+    expect(findMissing(partialContract.body)).toEqual([
+      'NIT_VERIFICATION_DIGIT',
+      'LEGAL_REPRESENTATIVE',
+    ]);
 
     // R3 en edición: un DV que no coincide con el NIT → 400 y no se guarda.
     const wrongDv = String((Number(nitVerificationDigit(expediente.nit!)) + 1) % 10);
@@ -1012,20 +1016,43 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
     );
     expect(representativeDb).toEqual({ ...REPRESENTATIVE_OK, tax_regime_null: true });
 
-    const activated = record(
+    const derivedStatusAttempt = await raw(
+      page,
+      session,
+      session.admin,
+      'PATCH',
+      `/crm/subscribers/${subscriberId}/status`,
+      {
+        targetStatus: 'ACTIVE',
+        reason: 'El estado solo cambia por el ciclo de vida del contrato.',
+      },
+    );
+    expect(derivedStatusAttempt.status).toBe(409);
+    expect(derivedStatusAttempt.code).toBe('SUBSCRIBER_STATUS_DERIVED');
+
+    const contract = record(
       await api<JsonRecord>(
         page,
         session,
         session.admin,
-        'PATCH',
-        `/crm/subscribers/${subscriberId}/status`,
-        {
-          targetStatus: 'ACTIVE',
-          reason: 'Activación sintética con datos fiscales completos.',
-        },
+        'POST',
+        `/crm/subscribers/${subscriberId}/contracts`,
+        contractPayload(session, subscriberId, expediente.address, {
+          fiscalName: `Empresa Sintética ${session.tag}`,
+          fiscalDocument: `${expediente.nit!}-${nitVerificationDigit(expediente.nit!)}`,
+        }),
       ),
     );
-    expect(activated['status']).toBe('ACTIVE');
+    const activatedContract = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'POST',
+        `/crm/contracts/${contract['id']}/activate`,
+      ),
+    );
+    expect(activatedContract['status']).toBe('ACTIVE');
 
     // Pantalla: tras completar y activar, el aviso desaparece.
     await page.reload();

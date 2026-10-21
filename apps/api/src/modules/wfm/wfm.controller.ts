@@ -23,11 +23,13 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole, VisitRequestStatus } from '@iwana/shared';
+import { AccessPermissionKey, UserRole, VisitRequestStatus } from '@iwana/shared';
 import { TenantContext } from '@iwana/db';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { NonRealizationCausesService } from './services/non-realization-causes.service';
@@ -75,7 +77,7 @@ import {
 
 @ApiTags('wfm')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('wfm')
 export class WfmController {
   constructor(
@@ -138,10 +140,11 @@ export class WfmController {
 
   @Get('visit-requests')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @Permissions(AccessPermissionKey.WFM_SCHEDULE_READ)
   @ApiOperation({
     summary: 'Listar solicitudes pendientes de visita del tenant',
     description:
-      'Soporta filtros originRef y expedienteId (ADR-076) para pre-buscar trabajo activo por unidad de origen antes de POST create. SALES solo ve orígenes CRM.',
+      'Soporta subscriberId para filtrar por vínculo directo o expediente CRM (sin solicitudes de ticket), y originRef/expedienteId (ADR-076) para pre-buscar trabajo activo por unidad de origen antes de POST create. SALES solo ve orígenes CRM.',
   })
   listVisitRequests(@Query() query: ListVisitRequestsQueryDto, @CurrentUser() actor: JwtPayload) {
     return this.visitRequestsService.listVisitRequests(query, actor);
@@ -166,6 +169,7 @@ export class WfmController {
 
   @Post('visit-requests')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.SALES)
+  @Permissions(AccessPermissionKey.WFM_SCHEDULE_MANAGE)
   @ApiOperation({ summary: 'Crear una solicitud operativa de visita' })
   createVisitRequest(@Body() dto: CreateVisitRequestDto, @CurrentUser() actor: JwtPayload) {
     return this.visitRequestsService.createVisitRequest(toCreateVisitRequestInput(dto), actor);
@@ -276,7 +280,12 @@ export class WfmController {
 
   @Get('events')
   @Roles(UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT, UserRole.TECHNICIAN, UserRole.CONTRACTOR)
-  @ApiOperation({ summary: 'Listar eventos de agenda del tenant' })
+  @Permissions(AccessPermissionKey.WFM_SCHEDULE_READ)
+  @ApiOperation({
+    summary: 'Listar eventos de agenda del tenant',
+    description:
+      'subscriberId filtra por vínculo directo o expediente CRM del suscriptor y excluye eventos originados en tickets.',
+  })
   @ApiResponse({ status: 200, description: 'Lista de eventos de agenda' })
   listEvents(@Query() query: ListScheduleEventsQueryDto, @CurrentUser() actor: JwtPayload) {
     return this.scheduleEventsService.list(query, actor);

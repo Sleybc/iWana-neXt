@@ -513,29 +513,23 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     await expect(page.getByRole('button', { name: 'Agregar contacto' })).toBeVisible();
     await assertNoPlaceholderOrRawEnum(page);
 
-    // CA-E3-03, R4: la API real devuelve 422 y el portal presenta texto y acción.
-    await page.getByRole('button', { name: 'Cambiar estado' }).click();
-    await chooseOption(page, 'Estado destino', 'Activo');
-    const subscriber422 = page.waitForResponse(
-      (response) =>
-        response.url().includes(`/crm/subscribers/${noContact.subscriberId}/status`) &&
-        response.request().method() === 'PATCH',
+    // CA-E3-03: un PROSPECT no se activa por PATCH /status; el API reserva la
+    // transición a los flujos de ciclo de vida y el portal ofrece completar
+    // el contacto pendiente.
+    const subscriberRejection = await api!.fetch(
+      `${API_PREFIX}/crm/subscribers/${noContact.subscriberId}/status`,
+      {
+        method: 'PATCH',
+        headers: apiHeaders(tenantAdminToken!, TENANT_SLUG),
+        data: { targetStatus: 'ACTIVE' },
+      },
     );
-    await page.getByRole('button', { name: 'Confirmar' }).click();
-    const subscriberRejection = await subscriber422;
-    expect(subscriberRejection.status()).toBe(422);
+    expect(subscriberRejection.status()).toBe(409);
     expect((await subscriberRejection.json()) as { code?: string }).toMatchObject({
-      code: 'SUBSCRIBER_CONTACT_REQUIRED',
+      code: 'SUBSCRIBER_STATUS_DERIVED',
     });
-    await expect(
-      page.getByText(
-        'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
-        { exact: true },
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('dialog').getByRole('button', { name: 'Agregar contacto' }),
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cambiar estado' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Agregar contacto' })).toBeVisible();
     const pendingSubscriber = await expectJson<{ status: string; contactPending: boolean }>(
       api!,
       `/crm/subscribers/${noContact.subscriberId}`,
@@ -584,7 +578,10 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     await expect(page.getByRole('tab', { name: 'Datos' })).toHaveAttribute('aria-selected', 'true');
     const noContactEmail = `subscriber-${RUN_ID}@example.invalid`;
     await page.getByLabel('Correo principal').fill(noContactEmail);
-    await page.getByRole('button', { name: 'Guardar cambios' }).nth(1).click();
+    await page
+      .getByRole('region', { name: 'Contacto' })
+      .getByRole('button', { name: 'Guardar cambios' })
+      .click();
     await expect(page.getByText('Contacto pendiente', { exact: true })).toHaveCount(0);
     const completedSubscriber = await expectJson<{
       status: string;
@@ -597,23 +594,24 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     expect(completedSubscriber.email).toBe(noContactEmail);
     await assertNoPlaceholderOrRawEnum(page);
 
-    await page.getByRole('button', { name: 'Cambiar estado' }).click();
-    await chooseOption(page, 'Estado destino', 'Activo');
-    const noContactActivationPromise = page.waitForResponse(
-      (response) =>
-        response.url().includes(`/crm/subscribers/${noContact.subscriberId}/status`) &&
-        response.request().method() === 'PATCH',
-    );
-    await page.getByRole('button', { name: 'Confirmar' }).click();
-    expect((await noContactActivationPromise).status()).toBe(200);
-    await expect(page.getByText('Activo', { exact: true })).toBeVisible();
-    const activatedNoContactSubscriber = await expectJson<{
+    const completedNoContactSubscriber = await expectJson<{
       status: string;
       contactPending: boolean;
     }>(api!, `/crm/subscribers/${noContact.subscriberId}`, 'GET', 200, {
       headers: apiHeaders(tenantAdminToken!, TENANT_SLUG),
     });
-    expect(activatedNoContactSubscriber).toMatchObject({ status: 'ACTIVE', contactPending: false });
+    expect(completedNoContactSubscriber).toMatchObject({
+      status: 'PROSPECT',
+      contactPending: false,
+    });
+    const noContactExpediente = await expectJson<{ status: string }>(
+      api!,
+      `/crm/expedientes/${noContact.id}`,
+      'GET',
+      200,
+      { headers: apiHeaders(tenantAdminToken!, TENANT_SLUG) },
+    );
+    expect(noContactExpediente.status).toBe('LISTO_PARA_INSTALACION');
     await assertNoPlaceholderOrRawEnum(page);
 
     // Segundo caso separado: fixture legado sintético con expediente completo
@@ -672,7 +670,10 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     await expect(page.getByRole('tab', { name: 'Datos' })).toHaveAttribute('aria-selected', 'true');
     const legacyEmail = `legacy-subscriber-${RUN_ID}@example.invalid`;
     await page.getByLabel('Correo principal').fill(legacyEmail);
-    await page.getByRole('button', { name: 'Guardar cambios' }).nth(1).click();
+    await page
+      .getByRole('region', { name: 'Contacto' })
+      .getByRole('button', { name: 'Guardar cambios' })
+      .click();
     await expect(page.getByText('Contacto pendiente', { exact: true })).toHaveCount(0);
     const completedLegacySubscriber = await expectJson<{
       status: string;
@@ -683,17 +684,6 @@ test.describe('MOD05 E3 — contacto pendiente contra Portal y API reales', () =
     });
     expect(completedLegacySubscriber).toMatchObject({ contactPending: false, email: legacyEmail });
     await assertNoPlaceholderOrRawEnum(page);
-
-    await page.getByRole('button', { name: 'Cambiar estado' }).click();
-    await chooseOption(page, 'Estado destino', 'Activo');
-    const legacyActivationPromise = page.waitForResponse(
-      (response) =>
-        response.url().includes(`/crm/subscribers/${legacy.subscriberId}/status`) &&
-        response.request().method() === 'PATCH',
-    );
-    await page.getByRole('button', { name: 'Confirmar' }).click();
-    expect((await legacyActivationPromise).status()).toBe(200);
-    await expect(page.getByText('Activo', { exact: true })).toBeVisible();
 
     await page.goto(`/dashboard/crm/expedientes/${legacy.id}`);
     await expect(page.getByRole('heading', { name: legacy.fullName })).toBeVisible();

@@ -18,6 +18,7 @@ import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { WfmController } from '../wfm.controller';
 import { WfmOrganizationSitesReadPort } from '../ports/wfm-organization-sites-read.port';
 import { WfmTenantSettingsReadPort } from '../ports/wfm-tenant-settings-read.port';
@@ -177,6 +178,8 @@ describe('VisitRequestsController (HTTP Contract)', () => {
       .useValue(new (JwtAuthGuard as any)())
       .overrideGuard(RolesGuard)
       .useValue(new (RolesGuard as any)())
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -289,6 +292,35 @@ describe('VisitRequestsController (HTTP Contract)', () => {
         }),
         expect.objectContaining({ role: UserRole.ADMIN }),
       );
+    });
+
+    it('accepts subscriberId as a UUID filter', async () => {
+      const subscriberId = '550e8400-e29b-41d4-a716-446655440011';
+      mockVisitRequestsService.listVisitRequests.mockResolvedValue({
+        items: [],
+        meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({ subscriberId })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+
+      expect(mockVisitRequestsService.listVisitRequests).toHaveBeenCalledWith(
+        expect.objectContaining({ subscriberId }),
+        expect.objectContaining({ role: UserRole.ADMIN }),
+      );
+    });
+
+    it('rejects subscriberId when it is not a UUID', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/wfm/visit-requests')
+        .query({ subscriberId: 'not-a-uuid' })
+        .set('Authorization', 'Bearer admin-token')
+        .expect(400);
+
+      expectValidationMessageContains(response.body.message, 'subscriberId');
     });
 
     it('should allow NOC to list visit requests with municipality filter', async () => {

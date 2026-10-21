@@ -31,6 +31,7 @@ import { SlaService } from '../../modules/assurance/services/sla.service';
 import { PqrService } from '../../modules/assurance/services/pqr.service';
 import { AssuranceDashboardService } from '../../modules/assurance/services/assurance-dashboard.service';
 import { AssuranceFieldServicePort } from '../../modules/assurance/ports/assurance-field-service.port';
+import { CrmSubscriberReadPort } from '../../modules/crm/ports/crm-subscriber-read.port';
 // —— inventory ——
 import { PurchasingController } from '../../modules/inventory/purchasing.controller';
 import { PurchasingQueryService } from '../../modules/inventory/services/purchasing-query.service';
@@ -293,6 +294,10 @@ describe('clampPage en endpoints de listado paginado (HTTP)', () => {
         PartyService,
         OpportunitiesService,
         TicketsService,
+        {
+          provide: CrmSubscriberReadPort,
+          useValue: { listContractIds: jest.fn().mockResolvedValue([]) },
+        },
         PurchasingQueryService,
         WorkOrdersService,
 

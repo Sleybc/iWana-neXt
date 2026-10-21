@@ -1,5 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { seedSession, setupMocks } from './helpers/consola-ot-fixtures';
 
 // MOD11 Origen de OT · E4-portal (CA-12): bandeja y resumen distinguen la OT
@@ -8,9 +7,13 @@ import { seedSession, setupMocks } from './helpers/consola-ot-fixtures';
 // fixtures de la consola; las rutas de este archivo se registran DESPUÉS de
 // `setupMocks`, así que tienen prioridad y delegan el resto con `fallback()`.
 
-const EVIDENCE_DIR = fileURLToPath(new URL('../../docs/quality/mod11-e4', import.meta.url));
-
 const WINDOW = { startAt: '2026-10-06T14:00:00.000Z', endAt: '2026-10-06T16:00:00.000Z' };
+
+async function attachEvidence(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+  const path = testInfo.outputPath(name);
+  await page.screenshot({ path, fullPage: false });
+  await testInfo.attach(name, { path, contentType: 'image/png' });
+}
 
 function row(id: string, number: string, status: string, window: typeof WINDOW | null) {
   return {
@@ -118,7 +121,7 @@ async function setupE4(page: Page) {
 test.describe('E4-portal: OT sin ventana (HTTP simulado)', () => {
   test('bandeja: estado abierto «Por programar», terminal «Sin ventana planificada», con ventana el intervalo', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await setupE4(page);
     await page.goto('/dashboard/operations/execution-orders');
 
@@ -152,12 +155,12 @@ test.describe('E4-portal: OT sin ventana (HTTP simulado)', () => {
       table.getByText(/\b(CREATED|IN_PROGRESS|COMPLETED_WITH_OBSERVATIONS)\b/),
     ).toHaveCount(0);
 
-    await page.screenshot({ path: `${EVIDENCE_DIR}/e4-bandeja-ventana-nula.png`, fullPage: false });
+    await attachEvidence(page, testInfo, 'e4-bandeja-ventana-nula.png');
   });
 
   test('resumen abierto: «Por programar» con la ayuda, sin invitar a reclamar la orden', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await setupE4(page);
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-e4-created');
 
@@ -169,12 +172,12 @@ test.describe('E4-portal: OT sin ventana (HTTP simulado)', () => {
     );
     await expect(drawer.getByRole('button', { name: /reclam|tomar|asignarme/i })).toHaveCount(0);
 
-    await page.screenshot({ path: `${EVIDENCE_DIR}/e4-resumen-abierto-sin-ventana.png` });
+    await attachEvidence(page, testInfo, 'e4-resumen-abierto-sin-ventana.png');
   });
 
   test('resumen terminal: «Sin ventana planificada» sin ayuda; con ventana, el intervalo', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await setupE4(page);
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-e4-cancelled');
 
@@ -182,7 +185,7 @@ test.describe('E4-portal: OT sin ventana (HTTP simulado)', () => {
     let block = drawer.getByText('Ventana planificada', { exact: true }).locator('..');
     await expect(block).toContainText('Sin ventana planificada');
     await expect(drawer.getByText(/Coordina su programación/)).toHaveCount(0);
-    await page.screenshot({ path: `${EVIDENCE_DIR}/e4-resumen-terminal-sin-ventana.png` });
+    await attachEvidence(page, testInfo, 'e4-resumen-terminal-sin-ventana.png');
 
     await page.goto('/dashboard/operations/execution-orders?executionOrderId=eo-e4-windowed');
     drawer = page.getByRole('dialog');

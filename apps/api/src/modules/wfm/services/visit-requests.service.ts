@@ -56,6 +56,7 @@ import { ScheduleConflictService } from './schedule-conflict.service';
 import { assertScheduleStartNotInPast } from './schedule-past-guard';
 import { WorkOrdersService } from './work-orders.service';
 import { ExpedienteService } from '../../crm/expedientes/expediente.service';
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 import {
   EXECUTION_ORDER_SCHEDULING_PORT,
   ExecutionOrderSchedulingPort,
@@ -134,6 +135,8 @@ export class VisitRequestsService {
     private readonly workOrdersService: WorkOrdersService,
     private readonly expedienteService: ExpedienteService,
     private readonly usersService: UsersService,
+    @Inject(CrmSubscriberReadPort)
+    private readonly crmSubscriberReadPort: CrmSubscriberReadPort,
     @Optional()
     @Inject(EXECUTION_ORDER_SCHEDULING_PORT)
     private readonly executionOrdersService?: ExecutionOrderSchedulingPort,
@@ -180,6 +183,14 @@ export class VisitRequestsService {
       throw new ForbiddenException('SALES solo puede consultar solicitudes originadas desde CRM');
     }
 
+    const subscriberExpedienteId = validated.subscriberId
+      ? await this.crmSubscriberReadPort.findExpedienteId(
+          tenantId,
+          schemaName,
+          validated.subscriberId,
+        )
+      : null;
+
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const qb = qr.manager
         .createQueryBuilder(VisitRequest, 'vr')
@@ -223,6 +234,22 @@ export class VisitRequestsService {
         qb.andWhere('vr.expediente_id = :expedienteId', {
           expedienteId: validated.expedienteId,
         });
+      }
+      if (validated.subscriberId) {
+        if (subscriberExpedienteId) {
+          qb.andWhere(
+            '(vr.subscriber_id = :subscriberId OR vr.expediente_id = :subscriberExpedienteId)',
+            {
+              subscriberId: validated.subscriberId,
+              subscriberExpedienteId,
+            },
+          );
+        } else {
+          qb.andWhere('vr.subscriber_id = :subscriberId', {
+            subscriberId: validated.subscriberId,
+          });
+        }
+        qb.andWhere('vr.ticket_id IS NULL');
       }
       if (validated.from) {
         qb.andWhere('vr.created_at >= :from', { from: validated.from });

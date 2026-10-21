@@ -9,6 +9,7 @@ import { createAssuranceVisitRequestAndRoute } from '@/components/scheduling/vis
 
 const mockRouterPush = jest.fn();
 const mockRouterReplace = jest.fn();
+const mockHasPermission = jest.fn().mockReturnValue(true);
 let searchParamsMock = new URLSearchParams();
 
 jest.mock('next/navigation', () => ({
@@ -22,6 +23,10 @@ jest.mock('@/components/auth/AuthProvider', () => ({
     user: { id: 'user-1', role: UserRole.ADMIN, tenantId: 'tenant-1' },
     isLoading: false,
   }),
+}));
+
+jest.mock('@/components/access-control/permissions-context', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
 }));
 
 jest.mock('@/components/scheduling/visit-request-origin-orchestration', () => ({
@@ -82,6 +87,23 @@ jest.mock('@/lib/api-client', () => {
         list: jest.fn().mockResolvedValue([]),
       },
     },
+    subscribersApi: {
+      list: jest.fn().mockResolvedValue({
+        data: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            commercialName: 'Acme Colombia',
+            businessName: 'Acme Colombia SAS',
+            firstName: null,
+            lastName: null,
+            city: 'Bogotá',
+            email: null,
+            documentNumber: null,
+          },
+        ],
+        total: 1,
+      }),
+    },
     usersApi: {
       list: jest.fn().mockResolvedValue({
         data: [],
@@ -139,6 +161,7 @@ const createAssuranceVisitRequestAndRouteMock = jest.mocked(createAssuranceVisit
 describe('AssuranceClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockHasPermission.mockReturnValue(true);
     searchParamsMock = new URLSearchParams();
     mockRouterPush.mockImplementation((href: string) => {
       searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
@@ -167,6 +190,8 @@ describe('AssuranceClient', () => {
     render(<AssuranceClient />);
 
     await user.click(await screen.findByRole('button', { name: 'Nuevo ticket' }));
+    await user.type(screen.getByRole('combobox', { name: 'Suscriptor' }), 'Acme');
+    await user.click(await screen.findByRole('option', { name: 'Acme Colombia — Bogotá' }));
     await user.type(screen.getByLabelText('Asunto operativo'), 'Sin servicio');
     await user.selectOptions(
       screen.getByLabelText('Decisión de campo'),
@@ -180,6 +205,35 @@ describe('AssuranceClient', () => {
         '/dashboard/scheduling/pending-visits?selectedVisitRequestId=vr-001',
       );
     });
+  });
+
+  it('does not offer WFM follow-up when the user lacks schedule management permission', async () => {
+    const user = userEvent.setup();
+    mockHasPermission.mockReturnValue(false);
+    createTicketMock.mockResolvedValue({
+      id: 'TK-002',
+      ticketNumber: 'TK-002',
+      subject: 'Sin servicio',
+      priority: TicketPriority.NORMAL,
+      fieldDecision: TicketFieldDecision.FIELD_SERVICE_REQUIRED,
+      description: null,
+    } as never);
+
+    render(<AssuranceClient />);
+
+    await user.click(await screen.findByRole('button', { name: 'Nuevo ticket' }));
+    await user.type(screen.getByRole('combobox', { name: 'Suscriptor' }), 'Acme');
+    await user.click(await screen.findByRole('option', { name: 'Acme Colombia — Bogotá' }));
+    await user.type(screen.getByLabelText('Asunto operativo'), 'Sin servicio');
+    await user.selectOptions(
+      screen.getByLabelText('Decisión de campo'),
+      TicketFieldDecision.FIELD_SERVICE_REQUIRED,
+    );
+    expect(screen.queryByLabelText('Siguiente paso')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Crear ticket' }));
+
+    await waitFor(() => expect(createTicketMock).toHaveBeenCalled());
+    expect(createAssuranceVisitRequestAndRouteMock).not.toHaveBeenCalled();
   });
 
   it('navigates to operations with assurance prefill when creating a linked task from the drawer', async () => {

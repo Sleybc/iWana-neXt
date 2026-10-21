@@ -99,7 +99,7 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
   await page.keyboard.press('Home');
   await expect(page.getByRole('tab', { name: 'Vista general', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Servicios', exact: true })).toBeFocused();
   await page.goto(`/dashboard/crm/subscribers/${target.id}?tab=financiero`);
   await expect(page.getByRole('tab', { name: 'Vista general', exact: true })).toHaveAttribute(
     'aria-selected',
@@ -313,7 +313,7 @@ test('V1 controlado: búsqueda exacta, tabs, facturación y móvil', async ({ pa
   await page.keyboard.press('Home');
   await expect(page.getByRole('tab', { name: 'Vista general', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Servicios', exact: true })).toBeFocused();
   await page.goto('/dashboard/crm/subscribers/qa-subscriber?tab=financiero');
   await expect(page.getByRole('tab', { name: 'Vista general', exact: true })).toHaveAttribute(
     'aria-selected',
