@@ -76,7 +76,7 @@ flowchart LR
 | G3   | ✅ GO          | Revisión de seguridad cerrada; no se detectan teléfonos expuestos ni enlaces externos inseguros.                                                                                                                                                                       |
 | G4   | ✅ GO          | DS revisado a 375/768 px en claro/oscuro; `audit-ui.mjs`: P0–P3 = 0.                                                                                                                                                                                                   |
 | G5   | ✅ GO local    | Shared: 23 suites / 221 tests; Portal: 320 suites / 3.240 tests aprobados y 1 skip preexistente. Cobertura de los siete fuentes cambiados: 83,73% statements y 85,24% líneas. V4 se relanza sin la métrica.                                                             |
-| G7   | ▶️ En curso    | V4 relanzado; después, commit de la fase, push y CI de `main` en verde. Cierre en `docs/informes/INFORME-MOD05-LISTA-MOVIL-CIERRE-v1.0.md`.                                                                                                                                          |
+| G7   | ✅ Cerrado     | `8865fd33` en `main`, CI y smoke en verde con E2E portal bloqueante. Cierre en [informe](../informes/INFORME-MOD05-LISTA-MOVIL-CIERRE-v1.0.md). |
 
 **Pendiente previo a la beta (decisión del CTO, 2026-10-21):** CLI de solo agregados que mida, por tenant y con datos reales, qué porcentaje de teléfonos de suscriptores normaliza `toDialablePhone`, usando el descifrado autorizado de la aplicación (como `report-lifecycle-inconsistencies`). Con ese resultado se revisa D-E3-6. No medir con SQL directo ni en el tenant de desarrollo.
 
