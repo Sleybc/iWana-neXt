@@ -1,12 +1,12 @@
 # INFORME — MOD05 · Pestaña Soporte del suscriptor (Fase 07)
 
-**Fecha:** 2026-10-21 · **Versión:** 1.0 · **Estado:** verificación local completada; cierre G7 sujeto a CI de `main`
+**Fecha:** 2026-10-21 · **Versión:** 1.0 · **Estado:** Cierre G7 completado
 **Base aprobada:** `90b05217` · **Plan:** [2026-10-20-mod05-pestana-soporte.md](../plans/2026-10-20-mod05-pestana-soporte.md)
 **PRD:** [PRD-MOD05-CRM-SUBSCRIBERS-FASE-07-v1.0.md](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-07-v1.0.md) · **Spec UX:** [2026-10-20-mod05-pestana-soporte-ux-spec.md](../specs/2026-10-20-mod05-pestana-soporte-ux-spec.md)
 
 ## Dictamen
 
-La implementación satisface los criterios funcionales CA-SO-01 a CA-SO-09 y las revisiones V2, V3 y V4 dieron GO. Las pruebas de integración nuevas ejecutaron contra PostgreSQL real y no se añadieron a `integration-expected-skips.json`. La ejecución completa de E2E Portal terminó con **307 aprobados, 1 omitido con motivo, 0 fallidos y 0 cuarentenas**. Los gates locales están verdes; el dictamen final G7 se completa cuando el push termine con CI de `main` en verde, incluido el job bloqueante «E2E portal».
+La implementación satisface los criterios funcionales CA-SO-01 a CA-SO-09 y las revisiones V2, V3 y V4 dieron GO. Las pruebas de integración nuevas ejecutaron contra PostgreSQL real y no se añadieron a `integration-expected-skips.json`. La ejecución local completa de E2E Portal terminó con **307 aprobados, 1 omitido con motivo, 0 fallidos y 0 cuarentenas**. El commit de implementación `dd2ce9194158303738725638399b8b38fca69894` está publicado en `main`; el [CI de `main`](https://github.com/Sleybc/iWana-neXt/actions/runs/39604995487) terminó en verde, incluido el job bloqueante «E2E portal» en 9m33s. También pasó el [E2E Web Admin Smoke](https://github.com/Sleybc/iWana-neXt/actions/runs/39604995503).
 
 ## Entregables y trazabilidad
 
@@ -75,4 +75,7 @@ Para mantener el job portal completo compatible con los contratos vigentes, se a
 
 ## G7
 
-**Pendiente al emitir esta versión:** commit del orquestador, push y CI de `main` en verde. Actualizar esta sección con el SHA y el resultado del job «E2E portal» al terminar.
+- **Commit de implementación:** `dd2ce9194158303738725638399b8b38fca69894` (`feat(mod05): add subscriber support tab`).
+- **Push:** `origin/main` actualizado; `HEAD` y `origin/main` coincidieron al verificar.
+- **CI:** [run 39604995487](https://github.com/Sleybc/iWana-neXt/actions/runs/39604995487), conclusión `success`. Pasaron lint, typecheck, build, unitarios y gate de cobertura, migraciones, integraciones PostgreSQL/API, E2E Portal bloqueante, E2E operativo R4.1, integridad ADR y build de imágenes.
+- **Smoke adicional:** [run 39604995503](https://github.com/Sleybc/iWana-neXt/actions/runs/39604995503), conclusión `success`.
