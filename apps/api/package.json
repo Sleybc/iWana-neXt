@@ -17,6 +17,7 @@
     "encryption:reencrypt": "node dist/cli/reencrypt-aes.js",
     "backfill:party-pii": "node dist/cli/backfill-party-pii.js",
     "backfill:fiscal-document": "node dist/cli/backfill-fiscal-document.js",
+    "report:subscriber-phone-readiness": "node dist/cli/report-subscriber-phone-readiness.js",
     "clean": "node ../../scripts/clean-paths.mjs dist"
   },
   "dependencies": {

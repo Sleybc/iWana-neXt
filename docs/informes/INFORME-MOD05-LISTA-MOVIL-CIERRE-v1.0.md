@@ -15,26 +15,26 @@
 
 ## 2. Evidencia
 
-| Verificación | Resultado |
-| --- | --- |
-| Tests de Shared y Portal (V4 relanzado, `--force`) | Shared 23 suites / 221 tests; Portal 320 suites / 3 240 tests y 1 omitido preexistente; lint y typecheck en verde; `Cached: 0 cached, 6 total` |
-| E2E del portal en el contenedor oficial (V1) | 291 aprobados, 18 omitidos con motivo (specs `-live`), 0 fallidos, 0 flaky; E2E móvil dirigido 13/13 |
-| E2E del portal en local (V4) | 291 aprobados. Los 17 fallos son todos de specs `-live` (`deuda-fiscal`, `privacy`, `privacy-fase-1b`, `contact-pending`, `conversion-failure`), que en local corren contra la API real porque `.env.development.local` define sus variables; en CI y en el contenedor se omiten con motivo. Ninguno es de esta fase |
-| Cuarentena | `PASS (0/0)` |
-| Cobertura de los siete fuentes cambiados | 83,73 % de sentencias y 85,24 % de líneas |
-| CI de `main` sobre `8865fd33` | **Verde** ([CI 39638138236](https://github.com/Sleybc/iWana-neXt/actions/runs/39638138236): Lint + Typecheck + Build + Unit tests, E2E portal bloqueante, E2E operativo R4.1, imágenes de producción e integridad de citas ADR; [smoke 39638138259](https://github.com/Sleybc/iWana-neXt/actions/runs/39638138259)) |
+| Verificación                                       | Resultado                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tests de Shared y Portal (V4 relanzado, `--force`) | Shared 23 suites / 221 tests; Portal 320 suites / 3 240 tests y 1 omitido preexistente; lint y typecheck en verde; `Cached: 0 cached, 6 total`                                                                                                                                                                       |
+| E2E del portal en el contenedor oficial (V1)       | 291 aprobados, 18 omitidos con motivo (specs `-live`), 0 fallidos, 0 flaky; E2E móvil dirigido 13/13                                                                                                                                                                                                                 |
+| E2E del portal en local (V4)                       | 291 aprobados. Los 17 fallos son todos de specs `-live` (`deuda-fiscal`, `privacy`, `privacy-fase-1b`, `contact-pending`, `conversion-failure`), que en local corren contra la API real porque `.env.development.local` define sus variables; en CI y en el contenedor se omiten con motivo. Ninguno es de esta fase |
+| Cuarentena                                         | `PASS (0/0)`                                                                                                                                                                                                                                                                                                         |
+| Cobertura de los siete fuentes cambiados           | 83,73 % de sentencias y 85,24 % de líneas                                                                                                                                                                                                                                                                            |
+| CI de `main` sobre `8865fd33`                      | **Verde** ([CI 39638138236](https://github.com/Sleybc/iWana-neXt/actions/runs/39638138236): Lint + Typecheck + Build + Unit tests, E2E portal bloqueante, E2E operativo R4.1, imágenes de producción e integridad de citas ADR; [smoke 39638138259](https://github.com/Sleybc/iWana-neXt/actions/runs/39638138259))  |
 
 ## 3. Gates
 
-| Gate | Estado |
-| --- | --- |
-| G0 | Aprobado por el CTO el 2026-10-21 (D-E3-1 a D-E3-6) |
-| G1 | GO: `toDialablePhone` publicado y spec UX móvil aprobada |
-| G2 | GO con CA-MV-01 a CA-MV-08. **Decisión del CTO (2026-10-21):** la métrica de teléfonos normalizables salió del gate (§4) |
-| G3 | GO de `sec-eng` |
-| G4 | GO de `ds-owner` a 375 y 768 px, claro y oscuro; `audit-ui.mjs` en 0 |
-| G5 | GO local (V4 relanzado) |
-| G7 | Cerrado: commit, push y CI de `main` en verde con el job «E2E portal» bloqueante |
+| Gate | Estado                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| G0   | Aprobado por el CTO el 2026-10-21 (D-E3-1 a D-E3-6)                                                                      |
+| G1   | GO: `toDialablePhone` publicado y spec UX móvil aprobada                                                                 |
+| G2   | GO con CA-MV-01 a CA-MV-08. **Decisión del CTO (2026-10-21):** la métrica de teléfonos normalizables salió del gate (§4) |
+| G3   | GO de `sec-eng`                                                                                                          |
+| G4   | GO de `ds-owner` a 375 y 768 px, claro y oscuro; `audit-ui.mjs` en 0                                                     |
+| G5   | GO local (V4 relanzado)                                                                                                  |
+| G7   | Cerrado: commit, push y CI de `main` en verde con el job «E2E portal» bloqueante                                         |
 
 ## 4. Decisión sobre la métrica de G2
 
@@ -42,11 +42,11 @@ El plan pedía medir en el tenant de desarrollo qué porcentaje de teléfonos no
 
 ## 5. Pendientes
 
-| # | Pendiente | Responsable |
-| --- | --- | --- |
-| — | CLI de solo agregados que mida, por tenant y con datos reales, el porcentaje de teléfonos normalizables, con el descifrado autorizado de la aplicación; con el resultado se revisa D-E3-6 | `sr-backend`, antes de la beta |
-| — | **Incidente:** la URI del rol `iwana_readonly` apareció en una salida de diagnóstico de la sesión de ejecución (no en archivos del repo: se verificó en los cambios, `docs/`, `e2e/` y los últimos commits). Rotar la credencial y actualizar `IWANA_MCP_DATABASE_URI` | CTO |
-| — | Postgres de desarrollo agotó su límite de conexiones (SQLSTATE `53300`); revisar `pg_stat_activity` | CTO / `plat-ops` |
-| — | Las specs `-live` fallan en local cuando hay variables pero la API real no responde; no afectan a CI | `sr-qa`, cuando exista staging |
+| #   | Pendiente                                                                                                                                                                                                                                                                                                                        | Responsable                    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| —   | **CLI entregado:** `report:subscriber-phone-readiness` informa por tenant conteos y porcentajes por campo, además de suscriptores con acciones Llamar/WhatsApp disponibles. Usa `SubscribersService`/proyección y bloquea desarrollo local. Falta ejecutarlo con datos reales antes de la beta y revisar D-E3-6 con el resultado | CTO / `sr-backend`             |
+| —   | **Incidente atendido:** credencial `iwana_readonly` rotada; `.claude/mcp-postgres.local.env` ahora declara `IWANA_MCP_DATABASE_URI`, consumida por el launcher canónico. Reiniciar Claude Code y OpenCode para abrir pools con la credencial nueva                                                                               | CTO                            |
+| —   | **Diagnóstico atendido:** `max_connections=100`; el límite del rol `iwana_readonly` es 10 y las 10 conexiones estaban `idle` (máximo unos 3.180 min / 53 h), sin `application_name`; una conexión `iwana` estaba activa. No se terminaron sesiones: liberar los pools al reiniciar Claude Code y OpenCode                                    | CTO / `plat-ops`               |
+| —   | Las specs `-live` fallan en local cuando hay variables pero la API real no responde; no afectan a CI                                                                                                                                                                                                                             | `sr-qa`, cuando exista staging |
 
 **Siguiente en MOD05:** E5 (cambio de plan), que necesita un PRD conjunto con MOD06. E7 y E8 siguen bloqueadas por módulos que no existen.
