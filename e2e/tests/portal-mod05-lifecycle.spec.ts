@@ -312,7 +312,11 @@ test('la búsqueda exacta refleja hasLiveContracts y el portal bloquea la cancel
   await page.getByRole('button', { name: 'Buscar', exact: true }).click();
 
   await expect(page.getByText('Coincidencia exacta · 1 resultado', { exact: true })).toBeVisible();
-  await expect(page.getByText('Sin servicios vigentes', { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('table', { name: 'Listado de suscriptores' })
+      .getByText('Sin servicios vigentes', { exact: true }),
+  ).toBeVisible();
   expect(exactSearchPayload).toEqual({ documentNumber: '0000000001' });
 
   await page.getByRole('link', { name: /Prospecto Sintético/u }).click();

@@ -9,7 +9,7 @@ import {
   type ListMeta,
   type SubscriberListItem,
 } from '@iwana/shared';
-import { ApiError, subscribersApi } from '@/lib/api-client';
+import { ApiError, subscribersApi, tenantSelfApi } from '@/lib/api-client';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { SubscribersListClient } from './SubscribersListClient';
 
@@ -17,6 +17,11 @@ const pushMock = jest.fn();
 const replaceMock = jest.fn();
 const routerMock = { push: pushMock, replace: replaceMock };
 let searchParamsMock = new URLSearchParams();
+let mockAuthRole = 'ADMIN';
+
+jest.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => ({ user: { role: mockAuthRole, tenantId: 'tenant-synthetic' } }),
+}));
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -46,17 +51,19 @@ jest.mock('@/lib/api-client', () => {
       ...actual.contractsApi,
       listBySubscriber: jest.fn(),
     },
+    tenantSelfApi: { ...actual.tenantSelfApi, getMe: jest.fn() },
   };
 });
 
 const listMock = subscribersApi.list as jest.Mock;
 const queueCountsMock = subscribersApi.queueCounts as jest.Mock;
+const tenantSelfMock = tenantSelfApi.getMe as jest.Mock;
 
 function mockMatchMediaSmUp(matches: boolean) {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: (query: string) => ({
-      matches: query.includes('640') ? matches : false,
+      matches: query.includes('640') || query.includes('768') ? matches : false,
       media: query,
       onchange: null,
       addListener: jest.fn(),
@@ -135,9 +142,20 @@ function pageMeta(partial: Partial<ListMeta>): ListMeta {
   };
 }
 
+function expectTextPresent(text: string) {
+  expect(screen.getAllByText(text).length).toBeGreaterThan(0);
+}
+
+async function findText(text: string) {
+  const matches = await screen.findAllByText(text);
+  return matches[0];
+}
+
 describe('SubscribersListClient ADR-065', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAuthRole = 'ADMIN';
+    tenantSelfMock.mockResolvedValue({ countryCode: 'CO' });
     mockMatchMediaSmUp(true);
     Element.prototype.scrollIntoView = jest.fn();
     searchParamsMock = new URLSearchParams();
@@ -149,6 +167,101 @@ describe('SubscribersListClient ADR-065', () => {
       searchParamsMock = new URLSearchParams(String(href).split('?')[1] ?? '');
     });
   });
+
+  it('CA-MV-01 presenta la lista móvil desde la misma consulta y ordena la búsqueda en dos columnas', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          'sub-mobile',
+          { firstName: 'Ana', lastName: 'Móvil' },
+          { phone: '3001234567', whatsapp: '3001234567' },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const cards = await screen.findByRole('list', { name: 'Suscriptores' });
+    expect(
+      within(cards).getByRole('button', { name: 'Abrir resumen de Ana Móvil' }),
+    ).toBeInTheDocument();
+    expect(within(cards).getByRole('link', { name: 'Llamar a Ana Móvil' })).toHaveAttribute(
+      'href',
+      'tel:+573001234567',
+    );
+    expect(screen.getByRole('table', { name: 'Listado de suscriptores' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Buscar por' })).toHaveClass('grid-cols-2');
+    expect(listMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(listMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('oculta acciones de teléfono cuando no se pudo confirmar el país del tenant', async () => {
+    mockMatchMediaSmUp(false);
+    let rejectTenant!: (error: Error) => void;
+    tenantSelfMock.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectTenant = reject;
+      }),
+    );
+    listMock.mockResolvedValue({
+      data: [
+        subscriberFixture(
+          'sub-country-unavailable',
+          { firstName: 'Ana', lastName: 'País' },
+          { phone: '3001234567', whatsapp: '3001234567' },
+        ),
+      ],
+      total: 1,
+      meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+    });
+
+    render(<SubscribersListClient />);
+
+    const card = await screen.findByRole('article');
+    await act(async () => {
+      rejectTenant(new Error('No disponible'));
+      await Promise.resolve();
+    });
+
+    expect(within(card).queryByRole('link', { name: /Llamar a/ })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('link', { name: /WhatsApp a/ })).not.toBeInTheDocument();
+  });
+
+  it.each([null, 'ZZ'])(
+    'oculta acciones de teléfono cuando el país del tenant no está admitido (%s)',
+    async (countryCode) => {
+      mockMatchMediaSmUp(false);
+      tenantSelfMock.mockResolvedValue({ countryCode });
+      listMock.mockResolvedValue({
+        data: [
+          subscriberFixture(
+            'sub-unsupported-country',
+            { firstName: 'Ana', lastName: 'País' },
+            { phone: '3001234567', whatsapp: '3001234567' },
+          ),
+        ],
+        total: 1,
+        meta: pageMeta({ page: 1, total: 1, totalPages: 1 }),
+      });
+
+      render(<SubscribersListClient />);
+
+      const card = await screen.findByRole('article');
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(within(card).queryByRole('link', { name: /Llamar a/ })).not.toBeInTheDocument();
+      expect(within(card).queryByRole('link', { name: /WhatsApp a/ })).not.toBeInTheDocument();
+    },
+  );
 
   it('muestra Sin servicios vigentes en la fila cuando la proyección indica cero servicios activos o suspendidos', async () => {
     listMock.mockResolvedValue({
@@ -392,7 +505,7 @@ describe('SubscribersListClient ADR-065', () => {
     const { rerender } = render(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ana P0')).toBeInTheDocument();
+      expectTextPresent('Ana P0');
     });
     expect(screen.queryByText('Luis Q0')).not.toBeInTheDocument();
     expect(listMock).toHaveBeenCalledWith(
@@ -410,7 +523,7 @@ describe('SubscribersListClient ADR-065', () => {
     rerender(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Luis Q0')).toBeInTheDocument();
+      expectTextPresent('Luis Q0');
     });
     expect(screen.queryByText('Ana P0')).not.toBeInTheDocument();
     expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2, limit: 20 }));
@@ -436,7 +549,7 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
+      expectTextPresent('Ana Pérez');
     });
 
     await user.click(screen.getByRole('combobox', { name: 'Filas por página' }));
@@ -462,7 +575,7 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
+      expectTextPresent('Ana Pérez');
     });
 
     await user.click(screen.getByRole('button', { name: 'Más filtros' }));
@@ -603,7 +716,7 @@ describe('SubscribersListClient ADR-065', () => {
     render(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
+      expectTextPresent('Ana Pérez');
     });
     expect(screen.queryByRole('button', { name: /Ordenar por/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Ordenar por')).not.toBeInTheDocument();
@@ -644,9 +757,9 @@ describe('SubscribersListClient ADR-065', () => {
     const { rerender } = render(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Misma A')).toBeInTheDocument();
+      expectTextPresent('Misma A');
     });
-    expect(screen.getByText('Misma B')).toBeInTheDocument();
+    expectTextPresent('Misma B');
     expect(screen.queryByText('Misma C')).not.toBeInTheDocument();
     expect(listMock).toHaveBeenCalledWith(
       expect.objectContaining({ sortBy: 'status', sortDir: 'asc', page: 1, limit: 10 }),
@@ -662,9 +775,9 @@ describe('SubscribersListClient ADR-065', () => {
     rerender(<SubscribersListClient />);
 
     await waitFor(() => {
-      expect(screen.getByText('Misma C')).toBeInTheDocument();
+      expectTextPresent('Misma C');
     });
-    expect(screen.getByText('Misma D')).toBeInTheDocument();
+    expectTextPresent('Misma D');
     expect(screen.queryByText('Misma A')).not.toBeInTheDocument();
     expect(screen.queryByText('Misma B')).not.toBeInTheDocument();
   });
@@ -866,7 +979,7 @@ describe('SubscribersListClient QW1', () => {
       expect(screen.queryByRole('combobox', { name: 'Estado' })).not.toBeInTheDocument();
       await user.keyboard('{Enter}');
       await waitFor(() => expect(searchMock).toHaveBeenCalledWith(payload));
-      expect(await screen.findByText('Prueba Sintética')).toBeInTheDocument();
+      expect(await findText('Prueba Sintética')).toBeInTheDocument();
       expect(screen.getByText('Coincidencia exacta · 1 resultado')).toBeInTheDocument();
       expect(screen.queryByRole('navigation', { name: /Paginación/ })).not.toBeInTheDocument();
       expect(replaceMock).toHaveBeenCalledWith(expect.stringContaining(`mode=${mode}`), {
@@ -889,7 +1002,7 @@ describe('SubscribersListClient QW1', () => {
     expect(screen.getByRole('radio', { name: 'Documento' })).toHaveFocus();
     await user.type(screen.getByRole('searchbox'), 'SYNTHETIC');
     await user.click(screen.getByRole('button', { name: 'Buscar' }));
-    expect(await screen.findByText('Prueba Sintética')).toBeInTheDocument();
+    expect(await findText('Prueba Sintética')).toBeInTheDocument();
     screen.getByRole('radio', { name: 'Documento' }).focus();
     await user.keyboard('{End}');
     expect(screen.getByRole('radio', { name: 'Correo' })).toHaveFocus();

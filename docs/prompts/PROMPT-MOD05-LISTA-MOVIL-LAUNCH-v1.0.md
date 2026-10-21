@@ -2,18 +2,18 @@
 
 **Plan:** `docs/plans/2026-10-21-mod05-lista-movil.md` v1.0 · **PRD:** `docs/prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-08-v1.0.md` v1.0
 **Olas:** 1 (P0 ∥ B0) → 2 (F1 tras S1+S2 ∥ F2 tras S2) → 3 (V1 ∥ V2 ∥ V3 → V4) → G7 · **Gate previo:** G0 (D-E3-1..6) aprobado el 2026-10-21
-**Bloqueos abiertos:** ninguno. Estado al arrancar: `main` en `5e55f841`; E2E portal bloqueante y sin cuarentenas.
+**Bloqueo activo (2026-10-21):** G2, falta medir el porcentaje de teléfonos normalizables; Postgres de desarrollo rechaza la conexión de solo lectura con SQLSTATE `53300`. No ejecutar G7 todavía. Estado al arrancar: `main` en `ec6111e0`; E2E portal bloqueante y sin cuarentenas.
 
-| # | Subagente | Encargo | Skills a leer antes de codificar | Contrato congelado |
-| --- | --- | --- | --- | --- |
-| P0 | `prod-ux` | `PROMPT-MOD05-LISTA-MOVIL-v1.0.md` §P0 | `iwana-identity-ui-review`, `system-vocabulary-review`, `wcag-audit-patterns` | PRD §5 |
-| B0 | `sr-backend` | §B0 | `typescript-expert`, `test-driven-development` | PRD RF-MV-10, §7 |
-| F1 | `fe-platform` | §F1 | `core-components`, `frontend-dev-guidelines`, `iwana-identity-ui-review`, `wcag-audit-patterns`, `tailwind-patterns` | S1 + spec P0 |
-| F2 | `fe-platform` | §F2 | `core-components`, `frontend-dev-guidelines`, `wcag-audit-patterns`, `tailwind-patterns` | spec P0 |
-| V1 | `sr-qa` | §V1 | `playwright-skill`, `e2e-testing-patterns`, `iwana-test-evidence`, `verification-before-completion` | PRD §8 |
-| V2 | `sec-eng` | §V2 | `frontend-security-coder`, `security-auditor` | PRD RF-MV-07, RF-MV-08, §6 |
-| V3 | `ds-owner` | §V3 | `iwana-identity-ui-review`, `core-components` | spec P0 |
-| V4 | `gate-verifier` | §V4 | `iwana-test-evidence`, `turborepo-caching` | `AGENTS.md` Gates |
+| #   | Subagente       | Encargo                                | Skills a leer antes de codificar                                                                                     | Contrato congelado         |
+| --- | --------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| P0  | `prod-ux`       | `PROMPT-MOD05-LISTA-MOVIL-v1.0.md` §P0 | `iwana-identity-ui-review`, `system-vocabulary-review`, `wcag-audit-patterns`                                        | PRD §5                     |
+| B0  | `sr-backend`    | §B0                                    | `typescript-expert`, `test-driven-development`                                                                       | PRD RF-MV-10, §7           |
+| F1  | `fe-platform`   | §F1                                    | `core-components`, `frontend-dev-guidelines`, `iwana-identity-ui-review`, `wcag-audit-patterns`, `tailwind-patterns` | S1 + spec P0               |
+| F2  | `fe-platform`   | §F2                                    | `core-components`, `frontend-dev-guidelines`, `wcag-audit-patterns`, `tailwind-patterns`                             | spec P0                    |
+| V1  | `sr-qa`         | §V1                                    | `playwright-skill`, `e2e-testing-patterns`, `iwana-test-evidence`, `verification-before-completion`                  | PRD §8                     |
+| V2  | `sec-eng`       | §V2                                    | `frontend-security-coder`, `security-auditor`                                                                        | PRD RF-MV-07, RF-MV-08, §6 |
+| V3  | `ds-owner`      | §V3                                    | `iwana-identity-ui-review`, `core-components`                                                                        | spec P0                    |
+| V4  | `gate-verifier` | §V4                                    | `iwana-test-evidence`, `turborepo-caching`                                                                           | `AGENTS.md` Gates          |
 
 **Cierre:** G1-G5 en local con conteo real; G7 = commit, push y CI de `main` en verde con el job «E2E portal» bloqueante (solo AI-EM-ARCH).
 

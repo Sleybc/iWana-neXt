@@ -216,6 +216,47 @@ export function formatDocumentDisplay(
   return typeLabel ? `${typeLabel}: ${subscriber.documentNumber}` : subscriber.documentNumber;
 }
 
+export function formatSubscriberListIdentityDetails(subscriber: SubscriberListItem): string {
+  if (subscriber.privacyRestricted || subscriber.anonymizedAt) return '';
+
+  const documentAvailable =
+    subscriber.personType === PersonType.JURIDICA
+      ? Boolean(subscriber.nit?.trim())
+      : Boolean(subscriber.documentNumber?.trim());
+
+  return [
+    ...(documentAvailable ? [formatDocumentDisplay(subscriber)] : []),
+    PERSON_TYPE_META[subscriber.personType].label,
+    CUSTOMER_SEGMENT_META[subscriber.customerSegment].label,
+  ].join(' · ');
+}
+
+export function formatSubscriberPrimaryService(subscriber: SubscriberListItem): {
+  title: string;
+  details: string;
+} {
+  const service = subscriber.primaryService;
+  if (!service) {
+    return { title: 'Sin servicio principal', details: 'Sin servicios vigentes' };
+  }
+
+  const privacyRedacted = subscriber.privacyRestricted || Boolean(subscriber.anonymizedAt);
+  const location = privacyRedacted ? '' : formatLocationLabel(service.city) || 'Sin ubicación';
+  const details =
+    service.status === 'DRAFT'
+      ? [...(location ? [location] : []), 'Borrador', 'Sin servicios vigentes'].join(' · ')
+      : [
+          ...(location ? [location] : []),
+          ...(subscriber.otherLiveServicesCount > 0
+            ? [
+                `+${subscriber.otherLiveServicesCount} ${subscriber.otherLiveServicesCount === 1 ? 'servicio' : 'servicios'}`,
+              ]
+            : []),
+        ].join(' · ');
+
+  return { title: service.planName || 'Plan no disponible', details };
+}
+
 export function formatVatTreatmentLabel(vatTreatment: VatTreatment | undefined): string {
   return vatTreatment ? (VAT_TREATMENT_META[vatTreatment]?.label ?? vatTreatment) : '';
 }

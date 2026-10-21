@@ -1,3 +1,5 @@
+import { USER_PHONE_E164_PATTERN } from './user-field-constraints';
+
 /**
  * Datos de dominio del perfil propio: prefijos telefónicos y patrón E.164.
  *
@@ -24,6 +26,25 @@ export const COUNTRY_PHONE_PREFIX: Readonly<Record<string, string>> = {
 /** Prefijo E.164 del país del tenant; '+57' (Colombia) por defecto. */
 export function getCountryPhonePrefix(countryCode?: string): string {
   return COUNTRY_PHONE_PREFIX[countryCode ?? 'CO'] ?? '+57';
+}
+
+/**
+ * Normaliza un teléfono exclusivamente para generar un destino marcable.
+ * `countryPrefix` debe provenir de `getCountryPhonePrefix` para el tenant.
+ * No altera ni valida el dato persistido.
+ */
+export function toDialablePhone(
+  raw: string | null | undefined,
+  countryPrefix: string,
+): string | null {
+  if (raw == null) return null;
+
+  const normalizedRaw = raw.replace(/[\s().-]/g, '');
+  const candidate = normalizedRaw.startsWith('+')
+    ? normalizedRaw
+    : `${countryPrefix}${normalizedRaw}`;
+
+  return USER_PHONE_E164_PATTERN.test(candidate) ? candidate : null;
 }
 
 /**

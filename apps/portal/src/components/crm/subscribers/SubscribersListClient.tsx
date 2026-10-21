@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Badge, Button, Input, Select, cn } from '@iwana/ui';
+import { Badge, Button, Input, cn } from '@iwana/ui';
 import type { ListMeta, SubscriberListItem } from '@iwana/shared';
-import { CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
+import { COUNTRY_PHONE_PREFIX, CustomerSegment, PersonType, SubscriberStatus } from '@iwana/shared';
 import { CircleDashed, Plus } from 'lucide-react';
-import { type ListSubscribersParams, subscribersApi } from '@/lib/api-client';
+import { type ListSubscribersParams, subscribersApi, tenantSelfApi } from '@/lib/api-client';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
@@ -31,18 +32,17 @@ import {
   portalTableRowHoverClassName,
 } from '@/components/shared/portal-ui';
 import {
-  CUSTOMER_SEGMENT_META,
   CUSTOMER_SEGMENT_OPTIONS,
-  PERSON_TYPE_META,
   PERSON_TYPE_OPTIONS,
   STRATUM_OPTIONS,
   SUBSCRIBER_STATUS_META,
   SUBSCRIBER_STATUS_OPTIONS,
-  formatDocumentDisplay,
   formatSubscriberDate,
   formatSubscriberName,
-  formatLocationLabel,
+  formatSubscriberListIdentityDetails,
+  formatSubscriberPrimaryService,
 } from './subscriber-ui';
+import { SubscriberMobileCard } from './SubscriberMobileCard';
 import { SubscriberMoreFilters, type SubscriberActiveFilter } from './SubscriberMoreFilters';
 import { SubscriberPeek } from './SubscriberPeek';
 import {
@@ -89,6 +89,11 @@ const PAGE_OUT_OF_RANGE_NOTICE = 'Esa página ya no existe. Mostrando la última
 const SUBSCRIBER_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function getSupportedTenantPhonePrefix(countryCode: string | null | undefined): string | null {
+  const normalizedCode = countryCode?.trim().toUpperCase();
+  return normalizedCode ? (COUNTRY_PHONE_PREFIX[normalizedCode] ?? null) : null;
+}
+
 function mapError(error: unknown): string {
   void error;
   return 'No fue posible cargar los suscriptores. Intenta de nuevo.';
@@ -123,12 +128,18 @@ function SubscribersListClientInner() {
   const router = useRouter();
   const tableShellRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
-  const peekOriginRef = useRef<{ subscriberId: string; index: number } | null>(null);
+  const mobileSummaryRefs = useRef(new Map<string, HTMLButtonElement>());
+  const peekOriginRef = useRef<{
+    subscriberId: string;
+    index: number;
+    trigger: HTMLElement;
+  } | null>(null);
   const outOfRangeShownRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
   const requestIdRef = useRef(0);
   const searchInFlightRef = useRef(false);
   const queueCountsRequestIdRef = useRef(0);
+  const { user } = useAuth();
 
   const {
     page,
@@ -146,6 +157,11 @@ function SubscribersListClientInner() {
     filterKeys: FILTER_KEYS,
     defaultPageSize: PORTAL_DEFAULT_PAGE_SIZE,
   });
+  const setQueryRef = useRef(setQuery);
+
+  useEffect(() => {
+    setQueryRef.current = setQuery;
+  }, [setQuery]);
 
   const [records, setRecords] = useState<SubscriberListItem[]>([]);
   const [meta, setMeta] = useState<ListMeta>(EMPTY_LIST_META);
@@ -158,6 +174,7 @@ function SubscribersListClientInner() {
   > | null>(null);
   const [queueCountsLoading, setQueueCountsLoading] = useState(true);
   const [queueCountsError, setQueueCountsError] = useState(false);
+  const [countryPrefix, setCountryPrefix] = useState<string | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [outOfRangeNotice, setOutOfRangeNotice] = useState<string | null>(null);
@@ -171,6 +188,32 @@ function SubscribersListClientInner() {
   const selectedModeRef = useRef<SearchMode>(urlMode);
   const mode = SEARCH_MODES.find((item) => item.value === selectedMode) ?? SEARCH_MODES[0];
   const exactMode = mode.value !== 'text';
+
+  useEffect(() => {
+    let active = true;
+    const canReadTenantProfile = user?.role === 'ADMIN' || user?.role === 'SUPPORT';
+
+    if (!canReadTenantProfile) {
+      setCountryPrefix(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setCountryPrefix(null);
+    void tenantSelfApi
+      .getMe()
+      .then((tenant) => {
+        if (active) setCountryPrefix(getSupportedTenantPhonePrefix(tenant.countryCode));
+      })
+      .catch(() => {
+        if (active) setCountryPrefix(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.role, user?.tenantId]);
 
   const legacyUrlSearch = filters.search ?? '';
   const statusFilter = filters.status ?? '';
@@ -292,67 +335,64 @@ function SubscribersListClientInner() {
     return invalidateQueueCountsRequest;
   }, [invalidateQueueCountsRequest, loadQueueCounts]);
 
-  const loadPage = useCallback(
-    async (params: ListSubscribersParams, opts?: { soft?: boolean }) => {
-      const requestId = ++requestIdRef.current;
-      const soft = opts?.soft === true && hasLoadedOnceRef.current;
-      if (soft) {
-        setRefreshing(true);
-      } else {
-        setInitialLoading(true);
+  const loadPage = useCallback(async (params: ListSubscribersParams, opts?: { soft?: boolean }) => {
+    const requestId = ++requestIdRef.current;
+    const soft = opts?.soft === true && hasLoadedOnceRef.current;
+    if (soft) {
+      setRefreshing(true);
+    } else {
+      setInitialLoading(true);
+    }
+    setError(null);
+
+    try {
+      const response = await subscribersApi.list(params);
+      if (requestId !== requestIdRef.current) return;
+      const nextMeta = normalizeListMeta(response.meta, {
+        dataLength: response.data.length,
+        ...(params.limit !== undefined ? { limit: params.limit } : {}),
+      });
+      const requestedPage = params.page ?? 1;
+      const totalPages = nextMeta.totalPages ?? 0;
+
+      if (totalPages > 0 && requestedPage > totalPages) {
+        if (!outOfRangeShownRef.current) {
+          outOfRangeShownRef.current = true;
+          setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
+        }
+        setQueryRef.current({ page: totalPages }, { history: 'replace' });
+        return;
       }
-      setError(null);
 
-      try {
-        const response = await subscribersApi.list(params);
-        if (requestId !== requestIdRef.current) return;
-        const nextMeta = normalizeListMeta(response.meta, {
-          dataLength: response.data.length,
-          ...(params.limit !== undefined ? { limit: params.limit } : {}),
-        });
-        const requestedPage = params.page ?? 1;
-        const totalPages = nextMeta.totalPages ?? 0;
-
-        if (totalPages > 0 && requestedPage > totalPages) {
-          if (!outOfRangeShownRef.current) {
-            outOfRangeShownRef.current = true;
-            setOutOfRangeNotice(PAGE_OUT_OF_RANGE_NOTICE);
-          }
-          setQuery({ page: totalPages }, { history: 'replace' });
-          return;
-        }
-
-        if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
-          const fallback = Math.max(1, totalPages || requestedPage - 1);
-          setQuery({ page: fallback }, { history: 'replace' });
-          return;
-        }
-
-        setRecords(response.data);
-        setMeta(
-          buildPageMetaFixture(
-            { ...nextMeta, page: nextMeta.page ?? requestedPage },
-            response.data.length,
-            params.limit ?? PORTAL_DEFAULT_PAGE_SIZE,
-          ),
-        );
-        hasLoadedOnceRef.current = true;
-      } catch (loadError) {
-        if (requestId !== requestIdRef.current) return;
-        setError(mapError(loadError));
-        if (!soft) {
-          setRecords([]);
-          setMeta(EMPTY_LIST_META);
-        }
-      } finally {
-        if (requestId === requestIdRef.current) {
-          setInitialLoading(false);
-          setRefreshing(false);
-        }
+      if (response.data.length === 0 && requestedPage > 1 && nextMeta.total > 0) {
+        const fallback = Math.max(1, totalPages || requestedPage - 1);
+        setQueryRef.current({ page: fallback }, { history: 'replace' });
+        return;
       }
-    },
-    [setQuery],
-  );
+
+      setRecords(response.data);
+      setMeta(
+        buildPageMetaFixture(
+          { ...nextMeta, page: nextMeta.page ?? requestedPage },
+          response.data.length,
+          params.limit ?? PORTAL_DEFAULT_PAGE_SIZE,
+        ),
+      );
+      hasLoadedOnceRef.current = true;
+    } catch (loadError) {
+      if (requestId !== requestIdRef.current) return;
+      setError(mapError(loadError));
+      if (!soft) {
+        setRecords([]);
+        setMeta(EMPTY_LIST_META);
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setInitialLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!initialLoading || records.length > 0) {
@@ -555,8 +595,8 @@ function SubscribersListClientInner() {
     setFilters({ [key]: null });
   }
 
-  function openPeek(subscriberId: string, index: number) {
-    peekOriginRef.current = { subscriberId, index };
+  function openPeek(subscriberId: string, index: number, trigger: HTMLElement) {
+    peekOriginRef.current = { subscriberId, index, trigger };
     setActiveRowId(subscriberId);
     setQuery({ filters: { peek: subscriberId } }, { history: 'push' });
   }
@@ -565,16 +605,25 @@ function SubscribersListClientInner() {
     setQuery({ filters: { peek: null } }, { history: 'replace' });
     window.requestAnimationFrame(() => {
       const origin = peekOriginRef.current;
-      const originRow = origin ? rowRefs.current.get(origin.subscriberId) : null;
-      if (originRow?.isConnected) {
-        originRow.focus();
+      const isMobileViewport = window.matchMedia('(max-width: 767px)').matches;
+      const currentTrigger = origin
+        ? isMobileViewport
+          ? mobileSummaryRefs.current.get(origin.subscriberId)
+          : rowRefs.current.get(origin.subscriberId)
+        : null;
+      const trigger = currentTrigger ?? origin?.trigger;
+      if (trigger?.isConnected) {
+        trigger.focus({ preventScroll: true });
         return;
       }
 
       const fallbackIndex = Math.min(origin?.index ?? 0, records.length - 1);
       const fallbackSubscriber = records[fallbackIndex];
       if (fallbackSubscriber) {
-        rowRefs.current.get(fallbackSubscriber.id)?.focus();
+        const fallbackTrigger = isMobileViewport
+          ? mobileSummaryRefs.current.get(fallbackSubscriber.id)
+          : rowRefs.current.get(fallbackSubscriber.id);
+        fallbackTrigger?.focus({ preventScroll: true });
         return;
       }
 
@@ -605,7 +654,7 @@ function SubscribersListClientInner() {
     if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter') {
       event.preventDefault();
-      openPeek(subscriberId, index);
+      openPeek(subscriberId, index, event.currentTarget);
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -668,6 +717,7 @@ function SubscribersListClientInner() {
                 variant="secondary"
                 size="sm"
                 onClick={() => void loadPage(listParams)}
+                className="min-h-11 md:min-h-8"
               >
                 Reintentar
               </Button>
@@ -694,7 +744,7 @@ function SubscribersListClientInner() {
             <div
               role="radiogroup"
               aria-labelledby="subscriber-search-mode-label"
-              className="flex flex-wrap gap-1"
+              className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap"
             >
               {SEARCH_MODES.map((item, index) => (
                 <Button
@@ -704,7 +754,7 @@ function SubscribersListClientInner() {
                   aria-checked={mode.value === item.value}
                   tabIndex={mode.value === item.value ? 0 : -1}
                   variant={mode.value === item.value ? 'primary' : 'ghost'}
-                  className="min-h-11"
+                  className="min-h-11 w-full sm:w-auto"
                   onClick={() => changeMode(item.value)}
                   onKeyDown={(event) => {
                     const next =
@@ -811,261 +861,272 @@ function SubscribersListClientInner() {
                 activeFilters={activeFilterItems}
                 onRemoveFilter={removeFilter}
                 onClearFilters={clearFilters}
+                sortValue={mobileSortValue}
+                sortOptions={mobileSortOptions}
+                showSort={canSort}
+                sortDisabled={refreshing}
+                onApply={(draft) => {
+                  const [sortBy, sortDir] = draft.sortValue.split(':');
+                  let nextSortBy: string | null = null;
+                  let nextSortDir: 'asc' | 'desc' | null = null;
+                  if (
+                    sortBy &&
+                    sortableFields.includes(sortBy) &&
+                    (sortDir === 'asc' || sortDir === 'desc')
+                  ) {
+                    nextSortBy = sortBy;
+                    nextSortDir = sortDir;
+                  }
+                  setQuery(
+                    {
+                      page: 1,
+                      sortBy: nextSortBy,
+                      sortDir: nextSortDir,
+                      filters: {
+                        status: draft.status || null,
+                        personType: draft.personType || null,
+                        customerSegment: draft.segment || null,
+                        stratum: draft.stratum || null,
+                      },
+                    },
+                    { history: 'replace' },
+                  );
+                }}
               />
             </div>
           ) : null}
         </div>
 
-        {!exactMode && canSort ? (
-          <div className="px-5 pb-3 sm:hidden">
-            <Select
-              id="subscriber-mobile-sort"
-              aria-label="Ordenar por"
-              className="h-12"
-              value={mobileSortValue}
-              disabled={refreshing}
-              onChange={(event) => {
-                const raw = event.target.value;
-                if (!raw) {
-                  setSort(null);
-                  return;
-                }
-                const [by, dir] = raw.split(':');
-                if (by && (dir === 'asc' || dir === 'desc')) {
-                  setSort({ by, dir });
-                }
-              }}
-              options={mobileSortOptions}
-            />
-          </div>
-        ) : null}
-
-        <div className="px-5 pb-5">
-          <div ref={tableShellRef} tabIndex={-1} className={portalDataTableShellClassName}>
+        <div ref={tableShellRef} tabIndex={-1} className="space-y-4 px-5 pb-5">
+          {records.length > 0 || (initialLoading && showInitialSkeleton) ? (
             <div
-              className={
-                initialLoading || refreshing
-                  ? `overflow-x-auto ${portalDataBusyRegionClassName}`
-                  : 'overflow-x-auto'
-              }
+              className="space-y-3 md:hidden"
               aria-busy={initialLoading || refreshing || undefined}
             >
-              <table className="w-full text-sm" aria-label="Listado de suscriptores">
-                <thead className={portalDataTableHeadRowClassName}>
-                  <tr>
-                    {renderHead(null, 'Suscriptor')}
-                    {renderHead(null, 'Servicio principal')}
-                    {renderHead('status', 'Estado')}
-                    {renderHead('createdAt', 'Creado')}
-                  </tr>
-                </thead>
-                <tbody className={portalDataTableBodyClassName}>
-                  {initialLoading && showInitialSkeleton && records.length === 0
-                    ? Array.from({ length: 5 }, (_, index) => (
-                        <tr key={`subscriber-skeleton-${index}`}>
-                          <td className={portalDataTableCellClassName} colSpan={4}>
-                            <PortalSkeletonBlock className="h-10 w-full rounded-xl" />
-                          </td>
-                        </tr>
-                      ))
-                    : null}
+              {initialLoading && showInitialSkeleton && records.length === 0 ? (
+                <>
+                  <p role="status" className="sr-only">
+                    Cargando suscriptores…
+                  </p>
+                  <ul aria-label="Suscriptores" className="space-y-3">
+                    {Array.from({ length: 5 }, (_, index) => (
+                      <li key={`subscriber-mobile-skeleton-${index}`}>
+                        <PortalSkeletonBlock className="h-40 rounded-2xl" />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {!initialLoading && records.length > 0 ? (
+                <ul aria-label="Suscriptores" className="space-y-3">
+                  {records.map((subscriber, index) => (
+                    <SubscriberMobileCard
+                      key={subscriber.id}
+                      subscriber={subscriber}
+                      index={index}
+                      countryPrefix={countryPrefix}
+                      onOpen={openPeek}
+                      onSummaryRef={(subscriberId, trigger) => {
+                        if (trigger) mobileSummaryRefs.current.set(subscriberId, trigger);
+                        else mobileSummaryRefs.current.delete(subscriberId);
+                      }}
+                    />
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
 
-                  {!initialLoading && !error && records.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className={cn(portalDataTableCellClassName, 'py-12')}>
-                        <PortalEmptyState
-                          title={
-                            exactMode
-                              ? exactSearched
-                                ? `No hay suscriptores con ese ${mode.empty}`
-                                : 'Busca un suscriptor'
-                              : hasActiveFilters
-                                ? 'No se encontraron resultados'
-                                : 'Aún no hay suscriptores'
-                          }
-                          description={
-                            exactMode
-                              ? 'Escribe el dato y selecciona Buscar para consultar una coincidencia exacta.'
-                              : hasActiveFilters
-                                ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
-                                : 'Registra el primero para iniciar el ciclo comercial y postventa.'
-                          }
-                          icon={CircleDashed}
-                          className="w-full text-left"
-                          action={
-                            exactMode ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => changeMode('text')}
-                              >
-                                Buscar como texto
-                              </Button>
-                            ) : hasActiveFilters ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={clearFilters}
-                              >
-                                Limpiar filtros
-                              </Button>
-                            ) : undefined
-                          }
-                        />
-                      </td>
-                    </tr>
-                  ) : null}
+          {!initialLoading && !error && records.length === 0 ? (
+            <PortalEmptyState
+              title={
+                exactMode
+                  ? exactSearched
+                    ? `No hay suscriptores con ese ${mode.empty}`
+                    : 'Busca un suscriptor'
+                  : hasActiveFilters
+                    ? 'No se encontraron resultados'
+                    : 'Aún no hay suscriptores'
+              }
+              description={
+                exactMode
+                  ? 'Escribe el dato y selecciona Buscar para consultar una coincidencia exacta.'
+                  : hasActiveFilters
+                    ? 'Ajusta la búsqueda o limpia los filtros para ver otros suscriptores.'
+                    : 'Crea el primero para iniciar el ciclo comercial y postventa.'
+              }
+              icon={CircleDashed}
+              className="w-full text-left"
+              embedded
+              action={
+                exactMode ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => changeMode('text')}
+                    className="min-h-11 md:min-h-8"
+                  >
+                    Buscar como texto
+                  </Button>
+                ) : hasActiveFilters ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="min-h-11 md:min-h-8"
+                  >
+                    Limpiar filtros
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : null}
 
-                  {!initialLoading &&
-                    records.map((subscriber, index) => {
-                      const privacyRedacted =
-                        subscriber.privacyRestricted || Boolean(subscriber.anonymizedAt);
-                      const documentAvailable =
-                        subscriber.personType === PersonType.JURIDICA
-                          ? Boolean(subscriber.nit?.trim())
-                          : Boolean(subscriber.documentNumber?.trim());
-                      const identityDetails = privacyRedacted
-                        ? ''
-                        : [
-                            ...(documentAvailable ? [formatDocumentDisplay(subscriber)] : []),
-                            PERSON_TYPE_META[subscriber.personType].label,
-                            CUSTOMER_SEGMENT_META[subscriber.customerSegment].label,
-                          ].join(' · ');
-                      const service = subscriber.primaryService;
-                      const serviceSubline = !service
-                        ? 'Sin servicios vigentes'
-                        : service.status === 'DRAFT'
-                          ? [
-                              ...(!privacyRedacted
-                                ? [formatLocationLabel(service.city) || 'Sin ubicación']
-                                : []),
-                              'Borrador',
-                              'Sin servicios vigentes',
-                            ].join(' · ')
-                          : [
-                              ...(!privacyRedacted
-                                ? [formatLocationLabel(service.city) || 'Sin ubicación']
-                                : []),
-                              ...(subscriber.otherLiveServicesCount > 0
-                                ? [
-                                    `+${subscriber.otherLiveServicesCount} ${subscriber.otherLiveServicesCount === 1 ? 'servicio' : 'servicios'}`,
-                                  ]
-                                : []),
-                            ].join(' · ');
+          {records.length > 0 || initialLoading ? (
+            <div className="hidden md:block">
+              <div className={portalDataTableShellClassName}>
+                <div
+                  className={
+                    initialLoading || refreshing
+                      ? `overflow-x-auto ${portalDataBusyRegionClassName}`
+                      : 'overflow-x-auto'
+                  }
+                  aria-busy={initialLoading || refreshing || undefined}
+                >
+                  <table className="w-full text-sm" aria-label="Listado de suscriptores">
+                    <thead className={portalDataTableHeadRowClassName}>
+                      <tr>
+                        {renderHead(null, 'Suscriptor')}
+                        {renderHead(null, 'Servicio principal')}
+                        {renderHead('status', 'Estado')}
+                        {renderHead('createdAt', 'Creado')}
+                      </tr>
+                    </thead>
+                    <tbody className={portalDataTableBodyClassName}>
+                      {initialLoading && showInitialSkeleton && records.length === 0
+                        ? Array.from({ length: 5 }, (_, index) => (
+                            <tr key={`subscriber-skeleton-${index}`}>
+                              <td className={portalDataTableCellClassName} colSpan={4}>
+                                <PortalSkeletonBlock className="h-10 w-full rounded-xl" />
+                              </td>
+                            </tr>
+                          ))
+                        : null}
 
-                      return (
-                        <tr
-                          key={subscriber.id}
-                          ref={(node) => {
-                            if (node) rowRefs.current.set(subscriber.id, node);
-                            else rowRefs.current.delete(subscriber.id);
-                          }}
-                          tabIndex={activeRowId === subscriber.id ? 0 : -1}
-                          onFocus={() => setActiveRowId(subscriber.id)}
-                          onKeyDown={(event) => handleRowKeyDown(event, subscriber.id, index)}
-                          onClick={(event) => {
-                            const target = event.target;
-                            if (
-                              target instanceof Element &&
-                              target.closest('a,button,input,select,textarea')
-                            ) {
-                              return;
-                            }
-                            event.currentTarget.focus();
-                            openPeek(subscriber.id, index);
-                          }}
-                          className={cn(portalTableRowHoverClassName, interactiveFocusClassName)}
-                        >
-                          <td className={portalDataTableCellClassName}>
-                            <Link
-                              href={`/dashboard/crm/subscribers/${encodeURIComponent(subscriber.id)}`}
-                              className="group block min-h-11"
+                      {!initialLoading &&
+                        records.map((subscriber, index) => {
+                          const identityDetails = formatSubscriberListIdentityDetails(subscriber);
+                          const service = formatSubscriberPrimaryService(subscriber);
+
+                          return (
+                            <tr
+                              key={subscriber.id}
+                              ref={(node) => {
+                                if (node) rowRefs.current.set(subscriber.id, node);
+                                else rowRefs.current.delete(subscriber.id);
+                              }}
+                              tabIndex={activeRowId === subscriber.id ? 0 : -1}
+                              onFocus={() => setActiveRowId(subscriber.id)}
+                              onKeyDown={(event) => handleRowKeyDown(event, subscriber.id, index)}
+                              onClick={(event) => {
+                                const target = event.target;
+                                if (
+                                  target instanceof Element &&
+                                  target.closest('a,button,input,select,textarea')
+                                ) {
+                                  return;
+                                }
+                                event.currentTarget.focus();
+                                openPeek(subscriber.id, index, event.currentTarget);
+                              }}
+                              className={cn(
+                                portalTableRowHoverClassName,
+                                interactiveFocusClassName,
+                              )}
                             >
-                              <p className="font-semibold text-iwana-primary transition-colors group-hover:text-iwana-secondary-700 dark:text-white dark:group-hover:text-iwana-secondary-300">
-                                {privacyDisplayValue(
-                                  subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
-                                  {
-                                    privacyRestricted: subscriber.privacyRestricted,
-                                    anonymizedAt: subscriber.anonymizedAt,
-                                  },
-                                )}
-                              </p>
-                              {identityDetails ? (
-                                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                                  {identityDetails}
-                                </p>
-                              ) : null}
-                            </Link>
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            {service ? (
-                              <>
-                                <p className="font-medium">
-                                  {service.planName || 'Plan no disponible'}
-                                </p>
-                                {serviceSubline ? (
+                              <td className={portalDataTableCellClassName}>
+                                <Link
+                                  href={`/dashboard/crm/subscribers/${encodeURIComponent(subscriber.id)}`}
+                                  className="group block min-h-11"
+                                >
+                                  <p className="font-semibold text-iwana-primary transition-colors group-hover:text-iwana-secondary-700 dark:text-white dark:group-hover:text-iwana-secondary-300">
+                                    {privacyDisplayValue(
+                                      subscriber.anonymizedAt
+                                        ? null
+                                        : formatSubscriberName(subscriber),
+                                      {
+                                        privacyRestricted: subscriber.privacyRestricted,
+                                        anonymizedAt: subscriber.anonymizedAt,
+                                      },
+                                    )}
+                                  </p>
+                                  {identityDetails ? (
+                                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                                      {identityDetails}
+                                    </p>
+                                  ) : null}
+                                </Link>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <p className="font-medium">{service.title}</p>
+                                {service.details ? (
                                   <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                                    {serviceSubline}
+                                    {service.details}
                                   </p>
                                 ) : null}
-                              </>
-                            ) : (
-                              <>
-                                <p className="font-medium">Sin servicio principal</p>
-                                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                                  Sin servicios vigentes
-                                </p>
-                              </>
-                            )}
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            <Badge
-                              variant={SUBSCRIBER_STATUS_META[subscriber.status].variant}
-                              className="rounded-full px-3 py-1 text-xs font-semibold"
-                            >
-                              {SUBSCRIBER_STATUS_META[subscriber.status].label}
-                            </Badge>
-                          </td>
-                          <td className={portalDataTableCellClassName}>
-                            {formatSubscriberDate(subscriber.createdAt)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <Badge
+                                  variant={SUBSCRIBER_STATUS_META[subscriber.status].variant}
+                                  className="rounded-full px-3 py-1 text-xs font-semibold"
+                                >
+                                  {SUBSCRIBER_STATUS_META[subscriber.status].label}
+                                </Badge>
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                {formatSubscriberDate(subscriber.createdAt)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
+          ) : null}
 
-            {showPager ? (
-              <PortalTablePager
-                page={effectivePage}
-                pageCount={Math.max(1, pageCount)}
-                onPageChange={setPage}
-                from={from}
-                to={to}
-                total={meta.total}
-                resource={SUBSCRIBERS_RESOURCE}
-                totalIsEstimate={meta.totalIsEstimate}
-                loading={refreshing}
-                pageSizeControl={
-                  showPageSize ? (
-                    <PortalPageSizeSelect
-                      value={pageSize}
-                      onChange={setPageSize}
-                      disabled={refreshing}
-                    />
-                  ) : undefined
-                }
-              />
-            ) : null}
-          </div>
+          {showPager ? (
+            <PortalTablePager
+              page={effectivePage}
+              pageCount={Math.max(1, pageCount)}
+              onPageChange={setPage}
+              from={from}
+              to={to}
+              total={meta.total}
+              resource={SUBSCRIBERS_RESOURCE}
+              totalIsEstimate={meta.totalIsEstimate}
+              loading={refreshing}
+              pageSizeControl={
+                showPageSize ? (
+                  <PortalPageSizeSelect
+                    value={pageSize}
+                    onChange={setPageSize}
+                    disabled={refreshing}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
         </div>
       </PortalPanel>
       <SubscriberPeek
         open={Boolean(peekId)}
         subscriberId={peekId}
+        projectedContact={records.find((record) => record.id === peekId) ?? null}
+        countryPrefix={countryPrefix}
         onClose={closePeek}
         onChanged={refreshAfterLifecycle}
         onGoToServices={() => {

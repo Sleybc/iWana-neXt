@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { SubscriberQueueCounts } from '@iwana/shared';
 import { SubscriberQueueChips } from './SubscriberQueueChips';
 
@@ -56,6 +56,63 @@ describe('SubscriberQueueChips', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Suspendidos, 0 suscriptores' }));
     expect(onSelect).toHaveBeenCalledWith('suspended');
+  });
+
+  it('mantiene los chips en una fila desplazable y lleva el activo a la vista sin mover el foco', async () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.hasAttribute('data-subscriber-queue-rail')) {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          right: 100,
+          bottom: 48,
+          left: 0,
+          width: 100,
+          height: 48,
+          toJSON: () => ({}),
+        };
+      }
+      if (this.getAttribute('aria-pressed') === 'true') {
+        return {
+          x: 140,
+          y: 0,
+          top: 0,
+          right: 200,
+          bottom: 48,
+          left: 140,
+          width: 60,
+          height: 48,
+          toJSON: () => ({}),
+        };
+      }
+      return originalGetBoundingClientRect.call(this);
+    });
+
+    render(
+      <SubscriberQueueChips
+        counts={counts}
+        loading={false}
+        error={false}
+        selected="suspended"
+        onSelect={jest.fn()}
+        onRetry={jest.fn()}
+      />,
+    );
+
+    const rail = screen.getByRole('group', { name: 'Colas de trabajo' }).parentElement;
+    expect(rail).toHaveClass('overflow-x-auto');
+    expect(screen.getByRole('group', { name: 'Colas de trabajo' })).toHaveClass(
+      'flex-nowrap',
+      'md:flex-wrap',
+    );
+    await waitFor(() => expect(rail?.scrollLeft).toBeGreaterThan(0));
+    expect(document.activeElement).toBe(document.body);
+
+    jest.restoreAllMocks();
   });
 
   it('ofrece reintento sin ocultar la lista cuando fallan los conteos', () => {

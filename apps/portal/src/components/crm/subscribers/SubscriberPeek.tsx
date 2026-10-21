@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button } from '@iwana/ui';
-import { SubscriberStatus } from '@iwana/shared';
+import { getCountryPhonePrefix, SubscriberStatus, type SubscriberListItem } from '@iwana/shared';
 import {
   contractsApi,
   subscribersApi,
@@ -23,12 +23,15 @@ import {
   lifecycleReasonLabel,
 } from './subscriber-lifecycle-ui';
 import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
+import { SubscriberContactActions } from './SubscriberContactActions';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface SubscriberPeekProps {
   open: boolean;
   subscriberId: string | null;
+  projectedContact?: Pick<SubscriberListItem, 'phone' | 'altContactPhone' | 'whatsapp'> | null;
+  countryPrefix?: string | null;
   onClose: () => void;
   onChanged: () => Promise<void> | void;
   onGoToServices: () => void;
@@ -62,6 +65,8 @@ function getServiceName(contract: Contract, anonymized: boolean): string {
 export function SubscriberPeek({
   open,
   subscriberId,
+  projectedContact = null,
+  countryPrefix = getCountryPhonePrefix(),
   onClose,
   onChanged,
   onGoToServices,
@@ -220,6 +225,15 @@ export function SubscriberPeek({
                 <h3 id="subscriber-peek-contact-title" className="text-sm font-semibold">
                   Contacto
                 </h3>
+                {countryPrefix ? (
+                  <SubscriberContactActions
+                    name={getSafeName(data.subscriber)}
+                    phone={projectedContact?.phone}
+                    altContactPhone={projectedContact?.altContactPhone}
+                    whatsapp={projectedContact?.whatsapp}
+                    countryPrefix={countryPrefix}
+                  />
+                ) : null}
                 {data.subscriber.email || data.subscriber.phone || data.subscriber.whatsapp ? (
                   <dl className="space-y-2 text-sm">
                     {data.subscriber.email ? (

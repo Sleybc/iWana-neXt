@@ -609,6 +609,13 @@ function visiblePagerCount(page: Page, text: string) {
   return page.locator('p:not([aria-live])').filter({ hasText: text });
 }
 
+/** Nombre del suscriptor dentro de la tabla visible, sin coincidir con la tarjeta responsive oculta. */
+function subscriberTextInTable(page: Page, text: string) {
+  return page
+    .getByRole('table', { name: 'Listado de suscriptores' })
+    .getByText(text, { exact: true });
+}
+
 /** Presupuesto de espera del reposo del pager. Una `duration-200` cabe de sobra. */
 const PAGER_SETTLE_TIMEOUT_MS = 3_000;
 
@@ -824,7 +831,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     // Esperar que la tabla y la primera página carguen
     await expect(page.getByRole('heading', { name: 'Suscriptores' })).toBeVisible();
-    await expect(page.getByText('Ana FocoUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 1–20 de 45 suscriptores')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
 
@@ -833,8 +840,8 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     // Esperar que la página 2 se refleje en la UI
     await expect(page).toHaveURL(/page=2/);
-    await expect(page.getByText('Luis FocoDos0')).toBeVisible();
-    await expect(page.getByText('Ana FocoUno0')).toHaveCount(0);
+    await expect(subscriberTextInTable(page, 'Luis FocoDos0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toHaveCount(0);
     await expect(visiblePagerCount(page, 'Mostrando 21–40 de 45 suscriptores')).toBeVisible();
 
     // Assert: el foco está en un botón del pager, NO en <body>
@@ -849,13 +856,13 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     // Ir directo a página 2 y luego a página 3 (la última, con solo 5 registros)
     await page.goto('/dashboard/crm/subscribers?page=2');
-    await expect(page.getByText('Luis FocoDos0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Luis FocoDos0')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
 
     await page.getByRole('button', { name: 'Siguiente' }).click();
 
     await expect(page).toHaveURL(/page=3/);
-    await expect(page.getByText('Eva FocoTres0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Eva FocoTres0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 41–45 de 45 suscriptores')).toBeVisible();
 
     // El botón Siguiente debe estar deshabilitado (última página)
@@ -871,13 +878,13 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/dashboard/crm/subscribers?page=2');
-    await expect(page.getByText('Luis FocoDos0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Luis FocoDos0')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Anterior' })).toBeEnabled();
 
     await page.getByRole('button', { name: 'Anterior' }).click();
 
     await expect(page).not.toHaveURL(/page=2/);
-    await expect(page.getByText('Ana FocoUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toBeVisible();
 
     // Assert: foco en un botón del pager
     await expectFocusOnPagerButton(page);
@@ -893,7 +900,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/dashboard/crm/subscribers');
 
-    await expect(page.getByText('Ana FocoUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
 
     // Click en Siguiente — la API mockeada tarda 400ms
@@ -908,7 +915,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     await expect(page.locator('nav[aria-busy="true"]')).toBeAttached();
 
     // Esperar que la nueva página cargue
-    await expect(page.getByText('Luis FocoDos0')).toBeVisible({ timeout: 5000 });
+    await expect(subscriberTextInTable(page, 'Luis FocoDos0')).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/page=2/);
 
     // Después de cargar, los controles deben dejar de estar deshabilitados
@@ -935,7 +942,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     await page.goto('/dashboard/crm/subscribers');
 
     // Esperar que la tabla cargue completamente
-    await expect(page.getByText('Ana FocoUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 1–20 de 45 suscriptores')).toBeVisible();
     await page.waitForLoadState('networkidle');
     await waitForTableSettled(page);
@@ -948,7 +955,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     // ── Paginar a página 2 y re-auditar ──
     await page.getByRole('button', { name: 'Siguiente' }).click();
-    await expect(page.getByText('Luis FocoDos0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Luis FocoDos0')).toBeVisible();
     await expect(page).toHaveURL(/page=2/);
     await page.waitForLoadState('networkidle');
     await waitForTableSettled(page);
@@ -960,7 +967,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
 
     // ── Auditoría en página 3 (última, parcial) ──
     await page.getByRole('button', { name: 'Siguiente' }).click();
-    await expect(page.getByText('Eva FocoTres0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Eva FocoTres0')).toBeVisible();
     await expect(page).toHaveURL(/page=3/);
     await page.waitForLoadState('networkidle');
     await waitForTableSettled(page);
@@ -1003,7 +1010,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/dashboard/crm/subscribers');
 
-    await expect(page.getByText('Ana FocoUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toBeVisible();
     await page.waitForLoadState('networkidle');
     await waitForTableSettled(page);
 
@@ -1032,7 +1039,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     logAxeEvidence('AXE_V2_34_REFRESHING', refreshingResult.violations);
 
     // Cierre limpio del ciclo antes de terminar.
-    await expect(page.getByText('Luis FocoDos0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Luis FocoDos0')).toBeVisible();
     await waitForTableSettled(page);
 
     expect(refreshingResult.violations).toEqual([]);
@@ -1080,7 +1087,7 @@ test.describe('PortalTablePager — foco (v2-25) y a11y (v2-34)', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/dashboard/crm/subscribers');
 
-    await expect(page.getByText('Ana FocoUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana FocoUno0')).toBeVisible();
     // Guardarraíl: si el tema oscuro no se aplicó, el test debe morir aquí y no
     // dar por buena una auditoría del tema claro.
     await expect(page.locator('html.dark')).toBeAttached();

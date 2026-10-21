@@ -287,6 +287,7 @@ describe('SubscriberPeek', () => {
       <SubscriberPeek
         open
         subscriberId="00000000-0000-4000-8000-000000000001"
+        projectedContact={{ phone: '+570000000000', whatsapp: '+570000000000' }}
         onClose={jest.fn()}
         onChanged={jest.fn()}
         onGoToServices={jest.fn()}
@@ -295,6 +296,13 @@ describe('SubscriberPeek', () => {
 
     expect(await screen.findByText('Contacto pendiente')).toBeInTheDocument();
     expect(screen.getByText('Datos fiscales incompletos')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Llamar a Nombre sintético Prueba' })).toHaveAttribute(
+      'href',
+      'tel:+570000000000',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Escribir por WhatsApp a Nombre sintético Prueba' }),
+    ).toHaveAttribute('href', 'https://wa.me/570000000000');
     expect(screen.getByText('Sede de prueba')).toBeInTheDocument();
     expect(screen.getByText('Fibra de prueba')).toBeInTheDocument();
     expect(screen.getByText(/Mora en el pago/)).toBeInTheDocument();
@@ -305,6 +313,30 @@ describe('SubscriberPeek', () => {
       '/dashboard/crm/subscribers/00000000-0000-4000-8000-000000000001',
     );
   });
+
+  it.each(['SALES', 'ACCOUNTANT'])(
+    'no ofrece acciones de contacto cuando la proyección de %s omite teléfonos',
+    async () => {
+      getByIdMock.mockResolvedValue(subscriberFixture());
+      listContractsMock.mockResolvedValue({ data: [] });
+
+      render(
+        <SubscriberPeek
+          open
+          subscriberId="00000000-0000-4000-8000-000000000001"
+          projectedContact={{}}
+          onClose={jest.fn()}
+          onChanged={jest.fn()}
+          onGoToServices={jest.fn()}
+        />,
+      );
+
+      expect(await screen.findByText('Contacto')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Llamar a/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /WhatsApp a/ })).not.toBeInTheDocument();
+      expect(screen.queryByText('Teléfono sin formato válido')).not.toBeInTheDocument();
+    },
+  );
 
   it('mantiene solo plan y estado en un registro anonimizado', async () => {
     getByIdMock.mockResolvedValue(subscriberFixture({ anonymizedAt: '2026-10-19T10:00:00.000Z' }));

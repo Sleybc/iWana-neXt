@@ -308,6 +308,18 @@ function visiblePagerCount(page: Page, text: string) {
   return page.locator('p:not([aria-live])').filter({ hasText: text });
 }
 
+/** Nombre del suscriptor dentro de la tabla visible, sin coincidir con la tarjeta responsive oculta. */
+function subscriberTextInTable(page: Page, text: string) {
+  return page
+    .getByRole('table', { name: 'Listado de suscriptores' })
+    .getByText(text, { exact: true });
+}
+
+/** Nombre del suscriptor dentro de la lista de tarjetas visible en móvil. */
+function subscriberTextInMobileList(page: Page, text: string) {
+  return page.getByRole('list', { name: 'Suscriptores' }).getByText(text, { exact: true });
+}
+
 /**
  * Captura evidencia con reintento ante errores transitorios de escritura en
  * Windows (open UNKNOWN). Los screenshots son artefacto de documentación, no
@@ -341,21 +353,21 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await page.goto('/dashboard/crm/subscribers');
 
     await expect(page.getByRole('heading', { name: 'Suscriptores' })).toBeVisible();
-    await expect(page.getByText('Ana PáginaUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana PáginaUno0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 1–20 de 45 suscriptores')).toBeVisible();
     await captureEvidence(page, '1280-page1-light.png');
 
     await page.getByRole('button', { name: 'Siguiente' }).click();
     await expect(page).toHaveURL(/page=2/);
-    await expect(page.getByText('Luis PáginaDos0')).toBeVisible();
-    await expect(page.getByText('Ana PáginaUno0')).toHaveCount(0);
+    await expect(subscriberTextInTable(page, 'Luis PáginaDos0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana PáginaUno0')).toHaveCount(0);
     await expect(visiblePagerCount(page, 'Mostrando 21–40 de 45 suscriptores')).toBeVisible();
     await captureEvidence(page, '1280-page2-light.png');
 
     await page.goBack();
     await expect(page).toHaveURL(/\/dashboard\/crm\/subscribers(?:\?|$)/);
     await expect(page).not.toHaveURL(/page=2/);
-    await expect(page.getByText('Ana PáginaUno0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Ana PáginaUno0')).toBeVisible();
 
     const pageSizeSelect = page.getByRole('combobox', { name: 'Filas por página' });
     await pageSizeSelect.click();
@@ -375,7 +387,7 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
 
     await page.getByRole('button', { name: 'Limpiar filtros' }).click();
     await page.goto('/dashboard/crm/subscribers?page=3');
-    await expect(page.getByText('Eva PáginaTres0')).toBeVisible();
+    await expect(subscriberTextInTable(page, 'Eva PáginaTres0')).toBeVisible();
     await expect(visiblePagerCount(page, 'Mostrando 41–45 de 45 suscriptores')).toBeVisible();
     await captureEvidence(page, '1280-page3-partial-light.png');
 
@@ -385,7 +397,7 @@ test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto('/dashboard/crm/subscribers?page=2');
-    await expect(page.getByText('Luis PáginaDos0')).toBeVisible();
+    await expect(subscriberTextInMobileList(page, 'Luis PáginaDos0')).toBeVisible();
     // Exacto: el aria-live anuncia «Página 2 de 3. Mostrando…» (mismo choque H-E2E-01).
     await expect(page.getByText('Página 2 de 3', { exact: true })).toBeVisible();
     await captureEvidence(page, '375-page2-light.png');
