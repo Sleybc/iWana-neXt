@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -135,11 +135,11 @@ Comprueba que HLD v1.1 cierra los cuatro P1 y los tres P2 de `INFORME-MOD13-REVI
 
 ## B2 · `sr-backend` — Aprovisionamiento en la OT
 
-**Depende de:** B1b y S4.
+**Depende de:** B1b (cerrado) y S4 (cerrado).
 
 **Entregables:**
 - MOD11 (HLD §5.1 a 5.3):
-  - `getExecutionSnapshot`, `hasEvidence` y `listInstallationOrdersClosedExecutedWithout` en el puerto existente;
+  - `getExecutionSnapshot` (con `customerDisplayLabel`), `getExecutionSnapshots`, `hasEvidence` y `listInstallationOrders` en el puerto existente, con las formas de HLD v1.1 §5.1;
   - el nuevo `service-provisioning-read.port.ts`;
   - `kind: 'PROVISIONING'` en `TemplateRequirement` y en el evaluador;
   - la guarda en `close()`.
@@ -148,13 +148,24 @@ Comprueba que HLD v1.1 cierra los cuatro P1 y los tres P2 de `INFORME-MOD13-REVI
 - MOD12 (§8): `installed-equipment-read.port.ts` con su adaptador.
 - MOD13:
   - `network-provisioning.controller.ts`: `context`, `reserve`, `certify`, `release`, `inbox`, `subscribers/:id`. `regularize` va en B3.
+  - Dos proyecciones del contexto, construidas por separado (§6.5): `ProvisioningOrderContextDto` y `TechnicianProvisioningViewDto` de cinco campos.
+  - `reservedBy`, `certifiedBy` y `releasedBy` resueltos con el `NetworkActorReadPort` que entregó B1b.
+  - `TenantAwareThrottlerGuard` de 30 por minuto por actor en `reserve`, `certify` y `release` (§6.9).
   - `service-provisioning.service.ts`
   - `router-provisioning.port.ts` y `manual-router-provisioning.adapter.ts` (§6.6)
   - `service-provisioning-read.adapter.ts`
 
 **Restricción de frontera:** ningún módulo importa servicios ni entidades de otro; solo puertos (§8).
 
-**Tests:** CA-NET-04, CA-NET-05 y CA-NET-06 (cerrar sin certificar → `CLOSURE_GATE_INCOMPLETE`, con el ajuste encendido y apagado), y que `NOT_EXECUTED` no consulta el puerto. La suite existente de `tasks` debe seguir en verde, con conteo.
+**Tests:**
+- CA-NET-04, CA-NET-05 y CA-NET-06: cerrar sin certificar → `CLOSURE_GATE_INCOMPLETE`, con el ajuste encendido y apagado;
+- `NOT_EXECUTED` no consulta el puerto;
+- R6 ter en `reserve` y `certify`;
+- R6 bis: liberar un servicio `CERTIFIED` exige `certify`;
+- la respuesta HTTP del técnico tiene exactamente los cinco campos;
+- reversión cuando falla la auditoría de `reserve`, `certify` y `release`.
+
+La suite existente de `tasks` debe seguir en verde, con conteo.
 
 ## B3 · `sr-backend` — Eventos, activación y regularización
 
@@ -187,11 +198,21 @@ Comprobar con `iwana-queue-inspect` que `network-execution-events` queda drenada
 
 Usa los componentes de `@iwana/ui`; no crees primitivas nuevas sin `ds-owner`.
 
+## P0-ter · `prod-ux` — Addendum UX: Ajustes de red
+
+Añade a `docs/specs/2026-10-22-mod13-aprovisionamiento-ux.md` una sección para la pantalla `network/settings` (HLD v1.1 §9, aclaración en §12):
+- tabla de planes con su lista de direcciones PCQ y su edición;
+- interruptor «Exigir aprovisionamiento certificado para cerrar instalaciones», con confirmación, efecto explicado y último cambio;
+- estados vacío, cargando, error y sin permiso.
+
+No añadas campos fuera del §4.4.
+
 ## F2 · `fe-platform` — Panel de la OT, bandeja y ficha
 
-**Depende de:** P0 y B3.
+**Depende de:** P0, P0-ter y B3.
 
 **Entregables:**
+- `app/dashboard/network/settings/`, según P0-ter.
 - `components/operations/ExecutionOrderProvisioningPanel.tsx`, integrado en `ExecutionOrderMomentContainer` y `ExecutionOrderRequirementIndex`, con el faltante en `ExecutionOrderCloseSection`.
 - `app/dashboard/network/provisioning/` con sus tres pestañas y la acción de regularizar.
 - `components/crm/subscribers/SubscriberTechnicalServiceSection.tsx` en la pestaña «Servicios» de `SubscriberDetailClient.tsx`.

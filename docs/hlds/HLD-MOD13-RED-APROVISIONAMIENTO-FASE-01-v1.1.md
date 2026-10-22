@@ -665,6 +665,7 @@ Se añaden en `access-control.constants.ts`, tanto en `ROLE_ASSIGNABLE_PERMISSIO
 | `components/operations/ExecutionOrderProvisioningPanel.tsx` | En la OT: estado, reservar (router → red → IP automática o manual → método y parámetros → contrato), instrucción copiable, certificar con la evidencia elegida. El técnico solo ve el estado y la IP | `provisioning.read` / `execute` / `certify` |
 | `ExecutionOrderRequirementIndex.tsx`, `ExecutionOrderCloseSection.tsx` | Fila del requisito «Aprovisionamiento certificado» y el faltante como acción | — |
 | `components/crm/subscribers/SubscriberTechnicalServiceSection.tsx` en `SubscriberDetailClient.tsx` (pestaña «Servicios») | IP, router, red, método, CPE, estado, `certifiedBy.name` y `certifiedAt`, origen (si es regularizado: `regularizedBy.name` y motivo) y «Activación comercial pendiente» | `network.provisioning.read`; sin él, la sección no se monta |
+| `app/dashboard/network/settings/page.tsx` (aclaración 2026-10-22, §12) | Ajustes de red: tabla de planes de MOD06 unida por `planId` con su `pcqAddressList` (editar con `PUT /network/plan-profiles/:planId`) e interruptor `enforceProvisioningOnInstallClose` (`PATCH /network/settings`) con confirmación y su último cambio (`updatedBy`, `updatedAt`) | `catalog.read` (acciones con `manage`) |
 | Navegación | Grupo «Red» en el menú del portal y en `docs/directorio-modulos.md` | — |
 
 ## 10. Trazabilidad regla → campo
@@ -732,5 +733,7 @@ No hay seeds ni backfill. Cada camino respeta `ck_sp_certified` y `ck_sp_regular
 | S0 P2 (`last_error`) | `last_error_code` con lista cerrada; sin mensaje crudo | §3.2, §6.3 |
 | Q1, Q2 | Cerradas por D1 y S0 | §11 |
 | Listas y ficha | `execution_order_number` desnormalizado en `service_provisionings` | §3.2, §4.4 |
+
+**Aclaración posterior al congelamiento (2026-10-22, al lanzar la Ola 3; sin cambio de API ni de datos):** §9 no daba pantalla a RF-NET-03 (perfiles por plan) ni al ajuste de la guarda (D-NET-3), aunque sus endpoints y DTO ya estaban en §6.2 y §4.4. Se añade la ruta `network/settings`. La especifica prod-ux (P0-ter) y la construye F2.
 
 **Impacto en lo ya entregado por la Ola 1** (sin commitear): la migración `161_network_provisioning` y la entidad `service-provisioning` ganan `execution_order_number`, `regularized_by`, `regularized_at`, `released_by` y el CHECK ampliado; `network_inbox_events.last_error` pasa a `last_error_code`. B1a añade a shared los tipos del §4.4, los esquemas de los cuerpos y las dos listas de códigos. La migración `162_seed_network_permissions` asigna también `network.provisioning.regularize` a «Acceso estándar NOC» y «Acceso estándar Aprovisionamiento» (hoy los excluye con `NOC_KEYS`). Las migraciones 160 y 028 no cambian.

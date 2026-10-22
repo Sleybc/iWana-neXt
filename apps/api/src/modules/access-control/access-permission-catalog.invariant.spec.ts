@@ -1,6 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AccessPermissionAvailability, AccessPermissionKey, UserRole } from '@iwana/shared';
+import {
+  AccessPermissionAvailability,
+  AccessPermissionCatalogVersion,
+  AccessPermissionKey,
+  UserRole,
+} from '@iwana/shared';
 import {
   MOD00_ACCESS_V1_CATALOG,
   MOD00_ACCESS_V2_CATALOG,
@@ -250,8 +255,8 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 37 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(37);
+  it('ADMIN V2 contiene 43 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(43);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
@@ -297,6 +302,52 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
       (template) => template.name === 'Acceso estándar Auditoría',
     );
     expect(auditorTemplate?.permissionKeys).not.toContain(AccessPermissionKey.PRIVACY_MANAGE);
+  });
+});
+
+describe('permisos del catálogo de red MOD13', () => {
+  const networkPermissions = [
+    AccessPermissionKey.NETWORK_CATALOG_READ,
+    AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    AccessPermissionKey.NETWORK_PROVISIONING_READ,
+    AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+    AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+    AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
+  ];
+
+  it('publica las seis claves como asignables y solo las asigna a ADMIN y NOC', () => {
+    const assignable = new Set(
+      MOD00_ACCESS_V2_CATALOG.filter(
+        (entry) => entry.availability === AccessPermissionAvailability.ASSIGNABLE,
+      ).map((entry) => entry.permissionKey),
+    );
+    const nocTemplate = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.find(
+      (template) => template.name === 'Acceso estándar NOC',
+    );
+    const entries = MOD00_ACCESS_V2_CATALOG.filter((entry) =>
+      networkPermissions.includes(entry.permissionKey),
+    );
+
+    expect(entries).toHaveLength(networkPermissions.length);
+    expect(
+      entries.every(
+        (entry) => entry.catalogVersion === AccessPermissionCatalogVersion.MOD13_NETWORK_V1,
+      ),
+    ).toBe(true);
+    expect([...assignable]).toEqual(expect.arrayContaining(networkPermissions));
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toEqual(
+      expect.arrayContaining(networkPermissions),
+    );
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.NOC]).toEqual(
+      expect.arrayContaining(networkPermissions),
+    );
+    expect(nocTemplate?.permissionKeys).toEqual(expect.arrayContaining(networkPermissions));
+    for (const role of Object.values(UserRole)) {
+      if (role === UserRole.ADMIN || role === UserRole.NOC) continue;
+      expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[role]).not.toEqual(
+        expect.arrayContaining(networkPermissions),
+      );
+    }
   });
 });
 

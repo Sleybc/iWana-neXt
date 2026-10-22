@@ -23,6 +23,7 @@ interface SystemRoleTemplateDefinition {
 
 const version = AccessPermissionCatalogVersion.MOD00_ACCESS_V1;
 const versionV2 = AccessPermissionCatalogVersion.MOD00_ACCESS_V2;
+const networkVersion = AccessPermissionCatalogVersion.MOD13_NETWORK_V1;
 
 export const MOD00_ACCESS_V1_CATALOG: PermissionSeedDefinition[] = [
   {
@@ -722,6 +723,54 @@ export const MOD00_ACCESS_V2_CATALOG: PermissionSeedDefinition[] = [
     catalogVersion: versionV2,
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
+  {
+    permissionKey: AccessPermissionKey.NETWORK_CATALOG_READ,
+    moduleKey: 'network',
+    action: 'read',
+    description: 'Consultar routers y redes IPv4',
+    catalogVersion: networkVersion,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    moduleKey: 'network',
+    action: 'manage',
+    description: 'Administrar routers, redes IPv4 y perfiles de plan',
+    catalogVersion: networkVersion,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_READ,
+    moduleKey: 'network',
+    action: 'read',
+    description: 'Consultar servicios y eventos de aprovisionamiento',
+    catalogVersion: networkVersion,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+    moduleKey: 'network',
+    action: 'execute',
+    description: 'Reservar y ejecutar el aprovisionamiento de red',
+    catalogVersion: networkVersion,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+    moduleKey: 'network',
+    action: 'certify',
+    description: 'Certificar el aprovisionamiento con evidencia',
+    catalogVersion: networkVersion,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
+    permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
+    moduleKey: 'network',
+    action: 'regularize',
+    description: 'Regularizar órdenes de instalación cerradas sin certificación',
+    catalogVersion: networkVersion,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
   // ── Billing permanece RESERVED ──
   {
     permissionKey: AccessPermissionKey.BILLING_PAYMENTS_READ,
@@ -778,6 +827,12 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2: Record<UserRole, AccessPermis
     AccessPermissionKey.INVENTORY_PURCHASING_READ,
     AccessPermissionKey.INVENTORY_PURCHASING_MANAGE,
     AccessPermissionKey.COMMERCIAL_CATALOG_READ,
+    AccessPermissionKey.NETWORK_CATALOG_READ,
+    AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    AccessPermissionKey.NETWORK_PROVISIONING_READ,
+    AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+    AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+    AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
   ],
   [UserRole.SUPPORT]: [
     AccessPermissionKey.SETTINGS_READ,
