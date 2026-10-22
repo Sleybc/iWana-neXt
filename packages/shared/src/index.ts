@@ -64,6 +64,7 @@ export * from './contracts/operations/operational-tasks';
 export * from './contracts/configuration/settings-priority.contract';
 export * from './contracts/inventory/executor-custody';
 export * from './contracts/inventory';
+export * from './contracts/network';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

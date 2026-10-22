@@ -1,4 +1,5 @@
 import { MediaUsagePrivacyEvidence1784419215000 } from './027_media_usage_privacy_evidence';
+import { EnableBtreeGist1784419216000 } from './028_enable_btree_gist';
 import { PUBLIC_MIGRATIONS } from './index';
 
 const CHECK_026 =
@@ -50,7 +51,8 @@ describe('027_media_usage_privacy_evidence', () => {
 
     expect(migration.name).toBe('MediaUsagePrivacyEvidence1784419215000');
     expect(parseInt(migration.name.slice(-13), 10)).toBeGreaterThan(1784419214000);
-    expect(PUBLIC_MIGRATIONS.at(-1)).toBe(MediaUsagePrivacyEvidence1784419215000);
+    const index = PUBLIC_MIGRATIONS.indexOf(MediaUsagePrivacyEvidence1784419215000);
+    expect(PUBLIC_MIGRATIONS[index + 1]).toBe(EnableBtreeGist1784419216000);
   });
 
   it('up agrega privacy_evidence y preserva todos los usos de la 026', async () => {

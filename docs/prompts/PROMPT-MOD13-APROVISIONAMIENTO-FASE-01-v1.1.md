@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -120,13 +120,18 @@ Comprueba que HLD v1.1 cierra los cuatro P1 y los tres P2 de `INFORME-MOD13-REVI
 - `apps/api/src/modules/network/` con `network.module.ts` registrado en `app.module.ts`.
 - `network-catalog.controller.ts` y `network-catalog.service.ts` (HLD §6.2, catálogo).
 - `ipam.service.ts` (§6.1).
-- Matriz y plantillas de `access-control.constants.ts` (§7), con las claves que publicó B1a.
+- Matriz y plantillas de `access-control.constants.ts` (§7), con las claves que publicó B1a. `network.provisioning.regularize` también va a «Acceso estándar NOC» y «Acceso estándar Aprovisionamiento»; debe coincidir con lo que siembra la migración 162.
+- `network/ports/network-actor-read.port.ts` y su adaptador (§8), que copia `crm/expedientes/crm-actor-read.adapter.ts`. Lo usan `updatedBy` del catálogo y, después, B2 y B3.
+- Auditoría de las mutaciones del catálogo y del ajuste del tenant según §6.8, con `logWithin` en la transacción.
+- Pipeline §6.9 en los controladores del catálogo: `limit` ≤ 100, `ParseUUIDPipe` y validación estricta. Los límites por actor de los comandos llegan con B2.
+- Respuestas con las formas exactas del §4.4 y el envelope `ListResponse` de ADR-065.
 - OpenAPI.
 
 **Tests:**
 - unitarios de validaciones y códigos de error;
 - integración contra Postgres real: CA-NET-01, CA-NET-03 y **CA-NET-02 (20 reservas concurrentes, 0 duplicados)**;
-- HTTP de permisos (CA-NET-12).
+- HTTP de permisos (CA-NET-12);
+- auditoría: una prueba que fuerce el fallo de `logWithin` y demuestre que la mutación del catálogo se revierte.
 
 ## B2 · `sr-backend` — Aprovisionamiento en la OT
 

@@ -105,3 +105,12 @@ export { StockIssueLineSerial } from './stock-issue-line-serial.entity';
 export { StockCount } from './stock-count.entity';
 export { StockCountLine } from './stock-count-line.entity';
 export { SupplierProfile } from './supplier-profile.entity';
+
+// MOD13 — Red y Aprovisionamiento · Fase 01
+export { NetworkRouter } from './network-router.entity';
+export { Ipv4Network } from './ipv4-network.entity';
+export { NetworkPlanProfile } from './network-plan-profile.entity';
+export { NetworkSetting } from './network-setting.entity';
+export { ServiceProvisioning } from './service-provisioning.entity';
+export { IpAssignment } from './ip-assignment.entity';
+export { NetworkInboxEvent } from './network-inbox-event.entity';

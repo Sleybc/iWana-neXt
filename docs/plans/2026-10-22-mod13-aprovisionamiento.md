@@ -1,9 +1,9 @@
 # MOD13 — Red y Aprovisionamiento · Fase 01 (IPAM y activación certificada) · Plan de orquestación
 
-**Fecha:** 2026-10-22 · **Versión:** 1.1 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-22 · **Versión:** 1.2 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Definición:** [PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (Aprobado) · [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (contrato) · [ADR-098](../adrs/ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md)
-**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 1-bis):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md) · Ola 1: [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), ejecutada
-**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6).
+**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 2):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md) y Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md)
+**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2.
 **Base:** `main` en `01a3e91b`. Se trabaja en `main`, sin ramas. **El árbol tiene 48 rutas sin commitear ajenas a esta fase:** ningún agente las toca ni las incluye en sus commits.
 
 ## 0. Alcance
@@ -103,7 +103,7 @@ Claude Code **lee** cada `SKILL.md` (`.agents/skills/<nombre>/SKILL.md`) como do
 | --- | --- | --- |
 | P1 | Encender la guarda antes de que exista el panel deja las instalaciones incerrables | El ajuste nace apagado (migración 162) y solo se enciende en G7 |
 | P2 | El suscriptor del caso de origen no tiene contacto real o datos fiscales completos, y la regularización deja «activación comercial pendiente» | Antes de G7, CRM verifica su ficha y la completa por la UI. El resultado queda visible, no oculto |
-| P3 | `btree_gist` no está disponible (HLD Q1) | Plan B ya descrito en el HLD; data-eng decide en D1 y lo reporta |
+| P3 | `btree_gist` no está disponible (HLD Q1) | ✅ Cerrado en D1: la migración pública 028 instala la extensión y se conserva el `EXCLUDE` |
 | P4 | El reenvío del worker rompe la proyección vigente de agenda, visita y tarea | B3 añade el encolado después de la proyección; la suite actual del worker se ejecuta sin caché |
 | P5 | El árbol sucio de `main` contamina los commits | Cada bloque hace `git add` solo de sus rutas |
 
@@ -112,28 +112,30 @@ Claude Code **lee** cada `SKILL.md` (`.agents/skills/<nombre>/SKILL.md`) como do
 | Ola | Bloque | Estado | Evidencia |
 | --- | --- | --- | --- |
 | 1 | S0 · sec-eng | ✅ Cerrado: Q2 → `network.provisioning.read`; 4 P1 y 3 P2 de diseño | [INFORME-MOD13-REVISION-SEGURIDAD-DISENO-v1.0](../informes/INFORME-MOD13-REVISION-SEGURIDAD-DISENO-v1.0.md) |
-| 1 | D1 · data-eng | ✅ Cerrado: pública 028 `btree_gist` (cierra Q1), tenant 160–162, 7 entidades; 3 migraciones de ida y vuelta; 4/4 integraciones y 27/27 de orden | [INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.0](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.0.md) |
+| 1 | D1 · data-eng | ✅ Cerrado: pública 028 `btree_gist` (cierra Q1), tenant 160–162, 7 entidades; 3 migraciones de ida y vuelta; 4/4 integraciones y 27/27 de orden | [INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.1](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.1.md) |
 | 1 | B1a · sr-backend | 🔶 Parcial: esquemas, colas y 6 permisos; 5/5 tests. Faltaban las formas de los DTO | ídem |
 | 1 | P0 · prod-ux | ⛔ Bloqueado: el contrato no tenía la identidad legible de quien certifica | [spec UX](../specs/2026-10-22-mod13-aprovisionamiento-ux.md) |
 | — | Re-sync | ✅ HLD y PRD v1.1, aprobados por el CTO el 2026-10-22. El CTO decidió que regularizan ADMIN y NOC, y que sin técnico asignado se bloquea (R6 ter) | HLD v1.1 §12 |
-| 1-bis | D1-bis ∥ B1a-bis ∥ P0-bis ∥ S0-bis | ⏳ Por lanzar | Launcher v1.1 |
+| 1-bis | D1-bis · data-eng | ✅ Cerrado: 161, 162 y entidades ajustadas; 160–162 de ida y vuelta; 3/3 integraciones y 6/6 de orden | [INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.1](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.1.md) |
+| 1-bis | B1a-bis · sr-backend | ✅ Cerrado: tipos, cuerpos y listas de códigos de HLD §4.4; 9/9 tests; lint, typecheck y build | ídem |
+| 1-bis | P0-bis · prod-ux | ✅ Cerrado: spec UX v1.1 completa, sin campos fuera del HLD | [spec UX](../specs/2026-10-22-mod13-aprovisionamiento-ux.md) |
+| 1-bis | S0-bis · sec-eng | ✅ 4 P1 y 2 P2 cerrados en diseño; el P2 del pipeline queda para V2, así que G5 sigue abierto | [revisión de seguridad](../informes/INFORME-MOD13-REVISION-SEGURIDAD-DISENO-v1.0.md) §Verificación v1.1 |
+| — | G1 | ✅ Cerrado el 2026-10-22 | — |
+| 2 | B1b · sr-backend | ⏳ Por lanzar | Launcher v1.2 |
 
-Los bloqueos fueron defectos del emisor (contrato v1.0), no de los agentes. Tras la Ola 1-bis sigue la Ola 2: B1b (catálogo, IPAM y permisos), con su propio launcher.
+Los bloqueos fueron defectos del emisor (contrato v1.0), no de los agentes.
+
+Correcciones de AI-EM-ARCH al recibir la Ola 1-bis:
+- se revirtió el formateo con Prettier que había reescrito las tablas de este plan, porque `docs/` no se formatea;
+- se restauró el informe de la Ola 1 v1.0, que ya estaba commiteado y se había borrado; queda marcado como superado por v1.1.
+
+Sigue la Ola 2: B1b (catálogo, IPAM y permisos). Después, la Ola 3: B2 ∥ F1.
 
 ## Lanzamiento
 
-Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md). **Si divergen, prevalece el archivo.** Lanza la Ola 1-bis. S0 y D1 de la Ola 1 no se re-despachan.
+Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md). **Si divergen, prevalece el archivo.** Lanza la Ola 2 (B1b). Las Olas 1 y 1-bis no se re-despachan.
 
 ```text
-===== 1 · data-eng =====
-Actúa como `data-eng`. Lee `AGENTS.md`, el plan y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §D1-bis. Lee `database-migration`, `postgresql` e `iwana-tenant-migration`. Ajusta 161, 162 y las entidades según HLD v1.1 §3.2 y §12, sin cambiar el contrato. Ningún tenant `ACTIVE`. No commitees. Cierras con 160–162 de ida y vuelta y conteo real.
-
-===== 2 · sr-backend =====
-Actúa como `sr-backend`. Lee `AGENTS.md`, el plan y tu encargo §B1a-bis del mismo prompt. Lee `typescript-expert` y `test-driven-development`. Publica en `@iwana/shared` los tipos, cuerpos y listas de códigos de HLD v1.1 §4.4, sin modificar el contrato. No commitees. Cierras con los tests en verde y conteo real.
-
-===== 3 · prod-ux =====
-Actúa como `prod-ux`. Lee `AGENTS.md`, el plan y tu encargo §P0-bis. Lee `iwana-identity-ui-review`, `system-vocabulary-review` y `wcag-audit-patterns`. Completa `docs/specs/2026-10-22-mod13-aprovisionamiento-ux.md` sobre HLD v1.1; si falta un campo, emite `[BLOQUEO]` y para.
-
-===== 4 · sec-eng =====
-Actúa como `sec-eng`. Lee `AGENTS.md`, el plan y tu encargo §S0-bis. Lee `security-auditor` y `backend-security-coder`. En solo lectura, verifica que HLD v1.1 cierra los hallazgos de tu informe y añade la sección «Verificación v1.1».
+===== 1 · sr-backend =====
+Actúa como `sr-backend`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-22-mod13-aprovisionamiento.md` y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §B1b, con sus reglas comunes 1 a 9. Antes de escribir código, lee los `SKILL.md` de `nestjs-expert`, `backend-security-coder`, `openapi-spec-generation`, `test-driven-development` y `postgresql`. Consumes el contrato congelado `docs/hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md` y lo ya entregado en `packages/database` y `@iwana/shared`; no los modifiques. Si algo no cabe, emite `[BLOQUEO]` y para. Alcance: solo el catálogo de red, el IPAM, el puerto de actores y la matriz de permisos. Fuera de alcance: reservar, certificar, eventos y UI. No commitees ni migres tenants `ACTIVE`. Cierras con G2: CA-NET-01 a 03 y 12, 20 reservas concurrentes sin duplicados contra Postgres real, reversión ante fallo de auditoría, lint, typecheck y build, con conteo real.
 ```

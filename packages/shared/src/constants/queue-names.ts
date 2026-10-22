@@ -38,3 +38,9 @@ export const INVENTORY_EXECUTION_REQUESTS_QUEUE = 'inventory-execution-requests'
 
 /** Barrido periódico de eventos de agenda vencidos sin cierre (MOD09 F4.1). */
 export const SCHEDULE_EVENTS_SWEEP_QUEUE = 'schedule-events-sweep';
+
+/** Cola firmada para reaccionar al cierre, cancelación y anulación de OT de instalación. */
+export const NETWORK_EXECUTION_EVENTS_QUEUE = 'network-execution-events';
+
+/** Cola de conciliación periódica de aprovisionamientos de red. */
+export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconcile';

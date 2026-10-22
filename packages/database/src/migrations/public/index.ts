@@ -32,6 +32,7 @@ import { HardenPlatformAuditMaintenanceGuard1784419212000 } from './024_harden_p
 import { PlatformUsersPasswordResetRequired1784419213000 } from './025_platform_users_password_reset_required';
 import { MediaUsageStratumEvidence1784419214000 } from './026_media_usage_stratum_evidence';
 import { MediaUsagePrivacyEvidence1784419215000 } from './027_media_usage_privacy_evidence';
+import { EnableBtreeGist1784419216000 } from './028_enable_btree_gist';
 
 /**
  * Migraciones del schema público, en orden.
@@ -74,6 +75,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   PlatformUsersPasswordResetRequired1784419213000,
   MediaUsageStratumEvidence1784419214000,
   MediaUsagePrivacyEvidence1784419215000,
+  EnableBtreeGist1784419216000,
 ];
 
 /**

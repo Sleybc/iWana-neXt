@@ -55,4 +55,10 @@ export enum AccessPermissionKey {
   PRIVACY_READ = 'privacy.read',
   PRIVACY_MANAGE = 'privacy.manage',
   CRM_BLOCKED_DATA_READ = 'crm.blocked_data.read',
+  NETWORK_CATALOG_READ = 'network.catalog.read',
+  NETWORK_CATALOG_MANAGE = 'network.catalog.manage',
+  NETWORK_PROVISIONING_READ = 'network.provisioning.read',
+  NETWORK_PROVISIONING_EXECUTE = 'network.provisioning.execute',
+  NETWORK_PROVISIONING_CERTIFY = 'network.provisioning.certify',
+  NETWORK_PROVISIONING_REGULARIZE = 'network.provisioning.regularize',
 }

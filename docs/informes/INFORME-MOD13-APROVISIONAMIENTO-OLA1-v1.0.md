@@ -1,5 +1,7 @@
 # INFORME-MOD13 — Aprovisionamiento · Ola 1
 
+> **Superado por [v1.1](INFORME-MOD13-APROVISIONAMIENTO-OLA1-v1.1.md) el 2026-10-22**, que añade la Ola 1-bis. Se conserva como registro.
+
 **Versión:** 1.0  
 **Estado:** En revisión · Ola ejecutada con bloqueos de contrato  
 **Fecha:** 2026-10-22  

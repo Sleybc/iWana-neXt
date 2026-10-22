@@ -1,5 +1,6 @@
 import { MediaUsageStratumEvidence1784419214000 } from './026_media_usage_stratum_evidence';
 import { MediaUsagePrivacyEvidence1784419215000 } from './027_media_usage_privacy_evidence';
+import { EnableBtreeGist1784419216000 } from './028_enable_btree_gist';
 import { PUBLIC_MIGRATIONS } from './index';
 
 const CHECK_020 =
@@ -53,18 +54,15 @@ function queryRunnerStub(options: StubOptions = {}): {
 }
 
 describe('026_media_usage_stratum_evidence', () => {
-  it('conserva un timestamp de 13 dígitos posterior a la 025 y queda en último lugar', () => {
+  it('conserva un timestamp de 13 dígitos posterior a la 025 y mantiene el orden de migraciones', () => {
     const migration = new MediaUsageStratumEvidence1784419214000();
 
     expect(migration.name).toBe('MediaUsageStratumEvidence1784419214000');
     // Exactamente lo que hace TypeORM en MigrationExecutor.getMigrations.
     expect(parseInt(migration.name.slice(-13), 10)).toBeGreaterThan(1784419213000);
-    expect(PUBLIC_MIGRATIONS[PUBLIC_MIGRATIONS.length - 2]).toBe(
-      MediaUsageStratumEvidence1784419214000,
-    );
-    expect(PUBLIC_MIGRATIONS[PUBLIC_MIGRATIONS.length - 1]).toBe(
-      MediaUsagePrivacyEvidence1784419215000,
-    );
+    const index = PUBLIC_MIGRATIONS.indexOf(MediaUsageStratumEvidence1784419214000);
+    expect(PUBLIC_MIGRATIONS[index + 1]).toBe(MediaUsagePrivacyEvidence1784419215000);
+    expect(PUBLIC_MIGRATIONS[index + 2]).toBe(EnableBtreeGist1784419216000);
   });
 
   it('up sustituye el CHECK por uno que añade stratum_evidence y conserva execution_evidence', async () => {
