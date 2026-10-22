@@ -113,6 +113,12 @@ Mientras no exista la señal real, **no se acepta una autodeclaración como prue
 
 ---
 
+## Desarrollo posterior (2026-10-22)
+
+[ADR-098](ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md) crea el dueño que este ADR dejó como «Provisioning (futuro)»: MOD13 Red y Aprovisionamiento. Aplica D2 con un requisito `PROVISIONING` en la OT de instalación, que es activación técnica y no comercial. Aplica D5 haciendo que certifique un usuario de Aprovisionamiento/NOC distinto del técnico asignado. **No modifica ninguna decisión de este ADR.**
+
+---
+
 ## Alternativas descartadas
 
 **A1 — Exigir las tres condiciones como requisitos de la OT.** Es la lectura literal de la definición del CTO y la razón por la que este ADR existe. Se descarta porque dos de las tres no son representables, y porque el aprovisionamiento como condición de cierre crea el ciclo del §Contexto: produciría OT que nunca cierran.

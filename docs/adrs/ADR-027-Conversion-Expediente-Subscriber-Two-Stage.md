@@ -2,6 +2,7 @@
 
 **Version:** 1.0  
 **Estado:** Aprobado  
+**Enmienda vigente:** «Enmienda (2026-10-22)», al final; aprobada por el CTO el 2026-10-22.  
 **Fecha:** 2026-04-17
 
 ## Contexto
@@ -36,6 +37,15 @@ No cambia la decisión. Tras emitir un evento del pipeline, el emisor puede hace
 - ocurre dentro del mismo bounded context CRM, donde `ExpedienteService` ya depende de `SubscribersService`.
 
 La alternativa descartada n.º 2 se refiere a **escrituras** directas en lugar de eventos. Origen: hallazgo SEC-G4-03 de E-3 ([prompt E-3 §8](../prompts/PROMPT-MOD05-E3-CONTACTO-PENDIENTE-v1.0.md)).
+
+## Enmienda (2026-10-22, AI-EM-ARCH) — aprobada por el CTO el 2026-10-22
+
+Introducida por [ADR-098](ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md) D7 (Aprobado).
+
+- La etapa 2 tiene un segundo disparador. Además del cambio manual del expediente a `CLIENTE_ACTIVO`, cuando MOD13 emite `network.service-provisioning.activated` (OT de instalación cerrada como ejecutada, con aprovisionamiento certificado), MOD05 lleva el expediente vinculado a `CLIENTE_ACTIVO` con actor de sistema.
+- Desde ahí la cadena no cambia: `crm.expediente.activated` → `activateFromExpediente` → suscriptor `ACTIVE`.
+- Se mantienen las guardas existentes: contacto real y completitud fiscal. Si una falla, se registra «activación comercial pendiente» con su causa, visible en la ficha y en la bandeja de aprovisionamiento, y la transición del expediente no se fuerza.
+- El contrato no se activa por esta vía: su activación es la convención de firma (ADR-088).
 
 ## Referencias
 
