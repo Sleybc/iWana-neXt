@@ -45,10 +45,12 @@ import { TaskAssignmentService } from './services/task-assignment.service';
 import { TaskTimelineService } from './services/task-timeline.service';
 import { TasksService } from './services/tasks.service';
 import { TasksPrivacyModule } from './privacy/tasks-privacy.module';
+import { NetworkProvisioningReadModule } from '../network/network-provisioning-read.module';
 
 @Module({
   imports: [
     InventoryModule,
+    NetworkProvisioningReadModule,
     AssuranceModule,
     UsersModule,
     AccessControlModule,

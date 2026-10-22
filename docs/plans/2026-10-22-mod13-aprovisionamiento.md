@@ -1,9 +1,9 @@
 # MOD13 — Red y Aprovisionamiento · Fase 01 (IPAM y activación certificada) · Plan de orquestación
 
-**Fecha:** 2026-10-22 · **Versión:** 1.3 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-22 · **Versión:** 1.5 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Definición:** [PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (Aprobado) · [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (contrato) · [ADR-098](../adrs/ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md)
-**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 3):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md) y Ola 2 [LAUNCH-v1.2](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md)
-**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2. v1.3 (2026-10-22) cierra G2 y lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter).
+**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 5):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md), Ola 2 [LAUNCH-v1.2](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md), Ola 3 [LAUNCH-v1.3](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md) y Ola 4 [LAUNCH-v1.4](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.4.md)
+**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2. v1.3 (2026-10-22) cierra G2 y lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter). v1.4 (2026-10-22) recibe la Ola 3 y lanza la Ola 4 (B3 ∥ F1-v). v1.5 (2026-10-22) cierra G3 y lanza la Ola 5 (F2 ∥ F1-v).
 **Base:** `main` en `01a3e91b`. Se trabaja en `main`, sin ramas. **El árbol tiene 48 rutas sin commitear ajenas a esta fase:** ningún agente las toca ni las incluye en sus commits.
 
 ## 0. Alcance
@@ -123,7 +123,13 @@ Claude Code **lee** cada `SKILL.md` (`.agents/skills/<nombre>/SKILL.md`) como do
 | — | G1 | ✅ Cerrado el 2026-10-22 | — |
 | 2 | B1b · sr-backend | ✅ Cerrado: G2; API 3 suites/27 tests, PostgreSQL 2/11, shared 24/230, migración 162 1/1; lint, typecheck y build | [INFORME B1b](../informes/INFORME-MOD13-APROVISIONAMIENTO-B1B-v1.0.md) |
 | — | G2 | ✅ Cerrado el 2026-10-22. Cobertura sin medir: queda para G6 | — |
-| 3 | B2 · sr-backend ∥ F1 · fe-platform ∥ P0-ter · prod-ux | ⏳ Por lanzar | Launcher v1.3 |
+| 3 | B2 · sr-backend | ✅ Cerrado: puertos MOD11, MOD05 y MOD12, comandos `reserve`, `certify` y `release`, gate y guarda de cierre, migración 163; `tasks` 37/746, B2 3/10, rollback de auditoría 1/3, 163 2/3 | [INFORME Ola 3](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-3-v1.0.md) |
+| 3 | P0-ter · prod-ux | ✅ Cerrado: sección Ajustes de red en la spec UX | [spec UX](../specs/2026-10-22-mod13-aprovisionamiento-ux.md) |
+| 3 | F1 · fe-platform | 🔶 Construido: lint, typecheck y build con Webpack (43 rutas). Prueba contra el API vivo en 0/0: el API no respondía y faltaban credenciales E2E → F1-v | ídem |
+| 4 | B3 · sr-backend | ✅ Cerrado: eventos firmados, listeners CRM/Inventario, reconciliador y regularización; Postgres/Redis 1/5, network 6/23, tasks 37/748, worker 21/173 | [INFORME Ola 4](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-4-v1.0.md) |
+| 4 | F1-v · fe-platform | ⛔ `[BLOQUEO]`: API no escucha en `127.0.0.1:3000` y faltan las dos variables E2E; 0 suites / 0 tests | [INFORME Ola 4](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-4-v1.0.md) |
+| — | G3 | ✅ Cerrado el 2026-10-22 (B2 + B3) | — |
+| 5 | F2 · fe-platform ∥ F1-v · fe-platform | ⏳ Por lanzar; la parte en vivo depende de la precondición del CTO | Launcher v1.5 |
 
 Los bloqueos fueron defectos del emisor (contrato v1.0), no de los agentes.
 
@@ -137,19 +143,26 @@ Correcciones de AI-EM-ARCH al recibir la Ola 2:
 - se borraron tres cachés de jest escritos dentro de `src/` por una ruta relativa: `apps/api/src/apps/`, `packages/database/src/packages/` y `packages/shared/src/packages/`, unos 2 850 archivos;
 - se detectó que la pantalla de RF-NET-03 (perfiles por plan) y la del ajuste de la guarda no estaban en el HLD §9. Se añadió como aclaración sin cambio de API (HLD v1.1 §12): la especifica P0-ter en la Ola 3 y la construye F2.
 
-Sigue la Ola 3: B2 ∥ F1 ∥ P0-ter. Después, la Ola 4: B3; y la Ola 5: F2.
+Correcciones de AI-EM-ARCH al recibir la Ola 3:
+- se borraron 10 carpetas de caché de jest (`apps/api/.jest-cache-mod13-b2-*` y `packages/database/.jest-cache-mod13-b2-*`); la regla común 3 prohíbe desde ahora crear cachés dentro del repo;
+- hallazgo de frontera (P2): `TasksModule` importa `NetworkModule` completo y este exporta servicios. HLD §5.2 pedía un módulo estrecho, así que se corrige en B3.0, antes que el resto de B3;
+- el fallo de Turbopack con `leaflet.css` no viene de MOD13: lo usan pantallas ya existentes de CRM y de ajustes. El build con Webpack pasa. Queda fuera de esta fase.
+
+Correcciones y notas de AI-EM-ARCH al recibir la Ola 4:
+- B3.0 verificado: `TasksModule` importa solo `NetworkProvisioningReadModule`, y `NetworkModule` exporta únicamente el puerto de estado comercial.
+- Hallazgo de frontera (P3, para V3): `CrmModule` importa `NetworkModule` completo para obtener ese puerto. Es el mismo patrón que B3.0 corrigió para tasks.
+- Seguridad: una salida de diagnóstico del agente imprimió la contraseña local de Redis. AI-EM-ARCH verificó que no quedó escrita en ningún archivo del repo (0 coincidencias en todo el árbol y en los 116 archivos cambiados). Recomendación: rotarla antes de volver a usar Redis de desarrollo. El launcher v1.5 prohíbe imprimir secretos.
+
+Sigue la Ola 5: F2 ∥ F1-v. Después vienen las verificaciones V1 a V5 y G7.
 
 ## Lanzamiento
 
-Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md). **Si divergen, prevalece el archivo.** Lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter). Las olas anteriores no se re-despachan.
+Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md). **Si divergen, prevalece el archivo.** Lanza la Ola 5 (F2 ∥ F1-v). Las olas anteriores no se re-despachan.
 
 ```text
-===== 1 · sr-backend =====
-Actúa como `sr-backend`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-22-mod13-aprovisionamiento.md` y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §B2, con las reglas comunes 1 a 9. Antes de escribir código, lee los `SKILL.md` de `nestjs-expert`, `architect-review`, `openapi-spec-generation`, `test-driven-development`, `database-migration` y `backend-security-coder`. Consumes el contrato congelado HLD v1.1 y lo entregado en las Olas 1, 1-bis y 2; no los modifiques. Si algo no cabe, emite `[BLOQUEO]` y para. Fuera de alcance: eventos, consumidor, regularizar y UI (B3 y F2). Los caches de jest van fuera de `src/`. No commitees. Cierras con los tests del §B2 en verde y la suite de `tasks` intacta, con conteo real.
+===== 1 · fe-platform (F2) =====
+Actúa como `fe-platform`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-22-mod13-aprovisionamiento.md` y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §F2, con las reglas comunes 1 a 9. Antes de escribir código, lee los `SKILL.md` de `core-components`, `frontend-dev-guidelines`, `nextjs-app-router-patterns`, `iwana-identity-ui-review`, `tailwind-patterns`, `system-vocabulary-review`, `frontend-security-coder` e `i18n-localization`. Construye el panel de la OT, la bandeja, la ficha del suscriptor y los ajustes de red según la spec UX y HLD v1.1, sin modificar el contrato. Sin primitivas nuevas sin `ds-owner`; no formatees `docs/` con Prettier; sin cachés de jest en el repo. No commitees. Cierras con lint, typecheck, build y pruebas con conteo real; la parte en vivo, solo si se cumple la precondición.
 
-===== 2 · fe-platform =====
-Actúa como `fe-platform`. Lee `AGENTS.md`, el plan y tu encargo §F1 del mismo prompt. Antes de escribir código, lee los `SKILL.md` de `core-components`, `frontend-dev-guidelines`, `nextjs-app-router-patterns`, `iwana-identity-ui-review`, `tailwind-patterns` y `system-vocabulary-review`. Construye routers y redes IPv4 según la spec UX §3–4 y HLD v1.1 §4.4 y §9, contra el API de B1b. Sin primitivas nuevas sin `ds-owner`; no formatees `docs/` con Prettier. No commitees. Cierras con lint, typecheck, build y pruebas contra el API real, con conteo real.
-
-===== 3 · prod-ux =====
-Actúa como `prod-ux`. Lee `AGENTS.md`, el plan y tu encargo §P0-ter del mismo prompt. Lee `iwana-identity-ui-review`, `system-vocabulary-review` y `wcag-audit-patterns`. Añade a `docs/specs/2026-10-22-mod13-aprovisionamiento-ux.md` la sección de Ajustes de red, sin campos fuera de HLD v1.1 §4.4; si falta uno, emite `[BLOQUEO]` y para. No formatees el documento con Prettier.
+===== 2 · fe-platform (F1-v) =====
+Actúa como `fe-platform`. Lee `AGENTS.md`, el plan y tu encargo §F1-v del mismo prompt. Lee `playwright-skill` e `iwana-test-evidence`. Comprueba primero la precondición: API en `127.0.0.1:3000` y credenciales E2E en variables de entorno; si falta algo, emite `[BLOQUEO]` y para. Ejecuta las pruebas de routers y redes IPv4 contra el API real. No corrijas código de producto; reporta los fallos. No imprimas secretos en la salida. Cierras con el conteo real.
 ```

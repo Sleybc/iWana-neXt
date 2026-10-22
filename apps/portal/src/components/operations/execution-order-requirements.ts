@@ -91,6 +91,7 @@ const REQUIREMENT_KIND_LABELS: Record<ExecutionOrderTemplateRequirement['kind'] 
     EVIDENCE: 'Evidencia requerida',
     MATERIAL: 'Material o equipo requerido',
     COMPLIANCE: 'Aceptación del cliente',
+    PROVISIONING: 'Aprovisionamiento certificado',
     OTHER: 'Requisito pendiente',
   };
 
@@ -112,7 +113,7 @@ export function templateRequirementLabel(requirement: ExecutionOrderTemplateRequ
 function containsRawRequirementToken(value: string): boolean {
   return (
     /^[A-Z0-9_:-]+$/u.test(value) ||
-    /\b(?:FIELD|ACTIVITY|MEASUREMENT|EVIDENCE|MATERIAL|COMPLIANCE|PHOTO|DOCUMENT|SIGNATURE)\b/u.test(
+    /\b(?:FIELD|ACTIVITY|MEASUREMENT|EVIDENCE|MATERIAL|COMPLIANCE|PROVISIONING|PHOTO|DOCUMENT|SIGNATURE)\b/u.test(
       value,
     )
   );

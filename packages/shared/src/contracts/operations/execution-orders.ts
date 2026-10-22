@@ -172,6 +172,9 @@ export type ExecutionOrderTemplateRequirement =
   | (ExecutionOrderTemplateRequirementBase & {
       kind: 'COMPLIANCE';
       policyKey: string;
+    })
+  | (ExecutionOrderTemplateRequirementBase & {
+      kind: 'PROVISIONING';
     });
 
 export interface ExecutionOrderTemplateVersion {

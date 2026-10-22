@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -11,7 +11,7 @@
 
 1. Lee `AGENTS.md`, el plan, el HLD y tu sección. Lee los `SKILL.md` que el plan §3 te asigna **antes** de escribir código.
 2. Se trabaja en `main`. Hay rutas sin commitear ajenas a esta fase: no las toques ni las añadas a tus commits. Haz `git add` solo de tus rutas. **No hagas commit**: el cierre de cada ola lo commitea AI-EM-ARCH.
-3. Solo `pnpm`. Tests sin caché de turbo y con conteo real de suites y tests (`iwana-test-evidence`). Un verde sin cifras no cuenta.
+3. Solo `pnpm`. Tests sin caché de turbo y con conteo real de suites y tests (`iwana-test-evidence`). Un verde sin cifras no cuenta. No crees carpetas de caché de jest dentro del repo: usa el `cacheDirectory` por defecto.
 4. Multi-tenant: todo en `runInTenantSchema` / `TenantContext`, con `tenant_id` en cada consulta. Ningún log une IP con nombre, documento o teléfono (R14).
 5. Comentarios de negocio en español. Sin `any`. DTOs validados.
 6. Entrega: archivos con ruta, evidencia con comandos y conteos, y deuda nueva clasificada P0–P3.
@@ -169,6 +169,14 @@ La suite existente de `tasks` debe seguir en verde, con conteo.
 
 ## B3 · `sr-backend` — Eventos, activación y regularización
 
+### B3.0 · Frontera (antes de lo demás)
+
+B2 hizo que `TasksModule` importara `NetworkModule` completo, con sus controladores. `NetworkModule` exporta además servicios (`IpamService`, `NetworkCatalogService`, `ServiceProvisioningService`) y reexporta `EXECUTION_ORDER_READ_PORT`. HLD v1.1 §5.2 pide un módulo estrecho (patrón ADR-097). Hay que:
+- crear `network/network-provisioning-read.module.ts`, que solo provee y exporta `SERVICE_PROVISIONING_READ_PORT` con su adaptador y los repositorios que ese adaptador necesita;
+- hacer que `TasksModule` importe ese módulo y no `NetworkModule`;
+- dejar en `NetworkModule` solo los exports que otro módulo consume según HLD §8, sin servicios;
+- comprobar que la suite de `tasks` y la de `network` siguen en verde, con conteo.
+
 **Depende de:** B2.
 
 **Entregables:**
@@ -178,12 +186,18 @@ La suite existente de `tasks` debe seguir en verde, con conteo.
 - Listener CRM y `service-provisioning-commercial-status.port.ts`, definido en CRM e implementado en MOD13.
 - Listener de inventario que fija `contract_ref_id`.
 - Reconciliador (§6.7).
-- `POST /network/provisioning/regularize`.
+- `POST /network/provisioning/regularize`, con:
+  - las guardas de HLD v1.1 §6.2 en orden: R12, R6 y R6 ter, lock por OT, reutilización de la fila `FAILED` e idempotencia;
+  - `regularized_by` y `regularized_at`;
+  - el límite por actor de §6.9.
+- El inbox guarda solo `last_error_code` de `NETWORK_INBOX_ERROR_CODES` (§6.3).
+- Las mutaciones asíncronas se auditan con actor de sistema (§6.8).
 
 **Tests contra Postgres y Redis reales:**
 - CA-NET-07, 08, 09 y 10;
 - **un test que provoque el fallo del listener CRM dentro del `@OnEvent` real** y demuestre el reintento y el estado `PENDING`;
-- CA-NET-11, con datos de fixture, no con los del caso de origen.
+- CA-NET-11, con datos de fixture, no con los del caso de origen;
+- regularize: OT no elegible, servicio ya `ACTIVE` (409), técnico nulo, regularizador igual al técnico y reintento idempotente.
 
 Comprobar con `iwana-queue-inspect` que `network-execution-events` queda drenada. La suite del worker debe seguir en verde, con conteo.
 
@@ -207,6 +221,18 @@ Añade a `docs/specs/2026-10-22-mod13-aprovisionamiento-ux.md` una sección para
 
 No añadas campos fuera del §4.4.
 
+## F1-v · `fe-platform` — Prueba de F1 contra el API vivo
+
+Precondición, que prepara el CTO: el API local responde en `127.0.0.1:3000`, y las credenciales E2E de un tenant de pruebas no `ACTIVE` están en variables de entorno, nunca en el chat. Si no se cumple, emite `[BLOQUEO]` y para, sin tocar código.
+
+Ejecuta las pruebas de routers y redes IPv4 contra el API real:
+- alta, edición y desactivación;
+- solapamiento → `NETWORK_OVERLAP`;
+- ocupación;
+- acciones ocultas sin `network.catalog.manage`.
+
+Reporta el conteo real. No corrijas código de producto: si algo falla, reporta el fallo.
+
 ## F2 · `fe-platform` — Panel de la OT, bandeja y ficha
 
 **Depende de:** P0, P0-ter y B3.
@@ -218,6 +244,16 @@ No añadas campos fuera del §4.4.
 - `components/crm/subscribers/SubscriberTechnicalServiceSection.tsx` en la pestaña «Servicios» de `SubscriberDetailClient.tsx`.
 - La instrucción MikroTik con botón de copiar.
 - `canCertify` controla el botón de certificar; el técnico nunca lo ve.
+- Vista del técnico construida solo con `TechnicianProvisioningViewDto` (cinco campos). Nunca pide el contexto completo.
+- Liberar un servicio `CERTIFIED` y regularizar piden motivo (10–500) y solo se ofrecen con el permiso que exige HLD v1.1 §6.2.
+- Mensajes de cada código de `NETWORK_ERROR_CODES` según la spec UX, incluido `PROVISIONING_TECHNICIAN_REQUIRED`.
+- Sección del suscriptor montada solo con `network.provisioning.read` (Q2).
+
+**Pruebas:**
+- componentes y páginas con datos tipados del §4.4;
+- contra el API vivo con la misma precondición de §F1-v. Si no se cumple, entrega el resto y marca solo esa parte como `[BLOQUEO]`.
+
+Conteo real, más lint, typecheck y build del portal.
 
 ## V1 · `sr-qa` — Pruebas de punta a punta
 

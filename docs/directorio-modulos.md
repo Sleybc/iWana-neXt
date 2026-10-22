@@ -1,7 +1,7 @@
 # Directorio de Módulos — iWana neXt
 
 > Mapeo de módulos del backend a su nombre visible en el frontend.
-> Actualizado: 2026-07-22
+> Actualizado: 2026-10-22
 
 ---
 
@@ -49,6 +49,8 @@
 | Mesa de ayuda | `/dashboard/assurance` | `assurance` | PQRS y mesa de ayuda |
 | Operaciones | `/dashboard/operations` | `tasks` | Tareas y operaciones de campo |
 | Inventario | `/dashboard/inventory` | `inventory` | Gestión de inventario y categorías |
+| Routers | `/dashboard/network/routers` | `network` | Catálogo de routers y métodos de control |
+| Redes IPv4 | `/dashboard/network/ipv4-networks` | `network` | Bloques IPv4, rangos asignables y ocupación |
 
 ### Barra lateral — Administración
 

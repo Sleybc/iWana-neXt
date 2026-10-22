@@ -26,6 +26,7 @@ const BUCKET_LIMITS: Record<string, number> = {
   'eo-lightweight-read': 120,
   'eo-sensitive-command': 20,
   'eo-evidence-media': 10,
+  'network-provisioning-command': 30,
 };
 
 const WINDOW_MS = 60_000; // 1 minuto
@@ -165,6 +166,10 @@ export class TenantAwareThrottlerGuard implements CanActivate {
   private resolveBucket(req: { url?: string; method?: string }): string {
     const url = req.url ?? '';
     const method = req.method ?? 'GET';
+
+    if (url.includes('/network/provisioning/') && method !== 'GET') {
+      return 'network-provisioning-command';
+    }
 
     // Endpoints de evidencia/media
     if (url.includes('/evidence-assets') || url.includes('/evidence')) {

@@ -24,6 +24,7 @@ import { ExecutionOrderTemplateVersion } from './execution-order-template-versio
  * - EVIDENCE:    evidencia de tipo photo/document/signature vinculada
  * - MATERIAL:    item consumido de la categoría indicada
  * - COMPLIANCE:  artefacto de aceptación del cliente o política de cierre
+ * - PROVISIONING: aprovisionamiento certificado del servicio
  */
 @Entity({ name: 'execution_order_template_requirements' })
 export class ExecutionOrderTemplateRequirement {
@@ -53,7 +54,14 @@ export class ExecutionOrderTemplateRequirement {
    * FIELD | ACTIVITY | MEASUREMENT | EVIDENCE | MATERIAL | COMPLIANCE
    */
   @Column({ type: 'varchar', length: 20 })
-  kind: 'FIELD' | 'ACTIVITY' | 'MEASUREMENT' | 'EVIDENCE' | 'MATERIAL' | 'COMPLIANCE';
+  kind:
+    | 'FIELD'
+    | 'ACTIVITY'
+    | 'MEASUREMENT'
+    | 'EVIDENCE'
+    | 'MATERIAL'
+    | 'COMPLIANCE'
+    | 'PROVISIONING';
 
   /**
    * Configuración específica del requisito según kind (JSONB).

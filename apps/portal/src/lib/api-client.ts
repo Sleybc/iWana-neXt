@@ -135,6 +135,14 @@ import type {
   LifecycleSuspendCommand,
   LifecycleTerminateCommand,
 } from '@iwana/shared';
+import type {
+  CreateIpv4NetworkBody,
+  CreateRouterBody,
+  Ipv4NetworkDto,
+  RouterDto,
+  UpdateIpv4NetworkBody,
+  UpdateRouterBody,
+} from '@iwana/shared';
 import {
   createDataSubjectRequestSchema,
   createLegalTextSchema,
@@ -819,6 +827,94 @@ async function request<T>(
 
   return (body as ApiEnvelope<T>).data;
 }
+
+export interface NetworkCatalogListParams {
+  page?: number;
+  limit?: number;
+  q?: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+  routerId?: string;
+}
+
+function buildNetworkCatalogQuery(params?: NetworkCatalogListParams): string {
+  const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) searchParams.set('page', String(params.page));
+  if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
+  if (params?.q) searchParams.set('q', params.q);
+  if (params?.status) searchParams.set('status', params.status);
+  if (params?.routerId) searchParams.set('routerId', params.routerId);
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
+/** Catálogo de routers y redes IPv4 de MOD13 (HLD v1.1 §4.4 y §6.2). */
+export const networkApi = {
+  listRouters: (params?: NetworkCatalogListParams, tenantSlug?: string) =>
+    request<ListResponse<RouterDto>>(
+      `/network/routers${buildNetworkCatalogQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createRouter: (body: CreateRouterBody, tenantSlug?: string) =>
+    request<RouterDto>(
+      '/network/routers',
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateRouter: (id: string, body: UpdateRouterBody, tenantSlug?: string) =>
+    request<RouterDto>(
+      `/network/routers/${id}`,
+      { method: 'PATCH', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  setRouterStatus: (
+    id: string,
+    version: number,
+    status: 'ACTIVE' | 'INACTIVE',
+    tenantSlug?: string,
+  ) =>
+    request<RouterDto>(
+      `/network/routers/${id}/${status === 'ACTIVE' ? 'activate' : 'deactivate'}`,
+      { method: 'POST', body: JSON.stringify({ version }), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listIpv4Networks: (params?: NetworkCatalogListParams, tenantSlug?: string) =>
+    request<ListResponse<Ipv4NetworkDto>>(
+      `/network/ipv4-networks${buildNetworkCatalogQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createIpv4Network: (body: CreateIpv4NetworkBody, tenantSlug?: string) =>
+    request<Ipv4NetworkDto>(
+      '/network/ipv4-networks',
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateIpv4Network: (id: string, body: UpdateIpv4NetworkBody, tenantSlug?: string) =>
+    request<Ipv4NetworkDto>(
+      `/network/ipv4-networks/${id}`,
+      { method: 'PATCH', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  setIpv4NetworkStatus: (
+    id: string,
+    version: number,
+    status: 'ACTIVE' | 'INACTIVE',
+    tenantSlug?: string,
+  ) =>
+    request<Ipv4NetworkDto>(
+      `/network/ipv4-networks/${id}/${status === 'ACTIVE' ? 'activate' : 'deactivate'}`,
+      { method: 'POST', body: JSON.stringify({ version }), returnFullResponse: true },
+      tenantSlug,
+    ),
+};
 
 export const authApi = {
   tenantLogin: async (email: string, password: string, tenantSlug?: string, totpCode?: string) => {

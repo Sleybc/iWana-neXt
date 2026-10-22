@@ -1,6 +1,6 @@
 import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { SanitizeFailedReason } from '../common/sanitize-failed-reason.decorator';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { createHmac, randomUUID } from 'node:crypto';
@@ -10,15 +10,20 @@ import {
   OPERATIONS_EXECUTION_EVENTS_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
   INVENTORY_EXECUTION_REQUESTS_QUEUE,
+  NETWORK_EXECUTION_EVENTS_QUEUE,
   InventoryConsumptionReversalRequestedV1EnvelopeSchema,
   InventoryConsumptionRequestedV2EnvelopeSchema,
   InventoryReversalConfirmedV1Schema,
   InventoryReversalRejectedV1Schema,
   SignedInventoryExecutionReversalRequestSchema,
   SignedInventoryExecutionRequestSchema,
+  NetworkExecutionEventSchema,
+  SignedNetworkExecutionEventSchema,
   canonicalizeInventoryExecutionRequest,
+  canonicalizeNetworkExecutionEvent,
   type OperationalEventEnvelopeV1,
   type OperationalEventTypeV1,
+  type NetworkExecutionEvent,
 } from '@iwana/shared';
 
 interface ExecutionEventJob {
@@ -162,6 +167,9 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     private readonly dlqQueue: Queue,
     @InjectQueue(INVENTORY_EXECUTION_REQUESTS_QUEUE)
     private readonly inventoryRequestsQueue: Queue,
+    @Optional()
+    @InjectQueue(NETWORK_EXECUTION_EVENTS_QUEUE)
+    private readonly networkExecutionEventsQueue?: Queue,
   ) {
     super();
     this.pool = new Pool({
@@ -368,12 +376,16 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
       }
 
       let scheduleEventId: string | null = null;
+      let executionOrderWorkType: string | null = null;
       if (SCHEDULE_PROJECTED_EXECUTION_EVENTS.has(envelope.eventType)) {
         // El lookup de la proyección debe usar el mismo agregado validado en
         // el payload, antes de consultar cualquier vínculo de agenda.
         this.assertPayload(envelope, true);
-        const orders = await client.query<{ schedule_event_id: string | null }>(
-          `SELECT schedule_event_id FROM execution_orders
+        const orders = await client.query<{
+          schedule_event_id: string | null;
+          work_type: string | null;
+        }>(
+          `SELECT schedule_event_id, work_type FROM execution_orders
            WHERE id = $1 AND tenant_id = $2`,
           [envelope.aggregateId, tenantId],
         );
@@ -382,6 +394,7 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
           throw new UnrecoverableError('No se encontró la OT para proyectar su evento de agenda.');
         }
         scheduleEventId = order.schedule_event_id;
+        executionOrderWorkType = order.work_type;
         if (scheduleEventId === null) {
           // CA-13: NULL es el estado normal de toda OT despachada sin cita
           // (ADR-091 §D5), por lo que la omisión es de nivel `debug` y no
@@ -471,6 +484,24 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
 
       await handler(envelope);
 
+      if (
+        envelope.eventType === 'ExecutionOrderClosedV1' ||
+        envelope.eventType === 'ExecutionOrderCancelledV1' ||
+        envelope.eventType === 'ExecutionOrderAnnulledV1'
+      ) {
+        if (executionOrderWorkType === null) {
+          const order = await client.query<{ work_type: string | null }>(
+            `SELECT work_type FROM execution_orders
+             WHERE id = $1 AND tenant_id = $2`,
+            [envelope.aggregateId, tenantId],
+          );
+          executionOrderWorkType = order.rows[0]?.work_type ?? null;
+        }
+        if (executionOrderWorkType === 'INSTALLATION') {
+          await this.enqueueSignedNetworkEvent(tenantId, envelope);
+        }
+      }
+
       // Marcar inbox como procesado
       await client.query(
         `UPDATE execution_order_inbox_events
@@ -514,6 +545,44 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
     await this.inventoryRequestsQueue.add('process-inventory-execution-request', signed, {
       // El contrato de cola usa el eventId del evento de solicitud.
       jobId: envelope.eventId,
+      attempts: 8,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: true,
+      removeOnFail: { age: SOURCE_JOB_RETENTION_SECONDS },
+    });
+  }
+
+  private async enqueueSignedNetworkEvent(
+    tenantId: string,
+    event: OperationalEventEnvelopeV1,
+  ): Promise<void> {
+    if (!this.networkExecutionEventsQueue) {
+      throw new UnrecoverableError('La cola de eventos de red no está configurada.');
+    }
+    const payload = event.payload as { executionOrderId?: unknown; result?: unknown };
+    const networkEvent = NetworkExecutionEventSchema.parse({
+      eventId: event.eventId,
+      eventType: event.eventType,
+      executionOrderId: payload.executionOrderId,
+      aggregateVersion: event.aggregateVersion,
+      result: event.eventType === 'ExecutionOrderClosedV1' ? payload.result : null,
+      occurredAt: event.occurredAt,
+    });
+    const activeKey = this.configValue('INTERNAL_QUEUE_SIGNING_KEY');
+    const secret = Buffer.from(activeKey, 'base64');
+    if (secret.byteLength < 32 || secret.toString('base64') !== activeKey) {
+      throw new UnrecoverableError('INTERNAL_QUEUE_SIGNING_KEY inválida.');
+    }
+
+    const signed = SignedNetworkExecutionEventSchema.parse({
+      tenantId,
+      envelope: networkEvent,
+      signature: createHmac('sha256', secret)
+        .update(canonicalizeNetworkExecutionEvent(tenantId, networkEvent))
+        .digest('hex'),
+    });
+    await this.networkExecutionEventsQueue.add('process-network-execution-event', signed, {
+      jobId: networkEvent.eventId,
       attempts: 8,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: true,

@@ -88,6 +88,7 @@ import { InventoryDomainEventPublisher } from './services/inventory-domain-event
 import { InventoryDomainEventsListener } from './listeners/inventory-domain-events.listener';
 import { AccessControlModule } from '../access-control/access-control.module';
 import { InventoryExecutionRequestProcessor } from './services/inventory-execution-request.processor';
+import { ServiceProvisioningInventoryActivationListener } from './listeners/service-provisioning-activation.listener';
 
 @Module({
   imports: [
@@ -167,6 +168,7 @@ import { InventoryExecutionRequestProcessor } from './services/inventory-executi
     InventoryDomainEventPublisher,
     InventoryDomainEventsListener,
     InventoryExecutionRequestProcessor,
+    ServiceProvisioningInventoryActivationListener,
     InventoryMovementPortAdapter,
     CommercialProductReferencePortAdapter,
     SupplierPartyPortAdapter,

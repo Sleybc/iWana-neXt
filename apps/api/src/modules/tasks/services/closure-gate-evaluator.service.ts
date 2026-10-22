@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type {
   ExecutionOrderTemplateRequirement as TemplateRequirement,
   InventoryDisposition,
+  ServiceProvisioningStatus,
 } from '@iwana/shared';
 
 type FieldRequirement = Extract<TemplateRequirement, { kind: 'FIELD' }>;
@@ -10,6 +11,7 @@ type MeasurementRequirement = Extract<TemplateRequirement, { kind: 'MEASUREMENT'
 type EvidenceRequirement = Extract<TemplateRequirement, { kind: 'EVIDENCE' }>;
 type MaterialRequirement = Extract<TemplateRequirement, { kind: 'MATERIAL' }>;
 type ComplianceRequirement = Extract<TemplateRequirement, { kind: 'COMPLIANCE' }>;
+type ProvisioningRequirement = Extract<TemplateRequirement, { kind: 'PROVISIONING' }>;
 
 /**
  * Resultado de evaluar un requisito contra el estado actual de la OT.
@@ -70,6 +72,8 @@ export interface OrderEvaluationContext {
   hasCustomerAcceptance?: boolean;
   /** Datos mínimos del comando de cierre usados por el requisito COMPLIANCE. */
   closeCommand?: { customerAcceptance?: unknown };
+  /** Estado actual del aprovisionamiento consultado por el puerto de MOD13. */
+  provisioning?: { status: ServiceProvisioningStatus | null };
 }
 
 /**
@@ -145,6 +149,8 @@ export class ClosureGateEvaluatorService {
         return this.evaluateMaterial(req, context);
       case 'COMPLIANCE':
         return this.evaluateCompliance(req, context);
+      case 'PROVISIONING':
+        return this.evaluateProvisioning(req, context);
       default:
         return false;
     }
@@ -199,6 +205,13 @@ export class ClosureGateEvaluatorService {
     return false;
   }
 
+  private evaluateProvisioning(
+    _req: ProvisioningRequirement,
+    context: OrderEvaluationContext,
+  ): boolean {
+    return context.provisioning?.status === 'CERTIFIED';
+  }
+
   /**
    * Genera un mensaje de razón accionable para un requisito no satisfecho.
    */
@@ -233,6 +246,8 @@ export class ClosureGateEvaluatorService {
       }
       case 'COMPLIANCE':
         return `No se ha registrado la aceptación del cliente para "${label}".`;
+      case 'PROVISIONING':
+        return 'No hay un aprovisionamiento certificado para cerrar la instalación.';
       default:
         return 'El requisito no se ha cumplido.';
     }
@@ -253,6 +268,8 @@ export class ClosureGateEvaluatorService {
         return 'Medición requerida';
       case 'EVIDENCE':
         return 'Evidencia requerida';
+      case 'PROVISIONING':
+        return 'Aprovisionamiento certificado';
       case 'COMPLIANCE':
         return 'Aceptación requerida';
       default:

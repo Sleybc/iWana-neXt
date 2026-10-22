@@ -178,7 +178,34 @@ La spec define criterios de aceptación; la conformidad efectiva de las pantalla
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CA-NET-12              | Las acciones de catálogo solo aparecen con `network.catalog.manage`; el endpoint denegado se refleja en el estado sin acceso.                              |
 | CA-NET-13              | La bandeja ofrece las tres pestañas del HLD como filtros de cola y paginación numerada; cada pestaña presenta sus estados vacíos y columnas contractuales. |
-| CA-NET-14              | Panel de OT, bandeja y ficha mantienen identidad iWana, estados completos y criterios WCAG AA en 375, 768 y 1280 px, en claro y oscuro.                    |
+| CA-NET-14              | Catálogos, ajustes de red, panel de OT, bandeja y ficha mantienen identidad iWana, estados completos y criterios WCAG AA en 375, 768 y 1280 px, en claro y oscuro. |
 | RF-NET-14              | La ficha muestra el nombre legible de quien certificó y cuándo; la identidad no se deriva del UUID.                                                        |
 | R6 ter                 | Si falta técnico asignado, el mensaje guía a completar la asignación y no habilita reservar, certificar o regularizar.                                     |
 | Proyección del técnico | La vista de técnico contiene únicamente los cinco campos de `TechnicianProvisioningViewDto`.                                                               |
+
+## 12. Ajustes de red (addendum P0-ter)
+
+**Tarea:** configurar la lista de direcciones PCQ por plan y decidir si las instalaciones ejecutadas requieren aprovisionamiento certificado para poder cerrarse. Ruta prevista: `app/dashboard/network/settings/`. La lectura requiere `network.catalog.read`; editar una lista o cambiar el requisito requiere `network.catalog.manage`.
+
+### Planes y listas de direcciones PCQ
+
+Presentar una tabla de planes del catálogo de MOD06, unida con `PlanProfileDto` por `planId`. El nombre visible del plan proviene de MOD06; el identificador se usa para la unión y no se muestra como etiqueta. Para cada plan, mostrar la lista de direcciones PCQ configurada y una acción «Editar» para quien tenga permiso de gestión. Si no existe un perfil para un plan, mostrar «Sin configurar» y ofrecer «Configurar» a quien pueda editar.
+
+La edición se abre desde la fila con el patrón existente de side peek. Incluye el nombre del plan como contexto y un único campo etiquetado «Lista de direcciones PCQ», correspondiente a `pcqAddressList`; no solicita ni modifica el `planId`. Ayuda: «Usa de 1 a 64 letras, números, puntos, guiones o guiones bajos». Guardar usa `PUT /network/plan-profiles/:planId`. Al confirmar, cerrar el side peek y anunciar «Lista de direcciones PCQ guardada». Si falla, conservar el valor ingresado y mostrar el error junto al campo o la acción.
+
+### Requisito de certificación para el cierre
+
+Mostrar un interruptor con la etiqueta «Exigir el aprovisionamiento certificado para cerrar instalaciones», enlazado a `enforceProvisioningOnInstallClose`. El texto asociado comunica el efecto: al activarlo, las órdenes de instalación con resultado ejecutado requieren un servicio certificado para cerrarse; la regla también aplica a órdenes que ya están en curso. Las órdenes cerradas como no ejecutadas no requieren certificación.
+
+Todo cambio pide confirmación antes de enviar `PATCH /network/settings` con el nuevo valor booleano. Para activar, el diálogo explica que el cierre de una instalación ejecutada quedará pendiente hasta certificar el aprovisionamiento; para desactivar, explica que dejará de bloquearse el cierre por falta de esa certificación. Los botones se llaman «Activar requisito» o «Desactivar requisito», según el cambio, y «Cancelar». Mantener el valor vigente hasta recibir éxito; al guardar, anunciar «Ajuste actualizado» y reflejar `updatedAt` y `updatedBy.name` como último cambio. Si no hay fecha, mostrar «Sin cambios registrados»; si el nombre del actor no está disponible, mostrar «Nombre no disponible» y nunca su UUID.
+
+### Estados y accesibilidad
+
+| Estado | Presentación y acción |
+| --- | --- |
+| Cargando | Skeletons con forma de tabla y panel del ajuste; anunciar «Cargando ajustes de red». |
+| Vacío inicial | Si MOD06 aún no devuelve planes, mostrar «Todavía no hay planes disponibles para configurar». Un plan existente sin perfil aparece como «Sin configurar» en su fila. No hay filtros en esta pantalla, así que no se añade un estado de resultados vacíos. |
+| Error | Permitir reintentar la carga del bloque afectado sin ocultar el otro bloque si ya cargó. En un error al guardar, conservar la entrada o el valor vigente y explicar el siguiente paso sin mostrar claves ni detalles técnicos. |
+| Sin acceso | Sin `network.catalog.read`, mostrar «No tienes acceso a los ajustes de red» y no presentar datos. Con lectura pero sin gestión, mantener la vista disponible y ocultar las acciones de edición; si una mutación se deniega, informar «No tienes permiso para cambiar este ajuste». |
+
+El interruptor expone su nombre y estado «Activado» o «Desactivado» además de la señal visual. La confirmación conserva el foco hasta resolverse y devuelve el foco al control que la abrió al cerrarse; controles, filas accionables y botones son operables por teclado y mantienen foco visible. En móvil, conservar la tabla dentro del contenedor de tabla del portal, sin provocar scroll horizontal de toda la página.

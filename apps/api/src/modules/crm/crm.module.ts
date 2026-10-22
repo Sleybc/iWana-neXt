@@ -12,6 +12,8 @@ import { ExecutionPolicyMode } from './enums/execution-policy-mode.enum';
 import { AttributionsModule } from './attributions/attributions.module';
 import { ResponsibilitiesModule } from './responsibilities/responsibilities.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
+import { NetworkModule } from '../network/network.module';
+import { ServiceProvisioningActivationListener } from './subscribers/listeners/service-provisioning-activation.listener';
 
 class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
   async resolvePolicy(
@@ -45,10 +47,12 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     AttributionsModule,
     ResponsibilitiesModule,
     SubscribersModule,
+    NetworkModule,
   ],
   providers: [
     { provide: CoverageReadPort, useClass: TenantCoverageReadAdapter },
     { provide: ExecutionPolicyReadPort, useClass: TenantExecutionPolicyReadAdapter },
+    ServiceProvisioningActivationListener,
   ],
   exports: [CoverageReadPort, ExecutionPolicyReadPort],
 })

@@ -1,7 +1,13 @@
 import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'node:crypto';
 import { ExecutionOrderEventsProcessor } from './execution-order-events.processor';
 import type { Job, Queue } from 'bullmq';
-import type { OperationalEventEnvelopeV1 } from '@iwana/shared';
+import {
+  canonicalizeNetworkExecutionEvent,
+  NETWORK_EXECUTION_EVENTS_QUEUE,
+  type NetworkExecutionEvent,
+  type OperationalEventEnvelopeV1,
+} from '@iwana/shared';
 
 // Helpers para construir envelopes de test
 function makeEnvelope(
@@ -51,7 +57,9 @@ function setupHappyPath(
     .mockResolvedValueOnce(undefined) // SET LOCAL
     .mockResolvedValueOnce({ rows: [] }) // inbox check (no prev events)
     .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 }) // INSERT inbox
-    .mockResolvedValueOnce({ rows: [{ schedule_event_id: scheduleEventId }] }); // Read OT link
+    .mockResolvedValueOnce({
+      rows: [{ schedule_event_id: scheduleEventId, work_type: 'MAINTENANCE' }],
+    }); // Read OT link and classify the work order
   return poolClient.query;
 }
 
@@ -271,6 +279,7 @@ describe('ExecutionOrderEventsProcessor', () => {
           .mockResolvedValueOnce(undefined) // SET LOCAL
           .mockResolvedValueOnce({ rows: [] }) // inbox check
           .mockResolvedValueOnce({ rows: [{ id: 'inv-001' }], rowCount: 1 }) // INSERT inbox
+          .mockResolvedValueOnce({ rows: [{ work_type: 'MAINTENANCE' }] }) // Read OT type
           .mockResolvedValueOnce({ rowCount: 1 }) // Mark inbox processed
           .mockResolvedValueOnce(undefined); // COMMIT
 
@@ -287,6 +296,107 @@ describe('ExecutionOrderEventsProcessor', () => {
         expect(queries).toContain('COMMIT');
       },
     );
+
+    it('reenvía firmado el evento de una OT INSTALLATION después de proyectarlo', async () => {
+      const signingKey = Buffer.alloc(32, 7).toString('base64');
+      const networkExecutionEventsQueue = { add: jest.fn().mockResolvedValue(undefined) };
+      (processor as unknown as { networkExecutionEventsQueue: Queue }).networkExecutionEventsQueue =
+        networkExecutionEventsQueue as unknown as Queue;
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'inbox-1' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [{ work_type: 'INSTALLATION' }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce(undefined);
+      const signedProcessor = new ExecutionOrderEventsProcessor(
+        makeConfig({ INTERNAL_QUEUE_SIGNING_KEY: signingKey }),
+        dlqQueue as unknown as Queue,
+        inventoryRequestsQueue as unknown as Queue,
+      );
+      (
+        signedProcessor as unknown as { networkExecutionEventsQueue: Queue }
+      ).networkExecutionEventsQueue = networkExecutionEventsQueue as unknown as Queue;
+      (signedProcessor as unknown as { pool: { connect: jest.Mock } }).pool = {
+        connect: jest.fn().mockResolvedValue(poolClient),
+      } as never;
+      const envelope = makeEnvelope({
+        tenantId: '10000000-0000-4000-8000-000000000001',
+        eventType: 'ExecutionOrderCancelledV1',
+        payload: { executionOrderId: 'a0000000-0000-4000-8000-000000000001' } as never,
+      });
+      const networkEvent: NetworkExecutionEvent = {
+        eventId: envelope.eventId,
+        eventType: 'ExecutionOrderCancelledV1',
+        executionOrderId: 'a0000000-0000-4000-8000-000000000001',
+        aggregateVersion: envelope.aggregateVersion,
+        result: null,
+        occurredAt: envelope.occurredAt,
+      };
+
+      await signedProcessor.process({
+        data: { tenantId: envelope.tenantId, envelope },
+        attemptsMade: 0,
+      } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+      const signature = createHmac('sha256', Buffer.from(signingKey, 'base64'))
+        .update(canonicalizeNetworkExecutionEvent(envelope.tenantId, networkEvent))
+        .digest('hex');
+      expect(networkExecutionEventsQueue.add).toHaveBeenCalledWith(
+        'process-network-execution-event',
+        { tenantId: envelope.tenantId, envelope: networkEvent, signature },
+        {
+          jobId: envelope.eventId,
+          attempts: 8,
+          backoff: { type: 'exponential', delay: 1000 },
+          removeOnComplete: true,
+          removeOnFail: { age: 24 * 60 * 60 },
+        },
+      );
+      expect(networkExecutionEventsQueue.add.mock.calls[0]?.[0]).toBe(
+        'process-network-execution-event',
+      );
+      expect(NETWORK_EXECUTION_EVENTS_QUEUE).toBe('network-execution-events');
+    });
+
+    it('no reenvía a red eventos de OT que no sean INSTALLATION', async () => {
+      const networkExecutionEventsQueue = { add: jest.fn() };
+      const noNetworkProcessor = new ExecutionOrderEventsProcessor(
+        makeConfig(),
+        dlqQueue as unknown as Queue,
+        inventoryRequestsQueue as unknown as Queue,
+      );
+      (
+        noNetworkProcessor as unknown as { networkExecutionEventsQueue: Queue }
+      ).networkExecutionEventsQueue = networkExecutionEventsQueue as unknown as Queue;
+      (noNetworkProcessor as unknown as { pool: { connect: jest.Mock } }).pool = {
+        connect: jest.fn().mockResolvedValue(poolClient),
+      } as never;
+      poolClient.query
+        .mockResolvedValueOnce({ rows: [{ schema_name: 'tenant_test001' }] } as never)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'inbox-1' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [{ work_type: 'MAINTENANCE' }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce(undefined);
+
+      await noNetworkProcessor.process({
+        data: {
+          tenantId: 't0000000-0000-4000-8000-000000000001',
+          envelope: makeEnvelope({
+            eventType: 'ExecutionOrderCancelledV1',
+            payload: { executionOrderId: 'a0000000-0000-4000-8000-000000000001' } as never,
+          }),
+        },
+        attemptsMade: 0,
+      } as Job<{ tenantId: string; envelope: OperationalEventEnvelopeV1 }>);
+
+      expect(networkExecutionEventsQueue.add).not.toHaveBeenCalled();
+    });
 
     it('ExecutionOrderStartedV1: ScheduleEvent→IN_PROGRESS, VisitRequest→IN_EXECUTION, Task→IN_PROGRESS', async () => {
       setupHappyPath(poolClient)

@@ -49,6 +49,7 @@ import {
   type InventoryReversalRejectionReasonCode,
   type ReverseItemUsageCommand,
   type ExecutionOrderListItem,
+  type ServiceProvisioningStatus,
   type ListExecutionOrdersResponse,
   type Page,
 } from '@iwana/shared';
@@ -94,7 +95,15 @@ import type {
   LinkExecutionOrderToScheduleInput,
   RescheduleExecutionOrderInput,
 } from '../ports/execution-order-scheduling.port';
-import type { ExecutionOrderReadPort } from '../ports/execution-order-read.port';
+import type {
+  ExecutionOrderReadPort,
+  ExecutionSnapshot,
+  InstallationOrdersQuery,
+} from '../ports/execution-order-read.port';
+import {
+  SERVICE_PROVISIONING_READ_PORT,
+  type ServiceProvisioningReadPort,
+} from '../ports/service-provisioning-read.port';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CUSTOMER_SIGNATURE_REQUIREMENT_KEY = 'CUSTOMER_SIGNATURE';
@@ -151,6 +160,19 @@ const OPEN_WITHDRAWAL_ORDER_STATUSES: readonly ExecutionOrderStatus[] = [
   ExecutionOrderStatus.IN_PROGRESS,
   ExecutionOrderStatus.BLOCKED,
 ];
+
+interface ExecutionSnapshotRow {
+  id: string;
+  execution_order_number: string;
+  status: string;
+  work_type: string;
+  is_annulled: boolean;
+  subscriber_id: string | null;
+  assigned_technician_id: string | null;
+  customer_display_label: string;
+  closed_at: Date | string | null;
+  result: string | null;
+}
 
 /** ADR-068 §Eventos mínimos: solo eventos cuyo owner es MOD11 son redriveables. */
 const REDRIVE_ALLOWED_EVENT_TYPES = new Set<OperationalEventTypeV1>([
@@ -217,6 +239,8 @@ function isTemplateRequirement(value: unknown): value is ExecutionOrderTemplateR
     }
     case 'COMPLIANCE':
       return isNonEmptyString(value.policyKey);
+    case 'PROVISIONING':
+      return true;
     default:
       return false;
   }
@@ -333,6 +357,9 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
     // con un lookup batch por página.
     @Optional()
     private readonly usersService?: UsersService,
+    @Optional()
+    @Inject(SERVICE_PROVISIONING_READ_PORT)
+    private readonly serviceProvisioningReadPort?: ServiceProvisioningReadPort,
   ) {}
 
   async getById(id: string): Promise<ExecutionOrder> {
@@ -370,6 +397,139 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
 
       return rows.length > 0;
     });
+  }
+
+  async getExecutionSnapshot(executionOrderId: string): Promise<ExecutionSnapshot | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT id, execution_order_number, status, work_type, is_annulled,
+                subscriber_id, assigned_technician_id, customer_display_label,
+                closed_at, result
+           FROM execution_orders
+          WHERE tenant_id = $1 AND id = $2
+          LIMIT 1`,
+        [tenantId, executionOrderId],
+      )) as ExecutionSnapshotRow[];
+      return rows[0] ? this.mapExecutionSnapshot(rows[0]) : null;
+    });
+  }
+
+  async getExecutionSnapshots(executionOrderIds: string[]): Promise<ExecutionSnapshot[]> {
+    if (executionOrderIds.length > 100) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'La consulta admite máximo 100 órdenes de ejecución.',
+      });
+    }
+    const uniqueIds = [...new Set(executionOrderIds)];
+    if (uniqueIds.length === 0) return [];
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT id, execution_order_number, status, work_type, is_annulled,
+                subscriber_id, assigned_technician_id, customer_display_label,
+                closed_at, result
+           FROM execution_orders
+          WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+        [tenantId, uniqueIds],
+      )) as ExecutionSnapshotRow[];
+      return rows.map((row) => this.mapExecutionSnapshot(row));
+    });
+  }
+
+  async hasEvidence(
+    executionOrderId: string,
+    evidenceId: string,
+    types: Array<'PHOTO' | 'DOCUMENT'>,
+  ): Promise<boolean> {
+    if (types.length === 0) return false;
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT 1
+           FROM execution_order_evidence
+          WHERE tenant_id = $1 AND execution_order_id = $2 AND id = $3
+            AND evidence_type = ANY($4::varchar[])
+          LIMIT 1`,
+        [tenantId, executionOrderId, evidenceId, types],
+      )) as unknown[];
+      return rows.length > 0;
+    });
+  }
+
+  async listInstallationOrders(
+    query: InstallationOrdersQuery,
+  ): Promise<{ rows: ExecutionSnapshot[]; total: number }> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const limit = Math.min(Math.max(Math.trunc(query.limit) || 1, 1), 100);
+    const page = Math.max(Math.trunc(query.page) || 1, 1);
+    const offset = (page - 1) * limit;
+    const excludedIds = query.excludeIds.slice(0, 100);
+    const whereGroup =
+      query.group === 'IN_PROGRESS'
+        ? `status = 'IN_PROGRESS'::execution_order_status`
+        : `status = ANY($4::execution_order_status[])
+           AND result = ANY($5::execution_order_result[])`;
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const commonParameters = [
+        tenantId,
+        WfmWorkType.INSTALLATION,
+        excludedIds,
+        [ExecutionOrderStatus.COMPLETED, ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS],
+        [ExecutionOrderResult.EXECUTED, ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS],
+      ];
+      const groupParams =
+        query.group === 'IN_PROGRESS'
+          ? [tenantId, WfmWorkType.INSTALLATION, excludedIds]
+          : commonParameters;
+      const totalRows = (await qr.query(
+        `SELECT COUNT(*)::integer AS total
+           FROM execution_orders
+          WHERE tenant_id = $1
+            AND work_type = $2::wfm_work_type
+            AND is_annulled = FALSE
+            AND ${whereGroup}
+            AND NOT (id = ANY($3::uuid[]))`,
+        groupParams,
+      )) as Array<{ total: number | string }>;
+      const rowParameters = [...groupParams, limit, offset];
+      const rows = (await qr.query(
+        `SELECT id, execution_order_number, status, work_type, is_annulled,
+                subscriber_id, assigned_technician_id, customer_display_label,
+                closed_at, result
+           FROM execution_orders
+          WHERE tenant_id = $1
+            AND work_type = $2::wfm_work_type
+            AND is_annulled = FALSE
+            AND ${whereGroup}
+            AND NOT (id = ANY($3::uuid[]))
+          ORDER BY ${query.group === 'IN_PROGRESS' ? 'execution_order_number ASC' : 'closed_at DESC NULLS LAST'}, id ASC
+          LIMIT $${rowParameters.length - 1} OFFSET $${rowParameters.length}`,
+        rowParameters,
+      )) as ExecutionSnapshotRow[];
+      return {
+        rows: rows.map((row) => this.mapExecutionSnapshot(row)),
+        total: Number(totalRows[0]?.total ?? 0),
+      };
+    });
+  }
+
+  private mapExecutionSnapshot(row: ExecutionSnapshotRow): ExecutionSnapshot {
+    return {
+      id: row.id,
+      executionOrderNumber: row.execution_order_number,
+      status: row.status as ExecutionOrderStatus,
+      workType: row.work_type as WfmWorkType,
+      isAnnulled: row.is_annulled,
+      subscriberId: row.subscriber_id,
+      assignedTechnicianId: row.assigned_technician_id,
+      customerDisplayLabel: row.customer_display_label,
+      closedAt: row.closed_at ? new Date(row.closed_at).toISOString() : null,
+      result: (row.result as ExecutionOrderResult | null) ?? null,
+    };
   }
 
   /**
@@ -1934,6 +2094,39 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           message: 'El gate de cierre no está disponible temporalmente.',
         });
       }
+      const executedResults = [
+        ExecutionOrderResult.EXECUTED,
+        ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS,
+      ];
+      let provisioningContext:
+        | { enforced: boolean; status: ServiceProvisioningStatus | null }
+        | undefined;
+      if (
+        order.workType === WfmWorkType.INSTALLATION &&
+        executedResults.includes(validated.result)
+      ) {
+        if (!this.serviceProvisioningReadPort) {
+          throw new ServiceUnavailableException({
+            code: 'CLOSURE_GATE_UNAVAILABLE',
+            message: 'El gate de cierre no está disponible temporalmente.',
+          });
+        }
+        try {
+          provisioningContext = await this.serviceProvisioningReadPort.getGateStatus(id);
+        } catch {
+          throw new ServiceUnavailableException({
+            code: 'CLOSURE_GATE_UNAVAILABLE',
+            message: 'El gate de cierre no está disponible temporalmente.',
+          });
+        }
+        if (provisioningContext.enforced && provisioningContext.status !== 'CERTIFIED') {
+          throw new UnprocessableEntityException({
+            code: 'CLOSURE_GATE_INCOMPLETE',
+            message: 'No se puede cerrar la OT: requisitos pendientes.',
+            missingRequirements: ['Aprovisionamiento certificado'],
+          });
+        }
+      }
       if (this.closureGateEvaluator) {
         const activities = await qr.manager
           .createQueryBuilder(ExecutionOrderActivity, 'a')
@@ -1959,7 +2152,16 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           persistedItemUsages,
         );
 
-        const evaluation = this.closureGateEvaluator.evaluate(snapshot, {
+        // Una OT no ejecutada no configura el servicio y el ajuste apagado
+        // conserva la conducta anterior. En ambos casos se omite este tipo de
+        // requisito y no se convierte una plantilla v3 en gate obligatorio.
+        const skipProvisioningRequirement =
+          validated.result === ExecutionOrderResult.NOT_EXECUTED ||
+          provisioningContext?.enforced === false;
+        const requirements = skipProvisioningRequirement
+          ? snapshot.filter((requirement) => requirement.kind !== 'PROVISIONING')
+          : snapshot;
+        const evaluation = this.closureGateEvaluator.evaluate(requirements, {
           activities: activities.map((a) => ({ activityType: a.activityType })),
           evidences: evidences.map((e) => ({
             evidenceType: e.evidenceType,
@@ -1970,6 +2172,7 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           itemUsages: await this.buildMaterialEvaluationUsages(snapshot, itemUsages),
           hasCustomerAcceptance: !!validated.customerAcceptance,
           closeCommand: { customerAcceptance: validated.customerAcceptance },
+          ...(provisioningContext ? { provisioning: { status: provisioningContext.status } } : {}),
         });
 
         if (!evaluation.passed) {
@@ -3422,6 +3625,8 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
             kind: 'COMPLIANCE' as const,
             policyKey: requireString(config, 'policyKey'),
           };
+        case 'PROVISIONING':
+          return { ...base, kind: 'PROVISIONING' as const };
         default:
           return invalidTemplate();
       }

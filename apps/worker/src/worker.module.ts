@@ -19,6 +19,7 @@ import {
   OPERATIONS_EXECUTION_RELAY_QUEUE,
   OPERATIONS_EXECUTION_TOMBSTONE_QUEUE,
   OPERATIONS_EXECUTION_DLQ,
+  NETWORK_EXECUTION_EVENTS_QUEUE,
   SCHEDULE_EVENTS_SWEEP_QUEUE,
 } from '@iwana/shared';
 import { AssuranceFieldServiceProcessor } from './processors/assurance-field-service.processor';
@@ -225,6 +226,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_RELAY_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_TOMBSTONE_QUEUE }),
     BullModule.registerQueue({ name: OPERATIONS_EXECUTION_DLQ }),
+    BullModule.registerQueue({ name: NETWORK_EXECUTION_EVENTS_QUEUE }),
     BullModule.registerQueue({ name: EVIDENCE_ORPHAN_DETECTION_QUEUE }),
     BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
     BullModule.registerQueue({ name: SCHEDULE_EVENTS_SWEEP_QUEUE }),

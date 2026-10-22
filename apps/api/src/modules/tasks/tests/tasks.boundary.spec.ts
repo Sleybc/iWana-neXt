@@ -98,6 +98,38 @@ describe('TasksModule — Boundaries (P0-3)', () => {
     );
     expect(executionOrdersSource).not.toMatch(/from ['"][^'"]*(?:\/crm\/|crm\.module)/i);
   });
+
+  it('TasksModule usa el módulo estrecho de aprovisionamiento, sin importar NetworkModule', () => {
+    const tasksModuleSource = readFileSync(join(__dirname, '../tasks.module.ts'), 'utf8');
+    const provisioningReadModuleSource = readFileSync(
+      join(__dirname, '../../network/network-provisioning-read.module.ts'),
+      'utf8',
+    );
+
+    expect(tasksModuleSource).toContain('NetworkProvisioningReadModule');
+    expect(tasksModuleSource).not.toMatch(/import\s*\{\s*NetworkModule\s*\}/);
+    expect(tasksModuleSource).not.toMatch(/\bNetworkModule\s*,/);
+    expect(provisioningReadModuleSource).toContain('SERVICE_PROVISIONING_READ_PORT');
+    expect(provisioningReadModuleSource).toContain('ServiceProvisioningReadAdapter');
+    expect(provisioningReadModuleSource).toMatch(
+      /exports:\s*\[[^\]]*SERVICE_PROVISIONING_READ_PORT/s,
+    );
+    expect(provisioningReadModuleSource).not.toContain('NetworkModule');
+  });
+
+  it('NetworkModule no exporta servicios de aplicación ni el puerto propiedad de Tasks', () => {
+    const networkModuleSource = readFileSync(
+      join(__dirname, '../../network/network.module.ts'),
+      'utf8',
+    );
+    const exportsBlock = networkModuleSource.match(/exports:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+
+    expect(exportsBlock).not.toMatch(
+      /\b(?:IpamService|NetworkCatalogService|ServiceProvisioningService)\b/,
+    );
+    expect(exportsBlock).not.toContain('SERVICE_PROVISIONING_READ_PORT');
+    expect(exportsBlock).not.toContain('EXECUTION_ORDER_READ_PORT');
+  });
 });
 
 /**

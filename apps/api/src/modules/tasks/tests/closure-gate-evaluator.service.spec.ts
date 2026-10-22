@@ -26,6 +26,39 @@ describe('ClosureGateEvaluatorService', () => {
   });
 
   describe('evaluate', () => {
+    it('requires a certified provisioning state for a PROVISIONING requirement', () => {
+      const requirement = makeReq({
+        key: 'service-provisioning',
+        label: 'Aprovisionamiento certificado',
+        kind: 'PROVISIONING',
+      } as unknown as TemplateRequirement);
+
+      const result = evaluator.evaluate([requirement], {
+        provisioning: { status: 'CERTIFIED' },
+      } as never);
+
+      expect(result.passed).toBe(true);
+      expect(result.missingRequirements).toHaveLength(0);
+    });
+
+    it.each([undefined, null, 'RESERVED', 'ACTIVE', 'FAILED', 'RELEASED'])(
+      'fails closed when provisioning status is %s',
+      (status) => {
+        const requirement = makeReq({
+          key: 'service-provisioning',
+          label: 'Aprovisionamiento certificado',
+          kind: 'PROVISIONING',
+        } as unknown as TemplateRequirement);
+
+        const result = evaluator.evaluate([requirement], {
+          provisioning: { status: status as string | null },
+        } as never);
+
+        expect(result.passed).toBe(false);
+        expect(result.missingRequirements[0]?.requirementId).toBe('service-provisioning');
+      },
+    );
+
     it('should pass when all required requirements are satisfied', () => {
       const reqs: TemplateRequirement[] = [
         makeReq({
