@@ -1,5 +1,7 @@
 # HLD-MOD13 — Red y Aprovisionamiento · Fase 01: IPAM y activación certificada
 
+> **Superado por [v1.1](HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) el 2026-10-22.** Se conserva como registro; no implementar desde este archivo.
+
 **Versión:** 1.0
 **Estado:** Aprobado — contrato **congelado** desde G0 (CTO, 2026-10-22). Cualquier cambio se hace por re-sync versionado.
 **Fecha:** 2026-10-22

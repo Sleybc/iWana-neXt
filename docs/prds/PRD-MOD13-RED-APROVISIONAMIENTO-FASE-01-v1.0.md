@@ -1,5 +1,7 @@
 # PRD-MOD13 — Red y Aprovisionamiento · Fase 01: IPAM y activación certificada
 
+> **Superado por [v1.1](PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) el 2026-10-22.** Se conserva como registro; no implementar desde este archivo.
+
 **Versión:** 1.0
 **Estado:** Aprobado
 **Aprobado por:** CTO, 2026-10-22 (G0, con las recomendaciones de D-NET-1 a D-NET-7)

@@ -1,5 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
+> **Superado por [v1.1](PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) el 2026-10-22.**
+
 **Versión:** 1.0 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)

@@ -9,7 +9,7 @@
 **Autor:** AI-EM-ARCH
 **Módulos:** MOD13 Red y Aprovisionamiento (nuevo) · MOD11 Ejecución Operativa · MOD05 CRM · MOD12 Inventario
 **Relacionado:** [ADR-027](ADR-027-Conversion-Expediente-Subscriber-Two-Stage.md) (Aprobado, se enmienda en D7) · [ADR-044](ADR-044-Separacion-OrganizationSite-NmsNode.md) (Aprobado) · [ADR-046](ADR-046-Bounded-Context-Tasks-Ejecucion-Operativa.md) (Aprobado) · [ADR-068](ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md) (Aprobado) · [ADR-088](ADR-088-Cierre-OT-y-Culminacion-Instalacion-Hitos-Separados.md) (Aprobado, este ADR lo desarrolla) · [ADR-097](ADR-097-Puertos-de-lectura-para-avisos-de-terminacion-MOD05.md) (Aprobado, patrón de puertos)
-**Definición:** [PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.0](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.0.md) · [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.0](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.0.md)
+**Definición:** [PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) · [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md)
 
 ---
 
