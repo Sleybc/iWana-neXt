@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AuditAction } from '@iwana/shared';
+import { AuditAction, TenantStatus } from '@iwana/shared';
 import {
   IpAssignment,
   isValidSchemaName,
@@ -19,6 +19,7 @@ import {
 } from '../tasks/ports/execution-order-read.port';
 import { AuditService } from '../audit/audit.service';
 import { ServiceProvisioningActivatedEvent } from './events/service-provisioning-activated.event';
+import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
 
 export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconcile';
 export const NETWORK_PROVISIONING_RECONCILE_JOB = 'reconcile-network-provisioning';
@@ -88,8 +89,9 @@ export class NetworkProvisioningReconcilerProcessor
     const tenants = (await this.dataSource.query(
       `SELECT id::text AS id, slug, schema_name
          FROM public.tenants
-        WHERE status = 'ACTIVE' AND deleted_at IS NULL
+        WHERE status = $1 AND deleted_at IS NULL
         ORDER BY schema_name`,
+      [TenantStatus.ACTIVE],
     )) as ActiveTenantRow[];
     for (const tenant of tenants) {
       if (
@@ -117,6 +119,7 @@ export class NetworkProvisioningReconcilerProcessor
     }
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<unknown>): Promise<void> {
     if (job.name !== NETWORK_PROVISIONING_RECONCILE_JOB) {
       throw new UnrecoverableError('Job de reconciliación desconocido.');
@@ -161,8 +164,8 @@ export class NetworkProvisioningReconcilerProcessor
     const rows = (await this.dataSource.query(
       `SELECT id::text AS id, slug, schema_name
          FROM public.tenants
-        WHERE id = $1 AND status = 'ACTIVE' AND deleted_at IS NULL`,
-      [tenantId],
+        WHERE id = $1 AND status = $2 AND deleted_at IS NULL`,
+      [tenantId, TenantStatus.ACTIVE],
     )) as ActiveTenantRow[];
     const tenant = rows[0];
     if (!tenant || !isValidSchemaName(tenant.schema_name)) {

@@ -1,0 +1,485 @@
+{
+  "date": "2026-10-23",
+  "results": [
+    {
+      "screen": "routers",
+      "width": 375,
+      "theme": "light",
+      "file": "routers-375-light.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "routers",
+      "width": 375,
+      "theme": "dark",
+      "file": "routers-375-dark.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "routers",
+      "width": 768,
+      "theme": "light",
+      "file": "routers-768-light.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "routers",
+      "width": 768,
+      "theme": "dark",
+      "file": "routers-768-dark.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "routers",
+      "width": 1280,
+      "theme": "light",
+      "file": "routers-1280-light.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "routers",
+      "width": 1280,
+      "theme": "dark",
+      "file": "routers-1280-dark.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ipv4",
+      "width": 375,
+      "theme": "light",
+      "file": "ipv4-375-light.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ipv4",
+      "width": 375,
+      "theme": "dark",
+      "file": "ipv4-375-dark.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ipv4",
+      "width": 768,
+      "theme": "light",
+      "file": "ipv4-768-light.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ipv4",
+      "width": 768,
+      "theme": "dark",
+      "file": "ipv4-768-dark.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ipv4",
+      "width": 1280,
+      "theme": "light",
+      "file": "ipv4-1280-light.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ipv4",
+      "width": 1280,
+      "theme": "dark",
+      "file": "ipv4-1280-dark.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "bandeja",
+      "width": 375,
+      "theme": "light",
+      "file": "bandeja-375-light.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "bandeja",
+      "width": 375,
+      "theme": "dark",
+      "file": "bandeja-375-dark.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "bandeja",
+      "width": 768,
+      "theme": "light",
+      "file": "bandeja-768-light.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "bandeja",
+      "width": 768,
+      "theme": "dark",
+      "file": "bandeja-768-dark.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "bandeja",
+      "width": 1280,
+      "theme": "light",
+      "file": "bandeja-1280-light.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "bandeja",
+      "width": 1280,
+      "theme": "dark",
+      "file": "bandeja-1280-dark.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ajustes",
+      "width": 375,
+      "theme": "light",
+      "file": "ajustes-375-light.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ajustes",
+      "width": 375,
+      "theme": "dark",
+      "file": "ajustes-375-dark.png",
+      "metrics": {
+        "scroll": 375,
+        "viewport": 375,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ajustes",
+      "width": 768,
+      "theme": "light",
+      "file": "ajustes-768-light.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ajustes",
+      "width": 768,
+      "theme": "dark",
+      "file": "ajustes-768-dark.png",
+      "metrics": {
+        "scroll": 768,
+        "viewport": 768,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ajustes",
+      "width": 1280,
+      "theme": "light",
+      "file": "ajustes-1280-light.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": false,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    },
+    {
+      "screen": "ajustes",
+      "width": 1280,
+      "theme": "dark",
+      "file": "ajustes-1280-dark.png",
+      "metrics": {
+        "scroll": 1280,
+        "viewport": 1280,
+        "dark": true,
+        "alerts": 0,
+        "mainCount": 2
+      },
+      "focus": {
+        "tag": "NEXTJS-PORTAL",
+        "outline": "none",
+        "outlineWidth": "3px",
+        "shadow": false
+      },
+      "httpErrors": []
+    }
+  ]
+}

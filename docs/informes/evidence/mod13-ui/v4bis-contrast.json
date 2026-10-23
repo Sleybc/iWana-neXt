@@ -1,0 +1,100 @@
+[
+  {
+    "theme": "light",
+    "ratios": [
+      {
+        "selector": "main h1",
+        "ratio": 16.86,
+        "fontSize": "24px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main .portal-eyebrow",
+        "ratio": 4.52,
+        "fontSize": "10px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main .portal-eyebrow-muted",
+        "ratio": 4.6,
+        "fontSize": "10px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main h2",
+        "ratio": 17.75,
+        "fontSize": "16px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main p.text-sm",
+        "ratio": 7.18,
+        "fontSize": "14px",
+        "fontWeight": "400"
+      },
+      {
+        "selector": "main button",
+        "ratio": 17.32,
+        "fontSize": "14px",
+        "fontWeight": "600"
+      }
+    ],
+    "activeLinks": [
+      {
+        "href": "/dashboard"
+      },
+      {
+        "href": "/dashboard/network/routers"
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "ratios": [
+      {
+        "selector": "main h1",
+        "ratio": 17.76,
+        "fontSize": "24px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main .portal-eyebrow",
+        "ratio": 10.89,
+        "fontSize": "10px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main .portal-eyebrow-muted",
+        "ratio": 5.52,
+        "fontSize": "10px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main h2",
+        "ratio": 15.91,
+        "fontSize": "16px",
+        "fontWeight": "600"
+      },
+      {
+        "selector": "main p.text-sm",
+        "ratio": 12.06,
+        "fontSize": "14px",
+        "fontWeight": "400"
+      },
+      {
+        "selector": "main button",
+        "ratio": 6.97,
+        "fontSize": "14px",
+        "fontWeight": "600"
+      }
+    ],
+    "activeLinks": [
+      {
+        "href": "/dashboard"
+      },
+      {
+        "href": "/dashboard/network/routers"
+      }
+    ]
+  }
+]

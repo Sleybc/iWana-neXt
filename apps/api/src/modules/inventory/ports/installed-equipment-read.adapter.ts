@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
+import { SerializedAssetStatus } from '@iwana/shared';
 import type { DataSource } from 'typeorm';
 import {
   InstalledEquipmentReadPort,
@@ -38,11 +39,11 @@ export class InstalledEquipmentReadAdapter extends InstalledEquipmentReadPort {
             AND assignment.execution_order_ref_id = $2
             AND assignment.subscriber_ref_id = $3
             AND assignment.removed_at IS NULL
-            AND asset.current_status = 'INSTALLED_AT_CUSTOMER'
+            AND asset.current_status = $4
             AND asset.serial_number IS NOT NULL
           ORDER BY assignment.installed_at ASC, assignment.id ASC
           LIMIT 1`,
-        [tenantId, executionOrderId, subscriberId],
+        [tenantId, executionOrderId, subscriberId, SerializedAssetStatus.INSTALLED_COMODATO],
       )) as InstalledEquipmentRow[];
       const row = rows[0];
       return row?.serial_number

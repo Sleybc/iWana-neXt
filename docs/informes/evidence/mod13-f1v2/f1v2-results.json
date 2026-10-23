@@ -1,0 +1,82 @@
+{
+  "fecha": "2026-10-23T14:07:09.112Z",
+  "health": "200 db=ok redis=ok",
+  "total": 14,
+  "aprobados": 14,
+  "fallidos": 0,
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 409 (Conflict)"
+  ],
+  "resultados": [
+    {
+      "name": "login ADMIN por formulario del portal",
+      "ok": true,
+      "detail": "URL final /dashboard"
+    },
+    {
+      "name": "routers · listado por API real",
+      "ok": true,
+      "detail": "tabla de routers visible"
+    },
+    {
+      "name": "routers · alta por UI",
+      "ok": true,
+      "detail": "fila creada y ACTIVE (QA F1v2 Router 20261023140702)"
+    },
+    {
+      "name": "routers · edición por UI",
+      "ok": true,
+      "detail": "interfaz LAN persistida"
+    },
+    {
+      "name": "redes IPv4 · listado por API real",
+      "ok": true,
+      "detail": "tabla de redes visible"
+    },
+    {
+      "name": "redes IPv4 · alta por UI",
+      "ok": true,
+      "detail": "red QA F1v2 Red 20261023140702 creada"
+    },
+    {
+      "name": "redes IPv4 · ocupación leída del medidor",
+      "ok": true,
+      "detail": "0 de 191 direcciones ocupadas; 191 libres"
+    },
+    {
+      "name": "redes IPv4 · edición por UI",
+      "ok": true,
+      "detail": "nombre persistido"
+    },
+    {
+      "name": "redes IPv4 · solapamiento NETWORK_OVERLAP",
+      "ok": true,
+      "detail": "mensaje de solapamiento visible y drawer abierto con el error"
+    },
+    {
+      "name": "redes IPv4 · desactivación por UI",
+      "ok": true,
+      "detail": "estado Inactivo visible"
+    },
+    {
+      "name": "routers · desactivación por UI",
+      "ok": true,
+      "detail": "estado Inactivo visible"
+    },
+    {
+      "name": "login SOLO LECTURA por formulario del portal",
+      "ok": true,
+      "detail": "URL final /dashboard"
+    },
+    {
+      "name": "solo lectura · acciones ocultas en routers",
+      "ok": true,
+      "detail": "crear=0 editar=0 alternar=0 columna=0; tabla con 5 filas contando encabezado"
+    },
+    {
+      "name": "solo lectura · acciones ocultas en redes IPv4",
+      "ok": true,
+      "detail": "crear=0 editar=0 alternar=0 columna=0"
+    }
+  ]
+}

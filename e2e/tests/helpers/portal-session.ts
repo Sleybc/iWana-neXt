@@ -6,8 +6,9 @@ import type { Page } from '@playwright/test';
  * Los nombres y opciones de la cookie son el contrato congelado por OLA1-b
  * (C-5): el backend los emite en `apps/api/src/modules/auth/session-cookies.constants.ts`
  * y `auth.controller.ts` (ACCESS_COOKIE_OPTIONS). La siembra usa el mismo nombre,
- * `Path=/`, `httpOnly` y `SameSite=Strict`, con dominio `127.0.0.1` (el baseURL
- * de la suite portal) y `Secure` desactivado en desarrollo (COOKIE_SECURE=false).
+ * `Path=/`, `httpOnly` y `SameSite=Strict`, como cookie host-only del origen
+ * `127.0.0.1` de la suite portal; así no duplica la cookie host-only del login.
+ * `Secure` queda desactivado en desarrollo (COOKIE_SECURE=false).
  *
  * Punto de no retorno alcanzado (C-9): el cliente ya no lee tokens de
  * localStorage; la siembra es exclusivamente por cookie. El slug de tenant no es
@@ -18,11 +19,8 @@ import type { Page } from '@playwright/test';
 /** Nombre de la cookie de access del portal (audiencia tenant). */
 export const PORTAL_ACCESS_TOKEN_COOKIE = 'portalAccessToken';
 
-/** Dominio de la cookie: el baseURL de `e2e/playwright.portal.config.ts`. */
-export const PORTAL_COOKIE_DOMAIN = '127.0.0.1';
-
-/** Path mínimo que cubre toda la ruta del API (decisión 4 del ADR-081). */
-export const PORTAL_COOKIE_PATH = '/';
+/** Origen de portal para crear cookie host-only y evitar duplicados por dominio. */
+export const PORTAL_COOKIE_URL = 'http://127.0.0.1:3002';
 
 export interface PortalSessionSeed {
   /** Access token sintético (JWT de prueba, sin firma válida ni PII real). */
@@ -33,7 +31,7 @@ export interface PortalSessionSeed {
 
 /**
  * Siembra una sesión de portal en el contexto del test:
- * emite la cookie `portalAccessToken` con las opciones reales de producción
+ * emite la cookie `portalAccessToken` host-only con las opciones reales de producción
  * (httpOnly, SameSite=Strict, Path=/) y deja el slug de tenant en localStorage.
  */
 export async function seedPortalSession(page: Page, seed: PortalSessionSeed): Promise<void> {
@@ -42,8 +40,7 @@ export async function seedPortalSession(page: Page, seed: PortalSessionSeed): Pr
       {
         name: PORTAL_ACCESS_TOKEN_COOKIE,
         value: seed.token,
-        domain: PORTAL_COOKIE_DOMAIN,
-        path: PORTAL_COOKIE_PATH,
+        url: PORTAL_COOKIE_URL,
         httpOnly: true,
         sameSite: 'Strict',
         secure: false,

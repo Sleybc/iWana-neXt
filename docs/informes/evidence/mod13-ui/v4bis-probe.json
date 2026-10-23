@@ -1,0 +1,55 @@
+{
+  "roles": {
+    "noc": false,
+    "technician": false
+  },
+  "api": [
+    {
+      "endpoint": "/crm/subscribers?limit=100",
+      "status": 200,
+      "count": 0,
+      "dataShape": "array",
+      "dataKeys": []
+    },
+    {
+      "endpoint": "/tasks/execution-orders?limit=20",
+      "status": 200,
+      "count": 3,
+      "dataShape": "array",
+      "dataKeys": []
+    }
+  ],
+  "keyboard": [
+    {
+      "theme": "light",
+      "initial": {
+        "insideDialog": true,
+        "tag": "BUTTON"
+      },
+      "afterTab": {
+        "insideDialog": true,
+        "outline": "none",
+        "outlineWidth": "1px",
+        "shadow": true
+      },
+      "escapeCloses": true,
+      "focusReturned": true
+    },
+    {
+      "theme": "dark",
+      "initial": {
+        "insideDialog": true,
+        "tag": "BUTTON"
+      },
+      "afterTab": {
+        "insideDialog": true,
+        "outline": "none",
+        "outlineWidth": "1px",
+        "shadow": true
+      },
+      "escapeCloses": true,
+      "focusReturned": true
+    }
+  ],
+  "subscriberCapture": "no_fixture"
+}

@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
+  IpAssignment,
   Ipv4Network,
+  NetworkInboxEvent,
   NetworkPlanProfile,
   NetworkRouter,
   NetworkSetting,
@@ -45,6 +47,8 @@ import {
       { name: NETWORK_PROVISIONING_RECONCILE_QUEUE },
     ),
     TypeOrmModule.forFeature([
+      IpAssignment,
+      NetworkInboxEvent,
       NetworkRouter,
       Ipv4Network,
       NetworkPlanProfile,

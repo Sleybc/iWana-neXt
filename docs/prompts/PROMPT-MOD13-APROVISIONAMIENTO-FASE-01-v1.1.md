@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** el 2026-10-23 se añadió §B-mig, tras el fallo de la 163 en `db:migrate:all`. El mismo día, tras el primer intento de la Ola 9, se corrigieron las precondiciones 1, 3 y 5 (puerto de Redis, tenant de pruebas `ACTIVE` y migraciones de MOD13). Al preparar la Ola 9 (2026-10-23) se añadió la precondición 5 (tenant de pruebas migrado) y §V4-bis. Al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** el 2026-10-23 se añadió §Ola 16 (B-cov, V1-ci2). El mismo día se añadió §Ola 15 (V1-ci, V5, V4-plan). El mismo día se añadió §Ola 14 (B-wire). El mismo día se añadió §Ola 13 (B-fix3). El mismo día se corrigió §V1-r: la MAC del CPE es opcional (exigirla era un error del emisor, porque el contrato la admite nula) y V4-bis-r va después de V1-r. Antes, ese mismo día, §V1-r ya pedía el worker en marcha y el CPE registrado en el flujo. El mismo día se añadió §Ola 12 (B-fix2). El mismo día se añadió §Ola 11 (F1-v2, V1-r, V4-bis-r). El mismo día se añadió §Ola 10 (T-login, FX-v1, FX-nav). El mismo día se añadió §B-mig, tras el fallo de la 163 en `db:migrate:all`. El mismo día, tras el primer intento de la Ola 9, se corrigieron las precondiciones 1, 3 y 5 (puerto de Redis, tenant de pruebas `ACTIVE` y migraciones de MOD13). Al preparar la Ola 9 (2026-10-23) se añadió la precondición 5 (tenant de pruebas migrado) y §V4-bis. Al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -388,6 +388,155 @@ Ejecuta las suites contra Postgres que quedaron omitidas, empezando por `service
 
 #### V4-bis · `ds-owner`
 Con el portal corriendo, toma la evidencia visual de routers, redes IPv4, bandeja, ajustes, panel de la OT (vistas de NOC y del técnico) y sección técnica del suscriptor. Debe cubrir 375, 768 y 1280 px, en claro y en oscuro, y aplicar el criterio de `iwana-identity-ui-review`. Las capturas van en `docs/informes/evidence/mod13-ui/` y el resultado se añade a `INFORME-MOD13-REVISION-UI-v1.0.md` como «V4-bis».
+
+### Ola 10 · desbloqueo de G4
+
+La Ola 9 cerró R-pg (4 suites con 23 tests: reversión de auditoría y 20 reservas concurrentes sin duplicados) y dejó tres bloqueos: el login del portal, la guarda apagada en el tenant de pruebas y la falta de sesiones y datos de prueba.
+
+#### T-login · `e2e-triage` (solo lectura y diagnóstico)
+En F1-v, el login del portal en `localhost:3002` acepta los datos pero vuelve a `/auth/login` y no llega a `/dashboard` en 60 s. Con las mismas credenciales, el login directo contra el API devuelve 200. Además falta interactividad antes del login. Clasifica la causa en regresión, entorno o prueba, y contrasta como mínimo estas hipótesis:
+- la cookie de sesión cae en otro host: el portal corre en `localhost` y el API en `127.0.0.1`;
+- los cambios sin commitear de la sesión de instant navigation, ajenos a MOD13: `apps/portal/next.config.ts` (`experimental.instantInsights`, redirección de `/`), el borrado de `apps/portal/src/app/page.tsx` y `next-env.d.ts`;
+- la hidratación no termina en modo dev.
+
+Puedes repetir una prueba aislada para separar fallos intermitentes de una regresión. No edites archivos. Entrega `docs/informes/INFORME-MOD13-TRIAGE-LOGIN-PORTAL-v1.0.md` con la causa, la evidencia y quién debe corregir, y si el arreglo es de MOD13 o ajeno.
+
+#### FX-v1 · `sr-qa` (fixtures en el tenant de pruebas `srqa-mod11-r5-20261006`)
+**Escribes fixtures y tests, nunca código de producto.** Solo a través del API, y nunca en `tenant_iwana`:
+1. encender `enforceProvisioningOnInstallClose` **solo en el tenant de pruebas**, con `PATCH /network/settings` como ADMIN. D-NET-3 reserva para G7 el encendido en el resto de tenants;
+2. preparar sesiones E2E para un usuario NOC (o «Acceso estándar Aprovisionamiento»), el técnico asignado y un usuario con solo `network.catalog.read`. Crea los usuarios por el API si no existen y guarda sus credenciales solo en `.env.development.local`, con los nombres `E2E_NOC_*`, `E2E_TECH_*` y `E2E_NETWORK_READONLY_*`. Nunca en el chat ni en informes;
+3. preparar los datos de dominio del §V1: suscriptor con contacto real y datos fiscales completos, expediente en `LISTO_PARA_INSTALACION` y una OT de instalación con plantilla v3 asignada al técnico.
+
+Entrega una sección «Fixtures» en `INFORME-MOD13-PRUEBAS-V1-v1.0.md`, con identificadores pero sin datos personales ni secretos. Si para crear algo hiciera falta tocar código de producto, `[BLOQUEO]`.
+
+#### FX-nav · `fe-platform` (corrección acotada del shell)
+DS-MOD13-VIS-P2-01: en `Sidebar.tsx`, el enlace «Inicio» (`/dashboard`) se marca activo por prefijo junto con el módulo actual, con dos `aria-current="page"` a la vez. Corrígelo con coincidencia exacta para `/dashboard` y deja la coincidencia por prefijo para los módulos con subrutas. Añade su prueba. Es un defecto heredado del shell que no viene de MOD13; se corrige aquí por ser pequeño y porque afecta a CA-NET-14.
+
+### Ola 11 · cierre de G4
+
+La Ola 10 dejó:
+- el login diagnosticado: el harness hacía clic antes de la hidratación;
+- los fixtures listos en `srqa-mod11-r5-20261006`: guarda encendida, sesiones `E2E_NOC_*`, `E2E_TECH_*` y `E2E_NETWORK_READONLY_*`, y suscriptor, expediente y OT asignada con plantilla v3;
+- el sidebar corregido.
+
+Reglas comunes a los tres bloques de esta ola:
+- **Antes de interactuar, espera a que la página sea interactiva:** que el control esté habilitado y que la hidratación haya terminado, según el método de `INFORME-MOD13-TRIAGE-LOGIN-PORTAL-v1.0.md`. Ningún clic antes de eso.
+- **Comprueba `GET /api/v1/health` en 200 antes de empezar.** Si el API cae durante la ola, guarda el final de su log, sin secretos ni datos personales, en el informe del bloque antes de reiniciarlo, y clasifica la caída. La primera caída, en la Ola 10, quedó sin causa.
+- Credenciales solo desde el entorno; nunca en la salida.
+
+#### F1-v2 · `fe-platform`
+Repite en el navegador las pruebas de routers y redes IPv4 con la espera de interactividad. Incluye las acciones ocultas con la sesión `E2E_NETWORK_READONLY_*`. Añade el resultado a `INFORME-MOD13-PRUEBAS-F1-V-v1.0.md`.
+
+#### V1-r · `sr-qa`
+Ejecuta §V1 completo con los fixtures de FX-v1, con conteo real y la matriz CA-NET → test cerrada.
+
+**Ajustes tras la Ola 12 (2026-10-23):**
+- **El worker debe estar corriendo** (`pnpm --filter worker dev`). El registro del equipo viaja por el outbox y el worker hasta inventario, y `ExecutionOrderClosedV1` llega a MOD13 por el mismo camino. Sin worker no hay comodato ni activación. Compruébalo antes de empezar; si no está, `[BLOQUEO]`.
+- **El CPE nace en el flujo, no en el fixture.**
+  - Prepara por el API de inventario un artículo serializado de categoría CPE, con serial, en custodia del técnico (`ASSIGNED_TO_TECHNICIAN`). **La MAC es opcional:** el contrato define `cpe.macAddress` como `string | null` y el API de inventario no permite asignarla. Si no se puede poner, sigue sin ella; no es un `[BLOQUEO]`.
+  - Después, en el portal y como técnico, regístralo en la OT con disposición `INSTALLED_AT_CUSTOMER` antes de reservar.
+  - Comprueba que el comodato queda abierto y que el contexto de NOC devuelve el `cpe` con su `serialNumber`, que es el último criterio de B-fix2. `macAddress` puede venir `null`.
+- **Orden:** V4-bis-r se lanza después de que V1-r haya creado datos (reserva, certificación, cierre y servicio activo), para que la bandeja, la ficha y el panel de NOC tengan contenido.
+- Nada en `tenant_iwana`. Credenciales solo desde el entorno.
+
+#### V4-bis-r · `ds-owner`
+Toma las 18 combinaciones pendientes con las sesiones y los datos de FX-v1: panel de OT para NOC y para el técnico, sección técnica del suscriptor, bandeja con datos y ajustes con planes. Vuelve a verificar que el sidebar ya no marca dos enlaces activos. Añade el resultado a `INFORME-MOD13-REVISION-UI-v1.0.md`.
+
+### Ola 12 · corrección del contexto de OT
+
+En la Ola 11, F1-v2 pasó (6/6), pero `GET /network/provisioning/orders/:id/context` responde 500 con `22P02`. El log de Postgres lo explica: `invalid input value for enum serialized_asset_status: "INSTALLED_AT_CUSTOMER"`.
+
+La causa está en `apps/api/src/modules/inventory/ports/installed-equipment-read.adapter.ts:41`. Filtra `asset.current_status = 'INSTALLED_AT_CUSTOMER'`, que es un valor de `InventoryDisposition` (la disposición del consumo), cuando `current_status` es un `SerializedAssetStatus` y el equipo en comodato está en `INSTALLED_COMODATO`. El adaptador no tenía ninguna prueba contra Postgres.
+
+#### B-fix2 · `sr-backend`
+1. Corregir el filtro a `INSTALLED_COMODATO`, tomando el valor del enum compartido `SerializedAssetStatus` en vez de un literal.
+2. Añadir `installed-equipment-read.adapter.postgres.integration.spec.ts`. Con un activo en comodato abierto para la OT y el suscriptor, devuelve serial, MAC y modelo; con el comodato cerrado, o sin activo, devuelve `null`.
+3. Revisar todo SQL crudo de MOD13 (`apps/api/src/modules/network`, los puertos y adaptadores que B2 y B3 crearon en `tasks`, `crm` e `inventory`, y el worker) en busca de literales de enum. Cada uno debe venir del enum compartido o tener una prueba contra Postgres que lo ejerza. Reportar la lista revisada.
+4. Probar el contexto contra el API vivo con la sesión NOC de FX-v1 y confirmar que devuelve 200 con `cpe` relleno.
+
+No commitees. Sin cachés de jest en el repo.
+
+Después de B-fix2 se relanzan los bloques 2 y 3 del launcher v1.12 (V1-r y V4-bis-r), sin cambios.
+
+### Ola 13 · 500 en `reserve` y cableado real
+
+Segundo relanzamiento de V1-r (2026-10-23). La cadena del CPE funciona de punta a punta: custodia del técnico → registro en la OT → worker → comodato, y el contexto de NOC muestra el `cpe`. El router y la red /24 de prueba quedaron activos. Pero `POST /network/provisioning/reserve` responde **500** con mensaje genérico. No hay reserva parcial y Postgres no registra ningún error, así que la excepción es de la aplicación. No hay log del API disponible.
+
+Es el tercer defecto que solo aparece con el cableado real, después de `EventEmitter2` sin metadatos (`network-provisioning-reconciler.processor.ts`) y del literal de enum de `installed-equipment-read.adapter.ts`. Las pruebas de B2 y B3 sustituyen con dobles los puertos de CRM, inventario, tasks y router.
+
+#### B-fix3 · `sr-backend`
+1. **Traza.** Arranca el API con su salida redirigida a un archivo fuera del repo y repite **una sola vez** `reserve` sobre la OT de FX-v1, con la sesión NOC desde el entorno. Copia al informe la traza saneada, sin tokens, credenciales, IP del cliente ni datos personales.
+2. **Corrección** de la causa, sin cambiar el contrato.
+3. **Pruebas de cableado real** (`network/tests/*.wiring.postgres.integration.spec.ts`): una por comando (`context` para NOC y para el técnico, `reserve`, `certify`, `release` y `regularize`). Cada una construye `NetworkModule` con los módulos estrechos reales de tasks, CRM e inventario, contra Postgres, **sin dobles para los puertos**; solo puede sustituirse lo que sale del proceso (Redis). Deben fallar antes de la corrección y pasar después.
+4. Vuelve a probar `reserve` contra el API vivo y deja la OT reservada para que V1-r continúe desde ahí.
+
+Entrega `docs/informes/INFORME-MOD13-CORRECCION-RESERVA-v1.0.md`. No toques `tenant_iwana`, no imprimas secretos ni dejes cachés de jest en el repo. No commitees.
+
+Después de B-fix3 se relanza V1-r y, con los datos que deje, V4-bis-r.
+
+### Ola 14 · cableado real del consumidor
+
+B-fix3 corrigió el 500 de `reserve`: faltaba `IpAssignment` en el `forFeature` de `NetworkModule`. Al recibirlo, AI-EM-ARCH encontró el mismo defecto en `NetworkInboxEvent`, que el consumidor usa con `manager.findOne` y `manager.save`. Por orden del CTO, AI-EM-ARCH la registró en `NetworkModule` el 2026-10-23 y comprobó que el API arranca con health 200. Falta la prueba que lo cubra.
+
+#### B-wire · `sr-backend`
+1. Añadir a `network/tests/network.wiring.postgres.integration.spec.ts`, o a un archivo hermano, una prueba de cableado real del **consumidor** `NetworkExecutionEventProcessor`. Debe construir `NetworkModule` con los módulos reales (sin dobles para puertos ni entidades), contra Postgres y Redis reales, y procesar un evento firmado `ExecutionOrderClosedV1` con resultado `EXECUTED` sobre un servicio `CERTIFIED`. Tiene que comprobar:
+   - inbox marcado;
+   - servicio e IP en `ACTIVE`;
+   - evento `network.service-provisioning.activated` emitido;
+   - una reentrega sin efecto.
+2. La misma prueba con `NOT_EXECUTED` sobre un servicio `RESERVED`: queda `RELEASED`.
+3. Una prueba de arquitectura que falle si alguna entidad de `@iwana/db` usada por `apps/api/src/modules/network` (en `manager.*`, `getRepository` o `findOne`) no figura en un `forFeature` de los módulos de red. Así este fallo no se repite.
+4. Una prueba de arranque del `AppModule`, si no existe ya. Si es demasiado pesada para CI, márcala como de integración.
+
+Habilita la integración con Redis que quedó omitida en B-fix3. Reporta el conteo real, sin omitidas que no estén justificadas. No toques `tenant_iwana`, no imprimas secretos ni dejes cachés de jest en el repo. No commitees.
+
+### Ola 15 · cierre de G4 y gates (V1-ci ∥ V5, y después V4-plan)
+
+V1-r demostró el flujo de punta a punta sobre FX-v1. El técnico cerró la OT, y quedaron el servicio `ACTIVE`, el comodato abierto y el suscriptor `ACTIVE`, verificados en el portal y en el API. NOC certificó y el cierre prematuro devolvió `422 CLOSURE_GATE_INCOMPLETE`. Pero el recorrido se completó **en varias invocaciones**, y el spec depende del estado de FX-v1 (identificadores fijos del CPE y estados tolerantes). V4-bis-r cubrió las 18 combinaciones y la bandeja con datos; «ajustes con planes» quedó vacío porque el tenant de pruebas no tiene planes comerciales.
+
+#### V1-ci · `sr-qa`
+Escribes tests y fixtures, nunca código de producto.
+1. Haz `portal-network-provisioning-live.spec.ts` **autocontenido**. Cada corrida crea, por el API y solo en el tenant de pruebas, sus propios datos: suscriptor y expediente, CPE en custodia del técnico, OT asignada, router y red con prefijo propio, y un plan comercial con perfil PCQ.
+2. El spec recorre el flujo completo **en una sola corrida** y con estados estrictos, sin listas de estados tolerantes: técnico registra el CPE → NOC reserva → cierre prematuro 422 → NOC certifica con evidencia → técnico cierra → servicio, suscriptor y comodato en `ACTIVE`, y `NOT_EXECUTED` libera la IP en una OT aparte.
+3. Pásalo **dos veces seguidas** en verde, con conteo real. Los datos de cada corrida quedan aislados por un sufijo propio.
+4. Deja creado un plan con perfil PCQ, para V4-plan.
+
+G4 se cierra cuando se cumpla el punto 3.
+
+#### V5 · `gate-verifier` (en paralelo con V1-ci)
+Ejecuta los Gates Before Merge sobre lo que toca MOD13, sin caché de turbo:
+- cobertura de `apps/api/src/modules/network` ≥80 %, y la de los puertos y adaptadores tocados en `tasks`, `crm` e `inventory`;
+- lint y typecheck de `api`, `worker`, `portal`, `shared` y `db`;
+- migraciones reversibles;
+- OpenAPI actualizado;
+- sin PII en logs.
+
+Entrega `docs/informes/INFORME-MOD13-GATES-V5-v1.0.md` con conteo real. Si la cobertura no llega al 80 %, identifica las áreas sin probar; no escribas tests.
+
+#### V4-plan · `ds-owner` (después de V1-ci)
+Captura «ajustes con planes» (375, 768 y 1280 px, en claro y oscuro) con el plan que dejó V1-ci. Añade el resultado a `INFORME-MOD13-REVISION-UI-v1.0.md`.
+
+### Ola 16 · gates abiertos de V5 y spec reproducible
+
+V5 dejó dos gates abiertos, los dos de MOD13:
+- **Logging:** `log-error-safety.architecture.spec.ts` falla (2 tests).
+  - `network-execution-event.processor.ts:263` escribe en el log identificadores de un payload sin verificar (`untrustedIdentity`);
+  - `network-execution-event.processor.ts:170` y `network-provisioning-reconciler.processor.ts:121` no tienen `@SanitizeFailedReason`.
+- **Cobertura de `network`:** 49,92 % de statements (40,85 % de branches). Los huecos son `network-catalog.service.ts` (13 %), `network-execution-event.processor.ts` (22 %), `service-provisioning.service.ts` (66 %), el reconciliador (64 %), `service-provisioning-read.adapter.ts` y `service-provisioning-commercial-status.adapter.ts` (0 %), y los listeners de activación de CRM e inventario (0 %).
+
+V1-ci quedó bloqueado por un **defecto previo de MOD11, ajeno a MOD13**: desde `5de2f5eb` (2026-07-27), el gate de cierre exige los requisitos obligatorios de la plantilla con cualquier resultado. Una OT de instalación no puede cerrarse como `NOT_EXECUTED` sin el CPE instalado. Ese defecto se trata aparte, fuera de esta fase. MOD13 no lo rodea, y el agente no debe registrar instalaciones falsas.
+
+#### B-cov · `sr-backend`
+1. **Logging:**
+   - en `:263` no escribas nada que venga de un payload sin verificar: usa `omitted` o un hash corto;
+   - añade `@SanitizeFailedReason` a los dos procesadores;
+   - `log-error-safety.architecture.spec.ts` debe pasar y la suite completa del API debe quedar en verde, con conteo.
+2. **Cobertura** de `apps/api/src/modules/network` hasta **≥80 %** de statements, lines y functions, y ≥70 % de branches. Prioriza las ramas de error y de idempotencia de los archivos citados. Cubre también los listeners de activación de CRM e inventario, con pruebas en sus propios módulos. Mide con la misma combinación que usó V5 (unitarias más integración contra Postgres) y reporta el mismo desglose.
+
+No cambies el contrato ni el comportamiento. No commitees.
+
+#### V1-ci2 · `sr-qa`
+Hacer el spec autocontenido y estricto, igual que §V1-ci, con un solo cambio: la rama «libera la IP» se prueba **cancelando o anulando** una segunda OT con reserva viva (`ExecutionOrderCancelledV1` o `AnnulledV1`), no cerrándola como `NOT_EXECUTED`. Esa rama ya está cubierta por la integración de B-wire. Usa el plan PCQ que ya existe. Dos corridas seguidas en verde, con conteo real. G4 se cierra cuando se cumpla.
 
 ### V1 y V5 — después de G4
 

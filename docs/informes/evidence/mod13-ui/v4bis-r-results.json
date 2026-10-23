@@ -1,0 +1,596 @@
+{
+  "date": "2026-10-23",
+  "health": 200,
+  "results": [
+    {
+      "screen": "ot-noc",
+      "width": 375,
+      "theme": "light",
+      "file": "v4bis-r-ot-noc-375-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 3,
+      "png": true
+    },
+    {
+      "screen": "ot-noc",
+      "width": 375,
+      "theme": "dark",
+      "file": "v4bis-r-ot-noc-375-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 3,
+      "png": true
+    },
+    {
+      "screen": "ot-noc",
+      "width": 768,
+      "theme": "light",
+      "file": "v4bis-r-ot-noc-768-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 3,
+      "png": true
+    },
+    {
+      "screen": "ot-noc",
+      "width": 768,
+      "theme": "dark",
+      "file": "v4bis-r-ot-noc-768-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 3,
+      "png": true
+    },
+    {
+      "screen": "ot-noc",
+      "width": 1280,
+      "theme": "light",
+      "file": "v4bis-r-ot-noc-1280-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 3,
+      "png": true
+    },
+    {
+      "screen": "ot-noc",
+      "width": 1280,
+      "theme": "dark",
+      "file": "v4bis-r-ot-noc-1280-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 3,
+      "png": true
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 375,
+      "theme": "light",
+      "file": "v4bis-r-ot-tecnico-375-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 0,
+      "png": true
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 375,
+      "theme": "dark",
+      "file": "v4bis-r-ot-tecnico-375-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 0,
+      "png": true
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 768,
+      "theme": "light",
+      "file": "v4bis-r-ot-tecnico-768-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 0,
+      "png": true
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 768,
+      "theme": "dark",
+      "file": "v4bis-r-ot-tecnico-768-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 0,
+      "png": true
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 1280,
+      "theme": "light",
+      "file": "v4bis-r-ot-tecnico-1280-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 0,
+      "png": true
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 1280,
+      "theme": "dark",
+      "file": "v4bis-r-ot-tecnico-1280-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 0,
+      "png": true
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 375,
+      "theme": "light",
+      "file": "v4bis-r-suscriptor-tecnico-375-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 9,
+      "png": true
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 375,
+      "theme": "dark",
+      "file": "v4bis-r-suscriptor-tecnico-375-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 9,
+      "png": true
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 768,
+      "theme": "light",
+      "file": "v4bis-r-suscriptor-tecnico-768-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 9,
+      "png": true
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 768,
+      "theme": "dark",
+      "file": "v4bis-r-suscriptor-tecnico-768-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 9,
+      "png": true
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 1280,
+      "theme": "light",
+      "file": "v4bis-r-suscriptor-tecnico-1280-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 9,
+      "png": true
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 1280,
+      "theme": "dark",
+      "file": "v4bis-r-suscriptor-tecnico-1280-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 9,
+      "png": true
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 375,
+      "theme": "light",
+      "file": "v4bis-r-bandeja-poblada-375-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 2,
+      "rowCount": 1,
+      "png": true
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 375,
+      "theme": "dark",
+      "file": "v4bis-r-bandeja-poblada-375-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 2,
+      "rowCount": 1,
+      "png": true
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 768,
+      "theme": "light",
+      "file": "v4bis-r-bandeja-poblada-768-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 2,
+      "rowCount": 1,
+      "png": true
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 768,
+      "theme": "dark",
+      "file": "v4bis-r-bandeja-poblada-768-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 2,
+      "rowCount": 1,
+      "png": true
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 1280,
+      "theme": "light",
+      "file": "v4bis-r-bandeja-poblada-1280-light.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 2,
+      "rowCount": 1,
+      "png": true
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 1280,
+      "theme": "dark",
+      "file": "v4bis-r-bandeja-poblada-1280-dark.png",
+      "status": "captured",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 2,
+      "rowCount": 1,
+      "png": true
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 375,
+      "theme": "light",
+      "file": "v4bis-r-ajustes-red-375-light.png",
+      "status": "no_plans",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 1,
+      "planCount": 0,
+      "png": true
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 375,
+      "theme": "dark",
+      "file": "v4bis-r-ajustes-red-375-dark.png",
+      "status": "no_plans",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 1,
+      "planCount": 0,
+      "png": true
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 768,
+      "theme": "light",
+      "file": "v4bis-r-ajustes-red-768-light.png",
+      "status": "no_plans",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 1,
+      "planCount": 0,
+      "png": true
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 768,
+      "theme": "dark",
+      "file": "v4bis-r-ajustes-red-768-dark.png",
+      "status": "no_plans",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 1,
+      "planCount": 0,
+      "png": true
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 1280,
+      "theme": "light",
+      "file": "v4bis-r-ajustes-red-1280-light.png",
+      "status": "no_plans",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 1,
+      "planCount": 0,
+      "png": true
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 1280,
+      "theme": "dark",
+      "file": "v4bis-r-ajustes-red-1280-dark.png",
+      "status": "no_plans",
+      "sidebarActiveCount": 1,
+      "horizontalOverflow": false,
+      "themeApplied": true,
+      "maskedElements": 1,
+      "planCount": 0,
+      "png": true
+    }
+  ],
+  "sidebar": [
+    {
+      "screen": "ot-noc",
+      "width": 375,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-noc",
+      "width": 375,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-noc",
+      "width": 768,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-noc",
+      "width": 768,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-noc",
+      "width": 1280,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-noc",
+      "width": 1280,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 375,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 375,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 768,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 768,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 1280,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "ot-tecnico",
+      "width": 1280,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/operations"]
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 375,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/crm/subscribers"]
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 375,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/crm/subscribers"]
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 768,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/crm/subscribers"]
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 768,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/crm/subscribers"]
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 1280,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/crm/subscribers"]
+    },
+    {
+      "screen": "suscriptor-tecnico",
+      "width": 1280,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/crm/subscribers"]
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 375,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/network/provisioning"]
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 375,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/network/provisioning"]
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 768,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/network/provisioning"]
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 768,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/network/provisioning"]
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 1280,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/network/provisioning"]
+    },
+    {
+      "screen": "bandeja-poblada",
+      "width": 1280,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/network/provisioning"]
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 375,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/network/settings"]
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 375,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/network/settings"]
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 768,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/network/settings"]
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 768,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/network/settings"]
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 1280,
+      "theme": "light",
+      "count": 1,
+      "hrefs": ["/dashboard/network/settings"]
+    },
+    {
+      "screen": "ajustes-red",
+      "width": 1280,
+      "theme": "dark",
+      "count": 1,
+      "hrefs": ["/dashboard/network/settings"]
+    }
+  ],
+  "counts": {
+    "attempted": 30,
+    "png": 30,
+    "contentReady": 30,
+    "failed": 0
+  }
+}

@@ -19,6 +19,7 @@ import {
   SignedInventoryExecutionRequestSchema,
   NetworkExecutionEventSchema,
   SignedNetworkExecutionEventSchema,
+  TenantStatus,
   canonicalizeInventoryExecutionRequest,
   canonicalizeNetworkExecutionEvent,
   type OperationalEventEnvelopeV1,
@@ -308,8 +309,8 @@ export class ExecutionOrderEventsProcessor extends WorkerHost {
         `SELECT schema_name FROM public.tenants
          WHERE id = $1
            AND deleted_at IS NULL
-           AND status <> 'MARKED_FOR_DELETION'`,
-        [tenantId],
+           AND status <> $2`,
+        [tenantId, TenantStatus.MARKED_FOR_DELETION],
       );
       const schemaName = tenant.rows[0]?.schema_name;
       if (!schemaName || !isValidSchemaName(schemaName)) {

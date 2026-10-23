@@ -313,7 +313,8 @@ const NavItems = ({ desktopCollapsed }: NavItemsProps) => {
 
                 const isActive =
                   !item.disabled &&
-                  (pathname === item.href || pathname.startsWith(`${item.href}/`));
+                  (pathname === item.href ||
+                    (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`)));
 
                 if (item.disabled) {
                   return (

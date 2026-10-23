@@ -10,6 +10,7 @@ import {
   NETWORK_EXECUTION_EVENTS_QUEUE,
   NetworkExecutionEventSchema,
   SignedNetworkExecutionEventSchema,
+  TenantStatus,
   canonicalizeNetworkExecutionEvent,
   type NetworkExecutionEvent,
   type NetworkInboxErrorCode,
@@ -31,6 +32,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { ServiceProvisioningActivatedEvent } from './events/service-provisioning-activated.event';
 import { NetworkActivationListenerError } from './events/network-activation-listener.error';
+import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
 
 interface TenantRow {
   id: string;
@@ -166,6 +168,7 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
     super();
   }
 
+  @SanitizeFailedReason()
   async process(job: Job<unknown>): Promise<void> {
     let tenant: TenantRow | null = null;
     let signed: SignedNetworkExecutionEvent | null = null;
@@ -252,14 +255,12 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
           );
         } catch {
           this.logger.error(
-            `[network-execution-events] inbox_error_persist_failed event=${signed.envelope.eventId} tenant=${signed.tenantId}`,
+            '[network-execution-events] inbox_error_persist_failed event=omitted tenant=omitted',
           );
         }
       }
-      const eventId = signed?.envelope.eventId ?? untrustedIdentity?.eventId ?? 'omitted';
-      const tenantId = signed?.tenantId ?? untrustedIdentity?.tenantId ?? 'omitted';
       this.logger.warn(
-        `[network-execution-events] retry code=${errorCode} event=${eventId} tenant=${tenantId}`,
+        '[network-execution-events] retry code=omitted event=omitted tenant=omitted',
       );
       throw error;
     }
@@ -271,8 +272,8 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
          FROM public.tenants
         WHERE id = $1
           AND deleted_at IS NULL
-          AND status <> 'MARKED_FOR_DELETION'`,
-      [tenantId],
+          AND status <> $2`,
+      [tenantId, TenantStatus.MARKED_FOR_DELETION],
     )) as TenantRow[];
     const tenant = rows[0];
     if (!tenant || !isValidSchemaName(tenant.schema_name)) {

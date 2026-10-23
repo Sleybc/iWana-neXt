@@ -3,8 +3,10 @@ import { act, render, screen, within } from '@testing-library/react';
 import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { Sidebar } from './Sidebar';
 
+const usePathnameMock = jest.fn();
+
 jest.mock('next/navigation', () => ({
-  usePathname: () => '/dashboard',
+  usePathname: () => usePathnameMock(),
 }));
 
 const useAuthMock = jest.fn();
@@ -120,6 +122,7 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
 
 describe('Sidebar', () => {
   beforeEach(() => {
+    usePathnameMock.mockReturnValue('/dashboard');
     useAuthMock.mockReturnValue({
       user: { role: UserRole.SUPPORT },
     });
@@ -226,12 +229,37 @@ describe('Sidebar', () => {
 
     const activeLink = screen.getByRole('link', { name: 'Inicio' });
     expect(activeLink).toHaveAttribute('aria-current', 'page');
+    expect(screen.getAllByRole('link', { current: 'page' })).toEqual([activeLink]);
     expect(activeLink.className).toMatch(/relative/);
 
     const limeBar = activeLink.querySelector('span.absolute.left-0');
     expect(limeBar).not.toBeNull();
     expect(limeBar).toHaveAttribute('aria-hidden', 'true');
     expect(limeBar?.className).toMatch(/bg-iwana-secondary/);
+  });
+
+  it.each([
+    ['/dashboard/network/routers', 'Routers'],
+    ['/dashboard/network/routers/router-1', 'Routers'],
+    ['/dashboard/network/provisioning', 'Aprovisionamiento'],
+    ['/dashboard/operations/orders/order-1', 'Operaciones'],
+  ])('en %s marca solo %s como página actual y desactiva Inicio', (pathname, label) => {
+    usePathnameMock.mockReturnValue(pathname);
+    useAuthMock.mockReturnValue({ user: { role: UserRole.ADMIN } });
+    mockPermissionsReady([
+      ...ALL_NAV_PERMISSIONS,
+      AccessPermissionKey.NETWORK_CATALOG_READ,
+      AccessPermissionKey.NETWORK_PROVISIONING_READ,
+    ]);
+
+    renderSidebar();
+
+    const activeLink = screen.getByRole('link', { name: label });
+    const homeLink = screen.getByRole('link', { name: 'Inicio' });
+    expect(screen.getAllByRole('link', { current: 'page' })).toEqual([activeLink]);
+    expect(homeLink).not.toHaveAttribute('aria-current');
+    expect(homeLink.querySelector('span.absolute.left-0')).toBeNull();
+    expect(activeLink.querySelector('span.absolute.left-0')).not.toBeNull();
   });
 
   it('en desktop el sidebar permanece disponible aunque mobileOpen sea false', () => {
