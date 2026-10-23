@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ExecutionOrderResult, WfmWorkType } from '@iwana/shared';
 import { Button, OperationalSidePeek, SkeletonBlock } from '@iwana/ui';
+import { NETWORK_PROVISIONING_COPY } from '@/components/network/network-provisioning-labels';
 import { PortalAlert, PortalEmptyState } from '@/components/shared/portal-ui';
+import { ExecutionOrderProvisioningPanel } from './ExecutionOrderProvisioningPanel';
 import { ExecutionOrderCloseSection } from './ExecutionOrderCloseSection';
 import { ExecutionOrderCommitmentSection } from './ExecutionOrderCommitmentSection';
 import { ExecutionOrderRequirementIndex } from './ExecutionOrderRequirementIndex';
@@ -51,6 +54,10 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     onCloseOrder,
   } = props;
   const [selectedAction, setSelectedAction] = useState<RequirementActionDescriptor | null>(null);
+  const [provisioningSnapshot, setProvisioningSnapshot] = useState<{
+    enabled: boolean | null;
+    certified: boolean | null;
+  }>({ enabled: null, certified: null });
   const selectedActionRef = useRef<RequirementActionDescriptor | null>(null);
   const previousOrderState = useRef({ id: order?.id, status: order?.status });
   useEffect(() => {
@@ -63,6 +70,9 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     }
     setSelectedAction(null);
   }, [order?.id, order?.status, onOpenRequirementAction]);
+  useEffect(() => {
+    setProvisioningSnapshot({ enabled: null, certified: null });
+  }, [order?.id]);
   const closeForm = useExecutionOrderCloseForm({
     orderId: order?.id,
     itemUsage,
@@ -71,6 +81,12 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
     nonRealizationCauses,
     onCloseOrder,
   });
+  const updateProvisioningSnapshot = useCallback(
+    (snapshot: { enabled: boolean | null; certified: boolean | null }) => {
+      setProvisioningSnapshot(snapshot);
+    },
+    [],
+  );
 
   const forbidden = order !== null && order.allowedActions === null;
   const selectAction = (action: RequirementActionDescriptor | null) => {
@@ -127,7 +143,7 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
         />
       ) : (
         <div className="space-y-5">
-          {error && !selectedAction ? (
+          {error && !selectedAction && error !== NETWORK_PROVISIONING_COPY.closureGateIncomplete ? (
             <PortalAlert
               variant="error"
               title="No fue posible completar la operación"
@@ -168,6 +184,14 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
             hideProgress
           />
 
+          {order.workType === WfmWorkType.INSTALLATION ? (
+            <ExecutionOrderProvisioningPanel
+              key={order.id}
+              executionOrderId={order.id}
+              onRequirementSnapshotChange={updateProvisioningSnapshot}
+            />
+          ) : null}
+
           <ExecutionOrderCommitmentSection
             order={order}
             isSubmitting={isSubmitting}
@@ -181,6 +205,17 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
             context={props}
             selectedAction={selectedAction}
             onSelectAction={selectAction}
+            {...(order.workType === WfmWorkType.INSTALLATION
+              ? {
+                  provisioningRequirement: {
+                    enabled: provisioningSnapshot.enabled,
+                    certified: provisioningSnapshot.certified,
+                    required:
+                      provisioningSnapshot.enabled === true &&
+                      closeForm.closeResult !== ExecutionOrderResult.NOT_EXECUTED,
+                  },
+                }
+              : {})}
           />
           {getExecutionOrderMoment(order.status) !== 'pre-start' &&
             missingRequirements.length > 0 && (
@@ -222,6 +257,19 @@ export function ExecutionOrderMomentContainer(props: ExecutionOrderDrawerProps) 
             offline={offline}
             nonRealizationCauses={nonRealizationCauses}
             onUploadNonRealizationEvidence={onUploadNonRealizationEvidence}
+            provisioningRequired={
+              order.workType === WfmWorkType.INSTALLATION &&
+              provisioningSnapshot.enabled === true &&
+              closeForm.closeResult !== ExecutionOrderResult.NOT_EXECUTED
+            }
+            provisioningCertified={provisioningSnapshot.certified === true}
+            provisioningStatusKnown={provisioningSnapshot.enabled !== null}
+            closureGateError={error === NETWORK_PROVISIONING_COPY.closureGateIncomplete}
+            onReviewProvisioning={() => {
+              const panel = document.getElementById('execution-order-provisioning');
+              panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              panel?.querySelector<HTMLElement>('h3')?.focus();
+            }}
           />
         </div>
       )}

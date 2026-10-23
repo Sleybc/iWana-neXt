@@ -15,6 +15,9 @@ import type {
 
 export function mapOperationsError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'CLOSURE_GATE_INCOMPLETE') {
+      return 'No puedes cerrar esta instalación todavía. Falta completar el aprovisionamiento certificado.';
+    }
     if (error.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente para continuar.';
     if (error.status === 403) return 'No tienes permisos para operar esta vista de Operaciones.';
     if (error.status === 404) return 'El elemento consultado ya no está disponible.';

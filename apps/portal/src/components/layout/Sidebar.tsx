@@ -16,6 +16,8 @@ import {
   Package,
   Router,
   Network,
+  ListChecks,
+  Settings2,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -146,6 +148,11 @@ const navGroups: NavGroup[] = [
         allowedRoles: [UserRole.ADMIN, UserRole.NOC, UserRole.SUPPORT],
         permission: AccessPermissionKey.INVENTORY_STOCK_READ,
       },
+    ],
+  },
+  {
+    group: 'Red',
+    items: [
       {
         href: '/dashboard/network/routers',
         label: 'Routers',
@@ -157,6 +164,20 @@ const navGroups: NavGroup[] = [
         href: '/dashboard/network/ipv4-networks',
         label: 'Redes IPv4',
         icon: Network,
+        allowedRoles: [UserRole.ADMIN, UserRole.NOC],
+        permission: AccessPermissionKey.NETWORK_CATALOG_READ,
+      },
+      {
+        href: '/dashboard/network/provisioning',
+        label: 'Aprovisionamiento',
+        icon: ListChecks,
+        allowedRoles: [UserRole.ADMIN, UserRole.NOC],
+        permission: AccessPermissionKey.NETWORK_PROVISIONING_READ,
+      },
+      {
+        href: '/dashboard/network/settings',
+        label: 'Ajustes de red',
+        icon: Settings2,
         allowedRoles: [UserRole.ADMIN, UserRole.NOC],
         permission: AccessPermissionKey.NETWORK_CATALOG_READ,
       },

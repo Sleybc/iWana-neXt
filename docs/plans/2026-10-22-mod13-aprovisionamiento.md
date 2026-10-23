@@ -1,9 +1,9 @@
 # MOD13 — Red y Aprovisionamiento · Fase 01 (IPAM y activación certificada) · Plan de orquestación
 
-**Fecha:** 2026-10-22 · **Versión:** 1.5 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-22 · **Versión:** 1.6 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Definición:** [PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (Aprobado) · [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (contrato) · [ADR-098](../adrs/ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md)
-**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 5):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md), Ola 2 [LAUNCH-v1.2](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md), Ola 3 [LAUNCH-v1.3](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md) y Ola 4 [LAUNCH-v1.4](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.4.md)
-**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2. v1.3 (2026-10-22) cierra G2 y lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter). v1.4 (2026-10-22) recibe la Ola 3 y lanza la Ola 4 (B3 ∥ F1-v). v1.5 (2026-10-22) cierra G3 y lanza la Ola 5 (F2 ∥ F1-v).
+**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 6):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.6.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.6.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md), Ola 2 [LAUNCH-v1.2](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md), Ola 3 [LAUNCH-v1.3](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md), Ola 4 [LAUNCH-v1.4](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.4.md) y Ola 5 [LAUNCH-v1.5](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md)
+**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2. v1.3 (2026-10-22) cierra G2 y lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter). v1.4 (2026-10-22) recibe la Ola 3 y lanza la Ola 4 (B3 ∥ F1-v). v1.5 (2026-10-22) cierra G3 y lanza la Ola 5 (F2 ∥ F1-v). v1.6 (2026-10-22) registra los entregables F2, la evidencia local y los bloqueos de build y F1-v.
 **Base:** `main` en `01a3e91b`. Se trabaja en `main`, sin ramas. **El árbol tiene 48 rutas sin commitear ajenas a esta fase:** ningún agente las toca ni las incluye en sus commits.
 
 ## 0. Alcance
@@ -129,7 +129,10 @@ Claude Code **lee** cada `SKILL.md` (`.agents/skills/<nombre>/SKILL.md`) como do
 | 4 | B3 · sr-backend | ✅ Cerrado: eventos firmados, listeners CRM/Inventario, reconciliador y regularización; Postgres/Redis 1/5, network 6/23, tasks 37/748, worker 21/173 | [INFORME Ola 4](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-4-v1.0.md) |
 | 4 | F1-v · fe-platform | ⛔ `[BLOQUEO]`: API no escucha en `127.0.0.1:3000` y faltan las dos variables E2E; 0 suites / 0 tests | [INFORME Ola 4](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-4-v1.0.md) |
 | — | G3 | ✅ Cerrado el 2026-10-22 (B2 + B3) | — |
-| 5 | F2 · fe-platform ∥ F1-v · fe-platform | ⏳ Por lanzar; la parte en vivo depende de la precondición del CTO | Launcher v1.5 |
+| 5 | F2 · fe-platform | 🔶 Construido: 4 suites/239 tests; lint, typecheck y auditoría UI pasan. Build Webpack bloqueado por `EPERM` durante prerender bajo `.next` | [INFORME Ola 5](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-5-v1.0.md) |
+| 5 | F1-v · fe-platform | ⛔ `[BLOQUEO]`: API no escucha en `127.0.0.1:3000` y faltan las dos variables E2E; 0 suites / 0 tests | [INFORME Ola 5](../informes/INFORME-MOD13-APROVISIONAMIENTO-OLA-5-v1.0.md) |
+| 6 | V2 · sec-eng ∥ V3 · boundary-reviewer + contract-drift-reviewer ∥ V4 · ds-owner | ⏳ Por lanzar (solo lectura; no espera a G4) | Launcher v1.6 |
+| — | V1, V4-bis, V5 | ⏸ Esperan al entorno: API vivo con credenciales E2E y build del portal sin `EPERM` | — |
 
 Los bloqueos fueron defectos del emisor (contrato v1.0), no de los agentes.
 
@@ -153,16 +156,28 @@ Correcciones y notas de AI-EM-ARCH al recibir la Ola 4:
 - Hallazgo de frontera (P3, para V3): `CrmModule` importa `NetworkModule` completo para obtener ese puerto. Es el mismo patrón que B3.0 corrigió para tasks.
 - Seguridad: una salida de diagnóstico del agente imprimió la contraseña local de Redis. AI-EM-ARCH verificó que no quedó escrita en ningún archivo del repo (0 coincidencias en todo el árbol y en los 116 archivos cambiados). Recomendación: rotarla antes de volver a usar Redis de desarrollo. El launcher v1.5 prohíbe imprimir secretos.
 
-Sigue la Ola 5: F2 ∥ F1-v. Después vienen las verificaciones V1 a V5 y G7.
+Correcciones y notas de AI-EM-ARCH al recibir la Ola 5:
+- F2 queda construido con 4 suites y 239 tests focalizados, lint y typecheck aprobados. El build compila y pasa TypeScript, pero el prerender recibe `EPERM` al escribir bajo `.next`; no se declara verde el build.
+- F1-v sigue bloqueado: no había listener del API en `127.0.0.1:3000` ni credenciales E2E en el entorno. G4 permanece abierto.
+
+Diagnóstico de AI-EM-ARCH sobre el `EPERM`: no había ningún proceso escuchando en los puertos 3000 a 3002, así que no lo causa un servidor de desarrollo del portal. Lo más probable es otro proceso con archivos de `apps/portal/.next` abiertos: un `node` residual, el antivirus o el indexador. Es un problema del entorno, no de F2. Quedan fuera de los commits de MOD13 el cambio de `apps/portal/next.config.ts` (es de la sesión de instant navigation) y las carpetas de cobertura.
+
+Sigue la Ola 6: V2 ∥ V3 ∥ V4, que no necesitan el API vivo. V1, V4-bis y V5 se lanzan cuando el CTO prepare el entorno. Después viene G7.
 
 ## Lanzamiento
 
-Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md). **Si divergen, prevalece el archivo.** Lanza la Ola 5 (F2 ∥ F1-v). Las olas anteriores no se re-despachan.
+Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.6.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.6.md). **Si divergen, prevalece el archivo.** Lanza la Ola 6 (V2 ∥ V3 ∥ V4). Las olas anteriores no se re-despachan.
 
 ```text
-===== 1 · fe-platform (F2) =====
-Actúa como `fe-platform`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-22-mod13-aprovisionamiento.md` y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §F2, con las reglas comunes 1 a 9. Antes de escribir código, lee los `SKILL.md` de `core-components`, `frontend-dev-guidelines`, `nextjs-app-router-patterns`, `iwana-identity-ui-review`, `tailwind-patterns`, `system-vocabulary-review`, `frontend-security-coder` e `i18n-localization`. Construye el panel de la OT, la bandeja, la ficha del suscriptor y los ajustes de red según la spec UX y HLD v1.1, sin modificar el contrato. Sin primitivas nuevas sin `ds-owner`; no formatees `docs/` con Prettier; sin cachés de jest en el repo. No commitees. Cierras con lint, typecheck, build y pruebas con conteo real; la parte en vivo, solo si se cumple la precondición.
+===== 1 · sec-eng =====
+Actúa como `sec-eng`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-22-mod13-aprovisionamiento.md` y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §V2. Lee `security-auditor`, `backend-security-coder` y `frontend-security-coder`. Revisa en solo lectura el código de MOD13 contra HLD v1.1 y tu informe de diseño; cierra con evidencia el P2 del pipeline. No corrijas código ni imprimas secretos. Entrega `docs/informes/INFORME-MOD13-REVISION-SEGURIDAD-IMPLEMENTACION-v1.0.md`.
 
-===== 2 · fe-platform (F1-v) =====
-Actúa como `fe-platform`. Lee `AGENTS.md`, el plan y tu encargo §F1-v del mismo prompt. Lee `playwright-skill` e `iwana-test-evidence`. Comprueba primero la precondición: API en `127.0.0.1:3000` y credenciales E2E en variables de entorno; si falta algo, emite `[BLOQUEO]` y para. Ejecuta las pruebas de routers y redes IPv4 contra el API real. No corrijas código de producto; reporta los fallos. No imprimas secretos en la salida. Cierras con el conteo real.
+===== 2 · boundary-reviewer =====
+Actúa como `boundary-reviewer`. Lee `AGENTS.md`, el plan y tu encargo §V3 (frontera) del mismo prompt. Lee `architect-review`. Revisa en solo lectura las importaciones entre `network`, `tasks`, `crm`, `inventory` y `apps/worker` contra HLD v1.1 §8, incluido el P3 de `CrmModule` → `NetworkModule`. Escribe la sección §Frontera de `docs/informes/INFORME-MOD13-REVISION-FRONTERA-CONTRATOS-v1.0.md`.
+
+===== 3 · contract-drift-reviewer =====
+Actúa como `contract-drift-reviewer`. Lee `AGENTS.md`, el plan y tu encargo §V3 (contratos) del mismo prompt. Lee `architect-review`. Compara en solo lectura `packages/shared/src/contracts/network/` y el requisito `PROVISIONING` con sus productores y consumidores. Escribe la sección §Contratos del mismo informe, sin tocar la §Frontera.
+
+===== 4 · ds-owner =====
+Actúa como `ds-owner`. Lee `AGENTS.md`, el plan y tu encargo §V4 del mismo prompt. Lee `iwana-identity-ui-review` y `core-components`. Ejecuta `audit-ui.mjs` sobre las rutas `network/*` y los componentes nuevos o tocados, y revisa el uso de `@iwana/ui` y de los tokens contra la spec UX. La evidencia visual queda para V4-bis. Entrega `docs/informes/INFORME-MOD13-REVISION-UI-v1.0.md`.
 ```

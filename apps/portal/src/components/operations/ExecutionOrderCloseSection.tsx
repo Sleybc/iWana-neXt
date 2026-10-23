@@ -5,6 +5,7 @@ import { ExecutionOrderResult } from '@iwana/shared';
 import type { ExecutionOrderTemplateVersion } from '@iwana/shared';
 import { Badge, Button, Input, Select } from '@iwana/ui';
 import { PortalAlert } from '@/components/shared/portal-ui';
+import { NETWORK_PROVISIONING_COPY } from '@/components/network/network-provisioning-labels';
 import type { NonRealizationCause } from '@/lib/api-client';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import { getTerminalHelp } from './execution-order-commitment-copy';
@@ -35,6 +36,11 @@ export interface ExecutionOrderCloseSectionProps {
   offline: boolean;
   nonRealizationCauses: NonRealizationCause[] | null;
   onUploadNonRealizationEvidence?: ((file: File) => Promise<void | boolean>) | undefined;
+  provisioningRequired?: boolean;
+  provisioningCertified?: boolean;
+  provisioningStatusKnown?: boolean;
+  closureGateError?: boolean;
+  onReviewProvisioning?: (() => void) | undefined;
 }
 
 export function ExecutionOrderCloseSection({
@@ -45,6 +51,11 @@ export function ExecutionOrderCloseSection({
   offline,
   nonRealizationCauses,
   onUploadNonRealizationEvidence,
+  provisioningRequired = false,
+  provisioningCertified = false,
+  provisioningStatusKnown = false,
+  closureGateError = false,
+  onReviewProvisioning,
 }: ExecutionOrderCloseSectionProps) {
   const terminal = isTerminalStatus(order.status);
   const canClose = template !== null && order.allowedActions?.includes('CLOSE') === true;
@@ -59,6 +70,45 @@ export function ExecutionOrderCloseSection({
       <h3 id="eo-close-heading" className="text-sm font-semibold text-gray-900 dark:text-white">
         Cierre
       </h3>
+
+      {closureGateError ? (
+        <PortalAlert
+          variant="error"
+          live="assertive"
+          title="No se puede cerrar la instalación"
+          description={NETWORK_PROVISIONING_COPY.closureGateIncomplete}
+          action={
+            onReviewProvisioning ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11"
+                onClick={onReviewProvisioning}
+              >
+                Revisar aprovisionamiento
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : provisioningRequired && !provisioningCertified && provisioningStatusKnown ? (
+        <PortalAlert
+          variant="warning"
+          title="Aprovisionamiento certificado pendiente"
+          description="Completa la certificación antes de cerrar esta instalación ejecutada."
+          action={
+            onReviewProvisioning ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11"
+                onClick={onReviewProvisioning}
+              >
+                Revisar aprovisionamiento
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
 
       {terminal ? (
         <div className="mt-3">

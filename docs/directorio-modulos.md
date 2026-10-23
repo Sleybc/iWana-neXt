@@ -49,8 +49,15 @@
 | Mesa de ayuda | `/dashboard/assurance` | `assurance` | PQRS y mesa de ayuda |
 | Operaciones | `/dashboard/operations` | `tasks` | Tareas y operaciones de campo |
 | Inventario | `/dashboard/inventory` | `inventory` | Gestión de inventario y categorías |
+
+### Barra lateral — Red
+
+| Nombre en UI | Ruta | Módulo Backend | Descripción |
+|---|---|---|---|
 | Routers | `/dashboard/network/routers` | `network` | Catálogo de routers y métodos de control |
 | Redes IPv4 | `/dashboard/network/ipv4-networks` | `network` | Bloques IPv4, rangos asignables y ocupación |
+| Aprovisionamiento | `/dashboard/network/provisioning` | `network` | Seguimiento y regularización de servicios técnicos |
+| Ajustes de red | `/dashboard/network/settings` | `network` | Perfiles por plan y requisito de certificación para cierre |
 
 ### Barra lateral — Administración
 

@@ -1692,7 +1692,7 @@ describe('ExecutionOrderDrawer', () => {
       'conserva todas las filas y no inventa historiales vacíos (%s)',
       (status) => {
         renderDrawer({ order: detailFactory({ status }) });
-        expect(screen.getAllByRole('listitem')).toHaveLength(5);
+        expect(screen.getAllByRole('listitem')).toHaveLength(6);
         expect(screen.queryByText('Todavía no hay actividades registradas')).toBeNull();
         expect(
           screen.queryByText('Todavía no hay consumos registrados para este requisito'),

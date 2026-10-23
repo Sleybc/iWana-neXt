@@ -19,6 +19,7 @@ interface NetworkCatalogDrawerFrameProps {
   description: string;
   formId: string;
   submitLabel: string;
+  submitVisible?: boolean;
   submitting: boolean;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onClose: () => void;
@@ -31,6 +32,7 @@ export function NetworkCatalogDrawerFrame({
   description,
   formId,
   submitLabel,
+  submitVisible = true,
   submitting,
   onSubmit,
   onClose,
@@ -84,16 +86,18 @@ export function NetworkCatalogDrawerFrame({
             >
               Cancelar
             </Button>
-            <Button
-              type="submit"
-              form={formId}
-              variant="primary"
-              className="min-h-11"
-              loading={submitting}
-              disabled={submitting}
-            >
-              {submitLabel}
-            </Button>
+            {submitVisible ? (
+              <Button
+                type="submit"
+                form={formId}
+                variant="primary"
+                className="min-h-11"
+                loading={submitting}
+                disabled={submitting}
+              >
+                {submitLabel}
+              </Button>
+            ) : null}
           </footer>
         </form>
       </aside>

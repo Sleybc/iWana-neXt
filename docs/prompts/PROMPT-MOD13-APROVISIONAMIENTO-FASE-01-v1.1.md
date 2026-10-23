@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -283,7 +283,44 @@ Matriz CA-NET → test en el informe, con conteo real.
 
 ## V2 · `sec-eng` · V3 · `boundary-reviewer` + `contract-drift-reviewer` · V4 · `ds-owner` · V5 · `gate-verifier`
 
-Revisiones de solo lectura sobre el diff de la fase, según el plan §4 (G5 y G6). Cada una entrega su informe en `docs/informes/` con hallazgos por severidad y archivo:línea.
+Revisiones de solo lectura sobre el código de la fase: los commits `4217690a`, `03825527` y `f2de5537`, más el F2 sin commitear. Siguen el plan §4 (G5 y G6). Cada una entrega su informe en `docs/informes/` con hallazgos por severidad y `archivo:línea`. Ninguna corrige código.
+
+### V2 · `sec-eng` — Seguridad de la implementación
+
+Entregable: `docs/informes/INFORME-MOD13-REVISION-SEGURIDAD-IMPLEMENTACION-v1.0.md`.
+
+Revisa en el código, no en el diseño:
+- maker-checker (R6, R6 bis, R6 ter) en `reserve`, `certify`, `release` y `regularize`;
+- guardas y lock de `regularize`;
+- HMAC con `timingSafeEqual` antes del esquema, en el worker y en el consumidor;
+- `TechnicianProvisioningViewDto` construido aparte;
+- auditoría con `logWithin` y su lista cerrada;
+- `last_error_code` sin mensajes crudos;
+- ausencia de PII y secretos en logs;
+- filtros de `tenant_id` en todas las consultas.
+
+Cierra el P2 del pipeline (S0 §Verificación v1.1) con evidencia de la configuración real: `ThrottlerGuard` y `CsrfGuard` globales, `TenantAwareThrottlerGuard` en los comandos, validación con `whitelist` y `forbidNonWhitelisted`, `ParseUUIDPipe`, `limit` ≤ 100 y claims del JWT. Lo que solo se pueda probar en ejecución queda para V1.
+
+### V3 · `boundary-reviewer` + `contract-drift-reviewer`
+
+Entregable: `docs/informes/INFORME-MOD13-REVISION-FRONTERA-CONTRATOS-v1.0.md`. Puede ser uno conjunto, con una sección por revisor.
+
+- **Frontera:** ningún módulo importa servicios ni entidades de otro; solo los puertos de HLD v1.1 §8. Incluye el hallazgo P3 abierto: `CrmModule` importa `NetworkModule` completo para obtener `SERVICE_PROVISIONING_COMMERCIAL_STATUS_PORT`.
+- **Contratos:** `packages/shared/src/contracts/network/` contra sus productores en `apps/api` y `apps/worker` y sus consumidores en `apps/portal`, incluida la cola firmada y el requisito `PROVISIONING`.
+
+### V4 · `ds-owner` — Identidad y sistema de diseño (parte estática)
+
+Entregable: `docs/informes/INFORME-MOD13-REVISION-UI-v1.0.md`.
+- `audit-ui.mjs` sobre las rutas `network/*` y los componentes nuevos o tocados de operaciones y suscriptores;
+- uso de `@iwana/ui` sin primitivas nuevas y tokens reales;
+- estados de la spec UX.
+
+La evidencia visual a 375, 768 y 1280 px, en claro y oscuro, necesita el portal corriendo; queda como V4-bis junto con V1.
+
+### V1 y V5 — después de G4
+
+- **V1 (`sr-qa`)** necesita el API vivo y las credenciales E2E, igual que F1-v. Se lanza cuando el CTO prepare el entorno.
+- **V5 (`gate-verifier`)** necesita además un build del portal sin `EPERM`: el `.next` debe estar libre de bloqueos de otros procesos. Mide la cobertura de `network` (≥ 80 %) y corre los Gates Before Merge sin caché.
 
 ## Lo que ningún bloque hace
 

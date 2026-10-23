@@ -136,12 +136,25 @@ import type {
   LifecycleTerminateCommand,
 } from '@iwana/shared';
 import type {
+  CertifyProvisioningBody,
   CreateIpv4NetworkBody,
   CreateRouterBody,
   Ipv4NetworkDto,
+  NetworkSettingsDto,
+  PlanProfileDto,
+  ProvisioningInboxQueue,
+  ProvisioningInboxRowDto,
+  ProvisioningOrderContextDto,
+  RegularizeProvisioningBody,
+  ReleaseProvisioningBody,
+  ReserveProvisioningBody,
   RouterDto,
+  ServiceProvisioningDto,
+  TechnicianProvisioningViewDto,
   UpdateIpv4NetworkBody,
   UpdateRouterBody,
+  PutPlanProfileBody,
+  PatchNetworkSettingsBody,
 } from '@iwana/shared';
 import {
   createDataSubjectRequestSchema,
@@ -912,6 +925,85 @@ export const networkApi = {
     request<Ipv4NetworkDto>(
       `/network/ipv4-networks/${id}/${status === 'ACTIVE' ? 'activate' : 'deactivate'}`,
       { method: 'POST', body: JSON.stringify({ version }), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listPlanProfiles: (tenantSlug?: string) =>
+    request<PlanProfileDto[]>('/network/plan-profiles', { returnFullResponse: true }, tenantSlug),
+
+  savePlanProfile: (planId: string, body: PutPlanProfileBody, tenantSlug?: string) =>
+    request<PlanProfileDto>(
+      `/network/plan-profiles/${planId}`,
+      { method: 'PUT', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getSettings: (tenantSlug?: string) =>
+    request<NetworkSettingsDto>('/network/settings', { returnFullResponse: true }, tenantSlug),
+
+  updateSettings: (body: PatchNetworkSettingsBody, tenantSlug?: string) =>
+    request<NetworkSettingsDto>(
+      '/network/settings',
+      { method: 'PATCH', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getProvisioningContext: (
+    executionOrderId: string,
+    tenantSlug?: string,
+  ): Promise<ProvisioningOrderContextDto | TechnicianProvisioningViewDto> =>
+    request<ProvisioningOrderContextDto | TechnicianProvisioningViewDto>(
+      `/network/provisioning/orders/${executionOrderId}/context`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  reserveProvisioning: (body: ReserveProvisioningBody, tenantSlug?: string) =>
+    request<ServiceProvisioningDto>(
+      '/network/provisioning/reserve',
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  certifyProvisioning: (id: string, body: CertifyProvisioningBody, tenantSlug?: string) =>
+    request<ServiceProvisioningDto>(
+      `/network/provisioning/${id}/certify`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  releaseProvisioning: (id: string, body: ReleaseProvisioningBody, tenantSlug?: string) =>
+    request<ServiceProvisioningDto>(
+      `/network/provisioning/${id}/release`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  regularizeProvisioning: (body: RegularizeProvisioningBody, tenantSlug?: string) =>
+    request<ServiceProvisioningDto>(
+      '/network/provisioning/regularize',
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listProvisioningInbox: (
+    params: { queue: ProvisioningInboxQueue; page?: number; limit?: number },
+    tenantSlug?: string,
+  ) => {
+    const searchParams = new URLSearchParams({ queue: params.queue });
+    if (params.page !== undefined) searchParams.set('page', String(params.page));
+    if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+    return request<ListResponse<ProvisioningInboxRowDto>>(
+      `/network/provisioning/inbox?${searchParams.toString()}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
+
+  listSubscriberProvisioning: (subscriberId: string, tenantSlug?: string) =>
+    request<ServiceProvisioningDto[]>(
+      `/network/provisioning/subscribers/${subscriberId}`,
+      { returnFullResponse: true },
       tenantSlug,
     ),
 };

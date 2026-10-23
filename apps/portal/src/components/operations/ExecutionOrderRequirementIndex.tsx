@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, type ReactNode } from 'react';
 import type { ExecutionOrderTemplateRequirement } from '@iwana/shared';
+import { Badge } from '@iwana/ui';
 import type { ExecutionOrderDetailResponse } from '@/lib/api-client';
 import {
   ExecutionOrderActivityAction,
@@ -45,6 +46,11 @@ export interface ExecutionOrderRequirementIndexProps {
   /** La selección vive en el shell: sobrevive al refresco que desmonta el cuerpo del drawer. */
   selectedAction: RequirementActionDescriptor | null;
   onSelectAction: (action: RequirementActionDescriptor | null) => void;
+  provisioningRequirement?: {
+    enabled: boolean | null;
+    certified: boolean | null;
+    required: boolean;
+  };
 }
 
 function isSignatureRequirement(requirement: ExecutionOrderTemplateRequirement): boolean {
@@ -56,6 +62,7 @@ export function ExecutionOrderRequirementIndex({
   context,
   selectedAction,
   onSelectAction,
+  provisioningRequirement,
 }: ExecutionOrderRequirementIndexProps) {
   const { template = null, isSubmitting, offline, error, successMessage = null } = context;
   const templateRequirements = template?.requirements ?? [];
@@ -128,49 +135,109 @@ export function ExecutionOrderRequirementIndex({
           : 'idle';
 
   return (
-    <RequirementChecklist
-      items={items.map((item) => {
-        const requirement = requirements.find((entry) => entry.key === item.key);
-        const action =
-          requirement && item.state !== 'unknown'
-            ? resolveRequirementAction(order, requirement)
-            : undefined;
-        // La hoja solo se abre sobre el requisito seleccionado y mientras su acción siga autorizada.
-        const sheetAction =
-          action !== undefined && action.requirementKey === selectedAction?.requirementKey
-            ? selectedAction
-            : null;
-        return {
-          ...item,
-          action,
-          history: moment !== 'pre-start' && requirement ? renderHistory(requirement) : null,
-          actionBody:
-            sheetAction && requirement ? (
-              <RequirementActionSheet
-                key={sheetAction.requirementKey}
-                open
-                action={sheetAction}
-                status={sheetStatus}
-                errorMessage={error ?? undefined}
-                onCancel={closeAction}
-                onSubmit={() => void submitHandler.current?.()}
-                body={renderCapture(sheetAction, requirement)}
-              />
-            ) : null,
-        };
-      })}
-      progress={order.completion.progress}
-      unattributedConsumptionHistory={unattributedHistory}
-      historyFooter={historyFooter}
-      mode={moment === 'in-progress' ? 'action' : 'readonly'}
-      showPreStartHints={moment === 'pre-start'}
-      offline={offline}
-      selectedRequirementKey={selectedAction?.requirementKey}
-      onSelectRequirement={(key) => {
-        const requirement = requirements.find((entry) => entry.key === key);
-        const action = requirement ? resolveRequirementAction(order, requirement) : undefined;
-        if (action) onSelectAction(action);
-      }}
-    />
+    <>
+      <RequirementChecklist
+        items={items.map((item) => {
+          const requirement = requirements.find((entry) => entry.key === item.key);
+          const action =
+            requirement && item.state !== 'unknown'
+              ? resolveRequirementAction(order, requirement)
+              : undefined;
+          // La hoja solo se abre sobre el requisito seleccionado y mientras su acción siga autorizada.
+          const sheetAction =
+            action !== undefined && action.requirementKey === selectedAction?.requirementKey
+              ? selectedAction
+              : null;
+          return {
+            ...item,
+            action,
+            history: moment !== 'pre-start' && requirement ? renderHistory(requirement) : null,
+            actionBody:
+              sheetAction && requirement ? (
+                <RequirementActionSheet
+                  key={sheetAction.requirementKey}
+                  open
+                  action={sheetAction}
+                  status={sheetStatus}
+                  errorMessage={error ?? undefined}
+                  onCancel={closeAction}
+                  onSubmit={() => void submitHandler.current?.()}
+                  body={renderCapture(sheetAction, requirement)}
+                />
+              ) : null,
+          };
+        })}
+        progress={order.completion.progress}
+        unattributedConsumptionHistory={unattributedHistory}
+        historyFooter={historyFooter}
+        mode={moment === 'in-progress' ? 'action' : 'readonly'}
+        showPreStartHints={moment === 'pre-start'}
+        offline={offline}
+        selectedRequirementKey={selectedAction?.requirementKey}
+        onSelectRequirement={(key) => {
+          const requirement = requirements.find((entry) => entry.key === key);
+          const action = requirement ? resolveRequirementAction(order, requirement) : undefined;
+          if (action) onSelectAction(action);
+        }}
+      />
+      {provisioningRequirement ? (
+        <ul
+          aria-label="Requisito de aprovisionamiento"
+          className="divide-y divide-gray-200 dark:divide-dark-border"
+        >
+          <li
+            className="space-y-2 py-3"
+            aria-label={`Aprovisionamiento certificado: ${
+              provisioningRequirement.enabled === null
+                ? 'estado no disponible'
+                : provisioningRequirement.required
+                  ? provisioningRequirement.certified
+                    ? 'cumplido'
+                    : 'pendiente'
+                  : 'no requerido'
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-iwana-primary dark:text-white">
+                Aprovisionamiento certificado
+              </span>
+              <Badge variant={provisioningRequirement.enabled === null ? 'info' : 'neutral'}>
+                {provisioningRequirement.enabled === null
+                  ? 'Estado no disponible'
+                  : provisioningRequirement.required
+                    ? 'Obligatorio'
+                    : 'No requerido'}
+              </Badge>
+              <Badge
+                variant={
+                  provisioningRequirement.certified
+                    ? 'lime'
+                    : provisioningRequirement.enabled === null
+                      ? 'info'
+                      : 'neutral'
+                }
+              >
+                {provisioningRequirement.certified === null
+                  ? 'Estado no disponible'
+                  : provisioningRequirement.certified
+                    ? 'Certificado'
+                    : provisioningRequirement.required
+                      ? 'Pendiente'
+                      : 'Sin registrar'}
+              </Badge>
+            </div>
+            {provisioningRequirement.required && !provisioningRequirement.certified ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Completa y certifica el servicio técnico antes de cerrar esta instalación.
+              </p>
+            ) : !provisioningRequirement.required && provisioningRequirement.enabled !== null ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Las órdenes no ejecutadas no requieren certificación.
+              </p>
+            ) : null}
+          </li>
+        </ul>
+      ) : null}
+    </>
   );
 }

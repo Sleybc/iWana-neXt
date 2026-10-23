@@ -24,6 +24,7 @@ import { TaxProfileBlock } from './TaxProfileBlock';
 import { ServiciosTab } from './ServiciosTab';
 import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
+import { SubscriberTechnicalServiceSection } from './SubscriberTechnicalServiceSection';
 import { CUSTOMER_SEGMENT_META, PERSON_TYPE_META, SUBSCRIBER_STATUS_META } from './subscriber-ui';
 
 interface SubscriberDetailClientProps {
@@ -64,6 +65,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const { hasPermission } = usePermissions();
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
+  const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
   const subscriberId = typeof params?.id === 'string' ? params.id : '';
   const [subscriber360, setSubscriber360] = useState<Subscriber360Response | null>(null);
   const [loading, setLoading] = useState(mode === 'detail');
@@ -378,15 +380,20 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         id: 'servicios',
         label: 'Servicios',
         content: subscriber360 ? (
-          <ServiciosTab
-            subscriber360={subscriber360}
-            onReload={loadSubscriber}
-            onOpenLifecycle={(action, contractId) => {
-              setLifecycleAction(action);
-              setLifecycleContractId(contractId ?? null);
-              setLifecycleSuccess(null);
-            }}
-          />
+          <div className="space-y-4">
+            <ServiciosTab
+              subscriber360={subscriber360}
+              onReload={loadSubscriber}
+              onOpenLifecycle={(action, contractId) => {
+                setLifecycleAction(action);
+                setLifecycleContractId(contractId ?? null);
+                setLifecycleSuccess(null);
+              }}
+            />
+            {canReadNetworkProvisioning ? (
+              <SubscriberTechnicalServiceSection subscriberId={subscriber.id} />
+            ) : null}
+          </div>
         ) : null,
       },
       {
@@ -462,6 +469,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     loadSubscriber,
     canManagePrivacy,
     canReadPrivacy,
+    canReadNetworkProvisioning,
   ]);
 
   if (mode === 'create') {
