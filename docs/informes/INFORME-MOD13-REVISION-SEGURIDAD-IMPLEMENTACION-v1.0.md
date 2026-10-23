@@ -91,3 +91,17 @@ El P2 del pipeline de S0 queda **verificado en configuración estática**: hay t
 No ejecuté Jest, Supertest, llamadas HTTP, Redis, PostgreSQL, inspección de logs runtime ni handshake TLS. Por eso no afirmo resultados de pruebas ni comportamiento de despliegue. V1 debe verificar, contra el entorno de prueba, autenticación con claims válidos e inválidos, coincidencia tenant/schema, ownership del técnico, tasa efectiva por actor y respuestas con los cinco campos exactos. La configuración de TLS solo se verificó en el archivo de Nginx de producción.
 
 **Condición de cierre:** corregir SEC-IMPL-01 y solicitar verificación de nuevo. SEC-IMPL-02 y SEC-IMPL-03 son P3 y no bloquean entrega según el baseline del perfil; deben quedar registrados para corrección. No se detectó vulnerabilidad crítica confirmada ni se requiere excepción de seguridad.
+
+## Confirmación Ola 7
+
+**Fecha:** 2026-10-23. **Modo:** revisión estática, solo lectura, contra el código actual y los cambios backend de Ola 7. Esta confirmación actualiza el dictamen anterior para esos cambios. **Dictamen:** SEC-IMPL-01, SEC-IMPL-02 y SEC-IMPL-03 quedan cerrados a nivel de implementación. No encontré hallazgos nuevos de seguridad en los archivos backend tocados que revisé.
+
+| Hallazgo | Estado y evidencia |
+| --- | --- |
+| SEC-IMPL-01 — auditoría del reemplazo | **Cerrado en código; pendiente de evidencia runtime.** `apps/api/src/modules/network/service-provisioning.service.ts:451–460` invoca la liberación al reemplazar la fila `FAILED`; `:880–930` conserva `fromStatus` e IP, persiste la liberación y llama `logWithin` con el manager transaccional y `action: RELEASE`, `releaseReason: REPLACED`, `fromStatus` e `ip`. `apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts:381–486` contiene el caso de auditoría y los dos casos de rollback ante fallo de auditoría. |
+| SEC-IMPL-02 — predicado tenant en lectura de actores | **Cerrado en código.** `apps/api/src/modules/network/ports/network-actor-read.adapter.ts:14–27` toma `tenantId` del `TenantContext` y lo incluye junto con los IDs en la búsqueda de `User`; la consulta de `PlatformUser` permanece separada. `apps/api/src/modules/network/ports/network-actor-read.adapter.spec.ts:35–47` comprueba este filtro. |
+| SEC-IMPL-03 — campos opcionales del router en auditoría | **Cerrado en código.** `apps/api/src/modules/network/network-catalog.service.ts:136–159` incluye en `changedFields` los nombres de los campos opcionales enviados, sin sus valores. `apps/api/src/modules/network/tests/network-catalog.service.postgres.integration.spec.ts:128–176` comprueba la lista y que los valores no aparezcan en el registro. |
+
+**No se observaron hallazgos nuevos** al revisar estáticamente los cambios backend de Ola 7 en `network` y el wiring de `crm` involucrado: auditoría y actor tenant, errores HTTP de IPAM/guarda, módulo comercial estrecho y auditoría del alta de router. Esta revisión no constituye una prueba dinámica ni una auditoría exhaustiva de rutas ajenas a esos cambios.
+
+**Pendiente de runtime — PostgreSQL:** Ola 7 omitió `service-provisioning.audit.postgres.integration.spec.ts` (1 suite, 6 tests) al no estar disponible la base local. Por tanto, la reversión transaccional ante fallo de auditoría sigue sin confirmación contra PostgreSQL real; no se declara cerrada en runtime. No ejecuté pruebas, migraciones ni inspeccioné secretos durante esta confirmación.

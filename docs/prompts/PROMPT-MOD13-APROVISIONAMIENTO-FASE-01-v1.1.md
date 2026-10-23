@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** al preparar la Ola 9 (2026-10-23) se añadió la precondición 5 (tenant de pruebas migrado) y §V4-bis. Al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -364,11 +364,15 @@ Precondiciones, todas en el entorno local y sin compartir secretos por el chat:
 2. El API respondiendo en `127.0.0.1:3000`.
 3. `E2E_TENANT_ADMIN_EMAIL` y `E2E_TENANT_ADMIN_PASSWORD` de un tenant de pruebas no `ACTIVE`, en variables de entorno.
 4. `apps/portal/.next` sin bloqueos: cerrar los `node` residuales o borrar la carpeta antes de compilar.
+5. El tenant de pruebas migrado hasta la `163_publish_instalacion_estandar_v3`. `db:migrate:all` solo recorre los tenants `ACTIVE`, así que un tenant de pruebas hay que migrarlo explícitamente. Antes de lanzar V1, verifícalo en solo lectura.
 
 Si falta alguna, cada bloque emite `[BLOQUEO]` y para.
 
 #### R-pg · `sr-backend`
 Ejecuta las suites contra Postgres que quedaron omitidas, empezando por `service-provisioning.audit.postgres.integration.spec.ts` (1 suite, 6 tests), y todas las `*.postgres.integration.spec.ts` de `network`. No modifiques código de producto; si algo falla, reporta.
+
+#### V4-bis · `ds-owner`
+Con el portal corriendo, toma la evidencia visual de routers, redes IPv4, bandeja, ajustes, panel de la OT (vistas de NOC y del técnico) y sección técnica del suscriptor. Debe cubrir 375, 768 y 1280 px, en claro y en oscuro, y aplicar el criterio de `iwana-identity-ui-review`. Las capturas van en `docs/informes/evidence/mod13-ui/` y el resultado se añade a `INFORME-MOD13-REVISION-UI-v1.0.md` como «V4-bis».
 
 ### V1 y V5 — después de G4
 

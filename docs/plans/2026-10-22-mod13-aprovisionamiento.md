@@ -1,9 +1,9 @@
 # MOD13 — Red y Aprovisionamiento · Fase 01 (IPAM y activación certificada) · Plan de orquestación
 
-**Fecha:** 2026-10-22 · **Versión:** 1.8 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-22 · **Versión:** 1.9 · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Definición:** [PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (Aprobado) · [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) (contrato) · [ADR-098](../adrs/ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md)
-**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 8):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.8.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.8.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md), Ola 2 [LAUNCH-v1.2](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md), Ola 3 [LAUNCH-v1.3](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md), Ola 4 [LAUNCH-v1.4](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.4.md), Ola 5 [LAUNCH-v1.5](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md), Ola 6 [LAUNCH-v1.6](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.6.md) y Ola 7 [LAUNCH-v1.7](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.7.md)
-**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2. v1.3 (2026-10-22) cierra G2 y lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter). v1.4 (2026-10-22) recibe la Ola 3 y lanza la Ola 4 (B3 ∥ F1-v). v1.5 (2026-10-22) cierra G3 y lanza la Ola 5 (F2 ∥ F1-v). v1.6 (2026-10-22) registra los entregables F2, la evidencia local y los bloqueos de build y F1-v. v1.7 (2026-10-22) recibe la Ola 6 y lanza la Ola 7 de correcciones. v1.8 (2026-10-23) recibe la Ola 7 y lanza la Ola 8; fija las precondiciones de la Ola 9.
+**Prompt:** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md) · **Launcher vigente (Ola 9, espera el entorno):** [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.9.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.9.md) · Ejecutados: Ola 1 [LAUNCH-v1.0](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.0.md), Ola 1-bis [LAUNCH-v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.1.md), Ola 2 [LAUNCH-v1.2](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.2.md), Ola 3 [LAUNCH-v1.3](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.3.md), Ola 4 [LAUNCH-v1.4](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.4.md), Ola 5 [LAUNCH-v1.5](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.5.md), Ola 6 [LAUNCH-v1.6](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.6.md), Ola 7 [LAUNCH-v1.7](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.7.md) y Ola 8 [LAUNCH-v1.8](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.8.md)
+**Historial:** v1.1 (2026-10-22) incorpora el re-sync del contrato tras la Ola 1 y la Ola 1-bis (§6). v1.2 (2026-10-22) cierra G1 y lanza la Ola 2. v1.3 (2026-10-22) cierra G2 y lanza la Ola 3 (B2 ∥ F1 ∥ P0-ter). v1.4 (2026-10-22) recibe la Ola 3 y lanza la Ola 4 (B3 ∥ F1-v). v1.5 (2026-10-22) cierra G3 y lanza la Ola 5 (F2 ∥ F1-v). v1.6 (2026-10-22) registra los entregables F2, la evidencia local y los bloqueos de build y F1-v. v1.7 (2026-10-22) recibe la Ola 6 y lanza la Ola 7 de correcciones. v1.8 (2026-10-23) recibe la Ola 7 y lanza la Ola 8; fija las precondiciones de la Ola 9. v1.9 (2026-10-23) cierra G5 en código y deja lista la Ola 9, a la espera del entorno.
 **Base:** `main` en `01a3e91b`. Se trabaja en `main`, sin ramas. **El árbol tiene 48 rutas sin commitear ajenas a esta fase:** ningún agente las toca ni las incluye en sus commits.
 
 ## 0. Alcance
@@ -137,8 +137,10 @@ Claude Code **lee** cada `SKILL.md` (`.agents/skills/<nombre>/SKILL.md`) como do
 | — | G5 | ⏳ Abierto por SEC-IMPL-01 y DS-MOD13-P1-01 | — |
 | 7 | B-fix · sr-backend | ✅ Cinco puntos corregidos; network, tasks y crm 113/1 714; worker 21/173. Prueba de reversión contra Postgres omitida (1 suite, 6 tests: Docker sin daemon) → R-pg | [INFORME Ola 7](../informes/INFORME-MOD13-CORRECCIONES-OLA-7-v1.0.md) |
 | 7 | F-fix · fe-platform | ✅ Cuatro puntos corregidos; portal 322/3 251 (1 omitido preexistente); lint y typecheck. Build sin repetir por el `EPERM` | ídem |
-| 8 | V2-c · sec-eng ∥ V4-c · ds-owner | ⏳ Por lanzar (confirmación estática; cierra G5 en código) | Launcher v1.8 |
-| 9 | R-pg ∥ F1-v ∥ V1 ∥ V4-bis, y después V5 | ⏸ Espera las precondiciones del entorno (prompt §Ola 9) | — |
+| 8 | V2-c · sec-eng | ✅ SEC-IMPL-01, 02 y 03 cerrados en código, sin hallazgos nuevos; la reversión contra Postgres sigue pendiente de runtime | [INFORME seguridad implementación](../informes/INFORME-MOD13-REVISION-SEGURIDAD-IMPLEMENTACION-v1.0.md) §Confirmación Ola 7 |
+| 8 | V4-c · ds-owner | ✅ DS-MOD13-P1-01, P2-02 y P3-03 confirmados; `audit-ui.mjs` en 0 | [INFORME UI](../informes/INFORME-MOD13-REVISION-UI-v1.0.md) §Confirmación Ola 7 |
+| — | G5 | ✅ Cerrado en código el 2026-10-23. La evidencia en runtime llega con R-pg | — |
+| 9 | R-pg ∥ F1-v ∥ V1 ∥ V4-bis, y después V5 | ⏸ Launcher listo; espera las 5 precondiciones del entorno (prompt §Ola 9) | Launcher v1.9 |
 | — | V1, V4-bis, V5 | ⏸ Esperan al entorno: API vivo con credenciales E2E y build del portal sin `EPERM` | — |
 
 Los bloqueos fueron defectos del emisor (contrato v1.0), no de los agentes.
@@ -178,16 +180,22 @@ Decisiones de AI-EM-ARCH al recibir la Ola 6 (registradas en HLD v1.1 §12, sin 
 
 Nota de AI-EM-ARCH al recibir la Ola 7: el cambio en `network-tenant.guard.ts` no estaba en el encargo, pero es correcto. Conserva el 401 y deja de emitir `TENANT_CONTEXT_REQUIRED`, que no figura en la lista cerrada de códigos.
 
-Sigue la Ola 8: V2-c ∥ V4-c, que no necesitan entorno. La Ola 9 queda a la espera de que el CTO cumpla sus cuatro precondiciones: Docker con Postgres y Redis, el API en `127.0.0.1:3000`, las credenciales E2E en variables de entorno y `.next` sin bloqueos. Después vienen V5 y G7.
+La Ola 8 cerró G5 en código. Se añadió la precondición 5 de la Ola 9: el tenant de pruebas debe estar migrado hasta la 163, porque `db:migrate:all` solo recorre los tenants `ACTIVE`. Ya no queda trabajo que avance sin el entorno. La Ola 9 queda a la espera de que el CTO cumpla sus cuatro precondiciones: Docker con Postgres y Redis, el API en `127.0.0.1:3000`, las credenciales E2E en variables de entorno y `.next` sin bloqueos. Después vienen V5 y G7.
 
 ## Lanzamiento
 
-Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.8.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.8.md). **Si divergen, prevalece el archivo.** Lanza la Ola 8 (V2-c ∥ V4-c). Las olas anteriores no se re-despachan.
+Fuente: [PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.9.md](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-LAUNCH-v1.9.md). **Si divergen, prevalece el archivo.** Lanza la Ola 9 (R-pg ∥ F1-v ∥ V1 ∥ V4-bis) **solo cuando el entorno cumpla las 5 precondiciones**.
 
 ```text
-===== 1 · sec-eng =====
-Actúa como `sec-eng`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-22-mod13-aprovisionamiento.md`, tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §V2-c y el informe `docs/informes/INFORME-MOD13-CORRECCIONES-OLA-7-v1.0.md`. Lee `security-auditor` y `backend-security-coder`. Confirma en solo lectura el cierre de SEC-IMPL-01, 02 y 03, y que no hay hallazgos nuevos en los archivos tocados. Marca la reversión contra Postgres como pendiente de runtime. No corrijas código ni imprimas secretos. Añade «Confirmación Ola 7» a tu informe de implementación.
+===== 1 · sr-backend =====
+Actúa como `sr-backend`. Lee `AGENTS.md`, el plan y tu encargo `docs/prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md` §Ola 9 y §R-pg. Lee `iwana-test-evidence` y `test-driven-development`. Comprueba las precondiciones 1 y 5; si falta alguna, emite `[BLOQUEO]` y para. Ejecuta las `*.postgres.integration.spec.ts` de `network`, empezando por la de auditoría. No modifiques código de producto ni migres tenants `ACTIVE`; no imprimas secretos. Cierras con el conteo real.
 
-===== 2 · ds-owner =====
-Actúa como `ds-owner`. Lee `AGENTS.md`, el plan, tu encargo §V4-c del mismo prompt y el informe de la Ola 7. Lee `iwana-identity-ui-review` y `core-components`. Confirma DS-MOD13-P1-01, P2-02 y P3-03 en el código y vuelve a correr `audit-ui.mjs` sobre `network/*` y los componentes tocados. No corrijas código. Añade «Confirmación Ola 7» a `docs/informes/INFORME-MOD13-REVISION-UI-v1.0.md`.
+===== 2 · fe-platform =====
+Actúa como `fe-platform`. Lee `AGENTS.md`, el plan y tu encargo §F1-v del mismo prompt. Lee `playwright-skill` e `iwana-test-evidence`. Comprueba las precondiciones 2 y 3; si falta alguna, emite `[BLOQUEO]` y para. Ejecuta las pruebas de routers y redes IPv4 contra el API real. No corrijas código; no imprimas secretos. Cierras con el conteo real.
+
+===== 3 · sr-qa =====
+Actúa como `sr-qa`. Lee `AGENTS.md`, el plan y tu encargo §V1 del mismo prompt. Lee `testing-patterns`, `e2e-testing-patterns`, `playwright-skill`, `iwana-test-evidence` y `verification-before-completion`. Escribes tests y fixtures, nunca código de producto. Comprueba las precondiciones 1, 2, 3 y 5 y las de dominio del §V1; si falta alguna, emite `[BLOQUEO]` y para. Entrega la matriz CA-NET → test con conteo real.
+
+===== 4 · ds-owner =====
+Actúa como `ds-owner`. Lee `AGENTS.md`, el plan y tu encargo §V4-bis del mismo prompt. Lee `iwana-identity-ui-review` y `wcag-audit-patterns`. Con el portal corriendo, captura 375, 768 y 1280 px en claro y oscuro de las pantallas de MOD13 y añade «V4-bis» a `docs/informes/INFORME-MOD13-REVISION-UI-v1.0.md`. No corrijas código.
 ```

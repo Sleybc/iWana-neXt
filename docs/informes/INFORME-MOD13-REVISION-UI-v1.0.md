@@ -54,3 +54,24 @@ audit-ui: sin hallazgos en las rutas analizadas.
 - **V4-bis:** pendiente; no hay evidencia visual de navegador en esta revisión.
 - **Deuda nueva:** DS-MOD13-P1-01 (funcional, cerrar antes de aprobar V4); DS-MOD13-P2-02 (alineación del sistema de diseño); DS-MOD13-P3-03 (copy de estado vacío).
 
+## Confirmación Ola 7
+
+**Fecha:** 2026-10-23
+**Modo:** confirmación estática, sin cambios de código.
+
+- **DS-MOD13-P1-01 — cerrado en código:** `ExecutionOrderProvisioningPanel` consulta el contexto si cuenta con lectura de órdenes aunque no tenga lectura de aprovisionamiento (`ExecutionOrderProvisioningPanel.tsx:142-155`). La respuesta se discrimina como `TechnicianProvisioningViewDto`; la vista técnica muestra estado, IP, certificación y fecha de actualización (`:432-458`), y un HTTP 403 se representa como «Sin acceso» (`:188-190`). Las pruebas cubren la proyección sin permiso de red y la rama 403 (`NetworkProvisioningComponents.spec.tsx:174`, `:193`). La API aplica la comprobación de técnico asignado definida en HLD §6.2.
+- **DS-MOD13-P2-02 — cerrado en código:** la bandeja usa `portalModuleTabsShellClassName`, `portalModuleTabsTrackClassName` y `portalModuleTabTriggerClassName` (`NetworkProvisioningInboxClient.tsx:163-207`). La prueba verifica las clases compartidas y el tab seleccionado (`NetworkProvisioningComponents.spec.tsx:140-147`).
+- **DS-MOD13-P3-03 — cerrado en código:** el vacío de routers invita a registrar solo con `canManage`; para lectura muestra que la lista aparecerá cuando se configure el catálogo (`NetworkRouterCatalogClient.tsx:312-317`). La prueba comprueba ambas variantes y la presencia/ausencia del botón (`NetworkRouterCatalogClient.spec.tsx:56-79`).
+
+### Auditoría mecánica
+
+Comando ejecutado desde la raíz del repositorio:
+
+```text
+node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/src/app/dashboard/network apps/portal/src/components/network apps/portal/src/components/operations/ExecutionOrderProvisioningPanel.tsx apps/portal/src/components/operations/execution-order-requirements.ts --json
+```
+
+Resultado real: **0 hallazgos** (P0: 0, P1: 0, P2: 0, P3: 0); salida del proceso 0. El comando cubrió las rutas `network/*`, todos sus componentes y los archivos de Operaciones tocados en Ola 7. La Ola 7 reporta además 3 suites/32 tests focalizados y la suite portal con 322 suites, 3.251 tests aprobados y 1 omitido preexistente.
+
+**V4-bis sigue pendiente:** no se tomó evidencia visual de navegador en 375, 768 y 1280 px, en claro y oscuro. Esta confirmación no sustituye esa revisión.
+
