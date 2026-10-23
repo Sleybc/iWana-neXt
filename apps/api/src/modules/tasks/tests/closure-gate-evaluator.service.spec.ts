@@ -1,5 +1,12 @@
-import type { ExecutionOrderTemplateRequirement as TemplateRequirement } from '@iwana/shared';
-import { ClosureGateEvaluatorService } from '../services/closure-gate-evaluator.service';
+import {
+  ExecutionOrderResult,
+  InventoryDisposition,
+  type ExecutionOrderTemplateRequirement as TemplateRequirement,
+} from '@iwana/shared';
+import {
+  ClosureGateEvaluatorService,
+  selectRequirementsForResult,
+} from '../services/closure-gate-evaluator.service';
 
 /**
  * Tests del evaluador determinista del gate de cierre.
@@ -518,4 +525,51 @@ describe('ClosureGateEvaluatorService', () => {
       expect(result.missingRequirements[0]!.reason).toContain('firma');
     });
   });
+});
+
+describe('selectRequirementsForResult', () => {
+  const snapshot: TemplateRequirement[] = [
+    {
+      key: 'installed-equipment',
+      label: 'Equipos instalados',
+      required: true,
+      kind: 'MATERIAL',
+      itemCategory: 'CPE',
+      finalDisposition: InventoryDisposition.INSTALLED_AT_CUSTOMER,
+    },
+    {
+      key: 'service-provisioning',
+      label: 'Aprovisionamiento certificado',
+      required: true,
+      kind: 'PROVISIONING',
+    },
+  ];
+
+  it.each([
+    [ExecutionOrderResult.EXECUTED, true, ['installed-equipment', 'service-provisioning']],
+    [ExecutionOrderResult.EXECUTED, false, ['installed-equipment']],
+    [
+      ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS,
+      true,
+      ['installed-equipment', 'service-provisioning'],
+    ],
+    [ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS, false, ['installed-equipment']],
+    [
+      ExecutionOrderResult.REQUIRES_FOLLOW_UP,
+      true,
+      ['installed-equipment', 'service-provisioning'],
+    ],
+    [ExecutionOrderResult.REQUIRES_FOLLOW_UP, false, ['installed-equipment']],
+    [ExecutionOrderResult.NOT_EXECUTED, true, []],
+    [ExecutionOrderResult.NOT_EXECUTED, false, []],
+    [ExecutionOrderResult.CANCELLED, true, []],
+    [ExecutionOrderResult.CANCELLED, false, []],
+  ] as const)(
+    '%s con provisioningEnforced=%s selecciona los requisitos esperados',
+    (result, provisioningEnforced, expectedKeys) => {
+      const selected = selectRequirementsForResult(snapshot, result, { provisioningEnforced });
+      expect(selected.map((requirement) => requirement.key)).toEqual(expectedKeys);
+      expect(snapshot).toHaveLength(2);
+    },
+  );
 });

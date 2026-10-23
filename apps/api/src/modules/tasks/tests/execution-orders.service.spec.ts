@@ -722,7 +722,7 @@ describe('ExecutionOrdersService', () => {
     await expect(
       service.close(
         'eo-001',
-        { result: ExecutionOrderResult.NOT_EXECUTED, summary: 'Cierre pendiente' },
+        { result: ExecutionOrderResult.EXECUTED, summary: 'Cierre pendiente' },
         actor,
       ),
     ).rejects.toMatchObject({
@@ -1114,6 +1114,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.NOT_EXECUTED,
+            reasonCode: 'CUSTOMER_UNAVAILABLE',
             summary: 'Cierre con artefacto inválido',
             customerAcceptance: {
               artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -1158,6 +1159,7 @@ describe('ExecutionOrdersService', () => {
           'eo-001',
           {
             result: ExecutionOrderResult.NOT_EXECUTED,
+            reasonCode: 'CUSTOMER_UNAVAILABLE',
             summary: 'Cierre con método no permitido',
             customerAcceptance: {
               artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -1218,6 +1220,7 @@ describe('ExecutionOrdersService', () => {
       'eo-001',
       {
         result: ExecutionOrderResult.NOT_EXECUTED,
+        reasonCode: 'CUSTOMER_UNAVAILABLE',
         summary: 'Cierre con firma',
         customerAcceptance: {
           artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -1328,6 +1331,7 @@ describe('ExecutionOrdersService', () => {
       'eo-001',
       {
         result: ExecutionOrderResult.NOT_EXECUTED,
+        reasonCode: 'CUSTOMER_UNAVAILABLE',
         summary: 'No se pudo ejecutar. Reprogramar.',
         closeNotes: 'No se pudo ejecutar. Reprogramar.',
       },

@@ -256,7 +256,11 @@ describe('ExecutionOrdersService T0 — persistencia explícita por comando (CA-
       () =>
         service.close(
           'eo-001',
-          { result: ExecutionOrderResult.NOT_EXECUTED, summary: 'Cierre de prueba' },
+          {
+            result: ExecutionOrderResult.NOT_EXECUTED,
+            reasonCode: 'CUSTOMER_UNAVAILABLE',
+            summary: 'Cierre de prueba',
+          },
           technician,
         ),
     ],

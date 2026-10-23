@@ -4,6 +4,7 @@ import type {
   InventoryDisposition,
   ServiceProvisioningStatus,
 } from '@iwana/shared';
+import { ExecutionOrderResult } from '@iwana/shared';
 
 type FieldRequirement = Extract<TemplateRequirement, { kind: 'FIELD' }>;
 type ActivityRequirement = Extract<TemplateRequirement, { kind: 'ACTIVITY' }>;
@@ -12,6 +13,29 @@ type EvidenceRequirement = Extract<TemplateRequirement, { kind: 'EVIDENCE' }>;
 type MaterialRequirement = Extract<TemplateRequirement, { kind: 'MATERIAL' }>;
 type ComplianceRequirement = Extract<TemplateRequirement, { kind: 'COMPLIANCE' }>;
 type ProvisioningRequirement = Extract<TemplateRequirement, { kind: 'PROVISIONING' }>;
+
+/**
+ * Selecciona los requisitos de cierre aplicables al resultado de la OT.
+ * Las visitas no ejecutadas y las cancelaciones no evalúan el trabajo de la
+ * plantilla; CANCELLED se conserva por totalidad aunque `close()` la rechaza.
+ */
+export function selectRequirementsForResult(
+  snapshot: readonly TemplateRequirement[],
+  result: ExecutionOrderResult,
+  options: { provisioningEnforced: boolean },
+): TemplateRequirement[] {
+  switch (result) {
+    case ExecutionOrderResult.EXECUTED:
+    case ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS:
+    case ExecutionOrderResult.REQUIRES_FOLLOW_UP:
+      return options.provisioningEnforced
+        ? [...snapshot]
+        : snapshot.filter((requirement) => requirement.kind !== 'PROVISIONING');
+    case ExecutionOrderResult.NOT_EXECUTED:
+    case ExecutionOrderResult.CANCELLED:
+      return [];
+  }
+}
 
 /**
  * Resultado de evaluar un requisito contra el estado actual de la OT.

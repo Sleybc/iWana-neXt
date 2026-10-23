@@ -208,7 +208,10 @@ export class CloseExecutionOrderDto {
   @Allow()
   result!: ExecutionOrderResult;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: 'Causa obligatoria cuando el resultado es NOT_EXECUTED.',
+    maxLength: 64,
+  })
   @Allow()
   reasonCode?: string;
 

@@ -73,7 +73,10 @@ import {
 } from '../dto/execution-orders.dto';
 import { ExecutionOrderInventoryService } from './execution-order-inventory.service';
 import { ExecutionOrderTemplatesService } from './execution-order-templates.service';
-import { ClosureGateEvaluatorService } from './closure-gate-evaluator.service';
+import {
+  ClosureGateEvaluatorService,
+  selectRequirementsForResult,
+} from './closure-gate-evaluator.service';
 import {
   ASSURANCE_EXECUTION_ORDER_NOTIFIER_PORT,
   AssuranceExecutionOrderNotifierPort,
@@ -2023,6 +2026,15 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
     context?: ExecutionOrderCommandContext,
   ): Promise<ExecutionOrder> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    if (
+      input?.result === ExecutionOrderResult.NOT_EXECUTED &&
+      (typeof input.reasonCode !== 'string' || input.reasonCode.trim().length === 0)
+    ) {
+      throw new UnprocessableEntityException({
+        code: 'CLOSE_NOT_EXECUTED_REASON_REQUIRED',
+        message: 'Elige una causa para cerrar como no ejecutada.',
+      });
+    }
     const validated = CloseExecutionOrderSchema.parse(input);
 
     // MOD11 T2 (CA-11): `close` con `result = CANCELLED` deja de ser vía de
@@ -2097,6 +2109,9 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
       const executedResults = [
         ExecutionOrderResult.EXECUTED,
         ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS,
+        // ADR-099 E1 extiende ADR-098 D5: una instalación con seguimiento
+        // cuenta como ejecutada y debe consultar el estado certificado de MOD13.
+        ExecutionOrderResult.REQUIRES_FOLLOW_UP,
       ];
       let provisioningContext:
         | { enforced: boolean; status: ServiceProvisioningStatus | null }
@@ -2127,6 +2142,32 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           });
         }
       }
+      let itemUsagesForEvaluation: ExecutionOrderItemUsage[] | undefined;
+      if (validated.result === ExecutionOrderResult.NOT_EXECUTED) {
+        const persistedItemUsages = await qr.manager
+          .createQueryBuilder(ExecutionOrderItemUsage, 'u')
+          .where('u.execution_order_id = :executionOrderId', { executionOrderId: id })
+          .andWhere('u.tenant_id = :tenantId', { tenantId })
+          .getMany();
+        itemUsagesForEvaluation = await this.excludeConfirmedReversals(
+          qr.manager,
+          tenantId,
+          id,
+          persistedItemUsages,
+        );
+        if (
+          itemUsagesForEvaluation.some(
+            (usage) => usage.finalDisposition === InventoryDisposition.INSTALLED_AT_CUSTOMER,
+          )
+        ) {
+          throw new UnprocessableEntityException({
+            code: 'CLOSE_NOT_EXECUTED_HAS_INSTALLED_EQUIPMENT',
+            message:
+              'Hay equipos registrados como instalados en el cliente. Revierte esos consumos antes de cerrar como no ejecutada.',
+          });
+        }
+      }
+
       if (this.closureGateEvaluator) {
         const activities = await qr.manager
           .createQueryBuilder(ExecutionOrderActivity, 'a')
@@ -2140,27 +2181,23 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           .andWhere('e.tenant_id = :tenantId', { tenantId })
           .getMany();
 
-        const persistedItemUsages = await qr.manager
-          .createQueryBuilder(ExecutionOrderItemUsage, 'u')
-          .where('u.execution_order_id = :executionOrderId', { executionOrderId: id })
-          .andWhere('u.tenant_id = :tenantId', { tenantId })
-          .getMany();
-        const itemUsages = await this.excludeConfirmedReversals(
-          qr.manager,
-          tenantId,
-          id,
-          persistedItemUsages,
-        );
+        if (!itemUsagesForEvaluation) {
+          const persistedItemUsages = await qr.manager
+            .createQueryBuilder(ExecutionOrderItemUsage, 'u')
+            .where('u.execution_order_id = :executionOrderId', { executionOrderId: id })
+            .andWhere('u.tenant_id = :tenantId', { tenantId })
+            .getMany();
+          itemUsagesForEvaluation = await this.excludeConfirmedReversals(
+            qr.manager,
+            tenantId,
+            id,
+            persistedItemUsages,
+          );
+        }
 
-        // Una OT no ejecutada no configura el servicio y el ajuste apagado
-        // conserva la conducta anterior. En ambos casos se omite este tipo de
-        // requisito y no se convierte una plantilla v3 en gate obligatorio.
-        const skipProvisioningRequirement =
-          validated.result === ExecutionOrderResult.NOT_EXECUTED ||
-          provisioningContext?.enforced === false;
-        const requirements = skipProvisioningRequirement
-          ? snapshot.filter((requirement) => requirement.kind !== 'PROVISIONING')
-          : snapshot;
+        const requirements = selectRequirementsForResult(snapshot, validated.result, {
+          provisioningEnforced: provisioningContext?.enforced !== false,
+        });
         const evaluation = this.closureGateEvaluator.evaluate(requirements, {
           activities: activities.map((a) => ({ activityType: a.activityType })),
           evidences: evidences.map((e) => ({
@@ -2169,7 +2206,10 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
           })),
           // La categoría procede del catálogo real de Inventario. Si no puede
           // resolverse, el evaluador falla cerrado y no infiere desde itemId.
-          itemUsages: await this.buildMaterialEvaluationUsages(snapshot, itemUsages),
+          itemUsages: await this.buildMaterialEvaluationUsages(
+            requirements,
+            itemUsagesForEvaluation,
+          ),
           hasCustomerAcceptance: !!validated.customerAcceptance,
           closeCommand: { customerAcceptance: validated.customerAcceptance },
           ...(provisioningContext ? { provisioning: { status: provisioningContext.status } } : {}),
@@ -2232,7 +2272,7 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
         toStatus: order.status,
         changedAt: now,
         actorUserId: actor.sub,
-        reason: validated.summary ?? validated.result,
+        reason: validated.reasonCode ?? validated.summary ?? validated.result,
       });
 
       if (acceptanceRef) {

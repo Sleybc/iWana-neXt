@@ -160,6 +160,117 @@ describe('ExecutionOrdersService provisioning closure gate', () => {
 
   it('does not consult MOD13 when an installation is closed as NOT_EXECUTED', async () => {
     const { manager } = createManager();
+    const inventoryService = { getItemCategoryReceipt: jest.fn() };
+    runInTenant.mockImplementation(async (_dataSource, _schema, operation) =>
+      operation({ manager } as never),
+    );
+    const service = new ExecutionOrdersService(
+      {} as DataSource,
+      inventoryService as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new ClosureGateEvaluatorService(),
+      undefined,
+      undefined,
+      undefined,
+      provisioningPort as never,
+    );
+
+    await expect(
+      service.close(
+        'eo-001',
+        {
+          result: ExecutionOrderResult.NOT_EXECUTED,
+          reasonCode: 'CUSTOMER_UNAVAILABLE',
+          summary: 'Sin ejecución',
+        },
+        actor,
+      ),
+    ).resolves.toMatchObject({ status: ExecutionOrderStatus.NOT_EXECUTED });
+    expect(provisioningPort.getGateStatus).not.toHaveBeenCalled();
+    expect(inventoryService.getItemCategoryReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, '   '])(
+    'requires a non-empty reason for NOT_EXECUTED before opening the transaction (%s)',
+    async (reasonCode) => {
+      const service = new ExecutionOrdersService({} as DataSource);
+      await expect(
+        service.close(
+          'eo-001',
+          {
+            result: ExecutionOrderResult.NOT_EXECUTED,
+            reasonCode,
+            summary: 'Sin ejecución',
+          } as never,
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'CLOSE_NOT_EXECUTED_REASON_REQUIRED',
+          message: 'Elige una causa para cerrar como no ejecutada.',
+        },
+      });
+      expect(runInTenant).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['CERTIFIED', true],
+    ['RESERVED', false],
+  ] as const)(
+    'checks MOD13 for REQUIRES_FOLLOW_UP when status is %s',
+    async (status, shouldClose) => {
+      const { manager } = createManager();
+      runInTenant.mockImplementation(async (_dataSource, _schema, operation) =>
+        operation({ manager } as never),
+      );
+      provisioningPort.getGateStatus.mockResolvedValue({ enforced: true, status });
+      const service = new ExecutionOrdersService(
+        {} as DataSource,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        new ClosureGateEvaluatorService(),
+        undefined,
+        undefined,
+        undefined,
+        provisioningPort as never,
+      );
+
+      const close = service.close(
+        'eo-001',
+        { result: ExecutionOrderResult.REQUIRES_FOLLOW_UP, summary: 'Queda seguimiento' },
+        actor,
+      );
+      if (shouldClose) {
+        await expect(close).resolves.toMatchObject({
+          status: ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS,
+        });
+      } else {
+        await expect(close).rejects.toMatchObject({
+          response: expect.objectContaining({
+            code: 'CLOSURE_GATE_INCOMPLETE',
+            missingRequirements: ['Aprovisionamiento certificado'],
+          }),
+        });
+      }
+      expect(provisioningPort.getGateStatus).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('blocks NOT_EXECUTED while an installed-equipment consumption remains active', async () => {
+    const { manager, queryBuilder } = createManager();
+    queryBuilder.getMany.mockResolvedValue([
+      {
+        id: 'usage-001',
+        finalDisposition: 'INSTALLED_AT_CUSTOMER',
+      },
+    ] as never);
     runInTenant.mockImplementation(async (_dataSource, _schema, operation) =>
       operation({ manager } as never),
     );
@@ -180,10 +291,20 @@ describe('ExecutionOrdersService provisioning closure gate', () => {
     await expect(
       service.close(
         'eo-001',
-        { result: ExecutionOrderResult.NOT_EXECUTED, summary: 'Sin ejecución' },
+        {
+          result: ExecutionOrderResult.NOT_EXECUTED,
+          reasonCode: 'PARTIAL_EXECUTION',
+          summary: 'Se revierte el equipo antes de cerrar.',
+        },
         actor,
       ),
-    ).resolves.toMatchObject({ status: ExecutionOrderStatus.NOT_EXECUTED });
+    ).rejects.toMatchObject({
+      response: {
+        code: 'CLOSE_NOT_EXECUTED_HAS_INSTALLED_EQUIPMENT',
+        message:
+          'Hay equipos registrados como instalados en el cliente. Revierte esos consumos antes de cerrar como no ejecutada.',
+      },
+    });
     expect(provisioningPort.getGateStatus).not.toHaveBeenCalled();
   });
 });

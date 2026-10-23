@@ -174,6 +174,12 @@ Un comando con permiso `network.provisioning.regularize` y motivo obligatorio cr
 
 ---
 
+## Desarrollo posterior (2026-10-23)
+
+[ADR-099](ADR-099-Requisitos-de-Cierre-de-OT-por-Familia-de-Resultado.md), aprobado por el CTO el 2026-10-23, **extiende D5**: cerrar una OT de instalación con resultado `REQUIRES_FOLLOW_UP` también exige el aprovisionamiento `CERTIFIED` y consulta el mismo puerto (E1). Con el corte de D5 como estaba, ese resultado era incerrable. Además, hace alcanzable de forma honesta la liberación de IP por `NOT_EXECUTED` de D3: ese cierre ya no evalúa los requisitos del trabajo ejecutado. No modifica ninguna otra decisión de este ADR.
+
+---
+
 ## Alternativas descartadas
 
 **A1. Activar al suscriptor directamente al cerrar la OT, sin aprovisionamiento.** Resuelve el síntoma, pero deja clientes activos sin red asignada. El CTO lo descartó.
