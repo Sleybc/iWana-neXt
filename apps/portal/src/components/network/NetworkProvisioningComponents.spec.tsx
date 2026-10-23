@@ -10,8 +10,13 @@ import { SubscriberTechnicalServiceSection } from '@/components/crm/subscribers/
 import { ExecutionOrderProvisioningPanel } from '@/components/operations/ExecutionOrderProvisioningPanel';
 import { NetworkProvisioningInboxClient } from './NetworkProvisioningInboxClient';
 import { NetworkSettingsClient } from './NetworkSettingsClient';
-import { commercialApi, networkApi } from '@/lib/api-client';
+import { ApiError, commercialApi, networkApi } from '@/lib/api-client';
 import { emptyPageListMeta } from '@/lib/list-meta';
+import {
+  portalModuleTabTriggerClassName,
+  portalModuleTabsShellClassName,
+  portalModuleTabsTrackClassName,
+} from '@/components/shared/portal-ui';
 
 const mockHasPermission = jest.fn<boolean, [AccessPermissionKey]>();
 let mockSearchParams = new URLSearchParams();
@@ -129,6 +134,19 @@ describe('network provisioning portal surfaces', () => {
     );
   });
 
+  it('usa la receta compartida para las pestañas de la bandeja', async () => {
+    render(<NetworkProvisioningInboxClient />);
+
+    const tablist = await screen.findByRole('tablist', { name: 'Listas de aprovisionamiento' });
+    const tab = screen.getByRole('tab', { name: 'Cerradas sin aprovisionar' });
+
+    expect(tablist.className).toBe(portalModuleTabsTrackClassName);
+    expect(tablist.parentElement?.className).toBe(portalModuleTabsShellClassName);
+    for (const className of portalModuleTabTriggerClassName.split(/\s+/u)) {
+      expect(tab.classList.contains(className)).toBe(true);
+    }
+  });
+
   it('presenta el servicio técnico y la activación comercial sin exponer identificadores internos', async () => {
     jest.spyOn(networkApi, 'listSubscriberProvisioning').mockResolvedValue([provisioningService]);
     render(<SubscriberTechnicalServiceSection subscriberId="subscriber-1" />);
@@ -151,6 +169,39 @@ describe('network provisioning portal surfaces', () => {
     expect(screen.getByText('Reservado')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reservar dirección IP' })).not.toBeInTheDocument();
     expect(screen.queryByText('Dirección de gestión')).not.toBeInTheDocument();
+  });
+
+  it('solicita y muestra la proyección técnica con lectura de órdenes, aunque falte lectura de red', async () => {
+    mockHasPermission.mockImplementation(
+      (key) => key === AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+    );
+    const getContext = jest
+      .spyOn(networkApi, 'getProvisioningContext')
+      .mockResolvedValue(technicianView);
+
+    render(<ExecutionOrderProvisioningPanel executionOrderId="order-1" />);
+
+    expect(await screen.findByText('192.0.2.10')).toBeInTheDocument();
+    expect(screen.getByText('Reservado')).toBeInTheDocument();
+    expect(getContext).toHaveBeenCalledWith('order-1');
+    expect(screen.queryByRole('button', { name: 'Reservar dirección IP' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Dirección de gestión')).not.toBeInTheDocument();
+  });
+
+  it('muestra sin acceso cuando la API deniega el contexto del técnico', async () => {
+    mockHasPermission.mockImplementation(
+      (key) => key === AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+    );
+    const getContext = jest
+      .spyOn(networkApi, 'getProvisioningContext')
+      .mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'denegado'));
+
+    render(<ExecutionOrderProvisioningPanel executionOrderId="order-1" />);
+
+    expect(
+      await screen.findByText('No tienes acceso al aprovisionamiento de esta orden.'),
+    ).toBeInTheDocument();
+    expect(getContext).toHaveBeenCalledWith('order-1');
   });
 
   it('mantiene los ajustes de red en solo lectura cuando falta el permiso de gestión', async () => {

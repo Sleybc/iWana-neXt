@@ -158,7 +158,14 @@ export class ServiceProvisioningService {
             }),
           };
         }
-        await this.releaseExistingWithin(manager, tenantId, existing, 'REPLACED', actor.sub);
+        await this.releaseExistingWithin(
+          manager,
+          tenantId,
+          schemaName,
+          existing,
+          'REPLACED',
+          actor.sub,
+        );
       }
 
       const row = manager.create(ServiceProvisioning, {
@@ -441,7 +448,14 @@ export class ServiceProvisioningService {
         (!input.requestedIp || this.ipText(reusableAssignment.ip) === input.requestedIp),
       );
       if (existing?.status === 'FAILED' && !reuseFailedRow) {
-        await this.releaseExistingWithin(manager, tenantId, existing, 'REPLACED', actor.sub);
+        await this.releaseExistingWithin(
+          manager,
+          tenantId,
+          schemaName,
+          existing,
+          'REPLACED',
+          actor.sub,
+        );
         existing = null;
         reusableAssignment = null;
       }
@@ -532,7 +546,7 @@ export class ServiceProvisioningService {
           where: { tenantId, serviceProvisioningId: savedBeforeAssignment.id, status: 'RESERVED' },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!assignment) throw new ConflictException({ code: 'IPAM_CONFLICT' });
+        if (!assignment) throw new ConflictException({ code: 'IP_IN_USE' });
         assignment.status = 'ACTIVE';
         assignment = await manager.save(IpAssignment, assignment);
       }
@@ -866,16 +880,19 @@ export class ServiceProvisioningService {
   private async releaseExistingWithin(
     manager: EntityManager,
     tenantId: string,
+    schemaName: string,
     row: ServiceProvisioning,
     reason: 'REPLACED',
     actorId: string,
   ): Promise<void> {
+    const fromStatus = row.status;
     const assignment = await manager.findOne(IpAssignment, {
       where: { tenantId, serviceProvisioningId: row.id, status: In(['RESERVED', 'ACTIVE']) },
       lock: { mode: 'pessimistic_write' },
     });
+    let ip: string | null = null;
     if (assignment) {
-      const ip = this.ipText(assignment.ip);
+      ip = this.ipText(assignment.ip);
       if (ip) {
         await this.routerProvisioningPort.remove({
           routerId: row.routerId,
@@ -893,7 +910,24 @@ export class ServiceProvisioningService {
     row.releasedBy = actorId;
     row.releaseReason = reason;
     row.version += 1;
-    await manager.save(ServiceProvisioning, row);
+    const released = await manager.save(ServiceProvisioning, row);
+    await this.auditService.logWithin(
+      {
+        tenantId,
+        schemaName,
+        userId: actorId,
+        action: AuditAction.UPDATE,
+        entityType: 'ServiceProvisioning',
+        entityId: released.id,
+        newValue: {
+          action: 'RELEASE',
+          releaseReason: reason,
+          fromStatus,
+          ip,
+        },
+      },
+      manager,
+    );
   }
 
   private async findLatestForOrder(executionOrderId: string): Promise<ServiceProvisioning | null> {

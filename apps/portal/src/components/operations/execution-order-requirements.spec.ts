@@ -72,6 +72,10 @@ describe('execution-order-requirements', () => {
     );
   });
 
+  it('traduce explícitamente el tipo de requisito PROVISIONING', () => {
+    expect(requirementKindLabel('PROVISIONING')).toBe('Aprovisionamiento certificado');
+  });
+
   describe('deriveTemplateFromDetail', () => {
     it('devuelve null cuando la OT no tiene plantilla o snapshot', () => {
       expect(deriveTemplateFromDetail(null)).toBeNull();

@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
   IpAssignment,
@@ -77,10 +78,11 @@ function createService(overrides?: {
     suspend: jest.fn().mockResolvedValue({ mode: 'MANUAL', steps: [] }),
     sync: jest.fn().mockResolvedValue({ supported: false }),
   };
+  const ipamService = { reserveIp: jest.fn().mockResolvedValue('192.0.2.10') };
   const service = new ServiceProvisioningService(
     {} as DataSource,
     { logWithin: jest.fn() } as never,
-    { reserveIp: jest.fn() } as never,
+    ipamService as never,
     executionOrderReadPort as unknown as ExecutionOrderReadPort,
     {
       getForSubscriber: jest.fn().mockResolvedValue(null),
@@ -101,6 +103,7 @@ function createService(overrides?: {
     executionOrderReadPort,
     effectivePermissionsService,
     routerProvisioningPort,
+    ipamService,
   };
 }
 
@@ -155,6 +158,55 @@ describe('ServiceProvisioningService B2 guardrails', () => {
     });
     expect(executionOrderReadPort.getExecutionSnapshot).toHaveBeenCalledWith('eo-001');
     expect(runInTenant).not.toHaveBeenCalled();
+  });
+
+  it('regularize usa el código HTTP IP_IN_USE si no aparece la asignación reservada', async () => {
+    const { service, manager, ipamService } = createService({
+      executionOrderReadPort: {
+        getExecutionSnapshot: jest.fn().mockResolvedValue(
+          order('technician-001', {
+            id: regularizeBody.executionOrderId,
+            status: ExecutionOrderStatus.COMPLETED,
+            result: ExecutionOrderResult.EXECUTED,
+          }),
+        ),
+      },
+      subscriberContextPort: {
+        getForSubscriber: jest.fn().mockResolvedValue({
+          expedienteId: null,
+          planId: null,
+          downloadMbps: null,
+          uploadMbps: null,
+          contracts: [],
+        }),
+      },
+    });
+    manager.findOne.mockImplementation(async (entity) => {
+      if (entity === ServiceProvisioning) return null;
+      if (entity === NetworkRouter) {
+        return {
+          id: regularizeBody.routerId,
+          supportedControlMethods: ['PCQ_ADDRESS_LIST'],
+        } as never;
+      }
+      if (entity === Ipv4Network) {
+        return { id: regularizeBody.ipv4NetworkId, routerId: regularizeBody.routerId } as never;
+      }
+      return null;
+    });
+    manager.create.mockImplementation((_entity, values) => ({
+      id: '55555555-5555-4555-8555-555555555555',
+      ...values,
+    }));
+    manager.save.mockImplementation(async (_entity, value) => value);
+
+    const operation = service.regularize(regularizeBody, actor);
+
+    const error = await operation.catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'IP_IN_USE' });
+    expect(ipamService.reserveIp).toHaveBeenCalledTimes(1);
   });
 
   it('R6 ter: no certifica cuando la OT no tiene técnico asignado', async () => {

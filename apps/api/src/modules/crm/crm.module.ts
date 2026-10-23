@@ -12,7 +12,7 @@ import { ExecutionPolicyMode } from './enums/execution-policy-mode.enum';
 import { AttributionsModule } from './attributions/attributions.module';
 import { ResponsibilitiesModule } from './responsibilities/responsibilities.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
-import { NetworkModule } from '../network/network.module';
+import { NetworkCommercialStatusModule } from '../network/network-commercial-status.module';
 import { ServiceProvisioningActivationListener } from './subscribers/listeners/service-provisioning-activation.listener';
 
 class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
@@ -47,7 +47,7 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     AttributionsModule,
     ResponsibilitiesModule,
     SubscribersModule,
-    NetworkModule,
+    NetworkCommercialStatusModule,
   ],
   providers: [
     { provide: CoverageReadPort, useClass: TenantCoverageReadAdapter },

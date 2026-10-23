@@ -312,7 +312,9 @@ export function NetworkRouterCatalogClient() {
             description={
               hasFilters
                 ? 'Ajusta la búsqueda o limpia los filtros para ver otros routers.'
-                : 'Registra un router para asociar sus redes IPv4.'
+                : canManage
+                  ? 'Registra un router para asociar sus redes IPv4.'
+                  : 'La lista aparecerá cuando se configure el catálogo.'
             }
             action={
               hasFilters ? (

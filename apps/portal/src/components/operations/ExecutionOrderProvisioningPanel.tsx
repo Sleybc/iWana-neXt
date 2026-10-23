@@ -69,6 +69,9 @@ export function ExecutionOrderProvisioningPanel({
 }: ExecutionOrderProvisioningPanelProps) {
   const { hasPermission } = usePermissions();
   const canRead = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
+  const canReadExecutionOrders = hasPermission(
+    AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+  );
   const canExecute = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE);
   const canCertify = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY);
   const [context, setContext] = useState<ProvisioningOrderContextDto | null>(null);
@@ -136,7 +139,7 @@ export function ExecutionOrderProvisioningPanel({
   }, []);
 
   const loadContext = useCallback(async () => {
-    if (!canRead) {
+    if (!canRead && !canReadExecutionOrders) {
       setContext(null);
       setTechnicianView(null);
       setLoadError(NETWORK_PROVISIONING_COPY.readDenied);
@@ -153,6 +156,12 @@ export function ExecutionOrderProvisioningPanel({
         setTechnicianView(result);
         setContext(null);
         onRequirementSnapshotChange?.({ enabled: null, certified: result.certified });
+      } else if (!canRead) {
+        // Una cuenta de Operaciones sin lectura de red solo puede recibir la proyección del técnico.
+        setContext(null);
+        setTechnicianView(null);
+        setLoadError(NETWORK_PROVISIONING_COPY.readDenied);
+        onRequirementSnapshotChange?.({ enabled: null, certified: null });
       } else {
         setContext(result);
         setTechnicianView(null);
@@ -185,7 +194,14 @@ export function ExecutionOrderProvisioningPanel({
     } finally {
       setLoading(false);
     }
-  }, [canExecute, canRead, executionOrderId, loadCatalogs, onRequirementSnapshotChange]);
+  }, [
+    canExecute,
+    canRead,
+    canReadExecutionOrders,
+    executionOrderId,
+    loadCatalogs,
+    onRequirementSnapshotChange,
+  ]);
 
   useEffect(() => {
     void loadContext();

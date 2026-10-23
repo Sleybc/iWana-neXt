@@ -24,7 +24,6 @@ import {
 import {
   PortalAlert,
   PortalEmptyState,
-  PortalPanel,
   PortalSkeletonBlock,
   PortalTablePager,
   portalDataTableBodyClassName,
@@ -32,6 +31,9 @@ import {
   portalDataTableHeadClassName,
   portalDataTableHeadRowClassName,
   portalDataTableShellClassName,
+  portalModuleTabTriggerClassName,
+  portalModuleTabsShellClassName,
+  portalModuleTabsTrackClassName,
 } from '@/components/shared/portal-ui';
 import {
   collectListPages,
@@ -158,26 +160,32 @@ export function NetworkProvisioningInboxClient() {
         </p>
       </header>
 
-      <PortalPanel
-        eyebrow="Seguimiento de instalaciones"
-        title={QUEUE_LABELS[queue]}
-        description="Elige una lista para revisar las órdenes y sus servicios técnicos."
-        contentClassName="space-y-4"
-      >
+      <div className={portalModuleTabsShellClassName}>
+        <div className="min-w-0 flex-1">
+          <p className="portal-eyebrow">Seguimiento de instalaciones</p>
+          <h2 className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
+            {QUEUE_LABELS[queue]}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">
+            Elige una lista para revisar las órdenes y sus servicios técnicos.
+          </p>
+        </div>
         <div
           role="tablist"
           aria-label="Listas de aprovisionamiento"
-          className="flex flex-wrap gap-2"
+          className={portalModuleTabsTrackClassName}
         >
           {QUEUES.map((item) => (
-            <button
+            <Button
               key={item}
               type="button"
+              variant="ghost"
               role="tab"
               aria-selected={item === queue}
               aria-controls="provisioning-inbox-panel"
               id={`provisioning-inbox-tab-${item.toLowerCase()}`}
               tabIndex={item === queue ? 0 : -1}
+              data-state={item === queue ? 'active' : 'inactive'}
               onKeyDown={(event) => {
                 const currentIndex = QUEUES.indexOf(item);
                 let nextIndex: number | null = null;
@@ -196,176 +204,176 @@ export function NetworkProvisioningInboxClient() {
                 setLocation({ queue: nextQueue });
               }}
               onClick={() => setLocation({ queue: item })}
-              className={`min-h-11 rounded-xl px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary ${item === queue ? 'bg-iwana-primary text-white' : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface-2 dark:text-gray-200 dark:hover:bg-dark-surface-3'}`}
+              className={portalModuleTabTriggerClassName}
             >
               {QUEUE_LABELS[item]}
-            </button>
+            </Button>
           ))}
         </div>
+      </div>
 
-        <section
-          id="provisioning-inbox-panel"
-          role="tabpanel"
-          aria-labelledby={`provisioning-inbox-tab-${queue.toLowerCase()}`}
-          aria-busy={loading}
-        >
-          {loadError ? (
-            <PortalAlert
-              variant="error"
-              title="No pudimos cargar esta lista"
-              description={loadError}
-              action={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-h-11"
-                  onClick={() => void loadQueue()}
-                >
-                  Reintentar
-                </Button>
-              }
-            />
-          ) : null}
-          {loading && rows.length === 0 ? (
-            <div className="space-y-3" aria-busy="true">
-              <p className="sr-only" role="status" aria-live="polite">
-                Cargando la lista seleccionada
-              </p>
-              {[0, 1, 2].map((item) => (
-                <PortalSkeletonBlock key={item} className="h-16 rounded-xl" />
-              ))}
-            </div>
-          ) : !loadError && !loading && rows.length === 0 ? (
-            <PortalEmptyState
-              title={EMPTY_LABELS[queue]}
-              description="La lista se actualizará cuando haya órdenes que requieran atención."
-              action={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-h-11"
-                  onClick={() => void loadQueue()}
-                >
-                  Actualizar lista
-                </Button>
-              }
-            />
-          ) : rows.length > 0 ? (
-            <div className={portalDataTableShellClassName}>
-              <div
-                className="overflow-x-auto"
-                role="region"
-                aria-label={`Tabla: ${QUEUE_LABELS[queue]}`}
-                tabIndex={0}
+      <section
+        id="provisioning-inbox-panel"
+        role="tabpanel"
+        aria-labelledby={`provisioning-inbox-tab-${queue.toLowerCase()}`}
+        aria-busy={loading}
+        tabIndex={0}
+        className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary"
+      >
+        {loadError ? (
+          <PortalAlert
+            variant="error"
+            title="No pudimos cargar esta lista"
+            description={loadError}
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11"
+                onClick={() => void loadQueue()}
               >
-                <table className="min-w-[900px] w-full text-sm">
-                  <thead>
-                    <tr className={portalDataTableHeadRowClassName}>
+                Reintentar
+              </Button>
+            }
+          />
+        ) : null}
+        {loading && rows.length === 0 ? (
+          <div className="space-y-3" aria-busy="true">
+            <p className="sr-only" role="status" aria-live="polite">
+              Cargando la lista seleccionada
+            </p>
+            {[0, 1, 2].map((item) => (
+              <PortalSkeletonBlock key={item} className="h-16 rounded-xl" />
+            ))}
+          </div>
+        ) : !loadError && !loading && rows.length === 0 ? (
+          <PortalEmptyState
+            title={EMPTY_LABELS[queue]}
+            description="La lista se actualizará cuando haya órdenes que requieran atención."
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11"
+                onClick={() => void loadQueue()}
+              >
+                Actualizar lista
+              </Button>
+            }
+          />
+        ) : rows.length > 0 ? (
+          <div className={portalDataTableShellClassName}>
+            <div
+              className="overflow-x-auto"
+              role="region"
+              aria-label={`Tabla: ${QUEUE_LABELS[queue]}`}
+              tabIndex={0}
+            >
+              <table className="min-w-[900px] w-full text-sm">
+                <thead>
+                  <tr className={portalDataTableHeadRowClassName}>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Orden de trabajo
+                    </th>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Suscriptor
+                    </th>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Estado de la orden
+                    </th>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Técnico asignado
+                    </th>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Servicio técnico
+                    </th>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Dirección IP
+                    </th>
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Actualización
+                    </th>
+                    {queue === 'CLOSED_UNPROVISIONED' ? (
                       <th scope="col" className={portalDataTableHeadClassName}>
-                        Orden de trabajo
+                        Cierre
                       </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Suscriptor
+                    ) : null}
+                    <th scope="col" className={portalDataTableHeadClassName}>
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className={portalDataTableBodyClassName}>
+                  {rows.map((row) => (
+                    <tr key={row.executionOrderId}>
+                      <th
+                        scope="row"
+                        className={`${portalDataTableCellClassName} text-left font-mono font-semibold text-gray-900 dark:text-white`}
+                      >
+                        {row.executionOrderNumber}
                       </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Estado de la orden
-                      </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Técnico asignado
-                      </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Servicio técnico
-                      </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Dirección IP
-                      </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Actualización
-                      </th>
+                      <td className={portalDataTableCellClassName}>{row.subscriberDisplayLabel}</td>
+                      <td className={portalDataTableCellClassName}>
+                        {toExecutionOrderStatus(row.executionOrderStatus)}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        {row.assignedTechnician?.name ?? 'Sin técnico asignado'}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        {row.failureReason === 'CLOSED_WITHOUT_CERTIFICATION'
+                          ? 'Cerrada sin certificar'
+                          : getProvisioningStatusLabel(row.provisioningStatus)}
+                      </td>
+                      <td className={`${portalDataTableCellClassName} font-mono`}>
+                        {row.ip ?? '—'}
+                      </td>
+                      <td className={portalDataTableCellClassName}>
+                        {formatNetworkDate(row.updatedAt)}
+                      </td>
                       {queue === 'CLOSED_UNPROVISIONED' ? (
-                        <th scope="col" className={portalDataTableHeadClassName}>
-                          Cierre
-                        </th>
+                        <td className={portalDataTableCellClassName}>
+                          {formatNetworkDate(row.closedAt)}
+                        </td>
                       ) : null}
-                      <th scope="col" className={portalDataTableHeadClassName}>
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className={portalDataTableBodyClassName}>
-                    {rows.map((row) => (
-                      <tr key={row.executionOrderId}>
-                        <th
-                          scope="row"
-                          className={`${portalDataTableCellClassName} text-left font-mono font-semibold text-gray-900 dark:text-white`}
-                        >
-                          {row.executionOrderNumber}
-                        </th>
-                        <td className={portalDataTableCellClassName}>
-                          {row.subscriberDisplayLabel}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {toExecutionOrderStatus(row.executionOrderStatus)}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {row.assignedTechnician?.name ?? 'Sin técnico asignado'}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {row.failureReason === 'CLOSED_WITHOUT_CERTIFICATION'
-                            ? 'Cerrada sin certificar'
-                            : getProvisioningStatusLabel(row.provisioningStatus)}
-                        </td>
-                        <td className={`${portalDataTableCellClassName} font-mono`}>
-                          {row.ip ?? '—'}
-                        </td>
-                        <td className={portalDataTableCellClassName}>
-                          {formatNetworkDate(row.updatedAt)}
-                        </td>
-                        {queue === 'CLOSED_UNPROVISIONED' ? (
-                          <td className={portalDataTableCellClassName}>
-                            {formatNetworkDate(row.closedAt)}
-                          </td>
-                        ) : null}
-                        <td className={portalDataTableCellClassName}>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Link
-                              href={`/dashboard/operations/execution-orders?executionOrderId=${encodeURIComponent(row.executionOrderId)}`}
-                              className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-iwana-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:text-white"
+                      <td className={portalDataTableCellClassName}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/dashboard/operations/execution-orders?executionOrderId=${encodeURIComponent(row.executionOrderId)}`}
+                            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-iwana-primary underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:text-white"
+                          >
+                            Abrir OT <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                          </Link>
+                          {queue === 'CLOSED_UNPROVISIONED' && canRegularize ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="min-h-11"
+                              onClick={() => setActiveRow(row)}
                             >
-                              Abrir OT <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                            </Link>
-                            {queue === 'CLOSED_UNPROVISIONED' && canRegularize ? (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className="min-h-11"
-                                onClick={() => setActiveRow(row)}
-                              >
-                                Regularizar
-                              </Button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <PortalTablePager
-                page={pageMeta.page ?? page}
-                pageCount={Math.max(1, pageMeta.totalPages ?? 1)}
-                onPageChange={(next) => setLocation({ page: next })}
-                from={window.from}
-                to={window.to}
-                total={pageMeta.total}
-                resource={{ singular: 'orden', plural: 'órdenes' }}
-                totalIsEstimate={pageMeta.totalIsEstimate}
-                loading={loading}
-              />
+                              Regularizar
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : null}
-        </section>
-      </PortalPanel>
+            <PortalTablePager
+              page={pageMeta.page ?? page}
+              pageCount={Math.max(1, pageMeta.totalPages ?? 1)}
+              onPageChange={(next) => setLocation({ page: next })}
+              from={window.from}
+              to={window.to}
+              total={pageMeta.total}
+              resource={{ singular: 'orden', plural: 'órdenes' }}
+              totalIsEstimate={pageMeta.totalIsEstimate}
+              loading={loading}
+            />
+          </div>
+        ) : null}
+      </section>
 
       {activeRow ? (
         <RegularizeProvisioningDrawer

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { PlatformUser, runInTenantSchema, User } from '@iwana/db';
+import { PlatformUser, runInTenantSchema, TenantContext, User } from '@iwana/db';
 import { DataSource, In } from 'typeorm';
 import type { ActorRefDto } from '@iwana/shared';
 import { NetworkActorReadPort } from './network-actor-read.port';
@@ -15,9 +15,10 @@ export class NetworkActorReadAdapter extends NetworkActorReadPort {
     const uniqueIds = [...new Set(ids.filter(Boolean))];
     if (uniqueIds.length === 0) return [];
 
+    const { tenantId } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const tenantUsers = await qr.manager.find(User, {
-        where: { id: In(uniqueIds) },
+        where: { id: In(uniqueIds), tenantId },
         select: ['id', 'firstName', 'lastName'],
       });
       const foundTenantIds = new Set(tenantUsers.map((user) => user.id));

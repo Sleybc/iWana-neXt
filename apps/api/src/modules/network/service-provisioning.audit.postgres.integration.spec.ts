@@ -15,6 +15,7 @@ import {
 import {
   AccessPermissionKey,
   AuditAction,
+  ExecutionOrderResult,
   UserRole,
   WfmWorkType,
   ExecutionOrderStatus,
@@ -26,6 +27,8 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IpamService } from './ipam.service';
 import { ManualRouterProvisioningAdapter } from './adapters/manual-router-provisioning.adapter';
 import { ServiceProvisioningService } from './service-provisioning.service';
+import { AuditService } from '../audit/audit.service';
+import { PlatformAuditService } from '../audit/platform-audit.service';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -60,9 +63,10 @@ if (!dbAvailable) {
   );
 }
 
-describeWithDb('MOD13 B2: rollback de reserve, certify y release — PostgreSQL real', () => {
+describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL real', () => {
   let dataSource: DataSource;
   let service: ServiceProvisioningService;
+  let transactionalAuditService: AuditService;
   const auditService = {
     logWithin: jest.fn().mockRejectedValue(new Error('synthetic audit failure')),
   };
@@ -104,7 +108,37 @@ describeWithDb('MOD13 B2: rollback de reserve, certify y release — PostgreSQL 
         );
         await qr.query('DELETE FROM ip_assignments WHERE tenant_id = $1', [tenantId]);
         await qr.query('DELETE FROM service_provisionings WHERE tenant_id = $1', [tenantId]);
+        await qr.query('DELETE FROM audit_logs WHERE tenant_id = $1', [tenantId]);
       }),
+    );
+  }
+
+  async function insertFailedProvisioning(): Promise<string> {
+    const id = await insertProvisioning('RESERVED');
+    await run(() =>
+      runInTenantSchema(dataSource, schemaName, (qr) =>
+        qr.query(
+          `UPDATE service_provisionings
+              SET status = 'FAILED', failure_reason = 'CLOSED_WITHOUT_CERTIFICATION'
+            WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, id],
+        ),
+      ),
+    );
+    return id;
+  }
+
+  async function readAuditEntries(): Promise<
+    Array<{ action: string; entity_id: string; new_value: Record<string, unknown> }>
+  > {
+    return run(() =>
+      runInTenantSchema(dataSource, schemaName, (qr) =>
+        qr.query(
+          `SELECT action, entity_id, new_value
+             FROM audit_logs WHERE tenant_id = $1 ORDER BY created_at, id`,
+          [tenantId],
+        ),
+      ),
     );
   }
 
@@ -207,6 +241,23 @@ describeWithDb('MOD13 B2: rollback de reserve, certify y release — PostgreSQL 
       await migrationRunner.release();
     }
 
+    await dataSource.query(`
+      CREATE TABLE "${schemaName}".audit_logs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        user_id uuid NULL,
+        action varchar(50) NOT NULL,
+        entity_type varchar(100) NOT NULL,
+        entity_id varchar(100) NOT NULL,
+        old_value jsonb NULL,
+        new_value jsonb NULL,
+        ip_address varchar(45) NULL,
+        user_agent varchar(512) NULL,
+        request_id varchar(100) NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+
     await run(() =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
         await qr.query(
@@ -238,6 +289,9 @@ describeWithDb('MOD13 B2: rollback de reserve, certify y release — PostgreSQL 
       routerProvisioningPort,
       { emitAsync: jest.fn().mockResolvedValue([]) } as never,
     );
+    transactionalAuditService = new AuditService(dataSource, {
+      log: jest.fn().mockResolvedValue(undefined),
+    } as unknown as PlatformAuditService);
   });
 
   afterAll(async () => {
@@ -323,4 +377,109 @@ describeWithDb('MOD13 B2: rollback de reserve, certify y release — PostgreSQL 
       assignments: [{ ip: '10.44.0.10', status: 'RESERVED' }],
     });
   });
+
+  it('audita en PostgreSQL la liberación reemplazada y la nueva regularización', async () => {
+    const replacedId = await insertFailedProvisioning();
+    executionOrderReadPort.getExecutionSnapshot.mockResolvedValue({
+      id: executionOrderId,
+      executionOrderNumber: 'OTE-MOD13-0001',
+      status: ExecutionOrderStatus.COMPLETED,
+      workType: WfmWorkType.INSTALLATION,
+      isAnnulled: false,
+      subscriberId,
+      assignedTechnicianId: technicianId,
+      customerDisplayLabel: 'Suscriptor de prueba',
+      closedAt: new Date(),
+      result: ExecutionOrderResult.EXECUTED,
+    });
+    auditService.logWithin.mockImplementation((entry, manager) =>
+      transactionalAuditService.logWithin(entry, manager),
+    );
+
+    await run(() =>
+      service.regularize(
+        {
+          executionOrderId,
+          routerId,
+          ipv4NetworkId: networkId,
+          requestedIp: '10.44.0.11',
+          controlParams: { method: 'PCQ_ADDRESS_LIST', addressList: 'subscribers' },
+          reason: 'Corrección operativa',
+        },
+        actor,
+      ),
+    );
+
+    const entries = await readAuditEntries();
+    expect(entries).toHaveLength(2);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entity_id: replacedId,
+          new_value: expect.objectContaining({
+            action: 'RELEASE',
+            releaseReason: 'REPLACED',
+            fromStatus: 'FAILED',
+            ip: '10.44.0.10',
+          }),
+        }),
+        expect.objectContaining({
+          action: AuditAction.CREATE,
+          new_value: expect.objectContaining({
+            action: 'REGULARIZE',
+            ip: '10.44.0.11',
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it.each([1, 2])(
+    'revierte la liberación y la regularización si falla la auditoría %i del reemplazo',
+    async (failedAuditNumber) => {
+      const replacedId = await insertFailedProvisioning();
+      executionOrderReadPort.getExecutionSnapshot.mockResolvedValue({
+        id: executionOrderId,
+        executionOrderNumber: 'OTE-MOD13-0001',
+        status: ExecutionOrderStatus.COMPLETED,
+        workType: WfmWorkType.INSTALLATION,
+        isAnnulled: false,
+        subscriberId,
+        assignedTechnicianId: technicianId,
+        customerDisplayLabel: 'Suscriptor de prueba',
+        closedAt: new Date(),
+        result: ExecutionOrderResult.EXECUTED,
+      });
+      let auditAttempt = 0;
+      auditService.logWithin.mockImplementation(async (entry, manager) => {
+        auditAttempt += 1;
+        if (auditAttempt === failedAuditNumber) throw new Error('synthetic audit failure');
+        await transactionalAuditService.logWithin(entry, manager);
+      });
+
+      await expect(
+        run(() =>
+          service.regularize(
+            {
+              executionOrderId,
+              routerId,
+              ipv4NetworkId: networkId,
+              requestedIp: '10.44.0.11',
+              controlParams: { method: 'PCQ_ADDRESS_LIST', addressList: 'subscribers' },
+              reason: 'Corrección operativa',
+            },
+            actor,
+          ),
+        ),
+      ).rejects.toThrow('synthetic audit failure');
+
+      expect(auditAttempt).toBe(failedAuditNumber);
+      await expect(readRows()).resolves.toMatchObject({
+        services: [{ id: replacedId, status: 'FAILED' }],
+        assignments: [{ ip: '10.44.0.10', status: 'RESERVED' }],
+      });
+      await expect(readAuditEntries()).resolves.toEqual([]);
+    },
+  );
 });

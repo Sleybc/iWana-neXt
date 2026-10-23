@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -316,6 +316,59 @@ Entregable: `docs/informes/INFORME-MOD13-REVISION-UI-v1.0.md`.
 - estados de la spec UX.
 
 La evidencia visual a 375, 768 y 1280 px, en claro y oscuro, necesita el portal corriendo; queda como V4-bis junto con V1.
+
+### Ola 7 · correcciones de V2, V3 y V4
+
+#### B-fix · `sr-backend`
+
+Aplica HLD v1.1 §12 (aclaraciones al recibir V2 y V3):
+
+1. **SEC-IMPL-01 (P1):** auditar con `logWithin` la fila liberada por `releaseExistingWithin` cuando `regularize` reemplaza un servicio `FAILED`, con la acción `RELEASE` y `releaseReason: REPLACED`. Añadir una prueba contra Postgres que verifique las dos entradas de auditoría y que la operación se revierte si falla cualquiera de ellas.
+2. **Códigos de error (V3, P2):**
+   - `ipam.service.ts:75`: `NETWORK_NOT_FOUND` → `422 NETWORK_NOT_IN_ROUTER`;
+   - `service-provisioning.service.ts:535`: `IPAM_CONFLICT` → `409 IP_IN_USE`;
+   - prueba de arquitectura que recorra los `code:` emitidos por `apps/api/src/modules/network` (sin el processor del inbox) y falle si alguno no está en `NETWORK_ERROR_CODES` ∪ {`FORBIDDEN`, `VALIDATION_ERROR`}.
+3. **Frontera (V3, P3):**
+   - crear un módulo estrecho que provea y exporte solo `SERVICE_PROVISIONING_COMMERCIAL_STATUS_PORT`;
+   - que `CrmModule` lo importe en lugar de `NetworkModule`;
+   - una prueba de frontera como la de B3.0.
+4. **SEC-IMPL-02 (P3):** `network-actor-read.adapter.ts` filtra `User` también por el `tenantId` autenticado. La búsqueda de `PlatformUser` queda aparte.
+5. **SEC-IMPL-03 (P3):** el alta de router audita en `changedFields` los nombres de los campos opcionales enviados, sin valores.
+
+Las suites de `network`, `tasks`, `crm` y del worker deben seguir en verde, con conteo.
+
+#### F-fix · `fe-platform`
+
+1. **DS-MOD13-P1-01:** `ExecutionOrderProvisioningPanel` no debe cortar con `readDenied` cuando falta `network.provisioning.read`:
+   - si el usuario es el técnico asignado y tiene `operations.execution_orders.read`, pide el contexto y pinta la vista del técnico con los cinco campos de `TechnicianProvisioningViewDto`;
+   - si el API responde 403, muestra el estado sin permiso;
+   - añadir pruebas de las dos ramas.
+2. **DS-MOD13-P2-02:** los tabs de la bandeja usan la receta compartida `portalModuleTabs*` en lugar de un `tablist` hecho a mano.
+3. **DS-MOD13-P3-03:** el vacío del catálogo de routers muestra el texto de la spec UX §3 según el permiso: invita a registrar solo si existe la acción.
+4. **V3:** prueba explícita de la etiqueta `PROVISIONING` en `execution-order-requirements.ts`.
+
+Lint, typecheck y pruebas del portal con conteo. El build queda sujeto al `EPERM` del entorno; si persiste, se reporta y no se intenta forzar.
+
+### Ola 8 · confirmación estática (no necesita entorno)
+
+#### V2-c · `sec-eng`
+Comprueba en el código que la Ola 7 cerró SEC-IMPL-01, 02 y 03 y que no abrió hallazgos nuevos en los archivos que tocó. Añade una sección «Confirmación Ola 7» a `INFORME-MOD13-REVISION-SEGURIDAD-IMPLEMENTACION-v1.0.md`. La prueba de reversión contra Postgres no corrió en la Ola 7 (1 suite y 6 tests omitidos): márcala como pendiente de runtime, no como cerrada.
+
+#### V4-c · `ds-owner`
+Comprueba DS-MOD13-P1-01, P2-02 y P3-03 en el código y vuelve a correr `audit-ui.mjs` sobre las rutas `network/*` y los componentes tocados. Añade una sección «Confirmación Ola 7» a `INFORME-MOD13-REVISION-UI-v1.0.md`. La evidencia visual sigue en V4-bis.
+
+### Ola 9 · con entorno (precondiciones del CTO)
+
+Precondiciones, todas en el entorno local y sin compartir secretos por el chat:
+1. Docker Desktop corriendo, con Postgres (`127.0.0.1:5433`, base `dbiw`) y Redis de desarrollo arriba. Conviene rotar antes la contraseña de Redis, que se expuso en la Ola 4.
+2. El API respondiendo en `127.0.0.1:3000`.
+3. `E2E_TENANT_ADMIN_EMAIL` y `E2E_TENANT_ADMIN_PASSWORD` de un tenant de pruebas no `ACTIVE`, en variables de entorno.
+4. `apps/portal/.next` sin bloqueos: cerrar los `node` residuales o borrar la carpeta antes de compilar.
+
+Si falta alguna, cada bloque emite `[BLOQUEO]` y para.
+
+#### R-pg · `sr-backend`
+Ejecuta las suites contra Postgres que quedaron omitidas, empezando por `service-provisioning.audit.postgres.integration.spec.ts` (1 suite, 6 tests), y todas las `*.postgres.integration.spec.ts` de `network`. No modifiques código de producto; si algo falla, reporta.
 
 ### V1 y V5 — después de G4
 

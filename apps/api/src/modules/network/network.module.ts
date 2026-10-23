@@ -10,7 +10,6 @@ import {
 } from '@iwana/db';
 import { NETWORK_EXECUTION_EVENTS_QUEUE } from '@iwana/shared';
 import { AccessControlModule } from '../access-control/access-control.module';
-import { SERVICE_PROVISIONING_COMMERCIAL_STATUS_PORT } from '../crm/ports/service-provisioning-commercial-status.port';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { ExecutionOrderSchedulingModule } from '../tasks/execution-order-scheduling.module';
@@ -27,7 +26,6 @@ import { ManualRouterProvisioningAdapter } from './adapters/manual-router-provis
 import { ROUTER_PROVISIONING_PORT } from './ports/router-provisioning.port';
 import { NetworkProvisioningController } from './network-provisioning.controller';
 import { ServiceProvisioningService } from './service-provisioning.service';
-import { ServiceProvisioningCommercialStatusAdapter } from './adapters/service-provisioning-commercial-status.adapter';
 import { NetworkExecutionEventProcessor } from './network-execution-event.processor';
 import {
   NETWORK_PROVISIONING_RECONCILE_QUEUE,
@@ -67,12 +65,6 @@ import {
     TenantAwareThrottlerGuard,
     NetworkExecutionEventProcessor,
     NetworkProvisioningReconcilerProcessor,
-    ServiceProvisioningCommercialStatusAdapter,
-    {
-      provide: SERVICE_PROVISIONING_COMMERCIAL_STATUS_PORT,
-      useExisting: ServiceProvisioningCommercialStatusAdapter,
-    },
   ],
-  exports: [SERVICE_PROVISIONING_COMMERCIAL_STATUS_PORT],
 })
 export class NetworkModule {}

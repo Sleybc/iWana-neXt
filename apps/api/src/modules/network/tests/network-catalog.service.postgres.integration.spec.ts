@@ -54,6 +54,13 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
       )
     `);
     await dataSource.query(`
+      CREATE TABLE "${schemaName}".ipv4_networks (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        router_id uuid NOT NULL
+      )
+    `);
+    await dataSource.query(`
       CREATE TABLE "${schemaName}".audit_logs (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id uuid NOT NULL,
@@ -116,5 +123,56 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
       qr.query('SELECT id FROM network_routers WHERE tenant_id = $1', [tenantId]),
     )) as Array<{ id: string }>;
     expect(rows).toHaveLength(0);
+  });
+
+  it('audita los nombres de los campos opcionales enviados sin registrar sus valores', async () => {
+    const organizationSiteId = randomUUID();
+    const commercialNodeId = randomUUID();
+    await dataSource.query(`DROP TRIGGER reject_audit_insert ON "${schemaName}".audit_logs`);
+
+    try {
+      await TenantContext.run(context, () =>
+        service.createRouter(
+          {
+            name: 'Router con campos opcionales',
+            managementHost: 'router.example.invalid',
+            lanInterface: 'bridge-test',
+            supportedControlMethods: [CONTROL_METHODS[0]],
+            organizationSiteId,
+            commercialNodeId,
+            notes: 'Nota de integración',
+          },
+          actorId,
+        ),
+      );
+
+      const auditRows = (await runInTenantSchema(dataSource, schemaName, (qr) =>
+        qr.query(
+          'SELECT new_value FROM audit_logs WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [tenantId],
+        ),
+      )) as Array<{ new_value: Record<string, unknown> }>;
+      expect(auditRows).toHaveLength(1);
+      expect(auditRows[0]?.new_value['changedFields']).toEqual(
+        expect.arrayContaining(['organizationSiteId', 'commercialNodeId', 'notes', 'lanInterface']),
+      );
+      expect(auditRows[0]?.new_value).not.toHaveProperty('organizationSiteId');
+      expect(auditRows[0]?.new_value).not.toHaveProperty('commercialNodeId');
+      expect(auditRows[0]?.new_value).not.toHaveProperty('notes');
+      expect(auditRows[0]?.new_value).not.toHaveProperty('managementHost');
+      expect(auditRows[0]?.new_value).not.toHaveProperty('lanInterface');
+      const serializedAudit = JSON.stringify(auditRows[0]?.new_value);
+      expect(serializedAudit).not.toContain(organizationSiteId);
+      expect(serializedAudit).not.toContain(commercialNodeId);
+      expect(serializedAudit).not.toContain('Nota de integración');
+      expect(serializedAudit).not.toContain('router.example.invalid');
+      expect(serializedAudit).not.toContain('bridge-test');
+    } finally {
+      await dataSource.query(`
+        CREATE TRIGGER reject_audit_insert
+        BEFORE INSERT ON "${schemaName}".audit_logs
+        FOR EACH ROW EXECUTE FUNCTION "${schemaName}".reject_audit_insert()
+      `);
+    }
   });
 });

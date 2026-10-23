@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { TenantContext } from '@iwana/db';
 import { EntityManager } from 'typeorm';
 import { IpamService } from '../ipam.service';
@@ -59,6 +59,17 @@ describe('IpamService', () => {
 
     await expect(operation).rejects.toBeInstanceOf(ConflictException);
     await expect(operation).rejects.toMatchObject({ response: { code } });
+  });
+
+  it('traduce una red inexistente o inactiva al error HTTP cerrado de red', async () => {
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const operation = service.reserveIp(manager, {
+      networkId: NETWORK_ID,
+      provisioningId: 'b5df7551-8d4b-4db4-a758-808fe6c04789',
+    });
+
+    await expect(operation).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(operation).rejects.toMatchObject({ response: { code: 'NETWORK_NOT_IN_ROUTER' } });
   });
 
   it('reintenta una colisión del índice parcial una vez y elige la siguiente IP libre', async () => {

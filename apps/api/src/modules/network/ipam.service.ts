@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { DataSource, EntityManager } from 'typeorm';
@@ -71,8 +71,8 @@ export class IpamService {
     )) as ActiveNetworkRow[];
 
     if (networkRows.length === 0) {
-      throw new NotFoundException({
-        code: 'NETWORK_NOT_FOUND',
+      throw new UnprocessableEntityException({
+        code: 'NETWORK_NOT_IN_ROUTER',
         message: 'No se encontró una red IPv4 activa para la operación.',
       });
     }

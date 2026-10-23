@@ -18,7 +18,6 @@ export class NetworkTenantGuard implements CanActivate {
       tenantContext.schemaName !== user.schemaName
     ) {
       throw new UnauthorizedException({
-        code: 'TENANT_CONTEXT_REQUIRED',
         message: 'Se requiere un contexto de empresa autenticado.',
       });
     }
