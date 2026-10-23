@@ -1,14 +1,14 @@
 # LAUNCH — MOD13 · Aprovisionamiento Fase 01 · Ola 9 (con entorno: R-pg ∥ F1-v ∥ V1 ∥ V4-bis)
 
-**Plan:** `docs/plans/2026-10-22-mod13-aprovisionamiento.md` v1.9 · **Contrato:** `docs/hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md` v1.1
+**Plan:** `docs/plans/2026-10-22-mod13-aprovisionamiento.md` v1.11 · **Contrato:** `docs/hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md` v1.1
 **Plantilla:** [TEMPLATE-PROMPT-LANZAMIENTO.md](TEMPLATE-PROMPT-LANZAMIENTO.md) v1.1
 **Gates:** G0–G3 ✅ · G5 ✅ en código (Ola 8) · G4 ⏳ esta ola · V5 y G7 después
 **No lanzar hasta que el CTO cumpla las 5 precondiciones del prompt §Ola 9:**
-1. Docker con Postgres (5433, `dbiw`) y Redis.
-2. API en `127.0.0.1:3000`.
-3. Credenciales E2E en variables de entorno.
+1. Docker con Postgres (5433, `dbiw`) y Redis (el puerto de `REDIS_PORT`, hoy 6380).
+2. API en `127.0.0.1:3000` y portal en `127.0.0.1:3002`.
+3. `E2E_TENANT_SLUG` y las credenciales E2E de un tenant de pruebas `ACTIVE`, nunca `tenant_iwana`.
 4. `.next` sin bloqueos.
-5. Tenant de pruebas migrado hasta la 163.
+5. Migraciones 028 y 160–164 aplicadas, y `db:apply-least-privilege` ejecutado.
 
 | # | Subagente | Encargo (`PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md`) | Skills a leer | Cierra |
 | --- | --- | --- | --- | --- |

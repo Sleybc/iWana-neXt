@@ -1,31 +1,137 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { DataSource, QueryRunner } from 'typeorm';
+import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../db-credentials';
+import { TENANT_MIGRATIONS } from './runner';
 import { PublishInstalacionV3163000000000 } from './163_publish_instalacion_estandar_v3';
+import { EnsureProvisioningRequirement1640000000000 } from './164_ensure_provisioning_requirement';
 
-const SCHEMA = `tenant_it163_${randomBytes(4).toString('hex')}`;
+const SCHEMA = `tenant_it164_${randomBytes(4).toString('hex')}`;
 const TENANT_ID = randomUUID();
-const TEMPLATE_ID = randomUUID();
-const V2_ID = randomUUID();
-const OPEN_ORDER_ID = randomUUID();
+const TEMPLATE_KEY = 'INSTALACION_ESTANDAR';
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabase = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
+const migration163Index = TENANT_MIGRATIONS.findIndex(
+  (MigrationClass) => new MigrationClass().name === 'PublishInstalacionV3163000000000',
+);
+const MIGRATIONS_THROUGH_162 = TENANT_MIGRATIONS.slice(0, migration163Index);
 
 if (dbAvailable && !allowedDatabase.test(process.env['DB_NAME'] ?? 'dbiw')) {
   throw new Error(
-    'La integración 163 solo crea y limpia datos efímeros en dbiw, test o iwana_it_*',
+    'La integración 163/164 solo crea y limpia datos efímeros en dbiw, test o iwana_it_*',
   );
 }
-
+if (migration163Index < 0) {
+  throw new Error('No se encontró la migración 163 en TENANT_MIGRATIONS');
+}
 if (!dbAvailable) {
-  console.warn('[163-integration] describe.skip activo — sin PostgreSQL real.');
+  console.warn('[163/164-integration] describe.skip activo — sin PostgreSQL real.');
 }
 
-describeWithDb('163 publica INSTALACION_ESTANDAR v3 — PostgreSQL real', () => {
+interface PublishedVersionRow {
+  id: string;
+  version: number;
+  template_id: string;
+  reason_catalogs: unknown;
+}
+
+interface TenantMigration extends MigrationInterface {
+  name?: string;
+  transactional?: boolean;
+}
+
+jest.setTimeout(900_000);
+
+describeWithDb('163/164 aseguran PROVISIONING desde migraciones tenant reales — PostgreSQL', () => {
   let dataSource: DataSource;
   let runner: QueryRunner;
-  const migration = new PublishInstalacionV3163000000000();
+  const migration163 = new PublishInstalacionV3163000000000();
+  const migration164 = new EnsureProvisioningRequirement1640000000000();
+
+  async function runThrough162(queryRunner: QueryRunner): Promise<void> {
+    for (const MigrationClass of MIGRATIONS_THROUGH_162) {
+      const migration = new MigrationClass() as TenantMigration;
+      const migrationName = migration.name ?? MigrationClass.name;
+      if (migration.transactional === false) {
+        await migration.up(queryRunner);
+        continue;
+      }
+
+      await queryRunner.startTransaction();
+      try {
+        await migration.up(queryRunner);
+        await queryRunner.commitTransaction();
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw new Error(`Falló la migración de fixture ${migrationName}`, { cause: error });
+      }
+    }
+  }
+
+  async function versions(): Promise<number[]> {
+    const rows = (await runner.query(
+      `SELECT version FROM execution_order_template_versions
+        WHERE tenant_id = $1 AND template_key = $2 ORDER BY version`,
+      [TENANT_ID, TEMPLATE_KEY],
+    )) as Array<{ version: number }>;
+    return rows.map((row) => Number(row.version));
+  }
+
+  async function latestPublishedVersion(): Promise<PublishedVersionRow> {
+    const rows = (await runner.query(
+      `SELECT id, version, template_id, reason_catalogs
+         FROM execution_order_template_versions
+        WHERE tenant_id = $1 AND template_key = $2 AND status = 'PUBLISHED'
+        ORDER BY version DESC LIMIT 1`,
+      [TENANT_ID, TEMPLATE_KEY],
+    )) as PublishedVersionRow[];
+    const latest = rows[0];
+    if (!latest) throw new Error('El fixture no tiene una versión publicada');
+    return latest;
+  }
+
+  async function provisioningCount(versionId: string): Promise<number> {
+    const rows = (await runner.query(
+      `SELECT COUNT(*)::integer AS count
+         FROM execution_order_template_requirements
+        WHERE tenant_id = $1 AND version_id = $2 AND kind = 'PROVISIONING'`,
+      [TENANT_ID, versionId],
+    )) as Array<{ count: number }>;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  async function requirementKindCheckDefinition(): Promise<string> {
+    const rows = (await runner.query(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid = 'execution_order_template_requirements'::regclass
+          AND conname = 'chk_execution_order_template_requirements_kind'`,
+    )) as Array<{ definition: string }>;
+    return rows[0]?.definition ?? '';
+  }
+
+  async function createLegacyV3WithoutProvisioning(): Promise<void> {
+    const source = await latestPublishedVersion();
+    if (source.version !== 2) {
+      throw new Error(`El fixture debe partir de v2; encontró v${source.version}`);
+    }
+    const legacyVersionId = randomUUID();
+    await runner.query(
+      `INSERT INTO execution_order_template_versions
+         (id, tenant_id, template_id, template_key, version, label, status,
+          reason_catalogs, published_at, created_at)
+       VALUES ($1, $2, $3, $4, 3, 'Instalación estándar v3 heredada', 'PUBLISHED', $5, NOW(), NOW())`,
+      [legacyVersionId, TENANT_ID, source.template_id, TEMPLATE_KEY, source.reason_catalogs],
+    );
+    await runner.query(
+      `INSERT INTO execution_order_template_requirements
+         (id, tenant_id, version_id, key, label, required, kind, config, sort_order, created_at)
+       SELECT gen_random_uuid(), tenant_id, $1, key, label, required, kind, config, sort_order, NOW()
+         FROM execution_order_template_requirements
+        WHERE tenant_id = $2 AND version_id = $3`,
+      [legacyVersionId, TENANT_ID, source.id],
+    );
+  }
 
   beforeAll(async () => {
     const credentials = resolveMigrationDbCredentials();
@@ -47,14 +153,13 @@ describeWithDb('163 publica INSTALACION_ESTANDAR v3 — PostgreSQL real', () => 
     const bootstrap = dataSource.createQueryRunner();
     await bootstrap.connect();
     try {
-      await bootstrap.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`);
       await bootstrap.query(`CREATE SCHEMA "${SCHEMA}"`);
       await bootstrap.query(
-        `INSERT INTO public.tenants (id, name, slug, schema_name, contact_email)
-         VALUES ($1, $2, $3, $4, $5)`,
+        `INSERT INTO public.tenants (id, name, slug, schema_name, contact_email, status)
+         VALUES ($1, $2, $3, $4, $5, 'INACTIVE')`,
         [
           TENANT_ID,
-          'Integration tenant 163',
+          'Integration tenant MOD13 migration',
           `${SCHEMA}-slug`,
           SCHEMA,
           `${SCHEMA}@invalid.example`,
@@ -66,47 +171,13 @@ describeWithDb('163 publica INSTALACION_ESTANDAR v3 — PostgreSQL real', () => 
 
     runner = dataSource.createQueryRunner();
     await runner.connect();
-    await runner.query(`SET search_path TO "${SCHEMA}"`);
-    await runner.query(`
-      CREATE TABLE execution_order_templates (
-        id UUID PRIMARY KEY, tenant_id UUID NOT NULL, key VARCHAR(64) NOT NULL,
-        status VARCHAR(20) NOT NULL
-      );
-      CREATE TABLE execution_order_template_versions (
-        id UUID PRIMARY KEY, tenant_id UUID NOT NULL, template_id UUID NOT NULL,
-        template_key VARCHAR(64) NOT NULL, version INTEGER NOT NULL, label VARCHAR(200) NOT NULL,
-        status VARCHAR(20) NOT NULL, reason_catalogs JSONB, published_at TIMESTAMPTZ,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE execution_order_template_requirements (
-        id UUID PRIMARY KEY, tenant_id UUID NOT NULL, version_id UUID NOT NULL,
-        key VARCHAR(64) NOT NULL, label VARCHAR(200) NOT NULL, required BOOLEAN NOT NULL,
-        kind VARCHAR(20) NOT NULL, config JSONB, sort_order INTEGER NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE execution_orders (
-        id UUID PRIMARY KEY, tenant_id UUID NOT NULL, template_version_id UUID,
-        status VARCHAR(40) NOT NULL
-      );
-    `);
-    await runner.query(
-      `INSERT INTO execution_order_templates (id, tenant_id, key, status)
-       VALUES ($1, $2, 'INSTALACION_ESTANDAR', 'PUBLISHED')`,
-      [TEMPLATE_ID, TENANT_ID],
-    );
-    await runner.query(
-      `INSERT INTO execution_order_template_versions
-        (id, tenant_id, template_id, template_key, version, label, status, reason_catalogs)
-       VALUES ($1, $2, $3, 'INSTALACION_ESTANDAR', 2, 'Instalación estándar v2', 'PUBLISHED', '[]')`,
-      [V2_ID, TENANT_ID, TEMPLATE_ID],
-    );
-    await runner.query(
-      `INSERT INTO execution_order_template_requirements
-        (id, tenant_id, version_id, key, label, required, kind, config, sort_order)
-       VALUES ($1, $2, $3, 'work-photo', 'Fotos del trabajo realizado', TRUE,
-               'EVIDENCE', '{"evidenceType":"PHOTO"}', 0)`,
-      [randomUUID(), TENANT_ID, V2_ID],
-    );
+    await runner.query(`SET search_path TO "${SCHEMA}", public`);
+    await runThrough162(runner);
+
+    const tenantRows = (await runner.query(`SELECT status FROM public.tenants WHERE id = $1`, [
+      TENANT_ID,
+    ])) as Array<{ status: string }>;
+    expect(tenantRows[0]?.status).toBe('INACTIVE');
   });
 
   afterAll(async () => {
@@ -123,45 +194,61 @@ describeWithDb('163 publica INSTALACION_ESTANDAR v3 — PostgreSQL real', () => 
     }
   });
 
-  it('crea v3 con el requisito nuevo, es idempotente y revierte solo v3', async () => {
-    await migration.up(runner);
-    await migration.up(runner);
-    const versions = await runner.query(
-      'SELECT version FROM execution_order_template_versions WHERE tenant_id = $1 ORDER BY version',
-      [TENANT_ID],
-    );
-    expect(versions.map((row: { version: number }) => Number(row.version))).toEqual([2, 3]);
-    const requirementRows = await runner.query(
-      `SELECT key, kind, required FROM execution_order_template_requirements WHERE tenant_id = $1 AND version_id <> $2`,
-      [TENANT_ID, V2_ID],
-    );
-    expect(requirementRows).toContainEqual({
-      key: 'service-provisioning',
-      kind: 'PROVISIONING',
-      required: true,
-    });
+  beforeEach(async () => {
+    await runner.startTransaction();
+  });
 
-    const version3 = await runner.query(
-      `SELECT id FROM execution_order_template_versions WHERE tenant_id = $1 AND version = 3`,
-      [TENANT_ID],
-    );
-    await runner.query(
-      `INSERT INTO execution_orders (id, tenant_id, template_version_id, status)
-       VALUES ($1, $2, $3, 'IN_PROGRESS')`,
-      [OPEN_ORDER_ID, TENANT_ID, version3[0].id],
-    );
-    await expect(migration.down(runner)).rejects.toThrow(/OT referencian la v3/);
-    await runner.query(`UPDATE execution_orders SET status = 'COMPLETED' WHERE id = $1`, [
-      OPEN_ORDER_ID,
-    ]);
-    await expect(migration.down(runner)).rejects.toThrow(/OT referencian la v3/);
-    await runner.query(`DELETE FROM execution_orders WHERE id = $1`, [OPEN_ORDER_ID]);
-    await migration.down(runner);
-    await expect(
-      runner.query(
-        'SELECT version FROM execution_order_template_versions WHERE tenant_id = $1 ORDER BY version',
-        [TENANT_ID],
-      ),
-    ).resolves.toEqual([{ version: 2 }]);
+  afterEach(async () => {
+    if (runner.isTransactionActive) await runner.rollbackTransaction();
+  });
+
+  it('corrige 163 para un tenant cuya última versión publicada es v2', async () => {
+    expect((await latestPublishedVersion()).version).toBe(2);
+
+    await migration163.up(runner);
+
+    const latest = await latestPublishedVersion();
+    expect(latest.version).toBe(3);
+    expect(await provisioningCount(latest.id)).toBe(1);
+    expect(await requirementKindCheckDefinition()).toContain('PROVISIONING');
+    const v2Rows = (await runner.query(
+      `SELECT id FROM execution_order_template_versions WHERE tenant_id = $1 AND template_key = $2 AND version = 2`,
+      [TENANT_ID, TEMPLATE_KEY],
+    )) as Array<{ id: string }>;
+    expect(await provisioningCount(v2Rows[0]?.id ?? '')).toBe(0);
+
+    await migration164.up(runner);
+    expect(await versions()).toEqual([1, 2, 3]);
+
+    await migration163.down(runner);
+    expect(await versions()).toEqual([1, 2]);
+    expect(await requirementKindCheckDefinition()).not.toContain('PROVISIONING');
+  });
+
+  it('164 repara una v3 heredada sin PROVISIONING y revierte su publicación', async () => {
+    await createLegacyV3WithoutProvisioning();
+    expect((await latestPublishedVersion()).version).toBe(3);
+
+    await migration164.up(runner);
+
+    const latest = await latestPublishedVersion();
+    expect(latest.version).toBe(4);
+    expect(await provisioningCount(latest.id)).toBe(1);
+    expect(await requirementKindCheckDefinition()).toContain('PROVISIONING');
+    await migration164.down(runner);
+    expect(await versions()).toEqual([1, 2, 3]);
+    expect(await requirementKindCheckDefinition()).not.toContain('PROVISIONING');
+  });
+
+  it('la reaplicación de 164 no crea versiones ni requisitos duplicados', async () => {
+    await createLegacyV3WithoutProvisioning();
+
+    await migration164.up(runner);
+    await migration164.up(runner);
+
+    const latest = await latestPublishedVersion();
+    expect(latest.version).toBe(4);
+    expect(await versions()).toEqual([1, 2, 3, 4]);
+    expect(await provisioningCount(latest.id)).toBe(1);
   });
 });

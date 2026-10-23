@@ -743,4 +743,12 @@ No hay seeds ni backfill. Cada camino respeta `ck_sp_certified` y `ck_sp_regular
 - **`TenantAwareThrottlerGuard`:** MOD13 lo usa desde `tasks/guards` como infraestructura transversal. Moverlo a una ubicación común (`common/guards`) queda como deuda P3, fuera de esta fase.
 - **Frontera CRM:** `CrmModule` obtiene `SERVICE_PROVISIONING_COMMERCIAL_STATUS_PORT` de un módulo estrecho de MOD13, nunca de `NetworkModule` completo, igual que hizo B3.0 para tasks.
 
+**Aclaración tras aplicar `db:migrate:all` el 2026-10-23 (corrige §3.4; sin cambio de API):**
+- **Restricción de tipos:** `chk_execution_order_template_requirements_kind`, creada en la migración 094, solo admite seis tipos. Hay que ampliarla con `PROVISIONING` antes de insertar el requisito. En el `down` se restaura la lista original, pero solo si no quedan filas `PROVISIONING`.
+- **Versión que se publica:** §3.4 asumía que la última versión de `INSTALACION_ESTANDAR` era la v2. En `tenant_iwana` ya existía una v3, publicada el 2026-10-11 y usada por 2 OT. La regla correcta es esta:
+  - si la última versión publicada ya tiene un requisito `PROVISIONING`, no se hace nada;
+  - si no, se publica la versión siguiente (última + 1), copia de la última más `service-provisioning`.
+
+  Nunca se re-congelan las OT vivas.
+
 **Impacto en lo ya entregado por la Ola 1** (sin commitear): la migración `161_network_provisioning` y la entidad `service-provisioning` ganan `execution_order_number`, `regularized_by`, `regularized_at`, `released_by` y el CHECK ampliado; `network_inbox_events.last_error` pasa a `last_error_code`. B1a añade a shared los tipos del §4.4, los esquemas de los cuerpos y las dos listas de códigos. La migración `162_seed_network_permissions` asigna también `network.provisioning.regularize` a «Acceso estándar NOC» y «Acceso estándar Aprovisionamiento» (hoy los excluye con `NOC_KEYS`). Las migraciones 160 y 028 no cambian.

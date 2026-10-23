@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AuditAction } from '@iwana/shared';
 import {
   IpAssignment,
@@ -78,7 +79,7 @@ export class NetworkProvisioningReconcilerProcessor
     @Inject(EXECUTION_ORDER_READ_PORT)
     private readonly executionOrderReadPort: ExecutionOrderReadPort,
     private readonly auditService: AuditService,
-    private readonly eventEmitter: import('@nestjs/event-emitter').EventEmitter2,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super();
   }

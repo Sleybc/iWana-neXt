@@ -1,7 +1,7 @@
 # PROMPT-MOD13 — Red y Aprovisionamiento · Fase 01 · Encargos por bloque
 
 **Versión:** 1.1 · **Fecha:** 2026-10-22 · **Emisor:** AI-EM-ARCH
-**Historial:** al preparar la Ola 9 (2026-10-23) se añadió la precondición 5 (tenant de pruebas migrado) y §V4-bis. Al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
+**Historial:** el 2026-10-23 se añadió §B-mig, tras el fallo de la 163 en `db:migrate:all`. El mismo día, tras el primer intento de la Ola 9, se corrigieron las precondiciones 1, 3 y 5 (puerto de Redis, tenant de pruebas `ACTIVE` y migraciones de MOD13). Al preparar la Ola 9 (2026-10-23) se añadió la precondición 5 (tenant de pruebas migrado) y §V4-bis. Al lanzar la Ola 8 (2026-10-23) se añadieron §V2-c y §V4-c, y las precondiciones y §R-pg de la Ola 9. Al lanzar la Ola 7 (2026-10-22) se añadieron §B-fix y §F-fix. Al lanzar la Ola 6 (2026-10-22) se detallaron §V2, §V3 y §V4 y se fijaron las precondiciones de V1 y V5. Al lanzar la Ola 5 (2026-10-22) se completó §F2 con lo que fija HLD v1.1. Al lanzar la Ola 4 (2026-10-22) se añadieron §B3.0 (frontera) y §F1-v. Al lanzar la Ola 3 (2026-10-22), §B2 se alineó con los nombres de HLD v1.1 y se añadieron §P0-ter y la pantalla de ajustes en §F2. Antes: v1.1 apunta al HLD y al PRD v1.1, añade la Ola 1-bis (D1-bis, B1a-bis, P0-bis, S0-bis) y las reglas comunes 7 a 9. Aclaración del 2026-10-22, al lanzar la Ola 2: §B1b explicita lo que HLD v1.1 ya le asignaba (puerto de actores, auditoría, pipeline, formas §4.4). Los bloques ya cerrados en la Ola 1 no se re-despachan. v1.0 queda superado.
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md) v1.2 (en revisión; la estructura por bloques sigue los prompts de MOD05 Fase 08)
 **Plan:** [2026-10-22-mod13-aprovisionamiento.md](../plans/2026-10-22-mod13-aprovisionamiento.md) (orden, paralelo, gates y matriz de skills)
 **Contrato congelado:** [HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md). Ningún bloque lo modifica. Si algo no cabe, emite `[BLOQUEO] <sección del HLD> — <motivo>` y para.
@@ -360,13 +360,28 @@ Comprueba DS-MOD13-P1-01, P2-02 y P3-03 en el código y vuelve a correr `audit-u
 ### Ola 9 · con entorno (precondiciones del CTO)
 
 Precondiciones, todas en el entorno local y sin compartir secretos por el chat:
-1. Docker Desktop corriendo, con Postgres (`127.0.0.1:5433`, base `dbiw`) y Redis de desarrollo arriba. Conviene rotar antes la contraseña de Redis, que se expuso en la Ola 4.
+1. Docker Desktop corriendo, con Postgres (`127.0.0.1:5433`, base `dbiw`) y Redis de desarrollo arriba. Redis escucha en el puerto que fija `REDIS_PORT` en `.env` (hoy `6380`), no en 6379. Conviene rotar antes la contraseña de Redis, que se expuso en la Ola 4.
 2. El API respondiendo en `127.0.0.1:3000`.
-3. `E2E_TENANT_ADMIN_EMAIL` y `E2E_TENANT_ADMIN_PASSWORD` de un tenant de pruebas no `ACTIVE`, en variables de entorno.
+3. `E2E_TENANT_SLUG`, `E2E_TENANT_ADMIN_EMAIL` y `E2E_TENANT_ADMIN_PASSWORD` de un tenant **de pruebas** en variables de entorno. Ese tenant debe estar `ACTIVE`, porque uno `INACTIVE` no permite iniciar sesión, y nunca puede ser `tenant_iwana`. La v1.1 decía «no `ACTIVE`»; era un error del emisor, corregido el 2026-10-23.
 4. `apps/portal/.next` sin bloqueos: cerrar los `node` residuales o borrar la carpeta antes de compilar.
-5. El tenant de pruebas migrado hasta la `163_publish_instalacion_estandar_v3`. `db:migrate:all` solo recorre los tenants `ACTIVE`, así que un tenant de pruebas hay que migrarlo explícitamente. Antes de lanzar V1, verifícalo en solo lectura.
+5. Migraciones de MOD13 aplicadas: la pública `028_enable_btree_gist` y las de tenant de `160` a `164`, con `db:apply-least-privilege` ejecutado. El 2026-10-23 ningún tenant las tenía (todos llegaban a la 159). `db:migrate:all` las aplica a todos los tenants `ACTIVE`; los `INACTIVE` quedan fuera. Antes de lanzar, verifícalo en solo lectura.
 
 Si falta alguna, cada bloque emite `[BLOQUEO]` y para.
+
+#### B-mig · `data-eng` (antes que el resto de la Ola 9)
+
+Primer intento de `db:migrate:all`, el 2026-10-23:
+- la pública 028 y las de tenant 160–162 se aplicaron en los 6 tenants `ACTIVE`;
+- la 163 falló en 5 tenants (`23514`, `chk_execution_order_template_requirements_kind`) y se revirtió en cada uno;
+- en `tenant_iwana` quedó registrada como aplicada, pero no hizo nada (ya había una v3 sin `PROVISIONING`);
+- `db:apply-least-privilege` no llegó a correr.
+
+Corrige según HLD v1.1 §12 («Aclaración tras aplicar `db:migrate:all`»):
+1. **163:** ampliar la restricción de tipos con `PROVISIONING` antes de insertar, y publicar la versión siguiente a la última, no la v3 fija. El `down` debe ser reversible y respetar las OT que usen la versión publicada.
+2. **Nueva 164** (`164_ensure_provisioning_requirement.ts`), idempotente: amplía la restricción y publica la versión siguiente con `PROVISIONING` en todo tenant cuya última versión publicada no lo tenga. Cubre `tenant_iwana`, donde la 163 ya figura como aplicada, y es un no-op donde la 163 ya cumplió.
+3. **Pruebas de integración** sobre un schema construido con todas las migraciones reales hasta la 162, no con un fixture mínimo. Deben cubrir tres casos: un tenant con v2, un tenant con una v3 previa sin `PROVISIONING` y la reaplicación idempotente.
+
+Después, el CTO vuelve a correr `pnpm db:migrate:all`. Verificar en solo lectura, por tenant `ACTIVE`, que existe exactamente un requisito `PROVISIONING` en la última versión, y que se ejecutó `db:apply-least-privilege`. No borres filas de `typeorm_migrations` a mano. Sin cachés de jest en el repo. No commitees.
 
 #### R-pg · `sr-backend`
 Ejecuta las suites contra Postgres que quedaron omitidas, empezando por `service-provisioning.audit.postgres.integration.spec.ts` (1 suite, 6 tests), y todas las `*.postgres.integration.spec.ts` de `network`. No modifiques código de producto; si algo falla, reporta.

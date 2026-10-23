@@ -120,6 +120,7 @@ import { CreateNetworkCatalog1600000000000 } from './160_network_catalog';
 import { CreateNetworkProvisioning1610000000000 } from './161_network_provisioning';
 import { SeedNetworkPermissions1620000000000 } from './162_seed_network_permissions';
 import { PublishInstalacionV3163000000000 } from './163_publish_instalacion_estandar_v3';
+import { EnsureProvisioningRequirement1640000000000 } from './164_ensure_provisioning_requirement';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -321,6 +322,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateNetworkProvisioning1610000000000,
   SeedNetworkPermissions1620000000000,
   PublishInstalacionV3163000000000,
+  EnsureProvisioningRequirement1640000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;
