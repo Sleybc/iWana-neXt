@@ -362,3 +362,22 @@ Los dos verdes requeridos son dos corridas consecutivas completas, cada una con 
 | 10 | Spec live: lectura posterior de suscriptor y activo/comodato. | **Aprobado en las corridas 18 y 19**; el suscriptor termina `ACTIVE`, el activo `INSTALLED_COMODATO` y el comodato está abierto. |
 
 **Cierre V1-ci2:** G4 queda cubierto por las dos corridas consecutivas verdes. El resto de la matriz conserva el estado ya documentado en V1-r, R-pg y B-wire; esta serie no amplía sus conteos.
+
+## E2E en CI · Ola 17 (2026-10-24)
+
+La spec usa `E2E_OPERATIONAL_SITE_ID`, que publica [`scripts/e2e-provision-operational.mjs`](../../scripts/e2e-provision-operational.mjs); no requiere ni consulta `E2E_MOD13_SITE_ID`. El provisioner conserva el fixture en un tenant efímero y pasa al portal solo credenciales MOD13 con nombre de entorno aislado. Se agregaron el requisito CPE y las claves de evidencia que consume el spec; API y worker comparten una clave HMAC aleatoria en memoria para que el evento de inventario complete el receipt. No se cambió código de producto, `.github/workflows/ci.yml` ni `tenant_iwana`.
+
+### Corrida local del camino CI
+
+Comando ejecutado: `node scripts/e2e-provision-operational.mjs`. El provisioner terminó el setup y cleanup; la spec MOD13 pasó dentro de la suite portal completa. La corrida local se ejecutó en Windows y terminó con código `1` por ocho comparaciones de capturas visuales.
+
+| Suite portal | Total | Aprobados | Fallidos | Omitidos con motivo | No ejecutados | Flaky | Cuarentenas |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Corrida final | **310** | **284** | **8** | **18** | **0** | **0** | **0** |
+
+- `E2E_SETUP=OK`, `E2E_CLEANUP=OK`, `E2E_PLAYWRIGHT_MISSING_SKIP_REASONS=0` y `E2E_PLAYWRIGHT_QUARANTINED=0`.
+- `portal-network-provisioning-live.spec.ts`: **1 test aprobado**, **52,956 ms**.
+- Suite Playwright: **464,697 ms**; duración total del provisioner: **529,849 ms**.
+- Los ocho fallos fueron capturas: cuatro de `portal-settings-access-ui.spec.ts` y cuatro de `portal-settings-organization-ui.spec.ts` (desktop/tablet, light/dark). La suite no se declara verde localmente; este resultado no verifica una corrida Linux del job de CI.
+
+Validaciones auxiliares: `node --check scripts/e2e-provision-operational.mjs`, ESLint, Prettier, `--validate-playwright-markers`, `docker compose ... config --quiet` y `git diff --check` terminaron con código `0`. La caché `.next` preexistente y `next-env.d.ts` se restauraron tras el build; los reportes y salidas quedaron bajo `%TEMP%`.

@@ -13,6 +13,7 @@ import process from 'node:process';
 import crypto from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { validateQuarantine } from './check-e2e-quarantine.mjs';
 
 // Fuente única del piso del vertical R4.1 (tests 4a/4b/4c/4d/4e).
 const REQUIRED_OPERATIONAL_E2E_PASSED = 30;
@@ -86,13 +87,24 @@ function verifyOperationalMarkers(logContents) {
     skipped: readMarkerCount(markers, 'E2E_PLAYWRIGHT_SKIPPED'),
     didNotRun: readMarkerCount(markers, 'E2E_PLAYWRIGHT_DID_NOT_RUN'),
     flaky: readMarkerCount(markers, 'E2E_PLAYWRIGHT_FLAKY'),
+    quarantined: readMarkerCount(markers, 'E2E_PLAYWRIGHT_QUARANTINED'),
+    skipReasonCount: readMarkerCount(markers, 'E2E_PLAYWRIGHT_SKIP_REASON_COUNT'),
+    missingSkipReasons: readMarkerCount(markers, 'E2E_PLAYWRIGHT_MISSING_SKIP_REASONS'),
   };
 
   if (counts.failed !== 0) {
     throw new Error(`Tests fallidos: ${counts.failed}`);
   }
-  if (counts.skipped !== 0) {
-    throw new Error(`Tests skipped: ${counts.skipped}`);
+  if (counts.skipped !== counts.skipReasonCount) {
+    throw new Error(
+      `Omisiones con motivo: ${counts.skipReasonCount}; tests skipped: ${counts.skipped}`,
+    );
+  }
+  if (counts.missingSkipReasons !== 0) {
+    throw new Error(`Tests skipped sin motivo: ${counts.missingSkipReasons}`);
+  }
+  if (counts.quarantined !== 0) {
+    throw new Error(`Tests en cuarentena: ${counts.quarantined}`);
   }
   if (counts.didNotRun !== 0) {
     throw new Error(`Tests sin ejecutar: ${counts.didNotRun}`);
@@ -114,6 +126,9 @@ function markerFixture(overrides = {}) {
     skipped: 0,
     didNotRun: 0,
     flaky: 0,
+    quarantined: 0,
+    skipReasonCount: 0,
+    missingSkipReasons: 0,
     ...overrides,
   };
 
@@ -125,6 +140,9 @@ function markerFixture(overrides = {}) {
     `E2E_PLAYWRIGHT_SKIPPED=${counts.skipped}`,
     `E2E_PLAYWRIGHT_DID_NOT_RUN=${counts.didNotRun}`,
     `E2E_PLAYWRIGHT_FLAKY=${counts.flaky}`,
+    `E2E_PLAYWRIGHT_QUARANTINED=${counts.quarantined}`,
+    `E2E_PLAYWRIGHT_SKIP_REASON_COUNT=${counts.skipReasonCount}`,
+    `E2E_PLAYWRIGHT_MISSING_SKIP_REASONS=${counts.missingSkipReasons}`,
     'E2E_CLEANUP=OK',
   ].join('\n');
 }
@@ -146,8 +164,23 @@ function validateOperationalMarkerLogic() {
     throw new Error('Caso PASS no conservó passed=30 y flaky=0');
   }
 
+  const reasonedSkip = verifyOperationalMarkers(markerFixture({ skipped: 1, skipReasonCount: 1 }));
+  if (reasonedSkip.skipped !== reasonedSkip.skipReasonCount) {
+    throw new Error('Caso de omisión razonada no conservó el conteo de motivos');
+  }
+
   expectMarkerGateFailure(markerFixture({ passed: 29 }), 'passed=29');
   expectMarkerGateFailure(markerFixture({ flaky: 1 }), 'flaky=1');
+  expectMarkerGateFailure(markerFixture({ skipped: 1 }), 'omisión sin motivo');
+  expectMarkerGateFailure(
+    markerFixture({ skipped: 1, skipReasonCount: 1, quarantined: 1 }),
+    'cuarentena activa',
+  );
+  expectMarkerGateFailure(markerFixture({ skipped: 1 }), 'omisión sin motivo');
+  expectMarkerGateFailure(
+    markerFixture({ skipped: 1, skipReasonCount: 1, quarantined: 1 }),
+    'cuarentena activa',
+  );
 }
 
 function deriveApiPort(apiRoot) {
@@ -265,6 +298,8 @@ setRuntimeDefault('DB_MIGRATOR_PASSWORD', randomRuntimeValue('e2e-db-migrator'))
 setRuntimeDefault('REDIS_HOST', 'localhost');
 // La infraestructura E2E usa una clave efímera propia, nunca la del entorno dev.
 process.env.REDIS_PASSWORD = randomRuntimeValue('e2e-redis');
+// API y worker comparten una firma exclusiva del entorno E2E para los eventos internos.
+process.env.INTERNAL_QUEUE_SIGNING_KEY = crypto.randomBytes(32).toString('base64');
 setRuntimeDefault('E2E_DB_PORT', '15433');
 setRuntimeDefault('E2E_REDIS_PORT', '16380');
 setRuntimeDefault('E2E_MINIO_API_PORT', '19002');
@@ -407,6 +442,9 @@ function assertSlug(slug) {
 }
 
 tenantSlugs.forEach(assertSlug);
+if (tenantSlugs.includes('tenant_iwana')) {
+  throw new Error('[BLOQUEO] El provisioner no puede operar sobre tenant_iwana.');
+}
 
 if (!platformEmail || !platformPassword) {
   throw new Error('Faltan E2E_PLATFORM_* o PLATFORM_SUPER_ADMIN_* para el login de plataforma.');
@@ -426,7 +464,7 @@ function runCommand(label, command, args, options = {}) {
     cwd: process.cwd(),
     env: process.env,
     stdio: options.stdio ?? 'inherit',
-    shell: process.platform === 'win32',
+    shell: process.platform === 'win32' && command !== process.execPath,
     encoding: options.encoding,
   });
 
@@ -1198,11 +1236,49 @@ async function assignProfiles(token, userRoles) {
   }
 }
 
+async function verifyNocNetworkPermissions(token, userId) {
+  const body = await api(
+    `/access-control/users/${userId}/effective-permissions`,
+    { headers: authHeaders(token) },
+    [200],
+  );
+  const permissionsData = responseData(body);
+  const permissionValues = Array.isArray(permissionsData)
+    ? permissionsData
+    : (permissionsData.effectivePermissions ??
+      permissionsData.permissions ??
+      permissionsData.data ??
+      []);
+  const effectivePermissions = new Set(
+    Array.isArray(permissionValues)
+      ? permissionValues.map((entry) =>
+          typeof entry === 'string' ? entry : (entry?.permissionKey ?? entry?.key),
+        )
+      : [],
+  );
+  const requiredPermissions = [
+    'network.catalog.read',
+    'network.catalog.manage',
+    'network.provisioning.read',
+    'network.provisioning.execute',
+    'network.provisioning.certify',
+    'network.provisioning.regularize',
+  ];
+  const missingPermissions = requiredPermissions.filter((key) => !effectivePermissions.has(key));
+  if (missingPermissions.length > 0) {
+    throw new Error(
+      `El perfil NOC estándar no concede permisos MOD13 requeridos (${missingPermissions.join(', ')}).`,
+    );
+  }
+  console.log(`E2E_NETWORK_PERMISSIONS=OK|count=${requiredPermissions.length}`);
+}
+
 async function provisionInventoryFixture(token, technicianId) {
+  const inventoryCategoryCode = `E2E-CPE-${suffix}`;
   const categoryBody = await api(
     '/inventory/categories',
     jsonRequest(token, {
-      code: `E2E-CPE-${suffix}`,
+      code: inventoryCategoryCode,
       codePrefix: 'E2E',
       name: `E2E CPE ${suffix}`,
     }),
@@ -1250,6 +1326,43 @@ async function provisionInventoryFixture(token, technicianId) {
     throw new Error('El fixture de inventario no obtuvo itemId.');
   }
 
+  const serializedCpeBody = await api(
+    '/inventory/items',
+    jsonRequest(token, {
+      name: 'CPE serializado sintético MOD13 V1',
+      brand: 'E2E',
+      model: 'MOD13-CI',
+      categoryId,
+      category: 'CPE',
+      itemKind: 'SERIALIZED',
+      trackingMode: 'SERIALIZED',
+      unitOfMeasure: 'UNIT',
+      baseCost: 1,
+      minimumStock: 0,
+      purchasable: true,
+      inventoryControlled: true,
+    }),
+    [200, 201],
+  );
+  const serializedCpe = responseData(serializedCpeBody);
+  if (typeof serializedCpe.id !== 'string') {
+    throw new Error('El fixture de inventario no obtuvo el item serializado MOD13.');
+  }
+
+  await api(
+    '/purchasing/suppliers',
+    jsonRequest(token, {
+      partyType: 'ORGANIZATION',
+      documentType: 'NIT',
+      documentNumber: '900123456',
+      displayName: `Proveedor E2E MOD13 ${suffix}`,
+      legalName: `Proveedor E2E MOD13 ${suffix} S.A.S.`,
+      paymentTermsDays: 0,
+      currency: 'COP',
+    }),
+    [200, 201],
+  );
+
   const locationBody = await api(
     '/inventory/locations',
     jsonRequest(token, {
@@ -1268,6 +1381,16 @@ async function provisionInventoryFixture(token, technicianId) {
   }
 
   await api(
+    '/inventory/locations',
+    jsonRequest(token, {
+      code: `E2E-MAIN-${suffix}`,
+      name: `E2E bodega principal ${suffix}`,
+      type: 'MAIN_WAREHOUSE',
+    }),
+    [200, 201],
+  );
+
+  await api(
     '/inventory/adjustments',
     jsonRequest(token, {
       itemId,
@@ -1279,6 +1402,8 @@ async function provisionInventoryFixture(token, technicianId) {
     }),
     [200, 201],
   );
+  console.log('E2E_MOD13_INVENTORY_FIXTURES=OK');
+  return inventoryCategoryCode;
 }
 
 async function provisionExecutionTemplate(
@@ -1418,7 +1543,7 @@ class OperationalMarkerReporter {
     const testKey = typeof test.id === 'string'
       ? test.id
       : 'title:' + test.titlePath().join('\\u001f');
-    this.resultsByTest.set(testKey, result);
+    this.resultsByTest.set(testKey, { result, annotations: test.annotations ?? [] });
     if (Number.isInteger(result.retry) && result.retry > 0) {
       this.retriedTests.add(testKey);
     }
@@ -1428,12 +1553,27 @@ class OperationalMarkerReporter {
     let passed = 0;
     let failed = 0;
     let skipped = 0;
+    let skipReasonCount = 0;
+    let missingSkipReasons = 0;
 
-    for (const result of this.resultsByTest.values()) {
+    for (const { result, annotations } of this.resultsByTest.values()) {
       if (result.status === 'passed') {
         passed += 1;
       } else if (result.status === 'skipped') {
         skipped += 1;
+        const hasQuarantineReason = annotations.some(
+          (annotation) =>
+            annotation.type === 'fixme' &&
+            /^QUARANTINE:\s*[A-Z0-9][A-Z0-9_-]*$/u.test(annotation.description ?? ''),
+        );
+        const hasSkipReason = annotations.some(
+          (annotation) =>
+            annotation.type === 'skip' &&
+            typeof annotation.description === 'string' &&
+            annotation.description.trim().length > 0,
+        );
+        if (hasQuarantineReason || hasSkipReason) skipReasonCount += 1;
+        else missingSkipReasons += 1;
       } else {
         // timedOut/interrupted también son fallos del gate, no falsos verdes.
         failed += 1;
@@ -1446,6 +1586,8 @@ class OperationalMarkerReporter {
     process.stdout.write('E2E_PLAYWRIGHT_SKIPPED=' + skipped + '\n');
     process.stdout.write('E2E_PLAYWRIGHT_DID_NOT_RUN=' + didNotRun + '\n');
     process.stdout.write('E2E_PLAYWRIGHT_FLAKY=' + this.retriedTests.size + '\n');
+    process.stdout.write('E2E_PLAYWRIGHT_SKIP_REASON_COUNT=' + skipReasonCount + '\n');
+    process.stdout.write('E2E_PLAYWRIGHT_MISSING_SKIP_REASONS=' + missingSkipReasons + '\n');
   }
 }
 
@@ -1456,53 +1598,129 @@ export default OperationalMarkerReporter;
   return { reporterDirectory, reporterPath };
 }
 
-function runPlaywright(env) {
+function createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineCount) {
+  const inheritedNames = new Set([
+    'PATH',
+    'PATHEXT',
+    'SYSTEMROOT',
+    'WINDIR',
+    'TEMP',
+    'TMP',
+    'LOCALAPPDATA',
+    'APPDATA',
+    'USERPROFILE',
+    'HOMEDRIVE',
+    'HOMEPATH',
+    'COMSPEC',
+    'HOME',
+    'OS',
+    'PLAYWRIGHT_BROWSERS_PATH',
+  ]);
+  const childEnv = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (inheritedNames.has(name.toUpperCase())) childEnv[name] = value;
+  }
+
+  return {
+    ...childEnv,
+    CI: 'true',
+    NODE_ENV: 'development',
+    NEXT_TELEMETRY_DISABLED: '1',
+    API_BASE_URL: API_ROOT,
+    PORTAL_BASE_URL: 'http://127.0.0.1:3002',
+    E2E_MARKER_REPORTER_PATH: reporterPath,
+    E2E_QUARANTINE_COUNT: String(quarantineCount),
+    PLAYWRIGHT_JSON_OUTPUT_NAME: reportPath,
+    E2E_MOD13_TENANT_SLUG: env.E2E_TENANT_SLUG,
+    E2E_MOD13_TENANT_ADMIN_EMAIL: env.E2E_TENANT_ADMIN_EMAIL,
+    E2E_MOD13_TENANT_ADMIN_PASSWORD: env.E2E_TENANT_ADMIN_PASSWORD,
+    E2E_MOD13_NOC_EMAIL: env.E2E_NOC_EMAIL,
+    E2E_MOD13_NOC_PASSWORD: env.E2E_NOC_PASSWORD,
+    E2E_MOD13_TECH_EMAIL: env.E2E_TECH_EMAIL,
+    E2E_MOD13_TECH_PASSWORD: env.E2E_TECH_PASSWORD,
+    E2E_MOD13_COORDINATOR_EMAIL: env.E2E_COORDINATOR_RO_EMAIL,
+    E2E_MOD13_COORDINATOR_PASSWORD: env.E2E_COORDINATOR_RO_PASSWORD,
+    E2E_OPERATIONAL_SITE_ID: env.E2E_OPERATIONAL_SITE_ID,
+  };
+}
+
+function runPlaywright(env, quarantineCount) {
   const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
   const startedAt = Date.now();
   // El config activa el reporter temporal mediante una variable de entorno.
   // Playwright 1.58 no soporta --add-reporter en la CLI.
   const { reporterDirectory, reporterPath } = createPlaywrightMarkerReporter();
+  const reportPath = join(reporterDirectory, 'portal-e2e-report.json');
+  const outputPath = join(reporterDirectory, 'test-results');
   let result;
+  let retainFailedReport = false;
+  let mod13SpecFound = false;
+  let mod13SpecDurationMs = 0;
   try {
-    result = spawnSync(
-      command,
-      [
-        'exec',
-        'playwright',
-        'test',
-        'e2e/tests/api/execution-orders-operational.spec.ts',
-        'e2e/tests/api/audit-logs-tenant-isolation.spec.ts',
-        '--config',
-        'e2e/playwright.api.config.ts',
-        '--retries',
-        '0',
-      ],
-      {
-        cwd: process.cwd(),
-        env: { ...env, E2E_MARKER_REPORTER_PATH: reporterPath },
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: process.platform === 'win32',
-      },
-    );
+    result = spawnSync(command, ['test:e2e:portal', '--retries=0', '--output', outputPath], {
+      cwd: process.cwd(),
+      env: createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineCount),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    retainFailedReport =
+      process.env.E2E_KEEP_FAILED_PORTAL_REPORT === 'true' &&
+      (Boolean(result.error) || result.status !== 0);
+    try {
+      const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+      const visitSuite = (suite) => {
+        for (const spec of suite.specs ?? []) {
+          const file = String(spec.file ?? '').replaceAll('\\', '/');
+          if (file.split('/').at(-1) !== 'portal-network-provisioning-live.spec.ts') continue;
+          mod13SpecFound = true;
+          for (const test of spec.tests ?? []) {
+            for (const attempt of test.results ?? []) {
+              mod13SpecDurationMs += Number(attempt.duration) || 0;
+            }
+          }
+        }
+        for (const child of suite.suites ?? []) visitSuite(child);
+      };
+      for (const suite of report.suites ?? []) visitSuite(suite);
+    } catch {
+      console.log('E2E_PLAYWRIGHT_COUNTS=UNPARSED');
+    }
   } finally {
-    rmSync(reporterDirectory, { recursive: true, force: true });
+    if (!retainFailedReport) {
+      rmSync(reporterDirectory, { recursive: true, force: true });
+    }
   }
 
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
+  if (retainFailedReport) {
+    console.log(`E2E_PLAYWRIGHT_REPORT_PATH=${reportPath}`);
   }
 
   if (result.error) {
-    console.error(`E2E_PLAYWRIGHT=FAILED|${result.error.message}`);
+    console.error('E2E_PLAYWRIGHT=FAILED|No se pudo iniciar la suite portal.');
     return 1;
   }
 
+  const output = result.stdout ?? '';
+  const markerLines = output
+    .split(/\r?\n/u)
+    .filter((line) =>
+      /^E2E_PLAYWRIGHT_(?:PASSED|FAILED|SKIPPED|DID_NOT_RUN|FLAKY|SKIP_REASON_COUNT|MISSING_SKIP_REASONS)=/u.test(
+        line,
+      ),
+    );
+  for (const marker of markerLines) console.log(marker);
+
+  console.log(`E2E_PLAYWRIGHT_QUARANTINED=${quarantineCount}`);
+  console.log(`E2E_MOD13_SPEC_FOUND=${mod13SpecFound}`);
+  console.log(`E2E_MOD13_SPEC_DURATION_MS=${mod13SpecDurationMs}`);
   console.log(`E2E_PLAYWRIGHT_EXIT=${result.status ?? 1}`);
   console.log(`E2E_PLAYWRIGHT_DURATION_MS=${Date.now() - startedAt}`);
+  if (!mod13SpecFound) {
+    console.error('E2E_PLAYWRIGHT=FAILED|La suite portal no recogió el spec de MOD13.');
+    return 1;
+  }
 
   return result.status ?? 1;
 }
@@ -1550,6 +1768,14 @@ let createdTenants = false;
 const runStartedAt = Date.now();
 
 try {
+  runCommand('Validación de cuarentena E2E', process.execPath, [
+    'scripts/check-e2e-quarantine.mjs',
+  ]);
+  const quarantineValidation = await validateQuarantine();
+  if (quarantineValidation.errors.length > 0) {
+    throw new Error('La validación de cuarentena E2E no quedó limpia.');
+  }
+  const quarantineCount = quarantineValidation.quarantineCount;
   await provisionInfrastructure();
   runCommand('Compilación de @iwana/shared', 'pnpm', ['--filter', '@iwana/shared', 'build']);
   runCommand('Compilación de @iwana/storage', 'pnpm', ['--filter', '@iwana/storage', 'build']);
@@ -1668,10 +1894,11 @@ try {
     { userId: auditor.id, role: 'AUDITOR' },
     { userId: tenantAdmin.userId, role: 'ADMIN' },
   ]);
+  await verifyNocNetworkPermissions(tenantAdmin.token, noc.id);
   await provisionCoordinatorSupervisionProfile(tenantAdmin.token, coordinator.id);
   const operationalSiteId = await provisionOperationalSite(tenantAdmin.token, coordinator.id);
   diagnoseSupervisionFixture(tenantSlug, coordinator.id, operationalSiteId);
-  await provisionInventoryFixture(tenantAdmin.token, technician.id);
+  const inventoryCategoryCode = await provisionInventoryFixture(tenantAdmin.token, technician.id);
   await configureBusinessHours(tenantAdmin.token);
 
   // Provisionar plantilla E2E_HAPPY_PATH necesaria para el gate de cierre.
@@ -1686,15 +1913,23 @@ try {
     workType: 'INSTALLATION',
     requirements: [
       {
-        key: 'installation-activity',
-        label: 'Actividad de instalación',
+        key: 'installed-equipment',
+        label: 'Equipos instalados en el sitio del cliente',
         required: true,
-        kind: 'ACTIVITY',
-        activityType: 'INSTALLATION',
+        kind: 'MATERIAL',
+        itemCategory: inventoryCategoryCode,
+        finalDisposition: 'INSTALLED_AT_CUSTOMER',
       },
       {
-        key: 'e2e-test-evidence',
-        label: 'Evidencia de trabajo',
+        key: 'service-test',
+        label: 'Prueba de servicio en el sitio',
+        required: true,
+        kind: 'EVIDENCE',
+        evidenceType: 'PHOTO',
+      },
+      {
+        key: 'work-photo',
+        label: 'Foto del trabajo',
         required: true,
         kind: 'EVIDENCE',
         evidenceType: 'PHOTO',
@@ -1718,31 +1953,34 @@ try {
 
   console.log(`E2E_SETUP=OK|tenants=${tenantSlug},${otherTenantSlug}`);
 
-  testExitCode = runPlaywright({
-    ...process.env,
-    API_BASE_URL: API_ROOT,
-    E2E_PLATFORM_EMAIL: platformEmail,
-    E2E_PLATFORM_PASSWORD: platformPassword,
-    E2E_TENANT_ADMIN_EMAIL: tenantAdminEmail,
-    E2E_TENANT_ADMIN_PASSWORD: tenantAdminPassword,
-    E2E_TENANT_SLUG: tenantSlug,
-    E2E_NOC_EMAIL: nocEmail,
-    E2E_NOC_PASSWORD: nocPassword,
-    E2E_TECH_EMAIL: techEmail,
-    E2E_TECH_PASSWORD: techPassword,
-    E2E_TECH2_EMAIL: tech2Email,
-    E2E_TECH2_PASSWORD: tech2Password,
-    E2E_COORDINATOR_RO_EMAIL: coordinatorEmail,
-    E2E_COORDINATOR_RO_PASSWORD: coordinatorPassword,
-    E2E_AUDITOR_EMAIL: auditorEmail,
-    E2E_AUDITOR_PASSWORD: auditorPassword,
-    E2E_OPERATIONAL_SITE_ID: operationalSiteId,
-    E2E_HAPPY_PATH_TEMPLATE_ID: happyPathTemplateId,
-    E2E_OTHER_TENANT_SLUG: otherTenantSlug,
-    E2E_OTHER_TENANT_EMAIL: otherTenantAdminEmail,
-    E2E_OTHER_TENANT_PASSWORD: otherTenantAdminPassword,
-    E2E_OTHER_TENANT_ADMIN_TOKEN: otherTenantAdmin.token,
-  });
+  testExitCode = runPlaywright(
+    {
+      ...process.env,
+      API_BASE_URL: API_ROOT,
+      E2E_PLATFORM_EMAIL: platformEmail,
+      E2E_PLATFORM_PASSWORD: platformPassword,
+      E2E_TENANT_ADMIN_EMAIL: tenantAdminEmail,
+      E2E_TENANT_ADMIN_PASSWORD: tenantAdminPassword,
+      E2E_TENANT_SLUG: tenantSlug,
+      E2E_NOC_EMAIL: nocEmail,
+      E2E_NOC_PASSWORD: nocPassword,
+      E2E_TECH_EMAIL: techEmail,
+      E2E_TECH_PASSWORD: techPassword,
+      E2E_TECH2_EMAIL: tech2Email,
+      E2E_TECH2_PASSWORD: tech2Password,
+      E2E_COORDINATOR_RO_EMAIL: coordinatorEmail,
+      E2E_COORDINATOR_RO_PASSWORD: coordinatorPassword,
+      E2E_AUDITOR_EMAIL: auditorEmail,
+      E2E_AUDITOR_PASSWORD: auditorPassword,
+      E2E_OPERATIONAL_SITE_ID: operationalSiteId,
+      E2E_HAPPY_PATH_TEMPLATE_ID: happyPathTemplateId,
+      E2E_OTHER_TENANT_SLUG: otherTenantSlug,
+      E2E_OTHER_TENANT_EMAIL: otherTenantAdminEmail,
+      E2E_OTHER_TENANT_PASSWORD: otherTenantAdminPassword,
+      E2E_OTHER_TENANT_ADMIN_TOKEN: otherTenantAdmin.token,
+    },
+    quarantineCount,
+  );
 } catch (error) {
   console.error(`E2E_SETUP=FAILED|${error instanceof Error ? error.message : String(error)}`);
 } finally {

@@ -39,6 +39,8 @@ function shouldUseSystemChrome(): boolean {
 }
 
 const useSystemChrome = shouldUseSystemChrome();
+const markerReporterPath = process.env.E2E_MARKER_REPORTER_PATH;
+const jsonReportPath = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME;
 
 export default defineConfig({
   testDir: './tests',
@@ -49,7 +51,10 @@ export default defineConfig({
   },
   fullyParallel: false,
   workers: 1,
-  reporter: [['list']],
+  reporter:
+    markerReporterPath && jsonReportPath
+      ? [['list'], ['json', { outputFile: jsonReportPath }], [markerReporterPath]]
+      : [['list']],
   use: {
     baseURL: 'http://127.0.0.1:3002',
     trace: 'on-first-retry',

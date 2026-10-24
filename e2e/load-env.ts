@@ -83,7 +83,9 @@ export function loadWorkspaceEnv(): void {
   // workspace, lo que funciona en ambos y no depende de desde dónde se invoque.
   const workspaceRoot = findWorkspaceRoot();
 
-  if (loadEnvFile && workspaceRoot) {
+  // CI solo recibe las variables que declara el job; no debe heredar secretos
+  // ni fixtures locales desde archivos del workspace.
+  if (process.env.CI !== 'true' && loadEnvFile && workspaceRoot) {
     for (const candidate of ['.env.development.local', '.env.development', '.env']) {
       const filePath = resolve(workspaceRoot, candidate);
 

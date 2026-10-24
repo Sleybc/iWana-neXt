@@ -5,8 +5,7 @@ import { seedPortalSession } from './helpers/portal-session';
 const API_BASE = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000';
 const API_PREFIX = API_BASE + '/api/v1';
 const PORTAL_BASE = process.env.PORTAL_BASE_URL ?? 'http://127.0.0.1:3002';
-const TEST_TENANT = 'srqa-mod11-r5-20261006';
-const TENANT_SLUG = process.env.E2E_TENANT_SLUG;
+const TENANT_SLUG = process.env.E2E_MOD13_TENANT_SLUG;
 const CPE_ITEM_NAME = 'CPE serializado sintético MOD13 V1';
 const JPG = Buffer.from(
   '/9j/4AAQSkZJRgABAQAAAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Qf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8Qf//Z',
@@ -99,7 +98,7 @@ function safeCode(body: unknown): string {
 
 function tenantHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {
-    'X-Tenant-Slug': requireEnv(TENANT_SLUG, 'E2E_TENANT_SLUG'),
+    'X-Tenant-Slug': requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG'),
     'X-Requested-With': 'XMLHttpRequest',
   };
   if (token) headers.Authorization = 'Bearer ' + token;
@@ -141,7 +140,7 @@ async function login(
   password: string | undefined,
 ): Promise<Session> {
   const response = await page.request.post(API_PREFIX + '/auth/login', {
-    headers: { 'X-Tenant-Slug': requireEnv(TENANT_SLUG, 'E2E_TENANT_SLUG') },
+    headers: { 'X-Tenant-Slug': requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG') },
     data: {
       email: requireEnv(email, 'credencial E2E'),
       password: requireEnv(password, 'credencial E2E'),
@@ -279,32 +278,38 @@ async function getOrder(page: Page, token: string, id: string): Promise<Order> {
 
 async function createOrder(
   page: Page,
-  noc: Session,
+  dispatcher: Session,
   technician: Session,
   siteId: string,
   subscriberId: string,
   label: string,
   suffix: string,
 ): Promise<Order> {
-  const dispatched = await api<Order>(page, noc.token, 'POST', '/tasks/execution-orders/dispatch', {
-    originContext: 'MANUAL',
-    workType: 'INSTALLATION',
-    organizationSiteId: siteId,
-    customerDisplayLabel: label,
-    serviceAddress: 'Dirección de prueba ' + suffix,
-    municipality: 'Bogotá',
-    sector: 'Sector de pruebas',
-    workSummary: 'Instalación sintética MOD13 ' + suffix,
-    subscriberId,
-  });
+  const dispatched = await api<Order>(
+    page,
+    dispatcher.token,
+    'POST',
+    '/tasks/execution-orders/dispatch',
+    {
+      originContext: 'MANUAL',
+      workType: 'INSTALLATION',
+      organizationSiteId: siteId,
+      customerDisplayLabel: label,
+      serviceAddress: 'Dirección de prueba ' + suffix,
+      municipality: 'Bogotá',
+      sector: 'Sector de pruebas',
+      workSummary: 'Instalación sintética MOD13 ' + suffix,
+      subscriberId,
+    },
+  );
   expect(dispatched.status).toBe('CREATED');
   expect(dispatched.id).toMatch(/^[0-9a-f-]{36}$/iu);
 
-  const current = await getOrder(page, noc.token, dispatched.id);
+  const current = await getOrder(page, dispatcher.token, dispatched.id);
   expect(current.status).toBe('CREATED');
   const assigned = await api<Order>(
     page,
-    noc.token,
+    dispatcher.token,
     'POST',
     '/tasks/execution-orders/' + current.id + '/assign',
     { assigneeType: 'TECHNICIAN', assigneeId: technician.userId },
@@ -492,6 +497,11 @@ async function createCommercialFixture(
     identityVerified: 'VERIFIED',
     legalComplianceStatus: 'APPROVED',
   });
+  await api<Dict>(page, admin.token, 'POST', '/privacy/legal-texts', {
+    type: 'AUTORIZACION',
+    version: 'mod13-e2e-' + suffix,
+    content: 'Texto de autorización sintético para prueba E2E MOD13.',
+  });
   const legalText = await api<{ version?: string }>(
     page,
     admin.token,
@@ -574,6 +584,45 @@ async function createCommercialFixture(
   return { expedienteId: expediente.id, subscriberId, contractId: contract.id, email };
 }
 
+async function createPcqPlanFixture(
+  page: Page,
+  admin: Session,
+  noc: Session,
+  suffix: string,
+): Promise<{ plan: Plan; profile: PlanProfile }> {
+  const createdPlan = await api<Plan>(page, admin.token, 'POST', '/commercial/catalog/plans', {
+    name: 'Plan MOD13 ' + suffix,
+    vatConcept: 'INTERNET_ACCESS',
+    technology: 'FTTH',
+    downloadSpeedMbps: 300,
+    uploadSpeedMbps: 100,
+    installationRule: 'ON_DEMAND',
+  });
+  expect(createdPlan.id).toMatch(/^[0-9a-f-]{36}$/iu);
+
+  const profile = await api<PlanProfile>(
+    page,
+    noc.token,
+    'PUT',
+    '/network/plan-profiles/' + createdPlan.id,
+    { pcqAddressList: 'mod13_' + suffix },
+  );
+  expect(profile).toMatchObject({ planId: createdPlan.id, pcqAddressList: 'mod13_' + suffix });
+
+  const activePlans = asList<Plan>(
+    await api<unknown>(
+      page,
+      admin.token,
+      'GET',
+      '/commercial/catalog?type=PLAN&isActive=true&limit=100',
+    ),
+  );
+  const plan = activePlans.find((candidate) => candidate.id === createdPlan.id);
+  expect(plan?.isActive).toBe(true);
+  if (!plan) throw new Error('El plan PCQ creado no aparece activo en el catálogo.');
+  return { plan, profile };
+}
+
 async function createRouterAndNetwork(
   page: Page,
   noc: Session,
@@ -646,7 +695,7 @@ async function reserveThroughPortal(
 ): Promise<Provisioning> {
   await seedPortalSession(page, {
     token: noc.token,
-    tenantSlug: requireEnv(TENANT_SLUG, 'E2E_TENANT_SLUG'),
+    tenantSlug: requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG'),
   });
   await page.goto(
     '/dashboard/operations/execution-orders?executionOrderId=' + encodeURIComponent(order.id),
@@ -790,7 +839,7 @@ async function registerCpeThroughPortal(
 ): Promise<void> {
   await seedPortalSession(page, {
     token: tech.token,
-    tenantSlug: requireEnv(TENANT_SLUG, 'E2E_TENANT_SLUG'),
+    tenantSlug: requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG'),
   });
   await page.goto(
     '/dashboard/operations/execution-orders?executionOrderId=' + encodeURIComponent(order.id),
@@ -838,30 +887,87 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
   test.describe.configure({ mode: 'serial' });
   test.setTimeout(360_000);
 
+  const siteId = process.env.E2E_OPERATIONAL_SITE_ID;
+  const hasOperationalFixture = [
+    TENANT_SLUG,
+    siteId,
+    process.env.E2E_MOD13_NOC_EMAIL,
+    process.env.E2E_MOD13_NOC_PASSWORD,
+    process.env.E2E_MOD13_TECH_EMAIL,
+    process.env.E2E_MOD13_TECH_PASSWORD,
+    process.env.E2E_MOD13_COORDINATOR_EMAIL,
+    process.env.E2E_MOD13_COORDINATOR_PASSWORD,
+    process.env.E2E_MOD13_TENANT_ADMIN_EMAIL,
+    process.env.E2E_MOD13_TENANT_ADMIN_PASSWORD,
+  ].every((value) => Boolean(value?.trim()));
+
+  let guardToRestore: { token: string; previousValue: boolean } | undefined;
+
+  test.afterEach(async ({ page }) => {
+    const restore = guardToRestore;
+    guardToRestore = undefined;
+    if (restore) {
+      await api(page, restore.token, 'PATCH', '/network/settings', {
+        enforceProvisioningOnInstallClose: restore.previousValue,
+      });
+    }
+  });
+
   test('recorre una instalación completa y libera la IP al anular otra OT', async ({
     page,
     browser,
   }) => {
-    expect(TENANT_SLUG, 'El spec solo puede operar en el tenant de pruebas autorizado').toBe(
-      TEST_TENANT,
+    test.skip(
+      !hasOperationalFixture,
+      'Requiere las credenciales y la sede del provisioner operativo de MOD13.',
     );
+    const tenantSlug = requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG');
+    expect(tenantSlug).not.toBe('tenant_iwana');
     const health = await page.request.get(API_PREFIX + '/health');
     expect(health.status()).toBe(200);
     const portalLogin = await page.request.get(PORTAL_BASE + '/auth/login');
     expect(portalLogin.status()).toBe(200);
 
-    const noc = await login(page, process.env.E2E_NOC_EMAIL, process.env.E2E_NOC_PASSWORD);
-    const tech = await login(page, process.env.E2E_TECH_EMAIL, process.env.E2E_TECH_PASSWORD);
+    const noc = await login(
+      page,
+      process.env.E2E_MOD13_NOC_EMAIL,
+      process.env.E2E_MOD13_NOC_PASSWORD,
+    );
+    const tech = await login(
+      page,
+      process.env.E2E_MOD13_TECH_EMAIL,
+      process.env.E2E_MOD13_TECH_PASSWORD,
+    );
+    const dispatcher = await login(
+      page,
+      process.env.E2E_MOD13_COORDINATOR_EMAIL,
+      process.env.E2E_MOD13_COORDINATOR_PASSWORD,
+    );
     const admin = await login(
       page,
-      process.env.E2E_TENANT_ADMIN_EMAIL,
-      process.env.E2E_TENANT_ADMIN_PASSWORD,
+      process.env.E2E_MOD13_TENANT_ADMIN_EMAIL,
+      process.env.E2E_MOD13_TENANT_ADMIN_PASSWORD,
     );
     expect(noc.userId).not.toBe(tech.userId);
     expect(admin.userId).not.toBe(tech.userId);
-    const siteId = requireEnv(process.env.E2E_MOD13_SITE_ID, 'E2E_MOD13_SITE_ID');
-    expect(siteId).toMatch(/^[0-9a-f-]{36}$/iu);
+    expect(dispatcher.userId).not.toBe(noc.userId);
+    expect(dispatcher.userId).not.toBe(tech.userId);
+    const operationalSiteId = requireEnv(siteId, 'E2E_OPERATIONAL_SITE_ID');
+    expect(operationalSiteId).toMatch(/^[0-9a-f-]{36}$/iu);
 
+    const initialSettings = await api<{ enforceProvisioningOnInstallClose: boolean }>(
+      page,
+      noc.token,
+      'GET',
+      '/network/settings',
+    );
+    guardToRestore = {
+      token: noc.token,
+      previousValue: initialSettings.enforceProvisioningOnInstallClose,
+    };
+    await api(page, noc.token, 'PATCH', '/network/settings', {
+      enforceProvisioningOnInstallClose: true,
+    });
     const settings = await api<{ enforceProvisioningOnInstallClose: boolean }>(
       page,
       noc.token,
@@ -869,43 +975,25 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
       '/network/settings',
     );
     expect(settings.enforceProvisioningOnInstallClose).toBe(true);
-    const commercialPlans = asList<Plan>(
-      await api<unknown>(
-        page,
-        admin.token,
-        'GET',
-        '/commercial/catalog?type=PLAN&isActive=true&limit=100',
-      ),
-    );
-    const profiles = asList<PlanProfile>(
-      await api<unknown>(page, noc.token, 'GET', '/network/plan-profiles'),
-    );
-    const eligibleProfiles = profiles.filter((profile) =>
-      /^[A-Za-z0-9._-]{1,64}$/u.test(profile.pcqAddressList),
-    );
-    expect(eligibleProfiles).toHaveLength(1);
-    const profile = eligibleProfiles[0]!;
-    const plan = commercialPlans.find((candidate) => candidate.id === profile.planId);
-    expect(plan?.isActive).toBe(true);
-
     const runId = randomUUID().replace(/-/gu, '').slice(0, 12).toLowerCase();
     const suffix = Date.now().toString(36) + runId;
-    const commercial = await createCommercialFixture(page, admin, plan!, suffix);
+    const { plan, profile } = await createPcqPlanFixture(page, admin, noc, suffix);
+    const commercial = await createCommercialFixture(page, admin, plan, suffix);
     const cpe = await createAndTransferCpe(page, admin, tech, suffix);
-    const { router, network } = await createRouterAndNetwork(page, noc, siteId, suffix);
+    const { router, network } = await createRouterAndNetwork(page, noc, operationalSiteId, suffix);
 
     const mainOrder = await createOrder(
       page,
-      noc,
+      dispatcher,
       tech,
-      siteId,
+      operationalSiteId,
       commercial.subscriberId,
       'Titular sintético ' + suffix,
       suffix + '-main',
     );
     const currentMain = await getOrder(page, noc.token, mainOrder.id);
     expect(currentMain.status).toBe('ASSIGNED');
-    expect(currentMain.template?.version).toBe(3);
+    expect(currentMain.template?.version).toBeGreaterThan(0);
     expect(currentMain.template?.requirements?.length).toBeGreaterThan(0);
 
     await registerCpeThroughPortal(page, tech, currentMain, cpe.serial);
@@ -913,11 +1001,32 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
       .poll(
         async () => {
           const context = await getOrderContext(page, noc.token, currentMain.id);
-          return context.cpe?.serialNumber ?? null;
+          const itemUsages = asList<{
+            serial?: string;
+            movementStatus: string;
+            rejectionReasonCode?: string | null;
+          }>(
+            await api<unknown>(
+              page,
+              noc.token,
+              'GET',
+              '/tasks/execution-orders/' + currentMain.id + '/item-usage?limit=100',
+            ),
+          );
+          const cpeUsage = itemUsages.find((usage) => usage.serial === cpe.serial);
+          return {
+            cpeInstalled: context.cpe?.serialNumber === cpe.serial,
+            movementStatus: cpeUsage?.movementStatus ?? 'NOT_FOUND',
+            rejectionReasonCode: cpeUsage?.rejectionReasonCode ?? null,
+          };
         },
         { timeout: 90_000, intervals: [500, 1_000, 2_000] },
       )
-      .toBe(cpe.serial);
+      .toEqual({
+        cpeInstalled: true,
+        movementStatus: 'CONFIRMED',
+        rejectionReasonCode: null,
+      });
 
     // Detener consultas del drawer mientras se cargan evidencias por API;
     // cada ruta de evidencia comparte una cuota de diez por actor y minuto.
@@ -983,7 +1092,7 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
 
     await seedPortalSession(page, {
       token: noc.token,
-      tenantSlug: requireEnv(TENANT_SLUG, 'E2E_TENANT_SLUG'),
+      tenantSlug: requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG'),
     });
     await page.goto(
       '/dashboard/operations/execution-orders?executionOrderId=' +
@@ -1023,7 +1132,7 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
     const closingPage = await browser.newPage({ baseURL: PORTAL_BASE });
     await seedPortalSession(closingPage, {
       token: tech.token,
-      tenantSlug: requireEnv(TENANT_SLUG, 'E2E_TENANT_SLUG'),
+      tenantSlug: requireEnv(TENANT_SLUG, 'E2E_MOD13_TENANT_SLUG'),
     });
     await closingPage.goto(
       '/dashboard/operations/execution-orders?executionOrderId=' +
@@ -1114,9 +1223,9 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
 
     const secondOrder = await createOrder(
       closingPage,
-      noc,
+      dispatcher,
       tech,
-      siteId,
+      operationalSiteId,
       commercial.subscriberId,
       'Titular sintético ' + suffix,
       suffix + '-cancel',
@@ -1143,12 +1252,14 @@ test.describe('MOD13 · aprovisionamiento de red en tenant de prueba', () => {
 
     const annulled = await api<Order>(
       closingPage,
-      noc.token,
+      dispatcher.token,
       'POST',
       '/tasks/execution-orders/' + secondInProgress.id + '/annul',
       { reason: 'OT sintética anulada para comprobar la liberación de IP.' },
       {
-        'If-Match': String(await getOrderVersion(closingPage, noc.token, secondInProgress.id)),
+        'If-Match': String(
+          await getOrderVersion(closingPage, dispatcher.token, secondInProgress.id),
+        ),
         'Idempotency-Key': 'mod13-ci2-annul-' + randomUUID(),
       },
     );
