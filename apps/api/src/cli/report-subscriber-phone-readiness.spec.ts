@@ -7,7 +7,9 @@ import {
   type SubscriberPhoneReadinessRuntime,
 } from './report-subscriber-phone-readiness';
 
-const TENANT_ID = '0b6f3c1e-4a8d-4c2f-9e3a-2d7b5f1a9c01';
+// UUID sintético con ocho dígitos contiguos: protege contra falsos positivos
+// al buscar teléfonos en la salida JSON del reporte.
+const TENANT_ID = '12345678-0000-4000-8000-000000000001';
 const TENANT_SLUG = 'readiness-unit';
 
 // Valores sintéticos: ninguno pertenece a una persona real.
@@ -344,6 +346,12 @@ describe('runSubscriberPhoneReadiness', () => {
   it('la salida no contiene teléfonos, IDs ni nombres de suscriptor', async () => {
     const { stdout } = await runCapturing(['--tenant=readiness-unit'], PRODUCTION_ENV);
     const digitsOnly = (value: string) => value.replace(/\D/gu, '');
+    // Corrección transversal: los UUID contienen dígitos, pero no son teléfonos.
+    // Se mantienen las comprobaciones exactas de cada teléfono antes de buscarlos.
+    const outputWithoutUuids = stdout.replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/giu,
+      '',
+    );
 
     // Valores de menos de 7 caracteres (p. ej. «12») no son discriminantes frente a un UUID.
     for (const value of Object.values(SYNTHETIC)) {
@@ -353,8 +361,8 @@ describe('runSubscriberPhoneReadiness', () => {
     }
     for (const id of Object.values(SUBSCRIBER_IDS)) expect(stdout).not.toContain(id);
     expect(stdout).not.toContain('Nombre sintético');
-    expect(stdout).not.toMatch(/\+\d{7,15}/u);
-    expect(stdout).not.toMatch(/\d{7,}/u);
+    expect(outputWithoutUuids).not.toMatch(/\+\d{7,15}/u);
+    expect(outputWithoutUuids).not.toMatch(/\d{7,}/u);
   });
 
   it('cierra el runtime aunque falle la medición', async () => {

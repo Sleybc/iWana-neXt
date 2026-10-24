@@ -245,8 +245,11 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
-    await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
-    await dataSource.destroy();
+    try {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+    } finally {
+      await dataSource.destroy();
+    }
   });
 
   it('mide teléfonos descifrados y acciones con fallback sin escribir ni exponer datos', async () => {
@@ -324,6 +327,12 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
     }
     for (const id of seededIds) expect(stdout).not.toContain(id);
     expect(stdout).not.toContain('Sintético');
-    expect(stdout).not.toMatch(/\d{7,}/u);
+    // Corrección transversal: los UUID aleatorios del reporte no son teléfonos;
+    // retirarlos evita falsos positivos al buscar teléfonos expuestos.
+    const outputWithoutUuids = stdout.replace(
+      /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/giu,
+      '',
+    );
+    expect(outputWithoutUuids).not.toMatch(/\d{7,}/u);
   });
 });

@@ -9,6 +9,10 @@
       "reason": "La suite requiere la base sintética i4_qa_20261006_a1 y Redis DB 15; el job API usa DB_NAME=test y no provisiona esa infraestructura de fixture."
     },
     {
+      "spec": "apps/api/src/modules/network/network-execution-event.postgres.integration.spec.ts",
+      "reason": "Esta suite ejecuta Workers BullMQ y requiere Redis real con IWANA_REDIS_INTEGRATION_AVAILABLE=true; el job de integración API provisiona PostgreSQL pero no Redis. El wiring AppModule/Postgres sin Redis se ejecuta en network-execution-event.wiring.postgres.integration.spec.ts."
+    },
+    {
       "spec": "apps/api/src/modules/tasks/tests/execution-orders.item-usage-projection.postgres.integration.spec.ts",
       "reason": "La suite exige DB_NAME=i4_qa_20261006_a1; el job API ejecuta contra su base efímera test y no apunta a la base sintética compartida."
     }
