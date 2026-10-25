@@ -31,6 +31,10 @@ const AVAILABILITY_FLAG = 'IWANA_DB_INTEGRATION_AVAILABLE';
 const ENV_CANDIDATES = ['.env.development.local', '.env.development', '.env'];
 
 function loadWorkspaceEnv() {
+  if (process.env['CI'] === 'true') {
+    return;
+  }
+
   const loadEnvFile = process.loadEnvFile;
   if (typeof loadEnvFile !== 'function') {
     return;

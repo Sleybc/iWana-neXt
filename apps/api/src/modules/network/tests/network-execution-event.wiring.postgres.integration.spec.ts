@@ -9,10 +9,9 @@ jest.mock('otplib', () => ({
   ScureBase32Plugin: jest.fn(),
 }));
 
-import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { Test, TestingModule } from '@nestjs/testing';
+import { createHash, createHmac, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { Test, TestingModule, type TestingModuleBuilder } from '@nestjs/testing';
+import { NoopGraphInspector } from '@nestjs/core/inspector/noop-graph-inspector';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getQueueToken } from '@nestjs/bullmq';
 import { DataSource } from 'typeorm';
@@ -63,21 +62,6 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from '../../privacy/alerts/privacy-due-alert
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { Subscriber } from '../../crm/subscribers/entities/subscriber.entity';
 
-const loadEnvFile = (process as NodeJS.Process & { loadEnvFile?: (path?: string) => void })
-  .loadEnvFile;
-if (loadEnvFile) {
-  const workspaceRoot = resolve(__dirname, '../../../../../../');
-  for (const filename of ['.env.development.local', '.env.development', '.env']) {
-    const path = resolve(workspaceRoot, filename);
-    if (!existsSync(path)) continue;
-    try {
-      loadEnvFile(path);
-    } catch {
-      // La precondición posterior informa la dependencia local sin exponer su configuración.
-    }
-  }
-}
-
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabase = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
@@ -107,6 +91,28 @@ const regularizeOrderId = randomUUID();
 const regularizeSubscriberId = randomUUID();
 const context = { tenantId, schemaName, tenantSlug };
 const syntheticSigningKey = randomBytes(32).toString('base64');
+const syntheticMfaEncryptionKey = randomBytes(32).toString('hex');
+const syntheticPiiEncryptionKey = randomBytes(32).toString('hex');
+const syntheticPiiHashKey = randomBytes(32).toString('hex');
+const syntheticAuthKeys = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
+const syntheticEnvironmentKeys = [
+  'NODE_ENV',
+  'JWT_PRIVATE_KEY',
+  'JWT_PUBLIC_KEY',
+  'EXECUTION_ORDER_IDEMPOTENCY_SECRET',
+  'INTERNAL_QUEUE_SIGNING_KEY',
+  'MFA_ENCRYPTION_KEY',
+  'PII_ENCRYPTION_KEY',
+  'PII_HASH_KEY',
+] as const;
+const originalEnvironment = new Map(
+  syntheticEnvironmentKeys.map((key) => [key, process.env[key]] as const),
+);
+let syntheticEnvironmentInstalled = false;
 const queueNames = [
   TENANT_PROVISIONING_QUEUE,
   SEARCH_INDEX_QUEUE,
@@ -141,6 +147,34 @@ function signedEvent(envelope: NetworkExecutionEvent): Record<string, unknown> {
       .update(canonicalizeNetworkExecutionEvent(tenantId, envelope))
       .digest('hex'),
   };
+}
+
+function installSyntheticEnvironment(): void {
+  process.env['NODE_ENV'] = 'test';
+  // Este interruptor solo reproduce el fallo de ciclo de vida; CI no lo define.
+  if (process.env['MOD13_TEST_OMIT_JWT_PRIVATE_KEY'] === 'true') {
+    delete process.env['JWT_PRIVATE_KEY'];
+  } else {
+    process.env['JWT_PRIVATE_KEY'] = syntheticAuthKeys.privateKey;
+  }
+  process.env['JWT_PUBLIC_KEY'] = syntheticAuthKeys.publicKey;
+  process.env['EXECUTION_ORDER_IDEMPOTENCY_SECRET'] = randomBytes(32).toString('hex');
+  process.env['INTERNAL_QUEUE_SIGNING_KEY'] = syntheticSigningKey;
+  process.env['MFA_ENCRYPTION_KEY'] = syntheticMfaEncryptionKey;
+  process.env['PII_ENCRYPTION_KEY'] = syntheticPiiEncryptionKey;
+  process.env['PII_HASH_KEY'] = syntheticPiiHashKey;
+  syntheticEnvironmentInstalled = true;
+}
+
+function restoreSyntheticEnvironment(): void {
+  if (!syntheticEnvironmentInstalled) return;
+
+  for (const key of syntheticEnvironmentKeys) {
+    const originalValue = originalEnvironment.get(key);
+    if (originalValue === undefined) delete process.env[key];
+    else process.env[key] = originalValue;
+  }
+  syntheticEnvironmentInstalled = false;
 }
 
 interface NetworkState {
@@ -208,11 +242,11 @@ async function readNetworkState(
 
 describeWithDb('MOD13 — cableado de NetworkModule en AppModule y PostgreSQL real', () => {
   let moduleRef: TestingModule | undefined;
+  let moduleBuilder: TestingModuleBuilder | undefined;
   let fixtureDataSource: DataSource | undefined;
   let eventEmitter: EventEmitter2 | undefined;
   let networkController: NetworkProvisioningController | undefined;
   let executionEventProcessor: NetworkExecutionEventProcessor | undefined;
-  const originalSigningKey = process.env['INTERNAL_QUEUE_SIGNING_KEY'];
   const activationEvents: ServiceProvisioningActivatedEvent[] = [];
   let schemaCreated = false;
   let tenantInserted = false;
@@ -234,81 +268,139 @@ describeWithDb('MOD13 — cableado de NetworkModule en AppModule y PostgreSQL re
     jti: randomUUID(),
   };
 
-  beforeAll(async () => {
-    const databaseHost = process.env['DB_HOST'] ?? '127.0.0.1';
-    if (!['localhost', '127.0.0.1', '::1'].includes(databaseHost)) {
-      throw new Error('La prueba solo permite PostgreSQL loopback para fixtures efímeras.');
-    }
-    process.env['INTERNAL_QUEUE_SIGNING_KEY'] = syntheticSigningKey;
-
-    const { AppModule } = await import('../../../app.module');
-    const moduleBuilder = Test.createTestingModule({ imports: [AppModule] });
-    moduleBuilder.overrideProvider(REDIS_CLIENT).useValue(redisStub);
-    for (const queueName of queueNames) {
-      moduleBuilder.overrideProvider(getQueueToken(queueName)).useValue(queueStub);
-    }
-    moduleRef = await moduleBuilder.compile();
-
-    fixtureDataSource = new DataSource({
-      ...dataSourceOptions,
-      entities: [
-        AccessProfile,
-        AccessProfilePermission,
-        ExecutionOrder,
-        User,
-        UserAccessProfile,
-        Subscriber,
-      ],
-      migrations: [],
-      migrationsRun: false,
-      logging: false,
-      extra: { ...dataSourceOptions.extra, max: 3, min: 1 },
-    });
-    await fixtureDataSource.initialize();
-    await createFixtureSchema(fixtureDataSource);
-
-    const appEventEmitter = moduleRef.get<EventEmitter2>(EventEmitter2);
-    eventEmitter = appEventEmitter;
-    appEventEmitter.on(
-      'network.service-provisioning.activated',
-      (event: ServiceProvisioningActivatedEvent) => activationEvents.push(event),
-    );
-    networkController = moduleRef.get(NetworkProvisioningController);
-    executionEventProcessor = moduleRef.get(NetworkExecutionEventProcessor);
-  }, 180_000);
-
-  afterAll(async () => {
+  async function cleanupResources(): Promise<unknown[]> {
     const cleanupFailures: unknown[] = [];
-    const attemptCleanup = async (action: () => Promise<unknown>): Promise<void> => {
+    const attemptCleanup = async (action: () => Promise<unknown>): Promise<boolean> => {
       try {
         await action();
+        return true;
       } catch (error) {
         cleanupFailures.push(error);
+        return false;
       }
     };
 
-    try {
-      await attemptCleanup(async () => moduleRef?.close());
-      if (fixtureDataSource?.isInitialized) {
-        if (schemaCreated) {
-          await attemptCleanup(() =>
-            fixtureDataSource!.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`),
-          );
-        }
-        if (tenantInserted) {
-          await attemptCleanup(() =>
-            fixtureDataSource!.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]),
-          );
-        }
-        await attemptCleanup(() => fixtureDataSource!.destroy());
+    if (moduleRef && (await attemptCleanup(() => moduleRef!.close()))) moduleRef = undefined;
+
+    if (fixtureDataSource?.isInitialized) {
+      if (
+        schemaCreated &&
+        (await attemptCleanup(() =>
+          fixtureDataSource!.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`),
+        ))
+      ) {
+        schemaCreated = false;
       }
-    } finally {
-      if (originalSigningKey === undefined) delete process.env['INTERNAL_QUEUE_SIGNING_KEY'];
-      else process.env['INTERNAL_QUEUE_SIGNING_KEY'] = originalSigningKey;
+      if (
+        tenantInserted &&
+        (await attemptCleanup(() =>
+          fixtureDataSource!.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]),
+        ))
+      ) {
+        tenantInserted = false;
+      }
+      await attemptCleanup(() => fixtureDataSource!.destroy());
     }
 
-    if (cleanupFailures.length > 0) {
-      throw new AggregateError(cleanupFailures, 'Falló la limpieza de fixtures MOD13 B-wire.');
+    return cleanupFailures;
+  }
+
+  function partialModuleRef(builder: TestingModuleBuilder): TestingModule | undefined {
+    // compile() no devuelve TestingModule si falla un provider; se reconstruye el contexto
+    // solo para ejecutar los hooks de cierre sobre las instancias ya creadas.
+    const internals = builder as unknown as {
+      applicationConfig: ConstructorParameters<typeof TestingModule>[3];
+      container: ConstructorParameters<typeof TestingModule>[0];
+      getRootModule: () => ConstructorParameters<typeof TestingModule>[2];
+    };
+    const contextModule = internals.getRootModule.call(builder);
+    if (!contextModule) return undefined;
+    return new TestingModule(
+      internals.container,
+      NoopGraphInspector,
+      contextModule,
+      internals.applicationConfig,
+    );
+  }
+
+  beforeAll(async () => {
+    installSyntheticEnvironment();
+    try {
+      const databaseHost = process.env['DB_HOST'] ?? '127.0.0.1';
+      if (!['localhost', '127.0.0.1', '::1'].includes(databaseHost)) {
+        throw new Error('La prueba solo permite PostgreSQL loopback para fixtures efímeras.');
+      }
+      // Nest instancia proveedores concurrentemente durante compile(); validar antes evita
+      // dejar conexiones parcialmente creadas cuando falta una clave obligatoria.
+      if (process.env['JWT_PRIVATE_KEY'] === undefined) {
+        throw new TypeError('Configuration key "JWT_PRIVATE_KEY" does not exist');
+      }
+      const { AppModule } = await import('../../../app.module');
+      moduleBuilder = Test.createTestingModule({ imports: [AppModule] });
+      moduleBuilder.overrideProvider(REDIS_CLIENT).useValue(redisStub);
+      for (const queueName of queueNames) {
+        moduleBuilder.overrideProvider(getQueueToken(queueName)).useValue(queueStub);
+      }
+      moduleRef = await moduleBuilder.compile();
+
+      fixtureDataSource = new DataSource({
+        ...dataSourceOptions,
+        entities: [
+          AccessProfile,
+          AccessProfilePermission,
+          ExecutionOrder,
+          User,
+          UserAccessProfile,
+          Subscriber,
+        ],
+        migrations: [],
+        migrationsRun: false,
+        logging: false,
+        extra: { ...dataSourceOptions.extra, max: 3, min: 1 },
+      });
+      await fixtureDataSource.initialize();
+      await createFixtureSchema(fixtureDataSource);
+
+      const appEventEmitter = moduleRef.get<EventEmitter2>(EventEmitter2);
+      eventEmitter = appEventEmitter;
+      appEventEmitter.on(
+        'network.service-provisioning.activated',
+        (event: ServiceProvisioningActivatedEvent) => activationEvents.push(event),
+      );
+      networkController = moduleRef.get(NetworkProvisioningController);
+      executionEventProcessor = moduleRef.get(NetworkExecutionEventProcessor);
+    } catch (error) {
+      const cleanupFailures: unknown[] = [];
+      try {
+        if (!moduleRef && moduleBuilder) {
+          try {
+            moduleRef = partialModuleRef(moduleBuilder);
+          } catch (cleanupError) {
+            cleanupFailures.push(cleanupError);
+          }
+        }
+        cleanupFailures.push(...(await cleanupResources()));
+      } finally {
+        restoreSyntheticEnvironment();
+      }
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupFailures],
+          'Falló el setup y la limpieza de fixtures MOD13 B-wire.',
+        );
+      }
+      throw error;
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    try {
+      const cleanupFailures = await cleanupResources();
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(cleanupFailures, 'Falló la limpieza de fixtures MOD13 B-wire.');
+      }
+    } finally {
+      restoreSyntheticEnvironment();
     }
   }, 180_000);
 

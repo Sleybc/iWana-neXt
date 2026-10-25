@@ -197,6 +197,8 @@ jobs:
   ci:
     name: Lint + Typecheck + Build + Unit tests
     runs-on: ubuntu-latest
+    # Los últimos cinco runs verdes duraron 10:33–15:36; 35 min deja margen >2×.
+    timeout-minutes: 35
 
     # Ephemeral CI DB only — passwords are disposable lab values, not production secrets.
     # GSEC-N1: POSTGRES_USER (bootstrap) ≠ DB_APP_USER / DB_MIGRATOR_USER / DB_USER.
@@ -519,6 +521,8 @@ jobs:
       # Jest deja un JSON temporal para detectar archivos ausentes y suites
       # omitidas completas. No se publica el reporte bruto.
       - name: Integration tests — API (PostgreSQL real)
+        # Máximo medido: 62 s; 5 min da margen ante variación de runner/DB y evita cuelgues largos.
+        timeout-minutes: 5
         shell: bash
         run: |
           set -uo pipefail
