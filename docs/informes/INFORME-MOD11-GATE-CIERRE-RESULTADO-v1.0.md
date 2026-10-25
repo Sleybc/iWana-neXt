@@ -3,7 +3,7 @@
 **Fecha:** 2026-10-23 · **Autor:** AI-EM-ARCH
 **Decisión:** [ADR-099](../adrs/ADR-099-Requisitos-de-Cierre-de-OT-por-Familia-de-Resultado.md) (Aprobado por el CTO el 2026-10-23, E1 = (a), E2 = sí)
 **Plan:** [2026-10-23-mod11-gate-cierre-por-resultado](../plans/2026-10-23-mod11-gate-cierre-por-resultado.md) · **Encargo:** [PROMPT-MOD11-GATE-CIERRE-RESULTADO-v1.0](../prompts/PROMPT-MOD11-GATE-CIERRE-RESULTADO-v1.0.md)
-**Veredicto:** G0, G3, G5 y G6 ✅. G7 se cierra con este informe, el commit y el CI de `main` en verde.
+**Veredicto:** G0, G3, G5, G6 y G7 ✅. Encargo cerrado el 2026-10-25: `509237fb` en `origin/main`; CI 40195554094 y E2E Web Admin Smoke 40195554080 en verde sobre `70000111`. Los dos runs anteriores (40096899059 en rojo y 40104246528 cancelado) fallaron por causas de MOD13 y de una prueba intermitente; la integración de MOD11 pasó en ambos.
 
 ---
 
