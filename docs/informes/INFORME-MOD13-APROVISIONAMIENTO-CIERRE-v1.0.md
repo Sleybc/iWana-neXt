@@ -47,7 +47,7 @@ Corrección relacionada de MOD11 (fuera de esta fase): `509237fb` (ADR-099). Ant
 | Dato | Valor |
 | --- | --- |
 | `OTE-20260828-001` | `COMPLETED / EXECUTED`, `INSTALLATION`, con técnico asignado, 1 CPE en comodato instalado y 4 evidencias. Es elegible para regularizar (R12) |
-| Suscriptor del caso | `PROSPECT`, persona `NATURAL`, con contacto real y responsabilidad de IVA, pero **sin responsabilidades RUT**: está fiscalmente incompleto |
+| Suscriptor del caso | `PROSPECT`, persona `NATURAL`, con contacto real y responsabilidad de IVA, pero con el campo «Responsabilidades fiscales» vacío. La regla de MOD05 (RF-SUB-06′) exige declararlo para activar, así que cuenta como fiscalmente incompleto. Quien no tiene RUT se declara con `R-99-PN` «No aplica, otros» |
 | Expediente | `LISTO_PARA_INSTALACION`; plan de interés «Plan Basico» |
 | Catálogo de red | 0 routers, 0 redes, 0 perfiles PCQ; guarda apagada |
 | Otras OT de instalación | 1 en `ASSIGNED`. Ninguna otra cerrada sin aprovisionar |
@@ -60,7 +60,7 @@ Corrección relacionada de MOD11 (fuera de esta fase): `509237fb` (ADR-099). Ant
 | # | Paso | Resultado |
 | --- | --- | --- |
 | 3 | Catálogo real: router, red IPv4 y perfiles PCQ | ⏳ |
-| 3-bis | Completar las responsabilidades RUT del suscriptor del caso de origen | ⏳ |
+| 3-bis | Declarar las responsabilidades fiscales del suscriptor del caso de origen: «No aplica, otros» (`R-99-PN`) si no tiene RUT. Desaparece si se aplica [ADR-100](../adrs/ADR-100-Responsabilidades-RUT-Condicionales-para-Activar-Suscriptor.md) (Aprobado el 2026-10-26) | ⏳ |
 | 5 | Regularizar `OTE-20260828-001` como ADMIN, con motivo | ⏳ |
 | 6 | Verificar en solo lectura: suscriptor `ACTIVE` con `activated_at`, expediente `CLIENTE_ACTIVO`, servicio `ACTIVE` con `origin = REGULARIZED` y activación comercial `DONE` | ⏳ |
 | 4 | Encender la guarda en `tenant_iwana` | ⏳ |
