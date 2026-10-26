@@ -1,4 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { PersonType, VatResponsibility } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { SubscriberSections } from './SubscriberSections';
 
@@ -81,5 +83,120 @@ describe('SubscriberSections privacy states', () => {
     expect(screen.getByRole('heading', { name: 'Datos del suscriptor' })).toBeInTheDocument();
     expect(screen.getAllByText('Anonimizado').length).toBeGreaterThan(1);
     expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
+  });
+});
+
+describe('SubscriberSections RUT condicional', () => {
+  it('guarda datos fiscales sin responsabilidades para una persona natural no responsable', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <SubscriberSections
+        subscriber={buildSubscriber({
+          vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+          rutResponsibilities: [],
+        })}
+        onSave={onSave}
+      />,
+    );
+
+    const fiscal = screen.getByRole('region', { name: 'Datos fiscales' });
+    expect(within(fiscal).getByText('Responsabilidades del RUT (opcional)')).toBeInTheDocument();
+    expect(
+      within(fiscal).getByText(
+        'Opcional si la persona no tiene RUT. Al facturar se informa como "No aplica, otros".',
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+        rutResponsibilities: [],
+      }),
+    );
+  });
+
+  it('exige responsabilidades cuando la persona es jurídica aunque no responda por IVA', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <SubscriberSections
+        subscriber={buildSubscriber({
+          personType: PersonType.JURIDICA,
+          vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+          rutResponsibilities: [],
+        })}
+        onSave={onSave}
+      />,
+    );
+
+    const fiscal = screen.getByRole('region', { name: 'Datos fiscales' });
+    await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(
+      within(fiscal).getByText('Selecciona al menos una responsabilidad del RUT.'),
+    ).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('muestra el error al cambiar a responsable y deja guardar al elegir un código', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <SubscriberSections
+        subscriber={buildSubscriber({
+          vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+          rutResponsibilities: [],
+        })}
+        onSave={onSave}
+      />,
+    );
+
+    const fiscal = screen.getByRole('region', { name: 'Datos fiscales' });
+    await user.click(within(fiscal).getByRole('radio', { name: 'Responsable' }));
+    expect(
+      within(fiscal).getByText('Selecciona al menos una responsabilidad del RUT.'),
+    ).toBeInTheDocument();
+
+    await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.click(within(fiscal).getByRole('checkbox', { name: /Gran contribuyente/ }));
+    await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
+      }),
+    );
+  });
+
+  it('bloquea el cambio a persona jurídica junto al campo RUT en el mismo guardado', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <SubscriberSections
+        subscriber={buildSubscriber({
+          personType: PersonType.NATURAL,
+          vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+          rutResponsibilities: [],
+        })}
+        onSave={onSave}
+      />,
+    );
+
+    const identification = screen.getByRole('region', { name: 'Identificación' });
+    const fiscal = screen.getByRole('region', { name: 'Datos fiscales' });
+    await user.click(within(identification).getByRole('combobox', { name: 'Tipo de persona' }));
+    await user.click(screen.getByRole('option', { name: 'Persona jurídica' }));
+    await user.click(within(identification).getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(
+      within(fiscal).getByText('Selecciona al menos una responsabilidad del RUT.'),
+    ).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

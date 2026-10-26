@@ -7,6 +7,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, FormStatus, Select } 
 import {
   ConsentChannel,
   CreateSubscriberSchema,
+  isRutResponsibilitiesRequired,
   NitFormatError,
   parseExpedienteNit,
   type CreateSubscriberPayload,
@@ -102,9 +103,11 @@ function buildDefaults(initialData?: SubscriberRecord | null): SubscriberFormVal
 }
 
 // Mensajes visibles para los campos cuyo error de Zod no es apto para el usuario final.
+const RUT_RESPONSIBILITIES_REQUIRED_MESSAGE = 'Selecciona al menos una responsabilidad del RUT.';
+
 const FIELD_MESSAGES: Partial<Record<keyof SubscriberFormValues, string>> = {
   vatResponsibility: 'Selecciona la responsabilidad de IVA.',
-  rutResponsibilities: 'Selecciona al menos una responsabilidad del RUT.',
+  rutResponsibilities: RUT_RESPONSIBILITIES_REQUIRED_MESSAGE,
   legalRepresentativeFullName: 'Ingresa el nombre completo del representante legal.',
   legalRepresentativeDocumentType: 'Selecciona el tipo de documento del representante legal.',
   legalRepresentativeDocumentNumber: 'Ingresa el número de documento del representante legal.',
@@ -124,6 +127,14 @@ function resolveIssueField(path: readonly PropertyKey[]): keyof SubscriberFormVa
       : 'legalRepresentativeFullName';
   }
   return typeof root === 'string' ? (root as keyof SubscriberFormValues) : null;
+}
+
+function flattenZodIssues(error: z.ZodError): z.ZodIssue[] {
+  return error.issues.flatMap((issue) =>
+    issue.code === z.ZodIssueCode.invalid_union
+      ? issue.unionErrors.flatMap(flattenZodIssues)
+      : [issue],
+  );
 }
 
 function buildLegalRepresentative(values: SubscriberFormValues, required: boolean) {
@@ -335,15 +346,14 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
         setError('phone', { type: 'contact-required', message });
       }
 
-      result.error.issues.forEach((issue) => {
+      const issues = flattenZodIssues(result.error);
+      issues.forEach((issue) => {
         const field = resolveIssueField(issue.path);
         if (!field || (field === 'nitVerificationDigit' && digitError)) return;
         setError(field, { type: 'manual', message: FIELD_MESSAGES[field] ?? issue.message });
       });
 
-      const firstFormIssue = result.error.issues.find(
-        (issue) => issue.path.length === 0 && !contactMissing,
-      );
+      const firstFormIssue = issues.find((issue) => issue.path.length === 0 && !contactMissing);
       if (firstFormIssue) {
         setSubmitError(firstFormIssue.message);
       }
@@ -421,11 +431,29 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
                   control={control}
                   render={({ field: rutField }) => (
                     <SubscriberFiscalFields
+                      rutResponsibilitiesRequired={isRutResponsibilitiesRequired({
+                        personType,
+                        vatResponsibility: vatField.value || undefined,
+                      })}
                       vatResponsibility={vatField.value}
                       rutResponsibilities={rutField.value}
                       onVatResponsibilityChange={(value) => {
                         vatField.onChange(value);
                         clearErrors('vatResponsibility');
+                        if (
+                          isRutResponsibilitiesRequired({
+                            personType,
+                            vatResponsibility: value,
+                          }) &&
+                          rutField.value.length === 0
+                        ) {
+                          setError('rutResponsibilities', {
+                            type: 'conditional-required',
+                            message: RUT_RESPONSIBILITIES_REQUIRED_MESSAGE,
+                          });
+                        } else {
+                          clearErrors('rutResponsibilities');
+                        }
                       }}
                       onRutResponsibilitiesChange={(value) => {
                         rutField.onChange(value);
@@ -540,6 +568,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
 
           {initialData && (
             <VatTreatmentBanner
+              personType={initialData.personType}
               vatResponsibility={initialData.vatResponsibility}
               rutResponsibilities={initialData.rutResponsibilities ?? []}
             />

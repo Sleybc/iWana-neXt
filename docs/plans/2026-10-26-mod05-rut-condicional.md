@@ -1,8 +1,8 @@
 # MOD05 — Responsabilidades del RUT condicionales · Plan de orquestación
 
-**Versión:** 1.0 · **Fecha:** 2026-10-26 · **Autor:** AI-EM-ARCH
+**Versión:** 1.1 · **Fecha:** 2026-10-26 · **Autor:** AI-EM-ARCH
 **Decisión:** [ADR-100](../adrs/ADR-100-Responsabilidades-RUT-Condicionales-para-Activar-Suscriptor.md) (Aprobado el 2026-10-26)
-**Encargo:** [PROMPT-MOD05-RUT-CONDICIONAL-v1.0](../prompts/PROMPT-MOD05-RUT-CONDICIONAL-v1.0.md) · **Launcher:** [PROMPT-MOD05-RUT-CONDICIONAL-LAUNCH-v1.0](../prompts/PROMPT-MOD05-RUT-CONDICIONAL-LAUNCH-v1.0.md)
+**Encargo:** [PROMPT-MOD05-RUT-CONDICIONAL-v1.0](../prompts/PROMPT-MOD05-RUT-CONDICIONAL-v1.0.md) · **Launcher vigente:** [PROMPT-MOD05-RUT-CONDICIONAL-LAUNCH-v1.1](../prompts/PROMPT-MOD05-RUT-CONDICIONAL-LAUNCH-v1.1.md) · Ejecutado: [LAUNCH-v1.0](../prompts/PROMPT-MOD05-RUT-CONDICIONAL-LAUNCH-v1.0.md)
 **Origen:** G7 de MOD13 Fase 01 ([plan](2026-10-22-mod13-aprovisionamiento.md), paso 3-bis). El suscriptor del caso de origen no se activaría porque no tiene responsabilidades del RUT declaradas.
 **Base:** `main` en `40f7e1e6`. Se trabaja en `main`, sin ramas. El árbol tiene rutas sin commitear de otros frentes: ningún agente las toca ni las incluye en sus commits.
 
@@ -76,4 +76,11 @@ B1 ∥ F1, con archivos disjuntos: B1 toca `packages/shared` y `apps/api`; F1, `
 | --- | --- | --- | --- |
 | 0 | Diagnóstico · AI-EM-ARCH | ✅ La regla actual exige el RUT a todos (esquema, API, SQL y portal). Los 3 suscriptores de `tenant_iwana` son persona natural no responsable con el campo vacío | ADR-100 §Contexto |
 | 0 | G0 · CTO | ✅ Cerrado: ADR-100 Aprobado; E1 = (a), E2 = vacío, E3 = sí | ADR-100 §Escalaciones |
-| 1 | B1 ∥ F1 | ⏳ Por lanzar | Launcher v1.0 |
+| 1 | B1 ∥ F1 | ✅ Entregados según su informe. Integración 2/2 (activación y paridad SQL, 8 casos); unitarias de shared 19/19, del API 236/236 y del portal 65/65 | 21 archivos en `packages/shared`, `apps/api/.../crm` y `apps/portal/.../subscribers` |
+| 2 | V1 · contract-drift-reviewer | ✅ Sin deriva en producción ni `.min(1)` residual; sin consumidores en `apps/web`. P3: fixture del portal `mod05-deuda-fiscal-ui.portal.spec.tsx:892` | Informe de V1 |
+| 2 | V2 · gate-verifier | ⛔ Lint y typecheck en verde. API: 1 suite y 2 tests en rojo (`global-validation-pipes.http.spec.ts`). Integraciones de `crm/subscribers`: 6/8 suites, 34/36 tests | Informe de V2 |
+| — | Revisión de AI-EM-ARCH | Dos regresiones reales: (1) pasar a `z.union` vacía `fieldErrors` en el alta; (2) la edición valida la combinación siempre y bloquea fichas antiguas de jurídicas o responsables de IVA sin RUT (`subscribers-update-audit`). V2 proponía cambiar ese fixture; se descarta, porque ocultaría la regresión | Diff revisado |
+| 3 | B1-bis · sr-backend | ✅ Vuelve `z.discriminatedUnion` con la regla del RUT en el `.superRefine` de la unión, y `fieldErrors` por campo restaurado. La edición valida solo si el DTO trae `personType`, `vatResponsibility` o `rutResponsibilities`. `subscribers-update-audit` pasa con su fixture original | Encargo §B1-bis |
+| 4 | V2-r · gate-verifier | ✅ G6. Lint y typecheck de los tres paquetes en verde. shared 231/231; API 419 suites y 5.607 tests (4 suites y 15 tests omitidos); portal 3.259 tests (1 omitido); `global-validation-pipes` 11/11. Integraciones de `crm/subscribers`: 7/8 suites y 35 tests. `subscriber-enum-parity` falla porque al `tenant_test` local le faltan la tabla y los enums (pasa en CI): es un problema del entorno local, declarado | Informe de V2-r |
+| — | Verificación de AI-EM-ARCH | ✅ Sin caché: esquema compartido 19/19; 5 suites del API 248/248; integración contra Postgres real 3 suites y 6/6 (`subscriber-rut-responsibilities`, `subscribers-update-audit` y `contact-pending`) | — |
+| 5 | G7 · AI-EM-ARCH | ⏳ Commit hecho; quedan el push con el visto bueno del CTO, el CI de `main` y el informe | — |

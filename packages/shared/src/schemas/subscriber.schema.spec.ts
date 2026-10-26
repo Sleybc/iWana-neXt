@@ -7,6 +7,7 @@ import { SubscriberStatus } from '../enums/subscriber-status.enum';
 import { RUT_RESPONSIBILITIES, VatResponsibility } from '../enums/vat-responsibility.enum';
 import {
   CreateSubscriberSchema,
+  isRutResponsibilitiesRequired,
   legalRepresentativeSchema,
   nitVerificationDigitSchema,
   rutResponsibilitiesSchema,
@@ -143,34 +144,91 @@ describe('subscriber shared schemas · MOD05 B1', () => {
     expect(PartyRoleType.LEGAL_REPRESENTATIVE).toBe('LEGAL_REPRESENTATIVE');
   });
 
-  it('requires and retains IVA responsibility and the non-empty RUT catalog for a natural person', () => {
-    const result = CreateSubscriberSchema.safeParse(naturalSubscriber);
+  it('permite omitir responsabilidades del RUT en el alta natural no responsable y normaliza a lista vacía', () => {
+    const result = CreateSubscriberSchema.safeParse({
+      ...naturalSubscriber,
+      rutResponsibilities: undefined,
+    });
 
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data).toMatchObject({
       vatResponsibility: 'NO_RESPONSABLE',
-      rutResponsibilities: ['O-13'],
+      rutResponsibilities: [],
     });
   });
 
-  it('requires IVA responsibility and RUT responsibilities for both person types', () => {
+  it('exige IVA y RUT en la combinación aplicable, con error ubicado en rutResponsibilities', () => {
+    expect(
+      CreateSubscriberSchema.safeParse({
+        ...naturalSubscriber,
+        vatResponsibility: undefined,
+      }).success,
+    ).toBe(false);
+
+    const naturalResponsable = CreateSubscriberSchema.safeParse({
+      ...naturalSubscriber,
+      vatResponsibility: VatResponsibility.RESPONSABLE,
+      rutResponsibilities: [],
+    });
+    expect(naturalResponsable.success).toBe(false);
+    if (!naturalResponsable.success) {
+      expect(naturalResponsable.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ['rutResponsibilities'],
+          message: 'Selecciona al menos una responsabilidad del RUT',
+        }),
+      );
+    }
+
+    const juridicaSinRut = CreateSubscriberSchema.safeParse({
+      ...juridicalSubscriber,
+      vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+      rutResponsibilities: [],
+    });
+    expect(juridicaSinRut.success).toBe(false);
+    if (!juridicaSinRut.success) {
+      expect(juridicaSinRut.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ['rutResponsibilities'],
+          message: 'Selecciona al menos una responsabilidad del RUT',
+        }),
+      );
+    }
+
     for (const subscriber of [naturalSubscriber, juridicalSubscriber]) {
-      expect(
-        CreateSubscriberSchema.safeParse({
-          ...subscriber,
-          vatResponsibility: undefined,
-          rutResponsibilities: undefined,
-        }).success,
-      ).toBe(false);
-      expect(
-        CreateSubscriberSchema.safeParse({ ...subscriber, rutResponsibilities: [] }).success,
-      ).toBe(false);
       expect(
         CreateSubscriberSchema.safeParse({ ...subscriber, rutResponsibilities: ['UNLISTED'] })
           .success,
       ).toBe(false);
     }
+  });
+
+  it('centraliza la regla condicional para los cuatro cruces', () => {
+    expect(
+      isRutResponsibilitiesRequired({
+        personType: PersonType.JURIDICA,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+      }),
+    ).toBe(true);
+    expect(
+      isRutResponsibilitiesRequired({
+        personType: PersonType.JURIDICA,
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+      }),
+    ).toBe(true);
+    expect(
+      isRutResponsibilitiesRequired({
+        personType: PersonType.NATURAL,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+      }),
+    ).toBe(true);
+    expect(
+      isRutResponsibilitiesRequired({
+        personType: PersonType.NATURAL,
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+      }),
+    ).toBe(false);
   });
 
   it('requires a one-digit verification digit and a natural-person representative for a company', () => {
@@ -337,14 +395,9 @@ describe('subscriber shared schemas · MOD05 deuda · alta, autorizaciones y edi
     ).toBe(true);
   });
 
-  it('rechaza RUT vacío o repetido y DV no numérico también en la edición', () => {
+  it('admite RUT vacío de forma aislada y rechaza duplicados también en la edición', () => {
     const vacio = rutResponsibilitiesSchema.safeParse([]);
-    expect(vacio.success).toBe(false);
-    if (!vacio.success) {
-      expect(vacio.error.issues[0]?.message).toBe(
-        'Selecciona al menos una responsabilidad del RUT',
-      );
-    }
+    expect(vacio.success).toBe(true);
     const repetido = rutResponsibilitiesSchema.safeParse(['O-13', 'O-13']);
     expect(repetido.success).toBe(false);
     if (!repetido.success) {
@@ -356,7 +409,7 @@ describe('subscriber shared schemas · MOD05 deuda · alta, autorizaciones y edi
     expect(nitVerificationDigitSchema.safeParse('x').success).toBe(false);
     expect(nitVerificationDigitSchema.safeParse('12').success).toBe(false);
 
-    expect(UpdateSubscriberSchema.safeParse({ rutResponsibilities: [] }).success).toBe(false);
+    expect(UpdateSubscriberSchema.safeParse({ rutResponsibilities: [] }).success).toBe(true);
     expect(
       UpdateSubscriberSchema.safeParse({ rutResponsibilities: ['O-47', 'O-47'] }).success,
     ).toBe(false);

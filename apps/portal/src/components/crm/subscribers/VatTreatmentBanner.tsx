@@ -1,7 +1,9 @@
-import type { RutResponsibility, VatResponsibility } from '@iwana/shared';
+import { isRutResponsibilitiesRequired } from '@iwana/shared';
+import type { PersonType, RutResponsibility, VatResponsibility } from '@iwana/shared';
 import { formatVatResponsibility, RUT_RESPONSIBILITY_LABELS } from './subscriber-fiscal';
 
 interface VatTreatmentBannerProps {
+  personType: PersonType;
   vatResponsibility: VatResponsibility | null;
   rutResponsibilities: readonly RutResponsibility[];
 }
@@ -11,6 +13,7 @@ interface VatTreatmentBannerProps {
  * El régimen tributario legado y el tratamiento de IVA por suscriptor no se muestran.
  */
 export function VatTreatmentBanner({
+  personType,
   vatResponsibility,
   rutResponsibilities,
 }: VatTreatmentBannerProps) {
@@ -40,7 +43,9 @@ export function VatTreatmentBanner({
           </dd>
         ) : (
           <dd className="mt-0.5 italic text-gray-500 dark:text-gray-400">
-            Responsabilidades del RUT pendientes de completar
+            {isRutResponsibilitiesRequired({ personType, vatResponsibility })
+              ? 'Responsabilidades del RUT pendientes de completar'
+              : 'Sin RUT declarado'}
           </dd>
         )}
       </div>

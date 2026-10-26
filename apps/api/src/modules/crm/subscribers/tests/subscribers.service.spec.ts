@@ -1095,6 +1095,68 @@ describe('SubscribersService', () => {
   // ── update ──
 
   describe('update', () => {
+    it('permite editar el teléfono de un responsable de IVA con RUT vacío', async () => {
+      const existing = buildSubscriber({
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: [],
+      });
+      mockSave(existing);
+
+      await expect(
+        service.update(existing.id, { phone: '3000000001' }, 'actor-1'),
+      ).resolves.toMatchObject({ id: existing.id });
+
+      expect(existing.phoneEncrypted).not.toBeNull();
+    });
+
+    it('rechaza cambiar a responsable de IVA si la lista resultante queda vacía', async () => {
+      const existing = buildSubscriber({
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+        rutResponsibilities: [],
+      });
+      mockFindOne(existing);
+
+      await expect(
+        service.update(
+          existing.id,
+          { vatResponsibility: VatResponsibility.RESPONSABLE },
+          'actor-1',
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'VALIDATION_ERROR',
+          details: {
+            fieldErrors: {
+              rutResponsibilities: ['Selecciona al menos una responsabilidad del RUT'],
+            },
+          },
+        },
+      });
+
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('guarda el cambio a responsable cuando se envía una responsabilidad del RUT', async () => {
+      const existing = buildSubscriber({
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+        rutResponsibilities: [],
+      });
+      mockSave(existing);
+
+      await expect(
+        service.update(
+          existing.id,
+          {
+            vatResponsibility: VatResponsibility.RESPONSABLE,
+            rutResponsibilities: ['O-13'],
+          },
+          'actor-1',
+        ),
+      ).resolves.toMatchObject({ id: existing.id });
+      expect(existing.rutResponsibilities).toEqual(['O-13']);
+    });
+
     it('rechaza representante legal cuando el suscriptor es persona natural', async () => {
       const existing = buildSubscriber({ personType: PersonType.NATURAL });
       mockFindOne(existing);

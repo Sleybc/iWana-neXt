@@ -523,6 +523,7 @@ describe('MOD05 — criterios UX IVA por punto de servicio', () => {
   it('CA-UX-IVA-19 no muestra el tratamiento tributario legado en el banner', () => {
     const { container } = render(
       <VatTreatmentBanner
+        personType={PersonType.NATURAL}
         vatResponsibility={VatResponsibility.RESPONSABLE}
         rutResponsibilities={['O-13']}
       />,

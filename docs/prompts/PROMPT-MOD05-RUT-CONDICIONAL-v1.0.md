@@ -105,6 +105,37 @@ Gates Before Merge sobre `@iwana/shared`, `@iwana/api` y `@iwana/portal`, sin ca
 
 ---
 
+## §B1-bis — sr-backend (correcciones tras V1 y V2, 2026-10-26)
+
+V2 dejó rojo el gate de suites. AI-EM-ARCH revisó el diff y encontró **dos regresiones reales**. Corrígelas en el código, **no en las pruebas**:
+
+1. **Los errores de campo desaparecen del alta.** `CreateSubscriberSchema` pasó de `z.discriminatedUnion` a `z.union`, porque cada rama lleva ahora `.superRefine` (un `ZodEffects`, que la unión discriminada no admite). Con `z.union`, un alta inválida devuelve un `invalid_union` en la raíz y `flatten()` entrega `fieldErrors: {}`. El portal y los clientes del API pierden los errores por campo (`global-validation-pipes.http.spec.ts:121`).
+   **Corrección:** vuelve a `z.discriminatedUnion('personType', [...])` con las dos ramas como `z.object` sin `.superRefine`. Llama a `validateRequiredRutResponsibilities` desde el `.superRefine` que la unión ya tiene (el del correo o teléfono). `naturalSubscriberSchema` y `juridicaSubscriberSchema` no tienen otros consumidores.
+2. **La edición bloquea fichas antiguas.** `subscribers.service.ts` valida la combinación efectiva en **toda** edición. Una persona jurídica o responsable de IVA guardada con la lista vacía ya no puede cambiar ni su dirección ni su teléfono: 400 en `subscribers-update-audit.postgres.integration.spec.ts:221`. Antes de ADR-100 esa edición funcionaba, y §B1.2 pedía validar solo cuando el cambio lleva a esa situación.
+   **Corrección:** valida solo si el DTO trae `personType`, `vatResponsibility` o `rutResponsibilities`. **No cambies** el fixture de `subscribers-update-audit`: es la prueba de que la regresión se corrigió.
+
+Ajustes de pruebas que sí corresponden, porque la regla cambió:
+
+3. `global-validation-pipes.http.spec.ts:121`: una persona natural sin `vatResponsibility` debe devolver `fieldErrors.vatResponsibility` no vacío. Ya no debe esperar `rutResponsibilities`, porque sin IVA declarado la regla no lo exige. Añade un caso de persona jurídica con la lista vacía que devuelva `fieldErrors.rutResponsibilities`.
+4. `global-validation-pipes.http.spec.ts:176`: en la edición aislada, la lista vacía ya es válida en el pipe (la combinación la decide el servicio). Deja solo el caso de duplicados como 400, y añade el caso vacío como 200/201.
+5. Portal: `mod05-deuda-fiscal-ui.portal.spec.tsx:892` simula una persona natural no responsable con `missing` que incluye `RUT_RESPONSIBILITIES`. Debe quedar solo `VAT_RESPONSIBILITY`. Es el único archivo del portal que tocas.
+6. Unitarias nuevas en `subscribers.service.spec.ts`:
+   - editar solo el teléfono de una persona responsable de IVA con la lista vacía → se guarda;
+   - cambiar a `RESPONSABLE` con la lista vacía → 400;
+   - cambiar a `RESPONSABLE` enviando un código → se guarda.
+
+**`subscriber-enum-parity.postgres.integration.spec.ts`** («no encuentra enums en `tenant_test`»): no lo corrijas, y **no uses `git stash`** (hay cambios de otros frentes sin commitear en `main`). Comprueba en solo lectura que en el `tenant_test` local faltan esos tipos enum (`pg_type` del schema). Si faltan, es un problema del entorno local (pasó en el CI `40195554094`) y se declara.
+
+Vuelve a correr, sin caché:
+- la suite completa de `@iwana/api`;
+- `global-validation-pipes.http.spec.ts`;
+- las 8 integraciones de `crm/subscribers` contra Postgres real;
+- las suites de `@iwana/shared` y del portal afectadas.
+
+Entrega el conteo real. No commitees.
+
+---
+
 ## Reglas
 
 - Solo `pnpm`. Sin migraciones ni cambios de `tenant_iwana`. No toques `apps/api/src/modules/network/**`.

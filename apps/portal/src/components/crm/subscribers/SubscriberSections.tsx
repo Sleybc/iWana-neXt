@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Button, FormStatus, Input, Select } from '@iwana/ui';
 import { Landmark, MapPin, Phone, UserRound } from 'lucide-react';
-import { DocumentType, PersonType } from '@iwana/shared';
+import { DocumentType, isRutResponsibilitiesRequired, PersonType } from '@iwana/shared';
 import type { RutResponsibility, UpdateSubscriberPayload, VatResponsibility } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
@@ -266,6 +266,10 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   }, [subscriber]);
 
   const isJuridica = ident.personType === PersonType.JURIDICA;
+  const rutResponsibilitiesRequired = isRutResponsibilitiesRequired({
+    personType: ident.personType,
+    vatResponsibility: fiscal.vatResponsibility || undefined,
+  });
   const liveDigitError =
     isJuridica && ident.nit.trim() && ident.nitVerificationDigit.trim()
       ? validateNitVerificationDigit(ident.nit, ident.nitVerificationDigit)
@@ -279,6 +283,13 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   // ── Guardar sección Identificación ──────────────────────────────────────────
   const saveIdent = async () => {
     setErrorIdent(null);
+    if (rutResponsibilitiesRequired && fiscal.rutResponsibilities.length === 0) {
+      setFiscalErrors((prev) => ({
+        ...prev,
+        rut: 'Selecciona al menos una responsabilidad del RUT.',
+      }));
+      return;
+    }
     if (isJuridica && ident.nitVerificationDigit.trim()) {
       const digitError = validateNitVerificationDigit(ident.nit, ident.nitVerificationDigit);
       if (digitError) {
@@ -336,7 +347,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     setErrorFiscal(null);
     const nextErrors: { vat?: string | undefined; rut?: string | undefined } = {};
     if (!fiscal.vatResponsibility) nextErrors.vat = 'Selecciona la responsabilidad de IVA.';
-    if (fiscal.rutResponsibilities.length === 0) {
+    if (rutResponsibilitiesRequired && fiscal.rutResponsibilities.length === 0) {
       nextErrors.rut = 'Selecciona al menos una responsabilidad del RUT.';
     }
     setFiscalErrors(nextErrors);
@@ -495,9 +506,20 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                 <Select
                   label="Tipo de persona"
                   value={ident.personType}
-                  onChange={(e) =>
-                    setIdent((prev) => ({ ...prev, personType: e.target.value as PersonType }))
-                  }
+                  onChange={(e) => {
+                    const nextPersonType = e.target.value as PersonType;
+                    setIdent((prev) => ({ ...prev, personType: nextPersonType }));
+                    setFiscalErrors((prev) => ({
+                      ...prev,
+                      rut:
+                        isRutResponsibilitiesRequired({
+                          personType: nextPersonType,
+                          vatResponsibility: fiscal.vatResponsibility || undefined,
+                        }) && fiscal.rutResponsibilities.length === 0
+                          ? 'Selecciona al menos una responsabilidad del RUT.'
+                          : undefined,
+                    }));
+                  }}
                 >
                   {PERSON_TYPE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -668,11 +690,22 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
             error={errorFiscal}
           >
             <SubscriberFiscalFields
+              rutResponsibilitiesRequired={rutResponsibilitiesRequired}
               vatResponsibility={fiscal.vatResponsibility}
               rutResponsibilities={fiscal.rutResponsibilities}
               onVatResponsibilityChange={(value) => {
                 setFiscal((prev) => ({ ...prev, vatResponsibility: value }));
-                setFiscalErrors((prev) => ({ ...prev, vat: undefined }));
+                setFiscalErrors((prev) => ({
+                  ...prev,
+                  vat: undefined,
+                  rut:
+                    isRutResponsibilitiesRequired({
+                      personType: ident.personType,
+                      vatResponsibility: value,
+                    }) && fiscal.rutResponsibilities.length === 0
+                      ? 'Selecciona al menos una responsabilidad del RUT.'
+                      : undefined,
+                }));
               }}
               onRutResponsibilitiesChange={(value) => {
                 setFiscal((prev) => ({ ...prev, rutResponsibilities: value }));

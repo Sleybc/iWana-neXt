@@ -25,10 +25,40 @@ const authorizationsSchema = z.array(subscriberAuthorizationSchema).optional();
 
 export const rutResponsibilitiesSchema = z
   .array(z.enum(RUT_RESPONSIBILITIES))
-  .min(1, 'Selecciona al menos una responsabilidad del RUT')
   .refine((responsibilities) => new Set(responsibilities).size === responsibilities.length, {
     message: 'No repitas responsabilidades del RUT',
   });
+
+/**
+ * Regla de ADR-100 D1: el RUT solo exige responsabilidades a personas jurídicas
+ * o responsables de IVA; una lista vacía no se convierte automáticamente en R-99-PN.
+ */
+export function isRutResponsibilitiesRequired(input: {
+  personType: PersonType;
+  vatResponsibility: VatResponsibility | null | undefined;
+}): boolean {
+  return (
+    input.personType === PersonType.JURIDICA ||
+    input.vatResponsibility === VatResponsibility.RESPONSABLE
+  );
+}
+
+function validateRequiredRutResponsibilities(
+  subscriber: {
+    personType: PersonType;
+    vatResponsibility: VatResponsibility;
+    rutResponsibilities?: readonly unknown[];
+  },
+  context: z.RefinementCtx,
+): void {
+  if (isRutResponsibilitiesRequired(subscriber) && !subscriber.rutResponsibilities?.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['rutResponsibilities'],
+      message: 'Selecciona al menos una responsabilidad del RUT',
+    });
+  }
+}
 
 export const legalRepresentativeSchema = z
   .object({
@@ -233,7 +263,7 @@ export const naturalSubscriberSchema = z.object({
   authorizations: authorizationsSchema,
   authorizationChannel: z.nativeEnum(ConsentChannel).optional(),
   vatResponsibility: z.nativeEnum(VatResponsibility),
-  rutResponsibilities: rutResponsibilitiesSchema,
+  rutResponsibilities: rutResponsibilitiesSchema.default([]),
 });
 
 /**
@@ -272,7 +302,7 @@ export const juridicaSubscriberSchema = z.object({
   authorizations: authorizationsSchema,
   authorizationChannel: z.nativeEnum(ConsentChannel).optional(),
   vatResponsibility: z.nativeEnum(VatResponsibility),
-  rutResponsibilities: rutResponsibilitiesSchema,
+  rutResponsibilities: rutResponsibilitiesSchema.default([]),
 });
 
 /**
@@ -282,6 +312,7 @@ export const juridicaSubscriberSchema = z.object({
 export const CreateSubscriberSchema = z
   .discriminatedUnion('personType', [naturalSubscriberSchema, juridicaSubscriberSchema])
   .superRefine((subscriber, context) => {
+    validateRequiredRutResponsibilities(subscriber, context);
     if (!subscriber.email && !subscriber.phone) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

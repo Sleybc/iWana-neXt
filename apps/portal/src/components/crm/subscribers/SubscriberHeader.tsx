@@ -113,6 +113,7 @@ export function SubscriberHeader({
       </div>
 
       <VatTreatmentBanner
+        personType={subscriber.personType}
         vatResponsibility={subscriber.vatResponsibility}
         rutResponsibilities={subscriber.rutResponsibilities ?? []}
       />

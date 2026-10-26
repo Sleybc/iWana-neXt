@@ -914,11 +914,81 @@ describe('ContractsService', () => {
       ).rejects.toMatchObject({
         response: {
           code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
-          missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+          missing: ['VAT_RESPONSIBILITY'],
         },
         status: 422,
       });
       expect(save).not.toHaveBeenCalled();
+    });
+
+    it('permite crear contrato para persona natural no responsable sin responsabilidades del RUT', async () => {
+      const save = jest.fn(async (_entity: unknown, data: Record<string, unknown>) => ({
+        ...data,
+        id: 'ctr-natural-sin-rut',
+      }));
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: jest.fn().mockResolvedValue({
+              id: 'sub-natural-sin-rut',
+              tenantId: 'ten-1',
+              status: 'PROSPECT',
+              personType: PersonType.NATURAL,
+              partyId: 'party-test-uuid',
+              anonymizedAt: null,
+              vatResponsibility: 'NO_RESPONSABLE',
+              rutResponsibilities: [],
+            }),
+            create: (_entity: unknown, data: Record<string, unknown>) => data,
+            save,
+          },
+        }),
+      );
+
+      const result = await service.create(
+        { subscriberId: 'sub-natural-sin-rut', planId: 'plan-1', planSnapshotJson: {} },
+        'actor-1',
+      );
+
+      expect(result.id).toBe('ctr-natural-sin-rut');
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza crear contrato para jurídica sin RUT y enumera RUT como faltante', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: jest.fn().mockResolvedValue({
+              id: 'sub-juridica-sin-rut',
+              tenantId: 'ten-1',
+              status: 'PROSPECT',
+              personType: PersonType.JURIDICA,
+              partyId: 'party-test-uuid',
+              anonymizedAt: null,
+              vatResponsibility: 'RESPONSABLE',
+              rutResponsibilities: [],
+              nit: null,
+              nitVerificationDigit: null,
+              legalRepresentativePartyId: null,
+            }),
+            create: jest.fn(),
+            save: jest.fn(),
+          },
+        }),
+      );
+
+      await expect(
+        service.create(
+          { subscriberId: 'sub-juridica-sin-rut', planId: 'plan-1', planSnapshotJson: {} },
+          'actor-1',
+        ),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
+          missing: expect.arrayContaining(['RUT_RESPONSIBILITIES']),
+        },
+      });
     });
 
     it('audita la creación con IDs y estado, sin copiar valores fiscales ni notas', async () => {

@@ -2,6 +2,8 @@ import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import {
   PersonType,
   SUBSCRIBER_FISCAL_DATA_INCOMPLETE,
+  isRutResponsibilitiesRequired,
+  type VatResponsibility,
   type SubscriberFiscalCompleteness,
   type SubscriberFiscalMissingField,
 } from '@iwana/shared';
@@ -9,7 +11,7 @@ import { calculateNitVerificationDigit } from '../../../common/crypto/nit-verifi
 
 export interface SubscriberFiscalData {
   personType: PersonType;
-  vatResponsibility: string | null | undefined;
+  vatResponsibility: VatResponsibility | null | undefined;
   rutResponsibilities: readonly string[] | null | undefined;
   nit: string | null | undefined;
   nitVerificationDigit: string | null | undefined;
@@ -22,7 +24,9 @@ export function evaluateSubscriberFiscalCompleteness(
   const missing: SubscriberFiscalMissingField[] = [];
 
   if (!subscriber.vatResponsibility) missing.push('VAT_RESPONSIBILITY');
-  if (!subscriber.rutResponsibilities?.length) missing.push('RUT_RESPONSIBILITIES');
+  if (isRutResponsibilitiesRequired(subscriber) && !subscriber.rutResponsibilities?.length) {
+    missing.push('RUT_RESPONSIBILITIES');
+  }
 
   if (subscriber.personType === PersonType.JURIDICA) {
     if (!hasValidVerificationDigit(subscriber.nit, subscriber.nitVerificationDigit)) {

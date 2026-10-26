@@ -157,6 +157,7 @@ const SUBSCRIBER_LIST_ITEM_OPENAPI_SCHEMA: SchemaObject = {
     },
     rutResponsibilities: {
       type: 'array',
+      description: 'Obligatorio para personas jurídicas o responsables de IVA.',
       items: { type: 'string', enum: [...RUT_RESPONSIBILITIES] },
     },
     legalRepresentative: {

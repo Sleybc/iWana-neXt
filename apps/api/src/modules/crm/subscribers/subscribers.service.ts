@@ -39,6 +39,7 @@ import {
   ConsentStatus,
   ConsentType,
   VatResponsibility,
+  isRutResponsibilitiesRequired,
   type DataPurpose,
   type DataAuthorizationView,
   type PrivacyMark,
@@ -989,6 +990,31 @@ export class SubscribersService implements CrmSubscriberReadPort {
     const { schemaName } = TenantContext.getOrThrow();
     const entity = await this.findById(id);
 
+    const effectivePersonType = dto.personType ?? entity.personType;
+    const effectiveVatResponsibility = dto.vatResponsibility ?? entity.vatResponsibility;
+    const effectiveRutResponsibilities = dto.rutResponsibilities ?? entity.rutResponsibilities;
+    if (
+      (dto.personType !== undefined ||
+        dto.vatResponsibility !== undefined ||
+        dto.rutResponsibilities !== undefined) &&
+      isRutResponsibilitiesRequired({
+        personType: effectivePersonType,
+        vatResponsibility: effectiveVatResponsibility,
+      }) &&
+      !effectiveRutResponsibilities?.length
+    ) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Payload invalido para el boundary externo de CRM.',
+        details: {
+          formErrors: [],
+          fieldErrors: {
+            rutResponsibilities: ['Selecciona al menos una responsabilidad del RUT'],
+          },
+        },
+      });
+    }
+
     const nextEmailEncrypted =
       dto.email === undefined
         ? entity.emailEncrypted
@@ -1012,7 +1038,6 @@ export class SubscribersService implements CrmSubscriberReadPort {
     }
 
     // Recalcular IVA si cambia personType o stratum
-    const effectivePersonType = dto.personType ?? entity.personType;
     const effectiveStratum = dto.stratum !== undefined ? dto.stratum : entity.stratum;
     const effectiveSegment = dto.customerSegment ?? entity.customerSegment;
 

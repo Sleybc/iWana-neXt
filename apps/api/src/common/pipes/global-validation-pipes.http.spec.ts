@@ -103,7 +103,7 @@ describe('global ValidationPipe + CRM Zod boundaries', () => {
     ]);
   });
 
-  it('rechaza el alta sin campos fiscales con el error del schema compartido', async () => {
+  it('exige IVA en el alta sin atribuir el RUT cuando falta la responsabilidad de IVA', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/v1/validation-pipes/subscriber-create')
       .send({
@@ -120,8 +120,37 @@ describe('global ValidationPipe + CRM Zod boundaries', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('VALIDATION_ERROR');
-    expect(response.body.details.fieldErrors).toHaveProperty('vatResponsibility');
-    expect(response.body.details.fieldErrors).toHaveProperty('rutResponsibilities');
+    expect(response.body.details.fieldErrors.vatResponsibility).toEqual(
+      expect.arrayContaining([expect.any(String)]),
+    );
+    expect(response.body.details.fieldErrors).not.toHaveProperty('rutResponsibilities');
+  });
+
+  it('ubica la responsabilidad del RUT en el alta jurídica con lista vacía', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/validation-pipes/subscriber-create')
+      .send({
+        personType: PersonType.JURIDICA,
+        customerSegment: Object.values(CustomerSegment)[0],
+        nit: '900123456',
+        nitVerificationDigit: '8',
+        businessName: 'Empresa sintética',
+        legalRepresentative: {
+          fullName: 'Representante sintético',
+          documentType: DocumentType.CC,
+          documentNumber: 'DOC-REP-SINTETICO-003',
+        },
+        email: 'empresa@example.invalid',
+        address: 'Dirección sintética',
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+        rutResponsibilities: [],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+    expect(response.body.details.fieldErrors.rutResponsibilities).toEqual(
+      expect.arrayContaining([expect.any(String)]),
+    );
   });
 
   it('conserva legalRepresentative en el alta jurídica', async () => {
@@ -169,15 +198,22 @@ describe('global ValidationPipe + CRM Zod boundaries', () => {
     expect(response.body.rutResponsibilities).toEqual(['O-13', 'O-47']);
   });
 
-  it('rechaza responsabilidades vacías o repetidas en la edición con el schema compartido', async () => {
-    for (const rutResponsibilities of [[], ['O-13', 'O-13']]) {
-      const response = await request(app.getHttpServer())
-        .post('/api/v1/validation-pipes/subscriber-update')
-        .send({ rutResponsibilities });
+  it('admite responsabilidades vacías en la edición aislada', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/validation-pipes/subscriber-update')
+      .send({ rutResponsibilities: [] });
 
-      expect(response.status).toBe(400);
-      expect(response.body.code).toBe('VALIDATION_ERROR');
-    }
+    expect(response.status).toBe(201);
+    expect(response.body.rutResponsibilities).toEqual([]);
+  });
+
+  it('rechaza responsabilidades repetidas en la edición con el schema compartido', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/validation-pipes/subscriber-update')
+      .send({ rutResponsibilities: ['O-13', 'O-13'] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
   });
 
   it('rechaza un DV no numérico en la edición con el schema compartido', async () => {

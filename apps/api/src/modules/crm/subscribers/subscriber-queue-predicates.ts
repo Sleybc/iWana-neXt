@@ -31,12 +31,18 @@ const NIT_VERIFICATION_INVALID_SQL = `(
   OR COALESCE(${EXPECTED_NIT_DIGIT_SQL} <> s.nit_verification_digit, TRUE)
 )`;
 
-/** Paridad con evaluateSubscriberFiscalCompleteness(); los cancelados nunca cuentan. */
+/**
+ * Paridad con evaluateSubscriberFiscalCompleteness(); los cancelados nunca cuentan.
+ * ADR-100 D1: exigir responsabilidades del RUT solo a jurídicas o responsables de IVA.
+ */
 export const FISCAL_INCOMPLETE_SQL = `(
   s.status::text <> 'CANCELLED'
   AND (
     s.vat_responsibility IS NULL
-    OR COALESCE(cardinality(s.rut_responsibilities), 0) = 0
+    OR (
+      (s.person_type::text = 'JURIDICA' OR s.vat_responsibility::text = 'RESPONSABLE')
+      AND COALESCE(cardinality(s.rut_responsibilities), 0) = 0
+    )
     OR (
       s.person_type::text = 'JURIDICA'
       AND (

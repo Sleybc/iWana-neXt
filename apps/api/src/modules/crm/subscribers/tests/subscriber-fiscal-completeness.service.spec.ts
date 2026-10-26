@@ -1,12 +1,58 @@
 import { UnprocessableEntityException } from '@nestjs/common';
-import { PersonType, VatResponsibility } from '@iwana/shared';
+import { isRutResponsibilitiesRequired, PersonType, VatResponsibility } from '@iwana/shared';
 import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.adapter';
 import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 
 describe('SubscriberFiscalCompletenessService', () => {
   const service = new SubscriberFiscalCompletenessService();
 
-  it('enumera IVA y RUT faltantes para una persona natural', () => {
+  const rutResponsibilityCases = [
+    {
+      personType: PersonType.JURIDICA,
+      vatResponsibility: VatResponsibility.RESPONSABLE,
+      required: true,
+    },
+    {
+      personType: PersonType.JURIDICA,
+      vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+      required: true,
+    },
+    {
+      personType: PersonType.NATURAL,
+      vatResponsibility: VatResponsibility.RESPONSABLE,
+      required: true,
+    },
+    {
+      personType: PersonType.NATURAL,
+      vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+      required: false,
+    },
+  ] as const;
+
+  describe.each(rutResponsibilityCases)(
+    'personType=$personType, vatResponsibility=$vatResponsibility',
+    ({ personType, vatResponsibility, required }) => {
+      it.each([
+        { rutResponsibilities: [] as string[], missing: required },
+        { rutResponsibilities: ['O-13'], missing: false },
+      ])('evalúa con lista $rutResponsibilities', ({ rutResponsibilities, missing }) => {
+        expect(isRutResponsibilitiesRequired({ personType, vatResponsibility })).toBe(required);
+        const nit = '900111222';
+        const completeness = service.evaluate({
+          personType,
+          vatResponsibility,
+          rutResponsibilities,
+          nit,
+          nitVerificationDigit: calculateNitVerificationDigit(nit),
+          legalRepresentativePartyId: 'synthetic-party-id',
+        });
+
+        expect(completeness.missing.includes('RUT_RESPONSIBILITIES')).toBe(missing);
+      });
+    },
+  );
+
+  it('enumera IVA faltante sin exigir RUT si el tipo de persona no lo requiere', () => {
     expect(
       service.evaluate({
         personType: PersonType.NATURAL,
@@ -18,7 +64,7 @@ describe('SubscriberFiscalCompletenessService', () => {
       }),
     ).toEqual({
       complete: false,
-      missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+      missing: ['VAT_RESPONSIBILITY'],
     });
   });
 
@@ -74,7 +120,7 @@ describe('SubscriberFiscalCompletenessService', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
         message: 'Faltan datos fiscales para activar o contratar.',
-        missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+        missing: ['VAT_RESPONSIBILITY'],
       });
     }
   });

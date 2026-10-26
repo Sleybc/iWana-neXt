@@ -337,14 +337,19 @@ describe('MOD05 deuda B3 — punto 1: responsabilidad de IVA y del RUT en el alt
         .getAllByRole('radio')
         .map((radio) => radio.closest('label')?.textContent),
     ).toEqual(['Responsable', 'No responsable']);
-    const rutGroup = screen.getByRole('group', { name: 'Responsabilidades del RUT' });
+    const rutGroup = screen.getByRole('group', { name: 'Responsabilidades del RUT (opcional)' });
     const rutOptions = within(rutGroup).getAllByRole('checkbox');
     expect(rutOptions).toHaveLength(5);
     RUT_LABELS.forEach((label) => expect(within(rutGroup).getByText(label)).toBeInTheDocument());
+    expect(
+      within(rutGroup).getByText(
+        'Opcional si la persona no tiene RUT. Al facturar se informa como "No aplica, otros".',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Régimen (común|simplificado)|Simplificado|Común/)).toBeNull();
   });
 
-  it('exige los dos campos en el alta manual y no envía nada sin ellos', async () => {
+  it('exige la responsabilidad de IVA pero no exige el RUT a quien no responde por IVA', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     mockLegalText();
@@ -352,14 +357,19 @@ describe('MOD05 deuda B3 — punto 1: responsabilidad de IVA y del RUT en el alt
     await screen.findByText('Texto vigente · versión v1.0');
 
     await fillNaturalIdentity(user);
+    await user.click(screen.getByRole('radio', { name: 'No responsable' }));
     await fillAuthorization(user);
     await user.click(screen.getByRole('button', { name: 'Crear suscriptor' }));
 
-    expect(await screen.findByText('Selecciona la responsabilidad de IVA.')).toBeInTheDocument();
-    expect(
-      screen.getByText('Selecciona al menos una responsabilidad del RUT.'),
-    ).toBeInTheDocument();
-    expect(onSave).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const payload = onSave.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).toEqual(
+      expect.objectContaining({
+        personType: PersonType.NATURAL,
+        vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+        rutResponsibilities: [],
+      }),
+    );
   });
 
   it('envía la responsabilidad de IVA y las del RUT en el orden del catálogo, sin taxRegime', async () => {
@@ -629,7 +639,7 @@ describe('MOD05 deuda B3 — punto 3: encabezado sin régimen tributario', () =>
     ).toBeNull();
   });
 
-  it('marca las responsabilidades del RUT vacías como pendientes de completar', () => {
+  it('muestra que no hay RUT declarado cuando no se exige y conserva el pendiente de IVA', () => {
     render(
       <SubscriberHeader
         subscriber={subscriberFixture({
@@ -637,7 +647,7 @@ describe('MOD05 deuda B3 — punto 3: encabezado sin régimen tributario', () =>
           rutResponsibilities: [],
           fiscalCompleteness: {
             complete: false,
-            missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+            missing: ['VAT_RESPONSIBILITY'],
           },
         })}
         onChangeStatus={jest.fn()}
@@ -645,9 +655,7 @@ describe('MOD05 deuda B3 — punto 3: encabezado sin régimen tributario', () =>
       />,
     );
 
-    expect(
-      screen.getByText('Responsabilidades del RUT pendientes de completar'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Sin RUT declarado')).toBeInTheDocument();
     expect(screen.getByText('Pendiente de completar')).toBeInTheDocument();
   });
 });
@@ -706,7 +714,7 @@ describe('MOD05 deuda B3 — punto 4: completitud fiscal (D-M05)', () => {
     expect(screen.queryByText(FISCAL_TITLE)).toBeNull();
   });
 
-  it('permite completar la responsabilidad de IVA y del RUT en la sección del detalle', async () => {
+  it('permite completar IVA sin pedir un RUT a una persona natural no responsable', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(
@@ -716,7 +724,7 @@ describe('MOD05 deuda B3 — punto 4: completitud fiscal (D-M05)', () => {
           rutResponsibilities: [],
           fiscalCompleteness: {
             complete: false,
-            missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+            missing: ['VAT_RESPONSIBILITY'],
           },
         })}
         onSave={onSave}
@@ -727,20 +735,17 @@ describe('MOD05 deuda B3 — punto 4: completitud fiscal (D-M05)', () => {
     await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
     expect(within(fiscal).getByText('Selecciona la responsabilidad de IVA.')).toBeInTheDocument();
     expect(
-      within(fiscal).getByText('Selecciona al menos una responsabilidad del RUT.'),
-    ).toBeInTheDocument();
+      within(fiscal).queryByText('Selecciona al menos una responsabilidad del RUT.'),
+    ).not.toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
 
     await user.click(within(fiscal).getByRole('radio', { name: 'No responsable' }));
-    await user.click(
-      within(fiscal).getByRole('checkbox', { name: /Régimen simple de tributación/ }),
-    );
     await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledWith({
         vatResponsibility: VatResponsibility.NO_RESPONSABLE,
-        rutResponsibilities: ['O-47'],
+        rutResponsibilities: [],
       }),
     );
   });
@@ -884,7 +889,7 @@ describe('MOD05 deuda CD-04 — detalle restringido con campos fiscales autoriza
           rutResponsibilities: [],
           fiscalCompleteness: {
             complete: false,
-            missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+            missing: ['VAT_RESPONSIBILITY'],
           },
         })}
         onChangeStatus={jest.fn()}

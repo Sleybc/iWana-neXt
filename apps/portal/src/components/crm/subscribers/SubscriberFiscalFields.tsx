@@ -6,6 +6,7 @@ import type { RutResponsibility, VatResponsibility } from '@iwana/shared';
 import { RUT_RESPONSIBILITY_OPTIONS, VAT_RESPONSIBILITY_OPTIONS } from './subscriber-fiscal';
 
 interface SubscriberFiscalFieldsProps {
+  rutResponsibilitiesRequired: boolean;
   vatResponsibility: VatResponsibility | '';
   rutResponsibilities: RutResponsibility[];
   onVatResponsibilityChange: (value: VatResponsibility) => void;
@@ -18,6 +19,7 @@ interface SubscriberFiscalFieldsProps {
 
 /** Responsabilidad de IVA y responsabilidades del RUT (ADR-093 D6), controlados. */
 export function SubscriberFiscalFields({
+  rutResponsibilitiesRequired,
   vatResponsibility,
   rutResponsibilities,
   onVatResponsibilityChange,
@@ -65,10 +67,12 @@ export function SubscriberFiscalFields({
         aria-describedby={rutError ? `${rutHintId} ${rutErrorId}` : rutHintId}
       >
         <legend className="text-sm font-medium text-gray-700 dark:text-gray-200">
-          Responsabilidades del RUT
+          Responsabilidades del RUT{rutResponsibilitiesRequired ? '' : ' (opcional)'}
         </legend>
         <p id={rutHintId} className="text-xs text-gray-500 dark:text-gray-400">
-          Marca todas las que figuran en el RUT.
+          {rutResponsibilitiesRequired
+            ? 'Marca todas las que figuran en el RUT.'
+            : 'Opcional si la persona no tiene RUT. Al facturar se informa como "No aplica, otros".'}
         </p>
         <div className="grid gap-2">
           {RUT_RESPONSIBILITY_OPTIONS.map((option) => (

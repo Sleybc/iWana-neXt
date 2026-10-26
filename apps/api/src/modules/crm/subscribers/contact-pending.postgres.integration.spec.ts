@@ -294,7 +294,7 @@ describeWithDb('Contacto pendiente de subscriber — PostgreSQL real', () => {
       status: 422,
       response: {
         code: 'SUBSCRIBER_FISCAL_DATA_INCOMPLETE',
-        missing: ['VAT_RESPONSIBILITY', 'RUT_RESPONSIBILITIES'],
+        missing: ['VAT_RESPONSIBILITY'],
       },
     });
     await expect(
