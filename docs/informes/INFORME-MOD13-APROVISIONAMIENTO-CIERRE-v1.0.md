@@ -60,7 +60,7 @@ Corrección relacionada de MOD11 (fuera de esta fase): `509237fb` (ADR-099). Ant
 | # | Paso | Resultado |
 | --- | --- | --- |
 | 3 | Catálogo real: router, red IPv4 y perfiles PCQ | ⏳ |
-| 3-bis | Declarar las responsabilidades fiscales del suscriptor del caso de origen: «No aplica, otros» (`R-99-PN`) si no tiene RUT. Desaparece si se aplica [ADR-100](../adrs/ADR-100-Responsabilidades-RUT-Condicionales-para-Activar-Suscriptor.md) (Aprobado el 2026-10-26) | ⏳ |
+| 3-bis | Declarar las responsabilidades fiscales del suscriptor del caso de origen: «No aplica, otros» (`R-99-PN`) si no tiene RUT. Ya no hace falta: [ADR-100](../adrs/ADR-100-Responsabilidades-RUT-Condicionales-para-Activar-Suscriptor.md) está implementado (`eaa72683`, CI verde el 2026-10-26) | ✅ No aplica |
 | 5 | Regularizar `OTE-20260828-001` como ADMIN, con motivo | ⏳ |
 | 6 | Verificar en solo lectura: suscriptor `ACTIVE` con `activated_at`, expediente `CLIENTE_ACTIVO`, servicio `ACTIVE` con `origin = REGULARIZED` y activación comercial `DONE` | ⏳ |
 | 4 | Encender la guarda en `tenant_iwana` | ⏳ |
