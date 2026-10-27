@@ -79,6 +79,7 @@ out/
 .claude/settings.local.json
 .claude/mcp-postgres.local.env
 .claude/mcp-redis.local.env
+.claude/hook-timings.jsonl*
 **/__pycache__/
 *.pyc
 

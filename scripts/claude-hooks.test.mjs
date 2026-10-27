@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
@@ -16,11 +16,13 @@ import { fileURLToPath } from 'node:url';
 
 const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', '.claude', 'hooks');
 
-function runHook(name, input, projectDir = process.cwd()) {
+// El registro de tiempos queda apagado salvo en su propio test: varios hooks corren
+// sobre el árbol real y no deben ensuciar .claude/hook-timings.jsonl.
+function runHook(name, input, projectDir = process.cwd(), env = { CLAUDE_HOOK_TIMINGS: 'off' }) {
   const result = spawnSync(process.execPath, [join(HOOKS, name)], {
     input: JSON.stringify(input),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, ...env },
   });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -267,5 +269,44 @@ test('session-context: informa rama, cambios y plan más reciente sin bloquear n
     );
   } finally {
     rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test('lib/hook-input: cada hook registra su duración y su salida en .claude/hook-timings.jsonl', () => {
+  const dir = fixture({ '.claude/.keep': '' });
+  try {
+    const on = { CLAUDE_HOOK_TIMINGS: 'on' };
+    runHook(
+      'guard-paths.mjs',
+      { hook_event_name: 'PreToolUse', tool_name: 'Edit', ...edit(`${dir}/src/a.ts`) },
+      dir,
+      on,
+    );
+    runHook(
+      'guard-paths.mjs',
+      { hook_event_name: 'PreToolUse', tool_name: 'Edit', ...edit(`${dir}/.env`) },
+      dir,
+      on,
+    );
+    const log = join(dir, '.claude', 'hook-timings.jsonl');
+    const lines = readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(lines.length, 2);
+    assert.deepEqual(
+      lines.map(({ hook, event, tool, file, exit }) => ({ hook, event, tool, file, exit })),
+      [
+        { hook: 'guard-paths', event: 'PreToolUse', tool: 'Edit', file: 'src/a.ts', exit: 0 },
+        { hook: 'guard-paths', event: 'PreToolUse', tool: 'Edit', file: '.env', exit: 2 },
+      ],
+    );
+    assert.ok(lines.every((line) => Number.isInteger(line.ms) && line.ms > 0));
+
+    rmSync(log);
+    runHook('guard-paths.mjs', edit(`${dir}/src/a.ts`), dir);
+    assert.equal(existsSync(log), false, 'CLAUDE_HOOK_TIMINGS=off no escribe nada');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

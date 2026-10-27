@@ -33,6 +33,7 @@
     "sync:agents:check": "node scripts/sync-agents.mjs --check",
     "sync:skills": "node scripts/sync-skills.mjs",
     "sync:skills:check": "node scripts/sync-skills.mjs --check",
+    "hooks:timings": "node scripts/hook-timings.mjs",
     "sync:mcp": "node scripts/sync-mcp.mjs",
     "sync:mcp:check": "node scripts/sync-mcp.mjs --check",
     "lint:staged": "lint-staged",
