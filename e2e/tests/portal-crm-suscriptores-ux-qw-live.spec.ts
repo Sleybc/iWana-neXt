@@ -1,57 +1,165 @@
-import { expect, test } from '@playwright/test';
+import { createHmac, randomUUID } from 'node:crypto';
+import { expect, test, type Page } from '@playwright/test';
 
 test.use({ trace: 'off', screenshot: 'off', video: 'off', baseURL: 'http://localhost:3002' });
 
+// El tenant y el runner ADMIN los siembra seed-privacy-fase-1b-fixtures.mjs
+// (R4.1 lo invoca en memoria). El suscriptor lo crea el propio test.
+const tenantSlug = process.env.E2E_PRIVACY_1B_TENANT_SLUG;
+const fixtureSuffix = tenantSlug?.startsWith('e2e-privacy-1b-')
+  ? tenantSlug.slice('e2e-privacy-1b-'.length)
+  : null;
+const masterPassword = process.env.E2E_PRIVACY_ADMIN_PASSWORD;
+const runnerEmail = fixtureSuffix ? `qa-privacy-runner-${fixtureSuffix}@example.invalid` : null;
+const runnerPassword =
+  tenantSlug && masterPassword && fixtureSuffix
+    ? `Qa9-${createHmac('sha256', masterPassword).update(`privacy-fase-1b:runner:${tenantSlug}`).digest('hex')}!zA`
+    : null;
+const missingLiveEnvironment = [
+  !tenantSlug?.trim() ? 'E2E_PRIVACY_1B_TENANT_SLUG' : null,
+  !masterPassword?.trim() ? 'E2E_PRIVACY_ADMIN_PASSWORD' : null,
+].filter((name): name is string => name !== null);
+
+async function apiJson<T>(
+  page: Page,
+  path: string,
+  method: 'GET' | 'POST' | 'PATCH',
+  data?: unknown,
+): Promise<T> {
+  const response = await page.request.fetch(`/api/v1${path}`, {
+    method,
+    headers: { 'X-Tenant-Slug': tenantSlug!, 'X-Requested-With': 'XMLHttpRequest' },
+    ...(data !== undefined ? { data } : {}),
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: T; code?: string };
+  expect(response.ok(), `API ${method} ${path}: ${response.status()} ${body.code ?? ''}`).toBe(
+    true,
+  );
+  return body.data as T;
+}
+
+/** Expediente completo, con autorización y llevado a instalación: así se convierte. */
+async function createConvertedSubscriber(page: Page): Promise<string> {
+  const catalog = await apiJson<{ data: Array<{ id: string }> }>(
+    page,
+    '/commercial/catalog?type=PLAN&isActive=true&limit=100',
+    'GET',
+  );
+  const planId = catalog.data[0]?.id;
+  expect(planId, 'El seed debe dejar un plan activo.').toBeTruthy();
+  const suffix = randomUUID().slice(0, 8);
+  const email = `qw-expediente-${suffix}@example.invalid`;
+  const expediente = await apiJson<{ id: string }>(page, '/crm/expedientes', 'POST', {
+    fullName: `Expediente QW ${suffix}`,
+    acquisitionChannel: 'WEB',
+    customerSegment: 'RESIDENTIAL',
+    sourceDetail: `Fixture QW ${suffix}`,
+  });
+  const sections: Array<[string, Record<string, unknown>]> = [
+    [
+      'identification',
+      {
+        personType: 'PERSONA_NATURAL',
+        documentType: 'CC',
+        documentNumber: `QW-${suffix}`,
+        firstName: 'Titular',
+        lastName: suffix,
+      },
+    ],
+    [
+      'contact',
+      {
+        phonePrimary: '+570000000000',
+        emailPrimary: email,
+        altContactName: 'Contacto sintético',
+        altContactPhone: '+570000000001',
+      },
+    ],
+    [
+      'location',
+      {
+        address: 'Carrera de prueba 999',
+        municipality: 'Bogotá',
+        department: 'Cundinamarca',
+        postalCode: '110111',
+        stratum: 3,
+        neighborhood: 'Sector de pruebas',
+        latitude: 4.711,
+        longitude: -74.072,
+      },
+    ],
+    [
+      'commercial_interest',
+      { acquisitionChannel: 'WEB', sourceDetail: `Fixture QW ${suffix}`, interestedPlanId: planId },
+    ],
+    [
+      'technical_feasibility',
+      {
+        feasibility: 'VIABLE',
+        candidateTechnologies: ['FIBER'],
+        availableTechnology: 'FIBER',
+        technicalConfidence: 'HIGH',
+        evaluationSource: 'TECHNICAL_SITE_VISIT',
+      },
+    ],
+    ['legal_consent', { identityVerified: 'VERIFIED', legalComplianceStatus: 'APPROVED' }],
+  ];
+  for (const [section, data] of sections) {
+    await apiJson(page, `/crm/expedientes/${expediente.id}/sections/${section}`, 'PATCH', {
+      data,
+    });
+  }
+  const legalText = await apiJson<{ version: string }>(
+    page,
+    '/privacy/legal-texts/current?type=AUTORIZACION',
+    'GET',
+  );
+  await apiJson(page, `/crm/expedientes/${expediente.id}/consents`, 'POST', {
+    consentType: 'DATA_TREATMENT',
+    status: 'ACCEPTED',
+    channel: 'TELEFONO',
+    legalTextVersion: legalText.version,
+  });
+  for (const targetStatus of [
+    'PRECALIFICADO',
+    'VALIDANDO_COBERTURA',
+    'EN_COTIZACION',
+    'LISTO_PARA_INSTALACION',
+  ]) {
+    await apiJson(page, `/crm/expedientes/${expediente.id}/status`, 'PATCH', { targetStatus });
+  }
+  const findSubscriber = async (): Promise<string | null> => {
+    const response = await page.request.post('/api/v1/crm/subscribers/search', {
+      headers: { 'X-Tenant-Slug': tenantSlug!, 'X-Requested-With': 'XMLHttpRequest' },
+      data: { email },
+    });
+    if (!response.ok()) return null;
+    const body = (await response.json()) as { data?: Array<{ id: string }> };
+    return body.data?.[0]?.id ?? null;
+  };
+  await expect.poll(findSubscriber, { timeout: 20_000 }).not.toBeNull();
+  return (await findSubscriber())!;
+}
+
 test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({ page }) => {
   test.setTimeout(180_000);
-  const slug = process.env.E2E_TENANT_SLUG;
   test.skip(
-    !slug || !process.env.E2E_TENANT_ADMIN_EMAIL || !process.env.E2E_TENANT_ADMIN_PASSWORD,
-    'G2 pendiente: faltan credenciales admin CRM del seed; no se sustituyen por cuenta AUDITOR.',
+    missingLiveEnvironment.length > 0,
+    `Entorno E2E real omitido; faltan variables: ${missingLiveEnvironment.join(', ')}.`,
   );
-  const login = await page.request.post('http://localhost:3000/api/v1/auth/login', {
-    headers: { 'X-Tenant-Slug': slug! },
-    data: {
-      email: process.env.E2E_TENANT_ADMIN_EMAIL,
-      password: process.env.E2E_TENANT_ADMIN_PASSWORD,
-    },
-  });
-  expect(login.status()).toBe(200);
-  const session = (await login.json()).data;
-  expect(Boolean(session.accessToken)).toBe(true);
-  await page.context().addCookies([
-    {
-      name: 'portalAccessToken',
-      value: session.accessToken,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Strict',
-      secure: false,
-    },
-  ]);
-  await page.addInitScript(
-    (tenantSlug) => localStorage.setItem('iwana.portal.tenant-slug', tenantSlug!),
-    slug,
-  );
-  const headers = { Authorization: `Bearer ${session.accessToken}`, 'X-Tenant-Slug': slug! };
-  const listed = await page.request.get('http://localhost:3000/api/v1/crm/subscribers?limit=100', {
-    headers,
-  });
-  expect(listed.status()).toBe(200);
-  const records = (await listed.json()).data;
-  console.info('V1 fixture: registros disponibles', records.length);
-  const target = records.find(
-    (r: { privacyRestricted?: boolean; personType?: string }) =>
-      !r.privacyRestricted && r.personType === 'NATURAL',
-  );
-  expect(Boolean(target)).toBe(true);
-  const detailResponse = await page.request.get(
-    `http://localhost:3000/api/v1/crm/subscribers/${target.id}/360`,
-    { headers },
-  );
-  expect(detailResponse.status()).toBe(200);
-  const detail = (await detailResponse.json()).data;
+  await page.goto('/auth/login');
+  await page.getByLabel('Empresa').fill(tenantSlug!);
+  await page.getByLabel('Correo electrónico').fill(runnerEmail!);
+  await page.locator('input[autocomplete="current-password"]').fill(runnerPassword!);
+  await page.getByRole('button', { name: 'Ingresar' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  const targetId = await createConvertedSubscriber(page);
+  const detail = await apiJson<{
+    subscriber: { documentNumber: string | null; status: string; personType: string };
+    expedienteSummary: unknown;
+  }>(page, `/crm/subscribers/${targetId}/360`, 'GET');
+  const target = { id: targetId };
   console.info(
     'V1 fixture capabilities',
     JSON.stringify({
@@ -72,7 +180,7 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
     'Cédula, NIT o pasaporte',
   );
   await expect(page).toHaveURL(/mode=document/u);
-  const documentValue = detail.subscriber.documentNumber;
+  const documentValue = detail.subscriber.documentNumber ?? '';
   expect(Boolean(documentValue)).toBe(true);
   await page.getByRole('searchbox').fill(documentValue);
   const searched = page.waitForResponse(
@@ -128,16 +236,9 @@ test('V1 real: búsqueda exacta, tabs, teclado, facturación y móvil', async ({
     ).toBeVisible();
     console.info('V1 CA5: error forzado interceptado visible; ninguna escritura enviada');
   }
-  await page.getByRole('button', { name: 'Cambiar estado', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByRole('combobox', { name: 'Estado destino' }).click();
-  await page.getByRole('option', { name: 'Suspendido', exact: true }).click();
-  await expect(dialog.getByRole('textbox', { name: /Razón/ })).toHaveAttribute(
-    'aria-required',
-    'true',
-  );
-  await expect(dialog.getByRole('button', { name: 'Confirmar', exact: true })).toBeDisabled();
-  await page.keyboard.press('Escape');
+  // El bloque «Cambiar estado → Suspendido» quedó obsoleto con a583e9f0: la
+  // suspensión es un comando de ciclo de vida sobre servicios de un suscriptor
+  // ACTIVE, y aquí es PROSPECT. La cubre portal-mod05-lifecycle.spec.ts.
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`/dashboard/crm/subscribers/${target.id}?tab=datos`);
   await expect(page.getByRole('tab', { name: 'Datos', exact: true })).toBeVisible();
