@@ -2049,8 +2049,10 @@ try {
       // la limpieza por API recibe 401. Se renueva y, si falla, se usa el previo.
       try {
         platformToken = (await loginPlatformWithPassword(platformPassword)).token;
-      } catch {
-        console.error('E2E_PLATFORM_RELOGIN=FAILED');
+      } catch (error) {
+        // `api()` compone el mensaje solo con método, ruta y status: sin cuerpo.
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`E2E_PLATFORM_RELOGIN=FAILED|${detail}`);
       }
       for (const slug of tenantSlugs) {
         // Con reintentos: la suite sacude la infraestructura a propósito —el
