@@ -2047,12 +2047,25 @@ try {
     if (platformToken) {
       // El token se emitió antes de la suite; si esta dura más que su vigencia
       // la limpieza por API recibe 401. Se renueva y, si falla, se usa el previo.
-      try {
-        platformToken = (await loginPlatformWithPassword(platformPassword)).token;
-      } catch (error) {
+      // Mismos reintentos que la limpieza: al cerrar la suite la API puede dar
+      // `fetch failed` por un instante (visto en CI tras d74df717).
+      let reloginError;
+      for (let attempt = 1; attempt <= CLEANUP_ATTEMPTS; attempt += 1) {
+        try {
+          platformToken = (await loginPlatformWithPassword(platformPassword)).token;
+          reloginError = undefined;
+          break;
+        } catch (error) {
+          reloginError = error;
+          if (attempt < CLEANUP_ATTEMPTS) {
+            await sleep(CLEANUP_RETRY_DELAY_MS * attempt);
+          }
+        }
+      }
+      if (reloginError) {
         // `api()` compone el mensaje solo con método, ruta y status: sin cuerpo.
-        const detail = error instanceof Error ? error.message : String(error);
-        console.error(`E2E_PLATFORM_RELOGIN=FAILED|${detail}`);
+        const detail = reloginError instanceof Error ? reloginError.message : String(reloginError);
+        console.error(`E2E_PLATFORM_RELOGIN=FAILED|${detail}|intentos=${CLEANUP_ATTEMPTS}`);
       }
       for (const slug of tenantSlugs) {
         // Con reintentos: la suite sacude la infraestructura a propósito —el
