@@ -10,6 +10,9 @@ build/
 
 # Storage local de desarrollo — uploads generados por MediaService
 apps/api/storage/
+# R4.1 arranca la API desde la raíz del repo: los soportes de expediente
+# sintéticos que suben los specs live caen en storage/ de la raíz.
+/storage/
 
 # Backups de base de datos — dumps con PII jamás versionados
 .backups/
