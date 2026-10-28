@@ -436,6 +436,14 @@ test('permite revisar la suspensión total y reactivar solo el servicio seleccio
 
   let dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Suspender servicios' })).toBeVisible();
+  // Sin motivo no hay vista previa ni comando (antes lo cubría el V1 live de QW).
+  await expect(dialog.getByRole('combobox', { name: 'Motivo *' })).toHaveAttribute(
+    'aria-required',
+    'true',
+  );
+  await expect(
+    dialog.getByRole('button', { name: 'Ver vista previa', exact: true }),
+  ).toBeDisabled();
   await dialog.getByRole('combobox', { name: 'Motivo *' }).click();
   await page.getByRole('option', { name: 'Mora en el pago', exact: true }).click();
   await dialog.getByRole('button', { name: 'Ver vista previa', exact: true }).click();

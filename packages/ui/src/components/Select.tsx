@@ -108,6 +108,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       'aria-label': ariaLabel,
       'aria-describedby': ariaDescribedBy,
       'aria-labelledby': ariaLabelledBy,
+      'aria-required': ariaRequired,
       ...props
     },
     ref,
@@ -117,6 +118,12 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     const nativeSelectId = `${selectId}-native`;
     const labelId = `${selectId}-label`;
     const invalidState = error ? ({ 'aria-invalid': 'true' } as const) : {};
+    // El select nativo es `hidden` y `aria-hidden`: lo obligatorio debe
+    // anunciarlo el combobox visible, que es el control accesible.
+    const requiredState =
+      required || ariaRequired === true || ariaRequired === 'true'
+        ? ({ 'aria-required': 'true' } as const)
+        : {};
     const describedBy =
       [
         ariaDescribedBy,
@@ -481,6 +488,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             disabled={disabled}
             {...expandedState}
             {...invalidState}
+            {...requiredState}
             className={cn(
               'flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-iwana-primary shadow-iwana-soft transition-all duration-200',
               'focus:border-iwana-secondary focus:outline-none focus:ring-2 focus:ring-iwana-secondary/50',
