@@ -5,7 +5,7 @@
 **Estado:**
 - **G4: GO.**
 - **G6: GO.**
-- **G6.5: pendiente** del CI del commit de cierre.
+- **G6.5: GO.** CI [`39126330380`](https://github.com/Sleybc/iWana-neXt/actions/runs/39126330380) sobre `d9018071`: 5/5 jobs en verde, con todos los pasos ejecutados (migraciones sin pendientes; integraciones de db, API y worker contra PostgreSQL real; E2E operativo; build de imágenes).
 - G7 diferido hasta la beta ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md)).
 
 ## 1. Qué entrega la fase
@@ -30,7 +30,7 @@
 | G4: contratos | [V3′](INFORME-MOD05-DEUDA-V3-REV-v1.1.md) más [FIX-C](INFORME-MOD05-DEUDA-FIX-C-v1.0.md): CD-01 a CD-08 y B-01 cerrados; CD-04 resuelto en el portal | GO |
 | G6: E2E | [V1′](INFORME-MOD05-DEUDA-V1-QA-v1.1.md): **12/12** con `--retries=0` contra la API real, incluidas el alta manual y la regresión de la Fase 1b | GO |
 | G6: gates | [V4″](INFORME-MOD05-DEUDA-V4-GATES-v1.2.md): turbo 10/10 y typecheck, lint y build 23/23, todo sin caché; integración de db 125/125 y de api 97 (15 omitidos declarados) **ejecutadas**; `subscriber.schema.ts` al 100 % ([FIX-D](INFORME-MOD05-DEUDA-FIX-D-v1.0.md)); `crm/subscribers` y `crm/contracts` sobre su línea base | GO |
-| G6.5 | CI del commit de cierre, con todos los pasos ejecutados | Pendiente |
+| G6.5 | CI `39126330380` sobre `d9018071`: api 5 307, portal 3 073, db 417 (más 125 de integración), worker 171, web 229, shared 200, ui 34; integración de la API 97; 0 fallos | GO |
 
 ## 3. Defectos y lecciones
 
@@ -53,3 +53,7 @@
 ## 5. Efecto en la re-auditoría de MOD05
 
 SUB-M03, SUB-M04, SUB-B02 y SUB-B04 quedan **implementados**. Con esto no queda deuda de código abierta de la [re-auditoría](INFORME-MOD05-SUBSCRIBERS-REAUDITORIA-v1.0.md) §8. Los ⚠ del checklist (#2, #4, #10 y #12) dependen de G7 por tenant o del dictamen del contador. El PRD vigente recoge las reglas nuevas en la adenda §11 de la [Fase 04](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md).
+
+## 6. Ubicación de la evidencia local
+
+Los informes de la fase citan archivos en `.cache/` (logs, resultados de Jest, scripts y trazas sanitizadas de E2E). El 2026-10-18 esa evidencia se movió a `.backups/evidencia-mod05-deuda-2026-10-18/`, que es local y está ignorada por git, y las cachés de Jest se borraron. `.cache/` quedó en `.gitignore` para que ningún `git add` vuelva a incluirla.

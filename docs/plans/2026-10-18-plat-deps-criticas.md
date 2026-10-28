@@ -1,7 +1,7 @@
 # PLAT · Dependencias críticas · Plan de orquestación
 
 **Versión:** 1.0 · **Fecha:** 2026-10-18 · **Emitido por:** AI-EM-ARCH (modo Orquestador)
-**Estado:** **Aprobado por CTO el 2026-10-18 (D1-A, D2-A, D3-A y D4-A).** Cierre técnico completo; pendiente del commit y del push. El push requiere confirmación explícita del CTO en ese momento (D3-A).
+**Estado:** **Aprobado por CTO el 2026-10-18 (D1-A, D2-A, D3-A y D4-A).** Cierre técnico completo; commit `a6ca8e3f` en `origin/main`. G6.5 parcial: el contador E2E da 125 fallos frente a ≤ 100 y falta la decisión del CTO (ver el informe, §11).
 **Encargo de ejecución:** `docs/prompts/PROMPT-PLAT-DEPS-CRITICAS-v1.0.md` · **Launcher:** `docs/prompts/PROMPT-PLAT-DEPS-CRITICAS-LAUNCH-v1.0.md` (fuente; prevalece si diverge de la sección `## Lanzamiento`).
 **Base verificada:** `main` en `d9018071`. Hay WIP de MOD05 Suscriptores UX sin commitear: fuera de alcance (§0.4).
 

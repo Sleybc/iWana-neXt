@@ -119,3 +119,4 @@ El launcher es [PROMPT-MOD05-DEUDA-CODIGO-LAUNCH-v1.0.md](../prompts/PROMPT-MOD0
 
 - **Fase cerrada:** G4 y G6 en GO ([cierre](../informes/INFORME-MOD05-DEUDA-CIERRE-G6-v1.0.md)). G6.5 queda pendiente del CI del commit de cierre.
 - **PRD:** se agregó la adenda §11 al PRD vigente ([Fase 04](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-04-v1.0.md)): RF-SUB-03′, RF-SUB-06′ y RF-SUB-14 a 16. El PRD v1.0 (superado) solo se anotó.
+- **G6.5: GO** (2026-10-18): CI [`39126330380`](https://github.com/Sleybc/iWana-neXt/actions/runs/39126330380) sobre `d9018071`, verde en 5/5 con todos los pasos ejecutados. **Fase cerrada.**

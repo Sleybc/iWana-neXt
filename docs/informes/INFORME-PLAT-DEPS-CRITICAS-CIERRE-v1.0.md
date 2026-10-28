@@ -1,7 +1,7 @@
 # PLAT · Dependencias críticas · Informe de cierre (v1.0)
 
 **Fecha:** 2026-10-18
-**Estado:** cierre técnico completo; pendiente del commit y del push (§10 y §11)
+**Estado:** cierre técnico completo; commit `a6ca8e3f` en `origin/main`. G6.5 parcial: el contador E2E incumple ≤ 100 y falta la decisión del CTO (§10 y §11)
 **Plan:** `docs/plans/2026-10-18-plat-deps-criticas.md` (v1.0; §1 y §3.2 con la decisión final y la lista de overrides aplicada)
 **Encargo:** `docs/prompts/PROMPT-PLAT-DEPS-CRITICAS-v1.0.md` · **Launcher:** `docs/prompts/PROMPT-PLAT-DEPS-CRITICAS-LAUNCH-v1.0.md`
 **ADR-096 (propuesto):** `docs/adrs/ADR-096-Configuracion-Next-16-4-Partial-Prefetching-y-Agent-Rules.md`; pendiente de aprobación del CTO
@@ -25,7 +25,7 @@ Hay una excepción de calidad: la validación instant de Next 16.4 produce error
 | G4 · Encargo y launcher | Cumplido | Encargo, launcher y plan |
 | G5 · Gates técnicos | Cumplido en 1–10 y 12. Gate 11 con excepción C. Gate 15 cumplido | §7 |
 | G6 · Calidad (dictamen de seguridad) | GO con ajustes (B6): ajustes 1 y 2 antes del commit | §8 |
-| G6.5 · Merge readiness | Pendiente: requiere push (D3-A) | §10 y §11 |
+| G6.5 · Merge readiness | Parcial: 3 de 4 criterios en verde sobre `a6ca8e3f`; el contador E2E da 125 fallos frente a ≤ 100 (pendiente de decisión del CTO) | §10 y §11 |
 | G7 · Producción | Fuera de alcance (ADR-095) | — |
 
 ## 3. Resultado de seguridad
@@ -233,14 +233,34 @@ Hallazgos fuera de fase (no bloquean; se registran en §9):
 - `apps/portal/next-env.d.ts` restaurado desde la copia previa a la fase (sha256 `7ad303…`, igual que el registro de B0). `apps/web/next-env.d.ts` restaurado a HEAD.
 - `AGENTS.md` y `CLAUDE.md` sin cambios. `.gitignore` tiene WIP previo a la fase, que no se toca; el WIP de MOD05 y las entradas de otros encargos no cambian por esta fase.
 - Commit con pathspec explícito (plan §8). Mensaje en inglés, como los commits recientes de `main`.
-- Push: pendiente de confirmación del CTO (D3-A).
+- Push: `a6ca8e3f` está en `origin/main` desde el push de 2026-10-18 14:18 (-0500), con la confirmación del CTO. El push de 15:13 (-0500) subió `d5b5c92d` y, con él, `f867cbd2` (nodemailer), que esa confirmación no cubría (§11, punto 6).
 
 ## 11. Pendientes después del commit
-1. G6.5: push con confirmación del CTO; corrida de `ci`, `production-images` y `execution-orders-e2e` sobre el SHA; y `e2e-portal-debt-counter` con 100 fallos o menos.
+1. G6.5: decisión del CTO sobre el contador `e2e-portal-debt-counter` (125 fallos frente a ≤ 100). Los tres jobs obligatorios están en verde (ver el resultado abajo).
 2. PLAT-DEPS-NODEMAILER (sr-backend): nodemailer 10.0.9 o superior.
 3. Corrección de la validación instant (fe-platform) antes de la beta.
 4. MOD05 Suscriptores UX: reabrir V4 y G6 con este commit en `main`. Su WIP se commitea en su propio encargo.
 5. Lote siguiente (dictamen B6): nodemailer ≥10.0.9, con validación de `to` mientras tanto; `.catch` en los tres `sendMail`; overrides `qs@<6.16.0` y `js-yaml@<5.4.1`; retirar `@hapi/joi`; `csv-parse` ≥7.0.2 (major); limitar el detalle de `/api/v1/health`. Los cambios de lock necesitan evidencia nueva de B5.
+6. `f867cbd2` (nodemailer 10.x) está en `origin/main` desde el push de `d5b5c92d` (2026-10-18 15:13 -0500). La confirmación del CTO cubría solo `a6ca8e3f`. Decisión pendiente del CTO: aceptar ese push o retirarlo con un commit nuevo; no se toca sin esa decisión.
+
+### G6.5 · Resultado de CI sobre `a6ca8e3f`
+
+Corridas de `main` con `headSha` `a6ca8e3f3bfb24cb6fda20868937e734fc18ad0a`:
+
+| Job | Corrida / job id | Resultado |
+| --- | --- | --- |
+| `ci` («Lint + Typecheck + Build + Unit tests»), con «Auditar dependencias de producción (critical)» | 39158140592 / 117765541398 | success |
+| `production-images` | 39158140592 / 117765541251 | success |
+| `execution-orders-e2e` | 39158140592 / 117765541351 | success |
+| `adr-citations` | 39158140592 / 117765541406 | success |
+| `e2e-portal-debt-counter` (informativo) | 39158140592 / 117765541440 | job success; **125 fallos frente a baseline 100** (TOTAL 294, PASSED 169) |
+| `E2E Web Admin Smoke` («Admin bootstrap smoke») | 39158140591 / 117765541245 | success |
+
+Criterios del encargo (G6.5, paso 3): `ci`, `production-images` y `execution-orders-e2e` en verde, **cumplido**; `e2e-portal-debt-counter` ≤ 100, **no cumplido**.
+
+El contador ya superaba el baseline antes de la fase: en el padre `d9018071` (corrida 39126330380) dio 124 fallos. Frente al padre, `a6ca8e3f` añade dos fallos (`portal-inventory-scm.spec.ts:4525` y `portal-settings-calendar.spec.ts:679`) y deja de fallar uno (`portal-settings-access-ui.spec.ts:612`). El primero falla porque `getByRole('button', { name: 'Existencias' })` resuelve a 3 elementos; el segundo, porque el clic en el enlace de Calendario no cambia la URL en 10 s. No los he reproducido en aislado, así que no puedo atribuirlos a la fase ni descartarlo.
+
+En `main` actual (`b6c50fef`, corrida 39517623987) el contador ya no aparece: el job `E2E portal` es bloqueante y su conclusión es `success`.
 
 ## 12. Evidencia
 Scratchpad de la sesión, fuera del repositorio: logs `b0-*`, `b1-*`, `b2-*`, `b2c-*`, `b4-*`, `b5-*`, `b6-*` y `b7-*` (reintento del gate 10: `b7-gate10-retry.meta`, `b7-gate10-health-code.txt` y `b7-gate10-retry-control.txt`), los de `b0-*`, `b4-*`, `b5-*` y `b7-*` con su `.meta` de código de salida; el resto (`b1-*`, `b2-*`, `b2c-*` y `b6-*`) con la salida del comando registrada en la sesión.
