@@ -1,0 +1,3 @@
+# Evidencia con SHA anclado: formatearla rompe el manifiesto C3.2 y los sidecars.
+docs/quality/evidence-mod13-ca-r12-e1/
+scripts/build-repo-artifact.cjs

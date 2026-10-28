@@ -416,7 +416,7 @@ function saveSelectedSection(section) {
   }
 }
 
-function isErrorLine(text) {
+export function isErrorLine(text) {
   const normalizedText = stripAnsi(text).trim().toLowerCase();
 
   if (/found 0 errors?\b/.test(normalizedText)) {
@@ -427,7 +427,10 @@ function isErrorLine(text) {
     return false;
   }
 
-  return /(\berror\b|err_|\bexception\b|\bexceptionhandler\b|\bfailed\b|\beaddrinuse\b|\bunable\b|\bcannot\b|\bdenied\b)/i.test(
+  // Los resúmenes de migración/backfill reportan conteos (`failed=0`), no un
+  // error: sin este caso, `failed=0` entraba al panel de errores del dashboard.
+  // `failed=<n>` con n > 0 sigue marcándose.
+  return /(\berror\b|err_|\bexception\b|\bexceptionhandler\b|\bfailed\b(?!\s*=\s*0\b)|\beaddrinuse\b|\bunable\b|\bcannot\b|\bdenied\b)/i.test(
     normalizedText,
   );
 }

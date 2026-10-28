@@ -21,6 +21,7 @@ import {
   devInfraOneShots,
   devInfraServices,
   findMissingDevEnvVars,
+  isErrorLine,
   parseEnvFile,
   requiredDevEnvVars,
   requiredMigrationEnvVars,
@@ -198,6 +199,29 @@ test('resolvePnpmTarget executes pnpm.cjs through the current Node runtime', () 
     assert.equal(target.command, process.execPath);
     assert.deepEqual(target.args, ['C:\\corepack\\pnpm.cjs', 'dev:free-ports']);
   });
+});
+
+test('isErrorLine ignora resúmenes de backfill con cero fallos', () => {
+  assert.equal(
+    isErrorLine(
+      '[setup] 108 backfill subscribers.*_hmac: processed=0 updated=0 skipped=0 failed=0',
+    ),
+    false,
+  );
+});
+
+test('isErrorLine marca un resumen de backfill con fallos reales', () => {
+  assert.equal(
+    isErrorLine(
+      '[setup] 108 backfill subscribers.*_hmac: processed=3 updated=2 skipped=1 failed=1',
+    ),
+    true,
+  );
+});
+
+test('isErrorLine conserva las detecciones existentes de error', () => {
+  assert.equal(isErrorLine('Build failed'), true);
+  assert.equal(isErrorLine('Found 0 errors. Watching for file changes.'), false);
 });
 
 test('waitForCompilation rejects initial compilations with TypeScript errors', async () => {

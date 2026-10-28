@@ -108,3 +108,6 @@ packages/storage/src/**/*.d.ts.map
 .kilo/
 artifacts/
 /screenshot-*.png
+
+# Cachés y artefactos locales de agentes (Jest, logs, trazas): en cualquier nivel
+.cache/
