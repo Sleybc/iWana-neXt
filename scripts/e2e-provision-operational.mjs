@@ -1522,12 +1522,38 @@ async function provisionExecutionTemplate(
   return templateId;
 }
 
-// El reporter de marcadores solo publica conteos agregados no secretos. No
-// escribe JSON, traces, screenshots ni stdout de cada test a un artefacto.
+// El reporter de marcadores publica conteos agregados y, por cada test
+// fallido, su spec, línea y título: texto fijo del código, sin errores, stdout,
+// traces ni screenshots. No escribe JSON ni artefactos por test.
 function createPlaywrightMarkerReporter() {
   const reporterDirectory = mkdtempSync(join(tmpdir(), 'iwana-e2e-marker-reporter-'));
   const reporterPath = join(reporterDirectory, 'reporter.mjs');
   const source = String.raw`
+import { relative, sep } from 'node:path';
+
+const MAX_FAILED_TEST_MARKERS = 50;
+const MAX_FAILED_TEST_LENGTH = 300;
+
+function describeFailedTest(test) {
+  const file = test.location && test.location.file
+    ? relative(process.cwd(), test.location.file).split(sep).join('/')
+    : 'spec-desconocido';
+  const line = test.location && Number.isInteger(test.location.line) ? test.location.line : 0;
+  const titles = [];
+  let suite = test.parent;
+  while (suite && suite.type === 'describe') {
+    titles.unshift(suite.title);
+    suite = suite.parent;
+  }
+  titles.push(test.title);
+  const text = (file + ':' + line + ' › ' + titles.join(' › '))
+    .replace(/[\u0000-\u001f\u007f]+/gu, ' ')
+    .trim();
+  return text.length > MAX_FAILED_TEST_LENGTH
+    ? text.slice(0, MAX_FAILED_TEST_LENGTH - 1) + '…'
+    : text;
+}
+
 class OperationalMarkerReporter {
   constructor() {
     this.totalTests = 0;
@@ -1543,7 +1569,7 @@ class OperationalMarkerReporter {
     const testKey = typeof test.id === 'string'
       ? test.id
       : 'title:' + test.titlePath().join('\\u001f');
-    this.resultsByTest.set(testKey, { result, annotations: test.annotations ?? [] });
+    this.resultsByTest.set(testKey, { test, result, annotations: test.annotations ?? [] });
     if (Number.isInteger(result.retry) && result.retry > 0) {
       this.retriedTests.add(testKey);
     }
@@ -1555,8 +1581,9 @@ class OperationalMarkerReporter {
     let skipped = 0;
     let skipReasonCount = 0;
     let missingSkipReasons = 0;
+    const failedTests = [];
 
-    for (const { result, annotations } of this.resultsByTest.values()) {
+    for (const { test, result, annotations } of this.resultsByTest.values()) {
       if (result.status === 'passed') {
         passed += 1;
       } else if (result.status === 'skipped') {
@@ -1577,6 +1604,7 @@ class OperationalMarkerReporter {
       } else {
         // timedOut/interrupted también son fallos del gate, no falsos verdes.
         failed += 1;
+        failedTests.push(describeFailedTest(test) + ' [' + result.status + ']');
       }
     }
 
@@ -1588,6 +1616,14 @@ class OperationalMarkerReporter {
     process.stdout.write('E2E_PLAYWRIGHT_FLAKY=' + this.retriedTests.size + '\n');
     process.stdout.write('E2E_PLAYWRIGHT_SKIP_REASON_COUNT=' + skipReasonCount + '\n');
     process.stdout.write('E2E_PLAYWRIGHT_MISSING_SKIP_REASONS=' + missingSkipReasons + '\n');
+    for (const failedTest of failedTests.sort().slice(0, MAX_FAILED_TEST_MARKERS)) {
+      process.stdout.write('E2E_PLAYWRIGHT_FAILED_TEST=' + failedTest + '\n');
+    }
+    if (failedTests.length > MAX_FAILED_TEST_MARKERS) {
+      process.stdout.write(
+        'E2E_PLAYWRIGHT_FAILED_TEST_OMITTED=' + (failedTests.length - MAX_FAILED_TEST_MARKERS) + '\n',
+      );
+    }
   }
 }
 

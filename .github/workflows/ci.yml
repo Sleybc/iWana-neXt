@@ -973,7 +973,7 @@ jobs:
             echo "  docker logs:   ${{ steps.docker-logs.outcome }}"
             echo ""
             echo "marcadores E2E (no secretos):"
-            grep -E '^(E2E_SETUP=OK|E2E_PLAYWRIGHT_(EXIT|PASSED|FAILED|SKIPPED|DID_NOT_RUN|FLAKY|DURATION_MS)=|E2E_TOTAL_DURATION_MS=|E2E_CLEANUP=OK)' \
+            grep -E '^(E2E_SETUP=OK|E2E_PLAYWRIGHT_(EXIT|PASSED|FAILED|FAILED_TEST|FAILED_TEST_OMITTED|SKIPPED|DID_NOT_RUN|FLAKY|DURATION_MS)=|E2E_TOTAL_DURATION_MS=|E2E_CLEANUP=OK)' \
               /tmp/e2e-provision.log 2>/dev/null || echo "  (sin marcadores en el log)"
           } > "$SUMMARY"
 
