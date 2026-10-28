@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iWana – Internet Fibra Óptica y Radio Enlace en el Tequendama</title>
+  <meta name="description" content="Internet por Fibra Óptica y Radio Enlace en El Colegio, Tena, San Antonio del Tequendama y zonas rurales de La Mesa, Anapoima y Viotá. Mismo precio con cualquier tecnología.">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- Aplica el tema antes de pintar para evitar el parpadeo -->
+  <script>
+    (function () {
+      var t;
+      try { t = localStorage.getItem('iwana-theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================
+       Tokens — derivados de packages/ui/src/styles/globals.css
+       Claro: azul noche + lima sobre blanco / surface-soft
+       Oscuro: escala dark-surface de iWana neXt (sin fondo azul)
+       ============================================================ */
+    :root {
+      --bg: #FFFFFF;
+      --bg-alt: #F8FAF5;
+      --card: #FFFFFF;
+      --card-on-alt: #FFFFFF;
+      --text: #17163A;
+      --muted: #5C5C5C;
+      --border: rgba(23, 22, 58, 0.10);
+      --border-control: #8A8A8A;
+      --cta-bg: #17163A;
+      --cta-text: #FFFFFF;
+      --cta-hover: #4A4176;
+      --accent: #A5C330;
+      --accent-text: #6A7A1C;
+      --badge-bg: #EDF8CC;
+      --badge-text: #48531D;
+      --featured-border: #17163A;
+      --focus: #6A7A1C;
+      --map-bg: #F8FAF5;
+      --map-node-full: #A5C330;
+      --map-node-stroke: #17163A;
+      --shadow-soft: 0 10px 40px -10px rgba(23, 22, 58, 0.08);
+      --shadow-active: 0 8px 30px -5px rgba(23, 22, 58, 0.12);
+      --band-bg: #17163A;
+      --band-text: #FFFFFF;
+      --band-muted: #D1CFE1;
+      --radius-control: 6px;
+      --radius-card: 12px;
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #181818;
+      --bg-alt: #222222;
+      --card: #222222;
+      --card-on-alt: #2A2A2A;
+      --text: #F0F0F0;
+      --muted: #B8B8B8;
+      --border: #2E2E2E;
+      --border-control: #8A8A8A;
+      --cta-bg: #A5C330;
+      --cta-text: #181818;
+      --cta-hover: #B2D93C;
+      --accent-text: #B2D93C;
+      --badge-bg: rgba(165, 195, 48, 0.15);
+      --badge-text: #C5E668;
+      --featured-border: #A5C330;
+      --focus: #B2D93C;
+      --map-bg: #2A2A2A;
+      --map-node-full: #A5C330;
+      --map-node-stroke: #F0F0F0;
+      --shadow-soft: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+      --shadow-active: 0 8px 30px -5px rgba(0, 0, 0, 0.6);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Exo 2', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    h1, h2, h3 { margin: 0; line-height: 1.15; }
+    p { margin: 0; }
+    .clean { list-style: none; margin: 0; padding: 0; }
+
+    .icon { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-sm { width: 16px; height: 16px; }
+
+    :focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 3px;
+      border-radius: var(--radius-control);
+    }
+
+    .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+    @media (min-width: 640px) { .container { padding: 0 32px; } }
+
+    .section { padding: 72px 0; }
+    .section--alt { background: var(--bg-alt); --card: var(--card-on-alt); }
+    @media (min-width: 1024px) { .section { padding: 96px 0; } }
+
+    /* Etiqueta superior con línea lima, patrón de la referencia */
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted);
+    }
+    .eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--accent); border-radius: 2px; }
+
+    .section-head { max-width: 680px; margin-bottom: 48px; }
+    .section-head h2 { margin-top: 12px; font-size: clamp(1.75rem, 1.2rem + 1.8vw, 2.25rem); font-weight: 700; letter-spacing: -0.024em; }
+    .section-head p { margin-top: 12px; color: var(--muted); font-size: 1.0625rem; }
+
+    /* Botones */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 44px; padding: 12px 22px;
+      border-radius: var(--radius-control); border: 1.5px solid transparent;
+      font: inherit; font-size: 15px; font-weight: 700; text-decoration: none; cursor: pointer;
+      transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+    }
+    .btn-primary { background: var(--cta-bg); color: var(--cta-text); }
+    .btn-primary:hover { background: var(--cta-hover); }
+    .btn-secondary { background: transparent; color: var(--text); border-color: var(--border-control); }
+    .btn-secondary:hover { border-color: var(--text); }
+    .btn-lime { background: #A5C330; color: #17163A; }
+    .btn-lime:hover { background: #B2D93C; }
+    .btn-block { width: 100%; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 999px;
+      background: var(--badge-bg); color: var(--badge-text);
+      font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-soft);
+    }
+
+    /* ============ Cabecera ============ */
+    .header {
+      position: sticky; top: 0; z-index: 40;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+    }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .brand-mark {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: #FFFFFF; border: 1px solid var(--border);
+      display: grid; place-items: center; overflow: hidden;
+    }
+    .brand-mark img { width: 32px; height: 32px; object-fit: contain; }
+    .brand-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .brand-name span { color: var(--accent-text); }
+
+    .nav { display: none; gap: 28px; }
+    .nav a { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--muted); }
+    .nav a:hover { color: var(--text); }
+
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-btn {
+      width: 44px; height: 44px; display: grid; place-items: center;
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer;
+    }
+    .icon-btn:hover { border-color: var(--border-control); }
+    .theme-toggle .i-moon { display: block; }
+    .theme-toggle .i-sun { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
+    :root[data-theme="dark"] .theme-toggle .i-sun { display: block; }
+
+    .header .btn-request { display: none; }
+    .mobile-menu { display: none; border-top: 1px solid var(--border); padding: 12px 0 20px; }
+    .mobile-menu.is-open { display: block; }
+    .mobile-menu a:not(.btn) { display: block; padding: 10px 0; text-decoration: none; font-weight: 600; }
+    .mobile-menu .btn { margin-top: 12px; }
+
+    @media (min-width: 900px) {
+      .nav { display: flex; }
+      .header .btn-request { display: inline-flex; }
+      .menu-toggle { display: none; }
+      .mobile-menu, .mobile-menu.is-open { display: none; }
+    }
+
+    /* ============ Portada ============ */
+    .hero { background: var(--bg-alt); padding: 56px 0 72px; --card: var(--card-on-alt); }
+    .hero-grid { display: grid; gap: 40px; align-items: center; }
+    .hero h1 {
+      margin-top: 16px;
+      font-size: clamp(2.25rem, 1.4rem + 3vw, 3.25rem);
+      font-weight: 700; letter-spacing: -0.03em;
+    }
+    .hero-lead { margin-top: 20px; font-size: 1.125rem; color: var(--muted); max-width: 560px; }
+    .hero-actions { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; }
+    .hero-points { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px 28px; }
+    .hero-points li { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--muted); }
+    .hero-points .icon { color: var(--accent-text); }
+
+    .hero-card { padding: 28px; }
+    .hero-card h2 { font-size: 1.125rem; font-weight: 700; }
+    .hero-card p { margin-top: 6px; font-size: 14px; color: var(--muted); }
+    .town-group { margin-top: 20px; }
+    .town-group-title { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .chips { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 36px; padding: 6px 12px;
+      border-radius: 999px; border: 1px solid var(--border-control);
+      background: transparent; color: var(--text);
+      font: inherit; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer;
+    }
+    .chip:hover { border-color: var(--text); }
+    .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .chip .dot--rural { background: transparent; border: 1.5px dashed var(--accent-text); }
+    .chip[aria-pressed="true"] .dot--rural { border-color: var(--bg); }
+    .hero-card-foot { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--muted); }
+    .hero-card-foot .icon { color: var(--accent-text); margin-top: 2px; }
+
+    @media (min-width: 1024px) {
+      .hero { padding: 88px 0 104px; }
+      .hero-grid { grid-template-columns: 7fr 5fr; gap: 64px; }
+    }
+
+    /* ============ Cómo funciona ============ */
+    .steps { display: grid; gap: 16px; counter-reset: step; }
+    .step { position: relative; padding: 24px; }
+    .step-num { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--accent-text); }
+    .step-num span { color: var(--muted); font-weight: 500; }
+    .step h3 { margin-top: 12px; font-size: 1.125rem; font-weight: 700; }
+    .step p { margin-top: 8px; font-size: 15px; color: var(--muted); }
+    .step-bar { margin-top: 20px; height: 3px; border-radius: 3px; background: var(--border); overflow: hidden; }
+    .step-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+    @media (min-width: 640px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1024px) { .steps { grid-template-columns: repeat(5, 1fr); } }
+
+    /* ============ Tecnologías ============ */
+    .tech-grid { display: grid; gap: 20px; }
+    .tech { padding: 28px; }
+    .tech-icon {
+      width: 48px; height: 48px; border-radius: var(--radius-card);
+      display: grid; place-items: center;
+      background: var(--badge-bg); color: var(--badge-text);
+    }
+    .tech-icon .icon { width: 24px; height: 24px; }
+    .tech h3 { margin-top: 20px; font-size: 1.25rem; font-weight: 700; }
+    .tech p { margin-top: 8px; color: var(--muted); }
+    .tech-note {
+      margin-top: 24px; padding: 20px 24px;
+      display: flex; gap: 14px; align-items: flex-start;
+      border-left: 3px solid var(--accent);
+    }
+    .tech-note strong { display: block; font-size: 1.0625rem; }
+    .tech-note p { margin-top: 4px; color: var(--muted); }
+    @media (min-width: 768px) { .tech-grid { grid-template-columns: 1fr 1fr; } }
+
+    /* ============ Planes ============ */
+    .includes {
+      margin-bottom: 32px; padding: 18px 22px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px;
+      font-size: 14px;
+    }
+    .includes-title { font-weight: 700; }
+    .includes li { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    .includes .icon { color: var(--accent-text); }
+
+    .plans { display: grid; gap: 20px; }
+    .plan { position: relative; display: flex; flex-direction: column; padding: 28px 24px; transition: box-shadow .2s ease, border-color .2s ease; }
+    .plan:hover { box-shadow: var(--shadow-active); }
+    .plan--featured { border: 2px solid var(--featured-border); }
+    .plan-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px; }
+    .plan-name { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .plan h3 { margin-top: 10px; font-size: 1.25rem; font-weight: 700; }
+    .plan-price { margin-top: 18px; padding-bottom: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 6px; }
+    .plan-price strong { font-size: 2.25rem; font-weight: 700; letter-spacing: -0.03em; }
+    .plan-price span { font-size: 14px; color: var(--muted); }
+    .plan-ideal { margin-top: 18px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .plan ul { margin-top: 10px; display: grid; gap: 10px; flex: 1; }
+    .plan li { display: flex; gap: 10px; font-size: 15px; }
+    .plan li .icon { color: var(--accent-text); margin-top: 3px; }
+    .plan-tech { margin-top: 22px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .plan .btn { margin-top: 18px; }
+    .plans-note { margin-top: 28px; display: flex; gap: 10px; align-items: flex-start; color: var(--muted); font-size: 15px; max-width: 760px; }
+    .plans-note .icon { color: var(--accent-text); margin-top: 3px; }
+    @media (min-width: 640px) { .plans { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1100px) { .plans { grid-template-columns: repeat(4, 1fr); } }
+
+    /* ============ Cobertura ============ */
+    .coverage { display: grid; gap: 24px; align-items: start; }
+    .map-card { padding: 20px; }
+    .map-card svg { width: 100%; height: auto; }
+    .map-legend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+    .map-legend span { display: inline-flex; align-items: center; gap: 8px; }
+    .legend-full { width: 12px; height: 12px; border-radius: 50%; background: var(--map-node-full); border: 1.5px solid var(--map-node-stroke); }
+    .legend-rural { width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed var(--map-node-stroke); }
+    .map-node { cursor: pointer; }
+    .map-node .halo { fill: transparent; }
+    .map-node:hover .halo, .map-node:focus-visible .halo { fill: var(--badge-bg); }
+    .map-node.is-selected .halo { fill: var(--badge-bg); stroke: var(--accent); stroke-width: 2; }
+    .map-node:focus { outline: none; }
+    .map-node:focus-visible .halo { stroke: var(--focus); stroke-width: 2.5; }
+    .map-label { font-family: 'Exo 2', sans-serif; font-size: 13px; font-weight: 600; fill: var(--text); }
+    .map-caption { font-family: 'Exo 2', sans-serif; font-size: 11px; fill: var(--muted); }
+
+    .finder { padding: 28px; }
+    .finder h3 { font-size: 1.25rem; font-weight: 700; }
+    .finder > p { margin-top: 6px; color: var(--muted); font-size: 15px; }
+    .field { margin-top: 20px; }
+    .field label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .select {
+      width: 100%; min-height: 48px; padding: 10px 40px 10px 14px;
+      font: inherit; font-size: 16px; color: var(--text);
+      background-color: var(--card);
+      border: 1.5px solid var(--border-control); border-radius: var(--radius-control);
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%238A8A8A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center;
+    }
+    .result {
+      margin-top: 20px; padding: 20px;
+      border-radius: var(--radius-card);
+      background: var(--bg-alt); border: 1px solid var(--border);
+    }
+    .section--alt .result { background: var(--bg); }
+    .result-empty { color: var(--muted); font-size: 15px; }
+    .result h4 { margin: 10px 0 0; font-size: 1.125rem; }
+    .result p { margin-top: 8px; color: var(--muted); font-size: 15px; }
+    .result .btn { margin-top: 16px; }
+    .finder-alt { margin-top: 20px; font-size: 14px; color: var(--muted); }
+    .finder-alt a { color: var(--accent-text); font-weight: 600; }
+    @media (min-width: 960px) { .coverage { grid-template-columns: 7fr 5fr; } }
+
+    /* ============ Preguntas ============ */
+    .faq { max-width: 820px; display: grid; gap: 12px; }
+    .faq details { padding: 0; }
+    .faq summary {
+      list-style: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 18px 22px; font-weight: 700; font-size: 1.0625rem;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary .icon { color: var(--accent-text); transition: transform .2s ease; }
+    .faq details[open] summary .icon { transform: rotate(180deg); }
+    .faq .answer { padding: 0 22px 20px; color: var(--muted); }
+
+    /* ============ Puntos de atención ============ */
+    .offices { display: grid; gap: 20px; }
+    .office { padding: 24px; display: flex; flex-direction: column; }
+    .office h3 { font-size: 1.125rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .office h3 .icon { color: var(--accent-text); }
+    .office address { margin-top: 10px; font-style: normal; color: var(--muted); font-size: 15px; }
+    .hours { margin: 16px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; flex: 1; }
+    .hours dt { font-weight: 600; }
+    .hours dd { margin: 0; color: var(--muted); }
+    .office .btn { margin-top: 20px; align-self: flex-start; }
+    @media (min-width: 900px) { .offices { grid-template-columns: repeat(3, 1fr); } }
+
+    /* ============ Franja final ============ */
+    .band { background: var(--band-bg); color: var(--band-text); padding: 64px 0; }
+    .band-inner { display: flex; flex-direction: column; gap: 24px; }
+    .band h2 { font-size: clamp(1.75rem, 1.2rem + 1.8vw, 2.25rem); font-weight: 700; letter-spacing: -0.024em; }
+    .band p { margin-top: 8px; color: var(--band-muted); font-size: 1.0625rem; }
+    @media (min-width: 900px) { .band-inner { flex-direction: row; align-items: center; justify-content: space-between; } }
+
+    /* ============ Pie ============ */
+    .footer { background: var(--bg-alt); border-top: 1px solid var(--border); padding: 56px 0 28px; font-size: 14px; }
+    .footer-grid { display: grid; gap: 32px; }
+    .footer h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+    .footer p { color: var(--muted); }
+    .footer li { margin-bottom: 8px; }
+    .footer a { text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+    .contact-list li { display: flex; align-items: center; gap: 10px; }
+    .contact-list .icon { color: var(--accent-text); }
+    .footer-bottom { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; }
+    @media (min-width: 768px) { .footer-grid { grid-template-columns: 1.4fr 1fr 1fr 1fr; } }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sprite de íconos (trazos estilo Lucide) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-fiber" viewBox="0 0 24 24"><path d="M3 12h4M17 12h4"/><circle cx="12" cy="12" r="5"/><path d="M9.5 12h5M12 9.5v5"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9M7.8 4.7a6.14 6.14 0 0 0-.8 7.5M16.2 4.8c2 2 2.26 5.11.8 7.47M19.1 1.9a9.96 9.96 0 0 1 0 14.1"/><circle cx="12" cy="9" r="2"/><path d="M9.5 18h5M8 22l4-11 4 11"/></symbol>
+    <symbol id="i-house" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></symbol>
+  </svg>
+
+  <a class="sr-only" href="#contenido">Saltar al contenido</a>
+
+  <!-- ===================== CABECERA ===================== -->
+  <header class="header">
+    <div class="container">
+      <div class="header-inner">
+        <a class="brand" href="#inicio" aria-label="iWana, ir al inicio">
+          <span class="brand-mark"><img src="../../apps/web/public/brand/iwiso6.png" alt=""></span>
+          <span class="brand-name"><span>i</span>Wana</span>
+        </a>
+
+        <nav class="nav" aria-label="Principal">
+          <a href="#como-funciona">Cómo funciona</a>
+          <a href="#tecnologias">Tecnologías</a>
+          <a href="#planes">Planes</a>
+          <a href="#cobertura">Cobertura</a>
+          <a href="#preguntas">Preguntas</a>
+        </nav>
+
+        <div class="header-actions">
+          <button type="button" class="icon-btn theme-toggle" aria-pressed="false" aria-label="Cambiar a modo oscuro">
+            <svg class="icon i-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+            <svg class="icon i-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+          </button>
+          <a class="btn btn-primary btn-request" data-wa="Hola, quiero solicitar el servicio de internet de iWana." href="#">
+            Solicitar servicio
+          </a>
+          <button type="button" class="icon-btn menu-toggle" aria-expanded="false" aria-controls="menu-movil" aria-label="Abrir menú">
+            <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="mobile-menu" id="menu-movil">
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#tecnologias">Tecnologías</a>
+        <a href="#planes">Planes</a>
+        <a href="#cobertura">Cobertura</a>
+        <a href="#preguntas">Preguntas</a>
+        <a href="#puntos">Puntos de atención</a>
+        <a class="btn btn-primary btn-block" data-wa="Hola, quiero solicitar el servicio de internet de iWana." href="#">Solicitar servicio</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenido">
+
+    <!-- ===================== PORTADA ===================== -->
+    <section class="hero" id="inicio">
+      <div class="container hero-grid">
+        <div>
+          <span class="eyebrow">Provincia del Tequendama · Cundinamarca</span>
+          <h1>Internet estable para tu casa, tu finca y tu negocio.</h1>
+          <p class="hero-lead">
+            Llegamos con Fibra Óptica y Radio Enlace a El Colegio, Tena y San Antonio del Tequendama,
+            y a zonas rurales de La Mesa, Anapoima y Viotá. El mismo precio, con atención y soporte locales.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#planes">
+              Ver planes <svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg>
+            </a>
+            <a class="btn btn-secondary" data-wa="Hola, quiero información sobre el internet de iWana." href="#">
+              <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chat"/></svg> Escríbenos por WhatsApp
+            </a>
+          </div>
+          <ul class="clean hero-points">
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Mismo precio con Fibra o Radio Enlace</li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Internet ilimitado</li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Tres puntos de atención en la región</li>
+          </ul>
+        </div>
+
+        <aside class="card hero-card" aria-labelledby="donde-estamos">
+          <h2 id="donde-estamos">Dónde estamos</h2>
+          <p>Elige tu municipio para ver la cobertura.</p>
+          <div class="town-group">
+            <div class="town-group-title">Todo el municipio</div>
+            <div class="chips">
+              <a class="chip" href="#cobertura" data-town="el-colegio"><span class="dot" aria-hidden="true"></span>El Colegio</a>
+              <a class="chip" href="#cobertura" data-town="tena"><span class="dot" aria-hidden="true"></span>Tena</a>
+              <a class="chip" href="#cobertura" data-town="san-antonio"><span class="dot" aria-hidden="true"></span>San Antonio del Tequendama</a>
+            </div>
+          </div>
+          <div class="town-group">
+            <div class="town-group-title">Zonas rurales</div>
+            <div class="chips">
+              <a class="chip" href="#cobertura" data-town="la-mesa"><span class="dot dot--rural" aria-hidden="true"></span>La Mesa</a>
+              <a class="chip" href="#cobertura" data-town="anapoima"><span class="dot dot--rural" aria-hidden="true"></span>Anapoima</a>
+              <a class="chip" href="#cobertura" data-town="viota"><span class="dot dot--rural" aria-hidden="true"></span>Viotá</a>
+            </div>
+          </div>
+          <div class="hero-card-foot">
+            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-pin"/></svg>
+            <span>Puntos de atención en El Colegio, San Antonio del Tequendama y Tena.</span>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===================== CÓMO FUNCIONA ===================== -->
+    <section class="section" id="como-funciona">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Cómo funciona</span>
+          <h2>De la solicitud a la conexión, en cinco pasos.</h2>
+          <p>Nos encargamos de todo: revisamos tu ubicación, instalamos y te acompañamos después.</p>
+        </div>
+        <ol class="clean steps">
+          <li class="card step">
+            <div class="step-num">01<span> / 05</span></div>
+            <h3>Solicitud</h3>
+            <p>Escríbenos con tu ubicación y tus datos para agendar la visita.</p>
+            <div class="step-bar" aria-hidden="true"><i style="width:20%"></i></div>
+          </li>
+          <li class="card step">
+            <div class="step-num">02<span> / 05</span></div>
+            <h3>Visita de viabilidad</h3>
+            <p>Un técnico revisa tu predio y define si te llega Fibra Óptica o Radio Enlace.</p>
+            <div class="step-bar" aria-hidden="true"><i style="width:40%"></i></div>
+          </li>
+          <li class="card step">
+            <div class="step-num">03<span> / 05</span></div>
+            <h3>Instalación</h3>
+            <p>Instalamos el servicio según tus necesidades, en la fecha que acordemos contigo.</p>
+            <div class="step-bar" aria-hidden="true"><i style="width:60%"></i></div>
+          </li>
+          <li class="card step">
+            <div class="step-num">04<span> / 05</span></div>
+            <h3>Conectividad</h3>
+            <p>Empiezas a navegar con tu plan desde el primer día.</p>
+            <div class="step-bar" aria-hidden="true"><i style="width:80%"></i></div>
+          </li>
+          <li class="card step">
+            <div class="step-num">05<span> / 05</span></div>
+            <h3>Soporte</h3>
+            <p>Seguimos atentos por WhatsApp, teléfono y en nuestros puntos de atención.</p>
+            <div class="step-bar" aria-hidden="true"><i style="width:100%"></i></div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== TECNOLOGÍAS ===================== -->
+    <section class="section section--alt" id="tecnologias">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Tecnologías</span>
+          <h2>Dos tecnologías, un mismo precio.</h2>
+          <p>Usamos la que mejor funcione en tu ubicación. Tú solo eliges el plan.</p>
+        </div>
+        <div class="tech-grid">
+          <article class="card tech">
+            <div class="tech-icon"><svg class="icon" aria-hidden="true"><use href="#i-fiber"/></svg></div>
+            <h3>Fibra Óptica</h3>
+            <p>La señal viaja por un cable de fibra hasta tu casa. Es la opción donde nuestra red de fibra ya pasa cerca.</p>
+          </article>
+          <article class="card tech">
+            <div class="tech-icon"><svg class="icon" aria-hidden="true"><use href="#i-radio"/></svg></div>
+            <h3>Radio Enlace</h3>
+            <p>La señal llega por aire, de una antena nuestra a una antena instalada en tu predio. Es la opción para veredas y fincas donde el cable no llega.</p>
+          </article>
+        </div>
+        <div class="card tech-note">
+          <svg class="icon" aria-hidden="true" style="color:var(--accent-text)"><use href="#i-info"/></svg>
+          <div>
+            <strong>No tienes que elegir.</strong>
+            <p>En la visita de viabilidad revisamos tu ubicación y te instalamos la tecnología que mejor funcione allí, al mismo precio.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PLANES ===================== -->
+    <section class="section" id="planes">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Planes</span>
+          <h2>Elige el plan según cómo usas internet.</h2>
+          <p>Precios mensuales. El mismo valor con Fibra Óptica o con Radio Enlace.</p>
+        </div>
+
+        <div class="card includes">
+          <span class="includes-title">Todos los planes incluyen</span>
+          <ul class="clean" style="display:contents">
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Internet ilimitado</li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Zona Wi-Fi</li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Conexión segura</li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Un punto cableado</li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg> Subida equivalente a la mitad de tu velocidad de bajada</li>
+          </ul>
+        </div>
+
+        <div class="plans">
+          <article class="card plan">
+            <div class="plan-top"><span class="plan-name">Plan Básico</span></div>
+            <h3>Lo esencial</h3>
+            <div class="plan-price"><strong>$55.000</strong><span>/ mes</span></div>
+            <div class="plan-ideal">Ideal para</div>
+            <ul class="clean">
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Navegar, redes sociales, WhatsApp y correo</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Clases y trámites en línea</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Video en calidad estándar</li>
+            </ul>
+            <div class="plan-tech"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg>Fibra Óptica o Radio Enlace · mismo precio</div>
+            <a class="btn btn-secondary btn-block" data-wa="Hola, quiero el Plan Básico." href="#">Solicitar este plan</a>
+          </article>
+
+          <article class="card plan">
+            <div class="plan-top"><span class="plan-name">Plan Básico +</span></div>
+            <h3>Un paso más</h3>
+            <div class="plan-price"><strong>$65.000</strong><span>/ mes</span></div>
+            <div class="plan-ideal">Ideal para</div>
+            <ul class="clean">
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Lo del Básico, con más holgura</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Series y videos en un televisor</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Videollamadas de vez en cuando</li>
+            </ul>
+            <div class="plan-tech"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg>Fibra Óptica o Radio Enlace · mismo precio</div>
+            <a class="btn btn-secondary btn-block" data-wa="Hola, quiero el Plan Básico +." href="#">Solicitar este plan</a>
+          </article>
+
+          <article class="card plan plan--featured">
+            <div class="plan-top"><span class="plan-name">Plan Medio</span><span class="badge">Popular</span></div>
+            <h3>Para toda la familia</h3>
+            <div class="plan-price"><strong>$79.000</strong><span>/ mes</span></div>
+            <div class="plan-ideal">Ideal para</div>
+            <ul class="clean">
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Varias personas conectadas al mismo tiempo</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Streaming en más de una pantalla</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Teletrabajo y clases con videollamada</li>
+            </ul>
+            <div class="plan-tech"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg>Fibra Óptica o Radio Enlace · mismo precio</div>
+            <a class="btn btn-primary btn-block" data-wa="Hola, quiero el Plan Medio." href="#">Solicitar este plan</a>
+          </article>
+
+          <article class="card plan">
+            <div class="plan-top"><span class="plan-name">Plan Alto</span></div>
+            <h3>Hogares muy conectados y negocios</h3>
+            <div class="plan-price"><strong>$100.000</strong><span>/ mes</span></div>
+            <div class="plan-ideal">Ideal para</div>
+            <ul class="clean">
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Muchos equipos a la vez</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Video en alta definición en varias pantallas</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Cámaras de seguridad</li>
+              <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-check"/></svg>Envío de archivos pesados</li>
+            </ul>
+            <div class="plan-tech"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg>Fibra Óptica o Radio Enlace · mismo precio</div>
+            <a class="btn btn-secondary btn-block" data-wa="Hola, quiero el Plan Alto." href="#">Solicitar este plan</a>
+          </article>
+        </div>
+
+        <p class="plans-note">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg>
+          <span>La velocidad de cada plan depende de la tecnología disponible en tu ubicación (Fibra Óptica o Radio Enlace). Te la confirmamos por escrito en la visita de viabilidad, antes de instalar.</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ===================== COBERTURA ===================== -->
+    <section class="section section--alt" id="cobertura">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Cobertura</span>
+          <h2>¿Llegamos a tu zona?</h2>
+          <p>Elige tu municipio. Si tu vereda no aparece, escríbenos: revisamos cada caso.</p>
+        </div>
+
+        <div class="coverage">
+          <div class="card map-card">
+            <!-- Esquema, no a escala: posiciones aproximadas por coordenadas de cada cabecera municipal -->
+            <svg viewBox="0 0 420 360" role="group" aria-labelledby="map-title map-desc">
+              <title id="map-title">Mapa esquemático de cobertura en la provincia del Tequendama</title>
+              <desc id="map-desc">Cobertura en todo el municipio: El Colegio, Tena y San Antonio del Tequendama. Cobertura en zonas rurales: La Mesa, Anapoima y Viotá. Esquema, no a escala.</desc>
+              <defs>
+                <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                  <line x1="0" y1="0" x2="0" y2="6" stroke="var(--accent)" stroke-width="2"/>
+                </pattern>
+              </defs>
+              <rect x="1" y="1" width="418" height="358" rx="12" fill="var(--map-bg)" stroke="var(--border)"/>
+              <text class="map-caption" x="16" y="26">CUNDINAMARCA · TEQUENDAMA</text>
+              <text class="map-caption" x="404" y="346" text-anchor="end">Esquema, no a escala</text>
+
+              <g class="map-node" data-town="tena" tabindex="0" role="button" aria-label="Tena: todo el municipio">
+                <circle class="halo" cx="285" cy="72" r="24"/>
+                <circle cx="285" cy="72" r="11" fill="var(--map-node-full)" stroke="var(--map-node-stroke)" stroke-width="2"/>
+                <text class="map-label" x="285" y="112" text-anchor="middle">Tena</text>
+              </g>
+              <g class="map-node" data-town="san-antonio" tabindex="0" role="button" aria-label="San Antonio del Tequendama: todo el municipio">
+                <circle class="halo" cx="350" cy="140" r="24"/>
+                <circle cx="350" cy="140" r="11" fill="var(--map-node-full)" stroke="var(--map-node-stroke)" stroke-width="2"/>
+                <text class="map-label" x="350" y="180" text-anchor="middle">San Antonio</text>
+              </g>
+              <g class="map-node" data-town="la-mesa" tabindex="0" role="button" aria-label="La Mesa: zonas rurales">
+                <circle class="halo" cx="180" cy="95" r="24"/>
+                <circle cx="180" cy="95" r="11" fill="url(#hatch)" stroke="var(--map-node-stroke)" stroke-width="2" stroke-dasharray="4 3"/>
+                <text class="map-label" x="180" y="135" text-anchor="middle">La Mesa</text>
+              </g>
+              <g class="map-node" data-town="el-colegio" tabindex="0" role="button" aria-label="El Colegio: todo el municipio">
+                <circle class="halo" cx="215" cy="190" r="24"/>
+                <circle cx="215" cy="190" r="11" fill="var(--map-node-full)" stroke="var(--map-node-stroke)" stroke-width="2"/>
+                <text class="map-label" x="215" y="230" text-anchor="middle">El Colegio</text>
+              </g>
+              <g class="map-node" data-town="anapoima" tabindex="0" role="button" aria-label="Anapoima: zonas rurales">
+                <circle class="halo" cx="70" cy="190" r="24"/>
+                <circle cx="70" cy="190" r="11" fill="url(#hatch)" stroke="var(--map-node-stroke)" stroke-width="2" stroke-dasharray="4 3"/>
+                <text class="map-label" x="70" y="230" text-anchor="middle">Anapoima</text>
+              </g>
+              <g class="map-node" data-town="viota" tabindex="0" role="button" aria-label="Viotá: zonas rurales">
+                <circle class="halo" cx="110" cy="290" r="24"/>
+                <circle cx="110" cy="290" r="11" fill="url(#hatch)" stroke="var(--map-node-stroke)" stroke-width="2" stroke-dasharray="4 3"/>
+                <text class="map-label" x="110" y="330" text-anchor="middle">Viotá</text>
+              </g>
+            </svg>
+            <div class="map-legend">
+              <span><i class="legend-full" aria-hidden="true"></i>Todo el municipio</span>
+              <span><i class="legend-rural" aria-hidden="true"></i>Zonas rurales</span>
+            </div>
+          </div>
+
+          <div class="card finder">
+            <h3>Consulta tu municipio</h3>
+            <p>Te decimos qué cobertura tenemos y te ayudamos a confirmar tu dirección.</p>
+            <div class="field">
+              <label for="town-select">Municipio</label>
+              <select id="town-select" class="select">
+                <option value="">Selecciona tu municipio</option>
+                <optgroup label="Todo el municipio">
+                  <option value="el-colegio">El Colegio</option>
+                  <option value="tena">Tena</option>
+                  <option value="san-antonio">San Antonio del Tequendama</option>
+                </optgroup>
+                <optgroup label="Zonas rurales">
+                  <option value="la-mesa">La Mesa</option>
+                  <option value="anapoima">Anapoima</option>
+                  <option value="viota">Viotá</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="result" id="town-result" aria-live="polite">
+              <p class="result-empty">Selecciona un municipio en la lista o en el mapa.</p>
+            </div>
+            <p class="finder-alt">¿Tu vereda no aparece? <a data-wa="Hola, quiero saber si iWana llega a mi vereda." href="#">Pregúntanos por WhatsApp</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PREGUNTAS ===================== -->
+    <section class="section" id="preguntas">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Preguntas frecuentes</span>
+          <h2>Resolvemos tus dudas.</h2>
+        </div>
+        <div class="faq">
+          <details class="card">
+            <summary>¿Cómo sé si me llega Fibra Óptica o Radio Enlace?<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+            <div class="answer">Un técnico visita tu predio sin costo para revisar la viabilidad y te dice cuál tecnología funciona mejor allí.</div>
+          </details>
+          <details class="card">
+            <summary>¿Cuesta lo mismo con cualquier tecnología?<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+            <div class="answer">Sí. El precio del plan es el mismo con Fibra Óptica y con Radio Enlace.</div>
+          </details>
+          <details class="card">
+            <summary>¿Cuánto tarda la instalación?<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+            <div class="answer">Agendamos la fecha contigo cuando confirmamos la viabilidad.</div>
+          </details>
+          <details class="card">
+            <summary>Mi vereda no aparece, ¿pueden llegar?<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+            <div class="answer">Escríbenos por WhatsApp con el nombre de tu vereda; revisamos cada caso.</div>
+          </details>
+          <details class="card">
+            <summary>¿Cómo pago mi factura?<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+            <div class="answer">En el <a href="https://iwana.co/index.php/portal/">Portal de pagos</a> o en nuestros puntos de atención.</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PUNTOS DE ATENCIÓN ===================== -->
+    <section class="section section--alt" id="puntos">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">Puntos de atención</span>
+          <h2>Visítanos en la región.</h2>
+        </div>
+        <div class="offices">
+          <article class="card office">
+            <h3><svg class="icon icon-sm" aria-hidden="true"><use href="#i-pin"/></svg>El Colegio</h3>
+            <address>Carrera 7 # 8-55, El Colegio, Cundinamarca</address>
+            <dl class="hours">
+              <dt>Lun – Sáb</dt><dd>8:00 a. m. – 5:00 p. m.</dd>
+              <dt>Dom y festivos</dt><dd>8:00 a. m. – 1:00 p. m. y 2:00 – 5:00 p. m.</dd>
+            </dl>
+            <a class="btn btn-secondary" href="https://www.google.com/maps/search/?api=1&amp;query=Carrera%207%20%23%208-55%2C%20El%20Colegio%2C%20Cundinamarca" target="_blank" rel="noopener">Cómo llegar</a>
+          </article>
+          <article class="card office">
+            <h3><svg class="icon icon-sm" aria-hidden="true"><use href="#i-pin"/></svg>San Antonio del Tequendama</h3>
+            <address>Carrera 5 # 4A-01, piso 2, San Antonio del Tequendama, Cundinamarca</address>
+            <dl class="hours">
+              <dt>Lun – Vie</dt><dd>8:00 a. m. – 1:00 p. m. y 2:00 – 5:00 p. m.</dd>
+              <dt>Sábado</dt><dd>8:00 a. m. – 1:00 p. m.</dd>
+            </dl>
+            <a class="btn btn-secondary" href="https://www.google.com/maps/search/?api=1&amp;query=Carrera%205%20%23%204A-01%2C%20San%20Antonio%20del%20Tequendama%2C%20Cundinamarca" target="_blank" rel="noopener">Cómo llegar</a>
+          </article>
+          <article class="card office">
+            <h3><svg class="icon icon-sm" aria-hidden="true"><use href="#i-pin"/></svg>Tena</h3>
+            <address>IPM, Calle 2, vía Tena / La Gran Vía # 5-76, Tena, Cundinamarca</address>
+            <dl class="hours">
+              <dt>Lun y Vie</dt><dd>8:00 a. m. – 5:00 p. m.</dd>
+              <dt>Mar – Jue</dt><dd>8:00 a. m. – 4:00 p. m.</dd>
+              <dt>Sábado</dt><dd>8:00 a. m. – 1:00 p. m.</dd>
+              <dt>Domingo</dt><dd>Cerrado</dd>
+            </dl>
+            <a class="btn btn-secondary" href="https://www.google.com/maps/search/?api=1&amp;query=JHXP%2BG5%20Tena%2C%20Cundinamarca" target="_blank" rel="noopener">Cómo llegar</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FRANJA FINAL ===================== -->
+    <section class="band">
+      <div class="container band-inner">
+        <div>
+          <h2>Conéctate con iWana.</h2>
+          <p>Solicita tu servicio y agenda la visita de viabilidad.</p>
+        </div>
+        <a class="btn btn-lime" data-wa="Hola, quiero solicitar el servicio de internet de iWana." href="#">
+          Solicitar servicio <svg class="icon icon-sm" aria-hidden="true"><use href="#i-arrow"/></svg>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== PIE ===================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a class="brand" href="#inicio" aria-label="iWana, ir al inicio">
+            <span class="brand-mark"><img src="../../apps/web/public/brand/iwiso6.png" alt=""></span>
+            <span class="brand-name"><span>i</span>Wana</span>
+          </a>
+          <p style="margin-top:14px">Soluciones a medida: cada cliente es único. Cuéntanos qué necesitas y te ofrecemos la mejor opción.</p>
+        </div>
+        <div>
+          <h3>Contacto</h3>
+          <ul class="clean contact-list">
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-chat"/></svg><a data-wa="Hola, quiero comunicarme con iWana." href="#">WhatsApp 311 284 0141</a></li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-phone"/></svg><a href="tel:+576014954488">PBX (601) 495 4488</a></li>
+            <li><svg class="icon icon-sm" aria-hidden="true"><use href="#i-mail"/></svg><a href="mailto:info@iwana.co">info@iwana.co</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Clientes</h3>
+          <ul class="clean">
+            <li><a href="https://iwana.co/index.php/portal/">Portal de pagos</a></li>
+            <li><a href="https://iwana.co/index.php/test/">Test de velocidad</a></li>
+            <li><a href="https://iwana.co/index.php/about/">Nuestra empresa</a></li>
+            <li><a href="https://iwana.co/index.php/politicadp/">Política de datos</a></li>
+            <li><a href="https://iwana.co/index.php/contact/">Contacto</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Sitios de interés</h3>
+          <ul class="clean">
+            <li><a href="https://www.mintic.gov.co/portal/inicio/Atencion-y-Servicio-a-la-Ciudadania/Preguntas-frecuentes/15261:En-TIC-Confio" target="_blank" rel="noopener">En TIC confío</a></li>
+            <li><a href="https://www.policia.gov.co/denuncia-virtual/delitos-informaticos" target="_blank" rel="noopener">Delitos informáticos</a></li>
+            <li><a href="https://teprotejocolombia.org/" target="_blank" rel="noopener">Te protejo</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>Copyright © 2026 · iWana</span>
+        <span>Provincia del Tequendama · Cundinamarca</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var WA_NUMBER = '573112840141';
+      var root = document.documentElement;
+
+      // Enlaces de WhatsApp: solo llevan el texto del mensaje, nunca datos de la persona
+      function waUrl(text) { return 'https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(text); }
+      function bindWa(el) {
+        el.href = waUrl(el.getAttribute('data-wa'));
+        el.target = '_blank';
+        el.rel = 'noopener';
+      }
+      document.querySelectorAll('[data-wa]').forEach(bindWa);
+
+      // Conmutador de tema
+      var toggle = document.querySelector('.theme-toggle');
+      function syncToggle() {
+        var dark = root.getAttribute('data-theme') === 'dark';
+        toggle.setAttribute('aria-pressed', String(dark));
+        toggle.setAttribute('aria-label', dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+      }
+      toggle.addEventListener('click', function () {
+        var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('iwana-theme', next); } catch (e) {}
+        syncToggle();
+      });
+      syncToggle();
+
+      // Menú móvil
+      var menuBtn = document.querySelector('.menu-toggle');
+      var menu = document.getElementById('menu-movil');
+      menuBtn.addEventListener('click', function () {
+        var open = menu.classList.toggle('is-open');
+        menuBtn.setAttribute('aria-expanded', String(open));
+        menuBtn.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
+      });
+      menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () {
+          menu.classList.remove('is-open');
+          menuBtn.setAttribute('aria-expanded', 'false');
+        });
+      });
+
+      // Cobertura: selector, mapa y chips sincronizados
+      var TOWNS = {
+        'el-colegio':  { name: 'El Colegio', full: true },
+        'tena':        { name: 'Tena', full: true },
+        'san-antonio': { name: 'San Antonio del Tequendama', full: true },
+        'la-mesa':     { name: 'La Mesa', full: false },
+        'anapoima':    { name: 'Anapoima', full: false },
+        'viota':       { name: 'Viotá', full: false }
+      };
+      var select = document.getElementById('town-select');
+      var result = document.getElementById('town-result');
+      var nodes = document.querySelectorAll('.map-node');
+
+      function render(key) {
+        var t = TOWNS[key];
+        nodes.forEach(function (n) { n.classList.toggle('is-selected', n.getAttribute('data-town') === key); });
+        if (!t) {
+          result.innerHTML = '<p class="result-empty">Selecciona un municipio en la lista o en el mapa.</p>';
+          return;
+        }
+        var badge = t.full ? 'Todo el municipio' : 'Zonas rurales';
+        var text = t.full
+          ? 'Tenemos cobertura en ' + t.name + '. Te llevamos Fibra Óptica o Radio Enlace según tu dirección; lo confirmamos en la visita.'
+          : 'Llegamos a varias zonas rurales de ' + t.name + '. Escríbenos con tu vereda y te confirmamos si tenemos señal.';
+        var msg = t.full
+          ? 'Hola, quiero confirmar la cobertura de iWana en ' + t.name + '.'
+          : 'Hola, quiero confirmar si iWana llega a mi vereda en ' + t.name + '.';
+
+        result.innerHTML = '';
+        var b = document.createElement('span'); b.className = 'badge'; b.textContent = badge;
+        var h = document.createElement('h4'); h.textContent = t.name;
+        var p = document.createElement('p'); p.textContent = text;
+        var a = document.createElement('a');
+        a.className = 'btn btn-primary btn-block';
+        a.setAttribute('data-wa', msg);
+        a.textContent = 'Confirmar mi zona por WhatsApp';
+        bindWa(a);
+        result.append(b, h, p, a);
+      }
+
+      function choose(key) { select.value = key; render(key); }
+
+      select.addEventListener('change', function () { render(select.value); });
+      nodes.forEach(function (n) {
+        var key = n.getAttribute('data-town');
+        n.addEventListener('click', function () { choose(key); });
+        n.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(key); }
+        });
+      });
+      document.querySelectorAll('.chip[data-town]').forEach(function (c) {
+        c.addEventListener('click', function () { choose(c.getAttribute('data-town')); });
+      });
+    })();
+  </script>
+</body>
+</html>

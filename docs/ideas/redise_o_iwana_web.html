@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth" data-theme="obsidian">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iWana Telecomunicaciones - Fibra Óptica & Internet Rural</title>
+    
+    <!-- Google Fonts: Exo 2 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome 6 Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Exo 2"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Dynamic Theme Custom Variables & Styles -->
+    <style>
+        /* BASE THEME CSS VARIABLES */
+        :root {
+            /* Proposal A: Dark Obsidian / Graphite (Default) */
+            --bg-main: #0B0E14;
+            --bg-card: #131722;
+            --bg-card-border: rgba(255, 255, 255, 0.08);
+            --bg-glass: rgba(19, 23, 34, 0.82);
+            --header-bg: rgba(11, 14, 20, 0.88);
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --accent-lime: #A5C330;
+            --accent-lime-hover: #b9d838;
+            --btn-text: #0B0E14;
+            --glow-color: rgba(165, 195, 48, 0.18);
+            --shadow-color: rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="obsidian"] {
+            /* Proposal A: Charcoal/Obsidian */
+            --bg-main: #0B0E14;
+            --bg-card: #131722;
+            --bg-card-border: rgba(255, 255, 255, 0.08);
+            --bg-glass: rgba(19, 23, 34, 0.82);
+            --header-bg: rgba(11, 14, 20, 0.88);
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --accent-lime: #A5C330;
+            --accent-lime-hover: #b9d838;
+            --btn-text: #0B0E14;
+            --glow-color: rgba(165, 195, 48, 0.18);
+            --shadow-color: rgba(0, 0, 0, 0.5);
+        }
+
+        [data-theme="organic"] {
+            /* Proposal B: Techno-Organic Dark */
+            --bg-main: #070D0A;
+            --bg-card: #0F1914;
+            --bg-card-border: rgba(165, 195, 48, 0.14);
+            --bg-glass: rgba(15, 25, 20, 0.82);
+            --header-bg: rgba(7, 13, 10, 0.88);
+            --text-primary: #F1F5F9;
+            --text-secondary: #8E9F95;
+            --accent-lime: #A5C330;
+            --accent-lime-hover: #b9d838;
+            --btn-text: #070D0A;
+            --glow-color: rgba(165, 195, 48, 0.22);
+            --shadow-color: rgba(0, 0, 0, 0.6);
+        }
+
+        [data-theme="light"] {
+            /* Proposal C: High-Tech Clean Light */
+            --bg-main: #F8FAFC;
+            --bg-card: #FFFFFF;
+            --bg-card-border: #E2E8F0;
+            --bg-glass: rgba(255, 255, 255, 0.90);
+            --header-bg: rgba(248, 250, 252, 0.90);
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --accent-lime: #88A31D;
+            --accent-lime-hover: #718915;
+            --btn-text: #FFFFFF;
+            --glow-color: rgba(136, 163, 29, 0.15);
+            --shadow-color: rgba(15, 23, 42, 0.08);
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: 'Exo 2', sans-serif;
+            transition: background-color 0.4s ease, color 0.4s ease;
+            overflow-x: hidden;
+        }
+
+        /* Dynamic Theme Mapping Utility Classes */
+        .theme-bg { background-color: var(--bg-main); transition: background-color 0.4s ease; }
+        .theme-card { background-color: var(--bg-card); border-color: var(--bg-card-border); transition: all 0.35s ease; }
+        .theme-glass { background-color: var(--bg-glass); border-color: var(--bg-card-border); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+        .theme-header { background-color: var(--header-bg); border-bottom: 1px solid var(--bg-card-border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+        
+        .theme-text { color: var(--text-primary); }
+        .theme-muted { color: var(--text-secondary); }
+        .theme-lime-text { color: var(--accent-lime); }
+        .theme-lime-bg { background-color: var(--accent-lime); color: var(--btn-text); }
+        .theme-lime-bg:hover { background-color: var(--accent-lime-hover); }
+
+        .theme-border-lime { border-color: var(--accent-lime); }
+        
+        /* Card Hover Animations */
+        .card-hover {
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-lime);
+            box-shadow: 0 14px 30px -10px var(--glow-color);
+        }
+
+        /* Ambient Glow Effect */
+        .ambient-glow {
+            background: radial-gradient(circle at 50% 20%, var(--glow-color) 0%, transparent 60%);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--bg-card); border-radius: 4px; border: 1px solid var(--bg-card-border); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-lime); }
+
+        .gauge-meter { transition: stroke-dashoffset 0.5s ease-out; }
+    </style>
+</head>
+<body class="antialiased selection:bg-[#A5C330] selection:text-black">
+
+    <!-- BACKGROUND AMBIENT GLOW -->
+    <div class="fixed inset-0 pointer-events-none z-0 ambient-glow transition-all duration-500"></div>
+
+    <!-- THEME COMPARISON FLOATING NOTIFICATION BAR -->
+    <div class="relative z-50 bg-gradient-to-r from-slate-900 via-neutral-900 to-slate-900 text-white text-xs py-2 px-4 text-center border-b border-slate-800 flex flex-wrap items-center justify-center gap-3">
+        <span class="font-bold text-lime-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-palette"></i> Comparador de Paletas de Color:
+        </span>
+        <span class="text-slate-300 hidden md:inline">Elige una propuesta para previsualizar el sitio sin el fondo azul:</span>
+        <div class="inline-flex items-center gap-1.5 bg-black/60 p-1 rounded-lg border border-slate-700">
+            <button onclick="setTheme('obsidian')" id="btn-theme-obsidian" class="px-2.5 py-1 rounded text-[11px] font-bold transition-all bg-[#A5C330] text-black">
+                A. Obsidiana Dark
+            </button>
+            <button onclick="setTheme('organic')" id="btn-theme-organic" class="px-2.5 py-1 rounded text-[11px] font-bold transition-all text-slate-300 hover:text-white">
+                B. Tecno-Orgánico
+            </button>
+            <button onclick="setTheme('light')" id="btn-theme-light" class="px-2.5 py-1 rounded text-[11px] font-bold transition-all text-slate-300 hover:text-white">
+                C. Modo Claro
+            </button>
+        </div>
+    </div>
+
+    <!-- HEADER / NAVEGACIÓN FLOTANTE -->
+    <header class="sticky top-0 left-0 right-0 z-40 transition-all duration-300 py-3 px-4 sm:px-8 theme-header">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            
+            <!-- BRAND LOGO -->
+            <a href="#" class="flex items-center gap-3 group">
+                <div class="w-10 h-10 flex items-center justify-center theme-card border rounded-xl group-hover:border-[#A5C330] transition-all">
+                    <svg viewBox="0 0 100 100" class="w-7 h-7 text-[#A5C330] fill-current">
+                        <path d="M50,10 C25,10 10,30 10,55 C10,75 25,90 50,90 C70,90 85,75 88,58 C82,62 72,64 62,60 C52,56 48,45 52,38 C56,31 66,28 75,32 C82,22 70,10 50,10 Z"/>
+                        <circle cx="35" cy="35" r="5" fill="var(--accent-lime)"/>
+                    </svg>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-2xl font-bold tracking-tight theme-text flex items-center gap-0.5">
+                        <span class="theme-lime-text">i</span>Wana
+                    </span>
+                    <span class="text-[9px] theme-muted tracking-widest uppercase font-semibold -mt-1">NETWORKING</span>
+                </div>
+            </a>
+
+            <!-- DESKTOP NAVIGATION -->
+            <nav class="hidden md:flex items-center gap-7 text-sm font-medium theme-muted">
+                <a href="#inicio" class="hover:text-[#A5C330] transition-colors">Inicio</a>
+                <a href="#proceso" class="hover:text-[#A5C330] transition-colors">¿Cómo Funciona?</a>
+                <a href="#planes" class="hover:text-[#A5C330] transition-colors">Planes y Tarifas</a>
+                <a href="#herramientas" class="hover:text-[#A5C330] transition-colors flex items-center gap-1.5">
+                    <i class="fa-solid fa-gauge-high theme-lime-text text-xs"></i> Speedtest
+                </a>
+                <a href="#cobertura" class="hover:text-[#A5C330] transition-colors">Cobertura</a>
+                <a href="#faq" class="hover:text-[#A5C330] transition-colors">FAQ</a>
+            </nav>
+
+            <!-- ACTION BUTTONS -->
+            <div class="hidden sm:flex items-center gap-3">
+                <a href="#herramientas" onclick="scrollToSpeedtest()" class="px-3.5 py-2 text-xs font-semibold rounded-xl theme-card border theme-text hover:border-[#A5C330] transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-bolt theme-lime-text"></i> Speedtest
+                </a>
+                <button onclick="openPSEModal()" class="px-4 py-2 text-xs font-bold rounded-xl theme-lime-bg hover:shadow-lg transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-credit-card"></i> Portal PSE
+                </button>
+            </div>
+
+            <!-- MOBILE MENU TOGGLE -->
+            <button id="mobile-menu-btn" class="md:hidden theme-muted hover:text-[#A5C330] p-2 focus:outline-none">
+                <i class="fa-solid fa-bars text-xl"></i>
+            </button>
+        </div>
+
+        <!-- MOBILE MENU CONTAINER -->
+        <div id="mobile-menu" class="hidden md:hidden mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2.5 pb-2">
+            <a href="#inicio" class="theme-text hover:text-[#A5C330] py-1 text-sm font-medium">Inicio</a>
+            <a href="#proceso" class="theme-text hover:text-[#A5C330] py-1 text-sm font-medium">¿Cómo Funciona?</a>
+            <a href="#planes" class="theme-text hover:text-[#A5C330] py-1 text-sm font-medium">Planes y Tarifas</a>
+            <a href="#herramientas" class="theme-text hover:text-[#A5C330] py-1 text-sm font-medium">Test de Velocidad</a>
+            <a href="#cobertura" class="theme-text hover:text-[#A5C330] py-1 text-sm font-medium">Cobertura Regional</a>
+            <a href="#faq" class="theme-text hover:text-[#A5C330] py-1 text-sm font-medium">Preguntas Frecuentes</a>
+            <button onclick="openPSEModal()" class="w-full mt-2 py-2.5 text-xs font-bold rounded-xl theme-lime-bg text-center">
+                <i class="fa-solid fa-credit-card mr-1.5"></i> Ir a Portal de Pagos PSE
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="relative z-10">
+
+        <!-- 1. HERO SECTION -->
+        <section id="inicio" class="relative min-h-[82vh] flex items-center px-4 sm:px-8 py-12">
+            <div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+                
+                <!-- HERO LEFT CONTENT -->
+                <div class="lg:col-span-7 flex flex-col items-start space-y-6">
+                    
+                    <!-- PILL BADGE -->
+                    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full theme-card border theme-lime-text text-xs font-semibold tracking-wide uppercase">
+                        <span class="w-2 h-2 rounded-full bg-[#A5C330] animate-pulse"></span>
+                        NUEVA RED DE FIBRA ÓPTICA Y INTERNET RURAL
+                    </div>
+
+                    <!-- HEADLINE -->
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold theme-text tracking-tight leading-[1.1]">
+                        Fibra Óptica Ultrarrápida y <span class="theme-lime-text">Conectividad Sin Interrupciones</span>
+                    </h1>
+
+                    <!-- SUBTITLE -->
+                    <p class="text-base sm:text-lg theme-muted max-w-2xl font-light leading-relaxed">
+                        Llegamos con la máxima estabilidad a cascos urbanos y veredas en Cundinamarca (El Colegio y San Antonio del Tequendama). Disfruta de navegación simétrica y soporte local técnico.
+                    </p>
+
+                    <!-- ACTION BUTTONS -->
+                    <div class="flex flex-wrap items-center gap-4 pt-2 w-full sm:w-auto">
+                        <a href="#planes" class="w-full sm:w-auto text-center px-7 py-4 rounded-xl theme-lime-bg font-bold text-sm hover:shadow-xl transition-all transform hover:-translate-y-0.5">
+                            Ver Planes Disponibles <i class="fa-solid fa-arrow-right ml-2 text-xs"></i>
+                        </a>
+                        <a href="#herramientas" onclick="scrollToSpeedtest()" class="w-full sm:w-auto text-center px-7 py-4 rounded-xl theme-card border theme-text font-semibold text-sm hover:border-[#A5C330] transition-all flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-gauge-high theme-lime-text"></i> Medir Mi Velocidad
+                        </a>
+                    </div>
+
+                    <!-- PROOF MICRO-PILLS -->
+                    <div class="pt-6 border-t border-slate-700/50 w-full flex flex-wrap gap-6 text-xs theme-muted">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check theme-lime-text text-sm"></i>
+                            <span>Navegación Simétrica</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check theme-lime-text text-sm"></i>
+                            <span>Soporte PBX & WhatsApp</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check theme-lime-text text-sm"></i>
+                            <span>Sin Cláusulas Ocultas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HERO RIGHT METRICS CARD STACK -->
+                <div class="lg:col-span-5 relative">
+                    <div class="relative space-y-4">
+                        
+                        <!-- MAIN STAT CARD -->
+                        <div class="theme-glass p-6 rounded-3xl border shadow-xl">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl theme-card border flex items-center justify-center theme-lime-text">
+                                        <i class="fa-solid fa-signal text-lg"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-sm font-bold theme-text">Disponibilidad de Red</h4>
+                                        <p class="text-xs theme-muted">Infraestructura de alta resiliencia</p>
+                                    </div>
+                                </div>
+                                <span class="px-2.5 py-1 text-[10px] font-bold rounded-md bg-[#A5C330]/20 theme-lime-text border border-[#A5C330]/30">ONLINE</span>
+                            </div>
+                            <div class="flex items-baseline justify-between">
+                                <span class="text-4xl font-extrabold theme-text tracking-tight">99.9%</span>
+                                <span class="text-xs theme-lime-text font-semibold"><i class="fa-solid fa-arrow-trend-up"></i> Uptime SLA</span>
+                            </div>
+                            <div class="w-full bg-slate-700/40 rounded-full h-1.5 mt-3 overflow-hidden">
+                                <div class="bg-[#A5C330] h-1.5 rounded-full w-[99.9%]"></div>
+                            </div>
+                        </div>
+
+                        <!-- SUB STATS DUAL ROW -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- LATENCY CARD -->
+                            <div class="theme-glass p-5 rounded-2xl border">
+                                <div class="theme-lime-text text-xl mb-2">
+                                    <i class="fa-solid fa-microchip"></i>
+                                </div>
+                                <div class="text-2xl font-bold theme-text">&lt; 10ms</div>
+                                <p class="text-xs theme-muted mt-1">Latencia Ultrabaja</p>
+                            </div>
+
+                            <!-- COBERTURA CARD -->
+                            <div class="theme-glass p-5 rounded-2xl border">
+                                <div class="theme-lime-text text-xl mb-2">
+                                    <i class="fa-solid fa-location-dot"></i>
+                                </div>
+                                <div class="text-base font-bold theme-text truncate">El Colegio / San Antonio</div>
+                                <p class="text-xs theme-muted mt-1">Cobertura Regional</p>
+                            </div>
+                        </div>
+
+                        <!-- FLOATING FEATURE BADGE -->
+                        <div class="theme-glass p-4 rounded-2xl border flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-xl theme-lime-bg flex items-center justify-center font-bold text-sm shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div class="text-xs">
+                                <p class="theme-text font-semibold">Soporte Técnico Certificado</p>
+                                <p class="theme-muted">Atención prioritaria urbana y rural</p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 2. CÓMO FUNCIONA (PASOS 01 A 04 ESTILO ENERGY PACK) -->
+        <section id="proceso" class="py-20 px-4 sm:px-8 border-t border-slate-700/40 relative">
+            <div class="max-w-7xl mx-auto">
+                
+                <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
+                    <div>
+                        <div class="theme-lime-text text-xs font-bold tracking-widest uppercase mb-2">
+                            01 A 04 | PASO A PASO DE CONEXIÓN
+                        </div>
+                        <h2 class="text-3xl sm:text-4xl font-extrabold theme-text tracking-tight">
+                            ¿Cómo obtener tu servicio iWana?
+                        </h2>
+                    </div>
+                    <p class="theme-muted text-sm max-w-md">
+                        Proceso de activación sencillo y transparente sin enredos. Nos encargamos de la viabilidad técnica en minutos.
+                    </p>
+                </div>
+
+                <!-- 4 STEPS GRID -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    
+                    <!-- STEP 1 -->
+                    <div class="theme-glass p-6 rounded-2xl border card-hover relative overflow-hidden group">
+                        <span class="absolute -top-3 -right-2 text-6xl font-black text-slate-500/10 group-hover:text-[#A5C330]/20 transition-colors pointer-events-none">01</span>
+                        <div class="w-12 h-12 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center text-xl font-bold mb-5">
+                            <i class="fa-solid fa-list-check"></i>
+                        </div>
+                        <h3 class="text-lg font-bold theme-text mb-2">01. Selecciona tu Plan</h3>
+                        <p class="text-xs theme-muted leading-relaxed">
+                            Elige la velocidad ideal para tu hogar, finca o pyme entre nuestras soluciones modulares.
+                        </p>
+                    </div>
+
+                    <!-- STEP 2 -->
+                    <div class="theme-glass p-6 rounded-2xl border card-hover relative overflow-hidden group">
+                        <span class="absolute -top-3 -right-2 text-6xl font-black text-slate-500/10 group-hover:text-[#A5C330]/20 transition-colors pointer-events-none">02</span>
+                        <div class="w-12 h-12 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center text-xl font-bold mb-5">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                        </div>
+                        <h3 class="text-lg font-bold theme-text mb-2">02. Valida Cobertura</h3>
+                        <p class="text-xs theme-muted leading-relaxed">
+                            Verificamos la factibilidad técnica para fibra urbana o enlace microondas en zona rural.
+                        </p>
+                    </div>
+
+                    <!-- STEP 3 -->
+                    <div class="theme-glass p-6 rounded-2xl border card-hover relative overflow-hidden group">
+                        <span class="absolute -top-3 -right-2 text-6xl font-black text-slate-500/10 group-hover:text-[#A5C330]/20 transition-colors pointer-events-none">03</span>
+                        <div class="w-12 h-12 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center text-xl font-bold mb-5">
+                            <i class="fa-solid fa-screwdriver-wrench"></i>
+                        </div>
+                        <h3 class="text-lg font-bold theme-text mb-2">03. Instalación Ágil</h3>
+                        <p class="text-xs theme-muted leading-relaxed">
+                            Nuestros técnicos especializados instalan equipos ONT / Router Dual Band en tu inmueble.
+                        </p>
+                    </div>
+
+                    <!-- STEP 4 -->
+                    <div class="theme-glass p-6 rounded-2xl border card-hover relative overflow-hidden group">
+                        <span class="absolute -top-3 -right-2 text-6xl font-black text-slate-500/10 group-hover:text-[#A5C330]/20 transition-colors pointer-events-none">04</span>
+                        <div class="w-12 h-12 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center text-xl font-bold mb-5">
+                            <i class="fa-solid fa-rocket"></i>
+                        </div>
+                        <h3 class="text-lg font-bold theme-text mb-2">04. Navega sin Límites</h3>
+                        <p class="text-xs theme-muted leading-relaxed">
+                            Transmite en 4K, juega en línea, trabaja y conecta todos tus dispositivos sin ralentizaciones.
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. MÓDULO INTERACTIVO DE PLANES Y TARIFAS -->
+        <section id="planes" class="py-20 px-4 sm:px-8 relative border-t border-slate-700/40">
+            <div class="max-w-7xl mx-auto">
+                
+                <!-- SECTION TITLE & TABS -->
+                <div class="text-center max-w-3xl mx-auto mb-10">
+                    <span class="px-3 py-1 rounded-full theme-card border theme-lime-text text-xs font-bold uppercase">
+                        Soluciones a Tu Medida
+                    </span>
+                    <h2 class="text-3xl sm:text-5xl font-extrabold theme-text mt-3 tracking-tight">
+                        Planes & Tarifas
+                    </h2>
+                    <p class="theme-muted text-sm mt-3">
+                        Opciones diseñadas para garantizar conectividad estable en cascos urbanos y zonas rurales.
+                    </p>
+
+                    <!-- TAB BUTTONS -->
+                    <div class="inline-flex p-1.5 rounded-2xl theme-card border mt-8">
+                        <button onclick="switchTab('hogar')" id="tab-hogar" class="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all theme-lime-bg">
+                            <i class="fa-solid fa-house mr-1.5"></i> Hogar Fibra
+                        </button>
+                        <button onclick="switchTab('rural')" id="tab-rural" class="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold theme-muted hover:text-[#A5C330] transition-all">
+                            <i class="fa-solid fa-tree mr-1.5"></i> Internet Rural
+                        </button>
+                        <button onclick="switchTab('empresas')" id="tab-empresas" class="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold theme-muted hover:text-[#A5C330] transition-all">
+                            <i class="fa-solid fa-building-user mr-1.5"></i> Empresas
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PLAN CARDS CONTAINER -->
+                <div id="plans-container" class="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
+                    <!-- DYNAMIC CARDS LOADED VIA JS -->
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 4. MÓDULO DE HERRAMIENTAS INTERACTIVAS (SPEEDTEST & PSE) -->
+        <section id="herramientas" class="py-20 px-4 sm:px-8 relative border-t border-slate-700/40">
+            <div class="max-w-7xl mx-auto">
+                
+                <div class="text-center max-w-2xl mx-auto mb-12">
+                    <span class="theme-lime-text text-xs font-bold tracking-widest uppercase">UTILIDADES DIGITALES</span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold theme-text mt-2">Test de Velocidad & Portal de Pagos</h2>
+                    <p class="theme-muted text-sm mt-2">Prueba el rendimiento de tu red o realiza tus pagos en línea en segundos.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    
+                    <!-- WIDGET 1: SPEEDTEST INTERACTIVO -->
+                    <div class="lg:col-span-7 theme-glass p-6 sm:p-8 rounded-3xl border relative overflow-hidden">
+                        
+                        <div class="flex items-center justify-between border-b border-slate-700/50 pb-4 mb-6">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center">
+                                    <i class="fa-solid fa-gauge-high"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold theme-text text-base">SpeedTest iWana</h3>
+                                    <p class="text-xs theme-muted">Servidor Regional Cundinamarca</p>
+                                </div>
+                            </div>
+                            <span id="speedtest-status" class="text-[11px] font-semibold theme-lime-text bg-[#A5C330]/10 px-2.5 py-1 rounded-full border border-[#A5C330]/20">
+                                LISTO
+                            </span>
+                        </div>
+
+                        <!-- GAUGE VISUALIZATION -->
+                        <div class="flex flex-col items-center justify-center py-4 relative">
+                            
+                            <div class="relative w-52 h-52 flex items-center justify-center">
+                                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="40" stroke="rgba(150,150,150,0.2)" stroke-width="8" fill="transparent" stroke-dasharray="251.2" stroke-dashoffset="62.8" stroke-linecap="round"/>
+                                    <circle id="gauge-arc" cx="50" cy="50" r="40" stroke="var(--accent-lime)" stroke-width="8" fill="transparent" stroke-dasharray="251.2" stroke-dashoffset="251.2" stroke-linecap="round" class="gauge-meter"/>
+                                </svg>
+                                
+                                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                                    <span id="speed-value" class="text-4xl font-extrabold theme-text tracking-tight">0.0</span>
+                                    <span class="text-xs font-bold theme-lime-text tracking-wider uppercase mt-1">Mbps</span>
+                                    <span id="speed-type" class="text-[10px] theme-muted uppercase mt-0.5">Bajada</span>
+                                </div>
+                            </div>
+
+                            <button id="start-speedtest-btn" onclick="runSpeedTest()" class="mt-4 px-8 py-3 rounded-xl theme-lime-bg font-extrabold text-sm hover:shadow-lg transition-all flex items-center gap-2">
+                                <i class="fa-solid fa-play"></i> Iniciar Prueba
+                            </button>
+
+                        </div>
+
+                        <!-- TEST METRICS DASHBOARD -->
+                        <div class="grid grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-700/50 text-center">
+                            <div class="p-3 rounded-xl theme-card border">
+                                <p class="text-[10px] theme-muted uppercase font-medium">Ping</p>
+                                <p id="ping-val" class="text-lg font-bold theme-text mt-1">-- <span class="text-xs theme-muted">ms</span></p>
+                            </div>
+                            <div class="p-3 rounded-xl theme-card border">
+                                <p class="text-[10px] theme-muted uppercase font-medium">Bajada</p>
+                                <p id="download-val" class="text-lg font-bold theme-lime-text mt-1">-- <span class="text-xs theme-muted">Mbps</span></p>
+                            </div>
+                            <div class="p-3 rounded-xl theme-card border">
+                                <p class="text-[10px] theme-muted uppercase font-medium">Subida</p>
+                                <p id="upload-val" class="text-lg font-bold theme-text mt-1">-- <span class="text-xs theme-muted">Mbps</span></p>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- WIDGET 2: PAGO RÁPIDO PSE -->
+                    <div class="lg:col-span-5 theme-glass p-6 sm:p-8 rounded-3xl border">
+                        
+                        <div class="flex items-center gap-3 border-b border-slate-700/50 pb-4 mb-6">
+                            <div class="w-9 h-9 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center">
+                                <i class="fa-solid fa-credit-card"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold theme-text text-base">Consulta & Pago Factura</h3>
+                                <p class="text-xs theme-muted">Pasarela PSE Directa iWana</p>
+                            </div>
+                        </div>
+
+                        <form onsubmit="handlePSECheck(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold theme-text mb-1.5">Documento o Número de Contrato</label>
+                                <div class="relative">
+                                    <input type="text" id="pse-id-input" required placeholder="Ej: 1012345678 o IW-884" class="w-full px-4 py-3 rounded-xl theme-card border theme-text placeholder-slate-400 text-sm focus:outline-none focus:border-[#A5C330] transition-all">
+                                    <i class="fa-solid fa-search absolute right-4 top-3.5 theme-muted text-xs"></i>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="w-full py-3.5 rounded-xl theme-lime-bg font-bold text-sm hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-magnifying-glass"></i> Consultar Estado
+                            </button>
+                        </form>
+
+                        <!-- PSE QUERY RESULT CARD -->
+                        <div id="pse-result-card" class="hidden mt-6 p-4 rounded-2xl theme-card border space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs theme-muted">Estado:</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#A5C330]/20 theme-lime-text">FACTURA DISPONIBLE</span>
+                            </div>
+                            <div class="flex items-baseline justify-between border-t border-b border-slate-700/40 py-2">
+                                <span class="text-xs font-medium theme-text">Total a pagar:</span>
+                                <span class="text-xl font-bold theme-text">$79.000 <span class="text-xs theme-muted font-normal">COP</span></span>
+                            </div>
+                            <div class="text-[11px] theme-muted flex justify-between">
+                                <span>Contrato: <strong class="theme-text" id="res-contrato">IW-8842</strong></span>
+                                <span>Vencimiento: <strong class="theme-text">30/OCT/2026</strong></span>
+                            </div>
+                            <button onclick="simulatePSEPayment()" class="w-full py-2.5 rounded-xl theme-lime-bg font-extrabold text-xs transition-all flex items-center justify-center gap-2 mt-2">
+                                <i class="fa-solid fa-shield-halved"></i> Proceder a Pago PSE
+                            </button>
+                        </div>
+
+                        <div class="mt-6 pt-4 border-t border-slate-700/40 text-center">
+                            <p class="text-[11px] theme-muted">
+                                Transacciones encriptadas de alta seguridad. Acepta PSE, tarjetas bancarias, Nequi y Daviplata.
+                            </p>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 5. PRUEBA SOCIAL / TESTIMONIOS REGIONALES -->
+        <section id="cobertura" class="py-20 px-4 sm:px-8 border-t border-slate-700/40">
+            <div class="max-w-7xl mx-auto">
+                
+                <div class="text-center max-w-2xl mx-auto mb-12">
+                    <span class="theme-lime-text text-xs font-bold tracking-widest uppercase">CASOS DE ÉXITO</span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold theme-text mt-2">Respaldado en Toda la Región</h2>
+                    <p class="theme-muted text-sm mt-2">Opiniones reales de usuarios en El Colegio y San Antonio del Tequendama.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    <div class="theme-glass p-6 rounded-2xl border space-y-4">
+                        <div class="flex items-center gap-1 theme-lime-text text-xs">
+                            <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                        </div>
+                        <p class="text-xs theme-text leading-relaxed italic">
+                            "Probé varios proveedores y la fibra de iWana ha sido la única que nos entrega las 200 Megas reales para trabajar en casa sin caídas."
+                        </p>
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-700/40">
+                            <div>
+                                <p class="text-xs font-bold theme-text">Carlos Eduardo Mendoza</p>
+                                <p class="text-[10px] theme-muted">Fibra Hogar</p>
+                            </div>
+                            <span class="px-2 py-1 rounded theme-card border theme-lime-text text-[10px] font-semibold">
+                                <i class="fa-solid fa-location-dot mr-1"></i> El Colegio
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="theme-glass p-6 rounded-2xl border space-y-4">
+                        <div class="flex items-center gap-1 theme-lime-text text-xs">
+                            <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                        </div>
+                        <p class="text-xs theme-text leading-relaxed italic">
+                            "Para nuestra finca necesitábamos velocidad para cámaras e internet. El enlace de antena rural funciona constante incluso lloviendo."
+                        </p>
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-700/40">
+                            <div>
+                                <p class="text-xs font-bold theme-text">María Fernanda Gómez</p>
+                                <p class="text-[10px] theme-muted">Internet Rural Finca</p>
+                            </div>
+                            <span class="px-2 py-1 rounded theme-card border theme-lime-text text-[10px] font-semibold">
+                                <i class="fa-solid fa-location-dot mr-1"></i> San Antonio
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="theme-glass p-6 rounded-2xl border space-y-4">
+                        <div class="flex items-center gap-1 theme-lime-text text-xs">
+                            <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                        </div>
+                        <p class="text-xs theme-text leading-relaxed italic">
+                            "El soporte por WhatsApp responde muy rápido y el portal de pago PSE nos ahorra hacer filas en el pueblo."
+                        </p>
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-700/40">
+                            <div>
+                                <p class="text-xs font-bold theme-text">Jorge Hernán Silva</p>
+                                <p class="text-[10px] theme-muted">Comercio Local</p>
+                            </div>
+                            <span class="px-2 py-1 rounded theme-card border theme-lime-text text-[10px] font-semibold">
+                                <i class="fa-solid fa-location-dot mr-1"></i> Pradilla
+                            </span>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 6. PREGUNTAS FRECUENTES (FAQ ACCORDION) -->
+        <section id="faq" class="py-20 px-4 sm:px-8 border-t border-slate-700/40">
+            <div class="max-w-4xl mx-auto">
+                
+                <div class="text-center mb-12">
+                    <span class="theme-lime-text text-xs font-bold tracking-widest uppercase">PREGUNTAS FRECUENTES</span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold theme-text mt-2">Resolvemos tus Dudas</h2>
+                    <p class="theme-muted text-sm mt-2">Información clara para tu contratación.</p>
+                </div>
+
+                <div class="space-y-4">
+                    
+                    <div class="theme-glass rounded-2xl border overflow-hidden">
+                        <button onclick="toggleFAQ(1)" class="w-full p-5 text-left flex items-center justify-between theme-text font-bold text-sm sm:text-base focus:outline-none">
+                            <span>¿Cuánto tiempo toma la instalación del servicio?</span>
+                            <i id="faq-icon-1" class="fa-solid fa-chevron-down theme-lime-text transition-transform duration-300"></i>
+                        </button>
+                        <div id="faq-answer-1" class="hidden px-5 pb-5 text-xs theme-muted leading-relaxed border-t border-slate-700/40 pt-3">
+                            Una vez validada la viabilidad técnica en tu predio, la instalación se realiza entre 24 a 48 horas hábiles coordinando la visita técnica.
+                        </div>
+                    </div>
+
+                    <div class="theme-glass rounded-2xl border overflow-hidden">
+                        <button onclick="toggleFAQ(2)" class="w-full p-5 text-left flex items-center justify-between theme-text font-bold text-sm sm:text-base focus:outline-none">
+                            <span>¿Cómo opera la tecnología de internet en zonas rurales?</span>
+                            <i id="faq-icon-2" class="fa-solid fa-chevron-down theme-lime-text transition-transform duration-300"></i>
+                        </button>
+                        <div id="faq-answer-2" class="hidden px-5 pb-5 text-xs theme-muted leading-relaxed border-t border-slate-700/40 pt-3">
+                            Instalamos antenas receptoras dedicadas conectadas mediante enlaces microondas directo a nuestros nodos principales de fibra óptica.
+                        </div>
+                    </div>
+
+                    <div class="theme-glass rounded-2xl border overflow-hidden">
+                        <button onclick="toggleFAQ(3)" class="w-full p-5 text-left flex items-center justify-between theme-text font-bold text-sm sm:text-base focus:outline-none">
+                            <span>¿La fibra óptica urbana es 100% simétrica?</span>
+                            <i id="faq-icon-3" class="fa-solid fa-chevron-down theme-lime-text transition-transform duration-300"></i>
+                        </button>
+                        <div id="faq-answer-3" class="hidden px-5 pb-5 text-xs theme-muted leading-relaxed border-t border-slate-700/40 pt-3">
+                            Sí. En planes desde 200 Mbps obtienes exactamente la misma velocidad de carga que de descarga para garantizar óptimas videollamadas.
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER TECHNICAL -->
+    <footer class="theme-card border-t pt-16 pb-12 px-4 sm:px-8 relative z-10 text-xs">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+            
+            <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 flex items-center justify-center theme-bg border rounded-xl">
+                        <svg viewBox="0 0 100 100" class="w-6 h-6 text-[#A5C330] fill-current">
+                            <path d="M50,10 C25,10 10,30 10,55 C10,75 25,90 50,90 C70,90 85,75 88,58 C82,62 72,64 62,60 C52,56 48,45 52,38 C56,31 66,28 75,32 C82,22 70,10 50,10 Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <span class="text-xl font-bold theme-text"><span class="theme-lime-text">i</span>Wana</span>
+                        <p class="text-[9px] theme-muted uppercase tracking-widest font-semibold">Networking</p>
+                    </div>
+                </div>
+                <p class="theme-muted leading-relaxed">
+                    Soluciones integrales de conectividad, fibra óptica e internet rural. Acercando a las personas mediante tecnología.
+                </p>
+            </div>
+
+            <div class="space-y-3">
+                <h4 class="text-sm font-bold theme-lime-text uppercase tracking-wider">Puntos de Atención</h4>
+                <div class="space-y-3 theme-muted">
+                    <p><strong class="theme-text">El Colegio:</strong> Cra. 7 # 8 - 55</p>
+                    <p><strong class="theme-text">San Antonio:</strong> Cra. 5 # 4a - 01</p>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                <h4 class="text-sm font-bold theme-lime-text uppercase tracking-wider">Contacto Directo</h4>
+                <ul class="space-y-2 theme-muted">
+                    <li>PBX: <strong class="theme-text">(601) 495 4488</strong></li>
+                    <li>WhatsApp: <strong class="theme-text">+57 311 284 0141</strong></li>
+                    <li>Correo: <strong class="theme-text">info@iwana.co</strong></li>
+                </ul>
+            </div>
+
+            <div class="space-y-3">
+                <h4 class="text-sm font-bold theme-lime-text uppercase tracking-wider">Servicios</h4>
+                <ul class="space-y-2 theme-muted">
+                    <li>Fibra Óptica Urbana</li>
+                    <li>Internet Rural Fincas</li>
+                    <li>Portal de Pagos PSE</li>
+                </ul>
+            </div>
+
+        </div>
+
+        <div class="max-w-7xl mx-auto mt-12 pt-6 border-t border-slate-700/40 flex flex-col sm:flex-row items-center justify-between gap-4 theme-muted text-[11px]">
+            <p>© 2026 iWana Networking. Todos los derechos reservados.</p>
+            <p class="flex items-center gap-2">
+                <span>Plataforma iWana Redesign</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-[#A5C330]"></span>
+                <span>Cundinamarca</span>
+            </p>
+        </div>
+    </footer>
+
+    <!-- MODAL DE SOLICITUD -->
+    <div id="action-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="theme-glass w-full max-w-md p-6 sm:p-8 rounded-3xl border relative shadow-2xl space-y-5">
+            <button onclick="closeModal()" class="absolute top-4 right-4 theme-muted hover:text-[#A5C330] p-2">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl theme-card border text-[#A5C330] flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </div>
+                <div>
+                    <h3 id="modal-title" class="font-bold theme-text text-lg">Solicitud de Servicio</h3>
+                    <p id="modal-subtitle" class="text-xs theme-muted">Ingresa tus datos para contactarte</p>
+                </div>
+            </div>
+            <form onsubmit="handleModalSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium theme-text mb-1">Nombre Completo</label>
+                    <input type="text" required placeholder="Ej: Pedro Ramírez" class="w-full px-4 py-2.5 rounded-xl theme-card border theme-text text-sm focus:outline-none focus:border-[#A5C330]">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium theme-text mb-1">Teléfono / WhatsApp</label>
+                    <input type="tel" required placeholder="Ej: 311 000 0000" class="w-full px-4 py-2.5 rounded-xl theme-card border theme-text text-sm focus:outline-none focus:border-[#A5C330]">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium theme-text mb-1">Plan Seleccionado</label>
+                    <input type="text" id="modal-plan-input" readonly class="w-full px-4 py-2.5 rounded-xl theme-card border theme-lime-text font-bold text-sm">
+                </div>
+                <button type="submit" class="w-full py-3.5 rounded-xl theme-lime-bg font-extrabold text-sm transition-all shadow-lg">
+                    Confirmar Solicitud
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT & LOGIC -->
+    <script>
+        // THEME SWITCHER FUNCTION
+        function setTheme(themeName) {
+            document.documentElement.setAttribute('data-theme', themeName);
+            
+            // Highlight active button in switcher
+            const themes = ['obsidian', 'organic', 'light'];
+            themes.forEach(t => {
+                const btn = document.getElementById(`btn-theme-${t}`);
+                if (t === themeName) {
+                    btn.className = "px-2.5 py-1 rounded text-[11px] font-bold transition-all bg-[#A5C330] text-black shadow";
+                } else {
+                    btn.className = "px-2.5 py-1 rounded text-[11px] font-bold transition-all text-slate-300 hover:text-white";
+                }
+            });
+        }
+
+        // DATA DE PLANES POR PESTAÑA
+        const plansData = {
+            hogar: [
+                { badge: "URBANO", title: "Plan Conecta", speed: "80", unit: "Mbps", price: "55.000", featured: false, features: ["Fibra Óptica Directa", "80 Mbps Bajada", "Wi-Fi Dual Band", "Ideal 3-5 Dispositivos"] },
+                { badge: "RECOMENDADO", title: "Plan Pro Simétrico", speed: "200", unit: "Mbps", price: "79.000", featured: true, features: ["Fibra 100% Simétrica", "200 Mbps Bajada / Subida", "Router High Gain Dual Band", "Zero Lag Gaming & 4K"] },
+                { badge: "ULTRA", title: "Plan Total Streamer", speed: "400", unit: "Mbps", price: "109.000", featured: false, features: ["400 Mbps Carga/Descarga", "Mesh Wi-Fi 6 Cobertura", "Multidispositivo Masivo", "SLA Técnico Prioritario"] }
+            ],
+            rural: [
+                { badge: "RURAL BÁSICO", title: "Finca Esencial", speed: "40", unit: "Mbps", price: "65.000", featured: false, features: ["Enlace Inalámbrico Dedicado", "40 Mbps Estables", "Wi-Fi Casa Finca", "Resistencia a Lluvias"] },
+                { badge: "POPULAR RURAL", title: "Finca Pro IoT", speed: "80", unit: "Mbps", price: "89.000", featured: true, features: ["80 Mbps Microondas", "Soporte Cámaras Seguridad", "Wi-Fi Amplia Cobertura", "Teletrabajo y Clases"] },
+                { badge: "TITANIUM", title: "Finca Max Ultra", speed: "150", unit: "Mbps", price: "129.000", featured: false, features: ["150 Mbps Enlace Microondas", "Multi Cabañas & Casas", "Priorización Video 4K", "Soporte 24/7"] }
+            ],
+            empresas: [
+                { badge: "PYME", title: "Pyme Fibra 200", speed: "200", unit: "Mbps", price: "159.000", featured: false, features: ["Fibra Óptica Dedicada", "IP Dinámica Optimizada", "Garantía de Ancho de Banda", "Facturación Electrónica"] },
+                { badge: "CORPORATIVO", title: "Empresa Dedicada", speed: "500", unit: "Mbps", price: "299.000", featured: true, features: ["500 Mbps Simétricos 1:1", "IP Pública Fija Incluida", "Router Comercial Gigabit", "Atención Técnico < 2h"] }
+            ]
+        };
+
+        function renderPlans(category) {
+            const container = document.getElementById('plans-container');
+            const list = plansData[category] || plansData.hogar;
+            
+            container.innerHTML = list.map(plan => `
+                <div class="theme-glass rounded-3xl p-7 border ${plan.featured ? 'theme-border-lime shadow-lg relative' : ''} card-hover flex flex-col justify-between">
+                    <div>
+                        <span class="px-3 py-1 rounded-full ${plan.featured ? 'theme-lime-bg font-extrabold' : 'theme-card border theme-muted'} text-[10px] font-bold uppercase">
+                            ${plan.badge}
+                        </span>
+                        <h3 class="text-xl font-bold theme-text mt-4">${plan.title}</h3>
+
+                        <div class="my-6 pb-6 border-b border-slate-700/40">
+                            <div class="flex items-baseline gap-1">
+                                <span class="text-5xl font-black theme-text tracking-tight">${plan.speed}</span>
+                                <span class="text-base font-bold theme-lime-text uppercase">${plan.unit}</span>
+                            </div>
+                            <div class="mt-2 theme-text font-bold text-lg">
+                                $${plan.price} <span class="text-xs font-normal theme-muted">/ mes</span>
+                            </div>
+                        </div>
+
+                        <ul class="space-y-3 mb-8 text-xs theme-text">
+                            ${plan.features.map(f => `
+                                <li class="flex items-start gap-2.5">
+                                    <i class="fa-solid fa-circle-check theme-lime-text mt-0.5 shrink-0"></i>
+                                    <span>${f}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+
+                    <button onclick="openPlanModal('${plan.title} - ${plan.speed} ${plan.unit}')" class="w-full py-3.5 rounded-xl font-extrabold text-xs tracking-wider uppercase transition-all ${plan.featured ? 'theme-lime-bg hover:shadow-lg' : 'theme-card border theme-text hover:border-[#A5C330]'}">
+                        Solicitar Este Plan
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function switchTab(tab) {
+            ['hogar', 'rural', 'empresas'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (t === tab) {
+                    btn.className = "px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all theme-lime-bg";
+                } else {
+                    btn.className = "px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold theme-muted hover:text-[#A5C330] transition-all";
+                }
+            });
+            renderPlans(tab);
+        }
+
+        // SPEEDTEST LOGIC
+        let isTesting = false;
+        function runSpeedTest() {
+            if (isTesting) return;
+            isTesting = true;
+
+            const btn = document.getElementById('start-speedtest-btn');
+            const status = document.getElementById('speedtest-status');
+            const speedVal = document.getElementById('speed-value');
+            const speedType = document.getElementById('speed-type');
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Midiendo...`;
+            status.innerText = "PRUEBA EN PROCESO";
+
+            setTimeout(() => {
+                document.getElementById('ping-val').innerHTML = `7 <span class="text-xs theme-muted">ms</span>`;
+                
+                let current = 0;
+                const downInterval = setInterval(() => {
+                    current += 22;
+                    if (current >= 198.4) {
+                        current = 198.4;
+                        clearInterval(downInterval);
+                        document.getElementById('download-val').innerHTML = `198.4 <span class="text-xs theme-muted">Mbps</span>`;
+
+                        setTimeout(() => {
+                            speedType.innerText = "SUBIDA";
+                            let up = 0;
+                            const upInterval = setInterval(() => {
+                                up += 22;
+                                if (up >= 195.2) {
+                                    up = 195.2;
+                                    clearInterval(upInterval);
+                                    document.getElementById('upload-val').innerHTML = `195.2 <span class="text-xs theme-muted">Mbps</span>`;
+                                    isTesting = false;
+                                    btn.disabled = false;
+                                    btn.innerHTML = `<i class="fa-solid fa-rotate-right"></i> Repetir Prueba`;
+                                    status.innerText = "COMPLETADO";
+                                    speedType.innerText = "PRUEBA FINALIZADA";
+                                }
+                                updateGauge(up, 300);
+                                speedVal.innerText = up.toFixed(1);
+                            }, 80);
+                        }, 400);
+                    }
+                    updateGauge(current, 300);
+                    speedVal.innerText = current.toFixed(1);
+                }, 80);
+            }, 500);
+        }
+
+        function updateGauge(val, maxVal) {
+            const gaugeArc = document.getElementById('gauge-arc');
+            const totalDash = 251.2;
+            const percentage = Math.min(val / maxVal, 1);
+            gaugeArc.style.strokeDashoffset = totalDash - (totalDash * 0.75 * percentage);
+        }
+
+        function handlePSECheck(e) {
+            e.preventDefault();
+            const inputVal = document.getElementById('pse-id-input').value;
+            document.getElementById('res-contrato').innerText = inputVal.toUpperCase().startsWith('IW-') ? inputVal.toUpperCase() : `IW-${inputVal.slice(-4)}`;
+            document.getElementById('pse-result-card').classList.remove('hidden');
+        }
+
+        function simulatePSEPayment() {
+            openModal("Redirección PSE", "Redirigiendo de forma segura a la pasarela bancaria PSE...");
+        }
+
+        function toggleFAQ(num) {
+            const ans = document.getElementById(`faq-answer-${num}`);
+            const icon = document.getElementById(`faq-icon-${num}`);
+            ans.classList.toggle('hidden');
+            icon.style.transform = ans.classList.contains('hidden') ? "rotate(0deg)" : "rotate(180deg)";
+        }
+
+        function openPlanModal(planName) {
+            document.getElementById('modal-plan-input').value = planName;
+            document.getElementById('action-modal').classList.remove('hidden');
+            document.getElementById('action-modal').classList.add('flex');
+        }
+
+        function openPSEModal() {
+            document.getElementById('herramientas').scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('pse-id-input').focus();
+        }
+
+        function closeModal() {
+            document.getElementById('action-modal').classList.add('hidden');
+            document.getElementById('action-modal').classList.remove('flex');
+        }
+
+        function openModal(title, subtitle) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-subtitle').innerText = subtitle;
+            document.getElementById('modal-plan-input').value = "Proceso Inmediato";
+            document.getElementById('action-modal').classList.remove('hidden');
+            document.getElementById('action-modal').classList.add('flex');
+        }
+
+        function handleModalSubmit(e) {
+            e.preventDefault();
+            closeModal();
+            openModal("¡Solicitud Recibida!", "Un asesor de iWana se comunicará contigo vía WhatsApp / Celular a la brevedad.");
+        }
+
+        function scrollToSpeedtest() {
+            document.getElementById('herramientas').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+            document.getElementById('mobile-menu').classList.toggle('hidden');
+        });
+
+        window.onload = function() {
+            renderPlans('hogar');
+            updateGauge(0, 300);
+        };
+    </script>
+</body>
+</html>
