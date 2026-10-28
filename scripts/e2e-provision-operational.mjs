@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateQuarantine } from './check-e2e-quarantine.mjs';
+import { seedPrivacyFase1bFixtures } from '../e2e/scripts/seed-privacy-fase-1b-fixtures.mjs';
 
 // Fuente única del piso del vertical R4.1 (tests 4a/4b/4c/4d/4e).
 const REQUIRED_OPERATIONAL_E2E_PASSED = 30;
@@ -1677,6 +1678,18 @@ function createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineC
     E2E_MOD13_COORDINATOR_EMAIL: env.E2E_COORDINATOR_RO_EMAIL,
     E2E_MOD13_COORDINATOR_PASSWORD: env.E2E_COORDINATOR_RO_PASSWORD,
     E2E_OPERATIONAL_SITE_ID: env.E2E_OPERATIONAL_SITE_ID,
+    // Specs live de MOD05 (privacidad, deuda fiscal y CRM): sin estas variables
+    // se omitían en CI. Todas son efímeras de esta corrida; la base es la E2E.
+    E2E_PRIVACY_1B_TENANT_SLUG: env.E2E_PRIVACY_1B_TENANT_SLUG,
+    E2E_PRIVACY_ADMIN_EMAIL: env.E2E_PRIVACY_ADMIN_EMAIL,
+    E2E_PRIVACY_ADMIN_PASSWORD: env.E2E_PRIVACY_ADMIN_PASSWORD,
+    E2E_PLATFORM_EMAIL: env.E2E_PLATFORM_EMAIL,
+    E2E_PLATFORM_PASSWORD: env.E2E_PLATFORM_PASSWORD,
+    DB_HOST: env.DB_HOST,
+    DB_PORT: env.DB_PORT,
+    DB_NAME: env.DB_NAME,
+    DB_USER: env.DB_USER,
+    DB_PASSWORD: env.DB_PASSWORD,
   };
 }
 
@@ -1742,7 +1755,7 @@ function runPlaywright(env, quarantineCount) {
   const markerLines = output
     .split(/\r?\n/u)
     .filter((line) =>
-      /^E2E_PLAYWRIGHT_(?:PASSED|FAILED|SKIPPED|DID_NOT_RUN|FLAKY|SKIP_REASON_COUNT|MISSING_SKIP_REASONS)=/u.test(
+      /^E2E_PLAYWRIGHT_(?:PASSED|FAILED|FAILED_TEST|FAILED_TEST_OMITTED|SKIPPED|DID_NOT_RUN|FLAKY|SKIP_REASON_COUNT|MISSING_SKIP_REASONS)=/u.test(
         line,
       ),
     );
@@ -1762,14 +1775,13 @@ function runPlaywright(env, quarantineCount) {
 }
 
 function cleanupWithDocker() {
-  const schemaA = `tenant_${tenantSlug.replaceAll('-', '_')}`;
-  const schemaB = `tenant_${otherTenantSlug.replaceAll('-', '_')}`;
-  const escapedA = tenantSlug.replaceAll("'", "''");
-  const escapedB = otherTenantSlug.replaceAll("'", "''");
   const sql = [
-    `DROP SCHEMA IF EXISTS "${schemaA}" CASCADE`,
-    `DROP SCHEMA IF EXISTS "${schemaB}" CASCADE`,
-    `DELETE FROM public.tenants WHERE slug IN ('${escapedA}', '${escapedB}')`,
+    ...tenantSlugs.map(
+      (slug) => `DROP SCHEMA IF EXISTS "tenant_${slug.replaceAll('-', '_')}" CASCADE`,
+    ),
+    `DELETE FROM public.tenants WHERE slug IN (${tenantSlugs
+      .map((slug) => `'${slug.replaceAll("'", "''")}'`)
+      .join(', ')})`,
   ].join('; ');
   const result = spawnSync(
     'docker',
@@ -1987,7 +1999,17 @@ try {
   });
   console.log(`E2E_TEMPLATE=OK|happy_path_template_id=${happyPathTemplateId}`);
 
-  console.log(`E2E_SETUP=OK|tenants=${tenantSlug},${otherTenantSlug}`);
+  // Tenant propio de los specs live de privacidad y deuda fiscal (MOD05): el
+  // seed crea sus actores y deja el texto de autorización y un plan activo.
+  const privacyFixture = await seedPrivacyFase1bFixtures({
+    apiBaseUrl: API_PREFIX,
+    platformEmail,
+    platformPassword,
+  });
+  assertSlug(privacyFixture.E2E_PRIVACY_1B_TENANT_SLUG);
+  tenantSlugs.push(privacyFixture.E2E_PRIVACY_1B_TENANT_SLUG);
+
+  console.log(`E2E_SETUP=OK|tenants=${tenantSlugs.join(',')}`);
 
   testExitCode = runPlaywright(
     {
@@ -2014,6 +2036,7 @@ try {
       E2E_OTHER_TENANT_EMAIL: otherTenantAdminEmail,
       E2E_OTHER_TENANT_PASSWORD: otherTenantAdminPassword,
       E2E_OTHER_TENANT_ADMIN_TOKEN: otherTenantAdmin.token,
+      ...privacyFixture,
     },
     quarantineCount,
   );
@@ -2022,6 +2045,13 @@ try {
 } finally {
   if (createdTenants && cleanupEnabled) {
     if (platformToken) {
+      // El token se emitió antes de la suite; si esta dura más que su vigencia
+      // la limpieza por API recibe 401. Se renueva y, si falla, se usa el previo.
+      try {
+        platformToken = (await loginPlatformWithPassword(platformPassword)).token;
+      } catch {
+        console.error('E2E_PLATFORM_RELOGIN=FAILED');
+      }
       for (const slug of tenantSlugs) {
         // Con reintentos: la suite sacude la infraestructura a propósito —el
         // caso 4e pausa y reanuda Redis, y el de rate limiting dispara ráfagas

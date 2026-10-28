@@ -3,6 +3,8 @@
 /**
  * Seed idempotente de actores sintéticos para el E2E Privacy Fase 1b.
  * Ejecutar desde la raíz: node e2e/scripts/seed-privacy-fase-1b-fixtures.mjs
+ * R4.1 importa `seedPrivacyFase1bFixtures` contra su base efímera: ese camino
+ * no lee ni escribe `.env.development.local` y devuelve las credenciales en memoria.
  * Nunca imprime contraseñas, tokens, correos ni payloads de API.
  */
 import crypto from 'node:crypto';
@@ -10,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 
 function findWorkspaceRoot() {
   let current = process.cwd();
@@ -23,7 +26,8 @@ function findWorkspaceRoot() {
 
 const ROOT = findWorkspaceRoot();
 if (!ROOT) throw new Error('No se encontró la raíz del workspace.');
-const API = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1';
+// Mutable: R4.1 lo fija al importar el seed, con el prefijo /api/v1 incluido.
+let API = process.env.API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1';
 const ENV_FILE = path.join(ROOT, '.env.development.local');
 const MIGRATIONS = [
   'PrivacyErasureRecord1490000000000',
@@ -112,9 +116,7 @@ function tenantFromResponse(body, slug) {
   return rows.find((row) => row?.slug === slug) ?? null;
 }
 
-async function platformSession() {
-  const email = process.env.E2E_PLATFORM_EMAIL?.trim();
-  const password = process.env.E2E_PLATFORM_PASSWORD;
+async function platformSession(email, password) {
   assert(email && password, 'Faltan E2E_PLATFORM_* en el entorno local.');
   const { response, body } = await api('/auth/platform/login', {
     method: 'POST',
@@ -673,21 +675,50 @@ async function seedUsersAndProfiles(tenant, slug, suffix, adminPassword) {
   };
 }
 
-async function main() {
-  loadWorkspaceEnv();
-  assert(process.env.DB_NAME === 'dbiw', 'El seed requiere DB_NAME=dbiw.');
-  assert(Number(process.env.DB_PORT) === 5433, 'El seed requiere DB_PORT=5433.');
-  const slug =
-    process.env.E2E_PRIVACY_1B_TENANT_SLUG ||
-    `e2e-privacy-1b-${crypto.randomBytes(4).toString('hex')}`;
+function newTenantSlug() {
+  return `e2e-privacy-1b-${crypto.randomBytes(4).toString('hex')}`;
+}
+
+function suffixOf(slug) {
   assert(
     /^e2e-privacy-1b-[a-z0-9]{8}$/.test(slug),
     'E2E_PRIVACY_1B_TENANT_SLUG tiene formato inválido.',
   );
-  const suffix = slug.slice('e2e-privacy-1b-'.length);
+  return slug.slice('e2e-privacy-1b-'.length);
+}
+
+/**
+ * Camino de R4.1: crea el tenant y sus actores sobre la API y la base del
+ * entorno efímero (DB_*, REDIS_* y PII_HASH_KEY del proceso). No toca archivos
+ * ni imprime nada; el llamador entrega las credenciales solo a la suite.
+ */
+export async function seedPrivacyFase1bFixtures({ apiBaseUrl, platformEmail, platformPassword }) {
+  API = apiBaseUrl;
+  const slug = newTenantSlug();
+  const suffix = suffixOf(slug);
+  const adminPassword = randomPassword();
+  const platformToken = await platformSession(platformEmail, platformPassword);
+  const tenant = await loadOrCreateTenant(platformToken, slug, suffix);
+  await seedUsersAndProfiles(tenant, slug, suffix, adminPassword);
+  return {
+    E2E_PRIVACY_1B_TENANT_SLUG: slug,
+    E2E_PRIVACY_ADMIN_EMAIL: userEmail('admin', suffix),
+    E2E_PRIVACY_ADMIN_PASSWORD: adminPassword,
+  };
+}
+
+async function main() {
+  loadWorkspaceEnv();
+  assert(process.env.DB_NAME === 'dbiw', 'El seed requiere DB_NAME=dbiw.');
+  assert(Number(process.env.DB_PORT) === 5433, 'El seed requiere DB_PORT=5433.');
+  const slug = process.env.E2E_PRIVACY_1B_TENANT_SLUG || newTenantSlug();
+  const suffix = suffixOf(slug);
   writeEnvVariables({ E2E_PRIVACY_1B_TENANT_SLUG: slug });
 
-  const platformToken = await platformSession();
+  const platformToken = await platformSession(
+    process.env.E2E_PLATFORM_EMAIL?.trim(),
+    process.env.E2E_PLATFORM_PASSWORD,
+  );
   const tenant = await loadOrCreateTenant(platformToken, slug, suffix);
   const adminEmail = userEmail('admin', suffix);
   const priorAdminPassword =
@@ -705,13 +736,20 @@ async function main() {
   console.log(JSON.stringify({ result: 'ready', ...seeded }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(
-    JSON.stringify({
-      result: 'failed',
-      errorType: error?.constructor?.name ?? 'Error',
-      errorCode: error?.code ?? null,
-    }),
-  );
-  process.exitCode = 1;
-});
+// Solo la ejecución directa corre main(); importarlo desde R4.1 no siembra nada.
+// En Windows la letra de unidad puede variar de caja entre argv y la URL.
+const invokedDirectly =
+  Boolean(process.argv[1]) &&
+  pathToFileURL(path.resolve(process.argv[1])).href.toLowerCase() === import.meta.url.toLowerCase();
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error(
+      JSON.stringify({
+        result: 'failed',
+        errorType: error?.constructor?.name ?? 'Error',
+        errorCode: error?.code ?? null,
+      }),
+    );
+    process.exitCode = 1;
+  });
+}
