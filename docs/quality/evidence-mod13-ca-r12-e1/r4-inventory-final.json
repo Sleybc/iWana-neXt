@@ -1,0 +1,363 @@
+{
+  "redisDb": 7,
+  "queues": 17,
+  "allPaused": false,
+  "aggregate": {
+    "waiting": 0,
+    "active": 0,
+    "delayed": 3,
+    "failed": 0,
+    "paused": 0,
+    "prioritized": 0,
+    "waiting-children": 0,
+    "completed": 0
+  },
+  "repeatableCount": 3,
+  "repeatables": [
+    {
+      "queue": "inventory-execution-requests",
+      "items": [
+        {
+          "name": "clean-expired-inventory-source-failures",
+          "keyHash": "a0af4a1c2da5a357",
+          "every": "3600000",
+          "pattern": null,
+          "next": "2026-10-27T23:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "queue": "network-provisioning-reconcile",
+      "items": [
+        {
+          "name": "reconcile-network-provisioning",
+          "keyHash": "c4820437b9011599",
+          "every": "900000",
+          "pattern": null,
+          "next": "2026-10-27T23:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "queue": "privacy-due-alerts",
+      "items": [
+        {
+          "name": "privacy-due-alerts-sweep",
+          "keyHash": "5b80b911edc15893",
+          "every": null,
+          "pattern": "0 7 * * *",
+          "next": "2026-10-28T12:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "reconcileJobs": [
+    {
+      "logicalState": "delayed",
+      "jobIdHash": "716ec35492cdcd70",
+      "attemptsMade": 0,
+      "payloadSha256": "6da341b31bfc42e2",
+      "repeatJobKeyHash": "c4820437b9011599",
+      "hasRepeatKey": true,
+      "nextRun": null
+    }
+  ],
+  "rows": [
+    {
+      "queue": "tenant-provisioning",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "refresh-token-purge",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "tenant-schema-purge",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "search-index",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "assurance-field-service",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "users-bulk-create",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "operations-execution-events",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "operations-execution-relay",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "operations-execution-tombstone",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "operations-execution-dlq",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "inventory-execution-requests",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 1,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": [
+        {
+          "name": "clean-expired-inventory-source-failures",
+          "keyHash": "a0af4a1c2da5a357",
+          "every": "3600000",
+          "pattern": null,
+          "next": "2026-10-27T23:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "queue": "schedule-events-sweep",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "network-execution-events",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "network-provisioning-reconcile",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 1,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": [
+        {
+          "name": "reconcile-network-provisioning",
+          "keyHash": "c4820437b9011599",
+          "every": "900000",
+          "pattern": null,
+          "next": "2026-10-27T23:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "queue": "privacy-due-alerts",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 1,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": [
+        {
+          "name": "privacy-due-alerts-sweep",
+          "keyHash": "5b80b911edc15893",
+          "every": null,
+          "pattern": "0 7 * * *",
+          "next": "2026-10-28T12:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "queue": "evidence-analysis",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    },
+    {
+      "queue": "evidence-orphan-detection",
+      "metaPaused": false,
+      "isPaused": false,
+      "counts": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 0
+      },
+      "repeatables": []
+    }
+  ]
+}

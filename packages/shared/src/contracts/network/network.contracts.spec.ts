@@ -183,6 +183,28 @@ describe('MOD13 network contracts', () => {
       'PROVISIONING_STATE_INVALID',
       'PROVISIONING_ALREADY_ACTIVE',
       'VERSION_CONFLICT',
+      'RESOURCE_NOT_FOUND',
+      'SITE_OR_NODE_INACTIVE',
+      'CATALOG_REFERENCE_INACTIVE',
+      'INTERFACE_NOT_AVAILABLE',
+      'INTERFACE_NAME_IN_USE',
+      'INTERFACE_ADDRESS_IS_GATEWAY',
+      'INTERFACE_ADDRESS_DUPLICATED',
+      'IP_PROTECTED_BY_INFRASTRUCTURE',
+      'IP_PROTECTION_PENDING',
+      'RESERVATIONS_PAUSED',
+      'EXCLUDED_IP_IN_USE',
+      'EXCLUDED_IP_OUTSIDE_BLOCK',
+      'ADDRESS_NOT_USABLE',
+      'LEGACY_LAN_NOT_AVAILABLE',
+      'LEGACY_LAN_ALREADY_CONVERTED',
+      'NETWORK_PREFIX_NOT_ASSIGNABLE',
+      'NETWORK_CONFIRMATION_MISMATCH',
+      'ADDRESS_RELEASE_CONFIRMATION_REQUIRED',
+      'ROUTER_NAME_IN_USE',
+      'CONTROL_METHOD_IN_USE',
+      'GATEWAY_INVALID',
+      'ASSIGNABLE_RANGE_INVALID',
     ]);
     expect(NETWORK_INBOX_ERROR_CODES).toEqual([
       'SIGNATURE_INVALID',
@@ -243,6 +265,16 @@ describe('MOD13 network contracts', () => {
     };
 
     expect(CreateRouterBodySchema.safeParse(router).success).toBe(true);
+    for (const name of ['   ', '\t \n']) {
+      expect(CreateRouterBodySchema.safeParse({ ...router, name }).success).toBe(false);
+      expect(UpdateRouterBodySchema.safeParse({ version: 1, name }).success).toBe(false);
+    }
+    for (const name of ['Router', ' Router ']) {
+      expect(CreateRouterBodySchema.safeParse({ ...router, name }).success).toBe(true);
+      const update = UpdateRouterBodySchema.safeParse({ version: 1, name });
+      expect(update.success).toBe(true);
+      if (update.success) expect(update.data.name).toBe(name);
+    }
     expect(CreateRouterBodySchema.safeParse({ ...router, name: `${router.name}R` }).success).toBe(
       false,
     );
@@ -276,6 +308,20 @@ describe('MOD13 network contracts', () => {
     expect(
       UpdateRouterBodySchema.safeParse({ version: 1, name: 'Router', extra: 'field' }).success,
     ).toBe(false);
+    expect(UpdateRouterBodySchema.safeParse({ version: 1 }).success).toBe(true);
+    expect(UpdateRouterBodySchema.safeParse({ version: 1, organizationSiteId: null }).success).toBe(
+      true,
+    );
+    expect(UpdateRouterBodySchema.safeParse({ version: 1, commercialNodeId: null }).success).toBe(
+      true,
+    );
+    expect(
+      UpdateRouterBodySchema.safeParse({
+        version: 1,
+        organizationSiteId: null,
+        commercialNodeId: null,
+      }).success,
+    ).toBe(true);
     expect(RouterStatusBodySchema.safeParse({ version: 1 }).success).toBe(true);
   });
 
@@ -292,6 +338,18 @@ describe('MOD13 network contracts', () => {
     };
 
     expect(CreateIpv4NetworkBodySchema.safeParse(network).success).toBe(true);
+    for (const name of ['   ', '\t \n']) {
+      expect(CreateIpv4NetworkBodySchema.safeParse({ ...network, name }).success).toBe(false);
+      expect(UpdateIpv4NetworkBodySchema.safeParse({ version: 1, name }).success).toBe(false);
+    }
+    for (const name of ['Red', ' Red ']) {
+      const create = CreateIpv4NetworkBodySchema.safeParse({ ...network, name });
+      expect(create.success).toBe(true);
+      if (create.success) expect(create.data.name).toBe(name);
+      const update = UpdateIpv4NetworkBodySchema.safeParse({ version: 1, name });
+      expect(update.success).toBe(true);
+      if (update.success) expect(update.data.name).toBe(name);
+    }
     expect(
       CreateIpv4NetworkBodySchema.safeParse({ ...network, cidr: '192.0.0.0/16' }).success,
     ).toBe(true);

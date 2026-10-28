@@ -17,19 +17,21 @@ import {
   type ExecutionOrderReadPort,
   type ExecutionSnapshot,
 } from '../tasks/ports/execution-order-read.port';
+import {
+  TenantLifecycleReadPort,
+  type TenantLifecycleSnapshot,
+} from '../tenant/ports/tenant-lifecycle-read.port';
 import { AuditService } from '../audit/audit.service';
 import { ServiceProvisioningActivatedEvent } from './events/service-provisioning-activated.event';
 import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
+import { IpamService } from './ipam.service';
 
 export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconcile';
 export const NETWORK_PROVISIONING_RECONCILE_JOB = 'reconcile-network-provisioning';
 export const NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS = 15 * 60 * 1000;
+const MAX_EXECUTION_SNAPSHOT_BATCH_SIZE = 100;
 
-interface ActiveTenantRow {
-  id: string;
-  slug: string;
-  schema_name: string;
-}
+type ActiveTenantRow = TenantLifecycleSnapshot;
 
 interface ReconcileTenantPayload {
   tenantId: string;
@@ -81,23 +83,22 @@ export class NetworkProvisioningReconcilerProcessor
     private readonly executionOrderReadPort: ExecutionOrderReadPort,
     private readonly auditService: AuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly ipamService: IpamService,
+    @Inject(TenantLifecycleReadPort)
+    private readonly tenantLifecycleReadPort: TenantLifecycleReadPort,
   ) {
     super();
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    const tenants = (await this.dataSource.query(
-      `SELECT id::text AS id, slug, schema_name
-         FROM public.tenants
-        WHERE status = $1 AND deleted_at IS NULL
-        ORDER BY schema_name`,
-      [TenantStatus.ACTIVE],
-    )) as ActiveTenantRow[];
+    const tenants = await this.tenantLifecycleReadPort.listActiveTenantContexts();
     for (const tenant of tenants) {
       if (
         !UUID_PATTERN.test(tenant.id) ||
         !SLUG_PATTERN.test(tenant.slug) ||
-        !isValidSchemaName(tenant.schema_name)
+        tenant.status !== TenantStatus.ACTIVE ||
+        tenant.deletedAt !== null ||
+        !isValidSchemaName(tenant.schemaName)
       ) {
         this.logger.warn(
           '[network-provisioning-reconcile] Se omitió un tenant activo con contexto inválido.',
@@ -106,9 +107,9 @@ export class NetworkProvisioningReconcilerProcessor
       }
       await this.queue.add(
         NETWORK_PROVISIONING_RECONCILE_JOB,
-        { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schema_name },
+        { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schemaName },
         {
-          jobId: makeNetworkProvisioningReconcileJobId(tenant.schema_name),
+          jobId: makeNetworkProvisioningReconcileJobId(tenant.schemaName),
           repeat: { every: NETWORK_PROVISIONING_RECONCILE_INTERVAL_MS },
           attempts: 3,
           backoff: { type: 'exponential', delay: 1_000 },
@@ -126,30 +127,37 @@ export class NetworkProvisioningReconcilerProcessor
     }
     const payload = parseTenantPayload(job.data);
     const tenant = await this.resolveActiveTenant(payload.tenantId);
-    if (tenant.slug !== payload.tenantSlug || tenant.schema_name !== payload.schemaName) {
+    if (tenant.slug !== payload.tenantSlug || tenant.schemaName !== payload.schemaName) {
       throw new UnrecoverableError('El tenant del job no coincide con el tenant activo.');
     }
 
     await TenantContext.run(
-      { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schema_name },
+      { tenantId: tenant.id, tenantSlug: tenant.slug, schemaName: tenant.schemaName },
       async () => {
-        const candidates = await runInTenantSchema(this.dataSource, tenant.schema_name, (qr) =>
+        const candidates = await runInTenantSchema(this.dataSource, tenant.schemaName, (qr) =>
           qr.manager.find(ServiceProvisioning, {
             where: { tenantId: tenant.id, status: In(['RESERVED', 'CERTIFIED']) },
             order: { createdAt: 'ASC' },
           }),
         );
-        const snapshots = candidates.length
-          ? await this.executionOrderReadPort.getExecutionSnapshots(
-              candidates.map((service) => service.executionOrderId),
-            )
-          : [];
+        const executionOrderIds = [
+          ...new Set(candidates.map((service) => service.executionOrderId)),
+        ];
+        const snapshots: ExecutionSnapshot[] = [];
+        for (
+          let offset = 0;
+          offset < executionOrderIds.length;
+          offset += MAX_EXECUTION_SNAPSHOT_BATCH_SIZE
+        ) {
+          const batch = executionOrderIds.slice(offset, offset + MAX_EXECUTION_SNAPSHOT_BATCH_SIZE);
+          snapshots.push(...(await this.executionOrderReadPort.getExecutionSnapshots(batch)));
+        }
         const snapshotsById = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
 
         for (const candidate of candidates) {
           const snapshot = snapshotsById.get(candidate.executionOrderId);
           if (!snapshot || snapshot.status === 'IN_PROGRESS') continue;
-          const activation = await runInTenantSchema(this.dataSource, tenant.schema_name, (qr) =>
+          const activation = await runInTenantSchema(this.dataSource, tenant.schemaName, (qr) =>
             this.reconcileOne(qr.manager, tenant, candidate.id, snapshot),
           );
           if (activation) {
@@ -161,14 +169,13 @@ export class NetworkProvisioningReconcilerProcessor
   }
 
   private async resolveActiveTenant(tenantId: string): Promise<ActiveTenantRow> {
-    const rows = (await this.dataSource.query(
-      `SELECT id::text AS id, slug, schema_name
-         FROM public.tenants
-        WHERE id = $1 AND status = $2 AND deleted_at IS NULL`,
-      [tenantId, TenantStatus.ACTIVE],
-    )) as ActiveTenantRow[];
-    const tenant = rows[0];
-    if (!tenant || !isValidSchemaName(tenant.schema_name)) {
+    const tenant = await this.tenantLifecycleReadPort.findTenantLifecycleById(tenantId);
+    if (
+      !tenant ||
+      tenant.status !== TenantStatus.ACTIVE ||
+      tenant.deletedAt !== null ||
+      !isValidSchemaName(tenant.schemaName)
+    ) {
       throw new UnrecoverableError('Tenant activo inexistente o schema inválido.');
     }
     return tenant;
@@ -184,6 +191,12 @@ export class NetworkProvisioningReconcilerProcessor
     await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
       `provisioning-order:${snapshot.id}`,
     ]);
+    const serviceSnapshot = await manager.findOne(ServiceProvisioning, {
+      where: { id: serviceId, tenantId: tenant.id, status: In(['RESERVED', 'CERTIFIED']) },
+    });
+    if (!serviceSnapshot) return null;
+    await this.ipamService.lockIpv4Pools(manager, [serviceSnapshot.ipv4NetworkId]);
+
     const service = await manager.findOne(ServiceProvisioning, {
       where: { id: serviceId, tenantId: tenant.id, status: In(['RESERVED', 'CERTIFIED']) },
       lock: { mode: 'pessimistic_write' },
@@ -195,8 +208,10 @@ export class NetworkProvisioningReconcilerProcessor
       (snapshot.result === 'EXECUTED' || snapshot.result === 'EXECUTED_WITH_OBSERVATIONS') &&
       !snapshot.isAnnulled;
     if (executed && service.status === 'CERTIFIED') {
+      await this.ipamService.assertActiveNetwork(manager, tenant.id, service.ipv4NetworkId);
       const assignment = await this.findLiveAssignment(manager, tenant.id, service.id);
       if (!assignment) throw new Error('No se encontró la IP reservada para reconciliar.');
+      await this.ipamService.assertAssignmentNotLocallyProtected(manager, tenant.id, assignment.ip);
       const fromStatus = service.status;
       assignment.status = 'ACTIVE';
       await manager.save(IpAssignment, assignment);
@@ -209,7 +224,7 @@ export class NetworkProvisioningReconcilerProcessor
       await this.audit(manager, tenant, saved, 'ACTIVATE', fromStatus, 'ACTIVE');
       return new ServiceProvisioningActivatedEvent(
         tenant.id,
-        tenant.schema_name,
+        tenant.schemaName,
         saved.id,
         saved.subscriberId,
         saved.expedienteId,
@@ -281,7 +296,7 @@ export class NetworkProvisioningReconcilerProcessor
     return this.auditService.logWithin(
       {
         tenantId: tenant.id,
-        schemaName: tenant.schema_name,
+        schemaName: tenant.schemaName,
         userId: null,
         action: AuditAction.UPDATE,
         entityType: 'ServiceProvisioning',

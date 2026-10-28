@@ -1,0 +1,757 @@
+{
+  "result": "PASS",
+  "criterion": "v1.0 R-5..R-8; matriz QA v2.9 13.8/13.13/13.15",
+  "executor": "plat-ops",
+  "networkIpProtection": "PENDING",
+  "api": {
+    "port": 3014,
+    "bind": "127.0.0.1",
+    "nodeEnv": "development",
+    "reservationsPaused": false,
+    "healthStatus": 200,
+    "stopped": true,
+    "exit": {
+      "code": null,
+      "signal": "SIGTERM"
+    },
+    "portReleased": true
+  },
+  "redis": {
+    "db": 7,
+    "initialQueues": {
+      "paused": 0,
+      "totals": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 3,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 1
+      },
+      "repeatables": 3,
+      "perQueue": [
+        {
+          "queue": "tenant-provisioning",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "refresh-token-purge",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "tenant-schema-purge",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "search-index",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "assurance-field-service",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "users-bulk-create",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-events",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-relay",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-tombstone",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-dlq",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "inventory-execution-requests",
+          "paused": false,
+          "repeatables": 1,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 1,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 1
+          }
+        },
+        {
+          "queue": "schedule-events-sweep",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "network-execution-events",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "network-provisioning-reconcile",
+          "paused": false,
+          "repeatables": 1,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 1,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "privacy-due-alerts",
+          "paused": false,
+          "repeatables": 1,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 1,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "evidence-analysis",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "evidence-orphan-detection",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        }
+      ]
+    }
+  },
+  "r5": {
+    "seed": {
+      "created": true,
+      "users": 1,
+      "admins": 1,
+      "principalAdminLinked": true
+    },
+    "platform": {
+      "bootstrapLogin": 200,
+      "passwordResetRequired": true,
+      "passwordChanged": 200,
+      "loginAfterRotation": 200
+    },
+    "adminCredentials": {
+      "regenerateStatus": 200,
+      "temporaryPasswordReturned": true,
+      "officialEmailReturned": true
+    },
+    "tenant": {
+      "initialLogin": 200,
+      "mfaSetupTriggered": false,
+      "mfaEnabled": false,
+      "passwordChanged": 200,
+      "loginAfterRotation": 200,
+      "passwordResetRequired": false
+    },
+    "catalogMeta": {
+      "status": 200,
+      "ipProtection": "PENDING"
+    },
+    "usersAfter": {
+      "total": 1,
+      "admins": 1
+    }
+  },
+  "r6": {
+    "subscriber": {
+      "created": true,
+      "personType": "JURIDICA",
+      "status": "LEAD"
+    },
+    "executionOrder": {
+      "created": true,
+      "number": "MOD13-E7-R6-SYNTH-001",
+      "workType": "INSTALLATION",
+      "status": "IN_PROGRESS"
+    },
+    "pool": {
+      "prefixLength": 16,
+      "usedBefore": 80
+    },
+    "reserve": {
+      "status": 201,
+      "provisioningStatus": "RESERVED",
+      "version": 1,
+      "ipInsideAssignableRange": true,
+      "ipDiffersFromLocal": true,
+      "assignmentLinked": true
+    },
+    "countsAfterReserve": {
+      "ipAssignments": 2001,
+      "serviceProvisionings": 2201,
+      "auditReserveRows": 1
+    },
+    "release": {
+      "status": 200,
+      "provisioningStatus": "RELEASED",
+      "version": 2,
+      "assignmentStatus": "RELEASED",
+      "releaseReason": "MANUAL",
+      "auditReleaseRows": 1
+    },
+    "audit": {
+      "domainReserveRows": 1,
+      "domainReleaseRows": 1,
+      "interceptorCreateRows": 2,
+      "totalDelta": 4
+    },
+    "countsAfterRelease": {
+      "ipAssignments": 2001,
+      "serviceProvisionings": 2201
+    }
+  },
+  "r7": {
+    "auditPreR7": 60,
+    "auditPostR7a": 60,
+    "auditPostR7b": 60,
+    "localReserve": {
+      "status": 409,
+      "code": "IP_PROTECTED_BY_INFRASTRUCTURE",
+      "tablesUnchanged": true,
+      "countsUnchanged": true
+    },
+    "capture": {
+      "status": 409,
+      "code": "IP_PROTECTION_PENDING",
+      "tablesUnchanged": true,
+      "countsUnchanged": true
+    }
+  },
+  "r8": {
+    "legacy": {
+      "matched": "6/6",
+      "restrictedRows": 4323,
+      "baselineRows": 4323,
+      "tables": [
+        {
+          "table": "organization_sites",
+          "rows": 3,
+          "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26",
+          "matches": true
+        },
+        {
+          "table": "network_routers",
+          "rows": 20,
+          "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90",
+          "matches": true
+        },
+        {
+          "table": "ipv4_networks",
+          "rows": 50,
+          "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2",
+          "matches": true
+        },
+        {
+          "table": "service_provisionings",
+          "rows": 2200,
+          "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49",
+          "matches": true
+        },
+        {
+          "table": "ip_assignments",
+          "rows": 2000,
+          "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb",
+          "matches": true
+        },
+        {
+          "table": "audit_logs",
+          "rows": 50,
+          "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8",
+          "matches": true
+        }
+      ]
+    },
+    "deltas": {
+      "audit_logs": 4,
+      "execution_orders": 1,
+      "ip_assignments": 1,
+      "service_provisionings": 1,
+      "subscribers": 1
+    },
+    "expectedDeltas": {
+      "execution_orders": 1,
+      "subscribers": 1,
+      "service_provisionings": 1,
+      "ip_assignments": 1,
+      "audit_logs": 4
+    },
+    "unexpectedTables": [],
+    "queues": {
+      "paused": 0,
+      "repeatables": 3,
+      "totals": {
+        "waiting": 0,
+        "active": 0,
+        "delayed": 3,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waiting-children": 0,
+        "completed": 1
+      },
+      "delayedEqualsRepeatables": true,
+      "dlqEmpty": true,
+      "perQueue": [
+        {
+          "queue": "tenant-provisioning",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "refresh-token-purge",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "tenant-schema-purge",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "search-index",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "assurance-field-service",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "users-bulk-create",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-events",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-relay",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-tombstone",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "operations-execution-dlq",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "inventory-execution-requests",
+          "paused": false,
+          "repeatables": 1,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 1,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 1
+          }
+        },
+        {
+          "queue": "schedule-events-sweep",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "network-execution-events",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "network-provisioning-reconcile",
+          "paused": false,
+          "repeatables": 1,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 1,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "privacy-due-alerts",
+          "paused": false,
+          "repeatables": 1,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 1,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "evidence-analysis",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        },
+        {
+          "queue": "evidence-orphan-detection",
+          "paused": false,
+          "repeatables": 0,
+          "counts": {
+            "waiting": 0,
+            "active": 0,
+            "delayed": 0,
+            "failed": 0,
+            "paused": 0,
+            "prioritized": 0,
+            "waiting-children": 0,
+            "completed": 0
+          }
+        }
+      ]
+    }
+  },
+  "counts": {
+    "beforeR5": {
+      "executionOrders": 1,
+      "subscribers": 0,
+      "serviceProvisionings": 2200,
+      "ipAssignments": 2000,
+      "auditLogs": 50,
+      "users": 0
+    },
+    "afterR7": {
+      "executionOrders": 2,
+      "subscribers": 1,
+      "serviceProvisionings": 2201,
+      "ipAssignments": 2001,
+      "auditLogs": 60,
+      "users": 1,
+      "refreshTokens": 2
+    }
+  },
+  "artifacts": {
+    "evidenceBaselineSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "pkSource": "iwana_it_mod13_ca_r12_e7_final",
+    "legacyPkSets": {
+      "organization_sites": 3,
+      "network_routers": 20,
+      "ipv4_networks": 50,
+      "service_provisionings": 2200,
+      "ip_assignments": 2000,
+      "audit_logs": 50
+    }
+  }
+}

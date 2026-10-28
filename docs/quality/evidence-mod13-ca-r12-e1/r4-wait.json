@@ -1,0 +1,111 @@
+{
+  "queue": "network-provisioning-reconcile",
+  "jobName": "reconcile-network-provisioning",
+  "target": {
+    "at": "2026-10-27T22:45:00.064Z",
+    "jobIdHash": "c3be4f3c4371235a",
+    "name": "reconcile-network-provisioning",
+    "attemptsMade": 0,
+    "hasRepeatJobKey": true,
+    "repeatJobKeyHash": "c4820437b9011599",
+    "optsRepeat": true,
+    "timestamp": "2026-10-27T22:35:14.232Z",
+    "delay": 585768
+  },
+  "finished": {
+    "status": "completed",
+    "at": "2026-10-27T22:45:00.154Z",
+    "jobIdHash": "c3be4f3c4371235a",
+    "returnvalueType": "object"
+  },
+  "observed": {
+    "active": [
+      {
+        "at": "2026-10-27T22:45:00.064Z",
+        "jobIdHash": "c3be4f3c4371235a",
+        "name": "reconcile-network-provisioning",
+        "attemptsMade": 0,
+        "hasRepeatJobKey": true,
+        "repeatJobKeyHash": "c4820437b9011599",
+        "optsRepeat": true,
+        "timestamp": "2026-10-27T22:35:14.232Z",
+        "delay": 585768
+      }
+    ],
+    "completed": [
+      {
+        "at": "2026-10-27T22:45:00.154Z",
+        "jobIdHash": "c3be4f3c4371235a",
+        "returnvalueType": "object"
+      }
+    ],
+    "failed": [],
+    "stalled": []
+  },
+  "traceLines": 8,
+  "trace": [
+    {
+      "at": "2026-10-27T22:45:00.111Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.116Z",
+      "requestedCount": 100,
+      "resultCount": 1,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.121Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.125Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.129Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.134Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.140Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    },
+    {
+      "at": "2026-10-27T22:45:00.145Z",
+      "requestedCount": 100,
+      "resultCount": 0,
+      "outcome": "ok"
+    }
+  ],
+  "queueCounts": {
+    "waiting": 0,
+    "active": 0,
+    "delayed": 1,
+    "failed": 0,
+    "paused": 0,
+    "completed": 0
+  },
+  "nextDelayedRuns": [
+    {
+      "jobIdHash": "716ec35492cdcd70",
+      "hasRepeatJobKey": true,
+      "runAt": "2026-10-27T22:45:00.067Z"
+    }
+  ]
+}

@@ -1,0 +1,1220 @@
+{
+  "result": "PASS",
+  "artifact": "e7-resume-v1.4-r1-r9.json",
+  "encargo": "PROMPT-MOD13-INTERFACES-IPV4-E7-RESUME-v1.4",
+  "criterion": "R-1 a R-9 de v1.0 con los ajustes de v1.1 y v1.4; matriz QA 13.8/13.9/13.13/13.15",
+  "executor": "plat-ops",
+  "reviewers": ["sr-qa", "sec-eng"],
+  "networkIpProtection": "PENDING",
+  "sequence": [
+    "V-0",
+    "V-1",
+    "V-2",
+    "V-3",
+    "V-4",
+    "V-5",
+    "R-1",
+    "R-2",
+    "R-3",
+    "R-4",
+    "R-5",
+    "R-6",
+    "R-7",
+    "R-8",
+    "R-9"
+  ],
+  "steps": [
+    {
+      "step": "V-0",
+      "atUtc": "2026-10-27T22:14:26Z",
+      "result": "PASS"
+    },
+    {
+      "step": "V-1",
+      "atUtc": "2026-10-27T22:14:48Z",
+      "result": "PASS"
+    },
+    {
+      "step": "V-2",
+      "atUtc": "2026-10-27T22:15:36Z",
+      "result": "PASS"
+    },
+    {
+      "step": "V-3",
+      "atUtc": "2026-10-27T22:16:02Z",
+      "result": "PASS"
+    },
+    {
+      "step": "V-4",
+      "atUtc": "2026-10-27T22:18:03Z",
+      "result": "PASS"
+    },
+    {
+      "step": "V-5",
+      "atUtc": "2026-10-27T22:24:50.093Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-1",
+      "atUtc": "2026-10-27T22:30:41Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-2",
+      "atUtc": "2026-10-27T22:31:38Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-3",
+      "atUtc": "2026-10-27T22:35:19Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-4",
+      "atUtc": "2026-10-27T22:45:00.154Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-5",
+      "atUtc": "2026-10-27T23:27:39.713Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-6",
+      "atUtc": "2026-10-27T23:27:45.339Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-7",
+      "atUtc": "2026-10-27T23:27:49.509Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-8",
+      "atUtc": "2026-10-27T23:27:54.245Z",
+      "result": "PASS"
+    },
+    {
+      "step": "R-9",
+      "atUtc": "2026-10-27T23:31:02.151Z",
+      "result": "PASS"
+    }
+  ],
+  "checkpoints": {
+    "path": "temporal: checkpoints.json",
+    "count": 15,
+    "updatedAtUtc": "2026-10-27T23:32:34.266Z",
+    "sha256": "eda6926b69d89475b004f26ebe90b8302e3423cd4492327bf70ecd1ada7da3dd"
+  },
+  "r1R4": [
+    {
+      "step": "R-1",
+      "atUtc": "2026-10-27T22:30:41Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-1: clon desde E7_final y baseline igual a la evidencia",
+      "executor": "plat-ops",
+      "clone": {
+        "name": "iwana_it_mod13_ca_r12_e7_resume",
+        "source": "iwana_it_mod13_ca_r12_e7_final",
+        "method": "CREATE DATABASE ... WITH TEMPLATE ...",
+        "templateActiveSessions": 0,
+        "targetExistedBefore": false,
+        "targetExistsAfter": true
+      },
+      "verification": {
+        "rerunAtUtc": "2026-10-27T22:46:24Z",
+        "runner": "r1-verify-baseline.cjs",
+        "exit": 0,
+        "legacyMatches": "6/6",
+        "executionOrdersFullSha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb",
+        "executionOrdersProjectionSha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c",
+        "executionOrders": 1,
+        "candidatesTotal": 800,
+        "candidatesDistinct": 800,
+        "candidatesReserved": 700,
+        "candidatesCertified": 100,
+        "snapshotsInProgressInstallation": 1,
+        "candidatesWithSnapshot": 1,
+        "candidatesWithoutSnapshot": 799,
+        "interfaces": 2,
+        "addresses": 2,
+        "referentialChecksZero": 5
+      },
+      "note": "La verificacion se re-ejecuto al cerrar R-4 porque el runner de R-1 no habia dejado archivo de salida; los valores son identicos a los observados en R-1 y la sesion de R-4 no modifico las tablas comparadas."
+    },
+    {
+      "step": "R-2",
+      "atUtc": "2026-10-27T22:31:38Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-2: build del checkout y SHA de dist",
+      "executor": "plat-ops",
+      "command": "pnpm --filter @iwana/api... build",
+      "exit": 0,
+      "git": {
+        "head": "81adebe9",
+        "treeClean": false,
+        "commitExecuted": false
+      },
+      "distSha256": {
+        "mainJs": "54B81CC71A9E1964E5C4BEA048643FD72BC2B459E65B195DC32D032DEDE01529",
+        "ipamServiceJs": "85E69FF11C46699E86A834463B8E31A11F2AECFEF1A978FC8079A6D5A6D741D6",
+        "networkInterfaceCatalogServiceJs": "E681B0C6278037279B8C7801E2A14F3162484F9235C443BC52AB1E84A6113365",
+        "networkProvisioningReconcilerProcessorJs": "2BD7E69BB229B6ABE9EFA4271D957CC23BAC476077CAA01D16D9F810D520DF11"
+      },
+      "matchesE7Final": {
+        "mainJs": true,
+        "ipamServiceJs": true,
+        "networkInterfaceCatalogServiceJs": true,
+        "networkProvisioningReconcilerProcessorJs": true,
+        "distinctBuild": false
+      },
+      "distMtimeUtc": "2026-10-27T22:31:37Z"
+    },
+    {
+      "step": "R-3",
+      "atUtc": "2026-10-27T22:35:19Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-3: arranque pausado con 17 colas pausadas",
+      "executor": "plat-ops",
+      "redis": {
+        "db": 7,
+        "dbSizeBefore": 0,
+        "queues": 17,
+        "allPaused": true,
+        "activeTotal": 0
+      },
+      "repeatables": 3,
+      "api": {
+        "port": 3014,
+        "bind": "127.0.0.1",
+        "healthStatus": 200,
+        "networkIpProtection": "PENDING",
+        "reservationsPaused": true
+      },
+      "credentialsPrinted": false
+    },
+    {
+      "step": "R-4",
+      "atUtc": "2026-10-27T22:45:00.154Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-4 + v1.4: reanudacion de 17/17 y una ocurrencia natural completa del repeatable",
+      "executor": "plat-ops",
+      "apiRestart": {
+        "atUtc": "2026-10-27T22:36:16Z",
+        "networkIpProtection": "PENDING",
+        "reservationsPaused": false,
+        "healthStatus": 200
+      },
+      "resume": {
+        "atUtc": "2026-10-27T22:36:48.645Z",
+        "queues": 17,
+        "pausedBefore": 17,
+        "pausedAfter": 0,
+        "allResumed": true
+      },
+      "naturalOccurrence": {
+        "queue": "network-provisioning-reconcile",
+        "jobName": "reconcile-network-provisioning",
+        "startedAtUtc": "2026-10-27T22:45:00.064Z",
+        "completedAtUtc": "2026-10-27T22:45:00.154Z",
+        "status": "completed",
+        "attemptsMade": 0,
+        "cameFromRepeatable": true,
+        "promotedManually": false,
+        "batches": 8,
+        "batchSize": 100,
+        "maxBatchSize": 100,
+        "batchOutcomesOk": 8,
+        "resultCountTotal": 1,
+        "failed": 0,
+        "stalled": 0,
+        "retries": 0
+      },
+      "queueStateAfter": {
+        "pausedQueues": 0,
+        "repeatables": 3,
+        "waiting": 0,
+        "active": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waitingChildren": 0,
+        "delayed": 3,
+        "delayedOnlyRepeatables": true,
+        "dlqEmpty": true
+      },
+      "postcheck": {
+        "runner": "r4-postcheck.cjs",
+        "exit": 0,
+        "legacyMatches": "6/6",
+        "executionOrdersFullSha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb",
+        "executionOrdersProjectionSha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c",
+        "executionOrdersFullMatchesV5": true,
+        "executionOrdersProjectionMatchesV5": true,
+        "startedAtNull": true,
+        "orders": 1,
+        "candidatesTotal": 800,
+        "candidatesDistinct": 800,
+        "candidatesWithSnapshot": 1,
+        "candidatesWithoutSnapshot": 799,
+        "interfaces": 2,
+        "addresses": 2,
+        "referentialChecksZero": 5
+      },
+      "incident": {
+        "detected": "r4-trace.jsonl contenia la linea de configuracion del launcher, no JSON",
+        "action": "se vacio el archivo antes de la ocurrencia natural para que el observador pudiera parsear solo lotes",
+        "impact": "ninguno; las 8 lineas de lote se escribieron despues"
+      }
+    }
+  ],
+  "r5R8": {
+    "result": "PASS",
+    "criterion": "v1.0 R-5..R-8; matriz QA v2.9 13.8/13.13/13.15",
+    "executor": "plat-ops",
+    "networkIpProtection": "PENDING",
+    "api": {
+      "port": 3014,
+      "bind": "127.0.0.1",
+      "nodeEnv": "development",
+      "reservationsPaused": false,
+      "healthStatus": 200,
+      "stopped": true,
+      "exit": {
+        "code": null,
+        "signal": "SIGTERM"
+      },
+      "portReleased": true
+    },
+    "redis": {
+      "db": 7,
+      "initialQueues": {
+        "paused": 0,
+        "totals": {
+          "waiting": 0,
+          "active": 0,
+          "delayed": 3,
+          "failed": 0,
+          "paused": 0,
+          "prioritized": 0,
+          "waiting-children": 0,
+          "completed": 1
+        },
+        "repeatables": 3,
+        "perQueue": [
+          {
+            "queue": "tenant-provisioning",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "refresh-token-purge",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "tenant-schema-purge",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "search-index",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "assurance-field-service",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "users-bulk-create",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-events",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-relay",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-tombstone",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-dlq",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "inventory-execution-requests",
+            "paused": false,
+            "repeatables": 1,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 1,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 1
+            }
+          },
+          {
+            "queue": "schedule-events-sweep",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "network-execution-events",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "network-provisioning-reconcile",
+            "paused": false,
+            "repeatables": 1,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 1,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "privacy-due-alerts",
+            "paused": false,
+            "repeatables": 1,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 1,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "evidence-analysis",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "evidence-orphan-detection",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          }
+        ]
+      }
+    },
+    "r5": {
+      "seed": {
+        "created": true,
+        "users": 1,
+        "admins": 1,
+        "principalAdminLinked": true
+      },
+      "platform": {
+        "bootstrapLogin": 200,
+        "passwordResetRequired": true,
+        "passwordChanged": 200,
+        "loginAfterRotation": 200
+      },
+      "adminCredentials": {
+        "regenerateStatus": 200,
+        "temporaryPasswordReturned": true,
+        "officialEmailReturned": true
+      },
+      "tenant": {
+        "initialLogin": 200,
+        "mfaSetupTriggered": false,
+        "mfaEnabled": false,
+        "passwordChanged": 200,
+        "loginAfterRotation": 200,
+        "passwordResetRequired": false
+      },
+      "catalogMeta": {
+        "status": 200,
+        "ipProtection": "PENDING"
+      },
+      "usersAfter": {
+        "total": 1,
+        "admins": 1
+      }
+    },
+    "r6": {
+      "subscriber": {
+        "created": true,
+        "personType": "JURIDICA",
+        "status": "LEAD"
+      },
+      "executionOrder": {
+        "created": true,
+        "number": "MOD13-E7-R6-SYNTH-001",
+        "workType": "INSTALLATION",
+        "status": "IN_PROGRESS"
+      },
+      "pool": {
+        "prefixLength": 16,
+        "usedBefore": 80
+      },
+      "reserve": {
+        "status": 201,
+        "provisioningStatus": "RESERVED",
+        "version": 1,
+        "ipInsideAssignableRange": true,
+        "ipDiffersFromLocal": true,
+        "assignmentLinked": true
+      },
+      "countsAfterReserve": {
+        "ipAssignments": 2001,
+        "serviceProvisionings": 2201,
+        "auditReserveRows": 1
+      },
+      "release": {
+        "status": 200,
+        "provisioningStatus": "RELEASED",
+        "version": 2,
+        "assignmentStatus": "RELEASED",
+        "releaseReason": "MANUAL",
+        "auditReleaseRows": 1
+      },
+      "audit": {
+        "domainReserveRows": 1,
+        "domainReleaseRows": 1,
+        "interceptorCreateRows": 2,
+        "totalDelta": 4
+      },
+      "countsAfterRelease": {
+        "ipAssignments": 2001,
+        "serviceProvisionings": 2201
+      }
+    },
+    "r7": {
+      "auditPreR7": 60,
+      "auditPostR7a": 60,
+      "auditPostR7b": 60,
+      "localReserve": {
+        "status": 409,
+        "code": "IP_PROTECTED_BY_INFRASTRUCTURE",
+        "tablesUnchanged": true,
+        "countsUnchanged": true
+      },
+      "capture": {
+        "status": 409,
+        "code": "IP_PROTECTION_PENDING",
+        "tablesUnchanged": true,
+        "countsUnchanged": true
+      }
+    },
+    "r8": {
+      "legacy": {
+        "matched": "6/6",
+        "restrictedRows": 4323,
+        "baselineRows": 4323,
+        "tables": [
+          {
+            "table": "organization_sites",
+            "rows": 3,
+            "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26",
+            "matches": true
+          },
+          {
+            "table": "network_routers",
+            "rows": 20,
+            "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90",
+            "matches": true
+          },
+          {
+            "table": "ipv4_networks",
+            "rows": 50,
+            "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2",
+            "matches": true
+          },
+          {
+            "table": "service_provisionings",
+            "rows": 2200,
+            "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49",
+            "matches": true
+          },
+          {
+            "table": "ip_assignments",
+            "rows": 2000,
+            "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb",
+            "matches": true
+          },
+          {
+            "table": "audit_logs",
+            "rows": 50,
+            "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8",
+            "matches": true
+          }
+        ]
+      },
+      "deltas": {
+        "audit_logs": 4,
+        "execution_orders": 1,
+        "ip_assignments": 1,
+        "service_provisionings": 1,
+        "subscribers": 1
+      },
+      "expectedDeltas": {
+        "execution_orders": 1,
+        "subscribers": 1,
+        "service_provisionings": 1,
+        "ip_assignments": 1,
+        "audit_logs": 4
+      },
+      "unexpectedTables": [],
+      "queues": {
+        "paused": 0,
+        "repeatables": 3,
+        "totals": {
+          "waiting": 0,
+          "active": 0,
+          "delayed": 3,
+          "failed": 0,
+          "paused": 0,
+          "prioritized": 0,
+          "waiting-children": 0,
+          "completed": 1
+        },
+        "delayedEqualsRepeatables": true,
+        "dlqEmpty": true,
+        "perQueue": [
+          {
+            "queue": "tenant-provisioning",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "refresh-token-purge",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "tenant-schema-purge",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "search-index",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "assurance-field-service",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "users-bulk-create",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-events",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-relay",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-tombstone",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "operations-execution-dlq",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "inventory-execution-requests",
+            "paused": false,
+            "repeatables": 1,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 1,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 1
+            }
+          },
+          {
+            "queue": "schedule-events-sweep",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "network-execution-events",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "network-provisioning-reconcile",
+            "paused": false,
+            "repeatables": 1,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 1,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "privacy-due-alerts",
+            "paused": false,
+            "repeatables": 1,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 1,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "evidence-analysis",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          },
+          {
+            "queue": "evidence-orphan-detection",
+            "paused": false,
+            "repeatables": 0,
+            "counts": {
+              "waiting": 0,
+              "active": 0,
+              "delayed": 0,
+              "failed": 0,
+              "paused": 0,
+              "prioritized": 0,
+              "waiting-children": 0,
+              "completed": 0
+            }
+          }
+        ]
+      }
+    },
+    "counts": {
+      "beforeR5": {
+        "executionOrders": 1,
+        "subscribers": 0,
+        "serviceProvisionings": 2200,
+        "ipAssignments": 2000,
+        "auditLogs": 50,
+        "users": 0
+      },
+      "afterR7": {
+        "executionOrders": 2,
+        "subscribers": 1,
+        "serviceProvisionings": 2201,
+        "ipAssignments": 2001,
+        "auditLogs": 60,
+        "users": 1,
+        "refreshTokens": 2
+      }
+    },
+    "artifacts": {
+      "evidenceBaselineSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "pkSource": "iwana_it_mod13_ca_r12_e7_final",
+      "legacyPkSets": {
+        "organization_sites": 3,
+        "network_routers": 20,
+        "ipv4_networks": 50,
+        "service_provisionings": 2200,
+        "ip_assignments": 2000,
+        "audit_logs": 50
+      }
+    }
+  },
+  "r9": {
+    "result": "PASS",
+    "step": "R-9 teardown",
+    "executor": "plat-ops",
+    "networkIpProtection": "PENDING",
+    "apiOwn": {
+      "port": 3014,
+      "stateBefore": "free"
+    },
+    "expected": {
+      "e2e5": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "helper": "2398d360662d0bf6d4c22a1fc50a9bbdc2fc84fd6e2dfbb08a478ac092cb7004",
+      "fixture": "7f044c6e91b72dbae9742e63dc68107db43cabcbe1973d8263f3367a8b34ca2b",
+      "head": "81adebe9e4f62a34e6b2f28304fd11ad8a9c45a8"
+    },
+    "hashesBefore": {
+      "e2e5": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "helper": "2398d360662d0bf6d4c22a1fc50a9bbdc2fc84fd6e2dfbb08a478ac092cb7004",
+      "fixture": "7f044c6e91b72dbae9742e63dc68107db43cabcbe1973d8263f3367a8b34ca2b"
+    },
+    "git": {
+      "headBefore": "81adebe9e4f62a34e6b2f28304fd11ad8a9c45a8",
+      "headUnchangedExpected": "81adebe9e4f62a34e6b2f28304fd11ad8a9c45a8",
+      "changesBefore": 222,
+      "headAfter": "81adebe9e4f62a34e6b2f28304fd11ad8a9c45a8",
+      "changesAfter": 222,
+      "noCommit": true
+    },
+    "dockerBefore": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "images": []
+    },
+    "tempBefore": [],
+    "firstPass": {
+      "executedInSameSession": true,
+      "preExistingBeforeRemoval": {
+        "containers": [
+          {
+            "name": "iwana_mod13_ca_r12_pg_e1",
+            "status": "Up (healthy)"
+          },
+          {
+            "name": "iwana_mod13_ca_r12_redis_e1",
+            "status": "Up (healthy)"
+          },
+          {
+            "name": "mod13-e7-final-proxy",
+            "status": "Exited (0)"
+          },
+          {
+            "name": "mod13-e7-final-old-api",
+            "status": "Exited (137)"
+          }
+        ],
+        "volumes": ["iwana_mod13_ca_r12_pg_e1_data", "iwana_mod13_ca_r12_redis_e1_data"],
+        "networks": ["mod13-e7-final-private"],
+        "images": [
+          "mod13-e7-final-legacy:verified-v2 (8d892d995fa9)",
+          "mod13-e7-final-legacy:verified (f1cd4052711a)"
+        ]
+      },
+      "removalExitCodes": {
+        "dockerRm": 0,
+        "dockerVolumeRm": 0,
+        "dockerNetworkRm": 0,
+        "dockerRmi": 0
+      },
+      "blockedAt": "temp_dir_locked_iwana-mod13-e7-linux-build",
+      "tempFallback": "cmd /c rmdir /s /q (exit 0)"
+    },
+    "removals": [],
+    "dockerAfter": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "images": []
+    },
+    "ports": {
+      "3010": "free",
+      "3011": "free",
+      "3012": "free",
+      "3013": "free",
+      "3014": "free",
+      "3015": "free",
+      "5434": "free",
+      "6381": "free"
+    },
+    "portal3002": "free",
+    "hashesAfter": {
+      "e2e5": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "helper": "2398d360662d0bf6d4c22a1fc50a9bbdc2fc84fd6e2dfbb08a478ac092cb7004",
+      "fixture": "7f044c6e91b72dbae9742e63dc68107db43cabcbe1973d8263f3367a8b34ca2b"
+    },
+    "tempRemoved": [],
+    "tempAfter": [],
+    "credentialsRemoved": true,
+    "capturedAtUtc": "2026-10-27T23:31:02.151Z"
+  },
+  "repetitions": {
+    "policy": "Un paso a medias de R-4 a R-7 se repite completo; el delta se cuenta una sola vez (v1.4 §3).",
+    "cloneReset": "iwana_it_mod13_ca_r12_e7_resume restaurado desde la plantilla iwana_it_mod13_ca_r12_e7_final en cada repeticion.",
+    "runs": [
+      {
+        "order": 1,
+        "scope": "R-5 (parcial)",
+        "result": "BLOCKED",
+        "cause": "corrida interrumpida antes de cerrar R-5",
+        "action": "r5-reset-partial.cjs (users=0, tokens=0, platform_users=0) y clon restaurado",
+        "log": "r5-reset.json"
+      },
+      {
+        "order": 2,
+        "scope": "R-5..R-6",
+        "result": "BLOCKED",
+        "cause": "reserve_payload: el contrato devuelve el DTO en la raiz y el runner leia { data }",
+        "action": "runner acepta response.json?.data ?? response.json; clon restaurado",
+        "log": null
+      },
+      {
+        "order": 3,
+        "scope": "R-5..R-7",
+        "result": "BLOCKED",
+        "cause": "r7a 400 VALIDATION_ERROR: inet::text serializa con mascara /32",
+        "action": "requestedIp con host(); clon restaurado",
+        "log": null
+      },
+      {
+        "order": 4,
+        "scope": "R-5..R-7",
+        "result": "BLOCKED",
+        "cause": "r7a_audit: filas asincronas del AuditInterceptor de R-6",
+        "action": "stableAuditCount antes y despues de R-7; clon restaurado",
+        "log": "r5-r8.attempt2.stderr.txt"
+      },
+      {
+        "order": 5,
+        "scope": "R-5..R-8",
+        "result": "BLOCKED",
+        "cause": "ReferenceError auditPostR7a en el reporte de R-8; el cierre espero un segundo evento exit y la herramienta corto la corrida",
+        "action": "instrumentacion con bitacora, watchdog y stopApi idempotente; clon restaurado",
+        "log": "r5-reclone.attempt3.json"
+      },
+      {
+        "order": 6,
+        "scope": "R-5..R-8",
+        "result": "BLOCKED",
+        "cause": "mismo ReferenceError, ya instrumentado: exit 1 en 37 s (auditPostR7a_is_not_defined)",
+        "action": "auditPostR7a y auditPostR7b corregidos a auditAfterR7a/auditAfterR7b; clon restaurado",
+        "log": "r5-r8.attempt4.stderr.txt"
+      },
+      {
+        "order": 7,
+        "scope": "R-5..R-8",
+        "result": "PASS",
+        "cause": null,
+        "action": "corrida unica con evidencia",
+        "log": "r5-r8.json"
+      }
+    ]
+  },
+  "sources": {
+    "checkpoints.json": "eda6926b69d89475b004f26ebe90b8302e3423cd4492327bf70ecd1ada7da3dd",
+    "r1-r4-entries.json": "d655704193ccb9e9086d72a1cb8410653e4baddcd7cdab06cfe8968b8e47ee8b",
+    "r5-r8.json": "1769e6abefa0f6fecb255aab67c97489872ca8155cc817e91339eea21559da87",
+    "r9-teardown.json": "b70ee6b4659f8919561172ee580d112b41e4178248a411182edde6a8e2682344",
+    "r5-r8-progress.log": "ebc3ab7bc78683607337f3c31f4e336ed0c90f61c2d130c29cbf05543e2dbc7e",
+    "r5-r8.attempt2.stderr.txt": "45ed27f5cc2e784326bb8f36b1617228b06d5b70d16a0d8c2dd3f7ab409714ca",
+    "r5-r8-progress.attempt4.log": "9942a493c834765d073579a915dd54a4d6eb16fb653513ca82c6e2f9aab9d8dc",
+    "r5-r8.attempt4.stderr.txt": "c1ca976f88dcc2cbb9ba8737269f9106355d17fd8a42b0bcc5e1bc7dce373173",
+    "r5-r8.attempt5.stdout.txt": "99eda7c68e9c17631a4179c5a05c7840eaaab52f828b97269da07e8399b17cb0",
+    "r5-reclone.attempt3.json": "1a981db1dab03f225df2232ab6e95f79ad94b467e3d2c370e51ab983c24d8e66",
+    "r5-reclone.attempt4.json": "83149c656b3e77804f8a32d81ecb07cb98528c462363ad35122d1f00c75e2de8",
+    "r5-reclone.attempt5.json": "11f63ca379849d44af596738ca3c977cac20ec01cb85cf903b2735a4590aabed",
+    "r5-reset.json": "a0cf5937c8fc578135bf9ddeff11e88e6fc234821f78dafca6e43f34acc25d15",
+    "r5-pre-reset-state.json": "842009c54da42a1a8f705c1c451f26014aead0f7c4536651a86f184839551d9c",
+    "e7-resume-v1.4-v5.json": "81b8d7cdc8bb6b52090e9aaa4a1588315d72a400dbcdbfc61c22260542088bbd"
+  },
+  "sanitization": {
+    "patterns": [
+      "email",
+      "uuid_literal",
+      "ipv4_distinta_de_127.0.0.1",
+      "bearer_token",
+      "valor_de_credencial",
+      "clave_privada_pem"
+    ],
+    "scannedFiles": ["e7-resume-v1.4-r1-r9.json"],
+    "clean": true
+  },
+  "capturedAtUtc": "2026-10-27T23:32:34.274Z"
+}

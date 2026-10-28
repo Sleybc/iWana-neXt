@@ -1,0 +1,106 @@
+{
+  "target": {
+    "host": "127.0.0.1",
+    "port": 5434,
+    "database": "iwana_it_mod13_ca_r12_e6",
+    "schema": "tenant_mod13_ca_r12_e5",
+    "tenant": "synthetic-fixture"
+  },
+  "tables": {
+    "organization_sites": {
+      "count": 3,
+      "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26"
+    },
+    "network_routers": {
+      "count": 20,
+      "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90"
+    },
+    "ipv4_networks": {
+      "count": 50,
+      "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2"
+    },
+    "service_provisionings": {
+      "count": 2200,
+      "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49"
+    },
+    "ip_assignments": {
+      "count": 2000,
+      "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb"
+    },
+    "audit_logs": {
+      "count": 82,
+      "sha256": "1ecfbf503a9beeebc8870e916f53f7681653b68883335ea8031425a1726426d6"
+    }
+  },
+  "changedTables": ["audit_logs"],
+  "onlyAuditTableChanged": true,
+  "auditDelta": 32,
+  "assignmentStatusCounts": [
+    {
+      "status": "ACTIVE",
+      "count": 700
+    },
+    {
+      "status": "RELEASED",
+      "count": 600
+    },
+    {
+      "status": "RESERVED",
+      "count": 700
+    }
+  ],
+  "serviceStatusCounts": [
+    {
+      "status": "ACTIVE",
+      "count": 700
+    },
+    {
+      "status": "CERTIFIED",
+      "count": 100
+    },
+    {
+      "status": "FAILED",
+      "count": 100
+    },
+    {
+      "status": "RELEASED",
+      "count": 600
+    },
+    {
+      "status": "RESERVED",
+      "count": 700
+    }
+  ],
+  "referentialIntegrity": {
+    "routers_without_site": 0,
+    "pools_without_router": 0,
+    "services_without_router_or_pool": 0,
+    "assignments_without_service_or_pool": 0,
+    "assignment_link_mismatches": 0
+  },
+  "structure": {
+    "router_links": 0,
+    "network_links": 0,
+    "interfaces": 2,
+    "local_addresses": 2,
+    "i1_conflicts": 0
+  },
+  "syntheticAccount": {
+    "matchedRows": 1,
+    "status": "INACTIVE",
+    "softDeleted": true,
+    "refreshTokensTotal": 10,
+    "refreshTokensLive": 0,
+    "auditRows": 22
+  },
+  "auditActorClassesSinceSyntheticCreated": [
+    {
+      "actor_class": "anonymous_actor",
+      "count": 10
+    },
+    {
+      "actor_class": "synthetic_actor",
+      "count": 22
+    }
+  ]
+}

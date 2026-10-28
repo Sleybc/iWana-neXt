@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "task": "MOD13 E7_resume",
+  "outcome": "NOT_EXECUTED",
+  "observedAt": "2026-10-27T21:06:15Z",
+  "reason": "R-0 no pudo comprobar Docker Engine: el daemon no está disponible en npipe:////./pipe/dockerDesktopLinuxEngine. La presencia de E1 y E7_final queda sin verificar.",
+  "preflight": {
+    "dockerInfo": {
+      "command": "docker info --format '{{.ServerVersion}}'",
+      "exitCode": 1,
+      "result": "Falló al conectar con el Docker API en npipe:////./pipe/dockerDesktopLinuxEngine."
+    },
+    "dockerPs": {
+      "command": "docker ps -a --filter name=iwana_mod13_ca_r12_pg_e1 --filter name=iwana_mod13_ca_r12_redis_e1",
+      "exitCode": 1,
+      "result": "Falló por Docker Engine no disponible; no se pudo verificar E1 ni la plantilla iwana_it_mod13_ca_r12_e7_final."
+    },
+    "apiPort3014": {
+      "result": "FREE"
+    },
+    "redisDb7": {
+      "result": "NOT_CHECKED",
+      "reason": "R-0 se detuvo al fallar Docker Engine; no se accedió a Redis."
+    },
+    "listeners": {
+      "ports": "3010-3015, 5434, 6381",
+      "result": "NONE"
+    }
+  },
+  "execution": {
+    "clone": "NOT_EXECUTED",
+    "build": "NOT_EXECUTED",
+    "queueResume": "NOT_EXECUTED",
+    "authenticatedReservation": "NOT_EXECUTED",
+    "ipProtectionProbes": "NOT_EXECUTED",
+    "teardown": "NOT_EXECUTED",
+    "databaseOrRedisTouched": false,
+    "containersStartedOrRebuilt": false,
+    "stepsR1toR9": "NOT_EXECUTED"
+  },
+  "runnerExitCode": null,
+  "ipProtection": "PENDING"
+}

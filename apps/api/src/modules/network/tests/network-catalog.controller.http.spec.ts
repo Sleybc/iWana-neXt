@@ -1,29 +1,33 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import { UserRole } from '@iwana/shared';
 import request from 'supertest';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { NetworkCatalogController } from '../network-catalog.controller';
 import { NetworkCatalogService } from '../network-catalog.service';
+import { NetworkInterfaceCatalogService } from '../network-interface-catalog.service';
 import { NetworkTenantGuard } from '../guards/network-tenant.guard';
 
 const ACTOR_ID = '8d217ab7-2b9e-4542-86db-9d972b76bc1a';
 
-describe('NetworkCatalogController — permisos HTTP', () => {
+describe('NetworkCatalogController — roles HTTP', () => {
   let app: INestApplication;
   let actorRole = UserRole.NOC;
   const createRouter = jest.fn();
-  const getEffectivePermissionsForUser = jest.fn();
+  const listRouters = jest.fn();
+  const listIpv4Networks = jest.fn();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [NetworkCatalogController],
       providers: [
-        { provide: NetworkCatalogService, useValue: { createRouter } },
-        { provide: EffectivePermissionsService, useValue: { getEffectivePermissionsForUser } },
+        {
+          provide: NetworkCatalogService,
+          useValue: { createRouter, listRouters, listIpv4Networks },
+        },
+        { provide: NetworkInterfaceCatalogService, useValue: {} },
         RolesGuard,
       ],
     })
@@ -54,32 +58,18 @@ describe('NetworkCatalogController — permisos HTTP', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
     actorRole = UserRole.NOC;
-    getEffectivePermissionsForUser.mockResolvedValue([]);
     createRouter.mockResolvedValue({ id: 'router-id' });
+    listRouters.mockResolvedValue({ data: [], meta: { total: 0 } });
+    listIpv4Networks.mockResolvedValue({ data: [], meta: { total: 0 } });
   });
 
-  it('devuelve 403 y no crea el router si falta network.catalog.manage', async () => {
-    await request(app.getHttpServer())
-      .post('/network/routers')
-      .send({
-        name: 'Router HTTP',
-        managementHost: 'router.example.invalid',
-        supportedControlMethods: ['SIMPLE_QUEUE_STATIC_IP'],
-      })
-      .expect(403);
-
-    expect(createRouter).not.toHaveBeenCalled();
-  });
-
-  it('permite crear cuando el permiso está asignado', async () => {
-    getEffectivePermissionsForUser.mockResolvedValue([AccessPermissionKey.NETWORK_CATALOG_MANAGE]);
-
+  it('delega la acción del catálogo al servicio para la autorización efectiva', async () => {
     await request(app.getHttpServer())
       .post('/network/routers')
       .send({
@@ -97,7 +87,6 @@ describe('NetworkCatalogController — permisos HTTP', () => {
 
   it('deniega a TECHNICIAN aunque el permiso esté presente', async () => {
     actorRole = UserRole.TECHNICIAN;
-    getEffectivePermissionsForUser.mockResolvedValue([AccessPermissionKey.NETWORK_CATALOG_MANAGE]);
 
     await request(app.getHttpServer())
       .post('/network/routers')
@@ -109,5 +98,45 @@ describe('NetworkCatalogController — permisos HTTP', () => {
       .expect(403);
 
     expect(createRouter).not.toHaveBeenCalled();
+  });
+
+  it('valida y transforma interfaceId, q y paginación antes de delegar el filtro', async () => {
+    await request(app.getHttpServer())
+      .get('/network/ipv4-networks')
+      .query({
+        interfaceId: '99999999-9999-4999-8999-999999999999',
+        q: 'bridge',
+        page: '2',
+        limit: '50',
+      })
+      .expect(200);
+
+    expect(listIpv4Networks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interfaceId: '99999999-9999-4999-8999-999999999999',
+        q: 'bridge',
+        page: 2,
+        limit: 50,
+      }),
+      ACTOR_ID,
+    );
+  });
+
+  it('rechaza interfaceId inválido antes de consultar el catálogo', async () => {
+    await request(app.getHttpServer())
+      .get('/network/ipv4-networks')
+      .query({ interfaceId: 'invalid' })
+      .expect(400);
+
+    expect(listIpv4Networks).not.toHaveBeenCalled();
+  });
+
+  it('rechaza routerId en el listado de routers porque el filtro pertenece a redes IPv4', async () => {
+    await request(app.getHttpServer())
+      .get('/network/routers')
+      .query({ routerId: '99999999-9999-4999-8999-999999999999' })
+      .expect(400);
+
+    expect(listRouters).not.toHaveBeenCalled();
   });
 });

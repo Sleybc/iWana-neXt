@@ -18,7 +18,7 @@ describe('RadioCardGroup', () => {
     );
 
     expect(html).toContain('<fieldset');
-    expect(html).toContain('<legend');
+    expect(html).toMatch(/<legend[^>]*>Plan<\/legend>/);
     expect(html).toMatch(/<input[^>]*type="radio"[^>]*name="plan"[^>]*checked=""/);
     expect(html.match(/<input[^>]*type="radio"/g)).toHaveLength(2);
     expect(html).not.toContain('role="radiogroup"');
@@ -47,6 +47,40 @@ describe('RadioCardGroup', () => {
 
     expect(html).toMatch(/type="radio"[^>]*disabled=""[^>]*aria-describedby="[^"]+"/);
     expect(html).toContain('Ya no está disponible.');
+  });
+
+  it('expone la ayuda y el error del grupo en el fieldset', () => {
+    const html = renderToStaticMarkup(
+      <RadioCardGroup
+        legend="Dirección base"
+        name="address"
+        value={null}
+        onChange={() => undefined}
+        options={[{ value: 'registered', title: 'Dirección registrada' }]}
+        aria-describedby="address-hint address-error"
+        aria-invalid
+      />,
+    );
+
+    expect(html).toMatch(/<fieldset[^>]*aria-describedby="address-hint address-error"/);
+    expect(html).toMatch(/<fieldset[^>]*aria-invalid="true"/);
+    expect(html).not.toContain('role="radiogroup"');
+    expect(html).toMatch(/<legend[^>]*>Dirección base<\/legend>/);
+  });
+
+  it('no emite aria-invalid cuando el grupo es válido', () => {
+    const html = renderToStaticMarkup(
+      <RadioCardGroup
+        legend="Dirección base"
+        name="address"
+        value={null}
+        onChange={() => undefined}
+        options={[{ value: 'registered', title: 'Dirección registrada' }]}
+        aria-invalid={false}
+      />,
+    );
+
+    expect(html).not.toContain('aria-invalid');
   });
 
   it.each(['comfortable', 'compact'] as const)(

@@ -1,0 +1,50 @@
+{
+  "result": "PASS",
+  "step": "censo previo a restaurar el clon",
+  "clone": {
+    "identity": {
+      "database": "iwana_it_mod13_ca_r12_e7_resume"
+    },
+    "users": 1,
+    "refresh_tokens": 2,
+    "subscribers": 1,
+    "execution_orders": 2,
+    "service_provisionings": 2201,
+    "ip_assignments": 2001,
+    "audit_logs": 63,
+    "platform_users": 1,
+    "principal_set": 1,
+    "orders": 1,
+    "provisionings": 1,
+    "assignments": 1,
+    "provisioning_audit": 1,
+    "syntheticStates": [
+      {
+        "provisioning_status": "RESERVED",
+        "assignment_status": "RESERVED",
+        "n": 1
+      }
+    ]
+  },
+  "template": {
+    "identity": {
+      "database": "iwana_it_mod13_ca_r12_e7_final"
+    },
+    "users": 0,
+    "refresh_tokens": 0,
+    "subscribers": 0,
+    "execution_orders": 1,
+    "service_provisionings": 2200,
+    "ip_assignments": 2000,
+    "audit_logs": 50,
+    "platform_users": 0,
+    "principal_set": 0,
+    "orders": 0,
+    "provisionings": 0,
+    "assignments": 0,
+    "provisioning_audit": 0,
+    "syntheticStates": []
+  },
+  "networkIpProtection": "PENDING",
+  "capturedAtUtc": "2026-10-27T23:06:22.939Z"
+}

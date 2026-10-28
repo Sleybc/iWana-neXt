@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey } from '@iwana/shared';
-import type { Ipv4NetworkDto, RouterDto } from '@iwana/shared';
+import type { Ipv4NetworkExtendedDto, RouterDto } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
 import { Network as NetworkIcon, Pencil, Plus, ToggleLeft } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
@@ -37,14 +38,18 @@ import {
 import { networkApi } from '@/lib/api-client';
 import type { NetworkCatalogListParams } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
+import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 
 const NETWORK_FILTER_KEYS = ['status', 'routerId'] as const;
 
 export function Ipv4NetworkCatalogClient() {
+  const appRouter = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { hasPermission } = usePermissions();
   const canManage = hasPermission(AccessPermissionKey.NETWORK_CATALOG_MANAGE);
   const query = useNetworkCatalogQuery('networks', NETWORK_FILTER_KEYS);
-  const [networks, setNetworks] = useState<Ipv4NetworkDto[]>([]);
+  const [networks, setNetworks] = useState<Ipv4NetworkExtendedDto[]>([]);
   const [meta, setMeta] = useState(EMPTY_LIST_META);
   const [routers, setRouters] = useState<RouterDto[]>([]);
   const [routerOptionsError, setRouterOptionsError] = useState<string | null>(null);
@@ -56,7 +61,8 @@ export function Ipv4NetworkCatalogClient() {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [pendingNetworkId, setPendingNetworkId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingNetwork, setEditingNetwork] = useState<Ipv4NetworkDto | null>(null);
+  const [editingNetwork, setEditingNetwork] = useState<Ipv4NetworkExtendedDto | null>(null);
+  const [routerContext, setRouterContext] = useState<RouterDto | null>(null);
   const loadRequestId = useRef(0);
 
   const requestParams = useMemo((): NetworkCatalogListParams => {
@@ -164,19 +170,21 @@ export function Ipv4NetworkCatalogClient() {
 
   const openCreate = () => {
     setEditingNetwork(null);
+    setRouterContext(routers.find((router) => router.id === query.filters.routerId) ?? null);
     setDrawerOpen(true);
     setSuccessMessage(null);
     setMutationError(null);
   };
 
-  const openEdit = (network: Ipv4NetworkDto) => {
+  const openEdit = (network: Ipv4NetworkExtendedDto) => {
     setEditingNetwork(network);
+    setRouterContext(null);
     setDrawerOpen(true);
     setSuccessMessage(null);
     setMutationError(null);
   };
 
-  const toggleStatus = async (network: Ipv4NetworkDto) => {
+  const toggleStatus = async (network: Ipv4NetworkExtendedDto) => {
     setPendingNetworkId(network.id);
     setMutationError(null);
     setSuccessMessage(null);
@@ -198,6 +206,18 @@ export function Ipv4NetworkCatalogClient() {
       setPendingNetworkId(null);
     }
   };
+
+  useEffect(() => {
+    if (searchParams.get('networks.create') !== '1' || isLoadingRouters) return;
+    const requestedRouterId = searchParams.get('networks.routerId');
+    setEditingNetwork(null);
+    setRouterContext(routers.find((router) => router.id === requestedRouterId) ?? null);
+    setDrawerOpen(true);
+    setSuccessMessage(null);
+    setMutationError(null);
+    const nextParams = mergeUrlSearchParams(searchParams, { 'networks.create': null });
+    appRouter.replace(withSearchParams(pathname, nextParams), { scroll: false });
+  }, [appRouter, isLoadingRouters, pathname, routers, searchParams]);
 
   if (accessDenied) {
     return (
@@ -530,7 +550,11 @@ export function Ipv4NetworkCatalogClient() {
       <Ipv4NetworkDrawer
         open={drawerOpen}
         network={editingNetwork}
-        onClose={() => setDrawerOpen(false)}
+        routerContext={routerContext}
+        onClose={() => {
+          setDrawerOpen(false);
+          setRouterContext(null);
+        }}
         onSaved={async () => {
           await loadNetworks();
           setSuccessMessage('Red IPv4 guardada.');

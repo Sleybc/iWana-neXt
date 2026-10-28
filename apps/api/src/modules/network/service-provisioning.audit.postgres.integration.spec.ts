@@ -22,11 +22,13 @@ import {
 } from '@iwana/shared';
 import { CreateNetworkCatalog1600000000000 } from '../../../../../packages/database/src/migrations/tenant/160_network_catalog';
 import { CreateNetworkProvisioning1610000000000 } from '../../../../../packages/database/src/migrations/tenant/161_network_provisioning';
+import { CreateRouterInterfacesAndIpv4Addresses1650000000000 } from '../../../../../packages/database/src/migrations/tenant/165_router_interfaces_and_ipv4_addresses';
 import { EnableBtreeGist1784419216000 } from '../../../../../packages/database/src/migrations/public/028_enable_btree_gist';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IpamService } from './ipam.service';
 import { ManualRouterProvisioningAdapter } from './adapters/manual-router-provisioning.adapter';
 import { ServiceProvisioningService } from './service-provisioning.service';
+import { NetworkAuthorizationFacade } from './authorization/network-authorization.facade';
 import { AuditService } from '../audit/audit.service';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 
@@ -72,8 +74,13 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
   };
   const executionOrderReadPort = {
     getExecutionSnapshot: jest.fn(),
+    getExecutionReference: jest.fn().mockImplementation(async (id: string) => ({
+      id,
+      assignedTechnicianId: technicianId,
+    })),
     getExecutionSnapshots: jest.fn(),
     hasEvidence: jest.fn(),
+    listProvisioningEvidence: jest.fn(),
     listInstallationOrders: jest.fn(),
     hasOpenWithdrawalOrders: jest.fn(),
   };
@@ -90,10 +97,8 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
     getFirstInstalledAtCustomer: jest.fn().mockResolvedValue(null),
   };
   const networkActorReadPort = { findByIds: jest.fn().mockResolvedValue([]) };
-  const effectivePermissionsService = {
-    getEffectivePermissionsForUser: jest
-      .fn()
-      .mockResolvedValue([AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY]),
+  const effectivePermissionScope = {
+    authorizeTenantWide: jest.fn().mockResolvedValue(true),
   };
   const routerProvisioningPort = new ManualRouterProvisioningAdapter();
 
@@ -237,6 +242,7 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
     try {
       await new CreateNetworkCatalog1600000000000().up(migrationRunner);
       await new CreateNetworkProvisioning1610000000000().up(migrationRunner);
+      await new CreateRouterInterfacesAndIpv4Addresses1650000000000().up(migrationRunner);
     } finally {
       await migrationRunner.release();
     }
@@ -285,7 +291,8 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
       subscriberServiceContextReadPort as never,
       installedEquipmentReadPort as never,
       networkActorReadPort as never,
-      effectivePermissionsService as never,
+      effectivePermissionScope as never,
+      new NetworkAuthorizationFacade(effectivePermissionScope as never),
       routerProvisioningPort,
       { emitAsync: jest.fn().mockResolvedValue([]) } as never,
     );
@@ -318,9 +325,7 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
       result: null,
     });
     executionOrderReadPort.hasEvidence.mockResolvedValue(true);
-    effectivePermissionsService.getEffectivePermissionsForUser.mockResolvedValue([
-      AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
-    ]);
+    effectivePermissionScope.authorizeTenantWide.mockResolvedValue(true);
   });
 
   it('revierte el servicio y la IP si falla la auditoría de reserve', async () => {
@@ -412,27 +417,37 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
 
     const entries = await readAuditEntries();
     expect(entries).toHaveLength(2);
-    expect(entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action: AuditAction.UPDATE,
-          entity_id: replacedId,
-          new_value: expect.objectContaining({
-            action: 'RELEASE',
-            releaseReason: 'REPLACED',
-            fromStatus: 'FAILED',
-            ip: '10.44.0.10',
-          }),
-        }),
-        expect.objectContaining({
-          action: AuditAction.CREATE,
-          new_value: expect.objectContaining({
-            action: 'REGULARIZE',
-            ip: '10.44.0.11',
-          }),
-        }),
-      ]),
+    const replacedRelease = entries.find((entry) => entry.entity_id === replacedId);
+    const regularizeAudit = entries.find(
+      (entry) => (entry.new_value as { action?: string }).action === 'REGULARIZE',
     );
+
+    expect(replacedRelease).toEqual(
+      expect.objectContaining({
+        action: AuditAction.UPDATE,
+        new_value: expect.objectContaining({
+          action: 'RELEASE',
+          releaseReason: 'REPLACED',
+          fromStatus: 'FAILED',
+        }),
+      }),
+    );
+    expect(replacedRelease?.new_value).not.toHaveProperty('ip');
+    expect(replacedRelease?.new_value).not.toHaveProperty('reason');
+    expect(replacedRelease?.new_value).not.toHaveProperty('regularizationReason');
+
+    expect(regularizeAudit).toEqual(
+      expect.objectContaining({
+        action: AuditAction.CREATE,
+        new_value: expect.objectContaining({
+          action: 'REGULARIZE',
+          reasonProvided: true,
+        }),
+      }),
+    );
+    expect(regularizeAudit?.new_value).not.toHaveProperty('ip');
+    expect(regularizeAudit?.new_value).not.toHaveProperty('reason');
+    expect(regularizeAudit?.new_value).not.toHaveProperty('regularizationReason');
   });
 
   it.each([1, 2])(

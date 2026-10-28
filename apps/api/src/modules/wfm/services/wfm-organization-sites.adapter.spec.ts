@@ -6,6 +6,9 @@ import { WfmOrganizationSitesAdapter } from './wfm-organization-sites.adapter';
 describe('WfmOrganizationSitesAdapter', () => {
   const organizationSiteReadPort = {
     listByCapability: jest.fn(),
+    findReferenceById: jest.fn(),
+    findRouterSummaryById: jest.fn(),
+    listRouterOptions: jest.fn(),
   } as jest.Mocked<OrganizationSiteReadPort>;
 
   const service = new WfmOrganizationSitesAdapter(organizationSiteReadPort);

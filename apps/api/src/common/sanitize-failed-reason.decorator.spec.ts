@@ -48,4 +48,32 @@ describe('SanitizeFailedReason', () => {
     });
     expect(String(thrown)).not.toContain('CENTINELA-PII-0004');
   });
+
+  it('preserves a read-only error name without masking the sanitized failure', async () => {
+    class ProcessorProbe {
+      async process(): Promise<void> {
+        class ReadOnlyDomainError extends Error {}
+        Object.defineProperty(ReadOnlyDomainError.prototype, 'name', {
+          configurable: true,
+          get: () => 'ReadOnlyDomainError',
+        });
+        throw new ReadOnlyDomainError('database detail CENTINELA-PII-0005');
+      }
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(ProcessorProbe.prototype, 'process');
+    if (!descriptor) throw new Error('process method descriptor is missing');
+    const decoratedDescriptor = { ...descriptor };
+    SanitizeFailedReason()(ProcessorProbe.prototype, 'process', decoratedDescriptor);
+    Object.defineProperty(ProcessorProbe.prototype, 'process', decoratedDescriptor);
+
+    const thrown = await new ProcessorProbe().process().catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).toMatchObject({
+      name: 'ReadOnlyDomainError',
+      message: 'class=ReadOnlyDomainError sqlstate=none',
+    });
+    expect(String(thrown)).not.toContain('CENTINELA-PII-0005');
+  });
 });

@@ -1,31 +1,40 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CONTROL_METHODS, CreateRouterBodySchema } from '@iwana/shared';
-import type { ControlMethod, CreateRouterBody, RouterDto } from '@iwana/shared';
-import { z } from 'zod';
-import { Input } from '@iwana/ui';
-import { useForm } from 'react-hook-form';
+import { CONTROL_METHODS, CreateRouterBodySchema, UpdateRouterBodySchema } from '@iwana/shared';
 import type {
-  CoverageAdminConfig,
-  CoverageNodeConfig,
-  OrganizationSiteSummary,
-} from '@/lib/api-client';
-import { networkApi, organizationApi, tenantSelfApi } from '@/lib/api-client';
+  ControlMethod,
+  CreateRouterBody,
+  RouterDto,
+  RouterSiteOptionDto,
+  UpdateRouterBody,
+} from '@iwana/shared';
+import { z } from 'zod';
+import { Button, Input } from '@iwana/ui';
+import { useForm } from 'react-hook-form';
+import type { CoverageAdminConfig, CoverageNodeConfig } from '@/lib/api-client';
+import { networkApi, tenantSelfApi } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 import {
   NetworkCatalogDrawerFrame,
   NetworkFormField,
   networkFormControlProps,
 } from './NetworkCatalogDrawerFrame';
-import { getNetworkApiErrorMessage, getControlMethodLabel } from './network-catalog-labels';
+import {
+  getNetworkApiErrorMessage,
+  getControlMethodLabel,
+  getOrganizationSiteTypeLabel,
+  NETWORK_CATALOG_FIELD_HINTS,
+} from './network-catalog-labels';
 
 interface NetworkRouterDrawerProps {
   open: boolean;
   router: RouterDto | null;
+  canManage: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
+  onRouterCreated?: (router: RouterDto) => void;
 }
 
 type RouterFormValues = CreateRouterBody;
@@ -51,7 +60,6 @@ function mapRouterValues(router: RouterDto): RouterFormValues {
     name: router.name,
     managementHost: router.managementHost,
     supportedControlMethods: router.supportedControlMethods,
-    ...(router.lanInterface !== null ? { lanInterface: router.lanInterface } : {}),
     ...(router.organizationSiteId ? { organizationSiteId: router.organizationSiteId } : {}),
     ...(router.commercialNodeId ? { commercialNodeId: router.commercialNodeId } : {}),
     ...(router.notes !== null ? { notes: router.notes } : {}),
@@ -63,9 +71,22 @@ function optionalValue(value: string): string | undefined {
   return normalized || undefined;
 }
 
-export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkRouterDrawerProps) {
+export function NetworkRouterDrawer({
+  open,
+  router,
+  canManage,
+  onClose,
+  onSaved,
+  onRouterCreated,
+}: NetworkRouterDrawerProps) {
   const formId = `network-router-${useId()}`;
-  const [sites, setSites] = useState<OrganizationSiteSummary[]>([]);
+  const nameFocusRef = useRef<HTMLInputElement | null>(null);
+  const [sites, setSites] = useState<RouterSiteOptionDto[]>([]);
+  const [siteOptionsPage, setSiteOptionsPage] = useState(0);
+  const [siteOptionsHasMore, setSiteOptionsHasMore] = useState(false);
+  const [siteOptionsLoading, setSiteOptionsLoading] = useState(false);
+  const [siteOptionsError, setSiteOptionsError] = useState<string | null>(null);
+  const [siteOptionsRetryPage, setSiteOptionsRetryPage] = useState(1);
   const [nodes, setNodes] = useState<CoverageNodeConfig[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogWarning, setCatalogWarning] = useState<string | null>(null);
@@ -78,7 +99,34 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
   const values = watch();
   const siteFieldId = `${formId}-site`;
   const nodeFieldId = `${formId}-node`;
+  const methodFieldId = `${formId}-methods-group`;
   const methodsError = formState.errors.supportedControlMethods?.message;
+  const nameRegistration = register('name');
+
+  const loadRouterSiteOptions = useCallback(
+    async (page: number, append: boolean) => {
+      if (!canManage) return;
+      setSiteOptionsLoading(true);
+      setSiteOptionsRetryPage(page);
+      setSiteOptionsError(null);
+      try {
+        const result = await networkApi.listRouterSiteOptions({ page, limit: 100 });
+        setSites((current) => (append ? [...current, ...result.data] : result.data));
+        setSiteOptionsPage(result.meta.page ?? page);
+        setSiteOptionsHasMore(result.meta.hasMore);
+      } catch (error) {
+        setSiteOptionsError(
+          getNetworkApiErrorMessage(
+            error,
+            'No pudimos cargar las sedes. Reintenta o continúa sin asociar una.',
+          ),
+        );
+      } finally {
+        setSiteOptionsLoading(false);
+      }
+    },
+    [canManage],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -91,18 +139,17 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
     let active = true;
     setCatalogLoading(true);
     setCatalogWarning(null);
+    setSites([]);
+    setSiteOptionsPage(0);
+    setSiteOptionsHasMore(false);
+    setSiteOptionsError(null);
 
     void Promise.allSettled([
-      organizationApi.list({ page: 1, limit: 100 }),
+      canManage ? loadRouterSiteOptions(1, false) : Promise.resolve(),
       tenantSelfApi.getCoverage(),
-    ]).then(([siteResult, nodeResult]) => {
+    ]).then(([, nodeResult]) => {
       if (!active) return;
       const warnings: string[] = [];
-      if (siteResult.status === 'fulfilled') {
-        setSites(siteResult.value.data.filter((site) => site.isActive));
-      } else {
-        warnings.push('No pudimos cargar las sedes. Puedes continuar sin asociar una sede.');
-      }
       if (nodeResult.status === 'fulfilled') {
         const data = nodeResult.value as CoverageAdminConfig;
         setNodes(data.nodes.filter((node) => node.isActive));
@@ -116,18 +163,15 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [canManage, loadRouterSiteOptions, open]);
 
-  const onSubmit = handleSubmit(async (formValues) => {
+  const saveRouter = async (formValues: RouterFormValues, continueToNetwork: boolean) => {
     setIsSubmitting(true);
     setSubmitError(null);
-    const body: CreateRouterBody = {
+    const createBody: CreateRouterBody = {
       name: formValues.name.trim(),
       managementHost: formValues.managementHost.trim(),
       supportedControlMethods: formValues.supportedControlMethods,
-      ...(optionalValue(formValues.lanInterface ?? '')
-        ? { lanInterface: optionalValue(formValues.lanInterface ?? '') }
-        : {}),
       ...(optionalValue(formValues.organizationSiteId ?? '')
         ? { organizationSiteId: optionalValue(formValues.organizationSiteId ?? '') }
         : {}),
@@ -140,13 +184,38 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
     };
 
     try {
+      let savedRouter: RouterDto | null = null;
       if (router) {
-        await networkApi.updateRouter(router.id, { ...body, version: router.version });
+        const selectedSiteId = optionalValue(formValues.organizationSiteId ?? '');
+        const selectedNodeId = optionalValue(formValues.commercialNodeId ?? '');
+        const selectedNotes = optionalValue(formValues.notes ?? '');
+        const updateBody: UpdateRouterBody = UpdateRouterBodySchema.parse({
+          version: router.version,
+          ...(formValues.name.trim() !== router.name ? { name: formValues.name.trim() } : {}),
+          ...(formValues.managementHost.trim() !== router.managementHost
+            ? { managementHost: formValues.managementHost.trim() }
+            : {}),
+          ...(JSON.stringify(formValues.supportedControlMethods) !==
+          JSON.stringify(router.supportedControlMethods)
+            ? { supportedControlMethods: formValues.supportedControlMethods }
+            : {}),
+          ...(selectedSiteId !== (router.organizationSiteId ?? '')
+            ? { organizationSiteId: selectedSiteId ?? null }
+            : {}),
+          ...(selectedNodeId !== (router.commercialNodeId ?? '')
+            ? { commercialNodeId: selectedNodeId ?? null }
+            : {}),
+          ...(selectedNotes !== (router.notes ?? '') && selectedNotes
+            ? { notes: selectedNotes }
+            : {}),
+        });
+        savedRouter = await networkApi.updateRouter(router.id, updateBody);
       } else {
-        await networkApi.createRouter(body);
+        savedRouter = await networkApi.createRouter(createBody);
       }
       await onSaved();
       onClose();
+      if (!router && continueToNetwork && savedRouter) onRouterCreated?.(savedRouter);
     } catch (error) {
       setSubmitError(
         getNetworkApiErrorMessage(error, 'No pudimos guardar el router. Intenta nuevamente.'),
@@ -154,7 +223,10 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
     } finally {
       setIsSubmitting(false);
     }
-  });
+  };
+
+  const onSubmit = handleSubmit((formValues) => saveRouter(formValues, !router));
+  const saveWithoutContinuing = handleSubmit((formValues) => saveRouter(formValues, false));
 
   const selectedSiteId = values.organizationSiteId ?? '';
   const selectedNodeId = values.commercialNodeId ?? '';
@@ -171,8 +243,17 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
       title={router ? 'Editar router' : 'Registrar router'}
       description="Define cómo identificar el equipo y dónde opera dentro de la empresa."
       formId={formId}
-      submitLabel={router ? 'Guardar cambios' : 'Registrar router'}
+      submitLabel={router ? 'Guardar cambios' : 'Guardar y añadir red'}
       submitting={isSubmitting}
+      {...(router
+        ? {}
+        : {
+            secondaryAction: {
+              label: 'Guardar router',
+              onClick: () => void saveWithoutContinuing(),
+            },
+          })}
+      initialFocusRef={nameFocusRef}
       onSubmit={onSubmit}
       onClose={onClose}
     >
@@ -194,11 +275,15 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
 
         <NetworkFormField
           id={`${formId}-name`}
-          label="Nombre"
+          label="Nombre del router"
           error={formState.errors.name?.message}
         >
           <Input
-            {...register('name')}
+            {...nameRegistration}
+            ref={(element) => {
+              nameRegistration.ref(element);
+              nameFocusRef.current = element;
+            }}
             {...networkFormControlProps(`${formId}-name`, formState.errors.name?.message)}
             maxLength={120}
             autoComplete="off"
@@ -223,27 +308,27 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
           />
         </NetworkFormField>
 
-        <NetworkFormField
-          id={`${formId}-lan-interface`}
-          label="Interfaz LAN"
-          hint="Opcional, máximo 64 caracteres."
-          error={formState.errors.lanInterface?.message}
-        >
-          <Input
-            {...register('lanInterface')}
-            {...networkFormControlProps(
-              `${formId}-lan-interface`,
-              formState.errors.lanInterface?.message,
-              true,
-            )}
-            maxLength={64}
-            autoComplete="off"
-          />
-        </NetworkFormField>
+        {router?.lanInterface ? (
+          <section className="space-y-1 rounded-xl border border-gray-200 bg-iwana-surface-soft p-3 dark:border-dark-border dark:bg-dark-surface-3">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+              Referencia LAN anterior
+            </h3>
+            <p className="font-mono text-sm text-gray-800 dark:text-gray-100">
+              {router.lanInterface}
+            </p>
+            <p className="text-xs leading-5 text-gray-600 dark:text-gray-300">
+              Dato heredado. No es una interfaz registrada.
+            </p>
+          </section>
+        ) : null}
 
         <fieldset
+          id={methodFieldId}
+          role="group"
+          tabIndex={-1}
           className="space-y-2"
           aria-describedby={methodsError ? `${formId}-methods-error` : undefined}
+          aria-invalid={methodsError ? true : undefined}
         >
           <legend className="text-sm font-medium text-gray-800 dark:text-gray-100">
             Métodos de control admitidos
@@ -261,6 +346,7 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
                 >
                   <input
                     type="checkbox"
+                    aria-invalid={methodsError ? true : undefined}
                     checked={checked}
                     onChange={(event) => {
                       const current = values.supportedControlMethods ?? [];
@@ -289,12 +375,17 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
           ) : null}
         </fieldset>
 
-        <NetworkFormField id={siteFieldId} label="Sede" hint="Opcional.">
+        <NetworkFormField
+          id={siteFieldId}
+          label="Sede física"
+          hint={NETWORK_CATALOG_FIELD_HINTS.organizationSite}
+        >
           <select
             id={siteFieldId}
+            aria-describedby={`${siteFieldId}-hint`}
             className="portal-input-surface min-h-11 w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
             value={selectedSiteId}
-            disabled={catalogLoading || (sites.length === 0 && !hasUnknownSite)}
+            disabled={!canManage || catalogLoading || siteOptionsLoading}
             onChange={(event) =>
               setValue('organizationSiteId', event.target.value || undefined, { shouldDirty: true })
             }
@@ -302,20 +393,67 @@ export function NetworkRouterDrawer({ open, router, onClose, onSaved }: NetworkR
             <option value="">Sin sede asociada</option>
             {hasUnknownSite ? (
               <option value={router?.organizationSiteId ?? ''}>
-                Sede asociada (nombre no disponible)
+                {router?.organizationSite
+                  ? `${router.organizationSite.name} · ${getOrganizationSiteTypeLabel(router.organizationSite.siteType)} · ${router.organizationSite.isActive ? 'Activa' : 'Inactiva'}`
+                  : 'Sede asociada (nombre no disponible)'}
               </option>
             ) : null}
-            {sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
+            {sites
+              .filter(
+                (site) =>
+                  site.isActive || (router?.organizationSiteId === site.id && !site.isActive),
+              )
+              .map((site) => (
+                <option key={site.id} value={site.id} disabled={!site.isActive}>
+                  {site.name} · {getOrganizationSiteTypeLabel(site.siteType)} ·{' '}
+                  {site.isActive ? 'Activa' : 'Inactiva'}
+                </option>
+              ))}
           </select>
+          {siteOptionsError ? (
+            <PortalAlert
+              variant="warning"
+              title="No pudimos cargar las sedes"
+              description={siteOptionsError}
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-11"
+                  disabled={siteOptionsLoading}
+                  onClick={() =>
+                    void loadRouterSiteOptions(siteOptionsRetryPage, siteOptionsPage > 0)
+                  }
+                >
+                  Reintentar
+                </Button>
+              }
+            />
+          ) : siteOptionsHasMore ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11"
+              disabled={siteOptionsLoading || catalogLoading}
+              onClick={() => void loadRouterSiteOptions(siteOptionsPage + 1, true)}
+            >
+              Cargar más sedes
+            </Button>
+          ) : sites.length === 0 && !siteOptionsLoading ? (
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+              No hay sedes disponibles para asociar.
+            </p>
+          ) : null}
         </NetworkFormField>
 
-        <NetworkFormField id={nodeFieldId} label="Nodo comercial" hint="Opcional.">
+        <NetworkFormField
+          id={nodeFieldId}
+          label="Nodo comercial"
+          hint={NETWORK_CATALOG_FIELD_HINTS.commercialNode}
+        >
           <select
             id={nodeFieldId}
+            aria-describedby={`${nodeFieldId}-hint`}
             className="portal-input-surface min-h-11 w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
             value={selectedNodeId}
             disabled={catalogLoading || (nodes.length === 0 && !hasUnknownNode)}

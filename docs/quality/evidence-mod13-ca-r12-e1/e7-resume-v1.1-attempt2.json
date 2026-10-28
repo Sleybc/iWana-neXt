@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "task": "MOD13 E7_resume v1.1, intento 2",
+  "observedAt": "2026-10-27",
+  "outcome": "STOPPED_AT_R-0B-B",
+  "ipProtection": "PENDING",
+  "r0": {
+    "dockerInfo": {
+      "command": "docker info --format '{{.ServerVersion}}'",
+      "exitCode": 0,
+      "engineVersion": "29.9.2"
+    },
+    "dockerPs": {
+      "command": "docker ps -a --filter name=iwana_mod13_ca_r12_pg_e1 --filter name=iwana_mod13_ca_r12_redis_e1 --format '{{.Names}} {{.Status}}'",
+      "exitCode": 0,
+      "result": "No aparecían contenedores E1 previos."
+    },
+    "generatorSha256": {
+      "expected": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9",
+      "actual": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9",
+      "matches": true
+    },
+    "localConnectionFilesPresent": true,
+    "ports": {
+      "3014": "FREE",
+      "5434": "FREE",
+      "6381": "FREE"
+    },
+    "priorE2E5Sha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a"
+  },
+  "r0bA": {
+    "status": "PASS",
+    "postgresRunExit": 0,
+    "postgres": {
+      "container": "iwana_mod13_ca_r12_pg_e1",
+      "image": "postgres:18.3-alpine",
+      "statusLastVerified": "healthy",
+      "binding": "127.0.0.1:5434->5432",
+      "tmpfs": "/var/lib/postgresql, size=1g",
+      "persistentMounts": 0,
+      "imageId": "sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7",
+      "repoDigest": "postgres@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7"
+    },
+    "redisRunExit": 0,
+    "redis": {
+      "container": "iwana_mod13_ca_r12_redis_e1",
+      "image": "redis:8.6-alpine",
+      "statusLastVerified": "healthy",
+      "binding": "127.0.0.1:6381->6379",
+      "tmpfs": "/data, size=64m",
+      "persistence": false,
+      "persistentMounts": 0,
+      "imageId": "sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9",
+      "repoDigest": "redis@sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9"
+    },
+    "redisDbSizeInitial": {
+      "dbCount": 8,
+      "db0ThroughDb7": 0,
+      "commandExit": 0
+    }
+  },
+  "r0bB": {
+    "databaseBuild": {
+      "command": "pnpm --filter @iwana/db build",
+      "exitCode": 0
+    },
+    "generator": {
+      "command": "node scripts/mod13-ca-r12-baseline.cjs",
+      "resetFlagUsed": false,
+      "exitCode": 1,
+      "error": "42P01 relation public.typeorm_migrations does not exist",
+      "migrationsApplied": null,
+      "seedCreated": false,
+      "cloneDatabasesCreated": false,
+      "newOutputProduced": false
+    },
+    "e2e5Restoration": {
+      "originalSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "backupSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "restoredSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "allEqual": true,
+      "temporaryBackup": "PRESENT; path and content omitted"
+    },
+    "e1Preserved": true,
+    "noCommit": true
+  }
+}

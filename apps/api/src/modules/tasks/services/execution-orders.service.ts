@@ -100,8 +100,10 @@ import type {
 } from '../ports/execution-order-scheduling.port';
 import type {
   ExecutionOrderReadPort,
+  ExecutionOrderReference,
   ExecutionSnapshot,
   InstallationOrdersQuery,
+  ProvisioningEvidenceSummary,
 } from '../ports/execution-order-read.port';
 import {
   SERVICE_PROVISIONING_READ_PORT,
@@ -418,6 +420,21 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
     });
   }
 
+  async getExecutionReference(executionOrderId: string): Promise<ExecutionOrderReference | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT id, assigned_technician_id
+           FROM execution_orders
+          WHERE tenant_id = $1 AND id = $2
+          LIMIT 1`,
+        [tenantId, executionOrderId],
+      )) as Array<{ id: string; assigned_technician_id: string | null }>;
+      const row = rows[0];
+      return row ? { id: row.id, assignedTechnicianId: row.assigned_technician_id } : null;
+    });
+  }
+
   async getExecutionSnapshots(executionOrderIds: string[]): Promise<ExecutionSnapshot[]> {
     if (executionOrderIds.length > 100) {
       throw new BadRequestException({
@@ -459,6 +476,34 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
         [tenantId, executionOrderId, evidenceId, types],
       )) as unknown[];
       return rows.length > 0;
+    });
+  }
+
+  async listProvisioningEvidence(executionOrderId: string): Promise<ProvisioningEvidenceSummary[]> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT id, evidence_type, requirement_key, created_at
+           FROM execution_order_evidence
+          WHERE tenant_id = $1 AND execution_order_id = $2
+            AND evidence_type = ANY($3::varchar[])
+          ORDER BY created_at ASC`,
+        [tenantId, executionOrderId, ['PHOTO', 'DOCUMENT']],
+      )) as Array<{
+        id: string;
+        evidence_type: 'PHOTO' | 'DOCUMENT';
+        requirement_key: string | null;
+        created_at: Date | string;
+      }>;
+      return rows.map((row) => ({
+        id: row.id,
+        evidenceType: row.evidence_type,
+        requirementKey: row.requirement_key,
+        createdAt:
+          row.created_at instanceof Date
+            ? row.created_at.toISOString()
+            : new Date(row.created_at).toISOString(),
+      }));
     });
   }
 

@@ -1,0 +1,38 @@
+2026-10-27T23:27:32.921Z start port=3014 clone=iwana_it_mod13_ca_r12_e7_resume
+2026-10-27T23:27:33.061Z stage=preflight_queues
+2026-10-27T23:27:33.239Z stage=preflight_db
+2026-10-27T23:27:33.267Z stage=preflight_counts
+2026-10-27T23:27:33.531Z stage=preflight_pk_source
+2026-10-27T23:27:33.578Z stage=r5_env
+2026-10-27T23:27:33.594Z stage=r5_seed
+2026-10-27T23:27:34.447Z r5.seed.ok
+2026-10-27T23:27:34.450Z stage=r5_api_start
+2026-10-27T23:27:37.015Z r5.api.healthy
+2026-10-27T23:27:37.015Z stage=r5_platform_login
+2026-10-27T23:27:37.236Z stage=r5_platform_password_change
+2026-10-27T23:27:37.725Z stage=r5_platform_login_after_rotation
+2026-10-27T23:27:38.040Z stage=r5_regenerate_admin_credentials
+2026-10-27T23:27:38.370Z stage=r5_tenant_initial_login
+2026-10-27T23:27:38.706Z stage=r5_tenant_password_change
+2026-10-27T23:27:39.360Z stage=r5_tenant_login_after_rotation
+2026-10-27T23:27:39.675Z stage=r5_catalog_meta
+2026-10-27T23:27:39.713Z r5.done
+2026-10-27T23:27:39.716Z stage=window_baseline
+2026-10-27T23:27:45.063Z stage=r6_subscriber
+2026-10-27T23:27:45.067Z stage=r6_execution_order
+2026-10-27T23:27:45.071Z stage=r6_pool_selection
+2026-10-27T23:27:45.075Z stage=r6_reserve
+2026-10-27T23:27:45.223Z stage=r6_release
+2026-10-27T23:27:45.339Z r6.done
+2026-10-27T23:27:45.339Z stage=r7a_local_address_lookup
+2026-10-27T23:27:46.713Z stage=r7a_reserve_local_ip
+2026-10-27T23:27:48.132Z r7a.done
+2026-10-27T23:27:48.132Z stage=r7b_capture_local_ip
+2026-10-27T23:27:49.509Z r7b.done
+2026-10-27T23:27:49.510Z stage=r8_api_stop
+2026-10-27T23:27:49.510Z api.stop.sigterm pid=28468
+2026-10-27T23:27:49.533Z api.stop.exit code=null signal=SIGTERM
+2026-10-27T23:27:52.541Z stage=r8_queues
+2026-10-27T23:27:52.685Z stage=r8_legacy
+2026-10-27T23:27:52.835Z stage=r8_census
+2026-10-27T23:27:54.245Z pass artifact=C:\Users\SLEYB\AppData\Local\Temp\iwana-mod13-ca-r12-e7-resume-v14\r1-r9\r5-r8.json

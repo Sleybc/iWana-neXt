@@ -2493,6 +2493,64 @@ describe('ExecutionOrdersService — redrive y seguimiento', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('read port lista solo la proyección mínima de evidencia PHOTO/DOCUMENT del tenant actual', async () => {
+    const service = new ExecutionOrdersService({} as DataSource);
+    const manager = {
+      query: jest.fn().mockResolvedValue([
+        {
+          id: 'evidence-001',
+          evidence_type: 'PHOTO',
+          requirement_key: 'ROUTER_LABEL',
+          created_at: new Date('2026-10-20T10:00:00.000Z'),
+        },
+      ]),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, operation) =>
+      operation({ query: manager.query } as never),
+    );
+
+    await expect(service.listProvisioningEvidence('eo-001')).resolves.toEqual([
+      {
+        id: 'evidence-001',
+        evidenceType: 'PHOTO',
+        requirementKey: 'ROUTER_LABEL',
+        createdAt: '2026-10-20T10:00:00.000Z',
+      },
+    ]);
+
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id, evidence_type, requirement_key, created_at'),
+      ['tenant-001', 'eo-001', ['PHOTO', 'DOCUMENT']],
+    );
+    const [sql] = manager.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('WHERE tenant_id = $1 AND execution_order_id = $2');
+    expect(sql).toContain('AND evidence_type = ANY($3::varchar[])');
+    expect(sql).not.toMatch(/storage_key|private_metadata/i);
+  });
+
+  it('read port ubica la OT con una referencia mínima que no consulta la etiqueta del cliente', async () => {
+    const service = new ExecutionOrdersService({} as DataSource);
+    const manager = {
+      query: jest.fn().mockResolvedValue([{ id: 'eo-001', assigned_technician_id: 'tech-001' }]),
+    };
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, operation) =>
+      operation({ query: manager.query } as never),
+    );
+
+    await expect(service.getExecutionReference('eo-001')).resolves.toEqual({
+      id: 'eo-001',
+      assignedTechnicianId: 'tech-001',
+    });
+
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id, assigned_technician_id'),
+      ['tenant-001', 'eo-001'],
+    );
+    const [sql] = manager.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('WHERE tenant_id = $1 AND id = $2');
+    expect(sql).not.toContain('customer_display_label');
+  });
+
   it('falla cerrado si la asignación de supervisión fue revocada antes del comando', async () => {
     const event = {
       id: 'outbox-row-revoked',

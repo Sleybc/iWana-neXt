@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -18,6 +19,7 @@ import {
   type ActorRefDto,
   type ProvisioningInboxQueue,
   type ProvisioningInboxRowDto,
+  type ProvisioningMetaDto,
   type ProvisioningOrderContextDto,
   type ReleaseProvisioningBody,
   type ReserveProvisioningBody,
@@ -29,7 +31,6 @@ import {
   type ListResponse,
 } from '@iwana/shared';
 import {
-  ExecutionOrderEvidence,
   IpAssignment,
   Ipv4Network,
   NetworkPlanProfile,
@@ -40,22 +41,46 @@ import {
 } from '@iwana/db';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { buildPageMeta } from '../../common/pagination';
-import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
+import { EffectivePermissionScopePort } from '../access-control/ports/effective-permission-scope.port';
 import { AuditService } from '../audit/audit.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { InstalledEquipmentReadPort } from '../inventory/ports/installed-equipment-read.port';
 import { SubscriberServiceContextReadPort } from '../crm/ports/subscriber-service-context-read.port';
 import { IpamService } from './ipam.service';
 import { NetworkActorReadPort } from './ports/network-actor-read.port';
+import { NetworkAuthorizationFacade } from './authorization/network-authorization.facade';
 import {
   ROUTER_PROVISIONING_PORT,
   type RouterProvisioningPort,
 } from './ports/router-provisioning.port';
 import {
   EXECUTION_ORDER_READ_PORT,
+  type ExecutionOrderReference,
   type ExecutionOrderReadPort,
+  type ExecutionSnapshot,
 } from '../tasks/ports/execution-order-read.port';
 import { ServiceProvisioningActivatedEvent } from './events/service-provisioning-activated.event';
+import { NETWORK_RESERVATIONS_PAUSED } from './network-reservations-state';
+
+interface ProvisioningAuthorizationReference {
+  id: string;
+  routerId: string;
+  ipv4NetworkId: string;
+  organizationSiteId: string | null;
+}
+
+interface TechnicianProvisioningProjection {
+  id: string;
+  routerId: string;
+  ipv4NetworkId: string;
+  status: ServiceProvisioningStatus;
+  updatedAt: Date;
+}
+
+interface TechnicianAssignmentProjection {
+  ip: string;
+  status: string;
+}
 
 @Injectable()
 export class ServiceProvisioningService {
@@ -68,55 +93,104 @@ export class ServiceProvisioningService {
     private readonly subscriberContextPort: SubscriberServiceContextReadPort,
     private readonly installedEquipmentReadPort: InstalledEquipmentReadPort,
     private readonly actorReadPort: NetworkActorReadPort,
-    private readonly effectivePermissionsService: EffectivePermissionsService,
+    private readonly effectivePermissionScope: EffectivePermissionScopePort,
+    private readonly networkAuthorization: NetworkAuthorizationFacade,
     @Inject(ROUTER_PROVISIONING_PORT)
     private readonly routerProvisioningPort: RouterProvisioningPort,
     private readonly eventEmitter: EventEmitter2,
+    @Optional()
+    @Inject(NETWORK_RESERVATIONS_PAUSED)
+    private readonly reservationsPaused = false,
   ) {}
+
+  async getProvisioningMeta(actor: JwtPayload): Promise<ProvisioningMetaDto> {
+    await this.networkAuthorization.requireTenantWideAction(
+      actor.sub,
+      AccessPermissionKey.NETWORK_PROVISIONING_READ,
+    );
+    return { reservationsPaused: this.reservationsPaused };
+  }
 
   async reserve(
     input: ReserveProvisioningBody,
     actor: JwtPayload,
   ): Promise<ServiceProvisioningDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const order = await this.requireEligibleOpenInstallation(input.executionOrderId);
-    if (!order.assignedTechnicianId) {
-      throw new UnprocessableEntityException({ code: 'PROVISIONING_TECHNICIAN_REQUIRED' });
-    }
-    const subscriberId = order.subscriberId;
-    if (!subscriberId) throw this.orderNotEligible();
-    const commercial = await this.subscriberContextPort.getForSubscriber(subscriberId);
-    if (!commercial) throw this.orderNotEligible();
-    const contract = input.contractId
-      ? commercial.contracts.find((item) => item.id === input.contractId)
-      : (commercial.contracts.find((item) => item.status === 'ACTIVE') ?? commercial.contracts[0]);
-    if (input.contractId && !contract) {
-      throw new UnprocessableEntityException({ code: 'CONTRACT_NOT_OF_SUBSCRIBER' });
-    }
-    const equipment = await this.installedEquipmentReadPort.getFirstInstalledAtCustomer(
+    const order = await this.authorizeTargetAndLoadExecutionOrder(
       input.executionOrderId,
-      subscriberId,
+      input.routerId,
+      input.ipv4NetworkId,
+      actor,
+      AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
     );
 
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const manager = qr.manager;
+      const initialParent = await this.requireNetworkParent(
+        manager,
+        tenantId,
+        input.routerId,
+        input.ipv4NetworkId,
+        false,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        initialParent.router.organizationSiteId,
+        AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+      );
+      this.assertNetworkParentActive(initialParent.router, initialParent.network);
+      this.assertEligibleOpenInstallation(order);
+      if (!order.assignedTechnicianId) {
+        throw new UnprocessableEntityException({ code: 'PROVISIONING_TECHNICIAN_REQUIRED' });
+      }
+      const subscriberId = order.subscriberId;
+      if (!subscriberId) throw this.orderNotEligible();
+      const commercial = await this.subscriberContextPort.getForSubscriber(subscriberId);
+      if (!commercial) throw this.orderNotEligible();
+      const contract = input.contractId
+        ? commercial.contracts.find((item) => item.id === input.contractId)
+        : (commercial.contracts.find((item) => item.status === 'ACTIVE') ??
+          commercial.contracts[0]);
+      if (input.contractId && !contract) {
+        throw new UnprocessableEntityException({ code: 'CONTRACT_NOT_OF_SUBSCRIBER' });
+      }
+      const equipment = await this.installedEquipmentReadPort.getFirstInstalledAtCustomer(
+        input.executionOrderId,
+        subscriberId,
+      );
+      this.assertReservationsOpen();
       await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `provisioning-order:${input.executionOrderId}`,
       ]);
-      const router = await manager.findOne(NetworkRouter, {
-        where: { id: input.routerId, tenantId, status: 'ACTIVE' },
+      const existingSnapshot = await manager.findOne(ServiceProvisioning, {
+        where: {
+          tenantId,
+          executionOrderId: input.executionOrderId,
+          status: In(['RESERVED', 'CERTIFIED']),
+        },
+        order: { createdAt: 'DESC' },
       });
-      const network = await manager.findOne(Ipv4Network, {
-        where: { id: input.ipv4NetworkId, tenantId, status: 'ACTIVE' },
-      });
-      if (!router || !network)
-        throw this.orderNotEligible('No se encontró un router o una red activa.');
-      if (network.routerId !== router.id) {
-        throw new ConflictException({ code: 'NETWORK_NOT_IN_ROUTER' });
-      }
+      // La reserva conserva L1 → L2 → filas; el catálogo usa L0 → L2 → filas.
+      await this.ipamService.lockIpv4Pools(manager, [
+        input.ipv4NetworkId,
+        ...(existingSnapshot ? [existingSnapshot.ipv4NetworkId] : []),
+      ]);
+      const { router, network } = await this.requireNetworkParent(
+        manager,
+        tenantId,
+        input.routerId,
+        input.ipv4NetworkId,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+      );
+      this.assertNetworkParentActive(router, network);
       if (!router.supportedControlMethods.includes(input.controlParams.method)) {
         throw new ConflictException({ code: 'CONTROL_METHOD_NOT_SUPPORTED' });
       }
+      await this.ipamService.assertActiveNetwork(manager, tenantId, network.id);
 
       const existing = await manager.findOne(ServiceProvisioning, {
         where: {
@@ -134,6 +208,7 @@ export class ServiceProvisioningService {
             serviceProvisioningId: existing.id,
             status: In(['RESERVED', 'ACTIVE']),
           },
+          lock: { mode: 'pessimistic_write' },
         });
         const requestedMatches = !input.requestedIp || assignment?.ip === input.requestedIp;
         const sameRequest =
@@ -144,6 +219,11 @@ export class ServiceProvisioningService {
           requestedMatches &&
           (input.contractId === undefined || existing.contractId === input.contractId);
         if (sameRequest && assignment) {
+          await this.ipamService.assertAssignmentNotLocallyProtected(
+            manager,
+            tenantId,
+            assignment.ip,
+          );
           return {
             row: existing,
             instruction: await this.routerProvisioningPort.apply({
@@ -228,7 +308,6 @@ export class ServiceProvisioningService {
             executionOrderId: order.id,
             routerId: router.id,
             ipv4NetworkId: network.id,
-            ip,
             controlMethod: input.controlParams.method,
             ...(existing ? { replacedId: existing.id } : {}),
           },
@@ -247,15 +326,34 @@ export class ServiceProvisioningService {
     actor: JwtPayload,
   ): Promise<ServiceProvisioningDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const order = await this.authorizeProvisioningAndLoadExecutionOrder(
+      id,
+      actor,
+      AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+    );
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `provisioning-order:${order.id}`,
+      ]);
       const row = await this.requireProvisioning(qr.manager, tenantId, id, true);
+      const { router, network } = await this.requireProvisioningNetworkParent(
+        qr.manager,
+        tenantId,
+        row,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+      );
+      this.assertNetworkParentActive(router, network);
       this.assertVersion(row, input.version);
       if (row.status === 'CERTIFIED' && row.certificationEvidenceId === input.evidenceId) {
         return row;
       }
+      this.assertEligibleOpenInstallation(order);
       if (row.status !== 'RESERVED')
         throw new ConflictException({ code: 'PROVISIONING_STATE_INVALID' });
-      const order = await this.requireEligibleOpenInstallation(row.executionOrderId);
       if (!order.assignedTechnicianId) {
         throw new UnprocessableEntityException({ code: 'PROVISIONING_TECHNICIAN_REQUIRED' });
       }
@@ -305,22 +403,52 @@ export class ServiceProvisioningService {
     actor: JwtPayload,
   ): Promise<ServiceProvisioningDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const order = await this.authorizeProvisioningAndLoadExecutionOrder(
+      id,
+      actor,
+      AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+      true,
+    );
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await qr.manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `provisioning-order:${order.id}`,
+      ]);
+      const rowSnapshot = await this.requireProvisioning(qr.manager, tenantId, id, false);
+      await this.ipamService.lockIpv4Pools(qr.manager, [rowSnapshot.ipv4NetworkId]);
       const row = await this.requireProvisioning(qr.manager, tenantId, id, true);
+      const { router, network } = await this.requireProvisioningNetworkParent(
+        qr.manager,
+        tenantId,
+        row,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
+      );
+      this.assertNetworkParentActive(router, network);
+      if (row.status === 'CERTIFIED') {
+        if (router.organizationSiteId === null) {
+          await this.networkAuthorization.requireTenantWideAction(
+            actor.sub,
+            AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+          );
+        } else {
+          await this.networkAuthorization.requireSiteAction(
+            actor.sub,
+            router.organizationSiteId,
+            AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+          );
+        }
+      }
       this.assertVersion(row, input.version);
       if (row.status !== 'RESERVED' && row.status !== 'CERTIFIED') {
         throw new ConflictException({ code: 'PROVISIONING_STATE_INVALID' });
       }
-      if (
-        row.status === 'CERTIFIED' &&
-        !(await this.actorHasPermission(actor, AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY))
-      ) {
-        throw new ForbiddenException({ code: 'FORBIDDEN' });
-      }
-      const order = await this.executionOrderReadPort.getExecutionSnapshot(row.executionOrderId);
-      if (!order || order.status !== ExecutionOrderStatus.IN_PROGRESS) {
+      if (order.status !== ExecutionOrderStatus.IN_PROGRESS) {
         throw this.orderNotEligible();
       }
+      await this.ipamService.assertActiveNetwork(qr.manager, tenantId, row.ipv4NetworkId);
       const fromStatus = row.status;
       const ipAssignment = await qr.manager.findOne(IpAssignment, {
         where: { tenantId, serviceProvisioningId: row.id, status: In(['RESERVED', 'ACTIVE']) },
@@ -356,10 +484,11 @@ export class ServiceProvisioningService {
           entityId: saved.id,
           newValue: {
             action: 'RELEASE',
-            reason: input.reason,
             releaseReason: 'MANUAL',
             fromStatus,
-            ip,
+            toStatus: saved.status,
+            reasonProvided: input.reason.trim().length > 0,
+            changedFields: ['status', 'ipAssignment'],
           },
         },
         qr.manager,
@@ -374,33 +503,70 @@ export class ServiceProvisioningService {
     actor: JwtPayload,
   ): Promise<ServiceProvisioningDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const order = await this.executionOrderReadPort.getExecutionSnapshot(input.executionOrderId);
-    if (
-      !order ||
-      order.workType !== WfmWorkType.INSTALLATION ||
-      order.isAnnulled ||
-      (order.status !== ExecutionOrderStatus.COMPLETED &&
-        order.status !== ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS) ||
-      (order.result !== ExecutionOrderResult.EXECUTED &&
-        order.result !== ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS) ||
-      !order.subscriberId
-    ) {
-      throw this.orderNotEligible();
-    }
-    if (!order.assignedTechnicianId) {
-      throw new UnprocessableEntityException({ code: 'PROVISIONING_TECHNICIAN_REQUIRED' });
-    }
-    if (order.assignedTechnicianId === actor.sub) {
-      throw new ForbiddenException({ code: 'PROVISIONING_CERTIFIER_IS_EXECUTOR' });
-    }
-    const subscriberId = order.subscriberId;
+    const order = await this.authorizeTargetAndLoadExecutionOrder(
+      input.executionOrderId,
+      input.routerId,
+      input.ipv4NetworkId,
+      actor,
+      AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
+    );
 
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const manager = qr.manager;
+      const initialParent = await this.requireNetworkParent(
+        manager,
+        tenantId,
+        input.routerId,
+        input.ipv4NetworkId,
+        false,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        initialParent.router.organizationSiteId,
+        AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
+      );
+      this.assertNetworkParentActive(initialParent.router, initialParent.network);
+      this.assertEligibleClosedInstallation(order);
+      if (!order.assignedTechnicianId) {
+        throw new UnprocessableEntityException({ code: 'PROVISIONING_TECHNICIAN_REQUIRED' });
+      }
+      if (order.assignedTechnicianId === actor.sub) {
+        throw new ForbiddenException({ code: 'PROVISIONING_CERTIFIER_IS_EXECUTOR' });
+      }
+      const subscriberId = order.subscriberId;
+      if (!subscriberId) throw this.orderNotEligible();
+      this.assertReservationsOpen();
+
       await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `provisioning-order:${input.executionOrderId}`,
       ]);
 
+      const existingSnapshot = await manager.findOne(ServiceProvisioning, {
+        where: {
+          tenantId,
+          executionOrderId: input.executionOrderId,
+          status: In(['ACTIVE', 'FAILED', 'RESERVED', 'CERTIFIED']),
+        },
+        order: { createdAt: 'DESC' },
+      });
+
+      await this.ipamService.lockIpv4Pools(manager, [
+        input.ipv4NetworkId,
+        ...(existingSnapshot ? [existingSnapshot.ipv4NetworkId] : []),
+      ]);
+      const { router, network } = await this.requireNetworkParent(
+        manager,
+        tenantId,
+        input.routerId,
+        input.ipv4NetworkId,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
+      );
+      this.assertNetworkParentActive(router, network);
+      await this.ipamService.assertActiveNetwork(manager, tenantId, network.id);
       let existing = await manager.findOne(ServiceProvisioning, {
         where: {
           tenantId,
@@ -414,6 +580,7 @@ export class ServiceProvisioningService {
       if (existing?.status === 'ACTIVE') {
         const assignment = await manager.findOne(IpAssignment, {
           where: { tenantId, serviceProvisioningId: existing.id, status: 'ACTIVE' },
+          lock: { mode: 'pessimistic_write' },
         });
         const requestMatches =
           existing.origin === 'REGULARIZED' &&
@@ -423,7 +590,14 @@ export class ServiceProvisioningService {
           JSON.stringify(existing.controlParams) === JSON.stringify(input.controlParams) &&
           (!input.requestedIp || this.ipText(assignment?.ip) === input.requestedIp) &&
           (input.contractId === undefined || existing.contractId === input.contractId);
-        if (requestMatches && assignment) return { row: existing, assignment, idempotent: true };
+        if (requestMatches && assignment) {
+          await this.ipamService.assertAssignmentNotLocallyProtected(
+            manager,
+            tenantId,
+            assignment.ip,
+          );
+          return { row: existing, assignment, idempotent: true };
+        }
         throw new ConflictException({ code: 'PROVISIONING_ALREADY_ACTIVE' });
       }
       if (existing && existing.status !== 'FAILED') {
@@ -440,6 +614,13 @@ export class ServiceProvisioningService {
           },
           lock: { mode: 'pessimistic_write' },
         });
+        if (reusableAssignment) {
+          await this.ipamService.assertAssignmentNotLocallyProtected(
+            manager,
+            tenantId,
+            reusableAssignment.ip,
+          );
+        }
       }
       const reuseFailedRow = Boolean(
         existing?.status === 'FAILED' &&
@@ -460,16 +641,6 @@ export class ServiceProvisioningService {
         reusableAssignment = null;
       }
 
-      const router = await manager.findOne(NetworkRouter, {
-        where: { id: input.routerId, tenantId, status: 'ACTIVE' },
-      });
-      const network = await manager.findOne(Ipv4Network, {
-        where: { id: input.ipv4NetworkId, tenantId, status: 'ACTIVE' },
-      });
-      if (!router || !network)
-        throw this.orderNotEligible('No se encontró un router o una red activa.');
-      if (network.routerId !== router.id)
-        throw new ConflictException({ code: 'NETWORK_NOT_IN_ROUTER' });
       if (!router.supportedControlMethods.includes(input.controlParams.method)) {
         throw new ConflictException({ code: 'CONTROL_METHOD_NOT_SUPPORTED' });
       }
@@ -563,9 +734,10 @@ export class ServiceProvisioningService {
           newValue: {
             action: 'REGULARIZE',
             executionOrderId: order.id,
-            ip: this.ipText(assignment.ip),
             routerId: router.id,
-            reason: input.reason,
+            status: saved.status,
+            reasonProvided: input.reason.trim().length > 0,
+            changedFields: ['status', 'ipAssignment'],
           },
         },
         manager,
@@ -602,30 +774,79 @@ export class ServiceProvisioningService {
     executionOrderId: string,
     actor: JwtPayload,
   ): Promise<ProvisioningOrderContextDto | TechnicianProvisioningViewDto> {
-    const permissions = await this.getActorPermissions(actor);
-    const hasProvisioningRead = permissions.includes(AccessPermissionKey.NETWORK_PROVISIONING_READ);
-    const hasExecutionRead = permissions.includes(
-      AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
-    );
-    if (!hasProvisioningRead && !hasExecutionRead)
-      throw new ForbiddenException({ code: 'FORBIDDEN' });
-
-    const order = await this.executionOrderReadPort.getExecutionSnapshot(executionOrderId);
-    if (!order) throw new NotFoundException('OT de ejecución no encontrada.');
-    if (!hasProvisioningRead && order.assignedTechnicianId !== actor.sub) {
-      throw new ForbiddenException({ code: 'FORBIDDEN' });
+    const reference = await this.requireExecutionReference(executionOrderId);
+    const provisioningReference =
+      await this.findLatestProvisioningAuthorizationReferenceForOrder(executionOrderId);
+    const [hasTenantProvisioningRead, hasExecutionRead] = await Promise.all([
+      this.effectivePermissionScope.authorizeTenantWide({
+        actorId: actor.sub,
+        permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_READ,
+      }),
+      this.effectivePermissionScope.authorizeTenantWide({
+        actorId: actor.sub,
+        permissionKey: AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_READ,
+      }),
+    ]);
+    let siteReadDecision: 'OUT_OF_SCOPE' | 'IN_SCOPE_NO_ACTION' | 'ALLOWED' | null = null;
+    let hasProvisioningRead = hasTenantProvisioningRead;
+    if (provisioningReference?.organizationSiteId) {
+      siteReadDecision = await this.effectivePermissionScope.evaluateSite({
+        actorId: actor.sub,
+        siteId: provisioningReference.organizationSiteId,
+        permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_READ,
+      });
+      hasProvisioningRead ||= siteReadDecision === 'ALLOWED';
     }
-    const service = await this.findLatestForOrder(executionOrderId);
-    const assignment = service ? await this.findAssignment(service.id) : null;
+
     if (!hasProvisioningRead) {
+      if (!hasExecutionRead || reference.assignedTechnicianId !== actor.sub) {
+        throw siteReadDecision === 'OUT_OF_SCOPE' ? this.resourceNotFound() : this.forbidden();
+      }
+      const service = provisioningReference
+        ? await this.findTechnicianProvisioningProjection(provisioningReference.id)
+        : null;
+      if (
+        service &&
+        (service.routerId !== provisioningReference?.routerId ||
+          service.ipv4NetworkId !== provisioningReference?.ipv4NetworkId)
+      ) {
+        throw this.resourceNotFound();
+      }
+      const assignment = service ? await this.findTechnicianAssignmentProjection(service.id) : null;
       // Proyección construida desde cero: no extenderla con datos del contexto completo.
       return {
         executionOrderId,
-        status: (service?.status as ServiceProvisioningStatus | null) ?? null,
+        status: service?.status ?? null,
         ip: assignment?.status === 'RELEASED' ? null : this.ipText(assignment?.ip),
         certified: service?.status === 'CERTIFIED' || service?.status === 'ACTIVE',
         updatedAt: service?.updatedAt?.toISOString() ?? null,
       };
+    }
+
+    const service = provisioningReference
+      ? await this.findProvisioningByIdForOrderContext(provisioningReference.id)
+      : null;
+    if (
+      service &&
+      (service.routerId !== provisioningReference?.routerId ||
+        service.ipv4NetworkId !== provisioningReference?.ipv4NetworkId)
+    ) {
+      throw this.resourceNotFound();
+    }
+    const order = await this.requireExecutionSnapshot(executionOrderId);
+    const assignment = service ? await this.findAssignment(service.id) : null;
+
+    let hasProvisioningCertify = await this.effectivePermissionScope.authorizeTenantWide({
+      actorId: actor.sub,
+      permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+    });
+    if (provisioningReference?.organizationSiteId && !hasProvisioningCertify) {
+      hasProvisioningCertify =
+        (await this.effectivePermissionScope.evaluateSite({
+          actorId: actor.sub,
+          siteId: provisioningReference.organizationSiteId,
+          permissionKey: AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+        })) === 'ALLOWED';
     }
 
     if (!order.subscriberId) throw this.orderNotEligible();
@@ -636,31 +857,15 @@ export class ServiceProvisioningService {
       order.subscriberId,
     );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const [planProfile, evidences] = await runInTenantSchema(
-      this.dataSource,
-      schemaName,
-      async (qr) => {
-        const profile = commercial.planId
-          ? await qr.manager.findOne(NetworkPlanProfile, {
-              where: { tenantId, planId: commercial.planId },
-            })
-          : null;
-        const evidenceRows = (await qr.manager
-          .createQueryBuilder(ExecutionOrderEvidence, 'evidence')
-          .select([
-            'evidence.id',
-            'evidence.evidenceType',
-            'evidence.requirementKey',
-            'evidence.createdAt',
-          ])
-          .where('evidence.execution_order_id = :executionOrderId', { executionOrderId })
-          .andWhere('evidence.tenant_id = :tenantId', { tenantId })
-          .andWhere('evidence.evidence_type IN (:...types)', { types: ['PHOTO', 'DOCUMENT'] })
-          .orderBy('evidence.created_at', 'ASC')
-          .getMany()) as ExecutionOrderEvidence[];
-        return [profile, evidenceRows] as const;
-      },
-    );
+    const planId = commercial.planId;
+    const planProfile = planId
+      ? await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+          qr.manager.findOne(NetworkPlanProfile, {
+            where: { tenantId, planId },
+          }),
+        )
+      : null;
+    const evidences = await this.executionOrderReadPort.listProvisioningEvidence(executionOrderId);
     const actorIds = [
       order.assignedTechnicianId,
       service?.reservedBy,
@@ -671,20 +876,21 @@ export class ServiceProvisioningService {
     const assignedTechnician = order.assignedTechnicianId
       ? (actors.get(order.assignedTechnicianId) ?? { id: order.assignedTechnicianId, name: null })
       : null;
-    const provisioning = service
-      ? await this.toServiceDto(
-          service,
-          assignment && service.status !== 'RELEASED'
-            ? await this.routerProvisioningPort.apply({
-                routerId: service.routerId,
-                ip: this.ipText(assignment.ip) ?? '',
-                controlParams: ControlParamsSchema.parse(service.controlParams),
-                ...(service.downloadMbps !== null ? { downloadMbps: service.downloadMbps } : {}),
-                ...(service.uploadMbps !== null ? { uploadMbps: service.uploadMbps } : {}),
-              })
-            : null,
-        )
-      : null;
+    let provisioning: ServiceProvisioningDto | null = null;
+    if (service) {
+      let routerInstruction: ServiceProvisioningDto['routerInstruction'] = null;
+      if (assignment && service.status !== 'RELEASED') {
+        this.assertReservationsOpen();
+        routerInstruction = await this.routerProvisioningPort.apply({
+          routerId: service.routerId,
+          ip: this.ipText(assignment.ip) ?? '',
+          controlParams: ControlParamsSchema.parse(service.controlParams),
+          ...(service.downloadMbps !== null ? { downloadMbps: service.downloadMbps } : {}),
+          ...(service.uploadMbps !== null ? { uploadMbps: service.uploadMbps } : {}),
+        });
+      }
+      provisioning = await this.toServiceDto(service, routerInstruction);
+    }
 
     return {
       executionOrder: {
@@ -694,7 +900,7 @@ export class ServiceProvisioningService {
         workType: order.workType,
         assignedTechnician,
         canCertify:
-          permissions.includes(AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY) &&
+          hasProvisioningCertify &&
           order.assignedTechnicianId !== null &&
           order.assignedTechnicianId !== actor.sub,
       },
@@ -717,16 +923,19 @@ export class ServiceProvisioningService {
         : null,
       evidences: evidences.map((evidence) => ({
         id: evidence.id,
-        evidenceType: evidence.evidenceType as 'PHOTO' | 'DOCUMENT',
+        evidenceType: evidence.evidenceType,
         requirementKey: evidence.requirementKey,
-        createdAt: evidence.createdAt.toISOString(),
+        createdAt: evidence.createdAt,
       })),
       provisioning,
       suggestedQueueName: order.executionOrderNumber.replace(/[^A-Za-z0-9._-]/g, '_'),
     };
   }
-
-  async listSubscriberProvisionings(subscriberId: string): Promise<ServiceProvisioningDto[]> {
+  async listSubscriberProvisionings(
+    subscriberId: string,
+    actor: JwtPayload,
+  ): Promise<ServiceProvisioningDto[]> {
+    await this.requireTenantPermission(actor, AccessPermissionKey.NETWORK_PROVISIONING_READ);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const rows = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.find(ServiceProvisioning, {
@@ -737,11 +946,15 @@ export class ServiceProvisioningService {
     return Promise.all(rows.map((row) => this.toServiceDto(row, null)));
   }
 
-  async listInbox(input: {
-    queue: ProvisioningInboxQueue;
-    page: number;
-    limit: number;
-  }): Promise<ListResponse<ProvisioningInboxRowDto>> {
+  async listInbox(
+    input: {
+      queue: ProvisioningInboxQueue;
+      page: number;
+      limit: number;
+    },
+    actor: JwtPayload,
+  ): Promise<ListResponse<ProvisioningInboxRowDto>> {
+    await this.requireTenantPermission(actor, AccessPermissionKey.NETWORK_PROVISIONING_READ);
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const page = Math.max(1, Math.trunc(input.page));
     const limit = Math.min(100, Math.max(1, Math.trunc(input.limit)));
@@ -849,10 +1062,95 @@ export class ServiceProvisioningService {
     };
   }
 
-  private async requireEligibleOpenInstallation(executionOrderId: string) {
+  private async requireExecutionReference(
+    executionOrderId: string,
+  ): Promise<ExecutionOrderReference> {
+    const reference = await this.executionOrderReadPort.getExecutionReference(executionOrderId);
+    if (!reference) throw this.resourceNotFound();
+    return reference;
+  }
+
+  private async requireExecutionSnapshot(executionOrderId: string): Promise<ExecutionSnapshot> {
     const order = await this.executionOrderReadPort.getExecutionSnapshot(executionOrderId);
+    if (!order) throw this.resourceNotFound();
+    return order;
+  }
+
+  private async authorizeTargetAndLoadExecutionOrder(
+    executionOrderId: string,
+    routerId: string,
+    networkId: string,
+    actor: JwtPayload,
+    permissionKey: AccessPermissionKey,
+  ): Promise<ExecutionSnapshot> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const { router, network } = await this.requireNetworkParent(
+        qr.manager,
+        tenantId,
+        routerId,
+        networkId,
+        false,
+      );
+      await this.networkAuthorization.requireSiteOrTenantWideAction(
+        actor.sub,
+        router.organizationSiteId,
+        permissionKey,
+      );
+      this.assertNetworkParentActive(router, network);
+    });
+    await this.requireExecutionReference(executionOrderId);
+    return this.requireExecutionSnapshot(executionOrderId);
+  }
+
+  private async authorizeProvisioningAndLoadExecutionOrder(
+    provisioningId: string,
+    actor: JwtPayload,
+    permissionKey: AccessPermissionKey,
+    requireCertifyWhenAlreadyCertified = false,
+  ): Promise<ExecutionSnapshot> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    const { row, router, network } = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr) => {
+        const row = await this.requireProvisioning(qr.manager, tenantId, provisioningId, false);
+        const { router, network } = await this.requireNetworkParent(
+          qr.manager,
+          tenantId,
+          row.routerId,
+          row.ipv4NetworkId,
+          false,
+        );
+        return { row, router, network };
+      },
+    );
+    await this.networkAuthorization.requireSiteOrTenantWideAction(
+      actor.sub,
+      router.organizationSiteId,
+      permissionKey,
+    );
+    this.assertNetworkParentActive(router, network);
+    await this.requireExecutionReference(row.executionOrderId);
+    if (requireCertifyWhenAlreadyCertified && row.status === 'CERTIFIED') {
+      if (router.organizationSiteId === null) {
+        await this.networkAuthorization.requireTenantWideAction(
+          actor.sub,
+          AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+        );
+      } else {
+        await this.networkAuthorization.requireSiteAction(
+          actor.sub,
+          router.organizationSiteId,
+          AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
+        );
+      }
+    }
+    return this.requireExecutionSnapshot(row.executionOrderId);
+  }
+
+  private assertEligibleOpenInstallation(order: ExecutionSnapshot): void {
     if (
-      !order ||
       order.workType !== WfmWorkType.INSTALLATION ||
       order.status !== ExecutionOrderStatus.IN_PROGRESS ||
       order.isAnnulled ||
@@ -860,7 +1158,134 @@ export class ServiceProvisioningService {
     ) {
       throw this.orderNotEligible();
     }
-    return order;
+  }
+
+  private assertEligibleClosedInstallation(order: ExecutionSnapshot): void {
+    if (
+      order.workType !== WfmWorkType.INSTALLATION ||
+      order.isAnnulled ||
+      (order.status !== ExecutionOrderStatus.COMPLETED &&
+        order.status !== ExecutionOrderStatus.COMPLETED_WITH_OBSERVATIONS) ||
+      (order.result !== ExecutionOrderResult.EXECUTED &&
+        order.result !== ExecutionOrderResult.EXECUTED_WITH_OBSERVATIONS) ||
+      !order.subscriberId
+    ) {
+      throw this.orderNotEligible();
+    }
+  }
+
+  private async requireNetworkParent(
+    manager: EntityManager,
+    tenantId: string,
+    routerId: string,
+    networkId: string,
+    lock = true,
+  ): Promise<{ router: NetworkRouter; network: Ipv4Network }> {
+    const router = await manager.findOne(NetworkRouter, {
+      where: { id: routerId, tenantId },
+      ...(lock ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
+    const network = await manager.findOne(Ipv4Network, {
+      where: { id: networkId, tenantId },
+      ...(lock ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
+    if (!router || !network || network.routerId !== router.id) {
+      throw this.resourceNotFound();
+    }
+    return { router, network };
+  }
+
+  private requireProvisioningNetworkParent(
+    manager: EntityManager,
+    tenantId: string,
+    row: ServiceProvisioning,
+  ): Promise<{ router: NetworkRouter; network: Ipv4Network }> {
+    return this.requireNetworkParent(manager, tenantId, row.routerId, row.ipv4NetworkId);
+  }
+
+  private async findLatestProvisioningAuthorizationReferenceForOrder(
+    executionOrderId: string,
+  ): Promise<ProvisioningAuthorizationReference | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // Solo proyecta las claves necesarias para resolver el scope persistido antes de autorizar.
+      const provisioning = await qr.manager.findOne(ServiceProvisioning, {
+        where: { tenantId, executionOrderId },
+        order: { createdAt: 'DESC' },
+        select: { id: true, routerId: true, ipv4NetworkId: true },
+      });
+      if (!provisioning) return null;
+
+      const router = await qr.manager.findOne(NetworkRouter, {
+        where: { tenantId, id: provisioning.routerId },
+        select: { id: true, organizationSiteId: true },
+      });
+      if (!router) throw this.resourceNotFound();
+      const network = await qr.manager.findOne(Ipv4Network, {
+        where: { tenantId, id: provisioning.ipv4NetworkId },
+        select: { id: true, routerId: true },
+      });
+      if (!network || network.routerId !== router.id) throw this.resourceNotFound();
+
+      return {
+        id: provisioning.id,
+        routerId: router.id,
+        ipv4NetworkId: network.id,
+        organizationSiteId: router.organizationSiteId,
+      };
+    });
+  }
+
+  private async findProvisioningByIdForOrderContext(
+    provisioningId: string,
+  ): Promise<ServiceProvisioning | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.manager.findOne(ServiceProvisioning, { where: { id: provisioningId, tenantId } }),
+    );
+  }
+
+  private async findTechnicianProvisioningProjection(
+    provisioningId: string,
+  ): Promise<TechnicianProvisioningProjection | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      (qr) =>
+        qr.manager.findOne(ServiceProvisioning, {
+          where: { id: provisioningId, tenantId },
+          select: {
+            id: true,
+            routerId: true,
+            ipv4NetworkId: true,
+            status: true,
+            updatedAt: true,
+          },
+        }) as Promise<TechnicianProvisioningProjection | null>,
+    );
+  }
+
+  private async findTechnicianAssignmentProjection(
+    serviceProvisioningId: string,
+  ): Promise<TechnicianAssignmentProjection | null> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      (qr) =>
+        qr.manager.findOne(IpAssignment, {
+          where: { tenantId, serviceProvisioningId },
+          order: { createdAt: 'DESC' },
+          select: { ip: true, status: true },
+        }) as Promise<TechnicianAssignmentProjection | null>,
+    );
+  }
+
+  private assertNetworkParentActive(router: NetworkRouter, network: Ipv4Network): void {
+    if (router.status !== 'ACTIVE' || network.status !== 'ACTIVE') {
+      throw this.orderNotEligible('No se encontró un router o una red activa.');
+    }
   }
 
   private async requireProvisioning(
@@ -873,7 +1298,7 @@ export class ServiceProvisioningService {
       where: { id, tenantId },
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
-    if (!row) throw new NotFoundException('Aprovisionamiento no encontrado.');
+    if (!row) throw this.resourceNotFound();
     return row;
   }
 
@@ -923,20 +1348,11 @@ export class ServiceProvisioningService {
           action: 'RELEASE',
           releaseReason: reason,
           fromStatus,
-          ip,
+          toStatus: released.status,
+          changedFields: ['status', 'ipAssignment'],
         },
       },
       manager,
-    );
-  }
-
-  private async findLatestForOrder(executionOrderId: string): Promise<ServiceProvisioning | null> {
-    const { tenantId, schemaName } = TenantContext.getOrThrow();
-    return runInTenantSchema(this.dataSource, schemaName, (qr) =>
-      qr.manager.findOne(ServiceProvisioning, {
-        where: { tenantId, executionOrderId },
-        order: { createdAt: 'DESC' },
-      }),
     );
   }
 
@@ -1031,15 +1447,21 @@ export class ServiceProvisioningService {
     return new Map(actors.map((actor) => [actor.id, actor]));
   }
 
-  private async getActorPermissions(actor: JwtPayload): Promise<AccessPermissionKey[]> {
-    return this.effectivePermissionsService.getEffectivePermissionsForUser(actor.sub);
-  }
-
-  private async actorHasPermission(
+  private async requireTenantPermission(
     actor: JwtPayload,
-    permission: AccessPermissionKey,
-  ): Promise<boolean> {
-    return (await this.getActorPermissions(actor)).includes(permission);
+    permissionKey: AccessPermissionKey,
+  ): Promise<void> {
+    if (
+      !(await this.effectivePermissionScope.authorizeTenantWide({
+        actorId: actor.sub,
+        permissionKey,
+      }))
+    ) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'No tienes autorización para esta operación.',
+      });
+    }
   }
 
   private async toServiceDtoWithInstruction(
@@ -1083,6 +1505,28 @@ export class ServiceProvisioningService {
     return new UnprocessableEntityException({
       code: 'PROVISIONING_ORDER_NOT_ELIGIBLE',
       message,
+    });
+  }
+
+  private resourceNotFound(): NotFoundException {
+    return new NotFoundException({
+      code: 'RESOURCE_NOT_FOUND',
+      message: 'La referencia no está disponible para esta operación.',
+    });
+  }
+
+  private forbidden(): ForbiddenException {
+    return new ForbiddenException({
+      code: 'FORBIDDEN',
+      message: 'No tienes autorización para esta operación.',
+    });
+  }
+
+  private assertReservationsOpen(): void {
+    if (!this.reservationsPaused) return;
+    throw new ConflictException({
+      code: 'RESERVATIONS_PAUSED',
+      message: 'La pausa temporal de aprovisionamiento impide crear o reemitir asignaciones.',
     });
   }
 }

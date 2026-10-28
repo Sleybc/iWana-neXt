@@ -1,11 +1,13 @@
 # Contrato de componente — RadioCardGroup para @iwana/ui
 
-**Versión:** 1.0  
-**Fecha:** 2026-10-11  
-**Estado:** Aprobado por AI-DS-OWNER en carril rápido; congelado para F1  
+**Versión:** 1.1  
+**Fecha:** 2026-10-27 (v1.0: 2026-10-11)  
+**Estado:** Aprobado por AI-DS-OWNER en carril rápido; congelado para F1; v1.1 por veredicto AI-DS-OWNER del 2026-10-27  
 **Productor:** AI-DS-OWNER (ds-owner)  
 **Plan:** [MOD11: registro compacto de equipos y materiales](../plans/2026-10-11-mod11-consola-registro-material.md)  
 **Encargo:** [PROMPT-MOD11-CONSOLA-REGISTRO-MATERIAL-IMPL-v1.0](../prompts/PROMPT-MOD11-CONSOLA-REGISTRO-MATERIAL-IMPL-v1.0.md)
+
+**Cambio v1.0 → v1.1:** incorpora la extensión D9 de MOD13 (matriz de interfaces IPv4, fila D9): las props `aria-describedby` y `aria-invalid`, reenviadas al `fieldset` para asociar la ayuda y el error del grupo. Reafirma la regla 5: el `fieldset` conserva su rol `group` implícito y no lleva `role="radiogroup"`. La implementación de MOD13 había añadido ese rol fuera del contrato y rompió tres suites de consumidores; AI-DS-OWNER lo rechazó. No requiere ADR.
 
 ## 1. Propósito y decisión
 
@@ -36,6 +38,8 @@ La repetición justifica una primitive única. El contrato no cambia ninguno de 
 | options | readonly RadioCardOption[] | Sí | Opciones en el orden que decide la pantalla. Cada value debe ser único. |
 | density | comfortable o compact | No | Densidad visual; default comfortable. Ambas densidades mantienen min-h-11. |
 | disabled | boolean | No | Deshabilita el fieldset completo; default false. |
+| aria-describedby | string | No | IDs de la ayuda y del error del grupo, reenviados al fieldset. El error debe existir como texto visible. (v1.1) |
+| aria-invalid | boolean | No | Refuerzo del error, reenviado al fieldset solo cuando es true; con false no se emite el atributo. No sustituye al texto enlazado ni se propaga a cada radio. (v1.1) |
 
 ### Opción
 
@@ -88,7 +92,7 @@ Reglas del marcado:
 2. Un input nativo type=radio por opción, todos con el mismo name; cada input permanece visible y operable.
 3. El input controlado usa checked según value. onChange solo emite el valor de la opción.
 4. La tarjeta es un label asociado a su input. El título, la descripción y meta forman el contenido legible de la opción.
-5. No se agrega role=radiogroup ni role=radio: el fieldset y los radios nativos ya expresan la semántica.
+5. No se agrega role=radiogroup ni role=radio: el fieldset y los radios nativos ya expresan la semántica. Se mantiene en v1.1 aunque el grupo exponga aria-invalid.
 6. No se implementa navegación de flechas, Home, End ni Space en JavaScript. Se conserva la navegación nativa del navegador y del sistema operativo.
 7. Con options vacío, la pantalla no monta el grupo: presenta su estado vacío. Las opciones deben tener values únicos.
 
@@ -105,7 +109,7 @@ Reglas del marcado:
 | Grupo deshabilitado | Atributo disabled en fieldset; ninguna opción cambia de valor. |
 | Carga | La primitive no consulta datos ni presenta spinner. El consumidor deshabilita el grupo y muestra el skeleton contextual si la carga lo requiere. |
 | Vacío | Lo resuelve el consumidor; no se monta un grupo sin opciones. |
-| Error | Lo resuelve el formulario consumidor junto al grupo, con texto y recuperación. |
+| Error | Lo resuelve el formulario consumidor junto al grupo, con texto y recuperación. El consumidor enlaza ese texto con aria-describedby y marca aria-invalid; al fallar el envío, además lo anuncia con un resumen role=alert que enlace al grupo. (v1.1) |
 | Éxito | Lo comunica el consumidor tras la acción; RadioCardGroup no guarda ni confirma datos. |
 | Solo lectura | No se representa como grupo deshabilitado. El consumidor muestra el valor como texto de lectura. |
 
@@ -126,6 +130,7 @@ Los fondos oscuros usan únicamente la familia dark-surface-* del sistema: dark-
 - disabledReason se muestra dentro de la etiqueta accesible del radio deshabilitado; si se renderiza fuera del label, se asocia con aria-describedby. No basta con bajar opacidad.
 - Selección, foco y deshabilitado se distinguen por forma, borde, indicador nativo y texto, además del color.
 - Si el grupo necesita instrucciones, el consumidor las coloca en texto accesible junto al fieldset. Los errores y los mensajes de resultado se anuncian desde el formulario consumidor.
+- aria-invalid es un refuerzo, no el canal del error (v1.1). ARIA 1.2 lo considera un uso global deprecado en un group; axe-core 4.11 no lo reporta. El error siempre vive en texto visible enlazado por aria-describedby y, al fallar el envío, en un resumen role=alert del consumidor. Se revisa si el estándar de referencia cambia.
 
 ## 7. Decisión sobre QuantityStepper
 

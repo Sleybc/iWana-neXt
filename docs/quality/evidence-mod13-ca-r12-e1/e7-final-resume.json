@@ -1,0 +1,101 @@
+{
+  "evidence": "E7_final single repeatable occurrence resume and cut",
+  "date": "2026-10-27",
+  "database": "iwana_it_mod13_ca_r12_e7_final",
+  "redisDb": 4,
+  "api": {
+    "pid": 22980,
+    "host": "127.0.0.1",
+    "port": 3010,
+    "healthDirect": 200,
+    "healthProxy3011": 200,
+    "networkIpProtection": "PENDING",
+    "reservationsPaused": true
+  },
+  "preflight": {
+    "buildMatchesE7Protector": true,
+    "legacyHashesMatch": "6/6",
+    "candidateIds": 800,
+    "uniqueCandidateIds": 800,
+    "matchingInProgressInstallationSnapshots": 1,
+    "candidatesWithoutSnapshots": 799,
+    "interfaces": 2,
+    "addresses": 2,
+    "referentialInconsistencies": 0,
+    "ipProtectionLocalProbe": {
+      "result": "IP_PROTECTED_BY_INFRASTRUCTURE",
+      "assignmentsBeforeDuringAfter": [2000, 2000, 2000]
+    },
+    "legacyPoolProbe": {
+      "result": "allowed_then_rolled_back",
+      "assignmentsBeforeDuringAfter": [2000, 2001, 2000]
+    },
+    "queuesPaused": 17,
+    "waiting": 0,
+    "active": 0,
+    "delayed": 3,
+    "failed": 0,
+    "pausedJobs": 1,
+    "repeatables": 3
+  },
+  "authorizedOccurrence": {
+    "name": "reconcile-network-provisioning",
+    "jobIdSha256": "53b6bb678abad9f9a6b0ad1a1682e8af4b56dbc5f923b7548525d3dbdce93103",
+    "payloadSha256": "6da341b31bfc42e2d6184c8c4f0d2e975b02fe421c8798b1bac4e83b007634f8",
+    "repeatableKeySha256": "c4820437b90115997812f5f48f0517edc4761c1653d63421ab6fbf302a1e9c3d",
+    "attemptsMadeBefore": 0,
+    "tenantAndSchemaMatched": true,
+    "manualJob": false,
+    "resumedOnlyThisQueue": true,
+    "terminalEvent": "completed",
+    "startedAt": "2026-10-27T19:51:42.240Z",
+    "completedAt": "2026-10-27T19:51:42.423Z",
+    "repausedImmediately": true,
+    "noRetryOrSecondAdvance": true
+  },
+  "batchTrace": {
+    "path": "e7-final-resume-batches.jsonl",
+    "sha256": "9537ed5a1e976e592474f2cf2ec051f2c1cc1240bc3a2d1f40299f86bcf2cfc3",
+    "records": 8,
+    "requestedPerBatch": 100,
+    "resultCounts": [0, 1, 0, 0, 0, 0, 0, 0],
+    "allOutcomes": "ok",
+    "firstAt": "2026-10-27T19:51:42.269Z",
+    "lastAt": "2026-10-27T19:51:42.292Z"
+  },
+  "runnerWrapperIncident": {
+    "runnerExitCode": 1,
+    "cause": "The postflight assertion compared the reconcile queue-scoped repeatable count (1) with the global repeatable count expectation (3).",
+    "bullMqTerminalEvent": "completed",
+    "jobFailure": false,
+    "retries": 0,
+    "correctCounts": {
+      "reconcileQueueRepeatables": 1,
+      "globalRepeatables": 3
+    }
+  },
+  "postflight": {
+    "all17QueuesPaused": true,
+    "waiting": 0,
+    "active": 0,
+    "delayed": 3,
+    "failed": 0,
+    "pausedJobs": 0,
+    "prioritized": 0,
+    "waitingChildren": 0,
+    "completed": 0,
+    "dlqJobs": 0,
+    "repeatables": 3,
+    "nextReconcileMillis": 1793131200000
+  },
+  "postflightChecks": {
+    "legacyHashesMatch": "6/6",
+    "executionOrderAndSnapshotsIntact": true,
+    "localIpStillDenied": true,
+    "legacyReserveStillAllowedAndRolledBack": true,
+    "apiBuildHashesUnchanged": true,
+    "noOtherQueueResumed": true
+  },
+  "noUuidSchemaAddressPayloadOrSecretValuesEmitted": true,
+  "gate": "E7 evidence ready for SEC re-review; G6 remains open pending independent review."
+}

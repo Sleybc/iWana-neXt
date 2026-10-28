@@ -1,0 +1,72 @@
+{
+  "database": "iwana_it_mod13_ca_r12_e7_resume",
+  "legacyMatches": "6/6",
+  "legacy": [
+    {
+      "table": "organization_sites",
+      "count": 3,
+      "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26",
+      "match": true
+    },
+    {
+      "table": "network_routers",
+      "count": 20,
+      "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90",
+      "match": true
+    },
+    {
+      "table": "ipv4_networks",
+      "count": 50,
+      "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2",
+      "match": true
+    },
+    {
+      "table": "service_provisionings",
+      "count": 2200,
+      "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49",
+      "match": true
+    },
+    {
+      "table": "ip_assignments",
+      "count": 2000,
+      "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb",
+      "match": true
+    },
+    {
+      "table": "audit_logs",
+      "count": 50,
+      "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8",
+      "match": true
+    }
+  ],
+  "executionOrders": {
+    "rows": 1,
+    "fullSha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb",
+    "projectionSha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c",
+    "fullMatchesV5": true,
+    "projectionMatchesV5": true
+  },
+  "candidates": {
+    "total": 800,
+    "distinct_ids": 800,
+    "reserved": 700,
+    "certified": 100
+  },
+  "snapshots": {
+    "with_snapshot": 1,
+    "without_snapshot": 799,
+    "in_progress_installation": 1
+  },
+  "interfaces": {
+    "interfaces": 2,
+    "addresses": 2
+  },
+  "referential": {
+    "routers_without_site": 0,
+    "pools_without_router": 0,
+    "services_without_router_or_pool": 0,
+    "assignments_without_service_or_pool": 0,
+    "assignment_link_mismatches": 0
+  },
+  "referentialZero": true
+}

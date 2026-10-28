@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "step": "R-5 reset parcial",
+  "criterion": "v1.4 3: un paso a medias de R-4 a R-7 se repite completo",
+  "database": "iwana_it_mod13_ca_r12_e7_resume",
+  "before": {
+    "tenant_users": 0,
+    "tenant_tokens": 0,
+    "platform_users": 1,
+    "principal_set": 0
+  },
+  "deleted": {
+    "tenantUsers": 0,
+    "tenantRefreshTokens": 0,
+    "platformUsers": 1
+  },
+  "after": {
+    "tenant_users": 0,
+    "tenant_tokens": 0,
+    "platform_users": 0,
+    "principal_set": 0
+  },
+  "networkIpProtection": "PENDING"
+}

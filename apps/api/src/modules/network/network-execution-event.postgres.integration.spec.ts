@@ -14,6 +14,7 @@ import {
   NetworkSetting,
   runInTenantSchema,
   ServiceProvisioning,
+  Tenant,
   TenantContext,
 } from '@iwana/db';
 import {
@@ -29,6 +30,7 @@ import {
 } from '@iwana/shared';
 import { CreateNetworkCatalog1600000000000 } from '../../../../../packages/database/src/migrations/tenant/160_network_catalog';
 import { CreateNetworkProvisioning1610000000000 } from '../../../../../packages/database/src/migrations/tenant/161_network_provisioning';
+import { CreateRouterInterfacesAndIpv4Addresses1650000000000 } from '../../../../../packages/database/src/migrations/tenant/165_router_interfaces_and_ipv4_addresses';
 import { EnableBtreeGist1784419216000 } from '../../../../../packages/database/src/migrations/public/028_enable_btree_gist';
 import type { ExecutionSnapshot } from '../tasks/ports/execution-order-read.port';
 import { AuditService } from '../audit/audit.service';
@@ -52,7 +54,9 @@ import {
 import { IpamService } from './ipam.service';
 import { ManualRouterProvisioningAdapter } from './adapters/manual-router-provisioning.adapter';
 import { NetworkActorReadPort } from './ports/network-actor-read.port';
+import { TenantLifecycleReadAdapter } from '../tenant/ports/tenant-lifecycle-read.adapter';
 import { ServiceProvisioningService } from './service-provisioning.service';
+import { NetworkAuthorizationFacade } from './authorization/network-authorization.facade';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -298,6 +302,7 @@ describeWithServices(
           NetworkRouter,
           NetworkSetting,
           ServiceProvisioning,
+          Tenant,
         ],
         migrations: [],
         logging: false,
@@ -312,6 +317,7 @@ describeWithServices(
         await setup.query(`SET search_path TO "${schemaName}"`);
         await new CreateNetworkCatalog1600000000000().up(setup);
         await new CreateNetworkProvisioning1610000000000().up(setup);
+        await new CreateRouterInterfacesAndIpv4Addresses1650000000000().up(setup);
         await setup.query(
           `INSERT INTO network_routers
            (id, tenant_id, name, management_host, supported_control_methods, created_by)
@@ -461,6 +467,8 @@ describeWithServices(
         eventEmitter,
         executionOrderReadPort as never,
         auditService,
+        new IpamService(dataSource),
+        new TenantLifecycleReadAdapter(dataSource.getRepository(Tenant)),
       );
       const worker = new Worker(
         'network-execution-events',
@@ -541,6 +549,8 @@ describeWithServices(
         eventEmitter,
         executionOrderReadPort as never,
         auditService,
+        new IpamService(dataSource),
+        new TenantLifecycleReadAdapter(dataSource.getRepository(Tenant)),
       );
       const worker = new Worker(
         'network-execution-events',
@@ -659,6 +669,8 @@ describeWithServices(
         eventEmitter,
         { getExecutionSnapshot: jest.fn().mockResolvedValue(snapshot()) } as never,
         auditService,
+        new IpamService(dataSource),
+        new TenantLifecycleReadAdapter(dataSource.getRepository(Tenant)),
       );
       const worker = new Worker(
         'network-execution-events',
@@ -715,8 +727,13 @@ describeWithServices(
       let currentOrder = snapshot({ status: ExecutionOrderStatus.IN_PROGRESS, result: null });
       const executionOrderReadPort = {
         getExecutionSnapshot: jest.fn().mockImplementation(async () => currentOrder),
+        getExecutionReference: jest.fn().mockImplementation(async () => ({
+          id: executionOrderId,
+          assignedTechnicianId: null,
+        })),
         getExecutionSnapshots: jest.fn(),
         hasEvidence: jest.fn(),
+        listProvisioningEvidence: jest.fn(),
         listInstallationOrders: jest.fn(),
         hasOpenWithdrawalOrders: jest.fn(),
       };
@@ -745,7 +762,10 @@ describeWithServices(
         } as never,
         { getFirstInstalledAtCustomer: jest.fn().mockResolvedValue(null) } as never,
         { findByIds: jest.fn().mockResolvedValue([]) } as unknown as NetworkActorReadPort,
-        { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) } as never,
+        { authorizeTenantWide: jest.fn().mockResolvedValue(true) } as never,
+        new NetworkAuthorizationFacade({
+          authorizeTenantWide: jest.fn().mockResolvedValue(true),
+        } as never),
         new ManualRouterProvisioningAdapter(),
         eventEmitter,
       );
@@ -815,14 +835,12 @@ describeWithServices(
     it('CA-NET-08: reconcilia una OT cancelada y libera servicio e IP con RECONCILED', async () => {
       await insertCertifiedService();
       const executionOrderReadPort = {
-        getExecutionSnapshots: jest
-          .fn()
-          .mockResolvedValue([
-            snapshot({
-              status: ExecutionOrderStatus.CANCELLED,
-              result: ExecutionOrderResult.CANCELLED,
-            }),
-          ]),
+        getExecutionSnapshots: jest.fn().mockResolvedValue([
+          snapshot({
+            status: ExecutionOrderStatus.CANCELLED,
+            result: ExecutionOrderResult.CANCELLED,
+          }),
+        ]),
       };
       const processor = new NetworkProvisioningReconcilerProcessor(
         dataSource,
@@ -830,6 +848,8 @@ describeWithServices(
         executionOrderReadPort as never,
         auditService,
         eventEmitter,
+        new IpamService(dataSource),
+        new TenantLifecycleReadAdapter(dataSource.getRepository(Tenant)),
       );
       const queued = await reconcileQueue.add(
         NETWORK_PROVISIONING_RECONCILE_JOB,

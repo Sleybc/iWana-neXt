@@ -16,6 +16,8 @@ export interface OperationalSidePeekProps {
   size?: 'default' | 'wide';
   busy?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /** Destino alternativo de retorno cuando la vista se abrió sin un elemento de origen. */
+  returnFocusFallbackRef?: RefObject<HTMLElement | null>;
   footer?: ReactNode;
   onBeforeClose?: () => boolean | Promise<boolean>;
   children: ReactNode;
@@ -32,6 +34,7 @@ export function OperationalSidePeek({
   size = 'default',
   busy = false,
   initialFocusRef,
+  returnFocusFallbackRef,
   footer,
   onBeforeClose,
   children,
@@ -70,6 +73,7 @@ export function OperationalSidePeek({
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     previousFocusRef.current = opener;
+    const fallbackFocusTarget = returnFocusFallbackRef?.current ?? null;
     const explicitTarget = initialFocusRef?.current;
     const focusTarget = explicitTarget ?? focusables()[0] ?? panelRef.current;
     const cancelInitialFocus = scheduleInitialFocus(focusTarget);
@@ -77,9 +81,17 @@ export function OperationalSidePeek({
     return () => {
       cancelInitialFocus();
       document.body.classList.remove('overflow-hidden');
-      previousFocusRef.current?.focus();
+      const previousFocus = previousFocusRef.current;
+      const canRestorePreviousFocus =
+        previousFocus?.isConnected &&
+        previousFocus !== document.body &&
+        previousFocus !== document.documentElement;
+      const focusTarget = canRestorePreviousFocus
+        ? previousFocus
+        : (fallbackFocusTarget ?? previousFocus);
+      focusTarget?.focus();
     };
-  }, [focusables, initialFocusRef, open, scheduleInitialFocus]);
+  }, [focusables, initialFocusRef, open, returnFocusFallbackRef, scheduleInitialFocus]);
 
   useEffect(() => {
     if (!open) return;

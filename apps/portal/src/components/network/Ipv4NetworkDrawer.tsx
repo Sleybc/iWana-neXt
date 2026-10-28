@@ -11,8 +11,9 @@ import {
 } from '@iwana/shared';
 import type {
   CreateIpv4NetworkBody,
-  Ipv4NetworkDto,
+  Ipv4NetworkExtendedDto,
   RouterDto,
+  RouterInterfaceDto,
   UpdateIpv4NetworkBody,
 } from '@iwana/shared';
 import { Input } from '@iwana/ui';
@@ -25,17 +26,25 @@ import {
   NetworkFormField,
   networkFormControlProps,
 } from './NetworkCatalogDrawerFrame';
-import { getNetworkApiErrorMessage, getControlMethodLabel } from './network-catalog-labels';
+import {
+  getNetworkApiErrorMessage,
+  getControlMethodLabel,
+  getInterfaceStatusLabel,
+  NETWORK_CATALOG_FIELD_HINTS,
+} from './network-catalog-labels';
+import { AssistedIpv4NetworkDrawer } from './AssistedIpv4NetworkDrawer';
 
 interface Ipv4NetworkDrawerProps {
   open: boolean;
-  network: Ipv4NetworkDto | null;
+  network: Ipv4NetworkExtendedDto | null;
+  routerContext?: RouterDto | null;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }
 
 interface NetworkFormValues {
   routerId: string;
+  interfaceId: string;
   name: string;
   cidr: string;
   gateway: string;
@@ -56,6 +65,7 @@ function splitExcludedIps(value: string): string[] | undefined {
 const networkFormSchema = z
   .object({
     routerId: z.string(),
+    interfaceId: z.string(),
     name: z.string(),
     cidr: z.string(),
     gateway: z.string(),
@@ -113,10 +123,11 @@ const networkFormSchema = z
     }
   });
 
-function formDefaults(network: Ipv4NetworkDto | null): NetworkFormValues {
+function formDefaults(network: Ipv4NetworkExtendedDto | null): NetworkFormValues {
   if (!network) {
     return {
       routerId: '',
+      interfaceId: '',
       name: '',
       cidr: '',
       gateway: '',
@@ -129,6 +140,7 @@ function formDefaults(network: Ipv4NetworkDto | null): NetworkFormValues {
 
   return {
     routerId: network.routerId,
+    interfaceId: network.interfaceId ?? '',
     name: network.name,
     cidr: network.cidr,
     gateway: network.gateway,
@@ -139,11 +151,14 @@ function formDefaults(network: Ipv4NetworkDto | null): NetworkFormValues {
   };
 }
 
-export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4NetworkDrawerProps) {
+function LegacyIpv4NetworkEditor({ open, network, onClose, onSaved }: Ipv4NetworkDrawerProps) {
   const formId = `ipv4-network-${useId()}`;
   const [routers, setRouters] = useState<RouterDto[]>([]);
   const [routerOptionsLoading, setRouterOptionsLoading] = useState(false);
   const [routerOptionsError, setRouterOptionsError] = useState<string | null>(null);
+  const [interfaces, setInterfaces] = useState<RouterInterfaceDto[]>([]);
+  const [interfacesLoading, setInterfacesLoading] = useState(false);
+  const [interfacesError, setInterfacesError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { register, handleSubmit, reset, watch, formState } = useForm<NetworkFormValues>({
@@ -191,18 +206,57 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
     };
   }, [network, open]);
 
+  useEffect(() => {
+    if (!open || !network) return;
+    let active = true;
+    setInterfacesLoading(true);
+    setInterfacesError(null);
+    void networkApi
+      .listRouterInterfaces(network.routerId, { page: 1, limit: 100 })
+      .then((result) => {
+        if (active) setInterfaces(result.data);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setInterfacesError(
+            getNetworkApiErrorMessage(error, 'No pudimos cargar las interfaces del router.'),
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setInterfacesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [network, open]);
+
   const onSubmit = handleSubmit(async (formValues) => {
     setIsSubmitting(true);
     setSubmitError(null);
     const excludedIps = splitExcludedIps(formValues.excludedIpsText);
     try {
       if (network) {
+        const currentInterfaceId = network.interfaceId ?? '';
+        const interfaceChanged = formValues.interfaceId !== currentInterfaceId;
+        const selectedInterface = interfaces.find((item) => item.id === formValues.interfaceId);
+        if (interfaceChanged && formValues.interfaceId && !selectedInterface) {
+          throw new Error('No pudimos validar la interfaz seleccionada. Vuelve a cargar la lista.');
+        }
         const body: UpdateIpv4NetworkBody = UpdateIpv4NetworkBodySchema.parse({
           name: formValues.name.trim(),
           assignableFrom: formValues.assignableFrom.trim(),
           assignableTo: formValues.assignableTo.trim(),
           ...(excludedIps ? { excludedIps } : { excludedIps: [] }),
           defaultControlMethod: formValues.defaultControlMethod,
+          ...(interfaceChanged
+            ? formValues.interfaceId && selectedInterface
+              ? {
+                  interfaceId: selectedInterface.id,
+                  interfaceVersion: selectedInterface.version,
+                }
+              : { interfaceId: null }
+            : {}),
           version: network.version,
         });
         await networkApi.updateIpv4Network(network.id, body);
@@ -287,6 +341,39 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
                 />
               </NetworkFormField>
             </div>
+            <NetworkFormField
+              id={`${formId}-interface`}
+              label="Interfaz asociada"
+              hint="Opcional. La red conserva su bloque y puerta de enlace al cambiar esta asociación."
+            >
+              <select
+                {...register('interfaceId')}
+                id={`${formId}-interface`}
+                className="portal-input-surface min-h-11 w-full px-3 py-2 text-sm text-gray-900 dark:text-white"
+                disabled={interfacesLoading || Boolean(interfacesError)}
+                aria-describedby={interfacesError ? `${formId}-interface-error` : undefined}
+              >
+                <option value="">Sin interfaz asociada</option>
+                {interfaces.map((item) => (
+                  <option
+                    key={item.id}
+                    value={item.id}
+                    disabled={item.status !== 'ACTIVE' && item.id !== network.interfaceId}
+                  >
+                    {item.name} · {getInterfaceStatusLabel(item.status)}
+                  </option>
+                ))}
+              </select>
+              {interfacesLoading ? <PortalSkeletonBlock className="mt-2 h-8 w-full" /> : null}
+              {interfacesError ? (
+                <p
+                  id={`${formId}-interface-error`}
+                  className="text-sm text-red-700 dark:text-red-300"
+                >
+                  {interfacesError}
+                </p>
+              ) : null}
+            </NetworkFormField>
           </div>
         ) : (
           <>
@@ -323,11 +410,17 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
           </>
         )}
 
-        <NetworkFormField id={`${formId}-name`} label="Nombre" error={errors.name?.message}>
+        <NetworkFormField
+          id={`${formId}-name`}
+          label="Nombre de la red"
+          hint={NETWORK_CATALOG_FIELD_HINTS.networkName}
+          error={errors.name?.message}
+        >
           <Input
             {...register('name')}
-            {...networkFormControlProps(`${formId}-name`, errors.name?.message)}
+            {...networkFormControlProps(`${formId}-name`, errors.name?.message, true)}
             maxLength={120}
+            placeholder="Clientes sector norte"
           />
         </NetworkFormField>
 
@@ -335,7 +428,7 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
           <NetworkFormField
             id={`${formId}-cidr-create`}
             label="Red IPv4 (CIDR)"
-            hint="Usa una máscara entre /16 y /30."
+            hint={NETWORK_CATALOG_FIELD_HINTS.cidr}
             error={errors.cidr?.message}
           >
             <Input
@@ -351,11 +444,16 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
           <NetworkFormField
             id={`${formId}-gateway-create`}
             label="Gateway"
+            hint={NETWORK_CATALOG_FIELD_HINTS.gateway}
             error={errors.gateway?.message}
           >
             <Input
               {...register('gateway')}
-              {...networkFormControlProps(`${formId}-gateway-create`, errors.gateway?.message)}
+              {...networkFormControlProps(
+                `${formId}-gateway-create`,
+                errors.gateway?.message,
+                true,
+              )}
               inputMode="decimal"
               autoComplete="off"
             />
@@ -395,7 +493,7 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
         <NetworkFormField
           id={`${formId}-excluded-ips`}
           label="Direcciones excluidas"
-          hint="Opcional, hasta 256 direcciones IPv4 separadas por comas."
+          hint={NETWORK_CATALOG_FIELD_HINTS.excludedIps}
           error={errors.excludedIpsText?.message}
         >
           <Input
@@ -427,5 +525,27 @@ export function Ipv4NetworkDrawer({ open, network, onClose, onSaved }: Ipv4Netwo
         </NetworkFormField>
       </div>
     </NetworkCatalogDrawerFrame>
+  );
+}
+
+export function Ipv4NetworkDrawer({
+  open,
+  network,
+  routerContext = null,
+  onClose,
+  onSaved,
+}: Ipv4NetworkDrawerProps) {
+  if (!network) {
+    return (
+      <AssistedIpv4NetworkDrawer
+        open={open}
+        routerContext={routerContext}
+        onClose={onClose}
+        onSaved={onSaved}
+      />
+    );
+  }
+  return (
+    <LegacyIpv4NetworkEditor open={open} network={network} onClose={onClose} onSaved={onSaved} />
   );
 }

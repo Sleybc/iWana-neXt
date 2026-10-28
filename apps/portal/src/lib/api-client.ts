@@ -136,22 +136,38 @@ import type {
   LifecycleTerminateCommand,
 } from '@iwana/shared';
 import type {
+  AssistedCreateIpv4NetworkBody,
   CertifyProvisioningBody,
+  CatalogMetaDto,
+  CorrectRouterInterfaceIpv4AddressBody,
+  CorrectRouterInterfaceIpv4AddressResponseDto,
+  ConvertLegacyLanBody,
   CreateIpv4NetworkBody,
   CreateRouterBody,
-  Ipv4NetworkDto,
+  CreateRouterInterfaceBody,
+  CreateRouterInterfaceConversionResponseDto,
+  CreateRouterInterfaceIpv4AddressBody,
+  Ipv4NetworkExtendedDto,
   NetworkSettingsDto,
   PlanProfileDto,
   ProvisioningInboxQueue,
   ProvisioningInboxRowDto,
+  ProvisioningMetaDto,
   ProvisioningOrderContextDto,
   RegularizeProvisioningBody,
   ReleaseProvisioningBody,
   ReserveProvisioningBody,
+  RouterDetailDto,
+  RouterInterfaceDto,
+  RouterInterfaceIpv4AddressDto,
+  RouterListDto,
+  RouterSiteOptionDto,
   RouterDto,
   ServiceProvisioningDto,
   TechnicianProvisioningViewDto,
   UpdateIpv4NetworkBody,
+  UpdateRouterInterfaceBody,
+  UpdateRouterInterfaceIpv4AddressBody,
   UpdateRouterBody,
   PutPlanProfileBody,
   PatchNetworkSettingsBody,
@@ -847,6 +863,7 @@ export interface NetworkCatalogListParams {
   q?: string;
   status?: 'ACTIVE' | 'INACTIVE';
   routerId?: string;
+  interfaceId?: string;
 }
 
 function buildNetworkCatalogQuery(params?: NetworkCatalogListParams): string {
@@ -856,18 +873,144 @@ function buildNetworkCatalogQuery(params?: NetworkCatalogListParams): string {
   if (params?.q) searchParams.set('q', params.q);
   if (params?.status) searchParams.set('status', params.status);
   if (params?.routerId) searchParams.set('routerId', params.routerId);
+  if (params?.interfaceId) searchParams.set('interfaceId', params.interfaceId);
   const query = searchParams.toString();
   return query ? `?${query}` : '';
 }
 
 /** Catálogo de routers y redes IPv4 de MOD13 (HLD v1.1 §4.4 y §6.2). */
 export const networkApi = {
-  listRouters: (params?: NetworkCatalogListParams, tenantSlug?: string) =>
-    request<ListResponse<RouterDto>>(
+  listRouterSiteOptions: (
+    params?: Pick<NetworkCatalogListParams, 'page' | 'limit'>,
+    tenantSlug?: string,
+  ) =>
+    request<ListResponse<RouterSiteOptionDto>>(
+      `/network/router-site-options${buildNetworkCatalogQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listRouters: (
+    params?: Pick<NetworkCatalogListParams, 'page' | 'limit' | 'q' | 'status'>,
+    tenantSlug?: string,
+  ) =>
+    request<ListResponse<RouterListDto>>(
       `/network/routers${buildNetworkCatalogQuery(params)}`,
       { returnFullResponse: true },
       tenantSlug,
     ),
+
+  getRouter: (id: string, tenantSlug?: string) =>
+    request<RouterDetailDto>(
+      `/network/routers/${encodeURIComponent(id)}`,
+      {
+        returnFullResponse: true,
+      },
+      tenantSlug,
+    ),
+
+  listRouterInterfaces: (
+    routerId: string,
+    params?: Pick<NetworkCatalogListParams, 'page' | 'limit'>,
+    tenantSlug?: string,
+  ) =>
+    request<ListResponse<RouterInterfaceDto>>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces${buildNetworkCatalogQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createRouterInterface: (routerId: string, body: CreateRouterInterfaceBody, tenantSlug?: string) =>
+    request<RouterInterfaceDto | CreateRouterInterfaceConversionResponseDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  convertLegacyLanInterface: (routerId: string, body: ConvertLegacyLanBody, tenantSlug?: string) =>
+    request<CreateRouterInterfaceConversionResponseDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateRouterInterface: (
+    routerId: string,
+    interfaceId: string,
+    body: UpdateRouterInterfaceBody,
+    tenantSlug?: string,
+  ) =>
+    request<RouterInterfaceDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces/${encodeURIComponent(interfaceId)}`,
+      { method: 'PATCH', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  setRouterInterfaceStatus: (
+    routerId: string,
+    interfaceId: string,
+    version: number,
+    status: 'ACTIVE' | 'INACTIVE',
+    tenantSlug?: string,
+  ) =>
+    request<RouterInterfaceDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces/${encodeURIComponent(interfaceId)}/${status === 'ACTIVE' ? 'activate' : 'deactivate'}`,
+      { method: 'POST', body: JSON.stringify({ version }), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  listRouterInterfaceAddresses: (
+    routerId: string,
+    interfaceId: string,
+    params?: Pick<NetworkCatalogListParams, 'page' | 'limit'>,
+    tenantSlug?: string,
+  ) =>
+    request<ListResponse<RouterInterfaceIpv4AddressDto>>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces/${encodeURIComponent(interfaceId)}/ipv4-addresses${buildNetworkCatalogQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createRouterInterfaceAddress: (
+    routerId: string,
+    interfaceId: string,
+    body: CreateRouterInterfaceIpv4AddressBody,
+    tenantSlug?: string,
+  ) =>
+    request<RouterInterfaceIpv4AddressDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces/${encodeURIComponent(interfaceId)}/ipv4-addresses`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  updateRouterInterfaceAddress: (
+    routerId: string,
+    interfaceId: string,
+    addressId: string,
+    body: UpdateRouterInterfaceIpv4AddressBody,
+    tenantSlug?: string,
+  ) =>
+    request<RouterInterfaceIpv4AddressDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces/${encodeURIComponent(interfaceId)}/ipv4-addresses/${encodeURIComponent(addressId)}`,
+      { method: 'PATCH', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  correctRouterInterfaceAddress: (
+    routerId: string,
+    interfaceId: string,
+    addressId: string,
+    body: CorrectRouterInterfaceIpv4AddressBody,
+    tenantSlug?: string,
+  ) =>
+    request<CorrectRouterInterfaceIpv4AddressResponseDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/interfaces/${encodeURIComponent(interfaceId)}/ipv4-addresses/${encodeURIComponent(addressId)}/correct`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getCatalogMeta: (tenantSlug?: string) =>
+    request<CatalogMetaDto>('/network/catalog-meta', { returnFullResponse: true }, tenantSlug),
 
   createRouter: (body: CreateRouterBody, tenantSlug?: string) =>
     request<RouterDto>(
@@ -896,21 +1039,32 @@ export const networkApi = {
     ),
 
   listIpv4Networks: (params?: NetworkCatalogListParams, tenantSlug?: string) =>
-    request<ListResponse<Ipv4NetworkDto>>(
+    request<ListResponse<Ipv4NetworkExtendedDto>>(
       `/network/ipv4-networks${buildNetworkCatalogQuery(params)}`,
       { returnFullResponse: true },
       tenantSlug,
     ),
 
   createIpv4Network: (body: CreateIpv4NetworkBody, tenantSlug?: string) =>
-    request<Ipv4NetworkDto>(
+    request<Ipv4NetworkExtendedDto>(
       '/network/ipv4-networks',
       { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
       tenantSlug,
     ),
 
+  createAssistedIpv4Network: (
+    routerId: string,
+    body: AssistedCreateIpv4NetworkBody,
+    tenantSlug?: string,
+  ) =>
+    request<Ipv4NetworkExtendedDto>(
+      `/network/routers/${encodeURIComponent(routerId)}/ipv4-networks`,
+      { method: 'POST', body: JSON.stringify(body), returnFullResponse: true },
+      tenantSlug,
+    ),
+
   updateIpv4Network: (id: string, body: UpdateIpv4NetworkBody, tenantSlug?: string) =>
-    request<Ipv4NetworkDto>(
+    request<Ipv4NetworkExtendedDto>(
       `/network/ipv4-networks/${id}`,
       { method: 'PATCH', body: JSON.stringify(body), returnFullResponse: true },
       tenantSlug,
@@ -922,7 +1076,7 @@ export const networkApi = {
     status: 'ACTIVE' | 'INACTIVE',
     tenantSlug?: string,
   ) =>
-    request<Ipv4NetworkDto>(
+    request<Ipv4NetworkExtendedDto>(
       `/network/ipv4-networks/${id}/${status === 'ACTIVE' ? 'activate' : 'deactivate'}`,
       { method: 'POST', body: JSON.stringify({ version }), returnFullResponse: true },
       tenantSlug,
@@ -954,6 +1108,13 @@ export const networkApi = {
   ): Promise<ProvisioningOrderContextDto | TechnicianProvisioningViewDto> =>
     request<ProvisioningOrderContextDto | TechnicianProvisioningViewDto>(
       `/network/provisioning/orders/${executionOrderId}/context`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  getProvisioningMeta: (tenantSlug?: string) =>
+    request<ProvisioningMetaDto>(
+      '/network/provisioning/meta',
       { returnFullResponse: true },
       tenantSlug,
     ),

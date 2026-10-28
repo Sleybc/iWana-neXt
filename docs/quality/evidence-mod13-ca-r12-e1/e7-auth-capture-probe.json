@@ -1,0 +1,93 @@
+{
+  "evidence": "MOD13 CA-R12 authenticated capture protection probe",
+  "date": "2026-10-27",
+  "database": "iwana_it_mod13_ca_r12_e7_capture_probe",
+  "runtime": {
+    "apiHealth": 200,
+    "host": "127.0.0.1",
+    "port": 3010,
+    "redisDb": 6,
+    "networkIpProtection": "PENDING",
+    "reservationsPaused": true
+  },
+  "apiBuildSha256": {
+    "main.js": "54b81cc71a9e1964e5c4bea048643fd72bc2b459e65b195dc32d032dede01529",
+    "ipam.service.js": "85e69ff11c46699e86a834463b8e31a11f2aecfef1a978fc8079a6d5a6d741d6",
+    "network-interface-catalog.service.js": "e681b0c6278037279b8c7801e2a14f3162484f9235c443bc52ab1e84a6113365",
+    "network-provisioning-reconciler.processor.js": "2bd7e69bb229b6abe9efa4271d957cc23bac476077caa01d16d9f810d520df11"
+  },
+  "buildMatchesE7FinalProtector": true,
+  "officialFlow": {
+    "tenantSeedService": "PASS; one synthetic ADMIN created",
+    "platformBootstrapService": "PASS; development-only bootstrap on disposable clone",
+    "platformPasswordRotation": "PASS",
+    "adminCredentialRegenerationEndpoint": "PASS; Idempotency-Key used",
+    "tenantLoginAndPasswordRotation": "PASS",
+    "mfaSetup": "NOT_REQUIRED"
+  },
+  "catalogMeta": {
+    "httpStatus": 200,
+    "ipProtection": "PENDING"
+  },
+  "capture": {
+    "httpStatus": 409,
+    "code": "IP_PROTECTION_PENDING"
+  },
+  "ipamTablesBeforeAndAfterCapture": {
+    "network_routers": {
+      "rows": 20,
+      "sha256": "16c1fcf872c89c06678ed076048c33b11ae434ea7ab73a58ae6df06561a04fd0"
+    },
+    "network_router_interfaces": {
+      "rows": 2,
+      "sha256": "e09845b08fc060e5017c7e3a588e75d1bf71504016bce7e86d1c144e9fbf43ea"
+    },
+    "network_router_interface_ipv4_addresses": {
+      "rows": 2,
+      "sha256": "6d3dccf70a493559bd8ebded21c888e8df378b6521f3cd7f6e089ff2816823d0"
+    },
+    "ipv4_networks": {
+      "rows": 50,
+      "sha256": "2177a5a38a7c8770cb7a22793e0e635b028e3dd1916927c3718f9437d4b9f05d"
+    },
+    "service_provisionings": {
+      "rows": 2200,
+      "sha256": "039b200317b09444eba0cc96f0498a5342b721a4e147bfa76ae6f801d270f5ee"
+    },
+    "ip_assignments": {
+      "rows": 2000,
+      "sha256": "ce3f205730bccc08a2a0b23f4e52ce93217ac67432d8592106ef32a1b9daa8a2"
+    },
+    "audit_logs": {
+      "rows": 56,
+      "sha256": "8ed2f86ad39cfe387739a18ad3406c6aa6d74216e4553f2a39df47e20a815c8f"
+    },
+    "unchanged": true
+  },
+  "redisDb6AfterApiStop": {
+    "queueCount": 17,
+    "pausedQueues": 17,
+    "counts": {
+      "waiting": 0,
+      "active": 0,
+      "delayed": 3,
+      "failed": 0,
+      "paused": 0,
+      "prioritized": 0,
+      "waiting-children": 0,
+      "completed": 0
+    },
+    "repeatables": 3
+  },
+  "shutdown": {
+    "apiSignal": "SIGTERM",
+    "portReleased": true,
+    "cloneConnections": 0
+  },
+  "abortedHarnessAttempt": {
+    "capturePostSent": false,
+    "reason": "The client assertion expected a nested catalog-meta envelope; the API returned the documented raw response.",
+    "disposableCloneRecreatedAfterZeroConnections": true
+  },
+  "secretValuesTokensAndAddressPayloadsEmitted": false
+}

@@ -29,6 +29,9 @@ export class NetworkRouter {
   @Column({ name: 'lan_interface', type: 'varchar', length: 64, nullable: true })
   lanInterface: string | null;
 
+  @Column({ name: 'legacy_lan_interface_id', type: 'uuid', nullable: true })
+  legacyLanInterfaceId: string | null;
+
   @Column({ name: 'supported_control_methods', type: 'varchar', length: 40, array: true })
   supportedControlMethods: string[];
 

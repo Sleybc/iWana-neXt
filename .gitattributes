@@ -8,3 +8,10 @@
 .husky/* text eol=lf
 .husky/_/* text eol=lf
 *.sh text eol=lf
+
+# Evidencia cruda con SHA anclado (C3.2): preservar los bytes exactos.
+docs/quality/evidence-mod13-ca-r12-e1/e7-match-insert-helper.cjs.txt -text -eol
+docs/quality/evidence-mod13-ca-r12-e1/r1-verify.json -text -eol
+docs/quality/evidence-mod13-ca-r12-e1/r4-postcheck.json -text -eol
+docs/quality/evidence-mod13-ca-r12-e1/r5-r8.attempt2.stderr.txt -text -eol
+docs/quality/evidence-mod13-ca-r12-e1/r5-r8.attempt4.stderr.txt -text -eol

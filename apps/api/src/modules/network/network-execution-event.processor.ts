@@ -29,16 +29,17 @@ import {
   EXECUTION_ORDER_READ_PORT,
   type ExecutionOrderReadPort,
 } from '../tasks/ports/execution-order-read.port';
+import {
+  TenantLifecycleReadPort,
+  type TenantLifecycleSnapshot,
+} from '../tenant/ports/tenant-lifecycle-read.port';
 import { AuditService } from '../audit/audit.service';
 import { ServiceProvisioningActivatedEvent } from './events/service-provisioning-activated.event';
 import { NetworkActivationListenerError } from './events/network-activation-listener.error';
 import { SanitizeFailedReason } from '../../common/sanitize-failed-reason.decorator';
+import { IpamService } from './ipam.service';
 
-interface TenantRow {
-  id: string;
-  slug: string;
-  schema_name: string;
-}
+type TenantRow = TenantLifecycleSnapshot;
 
 interface CandidateRecord {
   [key: string]: unknown;
@@ -164,6 +165,9 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
     @Inject(EXECUTION_ORDER_READ_PORT)
     private readonly executionOrderReadPort: ExecutionOrderReadPort,
     private readonly auditService: AuditService,
+    private readonly ipamService: IpamService,
+    @Inject(TenantLifecycleReadPort)
+    private readonly tenantLifecycleReadPort: TenantLifecycleReadPort,
   ) {
     super();
   }
@@ -180,7 +184,7 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
       const tenantContext = {
         tenantId: tenant.id,
         tenantSlug: tenant.slug,
-        schemaName: tenant.schema_name,
+        schemaName: tenant.schemaName,
       };
 
       await TenantContext.run(tenantContext, async () => {
@@ -226,7 +230,7 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
             const context = {
               tenantId: tenant.id,
               tenantSlug: tenant.slug,
-              schemaName: tenant.schema_name,
+              schemaName: tenant.schemaName,
             };
             await TenantContext.run(context, () =>
               this.persistInvalidSignature(
@@ -243,7 +247,7 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
         const context = {
           tenantId: tenant.id,
           tenantSlug: tenant.slug,
-          schemaName: tenant.schema_name,
+          schemaName: tenant.schemaName,
         };
         try {
           await TenantContext.run(context, () =>
@@ -267,16 +271,13 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
   }
 
   private async resolveTenant(tenantId: string): Promise<TenantRow> {
-    const rows = (await this.dataSource.query(
-      `SELECT id, slug, schema_name
-         FROM public.tenants
-        WHERE id = $1
-          AND deleted_at IS NULL
-          AND status <> $2`,
-      [tenantId, TenantStatus.MARKED_FOR_DELETION],
-    )) as TenantRow[];
-    const tenant = rows[0];
-    if (!tenant || !isValidSchemaName(tenant.schema_name)) {
+    const tenant = await this.tenantLifecycleReadPort.findTenantLifecycleById(tenantId);
+    if (
+      !tenant ||
+      tenant.deletedAt !== null ||
+      tenant.status === TenantStatus.MARKED_FOR_DELETION ||
+      !isValidSchemaName(tenant.schemaName)
+    ) {
       throw new UnrecoverableError('Tenant inexistente o schema inválido.');
     }
     return tenant;
@@ -290,6 +291,36 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
     await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
       `provisioning-order:${event.executionOrderId}`,
     ]);
+
+    const existingInbox = await manager.findOne(NetworkInboxEvent, {
+      where: { tenantId: context.tenantId, eventId: event.eventId },
+    });
+    if (existingInbox) {
+      if (
+        existingInbox.eventType !== event.eventType ||
+        existingInbox.executionOrderId !== event.executionOrderId
+      ) {
+        throw new NetworkEventProcessingError('UNEXPECTED', 'El evento no coincide con su inbox.');
+      }
+      if (existingInbox.processedAt) return null;
+    }
+
+    const provisioningSnapshot = await manager.findOne(ServiceProvisioning, {
+      where: {
+        tenantId: context.tenantId,
+        executionOrderId: event.executionOrderId,
+        status: In(['RESERVED', 'CERTIFIED', 'ACTIVE']),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    const executed =
+      event.eventType === 'ExecutionOrderClosedV1' &&
+      (event.result === 'EXECUTED' || event.result === 'EXECUTED_WITH_OBSERVATIONS');
+    const releaseReason = this.releaseReason(event);
+    if (provisioningSnapshot) {
+      await this.ipamService.lockIpv4Pools(manager, [provisioningSnapshot.ipv4NetworkId]);
+    }
+
     const insertedRows = (await manager.query(
       `INSERT INTO network_inbox_events
          (tenant_id, event_id, event_type, execution_order_id, processed_at, last_error_code)
@@ -312,6 +343,12 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
       await manager.save(NetworkInboxEvent, inbox);
     }
 
+    if (provisioningSnapshot?.status === 'ACTIVE' && !wasPendingRetry) {
+      inbox.processedAt = new Date();
+      await manager.save(NetworkInboxEvent, inbox);
+      return null;
+    }
+
     const provisioning = await manager.findOne(ServiceProvisioning, {
       where: {
         tenantId: context.tenantId,
@@ -328,21 +365,38 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
     }
 
     if (provisioning.status === 'ACTIVE') {
-      if (wasPendingRetry) return this.activationEvent(context, provisioning);
+      if (wasPendingRetry) {
+        const assignment = await this.findLiveAssignment(manager, context.tenantId, provisioning);
+        if (assignment) {
+          await this.ipamService.assertAssignmentNotLocallyProtected(
+            manager,
+            context.tenantId,
+            assignment.ip,
+          );
+        }
+        return this.activationEvent(context, provisioning);
+      }
       inbox.processedAt = new Date();
       await manager.save(NetworkInboxEvent, inbox);
       return null;
     }
 
-    const executed =
-      event.eventType === 'ExecutionOrderClosedV1' &&
-      (event.result === 'EXECUTED' || event.result === 'EXECUTED_WITH_OBSERVATIONS');
     if (executed && provisioning.status === 'CERTIFIED') {
+      await this.ipamService.assertActiveNetwork(
+        manager,
+        context.tenantId,
+        provisioning.ipv4NetworkId,
+      );
       const fromStatus = provisioning.status;
       const assignment = await this.findLiveAssignment(manager, context.tenantId, provisioning);
       if (!assignment) {
         throw new NetworkEventProcessingError('IPAM_CONFLICT', 'No se encontró la IP reservada.');
       }
+      await this.ipamService.assertAssignmentNotLocallyProtected(
+        manager,
+        context.tenantId,
+        assignment.ip,
+      );
       const now = new Date();
       assignment.status = 'ACTIVE';
       await manager.save(IpAssignment, assignment);
@@ -402,7 +456,6 @@ export class NetworkExecutionEventProcessor extends WorkerHost {
       return null;
     }
 
-    const releaseReason = this.releaseReason(event);
     if (
       releaseReason &&
       (provisioning.status === 'RESERVED' || provisioning.status === 'CERTIFIED')

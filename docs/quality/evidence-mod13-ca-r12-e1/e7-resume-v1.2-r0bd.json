@@ -1,0 +1,137 @@
+{
+  "version": "E7_resume v1.2 R-0b(c/d)",
+  "status": "PARTIAL_PASS_REQUIRES_INDEPENDENT_REVIEW",
+  "generatedAtUtc": "2026-10-27T21:51:56.2969309Z",
+  "scope": "E1 only; no Redis or queue access; no R-1 execution",
+  "preflight": {
+    "sourceDatabase": "iwana_it_mod13_ca_r12_e7",
+    "sourceActiveConnections": 0,
+    "targetDatabase": "iwana_it_mod13_ca_r12_e7_final",
+    "targetExistedBeforeClone": false,
+    "preflightQueryExitCode": 0
+  },
+  "fixture": {
+    "sha256": "8338e9bb10c095074e4f39b09582e9c1fa5fd94b79441ac83943c6988d7a4ae0",
+    "createDatabaseCommand": "CREATE DATABASE iwana_it_mod13_ca_r12_e7_final WITH TEMPLATE iwana_it_mod13_ca_r12_e7",
+    "createDatabaseExitCode": 0,
+    "runnerCommand": "node scripts/mod13-ca-r12-e7-fixture.cjs",
+    "runnerExitCode": 0,
+    "output": "1 synthetic IN_PROGRESS order; 800 unique candidates; 799 without snapshot",
+    "secretsPrinted": false
+  },
+  "legacyValidation": {
+    "result": "6/6 PASS",
+    "tables": {
+      "organization_sites": {
+        "rows": 3,
+        "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26"
+      },
+      "network_routers": {
+        "rows": 20,
+        "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90"
+      },
+      "ipv4_networks": {
+        "rows": 50,
+        "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2"
+      },
+      "service_provisionings": {
+        "rows": 2200,
+        "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49"
+      },
+      "ip_assignments": {
+        "rows": 2000,
+        "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb"
+      },
+      "audit_logs": {
+        "rows": 50,
+        "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8"
+      }
+    }
+  },
+  "projections": {
+    "serviceStatusCounts": [
+      {
+        "status": "ACTIVE",
+        "count": 700
+      },
+      {
+        "status": "CERTIFIED",
+        "count": 100
+      },
+      {
+        "status": "FAILED",
+        "count": 100
+      },
+      {
+        "status": "RELEASED",
+        "count": 600
+      },
+      {
+        "status": "RESERVED",
+        "count": 700
+      }
+    ],
+    "assignmentStatusCounts": [
+      {
+        "status": "ACTIVE",
+        "count": 700
+      },
+      {
+        "status": "RELEASED",
+        "count": 600
+      },
+      {
+        "status": "RESERVED",
+        "count": 700
+      }
+    ],
+    "candidateRows": 800,
+    "candidateUniqueIds": 800,
+    "matchingSnapshots": 1,
+    "matchingInProgressInstallationSnapshots": 1,
+    "withoutSnapshot": 799,
+    "interfaces": 2,
+    "addresses": 2,
+    "referentialChecks": {
+      "routers_without_site": 0,
+      "pools_without_router": 0,
+      "services_without_router_or_pool": 0,
+      "assignments_without_service_or_pool": 0,
+      "assignment_link_mismatches": 0
+    }
+  },
+  "newTableHashes": {
+    "execution_orders": {
+      "historicalFullSha256": "42e4c46ecbc47df39a4227462be0a3f5cd0af3fd9b913cb685bfa8cf72151285",
+      "currentFullSha256": "9f6329fae21a49de9efa45afaa38a8a40bf618d082b2d3fb2821738930fa8c4e",
+      "currentProjectionWithoutCreatedAtUpdatedAtSha256": "cdd0496246d04f5077d7c69748ecc8787988121adf6edc34f25c0c7fcee6e462",
+      "historicalProjectionAvailable": false
+    },
+    "network_router_interfaces": {
+      "fullSha256": "4e7d0c3d2c47fa08d6e245220bb9c251db56282698450ed424f52e571edf49c6",
+      "projectionWithoutCreatedAtUpdatedAtSha256": "5b46750c9e9b021df0be4c217f6339bd606480ec85912c80c45791efe8507302",
+      "equalToSourceE7": true
+    },
+    "network_router_interface_ipv4_addresses": {
+      "fullSha256": "7c7dccc1a7719cd51c408ead1e29f20957ba40548d3167355aee39eda8a1ca48",
+      "projectionWithoutCreatedAtUpdatedAtSha256": "fdeed8e92f780d753c76b81cfb791372c9e7b5a8fe51737521d6657675769ac9",
+      "equalToSourceE7": true
+    }
+  },
+  "gate": {
+    "r0b_c": "PASS",
+    "r0b_d_legacy": "PASS",
+    "r0b_d_countsReferential": "PASS",
+    "r0b_d_executionOrders": "PENDING_INDEPENDENT_PROJECTION_COMPARISON",
+    "reason": "El SHA histórico de execution_orders difiere y la evidencia disponible no contiene su proyección histórica sin created_at/updated_at; no se afirma que la diferencia sea exclusivamente temporal.",
+    "next": "Detenido antes de R-1; solicitar validación independiente data-eng contra evidencia histórica"
+  },
+  "safeguards": {
+    "E1Preserved": true,
+    "redisAccessed": false,
+    "queuesAccessed": false,
+    "R1ToR9Executed": false,
+    "commitCreated": false,
+    "secretsOrRowIdentifiersEmitted": false
+  }
+}

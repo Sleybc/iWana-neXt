@@ -1,0 +1,141 @@
+{
+  "evidence": "E7_final Redis DB4 post-restore read-only reconcile inspection",
+  "date": "2026-10-27",
+  "api": {
+    "host": "127.0.0.1",
+    "port": 3010,
+    "pid": 22980,
+    "healthDirect": 200,
+    "healthProxy3011": 200,
+    "networkIpProtection": "PENDING",
+    "reservationsPaused": true
+  },
+  "queue": "network-provisioning-reconcile",
+  "queuePaused": true,
+  "counts": {
+    "waiting": 0,
+    "active": 0,
+    "delayed": 1,
+    "failed": 0,
+    "paused": 1,
+    "prioritized": 0,
+    "waiting-children": 0,
+    "completed": 0
+  },
+  "jobRowsReturnedAcrossWaitingPausedDelayedQueries": 3,
+  "distinctJobIdHashes": 2,
+  "duplicateEnumeration": {
+    "sameJobIdHashReturnedFromWaitingAndPausedQueries": "53b6bb678abad9f9a6b0ad1a1682e8af4b56dbc5f923b7548525d3dbdce93103",
+    "isTwoDistinctJobs": false,
+    "queuePausedMeansRunnable": false
+  },
+  "jobs": [
+    {
+      "queryStates": ["waiting", "paused"],
+      "logicalState": "waiting",
+      "jobIdSha256": "53b6bb678abad9f9a6b0ad1a1682e8af4b56dbc5f923b7548525d3dbdce93103",
+      "name": "reconcile-network-provisioning",
+      "attemptsMade": 0,
+      "processedOn": null,
+      "finishedOn": null,
+      "timestamp": "2026-10-27T19:30:52.247Z",
+      "delayMs": 0,
+      "repeat": {
+        "everyMs": 900000,
+        "count": 1,
+        "prevMillis": 1793130300000,
+        "pattern": null,
+        "timeZone": null,
+        "limit": null,
+        "startDate": null,
+        "endDate": null
+      },
+      "repeatableKeySha256": "c4820437b90115997812f5f48f0517edc4761c1653d63421ab6fbf302a1e9c3d",
+      "matchesRepeatableDefinition": true,
+      "repeatableNextMillis": 1793131200000,
+      "repeatableEndDate": null,
+      "repeatableLimit": null,
+      "payloadSha256": "6da341b31bfc42e2d6184c8c4f0d2e975b02fe421c8798b1bac4e83b007634f8",
+      "tenantMatches": true,
+      "schemaMatches": true,
+      "manualJobId": false,
+      "repeatGeneratedJobId": true
+    },
+    {
+      "queryStates": ["delayed"],
+      "logicalState": "delayed",
+      "jobIdSha256": "e9aadeea948375a46a7fe942a2955251024d64329ea17486e40c2a86adc35152",
+      "name": "reconcile-network-provisioning",
+      "attemptsMade": 0,
+      "processedOn": null,
+      "finishedOn": null,
+      "timestamp": "2026-10-27T19:47:11.759Z",
+      "delayMs": 768241,
+      "scheduledAt": "2026-10-27T20:00:00.000Z",
+      "repeat": {
+        "everyMs": 900000,
+        "count": 1,
+        "prevMillis": 1793131200000,
+        "pattern": null,
+        "timeZone": null,
+        "limit": null,
+        "startDate": null,
+        "endDate": null
+      },
+      "repeatableKeySha256": "c4820437b90115997812f5f48f0517edc4761c1653d63421ab6fbf302a1e9c3d",
+      "matchesRepeatableDefinition": true,
+      "repeatableNextMillis": 1793131200000,
+      "repeatableEndDate": null,
+      "repeatableLimit": null,
+      "payloadSha256": "6da341b31bfc42e2d6184c8c4f0d2e975b02fe421c8798b1bac4e83b007634f8",
+      "tenantMatches": true,
+      "schemaMatches": true,
+      "manualJobId": false,
+      "repeatGeneratedJobId": true
+    }
+  ],
+  "all17Queues": {
+    "paused": 17,
+    "waiting": 0,
+    "active": 0,
+    "delayed": 3,
+    "failed": 0,
+    "pausedJobs": 1,
+    "prioritized": 0,
+    "waitingChildren": 0,
+    "completed": 0,
+    "dlqJobs": 0
+  },
+  "preservedRepeatables": [
+    {
+      "name": "clean-expired-inventory-source-failures",
+      "keySha256Prefix": "a0af4a1c2da5a357",
+      "everyMs": 3600000,
+      "nextMillis": 1793131200000
+    },
+    {
+      "name": "reconcile-network-provisioning",
+      "keySha256Prefix": "c4820437b9011599",
+      "everyMs": 900000,
+      "nextMillis": 1793131200000
+    },
+    {
+      "name": "privacy-due-alerts-sweep",
+      "keySha256Prefix": "5b80b911edc15893",
+      "nextMillis": 1793188800000
+    }
+  ],
+  "priorReconcileTrace": {
+    "path": "e7-final-batches.jsonl",
+    "sha256": "3b719ff18d7b7d0f633030629501dfe5bc89e6ffd78ca6ac92413e1329cff2ca",
+    "records": 8,
+    "requestedPerBatch": 100,
+    "resultCounts": [0, 1, 0, 0, 0, 0, 0, 0],
+    "allOutcomes": "ok",
+    "firstAt": "2026-10-27T19:31:56.506Z",
+    "lastAt": "2026-10-27T19:31:56.530Z"
+  },
+  "interpretation": "The duplicate waiting/paused listing is one unique repeat-generated job; the delayed job is the next repeat occurrence. Both match the preserved repeatable key and payload digest. The due job remains paused; no worker or queue was resumed or mutated during this inspection.",
+  "noJobOrQueueMutation": true,
+  "noUuidSchemaOrPayloadValuesEmitted": true
+}

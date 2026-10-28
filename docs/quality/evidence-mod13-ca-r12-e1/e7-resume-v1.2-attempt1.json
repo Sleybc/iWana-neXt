@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "task": "MOD13 E7_resume v1.2, intento 1, R-0 a R-0b(b2)",
+  "observedDate": "2026-10-27",
+  "outcome": "R0B_B2_PASS",
+  "ipProtection": "PENDING",
+  "r0": {
+    "dockerInfoExit": 0,
+    "dockerEngineVersion": "29.9.2",
+    "dockerPsE1FilterExit": 0,
+    "priorE1Containers": "NONE",
+    "baselineGeneratorSha256": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9",
+    "baselineGeneratorShaMatches": true,
+    "localConnectionsPresent": true,
+    "localConnectionsValuesReadOrLoggedByR0": false,
+    "preCreationPorts3014_5434_6381": "FREE"
+  },
+  "r0bA": {
+    "status": "PASS_REUSE",
+    "postgresRunExit": 0,
+    "postgres": {
+      "container": "iwana_mod13_ca_r12_pg_e1",
+      "state": "running",
+      "healthLastVerified": "healthy",
+      "image": "postgres:18.3-alpine",
+      "imageId": "sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7",
+      "repoDigest": "postgres@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7",
+      "binding": "127.0.0.1:5434->5432",
+      "tmpfs": "/var/lib/postgresql, size=1g",
+      "persistentMounts": 0
+    },
+    "redisRunExit": 0,
+    "redis": {
+      "container": "iwana_mod13_ca_r12_redis_e1",
+      "state": "running",
+      "healthLastVerified": "healthy",
+      "image": "redis:8.6-alpine",
+      "imageId": "sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9",
+      "repoDigest": "redis@sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9",
+      "binding": "127.0.0.1:6381->6379",
+      "tmpfs": "/data, size=64m",
+      "persistentMounts": 0,
+      "persistence": false
+    },
+    "redisInitialDbSizes": {
+      "dbCount": 8,
+      "db0ThroughDb7": 0,
+      "queryExit": 0
+    }
+  },
+  "r0bB1": {
+    "databaseBuildCommand": "pnpm --filter @iwana/db build",
+    "databaseBuildExit": 0,
+    "connectionHandling": "connections.json parsed in memory; DB_* variables exposed only in migration child process; values not printed",
+    "publicMigrationCommand": "pnpm --filter @iwana/db migration:run",
+    "publicMigrationExit": 0,
+    "publicMigrationCountQueryExit": 0,
+    "publicMigrationRows": 27
+  },
+  "r0bB2": {
+    "generatorCommand": "node scripts/mod13-ca-r12-baseline.cjs",
+    "resetFlagUsed": false,
+    "generatorExit": 0,
+    "generatorSha256": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9",
+    "publicMigrationsApplied": 27,
+    "tenantMigrationsThrough164": 160,
+    "tenantMigrationsThrough165AfterCycle": 161,
+    "generatedDataCounts": {
+      "sites": 3,
+      "routers": 20,
+      "networks": 50,
+      "assignments": 2000,
+      "serviceProvisionings": 2200,
+      "auditRows": 50
+    },
+    "networkPrefixCounts": {
+      "/16": 1,
+      "/24": 48,
+      "/30": 1,
+      "/32_pools": 0
+    },
+    "clones": {
+      "e6": {
+        "database": "iwana_it_mod13_ca_r12_e6",
+        "legacyHashesMatchE5": true,
+        "localInterfaces": 2,
+        "localAddresses": 2
+      },
+      "e7": {
+        "database": "iwana_it_mod13_ca_r12_e7",
+        "legacyHashesMatchE5": true,
+        "localInterfaces": 2,
+        "localAddresses": 2
+      }
+    },
+    "outputScan": {
+      "jsonParse": "PASS",
+      "secretCredentialKeys": 0,
+      "emails": 0,
+      "nonLoopbackIpv4Literals": 0,
+      "allowedLoopbackHostLiterals": 1,
+      "syntheticTenantIdMetadataFields": 2,
+      "syntheticTenantIdFieldPaths": ["cloneEvidence.e6.tenantId", "cloneEvidence.e7.tenantId"],
+      "rowUuidOrAddressValuesInLegacySnapshot": 0
+    },
+    "generatedJsonBytes": 11063,
+    "generatedOutputSha256": "ffdab5c7e4b498e1a7a51cb66f7f51fdc7e3f9724e67d6500760ae8dc006277f",
+    "generatedOutputRepoPath": "e7-resume-rebuild-e2-e5.json"
+  },
+  "e2e5Restoration": {
+    "originalSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "backupSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "restoredSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "allHashesEqual": true,
+    "backupRetainedInTemp": true
+  },
+  "resources": {
+    "e1Preserved": true,
+    "temporaryGeneratedOutputRetained": true,
+    "r0bCAndR0bDExecuted": false,
+    "commitCreated": false
+  }
+}

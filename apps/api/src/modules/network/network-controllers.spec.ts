@@ -2,6 +2,12 @@ jest.mock('../auth/auth.module', () => ({ AuthModule: class AuthModule {} }));
 jest.mock('../access-control/access-control.module', () => ({
   AccessControlModule: class AccessControlModule {},
 }));
+jest.mock('../organization/organization.module', () => ({
+  OrganizationModule: class OrganizationModule {},
+}));
+jest.mock('../tenant/tenant.module', () => ({
+  TenantModule: class TenantModule {},
+}));
 jest.mock('../audit/audit.module', () => ({ AuditModule: class AuditModule {} }));
 jest.mock('../tasks/execution-order-scheduling.module', () => ({
   ExecutionOrderSchedulingModule: class ExecutionOrderSchedulingModule {},
@@ -22,6 +28,8 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 describe('NetworkCatalogController', () => {
   const service = {
+    listRouterSiteOptions: jest.fn(),
+    getCatalogMeta: jest.fn(),
     listRouters: jest.fn(),
     createRouter: jest.fn(),
     updateRouter: jest.fn(),
@@ -35,7 +43,17 @@ describe('NetworkCatalogController', () => {
     getNetworkSettings: jest.fn(),
     updateNetworkSettings: jest.fn(),
   };
-  const controller = new NetworkCatalogController(service as never);
+  const interfaceService = {
+    listRouterInterfaces: jest.fn(),
+    createRouterInterface: jest.fn(),
+    updateRouterInterface: jest.fn(),
+    setRouterInterfaceStatus: jest.fn(),
+    listInterfaceIpv4Addresses: jest.fn(),
+    createInterfaceIpv4Address: jest.fn(),
+    updateInterfaceIpv4Address: jest.fn(),
+    correctInterfaceIpv4Address: jest.fn(),
+  };
+  const controller = new NetworkCatalogController(service as never, interfaceService as never);
   const actor = { sub: 'actor-fixture' } as unknown as JwtPayload;
   const version = { version: 3 } as never;
 
@@ -46,13 +64,13 @@ describe('NetworkCatalogController', () => {
     const createBody = { name: 'Router' } as never;
     const updateBody = { version: 3 } as never;
 
-    controller.listRouters(query);
+    controller.listRouters(query, actor);
     controller.createRouter(createBody, actor);
     controller.updateRouter('router-id', updateBody, actor);
     controller.setRouterInactive('router-id', version, actor);
     controller.setRouterActive('router-id', version, actor);
 
-    expect(service.listRouters).toHaveBeenCalledWith(query);
+    expect(service.listRouters).toHaveBeenCalledWith(query, actor.sub);
     expect(service.createRouter).toHaveBeenCalledWith(createBody, actor.sub);
     expect(service.updateRouter).toHaveBeenCalledWith('router-id', updateBody, actor.sub);
     expect(service.setRouterStatus).toHaveBeenNthCalledWith(
@@ -71,13 +89,13 @@ describe('NetworkCatalogController', () => {
     const updateBody = { version: 4 } as never;
     const statusBody = { version: 4 } as never;
 
-    controller.listIpv4Networks(query);
+    controller.listIpv4Networks(query, actor);
     controller.createIpv4Network(createBody, actor);
     controller.updateIpv4Network('network-id', updateBody, actor);
     controller.setIpv4NetworkInactive('network-id', statusBody, actor);
     controller.setIpv4NetworkActive('network-id', statusBody, actor);
 
-    expect(service.listIpv4Networks).toHaveBeenCalledWith(query);
+    expect(service.listIpv4Networks).toHaveBeenCalledWith(query, actor.sub);
     expect(service.createIpv4Network).toHaveBeenCalledWith(createBody, actor.sub);
     expect(service.updateIpv4Network).toHaveBeenCalledWith('network-id', updateBody, actor.sub);
     expect(service.setIpv4NetworkStatus).toHaveBeenNthCalledWith(
@@ -100,15 +118,24 @@ describe('NetworkCatalogController', () => {
     const body = { pcqAddressList: 'subscribers' } as never;
     const settings = { enforceProvisioningOnInstallClose: true } as never;
 
-    controller.listPlanProfiles();
+    controller.listPlanProfiles(actor);
     controller.putPlanProfile('plan-id', body, actor);
-    controller.getNetworkSettings();
+    controller.getNetworkSettings(actor);
     controller.updateNetworkSettings(settings, actor);
 
-    expect(service.listPlanProfiles).toHaveBeenCalledTimes(1);
+    expect(service.listPlanProfiles).toHaveBeenCalledWith(actor.sub);
     expect(service.putPlanProfile).toHaveBeenCalledWith('plan-id', 'subscribers', actor.sub);
-    expect(service.getNetworkSettings).toHaveBeenCalledTimes(1);
+    expect(service.getNetworkSettings).toHaveBeenCalledWith(actor.sub);
     expect(service.updateNetworkSettings).toHaveBeenCalledWith(true, actor.sub);
+  });
+
+  it('delega las opciones de sede y los metadatos con el actor autenticado', () => {
+    const query = { page: 2, limit: 15 } as never;
+    controller.listRouterSiteOptions(query, actor);
+    controller.getCatalogMeta(actor);
+
+    expect(service.listRouterSiteOptions).toHaveBeenCalledWith(query, actor.sub);
+    expect(service.getCatalogMeta).toHaveBeenCalledWith(actor.sub);
   });
 });
 
@@ -138,16 +165,16 @@ describe('NetworkProvisioningController', () => {
     controller.regularize(regularizeBody, actor);
     controller.certify('service-id', certifyBody, actor);
     controller.release('service-id', releaseBody, actor);
-    controller.listInbox(inboxQuery);
-    controller.listSubscriberProvisionings('subscriber-id');
+    controller.listInbox(inboxQuery, actor);
+    controller.listSubscriberProvisionings('subscriber-id', actor);
     controller.getOrderContext('order-id', actor);
 
     expect(service.reserve).toHaveBeenCalledWith(reserveBody, actor);
     expect(service.regularize).toHaveBeenCalledWith(regularizeBody, actor);
     expect(service.certify).toHaveBeenCalledWith('service-id', certifyBody, actor);
     expect(service.release).toHaveBeenCalledWith('service-id', releaseBody, actor);
-    expect(service.listInbox).toHaveBeenCalledWith(inboxQuery);
-    expect(service.listSubscriberProvisionings).toHaveBeenCalledWith('subscriber-id');
+    expect(service.listInbox).toHaveBeenCalledWith(inboxQuery, actor);
+    expect(service.listSubscriberProvisionings).toHaveBeenCalledWith('subscriber-id', actor);
     expect(service.getOrderContext).toHaveBeenCalledWith('order-id', actor);
   });
 });

@@ -18,6 +18,17 @@ export interface IpamOccupancy {
 
 interface ActiveNetworkRow {
   id: string;
+  router_id?: string;
+  interface_id?: string | null;
+}
+
+interface CatalogStatusRow {
+  status: string;
+}
+
+interface InterfaceStatusRow {
+  router_id: string;
+  status: string;
 }
 
 interface CandidateIpRow {
@@ -28,6 +39,7 @@ interface ManualIpValidationRow {
   is_outside_range: boolean;
   is_gateway: boolean;
   is_excluded: boolean;
+  is_protected: boolean;
   is_in_use: boolean;
 }
 
@@ -36,6 +48,10 @@ interface OccupancyRow {
   reserved: number | string;
   active: number | string;
   free: number | string;
+}
+
+interface IpamOccupancyRow extends OccupancyRow {
+  has_protection_conflict: boolean;
 }
 
 interface PostgresConstraintError {
@@ -58,24 +74,8 @@ export class IpamService {
   async reserveIp(manager: EntityManager, input: ReserveIpInput): Promise<string> {
     const { tenantId } = TenantContext.getOrThrow();
 
-    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-      `ipv4:${input.networkId}`,
-    ]);
-
-    const networkRows = (await manager.query(
-      `SELECT id
-         FROM ipv4_networks
-        WHERE id = $1 AND tenant_id = $2 AND status = 'ACTIVE'
-        FOR SHARE`,
-      [input.networkId, tenantId],
-    )) as ActiveNetworkRow[];
-
-    if (networkRows.length === 0) {
-      throw new UnprocessableEntityException({
-        code: 'NETWORK_NOT_IN_ROUTER',
-        message: 'No se encontró una red IPv4 activa para la operación.',
-      });
-    }
+    await this.lockIpv4Pools(manager, [input.networkId]);
+    await this.assertActiveNetwork(manager, tenantId, input.networkId);
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const ip = input.requestedIp
@@ -127,6 +127,73 @@ export class IpamService {
     );
   }
 
+  /** Serializa las escrituras del IPAM en L2 y siempre toma pools por UUID ascendente. */
+  async lockIpv4Pools(manager: EntityManager, networkIds: readonly string[]): Promise<void> {
+    for (const networkId of [...new Set(networkIds)].sort()) {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `ipv4:${networkId}`,
+      ]);
+    }
+  }
+
+  /** Revalida router, pool e asociación bajo L2 antes de reservar o reemitir una instrucción. */
+  async assertActiveNetwork(
+    manager: EntityManager,
+    tenantId: string,
+    networkId: string,
+  ): Promise<void> {
+    const networkRows = (await manager.query(
+      `SELECT id, router_id, interface_id
+         FROM ipv4_networks
+        WHERE id = $1 AND tenant_id = $2 AND status = 'ACTIVE'
+        FOR SHARE`,
+      [networkId, tenantId],
+    )) as ActiveNetworkRow[];
+    const network = networkRows[0];
+    if (!network) throw this.networkNotAvailable();
+
+    const routerRows = (await manager.query(
+      `SELECT status FROM network_routers WHERE id = $1 AND tenant_id = $2 FOR SHARE`,
+      [network.router_id, tenantId],
+    )) as CatalogStatusRow[];
+    if (routerRows[0]?.status !== 'ACTIVE') throw this.networkNotAvailable();
+
+    if (!network.interface_id) return;
+    const interfaceRows = (await manager.query(
+      `SELECT router_id, status
+         FROM network_router_interfaces
+        WHERE id = $1 AND tenant_id = $2
+        FOR SHARE`,
+      [network.interface_id, tenantId],
+    )) as InterfaceStatusRow[];
+    if (
+      interfaceRows[0]?.status !== 'ACTIVE' ||
+      interfaceRows[0]?.router_id !== network.router_id
+    ) {
+      throw this.networkNotAvailable();
+    }
+  }
+
+  async assertAssignmentNotLocallyProtected(
+    manager: EntityManager,
+    tenantId: string,
+    ip: string,
+  ): Promise<void> {
+    const rows = (await manager.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM network_router_interface_ipv4_addresses
+          WHERE tenant_id = $1 AND host_address = set_masklen($2::inet, 32)
+       ) AS protected`,
+      [tenantId, ip],
+    )) as Array<{ protected: boolean }>;
+    if (rows[0]?.protected) {
+      throw new ConflictException({
+        code: 'IP_PROTECTED_BY_INFRASTRUCTURE',
+        message: 'La dirección está protegida por infraestructura de la empresa.',
+      });
+    }
+  }
+
   private async validateRequestedIp(
     manager: EntityManager,
     tenantId: string,
@@ -138,8 +205,19 @@ export class IpamService {
           ($3::inet < n.assignable_from OR $3::inet > n.assignable_to
             OR host($3::inet) = host(network(n.cidr))
             OR host($3::inet) = host(broadcast(n.cidr))) AS is_outside_range,
-          ($3::inet = n.gateway) AS is_gateway,
-          ($3::inet = ANY(n.excluded_ips)) AS is_excluded,
+          (set_masklen($3::inet, 32) = set_masklen(n.gateway, 32)) AS is_gateway,
+          EXISTS (
+            SELECT 1 FROM unnest(n.excluded_ips) AS excluded(ip)
+             WHERE set_masklen(excluded.ip, 32) = set_masklen($3::inet, 32)
+          ) AS is_excluded,
+          EXISTS (
+            SELECT 1
+              FROM network_router_interface_ipv4_addresses local_address
+             WHERE local_address.tenant_id = n.tenant_id
+               AND local_address.host_address = set_masklen($3::inet, 32)
+               AND local_address.host_address >= set_masklen(n.assignable_from, 32)
+               AND local_address.host_address <= set_masklen(n.assignable_to, 32)
+          ) AS is_protected,
           EXISTS (
             SELECT 1 FROM ip_assignments a
              WHERE a.tenant_id = n.tenant_id
@@ -170,6 +248,12 @@ export class IpamService {
         message: 'La dirección está excluida del rango asignable.',
       });
     }
+    if (validation.is_protected) {
+      throw new ConflictException({
+        code: 'IP_PROTECTED_BY_INFRASTRUCTURE',
+        message: 'La dirección está protegida por infraestructura de la empresa.',
+      });
+    }
     if (validation.is_in_use) {
       throw this.ipInUseException();
     }
@@ -192,10 +276,26 @@ export class IpamService {
         WHERE n.id = $1
           AND n.tenant_id = $2
           AND n.status = 'ACTIVE'
-          AND (n.assignable_from + candidate.ip_offset)::inet <> n.gateway
+          AND set_masklen((n.assignable_from + candidate.ip_offset)::inet, 32)
+                <> set_masklen(n.gateway, 32)
           AND host((n.assignable_from + candidate.ip_offset)::inet) <> host(network(n.cidr))
           AND host((n.assignable_from + candidate.ip_offset)::inet) <> host(broadcast(n.cidr))
-          AND NOT ((n.assignable_from + candidate.ip_offset)::inet = ANY(n.excluded_ips))
+          AND NOT EXISTS (
+            SELECT 1 FROM unnest(n.excluded_ips) AS excluded(ip)
+             WHERE set_masklen(excluded.ip, 32) = set_masklen(
+               (n.assignable_from + candidate.ip_offset)::inet, 32
+             )
+          )
+          AND NOT EXISTS (
+            SELECT 1
+              FROM network_router_interface_ipv4_addresses local_address
+             WHERE local_address.tenant_id = n.tenant_id
+               AND local_address.host_address = set_masklen(
+                 (n.assignable_from + candidate.ip_offset)::inet, 32
+               )
+               AND local_address.host_address >= set_masklen(n.assignable_from, 32)
+               AND local_address.host_address <= set_masklen(n.assignable_to, 32)
+          )
           AND NOT EXISTS (
             SELECT 1 FROM ip_assignments a
              WHERE a.tenant_id = n.tenant_id
@@ -225,10 +325,26 @@ export class IpamService {
            ) AS candidate(ip_offset)
           WHERE n.id = $1
             AND n.tenant_id = $2
-            AND (n.assignable_from + candidate.ip_offset)::inet <> n.gateway
+            AND set_masklen((n.assignable_from + candidate.ip_offset)::inet, 32)
+                  <> set_masklen(n.gateway, 32)
             AND host((n.assignable_from + candidate.ip_offset)::inet) <> host(network(n.cidr))
             AND host((n.assignable_from + candidate.ip_offset)::inet) <> host(broadcast(n.cidr))
-            AND NOT ((n.assignable_from + candidate.ip_offset)::inet = ANY(n.excluded_ips))
+            AND NOT EXISTS (
+              SELECT 1 FROM unnest(n.excluded_ips) AS excluded(ip)
+               WHERE set_masklen(excluded.ip, 32) = set_masklen(
+                 (n.assignable_from + candidate.ip_offset)::inet, 32
+               )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+                FROM network_router_interface_ipv4_addresses local_address
+               WHERE local_address.tenant_id = n.tenant_id
+                 AND local_address.host_address = set_masklen(
+                   (n.assignable_from + candidate.ip_offset)::inet, 32
+                 )
+                 AND local_address.host_address >= set_masklen(n.assignable_from, 32)
+                 AND local_address.host_address <= set_masklen(n.assignable_to, 32)
+            )
        ), pool AS (
          SELECT COUNT(*)::integer AS total FROM eligible_ips
        ), usage AS (
@@ -238,16 +354,34 @@ export class IpamService {
          FROM ip_assignments a
          WHERE a.tenant_id = $2
            AND a.ipv4_network_id = $1
+       ), protection_conflict AS (
+         SELECT EXISTS (
+           SELECT 1
+             FROM ip_assignments a
+             JOIN network_router_interface_ipv4_addresses local_address
+               ON local_address.tenant_id = a.tenant_id
+              AND local_address.host_address = set_masklen(a.ip, 32)
+            WHERE a.tenant_id = $2
+              AND a.ipv4_network_id = $1
+              AND a.status IN ('RESERVED', 'ACTIVE')
+         ) AS has_conflict
        )
        SELECT pool.total,
               usage.reserved,
               usage.active,
-              GREATEST(pool.total - usage.reserved - usage.active, 0)::integer AS free
-         FROM pool CROSS JOIN usage`,
+              GREATEST(pool.total - usage.reserved - usage.active, 0)::integer AS free,
+              protection_conflict.has_conflict AS has_protection_conflict
+         FROM pool CROSS JOIN usage CROSS JOIN protection_conflict`,
       [networkId, tenantId],
-    )) as OccupancyRow[];
+    )) as IpamOccupancyRow[];
 
     const row = rows[0];
+    if (row?.has_protection_conflict) {
+      throw new ConflictException({
+        code: 'IP_PROTECTED_BY_INFRASTRUCTURE',
+        message: 'La ocupación presenta un conflicto con infraestructura registrada.',
+      });
+    }
     return {
       total: Number(row?.total ?? 0),
       reserved: Number(row?.reserved ?? 0),
@@ -269,6 +403,13 @@ export class IpamService {
     return new ConflictException({
       code: 'IP_IN_USE',
       message: 'La dirección ya está asignada a otro servicio.',
+    });
+  }
+
+  private networkNotAvailable(): UnprocessableEntityException {
+    return new UnprocessableEntityException({
+      code: 'NETWORK_NOT_IN_ROUTER',
+      message: 'No se encontró una red IPv4 activa para la operación.',
     });
   }
 }

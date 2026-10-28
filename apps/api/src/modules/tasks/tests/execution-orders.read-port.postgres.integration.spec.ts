@@ -38,9 +38,23 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
         id uuid PRIMARY KEY,
         tenant_id uuid NOT NULL,
         subscriber_id varchar(160),
+        assigned_technician_id uuid,
+        customer_display_label varchar(160),
         work_type "${schema}".wfm_work_type NOT NULL,
         status "${schema}".execution_order_status NOT NULL,
         is_annulled boolean NOT NULL DEFAULT false
+      )
+    `);
+    await dataSource.query(`
+      CREATE TABLE "${schema}".execution_order_evidence (
+        id uuid PRIMARY KEY,
+        tenant_id uuid NOT NULL,
+        execution_order_id uuid NOT NULL,
+        evidence_type varchar(32) NOT NULL,
+        requirement_key varchar(160),
+        created_at timestamptz NOT NULL,
+        storage_key varchar(255),
+        private_metadata jsonb
       )
     `);
     return schema;
@@ -155,5 +169,97 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
     await TenantContext.run(context(secondTenantId, secondSchema), async () => {
       await expect(service.hasOpenWithdrawalOrders(subscriberId)).resolves.toBe(true);
     });
+  });
+
+  it('resuelve referencia y asignación sin proyectar la etiqueta del cliente', async () => {
+    const orderId = randomUUID();
+    const technicianId = randomUUID();
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".execution_orders
+        (id, tenant_id, assigned_technician_id, customer_display_label,
+         work_type, status, is_annulled)
+       VALUES ($1, $2, $3, $4, 'INSTALLATION', 'IN_PROGRESS', false)`,
+      [orderId, tenantId, technicianId, 'Etiqueta reservada'],
+    );
+
+    await expect(
+      TenantContext.run(context(tenantId, schemaName), () =>
+        service.getExecutionReference(orderId),
+      ),
+    ).resolves.toEqual({ id: orderId, assignedTechnicianId: technicianId });
+  });
+
+  it('expone solo el resumen mínimo de evidencia permitida y filtra por tenant y tipo', async () => {
+    const executionOrderId = randomUUID();
+    const rows = [
+      {
+        id: randomUUID(),
+        tenant: tenantId,
+        type: 'PHOTO',
+        requirement: 'ROUTER_LABEL',
+        createdAt: '2026-10-20T10:00:00.000Z',
+      },
+      {
+        id: randomUUID(),
+        tenant: tenantId,
+        type: 'DOCUMENT',
+        requirement: null,
+        createdAt: '2026-10-20T11:00:00.000Z',
+      },
+      {
+        id: randomUUID(),
+        tenant: tenantId,
+        type: 'VIDEO',
+        requirement: 'UNSUPPORTED',
+        createdAt: '2026-10-20T12:00:00.000Z',
+      },
+      {
+        id: randomUUID(),
+        tenant: secondTenantId,
+        type: 'PHOTO',
+        requirement: 'OTHER_TENANT',
+        createdAt: '2026-10-20T13:00:00.000Z',
+      },
+    ];
+    for (const row of rows) {
+      await dataSource.query(
+        `INSERT INTO "${schemaName}".execution_order_evidence
+          (id, tenant_id, execution_order_id, evidence_type, requirement_key,
+           created_at, storage_key, private_metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          row.id,
+          row.tenant,
+          executionOrderId,
+          row.type,
+          row.requirement,
+          row.createdAt,
+          'private/object/key',
+          { internal: true },
+        ],
+      );
+    }
+
+    const evidence = await TenantContext.run(context(tenantId, schemaName), () =>
+      service.listProvisioningEvidence(executionOrderId),
+    );
+
+    expect(evidence).toEqual([
+      {
+        id: rows[0]!.id,
+        evidenceType: 'PHOTO',
+        requirementKey: 'ROUTER_LABEL',
+        createdAt: '2026-10-20T10:00:00.000Z',
+      },
+      {
+        id: rows[1]!.id,
+        evidenceType: 'DOCUMENT',
+        requirementKey: null,
+        createdAt: '2026-10-20T11:00:00.000Z',
+      },
+    ]);
+    expect(evidence.every((row) => !('storageKey' in row) && !('privateMetadata' in row))).toBe(
+      true,
+    );
   });
 });

@@ -1,0 +1,458 @@
+{
+  "version": "mod13-ca-r12-baseline-v1",
+  "generatedAt": "2026-10-27T17:34:13.421Z",
+  "target": {
+    "host": "127.0.0.1",
+    "port": 5434,
+    "database": "iwana_it_mod13_ca_r12_e1",
+    "username": "mod13_ca_r12"
+  },
+  "constraints": {
+    "dbiwAccessed": false,
+    "pii": false,
+    "destructiveDownFlag": false,
+    "syntheticSeedVersion": 1
+  },
+  "redisEvidence": {
+    "usedDuringE2E5": false,
+    "e6e7IsolationStatus": "PENDING_RUNTIME_VERIFICATION",
+    "requiredIsolation": "REDIS_DB distinto por clon o endpoint Redis independiente"
+  },
+  "publicMigrationsApplied": 27,
+  "tenantMigrationCounts": {
+    "through164": 160,
+    "through165AfterCycle": 161
+  },
+  "schema": "tenant_mod13_ca_r12_e5",
+  "generatedDataCounts": {
+    "sites": 3,
+    "routers": 20,
+    "networks": 50,
+    "assignments": 2000,
+    "serviceProvisionings": 2200,
+    "auditRows": 50
+  },
+  "networkPrefixCounts": {
+    "/16": 1,
+    "/24": 48,
+    "/30": 1,
+    "/32_pools": 0
+  },
+  "lanInterfaceDistribution": [
+    {
+      "state": "EMPTY",
+      "count": 4
+    },
+    {
+      "state": "FREE_TEXT",
+      "count": 4
+    },
+    {
+      "state": "MULTI_INTERFACE_TEXT",
+      "count": 4
+    },
+    {
+      "state": "NULL",
+      "count": 4
+    },
+    {
+      "state": "SIMPLE",
+      "count": 4
+    }
+  ],
+  "checkpoints": {
+    "before165": {
+      "tables": {
+        "organization_sites": {
+          "count": 3,
+          "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26"
+        },
+        "network_routers": {
+          "count": 20,
+          "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90"
+        },
+        "ipv4_networks": {
+          "count": 50,
+          "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2"
+        },
+        "service_provisionings": {
+          "count": 2200,
+          "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49"
+        },
+        "ip_assignments": {
+          "count": 2000,
+          "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb"
+        },
+        "audit_logs": {
+          "count": 50,
+          "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8"
+        }
+      },
+      "assignmentStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "serviceStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "CERTIFIED",
+          "count": 100
+        },
+        {
+          "status": "FAILED",
+          "count": 100
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "lanInterfaceDistribution": [
+        {
+          "state": "EMPTY",
+          "count": 4
+        },
+        {
+          "state": "FREE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "MULTI_INTERFACE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "NULL",
+          "count": 4
+        },
+        {
+          "state": "SIMPLE",
+          "count": 4
+        }
+      ],
+      "referentialIntegrityCounts": {
+        "routers_without_site": 0,
+        "pools_without_router": 0,
+        "services_without_router_or_pool": 0,
+        "assignments_without_service_or_pool": 0,
+        "assignment_link_mismatches": 0
+      }
+    },
+    "afterFirstUp": {
+      "tables": {
+        "organization_sites": {
+          "count": 3,
+          "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26"
+        },
+        "network_routers": {
+          "count": 20,
+          "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90"
+        },
+        "ipv4_networks": {
+          "count": 50,
+          "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2"
+        },
+        "service_provisionings": {
+          "count": 2200,
+          "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49"
+        },
+        "ip_assignments": {
+          "count": 2000,
+          "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb"
+        },
+        "audit_logs": {
+          "count": 50,
+          "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8"
+        }
+      },
+      "assignmentStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "serviceStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "CERTIFIED",
+          "count": 100
+        },
+        {
+          "status": "FAILED",
+          "count": 100
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "lanInterfaceDistribution": [
+        {
+          "state": "EMPTY",
+          "count": 4
+        },
+        {
+          "state": "FREE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "MULTI_INTERFACE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "NULL",
+          "count": 4
+        },
+        {
+          "state": "SIMPLE",
+          "count": 4
+        }
+      ],
+      "referentialIntegrityCounts": {
+        "routers_without_site": 0,
+        "pools_without_router": 0,
+        "services_without_router_or_pool": 0,
+        "assignments_without_service_or_pool": 0,
+        "assignment_link_mismatches": 0
+      }
+    },
+    "afterAllowedDown": {
+      "tables": {
+        "organization_sites": {
+          "count": 3,
+          "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26"
+        },
+        "network_routers": {
+          "count": 20,
+          "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90"
+        },
+        "ipv4_networks": {
+          "count": 50,
+          "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2"
+        },
+        "service_provisionings": {
+          "count": 2200,
+          "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49"
+        },
+        "ip_assignments": {
+          "count": 2000,
+          "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb"
+        },
+        "audit_logs": {
+          "count": 50,
+          "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8"
+        }
+      },
+      "assignmentStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "serviceStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "CERTIFIED",
+          "count": 100
+        },
+        {
+          "status": "FAILED",
+          "count": 100
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "lanInterfaceDistribution": [
+        {
+          "state": "EMPTY",
+          "count": 4
+        },
+        {
+          "state": "FREE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "MULTI_INTERFACE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "NULL",
+          "count": 4
+        },
+        {
+          "state": "SIMPLE",
+          "count": 4
+        }
+      ],
+      "referentialIntegrityCounts": {
+        "routers_without_site": 0,
+        "pools_without_router": 0,
+        "services_without_router_or_pool": 0,
+        "assignments_without_service_or_pool": 0,
+        "assignment_link_mismatches": 0
+      }
+    },
+    "afterSecondUp": {
+      "tables": {
+        "organization_sites": {
+          "count": 3,
+          "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26"
+        },
+        "network_routers": {
+          "count": 20,
+          "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90"
+        },
+        "ipv4_networks": {
+          "count": 50,
+          "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2"
+        },
+        "service_provisionings": {
+          "count": 2200,
+          "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49"
+        },
+        "ip_assignments": {
+          "count": 2000,
+          "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb"
+        },
+        "audit_logs": {
+          "count": 50,
+          "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8"
+        }
+      },
+      "assignmentStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "serviceStatusCounts": [
+        {
+          "status": "ACTIVE",
+          "count": 700
+        },
+        {
+          "status": "CERTIFIED",
+          "count": 100
+        },
+        {
+          "status": "FAILED",
+          "count": 100
+        },
+        {
+          "status": "RELEASED",
+          "count": 600
+        },
+        {
+          "status": "RESERVED",
+          "count": 700
+        }
+      ],
+      "lanInterfaceDistribution": [
+        {
+          "state": "EMPTY",
+          "count": 4
+        },
+        {
+          "state": "FREE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "MULTI_INTERFACE_TEXT",
+          "count": 4
+        },
+        {
+          "state": "NULL",
+          "count": 4
+        },
+        {
+          "state": "SIMPLE",
+          "count": 4
+        }
+      ],
+      "referentialIntegrityCounts": {
+        "routers_without_site": 0,
+        "pools_without_router": 0,
+        "services_without_router_or_pool": 0,
+        "assignments_without_service_or_pool": 0,
+        "assignment_link_mismatches": 0
+      }
+    }
+  },
+  "cloneEvidence": {
+    "e6": {
+      "database": "iwana_it_mod13_ca_r12_e6",
+      "schema": "tenant_mod13_ca_r12_e5",
+      "tenantId": "13000000-0000-4000-8000-000000000001",
+      "legacyHashesMatchE5": true,
+      "localInterfaces": 2,
+      "localAddresses": 2,
+      "redisIsolationLabel": "mod13_ca_r12_e6"
+    },
+    "e7": {
+      "database": "iwana_it_mod13_ca_r12_e7",
+      "schema": "tenant_mod13_ca_r12_e5",
+      "tenantId": "13000000-0000-4000-8000-000000000001",
+      "legacyHashesMatchE5": true,
+      "localInterfaces": 2,
+      "localAddresses": 2,
+      "redisIsolationLabel": "mod13_ca_r12_e7"
+    }
+  },
+  "generatorSha256": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9"
+}

@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey } from '@iwana/shared';
-import type { RouterDto } from '@iwana/shared';
+import type { RouterDto, RouterListDto } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
-import { Pencil, Plus, Router as RouterIcon, ToggleLeft } from 'lucide-react';
+import { Pencil, Plus, Router as RouterIcon, ToggleLeft, ToggleRight } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import {
   PortalAlert,
@@ -27,13 +28,15 @@ import {
   getNetworkApiErrorMessage,
 } from '@/components/network/network-catalog-labels';
 import { NetworkRouterDrawer } from '@/components/network/NetworkRouterDrawer';
+import { NetworkRouterDetailSidePeek } from '@/components/network/NetworkRouterDetailSidePeek';
+import { Ipv4NetworkDrawer } from '@/components/network/Ipv4NetworkDrawer';
 import { NetworkCatalogTableSkeleton } from '@/components/network/NetworkCatalogDrawerFrame';
 import { useNetworkCatalogQuery } from '@/components/network/use-network-catalog-query';
 import { EMPTY_LIST_META, listPageWindow, normalizeListMeta } from '@/lib/list-meta';
 import { networkApi } from '@/lib/api-client';
 import type { NetworkCatalogListParams } from '@/lib/api-client';
-import type { CoverageAdminConfig, OrganizationSiteSummary } from '@/lib/api-client';
-import { ApiError, organizationApi, tenantSelfApi } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-client';
+import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 
 const ROUTER_FILTER_KEYS = ['q', 'status'] as const;
 
@@ -45,10 +48,13 @@ function describeStatusError(error: unknown): string {
 }
 
 export function NetworkRouterCatalogClient() {
+  const appRouter = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { hasPermission } = usePermissions();
   const canManage = hasPermission(AccessPermissionKey.NETWORK_CATALOG_MANAGE);
   const query = useNetworkCatalogQuery('routers', ROUTER_FILTER_KEYS);
-  const [routers, setRouters] = useState<RouterDto[]>([]);
+  const [routers, setRouters] = useState<RouterListDto[]>([]);
   const [meta, setMeta] = useState(EMPTY_LIST_META);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -58,9 +64,12 @@ export function NetworkRouterCatalogClient() {
   const [pendingRouterId, setPendingRouterId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingRouter, setEditingRouter] = useState<RouterDto | null>(null);
-  const [sites, setSites] = useState<OrganizationSiteSummary[]>([]);
-  const [nodeNames, setNodeNames] = useState<Map<string, string>>(() => new Map());
+  const [networkDrawerOpen, setNetworkDrawerOpen] = useState(false);
+  const [networkRouterContext, setNetworkRouterContext] = useState<RouterDto | null>(null);
   const loadRequestId = useRef(0);
+  const openedDetailFromList = useRef(false);
+  const listHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const selectedRouterId = searchParams.get('routerId');
 
   const requestParams = useMemo((): NetworkCatalogListParams => {
     const status =
@@ -129,26 +138,6 @@ export function NetworkRouterCatalogClient() {
     }
   }, [currentPage, isLoading, meta.capabilities.randomAccess, meta.totalPages, setPage]);
 
-  useEffect(() => {
-    let current = true;
-    void Promise.allSettled([
-      organizationApi.list({ page: 1, limit: 100 }),
-      tenantSelfApi.getCoverage(),
-    ]).then(([siteResult, nodeResult]) => {
-      if (!current) return;
-      if (siteResult.status === 'fulfilled') {
-        setSites(siteResult.value.data.filter((site) => site.isActive));
-      }
-      if (nodeResult.status === 'fulfilled') {
-        const config = nodeResult.value as CoverageAdminConfig;
-        setNodeNames(new Map(config.nodes.map((node) => [node.id, node.name])));
-      }
-    });
-    return () => {
-      current = false;
-    };
-  }, []);
-
   const { from, to } = listPageWindow({
     page: meta.page ?? query.page,
     limit: meta.limit || query.pageSize,
@@ -171,6 +160,22 @@ export function NetworkRouterCatalogClient() {
     setMutationError(null);
   };
 
+  const openDetail = (routerId: string) => {
+    openedDetailFromList.current = true;
+    const params = mergeUrlSearchParams(searchParams, { routerId });
+    appRouter.push(withSearchParams(pathname, params), { scroll: false });
+  };
+
+  const closeDetail = () => {
+    if (openedDetailFromList.current) {
+      openedDetailFromList.current = false;
+      appRouter.back();
+      return;
+    }
+    const params = mergeUrlSearchParams(searchParams, { routerId: null });
+    appRouter.replace(withSearchParams(pathname, params), { scroll: false });
+  };
+
   const toggleStatus = async (router: RouterDto) => {
     setPendingRouterId(router.id);
     setMutationError(null);
@@ -189,8 +194,6 @@ export function NetworkRouterCatalogClient() {
     }
   };
 
-  const siteById = useMemo(() => new Map(sites.map((site) => [site.id, site.name])), [sites]);
-
   if (accessDenied) {
     return (
       <PortalAlert
@@ -205,7 +208,13 @@ export function NetworkRouterCatalogClient() {
     <main className="space-y-6">
       <header className="space-y-2">
         <p className="portal-eyebrow">Red</p>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Routers</h1>
+        <h1
+          ref={listHeadingRef}
+          tabIndex={-1}
+          className="text-2xl font-semibold text-gray-900 dark:text-white"
+        >
+          Routers
+        </h1>
         <p className="max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-300">
           Consulta los equipos de red y administra sus datos de conexión.
         </p>
@@ -299,7 +308,7 @@ export function NetworkRouterCatalogClient() {
             <p className="sr-only" role="status" aria-live="polite">
               Cargando routers
             </p>
-            <NetworkCatalogTableSkeleton columnCount={canManage ? 9 : 8} />
+            <NetworkCatalogTableSkeleton columnCount={canManage ? 10 : 9} />
           </section>
         ) : !loadError && routers.length === 0 ? (
           <PortalEmptyState
@@ -342,7 +351,7 @@ export function NetworkRouterCatalogClient() {
                 aria-label="Tabla de routers"
                 tabIndex={0}
               >
-                <table className="min-w-[1050px] w-full text-sm">
+                <table className="min-w-[1120px] w-full text-sm">
                   <thead>
                     <tr className={portalDataTableHeadRowClassName}>
                       <th scope="col" className={portalDataTableHeadClassName}>
@@ -352,7 +361,10 @@ export function NetworkRouterCatalogClient() {
                         Dirección de administración
                       </th>
                       <th scope="col" className={portalDataTableHeadClassName}>
-                        Interfaz LAN
+                        Referencia LAN anterior
+                      </th>
+                      <th scope="col" className={portalDataTableHeadClassName}>
+                        Interfaces
                       </th>
                       <th scope="col" className={portalDataTableHeadClassName}>
                         Métodos admitidos
@@ -369,11 +381,9 @@ export function NetworkRouterCatalogClient() {
                       <th scope="col" className={portalDataTableHeadClassName}>
                         Estado
                       </th>
-                      {canManage ? (
-                        <th scope="col" className={portalDataTableHeadClassName}>
-                          Acciones
-                        </th>
-                      ) : null}
+                      <th scope="col" className={portalDataTableHeadClassName}>
+                        Detalle y acciones
+                      </th>
                     </tr>
                   </thead>
                   <tbody className={portalDataTableBodyClassName}>
@@ -398,6 +408,9 @@ export function NetworkRouterCatalogClient() {
                         <td className={portalDataTableCellClassName}>
                           {router.lanInterface || '—'}
                         </td>
+                        <td className={`${portalDataTableCellClassName} tabular-nums`}>
+                          {Number.isFinite(router.interfaceCount) ? router.interfaceCount : '—'}
+                        </td>
                         <td className={portalDataTableCellClassName}>
                           <ul className="space-y-1">
                             {router.supportedControlMethods.map((method) => (
@@ -407,13 +420,11 @@ export function NetworkRouterCatalogClient() {
                         </td>
                         <td className={portalDataTableCellClassName}>
                           {router.organizationSiteId
-                            ? (siteById.get(router.organizationSiteId) ?? 'Sede asociada')
+                            ? (router.organizationSite?.name ?? 'Sede asociada')
                             : '—'}
                         </td>
                         <td className={portalDataTableCellClassName}>
-                          {router.commercialNodeId
-                            ? (nodeNames.get(router.commercialNodeId) ?? 'Nodo comercial asociado')
-                            : '—'}
+                          {router.commercialNodeId ? 'Nodo comercial asociado' : '—'}
                         </td>
                         <td className={`${portalDataTableCellClassName} tabular-nums`}>
                           {router.networkCount}
@@ -423,35 +434,52 @@ export function NetworkRouterCatalogClient() {
                             {getCatalogStatusLabel(router.status)}
                           </Badge>
                         </td>
-                        {canManage ? (
-                          <td className={portalDataTableCellClassName}>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                size="icon"
-                                className="min-h-11 min-w-11"
-                                onClick={() => openEdit(router)}
-                                aria-label={`Editar router ${router.name}`}
-                                title={`Editar router ${router.name}`}
-                              >
-                                <Pencil className="h-4 w-4" aria-hidden="true" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="min-h-11 min-w-11"
-                                disabled={pendingRouterId === router.id}
-                                onClick={() => void toggleStatus(router)}
-                                aria-label={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router ${router.name}`}
-                                title={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router`}
-                              >
-                                <ToggleLeft className="h-4 w-4" aria-hidden="true" />
-                              </Button>
-                            </div>
-                          </td>
-                        ) : null}
+                        <td className={portalDataTableCellClassName}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="min-h-11"
+                              onClick={() => openDetail(router.id)}
+                            >
+                              Ver router
+                            </Button>
+                            {canManage ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="icon"
+                                  className="min-h-11 min-w-11"
+                                  onClick={() => openEdit(router)}
+                                  aria-label={`Editar router ${router.name}`}
+                                  title={`Editar router ${router.name}`}
+                                >
+                                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="min-h-11 min-w-11"
+                                  disabled={pendingRouterId === router.id}
+                                  onClick={() => void toggleStatus(router)}
+                                  aria-label={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router ${router.name}`}
+                                  title={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router`}
+                                >
+                                  {router.status === 'ACTIVE' ? (
+                                    <ToggleRight
+                                      className="h-5 w-5 text-iwana-secondary-700 dark:text-iwana-secondary-400"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <ToggleLeft className="h-5 w-5" aria-hidden="true" />
+                                  )}
+                                  {router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
+                                </Button>
+                              </>
+                            ) : null}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -483,10 +511,39 @@ export function NetworkRouterCatalogClient() {
       <NetworkRouterDrawer
         open={drawerOpen}
         router={editingRouter}
+        canManage={canManage}
         onClose={() => setDrawerOpen(false)}
+        onRouterCreated={(createdRouter) => {
+          setNetworkRouterContext(createdRouter);
+          setNetworkDrawerOpen(true);
+          setSuccessMessage('Router guardado. Completa su red IPv4.');
+        }}
         onSaved={async () => {
           await loadRouters();
           setSuccessMessage('Router guardado.');
+        }}
+      />
+      <Ipv4NetworkDrawer
+        open={networkDrawerOpen}
+        network={null}
+        routerContext={networkRouterContext}
+        onClose={() => {
+          setNetworkDrawerOpen(false);
+          setNetworkRouterContext(null);
+        }}
+        onSaved={async () => {
+          await loadRouters();
+          setNetworkDrawerOpen(false);
+          setNetworkRouterContext(null);
+          setSuccessMessage('Red IPv4 guardada.');
+        }}
+      />
+      <NetworkRouterDetailSidePeek
+        routerId={selectedRouterId}
+        canManage={canManage}
+        returnFocusFallbackRef={listHeadingRef}
+        onOpenChange={(open) => {
+          if (!open) closeDetail();
         }}
       />
     </main>

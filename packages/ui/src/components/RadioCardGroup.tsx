@@ -23,6 +23,10 @@ export interface RadioCardGroupProps {
   options: readonly RadioCardOption[];
   density?: 'comfortable' | 'compact';
   disabled?: boolean;
+  /** IDs de la ayuda y del error del grupo; el error debe existir como texto visible. */
+  'aria-describedby'?: string;
+  /** Refuerzo del error enlazado por `aria-describedby`; no sustituye al texto. */
+  'aria-invalid'?: boolean;
 }
 
 /** Grupo controlado de radios nativos con opciones presentadas como tarjetas. */
@@ -34,11 +38,18 @@ export function RadioCardGroup({
   options,
   density = 'comfortable',
   disabled = false,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: RadioCardGroupProps) {
   const idPrefix = React.useId();
 
   return (
-    <fieldset disabled={disabled} className="min-w-0 space-y-2">
+    <fieldset
+      disabled={disabled}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={ariaInvalid ? true : undefined}
+      className="min-w-0 space-y-2"
+    >
       <legend className="text-sm font-medium text-gray-700 dark:text-gray-200">{legend}</legend>
       <div className="grid gap-2">
         {options.map((option, index) => {

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "task": "MOD13 E7_resume v1.1",
+  "outcome": "NOT_EXECUTED",
+  "observedAt": "2026-10-27T21:28:50Z",
+  "stopAt": "R-0",
+  "preflight": {
+    "dockerInfo": {
+      "command": "docker info --format '{{.ServerVersion}}'",
+      "exitCode": 1,
+      "result": "Docker Engine no respondió: pipe npipe:////./pipe/dockerDesktopLinuxEngine ausente."
+    },
+    "dockerPs": {
+      "command": "docker ps -a --filter name=iwana_mod13_ca_r12_pg_e1 --filter name=iwana_mod13_ca_r12_redis_e1 --format '{{.Names}} {{.Status}}'",
+      "exitCode": 1,
+      "result": "Falló por el mismo pipe inaccesible; presencia de los contenedores E1 no verificada. E7_final no inspeccionado."
+    },
+    "baselineGenerator": {
+      "expectedSha256": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9",
+      "actualSha256": "91b78e32bc71dfc25c94c0ec08b7a5d3f00cf05bbebcdebf15fa739361874ed9",
+      "matches": true
+    },
+    "localConnectionFilesPresent": true,
+    "ports": {
+      "3014": "FREE",
+      "5434": "FREE",
+      "6381": "FREE"
+    },
+    "e2e5EvidenceSha256": {
+      "file": "e2-e5.json",
+      "value": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+      "access": "SHA-256 read-only; file not modified"
+    }
+  },
+  "execution": {
+    "r0bA_E1": "NOT_EXECUTED",
+    "r0bB_seed": "NOT_EXECUTED",
+    "r0bC_fixture": "NOT_EXECUTED",
+    "r0bD_fingerprints": "NOT_EXECUTED",
+    "r1ToR9": "NOT_EXECUTED",
+    "databaseAccess": "NONE",
+    "redisAccess": "NONE",
+    "containerChanges": false,
+    "evidenceModified": false,
+    "runnerExitCode": null
+  },
+  "ipProtection": "PENDING"
+}

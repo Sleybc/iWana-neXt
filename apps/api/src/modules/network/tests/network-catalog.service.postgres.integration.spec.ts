@@ -48,6 +48,8 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
         status varchar(16) NOT NULL DEFAULT 'ACTIVE',
         notes text NULL,
         created_by uuid NOT NULL,
+        -- Fixture simplificada para atomicidad de auditoría; incluye la columna que mapea NetworkRouter desde migración 165.
+        legacy_lan_interface_id uuid NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
         version integer NOT NULL DEFAULT 1
@@ -98,6 +100,17 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
       auditService,
       {} as NetworkActorReadPort,
       new IpamService(dataSource),
+      {
+        requireCreateScope: jest.fn().mockResolvedValue(undefined),
+        requireSiteAction: jest.fn().mockResolvedValue(undefined),
+        requireSiteOrTenantWideAction: jest.fn().mockResolvedValue(undefined),
+        requireTenantWideAction: jest.fn().mockResolvedValue(undefined),
+        authorizedSiteScope: jest.fn().mockResolvedValue({ kind: 'TENANT_WIDE' }),
+      } as never,
+      { findReferenceById: jest.fn().mockResolvedValue({ isActive: true }) } as never,
+      {
+        findReferenceById: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null }),
+      } as never,
     );
   });
 

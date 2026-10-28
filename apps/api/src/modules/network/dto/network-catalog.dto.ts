@@ -19,9 +19,17 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 import { isFQDN, isIP } from 'class-validator';
 import { CONTROL_METHODS, type ControlMethod } from '@iwana/shared';
+import {
+  CommercialNodeSummaryResponseDto,
+  OrganizationSiteSummaryResponseDto,
+  ReservationAvailabilityResponseDto,
+  RouterInterfaceResponseDto,
+  RouterInterfaceIpv4AddressResponseDto,
+  RouterInterfaceRefResponseDto,
+} from './network-interfaces.dto';
 
 const IPV4_OCTET = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
 const IPV4_CIDR_PATTERN = new RegExp(
@@ -31,13 +39,18 @@ const IPV4_CIDR_PATTERN = new RegExp(
 
 const whenProvided = () => ValidateIf((_object, value: unknown) => value !== undefined);
 
+function strictApiSchema(name: string) {
+  return { name, additionalProperties: false };
+}
+
 @ValidatorConstraint({ name: 'isIpv4OrFqdn', async: false })
 class IsIpv4OrFqdnConstraint implements ValidatorConstraintInterface {
   validate(value: unknown): boolean {
-    return (
-      typeof value === 'string' &&
-      (isIP(value, '4') || isFQDN(value, { require_tld: true, allow_trailing_dot: true }))
-    );
+    if (typeof value !== 'string') return false;
+    if (isIP(value, '4')) return true;
+
+    const domain = value.endsWith('.') ? value.slice(0, -1) : value;
+    return domain.length <= 253 && isFQDN(value, { require_tld: true, allow_trailing_dot: true });
   }
 
   defaultMessage(): string {
@@ -45,14 +58,19 @@ class IsIpv4OrFqdnConstraint implements ValidatorConstraintInterface {
   }
 }
 
+@ApiSchema(strictApiSchema('CreateRouterBody'))
 export class CreateRouterDto {
-  @ApiProperty({ minLength: 1, maxLength: 120 })
+  @ApiProperty({ minLength: 1, maxLength: 120, pattern: '\\S' })
   @IsString()
   @Matches(/\S/u)
   @MaxLength(120)
   name!: string;
 
-  @ApiProperty({ description: 'Dirección IPv4 o nombre de dominio completo.' })
+  @ApiProperty({
+    minLength: 1,
+    maxLength: 255,
+    description: 'Dirección IPv4 válida o FQDN aceptado por CreateRouterBodySchema.',
+  })
   @IsString()
   @Validate(IsIpv4OrFqdnConstraint)
   @MaxLength(255)
@@ -64,7 +82,7 @@ export class CreateRouterDto {
   @MaxLength(64)
   lanInterface?: string;
 
-  @ApiProperty({ enum: CONTROL_METHODS, isArray: true, minItems: 1 })
+  @ApiProperty({ enum: CONTROL_METHODS, isArray: true, minItems: 1, uniqueItems: true })
   @IsArray()
   @ArrayMinSize(1)
   @ArrayUnique()
@@ -139,25 +157,30 @@ export class UpdateRouterDto {
   version!: number;
 }
 
+@ApiSchema(strictApiSchema('RouterStatusDto'))
 export class RouterStatusDto {
-  @ApiProperty({ minimum: 1 })
+  @ApiProperty({ type: 'integer', minimum: 1 })
   @IsInt()
   @Min(1)
   version!: number;
 }
 
+@ApiSchema(strictApiSchema('CreateIpv4NetworkBody'))
 export class CreateIpv4NetworkDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
   routerId!: string;
 
-  @ApiProperty({ minLength: 1, maxLength: 120 })
+  @ApiProperty({ minLength: 1, maxLength: 120, pattern: '\\S' })
   @IsString()
   @Matches(/\S/u)
   @MaxLength(120)
   name!: string;
 
-  @ApiProperty({ example: '192.168.10.0/24' })
+  @ApiProperty({
+    example: '192.0.2.0/24',
+    description: 'Bloque IPv4 en CIDR; el servicio valida dirección, prefijo y coherencia.',
+  })
   @Matches(IPV4_CIDR_PATTERN)
   cidr!: string;
 
@@ -221,6 +244,7 @@ export class UpdateIpv4NetworkDto {
   version!: number;
 }
 
+@ApiSchema(strictApiSchema('PutPlanProfileDto'))
 export class PutPlanProfileDto {
   @ApiProperty({ maxLength: 64, pattern: '^[A-Za-z0-9._-]{1,64}$' })
   @IsString()
@@ -228,6 +252,7 @@ export class PutPlanProfileDto {
   pcqAddressList!: string;
 }
 
+@ApiSchema(strictApiSchema('PatchNetworkSettingsDto'))
 export class PatchNetworkSettingsDto {
   @ApiProperty()
   @IsBoolean()
@@ -246,23 +271,30 @@ export class NetworkCatalogListQueryDto {
   @MaxLength(120)
   q?: string;
 
-  @ApiPropertyOptional({ format: 'uuid' })
-  @whenProvided()
-  @IsUUID()
-  routerId?: string;
-
-  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @ApiPropertyOptional({ type: 'integer', minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page = 1;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
+  @ApiPropertyOptional({ type: 'integer', minimum: 1, maximum: 100, default: 20 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
   limit = 20;
+}
+
+export class Ipv4NetworkCatalogListQueryDto extends NetworkCatalogListQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @whenProvided()
+  @IsUUID()
+  routerId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @whenProvided()
+  @IsUUID()
+  interfaceId?: string;
 }
 
 export class ActorRefResponseDto {
@@ -280,21 +312,25 @@ export class RouterResponseDto {
   name!: string;
   @ApiProperty()
   managementHost!: string;
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   lanInterface!: string | null;
   @ApiProperty({ enum: CONTROL_METHODS, isArray: true })
   supportedControlMethods!: ControlMethod[];
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   organizationSiteId!: string | null;
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   commercialNodeId!: string | null;
   @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
   status!: 'ACTIVE' | 'INACTIVE';
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   notes!: string | null;
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ type: 'integer', minimum: 0 })
   networkCount!: number;
-  @ApiProperty({ minimum: 1 })
+  @ApiPropertyOptional({ type: 'integer', minimum: 0 })
+  interfaceCount?: number;
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
+  legacyLanInterfaceId?: string | null;
+  @ApiProperty({ type: 'integer', minimum: 1 })
   version!: number;
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;
@@ -302,14 +338,102 @@ export class RouterResponseDto {
   updatedAt!: string;
 }
 
+@ApiSchema({
+  name: 'RouterDto',
+  description:
+    'Proyección legacy de router; los campos de interfaz y resúmenes extendidos siguen siendo opcionales.',
+})
+@ApiExtraModels(OrganizationSiteSummaryResponseDto, CommercialNodeSummaryResponseDto)
+export class RouterDtoResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty()
+  managementHost!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  lanInterface!: string | null;
+
+  @ApiProperty({ enum: CONTROL_METHODS, isArray: true })
+  supportedControlMethods!: ControlMethod[];
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  organizationSiteId!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  commercialNodeId!: string | null;
+
+  @ApiPropertyOptional({ type: OrganizationSiteSummaryResponseDto, nullable: true })
+  organizationSite?: OrganizationSiteSummaryResponseDto | null;
+
+  @ApiPropertyOptional({ type: CommercialNodeSummaryResponseDto, nullable: true })
+  commercialNode?: CommercialNodeSummaryResponseDto | null;
+
+  @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
+  status!: 'ACTIVE' | 'INACTIVE';
+
+  @ApiProperty({ type: String, nullable: true })
+  notes!: string | null;
+
+  @ApiProperty({ type: 'integer', minimum: 0 })
+  networkCount!: number;
+
+  @ApiPropertyOptional({ type: 'integer', minimum: 0 })
+  interfaceCount?: number;
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
+  legacyLanInterfaceId?: string | null;
+
+  @ApiProperty({ type: 'integer', minimum: 1 })
+  version!: number;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
+}
+
+@ApiSchema({
+  name: 'RouterListDto',
+  description: 'Fila de listado extendida con ambos campos de interfaz siempre presentes.',
+})
+export class RouterListResponseDto extends RouterDtoResponseDto {
+  @ApiProperty({ type: 'integer', minimum: 0, required: true })
+  declare interfaceCount: number;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, required: true })
+  declare legacyLanInterfaceId: string | null;
+}
+
+@ApiSchema({ name: 'CreateRouterInterfaceConversionResponseDto' })
+@ApiExtraModels(
+  RouterInterfaceResponseDto,
+  RouterInterfaceIpv4AddressResponseDto,
+  RouterDtoResponseDto,
+)
+export class CreateRouterInterfaceConversionResponseDto {
+  @ApiProperty({ type: RouterInterfaceResponseDto })
+  interface!: RouterInterfaceResponseDto;
+
+  @ApiProperty({ type: RouterInterfaceIpv4AddressResponseDto, nullable: true })
+  address!: RouterInterfaceIpv4AddressResponseDto | null;
+
+  @ApiProperty({ type: RouterDtoResponseDto })
+  router!: RouterDtoResponseDto;
+}
+
 export class NetworkOccupancyResponseDto {
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ type: 'integer', minimum: 0 })
   total!: number;
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ type: 'integer', minimum: 0 })
   reserved!: number;
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ type: 'integer', minimum: 0 })
   active!: number;
-  @ApiProperty({ minimum: 0 })
+  @ApiProperty({ type: 'integer', minimum: 0 })
   free!: number;
 }
 
@@ -322,7 +446,7 @@ export class Ipv4NetworkResponseDto {
   routerName!: string;
   @ApiProperty()
   name!: string;
-  @ApiProperty({ example: '192.168.10.0/24' })
+  @ApiProperty({ example: '192.0.2.0/24' })
   cidr!: string;
   @ApiProperty({ format: 'ipv4' })
   gateway!: string;
@@ -332,13 +456,64 @@ export class Ipv4NetworkResponseDto {
   assignableTo!: string;
   @ApiProperty({ type: String, isArray: true, format: 'ipv4' })
   excludedIps!: string[];
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
+  interfaceId?: string | null;
+  @ApiPropertyOptional({ type: RouterInterfaceRefResponseDto, nullable: true })
+  interface?: RouterInterfaceRefResponseDto | null;
+  @ApiPropertyOptional({ type: ReservationAvailabilityResponseDto })
+  reservationAvailability?: ReservationAvailabilityResponseDto;
   @ApiProperty({ enum: CONTROL_METHODS })
   defaultControlMethod!: ControlMethod;
   @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
   status!: 'ACTIVE' | 'INACTIVE';
   @ApiProperty({ type: NetworkOccupancyResponseDto })
   occupancy!: NetworkOccupancyResponseDto;
-  @ApiProperty({ minimum: 1 })
+  @ApiProperty({ type: 'integer', minimum: 1 })
+  version!: number;
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: string;
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: string;
+}
+
+@ApiSchema({ name: 'Ipv4NetworkExtendedDto' })
+@ApiExtraModels(
+  NetworkOccupancyResponseDto,
+  RouterInterfaceRefResponseDto,
+  ReservationAvailabilityResponseDto,
+)
+export class Ipv4NetworkExtendedResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+  @ApiProperty({ format: 'uuid' })
+  routerId!: string;
+  @ApiProperty()
+  routerName!: string;
+  @ApiProperty()
+  name!: string;
+  @ApiProperty({ example: '192.0.2.0/24' })
+  cidr!: string;
+  @ApiProperty({ format: 'ipv4' })
+  gateway!: string;
+  @ApiProperty({ format: 'ipv4' })
+  assignableFrom!: string;
+  @ApiProperty({ format: 'ipv4' })
+  assignableTo!: string;
+  @ApiProperty({ type: String, isArray: true, format: 'ipv4' })
+  excludedIps!: string[];
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  interfaceId!: string | null;
+  @ApiProperty({ type: RouterInterfaceRefResponseDto, nullable: true })
+  interface!: RouterInterfaceRefResponseDto | null;
+  @ApiProperty({ type: ReservationAvailabilityResponseDto })
+  reservationAvailability!: ReservationAvailabilityResponseDto;
+  @ApiProperty({ enum: CONTROL_METHODS })
+  defaultControlMethod!: ControlMethod;
+  @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
+  status!: 'ACTIVE' | 'INACTIVE';
+  @ApiProperty({ type: NetworkOccupancyResponseDto })
+  occupancy!: NetworkOccupancyResponseDto;
+  @ApiProperty({ type: 'integer', minimum: 1 })
   version!: number;
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;

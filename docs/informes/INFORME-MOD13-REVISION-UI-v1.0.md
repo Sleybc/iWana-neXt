@@ -271,3 +271,45 @@ En el DOM del navegador, `aside a[aria-current="page"]` tuvo exactamente un enla
 **Conteo real:** 6/6 PNG generados y revisados; claro 3/3, oscuro 3/3; plan/perfil visible 6/6; overflow horizontal de página 0/6. Se enmascararon el menú de usuario y la línea «Último cambio» para no exponer nombres personales. En móvil, el desplazamiento horizontal queda contenido en la tabla.
 
 **Límite:** V4-plan queda cubierto. V1-ci permanece bloqueado por el requisito de material instalado que impide cerrar una OT `NOT_EXECUTED` sin falsear el estado del CPE; no se declara cerrado G4 ni se crearon expedientes, CPE, OT o redes parciales.
+
+## Corrección del catálogo de routers y ayudas de IPv4
+
+**Fecha:** 2026-10-26. **Estado:** corrección local verificada con pruebas de componentes y análisis estático. **Modo:** diseño, ajuste de tabla operativa y formularios existentes.
+
+**Solicitud:** aclarar interfaz LAN, sede, nombre de red, gateway y exclusiones, y corregir la acción de activar/desactivar en `/dashboard/network/routers`.
+
+### Diagnóstico y cambio
+
+- El botón siempre renderizaba `ToggleLeft`, independientemente del estado. Ahora el router activo muestra `ToggleRight` y «Desactivar»; el inactivo muestra `ToggleLeft` y «Activar». Se conserva el nombre accesible con el router, el objetivo mínimo de 44 px y la deshabilitación durante la petición. La distinción usa forma y texto, además del acento de color del estado activo.
+- Se distinguen «Nombre del router» y «Nombre de la red», y se centralizan las ayudas en `network-catalog-labels.ts`. Las ayudas se asocian a sus controles mediante `aria-describedby`.
+- La interfaz LAN es una referencia opcional de una interfaz o bridge, como `bridge-clientes`. El contrato vigente no contiene una colección de interfaces. Guardar una IP con máscara en este campo no crea una red ni configura el equipo.
+- La sede corresponde a `organization_sites`: Organización ya admite base técnica y monitoreo operativo, además de oficina y otros tipos. El nodo comercial procede del catálogo de cobertura; es una referencia independiente de la ubicación física.
+- La red IPv4 es el bloque asignable de servicios asociado al router. Su nombre distingue segmentos de un mismo equipo. El gateway es un dato explícito de cada red: el modelo actual y el adaptador manual no descubren su valor a partir del equipo.
+- Las exclusiones impiden asignar determinadas direcciones a servicios, por ejemplo las reservadas a infraestructura. `IpamService` ya omite gateway, dirección de red y difusión, tanto en selección automática como al validar una IP manual.
+
+La UI conserva `Button`, `Input`, `NetworkFormField` y las superficies compartidas. Mantiene sombra de panel y datos técnicos monoespaciados, y aplica el acento activo con tokens existentes `iwana-secondary-700`/`400`.
+
+### Evidencia de verificación
+
+Primero se ejecutó la regresión sin el cambio: **1 suite fallida, 2 pruebas fallidas y 3 aprobadas**. Ambas fallas señalaron la ausencia del texto visible «Desactivar» en el botón.
+
+| Comando | Resultado real |
+| --- | --- |
+| `pnpm --filter @iwana/portal exec jest components/network --listTests --runInBand` | 2 archivos de pruebas encontrados |
+| `pnpm --filter @iwana/portal exec jest components/network --runInBand --no-cache --coverage=false` | 2 suites aprobadas; 13 pruebas aprobadas; 0 omitidas |
+| `pnpm --filter @iwana/portal typecheck` | Salida 0 |
+| `pnpm --filter @iwana/portal exec eslint src/components/network/NetworkRouterCatalogClient.tsx src/components/network/NetworkRouterCatalogClient.spec.tsx src/components/network/network-catalog-labels.ts src/components/network/NetworkRouterDrawer.tsx src/components/network/Ipv4NetworkDrawer.tsx` | Salida 0; sin diagnósticos |
+| `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/src/components/network` | Sin hallazgos |
+
+Resumen literal de Jest:
+
+```text
+Test Suites: 2 passed, 2 total
+Tests:       13 passed, 13 total
+```
+
+Las pruebas nuevas verifican desactivación y reactivación con su versión, bloqueo de doble clic, conservación del estado ante error y ausencia de acciones para lectura. La ejecución emitió avisos existentes de `ts-jest` por `allowJs` y de Node por `punycode`; no hubo fallas.
+
+**Límites:** no se ejecutó E2E ni inspección visual en navegador en esta corrección; no se midió cobertura ni se declara cerrado el gate global ≥80 %. El alcance conserva los contratos y datos actuales; admitir múltiples interfaces por router y asociar cada red a una interfaz requiere un cambio posterior del modelo. Las capturas históricas del informe corresponden a sus fechas originales.
+
+**Plan ejecutado:** [Routers: estado visible y claridad de los campos](../plans/2026-10-26-mod13-routers-claridad.md).

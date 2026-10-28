@@ -17,6 +17,9 @@ export class Ipv4Network {
   @Column({ name: 'router_id', type: 'uuid' })
   routerId: string;
 
+  @Column({ name: 'interface_id', type: 'uuid', nullable: true })
+  interfaceId: string | null;
+
   @Column({ type: 'varchar', length: 120 })
   name: string;
 

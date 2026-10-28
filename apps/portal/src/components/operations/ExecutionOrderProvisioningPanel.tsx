@@ -97,6 +97,7 @@ export function ExecutionOrderProvisioningPanel({
   const [releaseReason, setReleaseReason] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
   const [settingsEnabled, setSettingsEnabled] = useState<boolean | null>(null);
+  const [reservationsPaused, setReservationsPaused] = useState<boolean | null>(null);
 
   const loadCatalogs = useCallback(async () => {
     setCatalogLoading(true);
@@ -150,6 +151,7 @@ export function ExecutionOrderProvisioningPanel({
     setLoading(true);
     setLoadError(null);
     setActionError(null);
+    setReservationsPaused(null);
     try {
       const result = await networkApi.getProvisioningContext(executionOrderId);
       if (isTechnicianView(result)) {
@@ -178,6 +180,14 @@ export function ExecutionOrderProvisioningPanel({
           setSettingsEnabled(null);
         }
         onRequirementSnapshotChange?.({ enabled, certified });
+        if (canRead) {
+          try {
+            const metadata = await networkApi.getProvisioningMeta();
+            setReservationsPaused(metadata.reservationsPaused);
+          } catch {
+            setReservationsPaused(null);
+          }
+        }
         if (canExecute) {
           await loadCatalogs();
         }
@@ -185,6 +195,7 @@ export function ExecutionOrderProvisioningPanel({
     } catch (error) {
       setContext(null);
       setTechnicianView(null);
+      setReservationsPaused(null);
       if (error instanceof ApiError && error.status === 403) {
         setLoadError(NETWORK_PROVISIONING_COPY.readDenied);
       } else {
@@ -301,7 +312,12 @@ export function ExecutionOrderProvisioningPanel({
         'La dirección quedó reservada. Revisa la instrucción manual antes de aplicarla en el router.',
       );
     } catch (error) {
-      setActionError(getProvisioningErrorMessage(error));
+      if (error instanceof ApiError && error.code === 'RESERVATIONS_PAUSED') {
+        setReservationsPaused(true);
+        setActionError(null);
+      } else {
+        setActionError(getProvisioningErrorMessage(error));
+      }
     } finally {
       setSaving(false);
     }
@@ -462,6 +478,13 @@ export function ExecutionOrderProvisioningPanel({
         </div>
       ) : context ? (
         <div className="space-y-4">
+          {reservationsPaused ? (
+            <PortalAlert
+              variant="warning"
+              title="Reservas pausadas"
+              description="Las reservas están pausadas temporalmente. Inténtalo más tarde."
+            />
+          ) : null}
           {actionError ? (
             <PortalAlert
               variant="error"
@@ -832,6 +855,7 @@ export function ExecutionOrderProvisioningPanel({
                 loading={saving}
                 disabled={
                   saving ||
+                  reservationsPaused === true ||
                   catalogLoading ||
                   catalogError !== null ||
                   routers.length === 0 ||

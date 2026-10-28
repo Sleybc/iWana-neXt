@@ -59,6 +59,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'CreateCrmLifecycleChanges1580000000000',
   'CreateNetworkCatalog1600000000000',
   'CreateNetworkProvisioning1610000000000',
+  'CreateRouterInterfacesAndIpv4Addresses1650000000000',
 ];
 
 /** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */

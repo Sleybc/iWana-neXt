@@ -17,6 +17,10 @@ import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
 import { SettingsPriorityTenantReadAdapter } from './ports/settings-priority-tenant-read.adapter';
 import { SettingsPriorityTenantReadPort } from './ports/settings-priority-tenant-read.port';
+import { CommercialNodeReadAdapter } from './ports/commercial-node-read.adapter';
+import { CommercialNodeReadPort } from './ports/commercial-node-read.port';
+import { TenantLifecycleReadAdapter } from './ports/tenant-lifecycle-read.adapter';
+import { TenantLifecycleReadPort } from './ports/tenant-lifecycle-read.port';
 
 /**
  * Modulo de gestion de tenants.
@@ -61,7 +65,11 @@ import { SettingsPriorityTenantReadPort } from './ports/settings-priority-tenant
     TenantMiddleware,
     DashboardSummaryService,
     SettingsPriorityTenantReadAdapter,
+    CommercialNodeReadAdapter,
+    TenantLifecycleReadAdapter,
     { provide: SettingsPriorityTenantReadPort, useExisting: SettingsPriorityTenantReadAdapter },
+    { provide: CommercialNodeReadPort, useExisting: CommercialNodeReadAdapter },
+    { provide: TenantLifecycleReadPort, useExisting: TenantLifecycleReadAdapter },
   ],
   // Exportar TenantService para que AuthModule y otros modulos puedan
   // resolver tenants sin acceder al repositorio directamente (boundary)
@@ -70,6 +78,8 @@ import { SettingsPriorityTenantReadPort } from './ports/settings-priority-tenant
     TenantProvisioningService,
     TenantMiddleware,
     SettingsPriorityTenantReadPort,
+    CommercialNodeReadPort,
+    TenantLifecycleReadPort,
   ],
 })
 export class TenantModule {}

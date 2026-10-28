@@ -10,6 +10,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import type { DataSource } from 'typeorm';
 import { NetworkActivationListenerError } from './events/network-activation-listener.error';
 import { NetworkExecutionEventProcessor } from './network-execution-event.processor';
+import { IpamService } from './ipam.service';
 
 jest.mock('@iwana/db', () => ({
   ...jest.requireActual('@iwana/db'),
@@ -51,7 +52,7 @@ function createHarness(input?: {
   service?: Partial<ServiceProvisioning> | null;
   assignment?: Partial<IpAssignment> | null;
   snapshot?: unknown;
-  tenantRows?: unknown[];
+  tenantLifecycleReadPort?: { findTenantLifecycleById: jest.Mock };
   emitAsync?: jest.Mock;
 }) {
   const eventId = randomUUID();
@@ -112,7 +113,7 @@ function createHarness(input?: {
     operation({ manager, query: transactionQuery } as never),
   );
   const dataSource = {
-    query: jest.fn().mockResolvedValue(input?.tenantRows ?? [tenant]),
+    query: jest.fn(),
   } as unknown as DataSource;
   const config = {
     get: jest.fn((key: string) => (key === 'INTERNAL_QUEUE_SIGNING_KEY' ? signingKey : undefined)),
@@ -125,13 +126,29 @@ function createHarness(input?: {
       ),
   };
   const auditService = { logWithin: jest.fn().mockResolvedValue(undefined) };
+  const ipamService = {
+    lockIpv4Pools: jest.fn().mockResolvedValue(undefined),
+    assertActiveNetwork: jest.fn().mockResolvedValue(undefined),
+    assertAssignmentNotLocallyProtected: jest.fn().mockResolvedValue(undefined),
+  };
   const eventEmitter = { emitAsync: input?.emitAsync ?? jest.fn().mockResolvedValue([]) };
+  const tenantLifecycleReadPort = input?.tenantLifecycleReadPort ?? {
+    findTenantLifecycleById: jest.fn().mockResolvedValue({
+      id: tenant.id,
+      slug: tenant.slug,
+      schemaName: tenant.schema_name,
+      status: 'ACTIVE',
+      deletedAt: null,
+    }),
+  };
   const processor = new NetworkExecutionEventProcessor(
     dataSource,
     config,
     eventEmitter as never,
     executionOrderReadPort as never,
     auditService as never,
+    ipamService as unknown as IpamService,
+    tenantLifecycleReadPort as never,
   );
   return {
     processor,
@@ -145,6 +162,7 @@ function createHarness(input?: {
     executionOrderReadPort,
     auditService,
     eventEmitter,
+    tenantLifecycleReadPort,
     envelope,
     job: { data: signed(tenant.id, envelope) } as never,
   };
@@ -296,14 +314,63 @@ describe('NetworkExecutionEventProcessor.process', () => {
   });
 
   it('rechaza un tenant cuyo schema no es válido sin persistir en un schema arbitrario', async () => {
-    const state = createHarness({ tenantRows: [{ ...tenant, schema_name: 'schema;drop' }] });
+    const tenantLifecycleReadPort = {
+      findTenantLifecycleById: jest.fn().mockResolvedValue({
+        id: tenant.id,
+        slug: tenant.slug,
+        schemaName: 'schema;drop',
+        status: 'ACTIVE',
+        deletedAt: null,
+      }),
+    };
+    const state = createHarness({ tenantLifecycleReadPort });
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     await expect(state.processor.process(state.job)).rejects.toThrow();
 
     expect(runInTenant).not.toHaveBeenCalled();
+    expect(tenantLifecycleReadPort.findTenantLifecycleById).toHaveBeenCalledWith(tenant.id);
+    expect(state.dataSource.query).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       '[network-execution-events] retry code=omitted event=omitted tenant=omitted',
     );
+  });
+
+  it('resuelve tenant suspendido por el puerto de Tenant y conserva el comportamiento previo', async () => {
+    const tenantLifecycleReadPort = {
+      findTenantLifecycleById: jest.fn().mockResolvedValue({
+        id: tenant.id,
+        slug: tenant.slug,
+        schemaName: tenant.schema_name,
+        status: 'SUSPENDED',
+        deletedAt: null,
+      }),
+    };
+    const state = createHarness({ tenantLifecycleReadPort });
+
+    await expect(state.processor.process(state.job)).resolves.toBeUndefined();
+
+    expect(tenantLifecycleReadPort.findTenantLifecycleById).toHaveBeenCalledWith(tenant.id);
+    expect(state.dataSource.query).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['eliminado', { status: 'ACTIVE', deletedAt: new Date() }],
+    ['marcado para eliminación', { status: 'MARKED_FOR_DELETION', deletedAt: null }],
+  ])('rechaza un tenant %s según su ciclo de vida', async (_label, lifecycle) => {
+    const tenantLifecycleReadPort = {
+      findTenantLifecycleById: jest.fn().mockResolvedValue({
+        id: tenant.id,
+        slug: tenant.slug,
+        schemaName: tenant.schema_name,
+        ...lifecycle,
+      }),
+    };
+    const state = createHarness({ tenantLifecycleReadPort });
+
+    await expect(state.processor.process(state.job)).rejects.toThrow();
+
+    expect(tenantLifecycleReadPort.findTenantLifecycleById).toHaveBeenCalledWith(tenant.id);
+    expect(runInTenant).not.toHaveBeenCalled();
   });
 });

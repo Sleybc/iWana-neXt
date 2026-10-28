@@ -1,0 +1,512 @@
+{
+  "version": "E7_resume v1.4 - V-5 comparacion independiente",
+  "status": "PASS",
+  "generatedAtUtc": "2026-10-27T22:25:43.976Z",
+  "comparisonRunAtUtc": "2026-10-27T22:24:50.093Z",
+  "step": "V-5",
+  "encargo": "PROMPT-MOD13-INTERFACES-IPV4-E7-RESUME-v1.4",
+  "criterio": "PROMPT-MOD13-INTERFACES-IPV4-E7-RESUME-v1.3 H-3 (a)(b)(c); matriz QA v2.9 13.9 y 13.13; v1.4 3-V-5",
+  "reviewer": "sr-qa (AI-SR-QA) - comparador independiente",
+  "scope": "V-5 unicamente; R-1 a R-9 no ejecutados; teardown no ejecutado",
+  "target": {
+    "hostClass": "loopback",
+    "port": 5434,
+    "database": "iwana_it_mod13_ca_r12_e7_final",
+    "schema": "tenant_mod13_ca_r12_e5",
+    "table": "execution_orders"
+  },
+  "access": {
+    "mode": "solo lectura",
+    "transaction": "BEGIN READ ONLY",
+    "writeStatements": 0,
+    "redisAccessed": false,
+    "apiAccessed": false,
+    "containersModified": false,
+    "fixtureExecuted": false,
+    "fixtureLogicUsed": false,
+    "commitCreated": false,
+    "sessionGuc": "default_transaction_read_only=on (transaccion explicita READ ONLY)",
+    "statementsExecuted": "SELECT sobre information_schema, pg_attribute, pg_trigger, tenants, execution_orders, service_provisionings, ip_assignments, legacy y tablas de interfaces",
+    "rollbackAtEnd": true,
+    "durationMs": null
+  },
+  "derivation": {
+    "sources": [
+      "helper historico (e7-match-insert-helper.cjs.txt)",
+      "catalogo information_schema.columns + pg_attribute + pg_trigger",
+      "e2-e5.json checkpoints.before165"
+    ],
+    "helperCopySha256": "2398d360662d0bf6d4c22a1fc50a9bbdc2fc84fd6e2dfbb08a478ac092cb7004",
+    "helperCopyShaMatchesExpected": true,
+    "e2e5JsonSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "e2e5ShaMatchesExpected": true,
+    "tenantActiveNotDeleted": 1,
+    "tenantSchemaMatches": true,
+    "catalog": {
+      "columnsTotal": 39,
+      "pgAttributeColumns": 39,
+      "catalogSourcesAgree": true,
+      "userTriggers": 0,
+      "identityColumns": 0,
+      "generatedColumns": 0,
+      "nullableColumns": 27,
+      "columnsWithDefault": [
+        {
+          "column": "id",
+          "defaultKind": "volatile",
+          "assignedByHelper": true,
+          "excluded": false
+        },
+        {
+          "column": "status",
+          "defaultKind": "constant",
+          "assignedByHelper": true,
+          "excluded": false
+        },
+        {
+          "column": "created_at",
+          "defaultKind": "volatile",
+          "assignedByHelper": false,
+          "excluded": true
+        },
+        {
+          "column": "updated_at",
+          "defaultKind": "volatile",
+          "assignedByHelper": false,
+          "excluded": true
+        },
+        {
+          "column": "version",
+          "defaultKind": "constant",
+          "assignedByHelper": false,
+          "excluded": false
+        },
+        {
+          "column": "is_annulled",
+          "defaultKind": "constant",
+          "assignedByHelper": true,
+          "excluded": false
+        }
+      ],
+      "volatileDefaultColumns": ["id", "created_at", "updated_at"],
+      "volatileDefaultsOutsideExcluded": 0,
+      "notNullColumnsTotal": 12,
+      "notNullColumnsWithoutDefault": 6,
+      "notNullColumnsWithoutDefaultAllSuppliedByHelper": true,
+      "notNullColumnsWithoutDefaultNames": [
+        "customer_display_label",
+        "execution_order_number",
+        "origin_context",
+        "tenant_id",
+        "work_summary",
+        "work_type"
+      ]
+    },
+    "candidateRule": "primer execution_order_id de service_provisionings con status RESERVED/CERTIFIED del tenant, ORDER BY created_at ASC, id ASC LIMIT 1",
+    "candidateIsFirstByOrdering": true,
+    "earlierCandidates": 0,
+    "candidateRowExists": true,
+    "fixtureNotUsed": true,
+    "fixtureReadForDerivation": false,
+    "tenantRule": "unico tenant ACTIVE con deleted_at IS NULL; su schema debe ser tenant_mod13_ca_r12_e5"
+  },
+  "comparison": {
+    "expression": "to_jsonb(r) - 'created_at' - 'updated_at'",
+    "rowsInTable": 1,
+    "rowIdMatchesCandidate": true,
+    "rowTenantMatchesTenant": true,
+    "columnsCompared": 37,
+    "columnsExcluded": ["created_at", "updated_at"],
+    "expectedKeyCount": 37,
+    "keySetsEqual": true,
+    "differences": 0,
+    "differenceReportPolicy": "si hubiera diferencias se reportaria solo nombre de columna y tipo de diferencia, nunca valores",
+    "perColumn": [
+      {
+        "column": "assigned_crew_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "assigned_technician_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "close_notes",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "closed_at",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "created_by_user_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "customer_display_label",
+        "source": "helper:literal",
+        "result": "PASS"
+      },
+      {
+        "column": "execution_order_number",
+        "source": "helper:literal",
+        "result": "PASS"
+      },
+      {
+        "column": "id",
+        "source": "helper:candidate",
+        "result": "PASS"
+      },
+      {
+        "column": "is_annulled",
+        "source": "helper:literal",
+        "result": "PASS"
+      },
+      {
+        "column": "municipality",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "organization_site_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "origin_context",
+        "source": "helper:literal",
+        "result": "PASS"
+      },
+      {
+        "column": "origin_ref_id",
+        "source": "helper:null",
+        "result": "PASS"
+      },
+      {
+        "column": "planned_window_end_at",
+        "source": "helper:null",
+        "result": "PASS"
+      },
+      {
+        "column": "planned_window_start_at",
+        "source": "helper:null",
+        "result": "PASS"
+      },
+      {
+        "column": "result",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "schedule_event_id",
+        "source": "helper:null",
+        "result": "PASS"
+      },
+      {
+        "column": "sector",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "service_address",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "started_at",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "status",
+        "source": "helper:literal",
+        "result": "PASS"
+      },
+      {
+        "column": "subscriber_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "task_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "template_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "template_key",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "template_label",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "template_requirements_snapshot",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "template_version_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "template_version_number",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "tenant_id",
+        "source": "helper:tenant",
+        "result": "PASS"
+      },
+      {
+        "column": "ticket_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "updated_by_user_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "version",
+        "source": "catalog:constant-default",
+        "result": "PASS"
+      },
+      {
+        "column": "visit_request_id",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "work_instructions",
+        "source": "catalog:no-default-null",
+        "result": "PASS"
+      },
+      {
+        "column": "work_summary",
+        "source": "helper:literal",
+        "result": "PASS"
+      },
+      {
+        "column": "work_type",
+        "source": "helper:literal",
+        "result": "PASS"
+      }
+    ],
+    "timestamps": {
+      "createdAtSet": true,
+      "updatedAtSet": true,
+      "updatedAtNotBeforeCreatedAt": true
+    },
+    "differencesByNameAndType": [],
+    "keys": {
+      "fullRowKeys": 39,
+      "projectionKeys": 37,
+      "removedExactlyTwo": true
+    }
+  },
+  "hashes": {
+    "projection": {
+      "expression": "sha256((to_jsonb(r) - 'created_at' - 'updated_at')::text)",
+      "sha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c"
+    },
+    "fullRow": {
+      "expression": "sha256(to_jsonb(r)::text)",
+      "sha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb"
+    },
+    "fullVsProjection": {
+      "differ": true,
+      "explainedOnlyByTimestamps": true,
+      "removedKeys": ["created_at", "updated_at"]
+    },
+    "r8Base": {
+      "fullRowSha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb",
+      "projectionSha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c"
+    },
+    "timestampsConsistency": {
+      "createdEqualsUpdated": true,
+      "createdAfterV3Checkpoint": true,
+      "createdNotFuture": true,
+      "updatedNotFuture": true,
+      "ageSecondsBucket": "lt_1h"
+    }
+  },
+  "legacy": {
+    "result": "6/6 PASS",
+    "matched": 6,
+    "total": 6,
+    "hashDefinition": "sha256(COALESCE(jsonb_agg(to_jsonb(record) [- omit] ORDER BY record.id)::text, '[]'))",
+    "source": "e2-e5.json checkpoints.before165",
+    "e2e5JsonSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "tables": [
+      {
+        "table": "organization_sites",
+        "rows": 3,
+        "sha256": "73cd71be30a5aa4b3ed774087dcc3ff7e47fd34637c611e2fd5626455ae0fc26",
+        "matchesE2E5": true
+      },
+      {
+        "table": "network_routers",
+        "rows": 20,
+        "omit": "legacy_lan_interface_id",
+        "sha256": "821cf105dd86dabd5fe20080d1d2dd117b094cd6484d5972e9026ec871ae8b90",
+        "matchesE2E5": true
+      },
+      {
+        "table": "ipv4_networks",
+        "rows": 50,
+        "omit": "interface_id",
+        "sha256": "7e3f775c40a8b6cb448a74089c24e2e6b5f20410d09295e8679105e248ea5ed2",
+        "matchesE2E5": true
+      },
+      {
+        "table": "service_provisionings",
+        "rows": 2200,
+        "sha256": "22ee05577302737c9e1650d028cffdbe76b0cdf11f0f80258a6dd4d93e320b49",
+        "matchesE2E5": true
+      },
+      {
+        "table": "ip_assignments",
+        "rows": 2000,
+        "sha256": "bd2d633e8254a51ca6594b01d0c4075ce11d43af38f908092f50dd60ccff48fb",
+        "matchesE2E5": true
+      },
+      {
+        "table": "audit_logs",
+        "rows": 50,
+        "sha256": "59a80a32143b55b6ad7e705aa9d26e878d62775ce413128fe7b8d66b2547d9e8",
+        "matchesE2E5": true
+      }
+    ],
+    "assignmentStatusCounts": [
+      {
+        "status": "ACTIVE",
+        "count": 700
+      },
+      {
+        "status": "RELEASED",
+        "count": 600
+      },
+      {
+        "status": "RESERVED",
+        "count": 700
+      }
+    ],
+    "assignmentStatusCountsMatch": true,
+    "serviceStatusCounts": [
+      {
+        "status": "ACTIVE",
+        "count": 700
+      },
+      {
+        "status": "CERTIFIED",
+        "count": 100
+      },
+      {
+        "status": "FAILED",
+        "count": 100
+      },
+      {
+        "status": "RELEASED",
+        "count": 600
+      },
+      {
+        "status": "RESERVED",
+        "count": 700
+      }
+    ],
+    "serviceStatusCountsMatch": true,
+    "lanInterfaceDistribution": [
+      {
+        "state": "EMPTY",
+        "count": 4
+      },
+      {
+        "state": "FREE_TEXT",
+        "count": 4
+      },
+      {
+        "state": "MULTI_INTERFACE_TEXT",
+        "count": 4
+      },
+      {
+        "state": "NULL",
+        "count": 4
+      },
+      {
+        "state": "SIMPLE",
+        "count": 4
+      }
+    ],
+    "lanInterfaceDistributionMatch": true
+  },
+  "counts": {
+    "candidatesTotal": 800,
+    "candidatesDistinct": 800,
+    "executionOrdersTotal": 1,
+    "snapshotsMatchingCandidates": 1,
+    "snapshotsInProgressInstallation": 1,
+    "startedAtNull": 1,
+    "candidatesWithoutSnapshot": 799,
+    "interfaces": 2,
+    "addresses": 2,
+    "interfacesTenantScoped": 2,
+    "addressesTenantScoped": 2
+  },
+  "referential": {
+    "checks": 5,
+    "allZero": true,
+    "routers_without_site": 0,
+    "pools_without_router": 0,
+    "services_without_router_or_pool": 0,
+    "assignments_without_service_or_pool": 0,
+    "assignment_link_mismatches": 0
+  },
+  "networkIpProtection": "PENDING",
+  "fileIntegrity": {
+    "helperCopySha256": "2398d360662d0bf6d4c22a1fc50a9bbdc2fc84fd6e2dfbb08a478ac092cb7004",
+    "helperCopyMatchesExpected": true,
+    "e2e5JsonSha256": "8d20dbc5297e163ffa4e1640e216c750027243ea5956face38fe55593223d82a",
+    "e2e5MatchesExpected": true,
+    "fixtureInTreeSha256": "7f044c6e91b72dbae9742e63dc68107db43cabcbe1973d8263f3367a8b34ca2b",
+    "fixtureShaMatchesCheckpointV4": true,
+    "fixtureModifiedByV5": false
+  },
+  "safeguards": {
+    "dataModified": false,
+    "fixtureModified": false,
+    "fixtureExecuted": false,
+    "helperCopyModified": false,
+    "e2e5JsonModified": false,
+    "credentialsOrRowIdentifiersEmitted": false,
+    "uuidsIpsEmailsTokensInArtifact": false,
+    "sanitizationScan": {
+      "uuidMatches": 0,
+      "ipv4Matches": 0,
+      "emailMatches": 0,
+      "credentialKeyMatches": 0,
+      "bearerMatches": 0,
+      "clean": true
+    }
+  },
+  "gate": {
+    "v5": "PASS",
+    "next": "R-1 a R-9 pueden continuar con hashes.r8Base",
+    "g6": "NO PASS hasta dictamen AI-EM-ARCH tras sec-eng y sr-qa"
+  }
+}

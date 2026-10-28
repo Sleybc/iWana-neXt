@@ -1,0 +1,166 @@
+{
+  "scopeExecuted": "V-0, V-1, V-2, V-3, V-4, V-5, R-1, R-2, R-3, R-4 (R-5..R-9 pendientes)",
+  "notExecuted": ["R-5", "R-6", "R-7", "R-8", "R-9"],
+  "entries": [
+    {
+      "step": "R-1",
+      "atUtc": "2026-10-27T22:30:41Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-1: clon desde E7_final y baseline igual a la evidencia",
+      "executor": "plat-ops",
+      "clone": {
+        "name": "iwana_it_mod13_ca_r12_e7_resume",
+        "source": "iwana_it_mod13_ca_r12_e7_final",
+        "method": "CREATE DATABASE ... WITH TEMPLATE ...",
+        "templateActiveSessions": 0,
+        "targetExistedBefore": false,
+        "targetExistsAfter": true
+      },
+      "verification": {
+        "rerunAtUtc": "2026-10-27T22:46:24Z",
+        "runner": "r1-verify-baseline.cjs",
+        "exit": 0,
+        "legacyMatches": "6/6",
+        "executionOrdersFullSha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb",
+        "executionOrdersProjectionSha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c",
+        "executionOrders": 1,
+        "candidatesTotal": 800,
+        "candidatesDistinct": 800,
+        "candidatesReserved": 700,
+        "candidatesCertified": 100,
+        "snapshotsInProgressInstallation": 1,
+        "candidatesWithSnapshot": 1,
+        "candidatesWithoutSnapshot": 799,
+        "interfaces": 2,
+        "addresses": 2,
+        "referentialChecksZero": 5
+      },
+      "note": "La verificacion se re-ejecuto al cerrar R-4 porque el runner de R-1 no habia dejado archivo de salida; los valores son identicos a los observados en R-1 y la sesion de R-4 no modifico las tablas comparadas."
+    },
+    {
+      "step": "R-2",
+      "atUtc": "2026-10-27T22:31:38Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-2: build del checkout y SHA de dist",
+      "executor": "plat-ops",
+      "command": "pnpm --filter @iwana/api... build",
+      "exit": 0,
+      "git": {
+        "head": "81adebe9",
+        "treeClean": false,
+        "commitExecuted": false
+      },
+      "distSha256": {
+        "mainJs": "54B81CC71A9E1964E5C4BEA048643FD72BC2B459E65B195DC32D032DEDE01529",
+        "ipamServiceJs": "85E69FF11C46699E86A834463B8E31A11F2AECFEF1A978FC8079A6D5A6D741D6",
+        "networkInterfaceCatalogServiceJs": "E681B0C6278037279B8C7801E2A14F3162484F9235C443BC52AB1E84A6113365",
+        "networkProvisioningReconcilerProcessorJs": "2BD7E69BB229B6ABE9EFA4271D957CC23BAC476077CAA01D16D9F810D520DF11"
+      },
+      "matchesE7Final": {
+        "mainJs": true,
+        "ipamServiceJs": true,
+        "networkInterfaceCatalogServiceJs": true,
+        "networkProvisioningReconcilerProcessorJs": true,
+        "distinctBuild": false
+      },
+      "distMtimeUtc": "2026-10-27T22:31:37Z"
+    },
+    {
+      "step": "R-3",
+      "atUtc": "2026-10-27T22:35:19Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-3: arranque pausado con 17 colas pausadas",
+      "executor": "plat-ops",
+      "redis": {
+        "db": 7,
+        "dbSizeBefore": 0,
+        "queues": 17,
+        "allPaused": true,
+        "activeTotal": 0
+      },
+      "repeatables": 3,
+      "api": {
+        "port": 3014,
+        "bind": "127.0.0.1",
+        "healthStatus": 200,
+        "networkIpProtection": "PENDING",
+        "reservationsPaused": true
+      },
+      "credentialsPrinted": false
+    },
+    {
+      "step": "R-4",
+      "atUtc": "2026-10-27T22:45:00.154Z",
+      "result": "PASS",
+      "criterion": "v1.0 R-4 + v1.4: reanudacion de 17/17 y una ocurrencia natural completa del repeatable",
+      "executor": "plat-ops",
+      "apiRestart": {
+        "atUtc": "2026-10-27T22:36:16Z",
+        "networkIpProtection": "PENDING",
+        "reservationsPaused": false,
+        "healthStatus": 200
+      },
+      "resume": {
+        "atUtc": "2026-10-27T22:36:48.645Z",
+        "queues": 17,
+        "pausedBefore": 17,
+        "pausedAfter": 0,
+        "allResumed": true
+      },
+      "naturalOccurrence": {
+        "queue": "network-provisioning-reconcile",
+        "jobName": "reconcile-network-provisioning",
+        "startedAtUtc": "2026-10-27T22:45:00.064Z",
+        "completedAtUtc": "2026-10-27T22:45:00.154Z",
+        "status": "completed",
+        "attemptsMade": 0,
+        "cameFromRepeatable": true,
+        "promotedManually": false,
+        "batches": 8,
+        "batchSize": 100,
+        "maxBatchSize": 100,
+        "batchOutcomesOk": 8,
+        "resultCountTotal": 1,
+        "failed": 0,
+        "stalled": 0,
+        "retries": 0
+      },
+      "queueStateAfter": {
+        "pausedQueues": 0,
+        "repeatables": 3,
+        "waiting": 0,
+        "active": 0,
+        "failed": 0,
+        "paused": 0,
+        "prioritized": 0,
+        "waitingChildren": 0,
+        "delayed": 3,
+        "delayedOnlyRepeatables": true,
+        "dlqEmpty": true
+      },
+      "postcheck": {
+        "runner": "r4-postcheck.cjs",
+        "exit": 0,
+        "legacyMatches": "6/6",
+        "executionOrdersFullSha256": "25150f433684c8805c7875218d30c3e92a0c12da0b4edd8878be0920467c11eb",
+        "executionOrdersProjectionSha256": "23d4d19f0215c7940853a4ad62b7eefe1e5b21844a667d4849894cda17a6ab4c",
+        "executionOrdersFullMatchesV5": true,
+        "executionOrdersProjectionMatchesV5": true,
+        "startedAtNull": true,
+        "orders": 1,
+        "candidatesTotal": 800,
+        "candidatesDistinct": 800,
+        "candidatesWithSnapshot": 1,
+        "candidatesWithoutSnapshot": 799,
+        "interfaces": 2,
+        "addresses": 2,
+        "referentialChecksZero": 5
+      },
+      "incident": {
+        "detected": "r4-trace.jsonl contenia la linea de configuracion del launcher, no JSON",
+        "action": "se vacio el archivo antes de la ocurrencia natural para que el observador pudiera parsear solo lotes",
+        "impact": "ninguno; las 8 lineas de lote se escribieron despues"
+      }
+    }
+  ]
+}

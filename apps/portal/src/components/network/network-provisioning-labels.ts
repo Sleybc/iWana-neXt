@@ -25,6 +25,9 @@ const NETWORK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
     'La dirección corresponde a la puerta de enlace y no se puede asignar. Elige otra.',
   IP_EXCLUDED: 'La dirección está excluida de esta red. Elige otra.',
   IP_IN_USE: 'La dirección ya está en uso. Actualiza la disponibilidad o elige otra.',
+  IP_PROTECTED_BY_INFRASTRUCTURE:
+    'Esta dirección corresponde a infraestructura registrada y no se puede asignar a un servicio. Elige otra dirección.',
+  RESERVATIONS_PAUSED: 'Las reservas están pausadas temporalmente. Inténtalo más tarde.',
   NETWORK_OVERLAP:
     'El rango se superpone con otra red registrada. Revisa el CIDR antes de guardar.',
   NETWORK_NOT_IN_ROUTER:

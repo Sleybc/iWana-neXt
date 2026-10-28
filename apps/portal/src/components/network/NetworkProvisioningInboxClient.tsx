@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey, ExecutionOrderStatus } from '@iwana/shared';
@@ -378,6 +378,7 @@ export function NetworkProvisioningInboxClient() {
       {activeRow ? (
         <RegularizeProvisioningDrawer
           row={activeRow}
+          canReadReservationsPause={hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ)}
           onClose={() => setActiveRow(null)}
           onSaved={async () => {
             await loadQueue();
@@ -390,10 +391,12 @@ export function NetworkProvisioningInboxClient() {
 
 function RegularizeProvisioningDrawer({
   row,
+  canReadReservationsPause,
   onClose,
   onSaved,
 }: {
   row: ProvisioningInboxRowDto;
+  canReadReservationsPause: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -414,10 +417,26 @@ function RegularizeProvisioningDrawer({
     ReturnType<typeof networkApi.regularizeProvisioning>
   > | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
+  const [reservationsPaused, setReservationsPaused] = useState<boolean | null>(null);
+  const pauseReportedByServer = useRef(false);
 
   useEffect(() => {
     let current = true;
     setLoading(true);
+    pauseReportedByServer.current = false;
+    setReservationsPaused(null);
+    if (canReadReservationsPause) {
+      void networkApi
+        .getProvisioningMeta()
+        .then((metadata) => {
+          if (current && !pauseReportedByServer.current) {
+            setReservationsPaused(metadata.reservationsPaused);
+          }
+        })
+        .catch(() => {
+          if (current && !pauseReportedByServer.current) setReservationsPaused(null);
+        });
+    }
     void Promise.all([
       networkApi.getProvisioningContext(row.executionOrderId),
       collectListPages(
@@ -461,7 +480,7 @@ function RegularizeProvisioningDrawer({
     return () => {
       current = false;
     };
-  }, [row.executionOrderId]);
+  }, [canReadReservationsPause, row.executionOrderId]);
 
   const selectedRouter = routers.find((router) => router.id === routerId) ?? null;
   const availableNetworks = networks.filter((network) => network.routerId === routerId);
@@ -470,6 +489,7 @@ function RegularizeProvisioningDrawer({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (reservationsPaused === true) return;
     if (
       !context ||
       !routerId ||
@@ -500,7 +520,13 @@ function RegularizeProvisioningDrawer({
       setCompletedService(service);
       await onSaved();
     } catch (cause) {
-      setError(getProvisioningErrorMessage(cause));
+      if (cause instanceof ApiError && cause.code === 'RESERVATIONS_PAUSED') {
+        pauseReportedByServer.current = true;
+        setReservationsPaused(true);
+        setError(null);
+      } else {
+        setError(getProvisioningErrorMessage(cause));
+      }
     } finally {
       setSaving(false);
     }
@@ -525,10 +551,18 @@ function RegularizeProvisioningDrawer({
       formId="network-provisioning-regularize-form"
       submitLabel="Guardar regularización"
       submitVisible={!completedService}
+      submitDisabled={reservationsPaused === true}
       submitting={saving}
       onSubmit={(event) => void submit(event)}
       onClose={() => !saving && onClose()}
     >
+      {reservationsPaused ? (
+        <PortalAlert
+          variant="warning"
+          title="Reservas pausadas"
+          description="Las reservas están pausadas temporalmente. Inténtalo más tarde."
+        />
+      ) : null}
       {error ? (
         <PortalAlert
           variant="error"

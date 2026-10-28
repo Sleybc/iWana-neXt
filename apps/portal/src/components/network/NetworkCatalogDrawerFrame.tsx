@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, type FormEventHandler, type ReactNode } from 'react';
+import { useId, useRef, type FormEventHandler, type ReactNode, type RefObject } from 'react';
 import { Button, ModalLayer, overlayEdgeClassName } from '@iwana/ui';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
@@ -19,8 +19,12 @@ interface NetworkCatalogDrawerFrameProps {
   description: string;
   formId: string;
   submitLabel: string;
+  submitAriaDisabled?: boolean;
+  submitDisabled?: boolean;
   submitVisible?: boolean;
   submitting: boolean;
+  secondaryAction?: { label: string; onClick: () => void; disabled?: boolean };
+  initialFocusRef?: RefObject<HTMLElement | null>;
   onSubmit: FormEventHandler<HTMLFormElement>;
   onClose: () => void;
   children: ReactNode;
@@ -32,15 +36,19 @@ export function NetworkCatalogDrawerFrame({
   description,
   formId,
   submitLabel,
+  submitAriaDisabled = false,
+  submitDisabled = false,
   submitVisible = true,
   submitting,
+  secondaryAction,
+  initialFocusRef,
   onSubmit,
   onClose,
   children,
 }: NetworkCatalogDrawerFrameProps) {
   const panelRef = useRef<HTMLElement>(null);
   const titleId = useId();
-  usePortalSideDrawerA11y(open, panelRef, onClose);
+  usePortalSideDrawerA11y(open, panelRef, onClose, initialFocusRef);
   usePortalModalDrawerBroadcast(open);
 
   if (!open) return null;
@@ -77,6 +85,17 @@ export function NetworkCatalogDrawerFrame({
         <form id={formId} onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
           <footer className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-white px-5 py-4 dark:border-dark-border dark:bg-dark-surface-2 sm:flex-row sm:justify-end sm:px-6">
+            {secondaryAction ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11"
+                onClick={secondaryAction.onClick}
+                disabled={submitting || secondaryAction.disabled}
+              >
+                {secondaryAction.label}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
@@ -93,7 +112,8 @@ export function NetworkCatalogDrawerFrame({
                 variant="primary"
                 className="min-h-11"
                 loading={submitting}
-                disabled={submitting}
+                disabled={submitting || submitDisabled}
+                aria-disabled={submitAriaDisabled || undefined}
               >
                 {submitLabel}
               </Button>

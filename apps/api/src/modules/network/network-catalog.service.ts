@@ -1,24 +1,35 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Ipv4Network,
   NetworkPlanProfile,
   NetworkRouter,
+  NetworkRouterInterface,
+  NetworkRouterInterfaceIpv4Address,
   NetworkSetting,
   runInTenantSchema,
   TenantContext,
 } from '@iwana/db';
 import {
+  AccessPermissionKey,
   type ActorRefDto,
   type CreateIpv4NetworkBody,
   type CreateRouterBody,
+  type AssistedCreateIpv4NetworkBody,
   type Ipv4NetworkDto,
+  type Ipv4NetworkExtendedDto,
   type ListResponse,
+  type RouterDetailDto,
+  type RouterInterfaceDto,
+  type RouterListDto,
+  type RouterSiteOptionDto,
   type NetworkSettingsDto,
   type PlanProfileDto,
   type RouterDto,
@@ -26,12 +37,21 @@ import {
   type UpdateRouterBody,
   AuditAction,
 } from '@iwana/shared';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { buildPageMeta, clampLimit, clampPage } from '../../common/pagination';
 import { IpamService, type IpamOccupancy } from './ipam.service';
 import { NetworkActorReadPort } from './ports/network-actor-read.port';
-import { NetworkCatalogListQueryDto } from './dto/network-catalog.dto';
+import {
+  Ipv4NetworkCatalogListQueryDto,
+  NetworkCatalogListQueryDto,
+} from './dto/network-catalog.dto';
+import { NetworkAuthorizationFacade } from './authorization/network-authorization.facade';
+import { OrganizationSiteReadPort } from '../organization/ports/organization-site-read.port';
+import { CommercialNodeReadPort } from '../tenant/ports/commercial-node-read.port';
+import { NETWORK_IP_PROTECTION_STATUS, type IpProtectionStatus } from './ip-protection-status';
+import type { AuthorizedSiteScope } from '../access-control/ports/effective-permission-scope.port';
+import type { RouterSiteOptionsQueryDto } from './dto/network-interfaces.dto';
 
 type CatalogStatus = 'ACTIVE' | 'INACTIVE';
 
@@ -41,10 +61,34 @@ interface NetworkValidationRow {
   from_inside: boolean;
   to_inside: boolean;
   range_ordered: boolean;
+  exclusions_inside: boolean;
 }
 
 interface CountRow {
   count: number | string;
+}
+
+interface RouterInterfaceSummaryRow {
+  router_id: string;
+  interface_count: number | string;
+  legacy_lan_interface_id: string | null;
+}
+
+interface RouterNetworkAvailabilityRow {
+  router_status: string;
+  interface_id: string | null;
+  interface_name: string | null;
+  interface_status: string | null;
+}
+
+interface NetworkInterfaceProjectionRow {
+  id: string;
+  name: string;
+  status: string;
+}
+
+interface NetworkRouterStatusRow {
+  status: string;
 }
 
 interface RouterNameRow {
@@ -72,9 +116,22 @@ export class NetworkCatalogService {
     private readonly auditService: AuditService,
     private readonly actorReadPort: NetworkActorReadPort,
     private readonly ipamService: IpamService,
+    private readonly authorization: NetworkAuthorizationFacade,
+    private readonly organizationSiteReadPort: OrganizationSiteReadPort,
+    private readonly commercialNodeReadPort: CommercialNodeReadPort,
+    @Optional()
+    @Inject(NETWORK_IP_PROTECTION_STATUS)
+    private readonly ipProtectionStatus: IpProtectionStatus = 'PENDING',
   ) {}
 
-  async listRouters(query: NetworkCatalogListQueryDto): Promise<ListResponse<RouterDto>> {
+  async listRouters(
+    query: NetworkCatalogListQueryDto,
+    actorId: string,
+  ): Promise<ListResponse<RouterListDto>> {
+    const authorizedScope = await this.authorization.authorizedSiteScope(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_READ,
+    );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const limit = clampLimit(query.limit, 100);
     const { page } = clampPage(query.page, limit);
@@ -84,6 +141,7 @@ export class NetworkCatalogService {
       const builder = qr.manager
         .createQueryBuilder(NetworkRouter, 'router')
         .where('router.tenant_id = :tenantId', { tenantId });
+      this.applySiteScope(builder, 'router', authorizedScope);
       if (query.status) builder.andWhere('router.status = :status', { status: query.status });
       if (query.q?.trim()) {
         builder.andWhere('router.name ILIKE :query', { query: `%${query.q.trim()}%` });
@@ -97,9 +155,29 @@ export class NetworkCatalogService {
         .take(limit)
         .getMany();
 
-      const data: RouterDto[] = [];
+      const summaries = rows.length
+        ? ((await qr.manager.query(
+            `SELECT router.id AS router_id,
+                    router.legacy_lan_interface_id,
+                    COUNT(interface.id)::integer AS interface_count
+               FROM network_routers router
+               LEFT JOIN network_router_interfaces interface
+                 ON interface.tenant_id = router.tenant_id
+                AND interface.router_id = router.id
+              WHERE router.tenant_id = $1 AND router.id = ANY($2::uuid[])
+              GROUP BY router.id, router.legacy_lan_interface_id`,
+            [tenantId, rows.map((router) => router.id)],
+          )) as RouterInterfaceSummaryRow[])
+        : [];
+      const summariesByRouter = new Map(summaries.map((summary) => [summary.router_id, summary]));
+      const data: RouterListDto[] = [];
       for (const router of rows) {
-        data.push(await this.toRouterDto(qr.manager, tenantId, router));
+        const summary = summariesByRouter.get(router.id);
+        data.push({
+          ...(await this.toRouterDto(qr.manager, tenantId, router)),
+          interfaceCount: Number(summary?.interface_count ?? 0),
+          legacyLanInterfaceId: summary?.legacy_lan_interface_id ?? null,
+        });
       }
 
       return {
@@ -115,10 +193,193 @@ export class NetworkCatalogService {
     });
   }
 
-  async createRouter(input: CreateRouterBody, actorId: string): Promise<RouterDto> {
+  async getRouterDetail(id: string, actorId: string): Promise<RouterDetailDto> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const router = await qr.manager.findOne(NetworkRouter, { where: { id, tenantId } });
+      if (!router) throw this.resourceNotFound();
+      await this.authorization.requireSiteOrTenantWideAction(
+        actorId,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_CATALOG_READ,
+      );
+
+      const [organizationSite, commercialNode] = await Promise.all([
+        router.organizationSiteId
+          ? this.organizationSiteReadPort.findRouterSummaryById(router.organizationSiteId)
+          : Promise.resolve(null),
+        router.commercialNodeId
+          ? this.commercialNodeReadPort.findRouterSummaryById(router.commercialNodeId)
+          : Promise.resolve(null),
+      ]);
+      const base = await this.toRouterDto(qr.manager, tenantId, router);
+      const summaries = (await qr.manager.query(
+        `SELECT COUNT(*)::integer AS interface_count
+           FROM network_router_interfaces
+          WHERE tenant_id = $1 AND router_id = $2`,
+        [tenantId, router.id],
+      )) as Array<{ interface_count: number | string }>;
+      return {
+        ...base,
+        interfaceCount: Number(summaries[0]?.interface_count ?? 0),
+        legacyLanInterfaceId: router.legacyLanInterfaceId ?? null,
+        organizationSite,
+        commercialNode,
+      };
+    });
+  }
+
+  async listRouterSiteOptions(
+    query: RouterSiteOptionsQueryDto,
+    actorId: string,
+  ): Promise<ListResponse<RouterSiteOptionDto>> {
+    const scope = await this.authorization.authorizedSiteScope(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    );
+    return this.organizationSiteReadPort.listRouterOptions({
+      scope,
+      page: query.page,
+      limit: query.limit,
+    });
+  }
+
+  async getCatalogMeta(actorId: string): Promise<{ ipProtection: IpProtectionStatus }> {
+    await this.authorization.requireTenantWideAction(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_READ,
+    );
+    return { ipProtection: this.ipProtectionStatus };
+  }
+
+  async createAssistedIpv4Network(
+    routerId: string,
+    input: AssistedCreateIpv4NetworkBody,
+    actorId: string,
+  ): Promise<Ipv4NetworkExtendedDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     try {
       return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        await this.lockIpv4Catalog(qr.manager, tenantId);
+        const router = await qr.manager.findOne(NetworkRouter, {
+          where: { id: routerId, tenantId },
+          lock: { mode: 'pessimistic_read' },
+        });
+        if (!router) throw this.resourceNotFound();
+        await this.authorization.requireSiteOrTenantWideAction(
+          actorId,
+          router.organizationSiteId,
+          AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+        );
+        if (router.status !== 'ACTIVE') throw this.resourceNotFound();
+        if (!router.supportedControlMethods.includes(input.defaultControlMethod)) {
+          throw this.controlMethodNotSupported();
+        }
+
+        let cidr: string;
+        let gateway: string;
+        let sourceInterfaceId: string | null = null;
+        if (input.source.mode === 'MANUAL_CIDR') {
+          cidr = input.source.cidr;
+          gateway = input.source.gateway;
+        } else if (input.source.mode === 'IP_PREFIX') {
+          cidr = input.source.confirmedCidr;
+          gateway = input.source.confirmedGateway;
+          await this.assertConfirmedPrefix(qr.manager, input.source.addressWithPrefix, cidr);
+        } else {
+          await this.authorization.requireSiteOrTenantWideAction(
+            actorId,
+            router.organizationSiteId,
+            AccessPermissionKey.NETWORK_CATALOG_READ,
+          );
+          const address = await qr.manager.findOne(NetworkRouterInterfaceIpv4Address, {
+            where: {
+              id: input.source.interfaceAddressId,
+              tenantId,
+              routerId,
+              version: input.source.interfaceAddressVersion,
+            },
+          });
+          if (!address) throw this.resourceNotFound();
+          const sourceInterface = await qr.manager.findOne(NetworkRouterInterface, {
+            where: { id: address.interfaceId, tenantId, routerId },
+          });
+          if (!sourceInterface) throw this.resourceNotFound();
+          if (sourceInterface.status !== 'ACTIVE') {
+            throw new ConflictException({ code: 'INTERFACE_NOT_AVAILABLE' });
+          }
+          cidr = input.source.confirmedCidr;
+          gateway = input.source.confirmedGateway;
+          sourceInterfaceId = sourceInterface.id;
+          await this.assertConfirmedPrefix(qr.manager, address.address, cidr);
+        }
+
+        const interfaceId = input.interfaceId ?? sourceInterfaceId;
+        if (input.interfaceId && sourceInterfaceId && input.interfaceId !== sourceInterfaceId) {
+          throw new BadRequestException({ code: 'NETWORK_CONFIRMATION_MISMATCH' });
+        }
+        let interfaceName: string | null = null;
+        if (interfaceId) {
+          const routerInterface = await qr.manager.findOne(NetworkRouterInterface, {
+            where: { id: interfaceId, tenantId, routerId },
+            lock: { mode: 'pessimistic_read' },
+          });
+          if (!routerInterface) throw this.resourceNotFound();
+          if (input.interfaceId && routerInterface.version !== input.interfaceVersion) {
+            this.assertVersion(routerInterface.version, input.interfaceVersion ?? 0);
+          }
+          if (routerInterface.status !== 'ACTIVE') {
+            throw new ConflictException({ code: 'INTERFACE_NOT_AVAILABLE' });
+          }
+          interfaceName = routerInterface.name;
+        }
+
+        const networkInput = {
+          cidr,
+          gateway,
+          assignableFrom: input.assignableFrom,
+          assignableTo: input.assignableTo,
+          excludedIps: input.excludedIps ?? [],
+        };
+        await this.assertNetworkRange(qr.manager, networkInput);
+        const network = qr.manager.create(Ipv4Network, {
+          tenantId,
+          routerId,
+          interfaceId: interfaceId ?? null,
+          name: input.name?.trim() || interfaceName || `Red ${cidr}`,
+          ...networkInput,
+          defaultControlMethod: input.defaultControlMethod,
+          status: 'ACTIVE',
+          createdBy: actorId,
+          version: 1,
+        });
+        const saved = await qr.manager.save(Ipv4Network, network);
+        await this.auditService.logWithin(
+          {
+            tenantId,
+            schemaName,
+            userId: actorId,
+            action: AuditAction.CREATE,
+            entityType: 'Ipv4Network',
+            entityId: saved.id,
+            newValue: this.networkAuditValue(saved, ['routerId', 'interfaceId', 'name']),
+          },
+          qr.manager,
+        );
+        return this.toIpv4NetworkDto(qr.manager, saved, router.name);
+      });
+    } catch (error) {
+      if (this.isExclusionViolation(error)) throw this.networkOverlap();
+      throw error;
+    }
+  }
+
+  async createRouter(input: CreateRouterBody, actorId: string): Promise<RouterDto> {
+    await this.validateNewRouterReferences(input, actorId);
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    try {
+      return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        await this.lockIpv4Catalog(qr.manager, tenantId);
         const router = qr.manager.create(NetworkRouter, {
           tenantId,
           name: input.name.trim(),
@@ -142,7 +403,6 @@ export class NetworkCatalogService {
             entityType: 'NetworkRouter',
             entityId: saved.id,
             newValue: {
-              name: saved.name,
               status: saved.status,
               supportedControlMethods: saved.supportedControlMethods,
               changedFields: [
@@ -163,7 +423,7 @@ export class NetworkCatalogService {
     } catch (error) {
       if (this.isUniqueViolation(error, 'uq_network_routers_tenant_name')) {
         throw new ConflictException({
-          code: 'VALIDATION_ERROR',
+          code: 'ROUTER_NAME_IN_USE',
           message: 'Ya existe un router con ese nombre.',
         });
       }
@@ -175,12 +435,27 @@ export class NetworkCatalogService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     try {
       return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        await this.lockIpv4Catalog(qr.manager, tenantId);
+        const poolRows = (await qr.manager.query(
+          `SELECT id FROM ipv4_networks WHERE tenant_id = $1 AND router_id = $2 ORDER BY id`,
+          [tenantId, id],
+        )) as Array<{ id: string }>;
+        await this.ipamService.lockIpv4Pools(
+          qr.manager,
+          poolRows.map((row) => row.id),
+        );
         const router = await qr.manager.findOne(NetworkRouter, {
           where: { id, tenantId },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!router) throw new NotFoundException('No se encontró el router.');
+        if (!router) throw this.resourceNotFound();
+        await this.authorization.requireSiteOrTenantWideAction(
+          actorId,
+          router.organizationSiteId,
+          AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+        );
         this.assertVersion(router.version, input.version);
+        await this.validateRouterReferenceChanges(router, input, actorId);
 
         const changes: string[] = [];
         for (const field of [
@@ -211,7 +486,7 @@ export class NetworkCatalogService {
             [tenantId, id, input.supportedControlMethods],
           )) as unknown[];
           if (unsupported.length > 0) {
-            throw this.controlMethodNotSupported();
+            throw this.controlMethodInUse();
           }
         }
 
@@ -226,7 +501,6 @@ export class NetworkCatalogService {
             entityType: 'NetworkRouter',
             entityId: saved.id,
             newValue: {
-              name: saved.name,
               status: saved.status,
               supportedControlMethods: saved.supportedControlMethods,
               changedFields: changes,
@@ -239,7 +513,7 @@ export class NetworkCatalogService {
     } catch (error) {
       if (this.isUniqueViolation(error, 'uq_network_routers_tenant_name')) {
         throw new ConflictException({
-          code: 'VALIDATION_ERROR',
+          code: 'ROUTER_NAME_IN_USE',
           message: 'Ya existe un router con ese nombre.',
         });
       }
@@ -255,11 +529,25 @@ export class NetworkCatalogService {
   ): Promise<RouterDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockIpv4Catalog(qr.manager, tenantId);
+      const poolRows = (await qr.manager.query(
+        `SELECT id FROM ipv4_networks WHERE tenant_id = $1 AND router_id = $2 ORDER BY id`,
+        [tenantId, id],
+      )) as Array<{ id: string }>;
+      await this.ipamService.lockIpv4Pools(
+        qr.manager,
+        poolRows.map((row) => row.id),
+      );
       const router = await qr.manager.findOne(NetworkRouter, {
         where: { id, tenantId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!router) throw new NotFoundException('No se encontró el router.');
+      if (!router) throw this.resourceNotFound();
+      await this.authorization.requireSiteOrTenantWideAction(
+        actorId,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+      );
       this.assertVersion(router.version, version);
 
       router.status = status;
@@ -274,7 +562,6 @@ export class NetworkCatalogService {
           entityType: 'NetworkRouter',
           entityId: saved.id,
           newValue: {
-            name: saved.name,
             status: saved.status,
             supportedControlMethods: saved.supportedControlMethods,
             changedFields: ['status'],
@@ -286,7 +573,14 @@ export class NetworkCatalogService {
     });
   }
 
-  async listIpv4Networks(query: NetworkCatalogListQueryDto): Promise<ListResponse<Ipv4NetworkDto>> {
+  async listIpv4Networks(
+    query: Ipv4NetworkCatalogListQueryDto,
+    actorId: string,
+  ): Promise<ListResponse<Ipv4NetworkExtendedDto>> {
+    const authorizedScope = await this.authorization.authorizedSiteScope(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_READ,
+    );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const limit = clampLimit(query.limit, 100);
     const { page } = clampPage(query.page, limit);
@@ -302,9 +596,15 @@ export class NetworkCatalogService {
         )
         .addSelect('router.name', 'router_name')
         .where('network.tenant_id = :tenantId', { tenantId });
+      this.applySiteScope(builder, 'router', authorizedScope);
       if (query.routerId)
         builder.andWhere('network.router_id = :routerId', { routerId: query.routerId });
+      if (query.interfaceId)
+        builder.andWhere('network.interface_id = :interfaceId', { interfaceId: query.interfaceId });
       if (query.status) builder.andWhere('network.status = :status', { status: query.status });
+      if (query.q?.trim()) {
+        builder.andWhere('network.name ILIKE :query', { query: `%${query.q.trim()}%` });
+      }
 
       const total = await builder.clone().getCount();
       const { entities, raw } = await builder
@@ -314,7 +614,7 @@ export class NetworkCatalogService {
         .take(limit)
         .getRawAndEntities();
 
-      const data: Ipv4NetworkDto[] = [];
+      const data: Ipv4NetworkExtendedDto[] = [];
       for (let index = 0; index < entities.length; index += 1) {
         const network = entities[index];
         if (!network) continue;
@@ -334,14 +634,27 @@ export class NetworkCatalogService {
     });
   }
 
-  async createIpv4Network(input: CreateIpv4NetworkBody, actorId: string): Promise<Ipv4NetworkDto> {
+  async createIpv4Network(
+    input: CreateIpv4NetworkBody,
+    actorId: string,
+  ): Promise<Ipv4NetworkExtendedDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     try {
       return await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        await this.lockIpv4Catalog(qr.manager, tenantId);
         const router = await qr.manager.findOne(NetworkRouter, {
-          where: { id: input.routerId, tenantId, status: 'ACTIVE' },
+          where: { id: input.routerId, tenantId },
+          lock: { mode: 'pessimistic_read' },
         });
-        if (!router) throw new NotFoundException('No se encontró un router activo.');
+        if (!router) throw this.resourceNotFound();
+        await this.authorization.requireSiteOrTenantWideAction(
+          actorId,
+          router.organizationSiteId,
+          AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+        );
+        if (router.status !== 'ACTIVE') {
+          throw this.resourceNotFound();
+        }
         if (!router.supportedControlMethods.includes(input.defaultControlMethod)) {
           throw this.controlMethodNotSupported();
         }
@@ -391,20 +704,41 @@ export class NetworkCatalogService {
     id: string,
     input: UpdateIpv4NetworkBody,
     actorId: string,
-  ): Promise<Ipv4NetworkDto> {
+  ): Promise<Ipv4NetworkExtendedDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockIpv4Catalog(qr.manager, tenantId);
+      const current = await qr.manager.findOne(Ipv4Network, { where: { id, tenantId } });
+      if (!current) throw this.resourceNotFound();
+      await this.ipamService.lockIpv4Pools(qr.manager, [current.id]);
+      const router = await qr.manager.findOne(NetworkRouter, {
+        where: { id: current.routerId, tenantId },
+        lock: { mode: 'pessimistic_read' },
+      });
+      if (!router) throw this.resourceNotFound();
+      let selectedInterface: NetworkRouterInterface | null = null;
+      if (input.interfaceId !== undefined && input.interfaceId !== null) {
+        selectedInterface = await qr.manager.findOne(NetworkRouterInterface, {
+          where: { id: input.interfaceId, routerId: current.routerId, tenantId },
+          lock: { mode: 'pessimistic_read' },
+        });
+        if (!selectedInterface) throw this.resourceNotFound();
+        if (input.interfaceVersion !== undefined) {
+          this.assertVersion(selectedInterface.version, input.interfaceVersion);
+        }
+      }
       const network = await qr.manager.findOne(Ipv4Network, {
         where: { id, tenantId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!network) throw new NotFoundException('No se encontró la red IPv4.');
-      this.assertVersion(network.version, input.version);
+      if (!network) throw this.resourceNotFound();
 
-      const router = await qr.manager.findOne(NetworkRouter, {
-        where: { id: network.routerId, tenantId },
-      });
-      if (!router) throw new NotFoundException('No se encontró el router de la red.');
+      await this.authorization.requireSiteOrTenantWideAction(
+        actorId,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+      );
+      this.assertVersion(network.version, input.version);
 
       const next = {
         cidr: network.cidr,
@@ -421,7 +755,13 @@ export class NetworkCatalogService {
             WHERE a.tenant_id = $1
               AND a.ipv4_network_id = $2
               AND a.status IN ('RESERVED', 'ACTIVE')
-              AND (a.ip < $3::inet OR a.ip > $4::inet OR a.ip = ANY($5::inet[]))
+              AND (
+                a.ip < $3::inet OR a.ip > $4::inet
+                OR EXISTS (
+                  SELECT 1 FROM unnest($5::inet[]) AS excluded(ip)
+                   WHERE set_masklen(excluded.ip, 32) = set_masklen(a.ip, 32)
+                )
+              )
          ) AS exists`,
         [tenantId, id, next.assignableFrom, next.assignableTo, next.excludedIps],
       )) as ActiveIpOutsideUpdatedRangeRow[];
@@ -456,6 +796,13 @@ export class NetworkCatalogService {
         network.defaultControlMethod = input.defaultControlMethod;
         changes.push('defaultControlMethod');
       }
+      if (input.interfaceId !== undefined && input.interfaceId !== network.interfaceId) {
+        if (input.interfaceId !== null && selectedInterface?.status !== 'ACTIVE') {
+          throw new ConflictException({ code: 'INTERFACE_NOT_AVAILABLE' });
+        }
+        network.interfaceId = input.interfaceId;
+        changes.push('interfaceId');
+      }
 
       network.version += 1;
       const saved = await qr.manager.save(Ipv4Network, network);
@@ -480,22 +827,32 @@ export class NetworkCatalogService {
     version: number,
     status: CatalogStatus,
     actorId: string,
-  ): Promise<Ipv4NetworkDto> {
+  ): Promise<Ipv4NetworkExtendedDto> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockIpv4Catalog(qr.manager, tenantId);
+      const current = await qr.manager.findOne(Ipv4Network, { where: { id, tenantId } });
+      if (!current) throw this.resourceNotFound();
+      await this.ipamService.lockIpv4Pools(qr.manager, [current.id]);
+      const router = await qr.manager.findOne(NetworkRouter, {
+        where: { id: current.routerId, tenantId },
+        lock: { mode: 'pessimistic_read' },
+      });
+      if (!router) throw this.resourceNotFound();
       const network = await qr.manager.findOne(Ipv4Network, {
         where: { id, tenantId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!network) throw new NotFoundException('No se encontró la red IPv4.');
+      if (!network) throw this.resourceNotFound();
+
+      await this.authorization.requireSiteOrTenantWideAction(
+        actorId,
+        router.organizationSiteId,
+        AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+      );
       this.assertVersion(network.version, version);
       network.status = status;
       network.version += 1;
-
-      const router = await qr.manager.findOne(NetworkRouter, {
-        where: { id: network.routerId, tenantId },
-      });
-      if (!router) throw new NotFoundException('No se encontró el router de la red.');
       const saved = await qr.manager.save(Ipv4Network, network);
       await this.auditService.logWithin(
         {
@@ -513,7 +870,11 @@ export class NetworkCatalogService {
     });
   }
 
-  async listPlanProfiles(): Promise<PlanProfileDto[]> {
+  async listPlanProfiles(actorId: string): Promise<PlanProfileDto[]> {
+    await this.authorization.requireTenantWideAction(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_READ,
+    );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const profiles = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.manager.find(NetworkPlanProfile, {
@@ -539,6 +900,10 @@ export class NetworkCatalogService {
     pcqAddressList: string,
     actorId: string,
   ): Promise<PlanProfileDto> {
+    await this.authorization.requireTenantWideAction(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const profile = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await qr.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
@@ -586,7 +951,11 @@ export class NetworkCatalogService {
     };
   }
 
-  async getNetworkSettings(): Promise<NetworkSettingsDto> {
+  async getNetworkSettings(actorId: string): Promise<NetworkSettingsDto> {
+    await this.authorization.requireTenantWideAction(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_READ,
+    );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const settings = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.manager.findOne(NetworkSetting, { where: { tenantId } }),
@@ -605,6 +974,10 @@ export class NetworkCatalogService {
     enforceProvisioningOnInstallClose: boolean,
     actorId: string,
   ): Promise<NetworkSettingsDto> {
+    await this.authorization.requireTenantWideAction(
+      actorId,
+      AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    );
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const settings = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       await qr.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
@@ -661,8 +1034,18 @@ export class NetworkCatalogService {
           ($2::inet <<= $1::cidr) AS gateway_inside,
           ($3::inet <<= $1::cidr) AS from_inside,
           ($4::inet <<= $1::cidr) AS to_inside,
-          ($3::inet <= $4::inet) AS range_ordered`,
-      [input.cidr, input.gateway, input.assignableFrom, input.assignableTo],
+          ($3::inet <= $4::inet) AS range_ordered,
+          COALESCE((
+            SELECT bool_and(excluded_ip <<= $1::cidr)
+              FROM unnest($5::inet[]) AS excluded_ip
+          ), true) AS exclusions_inside`,
+      [
+        input.cidr,
+        input.gateway,
+        input.assignableFrom,
+        input.assignableTo,
+        input.excludedIps ?? [],
+      ],
     )) as NetworkValidationRow[];
     const row = rows[0];
     if (
@@ -678,6 +1061,145 @@ export class NetworkCatalogService {
         message: 'La puerta de enlace y el rango deben pertenecer a la red IPv4 indicada.',
       });
     }
+    if (!row.exclusions_inside) {
+      throw new BadRequestException({
+        code: 'EXCLUDED_IP_OUTSIDE_BLOCK',
+        message: 'Cada exclusión debe pertenecer al bloque IPv4 de la red.',
+      });
+    }
+  }
+
+  /** L0 serializa el catálogo tenant-local antes de tomar locks L2 o filas L3. */
+  private async lockIpv4Catalog(manager: EntityManager, tenantId: string): Promise<void> {
+    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `ipv4-catalog:${tenantId}`,
+    ]);
+  }
+
+  private async assertConfirmedPrefix(
+    manager: EntityManager,
+    addressWithPrefix: string,
+    confirmedCidr: string,
+  ): Promise<void> {
+    const rows = (await manager.query(
+      `SELECT family($1::inet) = 4
+                AND masklen($1::inet) BETWEEN 16 AND 30 AS source_prefix_assignable,
+              family($2::cidr) = 4
+                AND masklen($2::cidr) BETWEEN 16 AND 30 AS confirmed_prefix_assignable,
+              network($1::inet) = network($2::cidr) AS same_network`,
+      [addressWithPrefix, confirmedCidr],
+    )) as Array<{
+      source_prefix_assignable: boolean;
+      confirmed_prefix_assignable: boolean;
+      same_network: boolean;
+    }>;
+    const row = rows[0];
+    if (!row || row.source_prefix_assignable !== true || row.confirmed_prefix_assignable !== true) {
+      throw new BadRequestException({
+        code: 'NETWORK_PREFIX_NOT_ASSIGNABLE',
+        message: 'El prefijo debe permitir derivar un bloque IPv4 entre /16 y /30.',
+      });
+    }
+    if (row.same_network !== true) {
+      throw new BadRequestException({
+        code: 'NETWORK_CONFIRMATION_MISMATCH',
+        message: 'El bloque confirmado no coincide con la dirección y el prefijo ingresados.',
+      });
+    }
+  }
+
+  private async validateNewRouterReferences(
+    input: CreateRouterBody,
+    actorId: string,
+  ): Promise<void> {
+    if (input.organizationSiteId) {
+      const site = await this.findOrganizationSiteReference(input.organizationSiteId);
+      if (!site) throw this.resourceNotFound();
+      await this.authorization.requireSiteAction(
+        actorId,
+        site.id,
+        AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+      );
+      if (!site.isActive) throw this.siteOrNodeInactive();
+    } else {
+      await this.authorization.requireCreateScope(
+        actorId,
+        null,
+        AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+      );
+    }
+
+    if (input.commercialNodeId) {
+      await this.assertCommercialNodeActive(input.commercialNodeId);
+    }
+  }
+
+  private async validateRouterReferenceChanges(
+    router: NetworkRouter,
+    input: UpdateRouterBody,
+    actorId: string,
+  ): Promise<void> {
+    if (
+      input.organizationSiteId !== undefined &&
+      input.organizationSiteId !== null &&
+      input.organizationSiteId !== router.organizationSiteId
+    ) {
+      const site = await this.findOrganizationSiteReference(input.organizationSiteId);
+      if (!site) throw this.resourceNotFound();
+      await this.authorization.requireSiteAction(
+        actorId,
+        site.id,
+        AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+      );
+      if (!site.isActive) throw this.siteOrNodeInactive();
+    }
+
+    if (
+      input.commercialNodeId !== undefined &&
+      input.commercialNodeId !== null &&
+      input.commercialNodeId !== router.commercialNodeId
+    ) {
+      await this.assertCommercialNodeActive(input.commercialNodeId);
+    }
+  }
+
+  private async assertCommercialNodeActive(id: string): Promise<void> {
+    const node = await this.commercialNodeReadPort.findReferenceById(id);
+    if (!node) throw this.resourceNotFound();
+    if (!node.isActive || node.deletedAt !== null) throw this.siteOrNodeInactive();
+  }
+
+  private findOrganizationSiteReference(id: string) {
+    return this.organizationSiteReadPort.findReferenceById(id);
+  }
+
+  private applySiteScope<Entity extends ObjectLiteral>(
+    builder: SelectQueryBuilder<Entity>,
+    alias: string,
+    scope: AuthorizedSiteScope,
+  ): void {
+    if (scope.kind === 'TENANT_WIDE') return;
+    if (scope.siteIds.length === 0) {
+      builder.andWhere('1 = 0');
+      return;
+    }
+    builder.andWhere(`${alias}.organization_site_id IN (:...authorizedSiteIds)`, {
+      authorizedSiteIds: scope.siteIds,
+    });
+  }
+
+  private resourceNotFound(): NotFoundException {
+    return new NotFoundException({
+      code: 'RESOURCE_NOT_FOUND',
+      message: 'La referencia no está disponible para esta operación.',
+    });
+  }
+
+  private siteOrNodeInactive(): ConflictException {
+    return new ConflictException({
+      code: 'SITE_OR_NODE_INACTIVE',
+      message: 'La sede o el nodo comercial no está disponible para una nueva asociación.',
+    });
   }
 
   private async toRouterDto(
@@ -711,8 +1233,28 @@ export class NetworkCatalogService {
     manager: EntityManager,
     network: Ipv4Network,
     routerName: string,
-  ): Promise<Ipv4NetworkDto> {
+  ): Promise<Ipv4NetworkExtendedDto> {
     const occupancy: IpamOccupancy = await this.ipamService.getOccupancy(network.id, manager);
+    const routerRows = (await manager.query(
+      'SELECT status FROM network_routers WHERE tenant_id = $1 AND id = $2',
+      [network.tenantId, network.routerId],
+    )) as NetworkRouterStatusRow[];
+    const interfaceRows = network.interfaceId
+      ? ((await manager.query(
+          `SELECT id, name, status FROM network_router_interfaces
+            WHERE tenant_id = $1 AND router_id = $2 AND id = $3`,
+          [network.tenantId, network.routerId, network.interfaceId],
+        )) as NetworkInterfaceProjectionRow[])
+      : [];
+    const interfaceRow = interfaceRows[0];
+    const reason =
+      routerRows[0]?.status !== 'ACTIVE'
+        ? 'ROUTER_INACTIVE'
+        : network.status !== 'ACTIVE'
+          ? 'NETWORK_INACTIVE'
+          : network.interfaceId && interfaceRow?.status !== 'ACTIVE'
+            ? 'INTERFACE_INACTIVE'
+            : null;
     return {
       id: network.id,
       routerId: network.routerId,
@@ -723,6 +1265,15 @@ export class NetworkCatalogService {
       assignableFrom: this.hostAddress(network.assignableFrom),
       assignableTo: this.hostAddress(network.assignableTo),
       excludedIps: network.excludedIps.map((ip) => this.hostAddress(ip)),
+      interfaceId: network.interfaceId ?? null,
+      interface: interfaceRow
+        ? {
+            id: interfaceRow.id,
+            name: interfaceRow.name,
+            status: interfaceRow.status as CatalogStatus,
+          }
+        : null,
+      reservationAvailability: { available: reason === null, reason },
       defaultControlMethod: network.defaultControlMethod as Ipv4NetworkDto['defaultControlMethod'],
       status: network.status as CatalogStatus,
       occupancy,
@@ -746,10 +1297,7 @@ export class NetworkCatalogService {
     changedFields: string[],
   ): Record<string, unknown> {
     return {
-      cidr: network.cidr,
       status: network.status,
-      assignableFrom: this.hostAddress(network.assignableFrom),
-      assignableTo: this.hostAddress(network.assignableTo),
       excludedIpCount: network.excludedIps.length,
       changedFields,
     };
@@ -773,6 +1321,13 @@ export class NetworkCatalogService {
     return new ConflictException({
       code: 'CONTROL_METHOD_NOT_SUPPORTED',
       message: 'El método de control no está habilitado en el router.',
+    });
+  }
+
+  private controlMethodInUse(): ConflictException {
+    return new ConflictException({
+      code: 'CONTROL_METHOD_IN_USE',
+      message: 'Hay redes IPv4 que usan un método que se está quitando del router.',
     });
   }
 

@@ -15,6 +15,8 @@ import { AccessGovernanceService } from './services/access-governance.service';
 import { EffectivePermissionsService } from './services/effective-permissions.service';
 import { IPermissionHoldersReadPort } from './ports/permission-holders-read.port';
 import { PermissionHoldersReadAdapter } from './ports/permission-holders-read.adapter';
+import { EffectivePermissionScopeAdapter } from './ports/effective-permission-scope.adapter';
+import { EffectivePermissionScopePort } from './ports/effective-permission-scope.port';
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { PermissionHoldersReadAdapter } from './ports/permission-holders-read.ad
   providers: [
     AccessControlService,
     EffectivePermissionsService,
+    EffectivePermissionScopeAdapter,
+    { provide: EffectivePermissionScopePort, useExisting: EffectivePermissionScopeAdapter },
     AccessGovernanceService,
     PermissionsGuard,
     PermissionHoldersReadAdapter,
@@ -39,6 +43,7 @@ import { PermissionHoldersReadAdapter } from './ports/permission-holders-read.ad
   exports: [
     AccessControlService,
     EffectivePermissionsService,
+    EffectivePermissionScopePort,
     AccessGovernanceService,
     PermissionsGuard,
     IPermissionHoldersReadPort,

@@ -1,4 +1,6 @@
 import { OrganizationSiteCapability, OrganizationSiteType } from '@iwana/shared';
+import type { ListResponse, RouterSiteOptionDto } from '@iwana/shared';
+import type { AuthorizedSiteScope } from '../../access-control/ports/effective-permission-scope.port';
 
 export interface OrganizationSiteSummary {
   id: string;
@@ -17,8 +19,33 @@ export interface ListOrganizationSitesByCapabilityInput {
   capability: OrganizationSiteCapability;
 }
 
+export interface OrganizationSiteReference {
+  id: string;
+  isActive: boolean;
+}
+
+export interface OrganizationSiteRouterSummary {
+  name: string;
+  siteType: OrganizationSiteType;
+  isActive: boolean;
+}
+
+export interface ListRouterSiteOptionsInput {
+  scope: AuthorizedSiteScope;
+  page: number;
+  limit: number;
+}
+
 export abstract class OrganizationSiteReadPort {
   abstract listByCapability(
     input: ListOrganizationSitesByCapabilityInput,
   ): Promise<OrganizationSiteSummary[]>;
+
+  abstract findReferenceById(siteId: string): Promise<OrganizationSiteReference | null>;
+
+  abstract findRouterSummaryById(siteId: string): Promise<OrganizationSiteRouterSummary | null>;
+
+  abstract listRouterOptions(
+    input: ListRouterSiteOptionsInput,
+  ): Promise<ListResponse<RouterSiteOptionDto>>;
 }

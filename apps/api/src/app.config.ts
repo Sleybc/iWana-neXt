@@ -169,6 +169,12 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
       'string.empty': 'REDIS_PASSWORD no puede estar vacía.',
       'string.min': 'REDIS_PASSWORD no puede estar vacía.',
     }),
+    // Interruptor operativo de reservas: convierte "true"/"false" a booleano
+    // y rechaza valores ambiguos durante el bootstrap.
+    NETWORK_RESERVATIONS_PAUSED: Joi.boolean().default(false),
+    // La captura de IP locales permanece cerrada por defecto; solo ACTIVE
+    // permite registrar IPs de infraestructura tras el gate operativo.
+    NETWORK_IP_PROTECTION: Joi.string().valid('ACTIVE', 'PENDING').default('PENDING'),
     REDIS_DB: Joi.number().default(0),
     // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
     JWT_PRIVATE_KEY: Joi.string().required(),

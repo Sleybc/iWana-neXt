@@ -1,8 +1,9 @@
 # MOD13 — Red y Aprovisionamiento · Especificación UX
 
-**Versión:** 1.1 · **Fecha:** 2026-10-22 · **Estado:** En revisión
+**Versión:** 1.3 · **Fecha:** 2026-10-26 · **Estado:** En revisión
 **Contrato:** [HLD-MOD13 Fase 01 v1.1](../hlds/HLD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md)
 **Fuentes:** [PRD-MOD13 v1.1](../prds/PRD-MOD13-RED-APROVISIONAMIENTO-FASE-01-v1.1.md) · [plan de fase](../plans/2026-10-22-mod13-aprovisionamiento.md) · [prompt v1.1](../prompts/PROMPT-MOD13-APROVISIONAMIENTO-FASE-01-v1.1.md)
+**Addendum de pausa IPAM:** [MOD13 interfaces UX v1.7](2026-10-26-mod13-interfaces-ux.md) §13.16 F; contrato documental API v1.2, sin afirmar publicación runtime.
 
 ## 1. Alcance y resolución del bloqueo v1.0
 
@@ -89,6 +90,14 @@ Las pestañas anuncian nombre y selección; no codifican el estado solo con colo
 
 ## 6. Panel de aprovisionamiento en la OT
 
+### Pausa temporal de reservas y regularizaciones
+
+El metadato `reservationsPaused` se consulta únicamente mediante `GET /network/provisioning/meta`, que requiere el permiso existente `network.provisioning.read` (API v1.2 §9.1). Cuando la respuesta autorizada indica `true`, mostrar «Las reservas están pausadas temporalmente. Inténtalo más tarde.» y deshabilitar las acciones que puedan crear o volver a emitir una asignación: reservar, replay que reemitiría una instrucción y regularizar. No presentar el código `RESERVATIONS_PAUSED` como texto visible.
+
+Una persona con permiso para ejecutar una reserva o regularizar, pero sin `network.provisioning.read`, no consulta ni infiere ese metadato. La acción se presenta según su permiso y las condiciones visibles del flujo; el servidor conserva la autoridad y puede rechazarla. Si la operación devuelve `409 RESERVATIONS_PAUSED`, mostrar «Las reservas están pausadas temporalmente. Inténtalo más tarde.», conservar la OT y los valores ingresados, anunciar el resultado como no completado y no mostrar una reserva, regularización ni instrucción como exitosa. No cambiar ni reemitir asignaciones desde la UI. El mismo mensaje se aplica a un replay rechazado que hubiera reemitido una instrucción. La pausa no reemplaza los permisos vigentes ni bloquea por sí sola liberar o certificar servicios existentes.
+
+La UI no deduce la pausa por ausencia de metadatos, denegación de lectura o permisos de la persona. Un 409 es una respuesta autoritativa del servidor, no un permiso nuevo ni un estado local inferido.
+
 ### Vista de Aprovisionamiento
 
 Quien tiene `network.provisioning.read` recibe `ProvisioningOrderContextDto`. Presentar el número y estado de la OT, persona técnica asignada, etiqueta del suscriptor, plan y velocidades disponibles, contrato elegido, equipo instalado y evidencias PHOTO/DOCUMENT de esa OT. Mostrar `suggestedQueueName` solo como dato de instrucción y sin exponer identificadores técnicos innecesarios.
@@ -132,26 +141,30 @@ Si el API responde `CLOSURE_GATE_INCOMPLETE`, mostrar «No puedes cerrar esta in
 
 Mostrar el mensaje de producto, nunca la clave del código, SQL, excepción ni contenido técnico del evento. En errores de campo, asociar el mensaje al campo y mover el foco al resumen o primer campo inválido según el patrón accesible existente. Para conflictos de versión, conservar la entrada y pedir actualizar antes de reintentar.
 
-| Código del HLD                       | Mensaje visible y siguiente paso                                                                                        |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `NETWORK_POOL_EXHAUSTED`             | «Esta red no tiene direcciones libres. Elige otra red o revisa su rango y exclusiones.»                                 |
-| `IP_OUTSIDE_RANGE`                   | «La dirección está fuera del rango asignable. Ingresa una dirección dentro del rango de la red.»                        |
-| `IP_IS_GATEWAY`                      | «La dirección corresponde a la puerta de enlace y no se puede asignar. Elige otra.»                                     |
-| `IP_EXCLUDED`                        | «La dirección está excluida de esta red. Elige otra.»                                                                   |
-| `IP_IN_USE`                          | «La dirección ya está en uso. Actualiza la disponibilidad o elige otra.»                                                |
-| `NETWORK_OVERLAP`                    | «El rango se superpone con otra red registrada. Revisa el CIDR antes de guardar.»                                       |
-| `NETWORK_NOT_IN_ROUTER`              | «La red seleccionada no pertenece a este router. Elige una red asociada al router.»                                     |
-| `CONTROL_METHOD_NOT_SUPPORTED`       | «Este router no admite el método seleccionado. Elige uno de los métodos disponibles.»                                   |
-| `CONTRACT_NOT_OF_SUBSCRIBER`         | «El contrato no corresponde a este suscriptor. Revisa la selección.»                                                    |
-| `PROVISIONING_ORDER_NOT_ELIGIBLE`    | «Esta orden no cumple las condiciones para esta acción. Revisa su estado y tipo.»                                       |
-| `PROVISIONING_TECHNICIAN_REQUIRED`   | «Asigna un técnico a la orden antes de reservar, certificar o regularizar. Actualiza la orden y vuelve a intentarlo.»   |
-| `PROVISIONING_CERTIFIER_IS_EXECUTOR` | «La persona que certifica debe ser distinta del técnico asignado. Solicita la certificación a otra persona autorizada.» |
-| `PROVISIONING_EVIDENCE_REQUIRED`     | «Selecciona una foto o un documento adjunto a esta orden para certificar el servicio.»                                  |
-| `PROVISIONING_STATE_INVALID`         | «El servicio cambió y esta acción ya no está disponible. Actualiza la información y revisa su estado.»                  |
-| `PROVISIONING_ALREADY_ACTIVE`        | «Esta orden ya tiene un servicio activo. Revisa el servicio registrado antes de continuar.»                             |
-| `VERSION_CONFLICT`                   | «El registro cambió mientras lo editabas. Actualiza la información y vuelve a aplicar tus cambios.»                     |
+**Mapeo público de errores de reserva y regularización (D-25; API v1.2 §2).** Una referencia inexistente, con padre incorrecto o fuera del alcance autorizado usa el mismo `404 RESOURCE_NOT_FOUND` y el mensaje «La referencia no está disponible para esta operación.». Un `403` solo corresponde cuando el recurso ya está dentro del alcance autorizado y falta el permiso de la acción; se conserva el estado «Sin acceso» del flujo sin presentar datos parciales. Un router o red accesible pero inactivo conserva `422 PROVISIONING_ORDER_NOT_ELIGIBLE` y el copy genérico de la tabla. La pausa y los conflictos reales conservan `409`; la pausa usa el mensaje de §6 y los demás conflictos su mensaje específico. Ninguna respuesta fallida se presenta como una operación exitosa.
+
+| Código del HLD                       | Mensaje visible y siguiente paso                                                                                                                                                                                                                                                               |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NETWORK_POOL_EXHAUSTED`             | «Esta red no tiene direcciones libres. Elige otra red o revisa su rango y exclusiones.»                                                                                                                                                                                                        |
+| `IP_OUTSIDE_RANGE`                   | «La dirección está fuera del rango asignable. Ingresa una dirección dentro del rango de la red.»                                                                                                                                                                                               |
+| `IP_IS_GATEWAY`                      | «La dirección corresponde a la puerta de enlace y no se puede asignar. Elige otra.»                                                                                                                                                                                                            |
+| `IP_EXCLUDED`                        | «La dirección está excluida de esta red. Elige otra.»                                                                                                                                                                                                                                          |
+| `IP_IN_USE`                          | «La dirección ya está en uso. Actualiza la disponibilidad o elige otra.»                                                                                                                                                                                                                       |
+| `NETWORK_OVERLAP`                    | «El rango se superpone con otra red registrada. Revisa el CIDR antes de guardar.»                                                                                                                                                                                                              |
+| `NETWORK_NOT_IN_ROUTER`              | Para `reserve`/`regularize`, no se emite por relación padre incorrecta bajo D-25; esos casos usan el 404 genérico «La referencia no está disponible para esta operación.». Si otro emisor compatible devuelve este código, conserva su tratamiento vigente; este mapeo no altera sus emisores. |
+| `CONTROL_METHOD_NOT_SUPPORTED`       | «Este router no admite el método seleccionado. Elige uno de los métodos disponibles.»                                                                                                                                                                                                          |
+| `CONTRACT_NOT_OF_SUBSCRIBER`         | «El contrato no corresponde a este suscriptor. Revisa la selección.»                                                                                                                                                                                                                           |
+| `PROVISIONING_ORDER_NOT_ELIGIBLE`    | «Esta orden no cumple las condiciones para esta acción. Revisa su estado y tipo.»                                                                                                                                                                                                              |
+| `PROVISIONING_TECHNICIAN_REQUIRED`   | «Asigna un técnico a la orden antes de reservar, certificar o regularizar. Actualiza la orden y vuelve a intentarlo.»                                                                                                                                                                          |
+| `PROVISIONING_CERTIFIER_IS_EXECUTOR` | «La persona que certifica debe ser distinta del técnico asignado. Solicita la certificación a otra persona autorizada.»                                                                                                                                                                        |
+| `PROVISIONING_EVIDENCE_REQUIRED`     | «Selecciona una foto o un documento adjunto a esta orden para certificar el servicio.»                                                                                                                                                                                                         |
+| `PROVISIONING_STATE_INVALID`         | «El servicio cambió y esta acción ya no está disponible. Actualiza la información y revisa su estado.»                                                                                                                                                                                         |
+| `PROVISIONING_ALREADY_ACTIVE`        | «Esta orden ya tiene un servicio activo. Revisa el servicio registrado antes de continuar.»                                                                                                                                                                                                    |
+| `VERSION_CONFLICT`                   | «El registro cambió mientras lo editabas. Actualiza la información y vuelve a aplicar tus cambios.»                                                                                                                                                                                            |
 
 Los códigos de `NETWORK_INBOX_ERROR_CODES` se almacenan como códigos técnicos de procesamiento y no son campos de `ProvisioningInboxRowDto`; no se presentan como errores de fila. El detalle técnico sigue las reglas del HLD §6.3 y R14.
+
+La fila `PROVISIONING_ORDER_NOT_ELIGIBLE` conserva el mensaje genérico «Esta orden no cumple las condiciones para esta acción. Revisa su estado y tipo.» para un recurso accesible pero inactivo o no elegible; no se usa para ocultar una referencia inexistente, con padre incorrecto o fuera del alcance, que sigue el 404 uniforme. La transición D-25 y la compatibilidad de consumidores de `NETWORK_NOT_IN_ROUTER` permanecen pendientes de implementación y revisión; esta spec no implica publicación runtime.
 
 ## 10. Responsive y accesibilidad
 
@@ -174,14 +187,14 @@ La spec define criterios de aceptación; la conformidad efectiva de las pantalla
 
 ## 11. Trazabilidad de aceptación
 
-| Criterio               | Evidencia de UX requerida                                                                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CA-NET-12              | Las acciones de catálogo solo aparecen con `network.catalog.manage`; el endpoint denegado se refleja en el estado sin acceso.                              |
-| CA-NET-13              | La bandeja ofrece las tres pestañas del HLD como filtros de cola y paginación numerada; cada pestaña presenta sus estados vacíos y columnas contractuales. |
+| Criterio               | Evidencia de UX requerida                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CA-NET-12              | Las acciones de catálogo solo aparecen con `network.catalog.manage`; el endpoint denegado se refleja en el estado sin acceso.                                      |
+| CA-NET-13              | La bandeja ofrece las tres pestañas del HLD como filtros de cola y paginación numerada; cada pestaña presenta sus estados vacíos y columnas contractuales.         |
 | CA-NET-14              | Catálogos, ajustes de red, panel de OT, bandeja y ficha mantienen identidad iWana, estados completos y criterios WCAG AA en 375, 768 y 1280 px, en claro y oscuro. |
-| RF-NET-14              | La ficha muestra el nombre legible de quien certificó y cuándo; la identidad no se deriva del UUID.                                                        |
-| R6 ter                 | Si falta técnico asignado, el mensaje guía a completar la asignación y no habilita reservar, certificar o regularizar.                                     |
-| Proyección del técnico | La vista de técnico contiene únicamente los cinco campos de `TechnicianProvisioningViewDto`.                                                               |
+| RF-NET-14              | La ficha muestra el nombre legible de quien certificó y cuándo; la identidad no se deriva del UUID.                                                                |
+| R6 ter                 | Si falta técnico asignado, el mensaje guía a completar la asignación y no habilita reservar, certificar o regularizar.                                             |
+| Proyección del técnico | La vista de técnico contiene únicamente los cinco campos de `TechnicianProvisioningViewDto`.                                                                       |
 
 ## 12. Ajustes de red (addendum P0-ter)
 
@@ -201,11 +214,11 @@ Todo cambio pide confirmación antes de enviar `PATCH /network/settings` con el 
 
 ### Estados y accesibilidad
 
-| Estado | Presentación y acción |
-| --- | --- |
-| Cargando | Skeletons con forma de tabla y panel del ajuste; anunciar «Cargando ajustes de red». |
-| Vacío inicial | Si MOD06 aún no devuelve planes, mostrar «Todavía no hay planes disponibles para configurar». Un plan existente sin perfil aparece como «Sin configurar» en su fila. No hay filtros en esta pantalla, así que no se añade un estado de resultados vacíos. |
-| Error | Permitir reintentar la carga del bloque afectado sin ocultar el otro bloque si ya cargó. En un error al guardar, conservar la entrada o el valor vigente y explicar el siguiente paso sin mostrar claves ni detalles técnicos. |
-| Sin acceso | Sin `network.catalog.read`, mostrar «No tienes acceso a los ajustes de red» y no presentar datos. Con lectura pero sin gestión, mantener la vista disponible y ocultar las acciones de edición; si una mutación se deniega, informar «No tienes permiso para cambiar este ajuste». |
+| Estado        | Presentación y acción                                                                                                                                                                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cargando      | Skeletons con forma de tabla y panel del ajuste; anunciar «Cargando ajustes de red».                                                                                                                                                                                               |
+| Vacío inicial | Si MOD06 aún no devuelve planes, mostrar «Todavía no hay planes disponibles para configurar». Un plan existente sin perfil aparece como «Sin configurar» en su fila. No hay filtros en esta pantalla, así que no se añade un estado de resultados vacíos.                          |
+| Error         | Permitir reintentar la carga del bloque afectado sin ocultar el otro bloque si ya cargó. En un error al guardar, conservar la entrada o el valor vigente y explicar el siguiente paso sin mostrar claves ni detalles técnicos.                                                     |
+| Sin acceso    | Sin `network.catalog.read`, mostrar «No tienes acceso a los ajustes de red» y no presentar datos. Con lectura pero sin gestión, mantener la vista disponible y ocultar las acciones de edición; si una mutación se deniega, informar «No tienes permiso para cambiar este ajuste». |
 
 El interruptor expone su nombre y estado «Activado» o «Desactivado» además de la señal visual. La confirmación conserva el foco hasta resolverse y devuelve el foco al control que la abrió al cerrarse; controles, filas accionables y botones son operables por teclado y mantienen foco visible. En móvil, conservar la tabla dentro del contenedor de tabla del portal, sin provocar scroll horizontal de toda la página.

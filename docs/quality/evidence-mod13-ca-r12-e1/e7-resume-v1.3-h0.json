@@ -1,0 +1,57 @@
+{
+  "version": "E7_resume v1.3 H-0",
+  "status": "NOT_EXECUTED",
+  "generatedAtUtc": "2026-10-27T22:05:27Z",
+  "scope": "H-0 preflight only; stopped before database/helper comparison and all mutations",
+  "docker": {
+    "infoCommand": "docker info --format '{{.ServerVersion}}'",
+    "infoExitCode": 0,
+    "serverVersion": "29.9.2",
+    "inspectExitCode": 0
+  },
+  "containers": {
+    "postgres": {
+      "name": "iwana_mod13_ca_r12_pg_e1",
+      "status": "exited",
+      "health": "starting",
+      "imageId": "sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7",
+      "networkMode": "bridge",
+      "binding": "5432/tcp -> 127.0.0.1:5434",
+      "tmpfs": "/var/lib/postgresql: rw,size=1g",
+      "mountsCount": 0
+    },
+    "redis": {
+      "name": "iwana_mod13_ca_r12_redis_e1",
+      "status": "exited",
+      "health": "starting",
+      "imageId": "sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9",
+      "networkMode": "bridge",
+      "binding": "6379/tcp -> 127.0.0.1:6381",
+      "tmpfs": "/data: rw,size=64m",
+      "mountsCount": 0
+    }
+  },
+  "helper": {
+    "preservedCopySha256": "2398d360662d0bf6d4c22a1fc50a9bbdc2fc84fd6e2dfbb08a478ac092cb7004",
+    "copyMatchesExpectedSha256": true,
+    "temporaryOriginalComparison": "NOT_CHECKED_AFTER_PREFLIGHT_STOP"
+  },
+  "databasePreflight": {
+    "e7AndE7FinalExistence": "NOT_CHECKED_AFTER_PREFLIGHT_STOP",
+    "databaseAccessed": false,
+    "redisAccessed": false
+  },
+  "stopReason": "E1 PostgreSQL and Redis containers are exited and not healthy; H-0 requires both healthy.",
+  "execution": {
+    "containersStartedOrReconfigured": false,
+    "databasesRenamedOrCreated": false,
+    "fixtureChanged": false,
+    "generatorRun": false,
+    "h1ToH3Executed": false,
+    "r1ToR9Executed": false,
+    "teardownExecuted": false,
+    "commitCreated": false,
+    "networkIpProtection": "PENDING"
+  },
+  "note": "Container objects remain present, but availability of their tmpfs database contents was not verified; no preservation claim is made."
+}

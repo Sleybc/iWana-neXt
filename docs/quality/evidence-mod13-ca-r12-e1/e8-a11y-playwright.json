@@ -1,0 +1,568 @@
+{
+  "config": {
+    "configFile": "C:\\appiw\\e2e\\playwright.portal.mod13.temp.config.ts",
+    "rootDir": "C:/appiw/e2e/tests",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/appiw/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/appiw/e2e/tests",
+        "testIgnore": [],
+        "testMatch": ["/portal-.*\\.spec\\.ts/"],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [["json"]],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": {
+      "command": "node ../scripts/next-standalone-e2e.mjs --port 3013",
+      "url": "http://127.0.0.1:3013",
+      "reuseExistingServer": false,
+      "timeout": 300000,
+      "cwd": "C:\\appiw\\e2e"
+    }
+  },
+  "suites": [
+    {
+      "title": "portal-network-interfaces-a11y.spec.ts",
+      "file": "portal-network-interfaces-a11y.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "MOD13 · interfaces IPv4, pausa de reservas y accesibilidad",
+          "file": "portal-network-interfaces-a11y.spec.ts",
+          "line": 520,
+          "column": 6,
+          "specs": [
+            {
+              "title": "PENDING: teclado, foco restaurado, nombre accesible y axe sobre el detalle",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1410,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:31.829Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-b4f1e55c26e79d359a4a",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 564,
+              "column": 3
+            },
+            {
+              "title": "PENDING light: el formulario de interfaz anuncia validación y pasa axe",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1173,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:33.245Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-1ba3958bd7baac83db35",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 624,
+              "column": 5
+            },
+            {
+              "title": "PENDING dark: el formulario de interfaz anuncia validación y pasa axe",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1177,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:34.423Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-8f0fbd55368f5e672a62",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 624,
+              "column": 5
+            },
+            {
+              "title": "pausa RESERVATIONS_PAUSED deshabilita reserva nueva en la consola de la OT",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 719,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:35.605Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-fb727249834dc7cca723",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 657,
+              "column": 3
+            },
+            {
+              "title": "pausa RESERVATIONS_PAUSED conserva certificar/liberar en un servicio existente",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1006,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:36.329Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-b01be8b5674dfb76dd18",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 672,
+              "column": 3
+            },
+            {
+              "title": "regularización queda bloqueada por metadato pausado y no emite POST",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 444,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:37.342Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-3b496006a991754c93d4",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 714,
+              "column": 3
+            },
+            {
+              "title": "un 409 RESERVATIONS_PAUSED posterior bloquea la reserva y no muestra éxito",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 800,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:37.790Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-4875e9842b95501e9a7e",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 733,
+              "column": 3
+            },
+            {
+              "title": "metadata IPAM no disponible mantiene el registro local cerrado y anuncia error accionable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 583,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-27T19:16:38.595Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8b9f557158832e2347e6-3a5bb038ebdc246de097",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 755,
+              "column": 3
+            }
+          ],
+          "suites": [
+            {
+              "title": "PENDING · detalle del router y evidencias visuales",
+              "file": "portal-network-interfaces-a11y.spec.ts",
+              "line": 521,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "375x812 light: conserva interfaz/red y no permite alta/corrección IP local",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 1245,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-10-27T19:16:26.725Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "8b9f557158832e2347e6-9639e19bbb5f6546ae1e",
+                  "file": "portal-network-interfaces-a11y.spec.ts",
+                  "line": 531,
+                  "column": 9
+                },
+                {
+                  "title": "375x812 dark: conserva interfaz/red y no permite alta/corrección IP local",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 602,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-10-27T19:16:28.277Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "8b9f557158832e2347e6-2fd6a2541972b7c16738",
+                  "file": "portal-network-interfaces-a11y.spec.ts",
+                  "line": 531,
+                  "column": 9
+                },
+                {
+                  "title": "768x900 light: conserva interfaz/red y no permite alta/corrección IP local",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 785,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-10-27T19:16:28.886Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "8b9f557158832e2347e6-9c50e7871792d67c7e28",
+                  "file": "portal-network-interfaces-a11y.spec.ts",
+                  "line": 531,
+                  "column": 9
+                },
+                {
+                  "title": "768x900 dark: conserva interfaz/red y no permite alta/corrección IP local",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 607,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-10-27T19:16:29.677Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "8b9f557158832e2347e6-7090a77d818013452695",
+                  "file": "portal-network-interfaces-a11y.spec.ts",
+                  "line": 531,
+                  "column": 9
+                },
+                {
+                  "title": "1280x900 light: conserva interfaz/red y no permite alta/corrección IP local",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 779,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-10-27T19:16:30.290Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "8b9f557158832e2347e6-025690a1cc1197962fd5",
+                  "file": "portal-network-interfaces-a11y.spec.ts",
+                  "line": 531,
+                  "column": 9
+                },
+                {
+                  "title": "1280x900 dark: conserva interfaz/red y no permite alta/corrección IP local",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 30000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [
+                        {
+                          "workerIndex": 0,
+                          "parallelIndex": 0,
+                          "status": "passed",
+                          "duration": 748,
+                          "errors": [],
+                          "stdout": [],
+                          "stderr": [],
+                          "retry": 0,
+                          "startTime": "2026-10-27T19:16:31.076Z",
+                          "annotations": [],
+                          "attachments": []
+                        }
+                      ],
+                      "status": "expected"
+                    }
+                  ],
+                  "id": "8b9f557158832e2347e6-5d31c3c5739826c65673",
+                  "file": "portal-network-interfaces-a11y.spec.ts",
+                  "line": 531,
+                  "column": 9
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-27T19:15:45.470Z",
+    "duration": 53943.121,
+    "expected": 14,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

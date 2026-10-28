@@ -10,6 +10,7 @@ import { ANOMALIA_AUDITORIA_PREFIX } from './audit.constants';
 import { PlatformAuditService } from './platform-audit.service';
 import { AUDIT_ENTITY_KEY } from './decorators/audit-entity.decorator';
 import { SKIP_AUDIT_KEY } from './decorators/skip-audit.decorator';
+import { AUDIT_OMIT_RESPONSE_FIELDS_KEY } from './decorators/audit-omit-response-fields.decorator';
 import {
   AUDIT_ALWAYS_OMITTED_KEYS,
   AUDIT_MAX_SANITIZE_DEPTH,
@@ -41,6 +42,8 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
  * EXCLUSIONES:
  * - Metodos GET, HEAD, OPTIONS (solo lectura)
  * - Handlers marcados con @SkipAudit() (emiten su propio audit o no lo requieren)
+ * - Campos de `newValue` declarados con @AuditOmitResponseFields() (sin omitir
+ *   el evento HTTP ni alterar la respuesta)
  *
  * CONVENCION DE NOMBRE DE ENTIDAD:
  * - Primero busca @AuditEntity('nombre') en el handler o controlador
@@ -118,6 +121,12 @@ export class AuditInterceptor implements NestInterceptor {
     ]);
     if (skip) return next.handle();
 
+    const omittedResponseFields =
+      this.reflector.getAllAndOverride<readonly string[]>(AUDIT_OMIT_RESPONSE_FIELDS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? [];
+
     // Usuario desde el JWT claim adjunto por JwtAuthGuard
     const user = request['user'] as JwtPayload | undefined;
     const isPlatformUser = user?.type === 'platform';
@@ -166,7 +175,9 @@ export class AuditInterceptor implements NestInterceptor {
 
           // Registrar solo el nuevo valor para CREATE; omitir el cuerpo para DELETE
           const newValue =
-            action !== AuditAction.DELETE ? this.sanitizeResponseData(responseData) : null;
+            action !== AuditAction.DELETE
+              ? this.sanitizeResponseData(responseData, omittedResponseFields)
+              : null;
 
           const entryBase = {
             action,
@@ -255,13 +266,55 @@ export class AuditInterceptor implements NestInterceptor {
    * claves de {@link ALWAYS_OMITTED_KEYS} también omiten `number` (coordenadas)
    * y `Date` (p. ej. birthDate). `passwordResetRequired` (booleano) no se omite.
    */
-  private sanitizeResponseData(data: unknown): Record<string, unknown> | null {
+  private sanitizeResponseData(
+    data: unknown,
+    omittedFields: readonly string[] = [],
+  ): Record<string, unknown> | null {
     // Un array en el nivel superior sigue sin auditarse, como hasta ahora: las
     // respuestas de listado no aportan trazabilidad de cambio y el volumen es
     // alto. Cambiarlo sería una decisión aparte.
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
 
-    return this.sanitizeValue(data, 0) as Record<string, unknown>;
+    const responseForAudit =
+      omittedFields.length > 0
+        ? this.omitResponseFields(
+            data,
+            new Set(omittedFields.map((field) => field.toLowerCase())),
+            0,
+          )
+        : data;
+
+    return this.sanitizeValue(responseForAudit, 0) as Record<string, unknown>;
+  }
+
+  /**
+   * Crea una copia del payload y omite solo las claves declaradas. El limite
+   * comparte la profundidad del saneado posterior: cualquier rama aun mas
+   * profunda se reemplaza completa antes de que pueda llegar al audit log.
+   */
+  private omitResponseFields(value: unknown, fields: ReadonlySet<string>, depth: number): unknown {
+    if (depth > AuditInterceptor.MAX_SANITIZE_DEPTH) return '[PROFUNDIDAD_EXCEDIDA]';
+    if (
+      value === null ||
+      typeof value !== 'object' ||
+      value instanceof Date ||
+      Buffer.isBuffer(value)
+    ) {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.omitResponseFields(item, fields, depth + 1));
+    }
+
+    const copy: Record<string, unknown> = {};
+
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (fields.has(key.toLowerCase())) continue;
+      copy[key] = this.omitResponseFields(item, fields, depth + 1);
+    }
+
+    return copy;
   }
 
   private sanitizeValue(value: unknown, depth: number): unknown {

@@ -114,3 +114,5 @@ export { NetworkSetting } from './network-setting.entity';
 export { ServiceProvisioning } from './service-provisioning.entity';
 export { IpAssignment } from './ip-assignment.entity';
 export { NetworkInboxEvent } from './network-inbox-event.entity';
+export { NetworkRouterInterface } from './network-router-interface.entity';
+export { NetworkRouterInterfaceIpv4Address } from './network-router-interface-ipv4-address.entity';

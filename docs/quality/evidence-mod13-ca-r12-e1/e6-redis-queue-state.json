@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-27",
+  "isolation": {
+    "redisEndpoint": "127.0.0.1:6381",
+    "logicalDatabase": 0,
+    "queue": "network-provisioning-reconcile"
+  },
+  "scope": "Read-only counts and repeatable metadata; no job payloads were read.",
+  "apiBuildState": "E6 API was started before the reconciler fix was built.",
+  "e6CandidateCount": 800,
+  "processorBatchLimit": 100,
+  "allQueuesBeforePause": {
+    "queueCount": 11,
+    "active": 0,
+    "delayed": 3,
+    "repeatableSchedules": 3
+  },
+  "targetBeforePause": {
+    "waiting": 0,
+    "active": 0,
+    "completed": 0,
+    "failed": 1,
+    "failedAttempts": 3,
+    "failedReasonClass": "BadRequestException",
+    "failedReasonSha256": "65d34c7404e852eecbcabb0656f76cd56aa4407eb48f30ee65afa12c5539c012",
+    "delayed": 1,
+    "repeatableCount": 1,
+    "repeatableName": "reconcile-network-provisioning",
+    "repeatableEveryMs": 900000
+  },
+  "pause": {
+    "onlyTargetQueuePaused": true,
+    "queueIsPausedAfter": true,
+    "failedJobPreserved": true,
+    "delayedJobPreserved": true,
+    "repeatableDefinitionPreserved": true,
+    "retryOrDeletePerformed": false,
+    "databaseFlushPerformed": false
+  },
+  "followUp": "Validate the fix on the separate E7_fix clone using Redis logical DB 2."
+}

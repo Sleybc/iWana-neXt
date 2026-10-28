@@ -1,0 +1,43 @@
+2026-10-27T23:26:10.577Z start port=3014 clone=iwana_it_mod13_ca_r12_e7_resume
+2026-10-27T23:26:10.768Z stage=preflight_queues
+2026-10-27T23:26:10.980Z stage=preflight_db
+2026-10-27T23:26:11.017Z stage=preflight_counts
+2026-10-27T23:26:11.263Z stage=preflight_pk_source
+2026-10-27T23:26:11.300Z stage=r5_env
+2026-10-27T23:26:11.368Z stage=r5_seed
+2026-10-27T23:26:12.073Z r5.seed.ok
+2026-10-27T23:26:12.076Z stage=r5_api_start
+2026-10-27T23:26:14.664Z r5.api.healthy
+2026-10-27T23:26:14.665Z stage=r5_platform_login
+2026-10-27T23:26:14.890Z stage=r5_platform_password_change
+2026-10-27T23:26:15.448Z stage=r5_platform_login_after_rotation
+2026-10-27T23:26:15.801Z stage=r5_regenerate_admin_credentials
+2026-10-27T23:26:16.131Z stage=r5_tenant_initial_login
+2026-10-27T23:26:16.498Z stage=r5_tenant_password_change
+2026-10-27T23:26:17.141Z stage=r5_tenant_login_after_rotation
+2026-10-27T23:26:17.435Z stage=r5_catalog_meta
+2026-10-27T23:26:17.473Z r5.done
+2026-10-27T23:26:17.475Z stage=window_baseline
+2026-10-27T23:26:22.872Z stage=r6_subscriber
+2026-10-27T23:26:22.878Z stage=r6_execution_order
+2026-10-27T23:26:22.882Z stage=r6_pool_selection
+2026-10-27T23:26:22.886Z stage=r6_reserve
+2026-10-27T23:26:23.045Z stage=r6_release
+2026-10-27T23:26:23.129Z r6.done
+2026-10-27T23:26:23.129Z stage=r7a_local_address_lookup
+2026-10-27T23:26:24.496Z stage=r7a_reserve_local_ip
+2026-10-27T23:26:25.986Z r7a.done
+2026-10-27T23:26:25.987Z stage=r7b_capture_local_ip
+2026-10-27T23:26:27.398Z r7b.done
+2026-10-27T23:26:27.399Z stage=r8_api_stop
+2026-10-27T23:26:27.401Z api.stop.sigterm pid=31472
+2026-10-27T23:26:27.422Z api.stop.taskkill
+2026-10-27T23:26:28.628Z api.stop.exit code=null signal=TASKKILL
+2026-10-27T23:26:31.647Z stage=r8_queues
+2026-10-27T23:26:31.818Z stage=r8_legacy
+2026-10-27T23:26:31.958Z stage=r8_census
+2026-10-27T23:26:33.407Z blocked stage=r8_census reason=auditPostR7a_is_not_defined
+2026-10-27T23:26:33.408Z api.stop.sigterm pid=31472
+2026-10-27T23:26:41.409Z api.stop.sigterm_timeout
+2026-10-27T23:26:46.413Z api.stop.taskkill
+2026-10-27T23:26:47.590Z api.stop.exit code=null signal=TASKKILL
