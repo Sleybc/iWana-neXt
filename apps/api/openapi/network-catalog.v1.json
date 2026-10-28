@@ -7299,37 +7299,46 @@
         "properties": {
           "nextCursor": {
             "type": "string",
+            "description": "Cursor opaco base64url para la siguiente página (modo cursor). null en modo page.",
             "nullable": true
           },
           "total": {
             "type": "integer",
+            "description": "Total de registros del conjunto filtrado.",
             "minimum": 0
           },
           "totalIsEstimate": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "true cuando total es una estimación (recursos de alto volumen)."
           },
           "page": {
             "type": "integer",
+            "description": "Número de página (1-based). null en modo cursor.",
             "minimum": 1,
             "nullable": true
           },
           "limit": {
             "type": "integer",
+            "description": "Tamaño de página aplicado.",
             "minimum": 1
           },
           "totalPages": {
             "type": "integer",
+            "description": "Total de páginas. null en modo cursor.",
             "minimum": 0,
             "nullable": true
           },
           "hasMore": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "true cuando hay más resultados disponibles."
           },
           "mode": {
             "type": "string",
+            "description": "Modo de acceso: 'page' (offset) o 'cursor' (keyset).",
             "enum": ["page", "cursor"]
           },
           "capabilities": {
+            "description": "Capacidades declaradas por el servidor.",
             "allOf": [
               {
                 "type": "object",
@@ -7349,6 +7358,7 @@
             ]
           },
           "sort": {
+            "description": "Orden efectivamente aplicado; null = orden por defecto del recurso.",
             "nullable": true,
             "allOf": [
               {

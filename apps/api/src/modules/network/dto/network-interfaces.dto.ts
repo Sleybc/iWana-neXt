@@ -20,6 +20,7 @@ import {
   type ControlMethod,
 } from '@iwana/shared';
 import type { CorrectionReason, RouterInterfaceKind, RouterInterfaceStatus } from '@iwana/shared';
+import { ListMetaDto } from '../../../common/pagination/list-meta.dto';
 
 @ApiSchema(strictApiSchema('UpdateRouterBody'))
 export class UpdateRouterBodyDto {
@@ -437,59 +438,6 @@ export class ServiceProvisioningResponseDto {
   updatedAt!: string;
 }
 
-@ApiSchema({ name: 'ListMetaDto' })
-export class ProvisioningListMetaResponseDto {
-  @ApiProperty({ type: String, nullable: true })
-  nextCursor!: string | null;
-
-  @ApiProperty({ minimum: 0, type: 'integer' })
-  total!: number;
-
-  @ApiProperty()
-  totalIsEstimate!: boolean;
-
-  @ApiProperty({ minimum: 1, type: 'integer', nullable: true })
-  page!: number | null;
-
-  @ApiProperty({ minimum: 1, type: 'integer' })
-  limit!: number;
-
-  @ApiProperty({ minimum: 0, type: 'integer', nullable: true })
-  totalPages!: number | null;
-
-  @ApiProperty()
-  hasMore!: boolean;
-
-  @ApiProperty({ enum: ['page', 'cursor'] })
-  mode!: 'page' | 'cursor';
-
-  @ApiProperty({
-    allOf: [
-      {
-        type: 'object',
-        properties: {
-          randomAccess: { type: 'boolean' },
-          sortableFields: { type: 'array', items: { type: 'string' } },
-        },
-        required: ['randomAccess', 'sortableFields'],
-      },
-    ],
-  })
-  capabilities!: { randomAccess: boolean; sortableFields: string[] };
-
-  @ApiProperty({
-    nullable: true,
-    allOf: [
-      {
-        type: 'object',
-        properties: { by: { type: 'string' }, dir: { type: 'string', enum: ['asc', 'desc'] } },
-        required: ['by', 'dir'],
-      },
-    ],
-  })
-  sort!: { by: string; dir: 'asc' | 'desc' } | null;
-}
-
 @ApiSchema({ name: 'ProvisioningInboxRowDto' })
 export class ProvisioningInboxRowResponseDto {
   @ApiProperty({ enum: ['IN_EXECUTION', 'FAILED', 'CLOSED_UNPROVISIONED'] })
@@ -537,13 +485,13 @@ export class ProvisioningInboxRowResponseDto {
 }
 
 @ApiSchema({ name: 'ProvisioningInboxListResponseDto' })
-@ApiExtraModels(ProvisioningInboxRowResponseDto, ProvisioningListMetaResponseDto)
+@ApiExtraModels(ProvisioningInboxRowResponseDto, ListMetaDto)
 export class ProvisioningInboxListResponseDto {
   @ApiProperty({ type: ProvisioningInboxRowResponseDto, isArray: true })
   data!: ProvisioningInboxRowResponseDto[];
 
-  @ApiProperty({ type: ProvisioningListMetaResponseDto })
-  meta!: ProvisioningListMetaResponseDto;
+  @ApiProperty({ type: ListMetaDto })
+  meta!: ListMetaDto;
 }
 
 @ApiSchema({ name: 'ProvisioningOrderContextDto' })
