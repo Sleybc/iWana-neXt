@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
+import { Badge } from '@iwana/ui';
 import {
   PortalActionToolbar,
   PortalAlert,
@@ -16,6 +17,7 @@ import {
   PortalTablePager,
   buildPageWindow,
   interactiveFocusClassName,
+  portalDataTableBodyClassName,
   portalInlineTextLinkClassName,
   PORTAL_DEFAULT_PAGE_SIZE,
   PORTAL_PAGE_SIZE_OPTIONS,
@@ -38,6 +40,132 @@ function mockMatchMediaSmUp(matches: boolean) {
   });
 }
 describe('portal-ui', () => {
+  it.each([
+    {
+      variant: 'success' as const,
+      light: ['bg-success-50', 'text-success-700'],
+      dark: ['dark:bg-success-500/15', 'dark:text-success-400'],
+    },
+    {
+      variant: 'warning' as const,
+      light: ['bg-amber-50', 'text-amber-700'],
+      dark: ['dark:bg-amber-500/15', 'dark:text-amber-400'],
+    },
+    {
+      variant: 'error' as const,
+      light: ['bg-error-50', 'text-error-700'],
+      dark: ['dark:bg-error-500/15', 'dark:text-error-400'],
+    },
+  ])(
+    'Badge $variant renderiza texto y tokens semánticos en ambos temas',
+    ({ variant, light, dark }) => {
+      render(
+        <table>
+          <tbody className={portalDataTableBodyClassName}>
+            <tr>
+              <td>
+                <Badge variant={variant} data-testid="semantic-badge">
+                  Estado {variant}
+                </Badge>
+              </td>
+            </tr>
+          </tbody>
+        </table>,
+      );
+
+      const badge = screen.getByTestId('semantic-badge');
+      expect(badge).toHaveTextContent(`Estado ${variant}`);
+      expect(badge).toHaveClass(...light, ...dark);
+      expect(screen.getByRole('rowgroup')).toHaveClass('bg-white', 'dark:bg-dark-surface-2');
+    },
+  );
+
+  it.each([
+    {
+      variant: 'error' as const,
+      root: ['border-red-200', 'bg-red-50/90', 'dark:border-red-900/70', 'dark:bg-red-950/30'],
+      iconWrap: ['bg-red-100', 'text-red-700', 'dark:bg-red-950/60', 'dark:text-red-300'],
+      icon: ['text-red-600', 'dark:text-red-300'],
+      title: ['text-red-900', 'dark:text-red-100'],
+      body: ['text-red-700', 'dark:text-red-200/90'],
+    },
+    {
+      variant: 'warning' as const,
+      root: [
+        'border-amber-200',
+        'bg-amber-50/90',
+        'dark:border-amber-900/70',
+        'dark:bg-amber-950/25',
+      ],
+      iconWrap: ['bg-amber-100', 'text-amber-700', 'dark:bg-amber-950/60', 'dark:text-amber-300'],
+      icon: ['text-amber-600', 'dark:text-amber-300'],
+      title: ['text-amber-900', 'dark:text-amber-100'],
+      body: ['text-amber-800', 'dark:text-amber-200/90'],
+    },
+    {
+      variant: 'success' as const,
+      root: [
+        'border-emerald-200',
+        'bg-emerald-50/90',
+        'dark:border-emerald-900/70',
+        'dark:bg-emerald-950/25',
+      ],
+      iconWrap: [
+        'bg-emerald-100',
+        'text-emerald-700',
+        'dark:bg-emerald-950/60',
+        'dark:text-emerald-300',
+      ],
+      icon: ['text-emerald-600', 'dark:text-emerald-300'],
+      title: ['text-emerald-900', 'dark:text-emerald-100'],
+      body: ['text-emerald-800', 'dark:text-emerald-200/90'],
+    },
+    {
+      variant: 'info' as const,
+      root: [
+        'border-gray-200',
+        'bg-iwana-surface-soft',
+        'dark:border-dark-border',
+        'dark:bg-dark-surface-3',
+      ],
+      iconWrap: [
+        'bg-iwana-primary/8',
+        'text-iwana-primary',
+        'dark:bg-iwana-primary-400/20',
+        'dark:text-iwana-primary-300',
+      ],
+      icon: ['text-iwana-primary', 'dark:text-iwana-primary-300'],
+      title: ['text-gray-900', 'dark:text-white'],
+      body: ['text-gray-600', 'dark:text-gray-300'],
+    },
+  ])('PortalAlert $variant renderiza contenido visible y clases de ambos temas', (styles) => {
+    render(
+      <PortalPanel title="Estados del catálogo">
+        <PortalAlert
+          variant={styles.variant}
+          title={`Estado ${styles.variant}`}
+          description="Detalle del estado"
+        />
+      </PortalPanel>,
+    );
+
+    const alert = screen.getByRole('status');
+    const iconWrap = alert.firstElementChild;
+    const icon = iconWrap?.firstElementChild;
+    const title = screen.getByText(`Estado ${styles.variant}`);
+    const body = screen.getByText('Detalle del estado');
+
+    expect(alert).toHaveClass(...styles.root);
+    expect(iconWrap).toHaveClass(...styles.iconWrap);
+    expect(icon).toHaveClass(...styles.icon);
+    expect(title).toHaveClass(...styles.title);
+    expect(body).toHaveClass(...styles.body);
+    expect(alert).toHaveAttribute('aria-live', 'polite');
+    expect(
+      screen.getByRole('heading', { name: 'Estados del catálogo' }).closest('section'),
+    ).toHaveClass('bg-white', 'dark:bg-dark-surface-2');
+  });
+
   it('should expose polite live regions by default for success alerts', () => {
     render(
       <PortalAlert

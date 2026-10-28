@@ -29,6 +29,7 @@ export function usePortalSideDrawerA11y(
   open: boolean,
   containerRef: RefObject<HTMLElement | null>,
   onClose: () => void,
+  initialFocusRef?: RefObject<HTMLElement | null>,
 ) {
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const layerIdRef = useRef<number | null>(null);
@@ -81,7 +82,14 @@ export function usePortalSideDrawerA11y(
     }
 
     const focusable = getFocusableElements(container);
-    const focusTarget = focusable[0] ?? container;
+    const preferredFocus = initialFocusRef?.current;
+    const focusTarget =
+      preferredFocus &&
+      preferredFocus.isConnected &&
+      !preferredFocus.hasAttribute('disabled') &&
+      !preferredFocus.closest('[inert]')
+        ? preferredFocus
+        : (focusable[0] ?? container);
     const cancelInitialFocus = scheduleInitialFocus(focusTarget, () =>
       isTopMostPortalSideDrawerLayer(layerId),
     );
@@ -146,5 +154,5 @@ export function usePortalSideDrawerA11y(
       document.removeEventListener('keydown', onKeyDown);
       unregisterPortalSideDrawerLayer(layerId);
     };
-  }, [containerRef, layerId, open, scheduleInitialFocus]);
+  }, [containerRef, initialFocusRef, layerId, open, scheduleInitialFocus]);
 }

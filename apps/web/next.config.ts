@@ -59,6 +59,25 @@ const nextConfig: NextConfig = {
   agentRules: false,
   turbopack: {},
   allowedDevOrigins: ['127.0.0.1', 'localhost', '0.0.0.0'],
+  experimental: {
+    // El arbol protegido depende del estado de sesion del cliente y no puede
+    // validarse de forma implicita: solo se validan segmentos con `instant`
+    // explicito. Ver INFORME-PORTAL-FIX-INSTANTNAV-v1.0 §10.
+    instantInsights: {
+      validationLevel: 'manual-warning',
+    },
+  },
+  async redirects() {
+    // La raiz se resuelve en configuracion (307) para no prerenderizar un
+    // segmento con `redirect()`, que rompe la validacion de instant navigation.
+    return [
+      {
+        source: '/',
+        destination: '/dashboard',
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {
