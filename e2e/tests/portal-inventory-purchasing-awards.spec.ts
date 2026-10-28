@@ -1304,7 +1304,17 @@ test.describe('Portal Inventario / Compras — Adjudicación en matriz (Fase 30)
 
     // Persistir el borrador de la matriz antes de la escotilla: los drafts son
     // efímeros y el refresco tras guardar la directa los descartaría.
+    // Tras el POST el drawer recarga el detalle y desmonta el panel mientras
+    // carga: abrir «Acciones» antes de que vuelva deja el menú sin nodo. El
+    // contador no sirve de señal porque ya cuenta la selección sin guardar.
+    const detailReloaded = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        /\/purchasing\/requests\/[^/]+$/.test(new URL(response.url()).pathname),
+    );
     await workbench.getByRole('button', { name: 'Guardar adjudicación' }).click();
+    await detailReloaded;
+    await expect(workbench.getByText('Adjudicado').first()).toBeVisible();
     await expect(workbench.getByText('1 de 4 productos adjudicados')).toBeVisible();
 
     // Escotilla §7: proveedor sin cotización con costo obligatorio.
