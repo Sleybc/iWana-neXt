@@ -35,6 +35,7 @@ import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { AuditService } from '../../audit/audit.service';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { MediaService } from '../../media/media.service';
@@ -42,7 +43,7 @@ import { privacyEvidenceResponseSchema as privacyEvidenceOpenApiSchema } from '.
 
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @AuditEntity('PrivacyEvidence')
 @Controller('privacy/evidence')
 export class PrivacyEvidenceController {

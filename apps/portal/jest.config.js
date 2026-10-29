@@ -13,7 +13,8 @@ module.exports = {
   testTimeout: 15000,
   maxWorkers: '50%',
   transform: {
-    '^.+\\.(t|j)sx?$': [
+    '^.+\\.jsx?$': 'next/dist/build/swc/jest-transformer',
+    '^.+\\.tsx?$': [
       'ts-jest',
       {
         tsconfig: {
@@ -23,6 +24,8 @@ module.exports = {
       },
     ],
   },
+  // Las dependencias de Markdown son ESM y deben pasar por SWC también en Jest.
+  transformIgnorePatterns: [],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^@iwana/ui$': '<rootDir>/../../../packages/ui/src/index.ts',

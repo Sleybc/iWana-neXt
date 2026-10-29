@@ -3,6 +3,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
 import { PrivacyModule1460000000000 } from './146_privacy_module';
+import { PrivacyLegalFormatsAndPurposes1660000000000 } from './166_privacy_legal_formats_and_purposes';
 
 const SCHEMA = `tenant_privacy_${randomBytes(5).toString('hex')}`;
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -427,6 +428,61 @@ describeWithDb('Migración 146 — privacidad, backfill y triggers en PostgreSQL
     await migration.up(active);
     expect(await countRows(active, 'data_authorizations')).toBe(3);
     expect(await countRows(active, 'data_subject_requests')).toBe(2);
+  });
+
+  it('166 conserva evidencia append-only y valida formato y finalidades en up/down/up', async () => {
+    const active = requireRunner(runner);
+    const next = new PrivacyLegalFormatsAndPurposes1660000000000();
+    await active.query('SAVEPOINT migration_166');
+    try {
+      const rows = (await active.query(
+        `INSERT INTO legal_texts (type, version, sha256, content, published_at)
+        VALUES ('AUTORIZACION', '166-test', $1, 'texto sintético', now()) RETURNING id`,
+        ['a'.repeat(64)],
+      )) as Array<{ id: string }>;
+      await next.up(active);
+      const selected = (await active.query('SELECT format FROM legal_texts WHERE id = $1', [
+        rows[0]?.id,
+      ])) as Array<{ format: string }>;
+      expect(selected[0]?.format).toBe('PLAIN');
+      for (const sql of [
+        'UPDATE legal_texts SET content = content WHERE id = $1',
+        'DELETE FROM legal_texts WHERE id = $1',
+      ]) {
+        await active.query('SAVEPOINT blocked_write');
+        try {
+          await expect(active.query(sql, [rows[0]?.id])).rejects.toMatchObject({
+            driverError: { code: '55000' },
+          });
+        } finally {
+          await active.query('ROLLBACK TO SAVEPOINT blocked_write');
+          await active.query('RELEASE SAVEPOINT blocked_write');
+        }
+      }
+      await expectRejectedWrite(active, () =>
+        active.query(
+          `INSERT INTO legal_texts (type, version, sha256, content, published_at, format) VALUES ('AUTORIZACION', 'invalid', $1, 'x', now(), 'INVALID')`,
+          ['a'.repeat(64)],
+        ),
+      );
+      await expectRejectedWrite(active, () =>
+        active.query(
+          `INSERT INTO privacy_purpose_settings (purpose, enabled) VALUES ('INVALID', true)`,
+        ),
+      );
+      expect(
+        (
+          await active.query(
+            'SELECT count(*)::int AS count FROM privacy_purpose_settings WHERE enabled',
+          )
+        )[0].count,
+      ).toBe(4);
+      await next.down(active);
+      await next.up(active);
+    } finally {
+      await active.query('ROLLBACK TO SAVEPOINT migration_166');
+      await active.query('RELEASE SAVEPOINT migration_166');
+    }
   });
 
   it('el CHECK de privacidad_incidents exige fecha y referencia en pareja', async () => {

@@ -24,6 +24,19 @@ const dataPurpose = {
   ],
 } satisfies SchemaObject;
 
+const purposeSetting = objectSchema({ purpose: dataPurpose, enabled: { type: 'boolean' } }, [
+  'purpose',
+  'enabled',
+]);
+export const purposeSettingsResponseSchema = dataEnvelopeSchema({
+  type: 'array',
+  items: purposeSetting,
+});
+export const updatePurposeSettingsRequestSchema = objectSchema(
+  { items: { type: 'array', items: purposeSetting } },
+  ['items'],
+);
+
 const legalTextType = {
   type: 'string',
   enum: ['POLITICA_TRATAMIENTO', 'AVISO_PRIVACIDAD', 'AUTORIZACION'],
@@ -80,6 +93,7 @@ export const createLegalTextRequestSchema = objectSchema(
     type: legalTextType,
     version: { type: 'string', minLength: 1, maxLength: 32 },
     content: { type: 'string', minLength: 1, maxLength: 200_000 },
+    format: { type: 'string', enum: ['PLAIN', 'MARKDOWN'], default: 'PLAIN' },
     url: nullableUri,
   },
   ['type', 'version', 'content'],
@@ -92,11 +106,12 @@ const legalText = objectSchema(
     version: { type: 'string' },
     sha256: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
     content: { type: 'string' },
+    format: { type: 'string', enum: ['PLAIN', 'MARKDOWN'] },
     publishedAt: timestamp,
     url: nullableUri,
     isCurrent: { type: 'boolean' },
   },
-  ['id', 'type', 'version', 'sha256', 'content', 'publishedAt', 'url', 'isCurrent'],
+  ['id', 'type', 'version', 'sha256', 'content', 'format', 'publishedAt', 'url', 'isCurrent'],
 );
 
 export const legalTextListResponseSchema = dataEnvelopeSchema({ type: 'array', items: legalText });

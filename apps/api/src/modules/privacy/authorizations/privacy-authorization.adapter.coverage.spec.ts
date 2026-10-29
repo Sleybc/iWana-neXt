@@ -21,6 +21,7 @@ describe('PrivacyAuthorizationAdapter — ramas de lectura y persistencia', () =
   };
   const legalTextRepository = { findOne: jest.fn() };
   const manager = {
+    query: jest.fn().mockResolvedValue([{ enabled: true }]),
     getRepository: jest.fn((entity: unknown) =>
       entity === DataAuthorizationEntity ? authorizationRepository : legalTextRepository,
     ),

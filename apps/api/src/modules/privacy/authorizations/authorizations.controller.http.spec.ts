@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AuthorizationsController } from './authorizations.controller';
 import { AuthorizationsService } from './authorizations.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '@iwana/shared';
@@ -37,11 +38,17 @@ describe('POST /privacy/authorizations', () => {
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate: (context: ExecutionContext) => {
-          context.switchToHttp().getRequest().user = { sub: actorId };
+          context.switchToHttp().getRequest().user = {
+            sub: actorId,
+            type: 'tenant',
+            role: 'AUDITOR',
+          };
           return true;
         },
       })
       .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

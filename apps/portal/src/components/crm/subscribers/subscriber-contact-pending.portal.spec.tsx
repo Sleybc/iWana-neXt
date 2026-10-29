@@ -225,12 +225,18 @@ describe('MOD05 E3 contacto pendiente', () => {
   it('CA-E3-02: exige uno de los canales y permite crear con solo teléfono', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(privacyApi, 'listPurposes').mockResolvedValue([
+      { purpose: 'TRATAMIENTO_CONTRACTUAL', enabled: true },
+      { purpose: 'CONTACTO_COMERCIAL', enabled: true },
+      { purpose: 'DATOS_BIOMETRICOS', enabled: true },
+    ]);
     jest.spyOn(privacyApi, 'getCurrentLegalText').mockResolvedValue({
       id: 'a0000000-0000-4000-8000-000000000001',
       type: 'AUTORIZACION',
       sha256: 'a'.repeat(64),
       version: 'v1.0',
       content: 'Texto de autorización vigente',
+      format: 'PLAIN',
       isCurrent: true,
       publishedAt: '2026-10-15T10:00:00.000Z',
       url: null,

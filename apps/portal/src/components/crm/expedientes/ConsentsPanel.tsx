@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Badge, Button, FormStatus, Select } from '@iwana/ui';
 import { ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
@@ -8,7 +8,10 @@ import { ConsentChannel, type LegalText } from '@iwana/shared';
 import { crmApi, type ConsentRecordItem, type CreateConsentDto } from '@/lib/api-client';
 import { PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { getSafeCrmErrorMessage } from './crm-error-message';
-import { privacyApi } from '@/lib/api-client';
+import { ApiError, privacyApi } from '@/lib/api-client';
+import { LegalTextContent } from '@/components/privacy/LegalTextContent';
+import { LegalTextReferences } from '@/components/privacy/LegalTextReferences';
+import { useEnabledPurposes } from '@/components/privacy/use-enabled-purposes';
 
 const CONSENT_TYPE_OPTIONS = [
   { value: 'DATA_TREATMENT', label: 'Tratamiento de datos' },
@@ -118,6 +121,9 @@ interface ConsentsPanelProps {
 }
 
 export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
+  const purposes = useEnabledPurposes();
+  const [textError, setTextError] = useState(false);
+  const [textRetry, setTextRetry] = useState(0);
   const [consents, setConsents] = useState<ConsentRecordItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -131,18 +137,17 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
   const [status, setStatus] = useState('ACCEPTED');
   const [channel, setChannel] = useState<ConsentChannel | ''>('');
   useEffect(() => {
-    void loadConsents();
-  }, [expedienteId]);
-
-  useEffect(() => {
     let active = true;
     void privacyApi
       .getCurrentLegalText('AUTORIZACION')
       .then((text) => {
         if (active) setAuthorizationText(text);
       })
-      .catch(() => {
-        if (active) setAuthorizationText(null);
+      .catch((failure: unknown) => {
+        if (active) {
+          setAuthorizationText(null);
+          setTextError(!(failure instanceof ApiError && failure.status === 404));
+        }
       })
       .finally(() => {
         if (active) setAuthorizationTextLoading(false);
@@ -150,9 +155,9 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [textRetry]);
 
-  const loadConsents = async () => {
+  const loadConsents = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -164,7 +169,11 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [expedienteId]);
+
+  useEffect(() => {
+    void loadConsents();
+  }, [loadConsents]);
 
   const handleCreateConsent = async () => {
     if (!authorizationText || !channel) return;
@@ -264,10 +273,23 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
           <p className="text-sm font-semibold">
             Texto vigente · versión {authorizationText.version}
           </p>
-          <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-200">
-            {authorizationText.content}
-          </p>
+          <LegalTextContent content={authorizationText.content} format={authorizationText.format} />
+          <LegalTextReferences />
         </section>
+      ) : textError ? (
+        <p>
+          No fue posible cargar el texto vigente.{' '}
+          <button
+            type="button"
+            onClick={() => {
+              setAuthorizationTextLoading(true);
+              setTextError(false);
+              setTextRetry((value) => value + 1);
+            }}
+          >
+            Reintentar
+          </button>
+        </p>
       ) : (
         <div className="rounded-xl border border-amber-300 p-4 text-sm">
           <p>No hay un texto de autorización vigente. La captura está bloqueada.</p>
@@ -294,7 +316,13 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
             id="expediente-consent-type"
             label="Finalidad"
             value={consentType}
-            options={CONSENT_TYPE_OPTIONS}
+            options={CONSENT_TYPE_OPTIONS.filter((option) =>
+              purposes.enabled.includes(
+                option.value === 'COMMERCIAL_CONTACT'
+                  ? 'CONTACTO_COMERCIAL'
+                  : 'TRATAMIENTO_CONTRACTUAL',
+              ),
+            )}
             onChange={(event) => setConsentType(event.target.value)}
           />
           <Select
@@ -323,7 +351,15 @@ export function ConsentsPanel({ expedienteId }: ConsentsPanelProps) {
               type="button"
               onClick={() => void handleCreateConsent()}
               loading={submitting}
-              disabled={submitting || !channel}
+              disabled={
+                submitting ||
+                !channel ||
+                !purposes.enabled.includes(
+                  consentType === 'COMMERCIAL_CONTACT'
+                    ? 'CONTACTO_COMERCIAL'
+                    : 'TRATAMIENTO_CONTRACTUAL',
+                )
+              }
             >
               Registrar autorización
             </Button>

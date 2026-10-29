@@ -80,6 +80,7 @@ import { TransitionStatusDto } from './dto/transition-status.dto';
 import { CreateContactAttemptDto } from './dto/create-contact-attempt.dto';
 import { CreateConsentDto } from './dto/create-consent.dto';
 import { IPrivacyLegalTextReadPort } from '../../privacy/ports/privacy-legal-text-read.port';
+import { IPrivacyPurposeReadPort } from '../../privacy/ports/privacy-purpose-read.port';
 import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
 import type { PrivacyMark } from '@iwana/shared';
 import { CreateCoverageCheckDto } from './dto/create-coverage-check.dto';
@@ -288,6 +289,9 @@ export class ExpedienteService {
     @Optional()
     @Inject(IPrivacyMarksReadPort)
     private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
+    @Optional()
+    @Inject(IPrivacyPurposeReadPort)
+    private readonly privacyPurposeReadPort?: IPrivacyPurposeReadPort,
   ) {
     const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -1534,6 +1538,21 @@ export class ExpedienteService {
     }
     const normalizedConsentType = this.normalizeConsentType(dto.consentType);
     const normalizedConsentStatus = this.normalizeConsentStatus(dto.status);
+
+    if (normalizedConsentStatus === ConsentStatus.ACEPTADO) {
+      if (!this.privacyPurposeReadPort)
+        throw new ServiceUnavailableException('La consulta de finalidades no está disponible.');
+      const purpose =
+        normalizedConsentType === ConsentType.CONTACTO_COMERCIAL
+          ? 'CONTACTO_COMERCIAL'
+          : 'TRATAMIENTO_CONTRACTUAL';
+      if (!(await this.privacyPurposeReadPort.enabledPurposes()).includes(purpose)) {
+        throw new UnprocessableEntityException({
+          code: 'PRIVACY_PURPOSE_DISABLED',
+          message: 'Esta finalidad no está habilitada para la empresa.',
+        });
+      }
+    }
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       if (normalizedConsentStatus === ConsentStatus.ACEPTADO) {

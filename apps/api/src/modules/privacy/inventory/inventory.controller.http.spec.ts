@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrivacyInventoryController } from './inventory.controller';
 import { PrivacyInventoryService } from './inventory.service';
 
@@ -34,11 +35,15 @@ describe('GET /privacy/inventory', () => {
         canActivate: (context: ExecutionContext) => {
           context.switchToHttp().getRequest().user = {
             sub: '60000000-0000-4000-8000-000000000002',
+            type: 'tenant',
+            role: 'ADMIN',
           };
           return true;
         },
       })
       .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

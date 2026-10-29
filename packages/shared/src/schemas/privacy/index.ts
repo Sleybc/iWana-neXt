@@ -1,5 +1,6 @@
 export * from './authorizations';
 export * from './legal-texts';
+export * from './purposes';
 export * from './marks';
 export * from './retention';
 export * from './incidents';

@@ -1,6 +1,6 @@
 # Stack Tecnológico — iWana neXt Platform
 
-**Última actualización:** 2026-10-18 (Node 24.13.1 convergido por ADR-071; Next.js 16.4.2 por PLAT-DEPS-CRITICAS, D1-A)
+**Última actualización:** 2026-10-29 (react-markdown 10.1.0 + remark-gfm 4.0.1 para textos legales, E1 aprobada por el CTO); 2026-10-18 (Node 24.13.1 convergido por ADR-071; Next.js 16.4.2 por PLAT-DEPS-CRITICAS, D1-A)
 **Fuente:** Documentación oficial de cada proyecto (verificado)
 
 > ⚠️ **IMPORTANTE — Dos capas de versiones:**
@@ -57,6 +57,8 @@
 | `@tanstack/react-query` | latest stable ⚠️          | **No adoptado**: web y portal usan un `api-client` propio (`@/lib/api-client`) para data fetching |
 | react-hook-form         | latest stable             | <https://react-hook-form.com/>                |
 | Zod                     | **4.0.1** ⚠️              | (compartido con backend; en proyecto: 3.24.2) |
+| react-markdown          | **10.1.0** (MIT)          | Solo `apps/portal`, solo en `LegalTextContent`. Uso obligatorio: `skipHtml`, `allowedElements` acotado y `urlTransform` que admite solo `http`/`https`. Peer `react >=18`. Aprobado por el CTO el 2026-10-29 (E1 de `docs/plans/2026-10-29-privacy-textos-legales.md`) |
+| remark-gfm              | **4.0.1** (MIT)           | Plugin de react-markdown para tablas GFM; mismo alcance y la misma aprobación |
 
 ---
 

@@ -13,21 +13,24 @@ async function assertTenantHeader(route: import('@playwright/test').Route) {
   const headers = await route.request().allHeaders();
   expect(headers['x-tenant-slug']).toBe(MOCK_TENANT_SLUG);
 }
-const MOCK_ACCESS_TOKEN =
-  'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
-  btoa(
-    JSON.stringify({
-      sub: 'user-uuid-admin-test',
-      email: 'hash-admin-test',
-      role: 'ADMIN',
-      tenantId: 'tenant-uuid-test',
-      schemaName: 'tenant_test_isp',
-      jti: 'jti-test-1',
-      type: 'tenant',
-      exp: Math.floor(Date.now() / 1000) + 900,
-    }),
-  ) +
-  '.fakesig';
+function makeMockAccessToken(role: string) {
+  return (
+    'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.' +
+    btoa(
+      JSON.stringify({
+        sub: 'user-uuid-admin-test',
+        email: 'hash-admin-test',
+        role,
+        tenantId: 'tenant-uuid-test',
+        schemaName: 'tenant_test_isp',
+        jti: 'jti-test-1',
+        type: 'tenant',
+        exp: Math.floor(Date.now() / 1000) + 900,
+      }),
+    ) +
+    '.fakesig'
+  );
+}
 
 const mockExpediente = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -132,12 +135,18 @@ const mockUsers = [
   },
 ];
 
-async function setAuthSession(page: import('@playwright/test').Page) {
-  await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
+async function setAuthSession(
+  page: import('@playwright/test').Page,
+  options: { role?: string; effectivePermissions?: string[] } = {},
+) {
+  await seedPortalSession(page, {
+    token: makeMockAccessToken(options.role ?? 'ADMIN'),
+    tenantSlug: MOCK_TENANT_SLUG,
+  });
   await mockEffectivePermissions(page, {
     userId: 'user-uuid-admin-test',
-    role: 'ADMIN',
-    effectivePermissions: [
+    role: options.role ?? 'ADMIN',
+    effectivePermissions: options.effectivePermissions ?? [
       'crm.expedientes.read',
       'crm.expedientes.manage',
       'crm.subscribers.read',
@@ -151,7 +160,12 @@ async function setAuthSession(page: import('@playwright/test').Page) {
 
 async function setupCrmMocks(
   page: import('@playwright/test').Page,
-  options: { installationReady?: boolean; privacyConsentConversion?: boolean } = {},
+  options: {
+    installationReady?: boolean;
+    privacyConsentConversion?: boolean;
+    privacyMarkdownText?: boolean;
+    role?: string;
+  } = {},
 ) {
   let capturedExpedientesQuery = '';
   let capturedTechnicalPayload: Record<string, unknown> | null = null;
@@ -325,7 +339,7 @@ async function setupCrmMocks(
         body: JSON.stringify({
           data: {
             userId: 'user-uuid-admin-test',
-            role: 'ADMIN',
+            role: options.role ?? 'ADMIN',
             effectivePermissions: [
               'crm.expedientes.read',
               'crm.subscribers.read',
@@ -350,11 +364,30 @@ async function setupCrmMocks(
             type: 'AUTORIZACION',
             version: '3.2',
             sha256: 'a'.repeat(64),
-            content: 'Autorizo el tratamiento de mis datos para la prestación del servicio.',
+            content: options.privacyMarkdownText
+              ? '# Autorización de prueba\n\nTexto sintético de autorización.'
+              : 'Autorizo el tratamiento de mis datos para la prestación del servicio.',
+            format: options.privacyMarkdownText ? 'MARKDOWN' : 'PLAIN',
             publishedAt: '2026-10-01T10:00:00.000Z',
             url: null,
             isCurrent: true,
           },
+        }),
+      });
+      return;
+    }
+
+    if (pathname.endsWith('/privacy/purposes') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { purpose: 'TRATAMIENTO_CONTRACTUAL', enabled: true },
+            { purpose: 'CONTACTO_COMERCIAL', enabled: true },
+            { purpose: 'REPORTE_CENTRALES_RIESGO', enabled: true },
+            { purpose: 'DATOS_BIOMETRICOS', enabled: true },
+          ],
         }),
       });
       return;
@@ -537,7 +570,7 @@ async function setupCrmMocks(
           data: {
             sub: 'user-uuid-admin-test',
             email: 'hash-admin-test',
-            role: 'ADMIN',
+            role: options.role ?? 'ADMIN',
             tenantId: 'tenant-uuid-test',
             schemaName: 'tenant_test_isp',
             jti: 'jti-test-1',
@@ -1583,6 +1616,36 @@ test.describe('CRM expedientes - cierre Sprint 02', () => {
     await page.getByRole('tab', { name: 'Cumplimiento' }).click();
     await expect(page.getByText(/Medio: Teléfono/)).toBeVisible();
     expect(mocks.getCapturedConsentPayload()).toMatchObject({ channel: 'TELEFONO' });
+  });
+
+  test('CA-LT-09: un usuario comercial captura una autorización con texto Markdown vigente', async ({
+    page,
+  }) => {
+    const mocks = await setupCrmMocks(page, {
+      privacyMarkdownText: true,
+      role: 'COMMERCIAL',
+    });
+    await setAuthSession(page, {
+      role: 'COMMERCIAL',
+      effectivePermissions: ['crm.expedientes.read', 'privacy.read'],
+    });
+    await page.goto(`/dashboard/crm/expedientes/${mockExpediente.id}`);
+
+    await expect(page.getByRole('heading', { name: 'Consentimientos (Ley 1581)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Autorización de prueba' })).toBeVisible();
+    await page.getByRole('button', { name: 'Registrar autorización' }).first().click();
+    await page
+      .getByRole('combobox', { name: 'Medio por el que la persona otorgó la autorización' })
+      .click();
+    await page.getByRole('option', { name: 'Teléfono', exact: true }).click();
+    await page.getByRole('button', { name: 'Registrar autorización' }).last().click();
+
+    await expect.poll(mocks.getCapturedConsentPayload).toMatchObject({
+      consentType: 'DATA_TREATMENT',
+      status: 'ACCEPTED',
+      channel: 'TELEFONO',
+      legalTextVersion: '3.2',
+    });
   });
 
   test('CRM oculta PII en listados y mantiene detalle operativo', async ({ page }) => {

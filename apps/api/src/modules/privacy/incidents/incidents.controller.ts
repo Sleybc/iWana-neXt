@@ -29,6 +29,7 @@ import { AuditEntity } from '../../audit/decorators/audit-entity.decorator';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { IncidentsService } from './incidents.service';
@@ -43,7 +44,7 @@ type AuthenticatedRequest = Request & { user: JwtPayload };
 
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @AuditEntity('PrivacyIncident')
 @Controller('privacy/incidents')
 export class IncidentsController {

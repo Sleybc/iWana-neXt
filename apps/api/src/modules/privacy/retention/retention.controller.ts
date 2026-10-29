@@ -22,6 +22,7 @@ import { Permissions } from '../../access-control/decorators/permissions.decorat
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { AuditEntity } from '../../audit/decorators/audit-entity.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { RetentionService } from './retention.service';
@@ -33,7 +34,7 @@ import {
 
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @AuditEntity('RetentionPolicy')
 @Controller('privacy/retention-policies')
 export class RetentionController {

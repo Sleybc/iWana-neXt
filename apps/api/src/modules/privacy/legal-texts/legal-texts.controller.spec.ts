@@ -8,6 +8,7 @@ const legalText = {
   version: '3.0',
   sha256: 'a'.repeat(64),
   content: 'Texto sintético para pruebas.',
+  format: 'PLAIN',
   publishedAt: '2026-10-14T15:00:00.000Z',
   url: null,
   isCurrent: true,

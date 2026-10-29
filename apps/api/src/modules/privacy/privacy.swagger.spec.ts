@@ -4,6 +4,7 @@ import { erasureCategorySchema } from '@iwana/shared';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 import { AuthorizationsController } from './authorizations/authorizations.controller';
 import { AuthorizationsService } from './authorizations/authorizations.service';
@@ -72,6 +73,7 @@ describe('Privacy OpenAPI', () => {
         { provide: AuditService, useValue: {} },
         { provide: JwtAuthGuard, useValue: { canActivate: () => true } },
         { provide: PermissionsGuard, useValue: { canActivate: () => true } },
+        { provide: RolesGuard, useValue: { canActivate: () => true } },
         {
           provide: EffectivePermissionsService,
           useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },

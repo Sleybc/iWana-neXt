@@ -1,26 +1,45 @@
+jest.mock('otplib', () => ({
+  TOTP: jest.fn().mockImplementation(() => ({
+    generate: jest.fn(),
+    verify: jest.fn(),
+  })),
+  NobleCryptoPlugin: jest.fn(),
+  ScureBase32Plugin: jest.fn(),
+}));
+
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Global, Module } from '@nestjs/common';
+import { generateKeyPairSync } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { PrivacyModule } from './privacy.module';
+import { AuthModule } from '../auth/auth.module';
 import { PrivacyRequestsService } from './requests/requests.service';
 import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-adapters.module';
 import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants';
 import { EVIDENCE_ANALYSIS_QUEUE } from '../media/evidence-asset.provider';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { MailerModule } from '../mailer/mailer.module';
+import { PurposesController } from './purposes/purposes.controller';
 
 const syntheticTestKey = Array.from({ length: 32 }, (_, index) =>
   (index + 1).toString(16).padStart(2, '0'),
 ).join('');
+const syntheticJwtKeys = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
 const testConfigValues: Record<string, string> = {
   NODE_ENV: 'test',
   MFA_ENCRYPTION_KEY: syntheticTestKey,
   PII_ENCRYPTION_KEY: syntheticTestKey,
   PII_HASH_KEY: syntheticTestKey,
+  JWT_PRIVATE_KEY: syntheticJwtKeys.privateKey,
+  JWT_PUBLIC_KEY: syntheticJwtKeys.publicKey,
 };
 
 @Global()
@@ -68,8 +87,10 @@ describe('PrivacyModule composition', () => {
       (entry) => typeof entry === 'object' && entry !== null && 'forwardRef' in entry,
     ) as { forwardRef: () => unknown } | undefined;
 
-    expect(imports).toHaveLength(6);
-    expect(controllers).toHaveLength(8);
+    expect(imports).toHaveLength(7);
+    expect(imports).toContain(AuthModule);
+    expect(controllers).toHaveLength(9);
+    expect(controllers).toContain(PurposesController);
     expect(providers).toContain(PrivacyRequestsService);
     expect(exports).toContain(CrmPrivacyAdaptersModule);
     expect(

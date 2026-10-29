@@ -13,6 +13,9 @@ import {
 import { ApiError, privacyApi } from '@/lib/api-client';
 import { PortalAlert, PortalEmptyState, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { EvidenceUploadField } from './EvidenceUploadField';
+import { LegalTextContent } from './LegalTextContent';
+import { LegalTextReferences } from './LegalTextReferences';
+import { useEnabledPurposes } from './use-enabled-purposes';
 import { RequestForm } from './RequestForm';
 import { formatCivilDate, formatLocalDateTime, DATA_PURPOSE_LABELS } from './privacy-labels';
 
@@ -65,6 +68,9 @@ export function CompliancePanel({
 }) {
   const [records, setRecords] = useState(authorizations);
   const [currentText, setCurrentText] = useState<LegalText | null>(null);
+  const [textError, setTextError] = useState(false);
+  const [textRetry, setTextRetry] = useState(0);
+  const purposes = useEnabledPurposes();
   const [loadingText, setLoadingText] = useState(canManage);
   const [consent, setConsent] = useState<Record<DataPurpose, boolean>>({
     TRATAMIENTO_CONTRACTUAL: false,
@@ -89,8 +95,11 @@ export function CompliancePanel({
       .then((text) => {
         if (!cancelled) setCurrentText(text);
       })
-      .catch(() => {
-        if (!cancelled) setCurrentText(null);
+      .catch((failure: unknown) => {
+        if (!cancelled) {
+          setCurrentText(null);
+          setTextError(!(failure instanceof ApiError && failure.status === 404));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingText(false);
@@ -98,7 +107,7 @@ export function CompliancePanel({
     return () => {
       cancelled = true;
     };
-  }, [canManage]);
+  }, [canManage, textRetry]);
 
   const latest = useMemo(() => currentAuthorizationByPurpose(records), [records]);
   const save = async () => {
@@ -106,7 +115,7 @@ export function CompliancePanel({
     setSaving(true);
     setError(null);
     try {
-      for (const purpose of PURPOSES) {
+      for (const purpose of PURPOSES.filter((item) => purposes.enabled.includes(item))) {
         if (!consent[purpose]) continue;
         await privacyApi.createAuthorization({
           partyId,
@@ -232,12 +241,19 @@ export function CompliancePanel({
                 <p className="text-sm font-semibold">
                   Texto vigente · versión {currentText.version}
                 </p>
-                <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-sm">
-                  {currentText.content}
-                </p>
+                <LegalTextContent content={currentText.content} format={currentText.format} />
+                <LegalTextReferences />
               </div>
               <div className="space-y-2">
-                {PURPOSES.map((purpose) => (
+                {purposes.enabled.length === 0 && purposes.failed ? (
+                  <p>
+                    No fue posible cargar las finalidades.{' '}
+                    <button type="button" onClick={purposes.retry}>
+                      Reintentar
+                    </button>
+                  </p>
+                ) : null}
+                {PURPOSES.filter((purpose) => purposes.enabled.includes(purpose)).map((purpose) => (
                   <label
                     key={purpose}
                     className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border"
@@ -283,15 +299,29 @@ export function CompliancePanel({
                 disabled={
                   saving ||
                   !channel ||
-                  (!consent.TRATAMIENTO_CONTRACTUAL &&
-                    !consent.CONTACTO_COMERCIAL &&
-                    !consent.DATOS_BIOMETRICOS)
+                  !PURPOSES.some(
+                    (purpose) => purposes.enabled.includes(purpose) && consent[purpose],
+                  )
                 }
                 onClick={() => void save()}
               >
                 {saving ? 'Guardando…' : 'Guardar autorizaciones seleccionadas'}
               </Button>
             </>
+          ) : textError ? (
+            <p>
+              No fue posible cargar el texto vigente.{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadingText(true);
+                  setTextError(false);
+                  setTextRetry((value) => value + 1);
+                }}
+              >
+                Reintentar
+              </button>
+            </p>
           ) : (
             <PortalAlert
               variant="warning"

@@ -18,7 +18,10 @@ import {
   type VatResponsibility,
 } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
-import { privacyApi } from '@/lib/api-client';
+import { ApiError, privacyApi } from '@/lib/api-client';
+import { LegalTextContent } from '@/components/privacy/LegalTextContent';
+import { LegalTextReferences } from '@/components/privacy/LegalTextReferences';
+import { useEnabledPurposes } from '@/components/privacy/use-enabled-purposes';
 import type { DataPurpose, LegalText } from '@iwana/shared';
 import Link from 'next/link';
 import { JuridicaPersonFields } from './JuridicaPersonFields';
@@ -154,6 +157,9 @@ function stripEmptyValues<T extends Record<string, unknown>>(value: T): Partial<
 }
 
 export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberFormProps) {
+  const purposes = useEnabledPurposes();
+  const [textError, setTextError] = useState(false);
+  const [textRetry, setTextRetry] = useState(0);
   const editing = Boolean(initialData);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authorizationText, setAuthorizationText] = useState<LegalText | null>(null);
@@ -222,8 +228,11 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
       .then((text) => {
         if (active) setAuthorizationText(text);
       })
-      .catch(() => {
-        if (active) setAuthorizationText(null);
+      .catch((failure: unknown) => {
+        if (active) {
+          setAuthorizationText(null);
+          setTextError(!(failure instanceof ApiError && failure.status === 404));
+        }
       })
       .finally(() => {
         if (active) setAuthorizationTextLoading(false);
@@ -231,7 +240,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
     return () => {
       active = false;
     };
-  }, [initialData]);
+  }, [initialData, textRetry]);
 
   const onSubmit = async (values: SubscriberFormValues) => {
     clearErrors();
@@ -299,6 +308,10 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
             birthDate: values.birthDate.trim() || undefined,
           });
 
+    if (!editing && !purposes.enabled.includes('TRATAMIENTO_CONTRACTUAL')) {
+      setSubmitError('No fue posible cargar las finalidades habilitadas.');
+      return;
+    }
     if (!editing && !authorizationChoices.TRATAMIENTO_CONTRACTUAL) {
       setSubmitError(
         'La autorización para prestar y soportar el servicio es necesaria para crear el suscriptor.',
@@ -318,7 +331,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
     const authorizations = (
       ['TRATAMIENTO_CONTRACTUAL', 'CONTACTO_COMERCIAL', 'DATOS_BIOMETRICOS'] as const
     )
-      .filter((purpose) => authorizationChoices[purpose])
+      .filter((purpose) => purposes.enabled.includes(purpose) && authorizationChoices[purpose])
       .map((purpose) => ({ purpose, granted: true, legalTextId: authorizationText!.id }));
     const payload = editing
       ? basePayload
@@ -483,9 +496,11 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
                     <p className="text-sm font-semibold">
                       Texto vigente · versión {authorizationText.version}
                     </p>
-                    <p className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-sm">
-                      {authorizationText.content}
-                    </p>
+                    <LegalTextContent
+                      content={authorizationText.content}
+                      format={authorizationText.format}
+                    />
+                    <LegalTextReferences />
                   </div>
                   <Select
                     id="subscriber-authorization-channel"
@@ -501,52 +516,80 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
                     required
                     aria-required="true"
                   />
-                  <label className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border">
-                    <input
-                      className="mt-1 h-4 w-4"
-                      type="checkbox"
-                      checked={authorizationChoices.TRATAMIENTO_CONTRACTUAL}
-                      onChange={(event) =>
-                        setAuthorizationChoices((current) => ({
-                          ...current,
-                          TRATAMIENTO_CONTRACTUAL: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>
-                      Autorizo el uso de mis datos para prestar, facturar y dar soporte al servicio.
-                      Es necesaria para crear el suscriptor.
-                    </span>
-                  </label>
-                  <label className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border">
-                    <input
-                      className="mt-1 h-4 w-4"
-                      type="checkbox"
-                      checked={authorizationChoices.CONTACTO_COMERCIAL}
-                      onChange={(event) =>
-                        setAuthorizationChoices((current) => ({
-                          ...current,
-                          CONTACTO_COMERCIAL: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Autorizo recibir ofertas y novedades (opcional).</span>
-                  </label>
-                  <label className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border">
-                    <input
-                      className="mt-1 h-4 w-4"
-                      type="checkbox"
-                      checked={authorizationChoices.DATOS_BIOMETRICOS}
-                      onChange={(event) =>
-                        setAuthorizationChoices((current) => ({
-                          ...current,
-                          DATOS_BIOMETRICOS: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Autorizo el uso de datos biométricos (opcional, cuando aplique).</span>
-                  </label>
+                  {purposes.enabled.includes('TRATAMIENTO_CONTRACTUAL') ? (
+                    <label className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border">
+                      <input
+                        className="mt-1 h-4 w-4"
+                        type="checkbox"
+                        checked={authorizationChoices.TRATAMIENTO_CONTRACTUAL}
+                        onChange={(event) =>
+                          setAuthorizationChoices((current) => ({
+                            ...current,
+                            TRATAMIENTO_CONTRACTUAL: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>
+                        Autorizo el uso de mis datos para prestar, facturar y dar soporte al
+                        servicio. Es necesaria para crear el suscriptor.
+                      </span>
+                    </label>
+                  ) : null}
+                  {purposes.enabled.includes('CONTACTO_COMERCIAL') ? (
+                    <label className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border">
+                      <input
+                        className="mt-1 h-4 w-4"
+                        type="checkbox"
+                        checked={authorizationChoices.CONTACTO_COMERCIAL}
+                        onChange={(event) =>
+                          setAuthorizationChoices((current) => ({
+                            ...current,
+                            CONTACTO_COMERCIAL: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Autorizo recibir ofertas y novedades (opcional).</span>
+                    </label>
+                  ) : null}
+                  {purposes.enabled.includes('DATOS_BIOMETRICOS') ? (
+                    <label className="flex min-h-11 items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-border">
+                      <input
+                        className="mt-1 h-4 w-4"
+                        type="checkbox"
+                        checked={authorizationChoices.DATOS_BIOMETRICOS}
+                        onChange={(event) =>
+                          setAuthorizationChoices((current) => ({
+                            ...current,
+                            DATOS_BIOMETRICOS: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Autorizo el uso de datos biométricos (opcional, cuando aplique).</span>
+                    </label>
+                  ) : null}
+                  {purposes.failed ? (
+                    <p>
+                      No fue posible cargar las finalidades.{' '}
+                      <button type="button" onClick={purposes.retry}>
+                        Reintentar
+                      </button>
+                    </p>
+                  ) : null}
                 </>
+              ) : textError ? (
+                <p>
+                  No fue posible cargar el texto vigente.{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthorizationTextLoading(true);
+                      setTextError(false);
+                      setTextRetry((value) => value + 1);
+                    }}
+                  >
+                    Reintentar
+                  </button>
+                </p>
               ) : (
                 <div className="space-y-2 text-sm">
                   <p>

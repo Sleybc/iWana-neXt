@@ -27,6 +27,7 @@ import { PermissionsGuard } from '../../access-control/guards/permissions.guard'
 import { AuditEntity } from '../../audit/decorators/audit-entity.decorator';
 import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { LegalTextsService } from './legal-texts.service';
@@ -39,15 +40,13 @@ import {
 
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @AuditEntity('LegalText')
 @Controller('privacy/legal-texts')
 export class LegalTextsController {
   constructor(private readonly legalTextsService: LegalTextsService) {}
 
   @Get('current')
-  @Roles(UserRole.ADMIN, UserRole.AUDITOR)
-  @Permissions(AccessPermissionKey.PRIVACY_READ)
   @ApiOperation({ summary: 'Consultar la versión vigente de un texto legal' })
   @ApiQuery({
     name: 'type',

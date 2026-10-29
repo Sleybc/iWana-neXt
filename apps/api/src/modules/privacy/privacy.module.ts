@@ -2,6 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessControlModule } from '../access-control/access-control.module';
+import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 import { MediaModule } from '../media/media.module';
 import { DataAuthorizationEntity } from './entities/data-authorization.entity';
@@ -39,6 +40,9 @@ import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-ad
 import { PrivacyDueAlertsProcessor } from './alerts/privacy-due-alerts.processor';
 import { PrivacyDueAlertsMetrics } from './alerts/privacy-due-alerts.metrics';
 import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants';
+import { PurposesController } from './purposes/purposes.controller';
+import { PurposesService } from './purposes/purposes.service';
+import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
 
 @Module({
   imports: [
@@ -52,6 +56,7 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
       DataSubjectRequestEventEntity,
       DataSubjectRequestTaskEntity,
     ]),
+    AuthModule,
     AccessControlModule,
     AuditModule,
     MediaModule,
@@ -61,6 +66,7 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
   controllers: [
     AuthorizationsController,
     LegalTextsController,
+    PurposesController,
     MarksController,
     RetentionController,
     IncidentsController,
@@ -86,6 +92,8 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
       useExisting: PrivacyMarksAdapter,
     },
     LegalTextsService,
+    PurposesService,
+    { provide: IPrivacyPurposeReadPort, useExisting: PurposesService },
     {
       provide: IPrivacyLegalTextReadPort,
       useExisting: LegalTextsService,
@@ -106,6 +114,7 @@ import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants'
     IPrivacyAuthorizationReadPort,
     IPrivacyAuthorizationWritePort,
     IPrivacyLegalTextReadPort,
+    IPrivacyPurposeReadPort,
     IPrivacyMarksReadPort,
     IPrivacyRequestsReadPort,
     CrmPrivacyAdaptersModule,

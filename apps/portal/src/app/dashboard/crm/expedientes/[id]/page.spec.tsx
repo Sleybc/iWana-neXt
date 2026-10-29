@@ -187,6 +187,7 @@ jest.mock('@/lib/api-client', () => ({
   },
   privacyApi: {
     getCurrentLegalText: jest.fn(),
+    listPurposes: jest.fn(),
   },
   commercialApi: {
     searchPlansForPicker: jest.fn(),
@@ -422,12 +423,17 @@ describe('ExpedienteDetailPage', () => {
       eventName: 'crm.expediente.ready-for-installation',
     });
     crmApiMock.listConsents.mockResolvedValue({ data: [] });
+    jest.mocked(privacyApi.listPurposes).mockResolvedValue([
+      { purpose: 'TRATAMIENTO_CONTRACTUAL', enabled: true },
+      { purpose: 'CONTACTO_COMERCIAL', enabled: true },
+    ]);
     jest.mocked(privacyApi.getCurrentLegalText).mockResolvedValue({
       id: 'legal-text-1',
       type: 'AUTORIZACION',
       sha256: 'a'.repeat(64),
       version: 'v1.0',
       content: 'Texto de autorización vigente',
+      format: 'PLAIN',
       isCurrent: true,
       publishedAt: '2026-10-14T00:00:00.000Z',
       url: null,

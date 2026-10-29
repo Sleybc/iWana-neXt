@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { ConsentChannel, DataPurpose, DataAuthorizationView } from '@iwana/shared';
 import { DataSource, EntityManager } from 'typeorm';
@@ -87,6 +87,19 @@ export class PrivacyAuthorizationAdapter
 
     if (input.legalTextId === null && kind !== 'LEGACY_IMPORT') {
       throw new BadRequestException('Solo LEGACY_IMPORT puede omitir el texto legal.');
+    }
+
+    if (input.granted && kind !== 'LEGACY_IMPORT') {
+      const settings = (await ctx.manager.query(
+        'SELECT enabled FROM privacy_purpose_settings WHERE purpose = $1 FOR SHARE',
+        [input.purpose],
+      )) as Array<{ enabled: boolean }>;
+      if (!settings[0]?.enabled) {
+        throw new UnprocessableEntityException({
+          code: 'PRIVACY_PURPOSE_DISABLED',
+          message: 'Esta finalidad no está habilitada para la empresa.',
+        });
+      }
     }
 
     const repository = ctx.manager.getRepository(DataAuthorizationEntity);

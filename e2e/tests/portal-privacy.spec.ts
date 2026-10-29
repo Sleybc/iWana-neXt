@@ -202,7 +202,14 @@ async function seedSession(page: Page) {
   await seedPortalSession(page, { token: MOCK_TOKEN, tenantSlug: TENANT });
 }
 
-async function setupMocks(page: Page) {
+async function setupMocks(
+  page: Page,
+  options: {
+    effectivePermissions?: string[];
+    legalTexts?: Array<Record<string, unknown>>;
+    purposeSettings?: Array<Record<string, unknown>>;
+  } = {},
+) {
   let detail = makeDetail();
   let requestKind: 'CONSULTA' | 'SUPLANTACION' = 'CONSULTA';
   let submittedPayload: Record<string, unknown> | null = null;
@@ -210,6 +217,14 @@ async function setupMocks(page: Page) {
   let resolved = false;
   let verified = false;
   let rejectedPayload: Record<string, unknown> | null = null;
+  const legalTexts = [...(options.legalTexts ?? [])];
+  const purposeSettings = options.purposeSettings ?? [
+    { purpose: 'TRATAMIENTO_CONTRACTUAL', enabled: true },
+    { purpose: 'CONTACTO_COMERCIAL', enabled: true },
+    { purpose: 'REPORTE_CENTRALES_RIESGO', enabled: true },
+    { purpose: 'DATOS_BIOMETRICOS', enabled: true },
+  ];
+  let createdLegalText: Record<string, unknown> | null = null;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -297,7 +312,7 @@ async function setupMocks(page: Page) {
         data: {
           userId: USER_ID,
           role: 'ADMIN',
-          effectivePermissions: [
+          effectivePermissions: options.effectivePermissions ?? [
             'privacy.read',
             'privacy.manage',
             'crm.subscribers.read',
@@ -370,6 +385,28 @@ async function setupMocks(page: Page) {
       detail.request.legalBasis = 'SOLICITANTE_NO_LEGITIMADO';
       return json(route, { data: detail });
     }
+    if (pathname.endsWith('/privacy/legal-texts') && method === 'GET') {
+      return json(route, { data: legalTexts });
+    }
+    if (pathname.endsWith('/privacy/legal-texts') && method === 'POST') {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      createdLegalText = {
+        id: LEGAL_TEXT_ID,
+        type: payload.type,
+        version: payload.version,
+        content: payload.content,
+        format: payload.format,
+        sha256: SHA256,
+        publishedAt: '2026-10-29T12:00:00.000Z',
+        url: payload.url ?? null,
+        isCurrent: true,
+      };
+      legalTexts.unshift(createdLegalText);
+      return json(route, { data: createdLegalText }, 201);
+    }
+    if (pathname.endsWith('/privacy/purposes') && method === 'GET') {
+      return json(route, { data: purposeSettings });
+    }
     if (pathname.endsWith('/privacy/legal-texts/current') && method === 'GET') {
       return json(route, {
         data: {
@@ -398,10 +435,98 @@ async function setupMocks(page: Page) {
     didResolve: () => resolved,
     didVerify: () => verified,
     getRejectedPayload: () => rejectedPayload,
+    getCreatedLegalText: () => createdLegalText,
   };
 }
 
 test.describe('Privacidad en el portal', () => {
+  test('CA-LT-11: confirma la publicación, abre el peek y copia la huella completa', async ({
+    page,
+  }) => {
+    await seedSession(page);
+    const mocks = await setupMocks(page, {
+      purposeSettings: [
+        { purpose: 'TRATAMIENTO_CONTRACTUAL', enabled: true },
+        { purpose: 'CONTACTO_COMERCIAL', enabled: false },
+      ],
+    });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/dashboard/privacy?view=legal');
+
+    await expect(page.getByRole('heading', { name: 'Textos legales' })).toBeVisible();
+    await page.getByRole('button', { name: 'Crear nueva versión' }).click();
+    await page.getByLabel('Tipo').selectOption('POLITICA_TRATAMIENTO');
+    await page.getByLabel('Versión').fill('1.0-prueba');
+    await page
+      .getByLabel('Contenido')
+      .fill('# Política sintética\n\n| Campo | Valor |\n| --- | --- |\n| Ejemplo | Prueba |');
+    await page.getByLabel('Formato').selectOption('MARKDOWN');
+    await expect(page.getByRole('table')).toBeVisible();
+
+    let confirmationMessage = '';
+    page.once('dialog', async (dialog) => {
+      confirmationMessage = dialog.message();
+      await dialog.accept();
+    });
+    await page.getByRole('button', { name: 'Publicar versión' }).click();
+    expect(confirmationMessage).toContain('No se puede editar ni eliminar después');
+    await expect.poll(mocks.getCreatedLegalText).toMatchObject({
+      type: 'POLITICA_TRATAMIENTO',
+      version: '1.0-prueba',
+      format: 'MARKDOWN',
+      sha256: SHA256,
+    });
+
+    await page
+      .getByRole('button', { name: /Política de tratamiento de datos · versión 1.0-prueba/ })
+      .click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('table')).toBeVisible();
+    await expect(page.getByText(`Huella: ${SHA256}`)).toBeVisible();
+    await page.getByRole('button', { name: 'Copiar huella' }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(SHA256);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toHaveLength(64);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(
+      page.getByRole('button', {
+        name: /Política de tratamiento de datos · versión 1.0-prueba/,
+      }),
+    ).toBeFocused();
+  });
+
+  test('CA-LT-12: privacy.read permite consultar el listado sin permisos de gestión', async ({
+    page,
+  }) => {
+    await seedSession(page);
+    await setupMocks(page, {
+      effectivePermissions: ['privacy.read'],
+      legalTexts: [
+        {
+          id: LEGAL_TEXT_ID,
+          type: 'POLITICA_TRATAMIENTO',
+          version: '1.0-prueba',
+          content: 'Política sintética.',
+          format: 'PLAIN',
+          sha256: SHA256,
+          publishedAt: '2026-10-29T12:00:00.000Z',
+          url: null,
+          isCurrent: true,
+        },
+      ],
+    });
+    await page.goto('/dashboard/privacy?view=legal');
+
+    await expect(page.getByRole('heading', { name: 'Textos legales' })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /Política de tratamiento de datos · versión 1.0-prueba/ }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Crear nueva versión' })).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: 'Finalidades que declara tu política' }),
+    ).toHaveCount(0);
+  });
+
   test('radica, verifica identidad, completa y resuelve una consulta contra el contrato compartido', async ({
     page,
   }) => {

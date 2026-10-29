@@ -10,12 +10,15 @@ import {
   PortalAlert,
   PortalEmptyState,
   PortalPanel,
+  PortalSidePeek,
   PortalSkeletonBlock,
 } from '@/components/shared/portal-ui';
 import { ApiError, privacyApi } from '@/lib/api-client';
 import type {
   LegalText,
   LegalTextType,
+  LegalTextFormat,
+  PurposeSetting,
   PrivacyIncident,
   PrivacyInventory,
   RequestKind,
@@ -24,6 +27,7 @@ import type {
 } from '@iwana/shared';
 import { PrivacyRequestDetail } from './PrivacyRequestDetail';
 import { RequestForm } from './RequestForm';
+import { LegalTextContent } from './LegalTextContent';
 import {
   formatCivilDate,
   formatLocalDateTime,
@@ -371,7 +375,7 @@ function RequestsSurface({ canManage }: { canManage: boolean }) {
   );
 }
 
-function LegalTextsSurface() {
+function LegalTextsSurface({ canManage }: { canManage: boolean }) {
   const [texts, setTexts] = useState<LegalText[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -379,26 +383,36 @@ function LegalTextsSurface() {
   const [type, setType] = useState<LegalTextType>('AUTORIZACION');
   const [version, setVersion] = useState('');
   const [content, setContent] = useState('');
+  const [format, setFormat] = useState<LegalTextFormat>('MARKDOWN');
+  const [purposes, setPurposes] = useState<PurposeSetting[]>([]);
+  const [savingPurposes, setSavingPurposes] = useState(false);
   const [url, setUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<LegalText | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       setTexts(await privacyApi.listLegalTexts());
+      if (canManage) setPurposes(await privacyApi.listPurposes());
     } catch {
       setError('No fue posible cargar los textos legales.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [canManage]);
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const save = async () => {
+    if (
+      !window.confirm(
+        `Vas a publicar la versión ${version.trim()} de ${LEGAL_TEXT_TYPE_LABELS[type]}. No se puede editar ni eliminar después. Las nuevas autorizaciones usarán este texto.`,
+      )
+    )
+      return;
     setSaving(true);
     setError(null);
     try {
@@ -406,6 +420,7 @@ function LegalTextsSurface() {
         type,
         version: version.trim(),
         content,
+        format,
         url: url.trim() || null,
       });
       setCreating(false);
@@ -428,9 +443,11 @@ function LegalTextsSurface() {
         title="Textos legales"
         description="Las versiones publicadas son inmutables. Para corregir una, publica otra versión."
         actions={
-          <Button onClick={() => setCreating((open) => !open)}>
-            {creating ? 'Cancelar' : 'Crear nueva versión'}
-          </Button>
+          canManage ? (
+            <Button onClick={() => setCreating((open) => !open)}>
+              {creating ? 'Cancelar' : 'Crear nueva versión'}
+            </Button>
+          ) : undefined
         }
       >
         {error ? (
@@ -470,6 +487,21 @@ function LegalTextsSurface() {
                 onChange={(event) => setContent(event.target.value)}
               />
             </label>
+            <label className="block space-y-1 text-sm font-medium">
+              Formato
+              <select
+                className={selectClass}
+                value={format}
+                onChange={(event) => setFormat(event.target.value as LegalTextFormat)}
+              >
+                <option value="MARKDOWN">Texto con formato</option>
+                <option value="PLAIN">Texto simple</option>
+              </select>
+            </label>
+            <div>
+              <h3 className="font-semibold">Vista previa</h3>
+              <LegalTextContent content={content} format={format} />
+            </div>
             <label className="block space-y-1 text-sm font-medium">
               Enlace opcional
               <input
@@ -525,35 +557,56 @@ function LegalTextsSurface() {
           />
         )}
       </PortalPanel>
+      {canManage ? (
+        <PortalPanel title="Finalidades que declara tu política">
+          <div className="space-y-3">
+            {purposes.map((item) => (
+              <label key={item.purpose} className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  disabled={savingPurposes || item.purpose === 'TRATAMIENTO_CONTRACTUAL'}
+                  onChange={(event) => {
+                    setSavingPurposes(true);
+                    void privacyApi
+                      .updatePurposes({ items: [{ ...item, enabled: event.target.checked }] })
+                      .then(setPurposes)
+                      .catch(() => setError('No fue posible guardar las finalidades.'))
+                      .finally(() => setSavingPurposes(false));
+                  }}
+                />
+                <span>
+                  {getPurposeLabel(item.purpose)}
+                  {item.purpose === 'TRATAMIENTO_CONTRACTUAL' ? ' · Siempre requerida' : ''}
+                </span>
+              </label>
+            ))}
+          </div>
+        </PortalPanel>
+      ) : null}
       {selected ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="legal-text-detail-title"
-          className="fixed inset-0 z-(--z-modal) overflow-y-auto bg-black/40 p-4"
+        <PortalSidePeek
+          open
+          onClose={() => setSelected(null)}
+          title={`${LEGAL_TEXT_TYPE_LABELS[selected.type]} · versión ${selected.version}`}
         >
-          <section className="mx-auto my-8 max-w-3xl space-y-4 rounded-2xl bg-white p-6 dark:bg-dark-surface-2">
-            <h2 id="legal-text-detail-title" className="text-lg font-semibold">
-              {LEGAL_TEXT_TYPE_LABELS[selected.type]} · versión {selected.version}
-            </h2>
-            <p className="text-sm">
-              SHA-256: <code className="break-all">{selected.sha256}</code>
-            </p>
-            <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap rounded-xl bg-iwana-surface-soft p-4 text-sm dark:bg-dark-surface-3">
-              {selected.content}
-            </pre>
-            {selected.url ? (
-              <a href={selected.url} target="_blank" rel="noreferrer" className="text-sm underline">
-                Abrir enlace del texto
-              </a>
-            ) : null}
-            <div className="flex justify-end">
-              <Button variant="secondary" onClick={() => setSelected(null)}>
-                Cerrar
-              </Button>
-            </div>
-          </section>
-        </div>
+          <p>{formatLocalDateTime(selected.publishedAt)}</p>
+          <p className="text-sm">
+            Huella: <code className="break-all">{selected.sha256}</code>
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => void navigator.clipboard.writeText(selected.sha256)}
+          >
+            Copiar huella
+          </Button>
+          <LegalTextContent content={selected.content} format={selected.format} />
+          {selected.url ? (
+            <a href={selected.url} target="_blank" rel="noreferrer" className="text-sm underline">
+              Abrir enlace del texto
+            </a>
+          ) : null}
+        </PortalSidePeek>
       ) : null}
     </div>
   );
@@ -892,7 +945,10 @@ export function PrivacyWorkspace() {
     () =>
       canManage
         ? (Object.entries(surfaceLabels) as Array<[Surface, string]>)
-        : [['requests', 'Solicitudes'] as [Surface, string]],
+        : [
+            ['requests', 'Solicitudes'] as [Surface, string],
+            ['legal', 'Textos legales'] as [Surface, string],
+          ],
     [canManage],
   );
 
@@ -925,7 +981,7 @@ export function PrivacyWorkspace() {
         title="Privacidad"
         subtitle="Atiende solicitudes de datos personales y administra el cumplimiento."
       />
-      {canManage ? (
+      {canRead ? (
         <nav aria-label="Secciones de privacidad" className="flex flex-wrap gap-2">
           {tabs.map(([id, label]) => (
             <button
@@ -941,7 +997,7 @@ export function PrivacyWorkspace() {
         </nav>
       ) : null}
       {surface === 'requests' ? <RequestsSurface canManage={canManage} /> : null}
-      {surface === 'legal' && canManage ? <LegalTextsSurface /> : null}
+      {surface === 'legal' ? <LegalTextsSurface canManage={canManage} /> : null}
       {surface === 'incidents' && canManage ? <IncidentsSurface /> : null}
       {surface === 'inventory' && canManage ? <InventorySurface /> : null}
     </div>

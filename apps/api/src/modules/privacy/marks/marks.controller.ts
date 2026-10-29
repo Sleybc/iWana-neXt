@@ -12,13 +12,14 @@ import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { MarksService } from './marks.service';
 import { privacyMarksResponseSchema } from '../privacy-openapi.schemas';
 
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('privacy/parties/:partyId/marks')
 export class MarksController {
   constructor(private readonly marksService: MarksService) {}

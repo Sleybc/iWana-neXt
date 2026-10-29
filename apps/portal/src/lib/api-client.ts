@@ -182,6 +182,8 @@ import {
   dataSubjectRequestSummarySchema,
   erasurePreviewSchema,
   legalTextSchema,
+  purposeSettingSchema,
+  updatePurposeSettingsSchema,
   privacyEvidenceResponseSchema,
   privacyIncidentSchema,
   privacyInventorySchema,
@@ -10413,6 +10415,15 @@ export const privacyApi = {
     const response = await request<unknown[]>('/privacy/legal-texts');
     return response.map((item) => legalTextSchema.parse(item));
   },
+  listPurposes: async (): Promise<import('@iwana/shared').PurposeSetting[]> => {
+    const response = await request<unknown[]>('/privacy/purposes');
+    return response.map((item) => purposeSettingSchema.parse(item));
+  },
+  updatePurposes: (payload: import('@iwana/shared').UpdatePurposeSettings) =>
+    request<import('@iwana/shared').PurposeSetting[]>('/privacy/purposes', {
+      method: 'PUT',
+      body: JSON.stringify(updatePurposeSettingsSchema.parse(payload)),
+    }),
   getCurrentLegalText: async (type: LegalTextType): Promise<LegalText> => {
     const response = await request<unknown>(
       `/privacy/legal-texts/current?type=${encodeURIComponent(type)}`,

@@ -1,6 +1,5 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-
-export type LegalTextType = 'POLITICA_TRATAMIENTO' | 'AVISO_PRIVACIDAD' | 'AUTORIZACION';
+import { LegalTextFormat, LegalTextType } from '@iwana/shared';
 
 @Entity({ name: 'legal_texts' })
 @Index('uq_legal_texts_type_version', ['type', 'version'], { unique: true })
@@ -19,6 +18,9 @@ export class LegalTextEntity {
 
   @Column({ type: 'text' })
   content: string;
+
+  @Column({ type: 'text', default: 'PLAIN' })
+  format: LegalTextFormat;
 
   @Column({ name: 'published_at', type: 'timestamptz' })
   publishedAt: Date;

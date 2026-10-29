@@ -7,6 +7,7 @@ import {
   legalTextSchema,
   privacyEvidenceResponseSchema,
   reportPrivacyIncidentSchema,
+  updatePurposeSettingsSchema,
 } from './index';
 
 describe('C-PRIV-API v1.0 — schemas compartidos de privacy', () => {
@@ -107,6 +108,7 @@ describe('C-PRIV-API v1.0 — schemas compartidos de privacy', () => {
       version: '2.0',
       sha256: 'a'.repeat(64),
       content: 'Texto legal.',
+      format: 'PLAIN',
       publishedAt: '2026-10-14T12:00:00.000Z',
       url: null,
     };
@@ -119,5 +121,19 @@ describe('C-PRIV-API v1.0 — schemas compartidos de privacy', () => {
         sizeBytes: 512,
       }).success,
     ).toBe(true);
+  });
+
+  it('aplica formato simple por defecto y rechaza finalidades repetidas', () => {
+    expect(
+      createLegalTextSchema.parse({ type: 'AUTORIZACION', version: '1', content: 'Texto' }).format,
+    ).toBe('PLAIN');
+    expect(
+      updatePurposeSettingsSchema.safeParse({
+        items: [
+          { purpose: 'CONTACTO_COMERCIAL', enabled: true },
+          { purpose: 'CONTACTO_COMERCIAL', enabled: false },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

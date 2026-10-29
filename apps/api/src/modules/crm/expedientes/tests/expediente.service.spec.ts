@@ -23,6 +23,7 @@ import { CompletenessCalculator } from '../completeness-calculator.service';
 import { CrmActorReadPort } from '../../ports/crm-actor-read.port';
 import { SubscribersService } from '../../subscribers/subscribers.service';
 import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
+import { IPrivacyPurposeReadPort } from '../../../privacy/ports/privacy-purpose-read.port';
 import { UpdateSectionDto, ExpedienteSection } from '../dto/update-section.dto';
 import { hashDocumentNumber } from '../../../../common/crypto/hash-document.util';
 import { hmacPii } from '../../../../common/crypto/pii-hash-key.util';
@@ -112,6 +113,9 @@ describe('ExpedienteService', () => {
     }),
     findByVersion: jest.fn(),
   };
+  const privacyPurposeReadPortMock = {
+    enabledPurposes: jest.fn().mockResolvedValue(['TRATAMIENTO_CONTRACTUAL', 'CONTACTO_COMERCIAL']),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -159,6 +163,7 @@ describe('ExpedienteService', () => {
         { provide: EventEmitter2, useValue: eventEmitterMock },
         { provide: SubscribersService, useValue: subscribersServiceMock },
         { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
+        { provide: IPrivacyPurposeReadPort, useValue: privacyPurposeReadPortMock },
       ],
     }).compile();
 

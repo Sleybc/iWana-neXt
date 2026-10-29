@@ -210,12 +210,18 @@ const EXPEDIENTE_SUMMARY = {
 } satisfies NonNullable<Subscriber360Response['expedienteSummary']>;
 
 function mockLegalText() {
+  jest.spyOn(privacyApi, 'listPurposes').mockResolvedValue([
+    { purpose: 'TRATAMIENTO_CONTRACTUAL', enabled: true },
+    { purpose: 'CONTACTO_COMERCIAL', enabled: true },
+    { purpose: 'DATOS_BIOMETRICOS', enabled: true },
+  ]);
   jest.spyOn(privacyApi, 'getCurrentLegalText').mockResolvedValue({
     id: 'a0000000-0000-4000-8000-000000000001',
     type: 'AUTORIZACION',
     sha256: 'a'.repeat(64),
     version: 'v1.0',
     content: 'Texto de autorización sintético',
+    format: 'PLAIN',
     isCurrent: true,
     publishedAt: '2026-10-17T10:00:00.000Z',
     url: null,

@@ -5,6 +5,36 @@ import { DataAuthorizationEntity } from '../entities/data-authorization.entity';
 import { PrivacyAuthorizationAdapter } from './privacy-authorization.adapter';
 
 describe('PrivacyAuthorizationAdapter', () => {
+  it('rechaza concesiones deshabilitadas y permite revocaciones e importaciones históricas', async () => {
+    const repository = {
+      create: jest.fn((input) => input),
+      save: jest.fn(async (input) => ({ ...input, id: 'id' })),
+    };
+    const manager = {
+      getRepository: jest.fn(() => repository),
+      query: jest.fn().mockResolvedValue([{ enabled: false }]),
+    } as unknown as EntityManager;
+    const adapter = new PrivacyAuthorizationAdapter({} as never);
+    const input = {
+      partyId: 'party',
+      purpose: 'DATOS_BIOMETRICOS' as const,
+      channel: ConsentChannel.EMAIL,
+      legalTextId: 'legal',
+      actorId: 'actor',
+    };
+    await expect(
+      adapter.record({ ...input, granted: true }, { ip: null, userAgent: null, manager }),
+    ).rejects.toMatchObject({ response: { code: 'PRIVACY_PURPOSE_DISABLED' } });
+    await expect(
+      adapter.record({ ...input, granted: false }, { ip: null, userAgent: null, manager }),
+    ).resolves.toMatchObject({ created: true });
+    await expect(
+      adapter.record(
+        { ...input, granted: true, kind: 'LEGACY_IMPORT' },
+        { ip: null, userAgent: null, manager },
+      ),
+    ).resolves.toMatchObject({ created: true });
+  });
   it('guarda IP y user agent tomados del contexto confiable del servidor', async () => {
     const id = '3e54ed12-5ad4-4f28-b7de-a8dd227b95c4';
     const repository = {
@@ -13,6 +43,7 @@ describe('PrivacyAuthorizationAdapter', () => {
     };
     const manager = {
       getRepository: jest.fn(() => repository),
+      query: jest.fn().mockResolvedValue([{ enabled: true }]),
     } as unknown as EntityManager;
     const adapter = new PrivacyAuthorizationAdapter({} as never);
 
@@ -41,7 +72,10 @@ describe('PrivacyAuthorizationAdapter', () => {
 
   it('rechaza un canal histórico si la fila no es LEGACY_IMPORT', async () => {
     const repository = { create: jest.fn(), save: jest.fn() };
-    const manager = { getRepository: jest.fn(() => repository) } as unknown as EntityManager;
+    const manager = {
+      getRepository: jest.fn(() => repository),
+      query: jest.fn().mockResolvedValue([{ enabled: true }]),
+    } as unknown as EntityManager;
     const adapter = new PrivacyAuthorizationAdapter({} as never);
 
     await expect(
@@ -66,7 +100,10 @@ describe('PrivacyAuthorizationAdapter', () => {
       create: jest.fn((input: Partial<DataAuthorizationEntity>) => input),
       save: jest.fn(async (input: Partial<DataAuthorizationEntity>) => ({ ...input, id })),
     };
-    const manager = { getRepository: jest.fn(() => repository) } as unknown as EntityManager;
+    const manager = {
+      getRepository: jest.fn(() => repository),
+      query: jest.fn().mockResolvedValue([{ enabled: true }]),
+    } as unknown as EntityManager;
     const adapter = new PrivacyAuthorizationAdapter({} as never);
 
     await expect(
@@ -109,7 +146,10 @@ describe('PrivacyAuthorizationAdapter', () => {
       create: jest.fn((values: Partial<DataAuthorizationEntity>) => values),
       save: jest.fn(async (values: Partial<DataAuthorizationEntity>) => ({ ...values, id })),
     };
-    const manager = { getRepository: jest.fn(() => repository) } as unknown as EntityManager;
+    const manager = {
+      getRepository: jest.fn(() => repository),
+      query: jest.fn().mockResolvedValue([{ enabled: true }]),
+    } as unknown as EntityManager;
     const adapter = new PrivacyAuthorizationAdapter({} as never);
 
     await expect(adapter.record(input, { ip: null, userAgent: null, manager })).resolves.toEqual({
@@ -131,7 +171,10 @@ describe('PrivacyAuthorizationAdapter', () => {
       create: jest.fn(),
       save: jest.fn(),
     };
-    const manager = { getRepository: jest.fn(() => repository) } as unknown as EntityManager;
+    const manager = {
+      getRepository: jest.fn(() => repository),
+      query: jest.fn().mockResolvedValue([{ enabled: true }]),
+    } as unknown as EntityManager;
     const adapter = new PrivacyAuthorizationAdapter({} as never);
 
     await expect(
