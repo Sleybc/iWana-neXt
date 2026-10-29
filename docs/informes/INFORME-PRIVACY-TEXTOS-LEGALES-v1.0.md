@@ -1,7 +1,7 @@
 # INFORME — Privacy · Textos legales consumibles por el sistema — cierre de fase
 
-**Versión:** 1.2
-**Estado:** **G6 GO** (re-dictaminado el 2026-10-29 tras B7, §9) · G6.5 pendiente del CI sobre el commit de B7 (en `4d54799e` fue NO-GO, CI 40961614745) · B5 pendiente (aprobación jurídica + publicación en el tenant de Iwana)
+**Versión:** 1.3
+**Estado:** **G6 GO** (re-dictaminado tras B7, §9) · **G6.5 GO** sobre `05558a7a`, CI 40969812059 (§10) · B5 pendiente (aprobación jurídica y publicación en el tenant de Iwana) · B5 pendiente (aprobación jurídica + publicación en el tenant de Iwana)
 **Fecha:** 2026-10-29
 **Autor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Plan:** [`docs/plans/2026-10-29-privacy-textos-legales.md`](../plans/2026-10-29-privacy-textos-legales.md) v1.2 · **Spec:** [`docs/specs/2026-10-29-privacy-textos-legales.md`](../specs/2026-10-29-privacy-textos-legales.md) v1.2 · **Anexo:** [`2026-10-29-privacy-textos-legales-anexo-iwana-v1.md`](../specs/2026-10-29-privacy-textos-legales-anexo-iwana-v1.md) v1.0
@@ -131,4 +131,30 @@ La superficie «Textos legales» (`/dashboard/privacy?view=legal`) deja de ser u
 **Dictamen G6: GO.** El resto de gates de §3 no cambia: B7 solo quita un import y ajusta una prueba de composición.
 
 **G6.5:** se registra cuando el CI de `main` termine sobre el SHA de B7.
+
+## 10. v1.3 — G6.5 (2026-10-29)
+
+**Commits de la fase en `origin/main`:**
+- `4d54799e`: la fase, con 78 rutas.
+- `05558a7a`: B7, con 7 rutas.
+
+Las 30 rutas de MOD13 y organización siguen sin commitear y quedan fuera de este gate.
+
+**CI [40969812059](https://github.com/Sleybc/iWana-neXt/actions/runs/40969812059) sobre `05558a7a`: success** (22:58–23:12 UTC). Los 5 jobs terminaron en success: «Lint + Typecheck + Build + Unit tests», «E2E portal», «E2E operativo R4.1 — API + storage + BullMQ reales», «Integridad de citas ADR» y «Build y validación de imágenes production». «E2E Web Admin Smoke» (40969812090) también pasó.
+
+**Conteos del job de unit tests** (`Cached: 0`):
+
+| Paquete | Suites | Pruebas |
+| --- | --- | --- |
+| api | 435 aprobadas, 4 omitidas (439) | 5836 aprobadas, 15 omitidas |
+| portal | 331 | 3347, 1 omitida |
+| db | 77 | 423 |
+| shared | 26 | 243 |
+| web | 38 | 233 |
+| worker | 21 | 173 |
+| ui | 8 | 55 |
+
+En local, AI-EM-ARCH obtuvo 5841 pruebas de API. La diferencia de 5 son pruebas que dependen del entorno; las suites omitidas son las mismas 4 en local y en CI.
+
+**Dictamen G6.5: GO.** Autoriza el merge, que ya está hecho, porque el proyecto trabaja en `main`. **No** autoriza despliegue: G7 sigue diferido hasta la beta.
 
