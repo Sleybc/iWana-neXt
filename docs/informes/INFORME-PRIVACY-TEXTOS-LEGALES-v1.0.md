@@ -1,7 +1,7 @@
 # INFORME — Privacy · Textos legales consumibles por el sistema — cierre de fase
 
-**Versión:** 1.0
-**Estado:** **G6 GO** (2026-10-29) · G6.5 pendiente (commit + CI de `main` por SHA) · B5 pendiente (aprobación jurídica + publicación en el tenant de Iwana)
+**Versión:** 1.2
+**Estado:** **G6 GO** (re-dictaminado el 2026-10-29 tras B7, §9) · G6.5 pendiente del CI sobre el commit de B7 (en `4d54799e` fue NO-GO, CI 40961614745) · B5 pendiente (aprobación jurídica + publicación en el tenant de Iwana)
 **Fecha:** 2026-10-29
 **Autor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Plan:** [`docs/plans/2026-10-29-privacy-textos-legales.md`](../plans/2026-10-29-privacy-textos-legales.md) v1.2 · **Spec:** [`docs/specs/2026-10-29-privacy-textos-legales.md`](../specs/2026-10-29-privacy-textos-legales.md) v1.2 · **Anexo:** [`2026-10-29-privacy-textos-legales-anexo-iwana-v1.md`](../specs/2026-10-29-privacy-textos-legales-anexo-iwana-v1.md) v1.0
@@ -58,7 +58,7 @@ La superficie «Textos legales» (`/dashboard/privacy?view=legal`) deja de ser u
 
 **Criterios de aceptación:** CA-LT-01 a CA-LT-13 en verde (spec §4).
 
-**Dictamen G6: GO.** El aprobador no es el productor: los bloques los produjeron los subagentes y AI-EM-ARCH consolidó y re-ejecutó los gates indicados.
+**Dictamen G6: GO** *(revocado en v1.1, §8)*. El aprobador no es el productor: los bloques los produjeron los subagentes y AI-EM-ARCH consolidó y re-ejecutó los gates indicados.
 
 ## 4. Decisiones de la fase
 
@@ -99,3 +99,36 @@ La superficie «Textos legales» (`/dashboard/privacy?view=legal`) deja de ser u
 - **Desempates:** 2.
 - **Escalaciones al CTO:** 1 (E1), resuelta.
 - **Hallazgos post-merge:** sin instrumentar (aún no hay merge).
+
+## 8. v1.1 — G6 revocado por la corrida de CI (2026-10-29)
+
+**Commit y push:** `4d54799e` en `origin/main`, solo con las 78 rutas de la fase.
+
+**CI 40961614745 sobre `4d54799e`: falla.**
+- Job «Lint + Typecheck + Build + Unit tests», paso «Unit tests + gate de cobertura».
+- `@iwana/api#test` sale con `1 failed, 4 skipped, 434 passed` (439 suites; 5833 pruebas aprobadas y 15 omitidas).
+- Suite rota: `src/modules/crm/subscribers/tests/subscribers.module.spec.ts`, con `SyntaxError: Unexpected token 'export'`. AI-EM-ARCH la reprodujo en local.
+- **En verde en esa misma corrida:** db (77/423), worker (21/173), portal (331 suites, 3347 pruebas, 1 omitida), web (38/233), E2E portal, E2E R4.1, integridad de citas ADR e imágenes production. «E2E Web Admin Smoke» (40961615073) también pasó.
+
+**Causa:** B6 añadió `imports: [AuthModule]` a `PrivacyModule` para resolver `RolesGuard`. Eso carga `auth.service` → `otplib`, que es ESM, en toda prueba que componga `SubscribersModule` → `PrivacyModule`. El import era innecesario: `tasks` y `crm` usan `RolesGuard` sin importar `AuthModule`.
+
+**Por qué no se detectó:** B6 corrió `modules/privacy` y el invariante; AI-EM-ARCH re-ejecutó esas mismas suites, el typecheck y el lint. **Ninguno corrió la suite completa de `@iwana/api`** después de cambiar el cableado de un módulo que otros importan. El dictamen G6 se apoyó en suites focales para un cambio con efecto transversal: es un error de este consolidador.
+
+**Corrección:** bloque B7 ([`PROMPT-PRIVACY-TEXTOS-LEGALES-B7-v1.0.md`](../prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-B7-v1.0.md), launcher `-B7-LAUNCH-v1.0.md`). Retira `AuthModule` de `PrivacyModule` y exige la suite completa de API con 0 fallidas. Luego se vuelve a dictaminar G6 y G6.5 sobre el nuevo SHA.
+
+**Regla para esta y próximas fases:** si un cambio toca el `@Module` de un módulo que otros importan, G6 exige la suite completa de los paquetes afectados, no solo la del módulo.
+
+## 9. v1.2 — B7 cerrado y G6 re-dictaminado (2026-10-29)
+
+**B7** ([informe](INFORME-PRIVACY-TEXTOS-LEGALES-B7-v1.0.md)):
+- Retiró `AuthModule` de `PrivacyModule` y el mock de `otplib` de su prueba de composición.
+- Añadió una prueba que compone `PurposesController` sin `AuthModule`: un token de plataforma recibe 403 y no se ejecuta la actualización.
+- Los 9 `@UseGuards` no cambian.
+- Typecheck y lint de `@iwana/api` con código 0. Lint reporta 7 warnings, todos en archivos ajenos al cambio.
+
+**Re-ejecución de AI-EM-ARCH**, suite **completa** de `@iwana/api` sin caché (`jest --runInBand --no-cache`): 435 suites aprobadas, 4 omitidas, 0 fallidas (439 en total); 5841 pruebas aprobadas y 15 omitidas. Las 4 suites y 15 pruebas omitidas son las mismas que en el CI 40961614745.
+
+**Dictamen G6: GO.** El resto de gates de §3 no cambia: B7 solo quita un import y ajusta una prueba de composición.
+
+**G6.5:** se registra cuando el CI de `main` termine sobre el SHA de B7.
+

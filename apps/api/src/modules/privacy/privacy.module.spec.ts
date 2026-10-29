@@ -1,45 +1,32 @@
-jest.mock('otplib', () => ({
-  TOTP: jest.fn().mockImplementation(() => ({
-    generate: jest.fn(),
-    verify: jest.fn(),
-  })),
-  NobleCryptoPlugin: jest.fn(),
-  ScureBase32Plugin: jest.fn(),
-}));
-
 import { MODULE_METADATA } from '@nestjs/common/constants';
-import { Global, Module } from '@nestjs/common';
-import { generateKeyPairSync } from 'node:crypto';
+import { ExecutionContext, Global, INestApplication, Module } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { PrivacyModule } from './privacy.module';
-import { AuthModule } from '../auth/auth.module';
+import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
+import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { PrivacyRequestsService } from './requests/requests.service';
 import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-adapters.module';
 import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants';
 import { EVIDENCE_ANALYSIS_QUEUE } from '../media/evidence-asset.provider';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { MailerModule } from '../mailer/mailer.module';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PurposesController } from './purposes/purposes.controller';
+import { PurposesService } from './purposes/purposes.service';
+import request from 'supertest';
 
 const syntheticTestKey = Array.from({ length: 32 }, (_, index) =>
   (index + 1).toString(16).padStart(2, '0'),
 ).join('');
-const syntheticJwtKeys = generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-});
 const testConfigValues: Record<string, string> = {
   NODE_ENV: 'test',
   MFA_ENCRYPTION_KEY: syntheticTestKey,
   PII_ENCRYPTION_KEY: syntheticTestKey,
   PII_HASH_KEY: syntheticTestKey,
-  JWT_PRIVATE_KEY: syntheticJwtKeys.privateKey,
-  JWT_PUBLIC_KEY: syntheticJwtKeys.publicKey,
 };
 
 @Global()
@@ -87,8 +74,7 @@ describe('PrivacyModule composition', () => {
       (entry) => typeof entry === 'object' && entry !== null && 'forwardRef' in entry,
     ) as { forwardRef: () => unknown } | undefined;
 
-    expect(imports).toHaveLength(7);
-    expect(imports).toContain(AuthModule);
+    expect(imports).toHaveLength(6);
     expect(controllers).toHaveLength(9);
     expect(controllers).toContain(PurposesController);
     expect(providers).toContain(PrivacyRequestsService);
@@ -117,5 +103,41 @@ describe('PrivacyModule composition', () => {
       .compile();
 
     await moduleRef.close();
+  });
+
+  it('resuelve RolesGuard para una ruta privacy sin importar AuthModule', async () => {
+    const purposesService = { update: jest.fn().mockResolvedValue([]) };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [PurposesController],
+      providers: [
+        PermissionsGuard,
+        { provide: PurposesService, useValue: purposesService },
+        {
+          provide: EffectivePermissionsService,
+          useValue: { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) },
+        },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          context.switchToHttp().getRequest().user = {
+            sub: '68000000-0000-4000-8000-000000000001',
+            type: 'platform',
+            role: 'SYSTEM_ADMIN',
+          };
+          return true;
+        },
+      })
+      .compile();
+
+    const app: INestApplication = moduleRef.createNestApplication();
+    await app.init();
+    try {
+      await request(app.getHttpServer()).put('/privacy/purposes').send({ items: [] }).expect(403);
+      expect(purposesService.update).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
   });
 });

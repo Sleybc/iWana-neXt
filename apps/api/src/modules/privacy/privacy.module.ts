@@ -2,7 +2,6 @@ import { forwardRef, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessControlModule } from '../access-control/access-control.module';
-import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 import { MediaModule } from '../media/media.module';
 import { DataAuthorizationEntity } from './entities/data-authorization.entity';
@@ -56,7 +55,6 @@ import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
       DataSubjectRequestEventEntity,
       DataSubjectRequestTaskEntity,
     ]),
-    AuthModule,
     AccessControlModule,
     AuditModule,
     MediaModule,
