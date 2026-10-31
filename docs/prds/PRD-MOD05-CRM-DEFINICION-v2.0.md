@@ -1,6 +1,8 @@
 # PRD - MOD05 CRM Expediente Unico Progresivo
 
-**Version:** 2.0  
+**Version:** 2.1  
+**Cambios:** v2.1 (2026-10-31) añade la referencia comparativa externa no normativa de UISP CRM v1.1. Sin cambios de requisitos.  
+**Ruta estable:** el sufijo `v2.0` del nombre es el del alta; la versión vigente es la de esta cabecera.  
 **Estado:** Aprobado  
 **Fecha:** 2026-03-23  
 **Modo activo:** Architect  
@@ -11,6 +13,7 @@
 **Informe relacionado:** docs/informes/INFORME-MOD05-DEFINICION-v1.0.md  
 **Addendum de cierre Sprint 02:** docs/prds/PRD-MOD05-CRM-ADDENDUM-CIERRE-v2.1.md  
 **ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024, ADR-026
+**Referencia comparativa externa (no normativa):** [UISP CRM para MOD05](../referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md)
 
 > Nota de gobernanza: este PRD documenta la version vigente del modulo CRM. Las versiones v1.0 (CRM clasico) y v1.1 (lifecycle leads/prospects) fueron reemplazadas por el rediseno de Expediente Unico Progresivo aprobado en Sprint 02. Los documentos historicos no fueron preservados en disco; las decisiones se mantienen trazables via INFORME-MOD05-DEFINICION-v1.0.md y el addendum de cierre Sprint 02 emitido el 2026-03-26.
 >

@@ -1,9 +1,9 @@
 # HLD - MOD05 CRM Arquitectura
 
-**Version:** 2.2  
+**Version:** 2.3  
 **Estado:** Aprobado  
 **Fecha:** 2026-09-04  
-**Historial:** v2.2 (2026-09-04) corrige el ciclo de vida del subscriber contra ADR-027 y promueve los puertos de inventario y ticketing de stub a lectura real, conforme a PRD Fase 04 §9.5 y §7.3.  
+**Historial:** v2.3 (2026-10-30/31) registra ADR-102 (ciclo de facturación por contrato; `billingCycle` del contrato queda deprecado, §5.1) y añade la referencia comparativa no normativa de UISP CRM v1.1. v2.2 (2026-09-04) corrige el ciclo de vida del subscriber contra ADR-027 y promueve los puertos de inventario y ticketing de stub a lectura real, conforme a PRD Fase 04 §9.5 y §7.3.  
 **Addendum Fase 05 (2026-10-19):** el ciclo de vida suscriptor ↔ contrato (estado del suscriptor derivado de sus contratos, historial `crm_lifecycle_changes` y puertos de lectura MOD12/MOD11) se describe en [HLD-MOD05-FASE-05-v1.1](HLD-MOD05-FASE-05-v1.1.md) y [ADR-097](../adrs/ADR-097-Puertos-de-lectura-para-avisos-de-terminacion-MOD05.md); prevalece sobre la descripción del ciclo de vida de este documento.  
 **Modo activo:** Architect  
 **Autor:** AI-EM-ARCH  
@@ -12,6 +12,7 @@
 **ADR relacionado:** docs/adrs/ADR-024-Migracion-CRM-Expediente-Unico.md  
 **Informe relacionado:** docs/informes/INFORME-MOD05-DEFINICION-v1.0.md  
 **ADRs aplicables:** ADR-016, ADR-018, ADR-019, ADR-022, ADR-024, ADR-026
+**Referencia comparativa externa (no normativa):** [UISP CRM para MOD05](../referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md)
 
 ---
 
@@ -170,6 +171,8 @@ La unificacion es visual y funcional, pero no elimina la separacion semantica en
 | Metadatos                 | createdBy (uuid), createdAt, updatedAt, deletedAt                                                                                                                                                                                                                                             |
 
 **Indices:** idx_expediente_tenant_status, idx_expediente_tenant_created, idx_expediente_tenant_municipality.
+
+**Desarrollo posterior (2026-10-30):** `billingCycle` del expediente (fila «§7 Facturacion» de la tabla anterior) sigue siendo dato de la propuesta comercial. En el contrato, el texto libre `billingCycle` queda deprecado por `billingCycleDay`, validado contra el catalogo de ciclos del tenant y exigido al activar el servicio; ver [ADR-102](../adrs/ADR-102-Ciclo-Facturacion-y-Fecha-de-Corte-por-Servicio.md).
 
 **Cifrado AES-256-GCM:** documentNumberEncrypted, phonePrimaryEncrypted, phoneSecondaryEncrypted, emailPrimaryEncrypted, altContactPhoneEncrypted, siteContactPhoneEncrypted.
 

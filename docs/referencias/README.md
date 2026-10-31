@@ -1,0 +1,7 @@
+# Referencias técnicas comparativas
+
+Esta carpeta contiene análisis de plataformas externas utilizados como insumo para decisiones de iWana neXt. Sus patrones son **no normativos**: prevalecen los PRD, HLD, ADR y contratos vigentes del workspace.
+
+| Plataforma / dominio | Documento | Consultar al definir |
+|---|---|---|
+| UISP CRM | [Referencia comparativa para MOD05 v1.1](REFERENCIA-UISP-CRM-MOD05-v1.1.md) | Captación y ficha del cliente, cotización, plan y condiciones contractuales, ciclo de vida del servicio (pausa, cambio de plan), facturación, mora, pagos, soporte, autoservicio e integración CRM-red |

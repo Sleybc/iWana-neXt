@@ -1,12 +1,13 @@
 # PRD & Documento de Arquitectura — Plataforma Integral ISP Colombia
 
-**Version:** 2.5  
+**Version:** 2.6  
 **Estado:** Propuesto — requiere **G1 del CTO**  
 **Fecha:** 2026-08-09  
 **Modo activo:** Product Architect + Architect + Orchestrator  
 **Autor:** AI-EM-ARCH  
 **Clasificación:** Confidencial — Uso interno  
 **Versión anterior:** 2.4 (2026-05-19, Aprobada)  
+**Changelog v2.6 (2026-10-30/31):** nota de divergencia en RF-BIL-06 (el corte por fecha fija por ciclo de ADR-102 lo sustituye) y fila 4 del roadmap: Billing pasa a **MOD14 Facturación**, con definición emitida y G0 aprobado (ADR-103). Sigue en «Propuesto», pendiente de G1.
 **Changelog v2.5:** incorpora **ADR-040 a ADR-079**; corrige el estado real de ejecución (nada está en producción — ADR-070 (superado)); añade MOD00, MOD04, MOD11 y MOD12 al roadmap; adopta la taxonomía de gates **G6 / G6.5 / G7**; incorpora las políticas de seguridad de audiencias JWT, PII en listados, credenciales iniciales y cifrado — detalle en [Historial de Cambios](#historial-de-cambios)  
 **Nombre de archivo:** el sufijo `_v2_4` del nombre es un **identificador estable**, no la versión del contenido. La versión autoritativa es el campo `Version` de esta cabecera. *(Misma convención que `Protocolo_Colaboracion_Multiagente_v1.md`. Renombrar el archivo rompería 46 documentos que lo citan; el corpus ya arrastra una cita colgante a `PRD_Sistema_ISP_Colombia_v2_3.md` por haberlo hecho antes.)*  
 **Stack validado:** [Stack_Tecnologico.md](Stack_Tecnologico.md)  
@@ -413,6 +414,8 @@ El sistema soporta **14 roles RBAC iniciales**, agrupados en **8 categorías de 
 | RF-BIL-11 | Conciliación automática de pagos (banco vs facturado)                                                                            | Fase 2    |
 | RF-BIL-12 | Cobro vía Efecty / puntos de pago presencial                                                                                     | Fase 2    |
 | RF-BIL-13 | Motor de FE DIAN propio (sin intermediario Alegra/Siigo)                                                                         | Fase 3    |
+
+> **Desarrollo posterior (2026-10-30) — RF-BIL-06:** para iWana, el corte se fija por fecha según el ciclo de facturación del servicio (ciclo 1 → día 15; ciclo 15 → día 30; último día del mes si no existe), sin la suspensión intermedia con ancho de banda reducido. Ciclo y fecha de corte se definen en [ADR-102](../adrs/ADR-102-Ciclo-Facturacion-y-Fecha-de-Corte-por-Servicio.md); el corte automático queda como comportamiento objetivo hasta que exista la señal de pago de este módulo.
 
 ### 5.3 Provisioning / Order Management
 
@@ -1884,7 +1887,7 @@ Eso **no es repriorización** —que se decide antes de abrir el módulo, y ya e
 | 8-B | **Ejecución operativa / Tareas (MOD11):** `ExecutionOrder` como fuente canónica, OT enriquecida, cierre técnico | ✅ | **G6 GO · G6.5 GO · G7 NO-GO** (diferido) | [046](../adrs/ADR-046-Bounded-Context-Tasks-Ejecucion-Operativa.md) · [047](../adrs/ADR-047-Separacion-Programacion-y-OT-Ejecucion.md) · [068](../adrs/ADR-068-Sincronizacion-OT-Ejecucion-Proyecciones-Operativas.md) | MVP |
 | 6 | **Inventario / SCM (MOD12):** existencias, compras, RFQ, proveedores, activos y comodato, bajas, conteo físico, costeo | ✅ | **G7 GO técnico de módulo** (CTO 2026-07-21), alcance MVP · **no desplegado** | [048](../adrs/ADR-048-Bounded-Context-Inventario-SCM-Ciclo-Vida-Productos.md) · [050](../adrs/ADR-050-Compra-Mostrador-Ingreso-Directo.md) · [051](../adrs/ADR-051-RFQ-Solicitud-Cotizacion-Invitaciones.md) · [053](../adrs/ADR-053-Supplier-Quote-Lines.md) · [054](../adrs/ADR-054-Conteo-Fisico-Inventario-Ciclico.md) · [055](../adrs/ADR-055-Reservas-Efectivas-Disponible-Comprometido.md) · [059](../adrs/ADR-059-Costeo-Promedio-Movil-Valoracion-Inventario.md) · [060](../adrs/ADR-060-Control-Bajas-y-Consultas-Operativas-Inventario.md) | MVP Obligatorio |
 | 3 | **NMS: MikroTik + monitoreo básico + `IOltAdapter` (interfaz)** | 🔲 | **No iniciado** | [044](../adrs/ADR-044-Separacion-OrganizationSite-NmsNode.md) fija la frontera `OrganizationSite` ↔ `NmsNode` | MVP Obligatorio |
-| 4 | **Billing: facturación + motor IVA + adapter Siigo/Alegra** | 🔲 | **No iniciado** | — | MVP Obligatorio |
+| 4 | **Billing: facturación + motor IVA + adapter Siigo/Alegra** → **MOD14 Facturación** | 🔲 | **Definición emitida 2026-10-31** (Fase 01: cartera interna y política de facturación configurable, sin DIAN ni pasarela); **G0 aprobado 2026-10-31** (excepción a ADR-080) | [103](../adrs/ADR-103-Modulo-Facturacion-MOD14.md) | MVP Obligatorio |
 | 5 | **Provisioning: activación multi-método (PPPoE/DHCP/IP fija/MAC)** → **MOD13 Red y Aprovisionamiento** | 🔲 | **Definición emitida 2026-10-22** (Fase 01: IPAM + activación certificada, sin escritura en router); **G0 aprobado 2026-10-22** | [098](../adrs/ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md) | MVP Obligatorio |
 | 6-B | **IPAM + recursos de red** — *separado de MOD12: el inventario de materiales y activos ya existe; los recursos de red (IP, VLAN, QoS) no* → IPv4 en **MOD13** Fase 01; VLAN y QoS pendientes | 🔲 | **Definición emitida 2026-10-22**; **G0 aprobado 2026-10-22** | [098](../adrs/ADR-098-IPAM-y-Aprovisionamiento-Certificado-MOD13.md) | MVP Obligatorio |
 | 9 | **Portal Cliente** | 🔲 | **No iniciado** | — | MVP |

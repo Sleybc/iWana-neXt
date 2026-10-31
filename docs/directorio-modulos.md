@@ -1,7 +1,8 @@
 # Directorio de Módulos — iWana neXt
 
 > Mapeo de módulos del backend a su nombre visible en el frontend.
-> Actualizado: 2026-10-22
+> Actualizado: 2026-10-31
+> Cambios 2026-10-31: entrada `billing` (MOD14, G0 aprobado) en «Módulos Backend sin UI directa» y referencia comparativa UISP CRM actualizada a la v1.1.
 
 ---
 
@@ -108,6 +109,7 @@
 | `parties` | Partes y terceros (personas/empresas) |
 | `redis` | Conexión Redis / BullMQ |
 | `search` + `search-queue` | Búsqueda global y cola de indexación |
+| `billing` (MOD14, **G0 aprobado 2026-10-31**) | Facturación: política de cobro, documentos de cobro, pagos y estado de cuenta. Implementación por olas (Ola 1 lista para lanzar), según [ADR-103](adrs/ADR-103-Modulo-Facturacion-MOD14.md) y [PRD Fase 01](prds/PRD-MOD14-FACTURACION-FASE-01-v1.0.md); sus rutas de portal (`/dashboard/billing/*`) se añaden al cerrar G4 |
 
 ---
 
@@ -129,6 +131,12 @@
 | `subscribers` | `/dashboard/crm/subscribers` | Suscriptores del servicio |
 
 ---
+
+### Referencias comparativas
+
+| Referencia | Uso |
+|---|---|
+| [UISP CRM para MOD05](referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md) | Insumo no normativo para futuras definiciones de servicio, facturación (MOD14), pagos, suspensión e integración con red. |
 
 ## Resumen
 

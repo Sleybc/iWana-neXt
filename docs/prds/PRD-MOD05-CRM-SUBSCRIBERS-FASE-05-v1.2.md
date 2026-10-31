@@ -1,6 +1,8 @@
 # PRD - MOD05 CRM Módulo Subscriber — Fase 05 (Ciclo de vida suscriptor ↔ contrato y suspensión unificada)
 
-**Version:** 1.2
+**Version:** 1.3
+**Cambios:** v1.3 (2026-10-30) añade la nota «Desarrollo posterior» de §9 Q2: para iWana la Q2 se responde con fechas fijas por ciclo (ADR-102 D5); Q1 sigue abierta.
+**Ruta estable:** el sufijo `v1.2` del nombre es el de la emisión anterior; la versión vigente es la de esta cabecera.
 **Estado:** Aprobado
 **Fecha:** 2026-10-19
 **Modo activo:** Product Architect + Architect
@@ -214,7 +216,7 @@ ALTER TABLE contracts
 | Q | Pregunta | A quién |
 | --- | --- | --- |
 | Q1 | ¿El catálogo cubre las causales que el régimen de protección al usuario de servicios de comunicaciones exige distinguir (suspensión a solicitud del usuario, plazos, preaviso)? | Asesoría jurídica |
-| Q2 | Días de mora para suspender y para cortar (RF-BIL-06) | CTO / comercial, cuando exista Billing |
+| Q2 | Días de mora para suspender y para cortar (RF-BIL-06) | CTO / comercial, cuando exista Billing. **Desarrollo posterior (2026-10-30):** el CTO fijó para iWana fechas fijas por ciclo (ciclo 1 → corte el 15; ciclo 15 → corte el 30) en lugar de días de mora relativos; ver [ADR-102](../adrs/ADR-102-Ciclo-Facturacion-y-Fecha-de-Corte-por-Servicio.md). Q1 sigue abierta y es precondición del corte automático (ADR-102 D6, P2) |
 | Q3 | ¿`note` se cifra en reposo o basta con anonimizarla en la supresión? | **Resuelta por sec-eng (2026-10-19):** cifrar con AES-256-GCM según ADR-058; el cifrado no reemplaza la anonimización cuando corresponda (ver §9.3.2). |
 
 ### 9.3 Requerimientos reemplazados
