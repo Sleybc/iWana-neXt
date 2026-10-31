@@ -30,6 +30,10 @@ export interface OrganizationSiteRouterSummary {
   isActive: boolean;
 }
 
+export interface OrganizationSiteRouterSummaryRecord extends OrganizationSiteRouterSummary {
+  id: string;
+}
+
 export interface ListRouterSiteOptionsInput {
   scope: AuthorizedSiteScope;
   page: number;
@@ -44,6 +48,10 @@ export abstract class OrganizationSiteReadPort {
   abstract findReferenceById(siteId: string): Promise<OrganizationSiteReference | null>;
 
   abstract findRouterSummaryById(siteId: string): Promise<OrganizationSiteRouterSummary | null>;
+
+  abstract findRouterSummariesByIds(
+    siteIds: string[],
+  ): Promise<OrganizationSiteRouterSummaryRecord[]>;
 
   abstract listRouterOptions(
     input: ListRouterSiteOptionsInput,

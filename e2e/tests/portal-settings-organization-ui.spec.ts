@@ -322,7 +322,7 @@ async function setupOrganizationUiMocks(page: Page, options: OrganizationUiMockO
       const nextSite = buildSite({
         id: `site-${sites.length + 1}`,
         name: body.name,
-        code: body.code,
+        code: 'SN01',
         capabilities: Array.isArray(body.capabilities) ? body.capabilities : [],
         siteType: body.siteType,
         address: body.address ?? null,
@@ -428,7 +428,7 @@ async function fillCreateSiteForm(page: Page) {
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await dialog.getByRole('textbox', { name: 'Nombre', exact: true }).fill('Sede norte');
-  await dialog.getByLabel('Código').fill('NORTE');
+  await expect(dialog.getByLabel('Código')).toHaveCount(0);
   await dialog.getByLabel('Coordenadas').fill('4.7110, -74.0721');
   await dialog.getByLabel('Nombre de contacto').fill('Ana Admin');
   await dialog.getByLabel('Teléfono de contacto').fill('+573001112233');
@@ -467,6 +467,7 @@ test.describe('Portal settings organization UI', () => {
 
     await expect(page.getByRole('row', { name: /Sede norte/i })).toBeVisible();
     const createRequestBody = createBodies.at(-1);
+    expect(createRequestBody).not.toHaveProperty('code');
     expect(createRequestBody).toEqual(
       expect.objectContaining({
         country: 'CO',

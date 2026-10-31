@@ -568,7 +568,7 @@ test.describe('MOD13 · interfaces IPv4, pausa de reservas y accesibilidad', () 
     await installMocks(page);
     await page.goto('/dashboard/network/routers');
 
-    const openButton = page.getByRole('button', { name: 'Ver router', exact: true });
+    const openButton = page.getByRole('button', { name: `Ver router ${router.name}`, exact: true });
     await expect(openButton).toBeVisible();
     await openButton.focus();
     await page.keyboard.press('Enter');

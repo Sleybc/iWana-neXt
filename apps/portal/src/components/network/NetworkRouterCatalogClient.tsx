@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey } from '@iwana/shared';
 import type { RouterDto, RouterListDto } from '@iwana/shared';
 import { Badge, Button } from '@iwana/ui';
-import { Pencil, Plus, Router as RouterIcon, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Eye, Pencil, Plus, Router as RouterIcon, ToggleLeft, ToggleRight } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import {
   PortalAlert,
@@ -308,7 +308,7 @@ export function NetworkRouterCatalogClient() {
             <p className="sr-only" role="status" aria-live="polite">
               Cargando routers
             </p>
-            <NetworkCatalogTableSkeleton columnCount={canManage ? 10 : 9} />
+            <NetworkCatalogTableSkeleton columnCount={9} />
           </section>
         ) : !loadError && routers.length === 0 ? (
           <PortalEmptyState
@@ -361,9 +361,6 @@ export function NetworkRouterCatalogClient() {
                         Dirección de administración
                       </th>
                       <th scope="col" className={portalDataTableHeadClassName}>
-                        Referencia LAN anterior
-                      </th>
-                      <th scope="col" className={portalDataTableHeadClassName}>
                         Interfaces
                       </th>
                       <th scope="col" className={portalDataTableHeadClassName}>
@@ -405,9 +402,6 @@ export function NetworkRouterCatalogClient() {
                         <td className={`${portalDataTableCellClassName} font-mono`}>
                           {router.managementHost}
                         </td>
-                        <td className={portalDataTableCellClassName}>
-                          {router.lanInterface || '—'}
-                        </td>
                         <td className={`${portalDataTableCellClassName} tabular-nums`}>
                           {Number.isFinite(router.interfaceCount) ? router.interfaceCount : '—'}
                         </td>
@@ -439,10 +433,13 @@ export function NetworkRouterCatalogClient() {
                             <Button
                               type="button"
                               variant="secondary"
-                              className="min-h-11"
+                              size="icon"
+                              className="min-h-11 min-w-11"
                               onClick={() => openDetail(router.id)}
+                              aria-label={`Ver router ${router.name}`}
+                              title={`Ver router ${router.name}`}
                             >
-                              Ver router
+                              <Eye className="h-4 w-4" aria-hidden="true" />
                             </Button>
                             {canManage ? (
                               <>
@@ -460,11 +457,12 @@ export function NetworkRouterCatalogClient() {
                                 <Button
                                   type="button"
                                   variant="ghost"
+                                  size="icon"
                                   className="min-h-11 min-w-11"
                                   disabled={pendingRouterId === router.id}
                                   onClick={() => void toggleStatus(router)}
                                   aria-label={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router ${router.name}`}
-                                  title={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router`}
+                                  title={`${router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'} router ${router.name}`}
                                 >
                                   {router.status === 'ACTIVE' ? (
                                     <ToggleRight
@@ -474,7 +472,6 @@ export function NetworkRouterCatalogClient() {
                                   ) : (
                                     <ToggleLeft className="h-5 w-5" aria-hidden="true" />
                                   )}
-                                  {router.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
                                 </Button>
                               </>
                             ) : null}

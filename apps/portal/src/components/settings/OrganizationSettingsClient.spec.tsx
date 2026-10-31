@@ -346,8 +346,8 @@ describe('OrganizationSettingsClient', () => {
 
     fireEvent.click(dialog.getByRole('tab', { name: 'Información de la sede' }));
 
+    expect(dialog.queryByLabelText('Código')).not.toBeInTheDocument();
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
-    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
     fireEvent.change(dialog.getByLabelText('Coordenadas'), {
       target: { value: '4.6486259, -74.0651466' },
     });
@@ -364,7 +364,6 @@ describe('OrganizationSettingsClient', () => {
       expect(organizationApi.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Sede norte',
-          code: 'NORTE',
           siteType: OrganizationSiteType.OFFICE,
           capabilities: [],
           latitude: 4.6486259,
@@ -374,6 +373,7 @@ describe('OrganizationSettingsClient', () => {
         }),
       );
     });
+    expect(organizationApi.create.mock.calls[0][0]).not.toHaveProperty('code');
   });
 
   it('should hydrate capabilities on edit and submit them with update', async () => {
@@ -390,6 +390,8 @@ describe('OrganizationSettingsClient', () => {
 
     const dialog = within(await screen.findByRole('dialog'));
 
+    expect(dialog.getByLabelText('Código')).toHaveAttribute('readonly');
+    fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede renombrada' } });
     fireEvent.change(dialog.getByLabelText('Nombre de contacto'), {
       target: { value: 'Contacto Test' },
     });
@@ -415,6 +417,7 @@ describe('OrganizationSettingsClient', () => {
         }),
       );
     });
+    expect(organizationApi.update.mock.calls[0][1]).not.toHaveProperty('code');
   });
 
   it('should submit rounded coordinates from the combined field during update', async () => {
@@ -813,7 +816,6 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
     const dialog = within(screen.getByRole('dialog'));
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
-    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
     fireEvent.change(dialog.getByLabelText('Coordenadas'), {
       target: { value: '4.7110, -74.0721' },
     });
@@ -832,7 +834,7 @@ describe('OrganizationSettingsClient', () => {
     ).toBeVisible();
     expect(dialog.queryByText('database payload')).not.toBeInTheDocument();
     expect(dialog.getByLabelText('Nombre')).toHaveValue('Sede norte');
-    expect(dialog.getByLabelText('Código')).toHaveValue('NORTE');
+    expect(dialog.queryByLabelText('Código')).not.toBeInTheDocument();
   });
 
   it('shows the page skeleton during the initial organization load', async () => {
@@ -1024,7 +1026,6 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
     const dialog = within(screen.getByRole('dialog'));
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
-    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
     fireEvent.change(dialog.getByLabelText('Coordenadas'), {
       target: { value: '4.7110, -74.0721' },
     });
@@ -1054,7 +1055,6 @@ describe('OrganizationSettingsClient', () => {
 
     expect(dialog.getByRole('combobox', { name: 'País' })).toHaveTextContent('Colombia');
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
-    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
     fireEvent.change(dialog.getByLabelText('Coordenadas'), {
       target: { value: '4.7110, -74.0721' },
     });
@@ -1283,7 +1283,6 @@ describe('OrganizationSettingsClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Crear sede' }));
     const dialog = within(screen.getByRole('dialog'));
     fireEvent.change(dialog.getByLabelText('Nombre'), { target: { value: 'Sede norte' } });
-    fireEvent.change(dialog.getByLabelText('Código'), { target: { value: 'NORTE' } });
     fireEvent.change(dialog.getByLabelText('Coordenadas'), {
       target: { value: '4,7110; -74,0721' },
     });

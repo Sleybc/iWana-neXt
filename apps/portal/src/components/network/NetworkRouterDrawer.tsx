@@ -308,20 +308,6 @@ export function NetworkRouterDrawer({
           />
         </NetworkFormField>
 
-        {router?.lanInterface ? (
-          <section className="space-y-1 rounded-xl border border-gray-200 bg-iwana-surface-soft p-3 dark:border-dark-border dark:bg-dark-surface-3">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-              Referencia LAN anterior
-            </h3>
-            <p className="font-mono text-sm text-gray-800 dark:text-gray-100">
-              {router.lanInterface}
-            </p>
-            <p className="text-xs leading-5 text-gray-600 dark:text-gray-300">
-              Dato heredado. No es una interfaz registrada.
-            </p>
-          </section>
-        ) : null}
-
         <fieldset
           id={methodFieldId}
           role="group"

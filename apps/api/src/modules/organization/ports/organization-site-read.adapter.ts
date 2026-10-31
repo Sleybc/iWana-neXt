@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { OrganizationSite, TenantContext, runInTenantSchema } from '@iwana/db';
 import type { ListResponse, RouterSiteOptionDto } from '@iwana/shared';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { buildPageMeta } from '../../../common/pagination';
 import { OrganizationService } from '../organization.service';
 import {
@@ -12,6 +12,7 @@ import {
   OrganizationSiteReference,
   OrganizationSiteSummary,
   OrganizationSiteRouterSummary,
+  OrganizationSiteRouterSummaryRecord,
 } from './organization-site-read.port';
 
 @Injectable()
@@ -46,6 +47,27 @@ export class OrganizationSiteReadAdapter implements OrganizationSiteReadPort {
         select: ['id', 'name', 'siteType', 'isActive'],
       });
       return site ? { name: site.name, siteType: site.siteType, isActive: site.isActive } : null;
+    });
+  }
+
+  async findRouterSummariesByIds(
+    siteIds: string[],
+  ): Promise<OrganizationSiteRouterSummaryRecord[]> {
+    const uniqueSiteIds = [...new Set(siteIds)];
+    if (uniqueSiteIds.length === 0) return [];
+
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const sites = await qr.manager.find(OrganizationSite, {
+        where: { id: In(uniqueSiteIds), tenantId },
+        select: ['id', 'name', 'siteType', 'isActive'],
+      });
+      return sites.map((site) => ({
+        id: site.id,
+        name: site.name,
+        siteType: site.siteType,
+        isActive: site.isActive,
+      }));
     });
   }
 

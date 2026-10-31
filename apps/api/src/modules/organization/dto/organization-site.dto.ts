@@ -64,14 +64,18 @@ export class CreateOrganizationSiteDto {
   @MaxLength(160)
   name: string;
 
-  @ApiProperty({ example: 'CENTRO' })
+  @ApiPropertyOptional({
+    example: 'CENTRO',
+    description: 'Si se omite, se genera a partir del nombre.',
+  })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(40)
   @Matches(/^[A-Z0-9_-]+$/u, {
     message: 'El código solo admite mayúsculas, números, guion y guion bajo.',
   })
-  code: string;
+  code?: string;
 
   @ApiProperty({ enum: OrganizationSiteType })
   @IsEnum(OrganizationSiteType)

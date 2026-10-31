@@ -8,6 +8,7 @@ describe('WfmOrganizationSitesAdapter', () => {
     listByCapability: jest.fn(),
     findReferenceById: jest.fn(),
     findRouterSummaryById: jest.fn(),
+    findRouterSummariesByIds: jest.fn(),
     listRouterOptions: jest.fn(),
   } as jest.Mocked<OrganizationSiteReadPort>;
 

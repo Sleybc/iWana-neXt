@@ -361,7 +361,7 @@ test.describe('Portal settings organization and access', () => {
         const nextSite = {
           id: 'site-2',
           name: body.name,
-          code: body.code,
+          code: 'SN01',
           capabilities: Array.isArray(body.capabilities) ? body.capabilities : [],
           isActive: true,
           siteType: body.siteType,
@@ -499,7 +499,7 @@ test.describe('Portal settings organization and access', () => {
     await organizationDialog
       .getByRole('textbox', { name: 'Nombre', exact: true })
       .fill('Sede norte');
-    await organizationDialog.getByLabel('Código').fill('NORTE');
+    await expect(organizationDialog.getByLabel('Código')).toHaveCount(0);
     await organizationDialog.getByLabel('Coordenadas').fill('4.7110, -74.0721');
     await organizationDialog.getByLabel('Nombre de contacto').fill('Ana Admin');
     await organizationDialog.getByLabel('Teléfono de contacto').fill('+573001112233');

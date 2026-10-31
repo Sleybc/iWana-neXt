@@ -170,11 +170,23 @@ export class NetworkCatalogService {
           )) as RouterInterfaceSummaryRow[])
         : [];
       const summariesByRouter = new Map(summaries.map((summary) => [summary.router_id, summary]));
+      const siteIds = [
+        ...new Set(
+          rows.flatMap((router) => (router.organizationSiteId ? [router.organizationSiteId] : [])),
+        ),
+      ];
+      const siteRecords = siteIds.length
+        ? await this.organizationSiteReadPort.findRouterSummariesByIds(siteIds)
+        : [];
+      const siteSummariesById = new Map(siteRecords.map(({ id, ...summary }) => [id, summary]));
       const data: RouterListDto[] = [];
       for (const router of rows) {
         const summary = summariesByRouter.get(router.id);
         data.push({
           ...(await this.toRouterDto(qr.manager, tenantId, router)),
+          organizationSite: router.organizationSiteId
+            ? (siteSummariesById.get(router.organizationSiteId) ?? null)
+            : null,
           interfaceCount: Number(summary?.interface_count ?? 0),
           legacyLanInterfaceId: summary?.legacy_lan_interface_id ?? null,
         });

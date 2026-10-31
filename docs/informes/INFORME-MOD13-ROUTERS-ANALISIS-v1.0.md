@@ -1,8 +1,8 @@
 # INFORME — MOD13: interfaces, ubicación y registro de redes
 
 **Versión:** 1.0  
-**Estado:** Opción B y ADR-101 aprobados; G1–G4 PASS/cerrados; G4 v1.12/v1.13 históricos y re-sync v1.15 congelado; O2-H/O2-M/FE integrados; G6 NO PASS; CA-R12 y rollback abiertos; captura IP deshabilitada  
-**Fecha:** 2026-10-27  
+**Estado:** corte vigente según plan v3.13; Opción B y ADR-101 aprobados; G1–G4 PASS/cerrados; CA-R12 y G6 PASS sobre baseline sembrado aislado; O2-H/O2-M/FE integrados; G6.5/G7 pendientes; `NETWORK_IP_PROTECTION=PENDING`; captura IP deshabilitada
+**Fecha:** 2026-10-28
 **Autor:** AI-EM-ARCH  
 **Modo:** Product Architect + Architect + EM + Orchestrator  
 **Origen:** seis observaciones del usuario sobre `/dashboard/network/routers` y el registro de redes IPv4.
@@ -218,3 +218,51 @@ La opción B permanece aprobada y ADR-101 v1.1 fue aprobada explícitamente por 
 **Revisiones:** contract-drift-reviewer dio PASS final de target/runtime/Portal y hash G4. SR-QA dejó G4 PASS/frozen y matriz v1.4; SEC-ENG dio PASS al delta de D-14, privacidad, guard 401/403 y protección IPAM. SEC-ENG condiciona el PASS del switch IPAM al estado actual PENDING: configurar `NETWORK_IP_PROTECTION=ACTIVE` antes de CA-R12 habilitaría captura y el código no comprueba el gate operativo.
 
 **Gates pendientes:** G6 es NO PASS porque archivos core quedan bajo 80% en statements/branches, hay criterios de aceptación parciales y CA-R12 requiere ensayo operativo de rollback fail-closed. La suite de eventos que requiere Redis no se contó (5 tests). G6.5 necesita CI Linux por SHA y G7 el ensayo productivo/decisión CTO. `NETWORK_IP_PROTECTION` está cableado, defaulta a `PENDING` y no tiene override en el entorno actual; no se permite configurar `ACTIVE` antes de aprobar CA-R12. La UI de captura de IP sigue cerrada. NMS/RouterOS y mezclar sede física, nodo técnico y cobertura siguen fuera de alcance.
+
+## 8.6 Retiro de «Referencia LAN anterior» del catálogo y la edición — 2026-10-28
+
+La [spec UX v2.3](../specs/2026-10-26-mod13-interfaces-ux.md) y el [plan addendum v1.0](../plans/2026-10-28-mod13-routers-retiro-columna-lan.md) registran el cambio acotado a las superficies de catálogo y edición. `NetworkRouterCatalogClient.tsx` ya no renderiza el encabezado ni el valor `lanInterface`; `NetworkRouterDrawer.tsx` ya no muestra el bloque de solo lectura. El skeleton conserva nueve columnas con y sin permiso de gestión, igual que la tabla cargada, y la spec compara ambos estados. Las pruebas también verifican el contenido y orden restante, la ausencia de la referencia en el drawer y que `updateRouter` no envía `lanInterface`.
+
+`NetworkRouterDetailSidePeek.tsx` no se modificó: la referencia heredada, su nota, la conversión y el mensaje «Convertida en una interfaz registrada.» permanecen intactos. El campo `lanInterface`/`lan_interface`, D6, API, contratos, DTO, entidad y migraciones quedan fuera de esta actualización.
+
+**Validación focalizada:**
+
+| Paquete / superficie      | Comando                                                                                                                                                                                | Resultado                                                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Portal — suite focalizada | `pnpm --filter @iwana/portal exec jest components/network/NetworkRouterCatalogClient.spec.tsx components/network/NetworkRouterDrawer.spec.tsx --runInBand --no-cache --coverage=false` | 2 suites, 16 tests aprobados, 0 snapshots; salida 0. Jest emitió avisos de `ts-jest` para `jest.global-setup.js` y deprecación de `punycode`. |
+| Portal — typecheck        | `pnpm --filter @iwana/portal typecheck`                                                                                                                                                | Exit 0.                                                                                                                                       |
+| Portal — lint             | `pnpm --filter @iwana/portal lint`                                                                                                                                                     | Exit 0; 0 errores y 43 warnings en otros archivos del Portal, fuera del diff.                                                                 |
+| UI — auditoría mecánica   | `node .agents/skills/iwana-identity-ui-review/scripts/audit-ui.mjs apps/portal/src/components/network`                                                                                 | Exit 0; sin hallazgos.                                                                                                                        |
+| Diff                      | `git diff --check`                                                                                                                                                                     | Exit 0.                                                                                                                                       |
+
+**Revisión independiente:** SR-QA confirmó CA-1–CA-6 y el aislamiento del detalle/contratos; FE-PLATFORM dio PASS de calidad al cambio y a la prueba de paridad skeleton/tabla; DOCS-GOVERNANCE dio PASS a la publicación v2.3 y a su sincronía con el plan vigente.
+
+**Estado de gates:** el plan de interfaces IPv4 v3.13 registra G1–G4 y CA-R12/G6 en PASS, con G6.5/G7 pendientes y `NETWORK_IP_PROTECTION=PENDING`. Este addendum no reabre ni redispatcha esos gates ni O0–O2 o E7_resume; el §8.5 queda como corte anterior a dicho estado vigente. La suite completa de Portal no se reejecutó en esta tarea; el plan addendum deja su conteo actualizado como verificación previa al commit, sin cambiar los criterios de G6. La validación ejecutada aquí se limita a la suite focalizada y los checks listados arriba.
+
+**Deuda por severidad:** se corrigieron las dos discrepancias documentales P2 identificadas: el encargo ahora fija nueve columnas del skeleton en ambos permisos, conforme a CA-3 y la tabla real; §13.16 A describe el mensaje convertido textual actual, sin afirmar que haya un enlace. No queda deuda técnica ni documental nueva en el alcance.
+
+## 8.7 Acciones de routers con iconos — 2026-10-28
+
+El usuario aprobó mostrar las acciones de detalle, edición y cambio de estado solo con iconos. Los botones conservan nombres accesibles y títulos con el nombre del router, objetivos mínimos de 44 × 44 px, permisos y manejo del estado pendiente. El indicador de estado sigue visible en la tabla.
+
+La prueba focal del catálogo pasó con 1 suite y 10 tests; el typecheck de Portal y la auditoría UI del componente terminaron con salida 0 y sin hallazgos de la auditoría. Se actualizó el selector E2E del detalle para el nuevo nombre accesible; no se ejecutó el E2E porque el puerto 3002 estaba ocupado por otro proceso.
+
+## 8.8 Nombre de sede en «Routers registrados» — 2026-10-28
+
+La columna ya leía `organizationSite.name`, pero `GET /network/routers` solo poblaba `organizationSiteId`; por eso el Portal mostraba el fallback «Sede asociada». Se extendió el puerto de lectura de Organización con `findRouterSummariesByIds`, tenant-scoped y por lote, y el catálogo ahora devuelve el resumen de sede junto a cada router. No se cambió el contrato compartido: `RouterDto` ya contemplaba esa proyección opcional.
+
+**Evidencia focal:** API `network-catalog.service.spec.ts`, 1 suite/58 tests PASS; API HTTP D23 contra PostgreSQL real, 1 suite/10 tests PASS, incluida la aserción del nombre persistido «Site A»; Portal `NetworkRouterCatalogClient.spec.tsx`, 1 suite/10 tests PASS verificando «Sede Santandercito». ESLint de los archivos API/Portal tocados y `git diff --check`: exit 0.
+
+**Deuda por severidad:** no se identifica deuda técnica ni documental nueva en este ajuste.
+
+## 8.9 Consumidor WFM del puerto de Organización — 2026-10-29
+
+El typecheck de API reproducido antes del ajuste terminó con código 2 y un único diagnóstico: `TS2352` en `apps/api/src/modules/wfm/services/wfm-organization-sites.adapter.spec.ts:7`. El mock declarado como `jest.Mocked<OrganizationSiteReadPort>` no implementaba el nuevo método requerido `findRouterSummariesByIds`.
+
+**Cambio acotado:** se añadió `findRouterSummariesByIds: jest.fn()` al mock de WFM, manteniendo su tipo `jest.Mocked<OrganizationSiteReadPort>`. No se modificaron el puerto, su adaptador, `network`, privacy ni código productivo.
+
+**Typecheck:** `pnpm --filter @iwana/api typecheck` posterior al cambio terminó con código 0.
+
+**Evidencia sin caché:** primero se enumeraron las rutas con `jest --listTests`; las seis suites encontradas corrieron directamente con Jest y `--no-cache`, sin Turbo (`Cached: 0`). Comando: `pnpm --filter @iwana/api exec jest --runInBand --silent --no-cache --runTestsByPath src/modules/wfm/services/wfm-organization-sites.adapter.spec.ts src/modules/organization/organization.controller.http.spec.ts src/modules/organization/organization.service.spec.ts src/modules/organization/ports/settings-priority-organization-read.adapter.spec.ts src/modules/organization/ports/organization-operational-access.adapter.spec.ts src/modules/network/network-catalog.service.spec.ts`. Resultado real: **6 suites aprobadas, 95 tests aprobados y 0 omitidos**.
+
+**Deuda nueva por severidad:** P0/alta: ninguna; P1/alta: ninguna; P2/media: ninguna; P3/baja: ninguna.

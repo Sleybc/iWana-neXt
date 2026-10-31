@@ -150,12 +150,7 @@ function parseCoordinatePair(value: string): { latitude: number; longitude: numb
 
 const siteFormSchema = z.object({
   name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(160, 'Máximo 160 caracteres.'),
-  code: z
-    .string()
-    .trim()
-    .min(2, 'Mínimo 2 caracteres.')
-    .max(40, 'Máximo 40 caracteres.')
-    .regex(/^[A-Z0-9_-]+$/u, 'Usa mayúsculas, números, guion o guion bajo.'),
+  code: z.string(),
   siteType: z.nativeEnum(OrganizationSiteType),
   address: z.string().trim().max(240, 'Máximo 240 caracteres.').optional(),
   municipality: z.string().trim().max(120, 'Máximo 120 caracteres.').optional(),
@@ -564,7 +559,6 @@ function OrganizationSettingsClientInner() {
 
       const payload: CreateOrganizationSiteDto | UpdateOrganizationSiteDto = {
         name: values.name.trim(),
-        code: values.code.trim().toUpperCase(),
         siteType: values.siteType,
         capabilities: draftCapabilities,
         address: values.address?.trim() || null,
@@ -1021,14 +1015,15 @@ function OrganizationSettingsClientInner() {
                       containerClassName="md:col-span-2"
                       {...register('name')}
                     />
-                    <Input
-                      id="site-code"
-                      label="Código"
-                      required
-                      error={errors.code?.message}
-                      className="h-11 uppercase"
-                      {...register('code')}
-                    />
+                    {editingSiteId ? (
+                      <Input
+                        id="site-code"
+                        label="Código"
+                        readOnly
+                        className="h-11"
+                        {...register('code')}
+                      />
+                    ) : null}
                     <Controller
                       name="siteType"
                       control={control}

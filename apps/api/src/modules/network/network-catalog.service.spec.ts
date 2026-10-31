@@ -160,6 +160,7 @@ function createHarness() {
   const organizationSiteReadPort = {
     findReferenceById: jest.fn().mockResolvedValue({ id: 'site-id', isActive: true }),
     findRouterSummaryById: jest.fn(),
+    findRouterSummariesByIds: jest.fn().mockResolvedValue([]),
     listRouterOptions: jest.fn().mockResolvedValue({ data: [], meta: {} }),
   };
   const commercialNodeReadPort = {
@@ -350,6 +351,26 @@ describe('NetworkCatalogService', () => {
     ]);
     expect(result.data[0]?.name).toBe(router.name);
     expect(result.meta.page).toBe(2);
+  });
+
+  it('incluye los nombres de sede del listado mediante una lectura agrupada', async () => {
+    const { service, queryBuilder, organizationSiteReadPort } = createHarness();
+    queryBuilder.getMany.mockResolvedValue([
+      { ...router, organizationSiteId: siteId },
+      { ...router, id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', organizationSiteId: siteId },
+    ]);
+    organizationSiteReadPort.findRouterSummariesByIds.mockResolvedValue([
+      { id: siteId, name: 'Sede de pruebas', siteType: 'OFFICE', isActive: true },
+    ]);
+
+    const result = await service.listRouters({ page: 1, limit: 20 }, actorId);
+
+    expect(organizationSiteReadPort.findRouterSummariesByIds).toHaveBeenCalledTimes(1);
+    expect(organizationSiteReadPort.findRouterSummariesByIds).toHaveBeenCalledWith([siteId]);
+    expect(result.data.map((item) => item.organizationSite?.name)).toEqual([
+      'Sede de pruebas',
+      'Sede de pruebas',
+    ]);
   });
 
   it('lista routers sin filtros ni resultados y normaliza límites', async () => {

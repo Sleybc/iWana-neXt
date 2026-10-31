@@ -156,13 +156,17 @@ export class OrganizationService {
     const ctx = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
-      await this.ensureSiteCodeAvailable(qr.manager, ctx.tenantId, dto.code);
+      await this.lockSiteCodeAllocation(qr.manager, ctx.tenantId);
+      const code =
+        dto.code?.trim().toUpperCase() ??
+        (await this.generateSiteCode(qr.manager, ctx.tenantId, dto.name));
+      await this.ensureSiteCodeAvailable(qr.manager, ctx.tenantId, code);
       await this.ensurePrimarySiteAvailability(qr.manager, ctx.tenantId, dto.isPrimary ?? false);
 
       const site = qr.manager.create(OrganizationSite, {
         tenantId: ctx.tenantId,
         name: dto.name.trim(),
-        code: dto.code.trim().toUpperCase(),
+        code,
         siteType: dto.siteType,
         address: dto.address?.trim() ?? null,
         municipality: dto.municipality?.trim() ?? null,
@@ -227,6 +231,7 @@ export class OrganizationService {
       const before = await this.loadSiteDetail(qr.manager, ctx.tenantId, id);
 
       if (dto.code && dto.code.trim().toUpperCase() !== existing.code) {
+        await this.lockSiteCodeAllocation(qr.manager, ctx.tenantId);
         await this.ensureSiteCodeAvailable(qr.manager, ctx.tenantId, dto.code, id);
       }
 
@@ -623,6 +628,41 @@ export class OrganizationService {
       throw new NotFoundException(`Sede ${id} no encontrada.`);
     }
     return site;
+  }
+
+  private async lockSiteCodeAllocation(manager: EntityManager, tenantId: string): Promise<void> {
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [
+      'organization-site-code',
+      tenantId,
+    ]);
+  }
+
+  private async generateSiteCode(
+    manager: EntityManager,
+    tenantId: string,
+    name: string,
+  ): Promise<string> {
+    const normalized = name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/gu, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/gu, ' ')
+      .trim();
+    const base = normalized
+      ? normalized
+          .split(/\s+/u)
+          .map((word) => word[0])
+          .join('')
+      : 'SEDE';
+    for (let sequence = 1; sequence <= 999999; sequence += 1) {
+      const suffix = String(sequence).padStart(2, '0');
+      const candidate = `${base.slice(0, 40 - suffix.length)}${suffix}`;
+      const existing = await manager.findOne(OrganizationSite, {
+        where: { tenantId, code: candidate },
+      });
+      if (!existing) return candidate;
+    }
+    throw new ConflictException('No se pudo generar un código único para la sede.');
   }
 
   private async ensureSiteCodeAvailable(

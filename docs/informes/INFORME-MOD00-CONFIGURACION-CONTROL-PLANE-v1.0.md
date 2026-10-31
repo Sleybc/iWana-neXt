@@ -2068,3 +2068,11 @@ Las 9 filas van en `portalDataTableShellClassName` + `shadow-iwana-card`. El cam
 
 
 
+
+## Código automático de sedes — 2026-10-28
+
+El alta de sede genera el código en la API con las iniciales del nombre y un consecutivo, por ejemplo `NS01` para «Nodo Santandercito»; colisiones avanzan a `NS02`. La asignación serializa cambios de código por tenant dentro de la transacción; se conserva la compatibilidad de clientes que envían un código. El formulario ya no solicita el código al crear y lo muestra en solo lectura al editar, sin reenviarlo al cambiar el nombre.
+
+Validación focal: API OrganizationService, 1 suite y 12 pruebas; Portal OrganizationSettingsClient, 1 suite y 44 pruebas. Typecheck de API y Portal, auditoría UI y git diff --check: salida 0. Se ajustaron dos escenarios E2E; no se ejecutaron.
+
+Ensayo de concurrencia contra PostgreSQL real (2026-10-28): `organization-site-code.postgres.integration.spec.ts` ejecuta 24 altas simultáneas mediante `OrganizationService` en `127.0.0.1:5433/dbiw`, dentro de un schema tenant temporal y aislado. Los nombres usan iniciales `NS`; la prueba consulta las filas persistidas y verifica 24 códigos únicos consecutivos, `NS01`–`NS24`. Ejecución final de Jest: 1 suite aprobada, 1 prueba aprobada, 0 omitidas (4.932 s). El schema de ensayo se elimina en `afterAll`.

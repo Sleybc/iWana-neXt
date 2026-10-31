@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { AccessPermissionKey } from '@iwana/shared';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { AccessPermissionKey, OrganizationSiteType } from '@iwana/shared';
 import type { RouterDto, RouterListDto } from '@iwana/shared';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { emptyPageListMeta } from '@/lib/list-meta';
@@ -121,7 +121,7 @@ describe('NetworkRouterCatalogClient', () => {
     expect(screen.getAllByRole('button', { name: 'Registrar router' })).toHaveLength(2);
   });
 
-  it('muestra la acción visible y la actualiza al desactivar y volver a activar el router', async () => {
+  it('ofrece acciones con iconos y actualiza el estado al desactivar y volver a activar', async () => {
     mockHasPermission.mockReturnValue(true);
     let router = buildRouter();
     jest.mocked(networkApi.listRouters).mockImplementation(async () => routerPage(router));
@@ -136,13 +136,22 @@ describe('NetworkRouterCatalogClient', () => {
     const deactivate = await screen.findByRole('button', {
       name: 'Desactivar router Router de prueba',
     });
-    expect(deactivate).toHaveTextContent('Desactivar');
+    expect(deactivate.textContent).toBe('');
+    expect(deactivate).toHaveAttribute('title', 'Desactivar router Router de prueba');
+    for (const name of ['Ver router Router de prueba', 'Editar router Router de prueba']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.textContent).toBe('');
+      expect(button).toHaveAttribute('title', name);
+      expect(button).toHaveClass('min-h-11', 'min-w-11');
+    }
+    expect(deactivate).toHaveClass('min-h-11', 'min-w-11');
     fireEvent.click(deactivate);
 
     const activate = await screen.findByRole('button', {
       name: 'Activar router Router de prueba',
     });
-    expect(activate).toHaveTextContent('Activar');
+    expect(activate.textContent).toBe('');
+    expect(activate).toHaveAttribute('title', 'Activar router Router de prueba');
     expect(setStatus).toHaveBeenNthCalledWith(1, router.id, 1, 'INACTIVE');
     expect(
       within(screen.getByRole('row', { name: /Router de prueba/ })).getByText('Inactivo'),
@@ -150,8 +159,9 @@ describe('NetworkRouterCatalogClient', () => {
     fireEvent.click(activate);
 
     expect(
-      await screen.findByRole('button', { name: 'Desactivar router Router de prueba' }),
-    ).toHaveTextContent('Desactivar');
+      (await screen.findByRole('button', { name: 'Desactivar router Router de prueba' }))
+        .textContent,
+    ).toBe('');
     expect(setStatus).toHaveBeenNthCalledWith(2, router.id, 2, 'ACTIVE');
     expect(
       within(screen.getByRole('row', { name: /Router de prueba/ })).getByText('Activo'),
@@ -182,7 +192,7 @@ describe('NetworkRouterCatalogClient', () => {
     rejectStatus(new Error('Fallo de prueba'));
     expect(await screen.findByText('No se actualizó el router')).toBeInTheDocument();
     await waitFor(() => expect(deactivate).toBeEnabled());
-    expect(deactivate).toHaveTextContent('Desactivar');
+    expect(deactivate.textContent).toBe('');
     expect(
       within(screen.getByRole('row', { name: /Router de prueba/ })).getByText('Activo'),
     ).toBeInTheDocument();
@@ -194,7 +204,9 @@ describe('NetworkRouterCatalogClient', () => {
 
     const row = await screen.findByRole('row', { name: /Router de prueba/ });
     expect(within(row).getByText('Activo')).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: 'Ver router' })).toBeInTheDocument();
+    expect(
+      within(row).getByRole('button', { name: 'Ver router Router de prueba' }),
+    ).toBeInTheDocument();
     expect(
       within(row).queryByRole('button', { name: 'Editar router Router de prueba' }),
     ).not.toBeInTheDocument();
@@ -212,6 +224,105 @@ describe('NetworkRouterCatalogClient', () => {
     expect(within(row).getByText('Nodo comercial asociado')).toBeInTheDocument();
     expect(tenantSelfApi.getCoverage).not.toHaveBeenCalled();
   });
+
+  it('oculta la referencia LAN anterior y conserva el contenido y orden de las demás columnas', async () => {
+    mockHasPermission.mockImplementation(
+      (key) =>
+        key === AccessPermissionKey.NETWORK_CATALOG_READ ||
+        key === AccessPermissionKey.NETWORK_CATALOG_MANAGE,
+    );
+    const router = buildRouter({
+      lanInterface: 'bridge-heredado-no-visible',
+      interfaceCount: 3,
+      organizationSiteId: 'site-test',
+      organizationSite: {
+        name: 'Sede Santandercito',
+        siteType: OrganizationSiteType.OFFICE,
+        isActive: true,
+      },
+      commercialNodeId: 'node-test',
+      networkCount: 4,
+    });
+    jest.mocked(networkApi.listRouters).mockResolvedValue(routerPage(router));
+
+    render(<NetworkRouterCatalogClient />);
+
+    const table = await screen.findByRole('table');
+    expect(
+      within(table).queryByRole('columnheader', { name: 'Referencia LAN anterior' }),
+    ).not.toBeInTheDocument();
+    expect(within(table).queryByText('bridge-heredado-no-visible')).not.toBeInTheDocument();
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent?.trim()),
+    ).toEqual([
+      'Router',
+      'Dirección de administración',
+      'Interfaces',
+      'Métodos admitidos',
+      'Sede',
+      'Nodo comercial',
+      'Redes',
+      'Estado',
+      'Detalle y acciones',
+    ]);
+
+    const row = within(table).getByRole('row', { name: /Router de prueba/ });
+    expect(within(row).getByRole('rowheader', { name: router.name })).toBeInTheDocument();
+    expect(
+      within(row)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent?.trim()),
+    ).toEqual([
+      router.managementHost,
+      '3',
+      'Cola simple por IP fija',
+      'Sede Santandercito',
+      'Nodo comercial asociado',
+      '4',
+      'Activo',
+      '',
+    ]);
+  });
+
+  it.each([{ canManage: true }, { canManage: false }])(
+    'mantiene el mismo número de columnas en el esqueleto y la tabla cuando canManage=$canManage',
+    async ({ canManage }) => {
+      mockHasPermission.mockImplementation(
+        (key) =>
+          key === AccessPermissionKey.NETWORK_CATALOG_READ ||
+          (canManage && key === AccessPermissionKey.NETWORK_CATALOG_MANAGE),
+      );
+      let resolveRouters!: (page: Awaited<ReturnType<typeof networkApi.listRouters>>) => void;
+      jest.mocked(networkApi.listRouters).mockImplementation(
+        () =>
+          new Promise<Awaited<ReturnType<typeof networkApi.listRouters>>>((resolve) => {
+            resolveRouters = resolve;
+          }),
+      );
+
+      const { container } = render(<NetworkRouterCatalogClient />);
+
+      expect(await screen.findByText('Cargando routers')).toBeInTheDocument();
+      const skeletonTable = container.querySelector('table');
+      const skeletonColumnCount = skeletonTable?.querySelectorAll('thead th').length ?? 0;
+      expect(skeletonColumnCount).toBeGreaterThan(0);
+      expect(skeletonTable?.querySelector('tbody tr')?.querySelectorAll('td')).toHaveLength(
+        skeletonColumnCount,
+      );
+
+      await act(async () => {
+        resolveRouters(routerPage(buildRouter()));
+      });
+
+      const loadedTable = await screen.findByRole('table');
+      expect(loadedTable.querySelectorAll('thead th')).toHaveLength(skeletonColumnCount);
+      expect(loadedTable.querySelector('tbody tr')?.querySelectorAll('th, td')).toHaveLength(
+        skeletonColumnCount,
+      );
+    },
+  );
 
   it('conserva el router recién guardado al continuar con el registro de su primera red', async () => {
     mockHasPermission.mockReturnValue(true);

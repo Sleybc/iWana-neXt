@@ -47,6 +47,7 @@ describe('OrganizationService', () => {
   });
 
   function mockTenantRun<TManager extends object>(manager: TManager) {
+    if (!('query' in manager)) Object.assign(manager, { query: jest.fn().mockResolvedValue([]) });
     (runInTenantSchema as jest.Mock).mockImplementation(
       async (_dataSource, _schemaName, callback: (queryRunner: { manager: TManager }) => unknown) =>
         callback({ manager }),
@@ -145,8 +146,63 @@ describe('OrganizationService', () => {
     expect(result.meta.capabilities.sortableFields).toEqual([]);
   });
 
+  it.each([
+    ['Nodo Santandercito', 'NS01'],
+    ['Sede Bogotá centro', 'SBC01'],
+    ['!!!', 'SEDE01'],
+  ])('genera el código desde %s', async (name, expectedCode) => {
+    const manager = {
+      query: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((_entity, value) => value),
+      save: jest.fn().mockImplementation(async (_entity, value) => ({ id: 'site-1', ...value })),
+    };
+    mockTenantRun(manager);
+    jest.spyOn(service as never, 'loadSiteDetail').mockResolvedValue(createSiteDetail() as never);
+    await service.create({
+      name,
+      siteType: OrganizationSiteType.OFFICE,
+      latitude: 4,
+      longitude: -74,
+      contactName: 'Contacto',
+      contactPhone: '123',
+    });
+    expect(manager.create).toHaveBeenCalledWith(
+      OrganizationSite,
+      expect.objectContaining({ code: expectedCode }),
+    );
+  });
+
+  it('genera un código normalizado y agrega sufijo cuando ya existe', async () => {
+    const manager = {
+      query: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValueOnce({ id: 'existente' }).mockResolvedValue(null),
+      create: jest.fn((_entity, value) => value),
+      save: jest.fn().mockImplementation(async (_entity, value) => ({ id: 'site-1', ...value })),
+    };
+    mockTenantRun(manager);
+    jest.spyOn(service as never, 'loadSiteDetail').mockResolvedValue(createSiteDetail() as never);
+    await service.create({
+      name: 'Nodo Santanderíto',
+      siteType: OrganizationSiteType.OFFICE,
+      latitude: 4,
+      longitude: -74,
+      contactName: 'Contacto',
+      contactPhone: '123',
+    });
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+      ['organization-site-code', 'tenant-test'],
+    );
+    expect(manager.create).toHaveBeenCalledWith(
+      OrganizationSite,
+      expect.objectContaining({ code: 'NS02' }),
+    );
+  });
+
   it('should reject creating a second primary site for the tenant', async () => {
     const manager = {
+      query: jest.fn().mockResolvedValue([]),
       findOne: jest
         .fn()
         .mockResolvedValueOnce(null)

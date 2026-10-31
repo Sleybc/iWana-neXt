@@ -83,6 +83,7 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
   let ownerSiteReadPort: {
     findReferenceById: jest.Mock;
     findRouterSummaryById: jest.Mock;
+    findRouterSummariesByIds: jest.Mock;
     listRouterOptions: jest.Mock;
   };
   let commercialNodeReadPort: {
@@ -385,6 +386,9 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
       findRouterSummaryById: jest.fn((id: string) =>
         organizationSiteReadAdapter.findRouterSummaryById(id),
       ),
+      findRouterSummariesByIds: jest.fn((ids: string[]) =>
+        organizationSiteReadAdapter.findRouterSummariesByIds(ids),
+      ),
       listRouterOptions: jest.fn((input: never) =>
         organizationSiteReadAdapter.listRouterOptions(input),
       ),
@@ -489,6 +493,11 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
     expect(response.body.data.map((router: { name: string }) => router.name)).toEqual([
       'Router site A',
     ]);
+    expect(response.body.data[0]?.organizationSite).toMatchObject({
+      name: 'Site A',
+      siteType: 'OFFICE',
+      isActive: true,
+    });
     const authorizationQueryIndex = queryLog.findIndex((query) =>
       query.includes('access_profile_permissions'),
     );
@@ -496,6 +505,7 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
     expect(authorizationQueryIndex).toBeGreaterThanOrEqual(0);
     expect(routerQueryIndex).toBeGreaterThan(authorizationQueryIndex);
     expect(ownerSiteReadPort.findRouterSummaryById).not.toHaveBeenCalled();
+    expect(ownerSiteReadPort.findRouterSummariesByIds).toHaveBeenCalledWith([siteAId]);
     expect(commercialNodeReadPort.findRouterSummaryById).not.toHaveBeenCalled();
   });
 

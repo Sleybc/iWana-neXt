@@ -32,7 +32,7 @@ describe('NetworkRouterDrawer', () => {
     jest.spyOn(networkApi, 'updateRouter').mockResolvedValue(router);
   });
 
-  it('omite campos no modificados para conservar los valores actuales', async () => {
+  it('oculta la referencia LAN anterior y omite campos no modificados al guardar', async () => {
     render(
       <NetworkRouterDrawer
         open
@@ -43,12 +43,17 @@ describe('NetworkRouterDrawer', () => {
       />,
     );
 
+    expect(screen.queryByText('Referencia LAN anterior')).not.toBeInTheDocument();
+    expect(screen.queryByText('bridge-clientes')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Guardar cambios' }));
     await waitFor(() => expect(networkApi.updateRouter).toHaveBeenCalled());
 
     expect(jest.mocked(networkApi.updateRouter).mock.calls[0]?.[1]).toEqual({
       version: router.version,
     });
+    expect(jest.mocked(networkApi.updateRouter).mock.calls[0]?.[1]).not.toHaveProperty(
+      'lanInterface',
+    );
   });
 
   it('envía null al quitar explícitamente la sede física y el nodo comercial', async () => {
