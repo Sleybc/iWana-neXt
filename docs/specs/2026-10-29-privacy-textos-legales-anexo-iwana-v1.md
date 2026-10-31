@@ -1,8 +1,9 @@
 # Anexo — Textos legales fuente de Iwana S.A.S. (tenant piloto)
 
-**Versión:** 1.0
-**Estado:** Política: texto del responsable, listo para publicar · Aviso y Autorización: **⚠ borrador pendiente de aprobación del ISP y de dictamen jurídico (ADR-094 §7 punto 3)**
-**Fecha:** 2026-10-29
+**Versión:** 1.1
+**Estado:** **Aprobado por [acta jurídica del 2026-10-30](../legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md)**. Política: texto del responsable, sin objeciones. Aviso: aprobado sin cambios. Autorización: aprobada con el ajuste de la cláusula 1. El representante legal de Iwana S.A.S. aprobó los textos como Responsable (ADR-094 D6), según confirmó el usuario el 2026-10-30. El original firmado se custodia fuera del repositorio.
+**Cambios v1.0 → v1.1 (2026-10-30):** bloque C, cláusula 1, con la mención explícita de los datos técnicos que exige el acta §II.1. Los bloques A y B no cambian, así que sus huellas tampoco.
+**Fecha:** 2026-10-29 (v1.1: 2026-10-30)
 **Emitido por:** AI-EM-ARCH, a partir de la Política de Tratamiento v1 entregada por el CTO (vigente desde el 21-oct-2026, publicada en https://iwana.co/privacidad/)
 **Spec madre:** [`2026-10-29-privacy-textos-legales.md`](2026-10-29-privacy-textos-legales.md) v1.0
 
@@ -20,6 +21,40 @@
 - Los títulos pasaron a `#`, `##` y `###`.
 
 No se cambió ninguna palabra.
+
+---
+
+## Huellas esperadas al publicar (v1.1)
+
+SHA-256 del `content` UTF-8 de cada bloque «TEXTO PUBLICABLE», sin las cercas. Lo calculó AI-EM-ARCH el 2026-10-30 y debe coincidir con el `sha256` que devuelve `POST /privacy/legal-texts`.
+
+| Bloque | Tipo | SHA-256 |
+| --- | --- | --- |
+| A | `POLITICA_TRATAMIENTO` | `005625c5ed19b3f79d130f8fa5164fc6ba7dfe69fc400f7753a6958993657ffe` |
+| B | `AVISO_PRIVACIDAD` | `cc97f53cf5d168f895c1c5cdfaa75bbf3869cc7676ca2fab095d25de235d4d75` |
+| C | `AUTORIZACION` | `4f94eb90c2172023baed761b5c0143560e54fd79cef7e339112bd2ad88370306` |
+
+Si el `sha256` publicado no coincide, se detiene la publicación (runbook, Paso 7b). Copias byte a byte de los tres textos, publicadas en desarrollo el 2026-10-30: [`docs/legal/`](../legal/).
+
+## Revisión jurídica — qué se le pide al abogado (B5, paso 1) *(resuelta por el acta del 2026-10-30)*
+
+*Precisión del 2026-10-30, sin cambio de versión: no modifica ningún texto publicable.*
+
+**Objeto de la aprobación:** los bloques **B (Aviso)** y **C (Autorización)**, palabra por palabra. El bloque A (Política) ya lo aprobó el responsable y está publicado en https://iwana.co/privacidad/; aquí solo se normalizó el formato.
+
+**Preguntas concretas:**
+
+1. **Aviso:** ¿cumple el contenido mínimo del aviso de privacidad del Decreto 1377 de 2013 (compilado en el Decreto 1074 de 2015)? Se pide confirmar el artículo exacto: este anexo lo marca como «requiere verificación con fuente oficial».
+2. **Autorización:**
+   - ¿basta un solo texto con dos cláusulas separadas (servicio, que es necesaria, y comercial, opcional y revocable) para cumplir el «autorización aparte» de la política §7.4 y §9?
+   - El sistema registra una autorización por finalidad marcada, ligada a la versión y la huella de este texto.
+3. **Ley 2300 de 2023:** ¿es correcto citarla en la Autorización §2 para los contactos comerciales y de cobranza de un ISP? Es un punto ⚠ de ADR-094 §7 punto 3.
+4. **Datos técnicos y logs de IP (H13):** ¿las finalidades de la política §7.2 y §14.1 cubren lo que la plataforma registra (IP asignada, estado del equipo, disponibilidad y consumo)? Es un punto ⚠ de ADR-094 §7 punto 3.
+5. **Alojamiento de la plataforma:** la §10 no lista quién aloja iWana neXt, porque el proveedor aún no está elegido (ADR-095). Si se contrata un tercero, ¿basta con nombrarlo en una Política v2 antes de procesar datos reales en producción?
+
+**Entregable del abogado y del responsable:** un acta con fecha, quién aprueba, la versión aprobada de cada bloque y los cambios exigidos, si los hay. Si cambia una sola palabra, AI-EM-ARCH emite este anexo en v1.1 con el texto exacto antes de publicar. La huella se calcula sobre ese texto.
+
+**Mientras no exista el acta, no se publica nada:** `legal_texts` es de solo anexar y una versión publicada no se puede corregir.
 
 ---
 
@@ -285,7 +320,7 @@ Iwana S.A.S. puede modificarla. Los cambios sustanciales, en especial los que se
 | `version` | `1` (la fecha real la fija `published_at` al publicar) |
 | `format` | `MARKDOWN` |
 | `url` | `https://iwana.co/privacidad/` |
-| Estado | **⚠ Borrador de AI-EM-ARCH.** Requiere aprobación de Iwana S.A.S. como responsable y dictamen jurídico (ADR-094 §7 punto 3) |
+| Estado | **Aprobado** por el acta jurídica del 2026-10-30 |
 
 **Trazabilidad** (Decreto 1377 de 2013, compilado en el Decreto 1074 de 2015, contenido mínimo del aviso; requiere verificación con fuente oficial del artículo exacto): responsable y contacto → política §2; tratamiento y finalidades → §7.1–7.4; derechos → §11; mecanismos para conocer la política → §17; canales y plazos → §13.
 
@@ -331,7 +366,7 @@ Nuestra Política de tratamiento de datos personales está publicada en https://
 | `version` | `1` (la fecha real la fija `published_at` al publicar) |
 | `format` | `MARKDOWN` |
 | `url` | `https://iwana.co/privacidad/` |
-| Estado | **⚠ Borrador de AI-EM-ARCH.** Requiere aprobación de Iwana S.A.S. como responsable y dictamen jurídico (ADR-094 §7 punto 3) |
+| Estado | **Aprobado** por el acta jurídica del 2026-10-30 |
 
 **Alineación con el sistema:**
 - Un único texto cubre las dos finalidades habilitadas para Iwana (`TRATAMIENTO_CONTRACTUAL` y `CONTACTO_COMERCIAL`).
@@ -357,7 +392,7 @@ Al aceptar, autorizo de manera previa, expresa e informada a Iwana S.A.S., con d
 
 ## 1. Prestación del servicio, facturación y soporte
 
-Necesaria para contratar y recibir el servicio. Autorizo el tratamiento de mi nombre, documento de identidad, teléfono, correo, dirección y ubicación del predio, municipio o vereda, plan contratado, tecnología instalada, historial de facturación y pagos, solicitudes de soporte y sus conversaciones, y los datos técnicos de mi conexión, para:
+Necesaria para contratar y recibir el servicio. Autorizo el tratamiento de mi nombre, documento de identidad, teléfono, correo, dirección y ubicación del predio, municipio o vereda, plan contratado, tecnología instalada, historial de facturación y pagos, solicitudes de soporte y sus conversaciones, y los datos técnicos de mi conexión (dirección IP asignada, identificadores y estado del equipo instalado, y registros de disponibilidad y consumo del servicio), para:
 
 - hacer la visita de viabilidad y la instalación;
 - celebrar y ejecutar el contrato de servicio;

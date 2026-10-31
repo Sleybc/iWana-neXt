@@ -1,11 +1,12 @@
 # Spec — Privacy · Textos legales consumibles por el sistema
 
-**Versión:** 1.2
+**Versión:** 1.3
 **Estado:** Vigente — contrato congelado para la Ola 2 (B1 ∥ B2)
 **Cambios:**
 - v1.0, 2026-10-29: C4 registra la dependencia aprobada en E1 (precisión, sin bump).
 - **v1.0 → v1.1, 2026-10-29:** resuelve el `[BLOQUEO]` de B1 (`INFORME-PRIVACY-TEXTOS-LEGALES-B1-v1.0.md`). C3 fija los roles de `PUT /privacy/purposes` (D-B1-1, §8). Ninguna otra cláusula cambia.
 - **v1.1 → v1.2, 2026-10-29:** resuelve el `[BLOQUEO]` P1 de B4 (`INFORME-PRIVACY-TEXTOS-LEGALES-B4-SEC-v1.0.md`) con la decisión D-B4-1 (§8): `RolesGuard` en los controladores de `privacy`. C2 precisa que lo hace un token de tenant. Ninguna otra cláusula cambia.
+- **v1.2 → v1.3, 2026-10-30:** a pedido del usuario, se añade **C7, Historial de versiones**. En «Textos legales» solo se listan las versiones vigentes, y las reemplazadas pasan a una sección de historial contraída para no generar ruido. Solo afecta al portal: no cambia el API, el modelo de datos ni la inmutabilidad.
 **Fecha:** 2026-10-29
 **Emitido por:** AI-EM-ARCH (modo Product Architect + Architect)
 **Superficie:** `/dashboard/privacy?view=legal` («Textos legales») y las tres superficies de captura de autorización
@@ -115,6 +116,24 @@ En `CompliancePanel`, `SubscriberForm` y `ConsentsPanel`:
 - Debajo del texto aparecen los enlaces «Política de tratamiento» y «Aviso de privacidad». Cada uno abre un peek de solo lectura con la versión vigente de ese tipo. Si no hay versión publicada, el enlace no se muestra (no es un bloqueo).
 - C2 resuelve la distinción entre el 404 y el resto de errores.
 
+### C7 — Historial de versiones (v1.3)
+
+**Problema.** Cuando una versión se corrige publicando otra, que es la única vía porque `legal_texts` es de solo anexar, la versión reemplazada sigue en la misma lista que la vigente. Con el tiempo, la lista mezcla vigentes e históricas, y la persona que administra tiene que buscar la insignia «Vigente».
+
+**Decisión** (solo en `LegalTextsSurface` de `apps/portal/src/components/privacy/PrivacyWorkspace.tsx`):
+
+1. **Lista principal «Versiones vigentes».** Muestra solo las filas con `isCurrent = true`: como máximo una por tipo, en orden Política → Aviso → Autorización. Conserva la fila actual (tipo, versión, fecha, insignia «Vigente», huella corta) y abre el peek como hoy. Si un tipo no tiene versión, no aparece. Si no hay ninguna, se muestra el estado vacío actual.
+2. **Sección «Historial de versiones (N)».** Va debajo de la lista principal, **contraída por defecto**, con el componente existente `SectionAccordion` de `@iwana/ui` (`packages/ui/src/components/SectionAccordion.tsx`). No se crea un componente nuevo.
+   - N es el total de versiones reemplazadas. Con N = 0, la sección no se renderiza.
+   - Al abrirla, las versiones aparecen agrupadas por tipo, en el mismo orden de la lista principal, y dentro de cada tipo de la más reciente a la más antigua.
+   - Cada fila muestra tipo, versión, «Publicada el {fecha}», «Reemplazada el {fecha}» y la huella corta. La fecha de reemplazo es la de `publishedAt` de la versión siguiente del mismo tipo, y se calcula en el cliente desde el listado.
+   - Las filas del historial no llevan insignia.
+3. **Peek de una versión reemplazada.** Es el mismo peek de solo lectura, con un aviso informativo arriba: «Esta versión fue reemplazada el {fecha}. Ya no se usa para nuevas autorizaciones; se conserva como evidencia de lo que aceptaron los titulares». La huella completa y «Copiar huella» siguen disponibles.
+4. **Sin cambios de contrato.** `GET /privacy/legal-texts` ya devuelve todas las versiones con `isCurrent`, y no se añade endpoint ni filtro. Nada se oculta ni se borra: el historial es una agrupación visual.
+5. **Permisos.** Con solo `privacy.read` se ven la lista principal y el historial, en solo lectura.
+6. **Vocabulario** (`system-vocabulary-review`): «Versiones vigentes», «Historial de versiones», «Publicada el», «Reemplazada el». No se exponen `isCurrent`, `published_at` ni nombres de enum.
+7. **Accesibilidad:** la cabecera del acordeón es un botón con `aria-expanded`, y las filas del historial son botones con nombre accesible («{tipo} · versión {v} · reemplazada»).
+
 ## 4. Criterios de aceptación
 
 | ID | Criterio | Verifica |
@@ -132,6 +151,10 @@ En `CompliancePanel`, `SubscriberForm` y `ConsentsPanel`:
 | CA-LT-11 | Publicar exige confirmar; copiar la huella deja los 64 caracteres en el portapapeles | E2E (B3) |
 | CA-LT-12 | Con solo `privacy.read`, `?view=legal` muestra el listado sin la acción de crear | unitaria portal (B3) |
 | CA-LT-13 | `audit-ui.mjs` sin P0/P1 sobre los archivos tocados | B2 |
+| CA-LT-14 | Con dos versiones de un tipo, la lista principal muestra solo la vigente y el historial aparece contraído con «Historial de versiones (1)» | unitaria portal (B8) |
+| CA-LT-15 | Al abrir el historial, la versión reemplazada muestra «Reemplazada el {publishedAt de la siguiente}» y, en su peek, el aviso de versión reemplazada con la huella completa | unitaria portal (B8) |
+| CA-LT-16 | Sin versiones reemplazadas, la sección de historial no se renderiza; con solo `privacy.read`, ambas secciones se ven sin la acción de crear | unitaria portal (B8) |
+| CA-LT-17 | `audit-ui.mjs` sin P0/P1 y suite completa del portal en verde tras el cambio | B8 |
 
 ## 5. Impacto
 

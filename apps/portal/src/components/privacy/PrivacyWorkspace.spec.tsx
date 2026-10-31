@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { AccessPermissionKey } from '@iwana/shared';
+import { AccessPermissionKey, type LegalText } from '@iwana/shared';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { privacyApi } from '@/lib/api-client';
-import { PrivacyWorkspace } from './PrivacyWorkspace';
+import { PrivacyWorkspace, buildLegalTextVersionSections } from './PrivacyWorkspace';
+import { formatLocalDateTime } from './privacy-labels';
 
 const mockSearch = new URLSearchParams('view=legal');
 const mockRouterReplace = jest.fn();
@@ -140,6 +141,71 @@ const mockPrivacyApi = privacyApi as unknown as {
   getInventory: jest.Mock;
 };
 
+function buildSyntheticLegalText(id: string, overrides: Partial<LegalText> = {}): LegalText {
+  return {
+    id,
+    type: 'POLITICA_TRATAMIENTO',
+    version: '1.0-prueba',
+    content: 'Contenido legal sintético de prueba.',
+    format: 'PLAIN',
+    sha256: 'a'.repeat(64),
+    publishedAt: '2026-01-10T12:00:00.000Z',
+    url: null,
+    isCurrent: false,
+    ...overrides,
+  };
+}
+
+describe('buildLegalTextVersionSections', () => {
+  it('ordena tipos y versiones, y asigna la fecha de reemplazo inmediata', () => {
+    const texts = [
+      buildSyntheticLegalText('33333333-3333-4333-8333-333333333333', {
+        type: 'AUTORIZACION',
+        version: '2.0-prueba',
+        publishedAt: '2026-03-10T12:00:00.000Z',
+        isCurrent: true,
+      }),
+      buildSyntheticLegalText('11111111-1111-4111-8111-111111111111', {
+        version: '1.0-prueba',
+        publishedAt: '2026-01-10T12:00:00.000Z',
+      }),
+      buildSyntheticLegalText('22222222-2222-4222-8222-222222222222', {
+        version: '2.0-prueba',
+        publishedAt: '2026-02-10T12:00:00.000Z',
+      }),
+      buildSyntheticLegalText('44444444-4444-4444-8444-444444444444', {
+        version: '3.0-prueba',
+        publishedAt: '2026-03-10T12:00:00.000Z',
+        isCurrent: true,
+      }),
+      buildSyntheticLegalText('55555555-5555-4555-8555-555555555555', {
+        type: 'AVISO_PRIVACIDAD',
+        version: '1.0-prueba',
+        publishedAt: '2026-02-10T12:00:00.000Z',
+        isCurrent: true,
+      }),
+    ];
+
+    const sections = buildLegalTextVersionSections(texts);
+
+    expect(sections.current.map(({ type }) => type)).toEqual([
+      'POLITICA_TRATAMIENTO',
+      'AVISO_PRIVACIDAD',
+      'AUTORIZACION',
+    ]);
+    expect(sections.history.map(({ type }) => type)).toEqual(['POLITICA_TRATAMIENTO']);
+    expect(sections.history[0]?.entries.map(({ text }) => text.version)).toEqual([
+      '2.0-prueba',
+      '1.0-prueba',
+    ]);
+    expect(sections.history[0]?.entries.map(({ replacedAt }) => replacedAt)).toEqual([
+      '2026-03-10T12:00:00.000Z',
+      '2026-02-10T12:00:00.000Z',
+    ]);
+    expect(sections.historyCount).toBe(2);
+  });
+});
+
 describe('PrivacyWorkspace', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -163,6 +229,105 @@ describe('PrivacyWorkspace', () => {
     mockPrivacyApi.createIncident.mockResolvedValue(undefined);
     mockPrivacyApi.reportIncident.mockResolvedValue(undefined);
     mockPrivacyApi.getInventory.mockResolvedValue(null);
+  });
+
+  it('CA-LT-14: separa las versiones reemplazadas y deja el historial contraído', async () => {
+    mockPrivacyApi.listLegalTexts.mockResolvedValue([
+      buildSyntheticLegalText('11111111-1111-4111-8111-111111111111', {
+        version: '1.0-prueba',
+        publishedAt: '2026-01-10T12:00:00.000Z',
+      }),
+      buildSyntheticLegalText('22222222-2222-4222-8222-222222222222', {
+        version: '2.0-prueba',
+        publishedAt: '2026-02-10T12:00:00.000Z',
+        isCurrent: true,
+      }),
+    ]);
+
+    render(<PrivacyWorkspace />);
+
+    expect(await screen.findByRole('heading', { name: 'Versiones vigentes' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /Política de tratamiento de datos · versión 2.0-prueba/,
+      }),
+    ).toHaveTextContent('Vigente');
+    expect(
+      screen.queryByRole('button', {
+        name: 'Política de tratamiento de datos · versión 1.0-prueba · reemplazada',
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Historial de versiones (1)' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('CA-LT-15: muestra la fecha de reemplazo y conserva el peek de solo lectura', async () => {
+    const replacedText = buildSyntheticLegalText('11111111-1111-4111-8111-111111111111', {
+      version: '1.0-prueba',
+      sha256: 'b'.repeat(64),
+      publishedAt: '2026-01-10T12:00:00.000Z',
+    });
+    const currentText = buildSyntheticLegalText('22222222-2222-4222-8222-222222222222', {
+      version: '2.0-prueba',
+      publishedAt: '2026-02-10T12:00:00.000Z',
+      isCurrent: true,
+    });
+    mockPrivacyApi.listLegalTexts.mockResolvedValue([replacedText, currentText]);
+
+    render(<PrivacyWorkspace />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Historial de versiones (1)' }));
+    const historyRow = screen.getByRole('button', {
+      name: 'Política de tratamiento de datos · versión 1.0-prueba · reemplazada',
+    });
+    expect(historyRow).toHaveTextContent(
+      `Publicada el ${formatLocalDateTime(replacedText.publishedAt)}`,
+    );
+    expect(historyRow).toHaveTextContent(
+      `Reemplazada el ${formatLocalDateTime(currentText.publishedAt)}`,
+    );
+
+    fireEvent.click(historyRow);
+
+    const replacementNotice = `Esta versión fue reemplazada el ${formatLocalDateTime(currentText.publishedAt)}. Ya no se usa para nuevas autorizaciones; se conserva como evidencia de lo que aceptaron los titulares`;
+    expect(await screen.findByText(replacementNotice)).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveTextContent('b'.repeat(64));
+    expect(screen.getByRole('button', { name: 'Copiar huella' })).toBeInTheDocument();
+  });
+
+  it('CA-LT-16: omite el historial cuando no hay versiones reemplazadas', async () => {
+    mockPrivacyApi.listLegalTexts.mockResolvedValue([
+      buildSyntheticLegalText('22222222-2222-4222-8222-222222222222', {
+        version: '1.0-prueba',
+        isCurrent: true,
+      }),
+    ]);
+
+    render(<PrivacyWorkspace />);
+
+    expect(await screen.findByRole('heading', { name: 'Versiones vigentes' })).toBeInTheDocument();
+    expect(screen.queryByText(/Historial de versiones/)).not.toBeInTheDocument();
+  });
+
+  it('CA-LT-16: privacy.read ve ambas secciones sin la acción de crear', async () => {
+    mockPrivacyApi.listLegalTexts.mockResolvedValue([
+      buildSyntheticLegalText('11111111-1111-4111-8111-111111111111', {
+        version: '1.0-prueba',
+      }),
+      buildSyntheticLegalText('22222222-2222-4222-8222-222222222222', {
+        version: '2.0-prueba',
+        publishedAt: '2026-02-10T12:00:00.000Z',
+        isCurrent: true,
+      }),
+    ]);
+
+    render(<PrivacyWorkspace />);
+
+    expect(await screen.findByRole('heading', { name: 'Versiones vigentes' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Historial de versiones (1)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Crear nueva versión' })).not.toBeInTheDocument();
   });
 
   it('CA-LT-12: privacy.read muestra el listado legal sin acciones de gestión', async () => {
@@ -253,6 +418,11 @@ describe('PrivacyWorkspace', () => {
     render(<PrivacyWorkspace />);
 
     await screen.findByText('Ofertas y novedades');
+    const requiredPurpose = screen.getByRole('checkbox', {
+      name: /Prestación del servicio, facturación y soporte/,
+    });
+    expect(requiredPurpose).toBeChecked();
+    expect(requiredPurpose).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Crear nueva versión' }));
     fireEvent.change(screen.getByLabelText('Versión'), { target: { value: '1.0-prueba' } });
     fireEvent.change(screen.getByLabelText('Contenido'), {

@@ -1,10 +1,10 @@
 # Runbook — Release MOD05 + privacidad por tenant
 
-**Versión:** 1.0 · **Fecha:** 2026-10-16 · **Estado:** M4 aplicado (pasos 4, 8 y 11): `--rollback-in-place` implementado, ensayado en base desechable y autorevisado con checklist sec-eng sin bloqueantes; pendiente GO formal de `sec-eng` y decisión CTO/G7
+**Versión:** 1.1 · **Fecha:** 2026-10-16 (v1.1: 2026-10-30, Paso 7 ampliado a los tres textos legales, `format` y finalidades por tenant) · **Estado:** M4 aplicado (pasos 4, 8 y 11): `--rollback-in-place` implementado, ensayado en base desechable y autorevisado con checklist sec-eng sin bloqueantes; pendiente GO formal de `sec-eng` y decisión CTO/G7
 **Propósito:** Secuenciar el release MOD05 + `privacy` por tenant, con artefactos versionados y rollback explícito.
 **Autoridad:** AI-PLAT-OPS opera; `sec-eng` revisa controles; AI-EM-ARCH recomienda y el CTO aprueba el G7 y la ventana. Este runbook no concede G7 ni autoriza producción.
 
-**Fuentes:** [Plan MOD05 + privacy camino a G7, §2](../plans/2026-10-15-mod05-privacy-g7-release.md) · [Prompt G7, §2 C-M1](../prompts/PROMPT-MOD05-PRIVACY-G7-v1.0.md) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) · [ADR-094 §D7](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md).
+**Fuentes:** [Plan MOD05 + privacy camino a G7, §2](../plans/2026-10-15-mod05-privacy-g7-release.md) · [Prompt G7, §2 C-M1](../prompts/PROMPT-MOD05-PRIVACY-G7-v1.0.md) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) · [ADR-094 §D7](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md) · [Spec textos legales v1.2](../specs/2026-10-29-privacy-textos-legales.md) (contratos C1–C3) · [Anexo de textos de Iwana S.A.S.](../specs/2026-10-29-privacy-textos-legales-anexo-iwana-v1.md).
 
 **Integra sin duplicar:** [backfill Party B13](RUNBOOK-MOD05-PARTY-PII-BACKFILL-v1.0.md) · [bloqueo y supresión manual](RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) · [release y rollback](RUNBOOK-RELEASE-ROLLBACK-v1.0.md) · [Media/MinIO](RUNBOOK-MEDIA-MINIO-v1.0.md) · [rotación de claves](RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md).
 
@@ -35,7 +35,7 @@ Los siguientes nombres son marcadores, no valores. Cargarlos en la sesión desde
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, roles `DB_BOOTSTRAP_USER`/`DB_MIGRATOR_USER`/`DB_APP_USER` | Conexión cargada desde el secret store/perfil autorizado; nunca pasar contraseñas como argumentos         |
 | `API_BASE_URL`                                                                              | URL HTTPS aprobada del API                                                                                |
 | `ADMIN_CURL_CONFIG`, `OFFICER_CURL_CONFIG`                                                  | Archivos `curl` protegidos fuera del repo; contienen encabezados de autenticación/tenant y no se imprimen |
-| `AUTHORIZATION_JSON`                                                                        | Archivo fuera del repo con el texto legal aprobado, versión y tipo `AUTORIZACION`                         |
+| `LEGAL_TEXTS_DIR`                                                                           | Directorio fuera del repo con `politica.json`, `aviso.json` y `autorizacion.json` (texto aprobado por el ISP, `type`, `version`, `format`, `url`) y `purposes.json` (finalidades que declara su política) |
 | `MC_CONFIG_DIR`, `MC_ALIAS`, `S3_BUCKET`                                                    | Configuración protegida del cliente MinIO/S3 y bucket activo                                              |
 | `SYNTHETIC_PARTY_ID`, `SYNTHETIC_AUTHORIZATION_ID`, `SYNTHETIC_CONTRACT_ID`   | IDs sintéticos del tenant de QA para el paso 8; fuera del repo, nunca completos en el acta                 |
 | `SYNTHETIC_EVIDENCE_MEDIA_ID`, `SYNTHETIC_UPLOAD_FIXTURE`                     | Asset de evidencia y archivo fixture sintético para las comprobaciones negativas 8d; fuera del repo        |
@@ -251,39 +251,71 @@ Revisar el dry-run antes de escribir; la segunda aplicación evidencia idempoten
 
 **Rollback:** dry-run no modifica. Si una aplicación falla, detener el barrido y conservar ambas familias de clave y `PII_DECRYPT_LEGACY_MFA=true`; obtener conteos/verificación antes de decidir. Ante cambios persistidos con verify incompleto, seguir el restore por tenant de §11 dentro del mecanismo aprobado. Nunca retirar claves previas ni recifrar hacia atrás como atajo.
 
-### Paso 7 — Activar autorización, Oficial y retención
+### Paso 7 — Activar finalidades, textos legales, Oficial y retención
 
-**Publicar el texto autorizado:** el archivo JSON incluye el contenido aprobado y vive fuera del repo; el token y el slug se cargan en `ADMIN_CURL_CONFIG` desde un mecanismo protegido.
+> **v1.1:** el paso cubre los tres tipos de texto (`POLITICA_TRATAMIENTO`, `AVISO_PRIVACIDAD` y `AUTORIZACION`) con `format`, y las finalidades por empresa (spec textos legales v1.2, C1–C3). La v1.0 solo publicaba `AUTORIZACION` en texto plano.
+
+**Precondición:**
+- **Alojamiento (acta jurídica de Iwana S.A.S. del 2026-10-30, §I.5 y §II.3):** antes de procesar datos reales en producción, el ISP debe tener un contrato de transmisión de datos firmado con el proveedor de cloud elegido (ADR-095) y haber publicado una Política de Tratamiento v2 que lo incluya en la tabla §10. Esa Política v2 es la que se publica en 7b. No hace falta pedir una nueva autorización a los titulares. Fuente: [`docs/legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md`](../legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md).
+- Acta de aprobación del ISP, como Responsable, para cada texto. En los puntos ⚠ que apliquen, también el dictamen jurídico (ADR-094 §7 punto 3).
+- `legal_texts` es de solo anexar: una versión publicada no se edita ni se borra, y repetir `type` + `version` devuelve 409. **No publicar borradores.**
+
+**7a — Finalidades declaradas.** Se aplican **antes** de publicar la Autorización, para que la captura nunca ofrezca una finalidad que la política no declara. `TRATAMIENTO_CONTRACTUAL` siempre queda habilitada y el API rechaza deshabilitarla con 422 `PRIVACY_PURPOSE_REQUIRED`. Para Iwana S.A.S. (política §7.3 y §8): `DATOS_BIOMETRICOS=false` y `REPORTE_CENTRALES_RIESGO=false`.
 
 ```bash
-curl --config "$ADMIN_CURL_CONFIG" --fail-with-body --silent --show-error \
-  --header 'Content-Type: application/json' \
-  --data-binary "@$AUTHORIZATION_JSON" \
-  "$API_BASE_URL/api/v1/privacy/legal-texts" |
-  jq -e '.data | select(.type == "AUTORIZACION") | {type, version, sha256, isCurrent}'
-curl --config "$ADMIN_CURL_CONFIG" --fail-with-body --silent --show-error \
-  "$API_BASE_URL/api/v1/privacy/legal-texts/current?type=AUTORIZACION" |
-  jq -e '.data | {type, version, sha256, isCurrent}'
+curl --config "$ADMIN_CURL_CONFIG" --fail-with-body --silent --show-error   "$API_BASE_URL/api/v1/privacy/purposes" | jq -e '[.data[] | {purpose, enabled}]'
+curl --config "$ADMIN_CURL_CONFIG" --fail-with-body --silent --show-error   --request PUT --header 'Content-Type: application/json'   --data-binary "@$LEGAL_TEXTS_DIR/purposes.json"   "$API_BASE_URL/api/v1/privacy/purposes" | jq -e '[.data[] | {purpose, enabled}]'
 ```
 
-El Administrador del tenant asigna `privacy.manage` al perfil del Oficial en **Administración → Usuarios → Perfiles de acceso**, preservando los demás perfiles que ya tenía. No usar DML directo ni una llamada de reemplazo con una lista parcial. El Oficial inicia sesión con su configuración protegida y comprueba su permiso efectivo:
+`purposes.json` sigue `updatePurposeSettingsSchema`: `{"items":[{"purpose":"DATOS_BIOMETRICOS","enabled":false},{"purpose":"REPORTE_CENTRALES_RIESGO","enabled":false}]}`. Equivale en la UI a **Privacidad → Textos legales → «Finalidades que declara tu política»**.
+
+**7b — Textos legales, en orden Política → Aviso → Autorización.** La Autorización remite a los otros dos. Cada JSON lleva `{type, version, format: "MARKDOWN", url, content}`. `content` es **exactamente** el bloque «TEXTO PUBLICABLE» aprobado, sin las cercas: un carácter de diferencia cambia la huella. El servidor fija `published_at` y calcula `sha256`; el cliente no los envía.
 
 ```bash
-curl --config "$OFFICER_CURL_CONFIG" --fail-with-body --silent --show-error \
-  "$API_BASE_URL/api/v1/access-control/me/effective-permissions" |
+for text in politica aviso autorizacion; do
+  curl --config "$ADMIN_CURL_CONFIG" --fail-with-body --silent --show-error     --header 'Content-Type: application/json'     --data-binary "@$LEGAL_TEXTS_DIR/$text.json"     "$API_BASE_URL/api/v1/privacy/legal-texts" |
+    jq -e '.data | {type, version, format, sha256, isCurrent}'
+done
+for type in POLITICA_TRATAMIENTO AVISO_PRIVACIDAD AUTORIZACION; do
+  curl --config "$ADMIN_CURL_CONFIG" --fail-with-body --silent --show-error     "$API_BASE_URL/api/v1/privacy/legal-texts/current?type=$type" |
+    jq -e '.data | select(.isCurrent == true and .format == "MARKDOWN") | {type, version, sha256}'
+done
+```
+
+Contraste de huella, fuera del repo: el `sha256` devuelto debe coincidir con `jq -j .content "$LEGAL_TEXTS_DIR/<texto>.json" | sha256sum`. Equivale en la UI a **«Crear nueva versión»** con formato «Texto con formato» y la confirmación del diálogo; «Copiar huella» entrega los 64 caracteres.
+
+**7c — Oficial y retención.** El Administrador del tenant asigna `privacy.manage` al perfil del Oficial en **Administración → Usuarios → Perfiles de acceso**, preservando los demás perfiles que ya tenía. No usar DML directo ni una llamada de reemplazo con una lista parcial. El Oficial inicia sesión con su configuración protegida y comprueba su permiso efectivo:
+
+```bash
+curl --config "$OFFICER_CURL_CONFIG" --fail-with-body --silent --show-error   "$API_BASE_URL/api/v1/access-control/me/effective-permissions" |
   jq -e '.data.effectivePermissions | index("privacy.manage") != null'
-curl --config "$OFFICER_CURL_CONFIG" --fail-with-body --silent --show-error \
-  "$API_BASE_URL/api/v1/privacy/retention-policies" |
+curl --config "$OFFICER_CURL_CONFIG" --fail-with-body --silent --show-error   "$API_BASE_URL/api/v1/privacy/retention-policies" |
   jq -e '[.data[] | {category, years, startEvent, isLegalMinimum}]'
 ```
 
-El Oficial revisa que las políticas corresponden al catálogo aprobado por ADR-094; solo se alargan por el endpoint aprobado, nunca se acortan por debajo del mínimo legal.
+El Oficial revisa que las políticas correspondan al catálogo aprobado por ADR-094. Los plazos solo se alargan, por el endpoint aprobado, y nunca se acortan por debajo del mínimo legal.
 
-**Evidencia sin PII:** tipo, versión, SHA-256 y estado vigente del texto; `privacy.manage=true`; categorías y plazos de retención; referencias a la aprobación del texto y designación del Oficial. No guardar contenido legal si el ISP lo reserva, tokens ni identidad del usuario en el informe compartido.
+**Evidencia sin PII:**
+- tipo, versión, formato, SHA-256 y estado vigente de los tres textos;
+- estado de cada finalidad;
+- `privacy.manage=true`;
+- categorías y plazos de retención;
+- referencias al acta de aprobación de los textos y a la designación del Oficial.
 
-**Parada:** falta versión vigente `AUTORIZACION`, API devuelve 422/403, permiso efectivo ausente, oficial no designado o catálogo de retención inconsistente → no abrir captura/conversión ni solicitudes productivas.
+No guardar en el informe compartido el contenido legal si el ISP lo reserva, ni tokens ni la identidad del usuario.
 
-**Rollback:** las versiones de texto son inmutables. Si se publica una versión errónea, no borrarla ni sobrescribirla: parar el release, obtener texto corregido aprobado y publicar una versión nueva. Retirar `privacy.manage` solo mediante gestión de perfiles aprobada y dejando el servicio en NO-GO.
+**Parada:**
+- en producción, falta el contrato de transmisión con el proveedor de alojamiento o la Política v2 que lo incluye;
+- falta el acta de aprobación de un texto;
+- el API devuelve 409, porque la versión ya está ocupada: no se reintenta con otro número sin una nueva acta;
+- el API devuelve 422 o 403;
+- falta alguno de los tres tipos vigentes, o no tiene `format=MARKDOWN`;
+- la huella no coincide con la del archivo aprobado;
+- quedan finalidades habilitadas que la política no declara;
+- falta el permiso efectivo o el Oficial no está designado;
+- el catálogo de retención es inconsistente.
+
+En cualquiera de esos casos, no abrir la captura ni la conversión, ni las solicitudes productivas.
 
 ### Paso 8 — Bucket privado y URL temporal de Media
 

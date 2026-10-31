@@ -35,6 +35,7 @@ Dejar «Textos legales» (`/dashboard/privacy?view=legal`) listo para que el sis
 | B3 | `sr-qa` | Prompt §B3: pruebas de CA-LT-07 a CA-LT-12 y E2E | tests + `INFORME-PRIVACY-TEXTOS-LEGALES-B3-QA-v1.0.md` | B1 y B2 cerrados |
 | B4 | `sec-eng` | Prompt §B4: revisión de C2, C3 y C4 | `INFORME-PRIVACY-TEXTOS-LEGALES-B4-SEC-v1.0.md` | B3 |
 | B6 | `sr-backend` | Prompt v1.2 §B6 (correctivo D-B4-1): `RolesGuard` en los 9 controladores de `privacy` + pruebas HTTP de plataforma/ADMIN/AUDITOR/SUPPORT | código + `INFORME-PRIVACY-TEXTOS-LEGALES-B6-v1.0.md` | P1 de B4 |
+| B8 | `fe-platform` | [`PROMPT-PRIVACY-TEXTOS-LEGALES-HISTORIAL-v1.0.md`](../prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-HISTORIAL-v1.0.md): C7 de la spec v1.3. La lista principal solo muestra las versiones vigentes y las reemplazadas van a «Historial de versiones», contraído y con `SectionAccordion`. Solo portal. | código + `INFORME-PRIVACY-TEXTOS-LEGALES-B8-v1.0.md` | Pedido del usuario el 2026-10-30; launcher `PROMPT-PRIVACY-TEXTOS-LEGALES-HISTORIAL-LAUNCH-v1.0.md` |
 | B5 | Humano: Oficial de protección de datos / ADMIN del tenant de Iwana | Aprobar el Aviso y la Autorización; configurar finalidades; publicar los 3 textos del anexo | acta del runbook, Paso 7 | G6.5 de B1–B4 + aprobación jurídica |
 
 ## 4. Matriz de dispatch (agente × skill)
@@ -56,7 +57,7 @@ Todas las skills se verificaron contra disco (`ls .agents/skills/<nombre>/SKILL.
 | 1 | B0 + escalación E1 | — | **B0 y E1 cerrados** (2026-10-29) |
 | 2 | B1 ∥ B2 | Sí: B2 usa mocks derivados de los tipos de `@iwana/shared` que fija la spec | **Cerrada el 2026-10-29**: informes B1 y B2 v1.1 (CA-LT-01 a 06 y 13). AI-EM-ARCH re-ejecutó invariante + `privacy/purposes` + `legal-texts` (6 suites, 30 pruebas), `privacy-schemas` (8) y `LegalTextContent` (2), sin caché. Cobertura no medida → asignada a B3 |
 | 3 | B3 → B4 → **B6 → B4 (re-verificación)** | No | B3 **cerrado** (CA-LT-07 a 12; cobertura API 96,26 % líneas / 85,14 % ramas, shared 100 %, portal 89,94 % / 80,58 %). B4 (LAUNCH v1.2) emitió P1 → B6 y re-verificación (LAUNCH v1.3). **Cerrada el 2026-10-29:** B6 con `RolesGuard` en 9/9 controladores; B4 v1.1 sin P0/P1. AI-EM-ARCH re-ejecutó `modules/privacy` + invariante sin caché (36 suites, 187 pruebas) y comprobó el orden de guards en los 9. **G6: GO** el 2026-10-29 (ver §6 e informe de fase). |
-| 4 | B5 | — | G6.5 (CI de `main` verde por SHA) y aprobación jurídica |
+| 4 | B5 | — | **Decidido el 2026-10-30:** primero ensayo en el tenant `iwana` de desarrollo (ya tiene la migración 166) y, en la ventana de G7, producción con el [runbook v1.1](../runbooks/RUNBOOK-MOD05-PRIVACY-RELEASE-POR-TENANT-v1.0.md), Paso 7 ampliado. Orden: (1) acta jurídica de los bloques B y C del anexo, con las preguntas de su sección «Revisión jurídica»; (2) finalidades: biométricos y centrales en `false`; (3) Política → Aviso → Autorización en `MARKDOWN`; (4) AI-EM-ARCH verifica la UI y la huella y registra el informe de fase §11. **Acta recibida el 2026-10-30** (`docs/legal/`); anexo v1.1 aplicado. El Responsable aprobó los textos (confirmación del usuario, 2026-10-30). **Cerrado en desarrollo el 2026-10-30**: tres textos con las huellas aprobadas y finalidades ajustadas (informe §11.4). Producción, en la ventana de G7, con el runbook v1.1. |
 
 - **Ruta crítica (v1.2):** B6 → B4 re-verificación → G6 (además del typecheck de API, que depende de MOD13) → G6.5 → B5. *Histórica:* B2 (rama `MARKDOWN`) → B3 (CA-LT-07 y CA-LT-08) → B4 → G6.5 → B5.
 - **Superficie compartida:** B1 y B2 tocan `packages/shared/src/schemas/privacy/`. **Solo B1 escribe en `packages/shared`.** B2 lee los tipos y, si le falta algo, emite `[BLOQUEO]`. Si B2 arranca antes de que B1 publique los schemas, trabaja con tipos locales de mock idénticos a la spec §3 y los reemplaza al integrar.
@@ -101,10 +102,10 @@ Todas las skills se verificaron contra disco (`ls .agents/skills/<nombre>/SKILL.
 
 ## Lanzamiento
 
-> **El archivo [`docs/prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-LAUNCH-v1.3.md`](../prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-LAUNCH-v1.3.md) (Ola 3b) es la fuente y prevalece si diverge de este espejo.** Olas anteriores: LAUNCH v1.0 **(superado)**, v1.1 (cumplido) y v1.2 (cumplido en B3; B4 bloqueado por P1).
+> **El archivo [`docs/prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-HISTORIAL-LAUNCH-v1.0.md`](../prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-HISTORIAL-LAUNCH-v1.0.md) (B8) es la fuente y prevalece si diverge de este espejo.** Launchers anteriores: v1.0 **(superado)**, v1.1, v1.2 y v1.3 (cumplidos) y B7 (cumplido).
 
-> Actúa como `{sr-backend (B6) | sec-eng (B4)}`. Lee `AGENTS.md`, el plan `docs/plans/2026-10-29-privacy-textos-legales.md` v1.2, la spec v1.2 §8 (D-B4-1) y tu encargo `docs/prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-v1.2.md` §{B6 | B4 «Re-verificación»}.
-> Antes de empezar lee los `SKILL.md` de tu fila (en `.agents/skills/<nombre>/SKILL.md`, como documentación, no como tool).
-> No modifiques la spec. B6: solo `@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)` en los 9 controladores de `privacy` y sus pruebas; no toques `PermissionsGuard`, `RolesGuard`, `TenantMiddleware` ni otros módulos. sec-eng: no modifiques código. Si algo exige más, emite `[BLOQUEO]` y para.
-> Tokens de prueba firmados como en los specs HTTP existentes; nunca secretos reales. No toques los cambios ajenos de MOD13 ni commitees.
-> Verifica que la ruta esté libre y reporta en `docs/informes/INFORME-PRIVACY-TEXTOS-LEGALES-B6-v1.0.md` (B6) o actualiza `INFORME-PRIVACY-TEXTOS-LEGALES-B4-SEC-v1.0.md` a v1.1 (B4), con conteo real sin caché y deuda nueva por severidad.
+> Actúa como `fe-platform`. Lee `AGENTS.md`, la spec `docs/specs/2026-10-29-privacy-textos-legales.md` v1.3 §3 C7 y tu encargo `docs/prompts/PROMPT-PRIVACY-TEXTOS-LEGALES-HISTORIAL-v1.0.md`.
+> Antes de codificar lee los `SKILL.md` de `frontend-dev-guidelines`, `iwana-identity-ui-review`, `core-components`, `system-vocabulary-review`, `testing-patterns` e `iwana-test-evidence` (en `.agents/skills/<nombre>/SKILL.md`, como documentación, no como tool).
+> Solo cambias `LegalTextsSurface` y sus pruebas. Reutilizas `SectionAccordion` de `@iwana/ui`. No toques el API, `packages/shared`, `@iwana/ui`, los consumidores ni las finalidades. Si C7 no cabe así, emite `[BLOQUEO]` y para.
+> No publiques textos en ningún tenant, no commitees ni toques los cambios sin commitear de MOD13 y B5.
+> Reporta en `docs/informes/INFORME-PRIVACY-TEXTOS-LEGALES-B8-v1.0.md` (verifica que la ruta esté libre), con la suite completa del portal sin caché y conteo real.

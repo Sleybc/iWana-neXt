@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey } from '@iwana/shared';
-import { Button } from '@iwana/ui';
+import { Button, SectionAccordion, interactiveFocusClassName } from '@iwana/ui';
+import { Check } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -42,11 +43,61 @@ import {
 
 type Surface = 'requests' | 'legal' | 'incidents' | 'inventory';
 
+const LEGAL_TEXT_TYPE_ORDER: LegalTextType[] = [
+  'POLITICA_TRATAMIENTO',
+  'AVISO_PRIVACIDAD',
+  'AUTORIZACION',
+];
+
+export interface LegalTextHistoryEntry {
+  text: LegalText;
+  replacedAt: string | null;
+}
+
+export interface LegalTextHistoryGroup {
+  type: LegalTextType;
+  entries: LegalTextHistoryEntry[];
+}
+
+export interface LegalTextVersionSections {
+  current: LegalText[];
+  history: LegalTextHistoryGroup[];
+  historyCount: number;
+}
+
+export function buildLegalTextVersionSections(
+  texts: readonly LegalText[],
+): LegalTextVersionSections {
+  const current: LegalText[] = [];
+  const history: LegalTextHistoryGroup[] = [];
+
+  for (const type of LEGAL_TEXT_TYPE_ORDER) {
+    const versions = texts
+      .filter((text) => text.type === type)
+      .slice()
+      .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt));
+    const replaced = versions.flatMap((text, index) => {
+      if (text.isCurrent) return [];
+      return [{ text, replacedAt: versions[index - 1]?.publishedAt ?? null }];
+    });
+
+    current.push(...versions.filter((text) => text.isCurrent));
+    if (replaced.length > 0) history.push({ type, entries: replaced });
+  }
+
+  return {
+    current,
+    history,
+    historyCount: history.reduce((count, group) => count + group.entries.length, 0),
+  };
+}
+
 const selectClass =
   'portal-input-surface min-h-11 w-full px-3 py-2 text-sm text-gray-900 dark:text-white';
 const inputClass =
   'portal-input-surface min-h-11 w-full px-3 py-2 text-sm text-gray-900 dark:text-white';
 const textareaClass = `${inputClass} min-h-28`;
+const legalTextRowClass = `grid min-h-14 w-full grid-cols-1 items-center gap-3 rounded-xl border border-gray-200 p-3 text-left sm:grid-cols-[minmax(0,1fr)_auto] dark:border-dark-border ${interactiveFocusClassName}`;
 const surfaceLabels: Record<Surface, string> = {
   requests: 'Solicitudes',
   legal: 'Textos legales',
@@ -389,6 +440,12 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
   const [url, setUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<LegalText | null>(null);
+  const versionSections = useMemo(() => buildLegalTextVersionSections(texts), [texts]);
+  const selectedHistory = selected
+    ? versionSections.history
+        .flatMap((group) => group.entries)
+        .find((entry) => entry.text.id === selected.id)
+    : undefined;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -524,37 +581,104 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
         ) : null}
         {loading ? (
           <PortalSkeletonBlock className="h-40" />
-        ) : texts.length ? (
-          <div className="space-y-2">
-            {texts.map((text) => (
-              <button
-                key={text.id}
-                type="button"
-                onClick={() => setSelected(text)}
-                className="flex min-h-14 w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 p-3 text-left dark:border-dark-border"
-              >
-                <span>
-                  <strong>{LEGAL_TEXT_TYPE_LABELS[text.type]}</strong> · versión {text.version}
-                  <span className="ml-2 text-sm text-gray-600 dark:text-gray-300">
-                    {formatLocalDateTime(text.publishedAt)}
-                  </span>
-                </span>
-                <span className="flex items-center gap-2">
-                  {text.isCurrent ? (
-                    <span className="rounded-full bg-iwana-secondary/10 px-3 py-1 text-sm font-semibold text-iwana-secondary-700 dark:text-iwana-secondary-300">
-                      Vigente
-                    </span>
-                  ) : null}
-                  <code className="text-xs">{text.sha256.slice(0, 12)}…</code>
-                </span>
-              </button>
-            ))}
-          </div>
         ) : (
-          <PortalEmptyState
-            title="No hay textos publicados"
-            description="Publica una versión para habilitar la captura de autorizaciones."
-          />
+          <div className="space-y-4">
+            <section aria-labelledby="current-legal-texts-heading" className="space-y-2">
+              <h3
+                id="current-legal-texts-heading"
+                className="text-sm font-semibold text-iwana-primary dark:text-white"
+              >
+                Versiones vigentes
+              </h3>
+              {versionSections.current.length ? (
+                <div className="space-y-2">
+                  {versionSections.current.map((text) => (
+                    <button
+                      key={text.id}
+                      type="button"
+                      onClick={() => setSelected(text)}
+                      className={legalTextRowClass}
+                    >
+                      <span className="min-w-0 break-words">
+                        <strong>{LEGAL_TEXT_TYPE_LABELS[text.type]}</strong> · versión{' '}
+                        {text.version}
+                        <span className="mt-1 block text-sm tabular-nums text-gray-600 dark:text-gray-300">
+                          {formatLocalDateTime(text.publishedAt)}
+                        </span>
+                      </span>
+                      <span className="flex items-center justify-end gap-2 whitespace-nowrap">
+                        <span className="rounded-full bg-iwana-secondary/10 px-3 py-1 text-sm font-semibold text-iwana-secondary-700 dark:text-iwana-secondary-300">
+                          Vigente
+                        </span>
+                        <code className="text-xs">{text.sha256.slice(0, 12)}…</code>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <PortalEmptyState
+                  title="No hay textos publicados"
+                  description="Publica una versión para habilitar la captura de autorizaciones."
+                />
+              )}
+            </section>
+            {versionSections.historyCount > 0 ? (
+              <SectionAccordion
+                items={[
+                  {
+                    id: 'legal-text-history',
+                    label: `Historial de versiones (${versionSections.historyCount})`,
+                    children: (
+                      <div className="space-y-5">
+                        {versionSections.history.map((group) => (
+                          <section
+                            key={group.type}
+                            aria-labelledby={`legal-text-history-${group.type}`}
+                            className="space-y-2"
+                          >
+                            <h4
+                              id={`legal-text-history-${group.type}`}
+                              className="text-sm font-semibold text-iwana-primary dark:text-white"
+                            >
+                              {LEGAL_TEXT_TYPE_LABELS[group.type]}
+                            </h4>
+                            <ul className="space-y-2">
+                              {group.entries.map(({ text, replacedAt }) => (
+                                <li key={text.id}>
+                                  <button
+                                    type="button"
+                                    aria-label={`${LEGAL_TEXT_TYPE_LABELS[text.type]} · versión ${text.version} · reemplazada`}
+                                    onClick={() => setSelected(text)}
+                                    className={legalTextRowClass}
+                                  >
+                                    <span className="min-w-0 break-words">
+                                      <strong>{LEGAL_TEXT_TYPE_LABELS[text.type]}</strong> · versión{' '}
+                                      {text.version}
+                                      <span className="mt-1 flex flex-wrap gap-x-3 text-sm text-gray-600 dark:text-gray-300">
+                                        <span>
+                                          Publicada el {formatLocalDateTime(text.publishedAt)}
+                                        </span>
+                                        <span>
+                                          Reemplazada el {formatLocalDateTime(replacedAt)}
+                                        </span>
+                                      </span>
+                                    </span>
+                                    <code className="justify-self-end whitespace-nowrap text-xs">
+                                      {text.sha256.slice(0, 12)}…
+                                    </code>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        ))}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
+          </div>
         )}
       </PortalPanel>
       {canManage ? (
@@ -562,19 +686,26 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
           <div className="space-y-3">
             {purposes.map((item) => (
               <label key={item.purpose} className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={item.enabled}
-                  disabled={savingPurposes || item.purpose === 'TRATAMIENTO_CONTRACTUAL'}
-                  onChange={(event) => {
-                    setSavingPurposes(true);
-                    void privacyApi
-                      .updatePurposes({ items: [{ ...item, enabled: event.target.checked }] })
-                      .then(setPurposes)
-                      .catch(() => setError('No fue posible guardar las finalidades.'))
-                      .finally(() => setSavingPurposes(false));
-                  }}
-                />
+                <span className="relative flex h-5 w-5 shrink-0">
+                  <input
+                    type="checkbox"
+                    className={`peer h-5 w-5 appearance-none rounded border border-gray-400 bg-white checked:border-iwana-primary checked:bg-iwana-primary dark:border-gray-500 dark:bg-dark-surface-3 dark:checked:border-iwana-secondary dark:checked:bg-iwana-secondary forced-colors:appearance-auto ${interactiveFocusClassName}`}
+                    checked={item.enabled}
+                    disabled={savingPurposes || item.purpose === 'TRATAMIENTO_CONTRACTUAL'}
+                    onChange={(event) => {
+                      setSavingPurposes(true);
+                      void privacyApi
+                        .updatePurposes({ items: [{ ...item, enabled: event.target.checked }] })
+                        .then(setPurposes)
+                        .catch(() => setError('No fue posible guardar las finalidades.'))
+                        .finally(() => setSavingPurposes(false));
+                    }}
+                  />
+                  <Check
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 hidden h-5 w-5 p-0.5 text-white peer-checked:block dark:text-iwana-primary forced-colors:hidden"
+                  />
+                </span>
                 <span>
                   {getPurposeLabel(item.purpose)}
                   {item.purpose === 'TRATAMIENTO_CONTRACTUAL' ? ' · Siempre requerida' : ''}
@@ -590,6 +721,13 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
           onClose={() => setSelected(null)}
           title={`${LEGAL_TEXT_TYPE_LABELS[selected.type]} · versión ${selected.version}`}
         >
+          {selectedHistory ? (
+            <PortalAlert
+              variant="info"
+              title="Versión reemplazada"
+              description={`Esta versión fue reemplazada el ${formatLocalDateTime(selectedHistory.replacedAt)}. Ya no se usa para nuevas autorizaciones; se conserva como evidencia de lo que aceptaron los titulares`}
+            />
+          ) : null}
           <p>{formatLocalDateTime(selected.publishedAt)}</p>
           <p className="text-sm">
             Huella: <code className="break-all">{selected.sha256}</code>

@@ -1,7 +1,7 @@
 # INFORME — Privacy · Textos legales consumibles por el sistema — cierre de fase
 
-**Versión:** 1.3
-**Estado:** **G6 GO** (re-dictaminado tras B7, §9) · **G6.5 GO** sobre `05558a7a`, CI 40969812059 (§10) · B5 pendiente (aprobación jurídica y publicación en el tenant de Iwana) · B5 pendiente (aprobación jurídica + publicación en el tenant de Iwana)
+**Versión:** 1.4
+**Estado:** **G6 GO** (§9) · **G6.5 GO** sobre `05558a7a`, CI 40969812059 (§10) · **B5 cerrado en desarrollo** (2026-10-30, §11.4); pendiente en producción, en la ventana de G7, con el runbook v1.1
 **Fecha:** 2026-10-29
 **Autor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Plan:** [`docs/plans/2026-10-29-privacy-textos-legales.md`](../plans/2026-10-29-privacy-textos-legales.md) v1.2 · **Spec:** [`docs/specs/2026-10-29-privacy-textos-legales.md`](../specs/2026-10-29-privacy-textos-legales.md) v1.2 · **Anexo:** [`2026-10-29-privacy-textos-legales-anexo-iwana-v1.md`](../specs/2026-10-29-privacy-textos-legales-anexo-iwana-v1.md) v1.0
@@ -157,4 +157,167 @@ Las 30 rutas de MOD13 y organización siguen sin commitear y quedan fuera de est
 En local, AI-EM-ARCH obtuvo 5841 pruebas de API. La diferencia de 5 son pruebas que dependen del entorno; las suites omitidas son las mismas 4 en local y en CI.
 
 **Dictamen G6.5: GO.** Autoriza el merge, que ya está hecho, porque el proyecto trabaja en `main`. **No** autoriza despliegue: G7 sigue diferido hasta la beta.
+
+## 11. B5 — ruta de cierre (2026-10-30)
+
+**Decisión del usuario:** B5 se ensaya en el tenant `iwana` de desarrollo cuando exista el acta jurídica, y se repite en producción en la ventana de G7. El 2026-10-30 AI-EM-ARCH verificó en solo lectura que `tenant_iwana` ya tiene `legal_texts.format` y `privacy_purpose_settings`.
+
+**Preparado:**
+- Runbook de release por tenant v1.1, con el Paso 7 ampliado:
+  - 7a: finalidades antes que los textos;
+  - 7b: los tres textos en `MARKDOWN`, con contraste de huella;
+  - 7c: Oficial y retención;
+  - paradas por falta de acta, 409, 422/403, huella distinta o finalidades no declaradas.
+- Sección «Revisión jurídica» del anexo, con cinco preguntas concretas para el abogado.
+
+**Pendiente:**
+- el acta;
+- la publicación en desarrollo;
+- la verificación de la UI y la huella;
+- este registro con tipo, versión y sha256 de los tres textos.
+
+B5 se dará por **cerrado en desarrollo y pendiente en producción (G7)**. La parte de producción no reabre la fase.
+
+### 11.1 Acta jurídica recibida (2026-10-30)
+
+[`docs/legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md`](../legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md):
+- Aviso aprobado sin cambios.
+- Autorización aprobada con un ajuste: la cláusula 1 enumera los datos técnicos.
+- Política sin objeciones.
+
+AI-EM-ARCH verificó el contenido del acta contra el anexo. El Aviso es idéntico, la Autorización solo cambia en ese ajuste, y la Política difiere del original únicamente en el encabezado de tabla repetido.
+
+**Aplicado:**
+- Anexo v1.1 con el bloque C ajustado y las huellas esperadas (A `005625c5…`, B `cc97f53c…`, C `4f94eb90…`).
+- Runbook, Paso 7: el contrato de transmisión y la Política v2 del proveedor de alojamiento son precondición de producción (acta §II.3).
+- Carpeta `docs/legal/` registrada en `AGENTS.md`, con los archivos renombrados a la convención.
+
+**Recomendación II.2 del acta (guardar versión, `published_at` y SHA-256):** ya se cumple, porque cada autorización apunta por FK a una fila inmutable de `legal_texts`. Mejora P3, no bloqueante: el comprobante (`authorizationProofSchema`) devuelve versión y huella, pero no `publishedAt`.
+
+**Aprobación del Responsable:** el usuario confirmó el 2026-10-30 que el representante legal de Iwana S.A.S. aprobó los textos (ADR-094 D6). El original firmado se custodia fuera del repositorio. **B5 queda desbloqueado para publicar en desarrollo.** Las citas de artículos del acta quedan como «requiere verificación con fuente oficial».
+
+### 11.2 Publicación en desarrollo (2026-10-30)
+
+**El usuario informó que publicó** en el tenant `iwana` de desarrollo:
+- las finalidades desactivadas;
+- la Política `1 (2026-10-21)`, el Aviso `1` y la Autorización `1`, en `MARKDOWN`.
+
+**Textos publicados, guardados byte a byte en `docs/legal/`** (huella SHA-256 local):
+
+| Archivo | Tipo | SHA-256 |
+| --- | --- | --- |
+| [`POLITICA-TRATAMIENTO-IWANA-v1.md`](../legal/POLITICA-TRATAMIENTO-IWANA-v1.md) | `POLITICA_TRATAMIENTO` | `005625c5ed19b3f79d130f8fa5164fc6ba7dfe69fc400f7753a6958993657ffe` |
+| [`AVISO-PRIVACIDAD-IWANA-v1.md`](../legal/AVISO-PRIVACIDAD-IWANA-v1.md) | `AVISO_PRIVACIDAD` | `cc97f53cf5d168f895c1c5cdfaa75bbf3869cc7676ca2fab095d25de235d4d75` |
+| [`AUTORIZACION-IWANA-v1.md`](../legal/AUTORIZACION-IWANA-v1.md) | `AUTORIZACION` | `4f94eb90c2172023baed761b5c0143560e54fd79cef7e339112bd2ad88370306` |
+
+`POLITICA-TRATAMIENTO-IWANA-v1.md` reemplaza la copia original del documento del responsable. Contienen las mismas palabras; solo cambia el encabezado de tabla repetido por el salto de página del PDF.
+
+**Pendiente para cerrar B5 en desarrollo:** contrastar las huellas que devolvió el sistema con esta tabla, y comprobar en solo lectura las tres versiones «Vigente» y la captura con dos finalidades. AI-EM-ARCH no puede leer `tenant_iwana` con el rol MCP de solo lectura, que no tiene permiso sobre `legal_texts`, `privacy_purpose_settings` ni `audit_logs`.
+
+### 11.3 Verificación de la publicación en desarrollo (2026-10-30) — NO conforme
+
+AI-EM-ARCH la verificó en solo lectura, en el navegador integrado con la sesión del usuario, mediante `GET /api/v1/privacy/legal-texts` y `GET /api/v1/privacy/purposes`. La huella se recalculó en el navegador sobre el `content` devuelto.
+
+| Tipo | Versión publicada | Formato | `url` | SHA-256 publicado | SHA-256 aprobado | Palabras |
+| --- | --- | --- | --- | --- | --- | --- |
+| `POLITICA_TRATAMIENTO` | `v1` (esperada `1 (2026-10-21)`) | `MARKDOWN` | `null` | `67ca16d2…eb907d68` | `005625c5…657ffe` | Idénticas (3409) |
+| `AVISO_PRIVACIDAD` | `v1` (esperada `1`) | **`PLAIN`** | `null` | `75314d46…ad15201f` | `cc97f53c…235d4d75` | Idénticas (324) |
+| `AUTORIZACION` | `v1` (esperada `1`) | **`PLAIN`** | `null` | `fef0b643…eee5fc8d` | `4f94eb90…88370306` | Idénticas (415), incluido el ajuste de la cláusula 1 |
+
+**Diagnóstico:**
+- El **texto jurídico es el aprobado**: las secuencias de palabras son idénticas, comparadas por huella sobre las palabras normalizadas.
+- Lo que se pegó perdió la **sintaxis Markdown**: no tiene `#` ni `**`, y las tablas quedaron separadas por tabuladores. Todo indica que se copió desde una vista renderizada y no desde el archivo fuente.
+- Los otros defectos son de operación, no del producto: Aviso y Autorización se publicaron en `PLAIN`, falta el enlace y las versiones no siguen el anexo. El formulario conserva el formato elegido entre publicaciones y su valor inicial es `MARKDOWN`.
+- La integridad del sistema es correcta: cada `sha256` corresponde exactamente a su `content`.
+
+**Finalidades: NO desactivadas.** Las cuatro siguen con `enabled: true`, y la UI muestra las cuatro casillas marcadas. Se incumplió la parada del runbook (Paso 7a antes que 7b): mientras tanto, la captura en desarrollo ofrece biométricos y centrales de riesgo.
+
+**Impacto:** ninguno sobre titulares reales, porque es el entorno de desarrollo. Las filas `v1` son inmutables y quedan como historial del ensayo.
+
+**Corrección:**
+1. Desactivar las dos finalidades y comprobar con `GET purposes`.
+2. Publicar de nuevo los tres textos con las versiones del anexo (`1 (2026-10-21)`, `1` y `1`), que no chocan con `v1`; formato `MARKDOWN`; `url` igual a `https://iwana.co/privacidad/`; y el contenido copiado del **archivo fuente** de `docs/legal/` abierto como texto plano.
+3. Volver a verificar las huellas contra el anexo §«Huellas esperadas».
+
+**Lección para el runbook de producción:** en producción el Paso 7b se hace por API, con los JSON construidos desde el archivo fuente y con el contraste de huella. Se desaconseja publicar pegando en la UI.
+
+### 11.4 Corrección y cierre de B5 en desarrollo (2026-10-30) — conforme
+
+Con autorización expresa del usuario («Hazlo tú aquí»), AI-EM-ARCH ejecutó la corrección en el tenant `iwana` de desarrollo. Usó la sesión del usuario en el navegador integrado, contra el API del portal (`/api/v1`).
+
+1. **Finalidades** (`PUT /privacy/purposes`, 200): `DATOS_BIOMETRICOS=false` y `REPORTE_CENTRALES_RIESGO=false`. `CONTACTO_COMERCIAL` y `TRATAMIENTO_CONTRACTUAL` quedan en `true`.
+2. **Textos** (`POST /privacy/legal-texts` ×3, todos 201): el contenido es el byte exacto de `docs/legal/`, en orden Política → Aviso → Autorización. El script se detenía si una huella no coincidía, y no hizo falta.
+
+| Tipo | Versión | Formato | `url` | SHA-256 devuelto = aprobado |
+| --- | --- | --- | --- | --- |
+| `POLITICA_TRATAMIENTO` | `1 (2026-10-21)` | `MARKDOWN` | `https://iwana.co/privacidad/` | `005625c5ed19b3f79d130f8fa5164fc6ba7dfe69fc400f7753a6958993657ffe` ✓ |
+| `AVISO_PRIVACIDAD` | `1` | `MARKDOWN` | `https://iwana.co/privacidad/` | `cc97f53cf5d168f895c1c5cdfaa75bbf3869cc7676ca2fab095d25de235d4d75` ✓ |
+| `AUTORIZACION` | `1` | `MARKDOWN` | `https://iwana.co/privacidad/` | `4f94eb90c2172023baed761b5c0143560e54fd79cef7e339112bd2ad88370306` ✓ |
+
+**Verificación independiente:**
+- `GET current` ×3 devuelve las tres filas anteriores con `isCurrent: true`.
+- `GET purposes` confirma el estado del paso 1.
+- **UI, Textos legales:** el detalle de la Política se renderiza con 5 tablas, incluida la de terceros de la §10 («Tercero | Qué recibe | Para qué | Calidad»), 19 títulos `h2` y la huella visible, sin `script`, `img` ni `iframe`.
+- **UI, alta de suscriptor:** solo ofrece «Autorizo el uso de mis datos para prestar, facturar y dar soporte…» y «Autorizo recibir ofertas y novedades (opcional)». El texto de la Autorización se renderiza con formato, incluye el ajuste de la cláusula 1 y enlaza la Política y el Aviso. Ya no aparece el aviso de «no hay texto vigente».
+
+**Historial del ensayo:** las tres filas `v1` del intento anterior (§11.3) se eliminaron el 2026-10-30, con autorización expresa del usuario; detalle en §11.5.
+
+**Dictamen B5:** **cerrado en desarrollo.** La parte de producción se ejecuta en la ventana de G7 con el runbook v1.1, Paso 7, por API y con contraste de huella. Su precondición es el contrato de transmisión y la Política v2 del proveedor de alojamiento.
+
+### 11.5 Limpieza de las filas `v1` del ensayo (2026-10-30, solo desarrollo)
+
+**Por qué no se podían borrar.** Es un control intencional de la migración 146, que aplica ADR-094 D6, y tiene dos capas:
+- el trigger `trg_legal_texts_append_only` (`BEFORE UPDATE OR DELETE`) rechaza cualquier mutación con el error `55000`;
+- `data_authorizations.legal_text_id` tiene `ON DELETE RESTRICT`.
+
+La tabla pertenece a `iwana_migrator`. El rol de la aplicación (`iwana_app`) no es superusuario y no puede saltarse el trigger. Ni la UI ni el API ofrecen borrar. **En producción no se toca.**
+
+**Precondición verificada en solo lectura:** las tres filas `v1` (`67ca16d2`, `75314d46`, `fef0b643`) tenían **0** autorizaciones ligadas.
+
+**Ejecución** (usuario «Sí, bórralas»; AI-EM-ARCH con `iwana_migrator`, en una sola transacción sobre `tenant_iwana`):
+1. `DISABLE TRIGGER trg_legal_texts_append_only`.
+2. `DELETE` acotado a `version = 'v1'`, a las tres huellas y a `NOT EXISTS` en `data_authorizations`. La transacción exigía exactamente 3 filas borradas y abortaba si no.
+3. `ENABLE TRIGGER`.
+4. `COMMIT`.
+
+Resultado: se borraron 3 filas.
+
+**Verificación posterior:**
+- Quedan solo las tres filas vigentes: `POLITICA_TRATAMIENTO 1 (2026-10-21)` (`005625c5`), `AVISO_PRIVACIDAD 1` (`cc97f53c`) y `AUTORIZACION 1` (`4f94eb90`), todas en `MARKDOWN`.
+- El trigger está habilitado (`tgenabled = O`).
+- Un `DELETE` de prueba dentro de `ROLLBACK` vuelve a fallar con «La evidencia de privacidad es de solo anexar».
+
+`audit_logs` conserva el registro de creación de las filas eliminadas.
+
+**Regla:** este procedimiento es una excepción de desarrollo para datos de ensayo sin autorizaciones ligadas. No forma parte del runbook ni se aplica en producción, donde una versión equivocada se corrige publicando otra.
+
+## 12. B8 — Historial de versiones (C7, spec v1.3) — 2026-10-30
+
+**Origen:** pedido del usuario. Una versión se corrige publicando otra, pero las reemplazadas no deben quedar mezcladas con las vigentes.
+
+**B8, `fe-platform`** ([informe](INFORME-PRIVACY-TEXTOS-LEGALES-B8-v1.0.md)):
+- `LegalTextsSurface` separa «Versiones vigentes» de «Historial de versiones (N)». El historial va contraído, con `SectionAccordion` de `@iwana/ui`, agrupado por tipo e incluye «Reemplazada el».
+- El detalle de una versión reemplazada lleva aviso y conserva la huella completa.
+- La agrupación la calcula la función pura `buildLegalTextVersionSections`.
+- Solo cambian `PrivacyWorkspace.tsx` y `PrivacyWorkspace.spec.tsx`.
+- Evidencia reportada: suite completa del portal sin caché con 331 suites, 3355 pruebas aprobadas, 1 omitida y 0 fallidas; typecheck, lint, `audit-ui.mjs` y Prettier con código 0.
+
+**Re-ejecución de AI-EM-ARCH:**
+- `src/components/privacy` sin caché: 7 suites, 45 pruebas.
+- `pnpm --filter @iwana/portal typecheck`: código 0.
+- `audit-ui.mjs` sobre `PrivacyWorkspace.tsx`: sin hallazgos.
+- Diff revisado: no toca el API, `packages/shared`, `@iwana/ui` ni los consumidores.
+
+**Verificación en el navegador (2026-10-30, tenant `iwana` de desarrollo, sesión del usuario, solo lectura):**
+- «Versiones vigentes» muestra exactamente 3 filas, en orden Política `1 (2026-10-21)` → Aviso `1` → Autorización `1`, con huellas `005625c5…`, `cc97f53c…` y `4f94eb90…`.
+- «Historial de versiones» no se renderiza, porque no hay versiones reemplazadas (CA-LT-16).
+- Finalidades: «Datos biométricos» y «Reporte a centrales de riesgo» desmarcadas; «Ofertas y novedades» marcada; «Prestación del servicio…» marcada y deshabilitada.
+
+El caso con historial lo cubren las pruebas unitarias CA-LT-14 y 15.
+
+**Observaciones visuales P3** (no bloquean; previas a B8):
+1. En tema oscuro, la casilla deshabilitada de «Prestación del servicio…» se ve tenue y no se distingue fácilmente como marcada.
+2. Con títulos largos, la insignia «Vigente» y la huella bajan de línea en unas filas y en otras no, por el `flex-wrap`, y la lista pierde alineación.
+
+**Fuera de B8:** apareció en el árbol `.claude/launch.json`, sin commitear, que no forma parte de esta obra y no se incluye en su commit.
 
