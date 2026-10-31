@@ -88,3 +88,15 @@ describe('stratumEvidenceUploadErrorMessage', () => {
     );
   });
 });
+
+describe('mensaje del almacenamiento no privado', () => {
+  it('explica que la carga no está disponible en lugar de pedir reintentar', () => {
+    const { stratumEvidenceUploadErrorMessage, STRATUM_EVIDENCE_STORAGE_MESSAGE } =
+      jest.requireActual<typeof import('./stratum-evidence')>('./stratum-evidence');
+    expect(
+      stratumEvidenceUploadErrorMessage(
+        new ApiError(503, 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE', 'storage'),
+      ),
+    ).toBe(STRATUM_EVIDENCE_STORAGE_MESSAGE);
+  });
+});

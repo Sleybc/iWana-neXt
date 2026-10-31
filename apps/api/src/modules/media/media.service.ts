@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,12 @@ import { imageSize } from 'image-size';
 import { validateMagicBytes } from './magic-bytes';
 import { GENERIC_MEDIA_USAGES, type UploadMediaDto } from './dto/upload-media.dto';
 import type { MediaAssetResponseDto } from './dto/media-asset-response.dto';
+
+/** Usos con datos del titular: se sirven solo por URL firmada, sin importar la configuración. */
+const PRIVATE_MEDIA_USAGES: ReadonlySet<MediaUsage> = new Set([
+  MediaUsage.STRATUM_EVIDENCE,
+  MediaUsage.PRIVACY_EVIDENCE,
+]);
 
 /**
  * Restricciones de validación por uso del asset.
@@ -180,6 +187,7 @@ export class MediaService {
     uploadedByUserId?: string,
   ): Promise<MediaAssetResponseDto> {
     this.assertTenantSchema(tenantSchema);
+    this.assertPrivateStorage(MediaUsage.STRATUM_EVIDENCE);
     if (!file) {
       throw new BadRequestException('Se requiere el campo "file" con el soporte del estrato.');
     }
@@ -205,6 +213,7 @@ export class MediaService {
     uploadedByUserId?: string,
   ): Promise<MediaAssetResponseDto> {
     this.assertTenantSchema(tenantSchema);
+    this.assertPrivateStorage(MediaUsage.PRIVACY_EVIDENCE);
     if (!file) {
       throw new BadRequestException('Se requiere el archivo de evidencia de privacidad.');
     }
@@ -285,8 +294,10 @@ export class MediaService {
     const publicBaseUrl = this.config.get<string>('S3_PUBLIC_BASE_URL');
     const hasPublicBaseUrl = typeof publicBaseUrl === 'string' && publicBaseUrl.trim().length > 0;
     const storageDriver = this.config.get<string>('STORAGE_DRIVER', 'local');
+    // Los soportes con datos del titular solo se leen por URL firmada: nunca URL permanente.
+    const privateUsage = PRIVATE_MEDIA_USAGES.has(usage);
     const publicUrl =
-      storageDriver === 'local' || bucketPublic || hasPublicBaseUrl
+      !privateUsage && (storageDriver === 'local' || bucketPublic || hasPublicBaseUrl)
         ? this.storage.getPublicUrl(objectKey)
         : null;
 
@@ -343,6 +354,39 @@ export class MediaService {
     return this.generateSignedUrl(id, tenantSchema, 300, MediaUsage.PRIVACY_EVIDENCE);
   }
 
+  /**
+   * Única política de almacenamiento para los usos privados (estrato y privacidad).
+   * Falla cerrada con 503 antes de crear el asset o firmar:
+   * - driver distinto de MinIO: el driver local sirve archivos sin autenticación;
+   * - bucket declarado público: el objeto sería legible por clave;
+   * - base URL pública en producción o staging: señala un CDN o proxy delante del bucket
+   *   que podría servir el objeto por clave. En development y test el bucket es privado
+   *   (minio-init) y esa URL apunta al MinIO directo, que exige firma.
+   */
+  private assertPrivateStorage(
+    usage: MediaUsage.STRATUM_EVIDENCE | MediaUsage.PRIVACY_EVIDENCE,
+  ): void {
+    const storageDriver = this.config.get<string>('STORAGE_DRIVER', 'local');
+    const bucketPublic = this.config.get<boolean | string>('S3_BUCKET_PUBLIC', false);
+    const publicBaseUrl = this.config.get<string>('S3_PUBLIC_BASE_URL');
+    const runtimeEnv = this.config.get<string>('NODE_ENV');
+    const isBucketPublic = bucketPublic === true || bucketPublic === 'true';
+    const hasPublicBaseUrl = typeof publicBaseUrl === 'string' && publicBaseUrl.trim().length > 0;
+    const deployed = runtimeEnv === 'production' || runtimeEnv === 'staging';
+
+    if (storageDriver !== 'minio' || isBucketPublic || (deployed && hasPublicBaseUrl)) {
+      const stratum = usage === MediaUsage.STRATUM_EVIDENCE;
+      throw new ServiceUnavailableException({
+        code: stratum
+          ? 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE'
+          : 'PRIVACY_EVIDENCE_STORAGE_MUST_BE_PRIVATE',
+        message: stratum
+          ? 'La carga del soporte requiere almacenamiento privado sin URL permanente.'
+          : 'La evidencia de privacidad requiere almacenamiento privado sin URL permanente.',
+      });
+    }
+  }
+
   private async generateSignedUrl(
     id: string,
     tenantSchema: string,
@@ -350,6 +394,7 @@ export class MediaService {
     access: 'generic' | MediaUsage.STRATUM_EVIDENCE | MediaUsage.PRIVACY_EVIDENCE,
   ): Promise<{ signedUrl: string; expiresAt: Date }> {
     this.assertTenantSchema(tenantSchema);
+    if (access !== 'generic') this.assertPrivateStorage(access);
     const asset = await this.mediaRepo.findOne({
       where: { id, tenantSchema },
     });
@@ -380,12 +425,32 @@ export class MediaService {
    * TODO: implementar job BullMQ de limpieza física (Fase 03B+).
    */
   async softDelete(id: string, tenantSchema: string): Promise<void> {
+    return this.softDeleteAsset(id, tenantSchema, 'generic');
+  }
+
+  /** Retiro del soporte de estrato: solo desde el flujo del contrato, que lo audita. */
+  async softDeleteStratumEvidence(id: string, tenantSchema: string): Promise<void> {
+    return this.softDeleteAsset(id, tenantSchema, MediaUsage.STRATUM_EVIDENCE);
+  }
+
+  private async softDeleteAsset(
+    id: string,
+    tenantSchema: string,
+    access: 'generic' | MediaUsage.STRATUM_EVIDENCE,
+  ): Promise<void> {
     this.assertTenantSchema(tenantSchema);
     const asset = await this.mediaRepo.findOne({
       where: { id, tenantSchema },
     });
 
-    if (!asset || asset.deletedAt) {
+    // El borrado genérico no alcanza la evidencia del titular: igual que la firma genérica,
+    // responde 404 para no revelar que existe.
+    if (
+      !asset ||
+      asset.deletedAt ||
+      (access === 'generic' && PRIVATE_MEDIA_USAGES.has(asset.usage)) ||
+      (access !== 'generic' && asset.usage !== access)
+    ) {
       throw new NotFoundException(`Asset ${id} no encontrado.`);
     }
 

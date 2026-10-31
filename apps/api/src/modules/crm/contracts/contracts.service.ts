@@ -832,8 +832,6 @@ export class ContractsService {
       subscriber.personType,
     );
 
-    this._assertStratumEvidenceStorageIsPrivate();
-
     const asset = await this.mediaService.uploadStratumEvidence(schemaName, file, actorId);
 
     let updated: Contract;
@@ -946,7 +944,6 @@ export class ContractsService {
     if (!canSeeBlocked && blocked) {
       throw new NotFoundException('Soporte del estrato no encontrado para este contrato.');
     }
-    this._assertStratumEvidenceStorageIsPrivate();
     const mediaId = contract.stratumEvidenceMediaId;
     if (!mediaId || !(await this._hasVerifiedStratumEvidence(contract, schemaName))) {
       throw new NotFoundException('Soporte del estrato no encontrado para este contrato.');
@@ -1387,21 +1384,6 @@ export class ContractsService {
     }
   }
 
-  private _assertStratumEvidenceStorageIsPrivate(): void {
-    const storageDriver = this.configService.get<string>('STORAGE_DRIVER', 'local');
-    const bucketPublic = this.configService.get<boolean | string>('S3_BUCKET_PUBLIC', false);
-    const publicBaseUrl = this.configService.get<string>('S3_PUBLIC_BASE_URL');
-    const isBucketPublic = bucketPublic === true || bucketPublic === 'true';
-    const hasPublicBaseUrl = typeof publicBaseUrl === 'string' && publicBaseUrl.trim().length > 0;
-
-    if (storageDriver !== 'minio' || isBucketPublic || hasPublicBaseUrl) {
-      throw new ServiceUnavailableException({
-        code: 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE',
-        message: 'La carga del soporte requiere almacenamiento privado sin URL permanente.',
-      });
-    }
-  }
-
   private async _hasVerifiedStratumEvidence(
     contract: Contract,
     schemaName: string,
@@ -1419,7 +1401,7 @@ export class ContractsService {
 
   private async _softDeleteEvidenceAsset(mediaId: string, schemaName: string): Promise<void> {
     try {
-      await this.mediaService.softDelete(mediaId, schemaName);
+      await this.mediaService.softDeleteStratumEvidence(mediaId, schemaName);
     } catch (error) {
       if (!(error instanceof NotFoundException)) throw error;
     }

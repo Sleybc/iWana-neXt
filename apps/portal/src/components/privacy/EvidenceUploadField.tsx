@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { privacyApi } from '@/lib/api-client';
+import { ApiError, privacyApi } from '@/lib/api-client';
 import { PortalAlert } from '@/components/shared/portal-ui';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -44,8 +44,12 @@ export function EvidenceUploadField({
         setFileName(file.name);
         onUploaded(mediaId);
       });
-    } catch {
-      setError('No fue posible cargar la evidencia. Revisa el archivo e inténtalo de nuevo.');
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError && cause.code === 'PRIVACY_EVIDENCE_STORAGE_MUST_BE_PRIVATE'
+          ? 'La carga de evidencias no está disponible en este momento. Contacta al administrador de la plataforma.'
+          : 'No fue posible cargar la evidencia. Revisa el archivo e inténtalo de nuevo.',
+      );
       onUploaded(null);
     } finally {
       setBusy(false);

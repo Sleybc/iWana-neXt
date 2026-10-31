@@ -28,6 +28,12 @@ export const STRATUM_EVIDENCE_TYPE_MESSAGE = `Ese tipo de archivo no está admit
 export const STRATUM_EVIDENCE_SIZE_MESSAGE =
   'El archivo supera el máximo de 10 MB. Adjunta uno más liviano.';
 
+/** Código del 503 cuando el almacenamiento no garantiza archivos privados. */
+export const STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE = 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE';
+
+export const STRATUM_EVIDENCE_STORAGE_MESSAGE =
+  'La carga de soportes no está disponible en este momento. Contacta al administrador de la plataforma.';
+
 export const STRATUM_EVIDENCE_UPLOAD_FAILED_MESSAGE =
   'No se pudo cargar el soporte. Intenta de nuevo.';
 
@@ -49,6 +55,9 @@ export function stratumEvidenceFileError(file: Pick<File, 'type' | 'size'>): str
 export function stratumEvidenceUploadErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.code === STRATUM_EVIDENCE_TYPE_NOT_ALLOWED) {
     return STRATUM_EVIDENCE_TYPE_MESSAGE;
+  }
+  if (error instanceof ApiError && error.code === STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE) {
+    return STRATUM_EVIDENCE_STORAGE_MESSAGE;
   }
   return STRATUM_EVIDENCE_UPLOAD_FAILED_MESSAGE;
 }

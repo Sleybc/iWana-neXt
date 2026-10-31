@@ -95,7 +95,7 @@ function buildMulterFile(overrides: Partial<MockMulterFile> = {}): Express.Multe
 describe('MediaService', () => {
   let service: MediaService;
   const configMap: Record<string, unknown> = {
-    STORAGE_DRIVER: 'local',
+    STORAGE_DRIVER: 'minio',
     S3_BUCKET_PUBLIC: 'false',
     S3_PUBLIC_BASE_URL: undefined,
   };
@@ -125,9 +125,10 @@ describe('MediaService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     (imageSize as jest.Mock).mockReturnValue({ width: 1600, height: 900 });
-    configMap.STORAGE_DRIVER = 'local';
+    configMap.STORAGE_DRIVER = 'minio';
     configMap.S3_BUCKET_PUBLIC = 'false';
     configMap.S3_PUBLIC_BASE_URL = undefined;
+    configMap.NODE_ENV = undefined;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -274,6 +275,7 @@ describe('MediaService', () => {
     });
 
     it('debe subir un archivo válido y retornar el DTO de respuesta', async () => {
+      configMap.STORAGE_DRIVER = 'local';
       const saved = buildMediaAsset();
       mockRepo.create.mockReturnValue(saved);
       mockRepo.save.mockResolvedValue(saved);
@@ -431,6 +433,94 @@ describe('MediaService', () => {
         expect.objectContaining({ contentType: 'application/pdf' }),
       );
     });
+
+    describe.each([
+      [
+        'estrato',
+        MediaUsage.STRATUM_EVIDENCE,
+        'uploadStratumEvidence',
+        'getStratumEvidenceSignedUrl',
+        'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE',
+      ],
+      [
+        'privacidad',
+        MediaUsage.PRIVACY_EVIDENCE,
+        'uploadPrivacyEvidence',
+        'getPrivacyEvidenceSignedUrl',
+        'PRIVACY_EVIDENCE_STORAGE_MUST_BE_PRIVATE',
+      ],
+    ] as const)(
+      'almacenamiento privado del soporte de %s',
+      (_label, usage, uploadMethod, signMethod, code) => {
+        const pdf = () =>
+          buildMulterFile({
+            originalname: 'soporte.pdf',
+            mimetype: 'application/pdf',
+            buffer: PDF_HEADER,
+            size: PDF_HEADER.length,
+          });
+
+        it.each(['development', 'test'])(
+          'en %s admite base URL pública y nunca guarda publicUrl',
+          async (runtimeEnv) => {
+            Object.assign(configMap, {
+              NODE_ENV: runtimeEnv,
+              S3_PUBLIC_BASE_URL: 'http://localhost:9002/iwana',
+            });
+            const saved = buildMediaAsset({ usage, mimeType: 'application/pdf', ext: 'pdf' });
+            mockRepo.create.mockReturnValue(saved);
+            mockRepo.save.mockResolvedValue(saved);
+            mockRepo.update.mockResolvedValue(undefined);
+            mockStorage.putObject.mockResolvedValue(undefined);
+            mockStorage.getPublicUrl.mockReturnValue('http://localhost:9002/iwana/filtrado.pdf');
+
+            const result = await service[uploadMethod]('tenant_test_isp', pdf(), 'user-001');
+
+            expect(result.publicUrl).toBeNull();
+            expect(mockStorage.getPublicUrl).not.toHaveBeenCalled();
+            expect(mockRepo.update).toHaveBeenCalledWith(
+              saved.id,
+              expect.objectContaining({ publicUrl: null }),
+            );
+
+            mockRepo.findOne.mockResolvedValue({ ...saved, deletedAt: null });
+            mockStorage.getSignedUrl.mockResolvedValue('http://localhost:9002/firmada');
+            await expect(service[signMethod](saved.id, 'tenant_test_isp')).resolves.toMatchObject({
+              signedUrl: 'http://localhost:9002/firmada',
+            });
+          },
+        );
+
+        it.each([
+          ['driver local', { STORAGE_DRIVER: 'local' }],
+          ['bucket público', { S3_BUCKET_PUBLIC: 'true' }],
+          [
+            'base URL pública en producción',
+            { NODE_ENV: 'production', S3_PUBLIC_BASE_URL: 'https://cdn.example.test' },
+          ],
+          [
+            'base URL pública en staging',
+            { NODE_ENV: 'staging', S3_PUBLIC_BASE_URL: 'https://cdn.example.test' },
+          ],
+        ])('falla cerrada con %s antes de crear el asset o firmar', async (_reason, config) => {
+          Object.assign(configMap, config);
+
+          await expect(
+            service[uploadMethod]('tenant_test_isp', pdf(), 'user-001'),
+          ).rejects.toMatchObject({
+            status: 503,
+            response: expect.objectContaining({ code }),
+          });
+          await expect(service[signMethod]('asset-1', 'tenant_test_isp')).rejects.toMatchObject({
+            status: 503,
+          });
+          expect(mockRepo.create).not.toHaveBeenCalled();
+          expect(mockRepo.findOne).not.toHaveBeenCalled();
+          expect(mockStorage.putObject).not.toHaveBeenCalled();
+          expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+        });
+      },
+    );
 
     it('acepta soporte de estrato de exactamente 10 MiB', async () => {
       const maxBytes = 10 * 1024 * 1024;
@@ -697,6 +787,33 @@ describe('MediaService', () => {
       await expect(service.softDelete(asset.id, 'tenant_test_isp')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it.each([MediaUsage.STRATUM_EVIDENCE, MediaUsage.PRIVACY_EVIDENCE])(
+      'el borrado genérico no alcanza la evidencia %s',
+      async (usage) => {
+        mockRepo.findOne.mockResolvedValue(buildMediaAsset({ usage }));
+
+        await expect(service.softDelete('asset-1', 'tenant_test_isp')).rejects.toThrow(
+          NotFoundException,
+        );
+        expect(mockRepo.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('el retiro dedicado borra solo soportes de estrato', async () => {
+      mockRepo.findOne.mockResolvedValueOnce(
+        buildMediaAsset({ usage: MediaUsage.STRATUM_EVIDENCE }),
+      );
+      mockRepo.update.mockResolvedValue(undefined);
+      await service.softDeleteStratumEvidence('asset-1', 'tenant_test_isp');
+      expect(mockRepo.update).toHaveBeenCalledTimes(1);
+
+      mockRepo.findOne.mockResolvedValueOnce(buildMediaAsset({ usage: MediaUsage.LOGO }));
+      await expect(service.softDeleteStratumEvidence('asset-2', 'tenant_test_isp')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockRepo.update).toHaveBeenCalledTimes(1);
     });
   });
 });

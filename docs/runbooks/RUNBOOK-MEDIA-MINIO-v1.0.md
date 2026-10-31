@@ -3,7 +3,7 @@
 **Sistema:** iWana neXt — Módulo MOD03 Branding Empresarial  
 **Componente:** Almacenamiento de objetos — MinIO (dev) / S3-compatible (prod)  
 **Versión:** 1.0  
-**Fecha:** 2026-04-30  
+**Fecha:** 2026-04-30 · **Última actualización:** 2026-10-30 (sección «Usos privados», [INFORME T9 v1.1](../informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.1.md))  
 **Autor:** AI-SR-FULL
 
 ---
@@ -53,7 +53,7 @@ packages/storage
 | `S3_BUCKET` | `iwana-media` | Bucket principal |
 | `S3_FORCE_PATH_STYLE` | `true` | Obligatorio para MinIO |
 | `S3_USE_SSL` | `false` | HTTP en dev |
-| `S3_PUBLIC_BASE_URL` | `http://localhost:9002/iwana-media` | URL pública acceso directo |
+| `S3_PUBLIC_BASE_URL` | `http://localhost:9002/iwana-media` | URL pública acceso directo (no aplica a usos privados) |
 
 ### Producción
 
@@ -67,7 +67,16 @@ packages/storage
 | `S3_BUCKET` | `iwana-media-prod` | Bucket producción |
 | `S3_FORCE_PATH_STYLE` | `false` | Para S3 AWS estándar |
 | `S3_USE_SSL` | `true` | HTTPS siempre en prod |
-| `S3_PUBLIC_BASE_URL` | (CDN/presign) | Opcional si se usan URLs pre-firmadas |
+| `S3_PUBLIC_BASE_URL` | (sin definir) | Si se define en `production` o `staging`, la carga y la firma de usos privados responden 503 |
+
+### Usos privados (actualizado 2026-10-30)
+
+`stratum_evidence` (soporte de estrato) y `privacy_evidence` (evidencia de privacidad) contienen datos del titular. Regla vigente, según [INFORME T9 v1.1](../informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.1.md):
+
+- Nunca reciben `publicUrl`, sea cual sea la configuración. Solo se leen por URL firmada de hasta 300 segundos.
+- `MediaService` rechaza su carga y su firma con 503 (`STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE` o `PRIVACY_EVIDENCE_STORAGE_MUST_BE_PRIVATE`) si `STORAGE_DRIVER` no es `minio`, si `S3_BUCKET_PUBLIC=true` o si `S3_PUBLIC_BASE_URL` está definida en `production` o `staging`.
+- En `development` y `test` la base URL no bloquea: el bucket es privado y esa URL apunta al MinIO directo, que exige firma.
+- Ningún CDN, proxy ni política anónima debe servir los prefijos `{tenantSchema}/stratum_evidence/` ni `{tenantSchema}/privacy_evidence/`. Habilitar un CDN para la marca exige antes separar estos usos (bucket o prefijo excluido) mediante ADR.
 
 ---
 

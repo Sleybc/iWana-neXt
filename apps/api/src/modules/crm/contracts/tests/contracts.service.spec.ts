@@ -169,7 +169,7 @@ describe('ContractsService', () => {
     findOne: jest.fn(),
     getSignedUrl: jest.fn(),
     getStratumEvidenceSignedUrl: jest.fn(),
-    softDelete: jest.fn(),
+    softDeleteStratumEvidence: jest.fn(),
     upload: jest.fn(),
     uploadStratumEvidence: jest.fn(),
   };
@@ -464,26 +464,14 @@ describe('ContractsService', () => {
       expect(mediaService.uploadStratumEvidence).not.toHaveBeenCalled();
     });
 
-    it.each([
-      ['almacenamiento local', { STORAGE_DRIVER: 'local' }],
-      ['bucket público', { STORAGE_DRIVER: 'minio', S3_BUCKET_PUBLIC: true }],
-      [
-        'bucket público desde configuración string',
-        { STORAGE_DRIVER: 'minio', S3_BUCKET_PUBLIC: 'true' },
-      ],
-      [
-        'base URL pública',
-        { STORAGE_DRIVER: 'minio', S3_PUBLIC_BASE_URL: 'https://files.example' },
-      ],
-    ])('rechaza la carga antes de crear el asset cuando hay %s', async (_reason, values) => {
-      const storageConfig = values as Record<string, unknown>;
-      configService.get.mockImplementation((key: string, fallback?: unknown) =>
-        Object.prototype.hasOwnProperty.call(storageConfig, key) ? storageConfig[key] : fallback,
-      );
+    it('propaga el 503 de almacenamiento no privado sin tocar el contrato', async () => {
       const contract = buildContract({
         serviceUsage: ServiceUsage.RESIDENTIAL,
         installationStratum: 2,
       });
+      mediaService.uploadStratumEvidence.mockRejectedValue(
+        new ServiceUnavailableException({ code: 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE' }),
+      );
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { findOne: async () => contract } }),
@@ -503,7 +491,8 @@ describe('ContractsService', () => {
       await expect(
         service.uploadStratumEvidence('ctr-1', {} as Express.Multer.File, 'actor-1'),
       ).rejects.toThrow(ServiceUnavailableException);
-      expect(mediaService.uploadStratumEvidence).not.toHaveBeenCalled();
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(2);
+      expect(mediaService.softDeleteStratumEvidence).not.toHaveBeenCalled();
     });
 
     it('reemplaza y limpia un soporte previo en un borrador sin recalcular IVA', async () => {
@@ -513,7 +502,7 @@ describe('ContractsService', () => {
         stratumEvidenceMediaId: 'asset-old',
       });
       mediaService.uploadStratumEvidence.mockResolvedValue({ id: 'asset-new' });
-      mediaService.softDelete.mockResolvedValue(undefined);
+      mediaService.softDeleteStratumEvidence.mockResolvedValue(undefined);
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { findOne: async () => contract } }),
@@ -546,7 +535,10 @@ describe('ContractsService', () => {
 
       expect(result.stratumEvidenceMediaId).toBe('asset-new');
       expect(internetVatResolver.resolve).not.toHaveBeenCalled();
-      expect(mediaService.softDelete).toHaveBeenCalledWith('asset-old', 'tenant_test');
+      expect(mediaService.softDeleteStratumEvidence).toHaveBeenCalledWith(
+        'asset-old',
+        'tenant_test',
+      );
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
           entityType: 'ContractStratumEvidence',
@@ -572,7 +564,7 @@ describe('ContractsService', () => {
       });
       mediaService.uploadStratumEvidence.mockResolvedValue({ id: 'asset-new' });
       mediaService.findOne.mockResolvedValue({ usage: MediaUsage.STRATUM_EVIDENCE });
-      mediaService.softDelete.mockResolvedValue(undefined);
+      mediaService.softDeleteStratumEvidence.mockResolvedValue(undefined);
       commercialCatalogPort.getPlanById.mockResolvedValue({
         id: contract.planId,
         name: 'Plan prueba',
@@ -622,7 +614,10 @@ describe('ContractsService', () => {
         legalBasis: VatLegalBasis.ET_481_H,
         ratePercent: 0,
       });
-      expect(mediaService.softDelete).toHaveBeenCalledWith('asset-old', 'tenant_test');
+      expect(mediaService.softDeleteStratumEvidence).toHaveBeenCalledWith(
+        'asset-old',
+        'tenant_test',
+      );
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
           entityType: 'ContractServicePoint',
@@ -637,34 +632,22 @@ describe('ContractsService', () => {
   });
 
   describe('getStratumEvidenceSignedUrl', () => {
-    it.each([
-      ['almacenamiento local', { STORAGE_DRIVER: 'local' }],
-      ['bucket público', { STORAGE_DRIVER: 'minio', S3_BUCKET_PUBLIC: true }],
-      [
-        'base URL pública',
-        { STORAGE_DRIVER: 'minio', S3_PUBLIC_BASE_URL: 'https://files.example' },
-      ],
-    ])('no emite acceso cuando hay %s', async (_reason, values) => {
-      const storageConfig = values as Record<string, unknown>;
-      configService.get.mockImplementation((key: string, fallback?: unknown) =>
-        Object.prototype.hasOwnProperty.call(storageConfig, key) ? storageConfig[key] : fallback,
-      );
+    it('no audita acceso cuando media rechaza firmar por almacenamiento no privado', async () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({
           manager: {
-            findOne: async () =>
-              buildContract({
-                stratumEvidenceMediaId: 'asset-1',
-              }),
+            findOne: async () => buildContract({ stratumEvidenceMediaId: 'asset-1' }),
           },
         }),
+      );
+      mediaService.findOne.mockResolvedValue({ usage: MediaUsage.STRATUM_EVIDENCE });
+      mediaService.getStratumEvidenceSignedUrl.mockRejectedValue(
+        new ServiceUnavailableException({ code: 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE' }),
       );
 
       await expect(service.getStratumEvidenceSignedUrl('ctr-1', 'actor-1')).rejects.toThrow(
         ServiceUnavailableException,
       );
-      expect(mediaService.findOne).not.toHaveBeenCalled();
-      expect(mediaService.getStratumEvidenceSignedUrl).not.toHaveBeenCalled();
       expect(auditService.log).not.toHaveBeenCalled();
     });
 
@@ -842,7 +825,7 @@ describe('ContractsService', () => {
         oldValue: { hasStratumEvidence: false },
         newValue: { hasStratumEvidence: false },
       });
-      expect(mediaService.softDelete).not.toHaveBeenCalled();
+      expect(mediaService.softDeleteStratumEvidence).not.toHaveBeenCalled();
     });
   });
 
@@ -2302,7 +2285,7 @@ describe('ContractsService', () => {
 
     it('borra el asset recién subido si el contrato deja de ser editable dentro de la transacción', async () => {
       mediaService.uploadStratumEvidence.mockResolvedValueOnce({ id: 'asset-race' });
-      mediaService.softDelete.mockResolvedValueOnce(undefined);
+      mediaService.softDeleteStratumEvidence.mockResolvedValueOnce(undefined);
       queueTransactions(
         { findOne: async () => residentialContract({ status: ContractStatus.DRAFT }) },
         { findOne: async () => subscriberOf() },
@@ -2314,7 +2297,10 @@ describe('ContractsService', () => {
       );
 
       expect(error).toBeInstanceOf(ConflictException);
-      expect(mediaService.softDelete).toHaveBeenCalledWith('asset-race', 'tenant_test');
+      expect(mediaService.softDeleteStratumEvidence).toHaveBeenCalledWith(
+        'asset-race',
+        'tenant_test',
+      );
     });
 
     it('responde no encontrado al retirar soporte de un contrato inexistente', async () => {
@@ -2323,7 +2309,7 @@ describe('ContractsService', () => {
       await expect(service.removeStratumEvidence('ctr-x', 'actor-1')).rejects.toThrow(
         NotFoundException,
       );
-      expect(mediaService.softDelete).not.toHaveBeenCalled();
+      expect(mediaService.softDeleteStratumEvidence).not.toHaveBeenCalled();
     });
 
     it('no retira soporte de un contrato suspendido', async () => {
@@ -2344,7 +2330,9 @@ describe('ContractsService', () => {
     });
 
     it('propaga un error de borrado distinto de no encontrado al retirar el soporte', async () => {
-      mediaService.softDelete.mockRejectedValueOnce(new Error('almacenamiento no disponible'));
+      mediaService.softDeleteStratumEvidence.mockRejectedValueOnce(
+        new Error('almacenamiento no disponible'),
+      );
       queueTransactions({
         findOne: async () => residentialContract({ stratumEvidenceMediaId: 'asset-old' }),
         save: async (_entity: unknown, data: unknown) => data,
@@ -2375,7 +2363,7 @@ describe('ContractsService', () => {
         ratePercent: 19,
         requiresAccountantReview: false,
       });
-      mediaService.softDelete.mockResolvedValueOnce(undefined);
+      mediaService.softDeleteStratumEvidence.mockResolvedValueOnce(undefined);
       queueTransactions({
         findOne: async () => contract,
         save: async (_entity: unknown, data: unknown) => data,
@@ -2388,7 +2376,10 @@ describe('ContractsService', () => {
         treatment: VatTreatment.STANDARD,
         ratePercent: 19,
       });
-      expect(mediaService.softDelete).toHaveBeenCalledWith('asset-old', 'tenant_test');
+      expect(mediaService.softDeleteStratumEvidence).toHaveBeenCalledWith(
+        'asset-old',
+        'tenant_test',
+      );
       expect(auditService.log).toHaveBeenCalledWith(
         expect.objectContaining({
           entityType: 'ContractServicePoint',
@@ -2417,7 +2408,7 @@ describe('ContractsService', () => {
 
       expect(error).toBeInstanceOf(UnprocessableEntityException);
       expect(responseOf(error)).toMatchObject({ code: 'SERVICE_USAGE_REQUIRED' });
-      expect(mediaService.softDelete).not.toHaveBeenCalled();
+      expect(mediaService.softDeleteStratumEvidence).not.toHaveBeenCalled();
     });
 
     it('entrega una URL firmada de 300 segundos y audita el acceso sin registrar la URL', async () => {
