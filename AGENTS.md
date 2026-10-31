@@ -4,6 +4,7 @@
 > **Identidad de gobernanza:** AI-EM-ARCH (EM + Product Architect + Orchestrator)  
 > **Modo de sesion por defecto:** ejecutor (puede implementar codigo respetando gates)  
 > **Fuente maestra:** Este documento
+> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII).
 > **Stack validado:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
 
 ---
@@ -303,6 +304,7 @@ Tabla completa, restricciones y skills externas fuera del dispatch: `.agents/ski
   | **PROMPT** | **`docs/prompts/`** | **Sin excepcion.** Cubre los tres subtipos: ejecucion por fase (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`), lanzamiento corto (`PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, max. 40 lineas) y operativo reutilizable (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`) |
   | Spec UX / contrato DS | `docs/specs/` | `YYYY-MM-DD-<nombre>.md` |
   | Plan | `docs/plans/` | `YYYY-MM-DD-<nombre>.md` |
+  | Textos legales y actas jurídicas | `docs/legal/` | `{TIPO}-{TEMA}-{EMPRESA}-v{VERSION}.md` o `ACTA-{TEMA}-{EMPRESA}-{YYYY-MM-DD}.md`. **Sin PII**: el original firmado se custodia fuera del repo y aquí solo se referencia. El texto que se publica en el sistema vive en el anexo de la spec del módulo |
 
   **Ningun prompt se deposita fuera de `docs/prompts/`.** No existe `.github/prompts/` ni ninguna otra carpeta de prompts: fue suprimida el 2026-07-27 y sus 33 archivos migrados. Esta regla vive aqui, y no solo en `.github/instructions/docs.instructions.md`, precisamente porque aquel archivo solo se activa en su `applyTo: docs/**` — es decir, no se aplicaba a quien se equivocaba de carpeta. `AGENTS.md` se lee siempre.
 
