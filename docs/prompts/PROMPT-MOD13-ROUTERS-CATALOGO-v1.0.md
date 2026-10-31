@@ -5,6 +5,7 @@
 **Fecha:** 2026-10-28
 **Emisor:** AI-EM-ARCH, modo Orchestrator
 **Plan:** [2026-10-28-mod13-routers-retiro-columna-lan.md](../plans/2026-10-28-mod13-routers-retiro-columna-lan.md)
+**Plantilla:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md)
 **Spec UX:** [2026-10-26-mod13-interfaces-ux.md](../specs/2026-10-26-mod13-interfaces-ux.md) v2.2 → v2.3
 **Addendum a:** [plan de interfaces IPv4 v3.13](../plans/2026-10-26-mod13-interfaces-ipv4-orquestacion.md). No cambia sus gates ni su estado.
 

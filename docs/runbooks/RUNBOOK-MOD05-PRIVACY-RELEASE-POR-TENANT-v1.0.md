@@ -1,6 +1,7 @@
 # Runbook — Release MOD05 + privacidad por tenant
 
 **Versión:** 1.1 · **Fecha:** 2026-10-16 (v1.1: 2026-10-30, Paso 7 ampliado a los tres textos legales, `format` y finalidades por tenant) · **Estado:** M4 aplicado (pasos 4, 8 y 11): `--rollback-in-place` implementado, ensayado en base desechable y autorevisado con checklist sec-eng sin bloqueantes; pendiente GO formal de `sec-eng` y decisión CTO/G7
+**Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera y las referencias apuntan a esta ruta.
 **Propósito:** Secuenciar el release MOD05 + `privacy` por tenant, con artefactos versionados y rollback explícito.
 **Autoridad:** AI-PLAT-OPS opera; `sec-eng` revisa controles; AI-EM-ARCH recomienda y el CTO aprueba el G7 y la ventana. Este runbook no concede G7 ni autoriza producción.
 

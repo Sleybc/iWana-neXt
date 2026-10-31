@@ -1,6 +1,8 @@
 # INFORME - MOD00 Configuracion Control Plane - Aprobacion y Handoff Fase 01
 
-**Version:** 1.93
+**Version:** 1.94
+**Cambios:** v1.94 (2026-10-29/31) añade la evidencia de código del puerto de sedes de Organización usado por MOD13 y WFM (addendum de retiro de la columna LAN).
+**Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera.
 **Estado:** Activo
 **Fecha:** 2026-08-29
 **Modo activo:** Mixto  

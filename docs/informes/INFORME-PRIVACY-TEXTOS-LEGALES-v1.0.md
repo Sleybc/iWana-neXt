@@ -1,6 +1,8 @@
 # INFORME — Privacy · Textos legales consumibles por el sistema — cierre de fase
 
 **Versión:** 1.4
+**Cambios:** v1.4 (2026-10-30) registra el cierre de B5 en desarrollo (§11.4) y el bloque B8 de historial de versiones ([informe B8](INFORME-PRIVACY-TEXTOS-LEGALES-B8-v1.0.md)); v1.1–v1.3 cubrieron G6, G6.5 y la preparación de B5.
+**Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera.
 **Estado:** **G6 GO** (§9) · **G6.5 GO** sobre `05558a7a`, CI 40969812059 (§10) · **B5 cerrado en desarrollo** (2026-10-30, §11.4); pendiente en producción, en la ventana de G7, con el runbook v1.1
 **Fecha:** 2026-10-29
 **Autor:** AI-EM-ARCH (modo EM + Orchestrator)

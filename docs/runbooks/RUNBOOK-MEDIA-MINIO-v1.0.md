@@ -2,7 +2,9 @@
 
 **Sistema:** iWana neXt — Módulo MOD03 Branding Empresarial  
 **Componente:** Almacenamiento de objetos — MinIO (dev) / S3-compatible (prod)  
-**Versión:** 1.0  
+**Versión:** 1.1  
+**Cambios:** v1.1 (2026-10-30/31) añade «Usos privados» para `stratum_evidence` y `privacy_evidence` (INFORME T9 v1.1) y sustituye las credenciales literales de desarrollo por referencias a `.env.example` (decisión D-CK-4 del CTO).  
+**Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera.  
 **Fecha:** 2026-04-30 · **Última actualización:** 2026-10-30 (sección «Usos privados», [INFORME T9 v1.1](../informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.1.md))  
 **Autor:** AI-SR-FULL
 
@@ -48,8 +50,8 @@ packages/storage
 | `STORAGE_DRIVER` | `minio` | Driver activo |
 | `S3_ENDPOINT` | `http://localhost:9002` | Endpoint expuesto al host en desarrollo |
 | `S3_REGION` | `us-east-1` | Región (MinIO ignora, requerido AWS SDK) |
-| `S3_ACCESS_KEY_ID` | `minioadmin` | Usuario MinIO |
-| `S3_SECRET_ACCESS_KEY` | `minioadmin123` | Contraseña MinIO |
+| `S3_ACCESS_KEY_ID` | valor de `S3_ACCESS_KEY_ID` en `.env.example` | Usuario MinIO |
+| `S3_SECRET_ACCESS_KEY` | valor de `S3_SECRET_ACCESS_KEY` en `.env.example` | Contraseña MinIO |
 | `S3_BUCKET` | `iwana-media` | Bucket principal |
 | `S3_FORCE_PATH_STYLE` | `true` | Obligatorio para MinIO |
 | `S3_USE_SSL` | `false` | HTTP en dev |
@@ -127,8 +129,8 @@ Salidas esperadas:
 ```bash
 # Usando la consola web MinIO
 # URL: http://localhost:9003
-# User: minioadmin
-# Pass: minioadmin123
+# User: ver MINIO_ROOT_USER en .env
+# Pass: ver MINIO_ROOT_PASSWORD en .env
 
 # 1. Crear bucket "iwana-media"
 # 2. Access Policy: Private
@@ -197,7 +199,7 @@ Verificar:
 ```
 Causa: Credenciales incorrectas en .env.local
 Verificar S3_ACCESS_KEY_ID y S3_SECRET_ACCESS_KEY
-Dev default: minioadmin / minioadmin123
+Dev: usar `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` definidos en `.env` (plantilla en `.env.example`).
 ```
 
 ### Error: `RequestSigningFailed` / `AuthorizationQueryParametersError`
@@ -248,8 +250,8 @@ docker compose --env-file .env -f docker-compose.yml run --rm --entrypoint /bin/
 | Campo | Valor |
 |---|---|
 | URL | http://localhost:9003 |
-| Usuario | `minioadmin` |
-| Contraseña | `minioadmin123` |
+| Usuario | valor de `MINIO_ROOT_USER` en `.env` |
+| Contraseña | valor de `MINIO_ROOT_PASSWORD` en `.env` |
 
 Desde la consola se puede:
 - Navegar objetos por bucket

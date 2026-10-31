@@ -1,6 +1,8 @@
 # INFORME — MOD13: interfaces, ubicación y registro de redes
 
-**Versión:** 1.0  
+**Versión:** 1.1  
+**Cambios:** v1.1 (2026-10-28/29) registra §8.6–§8.9: retiro de «Referencia LAN anterior», acciones con iconos, nombre de sede en el catálogo y consumidor WFM del puerto de Organización.  
+**Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera.  
 **Estado:** corte vigente según plan v3.13; Opción B y ADR-101 aprobados; G1–G4 PASS/cerrados; CA-R12 y G6 PASS sobre baseline sembrado aislado; O2-H/O2-M/FE integrados; G6.5/G7 pendientes; `NETWORK_IP_PROTECTION=PENDING`; captura IP deshabilitada
 **Fecha:** 2026-10-28
 **Autor:** AI-EM-ARCH  

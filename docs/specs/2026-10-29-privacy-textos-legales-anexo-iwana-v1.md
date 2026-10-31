@@ -1,6 +1,7 @@
 # Anexo — Textos legales fuente de Iwana S.A.S. (tenant piloto)
 
 **Versión:** 1.1
+**Changelog de cabecera v1.1 (2026-10-30):** el bloque C, cláusula 1, incorpora los datos técnicos que exige el acta §II.1; el historial completo está al final del anexo.
 **Estado:** **Aprobado por [acta jurídica del 2026-10-30](../legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md)**. Política: texto del responsable, sin objeciones. Aviso: aprobado sin cambios. Autorización: aprobada con el ajuste de la cláusula 1. El representante legal de Iwana S.A.S. aprobó los textos como Responsable (ADR-094 D6), según confirmó el usuario el 2026-10-30. El original firmado se custodia fuera del repositorio.
 **Cambios v1.0 → v1.1 (2026-10-30):** bloque C, cláusula 1, con la mención explícita de los datos técnicos que exige el acta §II.1. Los bloques A y B no cambian, así que sus huellas tampoco.
 **Fecha:** 2026-10-29 (v1.1: 2026-10-30)

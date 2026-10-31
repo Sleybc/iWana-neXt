@@ -1,6 +1,6 @@
 # Plan — Privacy · Textos legales consumibles por el sistema
 
-**Versión:** 1.2 (2026-10-29: P1 de B4, decisión D-B4-1 y bloque correctivo B6; v1.1: D-B1-1 y reanudación de la Ola 2)
+**Versión:** 1.3 (2026-10-30: cierre de B5 en desarrollo y bloque B8 de historial de versiones; v1.2, 2026-10-29: P1 de B4, decisión D-B4-1 y bloque correctivo B6; v1.1: D-B1-1 y reanudación de la Ola 2)
 **Fecha:** 2026-10-29
 **Estado:** Vigente
 **Emitido por:** AI-EM-ARCH (modo EM + Orchestrator)

@@ -2,6 +2,7 @@
 
 **Versión:** 1.3
 **Estado:** Vigente — contrato congelado para la Ola 2 (B1 ∥ B2)
+**Changelog de cabecera v1.3 (2026-10-30):** añade C7, el historial de versiones, y las precisiones de finalidad y alcance; el detalle está en «Cambios».
 **Cambios:**
 - v1.0, 2026-10-29: C4 registra la dependencia aprobada en E1 (precisión, sin bump).
 - **v1.0 → v1.1, 2026-10-29:** resuelve el `[BLOQUEO]` de B1 (`INFORME-PRIVACY-TEXTOS-LEGALES-B1-v1.0.md`). C3 fija los roles de `PUT /privacy/purposes` (D-B1-1, §8). Ninguna otra cláusula cambia.

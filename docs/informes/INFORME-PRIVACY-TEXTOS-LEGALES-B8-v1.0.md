@@ -1,5 +1,6 @@
 # Informe — Privacy · Textos legales · B8
 
+**Versión:** 1.0  
 **Fecha:** 2026-10-30  
 **Agente:** `fe-platform`  
 **Estado:** GO

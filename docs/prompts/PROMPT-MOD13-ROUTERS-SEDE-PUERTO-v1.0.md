@@ -6,6 +6,7 @@
 - **Fase:** addendum §6 del plan de retiro de la columna LAN: corrección del consumidor del puerto
 - **Versión:** 1.0
 - **Fecha:** 2026-10-29
+- **Estado:** Emitido
 - **Generado por:** AI-EM-ARCH
 - **Agente destinatario:** `sr-backend`
 - **Plantilla:** `docs/prompts/TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md` v1.2 (en revisión)
