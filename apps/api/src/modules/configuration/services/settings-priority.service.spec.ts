@@ -25,6 +25,7 @@ describe('SettingsPriorityService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     tenantPort.getSnapshot.mockResolvedValue({
+      timezone: 'America/Bogota',
       mfaRequiredAll: true,
       brandingCustomized: true,
     });

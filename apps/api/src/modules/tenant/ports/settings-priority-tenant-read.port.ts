@@ -1,4 +1,5 @@
 export interface SettingsPriorityTenantSnapshot {
+  timezone: string;
   mfaRequiredAll: boolean;
   brandingCustomized: boolean;
 }

@@ -44,6 +44,7 @@ export class SettingsPriorityTenantReadAdapter extends SettingsPriorityTenantRea
     ]);
 
     return {
+      timezone: settings.timezone,
       mfaRequiredAll: settings.features.mfa_required_all,
       brandingCustomized: BRANDING_FIELDS.some((field) => {
         const value = tenant[field];

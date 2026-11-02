@@ -11,6 +11,7 @@ describe('SettingsPriorityTenantReadAdapter', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     tenantService.getTenantSelfSettings.mockResolvedValue({
+      timezone: 'America/Bogota',
       features: { mfa_required_all: true },
     });
     tenantService.getTenantSelf.mockResolvedValue({
@@ -41,6 +42,7 @@ describe('SettingsPriorityTenantReadAdapter', () => {
     await expect(
       adapter.getSnapshot({ tenantId: '11111111-1111-4111-8111-111111111111' }),
     ).resolves.toEqual({
+      timezone: 'America/Bogota',
       mfaRequiredAll: true,
       brandingCustomized: false,
     });

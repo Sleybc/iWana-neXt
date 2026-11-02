@@ -9,6 +9,7 @@ import {
 import { evaluateSettingsPriority } from './settings-priority-evaluator';
 
 const readyTenant = {
+  timezone: 'America/Bogota',
   mfaRequiredAll: true,
   brandingCustomized: true,
 };
@@ -27,7 +28,7 @@ describe('evaluateSettingsPriority', () => {
   it.each([
     {
       name: 'política MFA desactivada',
-      input: { tenant: { ...readyTenant, mfaRequiredAll: false } },
+      input: { tenant: { ...readyTenant, timezone: 'America/Bogota', mfaRequiredAll: false } },
       expected: {
         key: SettingsPriorityKey.MFA_POLICY_DISABLED,
         level: SettingsPriorityLevel.HIGH,
@@ -93,7 +94,7 @@ describe('evaluateSettingsPriority', () => {
 
   it('respeta la precedencia y elige MFA antes que sede, calendario y marca', () => {
     const result = evaluateSettingsPriority({
-      tenant: { mfaRequiredAll: false, brandingCustomized: false },
+      tenant: { timezone: 'America/Bogota', mfaRequiredAll: false, brandingCustomized: false },
       users: { activeUsers: 3, mfaEnabledActiveUsers: 0 },
       organization: { activeOrganizationSites: 0, validOpenCompanyDays: 0 },
       unknownSources: [],
