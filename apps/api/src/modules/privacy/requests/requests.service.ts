@@ -1007,11 +1007,6 @@ export class PrivacyRequestsService {
       throw erasureConfirmationRequired();
     }
     if (!current['identity_verified_at']) throw erasureIdentityRequired();
-    if (partyId && (await this.hasConservationDuty(manager, partyId))) {
-      throw new ConflictException(
-        'La solicitud requiere una decisión de no procedencia por deber de conservación.',
-      );
-    }
     const target = {
       requestId: id,
       partyId,
@@ -1019,6 +1014,11 @@ export class PrivacyRequestsService {
     };
     const port = this.requireErasurePort();
     const plan = await port.plan(target, { manager });
+    if (partyId && (await this.hasConservationDuty(manager, partyId))) {
+      throw new ConflictException(
+        'La solicitud requiere una decisión de no procedencia por deber de conservación.',
+      );
+    }
     if (plan.candidateExpedienteIds.length > 500) throw erasureTooManyCandidates();
     if (plan.blockers.includes('UNRECONCILED_TITULAR')) throw erasureUnreconciledTitular();
     if (plan.blockers.includes('ACTIVE_USER_ACCOUNT')) throw erasureActiveAccount();
@@ -1107,7 +1107,7 @@ export class PrivacyRequestsService {
     partyId: string | null,
   ): Promise<{ applies: boolean; openContract: boolean; retention: boolean }> {
     if (!partyId) return { applies: false, openContract: false, retention: false };
-    const standing = await this.standingPort.standing(partyId);
+    const standing = await this.standingPort.standing(partyId, { manager });
     const openContract = standing.openContractIds.length > 0;
     if (!standing.lastTerminatedAt)
       return { applies: openContract, openContract, retention: false };

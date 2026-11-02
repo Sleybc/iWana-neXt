@@ -1,4 +1,7 @@
 import { ExpedienteStatus, SubscriberStatus } from '@iwana/shared';
+import type { ProvisioningReadinessSummary } from '@iwana/shared';
+
+export type { ProvisioningReadinessSummary } from '@iwana/shared';
 
 export const PROVISIONING_READINESS_STATUS = {
   PENDIENTE_DE_DATOS: 'PENDIENTE_DE_DATOS',
@@ -8,17 +11,7 @@ export const PROVISIONING_READINESS_STATUS = {
   APROVISIONADO: 'APROVISIONADO',
 } as const;
 
-export type ProvisioningReadinessStatus =
-  (typeof PROVISIONING_READINESS_STATUS)[keyof typeof PROVISIONING_READINESS_STATUS];
-
-export interface ProvisioningReadinessSummary {
-  status: ProvisioningReadinessStatus;
-  title: string;
-  message: string;
-  canProvision: boolean;
-  retryable: boolean;
-  missingRequirements: string[];
-}
+export type ProvisioningReadinessStatus = ProvisioningReadinessSummary['status'];
 
 export interface EvaluateProvisioningReadinessInput {
   expedienteStatus: ExpedienteStatus | null;

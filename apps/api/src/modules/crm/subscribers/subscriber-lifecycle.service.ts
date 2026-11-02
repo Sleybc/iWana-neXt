@@ -32,6 +32,7 @@ import { AuditService } from '../../audit/audit.service';
 import { buildPageMeta, clampLimit, clampPage } from '../../../common/pagination';
 import { ContractStatus } from '../enums/contract-status.enum';
 import { deriveSubscriberStatusFromContracts } from './subscriber-lifecycle.util';
+import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 import { AssetLoanReadPort } from '../../inventory/ports/asset-loan-read.port';
 import {
   EXECUTION_ORDER_READ_PORT,
@@ -42,6 +43,7 @@ interface SubscriberRow {
   id: string;
   status: SubscriberStatus;
   activated_at: Date | string | null;
+  anonymized_at: Date | string | null;
 }
 
 interface ContractRow {
@@ -286,7 +288,7 @@ export class SubscriberLifecycleService {
       for (const draft of drafts) {
         await qr.query(
           `UPDATE contracts
-              SET deleted_at = now(), updated_at = now()
+              SET deleted_at = now(), updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')
             WHERE id = $1 AND subscriber_id = $2 AND tenant_id = $3
               AND status::text = 'DRAFT' AND deleted_at IS NULL`,
           [draft.id, subscriberId, tenantId],
@@ -570,7 +572,7 @@ export class SubscriberLifecycleService {
     tenantId: string,
   ): Promise<SubscriberRow> {
     const rows = (await qr.query(
-      `SELECT id, status::text AS status, activated_at
+      `SELECT id, status::text AS status, activated_at, anonymized_at
          FROM subscribers
         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
         FOR UPDATE`,
@@ -578,6 +580,7 @@ export class SubscriberLifecycleService {
     )) as SubscriberRow[];
     const subscriber = rows[0];
     if (!subscriber) throw new NotFoundException('Suscriptor no encontrado.');
+    if (subscriber.anonymized_at != null) throw titularAnonymizedConflict();
     return subscriber;
   }
 
@@ -609,7 +612,7 @@ export class SubscriberLifecycleService {
     const fromStatus = contract.status;
     await qr.query(
       `UPDATE contracts
-          SET status = $1, status_reason_code = $2, status_changed_at = now(), updated_at = now()
+          SET status = $1, status_reason_code = $2, status_changed_at = now(), updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')
         WHERE id = $3 AND subscriber_id = $4 AND tenant_id = $5 AND deleted_at IS NULL`,
       [toStatus, command.reasonCode, contract.id, subscriberId, tenantId],
     );

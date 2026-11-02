@@ -93,8 +93,11 @@ export class ContractResponseDto {
   @ApiPropertyOptional({ nullable: true })
   paymentMethod: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiProperty({ nullable: true, deprecated: true })
   billingCycle: string | null;
+
+  @ApiProperty({ minimum: 1, maximum: 28, nullable: true })
+  billingCycleDay: number | null;
 
   @ApiPropertyOptional({ nullable: true })
   fiscalName: string | null;

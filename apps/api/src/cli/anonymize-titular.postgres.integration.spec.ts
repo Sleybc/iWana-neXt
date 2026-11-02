@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
 import { decryptAes256Gcm, encryptAes256Gcm } from '../common/crypto/aes-gcm.util';
 import { hmacPii } from '../common/crypto/pii-hash-key.util';
-import { anonymizeTitularInTenantSchema } from './anonymize-titular';
+import { anonymizeTitularInTenantSchema, verifyAnonymizedTenant } from './anonymize-titular';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -497,6 +497,31 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         privacyMediaAssets: 0,
         stratumMediaAssets: 0,
       });
+
+      const cleanVerification = await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS);
+      expect(cleanVerification).toMatchObject({
+        titularesChecked: 1,
+        markedSubscribers: 0,
+        markedExpedientes: 1,
+        residualFields: 0,
+        findings: [],
+      });
+
+      await dataSource.query(
+        `UPDATE ${q}.expediente_records SET full_name = 'synthetic residual fixture' WHERE id = $1`,
+        [fixture.expedienteId],
+      );
+      const residualVerification = await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS);
+      expect(residualVerification.residualFields).toBeGreaterThan(0);
+      expect(residualVerification.findings).toEqual([
+        expect.objectContaining({
+          titularIds: [fixture.expedienteId],
+          tables: expect.arrayContaining([
+            expect.objectContaining({ table: 'expediente_records', residualFields: 1 }),
+          ]),
+        }),
+      ]);
+      expect(JSON.stringify(residualVerification)).not.toContain('synthetic residual fixture');
     } finally {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
     }

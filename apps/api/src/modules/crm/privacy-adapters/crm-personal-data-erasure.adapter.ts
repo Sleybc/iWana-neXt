@@ -110,6 +110,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     ctx: { manager: EntityManager },
   ): Promise<{ categories: ErasureCategory[]; changedRows: number }> {
     const qr = this.requireTransaction(ctx.manager);
+    await qr.query(`SELECT set_config('iwana.titular_erasure', 'on', true)`);
     const resolved = await this.resolve(input, qr);
     if (!this.sameSet(input.expedienteIds, resolved.candidateExpedienteIds)) {
       throw new ConflictException({

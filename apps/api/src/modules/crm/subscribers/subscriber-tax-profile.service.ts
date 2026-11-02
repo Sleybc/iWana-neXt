@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import {
   TaxApplicationSnapshot,
   TaxAssignmentRateSource,
@@ -8,6 +8,7 @@ import {
   TaxCategory,
   TaxProfileStatus,
   TaxTreatment,
+  AuditAction,
 } from '@iwana/shared';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
 import { SubscriberTaxProfile } from './entities/subscriber-tax-profile.entity';
@@ -23,6 +24,8 @@ import {
   TaxAssignmentSnapshotDto,
 } from './dto/subscriber-tax-profile-snapshot.dto';
 import { UpsertTaxAssignmentDto } from './dto/upsert-tax-assignment.dto';
+import { AuditService } from '../../audit/audit.service';
+import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
 /**
  * Servicio de perfil tributario del suscriptor.
@@ -49,6 +52,7 @@ export class SubscriberTaxProfileService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly taxCatalogPort: TaxCatalogReadPort,
     private readonly taxApplicationPort: ITaxApplicationReadPort,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -59,12 +63,7 @@ export class SubscriberTaxProfileService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const subscriber = await qr.manager.findOne(Subscriber, {
-        where: { id: subscriberId, tenantId },
-      });
-      if (!subscriber) {
-        throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado`);
-      }
+      const subscriber = await this.lockSubscriberForMutation(qr, subscriberId, tenantId);
 
       let profile = await qr.manager.findOne(SubscriberTaxProfile, {
         where: { subscriberId, tenantId },
@@ -114,6 +113,7 @@ export class SubscriberTaxProfileService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockSubscriberForMutation(qr, subscriberId, tenantId);
       const profile = await qr.manager.findOne(SubscriberTaxProfile, {
         where: { subscriberId, tenantId },
         relations: ['assignments'],
@@ -213,6 +213,7 @@ export class SubscriberTaxProfileService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockSubscriberForMutation(qr, subscriberId, tenantId);
       const profile = await qr.manager.findOne(SubscriberTaxProfile, {
         where: { subscriberId, tenantId },
       });
@@ -273,12 +274,7 @@ export class SubscriberTaxProfileService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const subscriber = await qr.manager.findOne(Subscriber, {
-        where: { id: subscriberId, tenantId },
-      });
-      if (!subscriber) {
-        throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado`);
-      }
+      const subscriber = await this.lockSubscriberForMutation(qr, subscriberId, tenantId);
 
       const profile = await qr.manager.findOne(SubscriberTaxProfile, {
         where: { subscriberId, tenantId },
@@ -355,11 +351,84 @@ export class SubscriberTaxProfileService {
     }
   }
 
+  /**
+   * Declara revisado el perfil cuando no aplican otros tributos (o ya están todos resueltos).
+   * Solo cambia el estado del perfil: no crea ni modifica asignaciones. Rechaza si quedan
+   * tributos distintos de IVA sugeridos sin confirmar, porque esos piden decisión por tributo.
+   * Idempotente: un perfil ya configurado se devuelve sin cambios.
+   */
+  async confirmProfile(
+    subscriberId: string,
+    userId: string,
+  ): Promise<SubscriberTaxProfileSnapshotDto> {
+    const { tenantId, schemaName } = TenantContext.getOrThrow();
+
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockSubscriberForMutation(qr, subscriberId, tenantId);
+      const profile = await qr.manager.findOne(SubscriberTaxProfile, {
+        where: { subscriberId, tenantId },
+        relations: ['assignments'],
+      });
+      if (!profile) {
+        throw new NotFoundException(
+          `Perfil tributario para suscriptor ${subscriberId} no encontrado. Llame primero al endpoint GET tax-profile.`,
+        );
+      }
+
+      const snapshot = await this._toSnapshot(profile);
+      const pending = snapshot.assignments.filter(
+        (assignment) =>
+          assignment.taxCategory !== TaxCategory.VAT &&
+          assignment.status === TaxAssignmentStatus.SUGGESTED,
+      );
+      if (pending.length > 0) {
+        throw new ConflictException({
+          code: 'TAX_PROFILE_HAS_PENDING_ASSIGNMENTS',
+          message: 'Confirma o ajusta los tributos sugeridos antes de dar el perfil por revisado.',
+        });
+      }
+
+      if (profile.profileStatus === TaxProfileStatus.CONFIGURED) return snapshot;
+
+      profile.profileStatus = TaxProfileStatus.CONFIGURED;
+      profile.confirmedAt = new Date();
+      profile.confirmedBy = userId;
+      await qr.manager.save(SubscriberTaxProfile, profile);
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: 'SubscriberTaxProfile',
+          entityId: profile.id,
+          userId,
+          oldValue: { profileStatus: snapshot.profileStatus },
+          newValue: { profileStatus: profile.profileStatus },
+        },
+        qr.manager,
+      );
+      this.logger.log(`Perfil tributario confirmado [profile=${profile.id}]`);
+      return this._toSnapshot(profile);
+    });
+  }
+
   private _mapSnapshotTreatment(treatment: TaxApplicationSnapshot['treatment']): TaxTreatment {
     if (treatment === TaxTreatment.EXEMPT) return TaxTreatment.EXEMPT;
     if (treatment === TaxTreatment.EXCLUDED) return TaxTreatment.EXCLUDED;
     if (treatment === TaxTreatment.FIXED) return TaxTreatment.FIXED;
     return TaxTreatment.STANDARD;
+  }
+
+  private async lockSubscriberForMutation(
+    qr: QueryRunner,
+    subscriberId: string,
+    tenantId: string,
+  ): Promise<Subscriber> {
+    const subscriber = await qr.manager.findOne(Subscriber, {
+      where: { id: subscriberId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!subscriber) throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado`);
+    if (subscriber.anonymizedAt != null) throw titularAnonymizedConflict();
+    return subscriber;
   }
 
   private async _toSnapshot(

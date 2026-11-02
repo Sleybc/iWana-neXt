@@ -210,6 +210,7 @@ async function redactSnapshots(
   ids: string[],
   snapshotColumns: string[],
   mode: 'dry-run' | 'apply',
+  updatedAtAdvanced: Set<string>,
 ): Promise<{ selected: number; changed: number; residual: number }> {
   if (ids.length === 0 || snapshotColumns.length === 0) {
     return { selected: 0, changed: 0, residual: 0 };
@@ -219,6 +220,7 @@ async function redactSnapshots(
     `SELECT ${projection} FROM "${table}" WHERE id = ANY($1::uuid[]) FOR UPDATE`,
     [ids],
   )) as Array<Record<string, unknown>>;
+  const columns = await readTenantColumns(qr);
   let changed = 0;
   let residual = 0;
   for (const row of rows) {
@@ -230,11 +232,15 @@ async function redactSnapshots(
       if (result.changed) {
         rowChanged = true;
         if (mode === 'apply') {
-          await qr.query(
-            `UPDATE "${table}" SET "${column}" = $2::jsonb
-              WHERE id = $1 AND "${column}" IS DISTINCT FROM $2::jsonb`,
+          const versionKey = `${table}:${rowId}`;
+          const shouldAdvanceUpdatedAt =
+            columnOf(columns, table, 'updated_at') && !updatedAtAdvanced.has(versionKey);
+          const updated = (await qr.query(
+            `UPDATE "${table}" SET "${column}" = $2::jsonb${shouldAdvanceUpdatedAt ? ", updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')" : ''}
+              WHERE id = $1 AND "${column}" IS DISTINCT FROM $2::jsonb RETURNING id`,
             [rowId, JSON.stringify(result.value)],
-          );
+          )) as Array<{ id: string }>;
+          if (shouldAdvanceUpdatedAt && updated[0]) updatedAtAdvanced.add(versionKey);
         }
       }
       residual += result.residual;
@@ -323,7 +329,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       return [];
     }
     const rows = (await qr.query(
-      `SELECT id::text FROM subscribers WHERE party_id = $1 ORDER BY id::text FOR SHARE`,
+      `SELECT id::text FROM subscribers WHERE party_id = $1 ORDER BY id::text FOR UPDATE`,
       [partyId],
     )) as Array<{ id: string }>;
     return rows.map((row) => row.id);
@@ -349,6 +355,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
     const columns = await readTenantColumns(qr);
     const keys = scope.cryptoKeys ?? loadErasureKeys(this.config);
     const results: TitularErasureTableResult[] = [];
+    const updatedAtAdvanced = new Set<string>();
     const idSets: Record<string, string[]> = {
       expediente_records: scope.expedienteIds,
       subscribers: scope.subscriberIds,
@@ -362,6 +369,8 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
         columns,
         keys,
         mode,
+        undefined,
+        updatedAtAdvanced,
       );
       results.push(
         fieldResult(table, table === 'subscribers' ? 'IDENTIFICACION' : 'IDENTIFICACION', result),
@@ -375,6 +384,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
           scope.expedienteIds,
           scope.requestId,
           columns,
+          updatedAtAdvanced,
         );
         if (marker.residual > 0)
           throw new Error('No se pudo verificar la marca de anonimización de expedientes.');
@@ -388,6 +398,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
           scope.subscriberIds,
           scope.requestId,
           columns,
+          updatedAtAdvanced,
         );
         if (marker.residual > 0)
           throw new Error('No se pudo verificar la marca de anonimización de suscriptores.');
@@ -414,6 +425,8 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
             columns,
             keys,
             mode,
+            undefined,
+            updatedAtAdvanced,
           ),
         ),
       );
@@ -429,7 +442,17 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
         fieldResult(
           'contracts',
           category,
-          await anonymizeConfiguredTable(qr, 'contracts', contracts, rules, columns, keys, mode),
+          await anonymizeConfiguredTable(
+            qr,
+            'contracts',
+            contracts,
+            rules,
+            columns,
+            keys,
+            mode,
+            undefined,
+            updatedAtAdvanced,
+          ),
         ),
       );
     }
@@ -440,7 +463,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       fieldResult(
         'contracts',
         'COMERCIAL',
-        await redactSnapshots(qr, 'contracts', contracts, contractColumns, mode),
+        await redactSnapshots(qr, 'contracts', contracts, contractColumns, mode, updatedAtAdvanced),
       ),
     );
 
@@ -455,6 +478,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
           quotes,
           columnOf(columns, 'quotes', 'plan_snapshot_json') ? ['plan_snapshot_json'] : [],
           mode,
+          updatedAtAdvanced,
         ),
       ),
     );

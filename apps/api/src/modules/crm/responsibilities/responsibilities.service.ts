@@ -6,6 +6,7 @@ import { clampPage, clampLimit } from '../../../common/pagination';
 import { OperationalResponsibilityHistory } from './entities/operational-responsibility-history.entity';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { UpdateResponsibilityDto } from './dto';
+import { titularAnonymizedConflict } from '../subscribers/guards/titular-anonymized-conflict';
 
 export interface ResponsibilityActor {
   userId: string | null;
@@ -74,6 +75,19 @@ export class ResponsibilitiesService {
     const now = new Date();
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // La marca se relee bajo bloqueo antes de cualquier lectura de la ficha,
+      // incluso cuando faltan las columnas de responsabilidad del schema legacy.
+      const rows = (await qr.manager.query(
+        `SELECT id, anonymized_at FROM expediente_records
+         WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+        [expedienteId, tenantId],
+      )) as Array<{ id: string; anonymized_at: Date | string | null }>;
+      const locked = rows[0];
+      if (!locked) {
+        throw new NotFoundException(`Expediente ${expedienteId} no encontrado`);
+      }
+      if (locked.anonymized_at != null) throw titularAnonymizedConflict();
+
       const entity = await this.findResponsibilitySource(qr, expedienteId, schemaName);
       if (!entity) {
         throw new NotFoundException(`Expediente ${expedienteId} no encontrado`);

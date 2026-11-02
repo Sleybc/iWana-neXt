@@ -27,6 +27,8 @@ import { StatusTransitionService } from '../expedientes/status-transition.servic
 import { CompletenessCalculator } from '../expedientes/completeness-calculator.service';
 import { PipelineRecommendationService } from '../expedientes/pipeline-recommendation.service';
 import { ExpedienteDetailBootstrapService } from '../expedientes/expediente-detail-bootstrap.service';
+import { SubscriberTaxController } from '../subscribers/subscriber-tax.controller';
+import { SubscriberTaxProfileService } from '../subscribers/subscriber-tax-profile.service';
 
 const TEST_UUID = '7b9c5f44-4fc7-4d10-94f0-6af63c2e15bb';
 const TEST_PERMISSION_SET = [
@@ -90,41 +92,53 @@ function mutations(): Record<string, jest.Mock> {
     uploadStratumEvidence: jest.fn(),
     removeStratumEvidence: jest.fn(),
     create: jest.fn(),
+    saveAssignments: jest.fn(),
+    updateAssignment: jest.fn(),
+    suggestVatForSubscriber: jest.fn(),
   };
 }
 
 describe('CRM blocked titular mutation guard over HTTP', () => {
   let app: INestApplication;
   let mutationSpies: Record<string, jest.Mock>;
+  let titularAnonymized = false;
+
+  const anonymizedConflict = () =>
+    new ConflictException({
+      code: 'PRIVACY_TITULAR_ANONYMIZED',
+      message: 'Este titular fue anonimizado; sus registros ya no se pueden modificar.',
+    });
+
+  const blockedConflict = () =>
+    new ConflictException({
+      code: 'PRIVACY_DATA_BLOCKED',
+      message: 'Los datos de este titular están bloqueados para edición.',
+    });
 
   beforeAll(async () => {
     mutationSpies = mutations();
-    const subscriber = {
-      id: TEST_UUID,
-      partyId: 'party-test',
-      anonymizedAt: null,
-    };
     const subscriberService = {
-      findById: jest.fn().mockResolvedValue(subscriber),
+      findById: jest.fn().mockImplementation(async () => ({
+        id: TEST_UUID,
+        partyId: 'party-test',
+        anonymizedAt: titularAnonymized ? new Date('2026-01-01T00:00:00.000Z') : null,
+      })),
       ...mutationSpies,
     };
     const contractService = {
-      assertContractNotBlocked: jest.fn().mockRejectedValue(
-        new ConflictException({
-          code: 'PRIVACY_DATA_BLOCKED',
-          message: 'Los datos de este titular están bloqueados para edición.',
-        }),
-      ),
-      assertSubscriberNotBlockedForMutation: jest.fn().mockRejectedValue(
-        new ConflictException({
-          code: 'PRIVACY_DATA_BLOCKED',
-          message: 'Los datos de este titular están bloqueados para edición.',
-        }),
-      ),
+      assertContractNotBlocked: jest.fn().mockImplementation(async () => {
+        throw titularAnonymized ? anonymizedConflict() : blockedConflict();
+      }),
+      assertSubscriberNotBlockedForMutation: jest.fn().mockImplementation(async () => {
+        throw titularAnonymized ? anonymizedConflict() : blockedConflict();
+      }),
       ...mutationSpies,
     };
     const expedienteService = {
-      findById: jest.fn().mockResolvedValue({ id: TEST_UUID, anonymizedAt: null }),
+      findById: jest.fn().mockImplementation(async () => ({
+        id: TEST_UUID,
+        anonymizedAt: titularAnonymized ? new Date('2026-01-01T00:00:00.000Z') : null,
+      })),
       getPrivacyMarksForExpediente: jest.fn().mockResolvedValue(['DATOS_BLOQUEADOS']),
       ...mutationSpies,
     };
@@ -140,7 +154,12 @@ describe('CRM blocked titular mutation guard over HTTP', () => {
       }),
     };
     const moduleRef = await Test.createTestingModule({
-      controllers: [SubscribersController, ContractsController, ExpedientesController],
+      controllers: [
+        SubscribersController,
+        SubscriberTaxController,
+        ContractsController,
+        ExpedientesController,
+      ],
       providers: [
         { provide: Reflector, useValue: new Reflector() },
         {
@@ -148,6 +167,7 @@ describe('CRM blocked titular mutation guard over HTTP', () => {
           useValue: effectivePermissionsService,
         },
         { provide: SubscribersService, useValue: subscriberService },
+        { provide: SubscriberTaxProfileService, useValue: mutationSpies },
         { provide: SubscriberLifecycleService, useValue: {} },
         { provide: ContractsService, useValue: contractService },
         { provide: ExpedienteService, useValue: expedienteService },
@@ -180,6 +200,11 @@ describe('CRM blocked titular mutation guard over HTTP', () => {
     await app.close();
   });
 
+  beforeEach(() => {
+    titularAnonymized = false;
+    for (const spy of Object.values(mutationSpies)) spy.mockClear();
+  });
+
   it.each([
     ['transición de estado', 'patch', `/crm/expedientes/${TEST_UUID}/status`],
     ['borrado', 'delete', `/crm/contracts/${TEST_UUID}`],
@@ -210,6 +235,57 @@ describe('CRM blocked titular mutation guard over HTTP', () => {
         expect(response.body.code).toBe('PRIVACY_DATA_BLOCKED');
       }
 
+      for (const spy of Object.values(mutationSpies)) expect(spy).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      'subscriber',
+      'patch',
+      `/crm/subscribers/${TEST_UUID}`,
+      UserRole.SALES,
+      { firstName: 'Nuevo' },
+    ],
+    [
+      'tax profile',
+      'put',
+      `/crm/subscribers/${TEST_UUID}/tax-profile/assignments`,
+      UserRole.ACCOUNTANT,
+      { assignments: [] },
+    ],
+    [
+      'expediente',
+      'patch',
+      `/crm/expedientes/${TEST_UUID}/status`,
+      UserRole.SALES,
+      { targetStatus: 'DESCARTADO' },
+    ],
+    ['contract', 'patch', `/crm/contracts/${TEST_UUID}`, UserRole.SALES, { alias: 'Nuevo' }],
+    [
+      'contract creation by body subscriberId',
+      'post',
+      '/crm/contracts',
+      UserRole.SALES,
+      { subscriberId: TEST_UUID },
+    ],
+  ])(
+    '%s rejects anonymized titular mutations with the domain code',
+    async (_family, method, path, role, body) => {
+      titularAnonymized = true;
+      const http = request(app.getHttpServer());
+      const call =
+        method === 'put' ? http.put(path) : method === 'post' ? http.post(path) : http.patch(path);
+      const response = await call
+        .set('x-test-role', role)
+        .set('x-test-isolate-role', 'true')
+        .send(body);
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        code: 'PRIVACY_TITULAR_ANONYMIZED',
+        message: 'Este titular fue anonimizado; sus registros ya no se pueden modificar.',
+      });
       for (const spy of Object.values(mutationSpies)) expect(spy).not.toHaveBeenCalled();
     },
   );

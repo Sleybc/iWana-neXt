@@ -32,6 +32,7 @@ import {
 import { hmacPiiValue } from '@iwana/db';
 import { decryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
 import { ContractsController } from '../contracts.controller';
+import { BillingCyclesController } from '../billing-cycles.controller';
 import { MediaController } from '../../../media/media.controller';
 import { ContractsService } from '../contracts.service';
 import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
@@ -165,6 +166,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     support?: string | null;
     personType?: PersonType;
     status?: ContractStatus;
+    billingCycleDay?: number | null;
   }): Promise<string> {
     const { id: subscriberId } = await insertSubscriber({ personType: input.personType });
     const contractId = randomUUID();
@@ -192,6 +194,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
         additionalServiceIds: [],
         paymentMethod: null,
         billingCycle: null,
+        billingCycleDay: input.billingCycleDay === undefined ? 1 : input.billingCycleDay,
         fiscalName: null,
         fiscalDocument: null,
         fiscalAddress: null,
@@ -244,12 +247,47 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     await dataSource.query(
       'CREATE TABLE ' + target + '.contracts (LIKE ' + source + '.contracts INCLUDING ALL)',
     );
+    await dataSource.query(
+      'CREATE TABLE ' +
+        target +
+        '.expediente_records (LIKE ' +
+        source +
+        '.expediente_records INCLUDING ALL)',
+    );
     // La 145 aporta este índice en el origen migrado; se conserva con
     // `IF NOT EXISTS` para el origen sin migrar (lo exige el test de 23505).
     await dataSource.query(
       'CREATE UNIQUE INDEX IF NOT EXISTS uq_contracts_stratum_evidence ON ' +
         target +
         '.contracts (stratum_evidence_media_id) WHERE stratum_evidence_media_id IS NOT NULL',
+    );
+    await dataSource.query(
+      'ALTER TABLE ' +
+        target +
+        '.contracts DROP CONSTRAINT IF EXISTS fk_contracts_billing_cycle_day',
+    );
+    await dataSource.query(
+      'DROP INDEX IF EXISTS ' + target + '.idx_contracts_status_billing_cycle_day',
+    );
+    await dataSource.query(
+      'ALTER TABLE ' + target + '.contracts DROP COLUMN IF EXISTS billing_cycle_day',
+    );
+    await dataSource.query(
+      'CREATE TABLE ' +
+        target +
+        '.crm_billing_cycles (cycle_day smallint PRIMARY KEY, cutoff_day smallint NOT NULL, active boolean NOT NULL DEFAULT true)',
+    );
+    await dataSource.query(
+      'INSERT INTO ' +
+        target +
+        '.crm_billing_cycles (cycle_day, cutoff_day) VALUES (1, 15), (15, 30)',
+    );
+    await dataSource.query(
+      'ALTER TABLE ' +
+        target +
+        '.contracts ADD COLUMN billing_cycle_day smallint NULL REFERENCES ' +
+        target +
+        '.crm_billing_cycles (cycle_day)',
     );
 
     const planPort = {
@@ -267,7 +305,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
       }),
     };
     const moduleRef = await Test.createTestingModule({
-      controllers: [ContractsController, MediaController],
+      controllers: [ContractsController, BillingCyclesController, MediaController],
       providers: [
         ContractsService,
         {
@@ -436,6 +474,317 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     await expect(activate(id)).rejects.toMatchObject({ status: 422 });
   });
 
+  it('CA-CF-02: no activa un contrato sin ciclo y conserva DRAFT', async () => {
+    const id = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      billingCycleDay: null,
+    });
+    const response = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer()).post(`/api/v1/crm/contracts/${id}/activate`),
+    );
+    expect(response.status).toBe(422);
+    expect(response.body.code).toBe('BILLING_CYCLE_REQUIRED');
+    const rows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT status::text AS status, billing_cycle_day FROM contracts WHERE id = $1', [
+        id,
+      ]),
+    )) as Array<{ status: string; billing_cycle_day: number | null }>;
+    expect(rows[0]).toEqual({ status: ContractStatus.DRAFT, billing_cycle_day: null });
+  });
+
+  it('D-RER-3: relee bajo pessimistic_write y rechaza uso real invalido aunque la entidad previa sea valida', async () => {
+    const id = await createContract({ usage: ServiceUsage.NON_RESIDENTIAL, stratum: null });
+    const service = app.get(ContractsService);
+    const contract = await TenantContext.run(tenantContext(), () => service.findOne(id));
+    const staleContract = Object.assign(new Contract(), contract, {
+      updatedAt: new Date(contract.updatedAt.getTime() - 1_000),
+    });
+    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('UPDATE contracts SET service_usage = NULL WHERE id = $1', [id]),
+    );
+    const findOne = jest.spyOn(service, 'findOne').mockResolvedValueOnce(staleContract);
+
+    try {
+      await expect(activate(id)).rejects.toMatchObject({
+        status: 422,
+      });
+    } finally {
+      findOne.mockRestore();
+    }
+
+    const [persisted] = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        'SELECT status::text AS status, updated_at AS "updatedAt" FROM contracts WHERE id = $1',
+        [id],
+      ),
+    )) as Array<{ status: ContractStatus; updatedAt: Date }>;
+    const auditRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT id FROM audit_logs WHERE entity_id = $1 AND entity_type = $2', [
+        id,
+        'Contract',
+      ]),
+    )) as Array<{ id: string }>;
+    expect(persisted).toEqual({ status: ContractStatus.DRAFT, updatedAt: contract.updatedAt });
+    expect(auditRows).toEqual([]);
+  });
+
+  it('CA-CF-03: guarda y audita el ciclo al activar en la misma operación', async () => {
+    const id = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      billingCycleDay: null,
+    });
+    const response = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer())
+        .post(`/api/v1/crm/contracts/${id}/activate`)
+        .send({ billingCycleDay: 15 }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      status: ContractStatus.ACTIVE,
+      billingCycleDay: 15,
+    });
+    const rows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('SELECT billing_cycle_day FROM contracts WHERE id = $1', [id]),
+    )) as Array<{ billing_cycle_day: number }>;
+    const auditRows = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(
+        'SELECT old_value, new_value FROM audit_logs WHERE entity_id = $1 AND entity_type = $2',
+        [id, 'Contract'],
+      ),
+    )) as Array<{ old_value: unknown; new_value: unknown }>;
+    expect(rows[0]?.billing_cycle_day).toBe(15);
+    expect(JSON.stringify(auditRows[0]?.new_value)).toContain('"billingCycleDay":15');
+  });
+
+  it('CA-CF-04: rechaza ciclo inexistente o inactivo al activar', async () => {
+    const nonexistentId = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      billingCycleDay: null,
+    });
+    const invalidResponse = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer())
+        .post(`/api/v1/crm/contracts/${nonexistentId}/activate`)
+        .send({ billingCycleDay: 7 }),
+    );
+    expect(invalidResponse.status).toBe(422);
+    expect(invalidResponse.body.code).toBe('BILLING_CYCLE_INVALID');
+
+    const inactiveId = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      billingCycleDay: null,
+    });
+    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('UPDATE crm_billing_cycles SET active = false WHERE cycle_day = $1', [15]),
+    );
+    const inactiveResponse = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer())
+        .post(`/api/v1/crm/contracts/${inactiveId}/activate`)
+        .send({ billingCycleDay: 15 }),
+    );
+    await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query('UPDATE crm_billing_cycles SET active = true WHERE cycle_day = $1', [15]),
+    );
+    expect(inactiveResponse.status).toBe(422);
+    expect(inactiveResponse.body.code).toBe('BILLING_CYCLE_INVALID');
+  });
+
+  it('D-RER-3: crear con suscriptor inexistente devuelve 404 antes de validar el ciclo', async () => {
+    const service = app.get(ContractsService);
+    await expect(
+      TenantContext.run(tenantContext(), () =>
+        service.create(
+          {
+            subscriberId: randomUUID(),
+            planId: 'plan-integration-fixed',
+            planSnapshotJson: { id: 'plan-integration-fixed' },
+            billingCycleDay: 7,
+          },
+          actor.sub,
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('valida el catálogo activo al crear, editar y convertir un contrato', async () => {
+    const service = app.get(ContractsService);
+    const { id: healthySubscriberId } = await insertSubscriber({});
+    const invalidCreate = TenantContext.run(tenantContext(), () =>
+      service.create(
+        {
+          subscriberId: healthySubscriberId,
+          planId: 'plan-integration-fixed',
+          planSnapshotJson: { id: 'plan-integration-fixed' },
+          billingCycleDay: 7,
+        },
+        actor.sub,
+      ),
+    );
+    await expect(invalidCreate).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'BILLING_CYCLE_INVALID' },
+    });
+
+    const id = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+    });
+    await expect(
+      TenantContext.run(tenantContext(), () =>
+        service.update(id, { billingCycleDay: 7 }, actor.sub),
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'BILLING_CYCLE_INVALID' },
+    });
+    const healthyExpedienteId = randomUUID();
+    await runInTenantSchema(dataSource, testSchemaName, async (qr) => {
+      await qr.query(
+        `INSERT INTO expediente_records (id, tenant_id, full_name, interested_plan_id, created_by)
+        VALUES ($1, $2, 'Expediente sintetico', 'plan-integration-fixed', $3)`,
+        [healthyExpedienteId, tenantId, actor.sub],
+      );
+      await qr.query('UPDATE subscribers SET expediente_id = $2 WHERE id = $1', [
+        healthySubscriberId,
+        healthyExpedienteId,
+      ]);
+    });
+    await expect(
+      TenantContext.run(tenantContext(), () =>
+        service.createFromExpediente(healthySubscriberId, { billingCycleDay: 7 }, actor.sub),
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'BILLING_CYCLE_INVALID' },
+    });
+  });
+
+  it('D-RER-3: convertir desde un suscriptor inexistente responde 404 antes del ciclo inv�lido', async () => {
+    await expect(
+      TenantContext.run(tenantContext(), () =>
+        app
+          .get(ContractsService)
+          .createFromExpediente(randomUUID(), { billingCycleDay: 7 }, actor.sub),
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('GET /crm/billing-cycles devuelve el catálogo activo ordenado', async () => {
+    const response = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer()).get('/api/v1/crm/billing-cycles'),
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      {
+        cycleDay: 1,
+        cutoffDay: 15,
+        active: true,
+        nextCutoffDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
+      },
+      {
+        cycleDay: 15,
+        cutoffDay: 30,
+        active: true,
+        nextCutoffDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
+      },
+    ]);
+  });
+
+  it('CA-CF-07: la agenda pagina por fecha y cuenta activos sin ciclo', async () => {
+    const cycleOne = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      status: ContractStatus.ACTIVE,
+      billingCycleDay: 1,
+    });
+    const cycleFifteen = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      status: ContractStatus.ACTIVE,
+      billingCycleDay: 15,
+    });
+    const noCycle = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      status: ContractStatus.ACTIVE,
+      billingCycleDay: null,
+    });
+    const draftWithoutCycle = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      status: ContractStatus.DRAFT,
+      billingCycleDay: null,
+    });
+    const suspendedCycleOne = await createContract({
+      usage: ServiceUsage.NON_RESIDENTIAL,
+      stratum: null,
+      status: ContractStatus.SUSPENDED,
+      billingCycleDay: 1,
+    });
+
+    const fifteenth = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer()).get('/api/v1/crm/billing-cycles/cutoff-agenda?date=2026-11-15'),
+    );
+    const thirtieth = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer()).get('/api/v1/crm/billing-cycles/cutoff-agenda?date=2026-11-30'),
+    );
+    const february = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer()).get('/api/v1/crm/billing-cycles/cutoff-agenda?date=2027-02-28'),
+    );
+    expect(fifteenth.status).toBe(200);
+    expect(fifteenth.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contractId: cycleOne,
+          billingCycleDay: 1,
+          cutoffDate: '2026-11-15',
+        }),
+      ]),
+    );
+    expect(
+      fifteenth.body.items.every((item: { billingCycleDay: number }) => item.billingCycleDay === 1),
+    ).toBe(true);
+    expect(fifteenth.body.withoutCycleCount).toBe(1);
+    expect(
+      fifteenth.body.items.some((item: { contractId: string }) => item.contractId === noCycle),
+    ).toBe(false);
+    expect(
+      fifteenth.body.items.some((item: { contractId: string }) =>
+        [draftWithoutCycle, suspendedCycleOne, cycleFifteen].includes(item.contractId),
+      ),
+    ).toBe(false);
+    expect(thirtieth.status).toBe(200);
+    expect(thirtieth.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contractId: cycleFifteen,
+          billingCycleDay: 15,
+          cutoffDate: '2026-11-30',
+        }),
+      ]),
+    );
+    expect(
+      thirtieth.body.items.every(
+        (item: { billingCycleDay: number }) => item.billingCycleDay === 15,
+      ),
+    ).toBe(true);
+    expect(february.status).toBe(200);
+    expect(february.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          billingCycleDay: 15,
+          cutoffDate: '2027-02-28',
+        }),
+      ]),
+    );
+    expect(
+      february.body.items.every((item: { billingCycleDay: number }) => item.billingCycleDay === 15),
+    ).toBe(true);
+  });
+
   it('falla con 422 si una persona jurídica usa RESIDENTIAL', async () => {
     const id = await createContract({
       usage: ServiceUsage.RESIDENTIAL,
@@ -495,6 +844,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
           subscriberId,
           planId: 'plan-integration-fixed',
           planSnapshotJson: { id: 'plan-integration-fixed' },
+          billingCycleDay: 1,
           serviceUsage: ServiceUsage.RESIDENTIAL,
           installationStratum: 2,
           fiscalName: fiscalNameMarker,

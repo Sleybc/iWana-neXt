@@ -1,4 +1,11 @@
-import { INestApplication, NotFoundException, ValidationPipe } from '@nestjs/common';
+import { PermissionsGuard } from '../../../access-control/guards/permissions.guard';
+import { SubscribersBlockedTitularGuard } from '../guards/subscribers-blocked-titular.guard';
+import {
+  INestApplication,
+  ConflictException,
+  NotFoundException,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import {
@@ -12,6 +19,8 @@ import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../auth/guards/roles.guard';
 import { SubscriberTaxController } from '../subscriber-tax.controller';
 import { SubscriberTaxProfileService } from '../subscriber-tax-profile.service';
+import { SubscribersService } from '../subscribers.service';
+import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 
 /**
  * Tests HTTP del SubscriberTaxController.
@@ -50,18 +59,35 @@ const mockProfile = {
 
 describe('SubscriberTaxController (HTTP)', () => {
   let app: INestApplication;
+  const subscriber = {
+    id: VALID_SUBSCRIBER_ID,
+    partyId: 'party-test',
+    anonymizedAt: null as Date | null,
+  };
 
   const serviceMock = {
     getOrCreateProfile: jest.fn(),
     saveAssignments: jest.fn(),
     updateAssignment: jest.fn(),
     suggestVatForSubscriber: jest.fn(),
+    confirmProfile: jest.fn(),
   };
 
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [SubscriberTaxController],
-      providers: [{ provide: SubscriberTaxProfileService, useValue: serviceMock }],
+      providers: [
+        { provide: SubscriberTaxProfileService, useValue: serviceMock },
+        {
+          provide: SubscribersService,
+          useValue: { findById: jest.fn().mockImplementation(async () => subscriber) },
+        },
+        {
+          provide: IPrivacyMarksReadPort,
+          useValue: { activeMarks: jest.fn().mockResolvedValue({}) },
+        },
+        SubscribersBlockedTitularGuard,
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
@@ -79,6 +105,8 @@ describe('SubscriberTaxController (HTTP)', () => {
           return true;
         },
       })
+      .overrideGuard(PermissionsGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
       .compile();
@@ -101,6 +129,7 @@ describe('SubscriberTaxController (HTTP)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    subscriber.anonymizedAt = null;
   });
 
   // ─── GET /crm/subscribers/:subscriberId/tax-profile ────────────────────────────
@@ -298,5 +327,50 @@ describe('SubscriberTaxController (HTTP)', () => {
         .post(`/api/v1/crm/subscribers/${VALID_SUBSCRIBER_ID}/tax-profile/suggest-vat`)
         .expect(404);
     });
+  });
+
+  it.each([
+    [
+      'PUT assignments',
+      () =>
+        request(app.getHttpServer())
+          .put(`/api/v1/crm/subscribers/${VALID_SUBSCRIBER_ID}/tax-profile/assignments`)
+          .send({ assignments: [] }),
+      'saveAssignments',
+    ],
+    [
+      'PATCH assignment',
+      () =>
+        request(app.getHttpServer())
+          .patch(
+            `/api/v1/crm/subscribers/${VALID_SUBSCRIBER_ID}/tax-profile/assignments/${VALID_ASSIGNMENT_ID}`,
+          )
+          .send({ status: TaxAssignmentStatus.CONFIRMED }),
+      'updateAssignment',
+    ],
+    [
+      'POST suggest-vat',
+      () =>
+        request(app.getHttpServer()).post(
+          `/api/v1/crm/subscribers/${VALID_SUBSCRIBER_ID}/tax-profile/suggest-vat`,
+        ),
+      'suggestVatForSubscriber',
+    ],
+    [
+      'POST confirm',
+      () =>
+        request(app.getHttpServer()).post(
+          `/api/v1/crm/subscribers/${VALID_SUBSCRIBER_ID}/tax-profile/confirm`,
+        ),
+      'confirmProfile',
+    ],
+  ])('%s rejects an anonymized titular before the service writes', async (_route, call, method) => {
+    subscriber.anonymizedAt = new Date('2026-01-01T00:00:00.000Z');
+
+    const response = await call();
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('PRIVACY_TITULAR_ANONYMIZED');
+    expect(serviceMock[method as keyof typeof serviceMock]).not.toHaveBeenCalled();
   });
 });

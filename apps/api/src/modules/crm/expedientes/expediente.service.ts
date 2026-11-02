@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   Inject,
   Injectable,
@@ -15,7 +16,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import { access, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
-import { DataSource, EntityManager, In, IsNull, Like } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Like, QueryRunner } from 'typeorm';
 import { AuditLog, runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { ExpedienteListView, resolveExpedienteStatusesForView } from './expediente-list-view';
 import {
@@ -57,6 +58,7 @@ import {
   type FiscalDocumentCrypto,
 } from '../../../common/crypto/fiscal-document.util';
 import { CompletenessCalculator } from './completeness-calculator.service';
+import { titularAnonymizedConflict } from '../subscribers/guards/titular-anonymized-conflict';
 import { CrmActorReadPort } from '../ports/crm-actor-read.port';
 import {
   ExpedienteActivatedEvent,
@@ -330,6 +332,9 @@ export class ExpedienteService {
     personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, id),
+    );
     const expediente = await this.findById(id);
     const effectivePersonType = this.resolveEffectiveDocumentPersonType(
       expediente.personType,
@@ -399,6 +404,9 @@ export class ExpedienteService {
     personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, id),
+    );
     const expediente = await this.findById(id);
     const effectivePersonType = this.resolveEffectiveDocumentPersonType(
       expediente.personType,
@@ -459,6 +467,9 @@ export class ExpedienteService {
     personTypeOverride?: string | null,
   ): Promise<ExpedienteDocumentSupportResponseDto> {
     const { schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, id),
+    );
     const expediente = await this.findById(id);
     const effectivePersonType = this.resolveEffectiveDocumentPersonType(
       expediente.personType,
@@ -852,14 +863,18 @@ export class ExpedienteService {
       await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
         for (const row of batch) {
           processed += 1;
-          if (!row.documentNumberEncrypted) {
+          const locked = await qr.manager.findOne(ExpedienteRecord, {
+            where: { id: row.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!locked || locked.anonymizedAt != null || !locked.documentNumberEncrypted) {
             skipped += 1;
             continue;
           }
           try {
-            const plaintext = this.decryptValue(row.documentNumberEncrypted);
-            row.documentNumberHash = hashDocumentNumber(plaintext, this.piiHashKey);
-            await qr.manager.save(ExpedienteRecord, row);
+            const plaintext = this.decryptValue(locked.documentNumberEncrypted);
+            locked.documentNumberHash = hashDocumentNumber(plaintext, this.piiHashKey);
+            await qr.manager.save(ExpedienteRecord, locked);
             updated += 1;
           } catch {
             skipped += 1;
@@ -1121,40 +1136,40 @@ export class ExpedienteService {
     actorUserId: string,
   ): Promise<ExpedienteRecord> {
     const { schemaName } = TenantContext.getOrThrow();
-    const entity = await this.findById(id);
-
-    const updateData = this.buildSectionUpdate(dto.section, dto.data);
-    const effectiveUpdateData = this.extractMeaningfulUpdateData(entity, updateData);
-
-    // Evita generar auditoría y actividad cuando no hay cambios reales.
-    if (Object.keys(effectiveUpdateData).length === 0) {
-      return entity;
-    }
-
-    if (dto.section === ExpedienteSection.TECHNICAL_FEASIBILITY) {
-      const projected = { ...entity, ...effectiveUpdateData } as ExpedienteRecord;
-      this.validateTechnicalFeasibilityConsistency(projected);
-    }
-
-    const fiscalDocumentChanged = Object.hasOwn(effectiveUpdateData, 'fiscalDocument');
-    Object.assign(entity, effectiveUpdateData);
-    if (fiscalDocumentChanged) {
-      setFiscalDocumentStorage(
-        entity,
-        typeof effectiveUpdateData['fiscalDocument'] === 'string'
-          ? effectiveUpdateData['fiscalDocument']
-          : null,
-        this.fiscalDocumentCrypto,
-      );
-    } else {
-      prepareFiscalDocumentForSave(entity);
-    }
-
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await this.lockExpedienteForMutation(qr, id);
+      const updateData = this.buildSectionUpdate(dto.section, dto.data);
+      const effectiveUpdateData = this.extractMeaningfulUpdateData(entity, updateData);
+      if (Object.keys(effectiveUpdateData).length === 0) {
+        return { updated: entity, changedFields: effectiveUpdateData, changed: false };
+      }
+      if (dto.section === ExpedienteSection.TECHNICAL_FEASIBILITY) {
+        const projected = { ...entity, ...effectiveUpdateData } as ExpedienteRecord;
+        this.validateTechnicalFeasibilityConsistency(projected);
+      }
+      const fiscalDocumentChanged = Object.hasOwn(effectiveUpdateData, 'fiscalDocument');
+      Object.assign(entity, effectiveUpdateData);
+      if (fiscalDocumentChanged) {
+        setFiscalDocumentStorage(
+          entity,
+          typeof effectiveUpdateData['fiscalDocument'] === 'string'
+            ? effectiveUpdateData['fiscalDocument']
+            : null,
+          this.fiscalDocumentCrypto,
+        );
+      } else {
+        prepareFiscalDocumentForSave(entity);
+      }
+      return {
+        updated: await qr.manager.save(ExpedienteRecord, entity),
+        changedFields: effectiveUpdateData,
+        changed: true,
+      };
+    });
+    if (!result.changed) return this.findById(result.updated.id);
+    const effectiveUpdateData = result.changedFields;
+    const updated = result.updated;
     const actorName = await this.resolveActorName(schemaName, actorUserId);
-
-    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.save(ExpedienteRecord, entity),
-    );
 
     await this.auditService.log({
       action: AuditAction.UPDATE,
@@ -1182,6 +1197,9 @@ export class ExpedienteService {
     actorUserId: string,
   ): Promise<ExpedienteRecord> {
     const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, id),
+    );
     const entity = await this.findById(id);
 
     const fromStatus = entity.status;
@@ -1260,8 +1278,24 @@ export class ExpedienteService {
     }
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      prepareFiscalDocumentForSave(entity);
-      await qr.manager.save(ExpedienteRecord, entity);
+      const current = await this.lockExpedienteForMutation(qr, id);
+      if (current.status !== fromStatus) {
+        throw new ConflictException({
+          code: 'EXPEDIENTE_CHANGED',
+          message: 'El expediente cambió. Actualiza la ficha e inténtalo de nuevo.',
+        });
+      }
+      current.previousStatus = fromStatus;
+      current.status = toStatus;
+      current.statusChangedAt = now;
+      if (toStatus === ExpedienteStatus.CLIENTE_ACTIVO && !current.checklistCompleted) {
+        current.checklistCompleted = true;
+      }
+      if (toStatus === ExpedienteStatus.DESCARTADO && dto.reason) {
+        current.discardReason = dto.reason;
+      }
+      prepareFiscalDocumentForSave(current);
+      await qr.manager.save(ExpedienteRecord, current);
     });
 
     await this.persistStatusChangeSafely({
@@ -1328,6 +1362,9 @@ export class ExpedienteService {
    */
   async reactivate(id: string, actorUserId: string): Promise<ExpedienteRecord> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, id),
+    );
     const entity = await this.findById(id);
 
     if (entity.status !== ExpedienteStatus.DESCARTADO) {
@@ -1344,8 +1381,19 @@ export class ExpedienteService {
     entity.discardReason = null;
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      prepareFiscalDocumentForSave(entity);
-      await qr.manager.save(ExpedienteRecord, entity);
+      const current = await this.lockExpedienteForMutation(qr, id);
+      if (current.status !== ExpedienteStatus.DESCARTADO) {
+        throw new ConflictException({
+          code: 'EXPEDIENTE_CHANGED',
+          message: 'El expediente cambió. Actualiza la ficha e inténtalo de nuevo.',
+        });
+      }
+      current.status = previousStatus;
+      current.previousStatus = ExpedienteStatus.DESCARTADO;
+      current.statusChangedAt = changedAt;
+      current.discardReason = null;
+      prepareFiscalDocumentForSave(current);
+      await qr.manager.save(ExpedienteRecord, current);
     });
 
     await this.persistStatusChangeSafely({
@@ -1397,6 +1445,9 @@ export class ExpedienteService {
     actorUserId: string,
   ): Promise<{ retried: boolean; resolved: boolean; eventName: string | null }> {
     const { schemaName, tenantId, tenantSlug } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, expedienteId),
+    );
     const logRetry = (eventName: string | null, resolved: boolean, errorCode: string | null) =>
       this.auditService.log({
         // audit_logs.action sigue siendo VARCHAR en el esquema tenant; no se amplía el contrato compartido.
@@ -1452,6 +1503,7 @@ export class ExpedienteService {
     const persistenceActorId = this.resolvePersistenceActorId(actorUserId, expediente.createdBy);
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockExpedienteForMutation(qr, expedienteId);
       const entity = qr.manager.create(ContactAttempt, {
         tenantId,
         expedienteId,
@@ -1525,7 +1577,9 @@ export class ExpedienteService {
     ipAddress: string | null,
   ): Promise<ConsentRecord> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    await this.findById(expedienteId);
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, expedienteId),
+    );
     if (!this.privacyLegalTextReadPort) {
       throw new ServiceUnavailableException('La consulta de textos legales no está disponible.');
     }
@@ -1555,6 +1609,7 @@ export class ExpedienteService {
     }
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockExpedienteForMutation(qr, expedienteId);
       if (normalizedConsentStatus === ConsentStatus.ACEPTADO) {
         const existingAccepted = await qr.manager.findOne(ConsentRecord, {
           where: {
@@ -1628,9 +1683,8 @@ export class ExpedienteService {
     actorUserId: string,
   ): Promise<ConsentRecord> {
     const { schemaName } = TenantContext.getOrThrow();
-    await this.findById(expedienteId);
-
     const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockExpedienteForMutation(qr, expedienteId);
       const entity = await qr.manager.findOne(ConsentRecord, {
         where: { id: consentId, expedienteId },
       });
@@ -1683,6 +1737,7 @@ export class ExpedienteService {
     const persistenceActorId = this.resolvePersistenceActorId(actorUserId, expediente.createdBy);
 
     const created = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const lockedExpediente = await this.lockExpedienteForMutation(qr, expedienteId);
       const entity = qr.manager.create(CoverageCheck, {
         tenantId,
         expedienteId,
@@ -1704,8 +1759,9 @@ export class ExpedienteService {
         { id: expedienteId },
         {
           coverageResult: dto.result,
-          availableTechnology: dto.technologyAvailable?.trim() ?? expediente.availableTechnology,
-          estimatedDistanceM: dto.distanceM ?? expediente.estimatedDistanceM,
+          availableTechnology:
+            dto.technologyAvailable?.trim() ?? lockedExpediente.availableTechnology,
+          estimatedDistanceM: dto.distanceM ?? lockedExpediente.estimatedDistanceM,
           feasibility: dto.result,
         },
       );
@@ -1754,6 +1810,9 @@ export class ExpedienteService {
     LinkInstallationOperationalRefsSchema.parse(dto);
 
     const { schemaName } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      this.lockExpedienteForMutation(qr, expedienteId),
+    );
     const entity = await this.findById(expedienteId);
 
     const prevTicketId = entity.ticketId;
@@ -1770,8 +1829,17 @@ export class ExpedienteService {
     }
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      prepareFiscalDocumentForSave(entity);
-      await qr.manager.save(ExpedienteRecord, entity);
+      const current = await this.lockExpedienteForMutation(qr, expedienteId);
+      current.ticketId = dto.ticketId;
+      current.workOrderId = dto.workOrderId;
+      if (dto.lastRescheduleReason !== undefined) {
+        current.lastRescheduleReason = dto.lastRescheduleReason ?? null;
+      }
+      if (dto.lastRescheduleNotes !== undefined) {
+        current.lastRescheduleNotes = dto.lastRescheduleNotes ?? null;
+      }
+      prepareFiscalDocumentForSave(current);
+      await qr.manager.save(ExpedienteRecord, current);
     });
 
     await this.auditService.log({
@@ -2917,12 +2985,27 @@ export class ExpedienteService {
     supports: StoredDocumentSupportMap,
   ): Promise<void> {
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockExpedienteForMutation(qr, expedienteId);
       await qr.manager.update(
         ExpedienteRecord,
         { id: expedienteId },
         { documentSupports: supports },
       );
     });
+  }
+
+  private async lockExpedienteForMutation(
+    qr: QueryRunner,
+    expedienteId: string,
+  ): Promise<ExpedienteRecord> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const expediente = await qr.manager.findOne(ExpedienteRecord, {
+      where: { id: expedienteId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!expediente) throw new NotFoundException(`Expediente ${expedienteId} no encontrado`);
+    if (expediente.anonymizedAt != null) throw titularAnonymizedConflict();
+    return expediente;
   }
 
   private buildDocumentSupportResponse(
@@ -3080,6 +3163,7 @@ export class ExpedienteService {
     const completeness = await this.completenessCalculator.calculate(expedienteId);
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.lockExpedienteForMutation(qr, expedienteId);
       await qr.manager.update(
         ExpedienteRecord,
         { id: expedienteId },

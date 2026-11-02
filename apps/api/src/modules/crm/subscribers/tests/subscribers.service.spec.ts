@@ -30,6 +30,7 @@ import { SubscriberStatusTransitionService } from '../subscriber-status-transiti
 import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-completeness.service';
 import { Subscriber } from '../entities/subscriber.entity';
 import { Contract } from '../../contracts/entities/contract.entity';
+import { QuoteStatus } from '../../enums/quote-status.enum';
 import { AuditService } from '../../../audit/audit.service';
 import { IPartyWritePort } from '../../../parties/ports/party-write.port';
 import { IPartyReadPort } from '../../../parties/ports/party-read.port';
@@ -37,6 +38,7 @@ import { IPrivacyAuthorizationWritePort } from '../../../privacy/ports/privacy-a
 import { IPrivacyLegalTextReadPort } from '../../../privacy/ports/privacy-legal-text-read.port';
 import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
 import { PlanCatalogReadPort } from '../../../commercial/ports/plan-catalog-read.port';
+import { CrmQuoteReadPort } from '../../ports/crm-quote-read.port';
 import { calculateNitVerificationDigit } from '../../../../common/crypto/nit-verification-digit.adapter';
 
 // Mocks para multi-tenant
@@ -67,6 +69,9 @@ const privacyMarksReadPortMock = {
 const planCatalogReadPortMock = {
   getPlansByIds: jest.fn().mockResolvedValue(new Map()),
 };
+const crmQuoteReadPortMock = {
+  findForSubscriber: jest.fn().mockResolvedValue([]),
+};
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
@@ -96,6 +101,7 @@ describe('SubscribersService', () => {
     privacyMarksReadPortMock.partyIdsWithActiveMark.mockReset().mockResolvedValue([]);
     planCatalogReadPortMock.getPlansByIds.mockReset().mockResolvedValue(new Map());
     privacyAuthorizationWritePortMock.record.mockClear();
+    crmQuoteReadPortMock.findForSubscriber.mockReset().mockResolvedValue([]);
     mockTenantContextGetOrThrow.mockReturnValue({
       schemaName: 'tenant_test',
       tenantId: 'tenant-001',
@@ -113,6 +119,7 @@ describe('SubscribersService', () => {
         { provide: IPartyReadPort, useValue: partyReadPortMock },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPortMock },
         { provide: PlanCatalogReadPort, useValue: planCatalogReadPortMock },
+        { provide: CrmQuoteReadPort, useValue: crmQuoteReadPortMock },
         { provide: IPrivacyAuthorizationWritePort, useValue: privacyAuthorizationWritePortMock },
         { provide: IPrivacyLegalTextReadPort, useValue: privacyLegalTextReadPortMock },
         {
@@ -341,6 +348,56 @@ describe('SubscribersService', () => {
         service.create({ ...minimumCreateInput, expedienteId: 'exp-idempotent' }, 'actor-1'),
       ).rejects.toBe(duplicateError);
       expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('persistencia de birthDate como fecha solo-día', () => {
+    it('envía el día original como texto al guardar un alta', async () => {
+      const savedSubscriber = buildSubscriber({ id: 'sub-birth-date-create' });
+      let persisted: Subscriber | undefined;
+      const manager = {
+        save: async (_target: unknown, value: Subscriber) => {
+          persisted = value;
+          return savedSubscriber;
+        },
+        findOne: async () => savedSubscriber,
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      await service.create(
+        {
+          personType: PersonType.NATURAL,
+          customerSegment: CustomerSegment.RESIDENTIAL,
+          stratum: 3,
+          birthDate: '1990-05-01',
+          documentNumber: 'documento-sintetico',
+          email: 'date-create@example.invalid',
+          phone: '3000000000',
+          address: 'Dirección sintética',
+          authorizationChannel: ConsentChannel.TELEFONO,
+          authorizations: [
+            {
+              purpose: 'TRATAMIENTO_CONTRACTUAL',
+              granted: true,
+              legalTextId: '00000000-0000-4000-8000-000000000099',
+            },
+          ],
+        },
+        'actor-1',
+      );
+
+      expect(persisted?.birthDate).toBe('1990-05-01');
+    });
+
+    it('envía el día original como texto al guardar una actualización', async () => {
+      const existing = buildSubscriber({ birthDate: '1980-02-03' });
+      mockSave(existing);
+
+      await service.update(existing.id, { birthDate: '1990-05-01' }, 'actor-1');
+
+      expect(existing.birthDate).toBe('1990-05-01');
     });
   });
 
@@ -1492,31 +1549,19 @@ describe('SubscribersService', () => {
     it('ejecuta soft delete del suscriptor', async () => {
       const subscriber = buildSubscriber({ id: 'sub-del-001' });
 
-      // remove() llama a findById() primero, luego a softRemove()
-      // findById usa runInTenantSchema → findOne
-      // softRemove usa runInTenantSchema → softRemove
-      let callCount = 0;
-      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) => {
-        callCount++;
-        if (callCount === 1) {
-          // Primera llamada: findById → findOne
-          return callback({
-            manager: {
-              findOne: async () => subscriber,
-            },
-          });
-        }
-        // Segunda llamada: softRemove
-        return callback({
+      // Lectura bloqueada y borrado lógico comparten la transacción del escritor.
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({
           manager: {
-            softRemove: async () => subscriber,
+            findOne: async () => subscriber,
+            softDelete: async () => ({ affected: 1 }),
           },
-        });
-      });
+        }),
+      );
 
       await service.remove('sub-del-001', 'actor-1');
 
-      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(2);
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1660,8 +1705,24 @@ describe('SubscribersService', () => {
       );
       const makeContracts = (): Contract[] =>
         [
-          { id: 'contract-encrypted', subscriberId: subscriber.id, fiscalDocument: null },
-          { id: 'contract-legacy', subscriberId: subscriber.id, fiscalDocument: null },
+          {
+            id: 'contract-encrypted',
+            subscriberId: subscriber.id,
+            fiscalDocument: null,
+            statusChangedAt: null,
+            createdAt: new Date('2026-09-01T10:00:00.000Z'),
+            updatedAt: new Date('2026-09-01T10:00:00.000Z'),
+            deletedAt: null,
+          },
+          {
+            id: 'contract-legacy',
+            subscriberId: subscriber.id,
+            fiscalDocument: null,
+            statusChangedAt: null,
+            createdAt: new Date('2026-09-02T10:00:00.000Z'),
+            updatedAt: new Date('2026-09-02T10:00:00.000Z'),
+            deletedAt: null,
+          },
         ] as Contract[];
       const manager = {
         findOne: jest.fn().mockResolvedValue(subscriber),
@@ -1773,9 +1834,181 @@ describe('SubscribersService', () => {
         commercialNotes: null,
       });
       expect(view.timelineSeed).toEqual([
-        { type: 'SUBSCRIBER_CONVERTED', occurredAt: convertedAt, expedienteId: 'exp-360' },
-        { type: 'SUBSCRIBER_ACTIVATED', occurredAt: activatedAt, expedienteId: 'exp-360' },
+        {
+          type: 'SUBSCRIBER_CONVERTED',
+          occurredAt: convertedAt.toISOString(),
+          expedienteId: 'exp-360',
+        },
+        {
+          type: 'SUBSCRIBER_ACTIVATED',
+          occurredAt: activatedAt.toISOString(),
+          expedienteId: 'exp-360',
+        },
       ]);
+    });
+
+    it('devuelve las cotizaciones del suscriptor y de su expediente como resumen comercial', async () => {
+      const subscriber = buildSubscriber({
+        id: 'sub-360-quotes',
+        expedienteId: null,
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: 'encrypted-phone',
+        documentNumberEncrypted: null,
+      });
+      const quotes = [
+        {
+          id: 'quote-1',
+          expedienteId: null,
+          status: QuoteStatus.SENT,
+          planId: 'plan-300',
+          monthlyAmount: 89900,
+          expiresAt: '2026-11-15T00:00:00.000Z',
+          createdAt: '2026-10-30T10:00:00.000Z',
+        },
+      ];
+      crmQuoteReadPortMock.findForSubscriber.mockResolvedValueOnce(quotes);
+      const manager = {
+        findOne: jest.fn().mockResolvedValueOnce(subscriber),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      const view = await service.get360View(subscriber.id);
+
+      expect(view.quotes).toEqual([
+        {
+          id: 'quote-1',
+          expedienteId: null,
+          status: QuoteStatus.SENT,
+          planId: 'plan-300',
+          monthlyAmount: 89900,
+          expiresAt: '2026-11-15T00:00:00.000Z',
+          createdAt: '2026-10-30T10:00:00.000Z',
+        },
+      ]);
+      expect(crmQuoteReadPortMock.findForSubscriber).toHaveBeenCalledWith(
+        manager,
+        subscriber.id,
+        undefined,
+      );
+    });
+
+    it('oculta las cotizaciones de un titular bloqueado sin permiso para leer datos bloqueados', async () => {
+      const subscriber = buildSubscriber({
+        id: 'sub-360-blocked-quotes',
+        partyId: 'party-360-blocked-quotes',
+        expedienteId: null,
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: 'encrypted-phone',
+        documentNumberEncrypted: null,
+      });
+      const quotes = [
+        {
+          id: 'quote-360-blocked',
+          expedienteId: null,
+          status: QuoteStatus.SENT,
+          planId: 'plan-300',
+          monthlyAmount: 89900,
+          expiresAt: null,
+          createdAt: '2026-10-30T10:00:00.000Z',
+        },
+      ];
+      crmQuoteReadPortMock.findForSubscriber.mockResolvedValueOnce(quotes);
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(subscriber),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+      privacyMarksReadPortMock.activeMarks.mockResolvedValue({
+        [subscriber.partyId as string]: ['DATOS_BLOQUEADOS'],
+      });
+
+      const restrictedView = await service.get360View(subscriber.id);
+
+      expect(restrictedView.quotes).toEqual([]);
+      expect(crmQuoteReadPortMock.findForSubscriber).not.toHaveBeenCalled();
+
+      const authorizedView = await service.get360View(subscriber.id, true);
+
+      expect(authorizedView.quotes).toMatchObject([{ id: 'quote-360-blocked' }]);
+      expect(crmQuoteReadPortMock.findForSubscriber).toHaveBeenCalledWith(
+        manager,
+        subscriber.id,
+        undefined,
+      );
+    });
+
+    it('falla cerrada si no está disponible el puerto de marcas de privacidad', async () => {
+      const subscriber = buildSubscriber({
+        id: 'sub-360-no-privacy-port',
+        partyId: 'party-360-no-privacy-port',
+        expedienteId: null,
+      });
+      const manager = {
+        findOne: jest.fn().mockResolvedValue(subscriber),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      Object.defineProperty(service, 'privacyMarksReadPort', { value: undefined });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      await expect(service.get360View(subscriber.id)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(crmQuoteReadPortMock.findForSubscriber).not.toHaveBeenCalled();
+    });
+
+    it('incluye las cotizaciones del expediente de origen y omite las de un titular anonimizado', async () => {
+      const subscriber = buildSubscriber({
+        id: 'sub-360-exp-quotes',
+        expedienteId: 'exp-quotes',
+        emailEncrypted: 'encrypted-email',
+        phoneEncrypted: 'encrypted-phone',
+        documentNumberEncrypted: null,
+      });
+      const manager = {
+        findOne: jest.fn().mockResolvedValueOnce(subscriber).mockResolvedValueOnce(null),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager }),
+      );
+
+      await service.get360View(subscriber.id);
+      expect(crmQuoteReadPortMock.findForSubscriber).toHaveBeenCalledWith(
+        manager,
+        subscriber.id,
+        'exp-quotes',
+      );
+
+      const anonymized = buildSubscriber({
+        id: 'sub-360-anon',
+        expedienteId: null,
+        anonymizedAt: new Date('2026-10-01T00:00:00.000Z'),
+        emailEncrypted: null,
+        phoneEncrypted: null,
+        documentNumberEncrypted: null,
+      });
+      const anonymizedManager = {
+        findOne: jest.fn().mockResolvedValueOnce(anonymized),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ manager: anonymizedManager }),
+      );
+
+      const view = await service.get360View(anonymized.id);
+      expect(view.quotes).toEqual([]);
+      expect(crmQuoteReadPortMock.findForSubscriber).not.toHaveBeenCalledWith(
+        expect.anything(),
+        anonymized.id,
+        expect.anything(),
+      );
     });
 
     it('devuelve una vista sin resumen ni eventos para un suscriptor sin expediente', async () => {
@@ -1827,7 +2060,7 @@ describe('SubscribersService', () => {
       });
       const update = jest.fn().mockResolvedValue({ affected: 1 });
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
-        callback({ manager: { update } }),
+        callback({ manager: { findOne: async () => prospect, update } }),
       );
 
       await expect(service.activateFromExpediente('exp-activate', 'actor-1')).resolves.toBe(active);
@@ -1840,7 +2073,7 @@ describe('SubscribersService', () => {
       );
       expect(update).toHaveBeenCalledWith(
         Subscriber,
-        { id: prospect.id },
+        { id: prospect.id, tenantId: 'tenant-001' },
         { activatedAt: expect.any(Date) },
       );
     });
@@ -1872,7 +2105,12 @@ describe('SubscribersService', () => {
         reason: 'Activación automática desde expediente exp-cancelled',
       });
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
-        callback({ manager: { update: jest.fn().mockResolvedValue({ affected: 1 }) } }),
+        callback({
+          manager: {
+            findOne: async () => cancelled,
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
+          },
+        }),
       );
 
       const result = await service.activateFromExpediente('exp-cancelled', 'actor-1');
@@ -2150,6 +2388,73 @@ describe('SubscribersService', () => {
       expect(result.status).not.toBe('BLOQUEADO');
       expect(result.status).not.toBe('ERROR_REINTENTABLE');
     });
+  });
+
+  describe('protecciones y resultados vacíos del tenant', () => {
+    it('devuelve conteos en cero cuando la agregación no devuelve filas', async () => {
+      const query = jest.fn().mockResolvedValue([]);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ query }),
+      );
+
+      await expect(service.getQueueCounts()).resolves.toEqual({
+        active: 0,
+        suspended: 0,
+        contactPending: 0,
+        fiscalIncomplete: 0,
+        withoutLiveServices: 0,
+      });
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('s.tenant_id = $1'), [
+        'tenant-001',
+      ]);
+    });
+
+    it('devuelve null cuando el suscriptor no tiene expediente consultable', async () => {
+      const query = jest.fn().mockResolvedValue([]);
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+        callback({ query }),
+      );
+
+      await expect(
+        service.findExpedienteId('tenant-001', 'tenant_test', 'sub-missing'),
+      ).resolves.toBeNull();
+      expect(query).toHaveBeenCalledWith(expect.stringContaining('deleted_at IS NULL'), [
+        'tenant-001',
+        'sub-missing',
+      ]);
+    });
+
+    it('descarta identificadores inválidos sin consultar la base', async () => {
+      await expect(
+        service.findExistingSubscriberIds('tenant-001', 'tenant_test', ['invalid', '']),
+      ).resolves.toEqual([]);
+      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['inexistente', null, 404],
+      ['anonimizado', buildSubscriber({ anonymizedAt: new Date('2026-11-01T00:00:00Z') }), 409],
+    ] as const)(
+      'impide eliminar un titular %s antes de cualquier escritura',
+      async (_label, subscriber, status) => {
+        const findOne = jest.fn().mockResolvedValue(subscriber);
+        const softDelete = jest.fn();
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+          callback({ manager: { findOne, softDelete } }),
+        );
+
+        await expect(service.remove('sub-001', 'actor-test')).rejects.toMatchObject({ status });
+        expect(findOne).toHaveBeenCalledWith(
+          Subscriber,
+          expect.objectContaining({
+            where: { id: 'sub-001', tenantId: 'tenant-001' },
+            lock: { mode: 'pessimistic_write' },
+          }),
+        );
+        expect(softDelete).not.toHaveBeenCalled();
+        expect(auditServiceMock.log).not.toHaveBeenCalled();
+      },
+    );
   });
 });
 

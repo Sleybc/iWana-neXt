@@ -90,7 +90,7 @@ export class Subscriber {
   stratum: number | null;
 
   @Column({ type: 'date', name: 'birth_date', nullable: true })
-  birthDate: Date | null;
+  birthDate: Date | string | null;
 
   // ── Persona Jurídica ──
   @Column({ type: 'varchar', length: 500, name: 'nit', nullable: true })

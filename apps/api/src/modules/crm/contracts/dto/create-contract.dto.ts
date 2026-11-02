@@ -123,11 +123,19 @@ export class CreateContractDto {
   @MaxLength(30)
   paymentMethod?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ deprecated: true })
   @IsOptional()
   @IsString()
   @MaxLength(20)
+  /** @deprecated El portal debe enviar billingCycleDay. */
   billingCycle?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 28, description: 'Día de facturación del servicio' })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  billingCycleDay?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

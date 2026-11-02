@@ -12,6 +12,7 @@ import {
   BLOCKED_TITULAR_GUARD_METADATA,
   type BlockedTitularResolver,
 } from './guard-blocked-titular.decorator';
+import { titularAnonymizedConflict } from './titular-anonymized-conflict';
 
 interface GuardedRequest {
   params?: Record<string, string | undefined>;
@@ -40,7 +41,8 @@ export class SubscribersBlockedTitularGuard implements CanActivate {
       data: 'id',
     });
     const subscriber = await this.subscribersService.findById(subscriberId);
-    if (subscriber.anonymizedAt != null || !subscriber.partyId) return true;
+    if (subscriber.anonymizedAt != null) throw titularAnonymizedConflict();
+    if (!subscriber.partyId) return true;
 
     const marks = await this.privacyMarksReadPort.activeMarks([subscriber.partyId]);
     if ((marks[subscriber.partyId] ?? []).includes('DATOS_BLOQUEADOS')) {

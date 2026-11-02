@@ -199,7 +199,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
       .mockResolvedValue({ data: [], total: 0, meta: { page: 1, limit: 20, total: 0 } }),
     search: jest.fn().mockResolvedValue([]),
     findById: jest.fn().mockResolvedValue({ id: 'sub-001' }),
-    create: jest.fn().mockResolvedValue({ id: 'sub-001' }),
+    create: jest.fn().mockResolvedValue({ ...listSubscriber }),
     update: jest.fn().mockResolvedValue({ id: 'sub-001' }),
     remove: jest.fn().mockResolvedValue(undefined),
     transitionStatus: jest.fn().mockResolvedValue({ id: 'sub-001' }),

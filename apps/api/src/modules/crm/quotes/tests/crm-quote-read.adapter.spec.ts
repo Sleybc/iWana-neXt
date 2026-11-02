@@ -1,5 +1,6 @@
-import { DataSource, EntityManager } from 'typeorm';
-import { Quote } from '../../quotes/entities/quote.entity';
+import type { DataSource, EntityManager } from 'typeorm';
+import { QuoteStatus } from '../../enums/quote-status.enum';
+import { Quote } from '../entities/quote.entity';
 import { CrmQuoteReadAdapter } from '../crm-quote-read.adapter';
 
 const mockRunInTenantSchema = jest.fn();
@@ -70,5 +71,55 @@ describe('CrmQuoteReadAdapter', () => {
     await expect(
       adapter.findByExpedienteIds(manager as unknown as EntityManager, ['exp-sintetico']),
     ).resolves.toEqual([{ id: 'quote-legacy', expedienteId: '', status: 'null' }]);
+  });
+
+  it('proyecta el resumen 360° por suscriptor sin leer el snapshot del plan', async () => {
+    const quote = {
+      id: 'quote-360',
+      expedienteId: 'exp-360',
+      status: QuoteStatus.SENT,
+      planId: 'plan-300',
+      monthlyAmount: '89900.00',
+      expiresAt: new Date('2026-11-15T00:00:00.000Z'),
+      createdAt: new Date('2026-10-30T10:00:00.000Z'),
+    } as Quote;
+    const manager = {
+      find: jest.fn().mockResolvedValue([quote]),
+    } as unknown as EntityManager;
+    const adapter = new CrmQuoteReadAdapter({} as DataSource);
+
+    const result = await adapter.findForSubscriber(manager, 'subscriber-360', 'exp-360');
+
+    expect(manager.find).toHaveBeenCalledWith(Quote, {
+      where: [{ subscriberId: 'subscriber-360' }, { expedienteId: 'exp-360' }],
+      order: { createdAt: 'DESC' },
+      select: ['id', 'expedienteId', 'status', 'planId', 'monthlyAmount', 'expiresAt', 'createdAt'],
+    });
+    expect(result).toEqual([
+      {
+        id: 'quote-360',
+        expedienteId: 'exp-360',
+        status: QuoteStatus.SENT,
+        planId: 'plan-300',
+        monthlyAmount: 89900,
+        expiresAt: '2026-11-15T00:00:00.000Z',
+        createdAt: '2026-10-30T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('omite el expediente de la búsqueda cuando el suscriptor no tiene uno asociado', async () => {
+    const manager = {
+      find: jest.fn().mockResolvedValue([]),
+    } as unknown as EntityManager;
+    const adapter = new CrmQuoteReadAdapter({} as DataSource);
+
+    await adapter.findForSubscriber(manager, 'subscriber-360');
+
+    expect(manager.find).toHaveBeenCalledWith(Quote, {
+      where: [{ subscriberId: 'subscriber-360' }],
+      order: { createdAt: 'DESC' },
+      select: ['id', 'expedienteId', 'status', 'planId', 'monthlyAmount', 'expiresAt', 'createdAt'],
+    });
   });
 });

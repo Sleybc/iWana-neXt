@@ -25,6 +25,7 @@ import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { InventoryModule } from '../../inventory/inventory.module';
 import { ExecutionOrderSchedulingModule } from '../../tasks/execution-order-scheduling.module';
 import { CommercialModule } from '../../commercial/commercial.module';
+import { QuotesModule } from '../quotes/quotes.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CommercialModule } from '../../commercial/commercial.module';
     InventoryModule,
     ExecutionOrderSchedulingModule,
     CommercialModule,
+    QuotesModule,
   ],
   controllers: [SubscribersController, SubscriberTaxController],
   providers: [

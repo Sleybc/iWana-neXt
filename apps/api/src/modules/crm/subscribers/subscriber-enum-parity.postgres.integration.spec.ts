@@ -1,11 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
 import { dataSourceOptions } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { Subscriber } from './entities/subscriber.entity';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
-const schemaName = 'tenant_test';
+// Esquema propio e independiente: instala la cadena tenant vigente desde cero, así que no
+// depende de ningún esquema preexistente de la base de desarrollo.
+const tenantId = randomUUID();
+const schemaName = `tenant_enum_parity_${randomUUID().replace(/-/g, '')}`;
 
 describeWithDb('Subscriber enum metadata — parity con pg_type', () => {
   let dataSource: DataSource;
@@ -13,17 +21,43 @@ describeWithDb('Subscriber enum metadata — parity con pg_type', () => {
   beforeAll(async () => {
     dataSource = new DataSource({
       ...(dataSourceOptions as PostgresConnectionOptions),
-      schema: schemaName,
       entities: [Subscriber],
       migrations: [],
       synchronize: false,
       logging: false,
     });
     await dataSource.initialize();
-  });
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Enum parity synthetic',
+        `enum-parity-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'enum-parity@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `enum-parity-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+  }, 180_000);
 
   afterAll(async () => {
-    if (dataSource?.isInitialized) await dataSource.destroy();
+    if (!dataSource?.isInitialized) return;
+    await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    await dataSource.destroy();
   });
 
   it('declara cada columna enum de subscribers con nombre y etiquetas idénticos a pg_type', async () => {

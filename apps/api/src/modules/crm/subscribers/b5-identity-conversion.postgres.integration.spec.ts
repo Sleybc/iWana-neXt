@@ -1191,8 +1191,8 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
     );
     const open = await persistContract(subscriber.id, ContractStatus.ACTIVE);
     await persistContract(subscriber.id, ContractStatus.TERMINATED);
-    const standing = await TenantContext.run(context(), () =>
-      new CrmContractStandingReadAdapter(dataSource).standing(subscriber.partyId!),
+    const standing = await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      new CrmContractStandingReadAdapter().standing(subscriber.partyId!, { manager: qr.manager }),
     );
     expect(standing.openContractIds).toEqual([open.id]);
     expect(standing.lastTerminatedAt).toEqual(expect.any(String));

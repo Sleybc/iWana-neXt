@@ -15,6 +15,7 @@ import type { ContractServicePointSnapshot } from '@iwana/shared';
 @Index('idx_contracts_tenant_status', ['tenantId', 'status'])
 @Index('idx_contracts_quote', ['quoteId'])
 @Index('idx_contracts_tenant_subscriber', ['tenantId', 'subscriberId'])
+@Index('idx_contracts_status_billing_cycle_day', ['status', 'billingCycleDay'])
 @Index('uq_contracts_stratum_evidence', ['stratumEvidenceMediaId'], {
   unique: true,
   where: '"stratum_evidence_media_id" IS NOT NULL',
@@ -108,7 +109,11 @@ export class Contract {
   paymentMethod: string | null;
 
   @Column({ type: 'varchar', length: 20, name: 'billing_cycle', nullable: true })
+  /** @deprecated Dato libre heredado; los contratos nuevos usan billingCycleDay. */
   billingCycle: string | null;
+
+  @Column({ type: 'smallint', name: 'billing_cycle_day', nullable: true })
+  billingCycleDay: number | null;
 
   @Column({ type: 'varchar', length: 200, name: 'fiscal_name', nullable: true })
   fiscalName: string | null;

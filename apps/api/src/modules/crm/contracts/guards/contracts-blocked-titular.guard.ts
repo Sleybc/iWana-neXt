@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, ParseUUIDPipe } from '@nestj
 import { Reflector } from '@nestjs/core';
 import { ContractsService } from '../contracts.service';
 import {
+  ALLOW_ANONYMIZED_TITULAR_METADATA,
   BLOCKED_TITULAR_GUARD_METADATA,
   type BlockedTitularResolver,
 } from './guard-blocked-titular.decorator';
@@ -24,6 +25,8 @@ export class ContractsBlockedTitularGuard implements CanActivate {
       context.getHandler(),
     );
     if (!resolver) return true;
+    const allowAnonymized =
+      this.reflector.get<boolean>(ALLOW_ANONYMIZED_TITULAR_METADATA, context.getHandler()) === true;
 
     const request = context.switchToHttp().getRequest<GuardedRequest>();
     const source = resolver.startsWith('body.') ? 'body' : 'params';
@@ -38,7 +41,13 @@ export class ContractsBlockedTitularGuard implements CanActivate {
       },
     );
     if (resolver === 'params.id') {
-      await this.contractsService.assertContractNotBlocked(subscriberId);
+      if (allowAnonymized) {
+        await this.contractsService.assertContractNotBlocked(subscriberId, {
+          allowAnonymized: true,
+        });
+      } else {
+        await this.contractsService.assertContractNotBlocked(subscriberId);
+      }
     } else {
       await this.contractsService.assertSubscriberNotBlockedForMutation(subscriberId);
     }

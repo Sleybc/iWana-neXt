@@ -63,6 +63,15 @@ class DiagnosticsController {
     );
   }
 
+  @Get('anonymized-mutation')
+  anonymizedMutation(): never {
+    const driverError = Object.assign(new Error('La fila es de solo lectura.'), {
+      code: '55000',
+      hint: 'PRIVACY_TITULAR_ANONYMIZED',
+    });
+    throw new QueryFailedError('UPDATE contracts SET alias = $1', ['synthetic-value'], driverError);
+  }
+
   @Get('rate-limited')
   rateLimited(@Res({ passthrough: true }) response: Response): never {
     // Reproduce al `TenantAwareThrottlerGuard`: fija las cabeceras de cuota y
@@ -167,6 +176,18 @@ describe('TenantContextMissingFilter', () => {
       'UNHANDLED_ERROR method=GET path=/diag/query-failed class=QueryFailedError sqlstate=23505 constraint=users_email_hmac_key table=users',
     );
     expect(errorLogLines.join('\n')).not.toContain('CENTINELA-PII-0001');
+  });
+
+  it('traduce el hint de anonimización de PostgreSQL a 409 sin revelar detalle del driver', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/diag/anonymized-mutation')
+      .expect(409);
+
+    expect(response.body).toEqual({
+      code: 'PRIVACY_TITULAR_ANONYMIZED',
+      message: 'Este titular fue anonimizado; sus registros ya no se pueden modificar.',
+    });
+    expect(response.text).not.toContain('synthetic-value');
   });
 
   it('omite el stack de la aplicación en producción', async () => {

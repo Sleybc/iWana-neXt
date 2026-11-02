@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -12,6 +13,7 @@ import { AuditService } from '../../audit/audit.service';
 import { Subscriber } from './entities/subscriber.entity';
 import { hasRealContact } from './subscriber-contact.util';
 import { SubscriberFiscalCompletenessService } from './subscriber-fiscal-completeness.service';
+import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
 /**
  * Transiciones permitidas del ciclo de vida del suscriptor.
@@ -126,69 +128,54 @@ export class SubscriberStatusTransitionService {
     reason: string | null,
     actorId: string,
   ): Promise<TransitionResult> {
-    const { schemaName } = TenantContext.getOrThrow();
-
-    // Cargar subscriber actual
-    const subscriber = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.findOne(Subscriber, { where: { id: subscriberId } }),
-    );
-
-    if (!subscriber) {
-      throw new BadRequestException(`Suscriptor ${subscriberId} no encontrado`);
-    }
-
-    const fromStatus = subscriber.status;
-
-    // No-op si ya está en el estado destino
-    if (fromStatus === targetStatus) {
-      return { fromStatus, toStatus: targetStatus, reason };
-    }
-
-    // Validar transición permitida
-    if (!this.canTransition(fromStatus, targetStatus)) {
-      throw new BadRequestException(
-        `Transición no permitida: ${fromStatus} → ${targetStatus}. ` +
-          `Estados permitidos desde ${fromStatus}: ${[...(ALLOWED_TRANSITIONS.get(fromStatus) || [])].join(', ')}`,
-      );
-    }
-
-    if (targetStatus === SubscriberStatus.ACTIVE) {
-      this.fiscalCompletenessService.assertComplete(subscriber);
-    }
-
-    if (targetStatus === SubscriberStatus.ACTIVE && !hasRealContact(subscriber)) {
-      throw new UnprocessableEntityException({
-        code: 'SUBSCRIBER_CONTACT_REQUIRED',
-        message:
-          'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const transition = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await qr.manager.findOne(Subscriber, {
+        where: { id: subscriberId, tenantId },
+        lock: { mode: 'pessimistic_write' },
       });
-    }
-
-    // Validar campos mínimos para la transición
-    const fieldErrors = this.validateTransitionRequirements(subscriber, targetStatus);
-    if (fieldErrors.length > 0) {
-      throw new BadRequestException({
-        code: 'TRANSITION_REQUIREMENTS_NOT_MET',
-        message: `No se puede transicionar a ${targetStatus}. ${fieldErrors.join('. ')}`,
-        errors: fieldErrors,
-      });
-    }
-
-    // Validar motivo para ciertas transiciones
-    if (
-      (targetStatus === SubscriberStatus.SUSPENDED ||
-        targetStatus === SubscriberStatus.CANCELLED) &&
-      !reason?.trim()
-    ) {
-      throw new BadRequestException(
-        `Se requiere motivo para la transición ${fromStatus} → ${targetStatus}`,
-      );
-    }
-
-    // Persistir cambio de estado
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await qr.manager.update(Subscriber, { id: subscriberId }, { status: targetStatus });
+      if (!subscriber) throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado`);
+      if (subscriber.anonymizedAt != null) throw titularAnonymizedConflict();
+      const fromStatus = subscriber.status;
+      if (fromStatus === targetStatus) return { fromStatus, changed: false };
+      if (!this.canTransition(fromStatus, targetStatus)) {
+        throw new BadRequestException(
+          `Transición no permitida: ${fromStatus} → ${targetStatus}. ` +
+            `Estados permitidos desde ${fromStatus}: ${[...(ALLOWED_TRANSITIONS.get(fromStatus) || [])].join(', ')}`,
+        );
+      }
+      if (targetStatus === SubscriberStatus.ACTIVE) {
+        this.fiscalCompletenessService.assertComplete(subscriber);
+      }
+      if (targetStatus === SubscriberStatus.ACTIVE && !hasRealContact(subscriber)) {
+        throw new UnprocessableEntityException({
+          code: 'SUBSCRIBER_CONTACT_REQUIRED',
+          message:
+            'Para activar el servicio, registra al menos un teléfono o un correo del suscriptor.',
+        });
+      }
+      const fieldErrors = this.validateTransitionRequirements(subscriber, targetStatus);
+      if (fieldErrors.length > 0) {
+        throw new BadRequestException({
+          code: 'TRANSITION_REQUIREMENTS_NOT_MET',
+          message: `No se puede transicionar a ${targetStatus}. ${fieldErrors.join('. ')}`,
+          errors: fieldErrors,
+        });
+      }
+      if (
+        (targetStatus === SubscriberStatus.SUSPENDED ||
+          targetStatus === SubscriberStatus.CANCELLED) &&
+        !reason?.trim()
+      ) {
+        throw new BadRequestException(
+          `Se requiere motivo para la transición ${fromStatus} → ${targetStatus}`,
+        );
+      }
+      await qr.manager.update(Subscriber, { id: subscriberId, tenantId }, { status: targetStatus });
+      return { fromStatus, changed: true };
     });
+    const { fromStatus } = transition;
+    if (!transition.changed) return { fromStatus, toStatus: targetStatus, reason };
 
     // GSEC-01: audit manual mínimo (handler con @SkipAudit). Sin PII.
     const reasonIsPrivate =
@@ -222,56 +209,50 @@ export class SubscriberStatusTransitionService {
     expedienteId: string,
     actorId: string,
   ): Promise<TransitionResult> {
-    const { schemaName } = TenantContext.getOrThrow();
-    const subscriber = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.findOne(Subscriber, { where: { id: subscriberId } }),
-    );
-
-    if (!subscriber || subscriber.expedienteId !== expedienteId) {
-      throw new BadRequestException('El suscriptor no pertenece al expediente reactivado.');
-    }
-    if (subscriber.activatedAt !== null && subscriber.activatedAt !== undefined) {
-      throw new BadRequestException(
-        'Un suscriptor previamente activado no puede restaurarse desde su expediente.',
-      );
-    }
-    if (subscriber.status === SubscriberStatus.PROSPECT) {
-      return {
-        fromStatus: SubscriberStatus.PROSPECT,
-        toStatus: SubscriberStatus.PROSPECT,
-        reason: 'EXPEDIENTE_REACTIVATED',
-      };
-    }
-    if (subscriber.status !== SubscriberStatus.CANCELLED) {
-      throw new BadRequestException(
-        'Solo un suscriptor cancelado puede restaurarse como prospecto.',
-      );
-    }
-
-    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-      qr.manager.update(
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await qr.manager.findOne(Subscriber, {
+        where: { id: subscriberId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!subscriber) throw new NotFoundException(`Suscriptor ${subscriberId} no encontrado`);
+      if (subscriber.anonymizedAt != null) throw titularAnonymizedConflict();
+      if (subscriber.expedienteId !== expedienteId) {
+        throw new BadRequestException('El suscriptor no pertenece al expediente reactivado.');
+      }
+      if (subscriber.activatedAt !== null && subscriber.activatedAt !== undefined) {
+        throw new BadRequestException(
+          'Un suscriptor previamente activado no puede restaurarse desde su expediente.',
+        );
+      }
+      if (subscriber.status === SubscriberStatus.PROSPECT) return { changed: false };
+      if (subscriber.status !== SubscriberStatus.CANCELLED) {
+        throw new BadRequestException(
+          'Solo un suscriptor cancelado puede restaurarse como prospecto.',
+        );
+      }
+      const update = await qr.manager.update(
         Subscriber,
         {
           id: subscriberId,
+          tenantId,
           expedienteId,
           status: SubscriberStatus.CANCELLED,
           activatedAt: IsNull(),
         },
         { status: SubscriberStatus.PROSPECT },
-      ),
-    );
-    if (result.affected !== 1) {
-      const current = await runInTenantSchema(this.dataSource, schemaName, async (qr) =>
-        qr.manager.findOne(Subscriber, { where: { id: subscriberId, expedienteId } }),
       );
-      if (current?.status === SubscriberStatus.PROSPECT) {
-        return {
-          fromStatus: SubscriberStatus.PROSPECT,
-          toStatus: SubscriberStatus.PROSPECT,
-          reason: 'EXPEDIENTE_REACTIVATED',
-        };
+      if (update.affected !== 1) {
+        throw new BadRequestException('No se pudo restaurar el suscriptor del expediente.');
       }
-      throw new BadRequestException('No se pudo restaurar el suscriptor del expediente.');
+      return { changed: true };
+    });
+    if (!result.changed) {
+      return {
+        fromStatus: SubscriberStatus.PROSPECT,
+        toStatus: SubscriberStatus.PROSPECT,
+        reason: 'EXPEDIENTE_REACTIVATED',
+      };
     }
 
     await this.auditService.log({

@@ -12,6 +12,10 @@ import { MediaModule } from '../../media/media.module';
 import { PrivacyModule } from '../../privacy/privacy.module';
 import { ContractsBlockedTitularGuard } from './guards/contracts-blocked-titular.guard';
 import { SubscribersModule } from '../subscribers/subscribers.module';
+import { TenantModule } from '../../tenant/tenant.module';
+import { BillingCyclesController } from './billing-cycles.controller';
+import { ContractsTenantSettingsReadAdapter } from './ports/contracts-tenant-settings-read.adapter';
+import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
 
 @Module({
   imports: [
@@ -23,9 +27,16 @@ import { SubscribersModule } from '../subscribers/subscribers.module';
     MediaModule,
     PrivacyModule,
     SubscribersModule,
+    TenantModule,
   ],
-  controllers: [ContractsController],
-  providers: [ContractsService, ContractSignGuard, ContractsBlockedTitularGuard],
+  controllers: [ContractsController, BillingCyclesController],
+  providers: [
+    ContractsService,
+    ContractSignGuard,
+    ContractsBlockedTitularGuard,
+    ContractsTenantSettingsReadAdapter,
+    { provide: ContractsTenantSettingsReadPort, useExisting: ContractsTenantSettingsReadAdapter },
+  ],
   exports: [ContractsService],
 })
 export class ContractsModule {}

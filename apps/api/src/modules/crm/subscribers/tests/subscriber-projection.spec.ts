@@ -39,7 +39,7 @@ const subscriber = {
   department: 'Cundinamarca',
   latitude: 4.6,
   longitude: -74.1,
-  birthDate: new Date('1990-01-01'),
+  birthDate: '1990-01-01',
   legalRepresentativeId: 'legal-1',
   manualOverrideReason: 'dato interno',
   externalId: 'external-1',

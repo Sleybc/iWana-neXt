@@ -18,8 +18,20 @@ import {
   PersonType,
   SubscriberStatus,
   ServiceUsage,
+  computeCutoffDate,
+  computeNextCutoffDate,
   type InternetVatResult,
   type ListResponse,
+  type BillingCycle,
+  type BillingCycleOption,
+  type ActivateContractInput,
+  type ContractPlanChangeInput,
+  type ContractPlanTaxSnapshot,
+  type CutoffAgendaQuery,
+  type CutoffAgendaResponse,
+  type CutoffAgendaItem,
+  type SubscriberListItem,
+  type PrivacyMark,
   type LifecycleAction,
   type LifecyclePreviewRequest,
   type LifecyclePreviewResponse,
@@ -30,6 +42,10 @@ import {
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { Contract } from './entities/contract.entity';
+import { titularAnonymizedConflict } from '../subscribers/guards/titular-anonymized-conflict';
+import { projectSubscriberForList } from '../subscribers/subscriber-projection';
+import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
+import { getTenantLocalDate } from './billing-cycle-date.util';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { CreateContractFromExpedienteDto } from './dto/create-contract-from-expediente.dto';
@@ -90,6 +106,7 @@ const AUDITABLE_CONTRACT_UPDATE_FIELDS = new Set([
   'additionalServiceIds',
   'paymentMethod',
   'billingCycle',
+  'billingCycleDay',
   'fiscalName',
   'fiscalDocument',
   'fiscalAddress',
@@ -118,6 +135,9 @@ export class ContractsService {
     @Optional()
     @Inject(IPrivacyMarksReadPort)
     private readonly privacyMarksReadPort?: IPrivacyMarksReadPort,
+    @Optional()
+    @Inject(ContractsTenantSettingsReadPort)
+    private readonly tenantSettingsReadPort?: ContractsTenantSettingsReadPort,
   ) {
     this.fiscalDocumentCrypto = createFiscalDocumentCrypto(this.configService);
   }
@@ -150,10 +170,13 @@ export class ContractsService {
           legalRepresentativePartyId: true,
         },
       );
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      if (dto.billingCycleDay !== undefined) {
+        await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
+      }
       if (subscriber.status === SubscriberStatus.CANCELLED) {
         throw this.cancelledSubscriberConflict();
       }
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
       this.subscriberFiscalCompletenessService.assertComplete(subscriber);
 
@@ -188,6 +211,7 @@ export class ContractsService {
         additionalServiceIds: dto.additionalServiceIds ?? [],
         paymentMethod: dto.paymentMethod ?? null,
         billingCycle: dto.billingCycle ?? null,
+        billingCycleDay: dto.billingCycleDay ?? null,
         fiscalName: dto.fiscalName ?? null,
         fiscalDocument: null,
         fiscalAddress: dto.fiscalAddress ?? null,
@@ -196,6 +220,7 @@ export class ContractsService {
       });
       setFiscalDocumentStorage(entity, dto.fiscalDocument, this.fiscalDocumentCrypto);
 
+      this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);
       return this.projectContractForMutation(saved, qr.manager);
     });
@@ -208,6 +233,7 @@ export class ContractsService {
         subscriberId: created.subscriberId,
         planId: created.planId,
         status: created.status,
+        billingCycleDay: created.billingCycleDay,
       },
     });
     return created;
@@ -245,10 +271,13 @@ export class ContractsService {
         postalCode: true,
         customerSegment: true,
       });
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      if (dto.billingCycleDay !== undefined) {
+        await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
+      }
       if (subscriber.status === SubscriberStatus.CANCELLED) {
         throw this.cancelledSubscriberConflict();
       }
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
       await this.requireContractualAuthorization(subscriber.partyId);
       this.subscriberFiscalCompletenessService.assertComplete(subscriber);
 
@@ -322,6 +351,7 @@ export class ContractsService {
         additionalServiceIds: (expediente.additionalServiceIds as string[]) ?? [],
         paymentMethod: dto.paymentMethod ?? expediente.paymentMethod ?? null,
         billingCycle: dto.billingCycle ?? expediente.billingCycle ?? null,
+        billingCycleDay: dto.billingCycleDay ?? null,
         fiscalName: expediente.fiscalName ?? null,
         fiscalDocument: null,
         fiscalAddress: null,
@@ -330,6 +360,7 @@ export class ContractsService {
       });
       setFiscalDocumentStorage(entity, expediente.fiscalDocument, this.fiscalDocumentCrypto);
 
+      this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);
       return this.projectContractForMutation(saved, qr.manager);
     });
@@ -342,6 +373,7 @@ export class ContractsService {
         subscriberId: created.subscriberId,
         planId: created.planId,
         status: created.status,
+        billingCycleDay: created.billingCycleDay,
       },
     });
     return created;
@@ -447,6 +479,163 @@ export class ContractsService {
     return entity;
   }
 
+  async getActiveBillingCycles(): Promise<BillingCycleOption[]> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const timezone = this.tenantSettingsReadPort
+      ? await this.tenantSettingsReadPort.getTimezone(tenantId)
+      : 'America/Bogota';
+    const today = getTenantLocalDate(new Date(), timezone);
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const rows = (await qr.query(
+        `SELECT cycle_day AS "cycleDay", cutoff_day AS "cutoffDay", active
+           FROM crm_billing_cycles
+          WHERE active = true
+          ORDER BY cycle_day ASC`,
+      )) as BillingCycle[];
+      return rows.map((cycle) => ({
+        ...cycle,
+        nextCutoffDate: computeNextCutoffDate({
+          cycleDay: cycle.cycleDay,
+          cutoffDay: cycle.cutoffDay,
+          today,
+        }),
+      }));
+    });
+  }
+
+  async getCutoffAgenda(
+    query: CutoffAgendaQuery,
+    role: string,
+    canSeeBlocked = false,
+    actorId?: string,
+  ): Promise<CutoffAgendaResponse> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const timezone = this.tenantSettingsReadPort
+      ? await this.tenantSettingsReadPort.getTimezone(tenantId)
+      : 'America/Bogota';
+    const date = query.date ?? getTenantLocalDate(new Date(), timezone);
+    const { page, limit } = clampPage(query.page, clampLimit(query.limit));
+
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      // Los contratos con un ciclo inactivo conservan su fecha (ADR-102 D2); por eso
+      // la agenda calcula con el catálogo completo, aunque los selectores solo lean activos.
+      const cycles = (await qr.query(
+        `SELECT cycle_day AS "cycleDay", cutoff_day AS "cutoffDay"
+           FROM crm_billing_cycles`,
+      )) as Array<{ cycleDay: number; cutoffDay: number }>;
+      const year = Number(date.slice(0, 4));
+      const month = Number(date.slice(5, 7));
+      const cycleDays = cycles
+        .filter(
+          (cycle) =>
+            computeCutoffDate({
+              cycleDay: cycle.cycleDay,
+              cutoffDay: cycle.cutoffDay,
+              year,
+              month,
+            }) === date,
+        )
+        .map((cycle) => cycle.cycleDay);
+      const withoutCycleRows = (await qr.query(
+        `SELECT COUNT(*)::int AS total
+           FROM contracts
+          WHERE tenant_id = $1 AND status = $2 AND deleted_at IS NULL
+            AND billing_cycle_day IS NULL`,
+        [tenantId, ContractStatus.ACTIVE],
+      )) as Array<{ total: number }>;
+      const withoutCycleCount = withoutCycleRows[0]?.total ?? 0;
+      if (cycleDays.length === 0) {
+        return {
+          items: [] as CutoffAgendaItem[],
+          meta: buildPageMeta({ total: 0, page, limit }),
+          withoutCycleCount,
+          blockedServed: 0,
+        };
+      }
+
+      const countRows = (await qr.query(
+        `SELECT COUNT(*)::int AS total
+           FROM contracts c
+           JOIN subscribers s ON s.id = c.subscriber_id AND s.tenant_id = c.tenant_id
+          WHERE c.tenant_id = $1 AND s.tenant_id = $1
+            AND c.status = $2 AND c.deleted_at IS NULL AND s.deleted_at IS NULL
+            AND c.billing_cycle_day = ANY($3::smallint[])`,
+        [tenantId, ContractStatus.ACTIVE, cycleDays],
+      )) as Array<{ total: number }>;
+      const total = countRows[0]?.total ?? 0;
+      const rows = (await qr.query(
+        `SELECT c.id AS contract_id, c.subscriber_id, c.billing_cycle_day,
+                COALESCE(c.plan_snapshot_json->>'name', c.plan_snapshot_json->>'planName') AS plan_name,
+                s.id AS projected_subscriber_id, s.tenant_id AS subscriber_tenant_id,
+                s.party_id, s.user_id, s.status AS subscriber_status, s.person_type,
+                s.customer_segment, s.stratum, s.vat_treatment, s.vat_responsibility,
+                s.rut_responsibilities, s.legal_representative_party_id, s.tax_regime,
+                s.expediente_id, s.document_type, s.first_name, s.last_name,
+                s.business_name, s.commercial_name, s.anonymized_at, s.created_at, s.updated_at
+           FROM contracts c
+           JOIN subscribers s ON s.id = c.subscriber_id AND s.tenant_id = c.tenant_id
+          WHERE c.tenant_id = $1 AND s.tenant_id = $1
+            AND c.status = $2 AND c.deleted_at IS NULL AND s.deleted_at IS NULL
+            AND c.billing_cycle_day = ANY($3::smallint[])
+          ORDER BY c.billing_cycle_day ASC, c.id ASC
+          LIMIT $4 OFFSET $5`,
+        [tenantId, ContractStatus.ACTIVE, cycleDays, limit, (page - 1) * limit],
+      )) as Array<Record<string, unknown>>;
+      const partyIds = rows
+        .map((row) => row['party_id'])
+        .filter((partyId): partyId is string => typeof partyId === 'string');
+      if (partyIds.length > 0 && !this.privacyMarksReadPort) {
+        throw new ServiceUnavailableException({
+          code: 'PRIVACY_MARKS_UNAVAILABLE',
+          message: 'No se pudo verificar el estado de privacidad del titular.',
+        });
+      }
+      const marksByParty =
+        partyIds.length > 0 && this.privacyMarksReadPort
+          ? await this.privacyMarksReadPort.activeMarks(partyIds)
+          : {};
+      const items = rows.map((row) =>
+        this.toCutoffAgendaItem(row, role, canSeeBlocked, marksByParty, date),
+      );
+      const blockedServed = rows.filter((row) => {
+        const partyId = row['party_id'];
+        return (
+          row['anonymized_at'] == null &&
+          typeof partyId === 'string' &&
+          (marksByParty[partyId] ?? []).includes('DATOS_BLOQUEADOS')
+        );
+      }).length;
+      return {
+        items,
+        meta: buildPageMeta({ total, page, limit }),
+        withoutCycleCount,
+        blockedServed,
+      };
+    });
+
+    if (canSeeBlocked && result.blockedServed > 0) {
+      await this.auditService.log({
+        action: AuditAction.LIST_ACCESS,
+        entityType: 'BillingCycleCutoffAgenda',
+        entityId: 'N/A',
+        userId: actorId ?? null,
+        newValue: {
+          date,
+          totalServed: result.items.length,
+          totalAvailable: result.meta.total,
+          blockedServed: result.blockedServed,
+        },
+      });
+    }
+
+    return {
+      date,
+      items: result.items,
+      meta: result.meta,
+      withoutCycleCount: result.withoutCycleCount,
+    };
+  }
+
   async findOneForRead(
     id: string,
     canSeeBlocked: boolean,
@@ -478,9 +667,12 @@ export class ContractsService {
     return projected;
   }
 
-  async assertContractNotBlocked(id: string): Promise<void> {
+  async assertContractNotBlocked(
+    id: string,
+    options: { allowAnonymized?: boolean } = {},
+  ): Promise<void> {
     const contract = await this.findOne(id);
-    await this.assertContractSubscriberNotBlocked(contract.subscriberId);
+    await this.assertContractSubscriberNotBlocked(contract.subscriberId, options);
   }
 
   async assertSubscriberNotBlockedForMutation(subscriberId: string): Promise<void> {
@@ -574,7 +766,8 @@ export class ContractsService {
     partyId: string | null,
     anonymizedAt: Date | string | null,
   ): Promise<void> {
-    if (anonymizedAt != null || !partyId) return;
+    if (anonymizedAt != null) throw titularAnonymizedConflict();
+    if (!partyId) return;
     if (!this.privacyMarksReadPort) {
       throw new ServiceUnavailableException({
         code: 'PRIVACY_MARKS_UNAVAILABLE',
@@ -590,7 +783,10 @@ export class ContractsService {
     }
   }
 
-  private async assertContractSubscriberNotBlocked(subscriberId: string): Promise<void> {
+  private async assertContractSubscriberNotBlocked(
+    subscriberId: string,
+    options: { allowAnonymized?: boolean } = {},
+  ): Promise<void> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const subscriber = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.manager.findOne(Subscriber, {
@@ -599,6 +795,10 @@ export class ContractsService {
       }),
     );
     if (!subscriber) throw new NotFoundException('Suscriptor del contrato no encontrado.');
+    if (options.allowAnonymized && subscriber.anonymizedAt != null) {
+      await this.assertSubscriberNotBlocked(subscriber.partyId, null);
+      return;
+    }
     await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
   }
 
@@ -625,84 +825,88 @@ export class ContractsService {
 
   async update(id: string, dto: UpdateContractDto, actorId?: string): Promise<Contract> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    const entity = await this.findOne(id);
-
-    const servicePointFieldsChanged =
-      dto.serviceUsage !== undefined || dto.installationStratum !== undefined;
-    const fiscalFieldsChanged =
-      servicePointFieldsChanged ||
-      dto.fiscalName !== undefined ||
-      dto.fiscalDocument !== undefined ||
-      dto.fiscalAddress !== undefined;
-    if (fiscalFieldsChanged && entity.status !== ContractStatus.DRAFT) {
-      throw new ConflictException({
-        code: 'SERVICE_POINT_REQUIRES_DEDICATED_ACTION',
-        message: 'El punto de servicio solo se modifica en borradores o por la acción dedicada.',
+    const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      const entity = await qr.manager.findOne(Contract, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
       });
-    }
+      if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
+      const previousBillingCycleDay = entity.billingCycleDay;
 
-    // planSnapshotJson solo editable en DRAFT
-    if (dto.planSnapshotJson !== undefined && entity.status !== ContractStatus.DRAFT) {
-      throw new ConflictException(
-        'CONTRACT_IMMUTABLE_AFTER_SIGN: El snapshot del plan no puede modificarse después de activar el contrato.',
-      );
-    }
-
-    if (servicePointFieldsChanged) {
-      const nextUsage = dto.serviceUsage ?? entity.serviceUsage;
-      const nextStratum =
-        dto.installationStratum !== undefined
-          ? dto.installationStratum
-          : entity.installationStratum;
-      if (nextUsage === ServiceUsage.RESIDENTIAL) {
-        const subscriber = await runInTenantSchema(this.dataSource, schemaName, (qr) =>
-          qr.manager.findOne(Subscriber, {
-            where: { id: entity.subscriberId, tenantId },
-            select: { id: true, tenantId: true, personType: true },
-          }),
-        );
-        if (!subscriber) {
-          throw new NotFoundException('Suscriptor del contrato no encontrado.');
-        }
-        this._validateServicePoint(nextUsage, nextStratum, subscriber.personType);
+      const servicePointFieldsChanged =
+        dto.serviceUsage !== undefined || dto.installationStratum !== undefined;
+      const fiscalFieldsChanged =
+        servicePointFieldsChanged ||
+        dto.fiscalName !== undefined ||
+        dto.fiscalDocument !== undefined ||
+        dto.fiscalAddress !== undefined;
+      if (fiscalFieldsChanged && entity.status !== ContractStatus.DRAFT) {
+        throw new ConflictException({
+          code: 'SERVICE_POINT_REQUIRES_DEDICATED_ACTION',
+          message: 'El punto de servicio solo se modifica en borradores o por la acción dedicada.',
+        });
       }
-    }
+      if (dto.planSnapshotJson !== undefined && entity.status !== ContractStatus.DRAFT) {
+        throw new ConflictException(
+          'CONTRACT_IMMUTABLE_AFTER_SIGN: El snapshot del plan no puede modificarse después de activar el contrato.',
+        );
+      }
+      if (servicePointFieldsChanged) {
+        const nextUsage = dto.serviceUsage ?? entity.serviceUsage;
+        const nextStratum =
+          dto.installationStratum !== undefined
+            ? dto.installationStratum
+            : entity.installationStratum;
+        if (nextUsage === ServiceUsage.RESIDENTIAL) {
+          this._validateServicePoint(nextUsage, nextStratum, subscriber.personType);
+        }
+      }
 
-    if (dto.alias !== undefined) entity.alias = dto.alias.trim();
-    if (dto.quoteId !== undefined) entity.quoteId = dto.quoteId ?? null;
-    if (dto.installationAddress !== undefined)
-      entity.installationAddress = dto.installationAddress ?? null;
-    if (dto.installationCity !== undefined) entity.installationCity = dto.installationCity ?? null;
-    if (dto.installationDepartment !== undefined)
-      entity.installationDepartment = dto.installationDepartment ?? null;
-    if (dto.installationPostalCode !== undefined)
-      entity.installationPostalCode = dto.installationPostalCode ?? null;
-    if (dto.installationNotes !== undefined)
-      entity.installationNotes = dto.installationNotes ?? null;
-    if (dto.customerSegment !== undefined) entity.customerSegment = dto.customerSegment ?? null;
-    if (dto.serviceUsage !== undefined) entity.serviceUsage = dto.serviceUsage;
-    if (dto.installationStratum !== undefined)
-      entity.installationStratum = dto.installationStratum ?? null;
-    if (dto.additionalProductIds !== undefined)
-      entity.additionalProductIds = dto.additionalProductIds;
-    if (dto.additionalServiceIds !== undefined)
-      entity.additionalServiceIds = dto.additionalServiceIds;
-    if (dto.paymentMethod !== undefined) entity.paymentMethod = dto.paymentMethod ?? null;
-    if (dto.billingCycle !== undefined) entity.billingCycle = dto.billingCycle ?? null;
-    if (dto.fiscalName !== undefined) entity.fiscalName = dto.fiscalName ?? null;
-    if (dto.fiscalDocument !== undefined) entity.fiscalDocument = dto.fiscalDocument ?? null;
-    if (dto.fiscalAddress !== undefined) entity.fiscalAddress = dto.fiscalAddress ?? null;
-    if (dto.startDate !== undefined) entity.startDate = dto.startDate ?? null;
-    if (dto.endDate !== undefined) entity.endDate = dto.endDate ?? null;
-    if (dto.planSnapshotJson !== undefined) entity.planSnapshotJson = dto.planSnapshotJson;
-
-    if (dto.fiscalDocument === undefined) prepareFiscalDocumentForSave(entity);
-    else setFiscalDocumentStorage(entity, dto.fiscalDocument, this.fiscalDocumentCrypto);
-
-    const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      if (dto.alias !== undefined) entity.alias = dto.alias.trim();
+      if (dto.quoteId !== undefined) entity.quoteId = dto.quoteId ?? null;
+      if (dto.installationAddress !== undefined)
+        entity.installationAddress = dto.installationAddress ?? null;
+      if (dto.installationCity !== undefined)
+        entity.installationCity = dto.installationCity ?? null;
+      if (dto.installationDepartment !== undefined)
+        entity.installationDepartment = dto.installationDepartment ?? null;
+      if (dto.installationPostalCode !== undefined)
+        entity.installationPostalCode = dto.installationPostalCode ?? null;
+      if (dto.installationNotes !== undefined)
+        entity.installationNotes = dto.installationNotes ?? null;
+      if (dto.customerSegment !== undefined) entity.customerSegment = dto.customerSegment ?? null;
+      if (dto.serviceUsage !== undefined) entity.serviceUsage = dto.serviceUsage;
+      if (dto.installationStratum !== undefined)
+        entity.installationStratum = dto.installationStratum ?? null;
+      if (dto.additionalProductIds !== undefined)
+        entity.additionalProductIds = dto.additionalProductIds;
+      if (dto.additionalServiceIds !== undefined)
+        entity.additionalServiceIds = dto.additionalServiceIds;
+      if (dto.paymentMethod !== undefined) entity.paymentMethod = dto.paymentMethod ?? null;
+      if (dto.billingCycle !== undefined) entity.billingCycle = dto.billingCycle ?? null;
+      if (dto.billingCycleDay !== undefined) entity.billingCycleDay = dto.billingCycleDay;
+      if (dto.fiscalName !== undefined) entity.fiscalName = dto.fiscalName ?? null;
+      if (dto.fiscalDocument !== undefined) entity.fiscalDocument = dto.fiscalDocument ?? null;
+      if (dto.fiscalAddress !== undefined) entity.fiscalAddress = dto.fiscalAddress ?? null;
+      if (dto.startDate !== undefined) entity.startDate = dto.startDate ?? null;
+      if (dto.endDate !== undefined) entity.endDate = dto.endDate ?? null;
+      if (dto.planSnapshotJson !== undefined) entity.planSnapshotJson = dto.planSnapshotJson;
+      if (dto.fiscalDocument === undefined) prepareFiscalDocumentForSave(entity);
+      else setFiscalDocumentStorage(entity, dto.fiscalDocument, this.fiscalDocumentCrypto);
+      if (dto.billingCycleDay !== undefined)
+        await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
+      this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);
-      return this.projectContractForMutation(saved, qr.manager);
+      return {
+        updated: await this.projectContractForMutation(saved, qr.manager),
+        status: entity.status,
+        previousBillingCycleDay,
+        billingCycleDay: entity.billingCycleDay,
+      };
     });
+    const updated = result.updated;
     const changedFields = Object.keys(dto).filter((field) =>
       AUDITABLE_CONTRACT_UPDATE_FIELDS.has(field),
     );
@@ -711,17 +915,154 @@ export class ContractsService {
       entityType: 'Contract',
       entityId: updated.id,
       userId: actorId ?? null,
-      oldValue: { status: entity.status },
-      newValue: { changedFields },
+      oldValue: {
+        status: result.status,
+        ...(dto.billingCycleDay !== undefined
+          ? { billingCycleDay: result.previousBillingCycleDay }
+          : {}),
+      },
+      newValue: {
+        changedFields,
+        ...(dto.billingCycleDay !== undefined ? { billingCycleDay: result.billingCycleDay } : {}),
+      },
     });
     return updated;
+  }
+
+  /** Aplica el cambio comercial y su auditoría en una única transacción tenant. */
+  async changePlan(
+    id: string,
+    command: ContractPlanChangeInput,
+    actorId?: string,
+  ): Promise<Contract> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      const entity = await qr.manager.findOne(Contract, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!entity) throw new NotFoundException('Contrato no encontrado.');
+      if (entity.updatedAt.getTime() !== new Date(command.expectedUpdatedAt).getTime()) {
+        throw new ConflictException({
+          code: 'CONTRACT_CHANGED',
+          message: 'El contrato cambió. Actualiza la ficha e inténtalo de nuevo.',
+        });
+      }
+      if (entity.status !== ContractStatus.DRAFT && entity.status !== ContractStatus.ACTIVE) {
+        throw new ConflictException({
+          code: 'CONTRACT_PLAN_CHANGE_NOT_ALLOWED',
+          message: 'Solo puedes cambiar el plan de un contrato en borrador o activo.',
+        });
+      }
+      if (subscriber.status === SubscriberStatus.CANCELLED)
+        throw this.cancelledSubscriberConflict();
+      if (command.planId === entity.planId)
+        return this.projectContractForMutation(entity, qr.manager);
+
+      const unavailable = () =>
+        new UnprocessableEntityException({
+          code: 'PLAN_UNAVAILABLE',
+          message: 'El plan seleccionado no está disponible.',
+        });
+      let plan;
+      try {
+        plan = await this.commercialCatalogPort.getPlanById(tenantId, schemaName, command.planId);
+      } catch (error) {
+        // Los identificadores heredados son texto; un UUID inválido tampoco es un plan disponible.
+        if (
+          error instanceof Error &&
+          'driverError' in error &&
+          (error.driverError as { code?: string } | undefined)?.code === '22P02'
+        )
+          throw unavailable();
+        throw error;
+      }
+      if (!plan?.isActive) throw unavailable();
+      const priceRequired = () =>
+        new UnprocessableEntityException({
+          code: 'PLAN_PRICE_REQUIRED',
+          message: 'El plan no tiene una tarifa vigente para el segmento del servicio.',
+        });
+      let snapshot;
+      try {
+        snapshot = await this.commercialCatalogPort.createSnapshot(
+          tenantId,
+          schemaName,
+          command.planId,
+          entity.customerSegment ?? subscriber.customerSegment,
+        );
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) throw error;
+        const stillAvailable = await this.commercialCatalogPort.getPlanById(
+          tenantId,
+          schemaName,
+          command.planId,
+        );
+        if (!stillAvailable?.isActive) throw unavailable();
+        throw priceRequired();
+      }
+      if (!Number.isFinite(snapshot.monthlyPrice) || snapshot.monthlyPrice < 0)
+        throw priceRequired();
+      if (snapshot.monthlyPrice !== command.expectedMonthlyPrice) {
+        throw new ConflictException({
+          code: 'PLAN_PRICE_CHANGED',
+          message: 'La tarifa del plan cambió. Revisa el precio vigente antes de confirmar.',
+        });
+      }
+      const oldValue = {
+        planId: entity.planId,
+        planSnapshotJson: entity.planSnapshotJson,
+        vatSnapshot: entity.vatSnapshot,
+      };
+      const next: Contract = Object.assign(new Contract(), entity, {
+        planId: command.planId,
+        planSnapshotJson: { ...snapshot, snapshotAt: snapshot.snapshotAt.toISOString() },
+        vatSnapshot: null,
+      });
+      if (entity.status === ContractStatus.ACTIVE) {
+        this._validateActivationInputs(
+          entity.serviceUsage,
+          entity.installationStratum,
+          subscriber.personType,
+        );
+        next.vatSnapshot = await this._resolveVatSnapshot(next, snapshot);
+      }
+      // PostgreSQL puede actualizar varias veces dentro del mismo milisegundo: la versión
+      // expuesta al cliente debe avanzar siempre tras una modificación comercial.
+      this.advanceContractVersion(next);
+      prepareFiscalDocumentForSave(next);
+      const saved = await qr.manager.save(Contract, next);
+      await this.auditService.logWithin(
+        {
+          action: AuditAction.UPDATE,
+          entityType: 'ContractPlanChange',
+          entityId: saved.id,
+          userId: actorId ?? null,
+          oldValue,
+          newValue: {
+            planId: saved.planId,
+            planSnapshotJson: saved.planSnapshotJson,
+            vatSnapshot: saved.vatSnapshot,
+            effectiveAt: new Date().toISOString(),
+          },
+        },
+        qr.manager,
+      );
+      return this.projectContractForMutation(saved, qr.manager);
+    });
   }
 
   // ── Transiciones de estado ──────────────────────────────────────────────────
 
   /** DRAFT → ACTIVE (firma del contrato) */
-  async activate(id: string, actorId?: string): Promise<Contract> {
-    return this._transition(id, ContractStatus.ACTIVE, actorId);
+  async activate(
+    id: string,
+    actorId?: string,
+    command: ActivateContractInput = {},
+  ): Promise<Contract> {
+    return this._transition(id, ContractStatus.ACTIVE, actorId, command.billingCycleDay);
   }
 
   /** Recalcula el snapshot fiscal de un punto de servicio ya activo. */
@@ -731,6 +1072,10 @@ export class ContractsService {
     actorId: string,
   ): Promise<Contract> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+    });
     if (dto.serviceUsage === undefined && dto.installationStratum === undefined) {
       throw new UnprocessableEntityException({
         code: 'SERVICE_POINT_CHANGE_REQUIRED',
@@ -742,21 +1087,18 @@ export class ContractsService {
       this.dataSource,
       schemaName,
       async (qr) => {
-        const entity = await qr.manager.findOne(Contract, { where: { id } });
+        const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        const entity = await qr.manager.findOne(Contract, {
+          where: { id, tenantId },
+          lock: { mode: 'pessimistic_write' },
+        });
         if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
         if (entity.status !== ContractStatus.ACTIVE) {
           throw new ConflictException({
             code: 'SERVICE_POINT_ACTION_REQUIRES_ACTIVE_CONTRACT',
             message: 'La acción dedicada requiere un contrato activo.',
           });
-        }
-
-        const subscriber = await qr.manager.findOne(Subscriber, {
-          where: { id: entity.subscriberId, tenantId },
-          select: { id: true, tenantId: true, personType: true, partyId: true, anonymizedAt: true },
-        });
-        if (!subscriber) {
-          throw new NotFoundException('Suscriptor del contrato no encontrado.');
         }
 
         const serviceUsage = dto.serviceUsage ?? entity.serviceUsage;
@@ -771,6 +1113,7 @@ export class ContractsService {
         entity.installationStratum = installationStratum;
         entity.vatSnapshot = await this._resolveVatSnapshot(entity);
 
+        this.advanceContractVersion(entity);
         const saved = await qr.manager.save(Contract, entity);
         return {
           updated: await this.projectContractForMutation(saved, qr.manager),
@@ -804,6 +1147,10 @@ export class ContractsService {
     actorId: string,
   ): Promise<Contract> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+    });
     if (!file) {
       throw new BadRequestException('Se requiere el campo "file" con el soporte del estrato.');
     }
@@ -837,7 +1184,12 @@ export class ContractsService {
     let updated: Contract;
     try {
       updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-        const entity = await qr.manager.findOne(Contract, { where: { id } });
+        const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        const entity = await qr.manager.findOne(Contract, {
+          where: { id, tenantId },
+          lock: { mode: 'pessimistic_write' },
+        });
         if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
         this._assertEvidenceApplicable(entity);
         if (entity.status !== ContractStatus.DRAFT && entity.status !== ContractStatus.ACTIVE) {
@@ -853,6 +1205,7 @@ export class ContractsService {
         if (entity.status === ContractStatus.ACTIVE) {
           entity.vatSnapshot = await this._resolveVatSnapshot(entity);
         }
+        this.advanceContractVersion(entity);
         const saved = await qr.manager.save(Contract, entity);
         await this._auditStratumEvidenceChange(
           saved,
@@ -875,12 +1228,17 @@ export class ContractsService {
   }
 
   async removeStratumEvidence(id: string, actorId: string): Promise<Contract> {
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     const { updated, previousAssetId } = await runInTenantSchema(
       this.dataSource,
       schemaName,
       async (qr) => {
-        const entity = await qr.manager.findOne(Contract, { where: { id } });
+        const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        const entity = await qr.manager.findOne(Contract, {
+          where: { id, tenantId },
+          lock: { mode: 'pessimistic_write' },
+        });
         if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
         if (entity.status !== ContractStatus.DRAFT && entity.status !== ContractStatus.ACTIVE) {
           throw new ConflictException({
@@ -902,6 +1260,7 @@ export class ContractsService {
         if (entity.status === ContractStatus.ACTIVE) {
           entity.vatSnapshot = await this._resolveVatSnapshot(entity);
         }
+        this.advanceContractVersion(entity);
         const saved = await qr.manager.save(Contract, entity);
         await this._auditStratumEvidenceChange(
           saved,
@@ -1073,22 +1432,27 @@ export class ContractsService {
   // ── Eliminación ─────────────────────────────────────────────────────────────
 
   async remove(id: string, actorId?: string): Promise<void> {
-    const { schemaName } = TenantContext.getOrThrow();
-    const entity = await this.findOne(id);
-
-    if (entity.status !== ContractStatus.DRAFT) {
-      throw new BadRequestException('Solo se pueden eliminar contratos en estado DRAFT.');
-    }
-
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await qr.manager.softDelete(Contract, { id });
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const previousStatus = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      const entity = await qr.manager.findOne(Contract, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
+      if (entity.status !== ContractStatus.DRAFT) {
+        throw new BadRequestException('Solo se pueden eliminar contratos en estado DRAFT.');
+      }
+      await qr.manager.softDelete(Contract, { id, tenantId });
+      return entity.status;
     });
     await this.auditService.log({
       action: AuditAction.DELETE,
       entityType: 'Contract',
       entityId: id,
       userId: actorId ?? null,
-      oldValue: { status: entity.status },
+      oldValue: { status: previousStatus },
       newValue: { deleted: true },
     });
   }
@@ -1143,10 +1507,35 @@ export class ContractsService {
       select,
     });
     if (!subscriber) throw new NotFoundException('Suscriptor del contrato no encontrado.');
-    if (subscriber.status === SubscriberStatus.CANCELLED) {
-      throw this.cancelledSubscriberConflict();
-    }
     return subscriber;
+  }
+
+  private async lockContractSubscriberForMutation(
+    qr: QueryRunner,
+    contractId: string,
+    tenantId: string,
+  ): Promise<Subscriber> {
+    const rows = (await qr.query(
+      `SELECT s.id, s.tenant_id AS "tenantId", s.party_id AS "partyId",
+              s.anonymized_at AS "anonymizedAt", s.person_type AS "personType",
+              s.customer_segment AS "customerSegment", s.status::text AS status
+         FROM subscribers s
+         JOIN contracts c ON c.subscriber_id = s.id AND c.tenant_id = s.tenant_id
+        WHERE c.id = $1 AND c.tenant_id = $2 AND c.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+        FOR SHARE OF s`,
+      [contractId, tenantId],
+    )) as Subscriber[];
+    const subscriber = rows[0];
+    if (!subscriber) throw new NotFoundException('Contrato no encontrado.');
+    return subscriber;
+  }
+
+  private contractChangedConflict(): ConflictException {
+    return new ConflictException({
+      code: 'CONTRACT_CHANGED',
+      message: 'El contrato cambió. Actualiza la ficha e inténtalo de nuevo.',
+    });
   }
 
   private async assertNotSuspendedForDelinquency(
@@ -1201,6 +1590,8 @@ export class ContractsService {
         subscriber.personType,
       );
       contract.vatSnapshot = await this._resolveVatSnapshot(contract);
+      await this.assertContractVersionForSave(qr, contract);
+      this.advanceContractVersion(contract);
       await qr.manager.save(Contract, contract);
     }
   }
@@ -1209,24 +1600,66 @@ export class ContractsService {
     id: string,
     target: ContractStatus,
     actorId?: string,
+    requestedBillingCycleDay?: number,
   ): Promise<Contract> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
-    const entity = await this.findOne(id);
     const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const locked = (await qr.query(
-        `SELECT status::text AS status
-             FROM contracts
-            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-            FOR UPDATE`,
-        [id, tenantId],
-      )) as Array<{ status: ContractStatus }>;
-      const currentStatus = locked[0]?.status;
-      if (!currentStatus) throw new NotFoundException(`Contrato ${id} no encontrado.`);
-      if (currentStatus !== entity.status) {
-        throw new ConflictException({
-          code: 'LIFECYCLE_CONTRACT_STATE_CHANGED',
-          message: 'El estado del servicio cambió. Actualiza la ficha e inténtalo de nuevo.',
-        });
+      const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
+      const anonymized = subscriber.anonymizedAt != null;
+      if (!anonymized) {
+        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      }
+      const entity = await qr.manager.findOne(Contract, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!entity) throw new NotFoundException(`Contrato ${id} no encontrado.`);
+      if (anonymized && entity.status !== ContractStatus.TERMINATED) {
+        if (entity.status !== ContractStatus.ARCHIVED) {
+          this.logger.warn(
+            JSON.stringify({
+              event: 'crm.contract.anonymized_open_contract',
+              contractId: id,
+              subscriberId: subscriber.id,
+              status: entity.status,
+            }),
+          );
+        }
+        throw titularAnonymizedConflict();
+      }
+      if (anonymized && target !== ContractStatus.ARCHIVED) {
+        throw titularAnonymizedConflict();
+      }
+      const currentStatus = entity.status;
+      const lockedBillingCycleDay = entity.billingCycleDay;
+      if (anonymized) {
+        const rows = (await qr.query(
+          `UPDATE contracts
+              SET status = $1, status_reason_code = NULL, status_changed_at = clock_timestamp(),
+                  updated_at = GREATEST(
+                    date_trunc('milliseconds', clock_timestamp()),
+                    date_trunc('milliseconds', updated_at) + interval '1 millisecond'
+                  )
+            WHERE id = $2 AND tenant_id = $3 AND status = $4 AND deleted_at IS NULL
+            RETURNING id`,
+          [ContractStatus.ARCHIVED, id, tenantId, ContractStatus.TERMINATED],
+        )) as Array<{ id: string }>;
+        if (!rows[0]) throw this.contractChangedConflict();
+        const archived = await qr.manager.findOne(Contract, { where: { id, tenantId } });
+        if (!archived) throw new NotFoundException(`Contrato ${id} no encontrado.`);
+        const projected = await this.projectContractForMutation(archived, qr.manager);
+        await this.auditService.logWithin(
+          {
+            action: AuditAction.UPDATE,
+            entityType: 'Contract',
+            entityId: id,
+            userId: actorId ?? null,
+            oldValue: { status: ContractStatus.TERMINATED },
+            newValue: { status: ContractStatus.ARCHIVED },
+          },
+          qr.manager,
+        );
+        return projected;
       }
       const allowed = ALLOWED_TRANSITIONS[currentStatus];
       if (!allowed.includes(target)) {
@@ -1235,12 +1668,21 @@ export class ContractsService {
         );
       }
 
+      let previousBillingCycleDay: number | null = null;
       if (target === ContractStatus.ACTIVE) {
-        const subscriber = await this.lockSubscriberForContractCreation(
-          qr,
-          entity.subscriberId,
-          tenantId,
-        );
+        // ADR-102 D3: resolver el ciclo solicitado o el guardado bajo el bloqueo de contrato.
+        previousBillingCycleDay = lockedBillingCycleDay;
+        entity.billingCycleDay = lockedBillingCycleDay;
+        if (requestedBillingCycleDay !== undefined) {
+          await this.assertActiveBillingCycle(qr, requestedBillingCycleDay);
+          entity.billingCycleDay = requestedBillingCycleDay;
+        }
+        if (entity.billingCycleDay == null) {
+          throw new UnprocessableEntityException({
+            code: 'BILLING_CYCLE_REQUIRED',
+            message: 'Selecciona un ciclo de facturación para activar el servicio.',
+          });
+        }
         if (subscriber.status === SubscriberStatus.CANCELLED) {
           throw this.cancelledSubscriberConflict();
         }
@@ -1263,6 +1705,7 @@ export class ContractsService {
       entity.statusReasonCode = null;
       entity.statusChangedAt = new Date();
       prepareFiscalDocumentForSave(entity);
+      this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);
       const projected = await this.projectContractForMutation(saved, qr.manager);
       await this.auditService.logWithin(
@@ -1271,14 +1714,133 @@ export class ContractsService {
           entityType: 'Contract',
           entityId: projected.id,
           userId: actorId ?? null,
-          oldValue: { status: previousStatus },
-          newValue: { status: projected.status },
+          oldValue: {
+            status: previousStatus,
+            ...(target === ContractStatus.ACTIVE
+              ? { billingCycleDay: previousBillingCycleDay }
+              : {}),
+          },
+          newValue: {
+            status: projected.status,
+            ...(target === ContractStatus.ACTIVE
+              ? { billingCycleDay: projected.billingCycleDay }
+              : {}),
+          },
         },
         qr.manager,
       );
       return projected;
     });
     return updated;
+  }
+
+  /** Mantiene una versión distinta aun con varias escrituras en el mismo milisegundo. */
+  private advanceContractVersion(entity: Contract): void {
+    const previous = entity.updatedAt instanceof Date ? entity.updatedAt.getTime() : 0;
+    entity.updatedAt = new Date(Math.max(Date.now(), previous + 1));
+  }
+
+  /** Impide que una lectura anterior restaure plan, snapshot o IVA obsoletos. */
+  private async assertContractVersionForSave(qr: QueryRunner, entity: Contract): Promise<void> {
+    const { tenantId } = TenantContext.getOrThrow();
+    const rows = (await qr.query(
+      `SELECT updated_at AS "updatedAt" FROM contracts
+        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL FOR UPDATE`,
+      [entity.id, tenantId],
+    )) as Array<{ updatedAt: Date }>;
+    if (!rows[0]) throw new NotFoundException('Contrato no encontrado.');
+    if (new Date(rows[0].updatedAt).getTime() !== entity.updatedAt.getTime()) {
+      throw new ConflictException({
+        code: 'CONTRACT_CHANGED',
+        message: 'El contrato cambió. Actualiza la ficha e inténtalo de nuevo.',
+      });
+    }
+  }
+
+  /** Valida el catálogo activo dentro del search_path transaccional (ADR-102 D2–D3). */
+  private async assertActiveBillingCycle(qr: QueryRunner, cycleDay: number): Promise<void> {
+    const rows = (await qr.query(
+      `SELECT cycle_day
+         FROM crm_billing_cycles
+        WHERE cycle_day = $1 AND active = true`,
+      [cycleDay],
+    )) as Array<{ cycle_day: number }>;
+    if (rows.length === 0) {
+      throw new UnprocessableEntityException({
+        code: 'BILLING_CYCLE_INVALID',
+        message: 'El ciclo de facturación seleccionado no está disponible.',
+      });
+    }
+  }
+
+  private toCutoffAgendaItem(
+    row: Record<string, unknown>,
+    role: string,
+    canSeeBlocked: boolean,
+    marksByParty: Record<string, PrivacyMark[]>,
+    cutoffDate: string,
+  ): CutoffAgendaItem {
+    const partyId = typeof row['party_id'] === 'string' ? row['party_id'] : null;
+    const createdAt =
+      row['created_at'] instanceof Date ? row['created_at'] : new Date(String(row['created_at']));
+    const updatedAt =
+      row['updated_at'] instanceof Date ? row['updated_at'] : new Date(String(row['updated_at']));
+    const subscriber = Object.assign(new Subscriber(), {
+      id: String(row['projected_subscriber_id']),
+      tenantId: String(row['subscriber_tenant_id']),
+      partyId,
+      userId: typeof row['user_id'] === 'string' ? row['user_id'] : null,
+      status: row['subscriber_status'] as Subscriber['status'],
+      personType: row['person_type'] as PersonType,
+      customerSegment: row['customer_segment'] as Subscriber['customerSegment'],
+      stratum: typeof row['stratum'] === 'number' ? row['stratum'] : null,
+      vatTreatment: row['vat_treatment'] as Subscriber['vatTreatment'],
+      vatResponsibility: row['vat_responsibility'] as Subscriber['vatResponsibility'],
+      rutResponsibilities: Array.isArray(row['rut_responsibilities'])
+        ? (row['rut_responsibilities'] as string[])
+        : [],
+      legalRepresentativePartyId:
+        typeof row['legal_representative_party_id'] === 'string'
+          ? row['legal_representative_party_id']
+          : null,
+      taxRegime: row['tax_regime'] as Subscriber['taxRegime'],
+      expedienteId: typeof row['expediente_id'] === 'string' ? row['expediente_id'] : null,
+      documentType: row['document_type'] as Subscriber['documentType'],
+      firstName: typeof row['first_name'] === 'string' ? row['first_name'] : null,
+      lastName: typeof row['last_name'] === 'string' ? row['last_name'] : null,
+      businessName: typeof row['business_name'] === 'string' ? row['business_name'] : null,
+      commercialName: typeof row['commercial_name'] === 'string' ? row['commercial_name'] : null,
+      anonymizedAt:
+        row['anonymized_at'] instanceof Date
+          ? row['anonymized_at']
+          : typeof row['anonymized_at'] === 'string'
+            ? new Date(row['anonymized_at'])
+            : null,
+      anonymizedRequestId: null,
+      createdAt,
+      updatedAt,
+      privacyMarks: partyId ? (marksByParty[partyId] ?? []) : [],
+      hasLiveContracts: true,
+      otherLiveServicesCount: 0,
+    });
+    const projected: SubscriberListItem = projectSubscriberForList(subscriber, role, canSeeBlocked);
+    const subscriberDisplayName = projected.anonymizedAt
+      ? 'Anonimizado'
+      : projected.privacyRestricted
+        ? 'Datos bloqueados'
+        : projected.personType === PersonType.JURIDICA
+          ? projected.businessName?.trim() || 'Sin razón social'
+          : [projected.firstName, projected.lastName].filter(Boolean).join(' ').trim() ||
+            'Sin nombre';
+    const billingCycleDay = Number(row['billing_cycle_day']);
+    return {
+      contractId: String(row['contract_id']),
+      subscriberId: String(row['subscriber_id']),
+      subscriberDisplayName,
+      planName: typeof row['plan_name'] === 'string' ? row['plan_name'] : null,
+      billingCycleDay,
+      cutoffDate,
+    };
   }
 
   private _validateActivationInputs(
@@ -1314,17 +1876,18 @@ export class ContractsService {
     }
   }
 
-  private async _resolveVatSnapshot(contract: Contract): Promise<Contract['vatSnapshot']> {
+  private async _resolveVatSnapshot(
+    contract: Contract,
+    capturedPlan?: ContractPlanTaxSnapshot,
+  ): Promise<Contract['vatSnapshot']> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
-    const plan = await this.commercialCatalogPort.getPlanById(
-      tenantId,
-      schemaName,
-      contract.planId,
-    );
+    const plan =
+      capturedPlan ??
+      (await this.commercialCatalogPort.getPlanById(tenantId, schemaName, contract.planId));
     if (!plan || !plan.vatConcept) {
       throw new UnprocessableEntityException({
         code: 'VAT_CONCEPT_REQUIRED',
-        message: `El plan ${plan?.name ?? contract.planId} no tiene concepto fiscal asignado.`,
+        message: 'El plan no tiene concepto fiscal asignado.',
       });
     }
     if (!contract.serviceUsage) {
@@ -1448,7 +2011,14 @@ export class ContractsService {
 
   /** Genera un alias legible a partir de ciudad y dirección. */
   private _buildAlias(city?: string | null, address?: string | null): string {
-    const parts = [city, address].filter(Boolean);
+    // La ciudad puede llegar como código de catálogo (EL_COLEGIO): se guarda legible.
+    const parts = [city, address]
+      .flatMap((part) => (part ?? '').replace(/_+/g, ' ').trim().split(/\s+/))
+      .filter(Boolean)
+      .map(
+        (word) =>
+          word.charAt(0).toLocaleUpperCase('es-CO') + word.slice(1).toLocaleLowerCase('es-CO'),
+      );
     if (parts.length > 0) {
       return `Servicio — ${parts.join(' ')}`.slice(0, 120);
     }

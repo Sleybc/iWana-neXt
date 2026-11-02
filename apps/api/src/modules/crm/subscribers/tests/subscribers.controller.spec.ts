@@ -15,7 +15,10 @@ import {
   ConsentChannel,
   AccessPermissionKey,
   VatResponsibility,
+  ExpedienteStatus,
   type RutResponsibility,
+  type ContractResponse,
+  type Subscriber360Response,
 } from '@iwana/shared';
 import { SubscribersController } from '../subscribers.controller';
 import { SubscribersService } from '../subscribers.service';
@@ -160,6 +163,52 @@ describe('SubscribersController', () => {
     documentNumber: '12345678',
     email: 'juan@example.com',
     phone: '3001234567',
+  };
+
+  const mockContractResponse: ContractResponse = {
+    id: '00000000-0000-4000-a000-000000000201',
+    tenantId: '00000000-0000-4000-a000-000000000101',
+    quoteId: null,
+    subscriberId: '00000000-0000-4000-a000-000000000102',
+    planId: 'plan-300',
+    planSnapshotJson: {},
+    status: 'ACTIVE',
+    statusReasonCode: null,
+    statusChangedAt: null,
+    alias: 'Servicio sintético',
+    installationAddress: 'Calle sintética 123',
+    installationCity: 'Bogotá',
+    installationDepartment: 'Cundinamarca',
+    installationPostalCode: null,
+    installationNotes: null,
+    customerSegment: null,
+    serviceUsage: null,
+    installationStratum: null,
+    stratumEvidenceMediaId: null,
+    vatSnapshot: null,
+    additionalProductIds: [],
+    additionalServiceIds: [],
+    paymentMethod: null,
+    billingCycleDay: null,
+    billingCycle: null,
+    fiscalName: null,
+    fiscalDocument: null,
+    fiscalAddress: null,
+    startDate: null,
+    endDate: null,
+    titularAnonymizedAt: null,
+    createdAt: '2026-04-16T00:00:00.000Z',
+    updatedAt: '2026-04-16T00:00:00.000Z',
+    deletedAt: null,
+  };
+
+  const mockProvisioningReadiness = {
+    status: 'PENDIENTE_DE_DATOS',
+    title: 'Preparación pendiente',
+    message: 'Faltan datos mínimos.',
+    canProvision: false,
+    retryable: false,
+    missingRequirements: [],
   };
 
   beforeEach(async () => {
@@ -1104,50 +1153,75 @@ describe('SubscribersController', () => {
   // ── GET /crm/subscribers/:id/360 ──
 
   describe('get360View', () => {
+    it.each([
+      { permissions: [] as string[] },
+      { permissions: [AccessPermissionKey.CRM_BLOCKED_DATA_READ] },
+      { permissions: [AccessPermissionKey.PRIVACY_READ] },
+    ])('filtra detalles según permiso efectivo $permissions', async ({ permissions }) => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(permissions);
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: mockSubscriber,
+        contacts: [],
+        contracts: [],
+        quotes: [],
+        habeasData: [{ id: 'authorization-synthetic' }],
+        arcoRequests: [{ id: 'request-synthetic' }],
+        privacyMarks: ['DATOS_BLOQUEADOS'],
+        expedienteSummary: null,
+        timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
+      });
+      const { data } = await withTenantContext(() => controller.get360View('sub-001', mockUser));
+      const allowed = permissions.includes(AccessPermissionKey.PRIVACY_READ);
+      expect(data).toHaveProperty('privacyDetailsRestricted', !allowed);
+      expect(data.habeasData).toHaveLength(allowed ? 1 : 0);
+      expect(data.arcoRequests).toHaveLength(allowed ? 1 : 0);
+      expect(data.privacyMarks).toEqual(['DATOS_BLOQUEADOS']);
+    });
+
     it('retorna ficha 360° del suscriptor', async () => {
       subscribersServiceMock.get360View.mockResolvedValue({
         subscriber: mockSubscriber,
         contacts: [],
-        contracts: [
-          {
-            id: 'contract-1',
-            status: 'ACTIVE',
-            alias: 'Servicio sintético',
-            titularAnonymizedAt: null,
-          },
-        ],
+        contracts: [mockContractResponse],
         quotes: [],
         habeasData: [],
         arcoRequests: [],
         expedienteSummary: null,
         timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
       });
 
       const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
+      const response: Subscriber360Response = result.data;
 
       expect(subscribersServiceMock.get360View).toHaveBeenCalledWith('sub-001', false);
       expect(auditServiceMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'RECORD_ACCESS', entityId: 'sub-001' }),
       );
-      expect(result.data.subscriber).toBeDefined();
-      expect(result.data.subscriber.id).toBe('sub-001');
-      expect(result.data.subscriber).toHaveProperty('hasLiveContracts', true);
-      expect(result.data.subscriber.partyId).toBe('party-test-001');
+      expect(response.subscriber).toBeDefined();
+      expect(response.subscriber.id).toBe('sub-001');
+      expect(response.subscriber).toHaveProperty('hasLiveContracts', true);
+      expect(response.subscriber.partyId).toBe('party-test-001');
+      expect(response.subscriber.createdAt).toBe('2026-04-16T00:00:00.000Z');
       const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
       expect(auditPayload).not.toContain('partyId');
       expect(auditPayload).not.toContain('party-test-001');
-      expect(result.data.contacts).toEqual([]);
-      expect(result.data.contracts).toMatchObject([
+      expect(response.contacts).toEqual([]);
+      expect(response.contracts).toMatchObject([
         {
-          id: 'contract-1',
+          id: mockContractResponse.id,
           status: 'ACTIVE',
           alias: 'Servicio sintético',
           titularAnonymizedAt: null,
         },
       ]);
-      expect(result.data.quotes).toEqual([]);
-      expect(result.data.habeasData).toEqual([]);
-      expect(result.data.arcoRequests).toEqual([]);
+      expect(response.quotes).toEqual([]);
+      expect(response.habeasData).toEqual([]);
+      expect(response.arcoRequests).toEqual([]);
+      expect(JSON.parse(JSON.stringify(response)).subscriber.createdAt).toBe(
+        '2026-04-16T00:00:00.000Z',
+      );
     });
 
     it('conserva partyId nulo en la ficha 360° sin incorporarlo a auditoría', async () => {
@@ -1160,11 +1234,13 @@ describe('SubscribersController', () => {
         arcoRequests: [],
         expedienteSummary: null,
         timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
       });
 
       const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
+      const response: Subscriber360Response = result.data;
 
-      expect(result.data.subscriber).toHaveProperty('partyId', null);
+      expect(response.subscriber).toHaveProperty('partyId', null);
       const auditPayload = JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0]);
       expect(auditPayload).not.toContain('partyId');
     });
@@ -1179,7 +1255,7 @@ describe('SubscribersController', () => {
         contacts: [],
         contracts: [
           {
-            id: 'contract-1',
+            ...mockContractResponse,
             alias: 'Datos bloqueados',
             installationAddress: null,
             installationCity: null,
@@ -1192,7 +1268,6 @@ describe('SubscribersController', () => {
             fiscalName: null,
             fiscalDocument: null,
             fiscalAddress: null,
-            titularAnonymizedAt: null,
           },
         ],
         quotes: [],
@@ -1201,15 +1276,27 @@ describe('SubscribersController', () => {
         expedienteSummary: {
           id: 'exp-1',
           fullName: 'Identidad expediente',
-          status: 'ACTIVO',
+          status: ExpedienteStatus.EN_COTIZACION,
+          source: 'REFERIDO',
+          createdAt: '2026-04-16T00:00:00.000Z',
+          statusChangedAt: '2026-04-16T00:00:00.000Z',
+          paymentMethod: 'TRANSFERENCIA',
+          billingCycle: 'MENSUAL',
+          fiscalName: 'Identidad expediente',
+          interestedPlanId: 'plan-300',
+          additionalProductIds: ['producto-1'],
+          additionalServiceIds: ['servicio-1'],
+          commercialNotes: 'Nota comercial',
         },
         timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
       });
 
       const result = await controller.get360View('sub-001', mockUser);
+      const response: Subscriber360Response = result.data;
 
-      expect(result.data.subscriber).toMatchObject({ privacyRestricted: true, firstName: null });
-      expect(result.data.contracts[0]).toMatchObject({
+      expect(response.subscriber).toMatchObject({ privacyRestricted: true, firstName: null });
+      expect(response.contracts[0]).toMatchObject({
         alias: 'Datos bloqueados',
         installationAddress: null,
         installationCity: null,
@@ -1223,11 +1310,24 @@ describe('SubscribersController', () => {
         fiscalDocument: null,
         fiscalAddress: null,
       });
-      expect(result.data.expedienteSummary).toMatchObject({
+      expect(response.expedienteSummary).toEqual({
         id: 'exp-1',
         fullName: null,
-        status: 'ACTIVO',
+        status: ExpedienteStatus.EN_COTIZACION,
+        source: 'REFERIDO',
+        createdAt: '2026-04-16T00:00:00.000Z',
+        statusChangedAt: '2026-04-16T00:00:00.000Z',
+        paymentMethod: null,
+        billingCycle: null,
+        fiscalName: null,
+        interestedPlanId: null,
+        additionalProductIds: null,
+        additionalServiceIds: null,
+        commercialNotes: null,
       });
+      expect(JSON.parse(JSON.stringify(response)).expedienteSummary).toEqual(
+        response.expedienteSummary,
+      );
     });
 
     it('permite la lectura privilegiada bloqueada y registra PRIVACY_READ', async () => {
@@ -1241,19 +1341,21 @@ describe('SubscribersController', () => {
         subscriber: mockSubscriber,
         privacyMarks: ['DATOS_BLOQUEADOS'],
         contacts: [],
-        contracts: [{ id: 'contract-1', alias: 'Servicio sintético' }],
+        contracts: [mockContractResponse],
         quotes: [],
         habeasData: [],
         arcoRequests: [],
         expedienteSummary: null,
         timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
       });
 
       const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
+      const response: Subscriber360Response = result.data;
 
-      expect(result.data.subscriber.privacyRestricted).toBe(false);
-      expect(result.data.subscriber.firstName).not.toBeNull();
-      expect(result.data.contracts[0]).toMatchObject({ alias: 'Servicio sintético' });
+      expect(response.subscriber.privacyRestricted).toBe(false);
+      expect(response.subscriber.firstName).not.toBeNull();
+      expect(response.contracts[0]).toMatchObject({ alias: 'Servicio sintético' });
       expect(auditServiceMock.logWithin).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'RECORD_ACCESS',
@@ -1265,11 +1367,50 @@ describe('SubscribersController', () => {
         expect.any(Object),
       );
     });
+
+    it('serializa la ficha anonimizada conforme al contrato compartido', async () => {
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: {
+          ...mockSubscriber,
+          anonymizedAt: new Date('2026-04-20T12:30:00.000Z'),
+          anonymizedRequestId: 'request-001',
+        },
+        contacts: [],
+        contracts: [],
+        quotes: [],
+        habeasData: [],
+        arcoRequests: [],
+        privacyMarks: [],
+        expedienteSummary: null,
+        timelineSeed: [],
+        provisioningReadiness: mockProvisioningReadiness,
+      });
+
+      const result = await withTenantContext(() => controller.get360View('sub-001', mockUser));
+      const response: Subscriber360Response = result.data;
+
+      expect(response.subscriber).toMatchObject({
+        anonymizedAt: '2026-04-20T12:30:00.000Z',
+        anonymizedRequestId: 'request-001',
+        privacyRestricted: false,
+        firstName: null,
+      });
+      expect(JSON.parse(JSON.stringify(response)).subscriber).toEqual(response.subscriber);
+    });
   });
 
   // ── Sanitización de respuesta ──
 
   describe('sanitizeResponse', () => {
+    it('serializa birthDate Date con sus componentes UTC, sin publicar el instante', () => {
+      const subscriber = {
+        ...mockSubscriber,
+        birthDate: new Date('1990-05-02T01:30:00.000Z'),
+      };
+
+      expect(sanitizeResponse(subscriber).birthDate).toBe('1990-05-02');
+    });
+
     it('elimina campos cifrados internos de la respuesta', () => {
       const subscriber = {
         ...mockSubscriber,

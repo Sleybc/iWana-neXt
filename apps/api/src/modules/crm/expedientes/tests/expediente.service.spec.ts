@@ -119,6 +119,7 @@ describe('ExpedienteService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockRunInTenantSchema.mockReset();
     subscribersServiceMock.findSummaryByExpedienteId.mockReset();
     // calculateBatch default: retorna mapa básico para findAll
     completenessCalculatorMock.calculateBatch.mockImplementation(
@@ -1210,6 +1211,9 @@ describe('ExpedienteService', () => {
           },
         }),
       )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => expediente } }),
+      )
       .mockRejectedValueOnce(persistError);
 
     (rename as jest.MockedFunction<typeof rename>)
@@ -1734,7 +1738,7 @@ describe('ExpedienteService', () => {
         return data;
       },
       update: jest.fn().mockResolvedValue(undefined),
-      findOne: async () => expediente,
+      findOne: async () => ({ ...expediente }),
     };
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({ manager }),
@@ -1777,6 +1781,11 @@ describe('ExpedienteService', () => {
       status: ExpedienteStatus.INSTALACION_AGENDADA,
     });
     jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    const save = jest.fn();
+    const findOne = jest.fn().mockResolvedValue(expediente);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne, save } }),
+    );
     subscribersServiceMock.findByExpedienteId.mockResolvedValue({
       id: 'sub-contact-pending',
       status: SubscriberStatus.PROSPECT,
@@ -1799,7 +1808,12 @@ describe('ExpedienteService', () => {
       },
     });
 
-    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+    expect(findOne).toHaveBeenCalledWith(ExpedienteRecord, {
+      where: { id: expediente.id, tenantId: 'ten-1' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(save).not.toHaveBeenCalled();
     expect(auditServiceMock.log).not.toHaveBeenCalled();
     expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
   });
@@ -1810,9 +1824,10 @@ describe('ExpedienteService', () => {
       status: ExpedienteStatus.EN_COTIZACION,
     });
     jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    const save = jest.fn();
     const findConsent = jest.fn().mockResolvedValue([]);
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
-      callback({ manager: { find: findConsent } }),
+      callback({ manager: { findOne: async () => expediente, find: findConsent, save } }),
     );
 
     await expect(
@@ -1837,7 +1852,8 @@ describe('ExpedienteService', () => {
         order: { obtainedAt: 'ASC', id: 'ASC' },
       }),
     );
-    expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+    expect(mockRunInTenantSchema).toHaveBeenCalledTimes(2);
+    expect(save).not.toHaveBeenCalled();
     expect(auditServiceMock.log).not.toHaveBeenCalled();
     expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
   });
@@ -1875,7 +1891,7 @@ describe('ExpedienteService', () => {
       },
     ]);
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
-      callback({ manager: { find: findConsent } }),
+      callback({ manager: { findOne: async () => expediente, find: findConsent } }),
     );
 
     await expect(
@@ -2373,7 +2389,7 @@ describe('ExpedienteService', () => {
 
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
-        manager: { createQueryBuilder, save },
+        manager: { createQueryBuilder, findOne: async () => pending, save },
       }),
     );
 
@@ -2443,7 +2459,14 @@ describe('ExpedienteService', () => {
       'warn',
     );
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
-      callback({ manager: { createQueryBuilder, save: jest.fn() } }),
+      callback({
+        manager: {
+          createQueryBuilder,
+          findOne: async (_entity: unknown, options: { where: { id: string } }) =>
+            [invalidCipherRow, emptyCipherRow].find((row) => row.id === options.where.id) ?? null,
+          save: jest.fn(),
+        },
+      }),
     );
 
     await expect(service.backfillDocumentNumberHashes(2)).resolves.toEqual({
@@ -2736,7 +2759,8 @@ describe('ExpedienteService', () => {
       .mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
-            findOne: async () => consentimiento,
+            findOne: async (entity: unknown) =>
+              entity === ExpedienteRecord ? buildExpediente({ id: 'exp-consent' }) : consentimiento,
             update: markConsentRevoked,
             save: async (_entity: unknown, data: typeof consentimiento) => data,
           },
@@ -2745,6 +2769,7 @@ describe('ExpedienteService', () => {
       .mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
+            findOne: async () => buildExpediente({ id: 'exp-consent' }),
             update: syncCompletenessUpdate,
           },
         }),
@@ -2794,8 +2819,14 @@ describe('ExpedienteService', () => {
     mockRunInTenantSchema
       .mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
+          manager: { findOne: async () => buildExpediente({ id: 'exp-consent-create' }) },
+        }),
+      )
+      .mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
           manager: {
-            findOne: async () => null,
+            findOne: async (entity: unknown) =>
+              entity === ExpedienteRecord ? buildExpediente({ id: 'exp-consent-create' }) : null,
             create: (_entity: unknown, data: Record<string, unknown>) => data,
             save: async (_entity: unknown, data: Record<string, unknown>) => {
               savedConsent.push(data);
@@ -2813,6 +2844,7 @@ describe('ExpedienteService', () => {
       .mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
+            findOne: async () => buildExpediente({ id: 'exp-consent-create' }),
             update: jest.fn().mockResolvedValue(undefined),
           },
         }),
@@ -2853,6 +2885,12 @@ describe('ExpedienteService', () => {
       .spyOn(service, 'findById')
       .mockResolvedValue(buildExpediente({ id: 'exp-consent-create' }));
     privacyLegalTextReadPortMock.current.mockResolvedValueOnce(null);
+    const save = jest.fn();
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({
+        manager: { findOne: async () => buildExpediente({ id: 'exp-consent-create' }), save },
+      }),
+    );
 
     await expect(
       service.createConsent(
@@ -2870,7 +2908,8 @@ describe('ExpedienteService', () => {
       response: { code: 'PRIVACY_LEGAL_TEXT_NOT_PUBLISHED' },
     });
 
-    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('registra cobertura sin intentar nullificar expediente_id en checks ya cargados', async () => {
@@ -2906,6 +2945,7 @@ describe('ExpedienteService', () => {
       .mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
+            findOne: async () => expediente,
             create: (_entity: unknown, data: Record<string, unknown>) => data,
             save: saveCoverage,
             update: updateExpediente,
@@ -2915,6 +2955,7 @@ describe('ExpedienteService', () => {
       .mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
+            findOne: async () => expediente,
             update: syncCompletenessUpdate,
           },
         }),
@@ -3554,6 +3595,9 @@ describe('ExpedienteService', () => {
   it('rechaza viabilidad tecnica viable cuando falta tecnologia recomendada', async () => {
     const expediente = buildExpediente({ id: 'exp-tech-invalid' });
     jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne: async () => expediente } }),
+    );
 
     await expect(
       service.updateSection(
@@ -3597,7 +3641,7 @@ describe('ExpedienteService', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {
-          findOne: async () => null,
+          findOne: async () => expediente,
           save: saveExpediente,
           update: syncCompleteness,
         },
@@ -3704,6 +3748,9 @@ describe('ExpedienteService', () => {
   ])('rechaza la factibilidad técnica cuando $label', async ({ data, code }) => {
     const expediente = buildExpediente({ id: 'exp-tech-requirements' });
     jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne: async () => expediente } }),
+    );
 
     await expect(
       service.updateSection(
@@ -3720,6 +3767,7 @@ describe('ExpedienteService', () => {
     mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
       callback({
         manager: {
+          findOne: async () => expediente,
           save: async (_entity: unknown, data: ExpedienteRecord) => data,
           update: jest.fn().mockResolvedValue(undefined),
         },
@@ -3967,7 +4015,12 @@ describe('ExpedienteService', () => {
     function arrangeTenantRunner() {
       const query = jest.fn().mockResolvedValue(undefined);
       const update = jest.fn().mockResolvedValue(undefined);
-      const findOne = jest.fn().mockResolvedValue({ id: 'pending-failure' });
+      const findOne = jest.fn<Promise<unknown>, [unknown, { where: { id?: string } }]>(
+        async (entity, options) =>
+          entity === ExpedienteRecord
+            ? buildExpediente({ id: options.where.id ?? 'exp-pipeline' })
+            : { id: 'pending-failure' },
+      );
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({ query, manager: { update, findOne } }),
       );
@@ -3991,7 +4044,7 @@ describe('ExpedienteService', () => {
         eventName: null,
       });
 
-      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
       expect(eventEmitterMock.emitAsync).not.toHaveBeenCalled();
       expect(auditServiceMock.log).toHaveBeenCalledWith({
         action: 'CONVERSION_RETRY',
@@ -4004,7 +4057,11 @@ describe('ExpedienteService', () => {
 
     it('audita el evento sin reintento cuando no hay un fallo pendiente', async () => {
       const { findOne } = arrangeTenantRunner();
-      findOne.mockResolvedValueOnce(null);
+      findOne.mockImplementation(async (entity: unknown, options: { where: { id?: string } }) =>
+        entity === ExpedienteRecord
+          ? buildExpediente({ id: options.where.id ?? 'exp-pipeline' })
+          : null,
+      );
       jest.spyOn(service, 'findById').mockResolvedValue(
         buildExpediente({
           id: 'exp-no-pending-failure',
@@ -4345,6 +4402,10 @@ describe('ExpedienteService', () => {
   it('no audita ni persiste secciones cuando el payload parcial no trae campos', async () => {
     const expediente = buildExpediente({ id: 'exp-empty-section-update' });
     jest.spyOn(service, 'findById').mockResolvedValue(expediente);
+    const save = jest.fn();
+    mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+      callback({ manager: { findOne: async () => expediente, save } }),
+    );
 
     for (const section of [
       ExpedienteSection.CONTACT,
@@ -4362,7 +4423,8 @@ describe('ExpedienteService', () => {
 
     expect(auditServiceMock.log).not.toHaveBeenCalled();
     expect(completenessCalculatorMock.calculate).not.toHaveBeenCalled();
-    expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+    expect(mockRunInTenantSchema).toHaveBeenCalledTimes(7);
+    expect(save).not.toHaveBeenCalled();
   });
 });
 

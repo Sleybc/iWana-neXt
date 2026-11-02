@@ -36,6 +36,8 @@ import {
   SubscriberStatus,
   UserRole,
   LIFECYCLE_REASON_CODES_BY_ACTION,
+  ActivateContractSchema,
+  ContractPlanChangeSchema,
   LifecycleSuspendCommandSchema,
   LifecycleReactivateCommandSchema,
   LifecycleTerminateCommandSchema,
@@ -45,6 +47,8 @@ import {
   type LifecycleReactivateCommand,
   type LifecycleTerminateCommand,
   type ListResponse,
+  type ActivateContractInput,
+  type ContractPlanChangeInput,
 } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
@@ -615,6 +619,52 @@ export class ContractsController {
 
   // ── Transiciones de estado ──────────────────────────────────────────────────
 
+  @Post('crm/contracts/:id/plan-change')
+  @GuardBlockedTitular('params.id')
+  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
+  @SkipAudit()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cambiar inmediatamente el plan de un contrato en borrador o activo',
+    description:
+      'Requiere permiso de gestión de expedientes y titular habilitado. Conserva facturas emitidas; sin cargos, prorrateo ni cambios de red.',
+  })
+  @ApiExtraModels(ContractResponseEnvelopeDto)
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['planId', 'expectedUpdatedAt', 'expectedMonthlyPrice'],
+      properties: {
+        planId: { type: 'string', minLength: 1, maxLength: 120 },
+        expectedUpdatedAt: { type: 'string', format: 'date-time' },
+        expectedMonthlyPrice: { type: 'number', minimum: 0 },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, type: ContractResponseEnvelopeDto })
+  @ApiResponse({ status: 400, description: 'Cuerpo inválido o propiedades adicionales' })
+  @ApiResponse({ status: 401, description: 'Sesión requerida' })
+  @ApiResponse({ status: 403, description: 'Permisos insuficientes' })
+  @ApiResponse({ status: 404, description: 'Contrato o suscriptor no encontrado' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'CONTRACT_CHANGED, PLAN_PRICE_CHANGED, CONTRACT_PLAN_CHANGE_NOT_ALLOWED o titular bloqueado',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'PLAN_UNAVAILABLE, PLAN_PRICE_REQUIRED o datos fiscales incompletos',
+  })
+  async changePlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(ContractPlanChangeSchema)) dto: ContractPlanChangeInput,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<{ data: Contract }> {
+    return { data: await this.contractsService.changePlan(id, dto, actor.sub) };
+  }
+
   @Post('crm/contracts/:id/activate')
   @GuardBlockedTitular('params.id')
   @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, PlatformRole.SYSTEM_ADMIN)
@@ -622,13 +672,24 @@ export class ContractsController {
   @SkipAudit()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activar contrato (DRAFT → ACTIVE — firma del cliente)' })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { billingCycleDay: { type: 'integer', minimum: 1, maximum: 28 } },
+    },
+  })
   @ApiExtraModels(ContractResponseEnvelopeDto)
   @ApiResponse({ status: 200, type: ContractResponseEnvelopeDto })
+  @ApiResponse({ status: 422, description: 'Ciclo obligatorio o ciclo no disponible' })
   async activate(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(ActivateContractSchema.optional()))
+    dto: ActivateContractInput | undefined,
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: Contract }> {
-    const data = await this.contractsService.activate(id, actor.sub);
+    const data = await this.contractsService.activate(id, actor.sub, dto ?? {});
     return { data };
   }
 
@@ -695,7 +756,7 @@ export class ContractsController {
   }
 
   @Post('crm/contracts/:id/archive')
-  @GuardBlockedTitular('params.id')
+  @GuardBlockedTitular('params.id', { allowAnonymized: true })
   @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
   @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
   @SkipAudit()

@@ -1,4 +1,9 @@
-import { BadRequestException, Logger, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import {
@@ -404,7 +409,7 @@ describe('SubscriberStatusTransitionService', () => {
       ).resolves.toMatchObject({ toStatus: SubscriberStatus.ACTIVE });
     });
 
-    it('lanza BadRequestException si subscriber no existe', async () => {
+    it('lanza NotFoundException si subscriber no existe', async () => {
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({
           manager: {
@@ -415,7 +420,7 @@ describe('SubscriberStatusTransitionService', () => {
 
       await expect(
         service.transition('sub-missing', SubscriberStatus.PROSPECT, null, 'actor-1'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('LEAD → PROSPECT: requiere campos obligatorios', async () => {
@@ -444,7 +449,7 @@ describe('SubscriberStatusTransitionService', () => {
 
       await expect(
         service.reactivateFromExpediente('sub-missing', 'exp-1', 'actor-1'),
-      ).rejects.toThrow('no pertenece al expediente');
+      ).rejects.toThrow(NotFoundException);
 
       const otherExpediente = buildSubscriber({ expedienteId: 'exp-2' });
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
@@ -551,7 +556,8 @@ describe('SubscriberStatusTransitionService', () => {
         status: SubscriberStatus.PROSPECT,
         activatedAt: null,
       });
-      const findOne = jest.fn().mockResolvedValueOnce(cancelled).mockResolvedValueOnce(prospect);
+      // El proceso que ganó ya confirmó antes de nuestra lectura bloqueada.
+      const findOne = jest.fn().mockResolvedValueOnce(prospect);
       const update = jest.fn().mockResolvedValue({ affected: 0 });
       mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
         callback({ manager: { findOne, update } }),

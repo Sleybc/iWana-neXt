@@ -1,3 +1,4 @@
+import { AuditService } from '../../../audit/audit.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -35,6 +36,7 @@ jest.mock('@iwana/db', () => {
 });
 
 // ── Factories de datos de prueba ─────────────────────────────────────────────────
+const auditMock = { logWithin: jest.fn().mockResolvedValue(undefined) };
 const TENANT_CTX = { tenantId: 'tenant-001', schemaName: 'tenant_test' };
 
 function makeSubscriber(
@@ -136,6 +138,7 @@ describe('SubscriberTaxProfileService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    auditMock.logWithin.mockResolvedValue(undefined);
 
     // Contexto tenant activo para todas las pruebas
     mockTenantContextGetOrThrow.mockReturnValue(TENANT_CTX);
@@ -170,6 +173,7 @@ describe('SubscriberTaxProfileService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriberTaxProfileService,
+        { provide: AuditService, useValue: auditMock },
         { provide: DataSource, useValue: {} },
         { provide: TaxCatalogReadPort, useValue: taxCatalogPort },
         {
@@ -283,6 +287,11 @@ describe('SubscriberTaxProfileService', () => {
   // ── saveAssignments ──────────────────────────────────────────────────────────
 
   describe('saveAssignments', () => {
+    beforeEach(() => {
+      // El escritor relee primero al suscriptor bajo bloqueo.
+      managerMock.findOne.mockResolvedValueOnce(makeSubscriber());
+    });
+
     it('lanza NotFoundException si el perfil no existe', async () => {
       managerMock.findOne.mockResolvedValueOnce(null); // profile not found
 
@@ -441,6 +450,11 @@ describe('SubscriberTaxProfileService', () => {
   });
 
   describe('updateAssignment', () => {
+    beforeEach(() => {
+      // El escritor relee primero al suscriptor bajo bloqueo.
+      managerMock.findOne.mockResolvedValueOnce(makeSubscriber());
+    });
+
     it('rechaza una asignación cuando el perfil tributario no existe', async () => {
       managerMock.findOne.mockResolvedValueOnce(null);
 
@@ -516,6 +530,93 @@ describe('SubscriberTaxProfileService', () => {
 
       expect(result.profileStatus).toBe(TaxProfileStatus.PENDING_REVIEW);
       expect(managerMock.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('confirmProfile', () => {
+    beforeEach(() => {
+      // El escritor relee primero al suscriptor bajo bloqueo.
+      managerMock.findOne.mockResolvedValueOnce(makeSubscriber());
+    });
+
+    it('propaga fallo de auditoría para abortar la transacción de confirmación', async () => {
+      const profile = makeProfile();
+      managerMock.findOne.mockResolvedValue(profile);
+      managerMock.save.mockImplementation(async (_entity: unknown, value: unknown) => value);
+      auditMock.logWithin.mockRejectedValueOnce(new Error('audit unavailable'));
+      await expect(service.confirmProfile('sub-001', 'user-001')).rejects.toThrow(
+        'audit unavailable',
+      );
+    });
+
+    const otherTaxDef = (): TaxDefinitionSnapshot => ({
+      ...makeIvaDef(),
+      id: 'taxdef-ica-001',
+      code: 'ICA',
+      name: 'ICA sintético',
+      category: TaxCategory.MUNICIPAL,
+    });
+
+    it('lanza NotFoundException si el perfil no existe', async () => {
+      managerMock.findOne.mockResolvedValueOnce(null);
+      await expect(service.confirmProfile('sub-001', 'user-001')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(managerMock.save).not.toHaveBeenCalled();
+    });
+
+    it('configura un perfil sin otros tributos y registra quién lo confirmó', async () => {
+      managerMock.findOne.mockResolvedValueOnce(makeProfile({ assignments: [] }));
+      managerMock.save.mockImplementation(async (_entity, value) => value);
+
+      const result = await service.confirmProfile('sub-001', 'user-001');
+
+      expect(result.profileStatus).toBe(TaxProfileStatus.CONFIGURED);
+      expect(result.confirmedBy).toBe('user-001');
+      expect(result.confirmedAt).toEqual(expect.any(String));
+      expect(managerMock.save).toHaveBeenCalledTimes(1);
+      expect(managerMock.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si quedan tributos distintos de IVA sugeridos sin confirmar', async () => {
+      managerMock.findOne.mockResolvedValueOnce(
+        makeProfile({
+          assignments: [
+            makeAssignment({
+              taxDefinitionId: 'taxdef-ica-001',
+              status: TaxAssignmentStatus.SUGGESTED,
+            }),
+          ],
+        }),
+      );
+      taxCatalogPort.findById.mockResolvedValue(otherTaxDef());
+
+      await expect(service.confirmProfile('sub-001', 'user-001')).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'TAX_PROFILE_HAS_PENDING_ASSIGNMENTS' }),
+      });
+      expect(managerMock.save).not.toHaveBeenCalled();
+    });
+
+    it('ignora una sugerencia de IVA, que se resuelve por contrato', async () => {
+      managerMock.findOne.mockResolvedValueOnce(
+        makeProfile({ assignments: [makeAssignment({ status: TaxAssignmentStatus.SUGGESTED })] }),
+      );
+      managerMock.save.mockImplementation(async (_entity, value) => value);
+
+      const result = await service.confirmProfile('sub-001', 'user-001');
+
+      expect(result.profileStatus).toBe(TaxProfileStatus.CONFIGURED);
+    });
+
+    it('es idempotente con un perfil ya configurado', async () => {
+      managerMock.findOne.mockResolvedValueOnce(
+        makeProfile({ profileStatus: TaxProfileStatus.CONFIGURED }),
+      );
+
+      const result = await service.confirmProfile('sub-001', 'user-001');
+
+      expect(result.profileStatus).toBe(TaxProfileStatus.CONFIGURED);
+      expect(managerMock.save).not.toHaveBeenCalled();
     });
   });
 
@@ -626,5 +727,80 @@ describe('SubscriberTaxProfileService', () => {
       expect(taxCatalogPort.findActiveByCode).not.toHaveBeenCalled();
       expect(managerMock.create).toHaveBeenCalledTimes(1);
     });
+  });
+
+  describe('protección de anonimización y sugerencias no IVA', () => {
+    it('rechaza al titular anonimizado antes de crear o confirmar el perfil', async () => {
+      managerMock.findOne.mockResolvedValueOnce({
+        ...makeSubscriber(),
+        anonymizedAt: new Date('2026-11-01T00:00:00Z'),
+      });
+
+      await expect(service.getOrCreateProfile('sub-001')).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({ code: 'PRIVACY_TITULAR_ANONYMIZED' }),
+      });
+      expect(managerMock.findOne).toHaveBeenCalledTimes(1);
+      expect(managerMock.save).not.toHaveBeenCalled();
+      expect(taxApplicationPort.resolve).not.toHaveBeenCalled();
+    });
+
+    it.each([TaxTreatment.EXEMPT, TaxTreatment.EXCLUDED, TaxTreatment.FIXED])(
+      'conserva el tratamiento %s y la tasa de catálogo cuando la regla no fija tasa',
+      async (treatment) => {
+        const profile = makeProfile();
+        const definition = {
+          ...makeIvaDef(),
+          id: 'taxdef-local',
+          category: TaxCategory.WITHHOLDING,
+          baseRate: '2.0000',
+        };
+        const assignment = {
+          ...makeAssignment(),
+          taxDefinitionId: definition.id,
+          treatment,
+          effectiveRate: definition.baseRate,
+        };
+        managerMock.findOne
+          .mockResolvedValueOnce(makeSubscriber({ stratum: null }))
+          .mockResolvedValueOnce(profile)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ ...profile, assignments: [assignment] });
+        managerMock.create.mockImplementation((_entity, values) => values);
+        managerMock.save.mockImplementation(async (_entity, entity) => entity);
+        taxCatalogPort.findById.mockResolvedValue(definition);
+        taxApplicationPort.resolve.mockResolvedValueOnce([
+          {
+            taxDefinitionId: definition.id,
+            treatment,
+            effectiveRate: null,
+            ruleId: 'local-rule',
+            priorityMatched: 1,
+          },
+        ]);
+
+        const result = await service.suggestVatForSubscriber('sub-001');
+
+        expect(taxApplicationPort.resolve).toHaveBeenCalledWith({
+          personType: PersonType.NATURAL,
+          segment: CustomerSegment.RESIDENTIAL,
+        });
+        expect(managerMock.save).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            treatment,
+            effectiveRate: '2.0000',
+            taxDefinitionId: definition.id,
+          }),
+        );
+        expect(result.assignments).toEqual([
+          expect.objectContaining({
+            treatment,
+            effectiveRate: '2.0000',
+            taxCategory: TaxCategory.WITHHOLDING,
+          }),
+        ]);
+      },
+    );
   });
 });

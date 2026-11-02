@@ -48,6 +48,8 @@ import {
   VatResponsibility,
   UserRole,
   type PrivacyMark,
+  type Subscriber360Response,
+  type SubscriberRecord,
   type TransitionStatusPayload,
 } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -550,7 +552,10 @@ export class SubscribersController {
   )
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Obtener suscriptor por ID' })
-  async findById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+  async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: SubscriberRecord }> {
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const subscriber = await this.subscribersService.findById(id, readAccess.canSeeBlocked);
     const privacyMarks = await this.getPrivacyMarks(subscriber.partyId);
@@ -768,7 +773,10 @@ export class SubscribersController {
   )
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Ficha 360° del suscriptor' })
-  async get360View(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+  async get360View(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: Subscriber360Response }> {
     const readAccess = await this.resolveBlockedReadAccess(user.sub);
     const view360 = await this.subscribersService.get360View(id, readAccess.canSeeBlocked);
     const privacyMarks = view360.privacyMarks ?? [];
@@ -785,16 +793,22 @@ export class SubscribersController {
       readAccess.canSeeBlocked,
     );
     subscriberResponse.hasLiveContracts = hasLiveContracts;
-    return {
-      data: {
-        ...view360,
-        subscriber: subscriberResponse,
-        contracts: view360.contracts,
-        expedienteSummary: privacyRestricted
-          ? this.redactExpedienteSummary(view360.expedienteSummary)
-          : view360.expedienteSummary,
-      },
+    const response: Subscriber360Response = {
+      ...view360,
+      privacyDetailsRestricted: !readAccess.permissions.has(AccessPermissionKey.PRIVACY_READ),
+      habeasData: readAccess.permissions.has(AccessPermissionKey.PRIVACY_READ)
+        ? view360.habeasData
+        : [],
+      arcoRequests: readAccess.permissions.has(AccessPermissionKey.PRIVACY_READ)
+        ? view360.arcoRequests
+        : [],
+      subscriber: subscriberResponse,
+      contracts: view360.contracts,
+      expedienteSummary: privacyRestricted
+        ? this.redactExpedienteSummary(view360.expedienteSummary)
+        : view360.expedienteSummary,
     };
+    return { data: response };
   }
 
   private async logListAccess(
@@ -900,18 +914,39 @@ export class SubscribersController {
   }
 
   private redactExpedienteSummary(
-    summary: Record<string, unknown> | null,
-  ): Record<string, unknown> | null {
+    summary: Subscriber360Response['expedienteSummary'],
+  ): Subscriber360Response['expedienteSummary'] {
     if (!summary) return null;
-    const allowed = new Set(['id', 'status', 'source', 'createdAt', 'statusChangedAt']);
-    return Object.fromEntries(
-      Object.entries(summary).map(([key, value]) => [key, allowed.has(key) ? value : null]),
-    );
+    return {
+      id: summary.id,
+      fullName: null,
+      status: summary.status,
+      source: summary.source,
+      createdAt: summary.createdAt,
+      statusChangedAt: summary.statusChangedAt,
+      paymentMethod: null,
+      billingCycle: null,
+      fiscalName: null,
+      interestedPlanId: null,
+      additionalProductIds: null,
+      additionalServiceIds: null,
+      commercialNotes: null,
+    };
   }
 
   private toIsoOrNull(value: Date | string | null | undefined): string | null {
     if (value == null) return null;
     return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  }
+
+  private toDateOnlyOrNull(value: Date | string | null | undefined): string | null {
+    if (value == null) return null;
+    if (typeof value === 'string') return value;
+
+    const year = value.getUTCFullYear().toString().padStart(4, '0');
+    const month = (value.getUTCMonth() + 1).toString().padStart(2, '0');
+    const day = value.getUTCDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   /**
@@ -922,11 +957,11 @@ export class SubscribersController {
     subscriber: SubscriberWithDecryptedFields,
     privacyMarks: PrivacyMark[] = subscriber.privacyMarks ?? [],
     canSeeBlocked = false,
-  ): Record<string, unknown> {
+  ): SubscriberRecord {
     const anonymizedAt = this.toIsoOrNull(subscriber.anonymizedAt);
     const privacyRestricted =
       anonymizedAt === null && privacyMarks.includes('DATOS_BLOQUEADOS') && !canSeeBlocked;
-    const result: Record<string, unknown> = {
+    const result: SubscriberRecord = {
       id: subscriber.id,
       tenantId: subscriber.tenantId,
       partyId: subscriber.partyId,
@@ -938,7 +973,7 @@ export class SubscribersController {
       firstName: subscriber.firstName,
       lastName: subscriber.lastName,
       stratum: subscriber.stratum,
-      birthDate: subscriber.birthDate,
+      birthDate: this.toDateOnlyOrNull(subscriber.birthDate),
       nit: subscriber.nit,
       nitVerificationDigit: subscriber.nitVerificationDigit,
       businessName: subscriber.businessName,
@@ -966,15 +1001,15 @@ export class SubscribersController {
       longitude: subscriber.longitude,
       coverageNodeId: subscriber.coverageNodeId,
       expedienteId: subscriber.expedienteId,
-      convertedAt: subscriber.convertedAt,
-      activatedAt: subscriber.activatedAt,
+      convertedAt: this.toIsoOrNull(subscriber.convertedAt),
+      activatedAt: this.toIsoOrNull(subscriber.activatedAt),
       manualOverrideReason: subscriber.manualOverrideReason,
       status: subscriber.status,
       externalId: subscriber.externalId,
       createdBy: subscriber.createdBy,
-      createdAt: subscriber.createdAt,
-      updatedAt: subscriber.updatedAt,
-      deletedAt: subscriber.deletedAt,
+      createdAt: subscriber.createdAt.toISOString(),
+      updatedAt: subscriber.updatedAt.toISOString(),
+      deletedAt: this.toIsoOrNull(subscriber.deletedAt),
       privacyMarks,
       privacyRestricted,
       anonymizedAt,
@@ -1014,7 +1049,7 @@ export class SubscribersController {
         'fiscalCompleteness',
       ]);
       for (const key of Object.keys(result)) {
-        if (!allowed.has(key)) result[key] = null;
+        if (!allowed.has(key)) Object.assign(result, { [key]: null });
       }
       result.contactPending = false;
       result.documentNumber = null;

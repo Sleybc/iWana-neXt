@@ -2,7 +2,7 @@
  * Anonimización asistida de un titular, limitada al alcance aprobado en ADR-094.
  * Dry-run por defecto; nunca imprime valores personales, ciphertext ni HMAC.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { AppDataSource, isValidSchemaName, runInTenantSchema } from '@iwana/db';
@@ -21,7 +21,10 @@ import { UserAccountErasureParticipant } from '../modules/users/privacy/user-acc
 import { WfmTitularErasureParticipant } from '../modules/wfm/privacy/wfm-titular-erasure.participant';
 import { ExecutionOrderTitularErasureParticipant } from '../modules/tasks/privacy/execution-order-titular-erasure.participant';
 import { OperationalTaskTitularErasureParticipant } from '../modules/tasks/privacy/operational-task-titular-erasure.participant';
-import type { TitularErasureTableResult } from '../modules/crm/privacy-adapters/titular-erasure/titular-erasure.types';
+import type {
+  TitularErasureScope,
+  TitularErasureTableResult,
+} from '../modules/crm/privacy-adapters/titular-erasure/titular-erasure.types';
 
 export type AnonymizeTitularMode = 'dry-run' | 'apply';
 
@@ -32,6 +35,7 @@ export interface AnonymizeTitularFlags {
   confirmUnmatched: boolean;
   mode: AnonymizeTitularMode;
   help: boolean;
+  verifyOnly: boolean;
 }
 
 export interface AnonymizeTitularKeys {
@@ -315,6 +319,7 @@ export function parseAnonymizeTitularArgs(argv: string[]): AnonymizeTitularFlags
     confirmUnmatched: false,
     mode: 'dry-run',
     help: false,
+    verifyOnly: false,
   };
   const seen = new Set<string>();
   let modeSeen = false;
@@ -331,7 +336,17 @@ export function parseAnonymizeTitularArgs(argv: string[]): AnonymizeTitularFlags
       flags.confirmUnmatched = true;
       continue;
     }
+    if (arg === '--verify-only') {
+      if (flags.verifyOnly || modeSeen) {
+        throw new AnonymizeTitularCliError('Usa --verify-only sin --dry-run ni --apply.');
+      }
+      flags.verifyOnly = true;
+      continue;
+    }
     if (arg === '--dry-run' || arg === '--apply') {
+      if (flags.verifyOnly) {
+        throw new AnonymizeTitularCliError('Usa --verify-only sin --dry-run ni --apply.');
+      }
       if (modeSeen) throw new AnonymizeTitularCliError('Usa solo uno de --dry-run o --apply.');
       modeSeen = true;
       flags.mode = arg === '--apply' ? 'apply' : 'dry-run';
@@ -368,6 +383,15 @@ export function parseAnonymizeTitularArgs(argv: string[]): AnonymizeTitularFlags
       }
       flags.tenant = value.toLowerCase();
     }
+  }
+
+  if (
+    flags.verifyOnly &&
+    (flags.requestId || flags.expedienteIds.length || flags.confirmUnmatched)
+  ) {
+    throw new AnonymizeTitularCliError(
+      '--verify-only requiere solo --tenant; no acepta solicitud ni expedientes.',
+    );
   }
 
   return flags;
@@ -544,7 +568,7 @@ async function updateFixedFields(
   const updatedAt = columnOf(columns, table, 'updated_at');
   const result: unknown = await queryRunner.query(
     `UPDATE ${quoteIdentifier(table)}
-        SET ${assignments.join(', ')}${updatedAt ? ', "updated_at" = CURRENT_TIMESTAMP' : ''}
+        SET ${assignments.join(', ')}${updatedAt ? ", \"updated_at\" = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', \"updated_at\") + interval '1 millisecond')" : ''}
       WHERE "id" = ANY($${idsParameter}::uuid[])
         AND (${dirtyConditions.join(' OR ')})
       RETURNING "id"`,
@@ -645,7 +669,7 @@ async function anonymizeTable(
           const nextValue = sqlValue(expected, id, keys);
           const updateResult: unknown = await queryRunner.query(
             `UPDATE ${quoteIdentifier(table)}
-                SET ${quoteIdentifier(field.column)} = $2${columnOf(columns, table, 'updated_at') ? ', "updated_at" = CURRENT_TIMESTAMP' : ''}
+                SET ${quoteIdentifier(field.column)} = $2${columnOf(columns, table, 'updated_at') ? ", \"updated_at\" = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', \"updated_at\") + interval '1 millisecond')" : ''}
               WHERE "id" = $1 AND ${quoteIdentifier(field.column)} IS DISTINCT FROM $2
               RETURNING "id"`,
             [id, nextValue],
@@ -837,8 +861,11 @@ async function updateUniqueUserFields(
           values.push(plannedValues.get(field.column));
           assignments.push(`${quoteIdentifier(field.column)} = $${values.length}`);
         }
-        if (columnOf(columns, 'users', 'updated_at'))
-          assignments.push('"updated_at" = CURRENT_TIMESTAMP');
+        if (columnOf(columns, 'users', 'updated_at')) {
+          assignments.push(
+            "\"updated_at\" = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', \"updated_at\") + interval '1 millisecond')",
+          );
+        }
         const updateResult: unknown = await queryRunner.query(
           `UPDATE users SET ${assignments.join(', ')} WHERE id = $1 RETURNING id`,
           values,
@@ -930,6 +957,9 @@ async function anonymizeTitularInTransaction(
     throw new AnonymizeTitularCliError(
       'El tenant no tiene las tablas necesarias para privacidad y expedientes.',
     );
+  }
+  if (mode === 'apply') {
+    await queryRunner.query(`SELECT set_config('iwana.titular_erasure', 'on', true)`);
   }
   const request = (await queryRunner.query(
     `SELECT id::text, party_id::text, requester_document_hmac
@@ -1173,6 +1203,194 @@ export async function anonymizeTitularInTenantSchema(
   );
 }
 
+export interface AnonymizedTenantVerificationFinding {
+  titularIds: string[];
+  residualFields: number;
+  tables: Array<{ table: string; residualFields: number }>;
+}
+
+export interface AnonymizedTenantVerificationReport {
+  tenantSchema: string;
+  titularesChecked: number;
+  markedSubscribers: number;
+  markedExpedientes: number;
+  residualFields: number;
+  findings: AnonymizedTenantVerificationFinding[];
+}
+
+function createErasureAdapter(config: ConfigService): CrmPersonalDataErasureAdapter {
+  return new CrmPersonalDataErasureAdapter(
+    new CrmTitularErasureParticipant(config),
+    new PartyTitularErasureParticipant(config),
+    new UserAccountErasureParticipant(config),
+    new WfmTitularErasureParticipant(config),
+    new ExecutionOrderTitularErasureParticipant(config),
+    new OperationalTaskTitularErasureParticipant(config),
+    new MediaTitularErasureParticipant(),
+  );
+}
+
+async function verifyAnonymizedTenantInTransaction(
+  queryRunner: QueryRunner,
+  tenantSchema: string,
+  keys: AnonymizeTitularKeys,
+): Promise<AnonymizedTenantVerificationReport> {
+  const columns = await tenantColumns(queryRunner);
+  if (
+    !tableExists(columns, 'subscribers') ||
+    !columnOf(columns, 'subscribers', 'anonymized_at') ||
+    !tableExists(columns, 'expediente_records') ||
+    !columnOf(columns, 'expediente_records', 'anonymized_at')
+  ) {
+    throw new AnonymizeTitularCliError(
+      'El tenant no tiene las marcas de anonimización requeridas.',
+    );
+  }
+
+  const partyProjection = columnOf(columns, 'subscribers', 'party_id')
+    ? 'party_id::text'
+    : 'NULL::text AS party_id';
+  const userProjection = columnOf(columns, 'subscribers', 'user_id')
+    ? 'user_id::text'
+    : 'NULL::text AS user_id';
+  const expedienteProjection = columnOf(columns, 'subscribers', 'expediente_id')
+    ? 'expediente_id::text'
+    : 'NULL::text AS expediente_id';
+  const requestProjection = columnOf(columns, 'subscribers', 'anonymized_request_id')
+    ? 'anonymized_request_id::text'
+    : 'NULL::text AS anonymized_request_id';
+  const subscribers = (await queryRunner.query(
+    `SELECT id::text, ${partyProjection}, ${userProjection}, ${expedienteProjection}, ${requestProjection}
+       FROM subscribers WHERE anonymized_at IS NOT NULL ORDER BY id::text`,
+  )) as Array<{
+    id: string;
+    party_id: string | null;
+    user_id: string | null;
+    expediente_id: string | null;
+    anonymized_request_id: string | null;
+  }>;
+  const canResolveExpedienteParty =
+    tableExists(columns, 'data_subject_requests') &&
+    columnOf(columns, 'data_subject_requests', 'party_id') &&
+    columnOf(columns, 'expediente_records', 'anonymized_request_id');
+  const expedientes = (await queryRunner.query(
+    canResolveExpedienteParty
+      ? `SELECT expediente.id::text, request.party_id::text AS party_id,
+                expediente.anonymized_request_id::text AS anonymized_request_id
+           FROM expediente_records expediente
+           LEFT JOIN data_subject_requests request
+             ON request.id = expediente.anonymized_request_id
+          WHERE expediente.anonymized_at IS NOT NULL ORDER BY expediente.id::text`
+      : `SELECT id::text, NULL::text AS party_id, NULL::text AS anonymized_request_id FROM expediente_records
+          WHERE anonymized_at IS NOT NULL ORDER BY id::text`,
+  )) as Array<{ id: string; party_id: string | null; anonymized_request_id: string | null }>;
+
+  const markedExpedienteIds = new Set(expedientes.map((row) => row.id));
+  const groups = new Map<
+    string,
+    {
+      partyId: string | null;
+      subscriberIds: string[];
+      userIds: string[];
+      expedienteIds: string[];
+      titularIds: string[];
+    }
+  >();
+  for (const row of subscribers) {
+    const key = row.party_id
+      ? `party:${row.party_id}`
+      : row.anonymized_request_id
+        ? `request:${row.anonymized_request_id}`
+        : `subscriber:${row.id}`;
+    const group = groups.get(key) ?? {
+      partyId: row.party_id,
+      subscriberIds: [],
+      userIds: [],
+      expedienteIds: [],
+      titularIds: [],
+    };
+    group.subscriberIds.push(row.id);
+    group.titularIds.push(row.id);
+    if (row.user_id) group.userIds.push(row.user_id);
+    if (row.expediente_id && markedExpedienteIds.has(row.expediente_id)) {
+      group.expedienteIds.push(row.expediente_id);
+    }
+    groups.set(key, group);
+  }
+  for (const row of expedientes) {
+    const key = row.party_id
+      ? `party:${row.party_id}`
+      : row.anonymized_request_id
+        ? `request:${row.anonymized_request_id}`
+        : `expediente:${row.id}`;
+    const group = groups.get(key) ?? {
+      partyId: row.party_id,
+      subscriberIds: [],
+      userIds: [],
+      expedienteIds: [],
+      titularIds: [],
+    };
+    if (!group.expedienteIds.includes(row.id)) group.expedienteIds.push(row.id);
+    group.titularIds.push(row.id);
+    groups.set(key, group);
+  }
+  const adapter = createErasureAdapter(new ConfigService(process.env));
+  const findings: AnonymizedTenantVerificationFinding[] = [];
+  const verifyScope = async (
+    titularIds: string[],
+    partyId: string | null,
+    subscriberIds: string[],
+    userIds: string[],
+    expedienteIds: string[],
+  ): Promise<void> => {
+    const scope = await adapter.resolveCliScope(
+      { requestId: randomUUID(), partyId, requesterDocumentHmac: null },
+      expedienteIds,
+      queryRunner,
+      tenantSchema,
+      keys,
+    );
+    scope.subscriberIds = subscriberIds;
+    scope.userIds = [...new Set([...scope.userIds, ...userIds])];
+    scope.cryptoKeys = keys;
+    const results = await adapter.applyScope(scope, queryRunner, 'dry-run');
+    const tables = results
+      .filter((result) => result.residual > 0)
+      .map((result) => ({ table: result.table, residualFields: result.residual }));
+    const residualFields = tables.reduce((total, table) => total + table.residualFields, 0);
+    if (residualFields > 0) findings.push({ titularIds, residualFields, tables });
+  };
+
+  for (const group of groups.values()) {
+    await verifyScope(
+      [...new Set(group.titularIds)],
+      group.partyId,
+      group.subscriberIds,
+      group.userIds,
+      group.expedienteIds,
+    );
+  }
+  return {
+    tenantSchema,
+    titularesChecked: groups.size,
+    markedSubscribers: subscribers.length,
+    markedExpedientes: expedientes.length,
+    residualFields: findings.reduce((total, finding) => total + finding.residualFields, 0),
+    findings,
+  };
+}
+
+export async function verifyAnonymizedTenant(
+  dataSource: DataSource,
+  schemaName: string,
+  keys: AnonymizeTitularKeys,
+): Promise<AnonymizedTenantVerificationReport> {
+  if (!isValidSchemaName(schemaName)) throw new AnonymizeTitularCliError('Schema tenant inválido.');
+  return runInTenantSchema(dataSource, schemaName, (queryRunner) =>
+    verifyAnonymizedTenantInTransaction(queryRunner, schemaName, keys),
+  );
+}
+
 function ensureCliEnvLoaded(): void {
   const loadEnvFile = (process as NodeJS.Process & { loadEnvFile?: (path?: string) => void })
     .loadEnvFile;
@@ -1220,11 +1438,13 @@ async function resolveTenantSchema(
 function printHelp(): void {
   process.stdout.write(
     `Anonimización asistida de titular (multi-tenant)\n\n` +
-      `Uso: pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant <uuid|slug> --request <uuid> [--expediente <uuid> ...] [--confirm-unmatched] [--apply]\n\n` +
+      `Uso: pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant <uuid|slug> --request <uuid> [--expediente <uuid> ...] [--confirm-unmatched] [--apply]\n` +
+      `     pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant <uuid|slug> --verify-only\n\n` +
       `--dry-run              Predeterminado; informa conteos sin cambiar datos.\n` +
       `--apply                Anonimiza en una sola transacción y verifica el resultado.\n` +
       `--expediente           Puede repetirse. Si falta o no coincide el HMAC, requiere confirmación.\n` +
-      `--confirm-unmatched    Exige que el motivo ya conste en el ticket.\n`,
+      `--confirm-unmatched    Exige que el motivo ya conste en el ticket.\n` +
+      `--verify-only          Solo lectura; informa ids y conteos de residuales por tenant.\n`,
   );
 }
 
@@ -1232,8 +1452,10 @@ async function main(): Promise<void> {
   ensureCliEnvLoaded();
   const flags = parseAnonymizeTitularArgs(process.argv.slice(2));
   if (flags.help) return printHelp();
-  if (!flags.tenant || !flags.requestId) {
-    throw new AnonymizeTitularCliError('Debes indicar --tenant y --request.');
+  if (!flags.tenant || (!flags.verifyOnly && !flags.requestId)) {
+    throw new AnonymizeTitularCliError(
+      flags.verifyOnly ? 'Debes indicar --tenant.' : 'Debes indicar --tenant y --request.',
+    );
   }
 
   const config = new ConfigService(process.env);
@@ -1241,10 +1463,15 @@ async function main(): Promise<void> {
   await AppDataSource.initialize();
   try {
     const tenant = await resolveTenantSchema(AppDataSource, flags.tenant);
+    if (flags.verifyOnly) {
+      const report = await verifyAnonymizedTenant(AppDataSource, tenant.schemaName, keys);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      return;
+    }
     const report = await anonymizeTitularInTenantSchema(
       AppDataSource,
       tenant.schemaName,
-      flags.requestId,
+      flags.requestId!,
       flags.expedienteIds,
       flags.confirmUnmatched,
       keys,

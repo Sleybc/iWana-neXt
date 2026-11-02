@@ -388,9 +388,9 @@ describe('ContractsController', () => {
       const contract = buildContract({ status: ContractStatus.ACTIVE });
       serviceMock.activate.mockResolvedValue(contract);
 
-      const result = await controller.activate('ctr-1', { sub: 'actor-1' } as JwtPayload);
+      const result = await controller.activate('ctr-1', {}, { sub: 'actor-1' } as JwtPayload);
 
-      expect(serviceMock.activate).toHaveBeenCalledWith('ctr-1', 'actor-1');
+      expect(serviceMock.activate).toHaveBeenCalledWith('ctr-1', 'actor-1', {});
       expect(result.data.status).toBe(ContractStatus.ACTIVE);
     });
 
@@ -482,14 +482,19 @@ describe('ContractsController', () => {
       const preview = document.paths['/crm/subscribers/{subscriberId}/services/preview']?.post;
       const suspend = document.paths['/crm/subscribers/{subscriberId}/services/suspend']?.post;
       const terminate = document.paths['/crm/contracts/{id}/terminate']?.post;
+      const activate = document.paths['/crm/contracts/{id}/activate']?.post;
       const previewRequestBody = preview?.requestBody as
         | { content?: Record<string, { schema?: unknown }> }
         | undefined;
       const suspendRequestBody = suspend?.requestBody as
         | { content?: Record<string, { schema?: unknown }> }
         | undefined;
+      const activateRequestBody = activate?.requestBody as
+        | { required?: boolean; content?: Record<string, { schema?: unknown }> }
+        | undefined;
       const previewSchema = previewRequestBody?.content?.['application/json']?.schema;
       const suspendSchema = suspendRequestBody?.content?.['application/json']?.schema;
+      const activateSchema = activateRequestBody?.content?.['application/json']?.schema;
 
       expect(preview).toBeDefined();
       expect(previewSchema).toMatchObject({ oneOf: expect.any(Array) });
@@ -499,12 +504,27 @@ describe('ContractsController', () => {
         required: ['reasonCode'],
       });
       expect(terminate).toBeDefined();
+      expect(activate).toBeDefined();
+      expect(activateRequestBody?.required).toBe(false);
+      expect(activateSchema).toMatchObject({
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          billingCycleDay: { type: 'integer', minimum: 1, maximum: 28 },
+        },
+      });
 
       const contractResponse = document.components?.schemas?.ContractResponseDto as
         | {
             required?: string[];
-            properties?: Record<string, { nullable?: boolean; maxLength?: number }>;
+            properties?: Record<
+              string,
+              { nullable?: boolean; maxLength?: number; deprecated?: boolean }
+            >;
           }
+        | undefined;
+      const contractCreate = document.components?.schemas?.CreateContractDto as
+        | { properties?: Record<string, { deprecated?: boolean }> }
         | undefined;
       expect(contractResponse?.required).toEqual(
         expect.arrayContaining(['statusReasonCode', 'statusChangedAt']),
@@ -516,6 +536,16 @@ describe('ContractsController', () => {
       expect(contractResponse?.properties?.statusChangedAt).toMatchObject({
         nullable: true,
       });
+      expect(contractResponse?.properties?.billingCycle).toMatchObject({
+        nullable: true,
+        deprecated: true,
+      });
+      expect(contractResponse?.properties?.billingCycleDay).toMatchObject({
+        nullable: true,
+        minimum: 1,
+        maximum: 28,
+      });
+      expect(contractCreate?.properties?.billingCycle).toMatchObject({ deprecated: true });
     } finally {
       await app.close();
     }

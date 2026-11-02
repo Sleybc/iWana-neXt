@@ -10,6 +10,7 @@ import {
   TransactionRollbackEvent,
 } from 'typeorm';
 import { ContractStatus } from '../enums/contract-status.enum';
+import { titularAnonymizedConflict } from '../subscribers/guards/titular-anonymized-conflict';
 import { IContractImpersonationPort } from '../../privacy/ports/contract-impersonation.port';
 import { AuditService } from '../../audit/audit.service';
 
@@ -76,14 +77,26 @@ export class CrmContractImpersonationAdapter implements IContractImpersonationPo
       });
     }
 
+    const subscriberRows = (await ctx.manager.query(
+      `SELECT id, anonymized_at
+         FROM subscribers
+        WHERE party_id = $1
+        ORDER BY id
+        FOR SHARE`,
+      [input.partyId],
+    )) as Array<{ id: string; anonymized_at: Date | string | null }>;
+    if (subscriberRows.some(({ anonymized_at }) => anonymized_at != null)) {
+      throw titularAnonymizedConflict();
+    }
+
+    const subscriberIds = subscriberRows.map(({ id }) => id);
     const rows = (await ctx.manager.query(
       `SELECT c.id, c.status
          FROM contracts c
-         JOIN subscribers s ON s.id = c.subscriber_id
         WHERE c.id = ANY($1::uuid[])
-          AND s.party_id = $2
+          AND c.subscriber_id = ANY($2::uuid[])
         FOR UPDATE OF c`,
-      [selectedIds, input.partyId],
+      [selectedIds, subscriberIds],
     )) as Array<{ id: string; status: ContractStatus }>;
     if (rows.length !== selectedIds.length) {
       throw new UnprocessableEntityException({
@@ -103,7 +116,7 @@ export class CrmContractImpersonationAdapter implements IContractImpersonationPo
 
       const result = (await ctx.manager.query(
         `UPDATE contracts
-            SET status = $2, updated_at = now()
+            SET status = $2, updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')
           WHERE id = $1 AND status = $3
         RETURNING id`,
         [row.id, ContractStatus.SUSPENDED, ContractStatus.ACTIVE],

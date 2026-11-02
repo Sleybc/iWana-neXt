@@ -36,6 +36,7 @@ import { encryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
 import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
 import { SubscriberLifecycleService } from '../../subscribers/subscriber-lifecycle.service';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
+import { ContractsTenantSettingsReadPort } from '../ports/contracts-tenant-settings-read.port';
 
 const syntheticFiscalCryptoKey = Buffer.from(
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -44,7 +45,17 @@ const syntheticFiscalCryptoKey = Buffer.from(
 
 const mockRunInTenantSchema = jest.fn();
 const mockTenantContextGetOrThrow = jest.fn();
+const mockContractQuery = jest.fn();
 let mockLockedContractStatus = 'DRAFT';
+let mockLockedContractBillingCycleDay: number | null = 1;
+let mockLockedContractUpdatedAt = new Date('2026-04-24T00:00:00Z');
+let mockAgendaRows: Array<Record<string, unknown>> | null = null;
+let mockActiveBillingCycleExists = true;
+let mockLockedSubscriber: Partial<Subscriber> | null;
+
+function mockMutationPrecheck(): void {
+  mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) => cb({ manager: {} }));
+}
 
 jest.mock('@iwana/db', () => {
   const actual = jest.requireActual('@iwana/db') as Record<string, unknown>;
@@ -80,8 +91,14 @@ jest.mock('@iwana/db', () => {
                   postalCode: null,
                 };
             if (entity === Contract && result && typeof result === 'object') {
+              const updatedAt = (result as { updatedAt?: Date }).updatedAt;
+              if (updatedAt) mockLockedContractUpdatedAt = updatedAt;
               const status = (result as { status?: unknown }).status;
               if (typeof status === 'string') mockLockedContractStatus = status;
+              const billingCycleDay = (result as { billingCycleDay?: unknown }).billingCycleDay;
+              if (typeof billingCycleDay === 'number' || billingCycleDay === null) {
+                mockLockedContractBillingCycleDay = billingCycleDay;
+              }
             }
             if (!result || typeof result !== 'object') return result;
             if (entity !== Subscriber) return result;
@@ -104,11 +121,44 @@ jest.mock('@iwana/db', () => {
             queryRunner.manager['create'] = (_entity: unknown, entity: unknown) => entity;
           }
           queryRunner.query = async (sql: string, parameters?: unknown[]) => {
+            mockContractQuery(sql, parameters);
+            if (sql.includes('FOR SHARE OF s')) {
+              return mockLockedSubscriber ? [mockLockedSubscriber] : [];
+            }
+            if (sql.includes('SELECT updated_at AS "updatedAt"')) {
+              return [{ updatedAt: mockLockedContractUpdatedAt }];
+            }
             if (sql.includes('SELECT status::text AS status') && sql.includes('FROM contracts')) {
-              return [{ status: mockLockedContractStatus }];
+              return [
+                {
+                  status: mockLockedContractStatus,
+                  billingCycleDay: mockLockedContractBillingCycleDay,
+                },
+              ];
             }
             if (sql.includes('SELECT id FROM subscribers')) {
               return [{ id: parameters?.[0] ?? 'sub-1' }];
+            }
+            if (
+              sql.includes('SELECT cycle_day AS "cycleDay"') &&
+              sql.includes('FROM crm_billing_cycles') &&
+              sql.includes('ORDER BY cycle_day ASC')
+            ) {
+              return [{ cycleDay: 1, cutoffDay: 15, active: true }];
+            }
+            if (sql.includes('SELECT cycle_day AS "cycleDay", cutoff_day AS "cutoffDay"')) {
+              return [{ cycleDay: 1, cutoffDay: 15 }];
+            }
+            if (mockAgendaRows !== null) {
+              if (sql.includes('billing_cycle_day IS NULL')) return [{ total: 2 }];
+              if (sql.includes('LIMIT $4')) return mockAgendaRows;
+              if (sql.includes('COUNT(*)::int AS total')) {
+                return [{ total: mockAgendaRows.length }];
+              }
+            }
+            if (sql.includes('FROM crm_billing_cycles')) {
+              if (sql.includes('active = true') && !mockActiveBillingCycleExists) return [];
+              return [{ cycle_day: parameters?.[0] ?? 1 }];
             }
             if (sql.includes('FROM crm_lifecycle_changes')) return [];
             return [];
@@ -148,6 +198,7 @@ function buildContract(overrides: Partial<Contract> = {}): Contract {
     additionalServiceIds: [],
     paymentMethod: null,
     billingCycle: null,
+    billingCycleDay: 1,
     fiscalName: null,
     fiscalDocument: null,
     fiscalAddress: null,
@@ -186,6 +237,7 @@ describe('ContractsService', () => {
     activeMarks: jest.fn().mockResolvedValue({}),
     partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
   };
+  const tenantSettingsReadPort = { getTimezone: jest.fn() };
   const configService = {
     get: jest.fn((key: string, fallback?: unknown) => {
       if (key === 'STORAGE_DRIVER') return 'minio';
@@ -198,12 +250,25 @@ describe('ContractsService', () => {
   const subscriberLifecycleService = {
     transitionContract: jest.fn().mockResolvedValue(undefined),
     preview: jest.fn(),
+    suspend: jest.fn(),
+    reactivate: jest.fn(),
+    terminate: jest.fn(),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockRunInTenantSchema.mockReset();
     mockLockedContractStatus = ContractStatus.DRAFT;
+    mockLockedContractBillingCycleDay = 1;
+    mockLockedSubscriber = {
+      id: 'sub-1',
+      tenantId: 'ten-1',
+      partyId: 'party-test-uuid',
+      personType: PersonType.NATURAL,
+      anonymizedAt: null,
+    };
     privacyMarksReadPort.activeMarks.mockResolvedValue({});
+    tenantSettingsReadPort.getTimezone.mockResolvedValue('America/Bogota');
     subscriberLifecycleService.transitionContract.mockResolvedValue(undefined);
     configService.get.mockImplementation((key: string, fallback?: unknown) =>
       key === 'STORAGE_DRIVER'
@@ -230,11 +295,55 @@ describe('ContractsService', () => {
         { provide: ConfigService, useValue: configService },
         { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPort },
+        { provide: ContractsTenantSettingsReadPort, useValue: tenantSettingsReadPort },
         { provide: SubscriberLifecycleService, useValue: subscriberLifecycleService },
       ],
     }).compile();
 
     service = module.get<ContractsService>(ContractsService);
+  });
+
+  describe('getActiveBillingCycles', () => {
+    it('CA-CF-13: calcula el próximo corte con la fecha local del tenant', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-11-16T02:00:00.000Z')); // 21:00 del 15 en Bogotá
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: {} }),
+      );
+
+      try {
+        await expect(service.getActiveBillingCycles()).resolves.toEqual([
+          {
+            cycleDay: 1,
+            cutoffDay: 15,
+            active: true,
+            nextCutoffDate: '2026-11-15',
+          },
+        ]);
+        expect(tenantSettingsReadPort.getTimezone).toHaveBeenCalledWith('ten-1');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe('getCutoffAgenda', () => {
+    it('CA-CF-08: sin date usa la fecha de Bogotá a las 21:00, no la fecha UTC', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-11-16T02:00:00.000Z')); // 21:00 del 15 en Bogotá
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: {} }),
+      );
+
+      try {
+        const result = await service.getCutoffAgenda({ page: 1, limit: 25 }, 'SALES');
+
+        expect(result.date).toBe('2026-11-15');
+        expect(tenantSettingsReadPort.getTimezone).toHaveBeenCalledWith('ten-1');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   describe('findOneForRead', () => {
@@ -452,7 +561,8 @@ describe('ContractsService', () => {
   });
 
   describe('uploadStratumEvidence', () => {
-    it('requiere un archivo antes de cargar soporte o consultar el contrato', async () => {
+    it('requiere un archivo después de comprobar el titular y antes de cargar soporte', async () => {
+      mockMutationPrecheck();
       await expect(
         service.uploadStratumEvidence(
           'ctr-1',
@@ -460,7 +570,7 @@ describe('ContractsService', () => {
           'actor-1',
         ),
       ).rejects.toThrow(BadRequestException);
-      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
       expect(mediaService.uploadStratumEvidence).not.toHaveBeenCalled();
     });
 
@@ -472,6 +582,7 @@ describe('ContractsService', () => {
       mediaService.uploadStratumEvidence.mockRejectedValue(
         new ServiceUnavailableException({ code: 'STRATUM_EVIDENCE_STORAGE_MUST_BE_PRIVATE' }),
       );
+      mockMutationPrecheck();
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { findOne: async () => contract } }),
@@ -491,7 +602,7 @@ describe('ContractsService', () => {
       await expect(
         service.uploadStratumEvidence('ctr-1', {} as Express.Multer.File, 'actor-1'),
       ).rejects.toThrow(ServiceUnavailableException);
-      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(2);
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(3);
       expect(mediaService.softDeleteStratumEvidence).not.toHaveBeenCalled();
     });
 
@@ -503,6 +614,7 @@ describe('ContractsService', () => {
       });
       mediaService.uploadStratumEvidence.mockResolvedValue({ id: 'asset-new' });
       mediaService.softDeleteStratumEvidence.mockResolvedValue(undefined);
+      mockMutationPrecheck();
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { findOne: async () => contract } }),
@@ -578,6 +690,7 @@ describe('ContractsService', () => {
         ratePercent: 0,
         requiresAccountantReview: false,
       });
+      mockMutationPrecheck();
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { findOne: async () => contract } }),
@@ -668,14 +781,16 @@ describe('ContractsService', () => {
 
   describe('updateServicePoint', () => {
     it('exige al menos un campo del punto de servicio', async () => {
+      mockMutationPrecheck();
       await expect(service.updateServicePoint('ctr-1', {}, 'actor-1')).rejects.toThrow(
         UnprocessableEntityException,
       );
-      expect(mockRunInTenantSchema).not.toHaveBeenCalled();
+      expect(mockRunInTenantSchema).toHaveBeenCalledTimes(1);
     });
 
     it('rechaza el cambio dedicado cuando el contrato no está activo', async () => {
       mockRunInTenantSchema.mockReset();
+      mockMutationPrecheck();
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => buildContract({ status: ContractStatus.DRAFT }) } }),
       );
@@ -691,11 +806,13 @@ describe('ContractsService', () => {
     });
 
     it('responde no encontrado si el contrato activo ya no tiene suscriptor', async () => {
+      mockLockedSubscriber = null;
       mockRunInTenantSchema.mockReset();
       const findOne = jest
         .fn()
         .mockResolvedValueOnce(buildContract({ status: ContractStatus.ACTIVE }))
         .mockResolvedValueOnce(null);
+      mockMutationPrecheck();
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({ manager: { findOne } }),
       );
@@ -724,6 +841,7 @@ describe('ContractsService', () => {
         personType: PersonType.NATURAL,
       });
       const save = jest.fn(async (_entity: unknown, entity: Contract) => entity);
+      mockMutationPrecheck();
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({ manager: { findOne, save } }),
       );
@@ -779,6 +897,7 @@ describe('ContractsService', () => {
         personType: PersonType.NATURAL,
       });
       const save = jest.fn(async (_entity: unknown, entity: Contract) => entity);
+      mockMutationPrecheck();
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
         cb({ manager: { findOne, save } }),
       );
@@ -1008,6 +1127,7 @@ describe('ContractsService', () => {
           subscriberId: 'sub-audit',
           planId: 'plan-audit',
           status: ContractStatus.DRAFT,
+          billingCycleDay: null,
         },
       });
       const entry = JSON.stringify(auditService.log.mock.calls[0]?.[0]);
@@ -1070,12 +1190,14 @@ describe('ContractsService', () => {
         subscriberId: 'sub-1',
         planId: 'plan-1',
         planSnapshotJson: {},
-        installationCity: 'Medellín',
-        installationAddress: 'Cll 50 #30-10',
+        installationCity: 'EL_COLEGIO',
+        installationAddress: 'CR 2 2 02',
       });
 
       expect(result.id).toBe('ctr-1');
-      expect((result as unknown as Record<string, unknown>).alias).toMatch(/Servicio/);
+      expect((result as unknown as Record<string, unknown>).alias).toBe(
+        'Servicio — El Colegio Cr 2 2 02',
+      );
     });
 
     it('usa el alias provisto cuando viene en el DTO', async () => {
@@ -1836,16 +1958,49 @@ describe('ContractsService', () => {
           entityType: 'Contract',
           entityId: contract.id,
           userId: 'actor-1',
-          oldValue: { status: ContractStatus.DRAFT },
-          newValue: { status: ContractStatus.ACTIVE },
+          oldValue: { status: ContractStatus.DRAFT, billingCycleDay: 1 },
+          newValue: { status: ContractStatus.ACTIVE, billingCycleDay: 1 },
         },
         expect.any(Object),
       );
     });
 
+    it('activa sobre la versión vigente releída bajo bloqueo, sin guardar una entidad previa', async () => {
+      const previous = buildContract({ updatedAt: new Date('2026-04-24T00:00:00.000Z') });
+      const locked = buildContract({
+        updatedAt: new Date('2026-04-24T00:00:01.000Z'),
+        alias: 'Alias vigente',
+        serviceUsage: ServiceUsage.NON_RESIDENTIAL,
+      });
+      commercialCatalogPort.getPlanById.mockResolvedValue({
+        id: locked.planId,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.FIXED,
+      });
+      const findOne = jest.spyOn(service, 'findOne').mockResolvedValue(previous);
+      const readLocked = jest.fn().mockResolvedValue(locked);
+      const save = jest.fn(async (_entity: unknown, entity: Contract) => entity);
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: readLocked, save } }),
+      );
+
+      const result = await service.activate('ctr-1');
+
+      expect(result.status).toBe(ContractStatus.ACTIVE);
+      expect(result.alias).toBe('Alias vigente');
+      expect(findOne).not.toHaveBeenCalled();
+      expect(readLocked).toHaveBeenCalledWith(
+        Contract,
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+      expect(mockContractQuery.mock.calls[0][0]).toContain('FOR SHARE OF s');
+      expect(save).toHaveBeenCalledWith(Contract, locked);
+      expect(save).not.toHaveBeenCalledWith(Contract, previous);
+    });
+
     it('lanza ConflictException si el contrato no está en DRAFT', async () => {
       const contract = buildContract({ status: ContractStatus.ACTIVE });
-      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => contract } }),
       );
 
@@ -1856,7 +2011,7 @@ describe('ContractsService', () => {
   describe('validación de activación', () => {
     it('responde 422 cuando falta el uso', async () => {
       const contract = buildContract({ serviceUsage: null });
-      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => contract } }),
       );
       await expect(service.activate('ctr-1')).rejects.toThrow(UnprocessableEntityException);
@@ -1888,6 +2043,7 @@ describe('ContractsService', () => {
         installationStratum: 2,
       });
       const subscriber = { id: 'sub-1', tenantId: 'ten-1', personType: PersonType.JURIDICA };
+      mockLockedSubscriber = subscriber;
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { findOne: async () => contract } }),
@@ -1985,7 +2141,7 @@ describe('ContractsService', () => {
 
     it('lanza ConflictException al intentar archivar contrato ACTIVE', async () => {
       const contract = buildContract({ status: ContractStatus.ACTIVE });
-      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => contract } }),
       );
 
@@ -1994,7 +2150,7 @@ describe('ContractsService', () => {
 
     it('ARCHIVED no puede transicionar a ningún estado (estado final)', async () => {
       const contract = buildContract({ status: ContractStatus.ARCHIVED });
-      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
         cb({ manager: { findOne: async () => contract } }),
       );
 
@@ -2012,14 +2168,17 @@ describe('ContractsService', () => {
 
       mockRunInTenantSchema
         .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { findOne: async () => contract } }),
+          cb({ manager: { findOne: async () => contract, softDelete: softDeleteSpy } }),
         )
         .mockImplementationOnce(async (_ds, _schema, cb) =>
           cb({ manager: { softDelete: softDeleteSpy } }),
         );
 
       await expect(service.remove('ctr-1', 'actor-1')).resolves.toBeUndefined();
-      expect(softDeleteSpy).toHaveBeenCalledWith(expect.anything(), { id: 'ctr-1' });
+      expect(softDeleteSpy).toHaveBeenCalledWith(expect.anything(), {
+        id: 'ctr-1',
+        tenantId: 'ten-1',
+      });
       expect(auditService.log).toHaveBeenCalledWith({
         action: AuditAction.DELETE,
         entityType: 'Contract',
@@ -2115,36 +2274,24 @@ describe('ContractsService', () => {
       expect(result.alias).toBe('Nuevo alias');
     });
 
-    it('redacta la respuesta al editar un contrato anonimizado y conserva el plan y estado', async () => {
-      const contract = buildContract({ status: ContractStatus.DRAFT });
-      const anonymizedAt = new Date('2026-10-15T12:00:00.000Z');
-      mockRunInTenantSchema
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({ manager: { findOne: async () => contract } }),
-        )
-        .mockImplementationOnce(async (_ds, _schema, cb) =>
-          cb({
-            manager: {
-              save: async (_entity: unknown, entity: Contract) => entity,
-              find: async () => [{ id: 'sub-1', partyId: 'party-1', anonymizedAt }],
-            },
-          }),
-        );
-      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({ 'party-1': [] });
+    it('rechaza editar un contrato anonimizado antes de escribir o proyectar la respuesta', async () => {
+      const save = jest.fn();
+      mockLockedSubscriber = {
+        ...mockLockedSubscriber,
+        anonymizedAt: new Date('2026-10-15T12:00:00.000Z'),
+      };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({ manager: { save } }),
+      );
 
-      const result = await service.update('ctr-1', { alias: 'Alias corregido' }, 'actor-1');
-
-      expect(result).toMatchObject({
-        alias: 'Anonimizado',
-        planSnapshotJson: { id: 'plan-fibra-300' },
-        status: ContractStatus.DRAFT,
-        installationAddress: null,
-        installationCity: null,
-        fiscalName: null,
-        fiscalDocument: null,
-        fiscalAddress: null,
-        titularAnonymizedAt: anonymizedAt.toISOString(),
+      await expect(
+        service.update('ctr-1', { alias: 'Alias corregido' }, 'actor-1'),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
       });
+      expect(save).not.toHaveBeenCalled();
+      expect(auditService.log).not.toHaveBeenCalled();
     });
 
     it('aplica los campos editables de un borrador y conserva los valores nulos explícitos', async () => {
@@ -2205,6 +2352,281 @@ describe('ContractsService', () => {
     });
   });
 
+  // ── Cobertura: agenda de corte, guardas de titular y delegaciones de ciclo de vida ──
+  describe('agenda de corte, guardas y delegaciones (cobertura unitaria)', () => {
+    beforeEach(() => {
+      // El arnés reemplaza query y manager del qr; solo hace falta un manager base.
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) => cb({ manager: {} }));
+      // Vacía respuestas «Once» que otros bloques dejaron sin consumir.
+      privacyMarksReadPort.activeMarks.mockReset();
+      privacyMarksReadPort.activeMarks.mockResolvedValue({});
+    });
+
+    afterEach(() => {
+      mockAgendaRows = null;
+      mockActiveBillingCycleExists = true;
+    });
+
+    const agendaRow = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+      contract_id: 'ctr-1',
+      subscriber_id: 'sub-1',
+      billing_cycle_day: 1,
+      plan_name: 'Fibra sintética 300',
+      projected_subscriber_id: 'sub-1',
+      subscriber_tenant_id: 'ten-1',
+      party_id: 'party-1',
+      user_id: null,
+      subscriber_status: 'ACTIVE',
+      person_type: PersonType.NATURAL,
+      customer_segment: null,
+      stratum: 3,
+      vat_treatment: null,
+      vat_responsibility: 'RESPONSABLE',
+      rut_responsibilities: ['O-13'],
+      legal_representative_party_id: null,
+      tax_regime: null,
+      expediente_id: 'exp-1',
+      document_type: null,
+      first_name: 'Ana',
+      last_name: 'Pérez',
+      business_name: null,
+      commercial_name: null,
+      anonymized_at: null,
+      created_at: '2026-04-01T00:00:00Z',
+      updated_at: '2026-04-02T00:00:00Z',
+      ...overrides,
+    });
+
+    it('cuenta servicios, marca bloqueados atendidos y proyecta plan y nombre por tipo de titular', async () => {
+      mockAgendaRows = [
+        agendaRow(),
+        agendaRow({
+          contract_id: 'ctr-2',
+          subscriber_id: 'sub-2',
+          projected_subscriber_id: 'sub-2',
+          party_id: 'party-2',
+          person_type: PersonType.JURIDICA,
+          business_name: 'Empresa Sintética',
+          first_name: null,
+          last_name: null,
+          plan_name: null,
+        }),
+      ];
+      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({
+        'party-2': ['DATOS_BLOQUEADOS'],
+      });
+
+      const result = await service.getCutoffAgenda(
+        { date: '2026-11-15', page: 1, limit: 25 },
+        'SALES',
+        true,
+        'actor-1',
+      );
+
+      expect(result.meta.total).toBe(2);
+      expect(result.withoutCycleCount).toBe(2);
+      expect(result).not.toHaveProperty('blockedServed');
+      expect(result.items[0]).toMatchObject({
+        contractId: 'ctr-1',
+        subscriberId: 'sub-1',
+        planName: 'Fibra sintética 300',
+        billingCycleDay: 1,
+        cutoffDate: '2026-11-15',
+      });
+      expect(result.items[1]).toMatchObject({ contractId: 'ctr-2', planName: null });
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.LIST_ACCESS,
+          entityType: 'BillingCycleCutoffAgenda',
+          userId: 'actor-1',
+          newValue: {
+            date: '2026-11-15',
+            totalServed: 2,
+            totalAvailable: 2,
+            blockedServed: 1,
+          },
+        }),
+      );
+    });
+
+    it('usa «Anonimizado» cuando la fecha de anonimización llega como texto y no audita', async () => {
+      mockAgendaRows = [agendaRow({ anonymized_at: '2026-03-01T00:00:00Z' })];
+
+      const result = await service.getCutoffAgenda(
+        { date: '2026-11-15', page: 1, limit: 25 },
+        'SALES',
+        true,
+        'actor-1',
+      );
+
+      expect(result.items[0]?.subscriberDisplayName).toBe('Anonimizado');
+      expect(auditService.log).not.toHaveBeenCalled();
+    });
+
+    it('delega suspender, terminar y previsualizar servicios del suscriptor en el ciclo de vida', async () => {
+      const command = { reasonCode: 'MORA' } as never;
+      subscriberLifecycleService.suspend.mockResolvedValueOnce({ affected: 1 });
+      subscriberLifecycleService.terminate.mockResolvedValueOnce({ affected: 2 });
+      subscriberLifecycleService.preview.mockResolvedValueOnce({ contracts: [] });
+
+      await expect(
+        service.suspendSubscriberServices('sub-1', command, 'actor-1', 'idem-1'),
+      ).resolves.toEqual({ affected: 1 });
+      expect(subscriberLifecycleService.suspend).toHaveBeenCalledWith(
+        'sub-1',
+        command,
+        'actor-1',
+        'idem-1',
+      );
+      await expect(
+        service.terminateSubscriberServices('sub-1', command, 'actor-1', 'idem-terminate'),
+      ).resolves.toEqual({ affected: 2 });
+      expect(subscriberLifecycleService.terminate).toHaveBeenCalledWith(
+        'sub-1',
+        command,
+        'actor-1',
+        'idem-terminate',
+      );
+      const previewRequest = { action: 'SUSPEND' } as never;
+      await expect(service.previewSubscriberServices('sub-1', previewRequest)).resolves.toEqual({
+        contracts: [],
+      });
+      expect(subscriberLifecycleService.preview).toHaveBeenCalledWith('sub-1', previewRequest);
+    });
+
+    it('reactivar servicios pasa el preparador de activación al ciclo de vida', async () => {
+      subscriberLifecycleService.reactivate.mockResolvedValueOnce({ affected: 1 });
+
+      await expect(
+        service.reactivateSubscriberServices('sub-1', {} as never, 'actor-1', 'idem-2'),
+      ).resolves.toEqual({ affected: 1 });
+      expect(subscriberLifecycleService.reactivate).toHaveBeenCalledWith(
+        'sub-1',
+        {},
+        'actor-1',
+        'idem-2',
+        expect.any(Function),
+      );
+      const prepare = subscriberLifecycleService.reactivate.mock.calls[0]?.[4] as (
+        qr: unknown,
+        ids: readonly string[],
+      ) => Promise<void>;
+      await expect(
+        prepare({ manager: { find: async () => [] } }, ['ctr-1']),
+      ).resolves.toBeUndefined();
+    });
+
+    it('reactivar un contrato pasa el preparador y devuelve el contrato releído', async () => {
+      const resultContract = buildContract({ status: ContractStatus.ACTIVE });
+      const findOne = jest.spyOn(service, 'findOne').mockResolvedValue(resultContract);
+
+      const result = await service.reactivate('ctr-1', {} as never, 'actor-1');
+
+      expect(result).toBe(resultContract);
+      expect(subscriberLifecycleService.transitionContract).toHaveBeenCalledWith(
+        'ctr-1',
+        'REACTIVATE',
+        {},
+        'actor-1',
+        undefined,
+        expect.any(Function),
+      );
+      expect(findOne).toHaveBeenCalledWith('ctr-1');
+      expect(
+        subscriberLifecycleService.transitionContract.mock.invocationCallOrder.at(-1),
+      ).toBeLessThan(findOne.mock.invocationCallOrder[0]!);
+      const prepare = subscriberLifecycleService.transitionContract.mock.calls.at(-1)?.[5] as (
+        qr: unknown,
+        ids: readonly string[],
+      ) => Promise<void>;
+      await expect(
+        prepare({ manager: { find: async () => [] } }, ['ctr-1']),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rechaza activar servicios de un suscriptor cancelado', async () => {
+      const contract = buildContract({ status: ContractStatus.SUSPENDED });
+      subscriberLifecycleService.reactivate.mockImplementationOnce(
+        async (_id: string, _c: unknown, _a: string, _k: unknown, prepare: unknown) =>
+          (prepare as (qr: unknown, ids: readonly string[]) => Promise<void>)(
+            {
+              manager: {
+                find: async () => [contract],
+                findOne: async () => ({
+                  id: 'sub-1',
+                  tenantId: 'ten-1',
+                  status: 'CANCELLED' as Subscriber['status'],
+                  personType: PersonType.NATURAL,
+                }),
+              },
+              query: async () => [],
+            },
+            ['ctr-1'],
+          ),
+      );
+
+      await expect(
+        service.reactivateSubscriberServices('sub-1', {} as never, 'actor-1'),
+      ).rejects.toMatchObject({ response: { code: 'SUBSCRIBER_CANCELLED' } });
+    });
+
+    it('bloquea la mutación cuando el titular tiene datos bloqueados por privacidad', async () => {
+      privacyMarksReadPort.activeMarks.mockResolvedValueOnce({
+        'party-test-uuid': ['DATOS_BLOQUEADOS'],
+      });
+
+      await expect(service.assertSubscriberNotBlockedForMutation('sub-1')).rejects.toMatchObject({
+        response: { code: 'PRIVACY_DATA_BLOCKED' },
+      });
+    });
+
+    it('permite la mutación de un titular sin marcas y valida el contrato antes de su subscriber', async () => {
+      const readOrder: string[] = [];
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => {
+              readOrder.push('subscriber');
+              return { id: 'sub-1', partyId: 'party-test-uuid', anonymizedAt: null };
+            },
+          },
+        }),
+      );
+      const findOne = jest.spyOn(service, 'findOne').mockImplementationOnce(async () => {
+        readOrder.push('contract');
+        return buildContract({ subscriberId: 'sub-1' });
+      });
+
+      await expect(service.assertSubscriberNotBlockedForMutation('sub-1')).resolves.toBeUndefined();
+      expect(readOrder).toEqual(['subscriber']);
+      readOrder.length = 0;
+      privacyMarksReadPort.activeMarks.mockClear();
+      await expect(service.assertContractNotBlocked('ctr-1')).resolves.toBeUndefined();
+      expect(readOrder).toEqual(['contract', 'subscriber']);
+      expect(findOne).toHaveBeenCalledWith('ctr-1');
+      expect(privacyMarksReadPort.activeMarks).toHaveBeenCalledWith(['party-test-uuid']);
+      expect(findOne.mock.invocationCallOrder[0]!).toBeLessThan(
+        privacyMarksReadPort.activeMarks.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('responde 422 BILLING_CYCLE_INVALID al cambiar a un ciclo inactivo', async () => {
+      const entity = buildContract({ status: ContractStatus.DRAFT });
+      mockActiveBillingCycleExists = false;
+      mockRunInTenantSchema
+        .mockImplementationOnce(async (_ds, _schema, cb) =>
+          cb({ manager: { findOne: async () => entity } }),
+        )
+        .mockImplementationOnce(async (_ds, _schema, cb) =>
+          cb({ manager: { save: async (_e: unknown, c: Contract) => c } }),
+        );
+
+      await expect(
+        service.update('ctr-1', { billingCycleDay: 15 }, 'actor-1'),
+      ).rejects.toMatchObject({ response: { code: 'BILLING_CYCLE_INVALID' } });
+    });
+  });
+
   // ── Ramas de soporte de estrato, IVA y punto de servicio ──────────────────
 
   describe('ramas de soporte de estrato, IVA y punto de servicio', () => {
@@ -2241,9 +2663,12 @@ describe('ContractsService', () => {
     };
 
     it('rechaza cargar soporte en un contrato terminado sin crear el asset', async () => {
-      queueTransactions({
-        findOne: async () => residentialContract({ status: ContractStatus.TERMINATED }),
-      });
+      queueTransactions(
+        {},
+        {
+          findOne: async () => residentialContract({ status: ContractStatus.TERMINATED }),
+        },
+      );
 
       const error = await errorOf(
         service.uploadStratumEvidence('ctr-1', {} as Express.Multer.File, 'actor-1'),
@@ -2258,6 +2683,7 @@ describe('ContractsService', () => {
 
     it('no carga soporte si el suscriptor del contrato ya no existe', async () => {
       queueTransactions(
+        {},
         { findOne: async () => residentialContract({ status: ContractStatus.DRAFT }) },
         { findOne: async () => null },
       );
@@ -2269,10 +2695,16 @@ describe('ContractsService', () => {
     });
 
     it('rechaza el soporte en un punto no residencial con STRATUM_EVIDENCE_NOT_APPLICABLE', async () => {
-      queueTransactions({
-        findOne: async () =>
-          buildContract({ serviceUsage: ServiceUsage.NON_RESIDENTIAL, installationStratum: null }),
-      });
+      queueTransactions(
+        {},
+        {
+          findOne: async () =>
+            buildContract({
+              serviceUsage: ServiceUsage.NON_RESIDENTIAL,
+              installationStratum: null,
+            }),
+        },
+      );
 
       const error = await errorOf(
         service.uploadStratumEvidence('ctr-1', {} as Express.Multer.File, 'actor-1'),
@@ -2287,6 +2719,7 @@ describe('ContractsService', () => {
       mediaService.uploadStratumEvidence.mockResolvedValueOnce({ id: 'asset-race' });
       mediaService.softDeleteStratumEvidence.mockResolvedValueOnce(undefined);
       queueTransactions(
+        {},
         { findOne: async () => residentialContract({ status: ContractStatus.DRAFT }) },
         { findOne: async () => subscriberOf() },
         { findOne: async () => residentialContract({ status: ContractStatus.TERMINATED }) },
@@ -2464,6 +2897,7 @@ describe('ContractsService', () => {
     });
 
     it('no activa el contrato si el suscriptor ya no existe', async () => {
+      mockLockedSubscriber = null;
       queueTransactions(
         {
           findOne: async () =>
@@ -2562,14 +2996,17 @@ describe('ContractsService', () => {
     });
 
     it('responde SERVICE_USAGE_REQUIRED al ajustar el estrato de un contrato activo sin uso', async () => {
-      queueTransactions({
-        findOne: jest
-          .fn()
-          .mockResolvedValueOnce(
-            buildContract({ status: ContractStatus.ACTIVE, serviceUsage: null }),
-          )
-          .mockResolvedValueOnce(subscriberOf()),
-      });
+      queueTransactions(
+        {},
+        {
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce(
+              buildContract({ status: ContractStatus.ACTIVE, serviceUsage: null }),
+            )
+            .mockResolvedValueOnce(subscriberOf()),
+        },
+      );
 
       const error = await errorOf(
         service.updateServicePoint('ctr-1', { installationStratum: 2 }, 'actor-1'),
@@ -2580,18 +3017,21 @@ describe('ContractsService', () => {
     });
 
     it('exige estrato al cambiar un punto activo a residencial sin estrato', async () => {
-      queueTransactions({
-        findOne: jest
-          .fn()
-          .mockResolvedValueOnce(
-            buildContract({
-              status: ContractStatus.ACTIVE,
-              serviceUsage: ServiceUsage.NON_RESIDENTIAL,
-              installationStratum: null,
-            }),
-          )
-          .mockResolvedValueOnce(subscriberOf()),
-      });
+      queueTransactions(
+        {},
+        {
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce(
+              buildContract({
+                status: ContractStatus.ACTIVE,
+                serviceUsage: ServiceUsage.NON_RESIDENTIAL,
+                installationStratum: null,
+              }),
+            )
+            .mockResolvedValueOnce(subscriberOf()),
+        },
+      );
 
       const error = await errorOf(
         service.updateServicePoint(
@@ -2630,6 +3070,7 @@ describe('ContractsService', () => {
     });
 
     it('valida el punto residencial de un borrador contra el suscriptor antes de guardarlo', async () => {
+      mockLockedSubscriber = null;
       queueTransactions(
         { findOne: async () => buildContract({ status: ContractStatus.DRAFT }) },
         { findOne: async () => null },
@@ -2645,6 +3086,7 @@ describe('ContractsService', () => {
     });
 
     it('rechaza un punto residencial en borrador si el titular es persona jurídica', async () => {
+      mockLockedSubscriber = subscriberOf(PersonType.JURIDICA);
       queueTransactions(
         { findOne: async () => buildContract({ status: ContractStatus.DRAFT }) },
         { findOne: async () => subscriberOf(PersonType.JURIDICA) },
@@ -2662,5 +3104,60 @@ describe('ContractsService', () => {
       expect(responseOf(error)).toMatchObject({ code: 'RESIDENTIAL_USAGE_NOT_ALLOWED' });
       expect(auditService.log).not.toHaveBeenCalled();
     });
+  });
+
+  describe('B1-G: precedencia de anonimización frente al ciclo en las creaciones', () => {
+    beforeEach(() => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => mockLockedSubscriber } }),
+      );
+      mockActiveBillingCycleExists = false;
+    });
+
+    afterEach(() => {
+      mockActiveBillingCycleExists = true;
+    });
+
+    it.each(['create', 'createFromExpediente'] as const)(
+      '%s: titular sano con ciclo inválido conserva 422 BILLING_CYCLE_INVALID',
+      async (method) => {
+        const operation =
+          method === 'create'
+            ? service.create({
+                subscriberId: 'sub-1',
+                planId: 'plan-1',
+                planSnapshotJson: {},
+                billingCycleDay: 15,
+              })
+            : service.createFromExpediente('sub-1', { billingCycleDay: 15 });
+        await expect(operation).rejects.toMatchObject({
+          status: 422,
+          response: { code: 'BILLING_CYCLE_INVALID' },
+        });
+      },
+    );
+
+    it.each(['create', 'createFromExpediente'] as const)(
+      '%s: titular anonimizado con ciclo inválido responde 409 antes del error de ciclo',
+      async (method) => {
+        mockLockedSubscriber = {
+          ...mockLockedSubscriber,
+          anonymizedAt: new Date('2026-11-01T00:00:00Z'),
+        };
+        const operation =
+          method === 'create'
+            ? service.create({
+                subscriberId: 'sub-1',
+                planId: 'plan-1',
+                planSnapshotJson: {},
+                billingCycleDay: 15,
+              })
+            : service.createFromExpediente('sub-1', { billingCycleDay: 15 });
+        await expect(operation).rejects.toMatchObject({
+          status: 409,
+          response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
+        });
+      },
+    );
   });
 });

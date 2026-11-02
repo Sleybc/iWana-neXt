@@ -44,6 +44,33 @@ describe('ResponsibilitiesService', () => {
   });
 
   describe('getResponsibility', () => {
+    it('devuelve actor vacío cuando el expediente no tiene responsable', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { findOne: async () => buildExpediente() } }),
+      );
+
+      expect((await service.getResponsibility('exp-base')).currentResponsible).toEqual({
+        userId: null,
+        name: null,
+        role: null,
+      });
+    });
+
+    it('propaga errores de lectura que no son de compatibilidad', async () => {
+      const failure = new Error('synthetic database failure');
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            findOne: async () => {
+              throw failure;
+            },
+          },
+        }),
+      );
+
+      await expect(service.getResponsibility('exp-base')).rejects.toThrow(failure);
+    });
+
     it('returns responsibility with readable name/role when user exists', async () => {
       const expediente = buildExpediente({
         id: 'exp-1',
@@ -149,6 +176,188 @@ describe('ResponsibilitiesService', () => {
   });
 
   describe('updateResponsibility', () => {
+    it.each([false, true])(
+      'conserva el id del actor sin nombre disponible (plataforma: %s)',
+      async (platformActor) => {
+        const findOne = jest
+          .fn()
+          .mockResolvedValueOnce(buildExpediente())
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(
+            platformActor ? { id: 'user-unavailable', firstName: null, lastName: null } : null,
+          );
+        mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+          callback({
+            manager: {
+              query: async () => [{ id: 'exp-base', anonymized_at: null }],
+              findOne,
+              update: async () => undefined,
+              create: (_entity: unknown, data: unknown) => data,
+              save: async () => undefined,
+            },
+          }),
+        );
+
+        expect(
+          (
+            await service.updateResponsibility(
+              'exp-base',
+              { responsibleUserId: 'user-unavailable' },
+              'actor',
+            )
+          ).currentResponsible,
+        ).toEqual({ userId: 'user-unavailable', name: null, role: null });
+      },
+    );
+
+    it.each([false, true])(
+      'rechaza un expediente anonimizado antes de escribir (schema legacy: %s)',
+      async (legacySchema) => {
+        const update = jest.fn();
+        const save = jest.fn();
+        const findOne = jest.fn().mockImplementation(async () => {
+          if (legacySchema) {
+            throw { driverError: { code: '42703' } };
+          }
+          return buildExpediente({ anonymizedAt: new Date('2026-11-01T00:00:00Z') });
+        });
+        const query = jest.fn().mockResolvedValue([
+          {
+            id: 'exp-base',
+            anonymized_at: new Date('2026-11-01T00:00:00Z'),
+            assigned_to: null,
+            updated_at: null,
+          },
+        ]);
+        mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+          callback({ manager: { query, findOne, update, save, create: jest.fn() } }),
+        );
+
+        await expect(
+          service.updateResponsibility('exp-base', { responsibleUserId: 'user-new' }, 'actor-user'),
+        ).rejects.toMatchObject({
+          status: 409,
+          response: {
+            code: 'PRIVACY_TITULAR_ANONYMIZED',
+            message: 'Este titular fue anonimizado; sus registros ya no se pueden modificar.',
+          },
+        });
+        expect(query).toHaveBeenCalledWith(
+          expect.stringMatching(/SELECT[\s\S]*anonymized_at[\s\S]*FOR UPDATE/u),
+          ['exp-base', 'ten-1'],
+        );
+        expect(findOne).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('devuelve 404 si el expediente no pertenece al tenant bajo bloqueo', async () => {
+      const findOne = jest.fn();
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({ manager: { query: async () => [], findOne } }),
+      );
+
+      await expect(
+        service.updateResponsibility(
+          'exp-other-tenant',
+          { responsibleUserId: 'user-new' },
+          'actor',
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(findOne).not.toHaveBeenCalled();
+    });
+
+    it('devuelve 404 si la lectura posterior al bloqueo no encuentra la ficha', async () => {
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            query: async () => [{ id: 'exp-1', anonymized_at: null }],
+            findOne: async () => null,
+          },
+        }),
+      );
+
+      await expect(
+        service.updateResponsibility('exp-1', { responsibleUserId: 'user-new' }, 'actor'),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it.each(['update', 'history'] as const)(
+      'propaga fallos de %s que no son de compatibilidad',
+      async (operation) => {
+        const failure = new Error('synthetic database failure');
+        mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+          callback({
+            manager: {
+              query: async () => [{ id: 'exp-1', anonymized_at: null }],
+              findOne: async () => buildExpediente({ id: 'exp-1' }),
+              update: async () => {
+                if (operation === 'update') throw failure;
+              },
+              create: (_entity: unknown, data: unknown) => data,
+              save: async () => {
+                throw failure;
+              },
+            },
+          }),
+        );
+
+        await expect(
+          service.updateResponsibility('exp-1', { responsibleUserId: 'user-new' }, 'actor'),
+        ).rejects.toThrow(failure);
+      },
+    );
+
+    it('conserva la reasignación legacy permitida después de bloquear un expediente no anonimizado', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 'exp-legacy', anonymized_at: null }])
+        .mockResolvedValueOnce([{ id: 'exp-legacy', assigned_to: null, updated_at: null }])
+        .mockResolvedValueOnce([]);
+      const findOne = jest
+        .fn()
+        .mockRejectedValueOnce({ driverError: { code: '42703' } })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 'platform-actor',
+          firstName: 'Actor',
+          lastName: 'Sintético',
+        });
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
+        callback({
+          manager: {
+            query,
+            findOne,
+            update: async () => {
+              throw { driverError: { code: '42703' } };
+            },
+            create: (_entity: unknown, data: unknown) => data,
+            save: async () => {
+              throw { driverError: { code: '42P01' } };
+            },
+          },
+        }),
+      );
+
+      const result = await service.updateResponsibility(
+        'exp-legacy',
+        { responsibleUserId: 'platform-actor' },
+        'actor',
+      );
+
+      expect(result.currentResponsible).toEqual({
+        userId: 'platform-actor',
+        name: 'Actor Sintético',
+        role: null,
+      });
+      expect(query).toHaveBeenNthCalledWith(
+        3,
+        expect.stringContaining('UPDATE expediente_records'),
+        ['platform-actor', expect.any(Date), 'exp-legacy'],
+      );
+    });
+
     it('creates operational history entry when updating responsibility', async () => {
       const expediente = buildExpediente({
         id: 'exp-2',
@@ -163,6 +372,7 @@ describe('ResponsibilitiesService', () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
+            query: async () => [{ id: expediente.id, anonymized_at: null }],
             findOne: async (entity: unknown, options: { where: { id: string } }) => {
               if (entity === ExpedienteRecord) return expediente;
               // Para resolveActorWithQr: búsqueda de usuario
@@ -225,6 +435,7 @@ describe('ResponsibilitiesService', () => {
       mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, callback) =>
         callback({
           manager: {
+            query: async () => [{ id: expediente.id, anonymized_at: null }],
             findOne: async (entity: unknown) => {
               if (entity === ExpedienteRecord) return expediente;
               return {
@@ -236,15 +447,11 @@ describe('ResponsibilitiesService', () => {
               };
             },
             update: async (entity: unknown) => {
-              savedEntities.push(
-                (entity as { name?: string }).name ?? String(entity),
-              );
+              savedEntities.push((entity as { name?: string }).name ?? String(entity));
               return { affected: 1 };
             },
             save: async (entity: unknown, data: unknown) => {
-              savedEntities.push(
-                (entity as { name?: string }).name ?? String(entity),
-              );
+              savedEntities.push((entity as { name?: string }).name ?? String(entity));
               return data ?? entity;
             },
             create: (_entity: unknown, data: Record<string, unknown>) => data,

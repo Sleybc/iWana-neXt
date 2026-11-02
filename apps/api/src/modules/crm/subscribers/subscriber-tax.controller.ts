@@ -16,7 +16,10 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { AccessPermissionKey, PlatformRole, UserRole } from '@iwana/shared';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
 import { SubscriberTaxProfileService } from './subscriber-tax-profile.service';
 import { SaveTaxAssignmentsDto } from './dto/save-tax-assignments.dto';
 import { UpsertTaxAssignmentDto } from './dto/upsert-tax-assignment.dto';
@@ -39,7 +42,7 @@ import { SubscriberTaxProfileSnapshotDto } from './dto/subscriber-tax-profile-sn
  */
 @ApiTags('subscribers')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Controller('crm/subscribers/:subscriberId/tax-profile')
 export class SubscriberTaxController {
   constructor(private readonly taxProfileService: SubscriberTaxProfileService) {}
@@ -50,6 +53,7 @@ export class SubscriberTaxController {
    * Usado por Suscriptor 360 y por el flujo de configuración de facturación.
    */
   @Get()
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Obtener perfil tributario del suscriptor (Suscriptor 360)' })
   @ApiResponse({ status: 200, description: 'Perfil tributario del suscriptor.' })
@@ -68,6 +72,8 @@ export class SubscriberTaxController {
    * El área de facturación usa este endpoint para confirmar o ajustar el checklist.
    */
   @Put('assignments')
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @GuardBlockedTitular('params.subscriberId')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Guardar asignaciones tributarias del suscriptor (bulk upsert)' })
@@ -94,6 +100,8 @@ export class SubscriberTaxController {
    * Permite confirmar o ajustar manualmente un tributo específico.
    */
   @Patch('assignments/:assignmentId')
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @GuardBlockedTitular('params.subscriberId')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar una asignación tributaria individual del suscriptor' })
   @ApiResponse({ status: 200, description: 'Asignación actualizada.' })
@@ -122,6 +130,8 @@ export class SubscriberTaxController {
    * Solo actualiza la asignación IVA si está en estado SUGGESTED; no sobreescribe confirmadas.
    */
   @Post('suggest-vat')
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @GuardBlockedTitular('params.subscriberId')
   @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Recalcular sugerencia IVA por estrato para el suscriptor' })
@@ -133,6 +143,32 @@ export class SubscriberTaxController {
     @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
   ): Promise<{ data: SubscriberTaxProfileSnapshotDto }> {
     const data = await this.taxProfileService.suggestVatForSubscriber(subscriberId);
+    return { data };
+  }
+
+  /**
+   * Da por revisado el perfil tributario cuando no aplican otros tributos.
+   * No crea asignaciones; rechaza si quedan tributos sugeridos sin confirmar.
+   */
+  @Post('confirm')
+  @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE)
+  @GuardBlockedTitular('params.subscriberId')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, PlatformRole.SYSTEM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirmar el perfil tributario sin otros tributos pendientes' })
+  @ApiResponse({ status: 200, description: 'Perfil confirmado (idempotente).' })
+  @ApiResponse({ status: 401, description: 'Token inválido o expirado.' })
+  @ApiResponse({ status: 403, description: 'Sin permisos.' })
+  @ApiResponse({ status: 404, description: 'Suscriptor o perfil no encontrado.' })
+  @ApiResponse({
+    status: 409,
+    description: 'TAX_PROFILE_HAS_PENDING_ASSIGNMENTS: hay tributos sugeridos sin confirmar.',
+  })
+  async confirmProfile(
+    @Param('subscriberId', ParseUUIDPipe) subscriberId: string,
+    @Request() req: { user: { sub: string } },
+  ): Promise<{ data: SubscriberTaxProfileSnapshotDto }> {
+    const data = await this.taxProfileService.confirmProfile(subscriberId, req.user.sub);
     return { data };
   }
 }

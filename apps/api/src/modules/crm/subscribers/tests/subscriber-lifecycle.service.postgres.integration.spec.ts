@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { ConflictException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
-import { SubscriberStatus, PersonType } from '@iwana/shared';
+import { SubscriberStatus, PersonType, CustomerSegment } from '@iwana/shared';
 import { ContractsService } from '../../contracts/contracts.service';
 import { Contract } from '../../contracts/entities/contract.entity';
 import { ContractStatus } from '../../enums/contract-status.enum';
@@ -15,6 +16,7 @@ import { SubscriberFiscalCompletenessService } from '../subscriber-fiscal-comple
 import { Subscriber } from '../entities/subscriber.entity';
 import { SubscriberLifecycleService } from '../subscriber-lifecycle.service';
 import { decryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
+import { CrmContractImpersonationAdapter } from '../../privacy-adapters/crm-contract-impersonation.adapter';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -49,9 +51,9 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
   async function insertSubscriber(status: SubscriberStatus): Promise<string> {
     const id = randomUUID();
     await dataSource.query(
-      `INSERT INTO ${qualified('subscribers')} (id, tenant_id, status, person_type, activated_at)
-       VALUES ($1, $2, $3, $4, now())`,
-      [id, tenantId, status, PersonType.NATURAL],
+      `INSERT INTO ${qualified('subscribers')} (id, tenant_id, status, person_type, customer_segment, activated_at)
+       VALUES ($1, $2, $3, $4, $5, now())`,
+      [id, tenantId, status, PersonType.NATURAL, CustomerSegment.RESIDENTIAL],
     );
     return id;
   }
@@ -62,8 +64,9 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     id = randomUUID(),
   ): Promise<string> {
     await dataSource.query(
-      `INSERT INTO ${qualified('contracts')} (id, tenant_id, subscriber_id, status)
-       VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO ${qualified('contracts')}
+        (id, tenant_id, subscriber_id, status, billing_cycle_day, plan_id, plan_snapshot_json, alias)
+       VALUES ($1, $2, $3, $4, 1, 'fixture-plan', '{}'::jsonb, 'Servicio sint�tico')`,
       [id, tenantId, subscriberId, status],
     );
     return id;
@@ -87,13 +90,23 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     await dataSource.initialize();
     const quotedSchema = `"${schemaName}"`;
     await dataSource.query(`CREATE SCHEMA ${quotedSchema}`);
+    // Migración 012: enum tenant y columna obligatoria, sin default.
+    await dataSource.query(`
+      CREATE TYPE ${qualified('customer_segment_enum')} AS ENUM (
+        'RESIDENTIAL', 'SOHO', 'PYME', 'CORPORATE', 'GOVERNMENT', 'WHOLESALE'
+      )
+    `);
     await dataSource.query(`
       CREATE TABLE ${qualified('subscribers')} (
         id uuid PRIMARY KEY,
         tenant_id uuid NOT NULL,
         status varchar(30) NOT NULL,
         person_type varchar(20) NOT NULL,
+        customer_segment ${qualified('customer_segment_enum')} NOT NULL,
+        party_id uuid,
         activated_at timestamptz,
+        anonymized_at timestamptz,
+        anonymized_request_id uuid,
         deleted_at timestamptz,
         updated_at timestamptz NOT NULL DEFAULT now()
       )
@@ -104,12 +117,50 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
         tenant_id uuid NOT NULL,
         subscriber_id uuid NOT NULL,
         status varchar(30) NOT NULL,
+        quote_id uuid,
+        plan_id varchar(120) NOT NULL,
+        plan_snapshot_json jsonb NOT NULL,
+        alias varchar(120),
+        installation_address varchar(255),
+        installation_city varchar(120),
+        installation_department varchar(120),
+        installation_postal_code varchar(20),
+        installation_notes text,
+        customer_segment varchar(20),
+        service_usage varchar(20),
+        installation_stratum smallint,
+        stratum_evidence_media_id uuid,
+        vat_snapshot jsonb,
+        additional_product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+        additional_service_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+        payment_method varchar(30),
+        billing_cycle varchar(20),
+        fiscal_name varchar(200),
+        fiscal_document varchar(30),
+        fiscal_document_encrypted varchar(500),
+        fiscal_document_hmac varchar(64),
+        fiscal_address varchar(255),
+        start_date date,
+        end_date date,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        billing_cycle_day smallint,
         status_reason_code varchar(40),
         status_changed_at timestamptz,
         deleted_at timestamptz,
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    await dataSource.query(`
+      CREATE TABLE ${qualified('crm_billing_cycles')} (
+        cycle_day smallint PRIMARY KEY,
+        cutoff_day smallint NOT NULL,
+        active boolean NOT NULL DEFAULT true
+      )
+    `);
+    await dataSource.query(
+      `INSERT INTO ${qualified('crm_billing_cycles')} (cycle_day, cutoff_day)
+       VALUES (1, 15), (15, 30)`,
+    );
     await dataSource.query(`
       CREATE TABLE ${qualified('crm_lifecycle_changes')} (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -176,9 +227,37 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     expect(await lifecycleCount()).toBe(0);
   });
 
+  it('avanza version en suspension y reactivacion aunque el reloj previo sea posterior', async () => {
+    const subscriberId = await insertSubscriber(SubscriberStatus.ACTIVE);
+    const contractId = await insertContract(subscriberId, ContractStatus.ACTIVE);
+    const previous = new Date(Date.now() + 60_000);
+    await dataSource.query(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
+      contractId,
+      previous,
+    ]);
+    await withTenant(() => lifecycleService.suspend(subscriberId, { reasonCode: 'MORA' }, actorId));
+    const [suspended] = (await dataSource.query(
+      `SELECT updated_at AS version FROM ${qualified('contracts')} WHERE id = $1`,
+      [contractId],
+    )) as Array<{ version: Date }>;
+    expect(suspended!.version.getTime()).toBe(previous.getTime() + 1);
+    await withTenant(() =>
+      lifecycleService.reactivate(subscriberId, { reasonCode: 'PAGO_REGISTRADO' }, actorId),
+    );
+    const [reactivated] = (await dataSource.query(
+      `SELECT updated_at AS version FROM ${qualified('contracts')} WHERE id = $1`,
+      [contractId],
+    )) as Array<{ version: Date }>;
+    expect(reactivated!.version.getTime()).toBe(previous.getTime() + 2);
+  });
+
   it('RF-LC-17: bloquea la activación nueva con suspensión vigente por mora', async () => {
     const subscriberId = await insertSubscriber(SubscriberStatus.SUSPENDED);
     const contractId = await insertContract(subscriberId, ContractStatus.DRAFT);
+    const [persistedContract] = (await dataSource.query(
+      `SELECT updated_at AS "updatedAt" FROM ${qualified('contracts')} WHERE id = $1`,
+      [contractId],
+    )) as Array<{ updatedAt: Date }>;
     await dataSource.query(
       `INSERT INTO ${qualified('crm_lifecycle_changes')}
         (tenant_id, entity_type, entity_id, subscriber_id, from_status, to_status,
@@ -205,6 +284,7 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
         tenantId,
         subscriberId,
         status: ContractStatus.DRAFT,
+        updatedAt: persistedContract!.updatedAt,
       }),
     );
 
@@ -216,6 +296,86 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     expect((error as ConflictException).getResponse()).toMatchObject({
       code: 'SUBSCRIBER_SUSPENDED_FOR_DELINQUENCY',
     });
+  });
+
+  it('avanza exactamente 1 ms al borrar borradores al cancelar, aun con versión futura', async () => {
+    const subscriberId = await insertSubscriber(SubscriberStatus.ACTIVE);
+    const contractId = await insertContract(subscriberId, ContractStatus.DRAFT);
+    const previous = new Date(Date.now() + 60_000);
+    await dataSource.query(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
+      contractId,
+      previous,
+    ]);
+
+    const cancelled = await withTenant(() =>
+      lifecycleService.cancelSubscriber(
+        subscriberId,
+        { targetStatus: SubscriberStatus.CANCELLED, reasonCode: 'SOLICITUD_TITULAR' },
+        actorId,
+      ),
+    );
+
+    const [contract] = (await dataSource.query(
+      `SELECT updated_at AS version, deleted_at AS "deletedAt" FROM ${qualified('contracts')} WHERE id = $1`,
+      [contractId],
+    )) as Array<{ version: Date; deletedAt: Date | null }>;
+    expect(cancelled.status).toBe(SubscriberStatus.CANCELLED);
+    expect(contract!.deletedAt).toBeInstanceOf(Date);
+    expect(contract!.version.getTime()).toBe(previous.getTime() + 1);
+    expect(contract!.version.getTime()).toBeGreaterThan(previous.getTime());
+  });
+
+  it('avanza exactamente 1 ms al suspender por suplantación y no cambia versión al reintentar', async () => {
+    const subscriberId = await insertSubscriber(SubscriberStatus.ACTIVE);
+    const partyId = randomUUID();
+    const contractId = await insertContract(subscriberId, ContractStatus.ACTIVE);
+    const previous = new Date(Date.now() + 60_000);
+    await dataSource.query(`UPDATE ${qualified('subscribers')} SET party_id = $2 WHERE id = $1`, [
+      subscriberId,
+      partyId,
+    ]);
+    await dataSource.query(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
+      contractId,
+      previous,
+    ]);
+    const events = new EventEmitter2();
+    const emit = jest.spyOn(events, 'emitAsync');
+    const adapter = new CrmContractImpersonationAdapter(
+      dataSource,
+      events,
+      auditService as unknown as AuditService,
+    );
+    const input = { partyId, contractIds: [contractId], requestId: randomUUID(), actorId };
+    const result = await withTenant(() =>
+      runInTenantSchema(dataSource, schemaName, (qr) =>
+        adapter.suspendForImpersonation(input, { manager: qr.manager }),
+      ),
+    );
+    const [suspended] = (await dataSource.query(
+      `SELECT status, updated_at AS version FROM ${qualified('contracts')} WHERE id = $1`,
+      [contractId],
+    )) as Array<{ status: ContractStatus; version: Date }>;
+    expect(result.suspendedContractIds).toEqual([contractId]);
+    expect(suspended!.status).toBe(ContractStatus.SUSPENDED);
+    expect(suspended!.version.getTime()).toBe(previous.getTime() + 1);
+    expect(suspended!.version.getTime()).toBeGreaterThan(previous.getTime());
+    expect(emit).toHaveBeenCalledWith(
+      'crm.contract.suspended',
+      expect.objectContaining({ contractId, reason: 'SUPLANTACION' }),
+    );
+
+    await withTenant(() =>
+      runInTenantSchema(dataSource, schemaName, (qr) =>
+        adapter.suspendForImpersonation(input, { manager: qr.manager }),
+      ),
+    );
+    const [retried] = (await dataSource.query(
+      `SELECT updated_at AS version FROM ${qualified('contracts')} WHERE id = $1`,
+      [contractId],
+    )) as Array<{ version: Date }>;
+    expect(retried!.version.getTime()).toBe(suspended!.version.getTime());
+    expect(emit).toHaveBeenCalledTimes(1);
+    emit.mockRestore();
   });
 
   it('RF-LC-18: cancela solo si no hay servicios vivos y devuelve sus IDs al bloquear', async () => {

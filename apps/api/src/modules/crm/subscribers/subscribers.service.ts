@@ -42,9 +42,15 @@ import {
   isRutResponsibilitiesRequired,
   type DataPurpose,
   type DataAuthorizationView,
+  type ContractResponse,
   type PrivacyMark,
+  type ProvisioningReadinessSummary,
   type RequestSummary,
   type RutResponsibility,
+  type Subscriber360ExpedienteSummary,
+  type Subscriber360Quote,
+  type Subscriber360Response,
+  type Subscriber360TimelineSeedItem,
   SubscriberQueueCountsSchema,
   type SubscriberQueueCounts,
   type SubscriberPrimaryService,
@@ -85,10 +91,11 @@ import {
 import {
   evaluateProvisioningReadiness,
   isBlockingLegalComplianceStatus,
-  type ProvisioningReadinessSummary,
 } from '../provisioning-readiness';
 import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
 import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
+import { CrmQuoteReadPort } from '../ports/crm-quote-read.port';
+import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
   identification: z
@@ -158,6 +165,14 @@ const SUBSCRIBER_SECTION_SCHEMAS = {
  * ADR-065 Ola 1.
  */
 const SORTABLE_FIELDS: string[] = [];
+
+/** Proyección interna antes de serializar el sujeto protegido en el controller. */
+type Subscriber360ServiceView = Omit<
+  Subscriber360Response,
+  'subscriber' | 'privacyDetailsRestricted'
+> & {
+  subscriber: Subscriber;
+};
 
 type OperationalSubscriber = Subscriber & {
   hasLiveContracts: boolean;
@@ -317,6 +332,9 @@ export class SubscribersService implements CrmSubscriberReadPort {
     @Optional()
     @Inject(IPartyReadPort)
     private readonly partyReadPort?: IPartyReadPort,
+    @Optional()
+    @Inject(CrmQuoteReadPort)
+    private readonly crmQuoteReadPort?: CrmQuoteReadPort,
   ) {
     const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -484,7 +502,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
     entity.firstName = dto.firstName ?? null;
     entity.lastName = dto.lastName ?? null;
     entity.stratum = dto.stratum ?? null;
-    entity.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
+    entity.birthDate = dto.birthDate || null;
     entity.nit = nit;
     entity.nitVerificationDigit = nitVerificationDigit;
     entity.businessName = dto.businessName ?? null;
@@ -522,6 +540,16 @@ export class SubscribersService implements CrmSubscriberReadPort {
     let saved: Subscriber;
     try {
       saved = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        if (isConversion && dto.expedienteId) {
+          const sourceExpediente = await qr.manager.findOne(ExpedienteRecord, {
+            where: { id: dto.expedienteId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!sourceExpediente) {
+            throw new NotFoundException(`Expediente ${dto.expedienteId} no encontrado.`);
+          }
+          if (sourceExpediente.anonymizedAt != null) throw titularAnonymizedConflict();
+        }
         const partyDocumentNumber =
           dto.partyDocumentNumber ??
           (dto.personType === PersonType.JURIDICA ? nit : dto.documentNumber);
@@ -593,10 +621,6 @@ export class SubscribersService implements CrmSubscriberReadPort {
 
         const authorizationWriter = this.requireAuthorizationWriter();
         if (isConversion && dto.expedienteId) {
-          await qr.manager.findOne(ExpedienteRecord, {
-            where: { id: dto.expedienteId },
-            lock: { mode: 'pessimistic_write' },
-          });
           const sourceConsents = await qr.manager.find(ConsentRecord, {
             where: { expedienteId: dto.expedienteId },
             order: { obtainedAt: 'ASC', id: 'ASC' },
@@ -987,155 +1011,160 @@ export class SubscribersService implements CrmSubscriberReadPort {
     },
     actorId: string,
   ): Promise<Subscriber> {
-    const { schemaName } = TenantContext.getOrThrow();
-    const entity = await this.findById(id);
-
-    const effectivePersonType = dto.personType ?? entity.personType;
-    const effectiveVatResponsibility = dto.vatResponsibility ?? entity.vatResponsibility;
-    const effectiveRutResponsibilities = dto.rutResponsibilities ?? entity.rutResponsibilities;
-    if (
-      (dto.personType !== undefined ||
-        dto.vatResponsibility !== undefined ||
-        dto.rutResponsibilities !== undefined) &&
-      isRutResponsibilitiesRequired({
-        personType: effectivePersonType,
-        vatResponsibility: effectiveVatResponsibility,
-      }) &&
-      !effectiveRutResponsibilities?.length
-    ) {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Payload invalido para el boundary externo de CRM.',
-        details: {
-          formErrors: [],
-          fieldErrors: {
-            rutResponsibilities: ['Selecciona al menos una responsabilidad del RUT'],
-          },
-        },
-      });
-    }
-
-    const nextEmailEncrypted =
-      dto.email === undefined
-        ? entity.emailEncrypted
-        : dto.email
-          ? this.encryptValue(dto.email)
-          : null;
-    const nextPhoneEncrypted =
-      dto.phone === undefined
-        ? entity.phoneEncrypted
-        : dto.phone
-          ? this.encryptValue(dto.phone)
-          : null;
-    if (
-      entity.status === SubscriberStatus.ACTIVE &&
-      !hasRealContact({ emailEncrypted: nextEmailEncrypted, phoneEncrypted: nextPhoneEncrypted })
-    ) {
-      throw new UnprocessableEntityException({
-        code: 'SUBSCRIBER_CONTACT_REQUIRED',
-        message: 'Un suscriptor activo necesita al menos un teléfono o un correo.',
-      });
-    }
-
-    // Recalcular IVA si cambia personType o stratum
-    const effectiveStratum = dto.stratum !== undefined ? dto.stratum : entity.stratum;
-    const effectiveSegment = dto.customerSegment ?? entity.customerSegment;
-
-    if (dto.personType || dto.stratum !== undefined || dto.customerSegment) {
-      const { vatTreatment } = this.vatTreatmentService.applyTaxFields(
-        effectivePersonType,
-        effectiveStratum,
-        effectiveSegment,
-      );
-      entity.vatTreatment = vatTreatment;
-    }
-
-    // Actualizar campos
-    if (dto.personType) entity.personType = dto.personType;
-    if (dto.customerSegment) entity.customerSegment = dto.customerSegment;
-    if (dto.documentType !== undefined)
-      entity.documentType = (dto.documentType as DocumentType | undefined) ?? null;
-    if (dto.documentNumber !== undefined) {
-      entity.documentNumberEncrypted = dto.documentNumber
-        ? this.encryptValue(dto.documentNumber)
-        : null;
-      entity.documentNumberHash = dto.documentNumber
-        ? hashDocumentNumber(dto.documentNumber, this.piiHashKey)
-        : null;
-    }
-    if (dto.firstName !== undefined) entity.firstName = dto.firstName;
-    if (dto.lastName !== undefined) entity.lastName = dto.lastName;
-    if (dto.stratum !== undefined) entity.stratum = dto.stratum;
-    if (dto.birthDate !== undefined)
-      entity.birthDate = dto.birthDate ? new Date(dto.birthDate) : null;
-    if (dto.nit !== undefined || dto.nitVerificationDigit !== undefined) {
-      const parsedNit = dto.nit !== undefined ? parseExpedienteNit(dto.nit) : null;
-      const nextNit = parsedNit?.nit ?? dto.nit ?? entity.nit;
-      const nextDigit =
-        parsedNit?.verificationDigit ?? dto.nitVerificationDigit ?? entity.nitVerificationDigit;
-      const nitChanged = dto.nit !== undefined && nextNit !== entity.nit;
-      if (
-        nitChanged &&
-        parsedNit?.verificationDigit == null &&
-        dto.nitVerificationDigit === undefined
-      ) {
-        throw new BadRequestException(
-          'El dígito de verificación del NIT es obligatorio al cambiarlo.',
-        );
-      }
-      if (nitChanged && (!nextDigit || !/^\d$/u.test(nextDigit))) {
-        throw new BadRequestException('El dígito de verificación del NIT no es válido.');
-      }
-      if (nextNit && nextDigit && calculateNitVerificationDigit(nextNit) !== nextDigit) {
-        throw new BadRequestException('El dígito de verificación del NIT no coincide.');
-      }
-      entity.nit = nextNit ?? null;
-      entity.nitVerificationDigit = nextDigit ?? null;
-    }
-    if (dto.businessName !== undefined) entity.businessName = dto.businessName;
-    if (dto.commercialName !== undefined) entity.commercialName = dto.commercialName;
-    if (dto.vatResponsibility !== undefined) entity.vatResponsibility = dto.vatResponsibility;
-    if (dto.rutResponsibilities !== undefined) entity.rutResponsibilities = dto.rutResponsibilities;
-    if (dto.email !== undefined) {
-      entity.emailEncrypted = nextEmailEncrypted;
-      entity.emailHash = dto.email ? hashEmail(dto.email, this.piiHashKey) : null;
-    }
-    if (dto.phone !== undefined) {
-      entity.phoneEncrypted = nextPhoneEncrypted;
-      entity.phoneHash = dto.phone ? this.hmacPhoneHash(dto.phone) : null;
-    }
-    if (dto.altContactName !== undefined)
-      entity.altContactName = dto.altContactName ? dto.altContactName.trim() : null;
-    if (dto.altContactPhone !== undefined)
-      entity.altContactPhoneEncrypted = dto.altContactPhone
-        ? this.encryptValue(dto.altContactPhone)
-        : null;
-    if (dto.whatsapp !== undefined) {
-      entity.whatsapp = null;
-      entity.whatsappEncrypted = dto.whatsapp ? this.encryptValue(dto.whatsapp) : null;
-      entity.whatsappHmac = dto.whatsapp ? this.hmacPhoneHash(dto.whatsapp.trim()) : null;
-    }
-    if (dto.address !== undefined) entity.address = dto.address;
-    if (dto.neighborhood !== undefined) entity.neighborhood = dto.neighborhood;
-    if (dto.city !== undefined) entity.city = dto.city;
-    if (dto.department !== undefined) entity.department = dto.department;
-    if (dto.postalCode !== undefined) entity.postalCode = dto.postalCode;
-    if (dto.latitude !== undefined) entity.latitude = dto.latitude;
-    if (dto.longitude !== undefined) entity.longitude = dto.longitude;
-    if (dto.coverageNodeId !== undefined) entity.coverageNodeId = dto.coverageNodeId;
-    if (dto.externalId !== undefined) entity.externalId = dto.externalId;
-    if (dto.expedienteId !== undefined) entity.expedienteId = dto.expedienteId;
-    if (dto.manualOverrideReason !== undefined) {
-      const normalizedReason = dto.manualOverrideReason?.trim() || null;
-      if (normalizedReason && normalizedReason.length < 10) {
-        throw new BadRequestException(
-          'manualOverrideReason debe tener al menos 10 caracteres para el alta manual.',
-        );
-      }
-      entity.manualOverrideReason = normalizedReason;
-    }
-
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(Subscriber, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!entity) throw new NotFoundException(`Suscriptor ${id} no encontrado`);
+      if (entity.anonymizedAt != null) throw titularAnonymizedConflict();
+
+      const effectivePersonType = dto.personType ?? entity.personType;
+      const effectiveVatResponsibility = dto.vatResponsibility ?? entity.vatResponsibility;
+      const effectiveRutResponsibilities = dto.rutResponsibilities ?? entity.rutResponsibilities;
+      if (
+        (dto.personType !== undefined ||
+          dto.vatResponsibility !== undefined ||
+          dto.rutResponsibilities !== undefined) &&
+        isRutResponsibilitiesRequired({
+          personType: effectivePersonType,
+          vatResponsibility: effectiveVatResponsibility,
+        }) &&
+        !effectiveRutResponsibilities?.length
+      ) {
+        throw new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: 'Payload invalido para el boundary externo de CRM.',
+          details: {
+            formErrors: [],
+            fieldErrors: {
+              rutResponsibilities: ['Selecciona al menos una responsabilidad del RUT'],
+            },
+          },
+        });
+      }
+
+      const nextEmailEncrypted =
+        dto.email === undefined
+          ? entity.emailEncrypted
+          : dto.email
+            ? this.encryptValue(dto.email)
+            : null;
+      const nextPhoneEncrypted =
+        dto.phone === undefined
+          ? entity.phoneEncrypted
+          : dto.phone
+            ? this.encryptValue(dto.phone)
+            : null;
+      if (
+        entity.status === SubscriberStatus.ACTIVE &&
+        !hasRealContact({ emailEncrypted: nextEmailEncrypted, phoneEncrypted: nextPhoneEncrypted })
+      ) {
+        throw new UnprocessableEntityException({
+          code: 'SUBSCRIBER_CONTACT_REQUIRED',
+          message: 'Un suscriptor activo necesita al menos un teléfono o un correo.',
+        });
+      }
+
+      // Recalcular IVA si cambia personType o stratum
+      const effectiveStratum = dto.stratum !== undefined ? dto.stratum : entity.stratum;
+      const effectiveSegment = dto.customerSegment ?? entity.customerSegment;
+
+      if (dto.personType || dto.stratum !== undefined || dto.customerSegment) {
+        const { vatTreatment } = this.vatTreatmentService.applyTaxFields(
+          effectivePersonType,
+          effectiveStratum,
+          effectiveSegment,
+        );
+        entity.vatTreatment = vatTreatment;
+      }
+
+      // Actualizar campos
+      if (dto.personType) entity.personType = dto.personType;
+      if (dto.customerSegment) entity.customerSegment = dto.customerSegment;
+      if (dto.documentType !== undefined)
+        entity.documentType = (dto.documentType as DocumentType | undefined) ?? null;
+      if (dto.documentNumber !== undefined) {
+        entity.documentNumberEncrypted = dto.documentNumber
+          ? this.encryptValue(dto.documentNumber)
+          : null;
+        entity.documentNumberHash = dto.documentNumber
+          ? hashDocumentNumber(dto.documentNumber, this.piiHashKey)
+          : null;
+      }
+      if (dto.firstName !== undefined) entity.firstName = dto.firstName;
+      if (dto.lastName !== undefined) entity.lastName = dto.lastName;
+      if (dto.stratum !== undefined) entity.stratum = dto.stratum;
+      if (dto.birthDate !== undefined) entity.birthDate = dto.birthDate || null;
+      if (dto.nit !== undefined || dto.nitVerificationDigit !== undefined) {
+        const parsedNit = dto.nit !== undefined ? parseExpedienteNit(dto.nit) : null;
+        const nextNit = parsedNit?.nit ?? dto.nit ?? entity.nit;
+        const nextDigit =
+          parsedNit?.verificationDigit ?? dto.nitVerificationDigit ?? entity.nitVerificationDigit;
+        const nitChanged = dto.nit !== undefined && nextNit !== entity.nit;
+        if (
+          nitChanged &&
+          parsedNit?.verificationDigit == null &&
+          dto.nitVerificationDigit === undefined
+        ) {
+          throw new BadRequestException(
+            'El dígito de verificación del NIT es obligatorio al cambiarlo.',
+          );
+        }
+        if (nitChanged && (!nextDigit || !/^\d$/u.test(nextDigit))) {
+          throw new BadRequestException('El dígito de verificación del NIT no es válido.');
+        }
+        if (nextNit && nextDigit && calculateNitVerificationDigit(nextNit) !== nextDigit) {
+          throw new BadRequestException('El dígito de verificación del NIT no coincide.');
+        }
+        entity.nit = nextNit ?? null;
+        entity.nitVerificationDigit = nextDigit ?? null;
+      }
+      if (dto.businessName !== undefined) entity.businessName = dto.businessName;
+      if (dto.commercialName !== undefined) entity.commercialName = dto.commercialName;
+      if (dto.vatResponsibility !== undefined) entity.vatResponsibility = dto.vatResponsibility;
+      if (dto.rutResponsibilities !== undefined)
+        entity.rutResponsibilities = dto.rutResponsibilities;
+      if (dto.email !== undefined) {
+        entity.emailEncrypted = nextEmailEncrypted;
+        entity.emailHash = dto.email ? hashEmail(dto.email, this.piiHashKey) : null;
+      }
+      if (dto.phone !== undefined) {
+        entity.phoneEncrypted = nextPhoneEncrypted;
+        entity.phoneHash = dto.phone ? this.hmacPhoneHash(dto.phone) : null;
+      }
+      if (dto.altContactName !== undefined)
+        entity.altContactName = dto.altContactName ? dto.altContactName.trim() : null;
+      if (dto.altContactPhone !== undefined)
+        entity.altContactPhoneEncrypted = dto.altContactPhone
+          ? this.encryptValue(dto.altContactPhone)
+          : null;
+      if (dto.whatsapp !== undefined) {
+        entity.whatsapp = null;
+        entity.whatsappEncrypted = dto.whatsapp ? this.encryptValue(dto.whatsapp) : null;
+        entity.whatsappHmac = dto.whatsapp ? this.hmacPhoneHash(dto.whatsapp.trim()) : null;
+      }
+      if (dto.address !== undefined) entity.address = dto.address;
+      if (dto.neighborhood !== undefined) entity.neighborhood = dto.neighborhood;
+      if (dto.city !== undefined) entity.city = dto.city;
+      if (dto.department !== undefined) entity.department = dto.department;
+      if (dto.postalCode !== undefined) entity.postalCode = dto.postalCode;
+      if (dto.latitude !== undefined) entity.latitude = dto.latitude;
+      if (dto.longitude !== undefined) entity.longitude = dto.longitude;
+      if (dto.coverageNodeId !== undefined) entity.coverageNodeId = dto.coverageNodeId;
+      if (dto.externalId !== undefined) entity.externalId = dto.externalId;
+      if (dto.expedienteId !== undefined) entity.expedienteId = dto.expedienteId;
+      if (dto.manualOverrideReason !== undefined) {
+        const normalizedReason = dto.manualOverrideReason?.trim() || null;
+        if (normalizedReason && normalizedReason.length < 10) {
+          throw new BadRequestException(
+            'manualOverrideReason debe tener al menos 10 caracteres para el alta manual.',
+          );
+        }
+        entity.manualOverrideReason = normalizedReason;
+      }
+
       if (dto.legalRepresentative) {
         if (effectivePersonType !== PersonType.JURIDICA) {
           throw new BadRequestException('El representante legal solo aplica a persona jurídica.');
@@ -1182,11 +1211,20 @@ export class SubscribersService implements CrmSubscriberReadPort {
    * Soft delete de suscriptor.
    */
   async remove(id: string, actorId: string): Promise<void> {
-    const { schemaName } = TenantContext.getOrThrow();
-    const entity = await this.findById(id);
-
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await qr.manager.softRemove(Subscriber, entity);
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const auditContext = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const entity = await qr.manager.findOne(Subscriber, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!entity) throw new NotFoundException(`Suscriptor ${id} no encontrado`);
+      if (entity.anonymizedAt != null) throw titularAnonymizedConflict();
+      await qr.manager.softDelete(Subscriber, { id, tenantId });
+      return {
+        personType: entity.personType,
+        customerSegment: entity.customerSegment,
+        status: entity.status,
+      };
     });
 
     this.logger.log(`Suscriptor eliminado (soft): ${id} [actor: ${actorId}]`);
@@ -1198,9 +1236,9 @@ export class SubscribersService implements CrmSubscriberReadPort {
       entityId: id,
       userId: actorId,
       newValue: {
-        personType: entity.personType,
-        customerSegment: entity.customerSegment,
-        status: entity.status,
+        personType: auditContext.personType,
+        customerSegment: auditContext.customerSegment,
+        status: auditContext.status,
       },
     });
   }
@@ -1593,11 +1631,17 @@ export class SubscribersService implements CrmSubscriberReadPort {
       actorId,
     );
 
-    const { schemaName } = TenantContext.getOrThrow();
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      const locked = await qr.manager.findOne(Subscriber, {
+        where: { id: subscriber.id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) throw new NotFoundException(`Suscriptor ${subscriber.id} no encontrado`);
+      if (locked.anonymizedAt != null) throw titularAnonymizedConflict();
       await qr.manager.update(
         Subscriber,
-        { id: subscriber.id },
+        { id: subscriber.id, tenantId },
         {
           activatedAt: new Date(),
         },
@@ -1647,23 +1691,9 @@ export class SubscribersService implements CrmSubscriberReadPort {
     return this.findById(subscriber.id);
   }
 
-  async get360View(
-    id: string,
-    canSeeBlocked = false,
-  ): Promise<{
-    subscriber: Subscriber;
-    contacts: unknown[];
-    contracts: Contract[];
-    quotes: unknown[];
-    habeasData: DataAuthorizationView[];
-    arcoRequests: RequestSummary[];
-    privacyMarks: PrivacyMark[];
-    expedienteSummary: Record<string, unknown> | null;
-    timelineSeed: Array<Record<string, unknown>>;
-    provisioningReadiness: ProvisioningReadinessSummary;
-  }> {
+  async get360View(id: string, canSeeBlocked = false): Promise<Subscriber360ServiceView> {
     const subscriber = await this.findById(id, canSeeBlocked);
-    let expedienteSummary: Record<string, unknown> | null = null;
+    let expedienteSummary: Subscriber360ExpedienteSummary | null = null;
     let expedienteRecord: ExpedienteRecord | null = null;
 
     if (subscriber.expedienteId) {
@@ -1687,8 +1717,8 @@ export class SubscribersService implements CrmSubscriberReadPort {
           fullName: expediente.fullName,
           status: expediente.status,
           source: expediente.source,
-          createdAt: expediente.createdAt,
-          statusChangedAt: expediente.statusChangedAt,
+          createdAt: expediente.createdAt.toISOString(),
+          statusChangedAt: expediente.statusChangedAt?.toISOString() ?? null,
           paymentMethod: expediente.paymentMethod,
           billingCycle: expediente.billingCycle,
           fiscalName: expediente.fiscalName,
@@ -1715,50 +1745,97 @@ export class SubscribersService implements CrmSubscriberReadPort {
         this.fiscalDocumentCrypto,
         this.privacyMarksReadPort,
       );
-      return projection.data;
+      return projection.data.map(
+        (contract) =>
+          ({
+            ...contract,
+            statusChangedAt: contract.statusChangedAt?.toISOString() ?? null,
+            createdAt: contract.createdAt.toISOString(),
+            updatedAt: contract.updatedAt.toISOString(),
+            deletedAt: contract.deletedAt?.toISOString() ?? null,
+          }) satisfies ContractResponse,
+      );
     });
     let habeasData: DataAuthorizationView[] = [];
     let arcoRequests: RequestSummary[] = [];
     let marksByParty: Record<string, PrivacyMark[]> = {};
     if (subscriber.partyId) {
+      if (!this.privacyMarksReadPort) {
+        throw new ServiceUnavailableException({
+          code: 'PRIVACY_MARKS_UNAVAILABLE',
+          message: 'No se pudo aplicar la protección de privacidad a la ficha del titular.',
+        });
+      }
       [habeasData, arcoRequests, marksByParty] = await Promise.all([
         this.privacyAuthorizationReadPort?.listForParty(subscriber.partyId) ?? Promise.resolve([]),
         this.privacyRequestsReadPort?.listForParty(subscriber.partyId) ?? Promise.resolve([]),
-        this.privacyMarksReadPort?.activeMarks([subscriber.partyId]) ?? Promise.resolve({}),
+        this.privacyMarksReadPort.activeMarks([subscriber.partyId]),
       ]);
+    }
+    const isBlockedWithoutAccess =
+      subscriber.anonymizedAt == null &&
+      Boolean(
+        subscriber.partyId &&
+        (marksByParty[subscriber.partyId] ?? []).includes('DATOS_BLOQUEADOS') &&
+        !canSeeBlocked,
+      );
+    const quotes = isBlockedWithoutAccess
+      ? []
+      : await this.loadSubscriberQuotes(subscriber, schemaName);
+    const timelineSeed: Subscriber360TimelineSeedItem[] = [];
+    if (subscriber.convertedAt) {
+      timelineSeed.push({
+        type: 'SUBSCRIBER_CONVERTED',
+        occurredAt: subscriber.convertedAt.toISOString(),
+        expedienteId: subscriber.expedienteId,
+      });
+    }
+    if (subscriber.activatedAt) {
+      timelineSeed.push({
+        type: 'SUBSCRIBER_ACTIVATED',
+        occurredAt: subscriber.activatedAt.toISOString(),
+        expedienteId: subscriber.expedienteId,
+      });
     }
 
     return {
       subscriber,
       contacts: [],
       contracts,
-      quotes: [],
+      quotes,
       habeasData,
       arcoRequests,
       privacyMarks: subscriber.partyId ? (marksByParty[subscriber.partyId] ?? []) : [],
       expedienteSummary,
-      timelineSeed: [
-        ...(subscriber.convertedAt
-          ? [
-              {
-                type: 'SUBSCRIBER_CONVERTED',
-                occurredAt: subscriber.convertedAt,
-                expedienteId: subscriber.expedienteId,
-              },
-            ]
-          : []),
-        ...(subscriber.activatedAt
-          ? [
-              {
-                type: 'SUBSCRIBER_ACTIVATED',
-                occurredAt: subscriber.activatedAt,
-                expedienteId: subscriber.expedienteId,
-              },
-            ]
-          : []),
-      ],
+      timelineSeed,
       provisioningReadiness: this.buildProvisioningReadiness(subscriber, expedienteRecord),
     };
+  }
+
+  /**
+   * Cotizaciones del suscriptor y de su expediente de origen (PRD Fase 04, RF-S404-25).
+   * Solo resumen comercial: el snapshot del plan no sale de la 360°. Un titular anonimizado
+   * no expone cotizaciones.
+   */
+  private async loadSubscriberQuotes(
+    subscriber: Subscriber,
+    schemaName: string,
+  ): Promise<Subscriber360Quote[]> {
+    if (subscriber.anonymizedAt != null) return [];
+    const quoteReadPort = this.crmQuoteReadPort;
+    if (!quoteReadPort) {
+      throw new ServiceUnavailableException({
+        code: 'CRM_QUOTE_READ_UNAVAILABLE',
+        message: 'No se pudo cargar el resumen de cotizaciones.',
+      });
+    }
+    return runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      quoteReadPort.findForSubscriber(
+        qr.manager,
+        subscriber.id,
+        subscriber.expedienteId ?? undefined,
+      ),
+    );
   }
 
   private buildProvisioningReadiness(

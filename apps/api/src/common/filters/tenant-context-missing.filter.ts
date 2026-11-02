@@ -1,6 +1,7 @@
 import { ArgumentsHost, Catch, HttpException, Logger } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Response } from 'express';
+import { QueryFailedError } from 'typeorm';
 import { isTenantContextMissingError, summarizeErrorForLog } from '@iwana/db';
 
 function requestPathWithoutQuery(originalUrl?: string, url?: string): string {
@@ -38,6 +39,15 @@ export class TenantContextMissingFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(TenantContextMissingFilter.name);
 
   override catch(exception: unknown, host: ArgumentsHost): void {
+    if (this.isAnonymizedMutationError(exception)) {
+      const response = host.switchToHttp().getResponse<Response>();
+      response.status(409).json({
+        code: 'PRIVACY_TITULAR_ANONYMIZED',
+        message: 'Este titular fue anonimizado; sus registros ya no se pueden modificar.',
+      });
+      return;
+    }
+
     if (isTenantContextMissingError(exception)) {
       const ctx = host.switchToHttp();
       const response = ctx.getResponse<Response>();
@@ -97,5 +107,11 @@ export class TenantContextMissingFilter extends BaseExceptionFilter {
     return applicationFrames && applicationFrames.length > 0
       ? applicationFrames.join('\n')
       : undefined;
+  }
+
+  private isAnonymizedMutationError(exception: unknown): boolean {
+    if (!(exception instanceof QueryFailedError)) return false;
+    const driverError = exception.driverError as { code?: unknown; hint?: unknown };
+    return driverError.code === '55000' && driverError.hint === 'PRIVACY_TITULAR_ANONYMIZED';
   }
 }

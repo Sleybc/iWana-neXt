@@ -246,6 +246,7 @@ export async function anonymizeConfiguredTable(
   keys: ErasureKeys,
   mode: 'dry-run' | 'apply',
   extraField?: PlannedField,
+  updatedAtAdvanced: Set<string> = new Set<string>(),
 ): Promise<{ selected: number; changed: number; residual: number }> {
   if (ids.length === 0 || !tableExists(columns, table)) {
     return { selected: 0, changed: 0, residual: 0 };
@@ -270,13 +271,19 @@ export async function anonymizeConfiguredTable(
         (field) => !isExpected(row[field.column], expectedForRow(field, id), id, keys),
       );
       if (dirty.length === 0) continue;
+      const versionKey = `${table}:${id}`;
+      const shouldAdvanceUpdatedAt =
+        columnOf(columns, table, 'updated_at') && !updatedAtAdvanced.has(versionKey);
       const values: unknown[] = [id];
       const assignments = dirty.map((field) => {
         values.push(sqlValue(expectedForRow(field, id), id, keys));
         return `${quoteErasureIdentifier(field.column)} = $${values.length}`;
       });
-      if (columnOf(columns, table, 'updated_at'))
-        assignments.push('"updated_at" = CURRENT_TIMESTAMP');
+      if (shouldAdvanceUpdatedAt) {
+        assignments.push(
+          "\"updated_at\" = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', \"updated_at\") + interval '1 millisecond')",
+        );
+      }
       const updated = normalizeErasureRows<{ id: string }>(
         await qr.query(
           `UPDATE ${quoteErasureIdentifier(table)} SET ${assignments.join(', ')}
@@ -284,7 +291,10 @@ export async function anonymizeConfiguredTable(
           values,
         ),
       );
-      for (const entry of updated) changedIds.add(String(entry.id));
+      for (const entry of updated) {
+        changedIds.add(String(entry.id));
+        if (shouldAdvanceUpdatedAt) updatedAtAdvanced.add(versionKey);
+      }
     }
   }
 
@@ -311,6 +321,7 @@ export async function markAnonymizedRows(
   ids: string[],
   requestId: string,
   columns: Map<string, TenantColumn>,
+  updatedAtAdvanced: Set<string> = new Set<string>(),
 ): Promise<{ changed: number; residual: number }> {
   const markedAt = columnOf(columns, table, 'anonymized_at');
   const markedRequest = columnOf(columns, table, 'anonymized_request_id');
@@ -319,17 +330,33 @@ export async function markAnonymizedRows(
     return { changed: 0, residual: 0 };
   }
   if (ids.length === 0) return { changed: 0, residual: 0 };
+  const canAdvanceUpdatedAt = Boolean(columnOf(columns, table, 'updated_at'));
+  const versionCandidates = canAdvanceUpdatedAt
+    ? ids.filter((id) => !updatedAtAdvanced.has(`${table}:${id}`))
+    : [];
+  const values: unknown[] = [ids, requestId];
+  let updatedAtAssignment = '';
+  if (versionCandidates.length > 0) {
+    values.push(versionCandidates);
+    updatedAtAssignment = `, updated_at = CASE
+              WHEN id = ANY($3::uuid[]) THEN GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')
+              ELSE updated_at
+            END`;
+  }
   const updated = normalizeErasureRows<{ id: string }>(
     await qr.query(
       `UPDATE ${quoteErasureIdentifier(table)}
           SET anonymized_at = COALESCE(anonymized_at, now()),
-              anonymized_request_id = COALESCE(anonymized_request_id, $2::uuid)
+              anonymized_request_id = COALESCE(anonymized_request_id, $2::uuid)${updatedAtAssignment}
         WHERE id = ANY($1::uuid[])
           AND (anonymized_at IS NULL OR anonymized_request_id IS NULL)
         RETURNING id`,
-      [ids, requestId],
+      values,
     ),
   );
+  for (const row of updated) {
+    if (versionCandidates.includes(String(row.id))) updatedAtAdvanced.add(`${table}:${row.id}`);
+  }
   const rows = (await qr.query(
     `SELECT id, anonymized_at IS NOT NULL AND anonymized_request_id IS NOT NULL AS marked
        FROM ${quoteErasureIdentifier(table)} WHERE id = ANY($1::uuid[])`,

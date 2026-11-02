@@ -11,6 +11,7 @@ import {
   BLOCKED_TITULAR_GUARD_METADATA,
   type BlockedTitularResolver,
 } from './guard-blocked-titular.decorator';
+import { titularAnonymizedConflict } from '../../subscribers/guards/titular-anonymized-conflict';
 
 interface GuardedRequest {
   params?: Record<string, string | undefined>;
@@ -38,7 +39,7 @@ export class ExpedientesBlockedTitularGuard implements CanActivate {
       data: 'id',
     });
     const expediente = await this.expedienteService.findById(expedienteId);
-    if (expediente.anonymizedAt != null) return true;
+    if (expediente.anonymizedAt != null) throw titularAnonymizedConflict();
     const marks = await this.expedienteService.getPrivacyMarksForExpediente(expedienteId);
     if (marks.includes('DATOS_BLOQUEADOS')) {
       throw new ConflictException({

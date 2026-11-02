@@ -82,9 +82,17 @@ export class CreateContractFromExpedienteDto {
   @MaxLength(30)
   paymentMethod?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ deprecated: true })
   @IsOptional()
   @IsString()
   @MaxLength(20)
+  /** @deprecated El portal debe enviar billingCycleDay tras confirmación del operador. */
   billingCycle?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 28, description: 'Día de facturación confirmado' })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  billingCycleDay?: number;
 }

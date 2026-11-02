@@ -22,7 +22,25 @@ describe('parseAnonymizeTitularArgs', () => {
       confirmUnmatched: false,
       mode: 'dry-run',
       help: false,
+      verifyOnly: false,
     });
+  });
+
+  it('acepta la verificación de residuales como modo solo lectura y exclusivo', () => {
+    expect(parseAnonymizeTitularArgs(['--tenant', 'isp-demo', '--verify-only'])).toMatchObject({
+      tenant: 'isp-demo',
+      requestId: null,
+      expedienteIds: [],
+      confirmUnmatched: false,
+      mode: 'dry-run',
+      verifyOnly: true,
+    });
+    expect(() =>
+      parseAnonymizeTitularArgs(['--tenant', 'isp-demo', '--request', REQUEST_ID, '--verify-only']),
+    ).toThrow('--verify-only requiere solo --tenant; no acepta solicitud ni expedientes.');
+    expect(() =>
+      parseAnonymizeTitularArgs(['--tenant', 'isp-demo', '--verify-only', '--apply']),
+    ).toThrow('Usa --verify-only sin --dry-run ni --apply.');
   });
 
   it('acepta apply explícito y confirmación de expedientes sin HMAC concordante', () => {

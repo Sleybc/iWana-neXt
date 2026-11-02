@@ -70,7 +70,12 @@ function extractHandlerContracts(file: string, source: string): HandlerContract[
       prefix.lastIndexOf('@Put('),
     );
     const relevantRoles = rolesMatches.filter((rm) => (rm.index ?? 0) > lastHandlerStart);
-    const rolesMatch = relevantRoles.at(-1);
+    // Los decoradores del mismo handler no tienen un orden semántico obligatorio.
+    const following = source.slice((match.index ?? 0) + match[0].length);
+    const nextHandlerStart = following.search(/@(?:Get|Post|Patch|Delete|Put)\(/);
+    const remainingHandler =
+      nextHandlerStart < 0 ? following : following.slice(0, nextHandlerStart);
+    const rolesMatch = relevantRoles.at(-1) ?? remainingHandler.match(/@Roles\(([\s\S]*?)\)/);
     let roles: UserRole[] = [];
     let hasSpreadConstant = false;
     if (rolesMatch) {
@@ -407,13 +412,48 @@ describe('invariante Fase 2 — doble guard y excepciones D7', () => {
     expect(billingUsed).toEqual([]);
   });
 
-  it('D7: subscriber-tax.controller permanece @Roles-only sin @Permissions', () => {
+  it('K3a: subscriber-tax.controller conserva roles y exige la matriz exacta de permisos', () => {
     const taxFiles = controllerFiles.filter((f) => f.includes('subscriber-tax.controller.ts'));
-    expect(taxFiles.length).toBeGreaterThan(0);
-    const taxHandlers = taxFiles.flatMap((file) =>
-      extractHandlerContracts(file, readFileSync(file, 'utf8')),
-    );
-    expect(taxHandlers).toEqual([]);
+    expect(taxFiles).toHaveLength(1);
+    const source = readFileSync(taxFiles[0]!, 'utf8');
+    const routes = [
+      ...source.matchAll(/@(Get|Put|Patch|Post)\(([^)]*)\)([\s\S]*?)async\s+(\w+)\(/g),
+    ].map(([, verb, path, decorators, method]) => ({
+      route: `${verb} ${path}`,
+      method,
+      permissions: extractEnumMembers(decorators!, 'AccessPermissionKey'),
+      roles: [...decorators!.matchAll(/(?:UserRole|PlatformRole)\.([A-Z0-9_]+)/g)].map(
+        (match) => match[1],
+      ),
+    }));
+    const roles = ['ADMIN', 'ACCOUNTANT', 'SYSTEM_ADMIN'];
+    expect(routes).toEqual([
+      { route: 'Get ', method: 'getProfile', permissions: ['CRM_SUBSCRIBERS_READ'], roles },
+      {
+        route: "Put 'assignments'",
+        method: 'saveAssignments',
+        permissions: ['CRM_SUBSCRIBERS_MANAGE'],
+        roles,
+      },
+      {
+        route: "Patch 'assignments/:assignmentId'",
+        method: 'updateAssignment',
+        permissions: ['CRM_SUBSCRIBERS_MANAGE'],
+        roles,
+      },
+      {
+        route: "Post 'suggest-vat'",
+        method: 'suggestVat',
+        permissions: ['CRM_SUBSCRIBERS_MANAGE'],
+        roles,
+      },
+      {
+        route: "Post 'confirm'",
+        method: 'confirmProfile',
+        permissions: ['CRM_SUBSCRIBERS_MANAGE'],
+        roles,
+      },
+    ]);
   });
 
   it('D7: los 2 endpoints de expedientes con TECHNICIAN en @Roles permanecen @Roles-only', () => {
