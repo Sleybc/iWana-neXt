@@ -8,6 +8,17 @@ const ServicePointFieldsShape = {
   installationStratum: z.number().int().min(1).max(6).nullable().optional(),
 };
 
+/** Cambio comercial inmediato con control de versión del contrato. */
+export const ContractPlanChangeSchema = z
+  .object({
+    planId: z.string().min(1).max(120),
+    expectedUpdatedAt: z.string().datetime(),
+    expectedMonthlyPrice: z.number().finite().nonnegative(),
+  })
+  .strict();
+
+export type ContractPlanChangeInput = z.infer<typeof ContractPlanChangeSchema>;
+
 const contractCreateFields = {
   quoteId: z.string().uuid().optional(),
   subscriberId: z.string().uuid(),
@@ -24,6 +35,8 @@ const contractCreateFields = {
   additionalProductIds: z.array(z.string()).optional(),
   additionalServiceIds: z.array(z.string()).optional(),
   paymentMethod: z.string().max(30).optional(),
+  billingCycleDay: z.number().int().min(1).max(28).optional(),
+  /** @deprecated Mantener para lectura y compatibilidad de clientes existentes. */
   billingCycle: z.string().max(20).optional(),
   fiscalName: z.string().max(200).optional(),
   fiscalDocument: z.string().max(30).optional(),
@@ -72,6 +85,7 @@ export const ContractFromExpedienteCreateSchema = z
     customerSegment: contractCreateFields.customerSegment,
     ...ServicePointFieldsShape,
     paymentMethod: contractCreateFields.paymentMethod,
+    billingCycleDay: contractCreateFields.billingCycleDay,
     billingCycle: contractCreateFields.billingCycle,
   })
   .strict()
@@ -92,6 +106,7 @@ export const ContractUpdateSchema = z
     additionalProductIds: contractCreateFields.additionalProductIds,
     additionalServiceIds: contractCreateFields.additionalServiceIds,
     paymentMethod: contractCreateFields.paymentMethod,
+    billingCycleDay: contractCreateFields.billingCycleDay,
     billingCycle: contractCreateFields.billingCycle,
     fiscalName: contractCreateFields.fiscalName,
     fiscalDocument: contractCreateFields.fiscalDocument,
@@ -161,6 +176,8 @@ export const ContractResponseSchema = z
     additionalProductIds: z.array(z.string()),
     additionalServiceIds: z.array(z.string()),
     paymentMethod: z.string().nullable(),
+    billingCycleDay: z.number().int().min(1).max(28).nullable(),
+    /** @deprecated Mantener para leer contratos heredados. */
     billingCycle: z.string().nullable(),
     fiscalName: z.string().nullable(),
     fiscalDocument: z.string().nullable(),

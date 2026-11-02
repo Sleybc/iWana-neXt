@@ -1,9 +1,34 @@
 import {
   ContractCreateSchema,
+  ContractPlanChangeSchema,
   ContractResponseSchema,
   ContractServicePointUpdateSchema,
 } from './contract.schema';
 import { ServiceUsage, VatConcept } from '../enums/taxation';
+
+describe('ContractPlanChangeSchema', () => {
+  const command = {
+    planId: 'plan-nuevo',
+    expectedUpdatedAt: '2026-10-30T12:00:00.000Z',
+    expectedMonthlyPrice: 80000,
+  };
+  it('acepta la acción con versión explícita', () => {
+    expect(ContractPlanChangeSchema.parse(command)).toEqual(command);
+  });
+  it.each([
+    { ...command, planId: '' },
+    { ...command, planId: 'x'.repeat(121) },
+    { ...command, expectedUpdatedAt: 'ayer' },
+    { planId: 'plan-nuevo' },
+    { ...command, monthlyPrice: 1 },
+    { ...command, planSnapshotJson: {} },
+    { ...command, tenantId: 'otro' },
+    { ...command, expectedMonthlyPrice: -1 },
+    { ...command, expectedMonthlyPrice: Infinity },
+  ])('rechaza payload inválido o campos fuera del contrato: %j', (input) => {
+    expect(ContractPlanChangeSchema.safeParse(input).success).toBe(false);
+  });
+});
 
 describe('C-API-3 contrato', () => {
   it('rechaza que el cliente asigne el id del soporte de estrato', () => {
@@ -91,6 +116,7 @@ describe('C-API-3 contrato', () => {
       additionalServiceIds: [],
       paymentMethod: null,
       billingCycle: null,
+      billingCycleDay: null,
       fiscalName: null,
       fiscalDocument: null,
       fiscalAddress: null,

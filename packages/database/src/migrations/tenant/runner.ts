@@ -123,6 +123,9 @@ import { PublishInstalacionV3163000000000 } from './163_publish_instalacion_esta
 import { EnsureProvisioningRequirement1640000000000 } from './164_ensure_provisioning_requirement';
 import { CreateRouterInterfacesAndIpv4Addresses1650000000000 } from './165_router_interfaces_and_ipv4_addresses';
 import { PrivacyLegalFormatsAndPurposes1660000000000 } from './166_privacy_legal_formats_and_purposes';
+import { CreateCrmBillingCycles1670000000000 } from './167_crm_billing_cycles';
+import { CrmContractAliasReadable1680000000000 } from './168_crm_contract_alias_readable';
+import { PreventAnonymizedCrmMutations1690000000000 } from './169_prevent_anonymized_crm_mutations';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -327,6 +330,9 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   EnsureProvisioningRequirement1640000000000,
   CreateRouterInterfacesAndIpv4Addresses1650000000000,
   PrivacyLegalFormatsAndPurposes1660000000000,
+  CreateCrmBillingCycles1670000000000,
+  CrmContractAliasReadable1680000000000,
+  PreventAnonymizedCrmMutations1690000000000,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -65,6 +65,7 @@ export * from './contracts/configuration/settings-priority.contract';
 export * from './contracts/inventory/executor-custody';
 export * from './contracts/inventory';
 export * from './contracts/network';
+export * from './contracts/crm';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';
@@ -78,4 +79,5 @@ export * from './schemas/auth.schema';
 export * from './schemas/subscriber.schema';
 export * from './schemas/lifecycle.schema';
 export * from './schemas/contract.schema';
+export * from './schemas/billing-cycle.schema';
 export * from './schemas/tax-profile-snapshot';
