@@ -1695,9 +1695,35 @@ Alcance revisado: los tres specs de integración H2 y los tres specs E2E cambiad
 
 El conteo local de H5 queda preservado como evidencia: 22 tests objetivo, **14 aprobados, 7 fallidos o con timeout y 1 omitido declarado**; el provisioner terminó con `E2E_CLEANUP=OK`. El veredicto de entorno del dictamen AI-EM-ARCH y la autorización explícita del CTO habilitan H4 pese a ese resultado local. El conteo no se presenta como 22/22 PASS.
 
-**Commits H4 y push:** pendientes de registrar en esta sección. El alcance aprobado es: (1) los tres specs de integración H2 y tres E2E H5; (2) `.github/workflows/ci.yml`; (3) este informe, el plan, el prompt principal y los launchers v1.11–v1.12. Cada commit se verifica contra los archivos completos del árbol antes de crearse. El índice inicial está vacío; no se usará stash ni staging parcial.
+**Commits H4:** índice vacío y coincidencia índice/árbol verificados para cada grupo; cada commit contiene solo archivos completos de su lista.
 
-**G6.5:** pendiente hasta publicar el SHA y verificar que todos sus workflows terminen en `success` con `gh run list --commit <sha>` y `gh run watch`. El run 41439195912 de `9e3956d7` sigue registrado como `failure`; el push autorizado debe comprobar el nuevo SHA completo.
+| Commit                                     | Mensaje                                    | Archivos                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0dbc9cef37e5bd8d9a47d9a24db1b13b309c41fd` | `test(mod05): stabilize contract fixtures` | `apps/api/src/modules/audit/audit.service.transaction.postgres.integration.spec.ts`; `apps/api/src/modules/crm/contracts/tests/contract-plan-change.postgres.integration.spec.ts`; `apps/api/src/modules/crm/subscribers/tests/subscriber-tax-confirm.postgres.integration.spec.ts`; `e2e/tests/portal-mod05-deuda-fiscal-live.spec.ts`; `e2e/tests/portal-network-provisioning-live.spec.ts`; `e2e/tests/portal-privacy.spec.ts` |
+| `a491605d29a9bfa5aec532de45a865fa99b76981` | `ci: pin runners to ubuntu-24.04`          | `.github/workflows/ci.yml`                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `3200cf9a5e9f5ea726d51dcddba1c23e6390d9cd` | `docs(mod05): record H4 authorization`     | `docs/informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-v1.0.md`; `docs/plans/2026-10-31-mod05-consolidacion-cluster.md`; `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-v1.0.md`; `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.11.md`; `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.12.md`                                                                                                              |
+
+**Push:** `git push origin main` terminó sin `--force` el 2026-11-02. `main` avanzó de `9e3956d7e7afbd494d1a0becad773568bc3a87cc` a `3200cf9a5e9f5ea726d51dcddba1c23e6390d9cd`; `HEAD` y `origin/main` coinciden en el nuevo SHA.
+
+**G6.5:** `gh run list --commit 3200cf9a5e9f5ea726d51dcddba1c23e6390d9cd --limit 100` enumeró dos workflows y ambos terminaron en `success`.
+
+|                                                                          Run | Workflow              | Estado      | Conclusión |
+| ---------------------------------------------------------------------------: | --------------------- | ----------- | ---------- |
+| [41449913339](https://github.com/Sleybc/iWana-neXt/actions/runs/41449913339) | `E2E Web Admin Smoke` | `completed` | `success`  |
+| [41449913367](https://github.com/Sleybc/iWana-neXt/actions/runs/41449913367) | `CI`                  | `completed` | `success`  |
+
+Jobs terminales verificados con `gh run watch` y `gh run view`:
+
+| Workflow              | Job                                                  |           ID | Conclusión |
+| --------------------- | ---------------------------------------------------- | -----------: | ---------- |
+| `E2E Web Admin Smoke` | `Admin bootstrap smoke`                              | 125292280634 | `success`  |
+| `CI`                  | `Build y validación de imágenes production`          | 125292280742 | `success`  |
+| `CI`                  | `Integridad de citas ADR`                            | 125292281040 | `success`  |
+| `CI`                  | `E2E operativo R4.1 — API + storage + BullMQ reales` | 125292281115 | `success`  |
+| `CI`                  | `Lint + Typecheck + Build + Unit tests`              | 125292281170 | `success`  |
+| `CI`                  | `E2E portal`                                         | 125292281183 | `success`  |
+
+La actualización de resultados G6.5 en esta sección se hizo después del commit 3 y queda local, sin staging. No se tocaron ni commitearon las rutas ajenas o D-CK-2, y no ejecuté comandos de stash ni staging parcial. En los commits 1 y 2, el hook `lint-staged` creó su respaldo temporal automático y completó su limpieza; `git stash list` quedó vacía después de cada commit y al cierre.
 
 ### Dictamen AI-EM-ARCH sobre H5 (2026-11-02)
 
