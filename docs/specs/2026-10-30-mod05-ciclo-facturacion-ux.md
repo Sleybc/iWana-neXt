@@ -1,7 +1,7 @@
 # MOD05 Fase 09 — Ciclo de facturación y fecha de corte · UX
 
-**Versión:** 1.0 · **Fecha:** 2026-10-30 · **Responsable:** AI-PROD-UX  
-**Estado:** UX congelada para F1 y Q1  
+**Versión:** 1.1 · **Fecha:** 2026-10-30 (v1.1: 2026-11-01) · **Responsable:** AI-PROD-UX  
+**Estado:** UX congelada para F1 y Q1; v1.1 alinea la entrada de «Activar» con el [addendum U](2026-10-31-mod05-ficha-suscriptor-addendum-u.md)  
 **PRD:** [Fase 09 v1.1](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-09-v1.1.md) · **ADR:** [ADR-102](../adrs/ADR-102-Ciclo-Facturacion-y-Fecha-de-Corte-por-Servicio.md) · **Plan:** [2026-10-30-mod05-ciclo-facturacion](../plans/2026-10-30-mod05-ciclo-facturacion.md)
 
 ## Objetivo y alcance
@@ -14,7 +14,7 @@ La agenda conserva el `PageHeader` y el panel con sombra dual existentes; el chr
 
 ## 1. Activar servicio
 
-**Entrada:** acción «Activar» del menú de `ContractCard` o del detalle. Abre el diálogo «Activar servicio» en vez de llamar directamente a `activate`.
+**Entrada:** botón «Activar» del pie de `ContractCard` (servicio en borrador) o acción del detalle. «Activar» no aparece en el menú de acciones de la tarjeta (addendum U, U-ficha). Abre el diálogo «Activar servicio» en vez de llamar directamente a `activate`.
 
 **Contenido y recorrido:**
 
@@ -42,7 +42,7 @@ El diálogo usa la primitive y semántica accesible de `SubscriberLifecycleDialo
 
 ## 3. Ciclo y próximo corte en la ficha
 
-- **`ContractCard`:** en servicios activos, mostrar «Ciclo: día {n}» y «Próximo corte: {fecha}». Si el contrato activo no tiene `billingCycleDay`, mostrar «Sin ciclo de facturación» de forma textual, no solo por color. El dato anterior no sustituye estos campos.
+- **`ContractCard`:** en servicios activos, mostrar «Ciclo: día {n}» y «Próximo corte: {fecha}» como **dos datos separados** (par etiqueta-valor cada uno, no una sola frase); mientras carga el catálogo, un `PortalSkeletonBlock` en lugar del dato. Si el contrato activo no tiene `billingCycleDay`, mostrar «Sin ciclo de facturación» de forma textual, no solo por color. El dato anterior no sustituye estos campos.
 - **`ContractDetailDrawer`:** en «Facturación», separar método de pago, ciclo vigente y próximo corte. Si no hay ciclo, mostrar «Sin ciclo de facturación» y mantener disponible la edición que permita asignarlo. Si existe `billingCycle` anterior, presentarlo como dato de solo lectura con la explicación anterior.
 - Mostrar la fecha `YYYY-MM-DD` que entrega el servidor como día calendario, sin convertirla por zona horaria. El próximo corte es informativo; no afirmar que hay deuda, falta de pago o suspensión automática.
 
@@ -92,14 +92,21 @@ En desktop, conservar el patrón `PortalPanel` → filtros/contador → tabla op
 
 ## 7. Criterios de aceptación de experiencia
 
-1. Activar desde tarjeta o detalle abre «Activar servicio»; no se ejecuta hasta confirmar.
+1. Activar desde el pie de la tarjeta o desde el detalle abre «Activar servicio»; no se ejecuta hasta confirmar.
 2. El selector solo ofrece el catálogo activo. Preselecciona `billingCycleDay` existente; sin valor, la confirmación está deshabilitada.
 3. Elegir un ciclo actualiza «Próximo corte» con el `nextCutoffDate` del catálogo, calculado en el servidor; al confirmar se envía exactamente el valor seleccionado.
 4. Los errores 422 requeridos/inválidos conservan el diálogo abierto y se asocian al selector con un siguiente paso claro.
 5. Crear y editar usan el selector de días, no un campo libre. La conversión solo sugiere un valor ante coincidencia numérica exacta y nunca activa el servicio.
-6. El servicio activo muestra ciclo y próximo corte, o el texto «Sin ciclo de facturación» si no tiene valor.
+6. El servicio activo muestra ciclo y próximo corte como dos datos, o el texto «Sin ciclo de facturación» si no tiene valor.
 7. La agenda está dentro de Suscriptores; recuerda la fecha seleccionada, agrupa por ciclo, muestra la leyenda literal y el contador de activos sin ciclo.
 8. Desde una fila, la suspensión identifica un solo servicio y abre la confirmación manual existente. No se presenta pago conocido ni se suspende en automático.
 9. Carga, sin resultados, error y contador sin ciclo se distinguen; teclado, lector de pantalla, móvil y foco visible permiten completar la tarea.
 
 Los criterios 1–6 complementan CA-CF-10/11; el flujo de agenda permite cubrir CA-CF-12 cuando se implemente F1/Q1.
+
+## Historial
+
+| Versión | Fecha | Cambio |
+| --- | --- | --- |
+| 1.0 | 2026-10-30 | UX congelada para F1 y Q1 |
+| 1.1 | 2026-11-01 | «Activar» sale del menú y queda en el pie de la tarjeta (addendum U); ciclo y próximo corte se muestran como dos datos con estado de carga. Origen: auditoría K3 de la consolidación del clúster (prod-ux H2c y H3) |
