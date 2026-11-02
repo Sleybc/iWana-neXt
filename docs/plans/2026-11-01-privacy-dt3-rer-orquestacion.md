@@ -111,6 +111,11 @@ Sustituye al orden de la aclaración anterior. El clúster MOD05 y DT-3 se verif
   Se avisa a la sesión del clúster, que había pedido que se la consultara sobre esa segunda prueba.
 - **C4d: GO (2026-11-02).** El primer intento dio NO-GO solo por cobertura de ramas: `subscribers` y perfil tributario quedaron 1,32 puntos bajo su línea base. Con 9 pruebas nuevas, sin tocar producción, la repetición quedó en contratos 82,87 %, suscriptores 86,64 % y perfil tributario 89,47 %, todos sobre su línea base. 315 tests sin omisiones; 0 hallazgos C. §9 de la spec quedó actualizado para el G0, con los dos cambios visibles.
 - **G0 del CTO: aprobado el 2026-11-02**, sobre la spec v1.2 §9 completa, incluidos los dos cambios visibles y O-1. Queda libre C4e.
+- **Cierre (2026-11-02): G6 y G6.5 GO.**
+  - Commits de C4e: `78d3e4fb`, `4cfeed5f` y `ee7f89f3`. Commits de H4: `0dbc9cef`, `a491605d` y `3200cf9a`.
+  - CI `41449913367` y Smoke `41449913339` en `success` sobre `3200cf9a`.
+  - Se emitieron el [informe de cierre](../informes/INFORME-PRIVACY-DT3-RER-CIERRE-v1.0.md) y el [HLD Privacy v1.2](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.2.md), aprobado por el CTO el 2026-11-02.
+  - **La fase queda cerrada.** Pendientes en el §6 del informe de cierre.
 - **Lo que falta:** ~~C4d (G1 conjunto, cobertura por servicio incluida)~~ ~~→ G0 del CTO~~ → G0 del CTO sobre la spec v1.2 → C4e (commits 2 y 5) → cierre de DT-3 por AI-EM-ARCH: informe de cierre y HLD Privacy v1.2 (§6.7 y §10, con O-1). El esquema efímero `tenant_plan_change_…` sigue pendiente de decisión del usuario.
 
 ## 2. Bloques, dependencias y ruta crítica
