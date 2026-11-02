@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { AuditLog, dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
-import { TaxProfileStatus } from '@iwana/shared';
+import {
+  CustomerSegment,
+  PersonType,
+  TaxProfileStatus,
+  TaxRegime,
+  VatResponsibility,
+  VatTreatment,
+} from '@iwana/shared';
 import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
@@ -13,6 +20,7 @@ import { ITaxApplicationReadPort } from '../../../taxation/ports/tax-application
 import { SubscriberTaxProfileService } from '../subscriber-tax-profile.service';
 import { SubscriberTaxProfile } from '../entities/subscriber-tax-profile.entity';
 import { SubscriberTaxAssignment } from '../entities/subscriber-tax-assignment.entity';
+import { Subscriber } from '../entities/subscriber.entity';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -29,7 +37,7 @@ describeWithDb('Confirmación tributaria atómica: PostgreSQL real', () => {
   beforeAll(async () => {
     ds = new DataSource({
       ...dataSourceOptions,
-      entities: [SubscriberTaxProfile, SubscriberTaxAssignment, AuditLog],
+      entities: [Subscriber, SubscriberTaxProfile, SubscriberTaxAssignment, AuditLog],
       migrations: [],
       logging: false,
     });
@@ -69,12 +77,37 @@ describeWithDb('Confirmación tributaria atómica: PostgreSQL real', () => {
     }
   });
   async function fixture() {
+    const subscriberId = randomUUID();
+    await runInTenantSchema(ds, schemaName, (qr) =>
+      qr.manager.save(
+        Subscriber,
+        Object.assign(new Subscriber(), {
+          id: subscriberId,
+          tenantId,
+          personType: PersonType.NATURAL,
+          customerSegment: CustomerSegment.SOHO,
+          documentType: 'CC',
+          documentNumberEncrypted: `synthetic-${subscriberId}`,
+          firstName: 'Persona',
+          lastName: 'Sintética',
+          stratum: 4,
+          emailEncrypted: `synthetic-${subscriberId}@example.invalid`,
+          phoneEncrypted: `synthetic-${subscriberId}`,
+          vatTreatment: VatTreatment.STANDARD,
+          vatResponsibility: VatResponsibility.RESPONSABLE,
+          rutResponsibilities: [],
+          taxRegime: TaxRegime.SIMPLIFIED,
+          address: 'Dirección sintética',
+          createdBy: actorId,
+        }),
+      ),
+    );
     return runInTenantSchema(ds, schemaName, (qr) =>
       qr.manager.save(
         SubscriberTaxProfile,
         Object.assign(new SubscriberTaxProfile(), {
           tenantId,
-          subscriberId: randomUUID(),
+          subscriberId,
           profileStatus: TaxProfileStatus.PENDING_REVIEW,
           confirmedAt: null,
           confirmedBy: null,

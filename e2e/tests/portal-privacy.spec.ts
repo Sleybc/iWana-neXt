@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import type { Subscriber360Response } from '@iwana/shared';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TOKEN =
@@ -130,13 +131,16 @@ function makeSummary(kind: 'CONSULTA' | 'SUPLANTACION' = 'CONSULTA') {
   };
 }
 
-function subscriber360() {
+function subscriber360(): Subscriber360Response {
   return {
     subscriber: {
       id: SUBSCRIBER_ID,
       tenantId: 'tenant-uuid-001',
       userId: null,
       partyId: PARTY_ID,
+      privacyRestricted: false,
+      anonymizedAt: null,
+      anonymizedRequestId: null,
       personType: 'NATURAL',
       customerSegment: 'RESIDENTIAL',
       documentType: 'CC',
@@ -170,27 +174,72 @@ function subscriber360() {
       activatedAt: null,
       manualOverrideReason: null,
       status: 'ACTIVE',
+      vatResponsibility: 'NO_RESPONSABLE',
+      rutResponsibilities: [],
+      legalRepresentative: null,
       externalId: null,
       createdBy: null,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       deletedAt: null,
+      contactPending: false,
+      hasLiveContracts: true,
+      fiscalCompleteness: { complete: true, missing: [] },
     },
     contacts: [],
     contracts: [
       {
         id: CONTRACT_ID,
-        alias: 'Servicio principal',
-        status: 'ACTIVE',
+        tenantId: 'tenant-uuid-001',
+        quoteId: null,
+        subscriberId: SUBSCRIBER_ID,
+        planId: 'plan-test-001',
         planSnapshotJson: { name: 'Internet hogar' },
+        status: 'ACTIVE',
+        statusReasonCode: null,
+        statusChangedAt: '2026-01-02T00:00:00.000Z',
+        alias: 'Servicio principal',
+        installationAddress: 'Dirección de prueba',
+        installationCity: 'Bogotá',
+        installationDepartment: 'Cundinamarca',
+        installationPostalCode: '110111',
+        installationNotes: null,
+        customerSegment: 'RESIDENTIAL',
+        serviceUsage: 'RESIDENTIAL',
+        installationStratum: 3,
+        stratumEvidenceMediaId: null,
+        vatSnapshot: null,
+        additionalProductIds: [],
+        additionalServiceIds: [],
+        paymentMethod: null,
+        billingCycleDay: 15,
+        billingCycle: 'Mensual',
+        fiscalName: null,
+        fiscalDocument: null,
+        fiscalAddress: null,
+        startDate: '2026-01-02',
+        endDate: null,
+        titularAnonymizedAt: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+        deletedAt: null,
       },
     ],
     quotes: [],
+    privacyDetailsRestricted: false,
     habeasData: [],
     arcoRequests: [],
     privacyMarks: [],
     expedienteSummary: null,
     timelineSeed: [],
+    provisioningReadiness: {
+      status: 'PENDIENTE_DE_DATOS',
+      title: 'Pendiente de datos',
+      message: 'La información del servicio está pendiente.',
+      canProvision: false,
+      retryable: false,
+      missingRequirements: [],
+    },
   };
 }
 

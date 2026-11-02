@@ -23,6 +23,10 @@ import { MediaService } from '../../../media/media.service';
 import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
 import { SubscriberLifecycleService } from '../../subscribers/subscriber-lifecycle.service';
 import { IPrivacyMarksReadPort } from '../../../privacy/ports/privacy-marks-read.port';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../../packages/database/src/migrations/tenant/runner';
 
 const describeWithDb =
   process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true' ? describe : describe.skip;
@@ -171,23 +175,25 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
       extra: { max: 6, min: 1, application_name: schemaName },
     });
     await dataSource.initialize();
-    // Solo se toma DDL de la plantilla de pruebas; no se leen ni escriben sus registros.
-    const source = (await dataSource.query(
-      'SELECT schema_name FROM public.tenants WHERE slug = $1',
-      ['test-s2-live'],
-    )) as Array<{ schema_name: string }>;
-    const sourceSchema = source[0]?.schema_name;
-    if (!sourceSchema || sourceSchema === 'tenant_iwana')
-      throw new Error('Se requiere una plantilla de pruebas segura.');
-    await dataSource.query('CREATE SCHEMA ' + quote(schemaName));
-    for (const table of ['subscribers', 'contracts', 'audit_logs']) {
-      await dataSource.query(
-        `CREATE TABLE ${quote(schemaName)}.${quote(table)} (LIKE ${quote(sourceSchema)}.${quote(table)} INCLUDING ALL)`,
-      );
-    }
     await dataSource.query(
-      `ALTER TABLE ${quote(schemaName)}.contracts ADD COLUMN IF NOT EXISTS billing_cycle_day smallint`,
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Plan change synthetic',
+        `plan-change-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'plan-change@example.invalid',
+      ],
     );
+    await dataSource.query('CREATE SCHEMA ' + quote(schemaName));
+    const tenantDataSource = createTenantDataSource(dataSource, schemaName, context.tenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     audit = new AuditService(dataSource, {} as PlatformAuditService);
     service = new ContractsService(
       dataSource,
@@ -214,6 +220,7 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
     if (!/^tenant_plan_change_[a-f0-9]{32}$/.test(schemaName))
       throw new Error('Schema de limpieza inválido.');
     await dataSource.query('DROP SCHEMA IF EXISTS ' + quote(schemaName) + ' CASCADE');
+    await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     await dataSource.destroy();
   });
 

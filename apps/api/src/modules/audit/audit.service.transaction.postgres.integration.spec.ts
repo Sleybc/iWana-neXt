@@ -56,7 +56,8 @@ describeWithDb('AuditService.logWithin con PostgreSQL real', () => {
     await dataSource.query(`
       CREATE TABLE ${qSchema()}.subscribers (
         id uuid PRIMARY KEY,
-        party_id uuid NOT NULL
+        party_id uuid NOT NULL,
+        anonymized_at timestamptz
       )
     `);
     await dataSource.query(`

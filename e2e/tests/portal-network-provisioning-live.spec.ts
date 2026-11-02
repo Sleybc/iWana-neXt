@@ -566,12 +566,20 @@ async function createCommercialFixture(
     },
   );
   expect(contract.id).toMatch(/^[0-9a-f-]{36}$/iu);
+  const billingCycles = await api<Dict[]>(page, admin.token, 'GET', '/crm/billing-cycles');
+  const activeCycle = billingCycles.find(
+    (cycle) => cycle['active'] === true && Number.isInteger(cycle['cycleDay']),
+  );
+  const billingCycleDay = activeCycle?.['cycleDay'];
+  if (typeof billingCycleDay !== 'number') {
+    throw new Error('El catálogo no contiene un ciclo de facturación activo para el fixture.');
+  }
   const activeContract = await api<{ id: string; status: string }>(
     page,
     admin.token,
     'POST',
     '/crm/contracts/' + contract.id + '/activate',
-    {},
+    { billingCycleDay },
   );
   expect(activeContract.status).toBe('ACTIVE');
   const subscriber = await api<{ id: string; status: string }>(

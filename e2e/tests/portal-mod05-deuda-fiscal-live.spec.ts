@@ -1043,6 +1043,20 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
         }),
       ),
     );
+    const billingCycles = await api<JsonRecord[]>(
+      page,
+      session,
+      session.admin,
+      'GET',
+      '/crm/billing-cycles',
+    );
+    const activeCycle = billingCycles.find(
+      (cycle) => cycle['active'] === true && Number.isInteger(cycle['cycleDay']),
+    );
+    const billingCycleDay = activeCycle?.['cycleDay'];
+    if (typeof billingCycleDay !== 'number') {
+      throw new Error('El catálogo no contiene un ciclo de facturación activo para el fixture.');
+    }
     const activatedContract = record(
       await api<JsonRecord>(
         page,
@@ -1050,6 +1064,7 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
         session.admin,
         'POST',
         `/crm/contracts/${contract['id']}/activate`,
+        { billingCycleDay },
       ),
     );
     expect(activatedContract['status']).toBe('ACTIVE');
