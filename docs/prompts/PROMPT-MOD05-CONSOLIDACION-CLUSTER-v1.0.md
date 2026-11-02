@@ -4,6 +4,7 @@
 **Plantilla base:** [TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md](TEMPLATE-PROMPT-EJECUCION-FASE-MODULO.md)
 **Plan:** [2026-10-31-mod05-consolidacion-cluster.md](../plans/2026-10-31-mod05-consolidacion-cluster.md) (bloques, matriz de skills y gates)
 **Contratos de referencia:**
+
 - D: [PRD Fase 09 v1.1](../prds/PRD-MOD05-CRM-SUBSCRIBERS-FASE-09-v1.1.md) y [ADR-102](../adrs/ADR-102-Ciclo-Facturacion-y-Fecha-de-Corte-por-Servicio.md).
 - E: [plan](../plans/2026-10-30-mod05-cambio-plan-contrato.md) y [spec](../specs/2026-10-30-mod05-cambio-plan-contrato-ux.md).
 - F: [informe v1.2](../informes/INFORME-MOD05-360-COTIZACIONES-REVISION-v1.2.md).
@@ -25,6 +26,7 @@
 ### K1 · `sr-backend` — Fixture de RF-LC-17 y prueba real del control de versión
 
 Base de diagnóstico ya verificada por `sr-backend` (systematic-debugging):
+
 - el control de versión de E en `_transition` es correcto (plan E:32, spec E:56);
 - el `TypeError` de RF-LC-17 sale del fixture, porque `Contract` se construye sin `updatedAt`;
 - en producción no ocurre, porque `updated_at` es `NOT NULL` y `findOne` lo trae siempre.
@@ -47,6 +49,7 @@ Base de diagnóstico ya verificada por `sr-backend` (systematic-debugging):
 ### R1 · `boundary-reviewer`
 
 Solo lectura sobre el diff del clúster (`git diff HEAD` más los archivos sin seguimiento del clúster). Verifica:
+
 - el modulith, sin entidades ni servicios ajenos importados;
 - el tenancy;
 - ADR-100 y ADR-093;
@@ -58,6 +61,7 @@ Hallazgos con `archivo:línea` y severidad P0–P3.
 ### R2 · `contract-drift-reviewer`
 
 Solo lectura. Verifica:
+
 - `@iwana/shared` (contrato 360°, `contract.schema.ts`, `billing-cycle.schema.ts`) contra productores (API) y consumidores (portal, `api-client.ts`);
 - `confirmProfile` y el alias (CA-U-06);
 - que no queden tipos duplicados a mano (RF-S404-50).
@@ -65,6 +69,7 @@ Solo lectura. Verifica:
 ### R3 · `sec-eng`
 
 Solo lectura. Revisa:
+
 - `POST …/tax-profile/confirm` (CA-U-04): roles, permiso, auditoría en la transacción, PII en logs y guarda de titular bloqueado;
 - `POST /crm/contracts/:id/plan-change`: concurrencia, roles y `GuardBlockedTitular`;
 - la exposición de datos de la ficha nueva a cada rol.
@@ -74,6 +79,7 @@ Hallazgos P0–P3.
 ### R4 · `prod-ux` + `ds-owner`
 
 Solo lectura. Revisan:
+
 - **`ds-owner`:** `audit-ui.mjs` sobre los componentes de U-ficha y E (`ChangeContractPlanDialog`, `ContractDetailDrawer`, `ContractCard`, `ServiciosTab`, `SubscriberOverviewTab`, `TaxProfileBlock`), con 0 hallazgos (CA-U-01).
 - **`prod-ux`:**
   - vocabulario visible con `system-vocabulary-review` (CA-U-02);
@@ -85,6 +91,7 @@ Hallazgos con `archivo:línea`.
 ### G1 · `gate-verifier` — Gates completos sobre el árbol (Q3 del plan)
 
 Sin caché de turbo y con conteo real:
+
 1. Typecheck y lint de `@iwana/shared`, `@iwana/db`, `@iwana/api` y `@iwana/portal`.
 2. Suites completas de los cuatro paquetes.
 3. Integraciones Postgres **sin omisiones**, con `IWANA_DB_INTEGRATION_AVAILABLE=true` y `DB_NAME=dbiw`:
@@ -105,12 +112,14 @@ Solo si R1–R4 o G1 abren hallazgos P0 o P1. AI-EM-ARCH asigna cada hallazgo a 
 ## Ola 2b · K3 — Correcciones tras G1 (2026-10-31)
 
 **Resultado de la Ola 2** ([informe](../informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-v1.0.md)): **NO-GO por tres P1 de R3**.
+
 - Typecheck y lint en 0.
 - Siete integraciones con 45 pruebas y 0 omisiones.
 - Cobertura ≥80 % en los tres servicios.
 - E2E en `NOT_EXECUTED` porque no había API ni portal levantados.
 
 **Contraste de AI-EM-ARCH con `HEAD`:**
+
 - **P1-1:** todo `SubscriberTaxController` ya estaba en `HEAD` sin `PermissionsGuard`; la ruta nueva `confirm` de U copió el patrón.
 - **P1-3:** la 360° ya devolvía `habeasData` y `arcoRequests` con `CRM_SUBSCRIBERS_READ` en `HEAD`.
 - **P1-2:** es nuevo de U.
@@ -192,6 +201,7 @@ Skills: `test-driven-development`, `backend-security-coder`, `iwana-test-evidenc
    - aserta la delegación de terminar y previsualizar.
 
    No bajes la cobertura de ningún servicio de 80 %.
+
 4. **P3-4:** pruebas contra Postgres del avance de versión (+1 ms y estrictamente mayor) en el borrado de borradores (`subscriber-lifecycle.service.ts:289`) y en `crm-contract-impersonation.adapter.ts:106`.
 5. Si una prueba nueva revela un defecto de producción: `[BLOQUEO]`, sin corregirlo. Cierras con typecheck de api en 0 y las suites tocadas con conteo real y 0 omisiones.
 
@@ -219,6 +229,7 @@ Skills: `e2e-testing-patterns`, `playwright-skill`, `iwana-test-evidence`.
 Revisa cada spec que cambió en K4a, K4b y K4d contra su cambio de producción o contrato. Escribe §K4e en el informe. Un hallazgo C (regresión ocultada) bloquea G1.
 
 **Después de K4:** se repite **G1 completo** (§G1).
+
 - `gate-verifier` **no edita** pruebas ni código. Un gate rojo se reporta con su causa y vuelve al dueño.
 - Si K4a, K4b y K4d llegan con evidencia fresca y nada más cambió, la repetición puede reutilizarla, declarando qué reutiliza.
 
@@ -249,6 +260,7 @@ El árbol mezcla el clúster con trabajo ajeno: gobernanza de agentes y hooks, e
    - o un archivo del clúster la importa o la ejecuta (por ejemplo `runner.ts` para `applyTenantMigrationsInOrder`, el port de settings del tenant para el adaptador de K3b, `portal-ui.tsx` y `api-client.ts` para U).
 
    Usa `git diff` y `grep` de importaciones como evidencia.
+
 3. **Son ajenas en C1:**
    - `.agents/`, `.claude/`, `.codex/`, `.opencode/`, `AGENTS.md`, `docs/roles/` y `scripts/claude-hooks.test.mjs` (gobernanza; checkpoint propio);
    - el informe y los prompts de `TRANSVERSAL-CHECKPOINT-COMMITS`;
@@ -270,6 +282,7 @@ El árbol mezcla el clúster con trabajo ajeno: gobernanza de agentes y hooks, e
    - las integraciones Postgres de §G1 punto 3 (contratos, cambio de plan, ciclo de vida, 360 cotizaciones, fecha de nacimiento, 167 y 168).
 
    Todo con conteo real y 0 omisiones. Si algo falla, `[BLOQUEO]` y no commitees.
+
 3. Commits 1–4 según la Ola 3.
 4. **Después del último commit:**
    - aplica los dos patches B1 con `git apply` (no `--cached`);
@@ -277,6 +290,7 @@ El árbol mezcla el clúster con trabajo ajeno: gobernanza de agentes y hooks, e
    - `git status` debe mostrar como modificadas solo las rutas ajenas y DT-3.
 
    Si un hash no coincide: `[BLOQUEO]` y restaura desde la copia original.
+
 5. Sin push.
 
 Sigue los puntos 1–6 de la Ola 3 con la lista aprobada en C1a. En el punto 1.4, docs, entran también la spec de ciclo v1.1 y los lanzadores v1.0–v1.4 de la consolidación.
@@ -299,6 +313,7 @@ Sigue los puntos 1–6 de la Ola 3 con la lista aprobada en C1a. En el punto 1.4
 **Origen:** [dictamen tras el bloqueo de C1b](../informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-v1.0.md). Se abandona la separación E7: el clúster y DT-3 se verifican y commitean juntos, por archivo completo. C1b queda anulado.
 
 **Orden:**
+
 1. **C4a.**
 2. **En paralelo:** C4b, C4c y la Ola 2-R de DT-3 (B3-R → B3 → B4, prompt DT-3).
 3. **C4d.**
@@ -325,6 +340,7 @@ Skills: `verification-before-completion`, `iwana-checkpoint-commit`.
 ### C4a-R · `plat-ops` — Restaurar B1 desde archivos resueltos (sustituye a los patches; 2026-11-01)
 
 **Causa raíz del bloqueo de C4a,** analizada por AI-EM-ARCH:
+
 - El snapshot limpio de `subscribers.service.ts` que generó C1a no estaba normalizado con Prettier. Al quitar la indentación de B1, la asignación de `birthDate` quedó en dos líneas.
 - El cierre del boundary en C1b reformateó el archivo, y esa línea quedó en una sola. El contexto del patch B1 dejó de coincidir cerca de la línea 1001.
 - Con las tres versiones normalizadas, la fusión a tres bandas (`git merge-file`) da **un solo conflicto real**: los imports. Se resuelve conservando `CrmQuoteReadPort` y `titularAnonymizedConflict`, y quitando `Quote`.
@@ -360,6 +376,7 @@ Clasifica el fallo («Laura Ruiz» no encontrada) como regresión, flaky, datos 
 ### C4d · `gate-verifier` — G1 conjunto (después de C4b, C4c y B4 de DT-3 en GO)
 
 Es G1 completo (§G1) sobre el árbol entero, ampliado con los gates de DT-3:
+
 - typecheck y lint de los cuatro paquetes;
 - suites completas de shared, db, api y portal sin caché;
 - integraciones de §G1 punto 3, más las de DT-3: migración 169, `titular-anonymized-concurrency`, `titular-erasure-sql`, `responsibilities` y `anonymize-titular`;
@@ -377,6 +394,7 @@ Si C4c dejó un fallo ajeno al clúster y a DT-3, se registra con su causa y lo 
    - ninguna fila de `public.tenants` lo referencia.
 
    Registra el resultado en §C4e. Cualquier otro esquema queda fuera de este permiso.
+
 1. **Re-inventario:** cada ruta de `git status --short` se clasifica en uno de cinco commits, o como excluida D-CK-2 o ajena (gobernanza, checkpoint y otras iniciativas, como en C1a). Las dudosas se escalan.
    1. `feat(db,shared): billing cycles, plan change, 360 contracts and anonymized-titular guard (169)`;
    2. `feat(api): MOD05 cluster and DT-3 anonymized-titular mutations`. El cuerpo declara los dos alcances y los archivos mezclados;
@@ -390,6 +408,7 @@ Si C4c dejó un fallo ajeno al clúster y a DT-3, se registra con su causa y lo 
 ### C4f · `plat-ops` — Dependencia omitida y verificación de `HEAD` aislado (2026-11-02)
 
 **Hallazgo de la auditoría de C4e (AI-EM-ARCH):** `HEAD` (`ee7f89f3`) no compila por sí solo.
+
 - `contracts.service.ts:484` y `:513`, y `contracts-tenant-settings-read.adapter.spec.ts`, ya commiteados, leen `timezone` de `SettingsPriorityTenantSnapshot`.
 - Ese campo solo existe en el árbol de trabajo: `settings-priority-tenant-read.port.ts` y su adapter siguen sin commitear.
 - C1a los clasificó como ajenos («configuración de prioridad»), pero son el punto 4 de K3b: el adapter de settings deja de depender de `TenantService`.
@@ -411,3 +430,77 @@ Si C4c dejó un fallo ajeno al clúster y a DT-3, se registra con su causa y lo 
    - Sin `git worktree` ni ramas. Si algo falla por otra dependencia que quedó sin commitear: `[BLOQUEO]` con la ruta, sin commitear nada más.
 3. **Clasifica de nuevo las 31 rutas ajenas** con este criterio: ¿algún archivo de `HEAD` las importa o depende de un símbolo que solo existe en ellas? Usa `git grep` contra `HEAD`. Si aparece otra: `[BLOQUEO]`.
 4. **Entrega:** §C4f en el informe, con el SHA del commit 6, los conteos de la exportación y la lista de ajenas confirmadas. Sin push.
+
+## Ola 5 · H — CI de `main` en rojo tras F3 (2026-11-02)
+
+**Origen:** el run [41439195912](https://github.com/Sleybc/iWana-neXt/actions/runs/41439195912) del workflow `CI` sobre `9e3956d7` terminó en `failure`. §F3 declaró G6.5 mirando solo `E2E Web Admin Smoke`, y G6.5 **no se cumple**. Diagnóstico de AI-EM-ARCH a partir del log:
+
+| Job                                 | Causa                                                                                                                                                                                                                                | Clase                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| Integración API (Postgres real)     | 3 suites y 51 tests. `contract-plan-change` copia DDL del tenant `test-s2-live`, que no existe en la base limpia del CI («Se requiere una plantilla de pruebas segura», `:181`)                                                      | Prueba no hermética                                          |
+| ídem                                | `subscriber-tax-confirm`: `No metadata for "Subscriber"`. B1 añadió `findOne(Subscriber)` en `lockSubscriberForMutation` (`subscriber-tax-profile.service.ts:425`) y el DataSource de la prueba no registra esa entidad              | Fixture desalineado con DT-3                                 |
+| ídem                                | `audit.service.transaction` (ya en `HEAD` desde `ee5e494d`): `42703`, columna inexistente. `CrmContractImpersonationAdapter.suspendForImpersonation` (`:80`) consulta columnas de DT-3 que no tiene el DDL hecho a mano de la prueba | Fixture desalineado con DT-3                                 |
+| E2E portal                          | `ubuntu-latest` resolvió a ubuntu 26.04, que Playwright 1.58.2 no soporta (`ERROR: Playwright does not support chromium on ubuntu26.04-x64`). El job no llegó a ejecutar pruebas                                                     | Infraestructura: cambio de imagen de GitHub                  |
+| E2E operativo R4.1 (`ubuntu-24.04`) | 3 pruebas: `portal-mod05-deuda-fiscal-live:883` (conversión desde expediente), `portal-network-provisioning-live:916` (MOD13) y `portal-privacy:572` (suplantación desde la 360°)                                                    | **Sin clasificar:** pueden ser regresiones de D, E, U o DT-3 |
+
+**Causa raíz de proceso:** C4d y C4f corrieron listas de suites enumeradas, contra `dbiw` y su tenant `test-s2-live`. El CI descubre **todas** las `*.postgres.integration.spec.ts` (55 suites) sobre una base limpia. Ningún gate local reprodujo esa condición.
+
+**Reglas de la ola:**
+
+- Nada de revert ni force-push. `main` se repara con commits nuevos.
+- Cada corrección va con su prueba.
+- Si se toca producción: `[BLOQUEO]` previo a AI-EM-ARCH.
+
+### H1 · `e2e-triage` — Clasificar las 3 fallas de R4.1 (solo lectura, primero)
+
+1. Descarga los artefactos y trazas del job R4.1 del run 41439195912 con `gh run download`.
+2. Clasifica cada fallo: regresión de MOD05 (D, E, U), regresión de DT-3, fixture o datos, flaky o entorno.
+   - Indica el commit y la línea de producto implicados.
+   - Contrasta con el último verde, el run 41249281896 sobre `6dbdda8a`.
+3. **Entrega:** §H1 en el informe. Una regresión de producto se escala a AI-EM-ARCH antes de corregirla.
+
+### H2 · `sr-backend` — Integraciones API herméticas (solo pruebas; en paralelo con H1)
+
+1. `contract-plan-change.postgres.integration.spec.ts`: esquema propio con `applyTenantMigrationsInOrder` y limpieza en `afterAll`, como `subscriber-enum-parity`. Elimina la dependencia de `test-s2-live`.
+2. `subscriber-tax-confirm.postgres.integration.spec.ts`: registra `Subscriber` y las entidades que exige B1 en el DataSource de la prueba. No cambies aserciones.
+3. `audit.service.transaction.postgres.integration.spec.ts`: crea el esquema con la cadena migrada o, si no es viable, añade al DDL las columnas que lee el adapter con el tipo exacto de su migración. No cambies aserciones.
+4. **Reproduce el CI localmente.**
+   - Base Postgres nueva y vacía, de nombre `iwana_it_ci_h_*`; nunca `dbiw`.
+   - Migraciones aplicadas como en el CI.
+   - El comando literal del step «Integration tests — API» de `.github/workflows/ci.yml:533-538`, más el gate de omisiones esperadas.
+   - Las 55 suites; omitidas solo las de `integration-expected-skips.json`.
+5. `test-change-reviewer` revisa los tres diffs antes de H4.
+
+### H3 · `plat-ops` — Imagen del runner (en paralelo)
+
+1. En `.github/workflows/ci.yml`, fija `runs-on: ubuntu-24.04` en los jobs que hoy usan `ubuntu-latest` (líneas 30, 58, 199 y 1008), igual que el job R4.1 y `e2e-web-admin-smoke.yml`.
+2. No cambies nada más del workflow.
+3. Registra en §H3 la versión de Playwright y la imagen, como deuda para cuando Playwright soporte 26.04.
+
+### H5 · `sr-qa` — Las 3 E2E de R4.1 (después de H1; antes de H4)
+
+**Reclasificación de AI-EM-ARCH sobre §H1** (por lectura de código):
+
+1. **`portal-mod05-deuda-fiscal-live:883`:** el fixture no envía `billingCycleDay`. Desde D (ADR-102), activar exige ciclo. Es un **fixture desalineado con D**, no una regresión.
+2. **`portal-network-provisioning-live:916`:** **misma causa.** La línea 573 hace `POST /crm/contracts/:id/activate` con `{}`, que ahora devuelve 422 `BILLING_CYCLE_REQUIRED`. §H1 lo dejó como «dato provisional»: es el mismo desalineamiento con D.
+3. **`portal-privacy:572`:** spec con API simulada. `subscriber360()` (`:133`) es anterior al contrato 360° publicado en `@iwana/shared` (F y K3b: `ContractResponse` completo, `provisioningReadiness` y `privacyDetailsRestricted`). Hipótesis principal: el mock ya no cumple el contrato, o la ficha cambió con U. Hay que confirmarlo con una traza local.
+
+**Encargo:**
+
+1. En los dos E2E live, la activación envía un `billingCycleDay` del catálogo activo, como CA-CF-03. No cambies ninguna otra aserción.
+2. Ejecuta `portal-privacy.spec.ts` en local con `--trace on` y lee la causa exacta.
+   - **Si es el mock:** actualízalo al tipo publicado de `@iwana/shared` (`Subscriber360Response`), con valores mínimos coherentes y `privacyDetailsRestricted: false`.
+   - **Si es un selector cambiado por U:** ajústalo al texto o rol vigente y cita la línea del producto.
+   - **Si el producto rompe el flujo de suplantación:** `[BLOQUEO]` sin corregirlo.
+3. Ejecuta con conteo real, en tenant de pruebas y nunca en `tenant_iwana`:
+   - los 3 specs completos;
+   - el resto de `e2e/tests/portal-*live*.spec.ts` que activen contratos (búscalos con `grep -l "/activate"`), para encontrar otros fixtures sin ciclo.
+4. `test-change-reviewer` revisa los diffs antes de H4.
+5. **Entrega:** §H5 en el informe. Sin stash ni commit.
+
+### H4 · `plat-ops` — Commit, push y G6.5 real (después de H1 a H3 y H5, y con orden del CTO)
+
+1. Commits por archivo completo: uno de pruebas (H2), uno de CI (H3) y, si H1 abre corrección, el que AI-EM-ARCH apruebe.
+2. Push sin `--force`. El push requiere orden del CTO.
+3. **G6.5:** **todos** los workflows del SHA en `success`, verificados con `gh run list --commit <sha>`, con id y conclusión de cada uno. No basta con uno.
+4. **Entrega:** §H4 en el informe y corrección de §F3, que declaró G6.5 de forma indebida.

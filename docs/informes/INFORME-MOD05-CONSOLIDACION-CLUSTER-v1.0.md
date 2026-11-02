@@ -1570,14 +1570,14 @@ El SHA-256 de `apps/api/src/modules/crm/contracts/contracts.service.ts` se mantu
 
 En la exportación se ejecutaron los gates con `--force` (Turbo sin caché):
 
-| Gate | Resultado real |
-| --- | --- |
+| Gate                                         | Resultado real                                                                                                  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Typecheck y lint de shared, db, api y portal | 12 tareas aprobadas, 0 cacheadas, 0 errores. ESLint reportó 54 advertencias: shared 0, db 5, api 7 y portal 42. |
-| Suites completas de shared, db, api y portal | 7 tareas aprobadas, 0 cacheadas, 0 fallidas. Conteos de Jest: |
-| `@iwana/shared` | 28/28 suites y 278/278 tests aprobados; 0 omitidos. |
-| `@iwana/db` | 77/77 suites y 423/423 tests aprobados; 0 omitidos. |
-| `@iwana/api` | 443 suites aprobadas, 4 saltadas (447 total); 5.973 tests aprobados, 15 saltados (5.988 total). |
-| `@iwana/portal` | 340/340 suites y 3.435 tests aprobados; 1 test saltado (3.436 total). |
+| Suites completas de shared, db, api y portal | 7 tareas aprobadas, 0 cacheadas, 0 fallidas. Conteos de Jest:                                                   |
+| `@iwana/shared`                              | 28/28 suites y 278/278 tests aprobados; 0 omitidos.                                                             |
+| `@iwana/db`                                  | 77/77 suites y 423/423 tests aprobados; 0 omitidos.                                                             |
+| `@iwana/api`                                 | 443 suites aprobadas, 4 saltadas (447 total); 5.973 tests aprobados, 15 saltados (5.988 total).                 |
+| `@iwana/portal`                              | 340/340 suites y 3.435 tests aprobados; 1 test saltado (3.436 total).                                           |
 
 Jest terminó con código 0. Al final del portal informó que forzó la salida de un worker que no cerró con elegancia; no hubo suites fallidas. Evidencia local: `%TEMP%/iwana-c4f-head-20261102-type-lint.log` y `%TEMP%/iwana-c4f-head-20261102-tests.log`.
 
@@ -1602,3 +1602,112 @@ Jest terminó con código 0. Al final del portal informó que forzó la salida d
 - `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md`
 
 El índice quedó vacío después de commit 6; rama `main`, sin `git worktree`, stash ni push. La exportación aislada demuestra que `HEAD` compila y las suites configuradas terminan sin fallos. Los saltos informados arriba son los declarados por Jest.
+
+### 5. F3 — Push y G6.5 (2026-11-02)
+
+**Commit 7:** `9e3956d7e7afbd494d1a0becad773568bc3a87cc` (`docs(mod05): record C4e and C4f`). Contiene las cinco rutas autorizadas: informe de consolidación, plan, prompt principal y launchers v1.9 y v1.10. El índice coincidió con el árbol en esas rutas; `lint-staged --no-stash` y `commitlint` pasaron sin cambiar su contenido.
+
+**Push:** `git push origin main` terminó correctamente, sin `--force`; `main` avanzó de `6dbdda8a` a `9e3956d7`. `origin/main` y `HEAD` coinciden en ese SHA.
+
+**Corrección H4 a la afirmación G6.5:** G6.5 **NO se cumplió**. El run [41439195628](https://github.com/Sleybc/iWana-neXt/actions/runs/41439195628) solo demuestra que `E2E Web Admin Smoke` terminó `success`; no demuestra que todos los workflows del SHA pasaran. El workflow `CI` del mismo SHA terminó `failure`, como se detalla en la auditoría que sigue. La fila de smoke de abajo es evidencia parcial, no el veredicto del gate.
+
+| Job                     |           ID | Conclusión                                           | Duración |
+| ----------------------- | -----------: | ---------------------------------------------------- | -------: |
+| `Admin bootstrap smoke` | 125256512639 | `success`; todos sus pasos completaron correctamente |    1m10s |
+
+GitHub añadió una anotación informativa: acciones que declaran Node.js 20 fueron forzadas a ejecutarse con Node.js 24. No afectó el resultado del job.
+
+**Rutas que siguen locales:** antes de esta actualización, `git status --short --untracked-files=all` enumeraba 46 rutas: las 26 ajenas confirmadas y listadas en §C4f, más las 20 rutas D-CK-2 enumeradas en la tabla de cierre C4e. Ambas listas permanecen sin cambios. Esta §F3 añade solo el propio informe como una modificación local; no se añadió nada al índice. Rama `main`, índice vacío, sin stash ni staging parcial.
+
+## Auditoría AI-EM-ARCH de F3 (2026-11-02): G6.5 NO cumplido
+
+§F3 declaró G6.5 con el run 41439195628 (`E2E Web Admin Smoke`). El SHA `9e3956d7` también disparó el workflow `CI` (run 41439195912), que terminó en **`failure`**: Lint/Typecheck/Build/Unit (por el step de integración API), E2E portal y E2E R4.1. El diagnóstico y las correcciones están en §Ola 5 · H del prompt de consolidación. `main` queda en rojo hasta H4.
+
+### H1 — Triage de fallas R4.1 (2026-11-02)
+
+Se descargaron con `gh run download` los artefactos del run 41439195912 y del baseline 41249281896. El job R4.1 solo publicó `e2e-r41-summary`; no se adjuntaron trazas Playwright ni stack traces. El log descargable contiene conteos y nombres de las pruebas, pero no la aserción que falló. Por eso las clasificaciones de red y privacidad quedan provisionales.
+
+Run actual: commit `9e3956d7e7afbd494d1a0becad773568bc3a87cc`, R4.1 con 327 aprobadas, 3 fallidas, 1 saltada, 0 sin ejecutar y 0 flaky; setup y limpieza terminaron en `OK`. Baseline verde: commit `6dbdda8afb8793966487bd05ab62e681c16d1f1f`, 326 aprobadas, 0 fallidas, 1 saltada, 0 sin ejecutar y 0 flaky.
+
+| Falla                                          | Clasificación                            | Evidencia y commit/línea de producto                                                                                                                                                                                                                                                                                     | Contraste con baseline                                                                                                                                                                     |
+| ---------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `portal-mod05-deuda-fiscal-live.spec.ts:883`   | Fixture/datos desactualizados            | El flujo activa un contrato sin enviar ni persistir `billingCycleDay`. `ContractsService` exige el ciclo y responde `BILLING_CYCLE_REQUIRED` en `apps/api/src/modules/crm/contracts/contracts.service.ts:1680-1684`, introducido por `4cfeed5f` (ciclo de facturación).                                                  | La prueba no cambió desde `6dbdda8`; el contrato de activación sí cambió después. La fixture debe suministrar el día requerido. No se identifica defecto de producción con esta evidencia. |
+| `portal-network-provisioning-live.spec.ts:916` | Fixture/datos, provisional               | Setup, fixture operativa y cleanup de R4.1 reportaron `OK`. La prueba y los módulos de producto MOD13 no tienen cambios entre los dos commits; no se identifica commit ni línea de producto implicados. No hay traza para localizar qué dato o paso de la instalación falló.                                             | La misma prueba pasó en el baseline. La evidencia no permite llamarla regresión MOD13 ni flaky confirmado; se clasifica provisionalmente como dato de la fixture operativa.                |
+| `portal-privacy.spec.ts:572`                   | Posible regresión MOD05 U, no confirmada | La E2E usa `page.route` y mocks de API, así que DT-3 backend no participa. El componente de la ficha cambió en `0175aca2`; `SubscriberDetailClient.tsx:229` añadió el control `privacyDetailsRestricted` para el panel Cumplimiento. La prueba no cambió; el mock no incluye ese campo y no permite atribuirle la falla. | Pasó en `6dbdda8`. Falta traza para confirmar una regresión. Escalar a AI-EM-ARCH antes de corregir cualquier comportamiento de producto.                                                  |
+
+El run también falló en el job separado `E2E portal`: la instalación de Chromium detectó `ubuntu26.04-x64` y Playwright `1.58.2` informó que no soporta esa imagen. Esta falla de entorno no explica las tres pruebas ejecutadas por R4.1, que corre en otro job.
+
+### H2 — Integraciones API herméticas (2026-11-02)
+
+Cambios limitados a pruebas; no se modificaron aserciones. `contract-plan-change.postgres.integration.spec.ts` crea un tenant y un schema propios, aplica la cadena tenant con `applyTenantMigrationsInOrder` y limpia schema y tenant en `afterAll`; dejó de depender de `test-s2-live`. `subscriber-tax-confirm.postgres.integration.spec.ts` registra `Subscriber` en el DataSource y crea el suscriptor sintético que consulta `lockSubscriberForMutation`. `audit.service.transaction.postgres.integration.spec.ts` añade `subscribers.anonymized_at timestamptz`, el tipo definido por la migración 150 y leído por `CrmContractImpersonationAdapter`.
+
+La reproducción usó la base nueva y vacía `iwana_it_ci_h_20261102_6d28e59e` en Postgres `127.0.0.1:5433`; nunca usó `dbiw`. Se aplicaron las migraciones públicas como en CI, se creó `tenant_test` y se aplicaron 164 migraciones tenant activas. Los tres specs modificados pasaron: 3/3 suites, 52/52 pruebas. La revisión `test-change-reviewer` de los tres diffs no encontró hallazgos.
+
+Comando Jest de `.github/workflows/ci.yml` reproducido con `IWANA_DB_INTEGRATION_AVAILABLE=true` y `E2E_TENANT_SLUG=test`, más el gate literal de omisiones: **55 specs descubiertos; 51 suites aprobadas, 0 fallidas y 4 omitidas**, exactamente las cuatro rutas declaradas en `apps/api/integration-expected-skips.json`. Conteo de Jest: 351 pruebas, 331 aprobadas y 20 pendientes dentro de esas cuatro suites omitidas; 0 omitidas sin declarar. B5 pasó 17/17. El gate reportó `PASS (55 specs; 4 omisiones declaradas; B5 17/17)` y el comando terminó con código 0.
+
+### H3 — Runner CI fijado (2026-11-02)
+
+En `.github/workflows/ci.yml` se cambiaron únicamente los cuatro `runs-on: ubuntu-latest` solicitados (líneas actuales 30, 58, 199 y 1008) a `runs-on: ubuntu-24.04`. El job R4.1 ya estaba fijado en `ubuntu-24.04` (línea 717). `git diff --check` pasó y el diff del workflow contiene solo esos cuatro cambios.
+
+Deuda para revisar cuando Playwright dé soporte a Ubuntu 26.04: `@playwright/test` / Playwright `1.58.2` en el lockfile; el run 41439195912 resolvió `ubuntu-latest` como `ubuntu26.04-x64` y falló al instalar Chromium con el mensaje de que esa combinación no está soportada. La fijación a `ubuntu-24.04` evita que los jobs afectados hereden esa imagen antes de resolver la deuda.
+
+### H5 — Fixtures de ciclo y regresión E2E (2026-11-02)
+
+**Cambios de pruebas.** En `portal-mod05-deuda-fiscal-live.spec.ts` y `portal-network-provisioning-live.spec.ts`, el fixture consulta `GET /crm/billing-cycles`, toma un ciclo con `active: true` y `cycleDay` entero, y envía ese `billingCycleDay` al activar el contrato. No se cambiaron otras aserciones. En `portal-privacy.spec.ts`, el mock `subscriber360()` ahora declara `Subscriber360Response` de `@iwana/shared`, publica `privacyDetailsRestricted: false` y completa el contrato con fechas válidas y los campos obligatorios del contrato compartido.
+
+**Traza del caso de suplantación.** Comando inicial y repetición: `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-privacy.spec.ts --trace on`. En la primera corrida: **4 aprobadas, 1 fallida**. La traza muestra `GET /crm/subscribers/:id/360` con HTTP 200, seguido de `RangeError: Invalid time value` antes de que apareciera el encabezado de la ficha. La causa era el mock anterior: su contrato no incluía las fechas requeridas por `ContractResponse`, que la ficha formatea. Con el mock tipado y fechas coherentes, la repetición terminó **5/5 aprobadas**; el caso de suplantación pasó. No se cambió el selector ni el producto.
+
+**Ejecución real en tenant de prueba.** `--list` enumeró **22 tests en los seis specs** requeridos. El provisioner del repo (`scripts/e2e-provision-operational.mjs`) creó el entorno aislado `iwana-e2e-r41` en sus puertos E2E, un tenant de prueba no reservado, actores y sede MOD13 sintéticos; comprobó permisos NOC y site, `E2E_SETUP=OK`, worker healthy y terminó con `E2E_CLEANUP=OK`. El guard del provisioner rechaza `tenant_iwana`; ese tenant no se usó. El provisioner no admite seleccionar specs y ejecutó la suite completa de Portal. Su conteo real fue **309 aprobadas, 21 fallidas, 1 omitida, 0 sin ejecutar y 0 flaky**; código 1.
+
+| Spec                                        | Conteo real                        | Resultado / causa observada                                                                                                                                                                                                                                         |
+| ------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `portal-crm-ciclo-facturacion-live.spec.ts` | 0 aprobadas, 1 fallida por timeout | El hook `beforeAll` excedió 30 s durante `createDisposableTenant` (`:317`); no alcanzó una aserción de producto. Se clasifica como timeout de setup E2E.                                                                                                            |
+| `portal-mod05-deuda-fiscal-live.spec.ts`    | 7 aprobadas, 1 omitida             | La omisión está declarada en `:1361`: la base E2E recién migrada no tiene filas anteriores a la migración 153; esa condición la cubre la prueba de integración de migración.                                                                                        |
+| `portal-network-provisioning-live.spec.ts`  | 1 aprobada                         | Activación con ciclo del catálogo y recorrido MOD13 pasaron en el tenant y site sintéticos del provisioner.                                                                                                                                                         |
+| `portal-privacy-fase-1b-live.spec.ts`       | 1 aprobada, 3 fallidas             | Una prueba recibió HTTP 500 en `PATCH /crm/expedientes/:id/status` (`convertToParty`, helper `:500`); otras dos recibieron HTTP 500 en `login` (`:173`). El JSON no trae código de error; queda como bloqueo de API/fixture sin atribuirlo a una línea de producto. |
+| `portal-privacy-live.spec.ts`               | 0 aprobadas, 3 fallidas            | Las tres terminaron en `/auth/login`; `toHaveURL(/\/dashboard$/)` falló en `:82` y el formulario seguía en estado «Ingresando…». Causa de autenticación en el entorno E2E sin atribución suficiente a producto o fixture.                                           |
+| `portal-privacy.spec.ts`                    | 5 aprobadas                        | Incluye la repetición con `--trace on`; la ficha 360° y la radicación de suplantación pasan con el mock alineado al contrato.                                                                                                                                       |
+
+**Hashes SHA-256 de los tres specs tocados:**
+
+- `e2e/tests/portal-mod05-deuda-fiscal-live.spec.ts`: `398C90978FEBEC03871AD53E69578FE679BE6F61CEFDBCE52C773BE28780AFFB`
+- `e2e/tests/portal-network-provisioning-live.spec.ts`: `29A2CE9B8E9457C92619739AA1499764ED26B9DD55B42CC4C85E4C093ED02402`
+- `e2e/tests/portal-privacy.spec.ts`: `6A4631B4DC13D52B0C98FB004C0298BE41E5E81A0D746EB5DE22256217A174F8`
+
+`pnpm exec prettier --check` pasó para los tres specs. **Veredicto H5: [BLOQUEO].** En conjunto, los seis specs dieron **14 aprobadas, 7 fallidas o con timeout y 1 omitida declarada**. La activación de MOD13 está corregida y pasa; la E2E local de suplantación también. El timeout de setup de ciclo, las respuestas HTTP 500 y el login E2E pendiente mantienen el gate abierto. Solo se modificaron los tres specs listados y esta sección; no se tocó producto, workflow, stash ni commits.
+
+### Revisión test-change-reviewer de H2 y H5 (2026-11-02)
+
+| Prueba (`archivo:línea`)                                    | Cambio                                                                                                                                                                                     | Hunk de producción que lo motiva                                                                                                                                                                                                                                                                                                                              | Regla que lo justifica                                                                                                                                               | Veredicto   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `contract-plan-change.postgres.integration.spec.ts:175`     | Sustituye la plantilla `test-s2-live` por tenant y schema propios, cadena tenant y limpieza. No altera expectativas.                                                                       | Sin cambio de producción en H2; la suite prueba el servicio de contratos en un schema aislado.                                                                                                                                                                                                                                                                | Prompt MOD05 §H2.1 exige schema propio, migraciones y limpieza.                                                                                                      | Justificado |
+| `subscriber-tax-confirm.postgres.integration.spec.ts:37,77` | Registra `Subscriber` y crea la fila referenciada por el perfil antes de confirmarlo. No altera expectativas.                                                                              | `subscriber-tax-profile.service.ts:420-430` consulta y bloquea el suscriptor antes de mutar su perfil; el test debía registrar la entidad y preparar la relación.                                                                                                                                                                                             | Prompt MOD05 §H2.2 exige las entidades requeridas por B1 y prohíbe cambiar aserciones.                                                                               | Justificado |
+| `audit.service.transaction.postgres.integration.spec.ts:59` | Añade `subscribers.anonymized_at timestamptz` al DDL sintético. No altera expectativas.                                                                                                    | `crm-contract-impersonation.adapter.ts:81` lee `anonymized_at`; el tipo real lo fija la migración `150_titular_anonymization_marker.ts:18` como `timestamptz`.                                                                                                                                                                                                | Prompt MOD05 §H2.3 permite completar el DDL con columnas y tipos de su migración, sin cambiar aserciones.                                                            | Justificado |
+| `portal-mod05-deuda-fiscal-live.spec.ts:1046`               | Obtiene el ciclo activo del catálogo y lo envía en la activación. No cambia otras aserciones.                                                                                              | `contracts.service.ts:1682-1685` rechaza la activación sin ciclo válido.                                                                                                                                                                                                                                                                                      | ADR-102 §D3; prompt MOD05 §H5.1 identifica este fixture desalineado.                                                                                                 | Justificado |
+| `portal-network-provisioning-live.spec.ts:569`              | Obtiene un ciclo activo y lo envía al activar el contrato MOD13. No cambia otras aserciones.                                                                                               | `contracts.service.ts:1682-1685` exige el ciclo en la activación.                                                                                                                                                                                                                                                                                             | ADR-102 §D3; prompt MOD05 §H5.1-2 corrige este fixture live.                                                                                                         | Justificado |
+| `portal-privacy.spec.ts:134`                                | Tipifica `subscriber360()` como `Subscriber360Response`, añade `privacyDetailsRestricted: false` y completa campos requeridos con fechas coherentes. No cambia expectativas ni selectores. | La ficha consume el contrato 360° compartido; `Subscriber360Response` declara `privacyDetailsRestricted`, `contracts: ContractResponse[]` y `provisioningReadiness` en `packages/shared/src/contracts/crm/subscriber-360.ts:115-129`. `ContractResponseSchema` fija el contrato de serialización en `packages/shared/src/schemas/contract.schema.ts:154-212`. | Prompt MOD05 §H5.3 y §H5 encargo 2 permiten alinear el mock con `@iwana/shared`; la traza inicial confirmó `Invalid time value` al formatear el contrato incompleto. | Justificado |
+
+Alcance revisado: los tres specs de integración H2 y los tres specs E2E cambiados en H5. No encontré cambios de aserciones, skips nuevos ni ajuste que oculte una regresión de producto; **cero hallazgos C**. Este veredicto de diff no convierte H5 en verde: su ejecución real conserva `[BLOQUEO]` por las fallas/timeout documentadas arriba.
+
+### H4 — Commit, push y G6.5 (2026-11-02)
+
+**Autorización confirmada (2026-11-02).** El dictamen AI-EM-ARCH de §«Dictamen AI-EM-ARCH sobre H5» clasifica las siete fallas locales como diferencias de entorno: los tres specs live afectados pasaron en R4.1 del run 41439195912 con el mismo código de producto; H2, H3 y H5 solo cambiaron pruebas o configuración CI. El dictamen recomienda aceptar la condición en su intención y solicita confirmación del CTO. El CTO confirmó que la condición está cumplida y ordenó el push el 2026-11-02. La revisión test-change-reviewer de H2/H5 registró **cero hallazgos C**.
+
+El conteo local de H5 queda preservado como evidencia: 22 tests objetivo, **14 aprobados, 7 fallidos o con timeout y 1 omitido declarado**; el provisioner terminó con `E2E_CLEANUP=OK`. El veredicto de entorno del dictamen AI-EM-ARCH y la autorización explícita del CTO habilitan H4 pese a ese resultado local. El conteo no se presenta como 22/22 PASS.
+
+**Commits H4 y push:** pendientes de registrar en esta sección. El alcance aprobado es: (1) los tres specs de integración H2 y tres E2E H5; (2) `.github/workflows/ci.yml`; (3) este informe, el plan, el prompt principal y los launchers v1.11–v1.12. Cada commit se verifica contra los archivos completos del árbol antes de crearse. El índice inicial está vacío; no se usará stash ni staging parcial.
+
+**G6.5:** pendiente hasta publicar el SHA y verificar que todos sus workflows terminen en `success` con `gh run list --commit <sha>` y `gh run watch`. El run 41439195912 de `9e3956d7` sigue registrado como `failure`; el push autorizado debe comprobar el nuevo SHA completo.
+
+### Dictamen AI-EM-ARCH sobre H5 (2026-11-02)
+
+**H5 cumple su objetivo: las 3 fallas de R4.1 en CI quedan corregidas.**
+
+- `deuda-fiscal-live` da 7 aprobadas y 1 omitida declarada.
+- `network-provisioning-live` da 1/1.
+- `portal-privacy` da 5/5; la causa era el mock 360° (`Invalid time value`).
+- `test-change-reviewer`: 0 hallazgos C.
+
+**Las otras 7 fallas locales no son regresiones.** Las tres specs (`ciclo-facturacion-live`, `privacy-fase-1b-live` y `privacy-live`) fallan en local con timeout de setup, HTTP 500 en `login` y login colgado. Pasaron en el job R4.1 del CI (run 41439195912) con **el mismo código de producto**: allí la suite completa dio 327 aprobadas, 3 fallidas (las ya corregidas) y 1 omitida, sobre 331. La corrida local de esa misma suite dio 309, 21 y 1. Ningún archivo de producción cambió desde ese run: H2, H3 y H5 solo tocan pruebas y `ci.yml`. La diferencia es del entorno local, que corrió la suite completa con el provisioner en una sola máquina.
+
+**Recomendación:** dar por cumplida la condición del CTO en su intención, que era no publicar pruebas que oculten fallos, y lanzar H4. El juez definitivo es G6.5: todos los workflows del nuevo SHA en `success`. Si R4.1 vuelve a fallar en CI en esas specs, se tratará como hallazgo nuevo. Requiere confirmación del CTO, porque la condición literal decía «H5 en verde».
