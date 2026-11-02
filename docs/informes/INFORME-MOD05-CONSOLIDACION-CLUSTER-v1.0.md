@@ -1411,3 +1411,194 @@ feat(portal): mod05 subscriber sheet, billing cycle and plan change
 - `e2e/tests/portal-crm-ciclo-facturacion-live.spec.ts`
 - `e2e/tests/portal-privacy-fase-1b-live.spec.ts`
 - `e2e/tests/portal-privacy-live.spec.ts`
+
+#### Commit 4: `a8324a8491ca240749ece101414f29cd655573bc`
+
+docs(mod05): consolidate D, E, F and U
+
+33 rutas completas; índice = árbol antes del commit; paths del commit iguales a la lista prevista. Lint-staged con --no-stash y commitlint ejecutados; SHA-256 de todos sus archivos idénticos antes/después. Contracts conserva `33E5CF71EF2C163024C8DCABB25643D5E1524E02A2B69CF2CBFBB94891F06653`.
+
+- `docs/informes/INFORME-MOD05-360-COTIZACIONES-REVISION-v1.0.md`
+- `docs/informes/INFORME-MOD05-360-COTIZACIONES-REVISION-v1.1.md`
+- `docs/informes/INFORME-MOD05-360-COTIZACIONES-REVISION-v1.2.md`
+- `docs/informes/INFORME-MOD05-CAMBIO-PLAN-DISENO-v1.0.md`
+- `docs/informes/INFORME-MOD05-CICLO-FACTURACION-GUARDADO-v1.0.md`
+- `docs/informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-OLA1-v1.0.md`
+- `docs/informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-v1.0.md`
+- `docs/plans/2026-10-30-mod05-cambio-plan-contrato.md`
+- `docs/plans/2026-10-30-mod05-ciclo-facturacion.md`
+- `docs/plans/2026-10-31-mod05-consolidacion-cluster.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.0.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.1.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.2.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.3.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.4.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.5.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.6.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-LAUNCH-v1.7.md`
+- `docs/prompts/PROMPT-MOD05-CICLO-FACTURACION-v1.0.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.0.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.1.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.2.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.3.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.4.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.5.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.6.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.7.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.8.md`
+- `docs/prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-v1.0.md`
+- `docs/prompts/PROMPT-MOD05-SUBSCRIBERS-360-COTIZACIONES-REVISION-v1.0.md`
+- `docs/specs/2026-10-30-mod05-cambio-plan-contrato-ux.md`
+- `docs/specs/2026-10-30-mod05-ciclo-facturacion-ux.md`
+- `docs/specs/2026-10-31-mod05-ficha-suscriptor-addendum-u.md`
+
+#### Commit 5: `ee7f89f398d0105e038e4cb1ab2d9018927eb6db`
+
+docs(privacy): dt-3 anonymized-titular mutations
+
+16 rutas completas; índice = árbol antes del commit; paths del commit iguales a la lista prevista. Lint-staged con --no-stash y commitlint ejecutados; SHA-256 de todos sus archivos idénticos antes/después. Contracts conserva `33E5CF71EF2C163024C8DCABB25643D5E1524E02A2B69CF2CBFBB94891F06653`.
+
+- `docs/informes/INFORME-PRIVACY-DT3-B1R-CONTRATOS-v1.0.md`
+- `docs/informes/INFORME-PRIVACY-DT3-B1R-EXPEDIENTES-v1.0.md`
+- `docs/informes/INFORME-PRIVACY-DT3-B1R-v1.0.md`
+- `docs/plans/2026-11-01-privacy-dt3-rer-orquestacion.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.0.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.1.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.2.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.3.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.4.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.5.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.6.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.7.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.8.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-LAUNCH-v1.9.md`
+- `docs/prompts/PROMPT-PRIVACY-DT3-RER-v1.0.md`
+- `docs/specs/2026-11-01-privacy-dt3-mutaciones-titular-anonimizado-spec.md`
+
+### 3. Cierre C4e y estado local final
+
+**C4e completado: cinco commits locales verificados, sin push.** La limpieza autorizada quedó ejecutada y las 254 rutas iniciales clasificadas, sin dudosas. Los 203 destinos de commit se verificaron por archivo completo (las dos reubicaciones del adaptador Quotes cuentan como rutas de origen y destino).
+
+| Commit | SHA                                        | Rutas previstas/verificadas |
+| ------ | ------------------------------------------ | --------------------------: |
+| 1      | `78d3e4fbdc96b89a9adc4918656fbdd7931ed853` |                          17 |
+| 2      | `4cfeed5fc23c0fa34a05d8df034f3f4484035854` |                          82 |
+| 3      | `0175aca22658317bf9875055b4d870d09448a932` |                          55 |
+| 4      | `a8324a8491ca240749ece101414f29cd655573bc` |                          33 |
+| 5      | `ee7f89f398d0105e038e4cb1ab2d9018927eb6db` |                          16 |
+
+El commit 2 declara expresamente MOD05 D/E/F/U/K1–K4 y DT-3 B1–B3-H2 y lista los archivos mezclados. El primer intento de su mensaje fue rechazado por commitlint por capitalización y longitud; se corrigió solo el mensaje y se repitieron ambos hooks sin cambios de contenido. Los asuntos usan minúsculas para cumplir commitlint.
+
+Antes de cada commit: lista del índice exacta, índice = árbol en sus rutas y SHA de contracts `33E5CF71EF2C163024C8DCABB25643D5E1524E02A2B69CF2CBFBB94891F06653`. Después: rutas del commit iguales a las previstas y hashes completos idénticos antes/después del hook. Hooks de código: eslint --fix y prettier --write terminaron sin alterar contenido; los commits documentales no tenían tareas coincidentes de lint-staged, y commitlint sí se ejecutó. La validación adicional de whitespace de documentos conserva los saltos Markdown intencionales de dos espacios. Configuración permanente de hooks intacta: `.husky/_`. Stash list idéntica a la inicial. Índice final vacío.
+
+Auditorías documentales repetidas antes del checkpoint: citas ADR 0 bloqueantes/153 avisos; ubicaciones 0 bloqueantes/3 avisos (2187 Markdown escaneados). Evidencia de todos los pasos, listas, mensajes y hashes: `%TEMP%/iwana-c4e/` (`inventory.json`, `commit-N-before.json`, `commit-N-paths.txt`, `commit-N-message.txt`, `commit-N.log`, `commit-N-receipt.json`).
+
+**Sin commitear: 52 rutas = 20 D-CK-2 + 31 ajenas + esta actualización final del informe.** Los recibos de los commits 4 y 5 y este cierre permanecen locales en el informe; el commit 4 contiene el inventario y los recibos 1–3. No se añade un sexto commit.
+
+| Estado final y ruta                                                                                                                                              | Motivo para permanecer local    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| ` M .agents/skills/INDEX.md`                                                                                                                                     | Ajena                           |
+| ` M .agents/skills/MANIFEST.json`                                                                                                                                | Ajena                           |
+| ` M .claude/agents/gate-verifier.md`                                                                                                                             | Ajena                           |
+| ` M .claude/hooks/guard-paths.mjs`                                                                                                                               | Ajena                           |
+| ` M .claude/hooks/session-context.mjs`                                                                                                                           | Ajena                           |
+| ` M .claude/settings.json`                                                                                                                                       | Ajena                           |
+| ` M .codex/agents/gate-verifier.toml`                                                                                                                            | Ajena                           |
+| ` M .opencode/agents/gate-verifier.md`                                                                                                                           | Ajena                           |
+| ` M AGENTS.md`                                                                                                                                                   | Ajena                           |
+| ` M apps/api/src/modules/configuration/services/settings-priority-evaluator.spec.ts`                                                                             | Ajena                           |
+| ` M apps/api/src/modules/configuration/services/settings-priority.service.spec.ts`                                                                               | Ajena                           |
+| ` M apps/api/src/modules/tenant/ports/settings-priority-tenant-read.adapter.spec.ts`                                                                             | Ajena                           |
+| ` M apps/api/src/modules/tenant/ports/settings-priority-tenant-read.adapter.ts`                                                                                  | Ajena                           |
+| ` M apps/api/src/modules/tenant/ports/settings-priority-tenant-read.port.ts`                                                                                     | Ajena                           |
+| ` M apps/portal/next-env.d.ts`                                                                                                                                   | D-CK-2                          |
+| ` M apps/web/next-env.d.ts`                                                                                                                                      | D-CK-2                          |
+| ` M docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`                                                                                                  | Ajena                           |
+| ` M docs/informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-v1.0.md`                                                                                                   | Actualización final del informe |
+| ` M docs/informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.0.md`                                                                                                   | Ajena                           |
+| ` M docs/informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md`                                                                                                  | Ajena                           |
+| ` M docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`                                                                                                      | Ajena                           |
+| ` M docs/informes/INFORME-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`                                                                                                | Ajena                           |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-plans-desktop.png`                                                                         | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-plans-mobile.png`                                                                          | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-products-desktop.png`                                                                      | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-products-mobile.png`                                                                       | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-summary-desktop.png`                                                                       | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-summary-mobile.png`                                                                        | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-tax-simulator-desktop.png`                                                                 | D-CK-2                          |
+| ` M docs/informes/evidence/portal-commercial-ui-2026-07-11/commercial-tax-simulator-mobile.png`                                                                  | D-CK-2                          |
+| ` M docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`                                                                                                  | Ajena                           |
+| ` M docs/roles/Perfil_IA_Verificador_Gates_v1.md`                                                                                                                | Ajena                           |
+| ` M docs/roles/Protocolo_Colaboracion_Multiagente_v1.md`                                                                                                         | Ajena                           |
+| ` M scripts/claude-hooks.test.mjs`                                                                                                                               | Ajena                           |
+| `?? .agents/skills/iwana-checkpoint-commit/SKILL.md`                                                                                                             | Ajena                           |
+| `?? .claude/agents/test-change-reviewer.md`                                                                                                                      | Ajena                           |
+| `?? .claude/hooks/post-push-ci.mjs`                                                                                                                              | Ajena                           |
+| `?? .claude/launch.json`                                                                                                                                         | D-CK-2                          |
+| `?? .claude/skills/iwana-checkpoint-commit/SKILL.md`                                                                                                             | Ajena                           |
+| `?? .codex/agents/test-change-reviewer.toml`                                                                                                                     | Ajena                           |
+| `?? .opencode/agents/test-change-reviewer.md`                                                                                                                    | Ajena                           |
+| `?? .tmp-plan-change-tests.json`                                                                                                                                 | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/portal-contract-plan-chang-bb388-actualiza-detalle-y-tarjeta-google-chrome-local/error-context.md`       | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/portal-contract-plan-chang-bb388-actualiza-detalle-y-tarjeta-google-chrome-local/test-failed-1.png`      | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/run2/.last-run.json`                                                                                     | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/run2/portal-contract-plan-chang-bb388-actualiza-detalle-y-tarjeta-google-chrome-local/error-context.md`  | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/run2/portal-contract-plan-chang-bb388-actualiza-detalle-y-tarjeta-google-chrome-local/test-failed-1.png` | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/run3/.last-run.json`                                                                                     | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/run3/portal-contract-plan-chang-bb388-actualiza-detalle-y-tarjeta-google-chrome-local/error-context.md`  | D-CK-2                          |
+| `?? docs/informes/evidence/mod05-plan-change-2026-10-30/run3/portal-contract-plan-chang-bb388-actualiza-detalle-y-tarjeta-google-chrome-local/test-failed-1.png` | D-CK-2                          |
+| `?? docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-LAUNCH-v1.6.md`                                                                                           | Ajena                           |
+| `?? docs/roles/Perfil_IA_Revisor_Cambios_Pruebas_v1.md`                                                                                                          | Ajena                           |
+
+SHA-256 final de contracts.service.ts: `33E5CF71EF2C163024C8DCABB25643D5E1524E02A2B69CF2CBFBB94891F06653`. Sin stash, staging parcial, push ni cambios de producción durante C4e.
+
+### 4. C4f — Dependencia timezone y verificación de `HEAD` aislado (2026-11-02)
+
+**Commit 6:** `5023128448abd9c25a72848d4949e59d6d126b1c` (`fix(api): expose tenant timezone through settings-priority port`). Antes del commit, el índice coincidió con el árbol de trabajo en las cinco rutas; el diff de esos archivos fue exclusivamente la propiedad `timezone` y sus fixtures. Se confirmaron las rutas del commit contra la lista aprobada. `lint-staged --no-stash` y `commitlint` terminaron correctamente y no cambiaron contenido.
+
+Rutas completas de commit 6:
+
+- `apps/api/src/modules/tenant/ports/settings-priority-tenant-read.port.ts`
+- `apps/api/src/modules/tenant/ports/settings-priority-tenant-read.adapter.ts`
+- `apps/api/src/modules/tenant/ports/settings-priority-tenant-read.adapter.spec.ts`
+- `apps/api/src/modules/configuration/services/settings-priority-evaluator.spec.ts`
+- `apps/api/src/modules/configuration/services/settings-priority.service.spec.ts`
+
+El SHA-256 de `apps/api/src/modules/crm/contracts/contracts.service.ts` se mantuvo en `33E5CF71EF2C163024C8DCABB25643D5E1524E02A2B69CF2CBFBB94891F06653`.
+
+**Exportación limpia de `HEAD`:** `git archive HEAD` produjo `%TEMP%/iwana-c4f-head-20261102.tar` y se extrajo en `%TEMP%/iwana-c4f-head-20261102`. Los 5.994 archivos del archivo coinciden con los 5.994 destinos de `git ls-tree -r HEAD`; el directorio exportado no contiene `.git`. `pnpm install --frozen-lockfile --prefer-offline` terminó correctamente: 1.266 paquetes reutilizados, 0 descargados.
+
+En la exportación se ejecutaron los gates con `--force` (Turbo sin caché):
+
+| Gate | Resultado real |
+| --- | --- |
+| Typecheck y lint de shared, db, api y portal | 12 tareas aprobadas, 0 cacheadas, 0 errores. ESLint reportó 54 advertencias: shared 0, db 5, api 7 y portal 42. |
+| Suites completas de shared, db, api y portal | 7 tareas aprobadas, 0 cacheadas, 0 fallidas. Conteos de Jest: |
+| `@iwana/shared` | 28/28 suites y 278/278 tests aprobados; 0 omitidos. |
+| `@iwana/db` | 77/77 suites y 423/423 tests aprobados; 0 omitidos. |
+| `@iwana/api` | 443 suites aprobadas, 4 saltadas (447 total); 5.973 tests aprobados, 15 saltados (5.988 total). |
+| `@iwana/portal` | 340/340 suites y 3.435 tests aprobados; 1 test saltado (3.436 total). |
+
+Jest terminó con código 0. Al final del portal informó que forzó la salida de un worker que no cerró con elegancia; no hubo suites fallidas. Evidencia local: `%TEMP%/iwana-c4f-head-20261102-type-lint.log` y `%TEMP%/iwana-c4f-head-20261102-tests.log`.
+
+**Reclasificación de las 31 rutas que C4e había llamado ajenas:** `git grep` contra `HEAD` encontró la dependencia omitida de `SettingsPriorityTenantSnapshot` en el evaluador, el port/adaptador y sus consumidores. Las cinco rutas listadas arriba la completan y pasan a commit 6. Para las otras 26, las búsquedas en código y tooling no encontraron referencias a símbolos o rutas que existan solo en esos cambios. En particular, `post-push-ci.mjs`, `test-change-reviewer.md` e `iwana-checkpoint-commit` no aparecen referenciados por el código/configuración de tooling presentes en `HEAD`. Se confirman como ajenas estas 26 rutas:
+
+- `.agents/skills/INDEX.md`, `.agents/skills/MANIFEST.json`, `.agents/skills/iwana-checkpoint-commit/SKILL.md`
+- `.claude/agents/gate-verifier.md`, `.claude/agents/test-change-reviewer.md`
+- `.claude/hooks/guard-paths.mjs`, `.claude/hooks/session-context.mjs`, `.claude/hooks/post-push-ci.mjs`
+- `.claude/settings.json`, `.claude/skills/iwana-checkpoint-commit/SKILL.md`
+- `.codex/agents/gate-verifier.toml`, `.codex/agents/test-change-reviewer.toml`
+- `.opencode/agents/gate-verifier.md`, `.opencode/agents/test-change-reviewer.md`
+- `AGENTS.md`, `scripts/claude-hooks.test.mjs`
+- `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`
+- `docs/informes/INFORME-MOD05-IVA-PUNTO-SERVICIO-T9-v1.0.md`
+- `docs/informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md`
+- `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`
+- `docs/informes/INFORME-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`
+- `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-LAUNCH-v1.6.md`
+- `docs/roles/Perfil_IA_Verificador_Gates_v1.md`
+- `docs/roles/Perfil_IA_Revisor_Cambios_Pruebas_v1.md`
+- `docs/roles/Protocolo_Colaboracion_Multiagente_v1.md`
+
+El índice quedó vacío después de commit 6; rama `main`, sin `git worktree`, stash ni push. La exportación aislada demuestra que `HEAD` compila y las suites configuradas terminan sin fallos. Los saltos informados arriba son los declarados por Jest.

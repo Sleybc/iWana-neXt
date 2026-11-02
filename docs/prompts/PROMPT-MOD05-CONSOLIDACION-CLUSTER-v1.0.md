@@ -386,3 +386,28 @@ Si C4c dejó un fallo ajeno al clúster y a DT-3, se registra con su causa y lo 
 2. Aplica los puntos 2–4 de la Ola 3: índice igual al árbol en cada commit, lint-staged sin cambios de contenido y exclusiones D-CK-2.
 3. **Sin push.** F3 y G6.5 necesitan la orden del CTO.
 4. **Entrega:** §C4e en el informe, con SHA y rutas por commit.
+
+### C4f · `plat-ops` — Dependencia omitida y verificación de `HEAD` aislado (2026-11-02)
+
+**Hallazgo de la auditoría de C4e (AI-EM-ARCH):** `HEAD` (`ee7f89f3`) no compila por sí solo.
+- `contracts.service.ts:484` y `:513`, y `contracts-tenant-settings-read.adapter.spec.ts`, ya commiteados, leen `timezone` de `SettingsPriorityTenantSnapshot`.
+- Ese campo solo existe en el árbol de trabajo: `settings-priority-tenant-read.port.ts` y su adapter siguen sin commitear.
+- C1a los clasificó como ajenos («configuración de prioridad»), pero son el punto 4 de K3b: el adapter de settings deja de depender de `TenantService`.
+- Con un push, el CI de `main` quedaría rojo.
+
+1. **Commit 6, por archivo completo.**
+   - Mensaje: `fix(api): expose tenant timezone through settings-priority port`.
+   - Archivos:
+     - `apps/api/src/modules/tenant/ports/settings-priority-tenant-read.port.ts`
+     - `apps/api/src/modules/tenant/ports/settings-priority-tenant-read.adapter.ts`
+     - `apps/api/src/modules/tenant/ports/settings-priority-tenant-read.adapter.spec.ts`
+     - `apps/api/src/modules/configuration/services/settings-priority-evaluator.spec.ts`
+     - `apps/api/src/modules/configuration/services/settings-priority.service.spec.ts`
+   - Antes de commitear: el índice coincide con el árbol y el diff contiene solo `timezone`.
+2. **Verificación de `HEAD` aislado, que es la causa raíz que hay que cubrir.** Desde C1a, ningún gate había probado lo commiteado sin el resto del árbol.
+   - Exporta `HEAD` con `git archive HEAD` a un directorio nuevo en `%TEMP%`.
+   - Ejecuta `pnpm install --frozen-lockfile --prefer-offline` en ese directorio.
+   - Corre ahí typecheck y lint de shared, db, api y portal, y las suites unitarias completas de los cuatro paquetes, sin caché y con conteo real.
+   - Sin `git worktree` ni ramas. Si algo falla por otra dependencia que quedó sin commitear: `[BLOQUEO]` con la ruta, sin commitear nada más.
+3. **Clasifica de nuevo las 31 rutas ajenas** con este criterio: ¿algún archivo de `HEAD` las importa o depende de un símbolo que solo existe en ellas? Usa `git grep` contra `HEAD`. Si aparece otra: `[BLOQUEO]`.
+4. **Entrega:** §C4f en el informe, con el SHA del commit 6, los conteos de la exportación y la lista de ajenas confirmadas. Sin push.
