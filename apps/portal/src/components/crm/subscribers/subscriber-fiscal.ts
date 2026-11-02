@@ -35,6 +35,14 @@ export const RUT_RESPONSIBILITY_OPTIONS = RUT_RESPONSIBILITIES.map((code) => ({
   label: RUT_RESPONSIBILITY_LABELS[code],
 }));
 
+const RUT_RESPONSIBILITY_SET: ReadonlySet<string> = new Set(RUT_RESPONSIBILITIES);
+
+export function filterRutResponsibilities(values: readonly string[] | null | undefined) {
+  return (values ?? []).filter((value): value is RutResponsibility =>
+    RUT_RESPONSIBILITY_SET.has(value),
+  );
+}
+
 export const FISCAL_MISSING_FIELD_LABELS: Record<SubscriberFiscalMissingField, string> = {
   VAT_RESPONSIBILITY: 'Responsabilidad de IVA',
   RUT_RESPONSIBILITIES: 'Responsabilidades del RUT',

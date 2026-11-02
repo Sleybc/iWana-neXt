@@ -36,3 +36,13 @@ describe('QW5 — escala de estados del contrato', () => {
     expect(CONTRACT_STATUS_META[status]).toEqual({ label, variant });
   });
 });
+
+describe('formatContractAlias', () => {
+  it('quita guiones bajos y deja cada palabra con mayúscula inicial', () => {
+    const { formatContractAlias } =
+      jest.requireActual<typeof import('./subscriber-ui')>('./subscriber-ui');
+    expect(formatContractAlias('EL_COLEGIO CR 2 2 02')).toBe('El Colegio Cr 2 2 02');
+    expect(formatContractAlias('  casa__ÁLVARO  ')).toBe('Casa Álvaro');
+    expect(formatContractAlias(null)).toBe('');
+  });
+});

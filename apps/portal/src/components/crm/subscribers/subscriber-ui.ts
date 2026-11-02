@@ -48,6 +48,20 @@ function toSentenceCaseLocation(value: string): string {
     .join(' ');
 }
 
+/** Alias de servicio legible: sin guiones bajos y con cada palabra en mayúscula inicial. */
+export function formatContractAlias(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/_+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(
+      (word) =>
+        word.charAt(0).toLocaleUpperCase('es-CO') + word.slice(1).toLocaleLowerCase('es-CO'),
+    )
+    .join(' ');
+}
+
 export function formatLocationLabel(value: string | null | undefined): string {
   const normalized = value?.trim() ?? '';
   if (!normalized) {

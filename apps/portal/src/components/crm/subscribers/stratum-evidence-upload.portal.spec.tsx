@@ -1,6 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { PersonType, ServiceUsage, VatLegalBasis, VatTreatment } from '@iwana/shared';
+import {
+  ExpedienteStatus,
+  PersonType,
+  ServiceUsage,
+  VatLegalBasis,
+  VatTreatment,
+} from '@iwana/shared';
 import type { Contract, Subscriber360Response } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
@@ -48,7 +54,7 @@ const WITHOUT_SUPPORT_WARNING =
 const EXPEDIENTE_SUMMARY = {
   id: 'exp-1',
   fullName: 'Ana Ruiz',
-  status: 'QUALIFIED',
+  status: ExpedienteStatus.PRECALIFICADO,
   source: null,
   createdAt: '2026-10-01T10:00:00.000Z',
   statusChangedAt: null,
@@ -87,6 +93,7 @@ function contractFixture(overrides: Partial<Contract> = {}): Contract {
     additionalProductIds: [],
     additionalServiceIds: [],
     paymentMethod: 'PSE',
+    billingCycleDay: null,
     billingCycle: 'Mensual',
     fiscalName: null,
     fiscalDocument: null,

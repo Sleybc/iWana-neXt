@@ -1,10 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { ServiceUsage } from '@iwana/shared';
+import { ExpedienteStatus, PersonType, ServiceUsage } from '@iwana/shared';
 import type { Contract, PlanCatalogItem, Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
+
+jest.mock('./use-billing-cycles', () => ({
+  useBillingCycles: () => ({ cycles: [], loading: false, error: false, retry: jest.fn() }),
+}));
 
 const CONTRACT: Contract = {
   id: 'contract-1',
@@ -31,6 +35,7 @@ const CONTRACT: Contract = {
   additionalProductIds: [],
   additionalServiceIds: [],
   paymentMethod: 'PSE',
+  billingCycleDay: null,
   billingCycle: 'Mensual',
   fiscalName: null,
   fiscalDocument: null,
@@ -45,7 +50,7 @@ const CONTRACT: Contract = {
 const EXPEDIENTE: NonNullable<Subscriber360Response['expedienteSummary']> = {
   id: 'exp-1',
   fullName: 'Prospecto de prueba',
-  status: 'QUALIFIED',
+  status: ExpedienteStatus.PRECALIFICADO,
   source: null,
   createdAt: '2026-10-01T10:00:00.000Z',
   statusChangedAt: null,
@@ -107,6 +112,7 @@ describe('ContractDetailDrawer — edición y transiciones', () => {
     expect(
       await screen.findByText('Selecciona el uso del servicio para actualizar el contrato.'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Uso del servicio' })).toHaveFocus();
     expect(updateServicePoint).not.toHaveBeenCalled();
 
     await chooseOption('Uso del servicio', 'Residencial');
@@ -114,7 +120,24 @@ describe('ContractDetailDrawer — edición y transiciones', () => {
     expect(
       await screen.findByText('Selecciona el estrato del predio de instalación.'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Estrato del predio de instalación' }),
+    ).toHaveFocus();
     expect(updateServicePoint).not.toHaveBeenCalled();
+  });
+
+  it('enfoca el estrato faltante al guardar la edición general del borrador', async () => {
+    renderDrawer({ ...CONTRACT, status: 'DRAFT', serviceUsage: null, installationStratum: null });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar contrato' }));
+    await chooseOption('Uso del servicio', 'Residencial');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Estrato del predio de instalación' }),
+      ).toHaveFocus(),
+    );
   });
 
   it('muestra el error de validación del servicio y permite cancelar sin cambiar el contrato', async () => {
@@ -148,25 +171,17 @@ describe('ContractDetailDrawer — edición y transiciones', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
 
-    expect(screen.getByRole('heading', { name: 'Sede principal' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sede Principal' })).toBeInTheDocument();
     expect(screen.queryByText('Alias sin guardar')).toBeNull();
   });
 
-  it('muestra la restricción de mora al intentar activar y deja el contrato como borrador', async () => {
-    jest
-      .spyOn(contractsApi, 'activate')
-      .mockRejectedValue(
-        new ApiError(409, 'SUBSCRIBER_SUSPENDED_FOR_DELINQUENCY', 'Activación no permitida'),
-      );
-    renderDrawer({ ...CONTRACT, status: 'DRAFT' });
+  it('delega la activación del borrador al diálogo que solicita el ciclo', () => {
+    const onActivate = jest.fn();
+    renderDrawer({ ...CONTRACT, status: 'DRAFT' }, { onActivate });
 
     fireEvent.click(screen.getByRole('button', { name: 'Activar' }));
 
-    expect(await screen.findByText('No puedes activar este servicio')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Dejar como borrador' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Dejar como borrador' }));
-    expect(screen.queryByText('No puedes activar este servicio')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Editar contrato' })).toBeInTheDocument();
+    expect(onActivate).toHaveBeenCalledWith(expect.objectContaining({ id: 'contract-1' }));
   });
 
   it('archiva un contrato suspendido después de recargar y cerrar el panel', async () => {
@@ -340,5 +355,52 @@ describe('CreateContractDialog — selección y guardado', () => {
       await screen.findByText('Selecciona el uso del servicio para continuar.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Crear servicio en borrador' })).toBeEnabled();
+  });
+});
+
+describe('Datos fiscales del contrato según el tipo de persona', () => {
+  it('no los pide al crear el servicio de una persona natural', () => {
+    render(
+      <CreateContractDialog
+        subscriberId="subscriber-test"
+        personType={PersonType.NATURAL}
+        onClose={jest.fn()}
+        onSuccess={jest.fn(async () => undefined)}
+      />,
+    );
+    expect(screen.queryByText('Datos fiscales (opcional)')).toBeNull();
+  });
+
+  it('los conserva al crear el servicio de una persona jurídica', () => {
+    render(
+      <CreateContractDialog
+        subscriberId="subscriber-test"
+        personType={PersonType.JURIDICA}
+        onClose={jest.fn()}
+        onSuccess={jest.fn(async () => undefined)}
+      />,
+    );
+    expect(screen.getByText('Datos fiscales (opcional)')).toBeInTheDocument();
+  });
+
+  it('oculta la sección al editar el contrato de una persona natural sin datos fiscales', () => {
+    renderDrawer({ ...CONTRACT, status: 'DRAFT' }, { personType: PersonType.NATURAL });
+    fireEvent.click(screen.getByRole('button', { name: 'Editar contrato' }));
+    expect(screen.queryByText('Datos fiscales')).toBeNull();
+  });
+
+  it('muestra los datos fiscales ya guardados aunque sea persona natural', () => {
+    renderDrawer(
+      { ...CONTRACT, status: 'DRAFT', fiscalName: 'Nombre guardado' },
+      { personType: PersonType.NATURAL },
+    );
+    expect(screen.getByText('Datos fiscales')).toBeInTheDocument();
+    expect(screen.getByText('Nombre guardado')).toBeInTheDocument();
+  });
+
+  it('muestra la sección al editar el contrato de una persona jurídica', () => {
+    renderDrawer({ ...CONTRACT, status: 'DRAFT' }, { personType: PersonType.JURIDICA });
+    fireEvent.click(screen.getByRole('button', { name: 'Editar contrato' }));
+    expect(screen.getByText('Datos fiscales')).toBeInTheDocument();
   });
 });

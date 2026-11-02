@@ -703,6 +703,11 @@ function SubscribersListClientInner() {
       <PageHeader
         title="Suscriptores"
         subtitle="Consulta y gestiona el ciclo de vida comercial de los suscriptores de la empresa."
+        actions={
+          <Button asChild variant="secondary" className="min-h-11">
+            <Link href="/dashboard/crm/subscribers/agenda-corte">Agenda de corte</Link>
+          </Button>
+        }
       />
 
       {error ? (

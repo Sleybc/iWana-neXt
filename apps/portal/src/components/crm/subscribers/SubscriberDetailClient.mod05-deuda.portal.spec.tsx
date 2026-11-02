@@ -78,6 +78,7 @@ function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberR
     privacyRestricted: false,
     anonymizedAt: null,
     anonymizedRequestId: null,
+    privacyMarks: [],
     ...overrides,
   };
 }
@@ -92,10 +93,19 @@ function buildSubscriber360(
     contracts,
     quotes: [],
     habeasData: [],
+    privacyDetailsRestricted: false,
     arcoRequests: [],
     privacyMarks: [],
     expedienteSummary: null,
     timelineSeed: [],
+    provisioningReadiness: {
+      status: 'PENDIENTE_DE_DATOS',
+      title: 'Preparación pendiente',
+      message: 'Faltan datos para continuar.',
+      canProvision: false,
+      retryable: false,
+      missingRequirements: [],
+    },
   };
 }
 
@@ -125,6 +135,7 @@ function buildSuspendedContract(): Contract {
     additionalProductIds: [],
     additionalServiceIds: [],
     paymentMethod: null,
+    billingCycleDay: null,
     billingCycle: null,
     fiscalName: null,
     fiscalDocument: null,
@@ -232,7 +243,7 @@ describe('SubscriberDetailClient — MOD05 deuda CD-04', () => {
     expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
   });
 
-  it('mantiene editables los datos fiscales y permite abrir Datos cuando el detalle no está restringido', async () => {
+  it('mantiene editables los datos fiscales y los abre en Tributario cuando el detalle no está restringido', async () => {
     const user = userEvent.setup();
     jest.spyOn(subscribersApi, 'get360').mockResolvedValue(buildSubscriber360(buildSubscriber()));
 
@@ -245,13 +256,32 @@ describe('SubscriberDetailClient — MOD05 deuda CD-04', () => {
     expect(screen.getByText('Gran contribuyente · Agente de retención de IVA')).toBeInTheDocument();
     await user.click(completeButton);
 
-    expect(screen.getByRole('tab', { name: 'Datos' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tributario' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(await screen.findByRole('region', { name: 'Datos fiscales' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Responsable' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /Gran contribuyente/ })).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Datos bloqueados' })).not.toBeInTheDocument(),
     );
+  });
+
+  it('abre Datos cuando solo faltan campos de identificación, como el dígito del NIT', async () => {
+    const user = userEvent.setup();
+    jest.spyOn(subscribersApi, 'get360').mockResolvedValue(
+      buildSubscriber360(
+        buildSubscriber({
+          fiscalCompleteness: { complete: false, missing: ['NIT_VERIFICATION_DIGIT'] },
+        }),
+      ),
+    );
+
+    render(<SubscriberDetailClient mode="detail" />);
+    await user.click(await screen.findByRole('button', { name: 'Completar datos fiscales' }));
+
+    expect(screen.getByRole('tab', { name: 'Datos' })).toHaveAttribute('aria-selected', 'true');
   });
 });
 
@@ -288,8 +318,8 @@ describe('SubscriberDetailClient — reactivación individual de un servicio', (
     render(<SubscriberDetailClient mode="detail" />);
 
     await user.click(await screen.findByRole('tab', { name: 'Servicios' }));
-    await user.click(screen.getByRole('button', { name: 'Acciones del contrato' }));
-    await user.click(screen.getByRole('button', { name: 'Reactivar' }));
+    await user.click(screen.getByRole('button', { name: /Acciones de / }));
+    await user.click(screen.getByRole('menuitem', { name: 'Reactivar' }));
 
     const lifecycleDialog = await screen.findByRole('dialog');
     expect(

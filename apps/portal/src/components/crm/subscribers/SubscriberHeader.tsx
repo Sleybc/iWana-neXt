@@ -17,6 +17,7 @@ import type { PrivacyMark } from '@iwana/shared';
 import { PrivacyMarks } from '@/components/privacy/PrivacyMarks';
 import { PrivacyAnonymizedBadge } from '@/components/privacy/PrivacyAnonymizedBadge';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
+import { filterRutResponsibilities } from './subscriber-fiscal';
 import {
   CUSTOMER_SEGMENT_META,
   PERSON_TYPE_META,
@@ -115,7 +116,7 @@ export function SubscriberHeader({
       <VatTreatmentBanner
         personType={subscriber.personType}
         vatResponsibility={subscriber.vatResponsibility}
-        rutResponsibilities={subscriber.rutResponsibilities ?? []}
+        rutResponsibilities={filterRutResponsibilities(subscriber.rutResponsibilities)}
       />
 
       {fiscalIncomplete && (

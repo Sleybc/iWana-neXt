@@ -137,6 +137,7 @@ function contractFixture(overrides: Partial<Contract> = {}): Contract {
     additionalProductIds: [],
     additionalServiceIds: [],
     paymentMethod: null,
+    billingCycleDay: null,
     billingCycle: null,
     fiscalName: null,
     fiscalDocument: null,

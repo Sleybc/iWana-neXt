@@ -1,31 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AccessPermissionKey, PersonType } from '@iwana/shared';
 import type { LifecycleAction, TransitionStatusPayload } from '@iwana/shared';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@iwana/ui';
-import { BriefcaseBusiness, Pencil, X } from 'lucide-react';
 import type { CreateSubscriberPayload, UpdateSubscriberPayload } from '@iwana/shared';
-import { ApiError, Subscriber360Response, crmApi, subscribersApi } from '@/lib/api-client';
-import { formatExpedienteStatus } from '@/components/crm/expedientes/expediente-ui';
+import { ApiError, Subscriber360Response, subscribersApi } from '@/lib/api-client';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
-import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
+import { SubscriberFiscalSection } from './SubscriberFiscalSection';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
 import { SubscriberTabsContainer } from './SubscriberTabsContainer';
 import { TaxProfileBlock } from './TaxProfileBlock';
 import { ServiciosTab } from './ServiciosTab';
 import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
+import { SubscriberOverviewTab } from './SubscriberOverviewTab';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
 import { SubscriberTechnicalServiceSection } from './SubscriberTechnicalServiceSection';
-import { CUSTOMER_SEGMENT_META, PERSON_TYPE_META, SUBSCRIBER_STATUS_META } from './subscriber-ui';
 
 interface SubscriberDetailClientProps {
   mode: 'create' | 'detail';
@@ -37,11 +33,6 @@ function mapError(error: unknown): string {
   }
 
   return 'No fue posible completar la operación del suscriptor.';
-}
-
-function toSentenceCase(value: string): string {
-  const normalized = value.replace(/_/g, ' ').toLowerCase();
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 const SUBSCRIBER_TAB_IDS = [
@@ -80,10 +71,14 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     description: string;
   } | null>(null);
   const [activeSubscriberTab, setActiveSubscriberTab] = useState(urlTab);
+  const [fiscalDirty, setFiscalDirty] = useState(false);
   const selectSubscriberTab = useCallback(
     (tabId: string) => {
       setActiveSubscriberTab(tabId);
-      const next = new URLSearchParams(queryString);
+      // Parte de la URL vigente: conserva parámetros escritos por las pestañas (p. ej. ?estado=).
+      const next = new URLSearchParams(
+        typeof window === 'undefined' ? queryString : window.location.search,
+      );
       next.set('tab', tabId);
       router.replace(`${pathname}?${next.toString()}`, { scroll: false });
     },
@@ -101,17 +96,6 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       router.replace(`${pathname}?${next.toString()}`, { scroll: false });
     }
   }, [urlTab, requestedTab, pathname, queryString, router]);
-
-  // Estado de edición del panel Facturación en la vista 360
-  const [billingEditing, setBillingEditing] = useState(false);
-  const [billingSaving, setBillingSaving] = useState(false);
-  const [billingError, setBillingError] = useState<string | null>(null);
-  const [billingSuccess, setBillingSuccess] = useState('');
-  const [billingDraft, setBillingDraft] = useState({
-    paymentMethod: '',
-    billingCycle: '',
-    fiscalName: '',
-  });
 
   useEffect(() => {
     if (!loading) {
@@ -152,229 +136,39 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
 
   const subscriber = subscriber360?.subscriber ?? null;
 
+  // IVA y RUT se completan en Tributario; el dígito del NIT y el representante legal, en Datos.
+  const openFiscalCompletion = useCallback(() => {
+    const missing = subscriber?.fiscalCompleteness?.missing ?? [];
+    selectSubscriberTab(
+      missing.some((field) => field === 'VAT_RESPONSIBILITY' || field === 'RUT_RESPONSIBILITIES')
+        ? 'tributario'
+        : 'datos',
+    );
+  }, [subscriber, selectSubscriberTab]);
+
   const tabs = useMemo(() => {
     if (!subscriber) {
       return [];
     }
 
+    // Datos y Tributario guardan por la misma vía y recargan la ficha.
+    const saveSubscriber = async (partial: Partial<UpdateSubscriberPayload>) => {
+      await subscribersApi.update(subscriber.id, partial as UpdateSubscriberPayload);
+      await loadSubscriber();
+    };
+
     return [
       {
         id: 'vista-general',
         label: 'Vista general',
-        content: (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Identidad del suscriptor</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                <p>
-                  <strong>Estado:</strong>{' '}
-                  {SUBSCRIBER_STATUS_META[subscriber.status]?.label ??
-                    toSentenceCase(subscriber.status)}
-                </p>
-                <p>
-                  <strong>Tipo:</strong>{' '}
-                  {PERSON_TYPE_META[subscriber.personType]?.label ??
-                    toSentenceCase(subscriber.personType)}
-                </p>
-                <p>
-                  <strong>Segmento:</strong>{' '}
-                  {CUSTOMER_SEGMENT_META[subscriber.customerSegment]?.label ??
-                    toSentenceCase(subscriber.customerSegment)}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Oportunidad de origen</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                {subscriber360?.expedienteSummary ? (
-                  <>
-                    <p>
-                      <strong>Estado:</strong>{' '}
-                      {formatExpedienteStatus(subscriber360.expedienteSummary.status)}
-                    </p>
-                    <Link
-                      className="text-iwana-primary underline"
-                      href={`/dashboard/crm/expedientes/${subscriber360.expedienteSummary.id}`}
-                    >
-                      Abrir oportunidad de origen
-                    </Link>
-                  </>
-                ) : (
-                  <p>No hay una oportunidad vinculada a este suscriptor.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Facturación: se configura al activar al cliente */}
-            <Card className="md:col-span-2">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="flex items-center gap-2">
-                  <BriefcaseBusiness className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
-                  Facturación
-                </CardTitle>
-                {subscriber360?.expedienteSummary &&
-                  !billingEditing &&
-                  !subscriber.privacyRestricted &&
-                  !subscriber.anonymizedAt && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      aria-label="Editar facturación"
-                      onClick={() => {
-                        const s = subscriber360.expedienteSummary!;
-                        setBillingDraft({
-                          paymentMethod: s.paymentMethod ?? '',
-                          billingCycle: s.billingCycle ?? '',
-                          fiscalName: s.fiscalName ?? '',
-                        });
-                        setBillingError(null);
-                        setBillingSuccess('');
-                        setBillingEditing(true);
-                      }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                      Editar
-                    </Button>
-                  )}
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                <p aria-live="polite" role="status">
-                  {billingSuccess}
-                </p>
-                {billingError && (
-                  <PortalAlert
-                    variant="error"
-                    live="assertive"
-                    title="No fue posible guardar la facturación"
-                    description={billingError}
-                  />
-                )}
-                {!subscriber360?.expedienteSummary ? (
-                  <p className="italic">Sin oportunidad vinculada. Facturación no disponible.</p>
-                ) : billingEditing && !subscriber.anonymizedAt ? (
-                  <div className="space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      {(
-                        [
-                          {
-                            key: 'paymentMethod',
-                            label: 'Método de pago',
-                            placeholder: 'Transferencia, PSE, efectivo...',
-                          },
-                          {
-                            key: 'billingCycle',
-                            label: 'Ciclo de facturación',
-                            placeholder: 'Mensual, quincenal...',
-                          },
-                          {
-                            key: 'fiscalName',
-                            label: 'Nombre fiscal',
-                            placeholder: 'Razón fiscal para facturación',
-                          },
-                        ] as const
-                      ).map(({ key, label, placeholder }) => (
-                        <label key={key} className="flex flex-col gap-1">
-                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                            {label}
-                          </span>
-                          <Input
-                            aria-label={label}
-                            disabled={billingSaving}
-                            placeholder={placeholder}
-                            type="text"
-                            value={billingDraft[key]}
-                            onChange={(e) =>
-                              setBillingDraft((prev) => ({ ...prev, [key]: e.target.value }))
-                            }
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <Button
-                        type="button"
-                        aria-label="Guardar facturación"
-                        loading={billingSaving}
-                        onClick={async () => {
-                          const expedienteId = subscriber360.expedienteSummary!.id;
-                          const payload: Record<string, unknown> = {};
-                          if (billingDraft.paymentMethod.trim())
-                            payload.paymentMethod = billingDraft.paymentMethod.trim();
-                          if (billingDraft.billingCycle.trim())
-                            payload.billingCycle = billingDraft.billingCycle.trim();
-                          if (billingDraft.fiscalName.trim())
-                            payload.fiscalName = billingDraft.fiscalName.trim();
-                          setBillingSaving(true);
-                          setBillingError(null);
-                          setBillingSuccess('');
-                          try {
-                            await crmApi.updateExpedienteSection(expedienteId, 'billing', payload);
-                            await loadSubscriber(true);
-                            setBillingEditing(false);
-                            setBillingSuccess('Facturación guardada.');
-                          } catch (saveErr) {
-                            setBillingError(mapError(saveErr));
-                          } finally {
-                            setBillingSaving(false);
-                          }
-                        }}
-                      >
-                        Guardar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={billingSaving}
-                        aria-label="Cancelar edición de facturación"
-                        onClick={() => setBillingEditing(false)}
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                        Cancelar
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-x-8 gap-y-2 sm:grid-cols-3">
-                    {(
-                      [
-                        {
-                          label: 'Método de pago',
-                          value: subscriber360.expedienteSummary.paymentMethod,
-                        },
-                        {
-                          label: 'Ciclo de facturación',
-                          value: subscriber360.expedienteSummary.billingCycle,
-                        },
-                        {
-                          label: 'Nombre fiscal',
-                          value: subscriber360.expedienteSummary.fiscalName,
-                        },
-                      ] as const
-                    ).map(({ label, value }) => (
-                      <div key={label}>
-                        <p className="text-xs font-medium text-gray-400">{label}</p>
-                        <p>
-                          {label === 'Nombre fiscal' && subscriber.anonymizedAt
-                            ? privacyDisplayValue(null, {
-                                anonymizedAt: subscriber.anonymizedAt,
-                              })
-                            : (value ?? (
-                                <span className="italic text-gray-400">No configurado</span>
-                              ))}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        ),
+        content: subscriber360 ? (
+          <SubscriberOverviewTab
+            subscriber360={subscriber360}
+            canReadPrivacy={canReadPrivacy}
+            onNavigate={selectSubscriberTab}
+            onReload={() => loadSubscriber(true)}
+          />
+        ) : null,
       },
       {
         id: 'servicios',
@@ -383,7 +177,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           <div className="space-y-4">
             <ServiciosTab
               subscriber360={subscriber360}
-              onReload={loadSubscriber}
+              onReload={async () => {
+                // Refresca sin desmontar la pestaña: un skeleton perdería el
+                // drawer abierto y su estado tras cambiar el plan o activar.
+                await loadSubscriber(true);
+              }}
               onOpenLifecycle={(action, contractId) => {
                 setLifecycleAction(action);
                 setLifecycleContractId(contractId ?? null);
@@ -404,72 +202,69 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       {
         id: 'datos',
         label: 'Datos',
-        content: (
-          <SubscriberSections
-            subscriber={subscriber}
-            onSave={async (partial) => {
-              await subscribersApi.update(subscriber.id, partial as UpdateSubscriberPayload);
-              await loadSubscriber();
-            }}
-          />
-        ),
+        content: <SubscriberSections subscriber={subscriber} onSave={saveSubscriber} />,
       },
       {
         id: 'tributario',
         label: 'Tributario',
+        pending: fiscalDirty,
         content: (
-          <TaxProfileBlock
-            subscriberId={subscriber.id}
-            onNavigateToServices={() => selectSubscriberTab('servicios')}
-          />
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+            <SubscriberFiscalSection
+              subscriber={subscriber}
+              onSave={saveSubscriber}
+              onDirtyChange={setFiscalDirty}
+            />
+            <TaxProfileBlock
+              subscriberId={subscriber.id}
+              onNavigateToServices={() => selectSubscriberTab('servicios')}
+            />
+          </div>
         ),
       },
       {
         id: 'cumplimiento',
         label: 'Cumplimiento',
-        content: canReadPrivacy ? (
-          <CompliancePanel
-            partyId={subscriber.partyId}
-            authorizations={subscriber360?.habeasData ?? []}
-            requests={subscriber360?.arcoRequests ?? []}
-            canManage={canManagePrivacy}
-            contracts={subscriber360?.contracts ?? []}
-            requesterDefaults={{
-              name:
-                subscriber.personType === PersonType.JURIDICA
-                  ? subscriber.businessName
-                  : `${subscriber.firstName ?? ''} ${subscriber.lastName ?? ''}`.trim(),
-              ...(subscriber.documentNumber !== undefined
-                ? { document: subscriber.documentNumber }
-                : {}),
-              ...((subscriber.email ?? subscriber.phone) !== undefined
-                ? { contact: subscriber.email ?? subscriber.phone }
-                : {}),
-            }}
-            onChanged={() => void loadSubscriber(true)}
-          />
-        ) : (
-          <PortalAlert
-            variant="warning"
-            title="No tienes acceso a datos de privacidad"
-            description="Solicita el permiso de lectura para consultar autorizaciones y solicitudes vinculadas."
-          />
-        ),
+        content:
+          canReadPrivacy && !subscriber360?.privacyDetailsRestricted ? (
+            <CompliancePanel
+              partyId={subscriber.partyId}
+              authorizations={subscriber360?.habeasData ?? []}
+              requests={subscriber360?.arcoRequests ?? []}
+              canManage={canManagePrivacy}
+              contracts={subscriber360?.contracts ?? []}
+              requesterDefaults={{
+                name:
+                  subscriber.personType === PersonType.JURIDICA
+                    ? subscriber.businessName
+                    : `${subscriber.firstName ?? ''} ${subscriber.lastName ?? ''}`.trim(),
+                ...(subscriber.documentNumber !== undefined
+                  ? { document: subscriber.documentNumber }
+                  : {}),
+                ...((subscriber.email ?? subscriber.phone) !== undefined
+                  ? { contact: subscriber.email ?? subscriber.phone ?? null }
+                  : {}),
+              }}
+              onChanged={() => void loadSubscriber(true)}
+            />
+          ) : (
+            <PortalAlert
+              variant="warning"
+              title="No tienes acceso a datos de privacidad"
+              description="Solicita el permiso de lectura para consultar autorizaciones y solicitudes vinculadas."
+            />
+          ),
       },
     ];
   }, [
     subscriber,
     subscriber360,
-    billingEditing,
-    billingDraft,
-    billingSaving,
-    billingError,
-    billingSuccess,
     selectSubscriberTab,
     loadSubscriber,
     canManagePrivacy,
     canReadPrivacy,
     canReadNetworkProvisioning,
+    fiscalDirty,
   ]);
 
   if (mode === 'create') {
@@ -559,7 +354,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                 setDialogOpen(true);
               }}
               onAddContact={() => selectSubscriberTab('datos')}
-              onCompleteFiscalData={() => selectSubscriberTab('datos')}
+              onCompleteFiscalData={openFiscalCompletion}
             />
           </div>
 
@@ -581,7 +376,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               setDialogOpen(false);
               selectSubscriberTab('datos');
             }}
-            onCompleteFiscalData={() => selectSubscriberTab('datos')}
+            onCompleteFiscalData={openFiscalCompletion}
             onTransition={async (payload: TransitionStatusPayload) => {
               await subscribersApi.transitionStatus(subscriber.id, payload);
               await loadSubscriber(true);

@@ -1,84 +1,80 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Button, FormStatus, Input, Select } from '@iwana/ui';
-import { Landmark, MapPin, Phone, UserRound } from 'lucide-react';
 import { DocumentType, isRutResponsibilitiesRequired, PersonType } from '@iwana/shared';
-import type { RutResponsibility, UpdateSubscriberPayload, VatResponsibility } from '@iwana/shared';
+import type { UpdateSubscriberPayload } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-client';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
+import { PortalPanel } from '@/components/shared/portal-ui';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
-import { SubscriberFiscalFields } from './SubscriberFiscalFields';
 import { validateNitVerificationDigit } from './subscriber-fiscal';
 import {
   DEPARTAMENTOS,
   getMunicipiosByDepartamento,
 } from '@/components/crm/expedientes/expediente-ui';
 
+const LocationPreviewMap = dynamic(() => import('./LocationPreviewMap'), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse bg-gray-100 dark:bg-dark-surface-3" />,
+});
+
 interface SubscriberSectionsProps {
   subscriber: SubscriberRecord;
   onSave: (partial: Partial<UpdateSubscriberPayload>) => Promise<void>;
 }
 
-// Tarjeta de sección con el mismo patrón visual que ExpedienteSections.renderSectionCard
-function SectionCard({
-  icon: Icon,
+/**
+ * Sección editable de la ficha sobre `PortalPanel` (receta de panel del portal): misma cabecera
+ * y superficie que el resto de bloques, sin tile decorativa. Con `dirty`, «Guardar cambios» solo
+ * se habilita si hay cambios pendientes y aparece «Descartar».
+ */
+export function SectionCard({
   title,
   description,
   saving,
   onSave,
   error,
+  dirty,
+  onDiscard,
   children,
 }: {
-  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
   title: string;
   description: string;
   saving: boolean;
   onSave: () => void;
   error: string | null;
+  /** Ausente: el botón queda siempre habilitado (comportamiento previo). */
+  dirty?: boolean;
+  onDiscard?: () => void;
   children: React.ReactNode;
 }) {
-  const titleId = useId();
-
   return (
-    <section
-      aria-labelledby={titleId}
-      className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2"
-    >
-      {/* Cabecera: icono + título + descripción */}
-      <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-border">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary-300">
-          <Icon className="h-5 w-5" aria-hidden={true} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 id={titleId} className="text-base font-bold text-gray-900 dark:text-white">
-            {title}
-          </h3>
-          <p className="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
-        </div>
+    <PortalPanel as="section" labelled title={title} description={description}>
+      {children}
+
+      <div className="mt-3">
+        <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
       </div>
 
-      {/* Contenido */}
-      <div className="px-5 py-5">
-        {children}
-
-        <div className="mt-3">
-          <FormStatus status={error ? 'error' : 'idle'} message={error ?? undefined} />
-        </div>
-
-        <div className="mt-5 flex justify-end">
-          <Button
-            type="button"
-            loading={saving}
-            onClick={onSave}
-            className="rounded-xl bg-iwana-primary px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-iwana-primary/90 disabled:opacity-50"
-          >
-            {saving ? 'Guardando sección...' : 'Guardar cambios'}
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        {dirty && onDiscard ? (
+          <Button type="button" variant="ghost" disabled={saving} onClick={onDiscard}>
+            Descartar
           </Button>
-        </div>
+        ) : null}
+        <Button
+          type="button"
+          loading={saving}
+          disabled={dirty === false || saving}
+          onClick={onSave}
+        >
+          {saving ? 'Guardando sección...' : 'Guardar cambios'}
+        </Button>
       </div>
-    </section>
+    </PortalPanel>
   );
 }
 
@@ -185,21 +181,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   const [savingIdent, setSavingIdent] = useState(false);
   const [errorIdent, setErrorIdent] = useState<string | null>(null);
 
-  // ── Estado sección Datos fiscales ────────────────────────────────────────────
-  const [fiscal, setFiscal] = useState<{
-    vatResponsibility: VatResponsibility | '';
-    rutResponsibilities: RutResponsibility[];
-  }>({
-    vatResponsibility: subscriber.vatResponsibility ?? '',
-    rutResponsibilities: subscriber.rutResponsibilities ?? [],
-  });
-  const [fiscalErrors, setFiscalErrors] = useState<{
-    vat?: string | undefined;
-    rut?: string | undefined;
-  }>({});
-  const [savingFiscal, setSavingFiscal] = useState(false);
-  const [errorFiscal, setErrorFiscal] = useState<string | null>(null);
-
   // ── Estado sección Contacto ──────────────────────────────────────────────────
   const [contact, setContact] = useState({
     email: subscriber.email ?? '',
@@ -218,7 +199,7 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
     department: subscriber.department ?? '',
     postalCode: subscriber.postalCode ?? '',
     coordinates:
-      subscriber.latitude !== null && subscriber.longitude !== null
+      subscriber.latitude != null && subscriber.longitude != null
         ? `${subscriber.latitude}, ${subscriber.longitude}`
         : '',
   });
@@ -241,11 +222,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       legalRepresentativeDocumentType: '',
       legalRepresentativeDocumentNumber: '',
     });
-    setFiscal({
-      vatResponsibility: subscriber.vatResponsibility ?? '',
-      rutResponsibilities: subscriber.rutResponsibilities ?? [],
-    });
-    setFiscalErrors({});
     setContact({
       email: subscriber.email ?? '',
       phone: subscriber.phone ?? '',
@@ -259,16 +235,17 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       department: subscriber.department ?? '',
       postalCode: subscriber.postalCode ?? '',
       coordinates:
-        subscriber.latitude !== null && subscriber.longitude !== null
+        subscriber.latitude != null && subscriber.longitude != null
           ? `${subscriber.latitude}, ${subscriber.longitude}`
           : '',
     });
   }, [subscriber]);
 
   const isJuridica = ident.personType === PersonType.JURIDICA;
+  // Los datos fiscales viven en la pestaña Tributario: aquí se valida contra lo guardado.
   const rutResponsibilitiesRequired = isRutResponsibilitiesRequired({
     personType: ident.personType,
-    vatResponsibility: fiscal.vatResponsibility || undefined,
+    vatResponsibility: subscriber.vatResponsibility ?? undefined,
   });
   const liveDigitError =
     isJuridica && ident.nit.trim() && ident.nitVerificationDigit.trim()
@@ -283,11 +260,8 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   // ── Guardar sección Identificación ──────────────────────────────────────────
   const saveIdent = async () => {
     setErrorIdent(null);
-    if (rutResponsibilitiesRequired && fiscal.rutResponsibilities.length === 0) {
-      setFiscalErrors((prev) => ({
-        ...prev,
-        rut: 'Selecciona al menos una responsabilidad del RUT.',
-      }));
+    if (rutResponsibilitiesRequired && !subscriber.rutResponsibilities?.length) {
+      setErrorIdent('Registra primero las responsabilidades del RUT en la pestaña Tributario.');
       return;
     }
     if (isJuridica && ident.nitVerificationDigit.trim()) {
@@ -339,30 +313,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
       setErrorIdent('No fue posible guardar la identificación.');
     } finally {
       setSavingIdent(false);
-    }
-  };
-
-  // ── Guardar sección Datos fiscales ──────────────────────────────────────────
-  const saveFiscal = async () => {
-    setErrorFiscal(null);
-    const nextErrors: { vat?: string | undefined; rut?: string | undefined } = {};
-    if (!fiscal.vatResponsibility) nextErrors.vat = 'Selecciona la responsabilidad de IVA.';
-    if (rutResponsibilitiesRequired && fiscal.rutResponsibilities.length === 0) {
-      nextErrors.rut = 'Selecciona al menos una responsabilidad del RUT.';
-    }
-    setFiscalErrors(nextErrors);
-    if (nextErrors.vat || nextErrors.rut || !fiscal.vatResponsibility) return;
-
-    setSavingFiscal(true);
-    try {
-      await onSave({
-        vatResponsibility: fiscal.vatResponsibility,
-        rutResponsibilities: fiscal.rutResponsibilities,
-      });
-    } catch {
-      setErrorFiscal('No fue posible guardar los datos fiscales.');
-    } finally {
-      setSavingFiscal(false);
     }
   };
 
@@ -490,10 +440,9 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
 
       {/* Grid 2 columnas: Identificación | Contacto + Dirección */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Columna izquierda: Identificación + Datos fiscales */}
+        {/* Columna izquierda: Identificación + Contacto */}
         <div className="space-y-6">
           <SectionCard
-            icon={UserRound}
             title="Identificación"
             description="Datos base del titular o razón social."
             saving={savingIdent}
@@ -502,23 +451,14 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
           >
             <div className="space-y-4">
               {/* Fila 1: tipo persona + documento */}
-              <div className="grid gap-4 md:grid-cols-3">
+              {/* En la página a dos columnas (lg) la tarjeta es angosta: dos campos por fila. */}
+              <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3">
                 <Select
                   label="Tipo de persona"
                   value={ident.personType}
                   onChange={(e) => {
                     const nextPersonType = e.target.value as PersonType;
                     setIdent((prev) => ({ ...prev, personType: nextPersonType }));
-                    setFiscalErrors((prev) => ({
-                      ...prev,
-                      rut:
-                        isRutResponsibilitiesRequired({
-                          personType: nextPersonType,
-                          vatResponsibility: fiscal.vatResponsibility || undefined,
-                        }) && fiscal.rutResponsibilities.length === 0
-                          ? 'Selecciona al menos una responsabilidad del RUT.'
-                          : undefined,
-                    }));
                   }}
                 >
                   {PERSON_TYPE_OPTIONS.map((opt) => (
@@ -682,46 +622,6 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
           </SectionCard>
 
           <SectionCard
-            icon={Landmark}
-            title="Datos fiscales"
-            description="Responsabilidad de IVA y responsabilidades que figuran en el RUT."
-            saving={savingFiscal}
-            onSave={saveFiscal}
-            error={errorFiscal}
-          >
-            <SubscriberFiscalFields
-              rutResponsibilitiesRequired={rutResponsibilitiesRequired}
-              vatResponsibility={fiscal.vatResponsibility}
-              rutResponsibilities={fiscal.rutResponsibilities}
-              onVatResponsibilityChange={(value) => {
-                setFiscal((prev) => ({ ...prev, vatResponsibility: value }));
-                setFiscalErrors((prev) => ({
-                  ...prev,
-                  vat: undefined,
-                  rut:
-                    isRutResponsibilitiesRequired({
-                      personType: ident.personType,
-                      vatResponsibility: value,
-                    }) && fiscal.rutResponsibilities.length === 0
-                      ? 'Selecciona al menos una responsabilidad del RUT.'
-                      : undefined,
-                }));
-              }}
-              onRutResponsibilitiesChange={(value) => {
-                setFiscal((prev) => ({ ...prev, rutResponsibilities: value }));
-                setFiscalErrors((prev) => ({ ...prev, rut: undefined }));
-              }}
-              vatError={fiscalErrors.vat}
-              rutError={fiscalErrors.rut}
-              layout="stacked"
-            />
-          </SectionCard>
-        </div>
-
-        {/* Columna derecha: Contacto + Dirección */}
-        <div className="space-y-6">
-          <SectionCard
-            icon={Phone}
             title="Contacto"
             description="Canales directos para comunicación con el suscriptor."
             saving={savingContact}
@@ -766,9 +666,11 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
               </div>
             </div>
           </SectionCard>
+        </div>
 
+        {/* Columna derecha: Dirección */}
+        <div className="space-y-6">
           <SectionCard
-            icon={MapPin}
             title="Dirección"
             description="Ubicación del suscriptor para servicio e instalación."
             saving={savingAddress}
@@ -850,12 +752,9 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                 {parsedMapCoordinates && parsedMapCoordinates !== null ? (
                   <div className="space-y-2">
                     <div className="h-56 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-border">
-                      <iframe
-                        title="Vista de ubicación del suscriptor"
-                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${parsedMapCoordinates.longitude - 0.01}%2C${parsedMapCoordinates.latitude - 0.01}%2C${parsedMapCoordinates.longitude + 0.01}%2C${parsedMapCoordinates.latitude + 0.01}&layer=mapnik&marker=${parsedMapCoordinates.latitude}%2C${parsedMapCoordinates.longitude}`}
-                        className="-mb-[38px] h-[calc(100%+38px)] w-full"
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
+                      <LocationPreviewMap
+                        latitude={parsedMapCoordinates.latitude}
+                        longitude={parsedMapCoordinates.longitude}
                       />
                     </div>
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">

@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useId, useState } from 'react';
+import { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@iwana/ui';
 import {
   portalModuleTabTriggerClassName,
@@ -12,6 +12,8 @@ export interface SubscriberTab {
   id: string;
   label: string;
   content: ReactNode;
+  /** Borrador sin guardar dentro de la pestaña: punto ámbar y texto para lectores de pantalla. */
+  pending?: boolean;
 }
 
 interface SubscriberTabsContainerProps {
@@ -36,6 +38,18 @@ export function SubscriberTabsContainer({
   const [visitedTabs, setVisitedTabs] = useState<string[]>([]);
 
   const currentTabId = currentTab?.id;
+  const previousTabId = useRef(currentTabId);
+  const focusedPanelId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    // Una acción dentro del panel no debe dejar el foco en contenido que acaba de ocultarse.
+    if (
+      previousTabId.current !== currentTabId &&
+      focusedPanelId.current === previousTabId.current
+    ) {
+      document.getElementById(`${instanceId}-panel-${currentTabId}`)?.focus();
+    }
+    previousTabId.current = currentTabId;
+  }, [currentTabId, instanceId]);
   // Conserva los paneles visitados y sus borradores también al navegar desde una acción del encabezado.
   useEffect(() => {
     if (currentTabId) {
@@ -51,7 +65,16 @@ export function SubscriberTabsContainer({
   }
 
   return (
-    <div className="min-w-0 space-y-4">
+    <div
+      className="min-w-0 space-y-4"
+      onFocusCapture={(event) => {
+        focusedPanelId.current = document
+          .getElementById(`${instanceId}-panel-${currentTabId}`)
+          ?.contains(event.target)
+          ? currentTabId
+          : undefined;
+      }}
+    >
       <div className={portalModuleTabsShellClassName}>
         <div
           role="tablist"
@@ -99,6 +122,15 @@ export function SubscriberTabsContainer({
                 className={portalModuleTabTriggerClassName}
               >
                 {tab.label}
+                {tab.pending ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="ml-1.5 inline-block h-2 w-2 rounded-full bg-amber-500"
+                    />
+                    <span className="sr-only"> (cambios sin guardar)</span>
+                  </>
+                ) : null}
               </Button>
             );
           })}

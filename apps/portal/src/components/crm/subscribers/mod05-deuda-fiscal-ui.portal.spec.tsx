@@ -8,6 +8,7 @@ import {
   ConsentChannel,
   CustomerSegment,
   DocumentType,
+  ExpedienteStatus,
   PersonType,
   calculateNitVerificationDigit,
   NitFormatError,
@@ -20,9 +21,14 @@ import type { Contract, Subscriber360Response, SubscriberRecord } from '@/lib/ap
 import { ApiError, commercialApi, subscriberTaxApi, privacyApi } from '@/lib/api-client';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
+
+jest.mock('./use-billing-cycles', () => ({
+  useBillingCycles: () => ({ cycles: [], loading: false, error: false, retry: jest.fn() }),
+}));
 import { TaxProfileBlock } from './TaxProfileBlock';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
+import { SubscriberFiscalSection } from './SubscriberFiscalSection';
 import { SubscriberSections } from './SubscriberSections';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
 import { readFiscalDataIncompleteError, validateNitVerificationDigit } from './subscriber-fiscal';
@@ -129,6 +135,7 @@ function subscriberFixture(overrides: Partial<SubscriberRecord> = {}): Subscribe
     privacyRestricted: false,
     anonymizedAt: null,
     anonymizedRequestId: null,
+    privacyMarks: [],
     ...overrides,
   };
 }
@@ -181,6 +188,7 @@ function contractFixture(): Contract {
     additionalProductIds: [],
     additionalServiceIds: [],
     paymentMethod: null,
+    billingCycleDay: null,
     billingCycle: null,
     fiscalName: null,
     fiscalDocument: null,
@@ -196,7 +204,7 @@ function contractFixture(): Contract {
 const EXPEDIENTE_SUMMARY = {
   id: 'exp-1',
   fullName: 'Titular Sintético',
-  status: 'QUALIFIED',
+  status: ExpedienteStatus.PRECALIFICADO,
   source: null,
   createdAt: '2026-10-17T10:00:00.000Z',
   statusChangedAt: null,
@@ -344,6 +352,11 @@ describe('MOD05 deuda B3 — punto 1: responsabilidad de IVA y del RUT en el alt
         .map((radio) => radio.closest('label')?.textContent),
     ).toEqual(['Responsable', 'No responsable']);
     const rutGroup = screen.getByRole('group', { name: 'Responsabilidades del RUT (opcional)' });
+    // Persona natural sin responsabilidad marcada: el catálogo opcional arranca plegado.
+    expect(within(rutGroup).queryAllByRole('checkbox')).toHaveLength(0);
+    fireEvent.click(
+      within(rutGroup).getByRole('button', { name: 'Agregar responsabilidades del RUT' }),
+    );
     const rutOptions = within(rutGroup).getAllByRole('checkbox');
     expect(rutOptions).toHaveLength(5);
     RUT_LABELS.forEach((label) => expect(within(rutGroup).getByText(label)).toBeInTheDocument());
@@ -724,7 +737,7 @@ describe('MOD05 deuda B3 — punto 4: completitud fiscal (D-M05)', () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(
-      <SubscriberSections
+      <SubscriberFiscalSection
         subscriber={subscriberFixture({
           vatResponsibility: null,
           rutResponsibilities: [],

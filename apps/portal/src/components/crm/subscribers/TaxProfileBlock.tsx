@@ -2,11 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Dialog,
   DialogClose,
   DialogContent,
@@ -15,7 +12,7 @@ import {
   DialogTitle,
   FormStatus,
 } from '@iwana/ui';
-import { Check, Plus, ShieldCheck, Pencil, X } from 'lucide-react';
+import { Check, Plus, Pencil, Receipt, X } from 'lucide-react';
 import { TaxCategory } from '@iwana/shared';
 import {
   ApiError,
@@ -28,24 +25,21 @@ import {
 } from '@/lib/api-client';
 import {
   PortalAlert,
+  PortalEmptyState,
+  PortalPanel,
   PortalSkeletonBlock,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
 
 // ── Constantes de UI ──────────────────────────────────────────────────────────
 
-const PROFILE_STATUS_META: Record<string, { label: string; badgeClass: string }> = {
-  PENDING_REVIEW: {
-    label: 'Pendiente de revisión',
-    badgeClass:
-      'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/30',
-  },
-  CONFIGURED: {
-    label: 'Configurado',
-    badgeClass:
-      'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800/30',
-  },
-};
+function formatReviewDate(value: string): string {
+  return new Date(value).toLocaleDateString('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 const ASSIGNMENT_STATUS_META: Record<string, { label: string; dotClass: string }> = {
   SUGGESTED: { label: 'Sugerido', dotClass: 'bg-amber-400' },
@@ -456,6 +450,25 @@ export function TaxProfileBlock({ subscriberId, onNavigateToServices }: TaxProfi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  // «Sin otros tributos» es una decisión explícita: deja el perfil revisado sin crear asignaciones.
+  const confirmWithoutTaxes = async () => {
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      setProfile(await subscriberTaxApi.confirmProfile(subscriberId));
+    } catch (err) {
+      setConfirmError(
+        err instanceof ApiError && err.code === 'TAX_PROFILE_HAS_PENDING_ASSIGNMENTS'
+          ? 'Confirma o ajusta los tributos sugeridos antes de marcar el perfil como revisado.'
+          : 'No fue posible guardar la revisión. Intenta de nuevo.',
+      );
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -482,128 +495,152 @@ export function TaxProfileBlock({ subscriberId, onNavigateToServices }: TaxProfi
     [profile],
   );
 
-  const profileStatusMeta = profile
-    ? (PROFILE_STATUS_META[profile.profileStatus] ?? PROFILE_STATUS_META['PENDING_REVIEW']!)
-    : null;
+  // Sugeridos sin confirmar: es lo único que le pide una acción al operador. Sin tributos no hay
+  // estado que mostrar (el perfil sin otros tributos es el caso normal, no un pendiente).
+  const pendingCount = visibleAssignments.filter(
+    (assignment) => assignment.status === 'SUGGESTED',
+  ).length;
+
+  const openAddModal = () => setShowAddModal(true);
+  const addButton = (
+    <Button
+      type="button"
+      variant="secondary"
+      className="min-h-11 gap-1.5"
+      aria-label="Agregar tributos del catálogo"
+      onClick={openAddModal}
+    >
+      <Plus className="h-4 w-4" aria-hidden="true" />
+      Agregar tributos
+    </Button>
+  );
+  const ready = !loading && !error && profile;
 
   return (
     <>
-      {loading ? (
-        <div aria-label="Cargando perfil tributario" aria-busy="true" className="space-y-3">
-          <PortalSkeletonBlock className="h-16 rounded-2xl" />
-          <PortalSkeletonBlock className="h-32 rounded-2xl" />
-        </div>
-      ) : null}
+      <PortalPanel
+        as="section"
+        labelled
+        title="Otros tributos"
+        titleAddon={
+          ready && pendingCount > 0 ? (
+            <Badge variant="warning">Por confirmar ({pendingCount})</Badge>
+          ) : null
+        }
+        description={
+          <>
+            El IVA se define en cada contrato, en{' '}
+            <button
+              type="button"
+              onClick={onNavigateToServices}
+              className={`inline font-semibold text-iwana-primary underline underline-offset-2 dark:text-iwana-primary-300 ${interactiveFocusClassName}`}
+            >
+              Servicios
+            </button>
+            . Aquí se registran solo los otros tributos que le apliquen.
+          </>
+        }
+        actions={ready && visibleAssignments.length > 0 ? addButton : undefined}
+        busy={loading}
+      >
+        {loading ? (
+          <div
+            role="status"
+            aria-label="Cargando perfil tributario"
+            aria-busy="true"
+            className="space-y-3"
+          >
+            <PortalSkeletonBlock className="h-16 rounded-2xl" />
+            <PortalSkeletonBlock className="h-16 rounded-2xl" />
+          </div>
+        ) : null}
 
-      {error ? (
-        <PortalAlert
-          variant="error"
-          title="No fue posible cargar el perfil tributario"
-          description={error}
-          action={
-            <Button type="button" variant="secondary" size="sm" onClick={() => void loadProfile()}>
-              Reintentar
-            </Button>
-          }
-        />
-      ) : null}
-
-      {!loading && !error && profile ? (
-        <Card className="rounded-[20px] shadow-sm">
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-iwana-primary" aria-hidden="true" />
-              <CardTitle className="text-base">Perfil tributario</CardTitle>
-
-              {profileStatusMeta && (
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${profileStatusMeta.badgeClass}`}
-                >
-                  {profileStatusMeta.label}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                aria-label="Agregar tributos del catálogo"
-                onClick={() => setShowAddModal(true)}
-                className="flex min-h-11 items-center gap-1 rounded-lg bg-iwana-primary px-3 text-xs font-semibold text-white hover:opacity-90"
+        {error ? (
+          <PortalAlert
+            variant="error"
+            title="No fue posible cargar los tributos"
+            description={error}
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void loadProfile()}
               >
-                <Plus className="h-3 w-3" aria-hidden="true" />
-                Agregar tributos
-              </button>
-            </div>
-          </CardHeader>
+                Reintentar
+              </Button>
+            }
+          />
+        ) : null}
 
-          <CardContent>
-            <PortalAlert
-              variant="info"
-              title="Consulta el IVA por contrato"
-              description={
+        {ready && visibleAssignments.length === 0 ? (
+          <PortalEmptyState
+            embedded
+            icon={Receipt}
+            title="Sin otros tributos"
+            description={
+              profile.profileStatus === 'CONFIGURED' && profile.confirmedAt ? (
                 <>
-                  El IVA se consulta en cada contrato, en{' '}
-                  <button
-                    type="button"
-                    onClick={onNavigateToServices}
-                    className={`inline-flex min-h-11 items-center font-semibold text-iwana-primary underline underline-offset-2 ${interactiveFocusClassName}`}
-                  >
-                    Servicios
-                  </button>
-                  .
+                  Revisado: no le aplican otros tributos ({formatReviewDate(profile.confirmedAt)}).
+                  Agrégalos si eso cambia.
                 </>
-              }
-            />
-
-            {visibleAssignments.length === 0 && (
-              <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  No hay otros tributos asignados a este suscriptor. Puedes agregar los que le
-                  correspondan desde el catálogo.
-                </p>
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="flex min-h-11 items-center gap-1.5 rounded-lg bg-iwana-primary px-4 text-sm font-semibold text-white hover:opacity-90"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  Agregar tributos
-                </button>
-              </div>
-            )}
-
-            {visibleAssignments.length > 0 && (
-              <>
-                <ul
-                  aria-label="Asignaciones tributarias del suscriptor"
-                  className="flex flex-col gap-2"
-                >
-                  {visibleAssignments.map((assignment) => (
-                    <AssignmentRow
-                      key={assignment.id}
-                      assignment={assignment}
-                      subscriberId={subscriberId}
-                      onUpdated={setProfile}
-                    />
-                  ))}
-                </ul>
-
-                {profile.confirmedAt && (
-                  <p className="mt-3 text-right text-xs text-gray-400 dark:text-gray-400">
-                    Configurado el{' '}
-                    {new Date(profile.confirmedAt).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
+              ) : (
+                'Este suscriptor no tiene otros tributos. Confirma la revisión o agrégalos si le aplican.'
+              )
+            }
+            action={
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {profile.profileStatus !== 'CONFIGURED' ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="min-h-11 gap-1.5"
+                      loading={confirming}
+                      onClick={() => void confirmWithoutTaxes()}
+                    >
+                      <Check className="h-4 w-4" aria-hidden="true" />
+                      Confirmar sin otros tributos
+                    </Button>
+                  ) : null}
+                  {addButton}
+                </div>
+                {confirmError ? (
+                  <p role="alert" className="text-xs text-rose-600">
+                    {confirmError}
                   </p>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+                ) : null}
+              </div>
+            }
+          />
+        ) : null}
 
-      {!loading && !error && profile ? (
+        {ready && visibleAssignments.length > 0 ? (
+          <>
+            <ul
+              aria-label="Asignaciones tributarias del suscriptor"
+              className="flex flex-col gap-2"
+            >
+              {visibleAssignments.map((assignment) => (
+                <AssignmentRow
+                  key={assignment.id}
+                  assignment={assignment}
+                  subscriberId={subscriberId}
+                  onUpdated={setProfile}
+                />
+              ))}
+            </ul>
+
+            {profile.confirmedAt && pendingCount === 0 && (
+              <p className="mt-3 text-right text-xs text-gray-500 dark:text-gray-400">
+                Configurado el {formatReviewDate(profile.confirmedAt)}
+              </p>
+            )}
+          </>
+        ) : null}
+      </PortalPanel>
+
+      {ready ? (
         <AddTributosModal
           open={showAddModal}
           onClose={() => setShowAddModal(false)}

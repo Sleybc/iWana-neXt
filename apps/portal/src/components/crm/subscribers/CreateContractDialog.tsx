@@ -26,6 +26,8 @@ import {
 } from '@/components/shared/portal-ui';
 import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
 import { readFiscalDataIncompleteError } from './subscriber-fiscal';
+import { BillingCycleField } from './BillingCycleField';
+import { useBillingCycles } from './use-billing-cycles';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import {
@@ -57,14 +59,6 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: 'Tarjeta débito', label: 'Tarjeta débito' },
   { value: 'Tarjeta crédito', label: 'Tarjeta crédito' },
   { value: 'Domiciliación bancaria', label: 'Domiciliación bancaria' },
-];
-
-const BILLING_CYCLE_OPTIONS = [
-  { value: 'Mensual', label: 'Mensual' },
-  { value: 'Bimestral', label: 'Bimestral' },
-  { value: 'Trimestral', label: 'Trimestral' },
-  { value: 'Semestral', label: 'Semestral' },
-  { value: 'Anual', label: 'Anual' },
 ];
 
 // ── Estilos base ──────────────────────────────────────────────────────────────
@@ -104,7 +98,7 @@ interface FormState {
   additionalProducts: SearchablePickerItem[];
   additionalServices: SearchablePickerItem[];
   paymentMethod: string;
-  billingCycle: string;
+  billingCycleDay: string;
   fiscalName: string;
   fiscalDocument: string;
   fiscalAddress: string;
@@ -124,7 +118,7 @@ const INITIAL_FORM: FormState = {
   additionalProducts: [],
   additionalServices: [],
   paymentMethod: '',
-  billingCycle: '',
+  billingCycleDay: '',
   fiscalName: '',
   fiscalDocument: '',
   fiscalAddress: '',
@@ -139,6 +133,7 @@ export function CreateContractDialog({
   onSuccess,
 }: CreateContractDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const billingCycles = useBillingCycles();
   // Estos diálogos se montan/desmontan desde el padre, así que su apertura es su
   // propia presencia: se difunde `true` mientras vivan y el hook libera el estado
   // al desmontar. Sin esto el chrome queda bajo el velo pero NO inerte y el foco
@@ -317,7 +312,7 @@ export function CreateContractDialog({
         ...(additionalProductIds.length > 0 ? { additionalProductIds } : {}),
         ...(additionalServiceIds.length > 0 ? { additionalServiceIds } : {}),
         ...(form.paymentMethod ? { paymentMethod: form.paymentMethod } : {}),
-        ...(form.billingCycle ? { billingCycle: form.billingCycle } : {}),
+        ...(form.billingCycleDay ? { billingCycleDay: Number(form.billingCycleDay) } : {}),
         ...(form.fiscalName ? { fiscalName: form.fiscalName } : {}),
         ...(form.fiscalDocument ? { fiscalDocument: form.fiscalDocument } : {}),
         ...(form.fiscalAddress ? { fiscalAddress: form.fiscalAddress } : {}),
@@ -546,6 +541,7 @@ export function CreateContractDialog({
             </div>
 
             <ServicePointFields
+              fieldIdPrefix="create-contract"
               personType={personType}
               serviceUsage={serviceUsage}
               onServiceUsageChange={(value) => {
@@ -635,60 +631,61 @@ export function CreateContractDialog({
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className={labelCls}>Ciclo de facturación</label>
-                  <select
-                    value={form.billingCycle}
-                    onChange={set('billingCycle')}
-                    className={selectCls}
-                  >
-                    <option value="">— Sin especificar —</option>
-                    {BILLING_CYCLE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <BillingCycleField
+                  cycles={billingCycles.cycles}
+                  value={form.billingCycleDay}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, billingCycleDay: value }))
+                  }
+                  loading={billingCycles.loading}
+                  catalogError={billingCycles.error}
+                  onRetry={billingCycles.retry}
+                  disabled={saving}
+                  allowUnassigned
+                  id="create-contract-billing-cycle"
+                />
               </div>
             </div>
 
             {/* ── Datos fiscales (opcional) ──────────────────────────────── */}
-            <div>
-              <p className={sectionTitleCls}>Datos fiscales (opcional)</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelCls}>Nombre fiscal</label>
-                  <input
-                    type="text"
-                    value={form.fiscalName}
-                    onChange={set('fiscalName')}
-                    placeholder="Razón social o nombre"
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Documento / NIT</label>
-                  <input
-                    type="text"
-                    value={form.fiscalDocument}
-                    onChange={set('fiscalDocument')}
-                    placeholder="900.123.456-7"
-                    className={inputCls}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Dirección fiscal</label>
-                  <input
-                    type="text"
-                    value={form.fiscalAddress}
-                    onChange={set('fiscalAddress')}
-                    placeholder="Dirección de facturación"
-                    className={inputCls}
-                  />
+            {/* Persona natural: el nombre y el documento ya son los del suscriptor. */}
+            {personType !== PersonType.NATURAL && (
+              <div>
+                <p className={sectionTitleCls}>Datos fiscales (opcional)</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Nombre fiscal</label>
+                    <input
+                      type="text"
+                      value={form.fiscalName}
+                      onChange={set('fiscalName')}
+                      placeholder="Razón social o nombre"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Documento / NIT</label>
+                    <input
+                      type="text"
+                      value={form.fiscalDocument}
+                      onChange={set('fiscalDocument')}
+                      placeholder="900.123.456-7"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Dirección fiscal</label>
+                    <input
+                      type="text"
+                      value={form.fiscalAddress}
+                      onChange={set('fiscalAddress')}
+                      placeholder="Dirección de facturación"
+                      className={inputCls}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </form>
 
@@ -720,6 +717,7 @@ export function CreateContractDialog({
 
 /** Campos compartidos del punto de servicio para crear, convertir y editar. */
 export function ServicePointFields({
+  fieldIdPrefix = 'service-point',
   personType,
   serviceUsage,
   onServiceUsageChange,
@@ -734,6 +732,8 @@ export function ServicePointFields({
   stratumError,
   disabled = false,
 }: {
+  /** Prefijo estable de ids para enfocar los campos desde el formulario que los usa. */
+  fieldIdPrefix?: string;
   personType: PersonType;
   serviceUsage: ServiceUsage | '';
   onServiceUsageChange: (value: ServiceUsage | '') => void;
@@ -793,6 +793,7 @@ export function ServicePointFields({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Select
+            id={`${fieldIdPrefix}-usage`}
             label="Uso del servicio"
             helperText="Puedes dejarlo pendiente si aún no conoces el uso; será necesario al activar el contrato."
             value={serviceUsage}
@@ -818,6 +819,7 @@ export function ServicePointFields({
 
         {serviceUsage === ServiceUsage.RESIDENTIAL ? (
           <Select
+            id={`${fieldIdPrefix}-stratum`}
             label="Estrato del predio de instalación"
             value={installationStratum}
             onChange={(event) => onInstallationStratumChange(event.target.value)}

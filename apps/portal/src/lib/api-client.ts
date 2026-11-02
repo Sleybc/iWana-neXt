@@ -103,7 +103,9 @@ import {
   type ListMeta,
   type ListResponse,
   type SearchSubscribersInput,
-  type SubscriberDetail,
+  type Subscriber360Quote,
+  type Subscriber360Response,
+  type SubscriberRecord,
   type SubscriberListItem,
   type SubscriberQueueCounts,
   type StockIssuePickableItem,
@@ -221,6 +223,11 @@ import type {
   ContractFromExpedienteCreateInput,
   ContractServicePointUpdateInput,
   ContractUpdateInput,
+  ContractPlanChangeInput,
+  ActivateContractInput,
+  BillingCycleOption,
+  CutoffAgendaItem,
+  CutoffAgendaResponse,
   PlanCatalogTaxFields,
   SubscriberTaxProfileSnapshot as SharedSubscriberTaxProfileSnapshot,
   UpdateCatalogItemTaxFields,
@@ -238,6 +245,8 @@ import {
 } from './list-meta';
 
 export type { ListMeta, ListResponse };
+export type { Subscriber360Quote, Subscriber360Response, SubscriberRecord };
+export type { BillingCycleOption, CutoffAgendaItem, CutoffAgendaResponse };
 export { EMPTY_LIST_META, normalizeListMeta, collectListPages, emptyPageListMeta };
 
 /** Contrato HTTP uniforme E-4 lookup (`GET …/search`). FE mapea a `{ items, total }`. */
@@ -2885,6 +2894,14 @@ export const commercialApi = {
   deleteAdditionalService: (serviceId: string, tenantSlug?: string) =>
     request<void>(`/commercial/catalog/${serviceId}`, { method: 'DELETE' }, tenantSlug),
 
+  /** Tarifa vigente del plan para el segmento comercial revisado. */
+  getPlanPrice: (planId: string, segment: CustomerSegment, tenantSlug?: string) =>
+    request<{ basePrice: string | number }>(
+      `/commercial/catalog/${planId}/price?${new URLSearchParams({ segment }).toString()}`,
+      undefined,
+      tenantSlug,
+    ),
+
   /** Lookup typeahead E-4 — planes activos por defecto. */
   searchPlansForPicker: (
     params: { q: string; isActive?: boolean; limit?: number },
@@ -5144,7 +5161,7 @@ export interface OrganizationSiteDetail extends OrganizationSiteSummary {
 
 export interface CreateOrganizationSiteDto {
   name: string;
-  code: string;
+  code?: string;
   siteType: OrganizationSiteType;
   capabilities?: OrganizationSiteCapability[];
   address?: string | null;
@@ -5979,61 +5996,6 @@ export interface ExpedienteDocumentSupportResponse {
   summary: ExpedienteDocumentSummary;
 }
 
-export interface SubscriberRecord extends Pick<
-  SubscriberDetail,
-  | 'privacyRestricted'
-  | 'anonymizedAt'
-  | 'anonymizedRequestId'
-  | 'vatResponsibility'
-  | 'rutResponsibilities'
-  | 'legalRepresentative'
-  | 'fiscalCompleteness'
-  | 'taxRegime'
-> {
-  id: string;
-  tenantId: string;
-  userId: string | null;
-  personType: PersonType;
-  customerSegment: CustomerSegment;
-  documentType: DocumentType | null;
-  documentNumber?: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  stratum: number | null;
-  birthDate: string | null;
-  nit: string | null;
-  nitVerificationDigit: string | null;
-  businessName: string | null;
-  commercialName: string | null;
-  altContactName: string | null;
-  altContactPhone?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  contactPending: boolean;
-  whatsapp: string | null;
-  vatTreatment: VatTreatment;
-  address: string | null;
-  neighborhood: string | null;
-  city: string | null;
-  department: string | null;
-  postalCode: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  coverageNodeId: string | null;
-  expedienteId: string | null;
-  convertedAt: string | null;
-  activatedAt: string | null;
-  manualOverrideReason: string | null;
-  status: SubscriberStatus;
-  hasLiveContracts: boolean;
-  externalId: string | null;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  partyId?: string | null;
-}
-
 export interface ListSubscribersParams {
   status?: SubscriberStatus;
   personType?: PersonType;
@@ -6067,37 +6029,6 @@ export type ContractStatus = ContractResponse['status'];
 export type CreateContractPayload = Omit<ContractCreateInput, 'subscriberId'>;
 
 export type CreateContractFromExpedientePayload = ContractFromExpedienteCreateInput;
-
-export interface Subscriber360Response {
-  subscriber: SubscriberRecord;
-  contacts: unknown[];
-  contracts: Contract[];
-  quotes: unknown[];
-  habeasData: DataAuthorizationView[];
-  arcoRequests: RequestSummary[];
-  privacyMarks: PrivacyMark[];
-  expedienteSummary: {
-    id: string;
-    fullName: string;
-    status: string;
-    source: string | null;
-    createdAt: string;
-    statusChangedAt: string | null;
-    paymentMethod: string | null;
-    billingCycle: string | null;
-    fiscalName: string | null;
-    /** Inter?s comercial capturado en el expediente CRM */
-    interestedPlanId: string | null;
-    additionalProductIds: string[];
-    additionalServiceIds: string[];
-    commercialNotes: string | null;
-  } | null;
-  timelineSeed: Array<{
-    type: string;
-    occurredAt: string;
-    expedienteId: string | null;
-  }>;
-}
 
 // ?? Perfil tributario por suscriptor (Taxation MVP por cliente) ???????????????
 
@@ -6977,6 +6908,14 @@ export const subscriberTaxApi = {
       tenantSlug,
     ),
 
+  /** Da por revisado el perfil cuando no aplican otros tributos (409 si quedan sugeridos). */
+  confirmProfile: (subscriberId: string, tenantSlug?: string) =>
+    request<SubscriberTaxProfileSnapshot>(
+      `/crm/subscribers/${subscriberId}/tax-profile/confirm`,
+      { method: 'POST' },
+      tenantSlug,
+    ),
+
   /**
    * Guarda (upsert) la lista completa de asignaciones tributarias.
    * El ?rea de facturaci?n usa este endpoint para confirmar o ajustar el checklist.
@@ -7095,6 +7034,14 @@ export const contractsApi = {
   getById: (id: string, tenantSlug?: string) =>
     request<Contract>(`/crm/contracts/${id}`, undefined, tenantSlug),
 
+  /** Aplica el cambio comercial sobre la versión revisada del contrato. */
+  changePlan: (id: string, input: ContractPlanChangeInput, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}/plan-change`,
+      { method: 'POST', body: JSON.stringify(input) },
+      tenantSlug,
+    ),
+
   /** Actualiza campos editables de un contrato (no incluye status). */
   update: (id: string, payload: ContractUpdateInput, tenantSlug?: string) =>
     request<Contract>(
@@ -7134,9 +7081,13 @@ export const contractsApi = {
   remove: (id: string, tenantSlug?: string) =>
     request<void>(`/crm/contracts/${id}`, { method: 'DELETE' }, tenantSlug),
 
-  /** Transiciona DRAFT ? ACTIVE. */
-  activate: (id: string, tenantSlug?: string) =>
-    request<Contract>(`/crm/contracts/${id}/activate`, { method: 'POST' }, tenantSlug),
+  /** Transiciona DRAFT ? ACTIVE con el ciclo elegido por el operador. */
+  activate: (id: string, payload: ActivateContractInput, tenantSlug?: string) =>
+    request<Contract>(
+      `/crm/contracts/${id}/activate`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
 
   /** Transiciona ACTIVE ? SUSPENDED. */
   suspend: (id: string, payload: LifecycleSuspendCommand, tenantSlug?: string) =>
@@ -7177,6 +7128,25 @@ export const contractsApi = {
   /** Transiciona TERMINATED|SUSPENDED ? ARCHIVED. */
   archive: (id: string, tenantSlug?: string) =>
     request<Contract>(`/crm/contracts/${id}/archive`, { method: 'POST' }, tenantSlug),
+};
+
+/** Lecturas de catálogo y agenda de corte por servicio. */
+export const billingCyclesApi = {
+  list: (tenantSlug?: string) =>
+    request<BillingCycleOption[]>('/crm/billing-cycles', { returnFullResponse: true }, tenantSlug),
+
+  cutoffAgenda: (params: { date?: string; page?: number; limit?: number }, tenantSlug?: string) => {
+    const searchParams = new URLSearchParams();
+    if (params.date) searchParams.set('date', params.date);
+    if (params.page != null) searchParams.set('page', String(params.page));
+    if (params.limit != null) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return request<CutoffAgendaResponse>(
+      `/crm/billing-cycles/cutoff-agenda${query ? `?${query}` : ''}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    );
+  },
 };
 
 // ─── MOD11 — Ejecución Operativa / Tareas ────────────────────────────────────

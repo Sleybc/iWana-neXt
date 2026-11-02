@@ -29,7 +29,7 @@ import { NaturalPersonFields } from './NaturalPersonFields';
 import { PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import { SharedPersonFields } from './SharedPersonFields';
 import { SubscriberFiscalFields } from './SubscriberFiscalFields';
-import { validateNitVerificationDigit } from './subscriber-fiscal';
+import { filterRutResponsibilities, validateNitVerificationDigit } from './subscriber-fiscal';
 import { VatTreatmentBanner } from './VatTreatmentBanner';
 
 const CONSENT_CHANNEL_OPTIONS = [
@@ -93,7 +93,7 @@ function buildDefaults(initialData?: SubscriberRecord | null): SubscriberFormVal
     legalRepresentativeDocumentType: '',
     legalRepresentativeDocumentNumber: '',
     vatResponsibility: initialData?.vatResponsibility ?? '',
-    rutResponsibilities: initialData?.rutResponsibilities ?? [],
+    rutResponsibilities: filterRutResponsibilities(initialData?.rutResponsibilities),
     email: initialData?.email ?? '',
     phone: initialData?.phone ?? '',
     whatsapp: initialData?.whatsapp ?? '',
@@ -613,7 +613,7 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
             <VatTreatmentBanner
               personType={initialData.personType}
               vatResponsibility={initialData.vatResponsibility}
-              rutResponsibilities={initialData.rutResponsibilities ?? []}
+              rutResponsibilities={filterRutResponsibilities(initialData.rutResponsibilities)}
             />
           )}
 

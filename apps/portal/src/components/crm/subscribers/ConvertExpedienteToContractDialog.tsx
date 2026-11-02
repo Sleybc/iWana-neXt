@@ -14,6 +14,9 @@ import { stratumEvidenceUploadErrorMessage } from './stratum-evidence';
 import { usePortalModalDrawerBroadcast } from '@/components/shared/use-portal-modal-drawer-broadcast';
 import { usePortalSideDrawerA11y } from '@/components/shared/use-portal-side-drawer-a11y';
 import { SearchablePicker, type SearchablePickerItem } from '@/components/shared/SearchablePicker';
+import { BillingCycleField } from './BillingCycleField';
+import { suggestedCycleDay } from './billing-cycle-ui';
+import { useBillingCycles } from './use-billing-cycles';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +38,7 @@ export function ConvertExpedienteToContractDialog({
   onSuccess,
 }: ConvertExpedienteToContractDialogProps) {
   const [loading, setLoading] = useState(false);
+  const billingCycles = useBillingCycles();
   // Estos diálogos se montan/desmontan desde el padre, así que su apertura es su
   // propia presencia: se difunde `true` mientras vivan y el hook libera el estado
   // al desmontar. Sin esto el chrome queda bajo el velo pero NO inerte y el foco
@@ -50,6 +54,8 @@ export function ConvertExpedienteToContractDialog({
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [evidenceUploadError, setEvidenceUploadError] = useState<string | null>(null);
   const [stratumError, setStratumError] = useState<string | undefined>();
+  const [billingCycleDay, setBillingCycleDay] = useState('');
+  const [suggestionApplied, setSuggestionApplied] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     expedienteSummary.interestedPlanId ?? null,
   );
@@ -65,6 +71,19 @@ export function ConvertExpedienteToContractDialog({
   // affordance de cierre para teclado y AT (contrato del velo §2). Escape
   // replica ese botón, que aquí cierra sin guarda.
   usePortalSideDrawerA11y(true, dialogRef, onClose);
+
+  useEffect(() => {
+    if (billingCycles.loading || billingCycles.error || suggestionApplied) return;
+    const suggestion = suggestedCycleDay(billingCycles.cycles, expedienteSummary.billingCycle);
+    setBillingCycleDay(suggestion == null ? '' : String(suggestion));
+    setSuggestionApplied(true);
+  }, [
+    billingCycles.cycles,
+    billingCycles.error,
+    billingCycles.loading,
+    expedienteSummary.billingCycle,
+    suggestionApplied,
+  ]);
 
   useEffect(() => {
     const planId = expedienteSummary.interestedPlanId;
@@ -134,6 +153,7 @@ export function ConvertExpedienteToContractDialog({
     try {
       const created = await contractsApi.createFromExpediente(subscriberId, {
         expedienteId: expedienteSummary.id,
+        ...(billingCycleDay ? { billingCycleDay: Number(billingCycleDay) } : {}),
         ...(serviceUsage ? { serviceUsage } : {}),
         ...(serviceUsage === ServiceUsage.RESIDENTIAL
           ? { installationStratum: Number(installationStratum) }
@@ -224,25 +244,50 @@ export function ConvertExpedienteToContractDialog({
           <dl className="space-y-2">
             <SummaryRow label="Método de pago" value={expedienteSummary.paymentMethod ?? '—'} />
             <SummaryRow
-              label="Ciclo de facturación"
+              label="Dato anterior del expediente"
               value={expedienteSummary.billingCycle ?? '—'}
             />
             {(expedienteSummary.additionalProductIds?.length ?? 0) > 0 && (
               <SummaryRow
                 label="Productos adicionales"
-                value={`${expedienteSummary.additionalProductIds.length} producto(s)`}
+                value={`${(expedienteSummary.additionalProductIds ?? []).length} producto(s)`}
               />
             )}
             {(expedienteSummary.additionalServiceIds?.length ?? 0) > 0 && (
               <SummaryRow
                 label="Servicios adicionales"
-                value={`${expedienteSummary.additionalServiceIds.length} servicio(s)`}
+                value={`${(expedienteSummary.additionalServiceIds ?? []).length} servicio(s)`}
               />
             )}
             {expedienteSummary.commercialNotes && (
               <SummaryRow label="Notas" value={expedienteSummary.commercialNotes} />
             )}
           </dl>
+          {expedienteSummary.billingCycle ? (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Este dato no asigna un ciclo de facturación.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-5">
+          <BillingCycleField
+            cycles={billingCycles.cycles}
+            value={billingCycleDay}
+            onChange={setBillingCycleDay}
+            loading={billingCycles.loading}
+            catalogError={billingCycles.error}
+            onRetry={billingCycles.retry}
+            disabled={loading || Boolean(savedDraftId)}
+            allowUnassigned
+            helperText={
+              suggestedCycleDay(billingCycles.cycles, expedienteSummary.billingCycle) ===
+              Number(billingCycleDay)
+                ? 'Revisa el ciclo sugerido antes de crear el borrador.'
+                : undefined
+            }
+            id="convert-contract-billing-cycle"
+          />
         </div>
 
         <div className="mt-5">

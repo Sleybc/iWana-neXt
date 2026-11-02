@@ -3,6 +3,7 @@ import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import {
   PersonType,
+  ExpedienteStatus,
   ServiceUsage,
   TaxAssignmentRateSource,
   TaxAssignmentStatus,
@@ -24,6 +25,10 @@ import { VatTreatmentBanner } from './VatTreatmentBanner';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog, ServicePointFields } from './CreateContractDialog';
+
+jest.mock('./use-billing-cycles', () => ({
+  useBillingCycles: () => ({ cycles: [], loading: false, error: false, retry: jest.fn() }),
+}));
 import { SubscriberTabsContainer } from './SubscriberTabsContainer';
 
 const mockCreateForSubscriber = jest.fn();
@@ -59,7 +64,7 @@ jest.mock('@/lib/api-client', () => {
 const EXPEDIENTE_SUMMARY = {
   id: 'exp-1',
   fullName: 'Ana Ruiz',
-  status: 'QUALIFIED',
+  status: ExpedienteStatus.PRECALIFICADO,
   source: null,
   createdAt: '2026-10-01T10:00:00.000Z',
   statusChangedAt: null,
@@ -129,6 +134,7 @@ function contractFixture(overrides: Partial<Contract> = {}): Contract {
     additionalProductIds: [],
     additionalServiceIds: [],
     paymentMethod: 'PSE',
+    billingCycleDay: null,
     billingCycle: 'Mensual',
     fiscalName: null,
     fiscalDocument: null,

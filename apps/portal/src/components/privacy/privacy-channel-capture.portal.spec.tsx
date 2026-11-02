@@ -561,6 +561,7 @@ describe('captura del medio de autorización', () => {
     await user.type(screen.getByLabelText('Teléfono'), '3001234567');
     await user.type(screen.getByLabelText('Dirección'), 'Calle 10 # 20-30');
     await user.click(screen.getByRole('radio', { name: 'No responsable' }));
+    await user.click(screen.getByRole('button', { name: 'Agregar responsabilidades del RUT' }));
     await user.click(screen.getByRole('checkbox', { name: /No aplica, otros/ }));
     await user.click(screen.getByRole('checkbox', { name: /prestar, facturar y dar soporte/i }));
     fireEvent.change(channelSelect, { target: { value: ConsentChannel.TELEFONO } });

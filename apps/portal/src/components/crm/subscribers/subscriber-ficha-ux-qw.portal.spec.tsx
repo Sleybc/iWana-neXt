@@ -4,6 +4,7 @@ import { axe } from 'jest-axe';
 import {
   CustomerSegment,
   DocumentType,
+  ExpedienteStatus,
   PersonType,
   SubscriberStatus,
   VatResponsibility,
@@ -82,6 +83,7 @@ function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberR
     privacyRestricted: false,
     anonymizedAt: null,
     anonymizedRequestId: null,
+    privacyMarks: [],
     ...overrides,
   };
 }
@@ -93,10 +95,19 @@ function buildSubscriber360(subscriber: SubscriberRecord): Subscriber360Response
     contracts: [],
     quotes: [],
     habeasData: [],
+    privacyDetailsRestricted: false,
     arcoRequests: [],
     privacyMarks: [],
     expedienteSummary: null,
     timelineSeed: [],
+    provisioningReadiness: {
+      status: 'PENDIENTE_DE_DATOS',
+      title: 'Preparación pendiente',
+      message: 'Faltan datos para continuar.',
+      canProvision: false,
+      retryable: false,
+      missingRequirements: [],
+    },
   };
 }
 
@@ -110,6 +121,12 @@ describe('Ficha de suscriptor — quick wins F2', () => {
 
   it('CA3 conserva la tab de la URL y actualiza la ruta sin scroll', async () => {
     mockQuery = 'tab=servicios&source=lista';
+    // En el navegador la URL real y useSearchParams coinciden; la ficha parte de la URL real.
+    window.history.replaceState(
+      null,
+      '',
+      '/dashboard/crm/subscribers/subscriber-synthetic?' + mockQuery,
+    );
     render(<SubscriberDetailClient mode="detail" />);
     expect(await screen.findByRole('tab', { name: 'Servicios' })).toHaveAttribute(
       'aria-selected',
@@ -182,11 +199,19 @@ describe('Ficha de suscriptor — quick wins F2', () => {
     const response = buildSubscriber360(buildSubscriber());
     response.expedienteSummary = {
       id: 'opportunity-synthetic',
-      status: 'DRAFT',
+      fullName: null,
+      status: ExpedienteStatus.NUEVO_POTENCIAL,
+      source: null,
+      createdAt: '2026-10-01T10:00:00.000Z',
+      statusChangedAt: null,
       paymentMethod: 'PSE',
       billingCycle: 'Mensual',
       fiscalName: 'Titular sintético',
-    } as NonNullable<Subscriber360Response['expedienteSummary']>;
+      interestedPlanId: null,
+      additionalProductIds: [],
+      additionalServiceIds: [],
+      commercialNotes: null,
+    };
     jest.spyOn(subscribersApi, 'get360').mockResolvedValue(response);
     jest
       .spyOn(crmApi, 'updateExpedienteSection')
@@ -205,11 +230,19 @@ describe('Ficha de suscriptor — quick wins F2', () => {
     const response = buildSubscriber360(buildSubscriber());
     response.expedienteSummary = {
       id: 'opportunity-synthetic',
-      status: 'DRAFT',
+      fullName: null,
+      status: ExpedienteStatus.NUEVO_POTENCIAL,
+      source: null,
+      createdAt: '2026-10-01T10:00:00.000Z',
+      statusChangedAt: null,
       paymentMethod: 'PSE',
       billingCycle: 'Mensual',
       fiscalName: 'Titular sintético',
-    } as NonNullable<Subscriber360Response['expedienteSummary']>;
+      interestedPlanId: null,
+      additionalProductIds: [],
+      additionalServiceIds: [],
+      commercialNotes: null,
+    };
     jest.spyOn(subscribersApi, 'get360').mockResolvedValue(response);
     let finishSave: (() => void) | undefined;
     jest.spyOn(crmApi, 'updateExpedienteSection').mockImplementation(

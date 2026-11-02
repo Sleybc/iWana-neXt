@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { ExpedienteStatus } from '@iwana/shared';
 import { PORTAL_MODAL_DRAWER_STATE_EVENT } from '@/components/shared/portal-side-drawer-layers';
 import { contractsApi } from '@/lib/api-client';
 import type { Contract, Subscriber360Response } from '@/lib/api-client';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
+
+jest.mock('./use-billing-cycles', () => ({
+  useBillingCycles: () => ({ cycles: [], loading: false, error: false, retry: jest.fn() }),
+}));
 
 /**
  * Los tres diálogos de CRM adoptaron en M5 la capa única del ADR-075
@@ -46,6 +51,7 @@ const CONTRACT: Contract = {
   additionalProductIds: [],
   additionalServiceIds: [],
   paymentMethod: 'PSE',
+  billingCycleDay: null,
   billingCycle: 'Mensual',
   fiscalName: null,
   fiscalDocument: null,
@@ -60,7 +66,7 @@ const CONTRACT: Contract = {
 const EXPEDIENTE_SUMMARY: NonNullable<Subscriber360Response['expedienteSummary']> = {
   id: 'exp-1',
   fullName: 'Ana Ruiz',
-  status: 'QUALIFIED',
+  status: ExpedienteStatus.PRECALIFICADO,
   source: null,
   createdAt: '2026-01-10T10:00:00.000Z',
   statusChangedAt: null,

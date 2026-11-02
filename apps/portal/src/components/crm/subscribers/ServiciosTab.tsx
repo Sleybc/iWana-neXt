@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, FileText, Plus, Wifi } from 'lucide-react';
+import { Button } from '@iwana/ui';
 import { AccessPermissionKey } from '@iwana/shared';
 import type { LifecycleAction } from '@iwana/shared';
 import type { Contract, ContractStatus, Subscriber360Response } from '@/lib/api-client';
@@ -10,18 +11,28 @@ import { ContractCard } from './ContractCard';
 import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
+import { ActivateServiceDialog } from './ActivateServiceDialog';
+import { useBillingCycles } from './use-billing-cycles';
 import { usePermissions } from '@/components/access-control/permissions-context';
-import { PortalAlert } from '@/components/shared/portal-ui';
+import {
+  PortalAlert,
+  PortalEmptyState,
+  PortalFilterChip,
+  PortalPanel,
+  interactiveFocusClassName,
+  portalWellClassName,
+} from '@/components/shared/portal-ui';
 
 // ── Tipos y constantes ────────────────────────────────────────────────────────
 
-type FilterChip = 'todos' | 'activos' | 'borradores' | 'suspendidos' | 'archivados';
+type FilterChip = 'todos' | 'activos' | 'borradores' | 'suspendidos' | 'terminados' | 'archivados';
 
 const CHIP_LABELS: Record<FilterChip, string> = {
   todos: 'Todos',
   activos: 'Activos',
   borradores: 'Borradores',
   suspendidos: 'Suspendidos',
+  terminados: 'Terminados',
   archivados: 'Archivados',
 };
 
@@ -30,8 +41,22 @@ const CHIP_STATUSES: Record<FilterChip, ContractStatus[] | null> = {
   activos: ['ACTIVE'],
   borradores: ['DRAFT'],
   suspendidos: ['SUSPENDED'],
+  terminados: ['TERMINATED'],
   archivados: ['ARCHIVED'],
 };
+
+/** Parámetro de URL del filtro: recargar o compartir el enlace conserva el estado elegido. */
+const FILTER_PARAM = 'estado';
+
+function isFilterChip(value: string | null): value is FilterChip {
+  return value !== null && Object.prototype.hasOwnProperty.call(CHIP_LABELS, value);
+}
+
+function readFilterFromUrl(): FilterChip {
+  if (typeof window === 'undefined') return 'todos';
+  const value = new URLSearchParams(window.location.search).get(FILTER_PARAM);
+  return isFilterChip(value) ? value : 'todos';
+}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -49,15 +74,41 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const privacyRestricted = subscriber.privacyRestricted;
 
-  const [activeChip, setActiveChip] = useState<FilterChip>('todos');
+  const [activeChip, setActiveChipState] = useState<FilterChip>(readFilterFromUrl);
+  // replaceState mantiene el historial limpio; Next.js lo sincroniza con useSearchParams, así
+  // que cambiar de pestaña en la ficha conserva el filtro.
+  const setActiveChip = (chip: FilterChip) => {
+    setActiveChipState(chip);
+    const url = new URL(window.location.href);
+    if (chip === 'todos') url.searchParams.delete(FILTER_PARAM);
+    else url.searchParams.set(FILTER_PARAM, chip);
+    window.history.replaceState(window.history.state, '', url);
+  };
   const [showExpedientePanel, setShowExpedientePanel] = useState(false);
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
+  const [activatingContract, setActivatingContract] = useState<Contract | null>(null);
+  const [activationFocusId, setActivationFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    if (
+      !activationFocusId ||
+      !contracts.some(
+        (contract) => contract.id === activationFocusId && contract.status === 'ACTIVE',
+      )
+    )
+      return;
+    const card = document.getElementById(`subscriber-contract-${activationFocusId}`);
+    if (card) {
+      card.focus();
+      setActivationFocusId(null);
+    }
+  }, [contracts, activationFocusId]);
+  const billingCycles = useBillingCycles();
   const [transitionError, setTransitionError] = useState<{
     title: string;
     description: string;
-    action?: 'dismiss' | 'draft';
+    action?: 'dismiss';
   } | null>(null);
 
   // Resolución puntual por ID (sin soft-cap / prefetch de catálogo).
@@ -173,6 +224,11 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
     action: 'activate' | 'suspend' | 'reactivate' | 'terminate' | 'archive',
   ) => {
     setTransitionError(null);
+    if (action === 'activate') {
+      const contract = contracts.find((item) => item.id === id);
+      if (contract) setActivatingContract(contract);
+      return;
+    }
     if (action === 'suspend' || action === 'reactivate' || action === 'terminate') {
       onOpenLifecycle(
         action === 'suspend' ? 'SUSPEND' : action === 'reactivate' ? 'REACTIVATE' : 'TERMINATE',
@@ -193,26 +249,10 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
         });
         return;
       }
-      if (
-        err instanceof ApiError &&
-        err.status === 409 &&
-        err.code === 'SUBSCRIBER_SUSPENDED_FOR_DELINQUENCY'
-      ) {
-        setTransitionError({
-          title: 'No puedes activar este servicio',
-          description:
-            'No puedes activar este servicio porque el suscriptor está suspendido por mora. Puedes guardarlo como borrador.',
-          action: 'draft',
-        });
-        return;
-      }
       const message = err instanceof ApiError ? err.message : 'Error al cambiar estado.';
       setTransitionError({
         title: 'No fue posible cambiar el servicio',
-        description:
-          action === 'activate' && err instanceof ApiError && err.status === 422
-            ? `${message} Revisa el concepto de cobro del plan y sus complementos en el catálogo.`
-            : message,
+        description: message,
       });
     }
   };
@@ -225,7 +265,7 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
     } catch (err) {
       setTransitionError({
         title: 'No fue posible eliminar el borrador',
-        description: err instanceof ApiError ? err.message : 'Error al eliminar contrato.',
+        description: err instanceof ApiError ? err.message : 'Error al eliminar el servicio.',
       });
     }
   };
@@ -234,166 +274,150 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
   const canConvertFromExpediente =
     contracts.length === 0 && (expedienteSummary?.interestedPlanId ?? null) !== null;
 
-  // ── Caso: sin contratos y sin expediente con plan ─────────────────────────
-  const emptyNoExpediente = contracts.length === 0 && !canConvertFromExpediente;
+  // ── Conteos por estado: solo se ofrecen los chips con servicios ──────────
+  const chipCounts = Object.fromEntries(
+    (Object.keys(CHIP_LABELS) as FilterChip[]).map((chip) => {
+      const allowed = CHIP_STATUSES[chip];
+      return [
+        chip,
+        contracts.filter((c) =>
+          allowed === null ? c.status !== 'ARCHIVED' : allowed.includes(c.status),
+        ).length,
+      ];
+    }),
+  ) as Record<FilterChip, number>;
+  const stateChips = (Object.keys(CHIP_LABELS) as FilterChip[]).filter(
+    (chip) => chip !== 'todos' && chipCounts[chip] > 0,
+  );
+  // Con un solo estado el filtro no aporta nada: la fila se oculta.
+  const showChips = stateChips.length > 1;
+
+  const addServiceButton = (variant: 'primary' | 'secondary') => (
+    <Button
+      type="button"
+      variant={variant}
+      className="min-h-11 gap-1.5"
+      onClick={() => setShowCreateDialog(true)}
+    >
+      <Plus className="h-4 w-4" aria-hidden />
+      Agregar servicio
+    </Button>
+  );
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {subscriber.hasLiveContracts === false && (
-        <PortalAlert
-          variant="info"
-          title="Sin servicios vigentes"
-          description="Este suscriptor no tiene servicios activos ni suspendidos."
-        />
-      )}
-      {/* Banner de error de transición */}
-      {transitionError && (
-        <PortalAlert
-          variant="error"
-          live="assertive"
-          title={transitionError.title}
-          description={transitionError.description}
-          action={
-            transitionError.action ? (
-              <button
+      <PortalPanel
+        as="section"
+        labelled
+        title="Servicios contratados"
+        description="Estado, plan y precio de cada servicio del suscriptor."
+        actions={
+          contracts.length > 0 && !privacyRestricted ? addServiceButton('secondary') : undefined
+        }
+        contentClassName="space-y-4"
+      >
+        {/* Hay servicios, pero ninguno vigente (el vacío ya lo dice cuando no hay ninguno). */}
+        {contracts.length > 0 && subscriber.hasLiveContracts === false && (
+          <PortalAlert
+            variant="info"
+            live="off"
+            title="Sin servicios vigentes"
+            description="Ningún servicio está activo ni suspendido."
+          />
+        )}
+        {transitionError && (
+          <PortalAlert
+            variant="error"
+            live="assertive"
+            title={transitionError.title}
+            description={transitionError.description}
+            action={
+              transitionError.action ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-11"
+                  onClick={() => setTransitionError(null)}
+                >
+                  Cerrar
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+        {billingCycles.error ? (
+          <PortalAlert
+            variant="error"
+            title="No pudimos cargar los ciclos de facturación"
+            action={
+              <Button
                 type="button"
-                className="min-h-11 rounded-lg px-3 text-sm font-semibold text-iwana-secondary-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary dark:text-iwana-secondary-300"
-                onClick={() => setTransitionError(null)}
+                variant="secondary"
+                className="min-h-11"
+                onClick={billingCycles.retry}
               >
-                {transitionError.action === 'draft' ? 'Dejar como borrador' : 'Cerrar'}
-              </button>
-            ) : undefined
-          }
-        />
-      )}
+                Reintentar
+              </Button>
+            }
+          />
+        ) : null}
 
-      {/* Estado vacío — sin contratos, expediente con plan de interés */}
-      {canConvertFromExpediente && !privacyRestricted && (
-        <div className="rounded-[20px] border border-iwana-secondary/40 bg-iwana-secondary/5 p-6 dark:border-iwana-secondary/30 dark:bg-iwana-secondary/10">
-          <div className="flex items-start gap-4">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-iwana-secondary/20 text-iwana-secondary-700 dark:text-iwana-secondary-300">
-              <FileText className="h-5 w-5" aria-hidden />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-gray-900 dark:text-white">
-                Hay interés comercial registrado
-              </p>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                El interés comercial de la oportunidad tiene un plan. Puedes convertirlo en un
-                contrato de servicio.
-              </p>
-            </div>
+        {/* Sin servicios: oportunidad con plan → crear con ese plan; si no, primer servicio. */}
+        {contracts.length === 0 && privacyRestricted && (
+          <PortalEmptyState
+            embedded
+            icon={Wifi}
+            title="Los servicios de este suscriptor no se pueden consultar"
+            description="Sus datos están bloqueados por una solicitud de privacidad."
+          />
+        )}
+        {canConvertFromExpediente && !privacyRestricted && (
+          <PortalEmptyState
+            embedded
+            icon={FileText}
+            title="Hay un plan de interés listo para contratar"
+            description={`${resolvePlanName(expedienteSummary?.interestedPlanId ?? null)} quedó registrado en la oportunidad. Crea el servicio con ese plan.`}
+            action={
+              <Button type="button" className="min-h-11" onClick={() => setShowConvertDialog(true)}>
+                Crear servicio con este plan
+              </Button>
+            }
+          />
+        )}
+        {contracts.length === 0 && !canConvertFromExpediente && !privacyRestricted && (
+          <PortalEmptyState
+            embedded
+            icon={Wifi}
+            title="Este suscriptor aún no tiene servicios"
+            description="Agrega el primer servicio para empezar a prestarle internet y facturarle."
+            action={addServiceButton('primary')}
+          />
+        )}
+
+        {/* Interés de la oportunidad (solo lectura), solo antes del primer servicio. */}
+        {expedienteSummary && !privacyRestricted && contracts.length === 0 && (
+          <div className={portalWellClassName}>
             <button
               type="button"
-              onClick={() => setShowConvertDialog(true)}
-              className="shrink-0 rounded-xl bg-iwana-secondary-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90"
+              aria-expanded={showExpedientePanel}
+              onClick={() => setShowExpedientePanel((prev) => !prev)}
+              className={`flex min-h-11 w-full items-center gap-3 text-left ${interactiveFocusClassName}`}
             >
-              Convertir a contrato
+              <FileText className="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden />
+              <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+                Interés comercial de la oportunidad
+              </span>
+              {showExpedientePanel ? (
+                <ChevronUp className="h-4 w-4 text-gray-400" aria-hidden />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-gray-400" aria-hidden />
+              )}
             </button>
-          </div>
-        </div>
-      )}
 
-      {/* Estado vacío total */}
-      {emptyNoExpediente && !privacyRestricted && (
-        <div className="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-gray-200 bg-white py-16 text-center dark:border-dark-border dark:bg-dark-surface-2">
-          <Wifi className="mb-3 h-10 w-10 text-gray-300 dark:text-gray-400" aria-hidden />
-          <button
-            type="button"
-            onClick={() => setShowCreateDialog(true)}
-            className="mt-5 flex items-center gap-2 rounded-xl bg-iwana-secondary-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-iwana-secondary-700/90"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Nuevo servicio
-          </button>
-        </div>
-      )}
-
-      {/* Lista de contratos */}
-      {contracts.length > 0 && (
-        <>
-          {/* Chips de filtro */}
-          <div className="flex flex-wrap items-center gap-2">
-            {(Object.keys(CHIP_LABELS) as FilterChip[]).map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => setActiveChip(chip)}
-                className={[
-                  'rounded-full px-3.5 py-1 text-xs font-medium transition',
-                  activeChip === chip
-                    ? 'bg-iwana-secondary-700 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-border',
-                ].join(' ')}
-              >
-                {CHIP_LABELS[chip]}
-              </button>
-            ))}
-          </div>
-
-          {/* Tarjetas */}
-          <div className="space-y-3">
-            {filteredContracts.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-500 dark:border-dark-border dark:text-gray-400">
-                No hay contratos en este estado.
-              </p>
-            ) : (
-              filteredContracts.map((contract) => (
-                <ContractCard
-                  key={contract.id}
-                  contract={contract}
-                  onTransition={handleTransition}
-                  onRemove={handleRemove}
-                  onViewDetail={setSelectedContract}
-                  privacyRestricted={privacyRestricted}
-                  anonymizedRequestId={subscriber.anonymizedRequestId}
-                  canReadPrivacy={canReadPrivacy}
-                />
-              ))
-            )}
-          </div>
-
-          {/* Botón agregar nuevo servicio */}
-          {!privacyRestricted && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowCreateDialog(true)}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Agregar nuevo servicio
-              </button>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Panel colapsable — interés del expediente (solo lectura) */}
-      {expedienteSummary && !privacyRestricted && (
-        <div className="rounded-[20px] border border-gray-100 bg-white shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
-          <button
-            type="button"
-            onClick={() => setShowExpedientePanel((prev) => !prev)}
-            className="flex w-full items-center gap-3 px-5 py-4 text-left"
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-dark-surface dark:text-gray-400">
-              <FileText className="h-4 w-4" aria-hidden />
-            </span>
-            <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-              Interés comercial de la oportunidad
-            </span>
-            {showExpedientePanel ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" aria-hidden />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" aria-hidden />
-            )}
-          </button>
-
-          {showExpedientePanel && (
-            <div className="border-t border-gray-100 px-5 pb-5 pt-4 dark:border-dark-border">
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {showExpedientePanel && (
+              <dl className="mt-3 grid grid-cols-1 gap-3 border-t border-gray-200 pt-3 sm:grid-cols-2 dark:border-dark-border">
                 <ExpedienteField
                   label="Plan de interés"
                   value={resolvePlanName(expedienteSummary.interestedPlanId)}
@@ -401,13 +425,13 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
                 {(expedienteSummary.additionalProductIds?.length ?? 0) > 0 && (
                   <ExpedienteField
                     label="Productos adicionales"
-                    value={resolveProductNames(expedienteSummary.additionalProductIds)}
+                    value={resolveProductNames(expedienteSummary.additionalProductIds ?? [])}
                   />
                 )}
                 {(expedienteSummary.additionalServiceIds?.length ?? 0) > 0 && (
                   <ExpedienteField
                     label="Servicios adicionales"
-                    value={resolveServiceNames(expedienteSummary.additionalServiceIds)}
+                    value={resolveServiceNames(expedienteSummary.additionalServiceIds ?? [])}
                   />
                 )}
                 {expedienteSummary.commercialNotes && (
@@ -419,15 +443,85 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
                   </div>
                 )}
               </dl>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+
+        {/* Lista de servicios */}
+        {contracts.length > 0 && (
+          <>
+            {showChips && (
+              <div
+                role="group"
+                aria-label="Filtrar servicios por estado"
+                className="flex flex-wrap gap-2"
+              >
+                {(['todos', ...stateChips] as FilterChip[]).map((chip) => (
+                  <PortalFilterChip
+                    key={chip}
+                    active={activeChip === chip}
+                    onClick={() => setActiveChip(chip)}
+                    count={chipCounts[chip]}
+                    className="min-h-11"
+                  >
+                    {CHIP_LABELS[chip]}
+                  </PortalFilterChip>
+                ))}
+              </div>
+            )}
+
+            {filteredContracts.length === 0 ? (
+              <PortalEmptyState
+                embedded
+                title="No hay servicios en este estado"
+                description={
+                  activeChip === 'todos'
+                    ? 'Todos los servicios de este suscriptor están archivados.'
+                    : 'Cambia el filtro para ver los demás servicios.'
+                }
+                action={
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-11"
+                    onClick={() => setActiveChip(activeChip === 'todos' ? 'archivados' : 'todos')}
+                  >
+                    {activeChip === 'todos' ? 'Ver archivados' : 'Ver todos'}
+                  </Button>
+                }
+              />
+            ) : (
+              // Dos columnas desde xl: con el sidebar, en lg cada tarjeta quedaría muy angosta.
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {filteredContracts.map((contract) => (
+                  <ContractCard
+                    key={contract.id}
+                    contract={contract}
+                    billingCycles={billingCycles.cycles}
+                    billingCyclesLoading={billingCycles.loading}
+                    onTransition={handleTransition}
+                    onRemove={handleRemove}
+                    onViewDetail={setSelectedContract}
+                    privacyRestricted={privacyRestricted}
+                    anonymizedRequestId={subscriber.anonymizedRequestId}
+                    canReadPrivacy={canReadPrivacy}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </PortalPanel>
 
       {/* Drawer de detalle del contrato */}
       {selectedContract && (
         <ContractDetailDrawer
           contract={selectedContract}
+          billingCycles={billingCycles.cycles}
+          billingCyclesLoading={billingCycles.loading}
+          billingCyclesError={billingCycles.error}
+          onRetryBillingCycles={billingCycles.retry}
+          customerSegment={subscriber.customerSegment}
           personType={subscriber.personType}
           privacyRestricted={privacyRestricted}
           anonymizedRequestId={subscriber.anonymizedRequestId}
@@ -436,15 +530,33 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
           onReload={async () => {
             await onReload();
           }}
+          onContractUpdated={setSelectedContract}
           onOpenLifecycle={(action, contractId) => {
             setSelectedContract(null);
             onOpenLifecycle(action, contractId);
+          }}
+          onActivate={(contract) => {
+            setSelectedContract(null);
+            setActivatingContract(contract);
           }}
           onRemove={async (id) => {
             await handleRemove(id);
           }}
         />
       )}
+
+      {activatingContract ? (
+        <ActivateServiceDialog
+          contract={activatingContract}
+          onClose={() => setActivatingContract(null)}
+          onSuccess={async () => {
+            setActivationFocusId(activatingContract.id);
+            setActiveChip('todos');
+            setActivatingContract(null);
+            await onReload();
+          }}
+        />
+      ) : null}
 
       {/* Diálogo crear nuevo contrato */}
       {showCreateDialog && !privacyRestricted && (

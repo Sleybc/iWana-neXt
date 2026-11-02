@@ -568,7 +568,23 @@ async function convertToParty(
       installationPostalCode: '110111',
     },
   );
-  await api(page, session, session.admin, 'POST', `/crm/contracts/${contract.id}/activate`);
+  const billingCycles = await api<Array<JsonRecord>>(
+    page,
+    session,
+    session.admin,
+    'GET',
+    '/crm/billing-cycles',
+  );
+  const activeCycle = billingCycles.find(
+    (cycle) => cycle['active'] === true && Number.isInteger(cycle['cycleDay']),
+  );
+  const billingCycleDay = activeCycle?.['cycleDay'];
+  if (typeof billingCycleDay !== 'number') {
+    throw new Error('El catálogo no contiene un ciclo de facturación activo para el fixture.');
+  }
+  await api(page, session, session.admin, 'POST', `/crm/contracts/${contract.id}/activate`, {
+    billingCycleDay,
+  });
 
   return { ...prospect, partyId, subscriberId, contractId: contract.id };
 }

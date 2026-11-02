@@ -242,7 +242,26 @@ async function createConvertedSubscriberFixture(page: Page): Promise<{
       installationPostalCode: '110111',
     },
   );
-  await apiJson(page, `/api/v1/crm/contracts/${contract.id}/activate`, 'POST', {});
+  const billingCyclesResponse = await page.request.get('/api/v1/crm/billing-cycles', {
+    headers: tenantHeaders(),
+  });
+  expect(
+    billingCyclesResponse.ok(),
+    `API GET /api/v1/crm/billing-cycles: ${billingCyclesResponse.status()}`,
+  ).toBe(true);
+  const billingCycles = (await billingCyclesResponse.json()) as Array<{
+    active: boolean;
+    cycleDay: number;
+  }>;
+  const activeCycle = billingCycles.find(
+    (cycle) => cycle.active && Number.isInteger(cycle.cycleDay),
+  );
+  if (!activeCycle) {
+    throw new Error('El catálogo no contiene un ciclo de facturación activo para el fixture.');
+  }
+  await apiJson(page, `/api/v1/crm/contracts/${contract.id}/activate`, 'POST', {
+    billingCycleDay: activeCycle.cycleDay,
+  });
 
   return {
     subscriberId: subscriberId!,

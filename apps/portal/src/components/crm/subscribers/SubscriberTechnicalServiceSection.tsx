@@ -62,9 +62,11 @@ export function SubscriberTechnicalServiceSection({
 
   return (
     <PortalPanel
+      as="section"
+      labelled
       eyebrow="Red"
       title="Servicio técnico"
-      description="Consulta el estado de aprovisionamiento asociado a las órdenes de este suscriptor."
+      description="Estado de la instalación y la conexión de cada servicio."
       contentClassName="space-y-4"
     >
       {error ? (
@@ -99,20 +101,19 @@ export function SubscriberTechnicalServiceSection({
         </div>
       ) : services.length === 0 ? (
         <PortalEmptyState
-          title="Este suscriptor todavía no tiene servicios técnicos registrados"
-          description="Los servicios aparecerán aquí cuando se reserve o regularice una dirección IP."
+          embedded
+          title="Aún no hay datos de instalación"
+          description="Aparecerán cuando se asigne una dirección IP a un servicio."
         />
       ) : (
-        <div className="space-y-3">
+        // Fichas separadas por línea, sin caja propia: ya están dentro del panel.
+        <div className="divide-y divide-gray-100 dark:divide-dark-border">
           {services.map((service) => {
             const activationDetail = getCommercialActivationDetailLabel(
               service.commercialActivation.detail,
             );
             return (
-              <article
-                key={service.id}
-                className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface-2"
-              >
+              <article key={service.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
                 <header className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
                     {service.executionOrderNumber}

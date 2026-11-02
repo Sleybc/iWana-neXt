@@ -1814,8 +1814,13 @@ interface PortalPanelProps {
   id?: string | undefined;
   eyebrow?: string | undefined;
   title?: string | undefined;
-  description?: string | undefined;
+  /** Contenido junto al título, p. ej. un `Badge` de estado del bloque. */
+  titleAddon?: ReactNode | undefined;
+  /** Texto o contenido en línea (admite un enlace de navegación). */
+  description?: ReactNode | undefined;
   actions?: ReactNode | undefined;
+  /** Nombra la sección con su título (`aria-labelledby`) para que sea una región localizable. */
+  labelled?: boolean | undefined;
   className?: string | undefined;
   headerClassName?: string | undefined;
   contentClassName?: string | undefined;
@@ -1934,8 +1939,10 @@ export function PortalPanel({
   id,
   eyebrow,
   title,
+  titleAddon,
   description,
   actions,
+  labelled = false,
   className,
   headerClassName,
   contentClassName,
@@ -1946,12 +1953,15 @@ export function PortalPanel({
   children,
 }: PortalPanelProps) {
   const Component = as;
+  const titleId = useId();
+  const isLabelled = labelled && Boolean(title);
 
   return (
     <Component
       id={id}
       className={cn(panelBaseClassName, compact ? 'p-4' : 'p-5', className)}
       aria-busy={busy || undefined}
+      aria-labelledby={isLabelled ? titleId : undefined}
     >
       {(eyebrow || title || description || actions) && (
         <div
@@ -1965,17 +1975,20 @@ export function PortalPanel({
           <div className="min-w-0">
             {eyebrow && <p className="portal-eyebrow">{eyebrow}</p>}
             {title && (
-              <h2
-                ref={titleRef}
-                tabIndex={titleTabIndex}
-                className={cn(
-                  'text-base font-semibold text-gray-900 dark:text-white',
-                  eyebrow && 'mt-1',
-                  titleTabIndex === -1 ? interactiveFocusClassName : null,
-                )}
-              >
-                {title}
-              </h2>
+              <div className={cn('flex flex-wrap items-center gap-2', eyebrow && 'mt-1')}>
+                <h2
+                  ref={titleRef}
+                  id={isLabelled ? titleId : undefined}
+                  tabIndex={titleTabIndex}
+                  className={cn(
+                    'text-base font-semibold text-gray-900 dark:text-white',
+                    titleTabIndex === -1 ? interactiveFocusClassName : null,
+                  )}
+                >
+                  {title}
+                </h2>
+                {titleAddon}
+              </div>
             )}
             {description && (
               <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">

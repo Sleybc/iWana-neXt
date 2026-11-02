@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PersonType, VatResponsibility } from '@iwana/shared';
 import type { SubscriberRecord } from '@/lib/api-client';
+import { SubscriberFiscalSection } from './SubscriberFiscalSection';
 import { SubscriberSections } from './SubscriberSections';
 
 function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberRecord {
@@ -13,6 +14,7 @@ function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberR
     privacyRestricted: false,
     anonymizedAt: null,
     anonymizedRequestId: null,
+    privacyMarks: [],
     personType: 'NATURAL' as SubscriberRecord['personType'],
     customerSegment: 'RESIDENTIAL' as SubscriberRecord['customerSegment'],
     documentType: null,
@@ -86,14 +88,14 @@ describe('SubscriberSections privacy states', () => {
   });
 });
 
-describe('SubscriberSections RUT condicional', () => {
+describe('Datos fiscales (pestaña Tributario) — RUT condicional', () => {
   it('guarda datos fiscales sin responsabilidades para una persona natural no responsable', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(
-      <SubscriberSections
+      <SubscriberFiscalSection
         subscriber={buildSubscriber({
-          vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+          vatResponsibility: null,
           rutResponsibilities: [],
         })}
         onSave={onSave}
@@ -108,6 +110,7 @@ describe('SubscriberSections RUT condicional', () => {
       ),
     ).toBeInTheDocument();
 
+    await user.click(within(fiscal).getByRole('radio', { name: 'No responsable' }));
     await user.click(within(fiscal).getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() =>
@@ -122,7 +125,7 @@ describe('SubscriberSections RUT condicional', () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(
-      <SubscriberSections
+      <SubscriberFiscalSection
         subscriber={buildSubscriber({
           personType: PersonType.JURIDICA,
           vatResponsibility: VatResponsibility.NO_RESPONSABLE,
@@ -145,7 +148,7 @@ describe('SubscriberSections RUT condicional', () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(
-      <SubscriberSections
+      <SubscriberFiscalSection
         subscriber={buildSubscriber({
           vatResponsibility: VatResponsibility.NO_RESPONSABLE,
           rutResponsibilities: [],
@@ -174,7 +177,7 @@ describe('SubscriberSections RUT condicional', () => {
     );
   });
 
-  it('bloquea el cambio a persona jurídica junto al campo RUT en el mismo guardado', async () => {
+  it('bloquea el cambio a persona jurídica sin RUT guardado y remite a Tributario', async () => {
     const user = userEvent.setup();
     const onSave = jest.fn().mockResolvedValue(undefined);
     render(
@@ -189,14 +192,42 @@ describe('SubscriberSections RUT condicional', () => {
     );
 
     const identification = screen.getByRole('region', { name: 'Identificación' });
-    const fiscal = screen.getByRole('region', { name: 'Datos fiscales' });
+    expect(screen.queryByRole('region', { name: 'Datos fiscales' })).toBeNull();
     await user.click(within(identification).getByRole('combobox', { name: 'Tipo de persona' }));
     await user.click(screen.getByRole('option', { name: 'Persona jurídica' }));
     await user.click(within(identification).getByRole('button', { name: 'Guardar cambios' }));
 
     expect(
-      within(fiscal).getByText('Selecciona al menos una responsabilidad del RUT.'),
+      within(identification).getByText(
+        'Registra primero las responsabilidades del RUT en la pestaña Tributario.',
+      ),
     ).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('deshabilita guardar sin cambios y permite descartar los pendientes', async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    render(
+      <SubscriberFiscalSection
+        subscriber={buildSubscriber({
+          vatResponsibility: VatResponsibility.NO_RESPONSABLE,
+          rutResponsibilities: [],
+        })}
+        onSave={onSave}
+      />,
+    );
+
+    const fiscal = screen.getByRole('region', { name: 'Datos fiscales' });
+    expect(within(fiscal).getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
+    expect(within(fiscal).queryByRole('button', { name: 'Descartar' })).toBeNull();
+
+    await user.click(within(fiscal).getByRole('radio', { name: 'Responsable' }));
+    expect(within(fiscal).getByRole('button', { name: 'Guardar cambios' })).toBeEnabled();
+    await user.click(within(fiscal).getByRole('button', { name: 'Descartar' }));
+
+    expect(within(fiscal).getByRole('radio', { name: 'No responsable' })).toBeChecked();
+    expect(within(fiscal).getByRole('button', { name: 'Guardar cambios' })).toBeDisabled();
     expect(onSave).not.toHaveBeenCalled();
   });
 });
