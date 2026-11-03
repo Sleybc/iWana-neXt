@@ -1,11 +1,11 @@
 # Runbook — Release MOD05 + privacidad por tenant
 
-**Versión:** 1.1 · **Fecha:** 2026-10-16 (v1.1: 2026-10-30, Paso 7 ampliado a los tres textos legales, `format` y finalidades por tenant) · **Estado:** M4 aplicado (pasos 4, 8 y 11): `--rollback-in-place` implementado, ensayado en base desechable y autorevisado con checklist sec-eng sin bloqueantes; pendiente GO formal de `sec-eng` y decisión CTO/G7
+**Versión:** 1.2 · **Fecha:** 2026-10-16 (v1.1: 2026-10-30, Paso 7 ampliado a los tres textos legales, `format` y finalidades por tenant; v1.2: 2026-11-03, migraciones 169–171, humo de privacidad, dictámenes Ley 2573 y trámite por la aplicación) · **Estado:** M4 aplicado (pasos 4, 8 y 11): `--rollback-in-place` implementado, ensayado en base desechable y autorevisado con checklist sec-eng sin bloqueantes; pendiente GO formal de `sec-eng` y decisión CTO/G7
 **Ruta estable:** el sufijo `v1.0` del nombre es el del alta; la versión vigente es la de esta cabecera y las referencias apuntan a esta ruta.
 **Propósito:** Secuenciar el release MOD05 + `privacy` por tenant, con artefactos versionados y rollback explícito.
 **Autoridad:** AI-PLAT-OPS opera; `sec-eng` revisa controles; AI-EM-ARCH recomienda y el CTO aprueba el G7 y la ventana. Este runbook no concede G7 ni autoriza producción.
 
-**Fuentes:** [Plan MOD05 + privacy camino a G7, §2](../plans/2026-10-15-mod05-privacy-g7-release.md) · [Prompt G7, §2 C-M1](../prompts/PROMPT-MOD05-PRIVACY-G7-v1.0.md) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) · [ADR-094 §D7](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md) · [Spec textos legales v1.2](../specs/2026-10-29-privacy-textos-legales.md) (contratos C1–C3) · [Anexo de textos de Iwana S.A.S.](../specs/2026-10-29-privacy-textos-legales-anexo-iwana-v1.md).
+**Fuentes:** [Plan MOD05 + privacy camino a G7, §2](../plans/2026-10-15-mod05-privacy-g7-release.md) · [Prompt G7, §2 C-M1](../prompts/PROMPT-MOD05-PRIVACY-G7-v1.0.md) · [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) · [ADR-094 §D7](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md) · [Verificación oficial de la Ley 2573](../informes/INFORME-PRIVACY-LEY-2573-VERIFICACION-v1.0.md) · [Spec textos legales v1.2](../specs/2026-10-29-privacy-textos-legales.md) (contratos C1–C3) · [Anexo de textos de Iwana S.A.S.](../specs/2026-10-29-privacy-textos-legales-anexo-iwana-v1.md).
 
 **Integra sin duplicar:** [backfill Party B13](RUNBOOK-MOD05-PARTY-PII-BACKFILL-v1.0.md) · [bloqueo y supresión manual](RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) · [release y rollback](RUNBOOK-RELEASE-ROLLBACK-v1.0.md) · [Media/MinIO](RUNBOOK-MEDIA-MINIO-v1.0.md) · [rotación de claves](RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md).
 
@@ -23,23 +23,23 @@
 
 Los siguientes nombres son marcadores, no valores. Cargarlos en la sesión desde el secret store o el perfil protegido del operador; no escribir credenciales en argumentos, historial, Compose ni evidencia.
 
-| Variable                                                                                    | Contenido                                                                                                 |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `RELEASE_ID`                                                                                | Identificador aprobado de la ventana                                                                      |
-| `TENANT_REF`                                                                                | UUID o slug verificado del tenant                                                                         |
-| `TENANT_INVENTORY`                                                                          | Archivo externo restringido, una fila por UUID de cada tenant `ACTIVE` aprobado para esta ventana         |
-| `TENANT_SCHEMA`                                                                             | `schema_name` leído de `public.tenants`, validado contra `^tenant_[a-z][a-z0-9_]{0,54}$`                  |
-| `SECURE_BACKUP_DIR`                                                                         | Destino cifrado y restringido fuera del repositorio                                                       |
-| `GLOBAL_DUMP`, `TENANT_DUMP`                                                                | Rutas correlacionadas registradas en el acta, con sidecar tenant cuando aplique                           |
-| `TENANT_DUMP_MANIFEST`                                                                      | Archivo externo restringido con una ruta de dump tenant por cada UUID del inventario                      |
-| `RESTORE_DB_GLOBAL`, `RESTORE_DB_TENANT`                                                    | Bases desechables, distintas de la base origen                                                            |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, roles `DB_BOOTSTRAP_USER`/`DB_MIGRATOR_USER`/`DB_APP_USER` | Conexión cargada desde el secret store/perfil autorizado; nunca pasar contraseñas como argumentos         |
-| `API_BASE_URL`                                                                              | URL HTTPS aprobada del API                                                                                |
-| `ADMIN_CURL_CONFIG`, `OFFICER_CURL_CONFIG`                                                  | Archivos `curl` protegidos fuera del repo; contienen encabezados de autenticación/tenant y no se imprimen |
+| Variable                                                                                    | Contenido                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RELEASE_ID`                                                                                | Identificador aprobado de la ventana                                                                                                                                                                      |
+| `TENANT_REF`                                                                                | UUID o slug verificado del tenant                                                                                                                                                                         |
+| `TENANT_INVENTORY`                                                                          | Archivo externo restringido, una fila por UUID de cada tenant `ACTIVE` aprobado para esta ventana                                                                                                         |
+| `TENANT_SCHEMA`                                                                             | `schema_name` leído de `public.tenants`, validado contra `^tenant_[a-z][a-z0-9_]{0,54}$`                                                                                                                  |
+| `SECURE_BACKUP_DIR`                                                                         | Destino cifrado y restringido fuera del repositorio                                                                                                                                                       |
+| `GLOBAL_DUMP`, `TENANT_DUMP`                                                                | Rutas correlacionadas registradas en el acta, con sidecar tenant cuando aplique                                                                                                                           |
+| `TENANT_DUMP_MANIFEST`                                                                      | Archivo externo restringido con una ruta de dump tenant por cada UUID del inventario                                                                                                                      |
+| `RESTORE_DB_GLOBAL`, `RESTORE_DB_TENANT`                                                    | Bases desechables, distintas de la base origen                                                                                                                                                            |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, roles `DB_BOOTSTRAP_USER`/`DB_MIGRATOR_USER`/`DB_APP_USER` | Conexión cargada desde el secret store/perfil autorizado; nunca pasar contraseñas como argumentos                                                                                                         |
+| `API_BASE_URL`                                                                              | URL HTTPS aprobada del API                                                                                                                                                                                |
+| `ADMIN_CURL_CONFIG`, `OFFICER_CURL_CONFIG`                                                  | Archivos `curl` protegidos fuera del repo; contienen encabezados de autenticación/tenant y no se imprimen                                                                                                 |
 | `LEGAL_TEXTS_DIR`                                                                           | Directorio fuera del repo con `politica.json`, `aviso.json` y `autorizacion.json` (texto aprobado por el ISP, `type`, `version`, `format`, `url`) y `purposes.json` (finalidades que declara su política) |
-| `MC_CONFIG_DIR`, `MC_ALIAS`, `S3_BUCKET`                                                    | Configuración protegida del cliente MinIO/S3 y bucket activo                                              |
-| `SYNTHETIC_PARTY_ID`, `SYNTHETIC_AUTHORIZATION_ID`, `SYNTHETIC_CONTRACT_ID`   | IDs sintéticos del tenant de QA para el paso 8; fuera del repo, nunca completos en el acta                 |
-| `SYNTHETIC_EVIDENCE_MEDIA_ID`, `SYNTHETIC_UPLOAD_FIXTURE`                     | Asset de evidencia y archivo fixture sintético para las comprobaciones negativas 8d; fuera del repo        |
+| `MC_CONFIG_DIR`, `MC_ALIAS`, `S3_BUCKET`                                                    | Configuración protegida del cliente MinIO/S3 y bucket activo                                                                                                                                              |
+| `SYNTHETIC_PARTY_ID`, `SYNTHETIC_AUTHORIZATION_ID`, `SYNTHETIC_CONTRACT_ID`                 | IDs sintéticos del tenant de QA para el paso 8; fuera del repo, nunca completos en el acta                                                                                                                |
+| `SYNTHETIC_EVIDENCE_MEDIA_ID`, `SYNTHETIC_UPLOAD_FIXTURE`                                   | Asset de evidencia y archivo fixture sintético para las comprobaciones negativas 8d; fuera del repo                                                                                                       |
 
 ## Pasos de ventana
 
@@ -59,7 +59,7 @@ psql --host "$DB_HOST" --port "$DB_PORT" --username "$DB_APP_USER" \
   > "$TENANT_INVENTORY"
 ```
 
-`config --quiet` no debe imprimir la configuración expandida. El inventario contiene solo UUID de tenant, vive fuera del repo y se coteja con la lista aprobada de la ventana; no agregar tenants después de aplicar migraciones. Registrar solo su conteo/checksum junto con el código de salida, SHA, digests/etiquetas aprobados y versiones de migración. Adjuntar fuera del repositorio: G7 de plataforma aprobado, go de CTO para esta ventana, plan RPO/RTO/rollback, evaluación contable de ADR-093/M03, dictamen jurídico de ADR-094 §7.3, Oficial de privacidad designado por el ISP y texto de autorización aprobado. Confirmar K1/K2 y la revisión de seguridad sin bloqueantes.
+`config --quiet` no debe imprimir la configuración expandida. El inventario contiene solo UUID de tenant, vive fuera del repo y se coteja con la lista aprobada de la ventana; no agregar tenants después de aplicar migraciones. Registrar solo su conteo/checksum junto con el código de salida, SHA, digests/etiquetas aprobados y versiones de migración. Adjuntar fuera del repositorio: G7 de plataforma aprobado, go de CTO para esta ventana, plan RPO/RTO/rollback, evaluación contable de ADR-093/M03, dictamen jurídico formal de ADR-094 §7.3, Oficial de privacidad designado por el ISP y texto de autorización aprobado. El dictamen debe resolver el anclaje de los 20 días hábiles para denunciar ante la Fiscalía (desde la comunicación del operador o el criterio jurídico aprobado) y el alcance de las exequibilidades condicionadas citadas para los arts. 2 lit. d, 3 num. 5, 8 inc. 2, 9 inc. 1 y su parágrafo, y 12, incluida la sentencia aplicable. Usar como fuente de contraste la [verificación oficial de la Ley 2573, consultada el 2026-11-02](../informes/INFORME-PRIVACY-LEY-2573-VERIFICACION-v1.0.md); no sustituye el dictamen jurídico. Esa verificación toma el 2026-05-20 como fecha de publicación, calcula el vencimiento de seis meses hacia el 2026-11-20 y mantiene **2026-11-19** como fecha interna conservadora. No abrir la ventana antes de esa fecha ni sin los dictámenes adjuntos. Confirmar K1/K2 y la revisión de seguridad sin bloqueantes.
 
 **Evidencia sin PII:** SHA y digests; resultado booleano de cada precondición y referencia controlada a cada aprobación. No guardar `.env.production`, tokens ni texto de autorización en el acta.
 
@@ -118,11 +118,33 @@ docker compose --profile production --env-file .env.production \
   --exit-code-from migrator-prod migrator-prod
 ```
 
-El migrator se ejecuta **una sola vez** y aplica las migraciones públicas pendientes (026 y 027 en este release) y luego las tenant pendientes en el orden explícito del runner, incluidas 143–148. No ejecutar en paralelo `pnpm db:migrate:all` desde otro actor. El runner alcanza toda la flota `ACTIVE`; antes de iniciarlo, cotejar que cada tenant activo esté en `$TENANT_INVENTORY` y tenga backup íntegro. Migración 146 puede informar conteos agregados de filas reconciliadas/no reconciliadas; no ampliar sus logs ni imprimir filas para investigar.
+El migrator se ejecuta **una sola vez** y aplica todas las migraciones públicas pendientes y todas las migraciones tenant pendientes en el orden del runner, hasta la última registrada cuando se aprueba la ventana (hoy, 171). La secuencia de privacidad incluye 146–152 y 169, 170 y 171. Verificar `runner.ts` inmediatamente antes de la ventana; no congelar esta lista como si fueran únicamente las pendientes del release. No ejecutar en paralelo `pnpm db:migrate:all` desde otro actor. El runner alcanza toda la flota `ACTIVE`; antes de iniciarlo, cotejar que cada tenant activo esté en `$TENANT_INVENTORY` y tenga backup íntegro. Migración 146 puede informar conteos agregados de filas reconciliadas/no reconciliadas; no ampliar sus logs ni imprimir filas para investigar.
 
-**Evidencia sin PII:** salida sanitizada del migrator, exit code real y presencia/ausencia de cada nombre de migración por esquema en el registro controlado. Registrar únicamente conteos por migración y tenant pseudonimizado en el repositorio restringido.
+**Evidencia sin PII:** salida sanitizada del migrator, exit code real y presencia/ausencia de cada nombre de migración por esquema en el registro controlado. Para cada tenant, conservar las cuatro líneas `[170] O1 backfill candidate=N count=M` (N=1–4) de la salida y comprobar en `pg_trigger` que existan los cinco triggers de privacidad esperados: `trg_subscribers_prevent_anonymized_mutation`, `trg_expediente_records_prevent_anonymized_mutation`, `trg_contracts_prevent_anonymized_mutation` (169), `trg_contracts_preserve_retention_clock` (170) y `trg_contracts_require_retention_clock_insert` (171). Consulta de solo lectura por tenant:
 
-**Parada:** código distinto de cero, tenant parcial, registro desigual, error de preflight, logs con PII/secreto o falta del cableado de `PII_ENCRYPTION_KEY`, `PII_ENCRYPTION_KEY_PREVIOUS` o `PII_DECRYPT_LEGACY_MFA` en el servicio de migración → abortar la promoción de toda la flota y conservar el estado para diagnóstico.
+```bash
+psql --host "$DB_HOST" --port "$DB_PORT" --username "$DB_APP_USER" \
+  --dbname "$DB_NAME" -X -v ON_ERROR_STOP=1 -v TENANT_SCHEMA="$TENANT_SCHEMA" -At <<'SQL'
+SELECT t.tgname
+FROM pg_trigger t
+JOIN pg_class c ON c.oid=t.tgrelid
+JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname=:'TENANT_SCHEMA'
+  AND NOT t.tgisinternal
+  AND t.tgname = ANY (ARRAY[
+    'trg_subscribers_prevent_anonymized_mutation',
+    'trg_expediente_records_prevent_anonymized_mutation',
+    'trg_contracts_prevent_anonymized_mutation',
+    'trg_contracts_preserve_retention_clock',
+    'trg_contracts_require_retention_clock_insert'
+  ])
+ORDER BY t.tgname;
+SQL
+```
+
+La consulta debe devolver los cinco nombres. Registrar únicamente conteos por migración, estado de los cinco triggers y tenant pseudonimizado en el repositorio restringido.
+
+**Parada:** código distinto de cero, tenant parcial, registro desigual, error de preflight, alguna de las cuatro líneas de backfill ausente, trigger esperado ausente, logs con PII/secreto o falta del cableado de `PII_ENCRYPTION_KEY`, `PII_ENCRYPTION_KEY_PREVIOUS` o `PII_DECRYPT_LEGACY_MFA` en el servicio de migración → abortar la promoción de toda la flota y conservar el estado para diagnóstico.
 
 **Rollback:** antes del paso 3, restaurar el backup global previo con el procedimiento de [RUNBOOK-RELEASE-ROLLBACK §5.7 y §6](RUNBOOK-RELEASE-ROLLBACK-v1.0.md). No ejecutar reverts de tenant/públicos por reflejo.
 
@@ -252,11 +274,55 @@ Revisar el dry-run antes de escribir; la segunda aplicación evidencia idempoten
 
 **Rollback:** dry-run no modifica. Si una aplicación falla, detener el barrido y conservar ambas familias de clave y `PII_DECRYPT_LEGACY_MFA=true`; obtener conteos/verificación antes de decidir. Ante cambios persistidos con verify incompleto, seguir el restore por tenant de §11 dentro del mecanismo aprobado. Nunca retirar claves previas ni recifrar hacia atrás como atajo.
 
+### Paso 6 bis — Comprobaciones de privacidad de solo lectura
+
+Antes de seguir al paso 7, ejecutar por tenant el smoke de privacidad. La privacidad nunca ha corrido en producción: se espera que no haya titulares anonimizados ni contratos terminales heredados sin reloj. Estas consultas no modifican datos.
+
+**Comandos exactos:** cargar las variables desde el secret store aprobado, sin `set -x`; no imprimir claves ni la salida cruda del CLI (puede contener identificadores de hallazgos):
+
+```bash
+set -euo pipefail
+pnpm --filter @iwana/api build
+pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js \
+  --tenant "$TENANT_REF" --verify-only |
+  jq -e 'select(.markedSubscribers == 0 and .markedExpedientes == 0 and .residualFields == 0 and (.findings | length) == 0) | {titularesChecked, markedSubscribers, markedExpedientes, residualFields}'
+
+TERMINAL_CLOCK_COUNT="$(psql --host "$DB_HOST" --port "$DB_PORT" --username "$DB_APP_USER" \
+  --dbname "$DB_NAME" -X -v ON_ERROR_STOP=1 -v TENANT_SCHEMA="$TENANT_SCHEMA" -At <<'SQL'
+SELECT count(*)
+FROM :"TENANT_SCHEMA".contracts c
+LEFT JOIN :"TENANT_SCHEMA".subscribers s ON s.id=c.subscriber_id
+WHERE c.status IN ('TERMINATED','ARCHIVED')
+  AND c.terminated_at IS NULL
+  AND (s.id IS NULL OR s.anonymized_at IS NULL);
+SQL
+)"
+if [ "$TERMINAL_CLOCK_COUNT" != "0" ]; then
+  printf 'terminal_contracts_without_clock=%s\n' "$TERMINAL_CLOCK_COUNT" >&2
+  exit 1
+fi
+printf 'terminal_contracts_without_clock=0\n'
+
+if [ -z "${PII_ENCRYPTION_KEY:-}" ] || [ -z "${MFA_ENCRYPTION_KEY:-}" ] || [ "$PII_ENCRYPTION_KEY" = "$MFA_ENCRYPTION_KEY" ]; then
+  exit 1
+fi
+printf 'pii_key_present=true\nmfa_key_distinct=true\n'
+```
+
+La verificación de claves se realiza en la sesión protegida que recibe los valores reales del secret store; guardar solo los booleanos, nunca los valores, huellas reutilizables o argumentos expandidos. La salida del `--verify-only` debe dar 0 titulares marcados, 0 expedientes marcados y 0 campos residuales; el conteo SQL debe ser 0. No debe aparecer la advertencia de fallback de `PII_ENCRYPTION_KEY` a `MFA_ENCRYPTION_KEY`.
+
+**Evidencia sin PII:** tenant pseudonimizado, código de salida y conteos agregados de marcados/residuales/contratos terminales sin fecha; booleanos `pii_key_present` y `mfa_key_distinct`. No guardar el JSON completo del CLI, sus IDs de hallazgos, las claves ni valores de filas.
+
+**Parada:** cualquier conteo distinto de cero, campos residuales, CLI distinto de cero, ausencia de clave PII, igualdad con la clave MFA o advertencia de fallback → detener la promoción de toda la flota y escalar; no anonimizar datos como parte de este smoke.
+
+**Rollback:** no hay cambios de datos. Mantener la flota en mantenimiento y corregir la configuración/causa bajo el control aprobado antes de repetir las verificaciones.
+
 ### Paso 7 — Activar finalidades, textos legales, Oficial y retención
 
 > **v1.1:** el paso cubre los tres tipos de texto (`POLITICA_TRATAMIENTO`, `AVISO_PRIVACIDAD` y `AUTORIZACION`) con `format`, y las finalidades por empresa (spec textos legales v1.2, C1–C3). La v1.0 solo publicaba `AUTORIZACION` en texto plano.
 
 **Precondición:**
+
 - **Alojamiento (acta jurídica de Iwana S.A.S. del 2026-10-30, §I.5 y §II.3):** antes de procesar datos reales en producción, el ISP debe tener un contrato de transmisión de datos firmado con el proveedor de cloud elegido (ADR-095) y haber publicado una Política de Tratamiento v2 que lo incluya en la tabla §10. Esa Política v2 es la que se publica en 7b. No hace falta pedir una nueva autorización a los titulares. Fuente: [`docs/legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md`](../legal/ACTA-PRIVACY-TEXTOS-LEGALES-IWANA-2026-10-30.md).
 - Acta de aprobación del ISP, como Responsable, para cada texto. En los puntos ⚠ que apliquen, también el dictamen jurídico (ADR-094 §7 punto 3).
 - `legal_texts` es de solo anexar: una versión publicada no se edita ni se borra, y repetir `type` + `version` devuelve 409. **No publicar borradores.**
@@ -297,6 +363,7 @@ curl --config "$OFFICER_CURL_CONFIG" --fail-with-body --silent --show-error   "$
 El Oficial revisa que las políticas correspondan al catálogo aprobado por ADR-094. Los plazos solo se alargan, por el endpoint aprobado, y nunca se acortan por debajo del mínimo legal.
 
 **Evidencia sin PII:**
+
 - tipo, versión, formato, SHA-256 y estado vigente de los tres textos;
 - estado de cada finalidad;
 - `privacy.manage=true`;
@@ -306,6 +373,7 @@ El Oficial revisa que las políticas correspondan al catálogo aprobado por ADR-
 No guardar en el informe compartido el contenido legal si el ISP lo reserva, ni tokens ni la identidad del usuario.
 
 **Parada:**
+
 - en producción, falta el contrato de transmisión con el proveedor de alojamiento o la Política v2 que lo incluye;
 - falta el acta de aprobación de un texto;
 - el API devuelve 409, porque la versión ya está ocupada: no se reintenta con otro número sin una nueva acta;
@@ -403,19 +471,21 @@ Después del healthcheck, QA ejecuta el smoke en el Portal con un tenant y usuar
 
 **Rollback:** volver los componentes a sus digests registrados solo si son compatibles con el esquema; si hubo escritura incompatible, restaurar según §11. No borrar Redis ni sus colas para limpiar el smoke.
 
-### Paso 10 — Poner en vigor el procedimiento manual de privacidad
+### Paso 10 — Tramitar bloqueo y supresión por la aplicación
 
-**Orden operativa exacta (no existe CLI de fase 1a para el registro):** el Oficial abre el registro en el repositorio operativo restringido del ISP conforme a [RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL §7–§8](RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md), registra fecha de inicio, responsables y canal de escalamiento, y agenda el reporte mensual al CTO. Desde ese momento, tramita bloqueo y supresión según §§4–5 del mismo runbook. No crear archivos de casos en Git ni en carpetas de logs.
+**Orden operativa exacta:** el Oficial tramita el bloqueo y la supresión desde la aplicación conforme a HLD Privacy §6.6 y §6.7. Abre el registro operativo restringido del ISP, registra fecha de inicio, responsables y canal de escalamiento, y agenda el reporte mensual al CTO. El procedimiento de [RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL §7–§8](RUNBOOK-PRIVACY-BLOQUEO-SUPRESION-MANUAL-v1.0.md) queda como **vía de emergencia solamente**: más de 500 expedientes o un participante no disponible. No crear archivos de casos en Git ni en carpetas de logs.
 
 **Evidencia sin PII:** identificador restringido del registro, fecha de vigencia, responsables por rol y calendario del reporte. No anexar casos o titulares al informe de release.
 
-**Parada:** no hay Oficial, registro restringido, doble control técnico/aprobador, SLA operativo o canal de incidente → no abrir el servicio a nuevos trámites; escalar al CTO.
+**Parada:** no hay Oficial designado, registro restringido, doble control técnico/aprobador, SLA operativo o canal de incidente; la aplicación no permite completar el flujo; o el uso de la vía manual no cumple uno de los dos supuestos de emergencia → no abrir el servicio a nuevos trámites; escalar al CTO.
 
 **Rollback:** mantener el procedimiento manual vigente y el servicio en mantenimiento. No borrar ni editar el registro como mecanismo de reversión; cualquier corrección se deja como nueva entrada auditada.
 
 ### Paso 11 — Rollback y cierre de ventana
 
 Ejecutar este cierre una sola vez, después de completar los pasos 3–10 para cada tenant inventariado. La frontera de rollback fijada por el plan es: **antes del paso 3**, restore global; **después de iniciar/aplicar el paso 3**, restore solamente del tenant afectado, preservando el estado de otros tenants. Congelar las escrituras del tenant afectado hasta completar health/smoke y su reactivación aprobada.
+
+Las migraciones tenant 169, 170 y 171 no se revierten como atajo: no ejecutar `down()`, `migration:tenant:revert` ni editar su registro en el runner para esta ventana. Aplicar únicamente el restore aprobado por §11, preservando el aislamiento de los demás tenants.
 
 **Comandos exactos para el restore global (antes del paso 3):**
 
