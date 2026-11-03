@@ -210,7 +210,7 @@ flowchart LR
 | Tema | Estado |
 | --- | --- |
 | ~~Mutaciones sobre titulares anonimizados (R-ER, DT-3)~~ | ✅ Cerrado el 2026-11-02 ([cierre](../informes/INFORME-PRIVACY-DT3-RER-CIERRE-v1.0.md)) |
-| ~~**O-1:** reloj de retención anclado a `updated_at` y contratos archivados ignorados~~ | ✅ Cerrado en G6 el 2026-11-03 ([cierre](../informes/INFORME-PRIVACY-O1-RETENCION-CIERRE-v1.0.md)). G6.5, pendiente del push |
+| ~~**O-1:** reloj de retención anclado a `updated_at` y contratos archivados ignorados~~ | ✅ Cerrado en G6 y G6.5 el 2026-11-03 ([cierre](../informes/INFORME-PRIVACY-O1-RETENCION-CIERRE-v1.0.md)) |
 | Ley 2573: los 20 días hábiles de la denuncia se cuentan desde la radicación, y la ley los cuenta desde que el operador avisa al titular; además hay exequibilidades condicionadas | Dictámenes de ADR-094 §7.3 ([verificación](../informes/INFORME-PRIVACY-LEY-2573-VERIFICACION-v1.0.md)) |
 | `anonymize-titular --verify-only` por tenant | G7 |
 | Crear un registro nuevo con el documento de un titular bloqueado no se detecta (D-H15) | Fase 2, P2 |
@@ -224,7 +224,7 @@ flowchart LR
 
 ## 11. Decisión de salida
 
-**Fase 1a:** G6 y G6.5 GO. **Fase 1b:** G4, G6 y G6.5 **GO** (2026-10-17). **DT-3:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-02). **O-1:** G0 (2026-11-02) y G6 **GO** (2026-11-03); G6.5, pendiente del push.
+**Fase 1a:** G6 y G6.5 GO. **Fase 1b:** G4, G6 y G6.5 **GO** (2026-10-17). **DT-3:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-02). **O-1:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-03; CI 41638769340 en `success` sobre `5a855ae8`).
 
 **G7 queda condicionado a:**
 1. la beta mínima ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md));

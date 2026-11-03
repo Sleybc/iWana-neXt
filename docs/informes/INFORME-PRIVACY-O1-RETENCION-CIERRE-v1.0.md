@@ -3,7 +3,7 @@
 **Versión:** 1.0
 **Fecha:** 2026-11-03
 **Autor:** AI-EM-ARCH
-**Estado de la fase:** **G6 en GO.** G6.5 se cumple cuando el usuario ordene el commit y el push y la CI de ese SHA termine en verde (§6). G7 sigue diferido hasta la beta mínima ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md)).
+**Estado de la fase:** **cerrada en G6 y G6.5.** Commits `a8601722` (código) y `5a855ae8` (documentos), publicados el 2026-11-03. CI [41638769340](https://github.com/Sleybc/iWana-neXt/actions/runs/41638769340) y E2E Web Admin Smoke [41638769343](https://github.com/Sleybc/iWana-neXt/actions/runs/41638769343) en `success` sobre `5a855ae8`. G7 sigue diferido hasta la beta mínima ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md)).
 **Spec:** [2026-11-02-privacy-o1-reloj-retencion-spec.md](../specs/2026-11-02-privacy-o1-reloj-retencion-spec.md) v1.0, **Aprobada** (G0 del 2026-11-02, P1)
 **Plan:** [2026-11-02-privacy-o1-retencion-orquestacion.md](../plans/2026-11-02-privacy-o1-retencion-orquestacion.md) · **Prompt:** [PROMPT-PRIVACY-O1-RETENCION-v1.0](../prompts/PROMPT-PRIVACY-O1-RETENCION-v1.0.md), lanzadores v1.0 a v1.5
 **HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.3](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.3.md)
@@ -75,7 +75,6 @@ El inicio del plazo de 5 años de retención del suscriptor (ADR-094 D7 y H9; De
 
 | Tema | Dueño | Prioridad |
 | --- | --- | --- |
-| Commit y push del diff de O-1, y G6.5 sobre su SHA | Usuario y AI-EM-ARCH | Ahora |
 | Correr `--verify-only` y el conteo de retención en producción | `plat-ops` | G7 |
 | `tenant-migrations-second-schema`: fixture sin filas canónicas para la 092 | Transversal, salud de pruebas | P3 |
 | Tres suites PG clonan `contracts` de `tenant_iwana` (hermeticidad) | Transversal, salud de pruebas | P2 |
