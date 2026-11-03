@@ -483,11 +483,23 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
     expect(response.suspendedContractIds).toEqual([suspendedContractId]);
     expect(response.request.impersonationComplaintDueAt).toBeDefined();
+    // Categoría (b): D-DO-1 y D-DO-2 añaden las tareas de denuncia y comunicación a las dos existentes.
     expect(response.tasks.map((task) => task.kind).sort()).toEqual(
-      ['ENTREGAR_COPIA_DOCUMENTOS', 'SUSPENDER_COBRO_EXTERNO'].sort(),
+      [
+        'ENTREGAR_COPIA_DOCUMENTOS',
+        'SUSPENDER_COBRO_EXTERNO',
+        'FORMULAR_DENUNCIA_OPERADOR',
+        'COMUNICAR_PLAZO_DENUNCIA',
+      ].sort(),
     );
     expect(response.tasks.find((task) => task.kind === 'SUSPENDER_COBRO_EXTERNO')?.dueAt).toBe(
       receivedAt,
+    );
+    expect(response.tasks.find((task) => task.kind === 'COMUNICAR_PLAZO_DENUNCIA')?.dueAt).toBe(
+      receivedAt,
+    );
+    expect(response.tasks.find((task) => task.kind === 'FORMULAR_DENUNCIA_OPERADOR')?.dueAt).toBe(
+      response.request.impersonationComplaintDueAt,
     );
     expect(response.tasks.find((task) => task.kind === 'ENTREGAR_COPIA_DOCUMENTOS')?.dueAt).toBe(
       response.request.dueAt,

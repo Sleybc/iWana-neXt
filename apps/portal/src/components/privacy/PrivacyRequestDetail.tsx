@@ -15,6 +15,7 @@ import type {
   DataSubjectRequestDetail,
   ErasurePreview,
   RequestLegalBasis,
+  RequestTaskKind,
   ResponseChannel,
 } from '@iwana/shared';
 import { ApiError, privacyApi } from '@/lib/api-client';
@@ -46,6 +47,18 @@ type Action = 'require-info' | 'complete' | 'extend' | 'resolve' | 'reject' | 't
 const inputClass =
   'portal-input-surface min-h-11 w-full px-3 py-2 text-sm text-gray-900 dark:text-white';
 const labelClass = 'block space-y-1 text-sm font-medium text-gray-800 dark:text-gray-100';
+const REQUEST_TASK_LABELS: Record<RequestTaskKind, string> = {
+  SUSPENDER_COBRO_EXTERNO: 'Suspender el cobro en el sistema de facturación de la empresa',
+  ENTREGAR_COPIA_DOCUMENTOS: 'Entregar copia de los documentos de aprobación',
+  FORMULAR_DENUNCIA_OPERADOR: 'Formular la denuncia penal de la empresa',
+  COMUNICAR_PLAZO_DENUNCIA: 'Comunicar al titular el plazo para denunciar',
+};
+const REQUEST_TASK_NOTE_HELP: Record<RequestTaskKind, string> = {
+  SUSPENDER_COBRO_EXTERNO: 'Describe la suspensión del cobro que quedó registrada.',
+  ENTREGAR_COPIA_DOCUMENTOS: 'Indica los documentos que se entregaron.',
+  FORMULAR_DENUNCIA_OPERADOR: 'Número de radicado o noticia criminal',
+  COMUNICAR_PLAZO_DENUNCIA: 'Canal y fecha de la comunicación',
+};
 
 function isClosed(status: string): boolean {
   return ['DESISTIDA', 'RESUELTA', 'NO_PROCEDENTE', 'TRASLADADA'].includes(status);
@@ -115,6 +128,11 @@ export function PrivacyRequestDetail({
   const [erasureError, setErasureError] = useState<string | null>(null);
   const [erasureNotice, setErasureNotice] = useState<string | null>(null);
   const [erasureConfirmed, setErasureConfirmed] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<
+    DataSubjectRequestDetail['tasks'][number] | null
+  >(null);
+  const [taskNote, setTaskNote] = useState('');
+  const [taskCompletionError, setTaskCompletionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!requestId) return;
@@ -162,6 +180,9 @@ export function PrivacyRequestDetail({
       setErasureConfirmed(false);
       setErasureError(null);
       setErasureNotice(null);
+      setTaskToComplete(null);
+      setTaskNote('');
+      setTaskCompletionError(null);
     }
   }, [load, open, requestId]);
 
@@ -304,6 +325,30 @@ export function PrivacyRequestDetail({
     setErasureConfirmed(false);
     setErasureError(null);
     setErasureNotice(null);
+  };
+
+  const closeTaskCompletionDialog = () => {
+    setTaskToComplete(null);
+    setTaskNote('');
+    setTaskCompletionError(null);
+  };
+
+  const completeTask = async () => {
+    if (!requestId || !taskToComplete || !taskNote.trim()) return;
+    setBusy(true);
+    setTaskCompletionError(null);
+    try {
+      await privacyApi.completeTask(requestId, taskToComplete.id, taskNote.trim());
+      closeTaskCompletionDialog();
+      await load();
+      onChanged();
+    } catch {
+      setTaskCompletionError(
+        'No fue posible cerrar la tarea. Revisa la nota e inténtalo de nuevo.',
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   const insertTemplate = () => {
@@ -506,35 +551,28 @@ export function PrivacyRequestDetail({
                   key={task.id}
                   className="rounded-xl bg-iwana-surface-soft p-3 text-sm dark:bg-dark-surface-3"
                 >
-                  <p className="font-medium">
-                    {task.kind === 'SUSPENDER_COBRO_EXTERNO'
-                      ? 'Suspender el cobro en el sistema de facturación de la empresa'
-                      : 'Entregar copia de los documentos de aprobación'}
-                  </p>
+                  <p className="font-medium">{REQUEST_TASK_LABELS[task.kind]}</p>
                   <p>
                     Vence: {formatCivilDate(task.dueAt)} ·{' '}
                     {task.doneAt ? `Completada ${formatLocalDateTime(task.doneAt)}` : 'Pendiente'}
                   </p>
+                  {task.kind === 'COMUNICAR_PLAZO_DENUNCIA' &&
+                  task.doneAt &&
+                  task.doneAt.slice(0, 10) > task.dueAt ? (
+                    <Badge variant="warning" className="mt-2">
+                      Comunicación tardía
+                    </Badge>
+                  ) : null}
                   {task.note ? <p>Nota: {task.note}</p> : null}
                   {!task.doneAt && canManage ? (
                     <Button
                       className="mt-2"
                       variant="secondary"
                       disabled={busy}
-                      onClick={async () => {
-                        const note = window.prompt('Nota de cierre de la tarea');
-                        if (note?.trim()) {
-                          setBusy(true);
-                          try {
-                            await privacyApi.completeTask(requestId!, task.id, note.trim());
-                            await load();
-                            onChanged();
-                          } catch {
-                            setError('No fue posible cerrar la tarea.');
-                          } finally {
-                            setBusy(false);
-                          }
-                        }
+                      onClick={() => {
+                        setTaskToComplete(task);
+                        setTaskNote('');
+                        setTaskCompletionError(null);
                       }}
                     >
                       Marcar como completada
@@ -984,6 +1022,80 @@ export function PrivacyRequestDetail({
                   onClick={() => void submitAction()}
                 >
                   {busy ? 'Anonimizando…' : 'Resolver y anonimizar'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={taskToComplete !== null}
+        onOpenChange={(open) => {
+          if (!open) closeTaskCompletionDialog();
+        }}
+      >
+        <DialogContent aria-labelledby="privacy-task-completion-title" className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle id="privacy-task-completion-title">Completar tarea</DialogTitle>
+            <DialogDescription>
+              Registra la información necesaria para dejar constancia de esta actuación.
+            </DialogDescription>
+          </DialogHeader>
+          {taskToComplete ? (
+            <div className="space-y-4">
+              <label className={labelClass} htmlFor="privacy-task-completion-note">
+                Nota de cierre
+                {taskToComplete.kind === 'FORMULAR_DENUNCIA_OPERADOR' ||
+                taskToComplete.kind === 'COMUNICAR_PLAZO_DENUNCIA' ? (
+                  <input
+                    id="privacy-task-completion-note"
+                    className={inputClass}
+                    type="text"
+                    maxLength={120}
+                    value={taskNote}
+                    aria-describedby="privacy-task-completion-help"
+                    onChange={(event) => setTaskNote(event.target.value)}
+                  />
+                ) : (
+                  <textarea
+                    id="privacy-task-completion-note"
+                    className={inputClass}
+                    maxLength={1000}
+                    rows={3}
+                    value={taskNote}
+                    aria-describedby="privacy-task-completion-help"
+                    onChange={(event) => setTaskNote(event.target.value)}
+                  />
+                )}
+              </label>
+              <p
+                id="privacy-task-completion-help"
+                className="text-sm text-gray-600 dark:text-gray-300"
+              >
+                {taskToComplete ? REQUEST_TASK_NOTE_HELP[taskToComplete.kind] : null}
+              </p>
+              {taskCompletionError ? (
+                <PortalAlert
+                  variant="error"
+                  title="No se guardó la tarea"
+                  description={taskCompletionError}
+                />
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={closeTaskCompletionDialog}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={busy || !taskNote.trim()}
+                  onClick={() => void completeTask()}
+                >
+                  {busy ? 'Guardando…' : 'Completar tarea'}
                 </Button>
               </div>
             </div>

@@ -28,9 +28,18 @@ export function calculateImpersonationComplaintDueAt(receivedAt: string): string
 export function calculateRequestTaskDueAt(
   kind: RequestTaskKind,
   receivedAt: string,
+  complaintDueAt: string,
   requestDueAt: string,
 ): string {
-  return kind === 'SUSPENDER_COBRO_EXTERNO' ? receivedAt : requestDueAt;
+  switch (kind) {
+    case 'SUSPENDER_COBRO_EXTERNO':
+    case 'COMUNICAR_PLAZO_DENUNCIA':
+      return receivedAt;
+    case 'FORMULAR_DENUNCIA_OPERADOR':
+      return complaintDueAt;
+    case 'ENTREGAR_COPIA_DOCUMENTOS':
+      return requestDueAt;
+  }
 }
 
 export function calculateDesistAt(infoRequiredAt: string): string {

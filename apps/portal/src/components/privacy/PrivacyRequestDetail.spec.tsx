@@ -77,6 +77,7 @@ const eligiblePreview: ErasurePreview = {
 const getRequestMock = jest.spyOn(privacyApi, 'getRequest');
 const getErasurePreviewMock = jest.spyOn(privacyApi, 'getErasurePreview');
 const resolveRequestMock = jest.spyOn(privacyApi, 'resolveRequest');
+const completeTaskMock = jest.spyOn(privacyApi, 'completeTask');
 
 function renderDetail() {
   return render(
@@ -95,6 +96,102 @@ beforeEach(() => {
   getRequestMock.mockResolvedValue(requestDetail);
   getErasurePreviewMock.mockResolvedValue(eligiblePreview);
   resolveRequestMock.mockResolvedValue(undefined);
+  completeTaskMock.mockResolvedValue(undefined);
+});
+
+describe('PrivacyRequestDetail · tareas de suplantación', () => {
+  it('muestra los cuatro tipos de tarea y marca como tardía solo la comunicación posterior al vencimiento', async () => {
+    getRequestMock.mockResolvedValueOnce({
+      ...requestDetail,
+      request: { ...requestDetail.request, right: 'CONOCER', status: 'EN_TRAMITE' },
+      tasks: [
+        {
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          kind: 'SUSPENDER_COBRO_EXTERNO',
+          dueAt: '2026-10-15',
+          doneAt: null,
+          doneBy: null,
+          note: null,
+        },
+        {
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          kind: 'ENTREGAR_COPIA_DOCUMENTOS',
+          dueAt: '2026-10-30',
+          doneAt: null,
+          doneBy: null,
+          note: null,
+        },
+        {
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          kind: 'FORMULAR_DENUNCIA_OPERADOR',
+          dueAt: '2026-11-12',
+          doneAt: null,
+          doneBy: null,
+          note: null,
+        },
+        {
+          id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          kind: 'COMUNICAR_PLAZO_DENUNCIA',
+          dueAt: '2026-10-15',
+          doneAt: '2026-10-16T15:00:00.000Z',
+          doneBy: candidateId,
+          note: 'Correo, 2026-10-16',
+        },
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          kind: 'COMUNICAR_PLAZO_DENUNCIA',
+          dueAt: '2026-10-15',
+          doneAt: '2026-10-15T15:00:00.000Z',
+          doneBy: candidateId,
+          note: 'Correo, 2026-10-15',
+        },
+      ],
+    });
+
+    renderDetail();
+
+    expect(
+      await screen.findByText('Suspender el cobro en el sistema de facturación de la empresa'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Entregar copia de los documentos de aprobación')).toHaveLength(1);
+    expect(screen.getByText('Formular la denuncia penal de la empresa')).toBeInTheDocument();
+    expect(screen.getAllByText('Comunicar al titular el plazo para denunciar')).toHaveLength(2);
+    expect(screen.getByText('Comunicación tardía')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['FORMULAR_DENUNCIA_OPERADOR', 'Número de radicado o noticia criminal'],
+    ['COMUNICAR_PLAZO_DENUNCIA', 'Canal y fecha de la comunicación'],
+  ] as const)('muestra la ayuda de nota para %s y guarda la nota', async (kind, helpText) => {
+    const user = userEvent.setup();
+    const taskId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    getRequestMock.mockResolvedValue({
+      ...requestDetail,
+      request: { ...requestDetail.request, right: 'CONOCER', status: 'EN_TRAMITE' },
+      tasks: [
+        {
+          id: taskId,
+          kind,
+          dueAt: '2026-10-15',
+          doneAt: null,
+          doneBy: null,
+          note: null,
+        },
+      ],
+    });
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Marcar como completada' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Completar tarea' })).toBeVisible();
+    expect(screen.getByText(helpText)).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Nota de cierre' }), 'Radicado 123');
+    await user.click(screen.getByRole('button', { name: 'Completar tarea' }));
+
+    await waitFor(() =>
+      expect(completeTaskMock).toHaveBeenCalledWith(requestId, taskId, 'Radicado 123'),
+    );
+  });
 });
 
 describe('PrivacyRequestDetail · supresión', () => {

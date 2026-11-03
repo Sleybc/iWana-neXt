@@ -29,6 +29,8 @@ import {
   IdentityVerificationMethod,
   DataSubjectRequestDetail,
   VerifyIdentityRequest,
+  completeRequestTaskOperatorSchema,
+  completeRequestTaskSchema,
 } from '@iwana/shared';
 import { TenantContext } from '@iwana/db';
 import { DataSource, EntityManager } from 'typeorm';
@@ -344,12 +346,22 @@ export class PrivacyRequestsService {
         const taskKinds: RequestTaskKind[] = [
           'SUSPENDER_COBRO_EXTERNO',
           'ENTREGAR_COPIA_DOCUMENTOS',
+          'FORMULAR_DENUNCIA_OPERADOR',
+          'COMUNICAR_PLAZO_DENUNCIA',
         ];
+        const complaintTaskDueAt = complaintDueAt;
+        if (!complaintTaskDueAt) {
+          throw new Error('La suplantación debe tener un plazo de denuncia.');
+        }
         for (const kind of taskKinds) {
           const taskRows = (await manager.query(
             `INSERT INTO data_subject_request_tasks (request_id, kind, due_at)
              VALUES ($1, $2, $3) RETURNING *`,
-            [requestId, kind, calculateRequestTaskDueAt(kind, receivedAt, dueAt)],
+            [
+              requestId,
+              kind,
+              calculateRequestTaskDueAt(kind, receivedAt, complaintTaskDueAt, dueAt),
+            ],
           )) as DbRow[];
           const task = taskRows[0];
           if (task) tasks.push(toTask(task));
@@ -1081,11 +1093,21 @@ export class PrivacyRequestsService {
       const task = rows[0];
       if (!task) throw new NotFoundException('No se encontró la tarea indicada.');
       if (task['done_at']) throw new ConflictException('La tarea ya fue completada.');
+      const taskKind = task['kind'] as RequestTaskKind;
+      const noteSchema =
+        taskKind === 'FORMULAR_DENUNCIA_OPERADOR' || taskKind === 'COMUNICAR_PLAZO_DENUNCIA'
+          ? completeRequestTaskOperatorSchema
+          : completeRequestTaskSchema;
+      const parsedNote = noteSchema.safeParse({ note });
+      if (!parsedNote.success) {
+        throw new BadRequestException('La nota no cumple los requisitos de la tarea.');
+      }
+      const validatedNote = parsedNote.data.note;
       const now = new Date();
       const updated = (await manager.query(
         `UPDATE data_subject_request_tasks SET done_at = $2, done_by = $3, note = $4
          WHERE id = $1 AND done_at IS NULL RETURNING id`,
-        [taskId, now, actorId, note],
+        [taskId, now, actorId, validatedNote],
       )) as DbRow[];
       if (!updated[0]) throw new ConflictException('La tarea ya fue completada.');
       await manager.query(
@@ -1093,7 +1115,7 @@ export class PrivacyRequestsService {
          VALUES ($1, $2, $2, $3, $4)`,
         [requestId, task['status'], actorId, `TAREA_COMPLETADA:${task['kind']}`],
       );
-      return toTask({ ...task, done_at: now, done_by: actorId, note });
+      return toTask({ ...task, done_at: now, done_by: actorId, note: validatedNote });
     });
     await this.audit(AuditAction.UPDATE, taskId, actorId, {
       operation: 'REQUEST_TASK_COMPLETED',

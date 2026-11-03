@@ -1,6 +1,7 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import type { RequestTaskKind } from '@iwana/shared';
 
-export type DataSubjectRequestTaskKind = 'SUSPENDER_COBRO_EXTERNO' | 'ENTREGAR_COPIA_DOCUMENTOS';
+export type DataSubjectRequestTaskKind = RequestTaskKind;
 
 @Entity({ name: 'data_subject_request_tasks' })
 @Index('idx_data_subject_request_tasks_request_due', ['requestId', 'dueAt'])

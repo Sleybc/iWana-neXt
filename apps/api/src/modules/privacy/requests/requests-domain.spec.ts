@@ -26,12 +26,38 @@ describe('reglas de solicitudes de privacidad', () => {
   it('calcula los dos plazos de suplantación y las tareas asociadas', () => {
     expect(calculateInitialDueAt('SUPLANTACION', '2026-07-06', null)).toBe('2026-07-22');
     expect(calculateImpersonationComplaintDueAt('2026-07-06')).toBe('2026-08-05');
-    expect(calculateRequestTaskDueAt('SUSPENDER_COBRO_EXTERNO', '2026-07-06', '2026-07-22')).toBe(
-      '2026-07-06',
-    );
-    expect(calculateRequestTaskDueAt('ENTREGAR_COPIA_DOCUMENTOS', '2026-07-06', '2026-07-22')).toBe(
-      '2026-07-22',
-    );
+    expect(
+      calculateRequestTaskDueAt(
+        'SUSPENDER_COBRO_EXTERNO',
+        '2026-07-06',
+        '2026-08-05',
+        '2026-07-22',
+      ),
+    ).toBe('2026-07-06');
+    expect(
+      calculateRequestTaskDueAt(
+        'COMUNICAR_PLAZO_DENUNCIA',
+        '2026-07-06',
+        '2026-08-05',
+        '2026-07-22',
+      ),
+    ).toBe('2026-07-06');
+    expect(
+      calculateRequestTaskDueAt(
+        'FORMULAR_DENUNCIA_OPERADOR',
+        '2026-07-06',
+        '2026-08-05',
+        '2026-07-22',
+      ),
+    ).toBe('2026-08-05');
+    expect(
+      calculateRequestTaskDueAt(
+        'ENTREGAR_COPIA_DOCUMENTOS',
+        '2026-07-06',
+        '2026-08-05',
+        '2026-07-22',
+      ),
+    ).toBe('2026-07-22');
   });
 
   it('verifica la tabla de plazos legales y sus límites al cruzar festivos', () => {

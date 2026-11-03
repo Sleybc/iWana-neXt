@@ -1,4 +1,6 @@
 import {
+  completeRequestTaskOperatorSchema,
+  completeRequestTaskSchema,
   completeRequestSchema,
   createDataSubjectRequestSchema,
   dataSubjectRequestDetailSchema,
@@ -6,6 +8,7 @@ import {
   requireInfoRequestSchema,
   rejectRequestSchema,
   resolveRequestSchema,
+  requestTaskKindSchema,
   transferRequestSchema,
   verifyIdentityRequestSchema,
 } from './requests';
@@ -25,6 +28,34 @@ describe('contratos de solicitudes de privacidad v1.1', () => {
     partyId: 'aa4f2f0b-84dc-4fc0-9dd9-99e9ca29996c',
     receivedAt: '2026-07-06',
   };
+
+  it('publica los cuatro tipos de tarea y valida las notas de las tareas de suplantación', () => {
+    expect(requestTaskKindSchema.options).toEqual([
+      'SUSPENDER_COBRO_EXTERNO',
+      'ENTREGAR_COPIA_DOCUMENTOS',
+      'FORMULAR_DENUNCIA_OPERADOR',
+      'COMUNICAR_PLAZO_DENUNCIA',
+    ]);
+    expect(completeRequestTaskOperatorSchema.safeParse({ note: 'Radicado 123' }).success).toBe(
+      true,
+    );
+    expect(completeRequestTaskOperatorSchema.safeParse({}).success).toBe(false);
+    expect(completeRequestTaskOperatorSchema.safeParse({ note: '' }).success).toBe(false);
+    expect(completeRequestTaskOperatorSchema.safeParse({ note: 'x'.repeat(121) }).success).toBe(
+      false,
+    );
+    expect(completeRequestTaskOperatorSchema.safeParse({ note: 'Radicado\n123' }).success).toBe(
+      false,
+    );
+    expect(completeRequestTaskOperatorSchema.safeParse({ note: '\nRadicado 123' }).success).toBe(
+      false,
+    );
+
+    expect(completeRequestTaskSchema.safeParse({ note: 'Nota existente\ncon salto' }).success).toBe(
+      true,
+    );
+    expect(completeRequestTaskSchema.safeParse({ note: 'x'.repeat(121) }).success).toBe(true);
+  });
 
   it('exige finalidad solo en REVOCAR', () => {
     expect(createDataSubjectRequestSchema.safeParse(base).success).toBe(true);

@@ -829,6 +829,74 @@ test.describe('Privacidad fase 1b contra API real de un tenant', () => {
     if (session?.createdActors.length) await deleteCreatedActors(page, session);
   });
 
+  test('CA-DO-08: radica suplantación, consulta las cuatro tareas y completa la denuncia', async ({
+    page,
+  }) => {
+    const session = await createSession(page);
+    const consentVersion = await publishedConsentVersion(page, session);
+    const prospect = await createProspect(page, session, consentVersion);
+    const party = await convertToParty(page, session, prospect);
+    const receivedAt = '2026-11-03';
+
+    const filed = await api<{
+      request: { id: string; dueAt: string; impersonationComplaintDueAt: string };
+      tasks: Array<{ id: string; kind: string; dueAt: string }>;
+    }>(page, session, session.admin, 'POST', '/privacy/requests', {
+      kind: 'SUPLANTACION',
+      right: 'CONOCER',
+      requesterKind: 'TITULAR',
+      requesterName: prospect.name,
+      requesterDocumentType: 'CC',
+      requesterDocument: prospect.document,
+      requesterContact: prospect.email,
+      identityVerificationMethod: 'DOCUMENTO_PRESENCIAL',
+      receivedAt,
+      partyId: party.partyId,
+      disputedContractIds: [party.contractId],
+    });
+
+    const detail = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'GET',
+        `/privacy/requests/${filed.request.id}`,
+      ),
+    );
+    const tasks = Array.isArray(detail['tasks']) ? detail['tasks'].map(record) : [];
+    expect(tasks.map((task) => task['kind']).sort()).toEqual(
+      [
+        'SUSPENDER_COBRO_EXTERNO',
+        'ENTREGAR_COPIA_DOCUMENTOS',
+        'FORMULAR_DENUNCIA_OPERADOR',
+        'COMUNICAR_PLAZO_DENUNCIA',
+      ].sort(),
+    );
+    expect(tasks.find((task) => task['kind'] === 'FORMULAR_DENUNCIA_OPERADOR')?.['dueAt']).toBe(
+      filed.request.impersonationComplaintDueAt,
+    );
+    expect(tasks.find((task) => task['kind'] === 'COMUNICAR_PLAZO_DENUNCIA')?.['dueAt']).toBe(
+      receivedAt,
+    );
+
+    const complaintTask = tasks.find((task) => task['kind'] === 'FORMULAR_DENUNCIA_OPERADOR');
+    expect(typeof complaintTask?.['id']).toBe('string');
+    const completed = record(
+      await api<JsonRecord>(
+        page,
+        session,
+        session.admin,
+        'POST',
+        `/privacy/requests/${filed.request.id}/tasks/${String(complaintTask?.['id'])}/complete`,
+        { note: `Radicado ${session.tag}` },
+      ),
+    );
+    expect(completed['kind']).toBe('FORMULAR_DENUNCIA_OPERADOR');
+    expect(completed['note']).toBe(`Radicado ${session.tag}`);
+    expect(completed['doneAt']).toBeTruthy();
+  });
+
   test('prospecto: SUPRIMIR, vista previa, resolver y anonimizar expediente, visita y órdenes', async ({
     page,
   }) => {

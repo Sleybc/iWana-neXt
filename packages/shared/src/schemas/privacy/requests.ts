@@ -44,6 +44,8 @@ export const requestLegalBasisSchema = z.enum([
 export const requestTaskKindSchema = z.enum([
   'SUSPENDER_COBRO_EXTERNO',
   'ENTREGAR_COPIA_DOCUMENTOS',
+  'FORMULAR_DENUNCIA_OPERADOR',
+  'COMUNICAR_PLAZO_DENUNCIA',
 ]);
 export const erasureCategorySchema = z.enum([
   'IDENTIFICACION',
@@ -242,6 +244,19 @@ export const transferRequestSchema = z
   .strict();
 export const completeRequestTaskSchema = z
   .object({ note: z.string().trim().min(1).max(1000) })
+  .strict();
+/** Entrada HTTP sin transformar: el servicio valida según el tipo persistido de la tarea. */
+export const completeRequestTaskInputSchema = z.object({ note: z.string().max(1000) }).strict();
+/** Nota requerida para las tareas nuevas de suplantación. Rechaza saltos antes de recortar. */
+export const completeRequestTaskOperatorSchema = z
+  .object({
+    note: z
+      .string()
+      .regex(/^[^\r\n]+$/u, 'La nota no puede contener saltos de línea.')
+      .trim()
+      .min(1)
+      .max(120),
+  })
   .strict();
 
 export const erasurePreviewSchema = z

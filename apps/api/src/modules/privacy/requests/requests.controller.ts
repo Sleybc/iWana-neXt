@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Header,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -14,7 +15,7 @@ import {
 import {
   AccessPermissionKey,
   completeRequestSchema,
-  completeRequestTaskSchema,
+  completeRequestTaskInputSchema,
   CreateDataSubjectRequest,
   createDataSubjectRequestSchema,
   extendRequestSchema,
@@ -26,6 +27,7 @@ import {
   transferRequestSchema,
   verifyIdentityRequestSchema,
   VerifyIdentityRequest,
+  requestTaskKindSchema,
 } from '@iwana/shared';
 import {
   ApiBadRequestResponse,
@@ -62,6 +64,31 @@ import {
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
+const requestTaskOpenApiSchema = {
+  type: 'object',
+  required: ['id', 'kind', 'dueAt', 'doneAt', 'doneBy', 'note'],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    kind: { type: 'string', enum: requestTaskKindSchema.options },
+    dueAt: { type: 'string', format: 'date' },
+    doneAt: { type: 'string', format: 'date-time', nullable: true },
+    doneBy: { type: 'string', format: 'uuid', nullable: true },
+    note: { type: 'string', nullable: true },
+  },
+  additionalProperties: false,
+};
+
+const taskCompletionResponseSchema = {
+  type: 'object',
+  required: ['data'],
+  properties: { data: requestTaskOpenApiSchema },
+};
+
+const requestTaskListProperty = {
+  type: 'array',
+  items: requestTaskOpenApiSchema,
+};
+
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -78,7 +105,19 @@ export class PrivacyRequestsController {
   @ApiBody({
     schema: { type: 'object', description: 'Solicitud y datos cifrados del solicitante.' },
   })
-  @ApiCreatedResponse({ description: 'Solicitud radicada.' })
+  @ApiCreatedResponse({
+    description: 'Solicitud radicada.',
+    schema: {
+      type: 'object',
+      required: ['data'],
+      properties: {
+        data: {
+          type: 'object',
+          properties: { tasks: requestTaskListProperty },
+        },
+      },
+    },
+  })
   @ApiBadRequestResponse({ description: 'Los datos de radicación no cumplen el contrato.' })
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite esta acción.' })
@@ -113,6 +152,16 @@ export class PrivacyRequestsController {
   @ApiOkResponse({
     description:
       'Detalle con estado de identidad; los datos del solicitante solo se incluyen con privacy.manage.',
+    schema: {
+      type: 'object',
+      required: ['data'],
+      properties: {
+        data: {
+          type: 'object',
+          properties: { tasks: requestTaskListProperty },
+        },
+      },
+    },
   })
   @ApiNotFoundResponse({ description: 'No existe la solicitud indicada.' })
   async get(
@@ -258,14 +307,35 @@ export class PrivacyRequestsController {
   }
 
   @Post(':id/tasks/:taskId/complete')
+  @HttpCode(200)
   @Roles(UserRole.ADMIN, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.PRIVACY_MANAGE)
   @SkipAudit()
   @ApiOperation({ summary: 'Marcar una tarea manual como completada' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['note'],
+      additionalProperties: false,
+      properties: {
+        note: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 1000,
+          description:
+            'Para formular denuncia y comunicar el plazo, la nota debe tener de 1 a 120 caracteres y no incluir saltos de línea.',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Tarea completada; la respuesta no contiene la nota en la auditoría.',
+    schema: taskCompletionResponseSchema,
+  })
   async completeTask(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('taskId', ParseUUIDPipe) taskId: string,
-    @Body(new ZodValidationPipe(completeRequestTaskSchema)) body: { note: string },
+    @Body(new ZodValidationPipe(completeRequestTaskInputSchema)) body: { note: string },
     @Req() request: AuthenticatedRequest,
   ) {
     return {

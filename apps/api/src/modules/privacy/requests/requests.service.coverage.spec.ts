@@ -217,7 +217,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     expect(JSON.stringify(auditService.log.mock.calls)).not.toContain('Solicitante sintético');
   });
 
-  it('radica suplantación con contratos suspendidos, marca y tareas cuando una tarea no retorna fila', async () => {
+  it('radica suplantación con cuatro tareas y conserva sus fechas civiles', async () => {
     const row = requestRow({
       kind: 'SUPLANTACION',
       party_id: partyId,
@@ -229,7 +229,11 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([taskRow({ kind: 'SUSPENDER_COBRO_EXTERNO', due_at: '2026-10-14' })])
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([taskRow({ kind: 'ENTREGAR_COPIA_DOCUMENTOS', due_at: '2026-10-28' })])
+      .mockResolvedValueOnce([
+        taskRow({ kind: 'FORMULAR_DENUNCIA_OPERADOR', due_at: '2026-11-11' }),
+      ])
+      .mockResolvedValueOnce([taskRow({ kind: 'COMUNICAR_PLAZO_DENUNCIA', due_at: '2026-10-14' })])
       .mockResolvedValueOnce([row]);
 
     const result = await service.create(
@@ -247,7 +251,12 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       { manager },
     );
     expect(result.suspendedContractIds).toEqual([contractId]);
-    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks.map(({ kind, dueAt }) => [kind, dueAt])).toEqual([
+      ['SUSPENDER_COBRO_EXTERNO', '2026-10-14'],
+      ['ENTREGAR_COPIA_DOCUMENTOS', '2026-10-28'],
+      ['FORMULAR_DENUNCIA_OPERADOR', '2026-11-11'],
+      ['COMUNICAR_PLAZO_DENUNCIA', '2026-10-14'],
+    ]);
     expect(result.request.impersonationComplaintDueAt).toBe('2026-11-11');
     expect(
       manager.query.mock.calls.some(([sql]) => String(sql).includes('VICTIMA_FALSEDAD_PERSONAL')),
@@ -1034,5 +1043,75 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
         newValue: { operation: 'REQUEST_TASK_COMPLETED', requestId },
       }),
     );
+  });
+
+  it.each([
+    ['FORMULAR_DENUNCIA_OPERADOR', ''],
+    ['FORMULAR_DENUNCIA_OPERADOR', 'x'.repeat(121)],
+    ['FORMULAR_DENUNCIA_OPERADOR', 'Radicado\n123'],
+    ['COMUNICAR_PLAZO_DENUNCIA', ''],
+    ['COMUNICAR_PLAZO_DENUNCIA', 'x'.repeat(121)],
+    ['COMUNICAR_PLAZO_DENUNCIA', 'Canal y fecha\n2026-11-03'],
+  ] as const)('rechaza nota inválida para %s antes de escribir', async (kind, note) => {
+    manager.query.mockResolvedValueOnce([taskRow({ kind })]);
+
+    await expect(service.completeTask(requestId, evidenceId, note, actorId)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(manager.query).toHaveBeenCalledTimes(1);
+    expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['FORMULAR_DENUNCIA_OPERADOR', 'Radicado 123'],
+    ['COMUNICAR_PLAZO_DENUNCIA', 'Correo, 2026-11-03'],
+  ] as const)(
+    'completa %s con nota válida, registra el evento y no audita la nota',
+    async (kind, note) => {
+      manager.query
+        .mockResolvedValueOnce([taskRow({ kind })])
+        .mockResolvedValueOnce([{ id: evidenceId }])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.completeTask(requestId, evidenceId, note, actorId);
+
+      expect(result).toMatchObject({ id: evidenceId, kind, doneBy: actorId, note });
+      expect(manager.query.mock.calls[1]?.[1]).toEqual([
+        evidenceId,
+        expect.any(Date),
+        actorId,
+        note,
+      ]);
+      expect(manager.query.mock.calls[2]?.[1]).toEqual([
+        requestId,
+        'RADICADA',
+        actorId,
+        `TAREA_COMPLETADA:${kind}`,
+      ]);
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityId: evidenceId,
+          newValue: { operation: 'REQUEST_TASK_COMPLETED', requestId },
+        }),
+      );
+      expect(JSON.stringify(auditService.log.mock.calls)).not.toContain(note);
+    },
+  );
+
+  it('conserva notas largas y multilínea para los tipos de tarea existentes', async () => {
+    const note = `${'x'.repeat(121)}\ncontinuación`;
+    manager.query
+      .mockResolvedValueOnce([taskRow({ kind: 'ENTREGAR_COPIA_DOCUMENTOS' })])
+      .mockResolvedValueOnce([{ id: evidenceId }])
+      .mockResolvedValueOnce([]);
+
+    await expect(service.completeTask(requestId, evidenceId, note, actorId)).resolves.toMatchObject(
+      {
+        kind: 'ENTREGAR_COPIA_DOCUMENTOS',
+        note,
+      },
+    );
+    expect(manager.query.mock.calls[1]?.[1]?.[3]).toBe(note);
   });
 });
