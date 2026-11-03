@@ -236,7 +236,7 @@ flowchart LR
 
 ## 11. Decisión de salida
 
-**Fase 1a:** G6 y G6.5 GO. **Fase 1b:** G4, G6 y G6.5 **GO** (2026-10-17). **DT-3:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-02). **O-1:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-03; CI 41638769340 en `success` sobre `5a855ae8`). **Denuncia del operador:** G0 y G6 **GO** (2026-11-03); el G6.5 queda pendiente del push.
+**Fase 1a:** G6 y G6.5 GO. **Fase 1b:** G4, G6 y G6.5 **GO** (2026-10-17). **DT-3:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-02). **O-1:** G0 (2026-11-02), G6 y G6.5 **GO** (2026-11-03; CI 41638769340 en `success` sobre `5a855ae8`). **Denuncia del operador:** G0, G6 y G6.5 **GO** (2026-11-03; CI 41706485845 en `success` sobre `350842af`).
 
 **G7 queda condicionado a:**
 1. la beta mínima ([ADR-095](../adrs/ADR-095-Topologia-Productiva-Dominio-TLS-Hosting.md));

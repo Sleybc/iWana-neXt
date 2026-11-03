@@ -3,7 +3,7 @@
 **Versión:** 1.0
 **Fecha:** 2026-11-03
 **Autor:** AI-EM-ARCH
-**Estado de la fase:** **G6 en GO.** G6.5 queda pendiente del commit y el push, y debe estar **antes del 19-11-2026**.
+**Estado de la fase:** **cerrada en G6 y G6.5 el 2026-11-03, antes del 19-11-2026.** Commits `839e75d6` (código) y `350842af` (documentos). CI [41706485845](https://github.com/Sleybc/iWana-neXt/actions/runs/41706485845) y E2E Web Admin Smoke [41706485810](https://github.com/Sleybc/iWana-neXt/actions/runs/41706485810) en `success`. El log muestra en PASS la migración 172 y `requests.service.postgres`. La E2E de Fase 1b se salta en el job «E2E portal», porque le faltan las variables del entorno real (`:819`), y corre en el job «E2E operativo R4.1», con un tenant `e2e-privacy-1b-*` aprovisionado: 331 aprobadas, 0 fallidas y 1 omitida declarada. Son 332 en total, una más que en H5: el caso CA-DO-08.
 **Spec:** [2026-11-03-privacy-suplantacion-denuncia-operador-spec.md](../specs/2026-11-03-privacy-suplantacion-denuncia-operador-spec.md) v1.0, **aprobada** (G0 del CTO, 2026-11-03)
 **Plan:** [orquestación](../plans/2026-11-03-privacy-denuncia-operador-orquestacion.md) · **Prompt:** [PROMPT-PRIVACY-DENUNCIA-OPERADOR-v1.0](../prompts/PROMPT-PRIVACY-DENUNCIA-OPERADOR-v1.0.md), lanzadores v1.0 a v1.2
 **HLD:** [HLD-PRIVACY-HABEAS-DATA-v1.4](../hlds/HLD-PRIVACY-HABEAS-DATA-v1.4.md)
@@ -44,7 +44,6 @@ La **Sentencia C-413 de 2025** ([relatoría](https://www.corteconstitucional.gov
 
 | Tema | Dueño | Prioridad |
 | --- | --- | --- |
-| Commit, push y G6.5 | Usuario y AI-EM-ARCH | **Antes del 19-11-2026** |
 | Dictamen de un abogado sobre la consulta v1.1, sobre todo la pregunta 3 | Usuario (enviarla al abogado) | Alta |
 | Aplicar la 172 en el resto de tenants de desarrollo | `plat-ops`, con la cadena habitual | Baja |
 | Lo que quedó fuera de alcance: constancia como archivo, alertas de tareas vencidas, reanudar el cobro (3(d)) y evidencia de identidad (3(e)) | Según el dictamen | — |
