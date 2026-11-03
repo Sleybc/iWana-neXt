@@ -3,7 +3,7 @@
 **Versión:** 1.0
 **Fecha:** 2026-11-03
 **Autor:** AI-EM-ARCH
-**Estado:** **G6 en GO.** G6.5 queda pendiente del commit y el push.
+**Estado:** **cerrada en G6 y G6.5.** Commits `262aee09` (pruebas) y `a0bc71be` (documentos). CI [41687070905](https://github.com/Sleybc/iWana-neXt/actions/runs/41687070905) y E2E Web Admin Smoke [41687071342](https://github.com/Sleybc/iWana-neXt/actions/runs/41687071342) terminaron en `success`, y el log de CI muestra en PASS `second-schema`, las 3 suites EV1 y la guarda de arquitectura, que por primera vez corren en CI.
 **Spec:** [2026-11-03-transversal-hermeticidad-pruebas-pg-spec.md](../specs/2026-11-03-transversal-hermeticidad-pruebas-pg-spec.md) v1.1 · **Plan:** [orquestación](../plans/2026-11-03-hermeticidad-pruebas-y-g7-privacy-orquestacion.md) · **Prompts:** [hermeticidad](../prompts/PROMPT-TRANSVERSAL-HERMETICIDAD-PG-v1.0.md) (T1 a T5 y T-R) · [runbook G7](../prompts/PROMPT-PRIVACY-G7-RUNBOOK-DELTA-v1.0.md) · lanzadores v1.0 y v1.1
 
 ## 1. Resultado
@@ -36,7 +36,6 @@
 
 | Tema | Dueño | Prioridad |
 | --- | --- | --- |
-| Commit, push y G6.5 | Usuario y AI-EM-ARCH | Ahora |
 | 11 suites que escriben en el tenant de `E2E_TENANT_SLUG` (inventario D-H-5; todas de órdenes de ejecución, WFM, inventario y RUT de CRM) | Fase siguiente de hermeticidad | P2 |
 | Las bases locales creadas a mano no tienen los grants de mínimo privilegio de CI. Conviene un script de aprovisionamiento `iwana_it_*` idéntico al de CI | `plat-ops` | P3 |
 | Contenedor `iwana-pg-tr-20261103-8d32` y bases `iwana_it_*` de esta ola | El usuario decide si se borran | — |
