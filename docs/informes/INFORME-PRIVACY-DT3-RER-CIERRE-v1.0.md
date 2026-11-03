@@ -65,11 +65,11 @@ El defecto R-ER, que `sec-eng` encontró en §K4c del clúster MOD05: las guarda
 
 | Tema | Dueño | Prioridad |
 | --- | --- | --- |
-| **O-1:** el inicio de la retención (`lastTerminatedAt`) se toma de `contracts.updated_at`, así que cualquier edición, la migración 168 o la propia supresión lo mueven. Debe tomarse de `status_changed_at` | Spec propia de privacidad (retención) | P2 |
-| Correr `--verify-only` por tenant | `plat-ops`, en G7 | G7 |
-| Verificar en fuente oficial la Ley 2573 de 2026 (texto y vigencia) | Responsable de cumplimiento | Antes de G7 |
+| **O-1:** el inicio de la retención (`lastTerminatedAt`) se toma de `contracts.updated_at`. **Actualización del 2026-11-02:** además, los contratos `ARCHIVED` se ignoran, y eso permite suprimir dentro de la retención. Se propone subir a **P1**; `status_changed_at` no sirve como ancla porque se sobrescribe al archivar | [Spec O-1](../specs/2026-11-02-privacy-o1-reloj-retencion-spec.md), [plan](../plans/2026-11-02-privacy-o1-retencion-orquestacion.md) y [prompt](../prompts/PROMPT-PRIVACY-O1-RETENCION-v1.0.md), G0 aprobado el 2026-11-02 | **P1** |
+| Correr `--verify-only` por tenant | En desarrollo: bloque B4 de O-1. En producción: G7 | Desarrollo con O-1; producción en G7 |
+| ~~Verificar en fuente oficial la Ley 2573 de 2026 (texto y vigencia)~~ | ✅ Hecho el 2026-11-02 ([verificación](INFORME-PRIVACY-LEY-2573-VERIFICACION-v1.0.md)): el código cumple; el anclaje de los 20 días de la denuncia pasa a dictamen | — |
 | P3-5: DDL hecho a mano en las pruebas de ciclo de vida, con columnas añadidas una a una en B3-H y B3-H2 | Clúster MOD05, ola de salud de pruebas | P3 |
-| Esquema efímero `tenant_plan_change_f0f328f25d1d4ae6a251d29566d0c800` en la base de desarrollo | El usuario decide si se borra | — |
+| ~~Esquema efímero `tenant_plan_change_f0f328f25d1d4ae6a251d29566d0c800` en la base de desarrollo~~ | ✅ Comprobado el 2026-11-02 en solo lectura (`pg_namespace` de `dbiw`): ya no existe, y no hay fila en `public.tenants`. No hubo que borrar nada | — |
 | Margen de cobertura de ramas de `contracts.service.ts`: 0,05 puntos | Próximo cambio de ese archivo | Vigilar |
 
 ## 7. Registro de B4 (verificación, 2026-11-01)
