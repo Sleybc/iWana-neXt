@@ -12,19 +12,19 @@ export class CrmContractStandingReadAdapter implements IContractStandingReadPort
     lastTerminatedAt: string | null;
   }> {
     const rows = (await ctx.manager.query(
-      `SELECT c.id,
-                c.status,
-                c.updated_at
+      `SELECT COALESCE(array_agg(c.id ORDER BY c.id) FILTER (
+                  WHERE c.status NOT IN ('TERMINATED', 'ARCHIVED')
+                ), ARRAY[]::uuid[]) AS open_contract_ids,
+                max(c.terminated_at) FILTER (
+                  WHERE c.status IN ('TERMINATED', 'ARCHIVED')
+                ) AS last_terminated_at
            FROM contracts c
            JOIN subscribers s ON s.id = c.subscriber_id
-          WHERE s.party_id = $1
-          ORDER BY c.updated_at DESC NULLS LAST, c.id DESC`,
+          WHERE s.party_id = $1 AND c.deleted_at IS NULL`,
       [partyId],
-    )) as Array<{ id: string; status: string; updated_at: Date | string | null }>;
-    const openContractIds = rows
-      .filter((row) => row.status !== 'TERMINATED' && row.status !== 'ARCHIVED')
-      .map((row) => row.id);
-    const lastTerminatedAt = rows.find((row) => row.status === 'TERMINATED')?.updated_at;
+    )) as Array<{ open_contract_ids: string[]; last_terminated_at: Date | string | null }>;
+    const openContractIds = rows[0]?.open_contract_ids ?? [];
+    const lastTerminatedAt = rows[0]?.last_terminated_at;
     return {
       openContractIds,
       lastTerminatedAt: lastTerminatedAt ? new Date(lastTerminatedAt).toISOString() : null,

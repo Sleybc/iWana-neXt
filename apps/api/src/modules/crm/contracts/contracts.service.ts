@@ -1704,6 +1704,9 @@ export class ContractsService {
       entity.status = target;
       entity.statusReasonCode = null;
       entity.statusChangedAt = new Date();
+      if (target === ContractStatus.TERMINATED || target === ContractStatus.ARCHIVED) {
+        entity.terminatedAt ??= entity.statusChangedAt;
+      }
       prepareFiscalDocumentForSave(entity);
       this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);

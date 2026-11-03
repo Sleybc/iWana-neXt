@@ -93,6 +93,22 @@ describe('SubscriberLifecycleService', () => {
 
   afterEach(() => loggerLog.mockRestore());
 
+  it('fija el reloj terminal en la misma escritura y conserva un ancla anterior', async () => {
+    await service.terminate(
+      subscriberId,
+      { reasonCode: 'SOLICITUD_TITULAR', contractIds },
+      'actor-test',
+    );
+    const writes = query.mock.calls.filter(([sql]) => String(sql).startsWith('UPDATE contracts'));
+    expect(writes).toHaveLength(2);
+    for (const [sql, params] of writes) {
+      expect(sql).toContain('CASE WHEN $6::boolean');
+      expect(sql).toContain('COALESCE(terminated_at, now())');
+      expect((params as unknown[])[0]).toBe(ContractStatus.TERMINATED);
+      expect((params as unknown[])[5]).toBe(true);
+    }
+  });
+
   it('CA-LC-01 suspends all active contracts atomically and persists one shared batch', async () => {
     const result = await service.suspend(
       subscriberId,

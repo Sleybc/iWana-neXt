@@ -610,11 +610,19 @@ export class SubscriberLifecycleService {
     actorId: string,
   ): Promise<void> {
     const fromStatus = contract.status;
+    // El estado destino llega como $1 (enum en tenants migrados; varchar en fixtures). Compararlo
+    // con literales dentro del CASE hace que PostgreSQL deduzca dos tipos para $1 y falle.
+    // Por eso el reloj terminal se decide en JS y viaja como booleano.
+    const entersTerminalState =
+      toStatus === ContractStatus.TERMINATED || toStatus === ContractStatus.ARCHIVED;
     await qr.query(
       `UPDATE contracts
-          SET status = $1, status_reason_code = $2, status_changed_at = now(), updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')
+          SET status = $1, status_reason_code = $2, status_changed_at = now(),
+              terminated_at = CASE WHEN $6::boolean
+                THEN COALESCE(terminated_at, now()) ELSE terminated_at END,
+              updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')
         WHERE id = $3 AND subscriber_id = $4 AND tenant_id = $5 AND deleted_at IS NULL`,
-      [toStatus, command.reasonCode, contract.id, subscriberId, tenantId],
+      [toStatus, command.reasonCode, contract.id, subscriberId, tenantId, entersTerminalState],
     );
     await this.insertHistory(qr, {
       tenantId,

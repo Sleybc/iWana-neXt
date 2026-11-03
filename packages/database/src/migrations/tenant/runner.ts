@@ -126,6 +126,8 @@ import { PrivacyLegalFormatsAndPurposes1660000000000 } from './166_privacy_legal
 import { CreateCrmBillingCycles1670000000000 } from './167_crm_billing_cycles';
 import { CrmContractAliasReadable1680000000000 } from './168_crm_contract_alias_readable';
 import { PreventAnonymizedCrmMutations1690000000000 } from './169_prevent_anonymized_crm_mutations';
+import { ContractRetentionClock1700000000170 } from './170_contract_retention_clock';
+import { ContractTerminalInsertGuard1710000000171 } from './171_contract_terminal_insert_guard';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -333,6 +335,8 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   CreateCrmBillingCycles1670000000000,
   CrmContractAliasReadable1680000000000,
   PreventAnonymizedCrmMutations1690000000000,
+  ContractRetentionClock1700000000170,
+  ContractTerminalInsertGuard1710000000171,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

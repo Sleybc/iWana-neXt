@@ -222,6 +222,10 @@ describeWithDb('B5 identidad, conversión y reintento contra PostgreSQL real', (
       planId: 'B5-PLAN',
       planSnapshotJson: { id: 'B5-PLAN' },
       status,
+      terminatedAt:
+        status === ContractStatus.TERMINATED || status === ContractStatus.ARCHIVED
+          ? new Date('2020-01-01T00:00:00.000Z')
+          : null,
       alias: `Contrato ${randomUUID().slice(0, 8)}`,
       installationAddress: null,
       installationCity: null,

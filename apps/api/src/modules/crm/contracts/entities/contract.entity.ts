@@ -21,6 +21,11 @@ import type { ContractServicePointSnapshot } from '@iwana/shared';
   where: '"stratum_evidence_media_id" IS NOT NULL',
 })
 export class Contract {
+  /** El reloj de conservación es interno y no forma parte del contrato HTTP. */
+  toJSON(): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(this).filter(([key]) => key !== 'terminatedAt'));
+  }
+
   /** Marca del suscriptor asociada a las proyecciones HTTP; no es columna de contracts. */
   titularAnonymizedAt: string | null = null;
 
@@ -50,6 +55,9 @@ export class Contract {
 
   @Column({ type: 'timestamptz', name: 'status_changed_at', nullable: true })
   statusChangedAt: Date | null;
+
+  @Column({ type: 'timestamptz', name: 'terminated_at', nullable: true })
+  terminatedAt: Date | null;
 
   /** Alias visible del servicio. Obligatorio; autogenerado si no se provee. */
   @Column({ type: 'varchar', length: 120, name: 'alias' })

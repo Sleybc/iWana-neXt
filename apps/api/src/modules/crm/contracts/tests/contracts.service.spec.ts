@@ -52,6 +52,7 @@ let mockLockedContractUpdatedAt = new Date('2026-04-24T00:00:00Z');
 let mockAgendaRows: Array<Record<string, unknown>> | null = null;
 let mockActiveBillingCycleExists = true;
 let mockLockedSubscriber: Partial<Subscriber> | null;
+let mockAnonymizedArchiveRows: Array<{ id: string }> | null = null;
 
 function mockMutationPrecheck(): void {
   mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) => cb({ manager: {} }));
@@ -122,6 +123,12 @@ jest.mock('@iwana/db', () => {
           }
           queryRunner.query = async (sql: string, parameters?: unknown[]) => {
             mockContractQuery(sql, parameters);
+            if (
+              mockAnonymizedArchiveRows !== null &&
+              sql.includes('SET status = $1, status_reason_code = NULL')
+            ) {
+              return mockAnonymizedArchiveRows;
+            }
             if (sql.includes('FOR SHARE OF s')) {
               return mockLockedSubscriber ? [mockLockedSubscriber] : [];
             }
@@ -260,6 +267,7 @@ describe('ContractsService', () => {
     mockRunInTenantSchema.mockReset();
     mockLockedContractStatus = ContractStatus.DRAFT;
     mockLockedContractBillingCycleDay = 1;
+    mockAnonymizedArchiveRows = null;
     mockLockedSubscriber = {
       id: 'sub-1',
       tenantId: 'ten-1',
@@ -2125,6 +2133,24 @@ describe('ContractsService', () => {
   });
 
   describe('archive', () => {
+    it.each([
+      [ContractStatus.SUSPENDED, ContractStatus.ARCHIVED, null],
+      [ContractStatus.TERMINATED, ContractStatus.ARCHIVED, new Date('2020-01-01T00:00:00Z')],
+      [ContractStatus.ACTIVE, ContractStatus.TERMINATED, null],
+    ])('ancla el fin inmutable de %s a %s', async (status, target, terminatedAt) => {
+      const contract = buildContract({ status, terminatedAt });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => contract } }),
+      );
+      const result = await (
+        service as unknown as {
+          _transition(id: string, target: ContractStatus): Promise<Contract>;
+        }
+      )._transition('ctr-1', target);
+      expect(result.terminatedAt).toEqual(terminatedAt ?? result.statusChangedAt);
+      expect(result.terminatedAt).toBeInstanceOf(Date);
+    });
+
     it('transiciona TERMINATED → ARCHIVED', async () => {
       const contract = buildContract({ status: ContractStatus.TERMINATED });
       mockRunInTenantSchema
@@ -3159,5 +3185,145 @@ describe('ContractsService', () => {
         });
       },
     );
+  });
+
+  describe('B1-R: ramas de _transition sobre titular anonimizado', () => {
+    const transition = (target: ContractStatus) =>
+      (
+        service as unknown as {
+          _transition(id: string, target: ContractStatus): Promise<Contract>;
+        }
+      )._transition('ctr-1', target);
+
+    beforeEach(() => {
+      mockLockedSubscriber = {
+        ...mockLockedSubscriber,
+        anonymizedAt: new Date('2026-10-15T12:00:00.000Z'),
+      };
+    });
+
+    it('rechaza con 404 cuando el contrato bloqueado ya no existe', async () => {
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => null } }),
+      );
+
+      await expect(transition(ContractStatus.ARCHIVED)).rejects.toThrow(NotFoundException);
+    });
+
+    it('responde 409 PRIVACY_TITULAR_ANONYMIZED a un contrato ACTIVE y no emite ningún UPDATE de archivo', async () => {
+      const contract = buildContract({ status: ContractStatus.ACTIVE });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => contract } }),
+      );
+
+      await expect(transition(ContractStatus.TERMINATED)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
+      });
+      expect(mockContractQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('SET status = $1, status_reason_code = NULL'),
+        expect.anything(),
+      );
+    });
+
+    it('responde 409 PRIVACY_TITULAR_ANONYMIZED a una transición de titular anonimizado distinta de ARCHIVED', async () => {
+      const contract = buildContract({
+        status: ContractStatus.TERMINATED,
+        terminatedAt: new Date('2026-01-01T00:00:00Z'),
+      });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => contract } }),
+      );
+
+      await expect(transition(ContractStatus.ACTIVE)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
+      });
+    });
+
+    it('responde 409 a un contrato ya ARCHIVED de titular anonimizado sin registrar alerta', async () => {
+      const contract = buildContract({
+        status: ContractStatus.ARCHIVED,
+        terminatedAt: new Date('2026-01-01T00:00:00Z'),
+      });
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => contract } }),
+      );
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (message: string) => void } }).logger,
+        'warn',
+      );
+
+      await expect(transition(ContractStatus.ARCHIVED)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('archiva un contrato TERMINATED de titular anonimizado y conserva terminated_at', async () => {
+      const terminatedAt = new Date('2026-01-01T00:00:00Z');
+      const contract = buildContract({ status: ContractStatus.TERMINATED, terminatedAt });
+      const archived = { ...contract, status: ContractStatus.ARCHIVED };
+      let lookups = 0;
+      mockAnonymizedArchiveRows = [{ id: 'ctr-1' }];
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: async () => (++lookups === 1 ? contract : archived),
+          },
+        }),
+      );
+
+      const result = await transition(ContractStatus.ARCHIVED);
+
+      expect(result.status).toBe(ContractStatus.ARCHIVED);
+      expect(result.terminatedAt).toEqual(terminatedAt);
+      // D-O1-1: la transición posterior no reescribe la fecha de terminación.
+      const archiveUpdate = mockContractQuery.mock.calls.find(([sql]) =>
+        String(sql).includes('SET status = $1, status_reason_code = NULL'),
+      );
+      expect(archiveUpdate?.[0]).not.toMatch(/terminated_at/u);
+      expect(archiveUpdate?.[1]).toEqual([
+        ContractStatus.ARCHIVED,
+        'ctr-1',
+        'ten-1',
+        ContractStatus.TERMINATED,
+      ]);
+      expect(auditService.logWithin).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          entityType: 'Contract',
+          entityId: 'ctr-1',
+          oldValue: { status: ContractStatus.TERMINATED },
+          newValue: { status: ContractStatus.ARCHIVED },
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('responde 409 CONTRACT_CHANGED si otra operación movió el contrato antes del archivo', async () => {
+      const contract = buildContract({ status: ContractStatus.TERMINATED });
+      mockAnonymizedArchiveRows = [];
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => contract } }),
+      );
+
+      await expect(transition(ContractStatus.ARCHIVED)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'CONTRACT_CHANGED' },
+      });
+    });
+
+    it('rechaza con 404 si el contrato desaparece justo después del archivo', async () => {
+      const contract = buildContract({ status: ContractStatus.TERMINATED });
+      let lookups = 0;
+      mockAnonymizedArchiveRows = [{ id: 'ctr-1' }];
+      mockRunInTenantSchema.mockImplementation(async (_ds, _schema, cb) =>
+        cb({ manager: { findOne: async () => (++lookups === 1 ? contract : null) } }),
+      );
+
+      await expect(transition(ContractStatus.ARCHIVED)).rejects.toThrow(NotFoundException);
+    });
   });
 });

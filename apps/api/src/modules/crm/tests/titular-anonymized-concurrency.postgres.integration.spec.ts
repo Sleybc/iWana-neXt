@@ -199,6 +199,10 @@ describeWithDb('DT-3 RER: concurrencia de titular anonimizado contra PostgreSQL 
     let contractId: string | null = null;
     if (contractStatus) {
       contractId = randomUUID();
+      const terminalAt =
+        contractStatus === ContractStatus.TERMINATED || contractStatus === ContractStatus.ARCHIVED
+          ? new Date('2020-01-01T00:00:00.000Z')
+          : null;
       await runInTenantSchema(dataSource, schemaName, async (qr) => {
         const contract = Object.assign(new Contract(), {
           id: contractId,
@@ -210,6 +214,7 @@ describeWithDb('DT-3 RER: concurrencia de titular anonimizado contra PostgreSQL 
           status: contractStatus,
           statusReasonCode: null,
           statusChangedAt: new Date('2020-01-01T00:00:00.000Z'),
+          terminatedAt: terminalAt,
           alias: 'Servicio sintético DT3',
           installationAddress: 'Dirección sintética DT3',
           installationCity: 'Bogotá',

@@ -17,6 +17,10 @@ import { Subscriber } from '../entities/subscriber.entity';
 import { SubscriberLifecycleService } from '../subscriber-lifecycle.service';
 import { decryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
 import { CrmContractImpersonationAdapter } from '../../privacy-adapters/crm-contract-impersonation.adapter';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -50,10 +54,15 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
 
   async function insertSubscriber(status: SubscriberStatus): Promise<string> {
     const id = randomUUID();
+    // Columnas obligatorias del esquema migrado (persona natural y responsabilidad fiscal).
     await dataSource.query(
-      `INSERT INTO ${qualified('subscribers')} (id, tenant_id, status, person_type, customer_segment, activated_at)
-       VALUES ($1, $2, $3, $4, $5, now())`,
-      [id, tenantId, status, PersonType.NATURAL, CustomerSegment.RESIDENTIAL],
+      `INSERT INTO ${qualified('subscribers')}
+        (id, tenant_id, status, person_type, customer_segment, activated_at, document_type,
+         document_number_encrypted, first_name, last_name, stratum, vat_treatment, vat_responsibility,
+         address, created_by)
+       VALUES ($1, $2, $3, $4, $5, now(), 'CC', 'sintetico-cifrado', 'Titular', 'Sintético', 3,
+               'STANDARD', 'RESPONSABLE', 'Dirección sintética', $6)`,
+      [id, tenantId, status, PersonType.NATURAL, CustomerSegment.RESIDENTIAL, actorId],
     );
     return id;
   }
@@ -72,6 +81,10 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     return id;
   }
 
+  // Los UPDATE sobre contracts disparan el trigger de 169, que resuelve `subscribers` sin esquema.
+  const inSchema = (sql: string, params?: unknown[]) =>
+    runInTenantSchema(dataSource, schemaName, (qr) => qr.query(sql, params));
+
   async function lifecycleCount(): Promise<number> {
     const [row] = (await dataSource.query(
       `SELECT COUNT(*)::int AS count FROM ${qualified('crm_lifecycle_changes')}`,
@@ -89,96 +102,31 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     });
     await dataSource.initialize();
     const quotedSchema = `"${schemaName}"`;
-    await dataSource.query(`CREATE SCHEMA ${quotedSchema}`);
-    // Migración 012: enum tenant y columna obligatoria, sin default.
-    await dataSource.query(`
-      CREATE TYPE ${qualified('customer_segment_enum')} AS ENUM (
-        'RESIDENTIAL', 'SOHO', 'PYME', 'CORPORATE', 'GOVERNMENT', 'WHOLESALE'
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qualified('subscribers')} (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        status varchar(30) NOT NULL,
-        person_type varchar(20) NOT NULL,
-        customer_segment ${qualified('customer_segment_enum')} NOT NULL,
-        party_id uuid,
-        activated_at timestamptz,
-        anonymized_at timestamptz,
-        anonymized_request_id uuid,
-        deleted_at timestamptz,
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qualified('contracts')} (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        subscriber_id uuid NOT NULL,
-        status varchar(30) NOT NULL,
-        quote_id uuid,
-        plan_id varchar(120) NOT NULL,
-        plan_snapshot_json jsonb NOT NULL,
-        alias varchar(120),
-        installation_address varchar(255),
-        installation_city varchar(120),
-        installation_department varchar(120),
-        installation_postal_code varchar(20),
-        installation_notes text,
-        customer_segment varchar(20),
-        service_usage varchar(20),
-        installation_stratum smallint,
-        stratum_evidence_media_id uuid,
-        vat_snapshot jsonb,
-        additional_product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-        additional_service_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-        payment_method varchar(30),
-        billing_cycle varchar(20),
-        fiscal_name varchar(200),
-        fiscal_document varchar(30),
-        fiscal_document_encrypted varchar(500),
-        fiscal_document_hmac varchar(64),
-        fiscal_address varchar(255),
-        start_date date,
-        end_date date,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        billing_cycle_day smallint,
-        status_reason_code varchar(40),
-        status_changed_at timestamptz,
-        deleted_at timestamptz,
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qualified('crm_billing_cycles')} (
-        cycle_day smallint PRIMARY KEY,
-        cutoff_day smallint NOT NULL,
-        active boolean NOT NULL DEFAULT true
-      )
-    `);
     await dataSource.query(
-      `INSERT INTO ${qualified('crm_billing_cycles')} (cycle_day, cutoff_day)
-       VALUES (1, 15), (15, 30)`,
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Lifecycle sintético',
+        `lifecycle-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'lifecycle@example.invalid',
+      ],
     );
-    await dataSource.query(`
-      CREATE TABLE ${qualified('crm_lifecycle_changes')} (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        entity_type varchar(16) NOT NULL,
-        entity_id uuid NOT NULL,
-        subscriber_id uuid NOT NULL,
-        from_status varchar(30) NOT NULL,
-        to_status varchar(30) NOT NULL,
-        reason_code varchar(40) NOT NULL,
-        note_encrypted text,
-        contract_scope_explicit boolean NOT NULL DEFAULT FALSE,
-        source varchar(16) NOT NULL,
-        batch_id uuid NOT NULL,
-        actor_id uuid,
-        changed_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
+    // El esquema lo crea la cadena de migraciones del tenant (B3): incluye terminated_at (170)
+    // y los triggers reales, no un DDL escrito a mano.
+    await dataSource.query(`CREATE SCHEMA ${quotedSchema}`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `lifecycle-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
   });
 
   beforeEach(async () => {
@@ -203,6 +151,7 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });
@@ -231,7 +180,7 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     const subscriberId = await insertSubscriber(SubscriberStatus.ACTIVE);
     const contractId = await insertContract(subscriberId, ContractStatus.ACTIVE);
     const previous = new Date(Date.now() + 60_000);
-    await dataSource.query(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
+    await inSchema(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
       contractId,
       previous,
     ]);
@@ -249,6 +198,36 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
       [contractId],
     )) as Array<{ version: Date }>;
     expect(reactivated!.version.getTime()).toBe(previous.getTime() + 2);
+  });
+
+  it('TERMINATE fija terminated_at y conserva un ancla anterior (B1-F, CA-O1-08)', async () => {
+    const subscriberId = await insertSubscriber(SubscriberStatus.ACTIVE);
+    const fresh = await insertContract(subscriberId, ContractStatus.ACTIVE);
+    const anchored = await insertContract(subscriberId, ContractStatus.ACTIVE);
+    const previousAnchor = new Date('2020-01-01T00:00:00.000Z');
+    await inSchema(`UPDATE ${qualified('contracts')} SET terminated_at = $2 WHERE id = $1`, [
+      anchored,
+      previousAnchor,
+    ]);
+
+    await withTenant(() =>
+      lifecycleService.terminate(
+        subscriberId,
+        { reasonCode: 'SOLICITUD_TITULAR', contractIds: [fresh, anchored] },
+        actorId,
+      ),
+    );
+
+    const rows = (await dataSource.query(
+      `SELECT id, status, terminated_at AS "terminatedAt" FROM ${qualified('contracts')}
+        WHERE id = ANY($1::uuid[]) ORDER BY id`,
+      [[fresh, anchored]],
+    )) as Array<{ id: string; status: string; terminatedAt: Date | null }>;
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    expect(byId.get(fresh)).toMatchObject({ status: ContractStatus.TERMINATED });
+    expect(byId.get(fresh)?.terminatedAt).toBeInstanceOf(Date);
+    expect(byId.get(anchored)).toMatchObject({ status: ContractStatus.TERMINATED });
+    expect(byId.get(anchored)?.terminatedAt?.getTime()).toBe(previousAnchor.getTime());
   });
 
   it('RF-LC-17: bloquea la activación nueva con suspensión vigente por mora', async () => {
@@ -302,7 +281,7 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     const subscriberId = await insertSubscriber(SubscriberStatus.ACTIVE);
     const contractId = await insertContract(subscriberId, ContractStatus.DRAFT);
     const previous = new Date(Date.now() + 60_000);
-    await dataSource.query(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
+    await inSchema(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
       contractId,
       previous,
     ]);
@@ -334,7 +313,7 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
       subscriberId,
       partyId,
     ]);
-    await dataSource.query(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
+    await inSchema(`UPDATE ${qualified('contracts')} SET updated_at = $2 WHERE id = $1`, [
       contractId,
       previous,
     ]);
