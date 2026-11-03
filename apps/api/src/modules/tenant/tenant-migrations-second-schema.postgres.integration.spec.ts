@@ -18,9 +18,9 @@
  *   no solo que la cadena termine: "no falla" es precisamente la forma del bug.
  *
  * Ejecutar:
- *   TENANT_MIGRATIONS_REAL_DB=1 pnpm --filter @iwana/api test -- tenant-migrations-second-schema.spec.ts --coverage=false
+ *   IWANA_DB_INTEGRATION_AVAILABLE=true pnpm --filter @iwana/api test -- tenant-migrations-second-schema.postgres.integration.spec.ts --coverage=false
  *
- * Sin la variable la suite se omite.
+ * Sin la variable la suite se omite del job unitario.
  *
  * ### Por qué schemas desechables y no una base desechable
  *
@@ -98,11 +98,26 @@ function loadWorkspaceEnv(): void {
 
 loadWorkspaceEnv();
 
-const REAL_DB = process.env.TENANT_MIGRATIONS_REAL_DB === '1';
 const TEST_DB = process.env.DB_NAME ?? 'dbiw';
 const FIRST_SCHEMA = 'tenant_guard_first';
 const SECOND_SCHEMA = 'tenant_guard_second';
 const DISPOSABLE_SCHEMAS = [FIRST_SCHEMA, SECOND_SCHEMA];
+const DISPOSABLE_TENANTS = [
+  {
+    id: '00000000-0000-4000-8000-000000000091',
+    name: 'Migration guard first synthetic',
+    slug: 'migration-guard-first',
+    schema: FIRST_SCHEMA,
+    email: 'migration-guard-first@example.invalid',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000092',
+    name: 'Migration guard second synthetic',
+    slug: 'migration-guard-second',
+    schema: SECOND_SCHEMA,
+    email: 'migration-guard-second@example.invalid',
+  },
+];
 
 /** Enums que las guardas con alcance cruzado ponían en riesgo, con su contenido esperado. */
 const EXPECTED_ENUMS: Record<string, string[]> = {
@@ -130,6 +145,8 @@ const EXPECTED_ENUMS: Record<string, string[]> = {
     'ADJUSTMENT',
     'WRITE_OFF',
     'COUNTER_PURCHASE',
+    // La migración 141 añade esta etiqueta al final de stock_movement_origin.
+    'EXECUTION_ORDER_REVERSAL',
   ],
 };
 
@@ -166,9 +183,19 @@ async function dropDisposableSchemas(): Promise<void> {
   for (const schema of DISPOSABLE_SCHEMAS) {
     await queryOn(TEST_DB, `DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   }
+  const client = new Client({ ...connectionConfig(), database: TEST_DB });
+  await client.connect();
+  try {
+    await client.query('DELETE FROM public.tenants WHERE schema_name = ANY($1::text[])', [
+      DISPOSABLE_SCHEMAS,
+    ]);
+  } finally {
+    await client.end();
+  }
 }
 
-const describeReal = REAL_DB ? describe : describe.skip;
+const describeReal =
+  process.env.IWANA_DB_INTEGRATION_AVAILABLE === 'true' ? describe : describe.skip;
 
 describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas conviviendo', () => {
   let base: DataSource;
@@ -193,9 +220,14 @@ describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas c
     });
     await base.initialize();
 
-    // El provisioning crea el schema antes de invocar las migraciones (ver 000).
-    for (const schema of DISPOSABLE_SCHEMAS) {
-      await queryOn(TEST_DB, `CREATE SCHEMA IF NOT EXISTS ${schema}`);
+    // El provisioning crea la fila canónica y el schema antes de invocar la cadena.
+    for (const tenant of DISPOSABLE_TENANTS) {
+      await base.query(
+        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+         VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+        [tenant.id, tenant.name, tenant.slug, tenant.schema, tenant.email],
+      );
+      await base.query(`CREATE SCHEMA IF NOT EXISTS "${tenant.schema}"`);
     }
   });
 
@@ -209,9 +241,16 @@ describeReal('Alta de un segundo tenant — migraciones tenant con dos schemas c
   async function migrate(schema: string): Promise<void> {
     const ds = createTenantDataSource(base, schema, `migguard-${schema}-${Date.now()}`);
     await ds.initialize();
+    const previousContractFlag = process.env.IWANA_APPLY_PII_CONTRACT;
+    process.env.IWANA_APPLY_PII_CONTRACT = 'true';
     try {
       await applyTenantMigrationsInOrder(ds);
     } finally {
+      if (previousContractFlag === undefined) {
+        delete process.env.IWANA_APPLY_PII_CONTRACT;
+      } else {
+        process.env.IWANA_APPLY_PII_CONTRACT = previousContractFlag;
+      }
       await ds.destroy();
     }
   }

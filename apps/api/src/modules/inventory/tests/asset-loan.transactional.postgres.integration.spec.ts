@@ -5,12 +5,13 @@
  * alta en OT → idempotencia al reprocesar → cierre en retorno → cierre en baja.
  *
  * Ejecutar:
- *   EV1_REAL_DB=1 pnpm --filter @iwana/api test -- asset-loan.transactional.ev1.spec.ts --coverage=false
+ *   IWANA_DB_INTEGRATION_AVAILABLE=true pnpm --filter @iwana/api test:integration -- --runTestsByPath src/modules/inventory/tests/asset-loan.transactional.postgres.integration.spec.ts
  *
- * Sin EV1_REAL_DB=1 la suite se omite (no falla CI local sin intención).
+ * Sin IWANA_DB_INTEGRATION_AVAILABLE=true la suite se omite.
  */
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import {
   AssetLifecycleEvent,
@@ -23,6 +24,7 @@ import {
   StockMovement,
   StockMovementLine,
   TenantContext,
+  dataSourceOptions,
   runInTenantSchema,
 } from '@iwana/db';
 import {
@@ -41,6 +43,10 @@ import { InventoryCostingService } from '../services/inventory-costing.service';
 import { SerializedAssetService } from '../services/serialized-asset.service';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockLedgerService } from '../services/stock-ledger.service';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) {
@@ -86,14 +92,17 @@ function loadWorkspaceEnv(): void {
 
 loadWorkspaceEnv();
 
-const enabled = process.env.EV1_REAL_DB === '1';
+const enabled = process.env.IWANA_DB_INTEGRATION_AVAILABLE === 'true';
+const syntheticTenantId = randomUUID();
+const syntheticTenantSlug = `ev1-asset-loan-${syntheticTenantId.slice(0, 8)}`;
+const syntheticSchemaName = `tenant_ev1_asset_loan_${randomUUID().replace(/-/g, '')}`;
 
 const actor: JwtPayload = {
   sub: '00000000-0000-4000-8000-0000000000e2',
   email: 'ev1-asset-loan@example.test',
   role: UserRole.ADMIN,
-  tenantId: '00000000-0000-4000-8000-000000000000',
-  schemaName: 'tenant_iwana',
+  tenantId: syntheticTenantId,
+  schemaName: syntheticSchemaName,
   jti: 'jti-ev1-asset-loan',
   type: 'tenant',
 };
@@ -117,24 +126,9 @@ function nextEv1Uuid(): string {
   let mainLocationId: string;
   let techLocationId: string;
   let itemId: string;
-  let seededMainLocation = false;
-  let seededTechLocation = false;
-  let seededItem = false;
-  let seededCategory = false;
-
-  const createdAssetIds: string[] = [];
-  const createdMovementIds: string[] = [];
-  const createdLoanIds: string[] = [];
-  const createdCustomerSiteIds: string[] = [];
-
   beforeAll(async () => {
     dataSource = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST ?? 'localhost',
-      port: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
-      username: process.env.DB_USER ?? 'iwana',
-      password: process.env.DB_PASSWORD ?? '',
-      database: process.env.DB_NAME ?? 'dbiw',
+      ...dataSourceOptions,
       entities: [
         AssetLifecycleEvent,
         AssetLoanAssignment,
@@ -150,20 +144,27 @@ function nextEv1Uuid(): string {
       logging: false,
     });
     await dataSource.initialize();
-
-    const tenants = (await dataSource.query(
-      `SELECT id::text AS id, schema_name AS "schemaName"
-       FROM public.tenants
-       WHERE schema_name = 'tenant_iwana'
-       LIMIT 1`,
-    )) as Array<{ id: string; schemaName: string }>;
-
-    if (!tenants[0]) {
-      throw new Error('No existe tenant con schema tenant_iwana para EV-1 comodato.');
+    tenantId = syntheticTenantId;
+    schemaName = syntheticSchemaName;
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'EV1 asset loan synthetic',
+        syntheticTenantSlug,
+        schemaName,
+        'ev1-asset-loan@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, schemaName, syntheticTenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
     }
-
-    tenantId = tenants[0].id;
-    schemaName = tenants[0].schemaName;
     actor.tenantId = tenantId;
     actor.schemaName = schemaName;
 
@@ -212,7 +213,6 @@ function nextEv1Uuid(): string {
            RETURNING id::text AS id`,
           [tenantId],
         )) as Array<{ id: string }>;
-        seededMainLocation = true;
       }
       mainLocationId = mainRows[0]!.id;
 
@@ -233,7 +233,6 @@ function nextEv1Uuid(): string {
            RETURNING id::text AS id`,
           [tenantId],
         )) as Array<{ id: string }>;
-        seededTechLocation = true;
       }
       techLocationId = techRows[0]!.id;
 
@@ -266,7 +265,6 @@ function nextEv1Uuid(): string {
              RETURNING id::text AS id`,
             [tenantId],
           )) as Array<{ id: string }>;
-          seededCategory = true;
         }
 
         const categoryId = categoryRows[0]!.id;
@@ -282,7 +280,6 @@ function nextEv1Uuid(): string {
           [tenantId, categoryId],
         )) as Array<{ id: string }>;
         itemId = insertedItem[0]!.id;
-        seededItem = true;
       }
     });
   }, 60_000);
@@ -292,79 +289,8 @@ function nextEv1Uuid(): string {
       return;
     }
 
-    await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      if (createdLoanIds.length > 0) {
-        await qr.query(`DELETE FROM asset_loan_assignments WHERE id = ANY($1::uuid[])`, [
-          createdLoanIds,
-        ]);
-      }
-
-      if (createdMovementIds.length > 0) {
-        await qr.query(
-          `DELETE FROM asset_lifecycle_events WHERE stock_movement_id = ANY($1::uuid[])`,
-          [createdMovementIds],
-        );
-        await qr.query(`DELETE FROM stock_movement_lines WHERE movement_id = ANY($1::uuid[])`, [
-          createdMovementIds,
-        ]);
-        await qr.query(`DELETE FROM stock_movements WHERE id = ANY($1::uuid[])`, [
-          createdMovementIds,
-        ]);
-      }
-
-      if (createdAssetIds.length > 0) {
-        await qr.query(
-          `DELETE FROM asset_lifecycle_events WHERE serialized_asset_id = ANY($1::uuid[])`,
-          [createdAssetIds],
-        );
-        await qr.query(`DELETE FROM serialized_assets WHERE id = ANY($1::uuid[])`, [
-          createdAssetIds,
-        ]);
-      }
-
-      if (createdCustomerSiteIds.length > 0) {
-        await qr.query(
-          `DELETE FROM asset_lifecycle_events WHERE tenant_id = $1 AND location_id = ANY($2::uuid[])`,
-          [tenantId, createdCustomerSiteIds],
-        );
-        await qr.query(`DELETE FROM stock_movement_lines WHERE location_id = ANY($1::uuid[])`, [
-          createdCustomerSiteIds,
-        ]);
-        await qr.query(
-          `DELETE FROM stock_balances WHERE tenant_id = $1 AND location_id = ANY($2::uuid[])`,
-          [tenantId, createdCustomerSiteIds],
-        );
-        await qr.query(`DELETE FROM stock_locations WHERE id = ANY($1::uuid[])`, [
-          createdCustomerSiteIds,
-        ]);
-      }
-
-      const seededLocationIds = [
-        ...(seededMainLocation ? [mainLocationId] : []),
-        ...(seededTechLocation ? [techLocationId] : []),
-      ];
-      if (seededLocationIds.length > 0) {
-        await qr.query(
-          `DELETE FROM stock_balances WHERE tenant_id = $1 AND location_id = ANY($2::uuid[])`,
-          [tenantId, seededLocationIds],
-        );
-        await qr.query(`DELETE FROM stock_locations WHERE id = ANY($1::uuid[])`, [
-          seededLocationIds,
-        ]);
-      }
-
-      if (seededItem) {
-        await qr.query(`DELETE FROM inventory_items WHERE tenant_id = $1 AND sku = 'EV1-ONU-001'`, [
-          tenantId,
-        ]);
-      }
-      if (seededCategory) {
-        await qr.query(
-          `DELETE FROM inventory_categories WHERE tenant_id = $1 AND code = 'EV1-CAT'`,
-          [tenantId],
-        );
-      }
-    });
+    await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
 
     await dataSource.destroy();
   }, 60_000);
@@ -398,20 +324,19 @@ function nextEv1Uuid(): string {
         }),
       );
       assetId = asset.id;
-      createdAssetIds.push(asset.id);
 
       await qr.query(
         `INSERT INTO stock_balances (
            tenant_id, item_id, location_id, lot_id, condition,
            quantity_on_hand, quantity_reserved
-         ) VALUES ($1, $2, $3, NULL, 'NEW', 1.00, 0.00)
+         ) VALUES ($1, $2, $3, NULL, 'NEW', 2.00, 0.00)
          ON CONFLICT DO NOTHING`,
         [tenantId, itemId, techLocationId],
       );
 
       await qr.query(
         `UPDATE stock_balances
-         SET quantity_on_hand = GREATEST(quantity_on_hand, 1.00),
+         SET quantity_on_hand = GREATEST(quantity_on_hand, 2.00),
              quantity_reserved = 0.00
          WHERE tenant_id = $1
            AND item_id = $2
@@ -497,7 +422,7 @@ function nextEv1Uuid(): string {
 
     let customerSiteId = '';
 
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
+    await TenantContext.run({ tenantId, schemaName, tenantSlug: syntheticTenantSlug }, async () => {
       const installResult = await ledgerService.recordExecutionOrderMovement(
         {
           executionOrderId,
@@ -514,13 +439,8 @@ function nextEv1Uuid(): string {
         actor,
       );
 
-      createdMovementIds.push(installResult.movement.id);
-
       const openLoan = await findOpenLoan(assetId);
       expect(openLoan).not.toBeNull();
-      if (openLoan) {
-        createdLoanIds.push(openLoan.id);
-      }
 
       expect(await countLoansForAsset(assetId)).toBe(1);
 
@@ -554,11 +474,8 @@ function nextEv1Uuid(): string {
 
       customerSiteId = (await findCustomerSiteForSubscriber(SUBSCRIBER_REF_ID)) ?? '';
       expect(customerSiteId).toBeTruthy();
-      if (customerSiteId && !createdCustomerSiteIds.includes(customerSiteId)) {
-        createdCustomerSiteIds.push(customerSiteId);
-      }
 
-      const returnResult = await ledgerService.recordReturn(
+      await ledgerService.recordReturn(
         {
           itemId,
           sourceLocationId: customerSiteId,
@@ -570,8 +487,6 @@ function nextEv1Uuid(): string {
         },
         actor,
       );
-
-      createdMovementIds.push(returnResult.movement.id);
 
       const closedLoan = await queryLoanRow(assetId);
 
@@ -585,7 +500,7 @@ function nextEv1Uuid(): string {
     const executionOrderId = nextEv1Uuid();
     const { assetId, serialNumber } = await seedAssetAtTechnician(runId);
 
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
+    await TenantContext.run({ tenantId, schemaName, tenantSlug: syntheticTenantSlug }, async () => {
       const installResult = await ledgerService.recordExecutionOrderMovement(
         {
           executionOrderId,
@@ -601,19 +516,11 @@ function nextEv1Uuid(): string {
         actor,
       );
 
-      createdMovementIds.push(installResult.movement.id);
-
       const openLoan = await findOpenLoan(assetId);
       expect(openLoan).not.toBeNull();
-      if (openLoan) {
-        createdLoanIds.push(openLoan.id);
-      }
 
       const customerSiteId = await findCustomerSiteForSubscriber(SUBSCRIBER_REF_ID);
       expect(customerSiteId).toBeTruthy();
-      if (customerSiteId && !createdCustomerSiteIds.includes(customerSiteId)) {
-        createdCustomerSiteIds.push(customerSiteId);
-      }
 
       await runInTenantSchema(dataSource, schemaName, async (qr) => {
         await qr.query(
@@ -633,7 +540,7 @@ function nextEv1Uuid(): string {
         );
       });
 
-      const writeOffResult = await ledgerService.recordWriteOff(
+      await ledgerService.recordWriteOff(
         {
           serializedAssetId: assetId,
           itemId,
@@ -644,8 +551,6 @@ function nextEv1Uuid(): string {
         },
         actor,
       );
-
-      createdMovementIds.push(writeOffResult.movement.id);
 
       const closedLoan = await queryLoanRow(assetId);
 
@@ -658,7 +563,7 @@ function nextEv1Uuid(): string {
     const runId = `orphan-${Date.now().toString(36)}`;
     const { assetId } = await seedAssetAtTechnician(runId);
 
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
+    await TenantContext.run({ tenantId, schemaName, tenantSlug: syntheticTenantSlug }, async () => {
       expect(await findOpenLoan(assetId)).toBeNull();
 
       const returnResult = await ledgerService.recordReturn(
@@ -674,7 +579,6 @@ function nextEv1Uuid(): string {
         actor,
       );
 
-      createdMovementIds.push(returnResult.movement.id);
       expect(returnResult.movement.id).toBeTruthy();
       expect(await countLoansForAsset(assetId)).toBe(0);
     });

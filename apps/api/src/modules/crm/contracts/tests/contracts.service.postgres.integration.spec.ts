@@ -55,18 +55,21 @@ import { RolesGuard } from '../../../auth/guards/roles.guard';
 import { AbacGuard } from '../../../auth/guards/abac.guard';
 import { PermissionsGuard } from '../../../access-control/guards/permissions.guard';
 import { JwtPayload } from '../../../auth/interfaces/jwt-payload.interface';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
-const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
-const describeWithDb = dbAvailable && integrationTenantSlug ? describe : describe.skip;
+const describeWithDb = dbAvailable ? describe : describe.skip;
 const integrationCryptoKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () => {
   let app: INestApplication;
   let dataSource: DataSource;
-  let tenantId: string;
-  let sourceSchemaName: string;
-  let testSchemaName: string;
+  const tenantId = randomUUID();
+  const tenantSlug = `contracts-iva-${tenantId.slice(0, 8)}`;
+  const testSchemaName = 'tenant_iva_contract_' + randomUUID().replace(/-/g, '');
   let vatConcept: VatConcept | null = VatConcept.INTERNET_ACCESS;
   let uploadedMediaAssetIds: string[] = [];
 
@@ -93,7 +96,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
   const tenantContext = () => ({
     tenantId,
     schemaName: testSchemaName,
-    tenantSlug: integrationTenantSlug!,
+    tenantSlug,
   });
 
   // R7: el alta de contrato exige autorización contractual vigente del titular
@@ -221,74 +224,27 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     });
     await dataSource.initialize();
 
-    const tenants = (await dataSource.query(
-      'SELECT id, schema_name FROM public.tenants WHERE slug = $1 LIMIT 1',
-      [integrationTenantSlug],
-    )) as Array<{ id: string; schema_name: string }>;
-    if (!tenants[0]) throw new Error('No existe el tenant de integración configurado.');
-    tenantId = tenants[0].id;
-    sourceSchemaName = tenants[0].schema_name;
-    testSchemaName = 'tenant_iva_contract_' + randomUUID().replace(/-/g, '');
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Contracts IVA synthetic',
+        tenantSlug,
+        testSchemaName,
+        'contracts-iva@example.invalid',
+      ],
+    );
+    await dataSource.query('CREATE SCHEMA ' + quoteIdentifier(testSchemaName));
+    const tenantDataSource = createTenantDataSource(dataSource, testSchemaName, tenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     actor.tenantId = tenantId;
     actor.schemaName = testSchemaName;
-
-    const source = quoteIdentifier(sourceSchemaName);
-    const target = quoteIdentifier(testSchemaName);
-    await dataSource.query('CREATE SCHEMA ' + target);
-    await dataSource.query(
-      'CREATE TABLE ' + target + '.audit_logs (LIKE ' + source + '.audit_logs INCLUDING ALL)',
-    );
-    // R7: las tablas del fixture siguen las migraciones del tenant de origen
-    // con `LIKE … INCLUDING ALL` (igual que `audit_logs`): el alta de contrato
-    // lee `party_id` desde `ee5e494d` y el DDL manual quedó obsoleto (42703).
-    await dataSource.query(
-      'CREATE TABLE ' + target + '.subscribers (LIKE ' + source + '.subscribers INCLUDING ALL)',
-    );
-    await dataSource.query(
-      'CREATE TABLE ' + target + '.contracts (LIKE ' + source + '.contracts INCLUDING ALL)',
-    );
-    await dataSource.query(
-      'CREATE TABLE ' +
-        target +
-        '.expediente_records (LIKE ' +
-        source +
-        '.expediente_records INCLUDING ALL)',
-    );
-    // La 145 aporta este índice en el origen migrado; se conserva con
-    // `IF NOT EXISTS` para el origen sin migrar (lo exige el test de 23505).
-    await dataSource.query(
-      'CREATE UNIQUE INDEX IF NOT EXISTS uq_contracts_stratum_evidence ON ' +
-        target +
-        '.contracts (stratum_evidence_media_id) WHERE stratum_evidence_media_id IS NOT NULL',
-    );
-    await dataSource.query(
-      'ALTER TABLE ' +
-        target +
-        '.contracts DROP CONSTRAINT IF EXISTS fk_contracts_billing_cycle_day',
-    );
-    await dataSource.query(
-      'DROP INDEX IF EXISTS ' + target + '.idx_contracts_status_billing_cycle_day',
-    );
-    await dataSource.query(
-      'ALTER TABLE ' + target + '.contracts DROP COLUMN IF EXISTS billing_cycle_day',
-    );
-    await dataSource.query(
-      'CREATE TABLE ' +
-        target +
-        '.crm_billing_cycles (cycle_day smallint PRIMARY KEY, cutoff_day smallint NOT NULL, active boolean NOT NULL DEFAULT true)',
-    );
-    await dataSource.query(
-      'INSERT INTO ' +
-        target +
-        '.crm_billing_cycles (cycle_day, cutoff_day) VALUES (1, 15), (15, 30)',
-    );
-    await dataSource.query(
-      'ALTER TABLE ' +
-        target +
-        '.contracts ADD COLUMN billing_cycle_day smallint NULL REFERENCES ' +
-        target +
-        '.crm_billing_cycles (cycle_day)',
-    );
 
     const planPort = {
       getPlanById: async (_tenantId: string, _schemaName: string, planId: string) => ({
@@ -392,6 +348,7 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
           'DROP SCHEMA IF EXISTS ' + quoteIdentifier(testSchemaName) + ' CASCADE',
         );
       }
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       if (uploadedMediaAssetIds.length > 0) {
         await dataSource.query('DELETE FROM public.media_assets WHERE id = ANY($1::uuid[])', [
           uploadedMediaAssetIds,

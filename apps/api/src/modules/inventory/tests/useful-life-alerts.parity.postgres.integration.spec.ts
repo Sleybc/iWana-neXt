@@ -2,20 +2,25 @@
  * EV-1 — Paridad CA-H6-06: SQL Postgres real ↔ calculateUsefulLife (día-exacta).
  *
  * Ejecutar:
- *   EV1_REAL_DB=1 pnpm --filter @iwana/api test -- useful-life-alerts.parity.ev1.spec.ts --coverage=false
+ *   IWANA_DB_INTEGRATION_AVAILABLE=true pnpm --filter @iwana/api test:integration -- --runTestsByPath src/modules/inventory/tests/useful-life-alerts.parity.postgres.integration.spec.ts
  *
- * Sin EV1_REAL_DB=1 la suite se omite (no falla CI local sin intención).
+ * Sin IWANA_DB_INTEGRATION_AVAILABLE=true la suite se omite.
  * Paridad = SQL Postgres real ↔ `calculateUsefulLife` / `usefulLifeExpiryDate`.
  */
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
-import { TenantContext, runInTenantSchema } from '@iwana/db';
+import { TenantContext, dataSourceOptions, runInTenantSchema } from '@iwana/db';
 import {
   USEFUL_LIFE_ALERT_THRESHOLD_MONTHS,
   calculateUsefulLife,
   usefulLifeExpiryDate,
 } from '../services/serialized-asset-useful-life.util';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) {
@@ -61,7 +66,10 @@ function loadWorkspaceEnv(): void {
 
 loadWorkspaceEnv();
 
-const enabled = process.env.EV1_REAL_DB === '1';
+const enabled = process.env.IWANA_DB_INTEGRATION_AVAILABLE === 'true';
+const syntheticTenantId = randomUUID();
+const syntheticTenantSlug = `ev1-useful-life-${syntheticTenantId.slice(0, 8)}`;
+const syntheticSchemaName = `tenant_ev1_useful_life_${randomUUID().replace(/-/g, '')}`;
 
 const SERIAL_PREFIX = 'EV1-H6-UL-';
 const REF_DATE = '2026-07-21';
@@ -151,50 +159,58 @@ const PARITY_CASES: ParityCase[] = [
   let tenantId: string;
   let schemaName: string;
   let itemId: string;
+  let schemaReady = false;
   const createdAssetIds: string[] = [];
 
   beforeAll(async () => {
     dataSource = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST ?? 'localhost',
-      port: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
-      username: process.env.DB_USER ?? 'iwana',
-      password: process.env.DB_PASSWORD ?? '',
-      database: process.env.DB_NAME ?? 'dbiw',
+      ...dataSourceOptions,
       entities: [],
       synchronize: false,
       logging: false,
     });
     await dataSource.initialize();
-
-    const tenants = (await dataSource.query(
-      `SELECT id::text AS id, schema_name AS "schemaName"
-       FROM public.tenants
-       WHERE schema_name = 'tenant_iwana'
-       LIMIT 1`,
-    )) as Array<{ id: string; schemaName: string }>;
-
-    if (!tenants[0]) {
-      throw new Error('No existe tenant con schema tenant_iwana para EV-1.');
+    tenantId = syntheticTenantId;
+    schemaName = syntheticSchemaName;
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'EV1 useful life synthetic',
+        syntheticTenantSlug,
+        schemaName,
+        'ev1-useful-life@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, schemaName, syntheticTenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
     }
-
-    tenantId = tenants[0].id;
-    schemaName = tenants[0].schemaName;
+    schemaReady = true;
 
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      const items = (await qr.query(
-        `SELECT id::text AS id
-         FROM inventory_items
-         WHERE tenant_id = $1
-         ORDER BY created_at ASC
-         LIMIT 1`,
+      const categories = (await qr.query(
+        `INSERT INTO inventory_categories (
+           tenant_id, code, code_prefix, name, status, sort_order
+         ) VALUES ($1, 'EV1-CAT', 'EV1', 'EV1 categoría sintética', 'ACTIVE', 0)
+         RETURNING id::text AS id`,
         [tenantId],
       )) as Array<{ id: string }>;
-
-      if (!items[0]) {
-        throw new Error('EV-1 CA-H6-06 requiere al menos un inventory_item en tenant_iwana.');
-      }
-      itemId = items[0].id;
+      const items = (await qr.query(
+        `INSERT INTO inventory_items (
+           tenant_id, sku, name, item_kind, category, category_id,
+           tracking_mode, unit_of_measure, status, purchasable
+         ) VALUES ($1, 'EV1-UL-001', 'EV1 item sintético', 'STOCK', 'CPE', $2,
+                   'SERIALIZED', 'UNIT', 'ACTIVE', false)
+         RETURNING id::text AS id`,
+        [tenantId, categories[0]!.id],
+      )) as Array<{ id: string }>;
+      itemId = items[0]!.id;
 
       // Limpia residuos de corridas anteriores.
       await qr.query(
@@ -237,16 +253,19 @@ const PARITY_CASES: ParityCase[] = [
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
-      await runInTenantSchema(dataSource, schemaName, async (qr) => {
-        if (createdAssetIds.length > 0) {
-          await qr.query(
-            `DELETE FROM serialized_assets
+      if (schemaReady)
+        await runInTenantSchema(dataSource, schemaName, async (qr) => {
+          if (createdAssetIds.length > 0) {
+            await qr.query(
+              `DELETE FROM serialized_assets
              WHERE tenant_id = $1
                AND id = ANY($2::uuid[])`,
-            [tenantId, createdAssetIds],
-          );
-        }
-      });
+              [tenantId, createdAssetIds],
+            );
+          }
+        });
+      await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });

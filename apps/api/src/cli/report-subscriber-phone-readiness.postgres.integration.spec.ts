@@ -30,10 +30,13 @@ import {
   runSubscriberPhoneReadiness,
   type SubscriberPhoneReadinessReport,
 } from './report-subscriber-phone-readiness';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
-const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
-const describeWithDb = dbAvailable && integrationTenantSlug ? describe : describe.skip;
+const describeWithDb = dbAvailable ? describe : describe.skip;
 
 // Claves de laboratorio, iguales a las de las demás specs integradas de suscriptores.
 const ENCRYPTION_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -57,10 +60,11 @@ function quoteIdentifier(value: string): string {
 
 describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () => {
   const schemaName = `tenant_phone_readiness_${randomBytes(5).toString('hex')}`;
+  const tenantId = randomUUID();
+  const tenantSlug = `phone-readiness-${tenantId.slice(0, 8)}`;
   const encryptionKey = parseEncryptionKeyHex(ENCRYPTION_KEY_HEX);
   const blockedPartyId = randomUUID();
   let dataSource: DataSource;
-  let tenantId: string;
   let tenantCountryCode: string | null;
   let subscribersService: SubscribersService;
   const seededIds: string[] = [];
@@ -153,30 +157,26 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
     });
     await dataSource.initialize();
 
-    const tenants = (await dataSource.query(
-      `SELECT id::text AS id, schema_name, country_code
-         FROM public.tenants
-        WHERE slug = $1 AND status = $2
-        LIMIT 1`,
-      [integrationTenantSlug, SubscriberStatus.ACTIVE],
-    )) as Array<{ id: string; schema_name: string; country_code: string | null }>;
-    const tenant = tenants[0];
-    if (!tenant) throw new Error('No existe el tenant ACTIVE indicado por E2E_TENANT_SLUG.');
-    if (!isValidSchemaName(tenant.schema_name)) throw new Error('Tenant con schema inválido.');
-    tenantId = tenant.id;
-    tenantCountryCode = tenant.country_code?.trim().toUpperCase() ?? null;
-
-    // El DDL se copia del schema del tenant que el runner de migraciones dejó al día;
-    // el schema del tenant no se toca.
-    const source = quoteIdentifier(tenant.schema_name);
-    const target = quoteIdentifier(schemaName);
-    await dataSource.query(`CREATE SCHEMA ${target}`);
     await dataSource.query(
-      `CREATE TABLE ${target}.subscribers (LIKE ${source}.subscribers INCLUDING ALL)`,
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email, country_code)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5, 'CO')`,
+      [
+        tenantId,
+        'Phone readiness synthetic',
+        tenantSlug,
+        schemaName,
+        'phone-readiness@example.invalid',
+      ],
     );
-    await dataSource.query(
-      `CREATE TABLE ${target}.contracts (LIKE ${source}.contracts INCLUDING ALL)`,
-    );
+    await dataSource.query(`CREATE SCHEMA ${quoteIdentifier(schemaName)}`);
+    const tenantDataSource = createTenantDataSource(dataSource, schemaName, tenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+    tenantCountryCode = 'CO';
 
     subscribersService = new SubscribersService(
       dataSource,
@@ -247,6 +247,7 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
     if (!dataSource?.isInitialized) return;
     try {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     } finally {
       await dataSource.destroy();
     }
@@ -273,7 +274,7 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
     const chunks: string[] = [];
     const close = jest.fn().mockResolvedValue(undefined);
     await runSubscriberPhoneReadiness({
-      argv: [`--tenant=${integrationTenantSlug}`],
+      argv: [`--tenant=${tenantSlug}`],
       env: process.env,
       write: (chunk) => chunks.push(chunk),
       createRuntime: async () => ({
@@ -301,7 +302,7 @@ describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () =
     expect(output.tenantCount).toBe(1);
     expect(output.reports[0]).toEqual({
       tenantId,
-      tenantSlug: integrationTenantSlug,
+      tenantSlug,
       countryPrefixAvailable: true,
       // El suscriptor de otro tenant_id no entra.
       subscribersScanned: 7,

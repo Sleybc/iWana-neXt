@@ -32,17 +32,20 @@ import { SubscribersService } from './subscribers.service';
 import { SubscriberStatusTransitionService } from './subscriber-status-transition.service';
 import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { VatTreatmentService } from './vat-treatment.service';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
-const integrationTenantSlug = process.env['E2E_TENANT_SLUG'];
-const describeWithDb = dbAvailable && integrationTenantSlug ? describe : describe.skip;
+const describeWithDb = dbAvailable ? describe : describe.skip;
 
 describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
   let app: INestApplication;
   let dataSource: DataSource;
-  let tenantId: string;
-  let sourceSchemaName: string;
-  let testSchemaName: string;
+  const tenantId = randomUUID();
+  const tenantSlug = `b2-audit-${tenantId.slice(0, 8)}`;
+  const testSchemaName = `tenant_b2_audit_${randomUUID().replace(/-/g, '')}`;
   const encryptionKey = parseEncryptionKeyHex(
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
   );
@@ -61,7 +64,7 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
   const tenantContext = () => ({
     tenantId,
     schemaName: testSchemaName,
-    tenantSlug: integrationTenantSlug!,
+    tenantSlug,
   });
 
   beforeAll(async () => {
@@ -74,41 +77,28 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
     });
     await dataSource.initialize();
 
-    const tenants = (await dataSource.query(
-      'SELECT id, schema_name FROM public.tenants WHERE slug = $1 LIMIT 1',
-      [integrationTenantSlug],
-    )) as Array<{ id: string; schema_name: string }>;
-    if (!tenants[0]) throw new Error(`No existe el tenant '${integrationTenantSlug}'.`);
-    tenantId = tenants[0].id;
-    sourceSchemaName = tenants[0].schema_name;
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Subscriber audit synthetic',
+        tenantSlug,
+        testSchemaName,
+        'subscriber-audit@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${testSchemaName}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, testSchemaName, tenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     actor.tenantId = tenantId;
 
-    testSchemaName = `tenant_b2_audit_${randomUUID().replace(/-/g, '')}`;
     actor.schemaName = testSchemaName;
-    const quoteIdentifier = (value: string) => `"${value.replace(/"/g, '""')}"`;
-    const sourceSchema = quoteIdentifier(sourceSchemaName);
-    const testSchema = quoteIdentifier(testSchemaName);
-    await dataSource.query(`CREATE SCHEMA ${testSchema}`);
-    await dataSource.query(
-      `CREATE TABLE ${testSchema}.subscribers (LIKE ${sourceSchema}.subscribers INCLUDING ALL)`,
-    );
-    await dataSource.query(
-      `CREATE TABLE ${testSchema}.audit_logs (LIKE ${sourceSchema}.audit_logs INCLUDING ALL)`,
-    );
-    // The development tenant predates subscriber DDL for anonymization,
-    // WhatsApp, VAT responsibility, and legal-representative Party. Keep this
-    // isolated copy aligned with the current entity without migrating the
-    // source tenant.
-    await dataSource.query(
-      `ALTER TABLE ${testSchema}.subscribers
-         ADD COLUMN IF NOT EXISTS anonymized_at timestamptz,
-         ADD COLUMN IF NOT EXISTS anonymized_request_id uuid,
-         ADD COLUMN IF NOT EXISTS legal_representative_party_id uuid,
-         ADD COLUMN IF NOT EXISTS vat_responsibility varchar(30),
-         ADD COLUMN IF NOT EXISTS rut_responsibilities text[] NOT NULL DEFAULT '{}',
-         ADD COLUMN IF NOT EXISTS whatsapp_encrypted varchar(500),
-         ADD COLUMN IF NOT EXISTS whatsapp_hmac varchar(64)`,
-    );
 
     const moduleRef = await Test.createTestingModule({
       controllers: [SubscribersController],
@@ -248,6 +238,7 @@ describeWithDb('B2 — PATCH subscriber audit PII en PostgreSQL real', () => {
         const quotedSchema = `"${testSchemaName.replace(/"/g, '""')}"`;
         await dataSource.query(`DROP SCHEMA IF EXISTS ${quotedSchema} CASCADE`);
       }
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });

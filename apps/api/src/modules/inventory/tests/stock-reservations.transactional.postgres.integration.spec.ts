@@ -5,36 +5,39 @@
  * contra EntityManager/TypeORM reales (no mocks).
  *
  * Ejecutar:
- *   EV1_REAL_DB=1 pnpm --filter @iwana/api test -- stock-reservations.transactional.ev1.spec.ts --coverage=false
+ *   IWANA_DB_INTEGRATION_AVAILABLE=true pnpm --filter @iwana/api test:integration -- --runTestsByPath src/modules/inventory/tests/stock-reservations.transactional.postgres.integration.spec.ts
  *
- * Sin EV1_REAL_DB=1 la suite se omite (no falla CI local sin intención).
+ * Sin IWANA_DB_INTEGRATION_AVAILABLE=true la suite se omite.
  */
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { randomUUID } from 'node:crypto';
 import { BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
+  InventoryCategory,
+  InventoryItem,
   StockBalance,
   StockIssue,
   StockIssueLine,
+  StockIssueLineSerial,
   StockLocation,
   StockMovement,
   StockMovementLine,
   TenantContext,
+  dataSourceOptions,
   runInTenantSchema,
 } from '@iwana/db';
-import {
-  StockBalanceCondition,
-  StockIssueType,
-  StockLocationStatus,
-  StockLocationType,
-  UserRole,
-} from '@iwana/shared';
+import { StockBalanceCondition, StockIssueType, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { StockBalanceService } from '../services/stock-balance.service';
 import { StockIssueService } from '../services/stock-issue.service';
 import { SerializedGroupValidator } from '../services/serialized-group.validator';
 import { StockLedgerService } from '../services/stock-ledger.service';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) {
@@ -80,14 +83,17 @@ function loadWorkspaceEnv(): void {
 
 loadWorkspaceEnv();
 
-const enabled = process.env.EV1_REAL_DB === '1';
+const enabled = process.env.IWANA_DB_INTEGRATION_AVAILABLE === 'true';
+const syntheticTenantId = randomUUID();
+const syntheticTenantSlug = `ev1-reservations-${syntheticTenantId.slice(0, 8)}`;
+const syntheticSchemaName = `tenant_ev1_reservations_${randomUUID().replace(/-/g, '')}`;
 
 const actor: JwtPayload = {
   sub: '00000000-0000-4000-8000-0000000000e1',
   email: 'ev1-reservations@example.test',
   role: UserRole.ADMIN,
-  tenantId: '00000000-0000-4000-8000-000000000000',
-  schemaName: 'tenant_iwana',
+  tenantId: syntheticTenantId,
+  schemaName: syntheticSchemaName,
   jti: 'jti-ev1-reservations',
   type: 'tenant',
 };
@@ -96,6 +102,7 @@ const actor: JwtPayload = {
   let dataSource: DataSource;
   let tenantId: string;
   let schemaName: string;
+  let schemaReady = false;
   let balanceService: StockBalanceService;
   let issueService: StockIssueService;
   let ledgerService: StockLedgerService;
@@ -107,16 +114,14 @@ const actor: JwtPayload = {
 
   beforeAll(async () => {
     dataSource = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST ?? 'localhost',
-      port: Number.parseInt(process.env.DB_PORT ?? '5433', 10),
-      username: process.env.DB_USER ?? 'iwana',
-      password: process.env.DB_PASSWORD ?? '',
-      database: process.env.DB_NAME ?? 'dbiw',
+      ...dataSourceOptions,
       entities: [
+        InventoryCategory,
+        InventoryItem,
         StockBalance,
         StockIssue,
         StockIssueLine,
+        StockIssueLineSerial,
         StockLocation,
         StockMovement,
         StockMovementLine,
@@ -125,20 +130,28 @@ const actor: JwtPayload = {
       logging: false,
     });
     await dataSource.initialize();
-
-    const tenants = (await dataSource.query(
-      `SELECT id::text AS id, schema_name AS "schemaName"
-       FROM public.tenants
-       WHERE schema_name = 'tenant_iwana'
-       LIMIT 1`,
-    )) as Array<{ id: string; schemaName: string }>;
-
-    if (!tenants[0]) {
-      throw new Error('No existe tenant con schema tenant_iwana para EV-1.');
+    tenantId = syntheticTenantId;
+    schemaName = syntheticSchemaName;
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'EV1 reservations synthetic',
+        syntheticTenantSlug,
+        schemaName,
+        'ev1-reservations@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, schemaName, syntheticTenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
     }
-
-    tenantId = tenants[0].id;
-    schemaName = tenants[0].schemaName;
+    schemaReady = true;
     actor.tenantId = tenantId;
     actor.schemaName = schemaName;
 
@@ -178,49 +191,39 @@ const actor: JwtPayload = {
     );
 
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      const main = await qr.manager.findOne(StockLocation, {
-        where: { tenantId, type: StockLocationType.MAIN_WAREHOUSE },
-      });
-      if (!main) {
-        throw new Error('EV-1 requiere una bodega MAIN_WAREHOUSE en tenant_iwana.');
-      }
-      mainLocationId = main.id;
-
-      let otherWarehouse = await qr.manager
-        .createQueryBuilder(StockLocation, 'loc')
-        .where('loc.tenant_id = :tenantId', { tenantId })
-        .andWhere('loc.type = :type', { type: StockLocationType.MAIN_WAREHOUSE })
-        .andWhere('loc.id <> :mainId', { mainId: mainLocationId })
-        .getOne();
-
-      if (!otherWarehouse) {
-        otherWarehouse = await qr.manager.save(
-          StockLocation,
-          qr.manager.create(StockLocation, {
-            tenantId,
-            code: 'EV1-BOD',
-            name: 'EV1 bodega secundaria',
-            type: StockLocationType.OFFICE_STOCK,
-            status: StockLocationStatus.ACTIVE,
-            responsibleRefId: null,
-            maxCapacity: null,
-          }),
-        );
-      }
-      otherWarehouseId = otherWarehouse.id;
-
-      const items = (await qr.query(
-        `SELECT id::text AS id
-         FROM inventory_items
-         WHERE tenant_id = $1
-         ORDER BY created_at ASC
-         LIMIT 1`,
+      const categoryRows = (await qr.query(
+        `INSERT INTO inventory_categories (tenant_id, code, code_prefix, name, status, sort_order)
+         VALUES ($1, 'EV1-CAT', 'EV1', 'EV1 categoría sintética', 'ACTIVE', 0)
+         RETURNING id::text AS id`,
         [tenantId],
       )) as Array<{ id: string }>;
-      if (!items[0]) {
-        throw new Error('EV-1 requiere al menos un inventory_item en tenant_iwana.');
-      }
-      itemId = items[0].id;
+      const itemRows = (await qr.query(
+        `INSERT INTO inventory_items (
+           tenant_id, sku, name, item_kind, category, category_id,
+           tracking_mode, unit_of_measure, status, purchasable
+         ) VALUES ($1, 'EV1-RES-001', 'EV1 item sintético', 'STOCK', 'CPE', $2,
+                   'CONSUMABLE', 'UNIT', 'ACTIVE', false)
+         RETURNING id::text AS id`,
+        [tenantId, categoryRows[0]!.id],
+      )) as Array<{ id: string }>;
+      itemId = itemRows[0]!.id;
+
+      const mainRows = (await qr.query(
+        `INSERT INTO stock_locations (
+           tenant_id, code, name, type, status, responsible_ref_id, max_capacity
+         ) VALUES ($1, 'EV1-MAIN', 'EV1 bodega principal', 'MAIN_WAREHOUSE', 'ACTIVE', NULL, NULL)
+         RETURNING id::text AS id`,
+        [tenantId],
+      )) as Array<{ id: string }>;
+      mainLocationId = mainRows[0]!.id;
+      const otherRows = (await qr.query(
+        `INSERT INTO stock_locations (
+           tenant_id, code, name, type, status, responsible_ref_id, max_capacity
+         ) VALUES ($1, 'EV1-BOD', 'EV1 bodega secundaria', 'OFFICE_STOCK', 'ACTIVE', NULL, NULL)
+         RETURNING id::text AS id`,
+        [tenantId],
+      )) as Array<{ id: string }>;
+      otherWarehouseId = otherRows[0]!.id;
 
       await qr.query(
         `INSERT INTO stock_balances (
@@ -250,35 +253,43 @@ const actor: JwtPayload = {
       return;
     }
 
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
-      for (const issueId of createdIssueIds) {
-        try {
-          await issueService.cancel(issueId, actor);
-        } catch {
-          // ya terminal o inexistente
-        }
-      }
-    });
-
-    await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      if (createdIssueIds.length > 0) {
-        await qr.query(`DELETE FROM stock_issue_lines WHERE issue_id = ANY($1::uuid[])`, [
-          createdIssueIds,
-        ]);
-        await qr.query(`DELETE FROM stock_issues WHERE id = ANY($1::uuid[])`, [createdIssueIds]);
-      }
-
-      await qr.query(
-        `UPDATE stock_balances
-         SET quantity_reserved = 0.00
-         WHERE tenant_id = $1 AND item_id = $2 AND location_id = $3 AND lot_id IS NULL`,
-        [tenantId, itemId, mainLocationId],
+    if (schemaReady)
+      await TenantContext.run(
+        { tenantId, schemaName, tenantSlug: syntheticTenantSlug },
+        async () => {
+          for (const issueId of createdIssueIds) {
+            try {
+              await issueService.cancel(issueId, actor);
+            } catch {
+              // ya terminal o inexistente
+            }
+          }
+        },
       );
 
-      await qr.query(`DELETE FROM stock_locations WHERE tenant_id = $1 AND code = 'EV1-BOD'`, [
-        tenantId,
-      ]);
-    });
+    if (schemaReady)
+      await runInTenantSchema(dataSource, schemaName, async (qr) => {
+        if (createdIssueIds.length > 0) {
+          await qr.query(`DELETE FROM stock_issue_lines WHERE issue_id = ANY($1::uuid[])`, [
+            createdIssueIds,
+          ]);
+          await qr.query(`DELETE FROM stock_issues WHERE id = ANY($1::uuid[])`, [createdIssueIds]);
+        }
+
+        await qr.query(
+          `UPDATE stock_balances
+         SET quantity_reserved = 0.00
+         WHERE tenant_id = $1 AND item_id = $2 AND location_id = $3 AND lot_id IS NULL`,
+          [tenantId, itemId, mainLocationId],
+        );
+
+        await qr.query(`DELETE FROM stock_locations WHERE tenant_id = $1 AND code = 'EV1-BOD'`, [
+          tenantId,
+        ]);
+      });
+
+    await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
 
     await dataSource.destroy();
   }, 60_000);
@@ -295,7 +306,7 @@ const actor: JwtPayload = {
   }
 
   it('reserva al crear; transferencia sobre comprometido falla; cancel libera; despacho libera y descuenta', async () => {
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
+    await TenantContext.run({ tenantId, schemaName, tenantSlug: syntheticTenantSlug }, async () => {
       const before = await readAvailability();
       expect(before.onHand).toBeGreaterThanOrEqual(10);
       expect(before.reserved).toBe(0);
@@ -401,7 +412,7 @@ const actor: JwtPayload = {
   }, 120_000);
 
   it('rechaza applyDelta que dejaría existencia bajo lo reservado (invariante real)', async () => {
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
+    await TenantContext.run({ tenantId, schemaName, tenantSlug: syntheticTenantSlug }, async () => {
       const issue = await issueService.create(
         {
           type: StockIssueType.SALE_DISPATCH,
@@ -442,7 +453,7 @@ const actor: JwtPayload = {
   }, 120_000);
 
   it('dos reservas concurrentes sobre la misma tupla no sobre-reservan (advisory lock)', async () => {
-    await TenantContext.run({ tenantId, schemaName, tenantSlug: 'iwana' }, async () => {
+    await TenantContext.run({ tenantId, schemaName, tenantSlug: syntheticTenantSlug }, async () => {
       const before = await readAvailability();
       expect(before.reserved).toBe(0);
 
