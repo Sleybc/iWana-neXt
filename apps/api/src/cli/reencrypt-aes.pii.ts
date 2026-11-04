@@ -92,6 +92,12 @@ export const PII_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
     'expediente_records',
     'site_contact_phone_encrypted',
   ),
+  piiTarget(
+    'expediente.fiscalDocumentEncrypted',
+    'expediente_records',
+    'fiscal_document_encrypted',
+  ),
+  piiTarget('contract.fiscalDocumentEncrypted', 'contracts', 'fiscal_document_encrypted'),
   piiTarget('party.documentNumber', 'party', 'document_number'),
   piiTarget('partyContact.valueEncrypted', 'party_contact', 'value_encrypted'),
   piiTarget(
