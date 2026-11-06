@@ -1,0 +1,32 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+const root = 'C:/appiw/apps/api/src/modules';
+const files = [];
+const walk = (d) => {
+  for (const f of readdirSync(d)) {
+    const p = join(d, f);
+    if (statSync(p).isDirectory()) walk(p);
+    else if (p.endsWith('.ts') && !p.includes('.spec.')) files.push(p);
+  }
+};
+walk(root);
+const KEY = /(^|[\s{,])(reason|notes|note|body|comment|summary|subject|observations|reasonText|cancelReason|failureReason|closeNotes|resultNotes)\s*[:,}]/;
+for (const f of files) {
+  const src = readFileSync(f, 'utf8');
+  for (const m of src.matchAll(/\b(newValue|oldValue|metadata)\s*:\s*\{/g)) {
+    let i = m.index + m[0].length;
+    let depth = 1;
+    while (i < src.length && depth > 0) {
+      if (src[i] === '{') depth += 1;
+      if (src[i] === '}') depth -= 1;
+      i += 1;
+    }
+    const body = src.slice(m.index, i);
+    const before = src.slice(Math.max(0, m.index - 500), m.index);
+    if (!/audit|Audit/.test(before)) continue;
+    if (KEY.test(body)) {
+      const line = src.slice(0, m.index).split('\n').length;
+      console.log(`${f.replace(root + '\\', '').replaceAll('\\', '/')}:${line}: ${body.replace(/\s+/g, ' ').slice(0, 150)}`);
+    }
+  }
+}

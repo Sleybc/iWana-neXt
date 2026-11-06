@@ -16,11 +16,18 @@ import { isAuditSecretEntry, sanitizeAuditPayload } from './audit-sanitize.polic
 
 const API_SRC_ROOT = resolve(__dirname, '../..');
 
-/** Claves mínimas del criterio §5.5 / §5.8. */
+/** Claves que no pueden transportar texto libre o datos personales al trail. */
 const FORBIDDEN_AUDIT_PAYLOAD_KEYS = [
   'fullName',
   'latitude',
   'longitude',
+  'reason',
+  'notes',
+  'note',
+  'body',
+  'subject',
+  'comment',
+  'summary',
   // Credenciales (MOD01 / primer ingreso). No son "PII" pero comparten la misma
   // historia: las migraciones 074 (tenant) y 012 (pública) existen porque
   // `temporaryPassword` llegó en claro al trail y hubo que redactarlo
@@ -32,6 +39,13 @@ const FORBIDDEN_AUDIT_PAYLOAD_KEYS = [
   'temporaryPassword',
   'passwordHash',
 ] as const;
+
+/**
+ * `reason` puede conservar un código de catálogo: literal UPPER_SNAKE_CASE o
+ * miembro cualificado de un enum. Expresiones derivadas de una entrada no pasan.
+ */
+const SAFE_AUDIT_CATALOG_REASON =
+  /^(?:['"][A-Z][A-Z0-9_]*['"]|(?:[A-Z][A-Za-z0-9_]*\.)+[A-Z][A-Z0-9_]*)$/u;
 
 /**
  * Claves de credencial que la denylist del sink debe descartar SIEMPRE, venga
@@ -126,7 +140,22 @@ export function extractAuditServiceLogObjectLiterals(source: string): Array<{
 }
 
 export function findForbiddenPiiKeysInAuditLogLiteral(literal: string): string[] {
-  return FORBIDDEN_AUDIT_PAYLOAD_KEYS.filter((key) => new RegExp(`\\b${key}\\s*:`).test(literal));
+  return FORBIDDEN_AUDIT_PAYLOAD_KEYS.filter((key) => {
+    if (key === 'reason') {
+      const matches = [
+        ...literal.matchAll(new RegExp(`(?:^|[,{])\\s*${key}\\b\\s*(?::\\s*([^,}\\n]+))?`, 'gu')),
+      ];
+      return matches.some((match) => {
+        const value = match[1]?.trim() ?? '';
+        return value.length === 0 || !SAFE_AUDIT_CATALOG_REASON.test(value);
+      });
+    }
+    const values = [...literal.matchAll(new RegExp(`\\b${key}\\s*:\\s*([^,}\\n]+)`, 'g'))].map(
+      (match) => match[1]?.trim() ?? '',
+    );
+    if (values.length === 0) return false;
+    return true;
+  });
 }
 
 describe('E7 SEC-P1 — anti-reintroducción de PII en auditService.log()', () => {
@@ -143,6 +172,55 @@ describe('E7 SEC-P1 — anti-reintroducción de PII en auditService.log()', () =
       'fullName',
       'latitude',
       'longitude',
+    ]);
+  });
+
+  it('detecta motivos y textos libres en propiedades de payload de auditoría', () => {
+    const sample = `
+      await this.auditService.log({
+        newValue: {
+          reason: 'texto-de-prueba',
+          notes: 'texto-de-prueba',
+          note: 'texto-de-prueba',
+          body: 'texto-de-prueba',
+          subject: 'texto-de-prueba',
+          comment: 'texto-de-prueba',
+          summary: 'texto-de-prueba',
+        },
+      });
+    `;
+    const literals = extractAuditServiceLogObjectLiterals(sample);
+    expect(literals).toHaveLength(1);
+    expect(findForbiddenPiiKeysInAuditLogLiteral(literals[0]!.literal).sort()).toEqual([
+      'body',
+      'comment',
+      'note',
+      'notes',
+      'reason',
+      'subject',
+      'summary',
+    ]);
+  });
+
+  it('permite en reason únicamente códigos literales o miembros de catálogo', () => {
+    expect(findForbiddenPiiKeysInAuditLogLiteral("{ reason: 'EXPEDIENTE_REACTIVATED' }")).toEqual(
+      [],
+    );
+    expect(
+      findForbiddenPiiKeysInAuditLogLiteral(
+        '{ reason: SubscriberStatusReason.EXPEDIENTE_REACTIVATED }',
+      ),
+    ).toEqual([]);
+  });
+
+  it('CA-BT-08 detecta la reintroducción de reason: dto.reason', () => {
+    expect(findForbiddenPiiKeysInAuditLogLiteral('{ reason: dto.reason }')).toEqual(['reason']);
+  });
+
+  it('CA-BT-19 detecta reason abreviado y dentro de un spread condicional', () => {
+    expect(findForbiddenPiiKeysInAuditLogLiteral('{ reason }')).toEqual(['reason']);
+    expect(findForbiddenPiiKeysInAuditLogLiteral('{ ...(condition ? { reason } : {}) }')).toEqual([
+      'reason',
     ]);
   });
 

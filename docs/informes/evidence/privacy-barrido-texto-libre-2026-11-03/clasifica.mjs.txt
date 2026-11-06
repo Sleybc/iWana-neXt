@@ -1,0 +1,116 @@
+// Clasifica cada columna textual, JSON, enum, arreglo o inet del esquema tenant migrado.
+import { readFileSync, writeFileSync } from 'node:fs';
+const S = process.argv[2];
+const OUT = process.argv[3];
+const owner = {
+  crm: 'CrmTitularErasureParticipant', wfm: 'WfmTitularErasureParticipant',
+  eo: 'ExecutionOrderTitularErasureParticipant', ot: 'OperationalTaskTitularErasureParticipant',
+  party: 'PartyTitularErasureParticipant', users: 'UserAccountErasureParticipant',
+};
+const rules = new Map();
+for (const l of readFileSync(`${S}/rules.txt`, 'utf8').trim().split('\n')) {
+  const [p, t, c, k] = l.split('|');
+  rules.set(`${t === 'USER_RULES' ? 'users' : t}.${c}`, `${owner[p]} (${k})`);
+}
+// plan_snapshot_json y vat_snapshot los redacta run() por claves, fuera de las reglas de campo.
+rules.set('contracts.plan_snapshot_json', 'CrmTitularErasureParticipant (redacción por claves)');
+rules.set('contracts.vat_snapshot', 'CrmTitularErasureParticipant (redacción por claves)');
+rules.set('quotes.plan_snapshot_json', 'CrmTitularErasureParticipant (redacción por claves)');
+const res = {
+  'operational_responsibility_history.notes': 'R-1',
+  'crm_lifecycle_changes.note_encrypted': 'H-2, spec propia',
+  'service_provisionings.regularization_reason': 'R-2',
+  'support_tickets.subject': 'R-3', 'support_tickets.description': 'R-3',
+  'ticket_comments.body': 'R-4', 'ticket_timeline_events.payload': 'R-5',
+  'ticket_work_order_links.notes': 'R-6', 'status_changes.reason': 'R-7',
+  'sales_attributions.notes': 'R-8', 'sales_attributions.revoked_reason': 'R-8',
+  'expediente_records.source': 'R-9', 'crm_contract_alias_backup_168.alias': 'R-10',
+  'subscriber_tax_assignments.reason': 'R-11', 'execution_order_item_usage_reversals.reason': 'R-12',
+  'schedule_reschedule_logs.reason': 'R-13', 'contracts.installation_city': 'R-14',
+  'contracts.installation_department': 'R-14',
+  'supplier_profiles.purchasing_contact_name': 'R-15 condicional',
+  'supplier_profiles.purchasing_contact_email': 'R-15 condicional',
+  'supplier_profiles.purchasing_contact_phone': 'R-15 condicional',
+  'supplier_profiles.notes': 'R-15 condicional',
+};
+const ex = {
+  'users.email': 'CODIGO-CUBIERTA',
+  'audit_logs.action': 'CODIGO: acción del sistema',
+  'audit_logs.ip_address': 'OPERADOR: IP de quien actúa',
+  'audit_logs.user_agent': 'OPERADOR: navegador de quien actúa',
+  'crm_lifecycle_changes.source': 'CODIGO: dominio del sistema',
+  'contracts.service_usage': 'CODIGO: dominio del sistema',
+  'coverage_checks.technology_available': 'CODIGO: dominio técnico',
+  'crm_conversion_failures.event_name': 'CODIGO: nombre de evento',
+  'expediente_records.coordinates_source': 'CODIGO: dominio técnico',
+  'expediente_records.coordinates_confidence': 'CODIGO: dominio técnico',
+  'expediente_records.available_technology': 'CODIGO: dominio técnico',
+  'expediente_records.feasibility': 'CODIGO: dominio técnico',
+  'expediente_records.candidate_technologies': 'CODIGO: dominio técnico',
+  'expediente_records.technical_confidence': 'CODIGO: dominio técnico',
+  'expediente_records.evaluation_source': 'CODIGO: dominio técnico',
+  'expediente_records.evidence_mode': 'CODIGO: dominio técnico',
+  'ip_assignments.release_reason': 'CODIGO: motivo de catálogo',
+  'service_provisionings.release_reason': 'CODIGO: motivo de catálogo',
+  'service_provisionings.failure_reason': 'CODIGO: escrito por el sistema',
+  'service_provisionings.commercial_activation_detail': 'CODIGO: escrito por el sistema',
+  'subscriber_tax_assignments.tax_name_snapshot': 'CODIGO: copia del catálogo tributario',
+  'subscriber_tax_assignments.rate_source': 'CODIGO: dominio del sistema',
+  'subscribers.rut_responsibilities': 'CODIGO: códigos DIAN, sin texto libre',
+  'ticket_pqr_records.notes': 'SIN-ESCRITOR: pqr.service.ts:29 siempre escribe null',
+  'status_changes.metadata_json': 'SIN-ESCRITOR: persistStatusChangeSafely no lo rellena',
+  'contact_attempts.actor_name': 'OPERADOR: nombre del asesor, no del titular',
+  'status_changes.actor_name': 'OPERADOR: nombre del actor, no del titular',
+  'sales_attributions.actor_name': 'OPERADOR: nombre del asesor, no del titular',
+  'ip_assignments.ip': 'PENDIENTE-DICTAMEN: logs de IP y conexión, ADR-094 D7 ⚠',
+  'service_provisionings.control_params': 'TECNICO: esquema estricto, método y nombre de cola',
+  'service_provisionings.cpe_serial_number': 'EQUIPO: identificador del CPE del ISP',
+  'service_provisionings.cpe_mac_address': 'EQUIPO: identificador del CPE del ISP',
+  'audit_logs.old_value': 'D7: sin PII por diseño, ver hallazgo C-1',
+  'audit_logs.new_value': 'D7: sin PII por diseño, ver hallazgo C-1',
+  'execution_order_outbox_events.payload': 'EFIMERA: purga a 30 días de publicado (migración 095), ver hallazgo C-3',
+};
+const group = [
+  [/^(access_|catalog_|commercial_nodes$|coverage_zones$|execution_order_template|execution_order_permission_seed|inventory_categories$|inventory_items$|ipv4_networks$|legal_texts$|network_(plan_profiles|router|settings)|non_realization_causes$|organization_|plan_|privacy_purpose_settings$|product_details$|retention_policies$|service_details$|tax_definitions$|tax_rules$|tax_rule_applications$|ticket_sla_policies$|typeorm_migrations$|uom_|wfm_holiday|wfm_company|wfm_site|crm_billing_cycles$)/, 'EXCLUIDA', 'CATALOGO: configuración del ISP, sin vínculo con un titular'],
+  [/^(billing_|crm_contract_price_backup_175$)/, 'LISTADA-MOD14', 'Solo se lista, H-5'],
+  [/^(data_subject_request|data_authorizations|party_privacy_marks|privacy_incidents)/, 'EXCLUIDA', 'PRUEBA: se conserva por R6 y ADR-094 D7'],
+  [/^(asset_|serialized_assets|stock_|inventory_write_offs|inventory_execution_request_receipts|execution_order_item_usage$|goods_receipt)/, 'EXCLUIDA', 'INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar'],
+  [/^execution_order_(audit_intents|idempotency_records|inbox_events|outbox_events|evidence_upload_intents)$|^network_inbox_events$/, 'EXCLUIDA', 'EFIMERA: envoltorio técnico de confiabilidad'],
+  [/^(purchase_|supplier_)/, 'EXCLUIDA', 'PROVEEDOR: dato de compras, no del suscriptor'],
+  [/^(technician_availability|wfm_operational_eventualities|organization_site|user_access_profiles|refresh_tokens|access_v|access_v2)/, 'EXCLUIDA', 'OPERADOR: personal del ISP'],
+];
+const rows = [];
+const canary = new Map();
+for (const l of readFileSync(`${S}/corrida.ndjson`, 'utf8').trim().split('\n')) {
+  const r = JSON.parse(l);
+  if (r.step !== 'canary') continue;
+  const k = `${r.data.table}.${r.data.column}`;
+  if (r.data.row.startsWith('sonda')) continue;
+  canary.set(k, canary.get(k) === 'sobrevive' || r.data.survived ? 'sobrevive' : 'desaparece');
+}
+for (const l of readFileSync(`${S}/cols-all.txt`, 'utf8').trim().split('\n')) {
+  const [t, c, type, max, nullable] = l.split('|');
+  const k = `${t}.${c}`;
+  const hit = group.find(([re]) => re.test(t));
+  let cls, why;
+  if (hit?.[1] === 'LISTADA-MOD14') [cls, why] = [hit[1], hit[2]];
+  else if (rules.has(k)) [cls, why] = ['CUBIERTA', rules.get(k)];
+  else if (res[k]) [cls, why] = ['RESIDUO', res[k]];
+  else if (ex[k] === 'CODIGO-CUBIERTA') [cls, why] = ['CUBIERTA', 'UserAccountErasureParticipant (correo sintético)'];
+  else if (ex[k]) [cls, why] = ['EXCLUIDA', ex[k]];
+  else if (hit) [cls, why] = [hit[1], hit[2]];
+  else if (type === 'USER-DEFINED') [cls, why] = ['EXCLUIDA', 'ENUM: dominio cerrado'];
+  else if (/(^|_)(status|type|code|number|key|hash|hmac|token|secret|sku|segment|channel|method|result|cycle|priority|role|version|currency|country|treatment|kind|origin|source_context|origin_context|queue_name)$/.test(c)
+    || /(_id|_ids|_ref|_key|_context)$/.test(c)) [cls, why] = ['EXCLUIDA', 'CODIGO: referencia, código o dominio del sistema'];
+  else [cls, why] = ['REVISAR', ''];
+  rows.push({ t, c, type, max, nullable, cls, why, can: canary.get(k) ?? 'no sembrada' });
+}
+writeFileSync(OUT, ['tabla,columna,tipo,largo,nulable,clase,motivo_o_dueno,canario'].concat(
+  rows.map((r) => [r.t, r.c, r.type, r.max, r.nullable, r.cls, `"${r.why}"`, r.can].join(','))).join('\n') + '\n');
+const count = {};
+for (const r of rows) count[r.cls] = (count[r.cls] ?? 0) + 1;
+console.log(count);
+for (const r of rows.filter((x) => x.cls === 'REVISAR')) console.log(`${r.t}.${r.c}:${r.type}:${r.max}`);
+// Coherencia: toda CUBIERTA sembrada desaparece; todo RESIDUO sembrado sobrevive.
+console.log('incoherencias', rows.filter((r) => (r.cls === 'CUBIERTA' && r.can === 'sobrevive') || (r.cls === 'RESIDUO' && r.can === 'desaparece')).map((r) => `${r.t}.${r.c}`));
+console.log('residuos no sembrados', rows.filter((r) => r.cls === 'RESIDUO' && r.can === 'no sembrada').map((r) => `${r.t}.${r.c}`));

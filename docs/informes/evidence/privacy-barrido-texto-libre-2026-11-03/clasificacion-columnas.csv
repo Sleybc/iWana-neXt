@@ -1,0 +1,704 @@
+tabla,columna,tipo,largo,nulable,clase,motivo_o_dueno,canario
+access_permission_catalog,permission_key,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_permission_catalog,module_key,character varying,60,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_permission_catalog,action,character varying,60,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_permission_catalog,description,character varying,240,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_permission_catalog,catalog_version,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_permission_catalog,availability,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_profile_permissions,permission_key,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_profiles,name,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_profiles,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+access_profiles,base_role_constraint,character varying,30,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+asset_lifecycle_events,event_type,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+asset_lifecycle_events,from_status,USER-DEFINED,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+asset_lifecycle_events,to_status,USER-DEFINED,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+asset_lifecycle_events,notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+audit_logs,action,character varying,50,NO,EXCLUIDA,"CODIGO: acción del sistema",no sembrada
+audit_logs,entity_type,character varying,100,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+audit_logs,entity_id,character varying,100,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+audit_logs,old_value,jsonb,,YES,EXCLUIDA,"D7: sin PII por diseño, ver hallazgo C-1",no sembrada
+audit_logs,new_value,jsonb,,YES,EXCLUIDA,"D7: sin PII por diseño, ver hallazgo C-1",no sembrada
+audit_logs,ip_address,character varying,45,YES,EXCLUIDA,"OPERADOR: IP de quien actúa",no sembrada
+audit_logs,user_agent,character varying,512,YES,EXCLUIDA,"OPERADOR: navegador de quien actúa",no sembrada
+audit_logs,request_id,character varying,100,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+billing_contract_policy,period_timing,character varying,12,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_contract_policy,first_period_mode,character varying,20,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_document_lines,kind,character varying,16,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_document_lines,description,character varying,200,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_document_lines,vat_treatment,character varying,16,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_document_lines,vat_legal_basis,character varying,60,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,status,character varying,10,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,number,character varying,30,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,blocking_reason,character varying,60,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,buyer_snapshot,jsonb,,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,issuer_snapshot,jsonb,,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,buyer_document_encrypted,character varying,500,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,void_reason_code,character varying,40,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_documents,void_note,character varying,500,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,method,character varying,20,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,reference,character varying,80,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,note,character varying,500,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,idempotency_key,character varying,80,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,status,character varying,10,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,void_reason_code,character varying,40,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_payments,void_note,character varying,500,YES,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_periods,effective_policy,jsonb,,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_permission_catalog_backup_174,permission_key,character varying,120,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_permission_catalog_backup_174,module_key,character varying,60,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_permission_catalog_backup_174,action,character varying,60,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_permission_catalog_backup_174,description,character varying,240,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_permission_catalog_backup_174,catalog_version,character varying,40,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_permission_catalog_backup_174,availability,character varying,20,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_policy,period_timing,character varying,12,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_policy,cutoff_mode,character varying,24,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_policy,proration_method,character varying,12,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_policy,first_period_mode,character varying,20,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_policy,approval_mode,character varying,12,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_policy,document_prefix,character varying,10,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+billing_profile_permissions_backup_174,permission_key,character varying,120,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+catalog_bundles,name,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_bundles,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_bundles,discount_type,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_compatibility_rules,rule_type,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_compatibility_rules,description,character varying,500,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_compatibility_rules,note,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_items,type,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_items,name,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_items,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_items,vat_concept,character varying,30,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_price_history,customer_segment,character varying,30,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_promotions,name,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_promotions,code,character varying,50,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_promotions,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_promotions,discount_type,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_promotions,applies_to,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+catalog_promotions,target_segments,ARRAY,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+commercial_nodes,name,character varying,150,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+consent_records,consent_type,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+consent_records,status,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+consent_records,channel,character varying,120,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+consent_records,ip_address,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+consent_records,legal_text_version,text,,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+consent_records,evidence_ref,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+consent_records,revoked_reason,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contact_attempts,channel,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+contact_attempts,result,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+contact_attempts,notes,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contact_attempts,actor_name,character varying,160,YES,EXCLUIDA,"OPERADOR: nombre del asesor, no del titular",sobrevive
+contracts,plan_id,character varying,120,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+contracts,plan_snapshot_json,jsonb,,NO,CUBIERTA,"CrmTitularErasureParticipant (redacción por claves)",no sembrada
+contracts,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+contracts,alias,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (marker)",desaparece
+contracts,installation_address,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,installation_city,character varying,120,YES,RESIDUO,"R-14",sobrevive
+contracts,installation_department,character varying,120,YES,RESIDUO,"R-14",sobrevive
+contracts,installation_postal_code,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,installation_notes,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,customer_segment,character varying,20,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+contracts,additional_product_ids,jsonb,,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+contracts,additional_service_ids,jsonb,,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+contracts,payment_method,character varying,30,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+contracts,billing_cycle,character varying,20,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+contracts,fiscal_name,character varying,200,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,fiscal_document,character varying,30,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,fiscal_address,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,service_usage,character varying,20,YES,EXCLUIDA,"CODIGO: dominio del sistema",no sembrada
+contracts,vat_snapshot,jsonb,,YES,CUBIERTA,"CrmTitularErasureParticipant (redacción por claves)",no sembrada
+contracts,fiscal_document_encrypted,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+contracts,fiscal_document_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+contracts,status_reason_code,character varying,40,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+coverage_checks,address_used,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+coverage_checks,result,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+coverage_checks,technology_available,character varying,60,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+coverage_checks,snapshot_json,jsonb,,NO,CUBIERTA,"CrmTitularErasureParticipant (empty-json)",desaparece
+coverage_zones,name,character varying,150,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+crm_contract_alias_backup_168,alias,character varying,120,NO,RESIDUO,"R-10",sobrevive
+crm_contract_price_backup_175,plan_snapshot_json,jsonb,,NO,LISTADA-MOD14,"Solo se lista, H-5",no sembrada
+crm_conversion_failures,event_name,character varying,80,NO,EXCLUIDA,"CODIGO: nombre de evento",sobrevive
+crm_conversion_failures,error_code,character varying,80,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+crm_lifecycle_changes,entity_type,character varying,16,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+crm_lifecycle_changes,from_status,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+crm_lifecycle_changes,to_status,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+crm_lifecycle_changes,reason_code,character varying,40,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+crm_lifecycle_changes,note_encrypted,text,,YES,RESIDUO,"H-2, spec propia",sobrevive
+crm_lifecycle_changes,source,character varying,16,NO,EXCLUIDA,"CODIGO: dominio del sistema",no sembrada
+data_authorizations,purpose,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_authorizations,kind,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_authorizations,channel,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_authorizations,ip,inet,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_authorizations,user_agent,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_authorizations,source_ref,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_request_events,from_status,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_request_events,to_status,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_request_events,reason,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_request_tasks,kind,character varying,40,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_request_tasks,note,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,requester_document_hmac,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,requester_kind,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,requester_name_encrypted,character varying,500,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,requester_document_type,character varying,20,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,requester_document_encrypted,character varying,500,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,requester_contact_encrypted,character varying,500,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,identity_verification_method,character varying,30,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,kind,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,right,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,purpose,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,status,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,suspended_contract_ids,ARRAY,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,response_text,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,response_channel,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,transferred_to,character varying,200,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,disputed_contract_ids,ARRAY,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,legal_basis,text,,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+data_subject_requests,erasure_categories,ARRAY,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+execution_order_activities,activity_type,character varying,64,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_order_activities,description,text,,NO,CUBIERTA,"ExecutionOrderTitularErasureParticipant (marker)",desaparece
+execution_order_audit_intents,operation,character varying,120,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_audit_intents,resource_ref,character varying,160,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_audit_intents,result_code,character varying,64,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_evidence,evidence_type,character varying,64,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_order_evidence,file_name,character varying,200,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_order_evidence,notes,text,,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_order_evidence,requirement_key,character varying,64,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+execution_order_evidence,asset_status,character varying,32,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_order_evidence_upload_intents,status,character varying,32,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,operation,character varying,120,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,key_id,character varying,40,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,key_hmac,character,64,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,payload_hmac,character,64,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,resource_ref,character varying,160,YES,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,result_code,character varying,64,YES,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_idempotency_records,result_status,character varying,32,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_inbox_events,consumer,character varying,120,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_inbox_events,last_error,text,,YES,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_item_usage,item_id,character varying,160,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+execution_order_item_usage,technician_custody_id,character varying,160,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+execution_order_item_usage,serial_number,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+execution_order_item_usage,action,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+execution_order_item_usage,final_disposition,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+execution_order_item_usage,stock_movement_id,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+execution_order_item_usage,movement_status,character varying,20,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+execution_order_item_usage,requirement_key,character varying,128,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+execution_order_item_usage,rejection_reason_code,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+execution_order_item_usage_reversals,reason,text,,NO,RESIDUO,"R-12",sobrevive
+execution_order_item_usage_reversals,status,character varying,16,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_order_item_usage_reversals,stock_movement_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_order_item_usage_reversals,rejection_reason_code,character varying,64,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+execution_order_outbox_events,event_type,character varying,120,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+execution_order_outbox_events,payload,jsonb,,NO,EXCLUIDA,"EFIMERA: purga a 30 días de publicado (migración 095), ver hallazgo C-3",sobrevive
+execution_order_outbox_events,last_error,text,,YES,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",sobrevive
+execution_order_permission_seed_092,permission_key,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_permission_seed_092,seed_fingerprint,character,32,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_status_transitions,from_status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+execution_order_status_transitions,to_status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+execution_order_status_transitions,reason,character varying,255,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_order_template_requirements,key,character varying,64,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_requirements,label,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_requirements,kind,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_requirements,config,jsonb,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_versions,template_key,character varying,64,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_versions,label,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_versions,status,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_template_versions,reason_catalogs,jsonb,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_templates,key,character varying,64,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_templates,label,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_templates,work_type,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_order_templates,status,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+execution_orders,execution_order_number,character varying,40,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+execution_orders,origin_context,character varying,64,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+execution_orders,origin_ref_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_orders,customer_display_label,character varying,200,NO,CUBIERTA,"ExecutionOrderTitularErasureParticipant (marker)",desaparece
+execution_orders,service_address,character varying,255,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_orders,municipality,character varying,120,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_orders,sector,character varying,120,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_orders,work_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+execution_orders,work_summary,character varying,200,NO,CUBIERTA,"ExecutionOrderTitularErasureParticipant (marker)",desaparece
+execution_orders,work_instructions,text,,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_orders,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+execution_orders,result,USER-DEFINED,,YES,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+execution_orders,close_notes,text,,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_orders,task_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_orders,ticket_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_orders,subscriber_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+execution_orders,template_key,character varying,64,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+execution_orders,template_label,character varying,200,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (null)",desaparece
+execution_orders,template_requirements_snapshot,jsonb,,YES,CUBIERTA,"ExecutionOrderTitularErasureParticipant (empty-json)",desaparece
+expediente_records,status,character varying,40,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,previous_status,character varying,40,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,discard_reason,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,full_name,character varying,160,NO,CUBIERTA,"CrmTitularErasureParticipant (marker)",desaparece
+expediente_records,document_type,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+expediente_records,document_number_encrypted,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,gender,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,person_type,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+expediente_records,company_name,character varying,200,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,first_name,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,last_name,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,primary_contact_name,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,primary_contact_role,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+expediente_records,phone_primary_encrypted,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,phone_secondary_encrypted,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,email_primary_encrypted,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,email_secondary,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,alt_contact_name,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,alt_contact_phone_encrypted,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,contact_preference,character varying,30,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,best_contact_time,character varying,60,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,address,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,municipality,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,department,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,postal_code,character varying,12,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,neighborhood,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,coordinates_source,character varying,20,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,coordinates_confidence,character varying,20,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,access_references,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,zone_type,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+expediente_records,source,character varying,120,NO,RESIDUO,"R-9",sobrevive
+expediente_records,acquisition_channel,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+expediente_records,source_detail,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,interested_plan_id,character varying,120,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,additional_product_ids,jsonb,,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+expediente_records,additional_service_ids,jsonb,,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+expediente_records,campaign,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,case_priority,character varying,20,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,commercial_notes,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,coverage_result,character varying,30,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+expediente_records,available_technology,character varying,60,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,feasibility,character varying,30,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,candidate_technologies,jsonb,,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,technical_confidence,character varying,20,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,evaluation_source,character varying,30,YES,EXCLUIDA,"CODIGO: dominio técnico",sobrevive
+expediente_records,technical_observations,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,estimated_equipment,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,identity_verified,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,legal_compliance_status,character varying,30,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,document_supports,jsonb,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,payment_method,character varying,60,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+expediente_records,billing_cycle,character varying,30,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+expediente_records,fiscal_name,character varying,200,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,fiscal_document,character varying,30,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,fiscal_address,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,rut_reference,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,installation_address,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,availability_window,character varying,120,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,site_contact_name,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,site_contact_phone_encrypted,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,special_access_notes,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,required_materials,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,ticket_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,work_order_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,inventory_assignment_ref,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,expansion_request_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,execution_policy_ref,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+expediente_records,evidence_mode,character varying,64,YES,EXCLUIDA,"CODIGO: dominio técnico",no sembrada
+expediente_records,conformity_evidence_ref,character varying,255,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+expediente_records,last_reschedule_reason,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,last_reschedule_notes,text,,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,document_number_hash,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (legacy-hash)",no sembrada
+expediente_records,document_number_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+expediente_records,customer_segment,USER-DEFINED,,YES,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+expediente_records,fiscal_document_encrypted,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+expediente_records,fiscal_document_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+goods_receipts,receipt_number,character varying,40,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+goods_receipts,status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+goods_receipts,notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+inventory_categories,code,character varying,80,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_categories,name,character varying,160,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_categories,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_categories,status,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_categories,code_prefix,character varying,3,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_execution_request_receipts,outcome,character varying,16,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+inventory_execution_request_receipts,reason_code,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+inventory_execution_request_receipts,kind,character varying,16,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+inventory_items,sku,character varying,60,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,name,character varying,200,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,category,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,tracking_mode,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,unit_of_measure,character varying,32,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,status,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,brand,character varying,120,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,model,character varying,120,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,item_kind,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,supplier_sku,character varying,80,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,purchase_unit_of_measure,character varying,32,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,commercial_reference_id,character varying,160,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,barcode,character varying,64,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_items,barcode_type,USER-DEFINED,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+inventory_write_offs,reason,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+inventory_write_offs,status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+inventory_write_offs,notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+inventory_write_offs,idempotency_key,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+inventory_write_offs,rejection_notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+ip_assignments,ip,inet,,NO,EXCLUIDA,"PENDIENTE-DICTAMEN: logs de IP y conexión, ADR-094 D7 ⚠",no sembrada
+ip_assignments,status,character varying,16,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+ip_assignments,release_reason,character varying,32,YES,EXCLUIDA,"CODIGO: motivo de catálogo",sobrevive
+ipv4_networks,name,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ipv4_networks,gateway,inet,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ipv4_networks,assignable_from,inet,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ipv4_networks,assignable_to,inet,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ipv4_networks,excluded_ips,ARRAY,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ipv4_networks,default_control_method,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ipv4_networks,status,character varying,16,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+legal_texts,type,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+legal_texts,version,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+legal_texts,sha256,character,64,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+legal_texts,content,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+legal_texts,url,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+legal_texts,format,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_inbox_events,event_type,character varying,64,NO,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+network_inbox_events,last_error_code,character varying,64,YES,EXCLUIDA,"EFIMERA: envoltorio técnico de confiabilidad",no sembrada
+network_plan_profiles,pcq_address_list,character varying,64,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interface_ipv4_addresses,address,inet,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interface_ipv4_addresses,host_address,inet,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interface_ipv4_addresses,notes,character varying,1000,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interfaces,name,character varying,64,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interfaces,kind,character varying,16,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interfaces,notes,character varying,1000,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_router_interfaces,status,character varying,16,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_routers,name,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_routers,management_host,character varying,255,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_routers,lan_interface,character varying,64,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_routers,supported_control_methods,ARRAY,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_routers,status,character varying,16,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+network_routers,notes,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+non_realization_causes,code,character varying,50,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+non_realization_causes,label,character varying,160,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+non_realization_causes,category,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+operational_responsibility_history,notes,character varying,255,YES,RESIDUO,"R-1",sobrevive
+operational_tasks,task_number,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+operational_tasks,type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,priority,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,title,character varying,200,NO,CUBIERTA,"OperationalTaskTitularErasureParticipant (marker)",desaparece
+operational_tasks,description,text,,YES,CUBIERTA,"OperationalTaskTitularErasureParticipant (null)",desaparece
+operational_tasks,origin_context,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,origin_ref_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+operational_tasks,ticket_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+operational_tasks,responsible_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,responsible_ref_id,character varying,160,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+operational_tasks,recipient_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,recipient_ref_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+operational_tasks,recipient_label,character varying,160,YES,CUBIERTA,"OperationalTaskTitularErasureParticipant (null)",desaparece
+operational_tasks,queue_name,character varying,80,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+operational_tasks,execution_mode,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+operational_tasks,schedule_event_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+operational_tasks,work_order_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+organization_business_hours_exceptions,name,character varying,160,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_business_hours_exceptions,description,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_company_business_hours,weekday,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_site_assignments,assignment_type,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_site_business_hours,weekday,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_site_capabilities,capability,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_site_responsibilities,responsibility,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,name,character varying,160,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,code,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,site_type,character varying,40,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,address,character varying,240,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,municipality,character varying,120,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,department,character varying,120,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,country,character varying,2,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,contact_name,character varying,160,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+organization_sites,contact_phone,character varying,32,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+party,party_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+party,document_type,USER-DEFINED,,NO,CUBIERTA,"PartyTitularErasureParticipant (marker)",no sembrada
+party,document_number,character varying,500,NO,CUBIERTA,"PartyTitularErasureParticipant (encrypted-marker)",no sembrada
+party,verification_digit,character varying,2,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",no sembrada
+party,display_name,character varying,160,NO,CUBIERTA,"PartyTitularErasureParticipant (marker)",desaparece
+party,legal_name,character varying,200,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+party,notes,text,,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party,address,character varying,255,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party,city,character varying,120,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party,department,character varying,120,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party,document_number_hmac,character varying,64,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",no sembrada
+party_contact,type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+party_contact,value,character varying,255,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party_contact,metadata,jsonb,,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party_contact,value_encrypted,character varying,500,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",desaparece
+party_contact,value_hmac,character varying,64,YES,CUBIERTA,"PartyTitularErasureParticipant (null)",no sembrada
+party_privacy_marks,mark,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+party_privacy_marks,event,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+party_role,role,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+party_role,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+plan_catalog_items,name,character varying,140,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+plan_catalog_items,technology,character varying,100,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+plan_catalog_items,installation_rule,character varying,30,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+plan_details,technology,character varying,100,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+plan_details,installation_rule,character varying,30,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+plan_details,network_type,character varying,10,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+privacy_incidents,description,text,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+privacy_incidents,affected_categories,ARRAY,,NO,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+privacy_incidents,external_reference,character varying,100,YES,EXCLUIDA,"PRUEBA: se conserva por R6 y ADR-094 D7",no sembrada
+privacy_purpose_settings,purpose,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+product_details,category,character varying,50,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+purchase_orders,order_number,character varying,40,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_orders,status,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_orders,notes,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_orders,cancellation_reason,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_line_awards,award_notes,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_line_awards,currency,character varying,3,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_lines,source_kind,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_lines,free_text_description,character varying,500,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_lines,unit_of_measure,character varying,32,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_lines,line_status,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_request_lines,notes,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,request_number,character varying,40,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,title,character varying,200,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,status,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,notes,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,request_type,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,priority,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,requesting_area,character varying,120,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,justification,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,operational_ref_type,character varying,60,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,operational_ref_id,character varying,160,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,exception_reason,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_requests,resolution_reason,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_rfq_invitations,status,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_rfq_invitations,decline_reason,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_rfqs,rfq_number,character varying,40,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_rfqs,status,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_rfqs,currency,character varying,3,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+purchase_rfqs,notes,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+quotes,plan_id,character varying,120,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+quotes,plan_snapshot_json,jsonb,,NO,CUBIERTA,"CrmTitularErasureParticipant (redacción por claves)",no sembrada
+quotes,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+refresh_tokens,token_hash,character varying,64,NO,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+refresh_tokens,revoke_reason,character varying,50,YES,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+refresh_tokens,ip_address,character varying,45,YES,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+refresh_tokens,user_agent,character varying,512,YES,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+retention_policies,category,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+retention_policies,start_event,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+retention_policies,legal_basis,text,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+sales_attributions,attribution_role,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+sales_attributions,actor_role,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+sales_attributions,actor_name,character varying,160,NO,EXCLUIDA,"OPERADOR: nombre del asesor, no del titular",sobrevive
+sales_attributions,acquisition_channel,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+sales_attributions,notes,character varying,500,YES,RESIDUO,"R-8",sobrevive
+sales_attributions,revoked_reason,character varying,255,YES,RESIDUO,"R-8",sobrevive
+schedule_events,type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+schedule_events,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+schedule_events,title,character varying,160,NO,CUBIERTA,"WfmTitularErasureParticipant (marker)",desaparece
+schedule_events,description,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+schedule_events,address,character varying,255,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+schedule_events,municipality,character varying,120,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+schedule_events,ticket_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+schedule_events,sector,character varying,120,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+schedule_events,failure_reason,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+schedule_events,review_notes,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+schedule_reschedule_logs,reason,character varying,120,NO,RESIDUO,"R-13",sobrevive
+schedule_reschedule_logs,notes,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+serialized_assets,serial_number,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+serialized_assets,normalized_serial_number,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+serialized_assets,mac_address,character varying,64,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+serialized_assets,normalized_mac_address,character varying,64,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+serialized_assets,asset_tag,character varying,120,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+serialized_assets,current_status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+serialized_assets,current_responsible_type,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+serialized_assets,purchase_order_ref,character varying,80,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+service_details,charge_type,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+service_provisionings,execution_order_number,character varying,40,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+service_provisionings,control_method,character varying,40,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+service_provisionings,control_params,jsonb,,NO,EXCLUIDA,"TECNICO: esquema estricto, método y nombre de cola",sobrevive
+service_provisionings,cpe_serial_number,character varying,120,YES,EXCLUIDA,"EQUIPO: identificador del CPE del ISP",sobrevive
+service_provisionings,cpe_mac_address,character varying,17,YES,EXCLUIDA,"EQUIPO: identificador del CPE del ISP",sobrevive
+service_provisionings,status,character varying,16,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+service_provisionings,origin,character varying,16,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+service_provisionings,release_reason,character varying,32,YES,EXCLUIDA,"CODIGO: motivo de catálogo",sobrevive
+service_provisionings,regularization_reason,text,,YES,RESIDUO,"R-2",sobrevive
+service_provisionings,failure_reason,character varying,64,YES,EXCLUIDA,"CODIGO: escrito por el sistema",sobrevive
+service_provisionings,commercial_activation_status,character varying,24,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+service_provisionings,commercial_activation_detail,character varying,64,YES,EXCLUIDA,"CODIGO: escrito por el sistema",sobrevive
+status_changes,from_status,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+status_changes,to_status,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+status_changes,actor_name,character varying,160,YES,EXCLUIDA,"OPERADOR: nombre del actor, no del titular",sobrevive
+status_changes,reason,character varying,255,YES,RESIDUO,"R-7",sobrevive
+status_changes,metadata_json,jsonb,,YES,EXCLUIDA,"SIN-ESCRITOR: persistStatusChangeSafely no lo rellena",sobrevive
+stock_balances,condition,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_count_lines,condition,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_counts,count_number,character varying,40,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_counts,status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_counts,notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issue_line_serials,issue_status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issue_lines,condition,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issues,type,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issues,status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issues,destination_ref_id,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issues,origin_ref_id,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issues,commercial_ref_id,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_issues,reason,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_issues,cost_center,character varying,80,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_issues,handoff_method,character varying,32,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_issues,handoff_notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_issues,handoff_attachments,jsonb,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_locations,code,character varying,60,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_locations,name,character varying,200,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_locations,type,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_locations,status,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_lots,lot_number,character varying,80,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movement_taxes,tax_code,character varying,32,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movement_taxes,tax_category,character varying,20,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movement_taxes,effect,character varying,10,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movements,movement_number,character varying,40,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_movements,origin,USER-DEFINED,,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movements,origin_context,character varying,64,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movements,origin_ref_id,character varying,160,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",no sembrada
+stock_movements,idempotency_key,character varying,160,NO,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+stock_movements,notes,text,,YES,EXCLUIDA,"INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar",sobrevive
+subscriber_tax_assignments,tax_name_snapshot,character varying,120,NO,EXCLUIDA,"CODIGO: copia del catálogo tributario",sobrevive
+subscriber_tax_assignments,rate_source,character varying,20,NO,EXCLUIDA,"CODIGO: dominio del sistema",sobrevive
+subscriber_tax_assignments,treatment,character varying,20,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+subscriber_tax_assignments,status,character varying,20,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+subscriber_tax_assignments,reason,character varying,300,YES,RESIDUO,"R-11",sobrevive
+subscriber_tax_profiles,segment,character varying,30,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+subscriber_tax_profiles,profile_status,character varying,20,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+subscribers,person_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+subscribers,customer_segment,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+subscribers,document_type,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (marker)",no sembrada
+subscribers,document_number_encrypted,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (encrypted-marker)",desaparece
+subscribers,first_name,character varying,300,YES,CUBIERTA,"CrmTitularErasureParticipant (marker)",desaparece
+subscribers,last_name,character varying,300,YES,CUBIERTA,"CrmTitularErasureParticipant (marker)",desaparece
+subscribers,nit,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (marker)",no sembrada
+subscribers,nit_verification_digit,character varying,1,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,business_name,character varying,300,YES,CUBIERTA,"CrmTitularErasureParticipant (marker)",no sembrada
+subscribers,commercial_name,character varying,300,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,email_encrypted,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,phone_encrypted,character varying,100,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,whatsapp,character varying,50,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,vat_treatment,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+subscribers,tax_regime,USER-DEFINED,,YES,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+subscribers,address,character varying,500,NO,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,neighborhood,character varying,100,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,city,character varying,50,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,department,character varying,50,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,postal_code,character varying,20,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+subscribers,external_id,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,document_number_hash,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (legacy-hash)",no sembrada
+subscribers,email_hash,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (legacy-hash)",no sembrada
+subscribers,phone_hash,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (legacy-hash)",no sembrada
+subscribers,manual_override_reason,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,alt_contact_name,character varying,160,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,alt_contact_phone_encrypted,character varying,100,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,document_number_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,email_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,phone_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,whatsapp_encrypted,character varying,500,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",desaparece
+subscribers,whatsapp_hmac,character varying,64,YES,CUBIERTA,"CrmTitularErasureParticipant (null)",no sembrada
+subscribers,vat_responsibility,USER-DEFINED,,YES,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+subscribers,rut_responsibilities,ARRAY,,NO,EXCLUIDA,"CODIGO: códigos DIAN, sin texto libre",no sembrada
+supplier_profiles,supplier_code,character varying,20,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_profiles,currency,character,3,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_profiles,incoterm,character varying,10,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_profiles,purchasing_contact_name,character varying,200,YES,RESIDUO,"R-15 condicional",no sembrada
+supplier_profiles,purchasing_contact_email,character varying,255,YES,RESIDUO,"R-15 condicional",no sembrada
+supplier_profiles,purchasing_contact_phone,character varying,32,YES,RESIDUO,"R-15 condicional",no sembrada
+supplier_profiles,status,USER-DEFINED,,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_profiles,notes,text,,YES,RESIDUO,"R-15 condicional",no sembrada
+supplier_quote_taxes,tax_code,character varying,32,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_quote_taxes,tax_category,character varying,20,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_quote_taxes,effect,character varying,10,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_quotes,quote_number,character varying,60,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_quotes,currency,character varying,3,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_quotes,notes,text,,YES,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+supplier_quotes,shipping_arrangement,character varying,16,NO,EXCLUIDA,"PROVEEDOR: dato de compras, no del suscriptor",no sembrada
+support_tickets,ticket_number,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+support_tickets,type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,priority,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,source,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,subject,character varying,200,NO,RESIDUO,"R-3",sobrevive
+support_tickets,description,text,,YES,RESIDUO,"R-3",sobrevive
+support_tickets,requester_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,requester_ref_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+support_tickets,subject_type,USER-DEFINED,,YES,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,subject_ref_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+support_tickets,queue_name,USER-DEFINED,,YES,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,sla_breach_status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+support_tickets,field_decision,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+task_assignment_history,previous_responsible_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+task_assignment_history,previous_responsible_ref_id,character varying,160,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+task_assignment_history,new_responsible_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+task_assignment_history,new_responsible_ref_id,character varying,160,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+task_assignment_history,reason,character varying,500,YES,CUBIERTA,"OperationalTaskTitularErasureParticipant (null)",desaparece
+task_timeline_events,event_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+task_timeline_events,payload,jsonb,,NO,CUBIERTA,"OperationalTaskTitularErasureParticipant (empty-json)",desaparece
+tax_definitions,code,character varying,32,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,name,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,category,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,jurisdiction_level,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,municipality_code,character varying,8,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,treatment,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,context,character varying,10,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,origin,character varying,10,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_definitions,notes,text,,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_rule_applications,treatment,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_rules,customer_segment,character varying,30,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_rules,municipality_code,character varying,10,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+tax_rules,tax_type,character varying,20,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+technician_availability,type,USER-DEFINED,,NO,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+technician_availability,reason,character varying,160,YES,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+ticket_comments,body,text,,NO,RESIDUO,"R-4",sobrevive
+ticket_pqr_records,pqr_number,character varying,50,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+ticket_pqr_records,deadline_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+ticket_pqr_records,notes,text,,YES,EXCLUIDA,"SIN-ESCRITOR: pqr.service.ts:29 siempre escribe null",sobrevive
+ticket_sla_policies,name,character varying,100,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ticket_sla_policies,applies_to_type,character varying,50,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ticket_sla_policies,applies_to_priority,character varying,50,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+ticket_timeline_events,event_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+ticket_timeline_events,payload,jsonb,,NO,RESIDUO,"R-5",sobrevive
+ticket_work_order_links,notes,text,,YES,RESIDUO,"R-6",sobrevive
+typeorm_migrations,name,character varying,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+uom_normalization_122_provenance,previous_unit_of_measure,character varying,32,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+uom_normalization_122_provenance,previous_purchase_unit_of_measure,character varying,32,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+users,email,character varying,255,NO,CUBIERTA,"UserAccountErasureParticipant (correo sintético)",no sembrada
+users,email_hash,character varying,64,YES,CUBIERTA,"UserAccountErasureParticipant (legacy-hash)",no sembrada
+users,password_hash,character varying,60,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+users,role,character varying,20,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+users,status,character varying,30,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+users,mfa_secret,character varying,512,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+users,password_reset_token,character varying,512,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+users,email_verification_token,character varying,512,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+users,first_name,character varying,100,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,last_name,character varying,100,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,phone,character varying,20,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,job_title,character varying,150,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,document_type,character varying,20,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,document_number,character varying,30,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,avatar_url,character varying,500,YES,CUBIERTA,"UserAccountErasureParticipant (null)",no sembrada
+users,email_hmac,character varying,64,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+visit_requests,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+visit_requests,origin_context,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+visit_requests,origin_ref,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+visit_requests,origin_label,character varying,160,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+visit_requests,work_type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+visit_requests,priority,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+visit_requests,title,character varying,160,NO,CUBIERTA,"WfmTitularErasureParticipant (marker)",desaparece
+visit_requests,description,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+visit_requests,address,character varying,255,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+visit_requests,municipality,character varying,120,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+visit_requests,sector,character varying,120,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+visit_requests,ticket_id,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+visit_requests,cancel_reason,character varying,200,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+visit_requests,additional_reason,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+wfm_company_business_hours,weekday,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+wfm_holiday_blackouts,name,character varying,120,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+wfm_holiday_blackouts,description,character varying,255,YES,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+wfm_operational_eventualities,type,character varying,40,NO,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+wfm_operational_eventualities,status,character varying,20,NO,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+wfm_operational_eventualities,reason,character varying,320,YES,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+wfm_operational_eventualities,origin,character varying,80,YES,EXCLUIDA,"OPERADOR: personal del ISP",no sembrada
+wfm_site_business_hours,weekday,USER-DEFINED,,NO,EXCLUIDA,"CATALOGO: configuración del ISP, sin vínculo con un titular",no sembrada
+work_order_tasks,title,character varying,160,NO,CUBIERTA,"WfmTitularErasureParticipant (marker)",desaparece
+work_order_tasks,description,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+work_order_tasks,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+work_order_tasks,result_notes,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece
+work_orders,code,character varying,40,NO,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",sobrevive
+work_orders,type,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+work_orders,status,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+work_orders,priority,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+work_orders,source_context,USER-DEFINED,,NO,EXCLUIDA,"ENUM: dominio cerrado",no sembrada
+work_orders,source_ref,character varying,160,YES,EXCLUIDA,"CODIGO: referencia, código o dominio del sistema",no sembrada
+work_orders,summary,character varying,200,NO,CUBIERTA,"WfmTitularErasureParticipant (marker)",desaparece
+work_orders,notes,text,,YES,CUBIERTA,"WfmTitularErasureParticipant (null)",desaparece

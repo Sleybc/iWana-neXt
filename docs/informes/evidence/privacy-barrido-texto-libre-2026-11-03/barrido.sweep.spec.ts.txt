@@ -1,0 +1,632 @@
+/* Runner desechable del barrido de texto libre (2026-11-03). Base iwana_it_g7_sweep; solo datos sintéticos. */
+import { appendFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { ConfigService } from '@nestjs/config';
+import { Test } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
+import { DataSource, QueryRunner } from 'typeorm';
+import { AccessPermissionKey, DocumentTypeParty, normalizeDocumentNumber } from '@iwana/shared';
+import { hmacPii } from 'C:/appiw/apps/api/src/common/crypto/pii-hash-key.util';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  parseEncryptionKeyHex,
+} from 'C:/appiw/apps/api/src/common/crypto/aes-gcm.util';
+import { AuditService } from 'C:/appiw/apps/api/src/modules/audit/audit.service';
+import { sanitizeAuditPayload } from 'C:/appiw/apps/api/src/modules/audit/audit-sanitize.policy';
+import { EffectivePermissionsService } from 'C:/appiw/apps/api/src/modules/access-control/services/effective-permissions.service';
+import { MediaService } from 'C:/appiw/apps/api/src/modules/media/media.service';
+import { CrmPersonalDataErasureAdapter } from 'C:/appiw/apps/api/src/modules/crm/privacy-adapters/crm-personal-data-erasure.adapter';
+import { CrmTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
+import { PartyTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/parties/privacy/party-titular-erasure.participant';
+import { UserAccountErasureParticipant } from 'C:/appiw/apps/api/src/modules/users/privacy/user-account-erasure.participant';
+import { WfmTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/wfm/privacy/wfm-titular-erasure.participant';
+import { ExecutionOrderTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/tasks/privacy/execution-order-titular-erasure.participant';
+import { OperationalTaskTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/tasks/privacy/operational-task-titular-erasure.participant';
+import { MediaTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/media/privacy/media-titular-erasure.participant';
+import { IContractImpersonationPort } from 'C:/appiw/apps/api/src/modules/privacy/ports/contract-impersonation.port';
+import { IPersonalDataErasurePort } from 'C:/appiw/apps/api/src/modules/privacy/ports/personal-data-erasure.port';
+import { IContractStandingReadPort } from 'C:/appiw/apps/api/src/modules/privacy/requests/ports/contract-standing-read.port';
+import { PrivacyRequestsService } from 'C:/appiw/apps/api/src/modules/privacy/requests/requests.service';
+
+const OUT = process.env['SWEEP_EVIDENCE'] as string;
+const log = (step: string, data: unknown) =>
+  appendFileSync(OUT, `${JSON.stringify({ step, data })}\n`);
+const M = '0123456789abcdef'.repeat(4);
+const K1 = '89abcdef01234567'.repeat(4);
+const H = 'abcdef0123456789'.repeat(4);
+const key = parseEncryptionKeyHex(K1);
+const SCHEMA = 'tenant_sweep';
+const q = `"${SCHEMA}"`;
+const actorId = randomUUID();
+const DOC = '90000123';
+
+type Col = {
+  column_name: string;
+  data_type: string;
+  udt_name: string;
+  max: number | null;
+  nullable: boolean;
+  has_default: boolean;
+  generated: boolean;
+};
+type Canary = { code: string; table: string; column: string; row: string; kind: string };
+const canaries: Canary[] = [];
+const skipped: unknown[] = [];
+let seq = 0;
+const REF = /(_id|_ref|_ids)$|^id$/;
+const STRUCT = /(^|_)(status|type|state|mode|priority|role|hmac|hash)$/;
+
+describe('Barrido de texto libre con canarios', () => {
+  let ds: DataSource;
+  let boot: DataSource;
+  let service: PrivacyRequestsService;
+  let qr: QueryRunner;
+  let tenantId = '';
+  const config = {
+    getOrThrow: (k: string) => {
+      if (k === 'MFA_ENCRYPTION_KEY') return M;
+      if (k === 'PII_HASH_KEY') return H;
+      throw new Error('Clave sintética no configurada.');
+    },
+    get: (k: string) => (k === 'PII_ENCRYPTION_KEY' ? K1 : undefined),
+  } as unknown as ConfigService;
+  const conn = (username: string, password: string) =>
+    new DataSource({
+      type: 'postgres',
+      host: process.env['DB_HOST'],
+      port: Number(process.env['DB_PORT']),
+      username,
+      password,
+      database: process.env['DB_NAME'],
+      entities: [],
+      migrations: [],
+      synchronize: false,
+      logging: false,
+      extra: { max: 3, min: 1 },
+    });
+  const inTenant = <T>(op: () => Promise<T>) =>
+    TenantContext.run({ tenantId, schemaName: SCHEMA, tenantSlug: 'sweep' }, op);
+
+  async function columnsOf(table: string): Promise<Col[]> {
+    return qr.query(
+      `SELECT column_name, data_type, udt_name, character_maximum_length AS max,
+              is_nullable = 'YES' AS nullable, column_default IS NOT NULL AS has_default,
+              is_generated = 'ALWAYS' OR is_identity = 'YES' AS generated
+         FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2
+        ORDER BY ordinal_position`,
+      [SCHEMA, table],
+    );
+  }
+  async function firstEnum(udt: string): Promise<string> {
+    const r = await qr.query(
+      `SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = $1 ORDER BY e.enumsortorder LIMIT 1`,
+      [udt],
+    );
+    return r[0].enumlabel;
+  }
+  const tag = (table: string, column: string, row: string, kind: string) => {
+    seq += 1;
+    const code = `CNR${String(seq).padStart(4, '0')}`;
+    canaries.push({ code, table, column, row, kind });
+    return code;
+  };
+
+  /** Inserta una fila con un canario en cada columna textual libre. `row` = etiqueta de la sonda. */
+  async function seed(
+    table: string,
+    row: string,
+    over: Record<string, unknown> = {},
+  ): Promise<string> {
+    const cols = await columnsOf(table);
+    if (cols.length === 0) throw new Error(`Tabla inexistente ${table}`);
+    const values = new Map<string, unknown>();
+    const casts = new Map<string, string>();
+    for (const c of cols) {
+      if (c.generated) continue;
+      const name = c.column_name;
+      if (name in over) {
+        values.set(name, over[name]);
+        continue;
+      }
+      if (name === 'tenant_id') {
+        values.set(name, tenantId);
+        continue;
+      }
+      const required = !c.nullable && !c.has_default;
+      const text = ['character varying', 'text', 'character'].includes(c.data_type);
+      if (text) {
+        if (/_encrypted$/.test(name)) {
+          values.set(name, encryptAes256Gcm(tag(table, name, row, 'cifrada'), key));
+          continue;
+        }
+        const free = !REF.test(name) && !STRUCT.test(name) && (c.max === null || c.max >= 7);
+        if (free) {
+          values.set(name, tag(table, name, row, 'texto'));
+          continue;
+        }
+        if (required) {
+          values.set(name, c.max !== null && c.max < 7 ? 'X' : `S${randomUUID().slice(0, 5)}`);
+        }
+        continue;
+      }
+      if (c.data_type === 'jsonb' || c.data_type === 'json') {
+        if (required || !STRUCT.test(name)) {
+          values.set(name, JSON.stringify({ nota: tag(table, name, row, 'json') }));
+          casts.set(name, c.data_type);
+        }
+        continue;
+      }
+      if (!required) continue;
+      if (c.data_type === 'USER-DEFINED') {
+        values.set(name, await firstEnum(c.udt_name));
+        casts.set(name, `${q}."${c.udt_name}"`);
+      } else if (c.data_type === 'uuid') values.set(name, randomUUID());
+      else if (c.data_type.startsWith('timestamp') || c.data_type === 'date') {
+        values.set(name, new Date().toISOString());
+      } else if (
+        ['numeric', 'integer', 'smallint', 'bigint', 'double precision'].includes(c.data_type)
+      ) {
+        values.set(name, 1);
+      } else if (c.data_type === 'boolean') values.set(name, false);
+      else if (c.data_type === 'inet') values.set(name, `10.9.${seq % 250}.${(seq * 7) % 250}/32`);
+      else if (c.data_type === 'ARRAY') values.set(name, []);
+      else throw new Error(`Tipo sin relleno ${table}.${name}: ${c.data_type}`);
+    }
+    for (const [name, value] of Object.entries(over)) {
+      const c = cols.find((x) => x.column_name === name);
+      if (!c) throw new Error(`Columna inexistente ${table}.${name}`);
+      if (c.data_type === 'USER-DEFINED') casts.set(name, `${q}."${c.udt_name}"`);
+      if ((c.data_type === 'jsonb' || c.data_type === 'json') && typeof value !== 'string') {
+        values.set(name, JSON.stringify(value));
+        casts.set(name, c.data_type);
+      }
+    }
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const names = [...values.keys()];
+      const placeholders = names.map(
+        (n, i) => `$${i + 1}${casts.has(n) ? `::${casts.get(n)}` : ''}`,
+      );
+      const sql = `INSERT INTO ${q}."${table}" (${names.map((n) => `"${n}"`).join(', ')})
+        VALUES (${placeholders.join(', ')}) RETURNING *`;
+      try {
+        await qr.query('SAVEPOINT s');
+        const r = await qr.query(
+          sql,
+          names.map((n) => values.get(n)),
+        );
+        await qr.query('RELEASE SAVEPOINT s');
+        return String(r[0].id ?? r[0].contract_id ?? '');
+      } catch (e) {
+        await qr.query('ROLLBACK TO SAVEPOINT s');
+        const err = e as { code?: string; constraint?: string; message: string };
+        if (err.code === '23514' && err.constraint) {
+          const found = await qr.query(
+            `SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint
+              WHERE conname = $1 AND connamespace = $2::regnamespace LIMIT 1`,
+            [err.constraint, SCHEMA],
+          );
+          const def = String(found[0]?.d);
+          const touched = names.filter(
+            (n) => !(n in over) && n !== 'tenant_id' && new RegExp(`\\b${n}\\b`).test(def),
+          );
+          if (touched.length === 0) throw new Error(`CHECK ${err.constraint} en ${table}: ${def}`);
+          const literal = /'([^']+)'/.exec(def)?.[1];
+          for (const n of touched) {
+            const c = cols.find((x) => x.column_name === n) as Col;
+            const idx = canaries.findIndex(
+              (k) => k.table === table && k.column === n && k.row === row,
+            );
+            if (idx >= 0) canaries.splice(idx, 1);
+            skipped.push({ table, column: n, row, constraint: err.constraint });
+            if (!c.nullable && !c.has_default) values.set(n, literal ?? 'X');
+            else values.delete(n);
+          }
+          continue;
+        }
+        throw new Error(`Siembra ${table}: ${err.code} ${err.message}`);
+      }
+    }
+    throw new Error(`Siembra ${table}: demasiados reintentos`);
+  }
+
+  beforeAll(async () => {
+    if (!/^iwana_it_g7_/u.test(process.env['DB_NAME'] ?? '')) {
+      throw new Error('DB_NAME no desechable');
+    }
+    const c = resolveMigrationDbCredentials();
+    ds = conn(c.username, c.password);
+    await ds.initialize();
+    boot = conn(
+      process.env['DB_BOOTSTRAP_USER'] as string,
+      process.env['DB_BOOTSTRAP_PASSWORD'] as string,
+    );
+    await boot.initialize();
+    const tenants = await boot.query(`SELECT id::text FROM public.tenants WHERE schema_name = $1`, [
+      SCHEMA,
+    ]);
+    tenantId = tenants[0].id;
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        { provide: getDataSourceToken(), useValue: ds },
+        { provide: ConfigService, useValue: config },
+        {
+          provide: AuditService,
+          useValue: {
+            log: jest.fn().mockResolvedValue(undefined),
+            logWithin: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: IContractImpersonationPort, useValue: { suspendForImpersonation: jest.fn() } },
+        {
+          provide: IContractStandingReadPort,
+          useValue: {
+            standing: jest.fn().mockResolvedValue({ openContractIds: [], lastTerminatedAt: null }),
+          },
+        },
+        { provide: MediaService, useValue: { findOne: jest.fn() } },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([
+                AccessPermissionKey.PRIVACY_READ,
+                AccessPermissionKey.PRIVACY_MANAGE,
+              ]),
+          },
+        },
+        CrmTitularErasureParticipant,
+        PartyTitularErasureParticipant,
+        UserAccountErasureParticipant,
+        WfmTitularErasureParticipant,
+        ExecutionOrderTitularErasureParticipant,
+        OperationalTaskTitularErasureParticipant,
+        MediaTitularErasureParticipant,
+        CrmPersonalDataErasureAdapter,
+        { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
+        {
+          provide: PrivacyRequestsService,
+          inject: [
+            getDataSourceToken(),
+            ConfigService,
+            AuditService,
+            IContractImpersonationPort,
+            IContractStandingReadPort,
+            MediaService,
+            EffectivePermissionsService,
+            IPersonalDataErasurePort,
+          ],
+          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
+            new PrivacyRequestsService(...deps),
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(PrivacyRequestsService);
+  }, 120000);
+
+  afterAll(async () => {
+    if (boot?.isInitialized) await boot.destroy();
+    if (ds?.isInitialized) await ds.destroy();
+  });
+
+  it('siembra, supresión real y escaneo', async () => {
+    const hmac = hmacPii(
+      normalizeDocumentNumber(DocumentTypeParty.CC, DOC),
+      parseEncryptionKeyHex(H),
+    );
+    qr = boot.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    await qr.query(`SET LOCAL session_replication_role = replica`);
+    const P = randomUUID();
+    const E = randomUUID();
+    const SUB = randomUUID();
+    const C = randomUUID();
+    const V = randomUUID();
+    const SE = randomUUID();
+    const W = randomUUID();
+    const EO = randomUUID();
+    const T1 = randomUUID();
+    const T2 = randomUUID();
+    const SP = randomUUID();
+    const AS = randomUUID();
+    const OT = randomUUID();
+    const TP = randomUUID();
+    const IU = randomUUID();
+    // Núcleo del titular
+    await seed('party', 'nucleo', {
+      id: P,
+      party_type: 'NATURAL',
+      document_type: 'CC',
+      document_number: encryptAes256Gcm('synthetic-party-doc', key),
+    });
+    await seed('party_contact', 'nucleo', { party_id: P, type: 'EMAIL' });
+    await seed('expediente_records', 'nucleo', {
+      id: E,
+      document_number_hmac: hmac,
+      document_type: 'CC',
+      customer_segment: 'RESIDENTIAL',
+    });
+    await seed('subscribers', 'nucleo', {
+      id: SUB,
+      party_id: P,
+      expediente_id: E,
+      person_type: 'NATURAL',
+      customer_segment: 'RESIDENTIAL',
+      document_type: 'CC',
+      stratum: 2,
+      vat_treatment: 'STANDARD',
+      tax_regime: 'COMMON',
+      vat_responsibility: 'RESPONSABLE',
+      created_by: actorId,
+      nit: null,
+      nit_verification_digit: null,
+      business_name: null,
+      commercial_name: null,
+    });
+    await seed('contracts', 'nucleo', {
+      id: C,
+      subscriber_id: SUB,
+      plan_id: 'plan-sintetico',
+      plan_snapshot_json: { fullName: 'plan', nota: 'x' },
+      vat_snapshot: {},
+      additional_product_ids: [],
+      additional_service_ids: [],
+    });
+    await seed('quotes', 'nucleo', {
+      subscriber_id: SUB,
+      expediente_id: E,
+      plan_id: 'plan-sintetico',
+      plan_snapshot_json: { fullName: 'plan' },
+    });
+    for (const t of ['contact_attempts', 'consent_records', 'coverage_checks']) {
+      await seed(t, 'nucleo', { expediente_id: E });
+    }
+    // CRM sin participante
+    for (const t of [
+      'status_changes',
+      'sales_attributions',
+      'operational_responsibility_history',
+      'crm_conversion_failures',
+    ]) {
+      await seed(t, 'crm', { expediente_id: E });
+    }
+    await seed('crm_lifecycle_changes', 'crm', {
+      entity_type: 'SUBSCRIBER',
+      entity_id: SUB,
+      subscriber_id: SUB,
+      from_status: 'ACTIVE',
+      to_status: 'SUSPENDED',
+      reason_code: 'MORA',
+      source: 'MANUAL',
+      batch_id: randomUUID(),
+    });
+    await seed('crm_contract_alias_backup_168', 'crm', { contract_id: C });
+    await seed('subscriber_tax_profiles', 'crm', { id: TP, subscriber_id: SUB });
+    await seed('subscriber_tax_assignments', 'crm', { profile_id: TP });
+    // Assurance
+    await seed('support_tickets', 'ticket-solicitante', {
+      id: T1,
+      requester_type: 'SUBSCRIBER',
+      requester_ref_id: SUB,
+      subject_type: 'SUBSCRIBER',
+      subject_ref_id: SUB,
+    });
+    await seed('support_tickets', 'ticket-contrato', {
+      id: T2,
+      requester_type: 'EXTERNAL',
+      subject_type: 'CONTRACT',
+      subject_ref_id: C,
+    });
+    await seed('ticket_comments', 'ticket-solicitante', { ticket_id: T1 });
+    await seed('ticket_pqr_records', 'ticket-solicitante', { ticket_id: T1 });
+    await seed('ticket_timeline_events', 'ticket-solicitante', {
+      ticket_id: T1,
+      payload: { notes: tag('ticket_timeline_events', 'payload', 'ticket-solicitante', 'json') },
+    });
+    await seed('ticket_work_order_links', 'ticket-solicitante', { ticket_id: T1 });
+    // Operación en alcance
+    await seed('visit_requests', 'alcance', {
+      id: V,
+      subscriber_id: SUB,
+      schedule_event_id: SE,
+      work_order_id: W,
+      execution_order_id: EO,
+      origin_ref: null,
+    });
+    await seed('schedule_events', 'alcance', {
+      id: SE,
+      subscriber_id: SUB,
+      work_order_id: W,
+      execution_order_id: EO,
+    });
+    await seed('work_orders', 'alcance', { id: W, source_ref: null });
+    await seed('work_order_tasks', 'alcance', { work_order_id: W });
+    await seed('schedule_reschedule_logs', 'alcance', { schedule_event_id: SE });
+    await seed('execution_orders', 'alcance', {
+      id: EO,
+      visit_request_id: V,
+      schedule_event_id: SE,
+      subscriber_id: SUB,
+    });
+    for (const t of [
+      'execution_order_activities',
+      'execution_order_evidence',
+      'execution_order_status_transitions',
+    ]) {
+      await seed(t, 'alcance', { execution_order_id: EO });
+    }
+    await seed('execution_order_item_usage', 'alcance', { id: IU, execution_order_id: EO });
+    await seed('execution_order_item_usage_reversals', 'alcance', {
+      execution_order_id: EO,
+      item_usage_id: IU,
+    });
+    await seed('execution_order_outbox_events', 'alcance', { aggregate_id: EO });
+    await seed('operational_tasks', 'alcance', {
+      id: OT,
+      origin_context: 'CRM',
+      origin_ref_id: SUB,
+    });
+    await seed('task_timeline_events', 'alcance', { task_id: OT });
+    await seed('task_assignment_history', 'alcance', { task_id: OT });
+    // Red e inventario
+    await seed('service_provisionings', 'red', {
+      id: SP,
+      subscriber_id: SUB,
+      contract_id: C,
+      expediente_id: E,
+      execution_order_id: EO,
+      status: 'ACTIVE',
+      origin: 'REGULARIZED',
+      regularized_by: actorId,
+      regularized_at: new Date().toISOString(),
+    });
+    await seed('ip_assignments', 'red', {
+      service_provisioning_id: SP,
+      status: 'ACTIVE',
+      ip: '10.9.9.9/32',
+    });
+    await seed('serialized_assets', 'inventario', {
+      id: AS,
+      subscriber_ref_id: SUB,
+      contract_ref_id: C,
+    });
+    await seed('asset_loan_assignments', 'inventario', {
+      serialized_asset_id: AS,
+      subscriber_ref_id: SUB,
+      contract_ref_id: C,
+    });
+    await seed('asset_lifecycle_events', 'inventario', { serialized_asset_id: AS });
+    await seed('inventory_write_offs', 'inventario', { serialized_asset_id: AS });
+    await seed('stock_issues', 'inventario', {
+      type: 'SALE_DISPATCH',
+      commercial_ref_id: C,
+      origin_ref_id: EO,
+    });
+    await seed('stock_movements', 'inventario', {
+      origin_context: 'EXECUTION_ORDER',
+      origin_ref_id: EO,
+    });
+    // Sondas de alcance: fila ligada al titular por un vínculo que el participante no sigue
+    await seed('execution_orders', 'sonda-oe-directa', {
+      subscriber_id: SUB,
+      origin_context: 'MANUAL',
+      visit_request_id: null,
+      schedule_event_id: null,
+    });
+    await seed('support_tickets', 'ticket-expediente', {
+      requester_type: 'ANONYMOUS',
+      subject_type: 'EXPEDIENTE',
+      subject_ref_id: E,
+    });
+    const W2 = randomUUID();
+    await seed('work_orders', 'sonda-ot-por-ticket', {
+      id: W2,
+      source_context: 'ASSURANCE',
+      source_ref: T1,
+    });
+    await seed('work_order_tasks', 'sonda-ot-por-ticket', { work_order_id: W2 });
+    await seed('supplier_profiles', 'sonda-proveedor', { party_ref_id: P });
+    await seed('visit_requests', 'sonda-visita-solo-contrato', {
+      contract_id: C,
+      subscriber_id: null,
+      expediente_id: null,
+      ticket_id: T1,
+      origin_ref: null,
+    });
+    await seed('schedule_events', 'sonda-agenda-solo-contrato', {
+      contract_id: C,
+      subscriber_id: null,
+      expediente_id: null,
+      ticket_id: T1,
+    });
+    await seed('operational_tasks', 'sonda-tarea-por-ticket', {
+      ticket_id: T1,
+      origin_context: 'ASSURANCE',
+      origin_ref_id: T1,
+      recipient_ref_id: null,
+    });
+    await qr.commitTransaction();
+    await qr.release();
+    log('seed', { canaries: canaries.length, skipped });
+
+    const created = await inTenant(() =>
+      service.create(
+        {
+          kind: 'CONSULTA',
+          right: 'SUPRIMIR',
+          partyId: P,
+          requesterKind: 'TITULAR',
+          requesterName: 'Titular ficticio',
+          requesterDocumentType: DocumentTypeParty.CC,
+          requesterDocument: DOC,
+          requesterContact: 'titular@example.invalid',
+          identityVerificationMethod: 'DOCUMENTO_PRESENCIAL',
+        } as never,
+        actorId,
+      ),
+    );
+    await inTenant(() => service.transition(created.request.id, 'complete', {}, actorId));
+    const preview = await inTenant(() => service.erasurePreview(created.request.id));
+    log('preview', preview);
+    await inTenant(() =>
+      service.transition(
+        created.request.id,
+        'resolve',
+        {
+          responseText: 'Supresión aplicada en la corrida.',
+          responseChannel: 'EMAIL',
+          erasure: { confirm: true, expedienteIds: preview.candidateExpedienteIds },
+        } as never,
+        actorId,
+      ),
+    );
+    log(
+      'anon',
+      await boot.query(`SELECT
+        (SELECT count(*) FROM ${q}.subscribers WHERE anonymized_at IS NOT NULL)::int AS subs,
+        (SELECT count(*) FROM ${q}.expediente_records WHERE anonymized_at IS NOT NULL)::int AS exps,
+        (SELECT count(*) FROM ${q}.party WHERE anonymized_at IS NOT NULL)::int AS parties`),
+    );
+
+    for (const c of canaries) {
+      let survived: boolean;
+      if (c.kind === 'cifrada') {
+        const all = await boot.query(
+          `SELECT "${c.column}"::text AS v FROM ${q}."${c.table}" WHERE "${c.column}" IS NOT NULL`,
+        );
+        survived = all.some((r: { v: string }) => {
+          try {
+            return decryptAes256Gcm(r.v, key) === c.code;
+          } catch {
+            return false;
+          }
+        });
+      } else {
+        const rows = await boot.query(
+          `SELECT 1 FROM ${q}."${c.table}" WHERE "${c.column}"::text LIKE $1`,
+          [`%${c.code}%`],
+        );
+        survived = rows.length > 0;
+      }
+      log('canary', { ...c, survived });
+    }
+    log(
+      'audit-sanitize',
+      sanitizeAuditPayload({
+        reason: 'R',
+        notes: 'N',
+        note: 'N',
+        body: 'B',
+        subject: 'S',
+        comment: 'C',
+        description: 'D',
+        title: 'T',
+        summary: 'U',
+      }),
+    );
+  }, 280000);
+});

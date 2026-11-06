@@ -1636,7 +1636,7 @@ export class ExecutionOrdersService implements ExecutionOrderReadPort {
     );
 
     this.logger.log(
-      `OT ${saved.id} cancelada desde agenda. Evento: ${scheduleEventId}. Razón: ${reason.slice(0, 100)}${reason.length > 100 ? '…' : ''}. Actor: ${actor.sub}`,
+      `OT ${saved.id} cancelada desde agenda. Evento: ${scheduleEventId}. Actor: ${actor.sub}`,
     );
 
     return { id: saved.id, status: saved.status };

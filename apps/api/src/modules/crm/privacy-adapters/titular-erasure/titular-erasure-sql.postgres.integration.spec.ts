@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource, QueryRunner } from 'typeorm';
 import { resolveMigrationDbCredentials } from '../../../../../../../packages/database/src/db-credentials';
 import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import { encryptAes256Gcm } from '../../../../common/crypto/aes-gcm.util';
+import {
   anonymizeConfiguredTable,
   markAnonymizedRows,
   readTenantColumns,
@@ -266,4 +271,99 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
     expect(subscriber[0]?.anonymized_at).not.toBeNull();
     expect(subscriber[0]?.anonymized_request_id).toBe(requestId);
   });
+
+  it('ancla la columna cifrada de historial al esquema migrado y detecta su renombre', async () => {
+    if (!dataSource?.isInitialized) throw new Error('DataSource de integración no inicializado.');
+    const migratedSchema = `tenant_privacy_migration_${randomBytes(5).toString('hex')}`;
+    const quotedSchema = `"${migratedSchema}"`;
+    const tenantId = randomUUID();
+    const subscriberId = randomUUID();
+    const actorId = randomUUID();
+    const migrationDataSource = createTenantDataSource(
+      dataSource,
+      migratedSchema,
+      `privacy-migration-${migratedSchema}`,
+    );
+    let migrationRunner: QueryRunner | undefined;
+
+    try {
+      await dataSource.query(
+        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+         VALUES ($1, 'Privacy migration synthetic fixture', $2, $3, 'ACTIVE', 'privacy-it@example.invalid')`,
+        [tenantId, `privacy-migration-${migratedSchema.slice(-10)}`, migratedSchema],
+      );
+      await dataSource.query(`CREATE SCHEMA ${quotedSchema}`);
+      await migrationDataSource.initialize();
+      try {
+        await applyTenantMigrationsInOrder(migrationDataSource);
+      } finally {
+        await migrationDataSource.destroy();
+      }
+
+      migrationRunner = dataSource.createQueryRunner();
+      await migrationRunner.connect();
+      await migrationRunner.startTransaction();
+      await migrationRunner.query(`SET LOCAL search_path TO ${quotedSchema}`);
+      const columns = await readTenantColumns(migrationRunner);
+      expect(columns.has('crm_lifecycle_changes.note_encrypted')).toBe(true);
+      await migrationRunner.query(
+        `INSERT INTO subscribers
+          (id, tenant_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, email_encrypted,
+           phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
+         VALUES ($1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', $3,
+           'Nombre sintético', 'Apellido sintético', 2, $4, $5, 'STANDARD', 'COMMON',
+           'RESPONSABLE', 'Dirección sintética', $6)`,
+        [
+          subscriberId,
+          tenantId,
+          encryptAes256Gcm('synthetic-subscriber-document', KEYS.activeEncryptionKey),
+          encryptAes256Gcm('synthetic-email', KEYS.activeEncryptionKey),
+          encryptAes256Gcm('synthetic-phone', KEYS.activeEncryptionKey),
+          actorId,
+        ],
+      );
+      await migrationRunner.query(
+        `INSERT INTO crm_lifecycle_changes
+          (tenant_id, entity_type, entity_id, subscriber_id, from_status, to_status,
+           reason_code, note_encrypted, source, batch_id, actor_id)
+         VALUES ($1, 'SUBSCRIBER', $2, $2, 'ACTIVE', 'CANCELLED',
+           'SOLICITUD_TITULAR', $3, 'MANUAL', $4, $5)`,
+        [
+          tenantId,
+          subscriberId,
+          encryptAes256Gcm('synthetic lifecycle note', KEYS.activeEncryptionKey),
+          randomUUID(),
+          actorId,
+        ],
+      );
+      const participant = new CrmTitularErasureParticipant(
+        new ConfigService({ PII_HASH_KEY: KEYS.hashKey.toString('hex') }),
+      );
+      const scope = {
+        partyId: null,
+        subscriberIds: [subscriberId],
+        expedienteIds: [],
+        userIds: [],
+        cryptoKeys: KEYS,
+      };
+      const plan = await participant.plan(scope, migrationRunner);
+      expect(plan.find((result) => result.table === 'crm_lifecycle_changes')).toMatchObject({
+        selected: 1,
+        residual: 1,
+      });
+
+      await migrationRunner.query(
+        'ALTER TABLE crm_lifecycle_changes RENAME COLUMN note_encrypted TO note_ciphertext',
+      );
+      await expect(participant.plan(scope, migrationRunner)).rejects.toThrow();
+    } finally {
+      if (migrationRunner && !migrationRunner.isReleased) {
+        if (migrationRunner.isTransactionActive) await migrationRunner.rollbackTransaction();
+        await migrationRunner.release();
+      }
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${quotedSchema} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    }
+  }, 180_000);
 });

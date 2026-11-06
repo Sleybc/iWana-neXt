@@ -2804,9 +2804,10 @@ describe('ExpedienteService', () => {
         entityType: 'ConsentRecord',
         entityId: 'consent-1',
         userId: 'user-consent',
-        newValue: expect.objectContaining({ reason: 'Revocado por solicitud del titular' }),
+        newValue: expect.objectContaining({ reasonProvided: true }),
       }),
     );
+    expect(auditServiceMock.log.mock.calls[0]?.[0].newValue).not.toHaveProperty('reason');
   });
 
   it('acepta payload legado en ingles para crear consentimiento y lo normaliza a español', async () => {

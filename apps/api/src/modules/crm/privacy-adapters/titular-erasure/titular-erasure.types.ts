@@ -13,8 +13,9 @@ export interface TitularErasureScope {
   tenantSchema?: string;
   /** Claves ya cargadas por el CLI; la API las carga desde ConfigService. */
   cryptoKeys?: ErasureKeys;
-  /** Identificadores internos que encadenan WFM, ejecución y tareas operativas. */
+  /** Identificadores internos que encadenan participantes de la supresión. */
   relatedIds?: {
+    contractIds?: string[];
     visitRequestIds?: string[];
     scheduleEventIds?: string[];
     workOrderIds?: string[];

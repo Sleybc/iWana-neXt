@@ -1,0 +1,2 @@
+{"step":"seed","data":{"canaries":261,"skipped":[]}}
+{"step":"preview","data":{"eligible":true,"blockers":[],"candidateExpedienteIds":["7ea65260-9dec-4537-95a4-f9f1c8bdfa6a"],"counts":{"IDENTIFICACION":3,"CONTACTO":2,"UBICACION":2,"FISCAL":2,"COMERCIAL":5,"EVIDENCIA_CONSENTIMIENTO":1,"CUENTA_USUARIO":0,"EVIDENCIA_DOCUMENTAL":0,"OPERACION_CAMPO":14},"categories":["IDENTIFICACION","CONTACTO","UBICACION","FISCAL","COMERCIAL","EVIDENCIA_CONSENTIMIENTO","OPERACION_CAMPO"]}}

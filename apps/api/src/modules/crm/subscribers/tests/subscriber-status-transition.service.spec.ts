@@ -320,10 +320,31 @@ describe('SubscriberStatusTransitionService', () => {
         newValue: {
           fromStatus: SubscriberStatus.ACTIVE,
           toStatus: SubscriberStatus.SUSPENDED,
-          reason: 'Mora en pago',
+          reasonProvided: true,
         },
       });
     });
+
+    it.each([SubscriberStatus.SUSPENDED, SubscriberStatus.CANCELLED])(
+      'CA-BT-18 no entrega el motivo de %s a auditoría ni a logs',
+      async (targetStatus) => {
+        const subscriber = buildSubscriber({ status: SubscriberStatus.ACTIVE });
+        mockSubscriber(subscriber);
+        const privateReason = 'Motivo sintético de transición';
+
+        await service.transition(subscriber.id, targetStatus, privateReason, 'actor-1');
+
+        const auditCall = auditService.log.mock.calls[0]?.[0];
+        expect(auditCall?.newValue).toEqual({
+          fromStatus: SubscriberStatus.ACTIVE,
+          toStatus: targetStatus,
+          reasonProvided: true,
+        });
+        expect(auditCall?.newValue).not.toHaveProperty('reason');
+        expect(JSON.stringify(auditService.log.mock.calls)).not.toContain(privateReason);
+        expect(JSON.stringify(loggerLog.mock.calls)).not.toContain(privateReason);
+      },
+    );
 
     it('permite SUSPENDED → ACTIVE con motivo', async () => {
       const subscriber = buildSubscriber({ status: SubscriberStatus.SUSPENDED });
@@ -366,7 +387,7 @@ describe('SubscriberStatusTransitionService', () => {
           newValue: {
             fromStatus: SubscriberStatus.PROSPECT,
             toStatus: SubscriberStatus.ACTIVE,
-            reason: null,
+            reasonProvided: false,
           },
         }),
       );

@@ -8,9 +8,13 @@ import {
   columnOf,
   loadErasureKeys,
   markAnonymizedRows,
+  normalizeErasureRows,
+  quoteErasureIdentifier,
   readTenantColumns,
   selectErasureColumnValues,
+  selectErasureIds,
   tableExists,
+  type ErasureKeys,
   type FieldRule,
   type TenantColumn,
 } from './titular-erasure-sql';
@@ -23,6 +27,7 @@ import type {
 const CRM_RULES: Record<string, FieldRule[]> = {
   expediente_records: [
     { column: 'full_name', kind: 'marker' },
+    { column: 'source', kind: 'marker', marker: 'OTRO' },
     { column: 'document_type', kind: 'null' },
     { column: 'document_number_encrypted', kind: 'null', notNullFallback: 'encrypted-marker' },
     { column: 'document_number_hmac', kind: 'null' },
@@ -125,9 +130,20 @@ const CRM_RULES: Record<string, FieldRule[]> = {
     { column: 'manual_override_reason', kind: 'null' },
     { column: 'external_id', kind: 'null' },
   ],
+  operational_responsibility_history: [{ column: 'notes', kind: 'null' }],
+  status_changes: [{ column: 'reason', kind: 'null' }],
+  sales_attributions: [
+    { column: 'notes', kind: 'null' },
+    { column: 'revoked_reason', kind: 'null' },
+  ],
+  subscriber_tax_assignments: [{ column: 'reason', kind: 'null' }],
+  crm_lifecycle_changes: [{ column: 'note_encrypted', kind: 'null' }],
 };
 
 const CONTRACT_LOCATION_RULES: FieldRule[] = [
+  { column: 'installation_city', kind: 'null' },
+  { column: 'installation_department', kind: 'null' },
+  { column: 'installation_stratum', kind: 'integer-marker' },
   { column: 'installation_address', kind: 'null' },
   { column: 'installation_postal_code', kind: 'null' },
   { column: 'installation_notes', kind: 'null' },
@@ -273,6 +289,79 @@ function fieldResult(
   return { table, category, ...result };
 }
 
+async function selectNonNullTextRows(
+  qr: QueryRunner,
+  table: string,
+  columns: Map<string, TenantColumn>,
+  scopePredicates: string[],
+  parameters: unknown[],
+  textColumns: string[],
+): Promise<{ ids: string[]; selected: number }> {
+  const availableTextColumns = textColumns.filter((column) => columnOf(columns, table, column));
+  if (availableTextColumns.length === 0 || scopePredicates.length === 0) {
+    return { ids: [], selected: 0 };
+  }
+
+  const nonNullPredicate = availableTextColumns
+    .map((column) => `${quoteErasureIdentifier(column)} IS NOT NULL`)
+    .join(' OR ');
+  const ids = await selectErasureIds(
+    qr,
+    table,
+    columns,
+    [`(${scopePredicates.join(' OR ')}) AND (${nonNullPredicate})`],
+    parameters,
+  );
+  if (ids.length === 0) return { ids, selected: 0 };
+
+  const countExpression = availableTextColumns
+    .map((column) => `COUNT(${quoteErasureIdentifier(column)})`)
+    .join(' + ');
+  const countRows = normalizeErasureRows<{ selected: number | string }>(
+    await qr.query(
+      `SELECT (${countExpression})::int AS selected
+         FROM ${quoteErasureIdentifier(table)}
+        WHERE "id" = ANY($1::uuid[])`,
+      [ids],
+    ),
+  );
+  return { ids, selected: Number(countRows[0]?.selected ?? 0) };
+}
+
+async function anonymizeNonNullTextRows(
+  qr: QueryRunner,
+  table: string,
+  category: ErasureCategory,
+  columns: Map<string, TenantColumn>,
+  scopePredicates: string[],
+  parameters: unknown[],
+  rules: FieldRule[],
+  keys: ErasureKeys,
+  mode: 'dry-run' | 'apply',
+  updatedAtAdvanced: Set<string>,
+): Promise<TitularErasureTableResult> {
+  const selected = await selectNonNullTextRows(
+    qr,
+    table,
+    columns,
+    scopePredicates,
+    parameters,
+    rules.map((rule) => rule.column),
+  );
+  const result = await anonymizeConfiguredTable(
+    qr,
+    table,
+    selected.ids,
+    rules,
+    columns,
+    keys,
+    mode,
+    undefined,
+    updatedAtAdvanced,
+  );
+  return fieldResult(table, category, { ...result, selected: selected.selected });
+}
+
 @Injectable()
 export class CrmTitularErasureParticipant implements TitularErasureParticipant {
   constructor(private readonly config: ConfigService) {}
@@ -280,11 +369,13 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
   async resolveScope(scope: TitularErasureScope, qr: QueryRunner): Promise<void> {
     const related = (scope.relatedIds ??= {});
     const columns = await readTenantColumns(qr);
+    const contractIds = await this.idsForContracts(qr, columns, scope.subscriberIds);
+    related.contractIds = contractIds;
     const candidateIds = await selectErasureColumnValues(
       qr,
       'contracts',
       'stratum_evidence_media_id',
-      await this.idsForContracts(qr, columns, scope.subscriberIds),
+      contractIds,
       columns,
     );
     const uniqueCandidates = [...new Set(candidateIds)];
@@ -432,7 +523,79 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       );
     }
 
-    const contracts = await this.idsForContracts(qr, columns, scope.subscriberIds);
+    const lifecycleChangeIds = await selectErasureIds(
+      qr,
+      'crm_lifecycle_changes',
+      columns,
+      scope.subscriberIds.length > 0
+        ? ['subscriber_id = ANY($1::uuid[]) AND note_encrypted IS NOT NULL']
+        : [],
+      scope.subscriberIds.length > 0 ? [scope.subscriberIds] : [],
+    );
+    results.push(
+      fieldResult(
+        'crm_lifecycle_changes',
+        'COMERCIAL',
+        await anonymizeConfiguredTable(
+          qr,
+          'crm_lifecycle_changes',
+          lifecycleChangeIds,
+          CRM_RULES['crm_lifecycle_changes'] ?? [],
+          columns,
+          keys,
+          mode,
+          undefined,
+          updatedAtAdvanced,
+        ),
+      ),
+    );
+
+    for (const [table, category] of [
+      ['operational_responsibility_history', 'OPERACION_CAMPO'],
+      ['status_changes', 'OPERACION_CAMPO'],
+      ['sales_attributions', 'COMERCIAL'],
+    ] as const) {
+      results.push(
+        await anonymizeNonNullTextRows(
+          qr,
+          table,
+          category,
+          columns,
+          scope.expedienteIds.length > 0 ? ['expediente_id = ANY($1::uuid[])'] : [],
+          scope.expedienteIds.length > 0 ? [scope.expedienteIds] : [],
+          CRM_RULES[table] ?? [],
+          keys,
+          mode,
+          updatedAtAdvanced,
+        ),
+      );
+    }
+
+    const taxProfileIds = await selectErasureIds(
+      qr,
+      'subscriber_tax_profiles',
+      columns,
+      scope.subscriberIds.length > 0 ? ['subscriber_id = ANY($1::uuid[])'] : [],
+      scope.subscriberIds.length > 0 ? [scope.subscriberIds] : [],
+    );
+    results.push(
+      await anonymizeNonNullTextRows(
+        qr,
+        'subscriber_tax_assignments',
+        'FISCAL',
+        columns,
+        taxProfileIds.length > 0 ? ['profile_id = ANY($1::uuid[])'] : [],
+        taxProfileIds.length > 0 ? [taxProfileIds] : [],
+        CRM_RULES['subscriber_tax_assignments'] ?? [],
+        keys,
+        mode,
+        updatedAtAdvanced,
+      ),
+    );
+
+    const contracts =
+      scope.relatedIds?.contractIds ??
+      (await this.idsForContracts(qr, columns, scope.subscriberIds));
     for (const [category, rules] of [
       ['UBICACION', CONTRACT_LOCATION_RULES],
       ['FISCAL', CONTRACT_FISCAL_RULES],
@@ -466,6 +629,13 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
         await redactSnapshots(qr, 'contracts', contracts, contractColumns, mode, updatedAtAdvanced),
       ),
     );
+    results.push(
+      fieldResult(
+        'crm_contract_alias_backup_168',
+        'COMERCIAL',
+        await this.eraseContractAliasBackup(qr, columns, contracts, mode),
+      ),
+    );
 
     const quotes = await this.idsForQuotes(qr, columns, scope.subscriberIds, scope.expedienteIds);
     results.push(
@@ -483,6 +653,52 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       ),
     );
     return results;
+  }
+
+  private async eraseContractAliasBackup(
+    qr: QueryRunner,
+    columns: Map<string, TenantColumn>,
+    contractIds: string[],
+    mode: 'dry-run' | 'apply',
+  ): Promise<{ selected: number; changed: number; residual: number }> {
+    if (
+      contractIds.length === 0 ||
+      !tableExists(columns, 'crm_contract_alias_backup_168') ||
+      !columnOf(columns, 'crm_contract_alias_backup_168', 'contract_id')
+    ) {
+      return { selected: 0, changed: 0, residual: 0 };
+    }
+
+    const selected = normalizeErasureRows<{ contract_id: string }>(
+      await qr.query(
+        `SELECT contract_id::text AS contract_id
+           FROM crm_contract_alias_backup_168
+          WHERE contract_id = ANY($1::uuid[])
+          FOR UPDATE`,
+        [contractIds],
+      ),
+    );
+    if (mode === 'dry-run') {
+      return { selected: selected.length, changed: 0, residual: selected.length };
+    }
+
+    const deleted = normalizeErasureRows<{ contract_id: string }>(
+      await qr.query(
+        `DELETE FROM crm_contract_alias_backup_168
+          WHERE contract_id = ANY($1::uuid[])
+          RETURNING contract_id::text AS contract_id`,
+        [contractIds],
+      ),
+    );
+    const residual = normalizeErasureRows<{ contract_id: string }>(
+      await qr.query(
+        `SELECT contract_id::text AS contract_id
+           FROM crm_contract_alias_backup_168
+          WHERE contract_id = ANY($1::uuid[])`,
+        [contractIds],
+      ),
+    );
+    return { selected: selected.length, changed: deleted.length, residual: residual.length };
   }
 
   private async childIds(

@@ -1318,7 +1318,7 @@ export class ExpedienteService {
       entityType: 'ExpedienteRecord',
       entityId: id,
       userId: actorUserId,
-      newValue: { fromStatus, toStatus, reason: dto.reason },
+      newValue: { fromStatus, toStatus, reasonProvided: Boolean(dto.reason?.trim()) },
     });
 
     if (toStatus === ExpedienteStatus.LISTO_PARA_INSTALACION) {
@@ -1720,7 +1720,7 @@ export class ExpedienteService {
       newValue: {
         expedienteId,
         status: ConsentStatus.RECHAZADO,
-        reason: this.sanitizePlainText(reason),
+        reasonProvided: reason.trim().length > 0,
       },
     });
 
