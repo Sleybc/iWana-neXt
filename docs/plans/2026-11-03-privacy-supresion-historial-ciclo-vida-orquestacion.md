@@ -76,3 +76,5 @@ Toda decisión está en la spec; esto solo acota. Trabajo en `main`, sin ramas, 
 ## 7. Fuera de alcance
 
 H-3, H-4 y H-5 (spec §9), H-1 de K2, cualquier trigger nuevo, todo MOD14 y el diff de `apps/api/src/cli/`.
+
+**G6.5 ✅ 2026-11-06:** publicado en `90d42c7f`, junto con la Ola 1 del barrido por excepción del CTO. CI de `main` en verde sobre `07794606`, corrida `42295514534`, todos los jobs en `success`, y E2E Web Admin Smoke `42295514359` en `success`. E2E operativo: 339 aprobadas, 0 fallidas, 1 omitida, 0 inestables, `E2E_CLEANUP=OK`, con las capturas `linux` incluidas.

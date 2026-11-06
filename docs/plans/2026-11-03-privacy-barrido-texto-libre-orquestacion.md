@@ -91,3 +91,5 @@ Toda decisión está en la spec; esto solo acota. Trabajo en `main`, sin ramas, 
 ## 7. Fuera de alcance
 
 H-1 de K2, cualquier trigger nuevo, todo MOD14 (spec §12), `public`, un participante de inventario (spec §7, salvo decisión del CTO), reescribir `audit_logs` y el diff de `apps/api/src/cli/`.
+
+**Publicación 2026-11-06:** la Ola 1 se publicó en `90d42c7f` por excepción del CTO, porque no se podía separar de H-2 y MOD14 sin dejar un árbol sin medir. Eso no aprueba los puntos 1 a 8 de spec §13: la Ola 2 sigue cerrada y el barrido sigue bloqueando G7. CI de `main` en verde sobre `07794606`, corrida `42295514534`, todos los jobs en `success`, y E2E Web Admin Smoke `42295514359` en `success`. E2E operativo: 339 aprobadas, 0 fallidas, 1 omitida, 0 inestables, `E2E_CLEANUP=OK`, con las capturas `linux` incluidas.

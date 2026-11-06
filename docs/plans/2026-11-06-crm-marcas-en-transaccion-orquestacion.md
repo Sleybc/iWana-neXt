@@ -37,6 +37,7 @@
 | B1-R | Abierto el 2026-11-06 con [LAUNCH v1.1](../prompts/PROMPT-CRM-MARCAS-EN-TRANSACCION-LAUNCH-v1.1.md) |
 | B1-R y G6 | Entregado el 2026-11-06. AI-EM-ARCH re-ejecutó con `DB_NAME=test`: unitaria 474 / 6.284; integración 69 aprobadas, 4 omisiones declaradas, 463 tests; `@iwana/db` en orden de CI 52 / 151; lint con 0 errores, `tsc` y build en verde; `privacy/**` líneas 96,36 %, ramas 86,13 %. CA-3 ya prueba el rollback y catálogo y media están hechos. **G6 espera B1-R2:** la prueba deja una fila en `public.media_assets` que rompe 7 pruebas de la migración 026 si `@iwana/db` corre después. [LAUNCH v1.2](../prompts/PROMPT-CRM-MARCAS-EN-TRANSACCION-LAUNCH-v1.2.md) |
 | B1-R2 y G6 | **G6 ✅ 2026-11-06.** `afterAll` borra la fila de `public.media_assets`. AI-EM-ARCH re-ejecutó sin caché con `DB_NAME=test`: integración de API, 69 aprobadas y 4 omisiones declaradas; `@iwana/db` después de la API en la misma base, 52 / 151. Sin commit: `contracts.service.ts` debe separarse de MOD14; G6.5 pendiente |
+| G6.5 | **✅ 2026-11-06.** Publicado en `07794606`. CI de `main` en verde sobre `07794606`, corrida `42295514534`, todos los jobs en `success`, y E2E Web Admin Smoke `42295514359` en `success`. E2E operativo: 339 aprobadas, 0 fallidas, 1 omitida, 0 inestables, `E2E_CLEANUP=OK`, con las capturas `linux` incluidas |
 
 ## Lanzamiento
 
