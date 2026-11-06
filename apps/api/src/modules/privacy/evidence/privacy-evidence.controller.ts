@@ -40,6 +40,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { MediaService } from '../../media/media.service';
 import { privacyEvidenceResponseSchema as privacyEvidenceOpenApiSchema } from '../privacy-openapi.schemas';
+import { resolveRouteRateLimit } from '../../../common/rate-limit-env';
 
 @ApiTags('privacy')
 @ApiBearerAuth('access-token')
@@ -57,7 +58,7 @@ export class PrivacyEvidenceController {
   @Permissions(AccessPermissionKey.PRIVACY_MANAGE)
   @SkipAudit()
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @Throttle({ global: { ttl: 60_000, limit: resolveRouteRateLimit(20) } })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

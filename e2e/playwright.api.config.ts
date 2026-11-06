@@ -28,6 +28,15 @@ export default defineConfig({
       command: 'pnpm --filter @iwana/api dev',
       url: 'http://127.0.0.1:3000/api/v1/health',
       reuseExistingServer: true,
+      env: {
+        ...process.env,
+        // Spec de límites de peticiones §5: Playwright corre desde una
+        // sola IP; sin esta válvula los límites de ruta (login 30/min)
+        // devolverían 429 en la preparación de las suites. Solo multiplica
+        // límites de ruta (x100), nunca se define fuera del entorno E2E
+        // y la API rechaza el arranque con NODE_ENV=production.
+        RATE_LIMIT_E2E_RELAXED: 'true',
+      },
       timeout: 120_000,
       cwd: process.cwd(),
     },

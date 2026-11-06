@@ -1,6 +1,8 @@
 import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -460,5 +462,77 @@ describe('AuthController HTTP', () => {
       );
       expect(mockAuthService.refreshTokens).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('POST /api/v1/auth/login — límite de intentos (CA-8)', () => {
+  let throttledApp: INestApplication;
+  const throttledLogin = jest
+    .fn()
+    .mockResolvedValue({ accessToken: 'jwt-access-1', refreshToken: 'refresh-token-1' });
+
+  beforeAll(async () => {
+    // App mínima con el guard real de Nest: el límite de `login` es
+    // 30/min (G0 del CTO 2026-11-06; subido de 10 por la oficina con una
+    // sola IP compartida, spec de límites §3), por encima del global de 100/min.
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ name: 'global', ttl: 60000, limit: 100 }])],
+      controllers: [AuthController],
+      providers: [
+        {
+          provide: AuthService,
+          useValue: { login: throttledLogin },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((_key: string, fallback?: unknown) => fallback),
+          },
+        },
+        JwtAuthGuard,
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
+      ],
+    }).compile();
+
+    throttledApp = moduleRef.createNestApplication();
+    throttledApp.setGlobalPrefix('api/v1');
+    throttledApp.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
+    throttledApp.use(require('cookie-parser')());
+
+    await throttledApp.init();
+  });
+
+  afterAll(async () => {
+    await throttledApp.close();
+  });
+
+  it('responde 429 al superar el límite aprobado (30/min)', async () => {
+    throttledLogin.mockClear();
+
+    for (let i = 0; i < 30; i += 1) {
+      await request(throttledApp.getHttpServer())
+        .post('/api/v1/auth/login')
+        .set('User-Agent', 'jest-supertest-throttle')
+        .send({ email: 'user@example.com', password: 'Passw0rd!!' })
+        .expect(200);
+    }
+    expect(throttledLogin).toHaveBeenCalledTimes(30);
+
+    // La 31ª solicitud en la misma ventana queda bloqueada por ThrottlerGuard.
+    await request(throttledApp.getHttpServer())
+      .post('/api/v1/auth/login')
+      .set('User-Agent', 'jest-supertest-throttle')
+      .send({ email: 'user@example.com', password: 'Passw0rd!!' })
+      .expect(429);
+
+    // La solicitud throttled no llega al handler.
+    expect(throttledLogin).toHaveBeenCalledTimes(30);
   });
 });

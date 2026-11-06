@@ -175,6 +175,21 @@ export function createAppConfigurationSchema(): Joi.ObjectSchema {
     // La captura de IP locales permanece cerrada por defecto; solo ACTIVE
     // permite registrar IPs de infraestructura tras el gate operativo.
     NETWORK_IP_PROTECTION: Joi.string().valid('ACTIVE', 'PENDING').default('PENDING'),
+    // Relajación de los límites de ruta solo para E2E (spec de límites de
+    // peticiones §5): `true` multiplica solo los límites de `@Throttle`
+    // (x100) para que Playwright, que corre desde una IP, no reciba 429
+    // en la preparación de las suites. El límite global no cambia.
+    // Con NODE_ENV=production el arranque se rechaza: la válvula nunca
+    // llega a producción. La misma guarda vive en
+    // `common/rate-limit-env.ts` al evaluar los decoradores.
+    RATE_LIMIT_E2E_RELAXED: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.boolean().valid(false).messages({
+        'any.only':
+          'RATE_LIMIT_E2E_RELAXED no puede definirse con NODE_ENV=production: la relajación de límites solo existe en el entorno E2E.',
+      }),
+      otherwise: Joi.boolean().default(false),
+    }),
     REDIS_DB: Joi.number().default(0),
     // Claves JWT RS256 (contenido PEM; usar \\n para saltos en .env)
     JWT_PRIVATE_KEY: Joi.string().required(),

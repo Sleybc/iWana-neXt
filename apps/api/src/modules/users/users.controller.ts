@@ -44,6 +44,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { SkipAudit } from '../audit/decorators/skip-audit.decorator';
 import { UsersService } from './users.service';
+import { resolveRouteRateLimit } from '../../common/rate-limit-env';
 import {
   AdminChangeUserLoginEmailDto,
   ChangeUserLoginEmailDto,
@@ -386,7 +387,7 @@ export class UsersController {
    * La regla de ownership vive en el servicio (H-08) → 403 si el actor no es el dueño.
    */
   @Patch(':id/login-email')
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @SkipAudit()
   @ApiOperation({ summary: 'Cambiar el email de acceso del propio usuario' })
   @ApiResponse({

@@ -38,6 +38,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { MediaService } from './media.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { MediaAssetResponseDto } from './dto/media-asset-response.dto';
+import { resolveRouteRateLimit } from '../../common/rate-limit-env';
 
 /**
  * Controlador Media — MOD03 Media/Assets.
@@ -67,7 +68,7 @@ export class MediaController {
   @Post('upload')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { ttl: 60000, limit: 20 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(20) } })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(), // Buffer en memoria — validado y enviado a MinIO en el servicio

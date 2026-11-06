@@ -78,6 +78,7 @@ import {
   AdditionalProductResponseDto,
 } from './dto/tenant-additional-products.dto';
 import { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
+import { resolveRouteRateLimit } from '../../common/rate-limit-env';
 
 const TENANT_PUBLIC_BRANDING_EXAMPLE = {
   displayName: 'ISP Demo',
@@ -170,7 +171,7 @@ export class TenantController {
   @Get('public-branding')
   @Public()
   @Header('Cache-Control', 'public, max-age=60')
-  @Throttle({ default: { ttl: 60000, limit: 60 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(60) } })
   @ApiOperation({ summary: 'Obtener branding público por slug para el login del portal' })
   @ApiQuery({ name: 'slug', required: true, type: String, example: 'isp-demo' })
   @ApiResponse({
@@ -327,7 +328,7 @@ export class TenantController {
   @Post('me/branding/assets')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -712,7 +713,7 @@ export class TenantController {
   @Post()
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ global: { limit: resolveRouteRateLimit(10), ttl: 60000 } })
   @ApiOperation({ summary: 'Crear tenant e iniciar provisioning del schema PostgreSQL' })
   @ApiResponse({ status: 201, description: 'Tenant creado, provisioning en cola.' })
   @ApiResponse({ status: 409, description: 'Slug duplicado.' })
@@ -845,7 +846,7 @@ export class TenantController {
   @Post(':id/branding/assets')
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

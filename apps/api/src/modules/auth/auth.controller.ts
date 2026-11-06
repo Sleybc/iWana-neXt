@@ -41,6 +41,7 @@ import {
   tenantRefreshCookieName,
 } from './session-cookies.constants';
 import { resolveAccessTokenTtlSeconds, resolveRefreshTokenTtlSeconds } from './token-ttl.constants';
+import { resolveRouteRateLimit } from '../../common/rate-limit-env';
 
 /** Nombre de la cookie del refresh token del portal (audiencia tenant). */
 const REFRESH_TOKEN_COOKIE = tenantRefreshCookieName();
@@ -118,10 +119,18 @@ export class AuthController {
    */
   @Public()
   @Post('login')
+  // D2 (G0): 30/min por IP en `login` (subido de 10 por la oficina con una
+  // sola IP compartida, spec de límites §3). La clave es `global` y no
+  // `default`: el guard global solo consulta el nombre configurado en
+  // `app.module.ts` (`name: 'global'`, @nestjs/throttler@6.5.0
+  // `throttler.guard.js`) — con `{ default: ... }` el límite nunca se
+  // aplica y CA-8 (11ª petición → 200) lo demuestra.
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(30) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion con email y password (+ TOTP si MFA activo)' })
   @ApiResponse({ status: 200, description: 'Login exitoso — access token emitido.' })
   @ApiResponse({ status: 401, description: 'Credenciales invalidas o cuenta bloqueada.' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async login(
     @Body() dto: LoginDto,
     @Request() req: ExpressRequest,
@@ -163,10 +172,12 @@ export class AuthController {
    */
   @Public()
   @Post('platform/login')
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(5) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesion de plataforma (SYSTEM_ADMIN / IWANA_SUPPORT)' })
   @ApiResponse({ status: 200, description: 'Login de plataforma exitoso.' })
   @ApiResponse({ status: 401, description: 'Credenciales invalidas o cuenta bloqueada.' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes.' })
   async platformLogin(
     @Body() dto: LoginDto,
     @Request() req: ExpressRequest,
@@ -225,7 +236,7 @@ export class AuthController {
    */
   @Public()
   @Post('refresh')
-  @Throttle({ default: { ttl: 60000, limit: 30 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(60) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotar el refresh token (cookie httpOnly)' })
   @ApiResponse({ status: 200, description: 'Nuevo access token emitido.' })
@@ -490,7 +501,7 @@ export class AuthController {
    * RF-AUTH-09
    */
   @Post('change-password')
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambia la contrasena del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Contrasena actualizada.' })

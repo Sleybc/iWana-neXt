@@ -40,6 +40,7 @@ import {
   UploadPlatformBrandingAssetDto,
 } from './dto/platform-branding.dto';
 import { PlatformBrandingService } from './platform-branding.service';
+import { resolveRouteRateLimit } from '../../common/rate-limit-env';
 
 @Controller('platform/branding')
 @UseGuards(JwtAuthGuard, RolesGuard, PlatformOnlyGuard)
@@ -52,7 +53,7 @@ export class PlatformBrandingController {
   @Get('public')
   @Public()
   @Header('Cache-Control', 'public, max-age=60')
-  @Throttle({ default: { ttl: 60000, limit: 60 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(60) } })
   @ApiOperation({ summary: 'Obtener branding publico de la consola de plataforma' })
   @ApiResponse({ status: 200, type: PlatformPublicBrandingDto })
   async getPublicBranding(): Promise<{ data: PlatformPublicBrandingDto }> {
@@ -96,7 +97,7 @@ export class PlatformBrandingController {
   @Post('assets')
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ global: { ttl: 60000, limit: resolveRouteRateLimit(10) } })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

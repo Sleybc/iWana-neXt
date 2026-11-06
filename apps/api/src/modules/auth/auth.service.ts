@@ -83,6 +83,37 @@ type PlatformLoginFailureReason =
 /** Variable de entorno compartida entre worker y API para el password inicial fijo */
 
 /**
+ * Resultado de `login` dentro de su transacción (D1 — spec de transacciones §3).
+ *
+ * La transacción solo devuelve el desenlace; la excepción de credenciales
+ * inválidas se lanza fuera, después del commit. Lanzarla dentro revertía
+ * el incremento del contador. Los checks sin escritura (usuario inexistente,
+ * bloqueado, MFA pendiente, etc.) siguen lanzando dentro sin efecto porque
+ * no hay nada que revertir en esos caminos.
+ */
+type LoginTxOutcome =
+  | { kind: 'success'; response: AuthResponse & { refreshToken: string } }
+  | {
+      kind: 'failed-password';
+      userId: string;
+      failedLoginAttempts: number;
+      lockedUntil: Date | null;
+    };
+
+/** Resultado de `changePassword` dentro de su transacción (mismo arreglo que login). */
+interface ChangePasswordFailedOutcome {
+  userId: string;
+  failedLoginAttempts: number;
+  lockedUntil: Date | null;
+}
+
+/** Fila devuelta por el incremento atómico con `UPDATE ... RETURNING`. */
+interface FailedAttemptRow {
+  failed_login_attempts: number;
+  locked_until: Date | string | null;
+}
+
+/**
  * Servicio de autenticacion de iWana neXt.
  *
  * Responsabilidades:
@@ -353,119 +384,162 @@ export class AuthService {
   ): Promise<AuthResponse & { refreshToken: string }> {
     const { schemaName } = TenantContext.getOrThrow();
 
-    return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const emailHash = hashEmail(dto.email, this.piiHashKey);
+    const outcome = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr): Promise<LoginTxOutcome> => {
+        const emailHash = hashEmail(dto.email, this.piiHashKey);
 
-      // Buscar usuario por hash para evitar busqueda por PII en texto plano
-      const user = await qr.manager.findOne(User, {
-        where: { emailHash },
-        withDeleted: false,
-      });
+        // Buscar usuario por hash para evitar busqueda por PII en texto plano
+        const user = await qr.manager.findOne(User, {
+          where: { emailHash },
+          withDeleted: false,
+        });
 
-      if (!user) {
-        // Respuesta deliberadamente generica para no revelar si el email existe
-        throw new UnauthorizedException('Credenciales invalidas.');
-      }
+        if (!user) {
+          // Respuesta deliberadamente generica para no revelar si el email existe
+          throw new UnauthorizedException('Credenciales invalidas.');
+        }
 
-      // Verificar que la cuenta este activa
-      if (user.status === UserStatus.SUSPENDED) {
-        throw new ForbiddenException('La cuenta esta suspendida. Contactar soporte.');
-      }
+        // Verificar que la cuenta este activa
+        if (user.status === UserStatus.SUSPENDED) {
+          throw new ForbiddenException('La cuenta esta suspendida. Contactar soporte.');
+        }
 
-      if (user.status === UserStatus.INACTIVE) {
-        throw new UnauthorizedException('Credenciales invalidas.');
-      }
+        if (user.status === UserStatus.INACTIVE) {
+          throw new UnauthorizedException('Credenciales invalidas.');
+        }
 
-      // Verificar lockout por intentos fallidos
-      if (user.lockedUntil && user.lockedUntil > new Date()) {
-        const remainingMs = user.lockedUntil.getTime() - Date.now();
-        const remainingMin = Math.ceil(remainingMs / 60000);
-        throw new UnauthorizedException(
-          `Cuenta bloqueada temporalmente. Intenta en ${remainingMin} minuto(s).`,
+        // Verificar lockout por intentos fallidos
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+          const remainingMs = user.lockedUntil.getTime() - Date.now();
+          const remainingMin = Math.ceil(remainingMs / 60000);
+          throw new UnauthorizedException(
+            `Cuenta bloqueada temporalmente. Intenta en ${remainingMin} minuto(s).`,
+          );
+        }
+
+        // Verificar contrasena con bcrypt
+        const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
+
+        if (!passwordValid) {
+          // D1: el incremento se confirma con la transacción y la excepción
+          // se lanza fuera, después del commit. Si se lanzara aquí, el
+          // rollback borraría el contador y el bloqueo nunca se activaría.
+          const registered = await this.registerFailedAttempt(qr.manager, user.id);
+          return {
+            kind: 'failed-password',
+            userId: user.id,
+            failedLoginAttempts: registered.failedLoginAttempts,
+            lockedUntil: registered.lockedUntil,
+          };
+        }
+
+        if (this.hasExpiredTemporaryPassword(user)) {
+          throw new UnauthorizedException(
+            'Las credenciales temporales expiraron. Solicita una regeneracion al administrador de plataforma.',
+          );
+        }
+
+        // Verificar MFA si esta habilitado
+        if (user.mfaEnabled) {
+          if (!dto.totpCode) {
+            // Cliente debe reenviar con totpCode incluido
+            return {
+              kind: 'success',
+              response: {
+                accessToken: '',
+                mfaRequired: true,
+                refreshToken: '',
+              },
+            };
+          }
+
+          // Descifrar el secret antes de verificar — está almacenado cifrado con AES-256-GCM
+          const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode);
+          if (!mfaValid) {
+            throw new UnauthorizedException('Codigo MFA invalido.');
+          }
+        }
+
+        // Enforcement MFA por rol critico: si el rol requiere MFA pero no esta configurado,
+        // emitir token de alcance limitado (scope='mfa-setup') en lugar de tokens completos.
+        // RF-AUTH-04, RF-MFA-04 (HLD-MOD02 §3.2 — DA-MOD02-01)
+        if (user.mfaRequired && !user.mfaEnabled) {
+          const { accessToken } = this.signAccessToken(user, 'mfa-setup');
+          return {
+            kind: 'success',
+            response: {
+              accessToken,
+              mfaSetupRequired: true,
+              refreshToken: '',
+            },
+          };
+        }
+
+        // Reset de intentos y actualizacion de lastLoginAt
+        await qr.manager.update(User, user.id, {
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastLoginAt: new Date(),
+        });
+
+        // Emitir tokens
+        const { accessToken, jti } = this.signAccessToken(user);
+        const rawRefreshToken = await this.createRefreshToken(
+          qr.manager,
+          user.id,
+          ipAddress,
+          userAgent,
         );
-      }
 
-      // Verificar contrasena con bcrypt
-      const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
-
-      if (!passwordValid) {
-        await this.registerFailedAttempt(qr.manager, user);
-        // Registrar intento fallido en audit trail (seguridad OWASP)
+        // Registrar login exitoso en audit trail
         void this.auditService.log({
-          action: AuditAction.LOGIN_FAILED,
+          action: AuditAction.LOGIN,
           entityType: 'User',
           entityId: user.id,
           userId: user.id,
           ipAddress: ipAddress ?? null,
           userAgent: userAgent ?? null,
         });
-        throw new UnauthorizedException('Credenciales invalidas.');
-      }
 
-      if (this.hasExpiredTemporaryPassword(user)) {
-        throw new UnauthorizedException(
-          'Las credenciales temporales expiraron. Solicita una regeneracion al administrador de plataforma.',
-        );
-      }
-
-      // Verificar MFA si esta habilitado
-      if (user.mfaEnabled) {
-        if (!dto.totpCode) {
-          // Cliente debe reenviar con totpCode incluido
-          return {
-            accessToken: '',
-            mfaRequired: true,
-            refreshToken: '',
-          };
-        }
-
-        // Descifrar el secret antes de verificar — está almacenado cifrado con AES-256-GCM
-        const mfaValid = await this.verifyTotp(this.decryptSecret(user.mfaSecret!), dto.totpCode);
-        if (!mfaValid) {
-          throw new UnauthorizedException('Codigo MFA invalido.');
-        }
-      }
-
-      // Enforcement MFA por rol critico: si el rol requiere MFA pero no esta configurado,
-      // emitir token de alcance limitado (scope='mfa-setup') en lugar de tokens completos.
-      // RF-AUTH-04, RF-MFA-04 (HLD-MOD02 §3.2 — DA-MOD02-01)
-      if (user.mfaRequired && !user.mfaEnabled) {
-        const { accessToken } = this.signAccessToken(user, 'mfa-setup');
         return {
-          accessToken,
-          mfaSetupRequired: true,
-          refreshToken: '',
+          kind: 'success',
+          response: { accessToken, refreshToken: rawRefreshToken },
         };
-      }
+      },
+    );
 
-      // Reset de intentos y actualizacion de lastLoginAt
-      await qr.manager.update(User, user.id, {
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        lastLoginAt: new Date(),
-      });
-
-      // Emitir tokens
-      const { accessToken, jti } = this.signAccessToken(user);
-      const rawRefreshToken = await this.createRefreshToken(
-        qr.manager,
-        user.id,
-        ipAddress,
-        userAgent,
-      );
-
-      // Registrar login exitoso en audit trail
-      void this.auditService.log({
-        action: AuditAction.LOGIN,
+    if (outcome.kind === 'failed-password') {
+      // Después del commit: la auditoría de un intento fallido debe sobrevivir
+      // al fallo (spec §6 D4 — no va en `logWithin` dentro de la transacción).
+      // `auditService.log` nunca lanza, así que no enmascara el 401.
+      await this.auditService.log({
+        action: AuditAction.LOGIN_FAILED,
         entityType: 'User',
-        entityId: user.id,
-        userId: user.id,
+        entityId: outcome.userId,
+        userId: outcome.userId,
         ipAddress: ipAddress ?? null,
         userAgent: userAgent ?? null,
       });
 
-      return { accessToken, refreshToken: rawRefreshToken };
-    });
+      if (outcome.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        await this.auditService.log({
+          action: AuditAction.ACCOUNT_LOCKED,
+          entityType: 'User',
+          entityId: outcome.userId,
+          userId: outcome.userId,
+          newValue: {
+            lockedUntil: outcome.lockedUntil,
+            failedLoginAttempts: outcome.failedLoginAttempts,
+          },
+        });
+      }
+
+      throw new UnauthorizedException('Credenciales invalidas.');
+    }
+
+    return outcome.response;
   }
 
   // ---------------------------------------------------------------------------
@@ -1034,67 +1108,97 @@ export class AuthService {
     const userId = actor.sub;
     const { schemaName } = TenantContext.getOrThrow();
 
-    await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      const user = await qr.manager.findOne(User, { where: { id: userId } });
-      if (!user) throw new NotFoundException('Usuario no encontrado.');
+    // D1 (igual que `login`): el incremento del intento fallido se confirma con
+    // la transacción; la excepción se lanza fuera, después del commit.
+    const failed: ChangePasswordFailedOutcome | null = await runInTenantSchema(
+      this.dataSource,
+      schemaName,
+      async (qr): Promise<ChangePasswordFailedOutcome | null> => {
+        const user = await qr.manager.findOne(User, { where: { id: userId } });
+        if (!user) throw new NotFoundException('Usuario no encontrado.');
 
-      // P-09: contador de fallos por cuenta — mismos umbrales del login
-      // (5 intentos / lockout 15 min). `PlatformUser` no tiene estas columnas:
-      // el contador solo aplica a la rama de tenant (documentado).
-      if (isAccountLocked(user)) {
-        throw new UnauthorizedException(
-          `Cuenta bloqueada temporalmente. Intenta en ${remainingLockoutMinutes(user)} minuto(s).`,
-        );
-      }
+        // P-09: contador de fallos por cuenta — mismos umbrales del login
+        // (5 intentos / lockout 15 min). `PlatformUser` no tiene estas columnas:
+        // el contador solo aplica a la rama de tenant (documentado).
+        if (isAccountLocked(user)) {
+          throw new UnauthorizedException(
+            `Cuenta bloqueada temporalmente. Intenta en ${remainingLockoutMinutes(user)} minuto(s).`,
+          );
+        }
 
-      const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
-      if (!passwordValid) {
-        await this.registerFailedAttempt(qr.manager, user);
-        void this.auditService.log({
-          action: AuditAction.LOGIN_FAILED,
-          entityType: 'User',
-          entityId: user.id,
-          userId: user.id,
+        const passwordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+        if (!passwordValid) {
+          const registered = await this.registerFailedAttempt(qr.manager, user.id);
+          return {
+            userId: user.id,
+            failedLoginAttempts: registered.failedLoginAttempts,
+            lockedUntil: registered.lockedUntil,
+          };
+        }
+
+        const newHash = await bcrypt.hash(dto.newPassword, 12);
+
+        await qr.manager.update(User, userId, {
+          passwordHash: newHash,
+          passwordResetRequired: false,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
         });
-        throw new UnauthorizedException(
-          'La contraseña actual no coincide con la que usas para iniciar sesión.',
+
+        // Revocar todos los refresh tokens activos del usuario
+        await qr.manager.update(
+          RefreshToken,
+          { userId, revokedAt: undefined },
+          { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
         );
-      }
 
-      const newHash = await bcrypt.hash(dto.newPassword, 12);
+        // P-05: paridad con la rama de plataforma y con `logout` — el access
+        // token en curso (cookie) deja de servir de inmediato. `JwtStrategy`
+        // rechaza todo `jti` en esta blacklist en ambas audiencias, asi que la
+        // asimetria no era deliberada: era el hueco de 15 min del informe.
+        const expiresAt = actor.exp ?? 0;
+        const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
+        if (remainingTtl > 0) {
+          await this.redis.set(`jti:blacklist:${actor.jti}`, '1', 'EX', remainingTtl);
+        }
 
-      await qr.manager.update(User, userId, {
-        passwordHash: newHash,
-        passwordResetRequired: false,
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-      });
+        // Registrar cambio de contrasena en audit trail
+        void this.auditService.log({
+          action: AuditAction.PASSWORD_CHANGED,
+          entityType: 'User',
+          entityId: userId,
+          userId,
+        });
 
-      // Revocar todos los refresh tokens activos del usuario
-      await qr.manager.update(
-        RefreshToken,
-        { userId, revokedAt: undefined },
-        { revokedAt: new Date(), revokeReason: 'PASSWORD_CHANGE' },
-      );
+        return null;
+      },
+    );
 
-      // P-05: paridad con la rama de plataforma y con `logout` — el access
-      // token en curso (cookie) deja de servir de inmediato. `JwtStrategy`
-      // rechaza todo `jti` en esta blacklist en ambas audiencias, asi que la
-      // asimetria no era deliberada: era el hueco de 15 min del informe.
-      const expiresAt = actor.exp ?? 0;
-      const remainingTtl = Math.max(0, expiresAt - Math.floor(Date.now() / 1000));
-      if (remainingTtl > 0) {
-        await this.redis.set(`jti:blacklist:${actor.jti}`, '1', 'EX', remainingTtl);
-      }
-
-      // Registrar cambio de contrasena en audit trail
-      void this.auditService.log({
-        action: AuditAction.PASSWORD_CHANGED,
+    if (failed) {
+      await this.auditService.log({
+        action: AuditAction.LOGIN_FAILED,
         entityType: 'User',
-        entityId: userId,
-        userId,
+        entityId: failed.userId,
+        userId: failed.userId,
       });
-    });
+
+      if (failed.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        await this.auditService.log({
+          action: AuditAction.ACCOUNT_LOCKED,
+          entityType: 'User',
+          entityId: failed.userId,
+          userId: failed.userId,
+          newValue: {
+            lockedUntil: failed.lockedUntil,
+            failedLoginAttempts: failed.failedLoginAttempts,
+          },
+        });
+      }
+
+      throw new UnauthorizedException(
+        'La contraseña actual no coincide con la que usas para iniciar sesión.',
+      );
+    }
   }
 
   /**
@@ -1478,28 +1582,61 @@ export class AuthService {
   /**
    * Registra un intento fallido de login.
    * Activa el lockout despues de MAX_FAILED_ATTEMPTS intentos consecutivos.
-   * Emite audit ACCOUNT_LOCKED cuando se alcanza el limite — RF-AUD-02 (HLD-MOD02 §4.2).
+   *
+   * D1: el incremento es atómico con `UPDATE ... RETURNING` en una sola
+   * sentencia. La versión anterior leía `user.failedLoginAttempts` y escribía
+   * `+1` con `manager.update`: con intentos en paralelo, varias transacciones
+   * leían el mismo valor y se perdían cuentas. La decisión de bloqueo se toma
+   * con el valor devuelto por la sentencia, no con la lectura previa.
+   *
+   * La auditoría ACCOUNT_LOCKED no se emite aquí: los llamadores la emiten
+   * después del commit junto con LOGIN_FAILED, porque el llamador debe
+   * sobrevivir al fallo (spec §6 D4 — nunca `logWithin` en la transacción que
+   * falla). Antes se emitía con `void` dentro de la transacción.
+   *
+   * Devuelve el estado confirmado por la sentencia para que el llamador
+   * decida el bloqueo y el evento sin releer.
    */
   private async registerFailedAttempt(
     manager: import('typeorm').EntityManager,
-    user: User,
-  ): Promise<void> {
-    const newAttempts = (user.failedLoginAttempts ?? 0) + 1;
-    const updates: Partial<User> = { failedLoginAttempts: newAttempts };
+    userId: string,
+  ): Promise<{ failedLoginAttempts: number; lockedUntil: Date | null }> {
+    // TypeORM en Postgres devuelve las sentencias UPDATE como tupla
+    // `[filas, rowCount]` (`PostgresQueryRunner.query`) — la primera
+    // componente es el array de filas del RETURNING, no una fila.
+    const [rows] = (await manager.query(
+      `UPDATE users
+       SET failed_login_attempts = failed_login_attempts + 1,
+           locked_until = CASE
+             WHEN failed_login_attempts + 1 >= $1
+             THEN now() + ($2 * interval '1 second')
+             ELSE locked_until
+           END,
+           updated_at = now()
+       WHERE id = $3
+       RETURNING failed_login_attempts, locked_until`,
+      [MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION_SECONDS, userId],
+    )) as [FailedAttemptRow[], number];
 
-    if (newAttempts >= MAX_FAILED_ATTEMPTS) {
-      updates.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_SECONDS * 1000);
-      // Emitir evento de bloqueo de cuenta en audit trail
-      void this.auditService.log({
-        action: AuditAction.ACCOUNT_LOCKED,
-        entityType: 'User',
-        entityId: user.id,
-        userId: user.id,
-        newValue: { lockedUntil: updates.lockedUntil, failedLoginAttempts: newAttempts },
-      });
+    const row = rows[0];
+    if (!row) {
+      throw new Error(
+        `registerFailedAttempt: el usuario ${userId} no se actualizó dentro de la transacción.`,
+      );
     }
 
-    await manager.update(User, user.id, updates);
+    const rawLockedUntil = row.locked_until ?? null;
+    const lockedUntil =
+      rawLockedUntil === null
+        ? null
+        : rawLockedUntil instanceof Date
+          ? rawLockedUntil
+          : new Date(rawLockedUntil);
+
+    return {
+      failedLoginAttempts: row.failed_login_attempts,
+      lockedUntil,
+    };
   }
 
   /**

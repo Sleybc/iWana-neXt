@@ -734,6 +734,7 @@ jobs:
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: '1'
       E2E_CLEANUP: 'true'
+      E2E_API_LOG: /tmp/iwana-e2e-api.log
       # Los manifests oficiales de MinIO fijados en el provisionador devuelven 401
       # a pulls anónimos. SILO conserva la API S3 y las variables MINIO_* del E2E.
       # Ambos manifiestos OCI multi-arch están fijados por digest desde Docker Hub.

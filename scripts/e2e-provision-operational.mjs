@@ -685,6 +685,9 @@ function openApiLogFd() {
 }
 
 function apiLogDetail() {
+  // En CI el archivo de la API queda fuera de la salida del aprovisionador.
+  if (apiLogFile && process.env.CI === 'true') return '';
+
   let tail = apiLogTail.trim();
 
   if (apiLogFile) {
@@ -739,6 +742,11 @@ async function startApi() {
       ...process.env,
       PLATFORM_SUPER_ADMIN_EMAIL: platformEmail,
       PLATFORM_SUPER_ADMIN_PASSWORD: platformPassword,
+      // Spec de límites de peticiones §5: Playwright corre desde una sola
+      // IP; sin esta válvula los límites de ruta (login 30/min) devolverían
+      // 429 en la preparación de las suites. Solo existe en este entorno
+      // E2E (NODE_ENV=development aquí, nunca production).
+      RATE_LIMIT_E2E_RELAXED: 'true',
     },
     stdio: logFd === null ? ['ignore', 'pipe', 'pipe'] : ['ignore', logFd, logFd],
     shell: false,
@@ -1685,6 +1693,9 @@ function createPortalSuiteEnvironment(env, reporterPath, reportPath, quarantineC
     E2E_PRIVACY_ADMIN_PASSWORD: env.E2E_PRIVACY_ADMIN_PASSWORD,
     E2E_PLATFORM_EMAIL: env.E2E_PLATFORM_EMAIL,
     E2E_PLATFORM_PASSWORD: env.E2E_PLATFORM_PASSWORD,
+    E2E_POSTGRES_CONTAINER: postgresContainer,
+    E2E_DB_BOOTSTRAP_USER: bootstrapUser,
+    E2E_DB_NAME: databaseName,
     DB_HOST: env.DB_HOST,
     DB_PORT: env.DB_PORT,
     DB_NAME: env.DB_NAME,

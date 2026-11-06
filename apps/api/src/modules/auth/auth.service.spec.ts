@@ -166,6 +166,9 @@ function setupRunInTenantSchema(managerOverrides: Record<string, jest.Mock> = {}
   const manager: Record<string, jest.Mock> = {
     findOne: jest.fn(),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
+    // `manager.query` en Postgres devuelve las sentencias UPDATE como tupla
+    // `[filas, rowCount]` — el mock reproduce esa forma real.
+    query: jest.fn().mockResolvedValue([[{ failed_login_attempts: 1, locked_until: null }], 1]),
     save: jest.fn().mockResolvedValue({}),
     create: jest.fn().mockImplementation((_, partial) => partial),
     ...managerOverrides,
@@ -350,25 +353,57 @@ describe('AuthService', () => {
       await expect(service.login(dto)).rejects.toThrow(ForbiddenException);
     });
 
-    it('incrementa failedLoginAttempts cuando la contrasena es incorrecta', async () => {
+    it('incrementa (atomico) failedLoginAttempts cuando la contrasena es incorrecta', async () => {
+      // D1: el incremento pasa de `manager.update` (lee-escribe, pierde cuentas
+      // en paralelo) a `UPDATE ... RETURNING` atómico. La expectativa anterior
+      // (`update` con { failedLoginAttempts: 1 }) describía la implementación
+      // rota, no el comportamiento; el comportamiento es "persiste el intento".
       const user = buildUser({ failedLoginAttempts: 0 });
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
       const { manager } = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(user),
-        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        query: jest.fn().mockResolvedValue([[{ failed_login_attempts: 1, locked_until: null }], 1]),
       });
 
       const dto: LoginDto = { email: 'test@example.com', password: 'WrongPass1!' };
 
       await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
 
-      // Debe actualizar failedLoginAttempts a 1
-      expect(manager.update).toHaveBeenCalledWith(
-        User,
-        user.id,
-        expect.objectContaining({ failedLoginAttempts: 1 }),
+      // Debe ejecutar el UPDATE atómico con el id del usuario como parámetro
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('failed_login_attempts = failed_login_attempts + 1'),
+        expect.arrayContaining([user.id]),
       );
+    });
+
+    it('CA-7 — usuario inexistente y contraseña errónea responden el mismo mensaje', async () => {
+      // Anti-enumeración: la respuesta no debe distinguir entre «cuenta no
+      // existe» y «contraseña incorrecta». Ambos caminos deben lanzar el mismo
+      // mensaje genérico. (CA-7 — spec §9)
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+
+      const missingError = await service
+        .login({ email: 'noexiste@example.com', password: 'Any1pass!!' })
+        .catch((e: unknown) => e);
+      expect(missingError).toBeInstanceOf(UnauthorizedException);
+      expect((missingError as Error).message).toBe('Credenciales invalidas.');
+
+      const user = buildUser({ failedLoginAttempts: 0 });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+      setupRunInTenantSchema({
+        findOne: jest.fn().mockResolvedValue(user),
+        query: jest.fn().mockResolvedValue([[{ failed_login_attempts: 1, locked_until: null }], 1]),
+      });
+
+      const wrongError = await service
+        .login({ email: 'test@example.com', password: 'WrongPass1!' })
+        .catch((e: unknown) => e);
+      expect(wrongError).toBeInstanceOf(UnauthorizedException);
+      expect((wrongError as Error).message).toBe('Credenciales invalidas.');
+      expect((wrongError as Error).message).toBe((missingError as Error).message);
     });
 
     it('lanza UnauthorizedException cuando la cuenta esta bloqueada por lockout', async () => {
@@ -1726,12 +1761,15 @@ describe('AuthService', () => {
     });
 
     it('P-09: cuenta el fallo de currentPassword en change-password', async () => {
+      // Mismo arreglo que login (D1): el incremento es el UPDATE atómico
+      // `UPDATE ... RETURNING`; la expectativa anterior (manager.update con
+      // { failedLoginAttempts: 1 }) describía la implementación rota.
       const user = buildUser({ failedLoginAttempts: 0 });
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
       const { manager } = setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(user),
-        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        query: jest.fn().mockResolvedValue([[{ failed_login_attempts: 1, locked_until: null }], 1]),
       });
 
       await expect(
@@ -1741,10 +1779,9 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow(UnauthorizedException);
 
-      expect(manager.update).toHaveBeenCalledWith(
-        User,
-        user.id,
-        expect.objectContaining({ failedLoginAttempts: 1 }),
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('failed_login_attempts = failed_login_attempts + 1'),
+        expect.arrayContaining([user.id]),
       );
     });
 
@@ -2300,12 +2337,23 @@ describe('AuthService', () => {
   describe('registerFailedAttempt() — audit ACCOUNT_LOCKED (MOD02)', () => {
     it('emite audit ACCOUNT_LOCKED cuando se alcanza el limite de intentos fallidos', async () => {
       // 4 intentos previos — el 5to debe bloquear la cuenta y emitir ACCOUNT_LOCKED
+      // D1: la auditoría ya no sale de `registerFailedAttempt` (dentro de la tx
+      // que fallaba) sino del llamador tras el commit; el valor que dispara el
+      // evento es el devuelto por el UPDATE atómico.
       const user = buildUser({ failedLoginAttempts: 4 });
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
       setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(user),
-        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        query: jest.fn().mockResolvedValue([
+          [
+            {
+              failed_login_attempts: 5,
+              locked_until: new Date(Date.now() + 15 * 60 * 1000),
+            },
+          ],
+          1,
+        ]),
       });
 
       const auditService = (service as unknown as { auditService: { log: jest.Mock } })
@@ -2328,7 +2376,7 @@ describe('AuthService', () => {
 
       setupRunInTenantSchema({
         findOne: jest.fn().mockResolvedValue(user),
-        update: jest.fn().mockResolvedValue({ affected: 1 }),
+        query: jest.fn().mockResolvedValue([[{ failed_login_attempts: 4, locked_until: null }], 1]),
       });
 
       const auditService = (service as unknown as { auditService: { log: jest.Mock } })
