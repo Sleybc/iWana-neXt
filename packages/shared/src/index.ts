@@ -66,6 +66,7 @@ export * from './contracts/inventory/executor-custody';
 export * from './contracts/inventory';
 export * from './contracts/network';
 export * from './contracts/crm';
+export * from './contracts/billing';
 
 // Operations
 export * from './operations/task-type-to-wfm-work-type';

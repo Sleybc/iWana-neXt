@@ -33,6 +33,7 @@ import { SearchQueueModule } from './modules/search/search-queue.module';
 import { SearchModule } from './modules/search/search.module';
 import { AssuranceModule } from './modules/assurance/assurance.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { PrivacyModule } from './modules/privacy/privacy.module';
 import { NetworkModule } from './modules/network/network.module';
@@ -240,6 +241,9 @@ function preloadDevelopmentLocalEnv(filePath: string): void {
 
     // Modulo Tasks (MOD11): ejecucion operativa transversal
     TasksModule,
+
+    // MOD14 Fase 01: política y lectura de contratos para facturación
+    BillingModule,
 
     // MOD13 Fase 01: catálogo de red e IPAM
     NetworkModule,

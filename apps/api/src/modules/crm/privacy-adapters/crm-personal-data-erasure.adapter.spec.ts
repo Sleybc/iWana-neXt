@@ -57,6 +57,7 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
       participant() as never,
       participant() as never,
       participant() as never,
+      participant() as never,
     );
     loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
@@ -72,6 +73,27 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
     wfm.resolveScope.mockRejectedValueOnce(queryFailed(code));
 
     const error = await adapter.plan(target, { manager }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    expect((error as ServiceUnavailableException).getResponse()).toMatchObject({
+      code: 'PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE',
+    });
+  });
+
+  it('falla cerrado cuando no se registró el participante fiscal', async () => {
+    const adapterWithoutBilling = new CrmPersonalDataErasureAdapter(
+      crm as never,
+      participant() as never,
+      users as never,
+      wfm as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+    );
+
+    const error = await adapterWithoutBilling
+      .plan(target, { manager })
+      .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ServiceUnavailableException);
     expect((error as ServiceUnavailableException).getResponse()).toMatchObject({

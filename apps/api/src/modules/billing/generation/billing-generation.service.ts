@@ -1,0 +1,472 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import {
+  addDays,
+  computeBillingPeriod,
+  computeGenerationDate,
+  computeDueAndCutoff,
+  diffInDays,
+  resolveGenerationTarget,
+  type BillingProrationMethod,
+  type BillingGenerationSummary,
+} from '@iwana/shared';
+import { IPrivacyMarksReadPort } from '../../privacy/ports/privacy-marks-read.port';
+import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { DataSource, EntityManager } from 'typeorm';
+import { AuditAction } from '@iwana/shared';
+import { AuditService } from '../../audit/audit.service';
+import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
+import {
+  BillingContractReadPort,
+  type BillableContract,
+} from '../ports/billing-contract-read.port';
+import { BillingDocumentsService } from '../documents/billing-documents.service';
+import type { PeriodEvent } from '../payments/billing-payments.service';
+import { buildPlanLine } from './billing-generation.math';
+
+interface BillingPolicyRow {
+  period_timing: 'ANTICIPADO' | 'VENCIDO';
+  generation_lead_days: number;
+  cutoff_mode: 'DIA_FIJO_CICLO' | 'VENCIMIENTO_MAS_GRACIA';
+  payment_term_days: number;
+  grace_days: number;
+  cutoff_enabled: boolean;
+  proration_method: BillingProrationMethod;
+  first_period_mode: 'SEPARADO' | 'JUNTO_AL_SIGUIENTE';
+  automatic_generation: boolean;
+  approval_mode: 'BORRADOR' | 'AUTOMATICA';
+  generation_hour: number;
+  document_prefix: string;
+}
+
+interface ContractPolicyRow {
+  period_timing: 'ANTICIPADO' | 'VENCIDO' | null;
+  generation_lead_days: number | null;
+  payment_term_days: number | null;
+  grace_days: number | null;
+  cutoff_enabled: boolean | null;
+  first_period_mode: 'SEPARADO' | 'JUNTO_AL_SIGUIENTE' | null;
+  billing_start_date: string | null;
+}
+
+const PAGE_SIZE = 200;
+
+function emptySummary(): BillingGenerationSummary {
+  return {
+    generated: 0,
+    failed: 0,
+    notDue: 0,
+    existing: 0,
+    omittedImpersonation: 0,
+    omittedTermination: 0,
+    blocked: 0,
+    withoutCycle: 0,
+    unbilledAdditionalDocuments: 0,
+  };
+}
+
+function money(value: number): string {
+  return (Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2);
+}
+
+function civilDate(value: string | Date): string {
+  return typeof value === 'string' ? value.slice(0, 10) : value.toISOString().slice(0, 10);
+}
+
+/** Inicio del periodo inmediatamente anterior al que arranca en `periodStart` (día de ciclo 1-28). */
+function previousPeriodStart(cycleDay: number, periodStart: string): string {
+  const year = Number(periodStart.slice(0, 4));
+  const month = Number(periodStart.slice(5, 7));
+  return month === 1
+    ? computeBillingPeriod(cycleDay, year - 1, 12).periodStart
+    : computeBillingPeriod(cycleDay, year, month - 1).periodStart;
+}
+
+function localDateFor(date: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (key: string) => parts.find((value) => value.type === key)?.value;
+  const year = part('year');
+  const month = part('month');
+  const day = part('day');
+  if (!year || !month || !day) throw new RangeError('No se resolvió la fecha civil del tenant.');
+  return `${year}-${month}-${day}`;
+}
+
+@Injectable()
+export class BillingGenerationService {
+  private readonly logger = new Logger(BillingGenerationService.name);
+
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly contracts: BillingContractReadPort,
+    private readonly tenantSettings: SettingsPriorityTenantReadPort,
+    private readonly documents: BillingDocumentsService,
+    private readonly audit: AuditService,
+    @Inject(IPrivacyMarksReadPort) private readonly privacyMarks: IPrivacyMarksReadPort,
+  ) {}
+
+  async generate(
+    input: {
+      date?: string;
+      contractId?: string;
+      actorId?: string | null;
+    } = {},
+  ): Promise<BillingGenerationSummary> {
+    const context = TenantContext.getOrThrow();
+    const settings = await this.tenantSettings.getSnapshot({ tenantId: context.tenantId });
+    const localDate = input.date ?? localDateFor(new Date(), settings.timezone);
+    const candidates = await this.loadCandidates(localDate, input.contractId);
+    const parties = [
+      ...new Set(candidates.map(({ partyId }) => partyId).filter((id): id is string => !!id)),
+    ];
+    const marks = parties.length ? await this.privacyMarks.activeMarks(parties) : {};
+    const summary = emptySummary();
+
+    for (const candidate of candidates) {
+      if (
+        (candidate.status === 'SUSPENDED' && candidate.statusReasonCode === 'SUPLANTACION') ||
+        (candidate.partyId && marks[candidate.partyId]?.includes('VICTIMA_FALSEDAD_PERSONAL'))
+      ) {
+        summary.omittedImpersonation += 1;
+        continue;
+      }
+
+      try {
+        // Puertos fuera de la transacción para no agotar el pool bajo advisory locks.
+        // El documento fiscal no se descifra aquí: solo se descifra el que se vaya a emitir.
+        const prepared = await this.documents.prepareIssue(candidate.contractId, {
+          revealDocument: false,
+        });
+        const fullContract = prepared.contract ?? candidate;
+        const events: PeriodEvent[] = [];
+        const outcome = await runInTenantSchema(this.dataSource, context.schemaName, (qr) =>
+          this.generateOne(
+            qr.manager,
+            context.tenantId,
+            fullContract,
+            localDate,
+            input.actorId ?? null,
+            !!input.contractId,
+            prepared,
+            events,
+          ),
+        );
+        await this.documents.publishEvents(events);
+        summary[outcome] += 1;
+        if (outcome === 'generated' && candidate.unbilledAdditionalCount > 0)
+          summary.unbilledAdditionalDocuments += 1;
+      } catch {
+        summary.failed += 1;
+        this.logger.warn('Falló la generación de un contrato; el lote continúa.');
+      }
+    }
+    return summary;
+  }
+
+  async automaticGenerationEnabled(tenantId: string, schemaName: string): Promise<boolean> {
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query('SELECT automatic_generation FROM billing_policy WHERE tenant_id = $1', [tenantId]),
+    )) as Array<{ automatic_generation: boolean }>;
+    return rows[0]?.automatic_generation === true;
+  }
+
+  async getGenerationSchedule(tenantId: string, schemaName: string): Promise<number | null> {
+    const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        'SELECT generation_hour, automatic_generation FROM billing_policy WHERE tenant_id = $1',
+        [tenantId],
+      ),
+    )) as Array<{ generation_hour: number; automatic_generation: boolean }>;
+    return rows[0]?.generation_hour ?? null;
+  }
+
+  private async loadCandidates(
+    localDate: string,
+    contractId?: string,
+  ): Promise<BillableContract[]> {
+    if (contractId) {
+      const candidate = await this.contracts.findByContractId(contractId, {
+        revealDocument: false,
+      });
+      return candidate ? [candidate] : [];
+    }
+    const candidates: BillableContract[] = [];
+    let afterContractId: string | undefined;
+    for (;;) {
+      const page = await this.contracts.findBillableForDate(localDate, {
+        ...(afterContractId !== undefined ? { afterContractId } : {}),
+        limit: PAGE_SIZE,
+      });
+      candidates.push(...page);
+      if (page.length < PAGE_SIZE) return candidates;
+      afterContractId = page.at(-1)?.contractId;
+      if (!afterContractId) return candidates;
+    }
+  }
+
+  private async generateOne(
+    manager: EntityManager,
+    tenantId: string,
+    contract: BillableContract,
+    localDate: string,
+    actorId: string | null,
+    manual: boolean,
+    prepared: Awaited<ReturnType<BillingDocumentsService['prepareIssue']>>,
+    events: PeriodEvent[],
+  ): Promise<
+    'generated' | 'existing' | 'omittedTermination' | 'blocked' | 'notDue' | 'withoutCycle'
+  > {
+    // RS-20: sin ciclo no hay periodo ni documento; se cuenta aparte, no como bloqueo.
+    if (!contract.cycleDay) return 'withoutCycle';
+    const policyRows = (await manager.query('SELECT * FROM billing_policy WHERE tenant_id = $1', [
+      tenantId,
+    ])) as BillingPolicyRow[];
+    const contractPolicyRows = (await manager.query(
+      `SELECT period_timing, generation_lead_days, payment_term_days, grace_days,
+                cutoff_enabled, first_period_mode, billing_start_date::text
+           FROM billing_contract_policy WHERE tenant_id = $1 AND contract_id = $2`,
+      [tenantId, contract.contractId],
+    )) as ContractPolicyRow[];
+    const basePolicy = policyRows[0];
+    if (!basePolicy) throw new Error('No se encontró la política de facturación del tenant.');
+    const override = contractPolicyRows[0];
+    const policy = {
+      ...basePolicy,
+      period_timing: override?.period_timing ?? basePolicy.period_timing,
+      generation_lead_days: override?.generation_lead_days ?? basePolicy.generation_lead_days,
+      payment_term_days: override?.payment_term_days ?? basePolicy.payment_term_days,
+      grace_days: override?.grace_days ?? basePolicy.grace_days,
+      cutoff_enabled: override?.cutoff_enabled ?? basePolicy.cutoff_enabled,
+      first_period_mode: override?.first_period_mode ?? basePolicy.first_period_mode,
+    };
+    let target = resolveGenerationTarget(
+      contract.cycleDay,
+      { periodTiming: policy.period_timing, generationLeadDays: policy.generation_lead_days },
+      localDate,
+    );
+    const billingStart = override?.billing_start_date ?? contract.activatedAt;
+    if (billingStart && billingStart > target.periodEnd) return 'notDue';
+    let combinedStart: string | null = null;
+    if (
+      billingStart &&
+      billingStart > target.periodStart &&
+      policy.first_period_mode === 'JUNTO_AL_SIGUIENTE'
+    ) {
+      const next = civilDate(addDays(target.periodEnd, 1));
+      const parsed = new Date(`${next}T00:00:00.000Z`);
+      target = computeBillingPeriod(
+        contract.cycleDay,
+        parsed.getUTCFullYear(),
+        parsed.getUTCMonth() + 1,
+      );
+      const nextGenerationDate = computeGenerationDate(
+        target,
+        policy.period_timing,
+        policy.generation_lead_days,
+      );
+      if (nextGenerationDate > localDate) return 'notDue';
+      combinedStart = billingStart;
+      if (contract.terminatedAt && contract.terminatedAt < target.periodStart)
+        return 'omittedTermination';
+    }
+    if (contract.terminatedAt && contract.terminatedAt < target.periodStart) {
+      return 'omittedTermination';
+    }
+    if (
+      billingStart &&
+      billingStart < target.periodStart &&
+      policy.first_period_mode === 'JUNTO_AL_SIGUIENTE'
+    ) {
+      // RF-FAC-13: el tramo inicial solo cubre el alta del periodo inmediatamente anterior;
+      // un alta más antigua no genera cobro retroactivo (cubre desde el inicio del objetivo).
+      const previousStart = previousPeriodStart(contract.cycleDay, target.periodStart);
+      if (billingStart >= previousStart) {
+        const prior = (await manager.query(
+          'SELECT id FROM billing_periods WHERE tenant_id=$1 AND contract_id=$2 LIMIT 1',
+          [tenantId, contract.contractId],
+        )) as Array<{ id: string }>;
+        if (!prior.length) combinedStart = billingStart;
+      }
+    }
+
+    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `billing:${contract.contractId}:${target.periodStart}`,
+    ]);
+    const existing = (await manager.query(
+      'SELECT id, effective_policy, covered_start::text, period_end::text FROM billing_periods WHERE contract_id = $1 AND period_start = $2::date AND tenant_id=$3 LIMIT 1',
+      [contract.contractId, target.periodStart, tenantId],
+    )) as Array<{
+      id: string;
+      effective_policy: BillingPolicyRow;
+      covered_start: string;
+      period_end: string;
+    }>;
+    if (existing.length) {
+      const live = (await manager.query(
+        "SELECT id FROM billing_documents WHERE tenant_id=$1 AND period_id=$2 AND status<>'ANULADO' LIMIT 1",
+        [tenantId, existing[0]!.id],
+      )) as Array<{ id: string }>;
+      if (!manual || live.length) return 'existing';
+    }
+
+    // RS-18: al reutilizar el periodo, método de prorrateo, aprobación y tramo inicial
+    // salen de lo congelado; la política actual no reescribe un periodo ya generado.
+    const frozen = existing[0];
+    const effectivePolicy: BillingPolicyRow = frozen
+      ? { ...policy, ...frozen.effective_policy }
+      : policy;
+    const coveredStart = frozen
+      ? civilDate(frozen.covered_start)
+      : (combinedStart ??
+        (billingStart && billingStart > target.periodStart ? billingStart : target.periodStart));
+    const coveredEnd =
+      contract.terminatedAt && contract.terminatedAt < target.periodEnd
+        ? contract.terminatedAt
+        : target.periodEnd;
+    const periodDays = diffInDays(target.periodStart, target.periodEnd) + 1;
+    const coveredDays = diffInDays(coveredStart, coveredEnd) + 1;
+    const issueDate = localDate;
+    const dueAndCutoff = computeDueAndCutoff(
+      target,
+      {
+        // RS-18: al reutilizar el periodo, el vencimiento sale de la política congelada.
+        cutoffMode: effectivePolicy.cutoff_mode,
+        paymentTermDays: effectivePolicy.payment_term_days,
+        graceDays: effectivePolicy.grace_days,
+        cutoffEnabled: effectivePolicy.cutoff_enabled,
+      },
+      issueDate,
+      contract.cutoffDay,
+    );
+
+    const blockingReason = !contract.monthlyPrice
+      ? 'SIN_PRECIO'
+      : !contract.vatSnapshot
+        ? 'SIN_TRATAMIENTO_IVA'
+        : !contract.buyer.displayName ||
+            !contract.buyer.documentType ||
+            !contract.buyer.hasDocumentNumber
+          ? 'SIN_DATOS_FISCALES'
+          : null;
+    const hasTax = contract.vatSnapshot !== null;
+    const line =
+      contract.monthlyPrice && hasTax
+        ? buildPlanLine({
+            price: contract.monthlyPrice,
+            coveredDays,
+            periodDays,
+            method: effectivePolicy.proration_method,
+            treatment: contract.vatSnapshot!.treatment,
+            ratePercent: contract.vatSnapshot!.ratePercent,
+            legalBasis: contract.vatSnapshot!.legalBasis,
+            description: contract.planName ?? 'Plan de servicio',
+          })
+        : null;
+    const subtotal = line ? Number(line.baseAmount) : 0;
+    const tax = line ? Number(line.taxAmount) : 0;
+    const periodRows = existing.length
+      ? existing
+      : ((await manager.query(
+          `INSERT INTO billing_periods
+         (tenant_id, contract_id, subscriber_id, period_start, period_end, covered_start,
+          generation_date, due_date, cutoff_date, effective_policy)
+       VALUES ($1,$2,$3,$4::date,$5::date,$6::date,$7::date,$8::date,$9::date,$10::jsonb)
+       RETURNING id::text`,
+          [
+            tenantId,
+            contract.contractId,
+            contract.subscriberId,
+            target.periodStart,
+            target.periodEnd,
+            coveredStart,
+            localDate,
+            dueAndCutoff.dueDate,
+            dueAndCutoff.cutoffDate,
+            JSON.stringify(policy),
+          ],
+        )) as Array<{ id: string }>);
+    const periodId = periodRows[0]?.id;
+    if (!periodId) throw new Error('No se pudo crear el periodo de facturación.');
+    const buyerSnapshot = {
+      displayName: contract.buyer.displayName,
+      documentType: contract.buyer.documentType,
+      address: contract.buyer.address,
+      rutResponsibilities: contract.buyer.rutResponsibilities,
+    };
+    const documentRows = (await manager.query(
+      `INSERT INTO billing_documents
+         (tenant_id, period_id, contract_id, subscriber_id, status, due_date,
+          subtotal, tax_total, total, blocking_reason, buyer_snapshot, unbilled_additional_count, created_by)
+       VALUES ($1,$2,$3,$4,'BORRADOR',$5::date,$6,$7,$8,$9,$10::jsonb,$11,$12)
+       RETURNING id::text`,
+      [
+        tenantId,
+        periodId,
+        contract.contractId,
+        contract.subscriberId,
+        dueAndCutoff.dueDate,
+        money(subtotal),
+        money(tax),
+        money(subtotal + tax),
+        blockingReason,
+        JSON.stringify(buyerSnapshot),
+        contract.unbilledAdditionalCount,
+        actorId,
+      ],
+    )) as Array<{ id: string }>;
+    const documentId = documentRows[0]?.id;
+    if (!documentId) throw new Error('No se pudo crear el borrador de facturación.');
+    if (line) {
+      await manager.query(
+        `INSERT INTO billing_document_lines
+           (tenant_id, document_id, kind, description, quantity, unit_price, base_amount,
+            tax_amount, total, vat_treatment, vat_rate, vat_legal_basis, position)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          tenantId,
+          documentId,
+          line.kind,
+          line.description,
+          line.quantity,
+          line.unitPrice,
+          line.baseAmount,
+          line.taxAmount,
+          line.total,
+          line.vatTreatment,
+          line.vatRate,
+          line.vatLegalBasis,
+          line.position,
+        ],
+      );
+    }
+    await this.audit.logWithin(
+      {
+        action: AuditAction.CREATE,
+        entityType: 'BillingDocument',
+        entityId: documentId,
+        userId: actorId,
+        newValue: { status: 'BORRADOR', periodId, blockingReason },
+      },
+      manager,
+    );
+    if (effectivePolicy.approval_mode === 'AUTOMATICA' && !blockingReason) {
+      await this.documents.issueWithinManager(
+        manager,
+        tenantId,
+        [documentId],
+        actorId,
+        prepared,
+        events,
+      );
+    }
+    if (contract.unbilledAdditionalCount > 0) {
+      this.logger.warn('Documento generado con adicionales sin cobrar.');
+    }
+    return blockingReason ? 'blocked' : 'generated';
+  }
+}

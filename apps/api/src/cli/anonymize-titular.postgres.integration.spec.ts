@@ -4,6 +4,10 @@ import { resolveMigrationDbCredentials } from '@iwana/db';
 import { decryptAes256Gcm, encryptAes256Gcm } from '../common/crypto/aes-gcm.util';
 import { hmacPii } from '../common/crypto/pii-hash-key.util';
 import { anonymizeTitularInTenantSchema, verifyAnonymizedTenant } from './anonymize-titular';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -36,6 +40,22 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
   const q = quoteIdentifier(schema);
 
   await dataSource.query(`CREATE SCHEMA ${q}`);
+  await dataSource.query(
+    `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+     VALUES (gen_random_uuid(), $1, $1, $2, 'ACTIVE', 'ci-tenant@example.invalid')`,
+    [`anonymize-${schema.slice(-10)}`, schema],
+  );
+  await dataSource.query(`CREATE TABLE ${q}.billing_documents (
+    id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL,
+    status text NOT NULL, buyer_snapshot jsonb, buyer_document_encrypted varchar(500), updated_at timestamptz
+  )`);
+  await dataSource.query(
+    `CREATE TABLE ${q}.billing_document_lines (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, document_id uuid NOT NULL)`,
+  );
+  await dataSource.query(
+    `CREATE TABLE ${q}.billing_payments (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL, reference text, note text, updated_at timestamptz)`,
+  );
+
   await dataSource.query(`CREATE TABLE ${q}.potential_leads (id uuid PRIMARY KEY)`);
   await dataSource.query(`
     CREATE TABLE ${q}.data_subject_requests (
@@ -313,13 +333,19 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
 
   beforeAll(async () => {
     const credentials = resolveMigrationDbCredentials();
+    const databaseName = process.env['DB_NAME'] ?? '';
+    if (!/^(test|iwana_it_[a-z0-9_]+)$/u.test(databaseName)) {
+      throw new Error(
+        'Integración anonymize titular: DB_NAME debe ser test o iwana_it_*; nunca la base de desarrollo.',
+      );
+    }
     dataSource = new DataSource({
       type: 'postgres',
       host: process.env['DB_HOST'] ?? 'localhost',
       port: Number.parseInt(process.env['DB_PORT'] ?? '5432', 10),
       username: credentials.username,
       password: credentials.password,
-      database: process.env['DB_NAME'] ?? 'iwana',
+      database: databaseName,
       entities: [],
       migrations: [],
       synchronize: false,
@@ -332,6 +358,120 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
   afterAll(async () => {
     if (dataSource?.isInitialized) await dataSource.destroy();
   });
+
+  it('remedia notas previas en una solicitud resuelta usando las migraciones reales', async () => {
+    const schema = `tenant_anonymize_cli_${randomBytes(5).toString('hex')}`;
+    const q = quoteIdentifier(schema);
+    const tenantId = randomUUID();
+    const partyId = randomUUID();
+    const subscriberId = randomUUID();
+    const requestId = randomUUID();
+    const actorId = randomUUID();
+    const migrationDataSource = createTenantDataSource(dataSource, schema, `anonymize-${schema}`);
+
+    try {
+      await dataSource.query(
+        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+         VALUES ($1, 'Anonymize synthetic fixture', $2, $3, 'ACTIVE', 'anonymize-it@example.invalid')`,
+        [tenantId, `anonymize-${schema.slice(-10)}`, schema],
+      );
+      await dataSource.query(`CREATE SCHEMA ${q}`);
+      await migrationDataSource.initialize();
+      try {
+        await applyTenantMigrationsInOrder(migrationDataSource);
+      } finally {
+        await migrationDataSource.destroy();
+      }
+
+      await dataSource.query(
+        `INSERT INTO ${q}.party
+          (id, party_type, document_type, document_number, display_name)
+         VALUES ($1, 'NATURAL', 'CC', $2, 'Titular sintético')`,
+        [partyId, encryptAes256Gcm('synthetic-party-document', ENCRYPTION_KEY)],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.subscribers
+          (id, tenant_id, party_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, email_encrypted,
+           phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
+         VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4,
+           'Nombre sintético', 'Apellido sintético', 2, $5, $6, 'STANDARD', 'COMMON',
+           'RESPONSABLE', 'Dirección sintética', $7)`,
+        [
+          subscriberId,
+          tenantId,
+          partyId,
+          encryptAes256Gcm('synthetic-subscriber-document', ENCRYPTION_KEY),
+          encryptAes256Gcm('synthetic-email', ENCRYPTION_KEY),
+          encryptAes256Gcm('synthetic-phone', ENCRYPTION_KEY),
+          actorId,
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.data_subject_requests
+          (id, party_id, requester_kind, identity_verification_method, identity_verified_at,
+           identity_verified_by, kind, "right", status, received_at, due_at, complete_at,
+           erased_at, erasure_categories)
+         VALUES ($1, $2, 'TITULAR', 'DOCUMENTO_PRESENCIAL', now(), $3,
+           'CONSULTA', 'SUPRIMIR', 'RESUELTA', now(), CURRENT_DATE + 30, now(),
+           now(), ARRAY['IDENTIFICACION']::text[])`,
+        [requestId, partyId, actorId],
+      );
+
+      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
+      const noteId = randomUUID();
+      await dataSource.query(
+        `INSERT INTO ${q}.crm_lifecycle_changes
+          (id, tenant_id, entity_type, entity_id, subscriber_id, from_status, to_status,
+           reason_code, note_encrypted, source, batch_id, actor_id)
+         VALUES ($1, $2, 'SUBSCRIBER', $3, $3, 'ACTIVE', 'CANCELLED',
+           'SOLICITUD_TITULAR', $4, 'MANUAL', $5, $6)`,
+        [
+          noteId,
+          tenantId,
+          subscriberId,
+          encryptAes256Gcm('synthetic lifecycle note', ENCRYPTION_KEY),
+          randomUUID(),
+          actorId,
+        ],
+      );
+
+      const before = await verifyAnonymizedTenant(dataSource, schema, KEYS);
+      expect(before.residualFields).toBeGreaterThan(0);
+      expect(before.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            titularIds: expect.arrayContaining([subscriberId]),
+            tables: expect.arrayContaining([
+              expect.objectContaining({ table: 'crm_lifecycle_changes' }),
+            ]),
+          }),
+        ]),
+      );
+
+      const [versionBefore] = (await dataSource.query(
+        `SELECT updated_at FROM ${q}.subscribers WHERE id = $1`,
+        [subscriberId],
+      )) as Array<{ updated_at: Date }>;
+      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
+      const after = await verifyAnonymizedTenant(dataSource, schema, KEYS);
+      const [versionAfter] = (await dataSource.query(
+        `SELECT updated_at FROM ${q}.subscribers WHERE id = $1`,
+        [subscriberId],
+      )) as Array<{ updated_at: Date }>;
+      expect(after.residualFields).toBe(0);
+      expect(versionAfter?.updated_at.getTime()).toBe(versionBefore?.updated_at.getTime());
+      expect(
+        await dataSource.query(
+          `SELECT note_encrypted FROM ${q}.crm_lifecycle_changes WHERE id = $1`,
+          [noteId],
+        ),
+      ).toEqual([{ note_encrypted: null }]);
+    } finally {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    }
+  }, 180_000);
 
   it('anonimiza prospecto, usa dry-run por defecto, verifica e itera idempotentemente', async () => {
     const fixture = await createFixture(dataSource);
@@ -524,6 +664,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       expect(JSON.stringify(residualVerification)).not.toContain('synthetic residual fixture');
     } finally {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -564,6 +705,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     } finally {
       await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -623,6 +765,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     } finally {
       await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -693,6 +836,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       expect(repeated.verification.residualFields).toBe(0);
     } finally {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -727,6 +871,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       ).toEqual([{ first_name: 'Nombre sintético' }]);
     } finally {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -753,6 +898,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       ).toEqual([{ full_name: 'Prospecto sintético' }]);
     } finally {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -785,6 +931,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       ).toEqual([{ full_name: 'Prospecto sintético', address: 'Dirección sintética' }]);
     } finally {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -909,9 +1056,9 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           stratum_evidence_media_id: mediaId,
           vat_snapshot: { amount: 10 },
           plan_snapshot_json: { plan: {} },
-          installation_city: 'fixture-city',
-          installation_department: 'fixture-department',
-          installation_stratum: 3,
+          installation_city: null,
+          installation_department: null,
+          installation_stratum: 1,
           service_usage: 'RESIDENTIAL',
           customer_segment: 'STANDARD',
           status: 'ACTIVE',
@@ -944,6 +1091,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         fixture.schema,
       ]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 
@@ -1272,6 +1420,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     } finally {
       await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
       await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
 });

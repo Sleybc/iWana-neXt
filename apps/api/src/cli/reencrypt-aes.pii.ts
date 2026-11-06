@@ -71,6 +71,11 @@ export const PII_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
   piiTarget('subscriber.whatsappEncrypted', 'subscribers', 'whatsapp_encrypted'),
   piiTarget('subscriberLifecycleChange.noteEncrypted', 'crm_lifecycle_changes', 'note_encrypted'),
   piiTarget(
+    'billingDocument.buyerDocumentEncrypted',
+    'billing_documents',
+    'buyer_document_encrypted',
+  ),
+  piiTarget(
     'expediente.documentNumberEncrypted',
     'expediente_records',
     'document_number_encrypted',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BillingPeriodPaymentState } from '../contracts/billing/billing-constants';
 import type { ListMeta } from '../dto/pagination.dto';
 
 export const BILLING_CYCLE_ERROR_CODES = [
@@ -61,6 +62,9 @@ export interface CutoffAgendaItem {
   planName: string | null;
   billingCycleDay: number;
   cutoffDate: string;
+  paymentState?: BillingPeriodPaymentState;
+  paymentPaidAmount?: string | null;
+  paymentTotalAmount?: string | null;
 }
 
 export interface CutoffAgendaResponse {

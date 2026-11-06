@@ -7,7 +7,7 @@ import {
   drawBrandHeader,
   registerBrandFonts,
   toAsciiMetadata,
-} from './pdf-branding';
+} from '../../../common/pdf/pdf-branding';
 
 /** Alias histórico: el spec de servicio referencia los tokens por este nombre. */
 export { PDF_BRAND_TOKENS as RFQ_PDF_TOKENS };

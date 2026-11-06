@@ -39,9 +39,6 @@ const piiPreviousKey = parseEncryptionKeyHex('76543210fedcba98'.repeat(4));
 const hashKey = parseEncryptionKeyHex('abcdef0123456789'.repeat(4));
 const sourceKeys = [mfaKey, mfaPreviousKey];
 
-/** MOD14 añade este objetivo en B2 (RS-9); ver el invariante de migraciones. */
-const columnsPendingTarget = ['billing_documents.buyer_document_encrypted'];
-
 function encryptLegacy(value: string, key: Buffer = mfaKey): string {
   return encryptAes256Gcm(value, key);
 }
@@ -92,6 +89,8 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
   const subscriberOne = randomUUID();
   const subscriberTwo = randomUUID();
   const contractId = randomUUID();
+  const billingPeriodId = randomUUID();
+  const billingDocumentId = randomUUID();
   const expedienteId = randomUUID();
   const mfaObjectiveId = randomUUID();
   const mfaEmailCiphertext = encryptLegacy('synthetic-mfa-email');
@@ -118,6 +117,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     requesterName: 'synthetic-requester-name',
     requesterDocument: 'synthetic-requester-document',
     requesterContact: 'synthetic-requester-contact',
+    buyerDocument: 'synthetic-buyer-document',
   } as const;
 
   async function seedFixture(): Promise<void> {
@@ -183,6 +183,31 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
         tenantId,
         subscriberOne,
         encryptLegacy(synthetic.contractFiscalDocument, piiPreviousKey),
+      ],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.billing_periods
+        (id, tenant_id, contract_id, subscriber_id, period_start, period_end, covered_start,
+         generation_date, due_date, effective_policy)
+       VALUES ($1, $2, $3, $4, '2026-11-01', '2026-11-30', '2026-11-01',
+               '2026-11-01', '2026-11-14', '{}'::jsonb)`,
+      [billingPeriodId, tenantId, contractId, subscriberOne],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.billing_documents
+        (id, tenant_id, period_id, contract_id, subscriber_id, status, number, issue_date,
+         due_date, subtotal, tax_total, total, buyer_snapshot, buyer_document_encrypted, created_by)
+       VALUES ($1, $2, $3, $4, $5, 'EMITIDO', 'DC-K2-001', '2026-11-01', '2026-11-14',
+               10000, 1900, 11900, $6::jsonb, $7, $8)`,
+      [
+        billingDocumentId,
+        tenantId,
+        billingPeriodId,
+        contractId,
+        subscriberOne,
+        JSON.stringify({ displayName: 'Titular sintético', documentType: 'CC' }),
+        encryptLegacy(synthetic.buyerDocument, piiPreviousKey),
+        actorId,
       ],
     );
     await dataSource.query(
@@ -312,11 +337,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     const schemaColumns = rows.map((row) => `${row.table_name}.${row.column_name}`);
     const inventory = PII_ENCRYPTED_TARGETS.map(({ table, column }) => `${table}.${column}`);
 
-    expect(
-      schemaColumns.filter(
-        (column) => !inventory.includes(column) && !columnsPendingTarget.includes(column),
-      ),
-    ).toEqual([]);
+    expect(schemaColumns.filter((column) => !inventory.includes(column))).toEqual([]);
     expect(
       inventory.filter(
         (column) => column.endsWith('_encrypted') && !schemaColumns.includes(column),
@@ -338,7 +359,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(dryRun.hasBlockingIssues).toBe(false);
-    expect(dryRun.totals.reencrypted).toBe(20);
+    expect(dryRun.totals.reencrypted).toBe(21);
     expect(dryRun.totals.nonCiphertext).toBe(0);
     expect(
       dryRun.targets.filter((metric) => metric.candidates === 0).map((m) => m.entityType),
@@ -370,7 +391,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(apply.hasBlockingIssues).toBe(false);
-    expect(apply.totals.reencrypted).toBe(20);
+    expect(apply.totals.reencrypted).toBe(21);
 
     const repeated = await runMfaToPii(db, {
       mode: 'apply',
@@ -433,6 +454,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       SELECT 'expediente' AS family, id, document_number_encrypted AS value FROM ${quoteIdentifier(schemaName)}.expediente_records
       UNION ALL SELECT 'expediente_fiscal', id, fiscal_document_encrypted FROM ${quoteIdentifier(schemaName)}.expediente_records
       UNION ALL SELECT 'contract_fiscal', id, fiscal_document_encrypted FROM ${quoteIdentifier(schemaName)}.contracts
+      UNION ALL SELECT 'billing_buyer', id, buyer_document_encrypted FROM ${quoteIdentifier(schemaName)}.billing_documents
       UNION ALL SELECT 'lifecycle', id, note_encrypted FROM ${quoteIdentifier(schemaName)}.crm_lifecycle_changes
       UNION ALL SELECT 'party', id, document_number FROM ${quoteIdentifier(schemaName)}.party
       UNION ALL SELECT 'party_contact', id, value_encrypted FROM ${quoteIdentifier(schemaName)}.party_contact
@@ -440,6 +462,16 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     `);
     expect(allPiiRows.length).toBeGreaterThan(0);
     expect(JSON.stringify(allPiiRows)).not.toContain('synthetic-');
+
+    const [billingDocument] = (await dataSource.query(
+      `SELECT buyer_snapshot, buyer_document_encrypted
+         FROM ${quoteIdentifier(schemaName)}.billing_documents WHERE id = $1`,
+      [billingDocumentId],
+    )) as Array<{ buyer_snapshot: Record<string, unknown>; buyer_document_encrypted: string }>;
+    expect(billingDocument?.buyer_snapshot).not.toHaveProperty('documentNumber');
+    expect(decryptAes256Gcm(billingDocument?.buyer_document_encrypted ?? '', piiKey, null)).toBe(
+      synthetic.buyerDocument,
+    );
   });
 
   it('el documento fiscal se lee por la ruta de producción tras retirar las claves previas', async () => {

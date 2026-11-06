@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { LifecycleAction } from '@iwana/shared';
-import { Button, DatePicker } from '@iwana/ui';
+import { Badge, Button, DatePicker } from '@iwana/ui';
 import type { Contract, CutoffAgendaItem, CutoffAgendaResponse } from '@/lib/api-client';
 import { billingCyclesApi, contractsApi } from '@/lib/api-client';
+import { formatBillingMoney, PAYMENT_STATES } from '@/components/billing/billing-copy';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   PortalAlert,
@@ -195,7 +196,7 @@ export function CutoffAgendaClient() {
 
       <PortalPanel
         title="Servicios con corte programado"
-        description="El sistema todavía no registra pagos: esta es la lista de servicios con corte programado"
+        description="Consulta el estado de pago de los servicios con corte programado."
         busy={loading}
         contentClassName="space-y-5"
       >
@@ -305,6 +306,7 @@ export function CutoffAgendaClient() {
                             <PortalDataTableHead>Suscriptor</PortalDataTableHead>
                             <PortalDataTableHead>Plan</PortalDataTableHead>
                             <PortalDataTableHead>Fecha de corte</PortalDataTableHead>
+                            <PortalDataTableHead>Estado de pago</PortalDataTableHead>
                             <PortalDataTableHead>Acciones</PortalDataTableHead>
                           </tr>
                         </thead>
@@ -319,6 +321,9 @@ export function CutoffAgendaClient() {
                               </td>
                               <td className={`${portalDataTableCellClassName} tabular-nums`}>
                                 {formatBillingDate(item.cutoffDate)}
+                              </td>
+                              <td className={portalDataTableCellClassName}>
+                                <AgendaPaymentState item={item} />
                               </td>
                               <td className={portalDataTableCellClassName}>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -371,6 +376,14 @@ export function CutoffAgendaClient() {
                             </dt>
                             <dd className="tabular-nums text-gray-800 dark:text-gray-200">
                               {formatBillingDate(item.cutoffDate)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                              Estado de pago
+                            </dt>
+                            <dd>
+                              <AgendaPaymentState item={item} />
                             </dd>
                           </div>
                         </dl>
@@ -433,6 +446,30 @@ export function CutoffAgendaClient() {
         />
       ) : null}
     </div>
+  );
+}
+
+function AgendaPaymentState({ item }: { item: CutoffAgendaItem }) {
+  if (!item.paymentState) return <span>No disponible</span>;
+  const { label, variant } = PAYMENT_STATES[item.paymentState];
+  const partial =
+    item.paymentState === 'PARCIAL' &&
+    item.paymentPaidAmount != null &&
+    item.paymentTotalAmount != null;
+  return (
+    <Badge variant={variant}>
+      {partial ? (
+        <>
+          <span aria-hidden="true">{label}</span>
+          <span className="sr-only">
+            Pagado {formatBillingMoney(item.paymentPaidAmount!)} de{' '}
+            {formatBillingMoney(item.paymentTotalAmount!)}
+          </span>
+        </>
+      ) : (
+        label
+      )}
+    </Badge>
   );
 }
 

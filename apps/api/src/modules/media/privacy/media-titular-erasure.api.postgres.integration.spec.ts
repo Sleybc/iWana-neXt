@@ -1,3 +1,4 @@
+import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { resolveMigrationDbCredentials } from '@iwana/db';
@@ -62,6 +63,7 @@ describeWithDb('Media erasure por el adaptador API — evidencia de autorizació
       new ExecutionOrderTitularErasureParticipant(config),
       new OperationalTaskTitularErasureParticipant(config),
       new MediaTitularErasureParticipant(),
+      new BillingTitularErasureParticipant(),
     );
   });
 

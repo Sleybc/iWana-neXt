@@ -45,6 +45,7 @@ import { Contract } from './entities/contract.entity';
 import { titularAnonymizedConflict } from '../subscribers/guards/titular-anonymized-conflict';
 import { projectSubscriberForList } from '../subscribers/subscriber-projection';
 import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
+import { BillingAccountReadPort } from '../../billing/ports/billing-account-read.port';
 import { getTenantLocalDate } from './billing-cycle-date.util';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
@@ -138,6 +139,9 @@ export class ContractsService {
     @Optional()
     @Inject(ContractsTenantSettingsReadPort)
     private readonly tenantSettingsReadPort?: ContractsTenantSettingsReadPort,
+    @Optional()
+    @Inject(BillingAccountReadPort)
+    private readonly billingAccountReadPort?: BillingAccountReadPort,
   ) {
     this.fiscalDocumentCrypto = createFiscalDocumentCrypto(this.configService);
   }
@@ -614,7 +618,8 @@ export class ContractsService {
     });
 
     if (canSeeBlocked && result.blockedServed > 0) {
-      await this.auditService.log({
+      // RS-21: la auditoría ocurre antes de responder; si falla, 503.
+      await this.logBlockedDataAccess({
         action: AuditAction.LIST_ACCESS,
         entityType: 'BillingCycleCutoffAgenda',
         entityId: 'N/A',
@@ -628,9 +633,27 @@ export class ContractsService {
       });
     }
 
+    const paymentStates = this.billingAccountReadPort
+      ? await this.billingAccountReadPort.periodStates(
+          result.items.map(({ contractId }) => contractId),
+          date,
+        )
+      : {};
+    // RS-22: la agenda expone estado e importes por contrato; nulos en SIN_DOCUMENTO.
+    const items: CutoffAgendaItem[] = result.items.map((item) => {
+      const period = paymentStates[item.contractId];
+      return {
+        ...item,
+        ...(period ? { paymentState: period.state } : {}),
+        ...(period
+          ? { paymentPaidAmount: period.paidAmount, paymentTotalAmount: period.totalAmount }
+          : {}),
+      };
+    });
+
     return {
       date,
-      items: result.items,
+      items,
       meta: result.meta,
       withoutCycleCount: result.withoutCycleCount,
     };

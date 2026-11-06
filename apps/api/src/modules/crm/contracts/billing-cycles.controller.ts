@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import {
   AccessPermissionKey,
+  BILLING_PERIOD_PAYMENT_STATES,
   CutoffAgendaQuerySchema,
   PlatformRole,
   UserRole,
@@ -105,6 +106,12 @@ export class BillingCyclesController {
               planName: { type: 'string', nullable: true },
               billingCycleDay: { type: 'integer' },
               cutoffDate: { type: 'string', format: 'date' },
+              paymentState: {
+                type: 'string',
+                enum: [...BILLING_PERIOD_PAYMENT_STATES],
+              },
+              paymentPaidAmount: { type: 'string', nullable: true },
+              paymentTotalAmount: { type: 'string', nullable: true },
             },
           },
         },

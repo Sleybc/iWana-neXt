@@ -248,6 +248,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       mediaService as unknown as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
       erasurePort as unknown as IPersonalDataErasurePort,
+      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
     );
   });
 
@@ -269,7 +270,11 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       suspendedContractIds: [suspendedContractId],
     });
     standingPort.standing.mockReset();
-    standingPort.standing.mockResolvedValue({ openContractIds: [], lastTerminatedAt: null });
+    standingPort.standing.mockResolvedValue({
+      subscriberIds: [],
+      openContractIds: [],
+      lastTerminatedAt: null,
+    });
     mediaService.findOne.mockReset();
     mediaService.getPrivacyEvidenceSignedUrl.mockReset();
     effectivePermissionsService.getEffectivePermissionsForUser.mockReset();
@@ -367,6 +372,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   it('cierra DATOS_BLOQUEADOS al resolver la supresión tras vencer la retención', async () => {
     standingPort.standing.mockResolvedValue({
+      subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: '2010-01-01',
     });
@@ -536,6 +542,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   it('R3: impide resolver revocación contractual con contrato abierto y exige fundamento contractual', async () => {
     standingPort.standing.mockResolvedValue({
+      subscriberIds: [],
       openContractIds: [suspendedContractId],
       lastTerminatedAt: null,
     });
@@ -588,6 +595,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   it('R3/R4: la retención impide resolver y el rechazo de supresión abre DATOS_BLOQUEADOS', async () => {
     standingPort.standing.mockResolvedValue({
+      subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: '2025-01-15T00:00:00.000Z',
     });

@@ -98,6 +98,7 @@ describe('reencrypt-aes PII inventory and runner', () => {
       expect.arrayContaining([
         'subscribers.whatsapp_encrypted',
         'crm_lifecycle_changes.note_encrypted',
+        'billing_documents.buyer_document_encrypted',
         'contracts.fiscal_document_encrypted',
         'expediente_records.fiscal_document_encrypted',
         'party.document_number',

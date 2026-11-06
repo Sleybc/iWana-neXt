@@ -16,6 +16,7 @@ import { TenantModule } from '../../tenant/tenant.module';
 import { BillingCyclesController } from './billing-cycles.controller';
 import { ContractsTenantSettingsReadAdapter } from './ports/contracts-tenant-settings-read.adapter';
 import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
+import { BillingAccountReadModule } from '../../billing/billing-account-read.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settin
     PrivacyModule,
     SubscribersModule,
     TenantModule,
+    BillingAccountReadModule,
   ],
   controllers: [ContractsController, BillingCyclesController],
   providers: [

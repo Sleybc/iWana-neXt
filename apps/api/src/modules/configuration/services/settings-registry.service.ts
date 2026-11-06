@@ -63,12 +63,14 @@ export class SettingsRegistryService {
       {
         key: SettingsSectionKey.BILLING,
         label: 'Facturación',
-        description:
-          'Queda reservado para el módulo owner cuando exponga configuración federada real.',
-        ownerModule: 'Billing futuro',
-        status: SettingsSectionStatus.COMING_SOON,
-        route: null,
-        requiredPermissions: [AccessPermissionKey.SETTINGS_READ],
+        description: 'Define la política de facturación y consulta sus fechas previstas.',
+        ownerModule: 'MOD14 / Facturación',
+        status: SettingsSectionStatus.AVAILABLE,
+        route: '/dashboard/settings/billing',
+        requiredPermissions: [
+          AccessPermissionKey.SETTINGS_READ,
+          AccessPermissionKey.BILLING_INVOICES_READ,
+        ],
       },
       {
         key: SettingsSectionKey.INVENTORY,

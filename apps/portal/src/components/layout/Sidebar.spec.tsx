@@ -393,6 +393,18 @@ describe('Sidebar', () => {
       expect(screen.getByRole('link', { name: 'Configuración' })).toBeInTheDocument();
     });
 
+    it.each([
+      [AccessPermissionKey.BILLING_INVOICES_READ, 'Documentos de cobro', 'Pagos'],
+      [AccessPermissionKey.BILLING_PAYMENTS_READ, 'Pagos', 'Documentos de cobro'],
+    ])('muestra solo la ruta de facturación autorizada por %s', (permission, allowed, denied) => {
+      mockPermissionsReady([permission]);
+      renderSidebar();
+
+      const nav = screen.getByRole('navigation', { name: 'Menú principal' });
+      expect(within(nav).getByRole('link', { name: allowed })).toBeInTheDocument();
+      expect(within(nav).queryByRole('link', { name: denied })).not.toBeInTheDocument();
+    });
+
     it('CA-NAV-03: en carga cada slot gateado muestra un skeleton no focoable e Inicio es clicable', () => {
       mockPermissionsStatus('loading');
 
@@ -406,10 +418,10 @@ describe('Sidebar', () => {
       expect(screen.queryByRole('link', { name: 'Suscriptores' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'Mesa de ayuda' })).not.toBeInTheDocument();
 
-      // Skeletons con forma de ítem: un li aria-hidden por slot gateado (10, incluida Privacidad)
+      // Skeletons con forma de ítem: un li aria-hidden por slot gateado (incluye ambos accesos de Facturación)
       const nav = screen.getByRole('navigation', { name: 'Menú principal' });
       const skeletonRows = nav.querySelectorAll('li[aria-hidden="true"]');
-      expect(skeletonRows).toHaveLength(10);
+      expect(skeletonRows).toHaveLength(12);
       const focusablePlaceholders = Array.from(skeletonRows).filter(
         (element) => element.querySelector('a, button, [tabindex]:not([tabindex="-1"])') !== null,
       );

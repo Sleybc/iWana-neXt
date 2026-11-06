@@ -1,0 +1,156 @@
+import { z } from 'zod';
+import {
+  BILLING_BLOCKING_REASONS,
+  BILLING_DOCUMENT_LINE_KINDS,
+  BILLING_DOCUMENT_STATUSES,
+  BILLING_DOCUMENT_VOID_REASONS,
+  BILLING_PERIOD_PAYMENT_STATES,
+} from './billing-constants';
+import { billingMoneyStringSchema } from './billing-money.schema';
+
+function isCivilDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+  return day <= daysInMonth;
+}
+
+/** Comando para generar documentos manualmente (HLD §4). */
+export const GenerateDocumentsCommandSchema = z
+  .object({
+    contractId: z.string().uuid().optional(),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .refine(isCivilDate, 'La fecha debe ser una fecha civil válida.')
+      .optional(),
+  })
+  .strict();
+
+export type GenerateDocumentsCommand = z.infer<typeof GenerateDocumentsCommandSchema>;
+
+/** Comando para emitir un lote de borradores (HLD §4). */
+export const IssueDocumentsCommandSchema = z
+  .object({
+    documentIds: z.array(z.string().uuid()).min(1).max(100),
+  })
+  .strict();
+
+export type IssueDocumentsCommand = z.infer<typeof IssueDocumentsCommandSchema>;
+
+/** Comando para anular un documento emitido (HLD §4, RS-7). */
+export const VoidDocumentCommandSchema = z
+  .object({
+    reasonCode: z.enum(BILLING_DOCUMENT_VOID_REASONS),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+export type VoidDocumentCommand = z.infer<typeof VoidDocumentCommandSchema>;
+
+/** Línea de un documento de cobro (HLD §3.1, §4). */
+export const BillingDocumentLineSchema = z
+  .object({
+    id: z.string().uuid(),
+    documentId: z.string().uuid(),
+    kind: z.enum(BILLING_DOCUMENT_LINE_KINDS),
+    description: z.string().min(1).max(200),
+    quantity: z.string().regex(/^\d+(\.\d{1,4})?$/u),
+    unitPrice: billingMoneyStringSchema,
+    baseAmount: billingMoneyStringSchema,
+    taxAmount: billingMoneyStringSchema,
+    total: billingMoneyStringSchema,
+    vatTreatment: z.string().min(1).max(16),
+    vatRate: z.string().regex(/^\d+(\.\d{1,4})?$/u),
+    vatLegalBasis: z.string().max(60).nullable().optional(),
+    position: z.number().int().min(0),
+  })
+  .strict();
+
+export type BillingDocumentLine = z.infer<typeof BillingDocumentLineSchema>;
+
+/** Snapshot fiscal del adquirente congelado al emitir (HLD §3.1, §4, ADR-058, ADR-100). */
+export const BillingBuyerSnapshotSchema = z
+  .object({
+    displayName: z.string(),
+    documentType: z.string().nullable().optional(),
+    documentNumber: z.string().nullable().optional(),
+    address: z.string().nullable().optional(),
+    rutResponsibilities: z.array(z.string()).default([]),
+  })
+  .strict();
+
+export type BillingBuyerSnapshot = z.infer<typeof BillingBuyerSnapshotSchema>;
+
+/** Snapshot del emisor (tenant) congelado al emitir (HLD §3.1, §4). */
+export const BillingIssuerSnapshotSchema = z
+  .object({
+    legalName: z.string(),
+    nit: z.string(),
+    verificationDigit: z.string().nullable().optional(),
+  })
+  .strict();
+
+export type BillingIssuerSnapshot = z.infer<typeof BillingIssuerSnapshotSchema>;
+
+/** Respuesta serializada de un documento de cobro (HLD §4, RS-21, RS-22). */
+export const BillingDocumentResponseSchema = z
+  .object({
+    id: z.string().uuid(),
+    tenantId: z.string().uuid(),
+    periodId: z.string().uuid(),
+    contractId: z.string().uuid(),
+    subscriberId: z.string().uuid(),
+    status: z.enum(BILLING_DOCUMENT_STATUSES),
+    number: z.string().nullable().optional(),
+    issueDate: z.string().nullable().optional(),
+    dueDate: z.string(),
+    periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    coveredStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    paymentState: z.enum(BILLING_PERIOD_PAYMENT_STATES).nullable(),
+    buyerProtected: z.boolean(),
+    subtotal: billingMoneyStringSchema,
+    taxTotal: billingMoneyStringSchema,
+    total: billingMoneyStringSchema,
+    unbilledAdditionalCount: z.number().int().min(0),
+    blockingReason: z.enum(BILLING_BLOCKING_REASONS).nullable().optional(),
+    buyerSnapshot: BillingBuyerSnapshotSchema.nullable().optional(),
+    issuerSnapshot: BillingIssuerSnapshotSchema.nullable().optional(),
+    voidReasonCode: z.enum(BILLING_DOCUMENT_VOID_REASONS).nullable().optional(),
+    voidNote: z.string().nullable().optional(),
+    voidedAt: z.string().nullable().optional(),
+    voidedBy: z.string().uuid().nullable().optional(),
+    createdBy: z.string().uuid().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    lines: z.array(BillingDocumentLineSchema).optional(),
+    paidAmount: billingMoneyStringSchema.optional(),
+    pendingAmount: billingMoneyStringSchema.optional(),
+  })
+  .strict();
+
+export type BillingDocumentResponse = z.infer<typeof BillingDocumentResponseSchema>;
+
+const generationCount = z.number().int().nonnegative();
+
+export const BillingGenerationSummarySchema = z
+  .object({
+    generated: generationCount,
+    failed: generationCount,
+    notDue: generationCount,
+    existing: generationCount,
+    omittedImpersonation: generationCount,
+    omittedTermination: generationCount,
+    blocked: generationCount,
+    withoutCycle: generationCount,
+    unbilledAdditionalDocuments: generationCount,
+  })
+  .strict();
+
+export type BillingGenerationSummary = z.infer<typeof BillingGenerationSummarySchema>;

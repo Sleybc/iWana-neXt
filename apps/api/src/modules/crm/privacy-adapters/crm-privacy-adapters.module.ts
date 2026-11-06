@@ -1,3 +1,4 @@
+import { BillingPrivacyModule } from '../../billing/privacy/billing-privacy.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Contract } from '../contracts/entities/contract.entity';
@@ -25,6 +26,7 @@ import { TasksPrivacyModule } from '../../tasks/privacy/tasks-privacy.module';
     MediaPrivacyModule,
     WfmPrivacyModule,
     TasksPrivacyModule,
+    BillingPrivacyModule,
   ],
   providers: [
     CrmContractImpersonationAdapter,

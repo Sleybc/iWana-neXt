@@ -1,3 +1,4 @@
+import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
 import {
   BadRequestException,
   ConflictException,
@@ -231,6 +232,7 @@ export class PrivacyRequestsService {
     private readonly mediaService: MediaService,
     private readonly effectivePermissionsService?: EffectivePermissionsService,
     private readonly erasurePort?: IPersonalDataErasurePort,
+    private readonly billingStandingPort?: IBillingStandingReadPort,
   ) {
     const keys = loadPiiAesGcmKeyPair(configService);
     this.encryptionKey = keys.activeKey;
@@ -1131,16 +1133,27 @@ export class PrivacyRequestsService {
     if (!partyId) return { applies: false, openContract: false, retention: false };
     const standing = await this.standingPort.standing(partyId, { manager });
     const openContract = standing.openContractIds.length > 0;
-    if (!standing.lastTerminatedAt)
-      return { applies: openContract, openContract, retention: false };
-
-    const policies = (await manager.query(
-      'SELECT years FROM retention_policies WHERE category = $1',
-      [SUBSCRIBER_RETENTION_CATEGORY],
-    )) as Array<{ years: number }>;
-    const years = Number(policies[0]?.years ?? 0);
-    const retentionUntil = addCalendarMonths(standing.lastTerminatedAt.slice(0, 10), years * 12);
-    const retention = retentionUntil > bogotaCivilDate(new Date());
+    if (!this.billingStandingPort) throw new Error('Billing standing port is not registered');
+    const fiscalDate = await this.billingStandingPort.lastFiscalDocumentAt(standing.subscriberIds, {
+      manager,
+    });
+    const today = bogotaCivilDate(new Date());
+    const retained = async (date: string | null, category: string): Promise<boolean> => {
+      if (!date) return false;
+      const policies = (await manager.query(
+        'SELECT years FROM retention_policies WHERE category = $1',
+        [category],
+      )) as Array<{ years: number }>;
+      const years = Number(policies[0]?.years ?? 0);
+      if (!years) throw new Error(`Missing retention policy: ${category}`);
+      return addCalendarMonths(date.slice(0, 10), years * 12) > today;
+    };
+    const contractRetention = await retained(
+      standing.lastTerminatedAt,
+      SUBSCRIBER_RETENTION_CATEGORY,
+    );
+    const fiscalRetention = await retained(fiscalDate, 'FACTURACION_SOPORTES_CONTABLES');
+    const retention = contractRetention || fiscalRetention;
     return { applies: openContract || retention, openContract, retention };
   }
 

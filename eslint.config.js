@@ -49,6 +49,7 @@ export default [
     ],
     ignores: [
       '**/*.spec.ts',
+      '**/*.fixture.ts',
       '**/*.spec.tsx',
       '**/*.test.ts',
       '**/*.test.tsx',

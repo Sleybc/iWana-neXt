@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ErasureBlocker, ErasureCategory } from '@iwana/shared';
 import { QueryFailedError, type EntityManager, type QueryRunner } from 'typeorm';
 import { summarizeErrorForLog } from '@iwana/db';
@@ -14,6 +21,7 @@ import { CrmTitularErasureParticipant } from './titular-erasure/crm-titular-eras
 import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-erasure.participant';
 import { ExecutionOrderTitularErasureParticipant } from '../../tasks/privacy/execution-order-titular-erasure.participant';
 import { OperationalTaskTitularErasureParticipant } from '../../tasks/privacy/operational-task-titular-erasure.participant';
+import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
 import type { ErasureKeys } from './titular-erasure/titular-erasure-sql';
 import type {
   TitularErasureParticipant,
@@ -69,6 +77,9 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     private readonly executionOrders: ExecutionOrderTitularErasureParticipant,
     private readonly operationalTasks: OperationalTaskTitularErasureParticipant,
     private readonly media: MediaTitularErasureParticipant,
+    @Optional()
+    @Inject(BillingTitularErasureParticipant)
+    private readonly billing?: BillingTitularErasureParticipant,
   ) {
     super();
     this.participants = [
@@ -79,6 +90,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
       { name: 'execution-orders', participant: executionOrders },
       { name: 'operational-tasks', participant: operationalTasks },
       { name: 'media', participant: media },
+      ...(billing ? [{ name: 'billing', participant: billing }] : []),
     ];
   }
 
@@ -86,6 +98,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     target: PersonalDataErasureTarget,
     ctx: { manager: EntityManager },
   ): Promise<PersonalDataErasurePlan> {
+    this.assertBillingParticipantRegistered();
     const qr = this.requireTransaction(ctx.manager);
     const resolved = await this.resolve(target, qr);
     const counts = Object.fromEntries(CATEGORIES.map((category) => [category, 0])) as Record<
@@ -109,6 +122,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     input: PersonalDataErasureTarget & { expedienteIds: string[]; actorId: string },
     ctx: { manager: EntityManager },
   ): Promise<{ categories: ErasureCategory[]; changedRows: number }> {
+    this.assertBillingParticipantRegistered();
     const qr = this.requireTransaction(ctx.manager);
     await qr.query(`SELECT set_config('iwana.titular_erasure', 'on', true)`);
     const resolved = await this.resolve(input, qr);
@@ -167,6 +181,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     qr: QueryRunner,
     mode: 'dry-run' | 'apply',
   ): Promise<TitularErasureTableResult[]> {
+    this.assertBillingParticipantRegistered();
     await this.resolveParticipants(scope, qr);
     if (mode === 'apply') {
       const active = await this.users.activeAccountCount(scope.userIds, qr);
@@ -188,6 +203,7 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     tenantSchema: string,
     cryptoKeys: ErasureKeys,
   ): Promise<TitularErasureScope> {
+    this.assertBillingParticipantRegistered();
     const subscriberIds = await this.crm.findSubscriberIds(qr, target.partyId);
     const userIds = await this.users.findUserIds(
       {
@@ -267,6 +283,14 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
       throw new Error('La anonimización requiere una transacción activa.');
     }
     return qr;
+  }
+
+  private assertBillingParticipantRegistered(): void {
+    if (this.billing) return;
+    throw new ServiceUnavailableException({
+      code: 'PRIVACY_ERASURE_PARTICIPANT_UNAVAILABLE',
+      message: 'El participante fiscal de supresión no está disponible.',
+    });
   }
 
   /** El CLI conserva el error original (`domainErrors = false`); la API lo traduce. */

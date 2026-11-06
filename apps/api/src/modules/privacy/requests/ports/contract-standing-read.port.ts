@@ -5,6 +5,7 @@ export abstract class IContractStandingReadPort {
     partyId: string,
     ctx: { manager: EntityManager },
   ): Promise<{
+    subscriberIds: string[];
     openContractIds: string[];
     lastTerminatedAt: string | null;
   }>;

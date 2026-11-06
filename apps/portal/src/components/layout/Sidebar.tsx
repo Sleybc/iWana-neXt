@@ -11,6 +11,7 @@ import {
   Users,
   BriefcaseBusiness,
   HandCoins,
+  ReceiptText,
   LifeBuoy,
   ClipboardList,
   Package,
@@ -180,6 +181,23 @@ const navGroups: NavGroup[] = [
         icon: Settings2,
         allowedRoles: [UserRole.ADMIN, UserRole.NOC],
         permission: AccessPermissionKey.NETWORK_CATALOG_READ,
+      },
+    ],
+  },
+  {
+    group: 'Facturación',
+    items: [
+      {
+        href: '/dashboard/billing/documents',
+        label: 'Documentos de cobro',
+        icon: ReceiptText,
+        permission: AccessPermissionKey.BILLING_INVOICES_READ,
+      },
+      {
+        href: '/dashboard/billing/payments',
+        label: 'Pagos',
+        icon: HandCoins,
+        permission: AccessPermissionKey.BILLING_PAYMENTS_READ,
       },
     ],
   },

@@ -12,7 +12,10 @@ export function SkeletonBlock({ className }: SkeletonBlockProps) {
   return (
     <div
       aria-hidden="true"
-      className={cn('animate-pulse rounded-2xl bg-gray-100 dark:bg-dark-surface-3', className)}
+      className={cn(
+        'animate-pulse motion-reduce:animate-none rounded-2xl bg-gray-100 dark:bg-dark-surface-3',
+        className,
+      )}
     />
   );
 }

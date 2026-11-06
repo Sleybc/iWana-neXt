@@ -9,6 +9,7 @@ import { ApiError, Subscriber360Response, subscribersApi } from '@/lib/api-clien
 import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
+import { SubscriberBillingTab } from '@/components/billing/SubscriberBillingTab';
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
@@ -38,6 +39,7 @@ function mapError(error: unknown): string {
 const SUBSCRIBER_TAB_IDS = [
   'vista-general',
   'servicios',
+  'facturacion',
   'soporte',
   'datos',
   'tributario',
@@ -54,6 +56,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const requestedTab = searchParams?.get('tab') ?? 'vista-general';
   const urlTab = SUBSCRIBER_TAB_IDS.includes(requestedTab) ? requestedTab : 'vista-general';
   const { hasPermission } = usePermissions();
+  const canReadBilling = hasPermission(AccessPermissionKey.BILLING_INVOICES_READ);
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
@@ -194,6 +197,21 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
           </div>
         ) : null,
       },
+      ...(canReadBilling
+        ? [
+            {
+              id: 'facturacion',
+              label: 'Facturación',
+              content: (
+                <SubscriberBillingTab
+                  key={subscriber.id}
+                  subscriberId={subscriber.id}
+                  contracts={subscriber360?.contracts ?? []}
+                />
+              ),
+            },
+          ]
+        : []),
       {
         id: 'soporte',
         label: 'Soporte',
@@ -263,6 +281,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     loadSubscriber,
     canManagePrivacy,
     canReadPrivacy,
+    canReadBilling,
     canReadNetworkProvisioning,
     fiscalDirty,
   ]);

@@ -6,6 +6,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { PrivacyModule } from './privacy.module';
+import { BillingPrivacyModule } from '../billing/privacy/billing-privacy.module';
 import { EffectivePermissionsService } from '../access-control/services/effective-permissions.service';
 import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { PrivacyRequestsService } from './requests/requests.service';
@@ -74,7 +75,8 @@ describe('PrivacyModule composition', () => {
       (entry) => typeof entry === 'object' && entry !== null && 'forwardRef' in entry,
     ) as { forwardRef: () => unknown } | undefined;
 
-    expect(imports).toHaveLength(6);
+    expect(imports).toHaveLength(7);
+    expect(imports).toContain(BillingPrivacyModule);
     expect(controllers).toHaveLength(9);
     expect(controllers).toContain(PurposesController);
     expect(providers).toContain(PrivacyRequestsService);

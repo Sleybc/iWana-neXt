@@ -17,5 +17,5 @@
   // `pnpm typecheck` pasaba en verde (usa tsconfig.typecheck.json, que
   // ensancha rootDir) — CI verde con el dev local roto.
   // El typecheck de los specs sigue cubierto por tsconfig.typecheck.json.
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.fixture.ts"]
 }

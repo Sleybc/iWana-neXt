@@ -116,3 +116,13 @@ export { IpAssignment } from './ip-assignment.entity';
 export { NetworkInboxEvent } from './network-inbox-event.entity';
 export { NetworkRouterInterface } from './network-router-interface.entity';
 export { NetworkRouterInterfaceIpv4Address } from './network-router-interface-ipv4-address.entity';
+
+// MOD14 — Facturación · Fase 01
+export { BillingPolicy } from './billing-policy.entity';
+export { BillingContractPolicy } from './billing-contract-policy.entity';
+export { BillingPeriod } from './billing-period.entity';
+export { BillingDocument } from './billing-document.entity';
+export { BillingDocumentLine } from './billing-document-line.entity';
+export { BillingPayment } from './billing-payment.entity';
+export { BillingPaymentAllocation } from './billing-payment-allocation.entity';
+export { BillingPeriodSignal } from './billing-period-signal.entity';

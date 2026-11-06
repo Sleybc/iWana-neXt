@@ -234,6 +234,25 @@ import type {
   UpdatePlanCatalogTaxFields,
   TaxAssignmentSnapshot as SharedTaxAssignmentSnapshot,
 } from '@iwana/shared';
+import type {
+  BillingPolicy,
+  BillingAccountStatement,
+  BillingContractPolicyResponse,
+  BillingContractPolicyUpdate,
+  BillingDocumentResponse,
+  BillingGenerationSummary,
+  BillingPaymentResponse,
+  BillingPeriodPaymentState,
+  AllocateCreditCommand,
+  GenerateDocumentsCommand,
+  IssueDocumentsCommand,
+  RegisterPaymentCommand,
+  VoidDocumentCommand,
+  VoidPaymentCommand,
+  BillingPolicyPreview,
+  BillingPolicyPreviewRequest,
+  BillingPolicyUpdate,
+} from '@iwana/shared';
 import { formatFullName } from '@iwana/shared';
 import { persistTenantSlug, resolveTenantSlug } from './tenant-resolution';
 import { PICKER_SOFT_CAP } from './picker-soft-cap';
@@ -506,6 +525,7 @@ interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
   skipRefreshRetry?: boolean;
   returnFullResponse?: boolean;
+  responseType?: 'blob';
 }
 
 function getTenantSlug(tenantSlugOverride?: string): string {
@@ -859,6 +879,8 @@ async function request<T>(
   if (res.status === 204 || res.headers.get('content-length') === '0') {
     return undefined as T;
   }
+
+  if (options?.responseType === 'blob') return (await res.blob()) as T;
 
   const body = (await res.json()) as ApiEnvelope<T> | T;
   if (options?.returnFullResponse) {
@@ -7147,6 +7169,113 @@ export const billingCyclesApi = {
       tenantSlug,
     );
   },
+};
+
+export type BillingDocumentsQuery = {
+  page?: number;
+  limit?: number;
+  status?: BillingDocumentResponse['status'];
+  paymentState?: BillingPeriodPaymentState;
+  cycleDay?: number;
+  subscriberId?: string;
+  from?: string;
+  to?: string;
+};
+
+function billingListQuery(query: BillingDocumentsQuery): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const suffix = search.toString();
+  return suffix ? `?${suffix}` : '';
+}
+
+function billingMutation<T>(
+  path: string,
+  method: 'POST' | 'PUT',
+  payload: object,
+  idempotencyKey: string,
+) {
+  return request<T>(path, {
+    method,
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Cartera, documentos, pagos y política de facturación. */
+export const billingApi = {
+  documents: (query: BillingDocumentsQuery) =>
+    request<ListResponse<BillingDocumentResponse>>(`/billing/documents${billingListQuery(query)}`, {
+      returnFullResponse: true,
+    }),
+  document: (id: string) =>
+    request<BillingDocumentResponse>(`/billing/documents/${encodeURIComponent(id)}`),
+  documentPdf: (id: string) =>
+    request<Blob>(`/billing/documents/${encodeURIComponent(id)}/pdf`, { responseType: 'blob' }),
+  generate: (input: GenerateDocumentsCommand, key: string) =>
+    billingMutation<BillingGenerationSummary>('/billing/documents/generate', 'POST', input, key),
+  issue: (input: IssueDocumentsCommand, key: string) =>
+    billingMutation<BillingDocumentResponse[]>('/billing/documents/issue', 'POST', input, key),
+  voidDocument: (id: string, input: VoidDocumentCommand, key: string) =>
+    billingMutation<BillingDocumentResponse>(
+      `/billing/documents/${encodeURIComponent(id)}/void`,
+      'POST',
+      input,
+      key,
+    ),
+  payments: (query: { page?: number; limit?: number }) =>
+    request<ListResponse<BillingPaymentResponse>>(`/billing/payments${billingListQuery(query)}`, {
+      returnFullResponse: true,
+    }),
+  registerPayment: (input: RegisterPaymentCommand, key: string) =>
+    billingMutation<BillingPaymentResponse>('/billing/payments', 'POST', input, key),
+  voidPayment: (id: string, input: VoidPaymentCommand, key: string) =>
+    billingMutation<BillingPaymentResponse>(
+      `/billing/payments/${encodeURIComponent(id)}/void`,
+      'POST',
+      input,
+      key,
+    ),
+  allocateCredit: (id: string, input: AllocateCreditCommand, key: string) =>
+    billingMutation<BillingPaymentResponse>(
+      `/billing/payments/${encodeURIComponent(id)}/allocations`,
+      'POST',
+      input,
+      key,
+    ),
+  statement: (subscriberId: string) =>
+    request<BillingAccountStatement>(
+      `/billing/subscribers/${encodeURIComponent(subscriberId)}/statement`,
+    ),
+  contractPolicy: (contractId: string) =>
+    request<BillingContractPolicyResponse['data']>(
+      `/billing/contracts/${encodeURIComponent(contractId)}/policy`,
+    ),
+  updateContractPolicy: (contractId: string, input: BillingContractPolicyUpdate, key: string) =>
+    billingMutation<BillingContractPolicyResponse['data']>(
+      `/billing/contracts/${encodeURIComponent(contractId)}/policy`,
+      'PUT',
+      input,
+      key,
+    ),
+  getPolicy: (tenantSlug?: string) =>
+    request<BillingPolicy>('/billing/policy', undefined, tenantSlug),
+
+  updatePolicy: (input: BillingPolicyUpdate, tenantSlug?: string) =>
+    request<BillingPolicy>(
+      '/billing/policy',
+      { method: 'PUT', body: JSON.stringify(input) },
+      tenantSlug,
+    ),
+
+  preview: (input: BillingPolicyPreviewRequest, tenantSlug?: string) =>
+    request<BillingPolicyPreview>(
+      '/billing/policy/preview',
+      { method: 'POST', body: JSON.stringify(input) },
+      tenantSlug,
+    ),
 };
 
 // ─── MOD11 — Ejecución Operativa / Tareas ────────────────────────────────────

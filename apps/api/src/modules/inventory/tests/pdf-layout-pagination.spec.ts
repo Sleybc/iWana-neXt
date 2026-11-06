@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { PurchaseOrderStatus } from '@iwana/shared';
-import { registerBrandFonts } from '../services/pdf-branding';
+import { registerBrandFonts } from '../../../common/pdf/pdf-branding';
 import {
   drawLinesTable as drawPurchaseOrderLines,
   type PurchaseOrderPdfDocumentInput,

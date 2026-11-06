@@ -227,8 +227,12 @@ describe('ConfigurationController HTTP', () => {
             }),
             expect.objectContaining({
               key: SettingsSectionKey.BILLING,
-              status: SettingsSectionStatus.COMING_SOON,
-              route: null,
+              status: SettingsSectionStatus.AVAILABLE,
+              route: '/dashboard/settings/billing',
+              requiredPermissions: [
+                AccessPermissionKey.SETTINGS_READ,
+                AccessPermissionKey.BILLING_INVOICES_READ,
+              ],
             }),
             expect.objectContaining({
               key: SettingsSectionKey.CALENDAR,

@@ -1,12 +1,21 @@
+import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
+import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
+import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { hmacPiiValue, resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
-import { AccessPermissionKey, DocumentTypeParty, normalizeDocumentNumber } from '@iwana/shared';
+import {
+  AccessPermissionKey,
+  DocumentTypeParty,
+  normalizeDocumentNumber,
+  SubscriberStatus,
+} from '@iwana/shared';
 import { hmacPii } from '../../../common/crypto/pii-hash-key.util';
-import { encryptAes256Gcm } from '../../../common/crypto/aes-gcm.util';
+import { decryptAes256Gcm, encryptAes256Gcm } from '../../../common/crypto/aes-gcm.util';
 import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
 import { MediaService } from '../../media/media.service';
@@ -18,10 +27,13 @@ import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-eras
 import { ExecutionOrderTitularErasureParticipant } from '../../tasks/privacy/execution-order-titular-erasure.participant';
 import { OperationalTaskTitularErasureParticipant } from '../../tasks/privacy/operational-task-titular-erasure.participant';
 import { MediaTitularErasureParticipant } from '../../media/privacy/media-titular-erasure.participant';
+import { SubscribersController } from '../../crm/subscribers/subscribers.controller';
+import { SubscriberLifecycleService } from '../../crm/subscribers/subscriber-lifecycle.service';
 import { IContractImpersonationPort } from '../ports/contract-impersonation.port';
 import { IPersonalDataErasurePort } from '../ports/personal-data-erasure.port';
 import { IContractStandingReadPort } from './ports/contract-standing-read.port';
 import { PrivacyRequestsService } from './requests.service';
+import { anonymizeTitularInTenantSchema } from '../../../cli/anonymize-titular';
 import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
@@ -38,9 +50,30 @@ const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(test|iwana_it_[a-z0-9_]+)$/u;
 const keyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const documentNumber = '90000123';
+const cliKeys = {
+  hashKey: Buffer.from(keyHex, 'hex'),
+  activeEncryptionKey: Buffer.from(keyHex, 'hex'),
+  previousEncryptionKey: null,
+};
 
 function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+async function waitForSubscriberLockWait(dataSource: DataSource): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const rows = (await dataSource.query(
+      `SELECT COUNT(*)::int AS waiting
+         FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND wait_event_type = 'Lock'
+          AND query LIKE '%ORDER BY id::text FOR UPDATE%'`,
+    )) as Array<{ waiting: number }>;
+    if ((rows[0]?.waiting ?? 0) > 0) return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+  }
+  throw new Error('La supresión no esperó el bloqueo de fila del suscriptor.');
 }
 
 describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL', () => {
@@ -60,6 +93,7 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
     workOrder: randomUUID(),
     executionOrder: randomUUID(),
     operationalTask: randomUUID(),
+    otherSubscriber: randomUUID(),
   };
   const configService = {
     getOrThrow: (key: string) => {
@@ -219,6 +253,53 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
     return created.request.id;
   }
 
+  async function insertLifecycleChange(input: {
+    subscriberId: string;
+    entityType: 'SUBSCRIBER' | 'CONTRACT';
+    entityId: string;
+    note: string;
+  }): Promise<string> {
+    const id = randomUUID();
+    await dataSource.query(
+      `INSERT INTO ${q}.crm_lifecycle_changes
+        (id, tenant_id, entity_type, entity_id, subscriber_id, from_status, to_status,
+         reason_code, note_encrypted, source, batch_id, actor_id)
+       VALUES ($1, $2, $3, $4, $5, 'ACTIVE', 'CANCELLED',
+         'SOLICITUD_TITULAR', $6, 'MANUAL', $7, $8)`,
+      [
+        id,
+        tenantId,
+        input.entityType,
+        input.entityId,
+        input.subscriberId,
+        encryptAes256Gcm(input.note, Buffer.from(keyHex, 'hex')),
+        randomUUID(),
+        actorId,
+      ],
+    );
+    return id;
+  }
+
+  async function insertOtherSubscriber(): Promise<void> {
+    await dataSource.query(
+      `INSERT INTO ${q}.subscribers
+        (id, tenant_id, person_type, customer_segment, document_type,
+         document_number_encrypted, first_name, last_name, stratum, email_encrypted,
+         phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
+       VALUES ($1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', $3,
+         'Otra persona sintética', 'Apellido sintético', 2, $4, $5, 'STANDARD', 'COMMON',
+         'RESPONSABLE', 'Dirección sintética', $6)`,
+      [
+        ids.otherSubscriber,
+        tenantId,
+        encryptAes256Gcm('synthetic-other-document', Buffer.from(keyHex, 'hex')),
+        encryptAes256Gcm('synthetic-other-email', Buffer.from(keyHex, 'hex')),
+        encryptAes256Gcm('synthetic-other-phone', Buffer.from(keyHex, 'hex')),
+        actorId,
+      ],
+    );
+  }
+
   beforeAll(async () => {
     const databaseName = process.env['DB_NAME'] ?? '';
     if (!allowedDatabaseName.test(databaseName)) {
@@ -271,7 +352,11 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
         {
           provide: IContractStandingReadPort,
           useValue: {
-            standing: jest.fn().mockResolvedValue({ openContractIds: [], lastTerminatedAt: null }),
+            standing: jest.fn().mockResolvedValue({
+              subscriberIds: [],
+              openContractIds: [],
+              lastTerminatedAt: null,
+            }),
           },
         },
         { provide: MediaService, useValue: { findOne: jest.fn() } },
@@ -283,6 +368,9 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
         ExecutionOrderTitularErasureParticipant,
         OperationalTaskTitularErasureParticipant,
         MediaTitularErasureParticipant,
+        BillingTitularErasureParticipant,
+        BillingStandingReadAdapter,
+        { provide: IBillingStandingReadPort, useExisting: BillingStandingReadAdapter },
         CrmPersonalDataErasureAdapter,
         { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
         {
@@ -296,6 +384,7 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
             MediaService,
             EffectivePermissionsService,
             IPersonalDataErasurePort,
+            IBillingStandingReadPort,
           ],
           useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
             new PrivacyRequestsService(...deps),
@@ -319,7 +408,96 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
 
   it('previsualiza y resuelve la supresión de un prospecto con trabajo de campo', async () => {
     await seedProspectWithFieldWork();
+    await insertOtherSubscriber();
+    const subscriberEventId = await insertLifecycleChange({
+      subscriberId: ids.subscriber,
+      entityType: 'SUBSCRIBER',
+      entityId: ids.subscriber,
+      note: 'synthetic subscriber lifecycle note',
+    });
+    const contractEventId = await insertLifecycleChange({
+      subscriberId: ids.subscriber,
+      entityType: 'CONTRACT',
+      entityId: ids.contract,
+      note: 'synthetic contract lifecycle note',
+    });
+    const otherEventId = await insertLifecycleChange({
+      subscriberId: ids.otherSubscriber,
+      entityType: 'SUBSCRIBER',
+      entityId: ids.otherSubscriber,
+      note: 'synthetic unrelated lifecycle note',
+    });
     const requestId = await createVerifiedSuppression();
+    const cancellationKey = `privacy-erasure-it-${randomUUID()}`;
+    const lifecycleService = new SubscriberLifecycleService(
+      dataSource,
+      auditService as never,
+      { findOpenContractIds: jest.fn().mockResolvedValue([]) } as never,
+      { hasOpenWithdrawalOrders: jest.fn().mockResolvedValue(false) } as never,
+      configService,
+    );
+    const cancellation = await inTenant(() =>
+      lifecycleService.cancelSubscriber(
+        ids.subscriber,
+        {
+          targetStatus: SubscriberStatus.CANCELLED,
+          reasonCode: 'SOLICITUD_TITULAR',
+          note: 'synthetic idempotent lifecycle note',
+        },
+        actorId,
+        cancellationKey,
+      ),
+    );
+    expect(cancellation.status).toBe(SubscriberStatus.CANCELLED);
+
+    let controllerAnonymizedAt: Date | null = null;
+    const subscriberReadModel = {
+      findById: jest.fn().mockImplementation(async () => ({
+        id: ids.subscriber,
+        partyId: ids.party,
+        anonymizedAt: controllerAnonymizedAt,
+      })),
+    };
+    const privacyMarksReadPort = {
+      activeMarks: jest.fn().mockResolvedValue({ [ids.party]: ['DATOS_BLOQUEADOS'] }),
+      partyIdsWithActiveMark: jest.fn().mockResolvedValue([ids.party]),
+    };
+    const subscribersController = new SubscribersController(
+      subscriberReadModel as never,
+      auditService as never,
+      effectivePermissionsService as never,
+      lifecycleService,
+      privacyMarksReadPort as never,
+      dataSource,
+    );
+    auditService.log.mockClear();
+    auditService.logWithin.mockClear();
+    effectivePermissionsService.getEffectivePermissionsForUser.mockResolvedValueOnce([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    await expect(
+      inTenant(() =>
+        subscribersController.lifecycleChanges(ids.subscriber, { sub: actorId } as never),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: 'Subscriber', entityId: ids.subscriber }),
+    );
+    effectivePermissionsService.getEffectivePermissionsForUser.mockResolvedValueOnce([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      AccessPermissionKey.PRIVACY_READ,
+    ]);
+    const blockedHistory = await inTenant(() =>
+      subscribersController.lifecycleChanges(ids.subscriber, { sub: actorId } as never),
+    );
+    expect(blockedHistory.data.map((event) => event.note)).toEqual(
+      expect.arrayContaining([
+        'synthetic subscriber lifecycle note',
+        'synthetic contract lifecycle note',
+      ]),
+    );
+    expect(auditService.logWithin).toHaveBeenCalled();
 
     const preview = await inTenant(() => service.erasurePreview(requestId));
 
@@ -339,18 +517,89 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
       ]),
     );
 
-    await inTenant(() =>
+    const noteBeforeRejectedSuppression = (await dataSource.query(
+      `SELECT note_encrypted FROM ${q}.crm_lifecycle_changes WHERE id = $1`,
+      [subscriberEventId],
+    )) as Array<{ note_encrypted: string | null }>;
+    const rejectedSuppression = await inTenant(() =>
       service.transition(
         requestId,
         'resolve',
         {
-          responseText: 'Supresión aplicada en la integración.',
+          responseText: 'Respuesta sintética de rechazo.',
           responseChannel: 'EMAIL',
-          erasure: { confirm: true, expedienteIds: preview.candidateExpedienteIds },
+          erasure: { confirm: true, expedienteIds: [randomUUID()] },
         },
         actorId,
       ),
-    );
+    ).catch((error: unknown) => error);
+    expect(rejectedSuppression).toBeInstanceOf(ConflictException);
+    expect((rejectedSuppression as ConflictException).getResponse()).toMatchObject({
+      code: 'PRIVACY_ERASURE_CANDIDATES_CHANGED',
+    });
+    expect(
+      await dataSource.query(
+        `SELECT note_encrypted FROM ${q}.crm_lifecycle_changes WHERE id = $1`,
+        [subscriberEventId],
+      ),
+    ).toEqual(noteBeforeRejectedSuppression);
+
+    const writer = dataSource.createQueryRunner();
+    let suppression: Promise<unknown> | undefined;
+    let beforeSnapshot: unknown;
+    try {
+      await writer.connect();
+      await writer.startTransaction();
+      await writer.query(`SET LOCAL search_path TO ${q}`);
+      await writer.query(`SELECT id FROM subscribers WHERE id = $1 AND tenant_id = $2 FOR UPDATE`, [
+        ids.subscriber,
+        tenantId,
+      ]);
+      suppression = inTenant(() =>
+        service.transition(
+          requestId,
+          'resolve',
+          {
+            responseText: 'Supresión aplicada en la integración.',
+            responseChannel: 'EMAIL',
+            erasure: { confirm: true, expedienteIds: preview.candidateExpedienteIds },
+          },
+          actorId,
+        ),
+      );
+      await waitForSubscriberLockWait(dataSource);
+      const concurrentEventId = randomUUID();
+      await writer.query(
+        `INSERT INTO crm_lifecycle_changes
+          (id, tenant_id, entity_type, entity_id, subscriber_id, from_status, to_status,
+           reason_code, note_encrypted, source, batch_id, actor_id)
+         VALUES ($1, $2, 'SUBSCRIBER', $3, $3, 'ACTIVE', 'CANCELLED',
+           'SOLICITUD_TITULAR', $4, 'MANUAL', $5, $6)`,
+        [
+          concurrentEventId,
+          tenantId,
+          ids.subscriber,
+          encryptAes256Gcm(
+            'synthetic note written while suppression waits',
+            Buffer.from(keyHex, 'hex'),
+          ),
+          randomUUID(),
+          actorId,
+        ],
+      );
+      beforeSnapshot = await writer.query(
+        `SELECT to_jsonb(change_row) - 'note_encrypted' AS event
+           FROM crm_lifecycle_changes AS change_row
+          WHERE subscriber_id = $1 ORDER BY id`,
+        [ids.subscriber],
+      );
+      await writer.commitTransaction();
+      await suppression;
+    } finally {
+      if (writer.isTransactionActive) await writer.rollbackTransaction();
+      if (suppression) await suppression.catch(() => undefined);
+      if (!writer.isReleased) await writer.release();
+    }
 
     const [request] = (await dataSource.query(
       `SELECT status, erased_at IS NOT NULL AS erased, erasure_categories
@@ -362,6 +611,88 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
     expect(request?.erasure_categories).toEqual(
       expect.arrayContaining(['IDENTIFICACION', 'OPERACION_CAMPO']),
     );
+
+    const lifecycleSnapshotAfter = await dataSource.query(
+      `SELECT to_jsonb(change_row) - 'note_encrypted' AS event
+         FROM ${q}.crm_lifecycle_changes AS change_row
+        WHERE subscriber_id = $1 ORDER BY id`,
+      [ids.subscriber],
+    );
+    expect(lifecycleSnapshotAfter).toEqual(beforeSnapshot);
+    const targetLifecycleRows = (await dataSource.query(
+      `SELECT entity_type, note_encrypted FROM ${q}.crm_lifecycle_changes
+        WHERE subscriber_id = $1 ORDER BY id`,
+      [ids.subscriber],
+    )) as Array<{ entity_type: string; note_encrypted: string | null }>;
+    expect(targetLifecycleRows).toHaveLength(4);
+    expect(targetLifecycleRows.map(({ entity_type }) => entity_type)).toEqual(
+      expect.arrayContaining(['SUBSCRIBER', 'CONTRACT']),
+    );
+    expect(targetLifecycleRows.every(({ note_encrypted }) => note_encrypted === null)).toBe(true);
+    expect(
+      await dataSource.query(
+        `SELECT COUNT(*)::int AS total
+           FROM ${q}.crm_lifecycle_changes AS change_row
+           JOIN ${q}.subscribers AS subscriber ON subscriber.id = change_row.subscriber_id
+          WHERE subscriber.anonymized_at IS NOT NULL AND change_row.note_encrypted IS NOT NULL`,
+      ),
+    ).toEqual([{ total: 0 }]);
+    const [otherLifecycleRow] = (await dataSource.query(
+      `SELECT note_encrypted FROM ${q}.crm_lifecycle_changes WHERE id = $1`,
+      [otherEventId],
+    )) as Array<{ note_encrypted: string | null }>;
+    expect(otherLifecycleRow?.note_encrypted).not.toBeNull();
+    expect(decryptAes256Gcm(otherLifecycleRow!.note_encrypted!, Buffer.from(keyHex, 'hex'))).toBe(
+      'synthetic unrelated lifecycle note',
+    );
+
+    controllerAnonymizedAt = new Date();
+    effectivePermissionsService.getEffectivePermissionsForUser.mockResolvedValueOnce([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ]);
+    const anonymizedHistory = await inTenant(() =>
+      subscribersController.lifecycleChanges(ids.subscriber, { sub: actorId } as never),
+    );
+    expect(anonymizedHistory.data).toHaveLength(4);
+    expect(anonymizedHistory.data.every((event) => event.note === null)).toBe(true);
+
+    for (const idempotencyKey of [cancellationKey, `privacy-erasure-after-${randomUUID()}`]) {
+      const rejectedWriter = await inTenant(() =>
+        lifecycleService.cancelSubscriber(
+          ids.subscriber,
+          {
+            targetStatus: SubscriberStatus.CANCELLED,
+            reasonCode: 'SOLICITUD_TITULAR',
+            note: 'synthetic idempotent lifecycle note',
+          },
+          actorId,
+          idempotencyKey,
+        ),
+      ).catch((error: unknown) => error);
+      expect(rejectedWriter).toBeInstanceOf(ConflictException);
+      expect((rejectedWriter as ConflictException).getResponse()).toMatchObject({
+        code: 'PRIVACY_TITULAR_ANONYMIZED',
+      });
+    }
+
+    const cliParity = await anonymizeTitularInTenantSchema(
+      dataSource,
+      schemaName,
+      requestId,
+      [ids.expediente],
+      false,
+      cliKeys,
+      'apply',
+    );
+    expect(cliParity.verification.residualFields).toBe(0);
+    expect(
+      await dataSource.query(
+        `SELECT COUNT(*)::int AS total FROM ${q}.crm_lifecycle_changes
+          WHERE subscriber_id = $1 AND note_encrypted IS NOT NULL`,
+        [ids.subscriber],
+      ),
+    ).toEqual([{ total: 0 }]);
 
     expect(
       await dataSource.query(

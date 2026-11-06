@@ -1,0 +1,321 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
+  ApiConflictResponse,
+  ApiForbiddenResponse,
+  ApiHeader,
+  ApiExtraModels,
+  getSchemaPath,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
+} from '@nestjs/swagger';
+import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
+import { AccessPermissionKey, UserRole } from '@iwana/shared';
+import { z } from 'zod';
+import { ListMetaDto } from '../../../common/pagination';
+import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
+import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
+import { Permissions } from '../../access-control/decorators/permissions.decorator';
+import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
+import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { BillingPaymentsService } from './billing-payments.service';
+
+type AuthenticatedRequest = { user?: JwtPayload };
+
+function actorId(request: AuthenticatedRequest): string {
+  const id = request.user?.sub;
+  if (!id)
+    throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'La sesión no es válida.' });
+  return id;
+}
+
+const PaymentListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+const PAYMENT_RESPONSE_SCHEMA: SchemaObject = {
+  type: 'object',
+  required: ['data'],
+  properties: {
+    data: {
+      type: 'object',
+      required: [
+        'id',
+        'tenantId',
+        'subscriberId',
+        'method',
+        'amount',
+        'paidAt',
+        'idempotencyKey',
+        'status',
+        'createdBy',
+        'createdAt',
+      ],
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        tenantId: { type: 'string', format: 'uuid' },
+        subscriberId: { type: 'string', format: 'uuid' },
+        subscriberDisplayName: { type: 'string', nullable: true },
+        subscriberProtected: { type: 'boolean' },
+        method: {
+          type: 'string',
+          enum: ['EFECTIVO', 'TRANSFERENCIA', 'CONSIGNACION', 'DATAFONO', 'OTRO'],
+        },
+        amount: { type: 'string' },
+        paidAt: { type: 'string', format: 'date' },
+        reference: { type: 'string', nullable: true },
+        note: { type: 'string', nullable: true },
+        idempotencyKey: { type: 'string' },
+        status: { type: 'string', enum: ['REGISTRADO', 'ANULADO'] },
+        voidReasonCode: {
+          type: 'string',
+          enum: ['ERROR_DE_REGISTRO', 'PAGO_RECHAZADO', 'DUPLICADO'],
+          nullable: true,
+        },
+        voidNote: { type: 'string', nullable: true },
+        voidedAt: { type: 'string', format: 'date-time', nullable: true },
+        voidedBy: { type: 'string', format: 'uuid', nullable: true },
+        allocatedAmount: { type: 'string' },
+        unallocatedAmount: { type: 'string' },
+        allocations: { type: 'array', items: { type: 'object' } },
+      },
+    },
+  },
+};
+
+const REGISTER_PAYMENT_REQUEST_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['subscriberId', 'method', 'amount', 'paidAt'],
+  properties: {
+    subscriberId: { type: 'string', format: 'uuid' },
+    method: {
+      type: 'string',
+      enum: ['EFECTIVO', 'TRANSFERENCIA', 'CONSIGNACION', 'DATAFONO', 'OTRO'],
+    },
+    amount: {
+      oneOf: [
+        { type: 'number', minimum: 0.01 },
+        { type: 'string', pattern: '^\\d{1,12}(\\.\\d{1,2})?$' },
+      ],
+    },
+    paidAt: { type: 'string', format: 'date' },
+    reference: { type: 'string', maxLength: 80 },
+    note: { type: 'string', maxLength: 500 },
+    allocations: { type: 'array', items: { type: 'object', required: ['documentId', 'amount'] } },
+  },
+};
+
+const PAYMENT_LIST_RESPONSE_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['data', 'meta'],
+  properties: {
+    data: { type: 'array', items: PAYMENT_RESPONSE_SCHEMA.properties?.['data'] as SchemaObject },
+    meta: { $ref: getSchemaPath(ListMetaDto) },
+  },
+};
+
+const ALLOCATE_CREDIT_REQUEST_SCHEMA: SchemaObject = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['subscriberId', 'allocations'],
+  properties: {
+    subscriberId: { type: 'string', format: 'uuid' },
+    allocations: {
+      type: 'array',
+      minItems: 1,
+      items: { type: 'object', required: ['paymentId', 'documentId', 'amount'] },
+    },
+  },
+};
+
+@ApiTags('billing')
+@ApiExtraModels(ListMetaDto)
+@ApiBearerAuth('access-token')
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Controller('billing')
+export class BillingPaymentsController {
+  constructor(
+    private readonly billingPayments: BillingPaymentsService,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
+  ) {}
+
+  @Post('payments')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_REGISTER)
+  @ApiOperation({ summary: 'Registrar un pago del suscriptor' })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, schema: { type: 'string', maxLength: 80 } })
+  @ApiBody({ schema: REGISTER_PAYMENT_REQUEST_SCHEMA })
+  @ApiCreatedResponse({
+    description: 'Pago registrado o repetición idempotente.',
+    schema: PAYMENT_RESPONSE_SCHEMA,
+  })
+  @ApiBadRequestResponse({ description: 'Falta la cabecera Idempotency-Key.' })
+  @ApiConflictResponse({ description: 'Titular anonimizado o clave idempotente reutilizada.' })
+  @ApiUnprocessableEntityResponse({ description: 'El pago o sus asignaciones no son válidos.' })
+  @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
+  @ApiForbiddenResponse({ description: 'El rol o permiso no permite registrar pagos.' })
+  async register(
+    @Body() body: unknown,
+    @Headers('Idempotency-Key') key: string | undefined,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!key || !key.trim())
+      throw new BadRequestException({
+        code: 'IDEMPOTENCY_KEY_REQUIRED',
+        message: 'La clave de idempotencia es obligatoria.',
+      });
+    return { data: await this.billingPayments.registerPayment(body, key, actorId(request)) };
+  }
+
+  @Get('payments')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_READ)
+  @ApiOperation({ summary: 'Consultar pagos registrados' })
+  @ApiQuery({ name: 'page', required: false, schema: { type: 'integer', minimum: 1 } })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+  })
+  @ApiOkResponse({
+    description: 'Pagos paginados del tenant.',
+    schema: PAYMENT_LIST_RESPONSE_SCHEMA,
+  })
+  @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
+  @ApiForbiddenResponse({ description: 'El rol o permiso no permite consultar pagos.' })
+  @ApiBadRequestResponse({ description: 'La paginación no es válida.' })
+  @ApiResponse({
+    status: 503,
+    description: 'No fue posible auditar el acceso a datos protegidos.',
+  })
+  async list(
+    @Query(new ZodValidationPipe(PaymentListQuerySchema))
+    query: z.infer<typeof PaymentListQuerySchema>,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const actor = actorId(request);
+    const permissions = new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actor),
+    );
+    const grantedBy = permissions.has(AccessPermissionKey.PRIVACY_READ)
+      ? 'PRIVACY_READ'
+      : permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)
+        ? 'CRM_BLOCKED_DATA_READ'
+        : undefined;
+    return this.billingPayments.listPayments(query, {
+      actorId: actor,
+      canSeeBlocked: grantedBy !== undefined,
+      ...(grantedBy ? { grantedBy } : {}),
+    });
+  }
+
+  @Get('payments/:id')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_READ)
+  @ApiOperation({ summary: 'Consultar un pago' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ description: 'Detalle del pago.', schema: PAYMENT_RESPONSE_SCHEMA })
+  @ApiNotFoundResponse({ description: 'No se encontró el pago.' })
+  async get(@Param('id', new ParseUUIDPipe()) id: string) {
+    return { data: await this.billingPayments.getPayment(id) };
+  }
+
+  @Post('payments/:id/allocations')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_REGISTER)
+  @ApiOperation({ summary: 'Aplicar saldo a favor del pago a documentos emitidos' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiBody({ schema: ALLOCATE_CREDIT_REQUEST_SCHEMA })
+  @ApiOkResponse({ description: 'Aplicaciones guardadas.', schema: PAYMENT_RESPONSE_SCHEMA })
+  @ApiConflictResponse({ description: 'El titular está anonimizado o el pago está anulado.' })
+  @ApiUnprocessableEntityResponse({ description: 'La asignación supera el saldo disponible.' })
+  async allocate(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return { data: await this.billingPayments.allocateCredit(id, body, actorId(request)) };
+  }
+
+  @Post('payments/:id/void')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_PAYMENTS_REGISTER)
+  @ApiOperation({ summary: 'Anular un pago registrado' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ description: 'Pago anulado.', schema: PAYMENT_RESPONSE_SCHEMA })
+  @ApiConflictResponse({ description: 'El pago ya está anulado.' })
+  async void(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return { data: await this.billingPayments.voidPayment(id, body, actorId(request)) };
+  }
+
+  @Get('subscribers/:subscriberId/statement')
+  @Roles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SUPPORT, UserRole.SALES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.BILLING_INVOICES_READ)
+  @ApiOperation({ summary: 'Consultar el estado de cuenta consolidado del suscriptor' })
+  @ApiParam({ name: 'subscriberId', format: 'uuid' })
+  @ApiResponse({
+    status: 503,
+    description: 'No fue posible verificar o auditar el acceso a datos protegidos.',
+  })
+  @ApiNotFoundResponse({ description: 'No se encontró el suscriptor.' })
+  async statement(
+    @Param('subscriberId', new ParseUUIDPipe()) subscriberId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const actor = actorId(request);
+    const permissions = new Set(
+      await this.effectivePermissionsService.getEffectivePermissionsForUser(actor),
+    );
+    const grantedBy = permissions.has(AccessPermissionKey.PRIVACY_READ)
+      ? 'PRIVACY_READ'
+      : permissions.has(AccessPermissionKey.CRM_BLOCKED_DATA_READ)
+        ? 'CRM_BLOCKED_DATA_READ'
+        : undefined;
+    return {
+      data: await this.billingPayments.statementForSubscriber(subscriberId, actor, {
+        canSeeBlocked: grantedBy !== undefined,
+        ...(grantedBy ? { grantedBy } : {}),
+      }),
+    };
+  }
+}

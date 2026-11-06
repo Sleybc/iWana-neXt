@@ -134,7 +134,7 @@ describeWithDb('Ciclo de vida CRM: PostgreSQL real', () => {
     auditFailureAtContract = null;
     contractAuditCount = 0;
     await dataSource.query(
-      `TRUNCATE ${qualified('crm_lifecycle_changes')}, ${qualified('contracts')}, ${qualified('subscribers')}`,
+      `TRUNCATE ${qualified('crm_lifecycle_changes')}, ${qualified('contracts')}, ${qualified('subscribers')} CASCADE`,
     );
     lifecycleService = new SubscriberLifecycleService(
       dataSource,

@@ -101,6 +101,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     plan: jest.fn(),
     anonymize: jest.fn(),
   };
+  const billingStandingPort = { lastFiscalDocumentAt: jest.fn() };
   let service: PrivacyRequestsService;
 
   beforeEach(() => {
@@ -127,6 +128,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       counts: {},
     });
     erasurePort.anonymize.mockReset().mockResolvedValue({ categories: [], changedRows: 0 });
+    billingStandingPort.lastFiscalDocumentAt.mockReset().mockResolvedValue(null);
     jest
       .spyOn(tenantQuery, 'withPrivacyTenant')
       .mockImplementation(async (_source, operation) => operation(manager as never));
@@ -148,6 +150,7 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       mediaService as unknown as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
       erasurePort as never,
+      billingStandingPort,
     );
     jest.spyOn(service, 'get').mockResolvedValue({} as never);
   });
@@ -658,6 +661,133 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     await expect(service.transition(requestId, 'resolve', erasureBody, actorId)).rejects.toThrow(
       'no procedencia por deber de conservación',
     );
+  });
+
+  it('no evalúa el deber de conservación sin titular identificado', async () => {
+    manager.query.mockResolvedValueOnce([
+      requestRow({
+        status: 'EN_TRAMITE',
+        right: 'SUPRIMIR',
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+      }),
+    ]);
+
+    await expect(
+      service.transition(requestId, 'reject', { legalBasis: 'DEBER_LEGAL_CONSERVACION' }, actorId),
+    ).rejects.toThrow('sin identificar al titular');
+    expect(standingPort.standing).not.toHaveBeenCalled();
+  });
+
+  it('sostiene el deber de conservación por la retención fiscal de los soportes', async () => {
+    manager.query
+      .mockResolvedValueOnce([
+        requestRow({
+          status: 'EN_TRAMITE',
+          right: 'SUPRIMIR',
+          party_id: partyId,
+          identity_verified_at: '2026-10-14T15:00:00.000Z',
+        }),
+      ])
+      .mockResolvedValueOnce([{ years: 10 }]);
+    standingPort.standing.mockResolvedValueOnce({
+      openContractIds: [],
+      lastTerminatedAt: null,
+      subscriberIds: [],
+    });
+    billingStandingPort.lastFiscalDocumentAt.mockResolvedValueOnce('2020-01-01');
+
+    await expect(
+      service.transition(requestId, 'reject', { legalBasis: 'DEBER_CONTRACTUAL' }, actorId),
+    ).rejects.toThrow('El fundamento debe corresponder al deber de conservación vigente.');
+    expect(billingStandingPort.lastFiscalDocumentAt).toHaveBeenCalledWith([], {
+      manager,
+    });
+  });
+
+  it('sostiene el deber de conservación por la retención del contrato terminado', async () => {
+    manager.query
+      .mockResolvedValueOnce([
+        requestRow({
+          status: 'EN_TRAMITE',
+          right: 'REVOCAR',
+          purpose: 'TRATAMIENTO_CONTRACTUAL',
+          party_id: partyId,
+          identity_verified_at: '2026-10-14T15:00:00.000Z',
+        }),
+      ])
+      .mockResolvedValueOnce([{ years: 10 }]);
+    standingPort.standing.mockResolvedValueOnce({
+      openContractIds: [],
+      lastTerminatedAt: '2020-01-01',
+      subscriberIds: [],
+    });
+
+    await expect(
+      service.transition(requestId, 'reject', { legalBasis: 'DEBER_CONTRACTUAL' }, actorId),
+    ).rejects.toThrow('El fundamento debe corresponder al deber de conservación vigente.');
+  });
+
+  it('falla si falta la política de retención de la categoría aplicable', async () => {
+    manager.query
+      .mockResolvedValueOnce([
+        requestRow({
+          status: 'EN_TRAMITE',
+          right: 'SUPRIMIR',
+          party_id: partyId,
+          identity_verified_at: '2026-10-14T15:00:00.000Z',
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+    standingPort.standing.mockResolvedValueOnce({
+      openContractIds: [],
+      lastTerminatedAt: null,
+      subscriberIds: [],
+    });
+    billingStandingPort.lastFiscalDocumentAt.mockResolvedValueOnce('2020-01-01');
+
+    await expect(
+      service.transition(requestId, 'reject', { legalBasis: 'DEBER_LEGAL_CONSERVACION' }, actorId),
+    ).rejects.toThrow('Missing retention policy: FACTURACION_SOPORTES_CONTABLES');
+  });
+
+  it('falla si el puerto de estado de cuenta no está registrado', async () => {
+    const withoutBillingPort = new PrivacyRequestsService(
+      {} as DataSource,
+      {
+        getOrThrow: (key: string) => {
+          if (key === 'MFA_ENCRYPTION_KEY' || key === 'PII_HASH_KEY') return keyHex;
+          throw new Error('Clave de prueba no configurada.');
+        },
+      } as ConfigService,
+      auditService as unknown as AuditService,
+      impersonationPort as unknown as IContractImpersonationPort,
+      standingPort as unknown as IContractStandingReadPort,
+      mediaService as unknown as MediaService,
+      effectivePermissionsService as unknown as EffectivePermissionsService,
+      erasurePort as never,
+    );
+    manager.query.mockResolvedValueOnce([
+      requestRow({
+        status: 'EN_TRAMITE',
+        right: 'SUPRIMIR',
+        party_id: partyId,
+        identity_verified_at: '2026-10-14T15:00:00.000Z',
+      }),
+    ]);
+    standingPort.standing.mockResolvedValueOnce({
+      openContractIds: [],
+      lastTerminatedAt: null,
+      subscriberIds: [],
+    });
+
+    await expect(
+      withoutBillingPort.transition(
+        requestId,
+        'reject',
+        { legalBasis: 'DEBER_LEGAL_CONSERVACION' },
+        actorId,
+      ),
+    ).rejects.toThrow('Billing standing port is not registered');
   });
 
   it('registra el evento RESOLVE y la auditoría al completar una supresión', async () => {

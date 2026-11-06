@@ -1,3 +1,4 @@
+import { BillingPrivacyModule } from '../billing/privacy/billing-privacy.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -58,6 +59,7 @@ import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
     AccessControlModule,
     AuditModule,
     MediaModule,
+    BillingPrivacyModule,
     forwardRef(() => CrmPrivacyAdaptersModule),
     BullModule.registerQueue({ name: PRIVACY_DUE_ALERTS_QUEUE }),
   ],

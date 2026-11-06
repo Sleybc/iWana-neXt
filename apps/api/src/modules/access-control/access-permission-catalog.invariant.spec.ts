@@ -17,6 +17,62 @@ import {
 
 const MODULES_ROOT = join(__dirname, '..');
 
+describe('matriz de permisos de Facturación de HLD §7', () => {
+  const readPermissions = [
+    AccessPermissionKey.BILLING_INVOICES_READ,
+    AccessPermissionKey.BILLING_PAYMENTS_READ,
+  ];
+  const expected: Partial<Record<UserRole, AccessPermissionKey[]>> = {
+    [UserRole.ADMIN]: [
+      ...readPermissions,
+      AccessPermissionKey.BILLING_INVOICES_MANAGE,
+      AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+      AccessPermissionKey.BILLING_POLICY_MANAGE,
+    ],
+    [UserRole.ACCOUNTANT]: [
+      ...readPermissions,
+      AccessPermissionKey.BILLING_INVOICES_MANAGE,
+      AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+    ],
+    [UserRole.SUPPORT]: readPermissions,
+    [UserRole.SALES]: readPermissions,
+    [UserRole.AUDITOR]: readPermissions,
+  };
+
+  function expectBillingPermissions(matrix: Record<UserRole, AccessPermissionKey[]>): void {
+    for (const role of Object.values(UserRole)) {
+      const actual = matrix[role].filter((key) => key.startsWith('billing.')).sort();
+      expect({ role, permissions: actual }).toEqual({
+        role,
+        permissions: [...(expected[role] ?? [])].sort(),
+      });
+    }
+  }
+
+  describe.each([
+    ['V1', ROLE_ASSIGNABLE_PERMISSION_MATRIX],
+    ['V2', ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2],
+  ] as const)('%s', (_version, matrix) => {
+    it('asigna exactamente los permisos de Facturación previstos para cada rol', () => {
+      expectBillingPermissions(matrix);
+    });
+
+    it('detecta si una copia de la matriz concede registrar pagos a Soporte', () => {
+      const modifiedMatrix = {
+        ...matrix,
+        [UserRole.SUPPORT]: [
+          ...matrix[UserRole.SUPPORT],
+          AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+        ],
+      };
+
+      expect(() => expectBillingPermissions(modifiedMatrix)).toThrow(
+        AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+      );
+    });
+  });
+});
+
 interface HandlerContract {
   file: string;
   roles: UserRole[];
@@ -260,8 +316,8 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 43 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(43);
+  it('ADMIN V2 contiene 48 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(48);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
@@ -371,6 +427,7 @@ describe('invariante Fase 2 — doble guard y excepciones D7', () => {
     AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
     AccessPermissionKey.BILLING_INVOICES_READ,
     AccessPermissionKey.BILLING_INVOICES_MANAGE,
+    AccessPermissionKey.BILLING_POLICY_MANAGE,
   ];
 
   it('todo handler con @Permissions declara también @Roles', () => {
@@ -406,10 +463,18 @@ describe('invariante Fase 2 — doble guard y excepciones D7', () => {
     expect(orphans).toEqual([]);
   });
 
-  it('billing.* no aparece en ningún @Permissions', () => {
+  it('Billing usa los permisos de documentos, pagos y política de HLD §6.5', () => {
     const used = [...new Set(handlers.flatMap((h) => h.permissions))];
-    const billingUsed = used.filter((k) => billingKeys.includes(k));
-    expect(billingUsed).toEqual([]);
+    const billingUsed = used.filter((k) => billingKeys.includes(k)).sort();
+    expect(billingUsed).toEqual(
+      [
+        AccessPermissionKey.BILLING_INVOICES_READ,
+        AccessPermissionKey.BILLING_INVOICES_MANAGE,
+        AccessPermissionKey.BILLING_POLICY_MANAGE,
+        AccessPermissionKey.BILLING_PAYMENTS_READ,
+        AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
+      ].sort(),
+    );
   });
 
   it('K3a: subscriber-tax.controller conserva roles y exige la matriz exacta de permisos', () => {

@@ -35,3 +35,10 @@ export interface ProvisioningJobPayload {
    */
   adminEmail: string;
 }
+
+/** Payload del job diario repetible de generación de facturación por tenant (HLD §4, AGENTS.md). */
+export interface BillingGenerationJobPayload {
+  tenantId: string;
+  schemaName: string;
+  localDate: string;
+}

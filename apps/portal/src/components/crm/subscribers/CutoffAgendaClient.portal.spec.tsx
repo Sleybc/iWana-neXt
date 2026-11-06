@@ -46,10 +46,39 @@ describe('CutoffAgendaClient', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('2 servicios activos sin ciclo de facturación')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'El sistema todavía no registra pagos: esta es la lista de servicios con corte programado',
-      ),
+      screen.getByText('Consulta el estado de pago de los servicios con corte programado.'),
     ).toBeInTheDocument();
+  });
+
+  it('presenta pago parcial con sus importes accesibles y distingue un estado ausente', async () => {
+    const item = {
+      contractId: 'contract-fixture',
+      subscriberId: 'subscriber-fixture',
+      subscriberDisplayName: 'Suscriptor de prueba',
+      planName: null,
+      billingCycleDay: 15,
+      cutoffDate: '2026-11-15',
+    };
+    jest.spyOn(billingCyclesApi, 'cutoffAgenda').mockResolvedValue({
+      ...EMPTY_AGENDA,
+      items: [
+        {
+          ...item,
+          paymentState: 'PARCIAL',
+          paymentPaidAmount: '50.00',
+          paymentTotalAmount: '100.00',
+        },
+        { ...item, contractId: 'legacy-contract-fixture' },
+      ],
+      meta: { ...EMPTY_AGENDA.meta, total: 2, totalPages: 1 },
+    });
+
+    render(<CutoffAgendaClient />);
+
+    expect(await screen.findByRole('columnheader', { name: 'Estado de pago' })).toBeInTheDocument();
+    expect(screen.getAllByText('Pago parcial')).toHaveLength(2);
+    expect(screen.getAllByText(/Pagado.+50.+de.+100/)).toHaveLength(2);
+    expect(screen.getAllByText('No disponible')).toHaveLength(2);
   });
 
   it('muestra un error recuperable si falla la carga de la agenda', async () => {
@@ -67,5 +96,30 @@ describe('CutoffAgendaClient', () => {
     expect(
       await screen.findByText('No hay servicios con corte programado para esta fecha'),
     ).toBeInTheDocument();
+  });
+
+  it('presenta la píldora Sin documento para contratos sin periodo vigente', async () => {
+    jest.spyOn(billingCyclesApi, 'cutoffAgenda').mockResolvedValue({
+      ...EMPTY_AGENDA,
+      items: [
+        {
+          contractId: 'contract-sin-documento',
+          subscriberId: 'subscriber-fixture',
+          subscriberDisplayName: 'Suscriptor de prueba',
+          planName: null,
+          billingCycleDay: 15,
+          cutoffDate: '2026-11-15',
+          paymentState: 'SIN_DOCUMENTO',
+          paymentPaidAmount: null,
+          paymentTotalAmount: null,
+        },
+      ],
+      meta: { ...EMPTY_AGENDA.meta, total: 1, totalPages: 1 },
+    });
+
+    render(<CutoffAgendaClient />);
+
+    const pills = await screen.findAllByText('Sin documento');
+    expect(pills.length).toBeGreaterThanOrEqual(1);
   });
 });

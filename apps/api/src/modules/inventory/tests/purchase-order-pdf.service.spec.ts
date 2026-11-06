@@ -12,7 +12,7 @@ import {
   runInTenantSchema,
 } from '@iwana/db';
 import { PurchaseOrderPdfService } from '../services/purchase-order-pdf.service';
-import { PDF_BRAND_TOKENS } from '../services/pdf-branding';
+import { PDF_BRAND_TOKENS } from '../../../common/pdf/pdf-branding';
 import { PurchasingService } from '../services/purchasing.service';
 import { SupplierPartyPort } from '../ports/supplier-party.port';
 import { TenantContactPort } from '../ports/tenant-contact.port';

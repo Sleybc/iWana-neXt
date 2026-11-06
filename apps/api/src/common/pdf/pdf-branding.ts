@@ -50,8 +50,8 @@ export function toAsciiMetadata(value: string): string {
 }
 
 export function resolveApiAssetsRoot(): string {
-  // Desde src|dist/modules/inventory/services → apps/api
-  return join(__dirname, '../../../../assets');
+  // Desde src|dist/common/pdf → apps/api
+  return join(__dirname, '../../../assets');
 }
 
 function requireAsset(relativePath: string): string {

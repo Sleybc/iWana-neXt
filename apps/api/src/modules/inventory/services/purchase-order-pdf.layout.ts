@@ -7,7 +7,7 @@ import {
   drawBrandHeader,
   registerBrandFonts,
   toAsciiMetadata,
-} from './pdf-branding';
+} from '../../../common/pdf/pdf-branding';
 
 /**
  * Layout del PDF de orden de compra (MOD12 Compras, Fase 31): documento que el

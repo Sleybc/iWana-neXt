@@ -205,7 +205,7 @@ Lo revisa `prod-ux` con `system-vocabulary-review`. El nombre del documento depe
 | D-BIL-3 | Vencimiento en modo día fijo | (a) día anterior al corte · (b) mismo día del corte | (a): coincide con «no registre pago → corte el día 15» de ADR-102 |  |
 | D-BIL-4 | Prorrateo por defecto | Días reales o mes de 30; primer periodo aparte o junto al siguiente | Días reales y **aparte**: con cobro anticipado se cobra lo usado antes de prestar el periodo siguiente |  |
 | D-BIL-5 | Generación y aprobación por defecto | (a) generación automática apagada y aprobación en borrador · (b) ambas automáticas | (a) en la Fase 01: el ISP revisa antes de emitir; se enciende por ISP en G7 |  |
-| D-BIL-6 | Adicionales del contrato | (a) excluir de la Fase 01 · (b) ampliar `CommercialCatalogReadPort` con precio | (b) si MOD06 lo asume en la misma ola; si no, (a) con aviso visible |  |
+| D-BIL-6 | Adicionales del contrato | (a) excluir de la Fase 01 · (b) ampliar `CommercialCatalogReadPort` con precio | (b) si MOD06 lo asume en la misma ola; si no, (a) con aviso visible | **(a)**, CTO 2026-11-04 (HLD v1.1, RS-12) |
 | D-BIL-7 | Contratos activos sin precio congelado | (a) resolver el precio vigente por puerto al generar · (b) backfill único del snapshot | (b) por migración con informe de lo corregido, más (a) como verificación |  |
 | D-BIL-8 | Redondeo | (a) pesos enteros por línea · (b) dos decimales | **Requiere concepto del contador.** Provisional: (b) en base de datos y (a) solo en la presentación |  |
 | D-BIL-9 | Traspaso de la tabla `crm_billing_cycles` | (a) se queda en CRM y Billing la lee por contrato · (b) se mueve a Billing en esta fase | (a): menos riesgo; el traspaso, en una fase posterior |  |

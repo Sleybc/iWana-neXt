@@ -173,18 +173,13 @@ const PII_COLUMNS_WITHOUT_SUFFIX: readonly string[] = ['party.document_number'];
 const PII_TABLES_WITHOUT_MIGRATION: readonly string[] = ['potential_leads', 'subscriber_contacts'];
 
 /**
- * Columnas cuyo objetivo llega en un bloque propio: MOD14 lo añade en B2 (RS-9).
- * Al entrar al inventario, la prueba de pendientes obliga a retirarlas de aquí.
- */
-const PII_COLUMNS_PENDING_TARGET: readonly string[] = [
-  'billing_documents.buyer_document_encrypted',
-];
-
-/**
  * Cada archivo de producción que obtiene la clave PII y las columnas que escribe con ella.
  * Atrapa lo que el sufijo no ve (`party.document_number`). Vacío = solo descifra.
  */
 const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
+  'apps/api/src/modules/billing/documents/billing-documents.service.ts': [
+    'billing_documents.buyer_document_encrypted',
+  ],
   'apps/api/src/cli/anonymize-titular.ts': [
     'expediente_records.document_number_encrypted',
     'subscribers.email_encrypted',
@@ -273,7 +268,6 @@ function findUninventoriedColumns(
 ): string[] {
   return [...new Set(columns)]
     .filter((column) => !inventory.has(column))
-    .filter((column) => !PII_COLUMNS_PENDING_TARGET.includes(column))
     .filter((column) => !PII_TABLES_WITHOUT_MIGRATION.includes(column.split('.')[0] ?? ''))
     .sort();
 }
@@ -335,10 +329,6 @@ describe('reencrypt-aes inventory versus registered migrations', () => {
       expect(findUninventoriedColumns(Object.values(PII_KEY_CONSUMERS).flat(), inventory)).toEqual(
         [],
       );
-    });
-
-    it('una columna pendiente deja de serlo al entrar al inventario', () => {
-      expect(PII_COLUMNS_PENDING_TARGET.filter((column) => inventory.has(column))).toEqual([]);
     });
 
     it('las tablas excluidas siguen sin migración', () => {

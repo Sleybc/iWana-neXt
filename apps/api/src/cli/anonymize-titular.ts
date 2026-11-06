@@ -1,3 +1,4 @@
+import { BillingTitularErasureParticipant } from '../modules/billing/privacy/billing-titular-erasure.participant';
 /**
  * Anonimización asistida de un titular, limitada al alcance aprobado en ADR-094.
  * Dry-run por defecto; nunca imprime valores personales, ciphertext ni HMAC.
@@ -5,7 +6,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ConfigService } from '@nestjs/config';
-import { AppDataSource, isValidSchemaName, runInTenantSchema } from '@iwana/db';
+import { AppDataSource, isValidSchemaName, runInTenantSchema, TenantContext } from '@iwana/db';
 import type { DataSource, QueryRunner } from 'typeorm';
 import {
   decryptAes256Gcm,
@@ -1063,6 +1064,7 @@ async function anonymizeTitularInTransaction(
     new ExecutionOrderTitularErasureParticipant(config),
     new OperationalTaskTitularErasureParticipant(config),
     new MediaTitularErasureParticipant(),
+    new BillingTitularErasureParticipant(),
   );
   const scope = await adapter.resolveCliScope(
     {
@@ -1177,6 +1179,21 @@ async function anonymizeTitularInTransaction(
 }
 
 /** Ejecuta dry-run o apply en una transacción con SET LOCAL search_path. */
+async function runWithCliTenant<T>(
+  queryRunner: QueryRunner,
+  schemaName: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const rows = (await queryRunner.query(
+    'SELECT id::text AS id, slug FROM public.tenants WHERE schema_name = $1',
+    [schemaName],
+  )) as Array<{ id: string; slug: string }>;
+  const tenant = rows[0];
+  if (!tenant)
+    throw new AnonymizeTitularCliError('Tenant no encontrado para el schema solicitado.');
+  return TenantContext.run({ tenantId: tenant.id, tenantSlug: tenant.slug, schemaName }, operation);
+}
+
 export async function anonymizeTitularInTenantSchema(
   dataSource: DataSource,
   schemaName: string,
@@ -1191,14 +1208,16 @@ export async function anonymizeTitularInTenantSchema(
     throw new AnonymizeTitularCliError('Solicitud o expediente con UUID inválido.');
   }
   return runInTenantSchema(dataSource, schemaName, (queryRunner) =>
-    anonymizeTitularInTransaction(
-      queryRunner,
-      schemaName,
-      requestId,
-      [...new Set(expedienteIds.map((id) => id.toLowerCase()))],
-      confirmUnmatched,
-      mode,
-      keys,
+    runWithCliTenant(queryRunner, schemaName, () =>
+      anonymizeTitularInTransaction(
+        queryRunner,
+        schemaName,
+        requestId,
+        [...new Set(expedienteIds.map((id) => id.toLowerCase()))],
+        confirmUnmatched,
+        mode,
+        keys,
+      ),
     ),
   );
 }
@@ -1227,6 +1246,7 @@ function createErasureAdapter(config: ConfigService): CrmPersonalDataErasureAdap
     new ExecutionOrderTitularErasureParticipant(config),
     new OperationalTaskTitularErasureParticipant(config),
     new MediaTitularErasureParticipant(),
+    new BillingTitularErasureParticipant(),
   );
 }
 
@@ -1387,7 +1407,9 @@ export async function verifyAnonymizedTenant(
 ): Promise<AnonymizedTenantVerificationReport> {
   if (!isValidSchemaName(schemaName)) throw new AnonymizeTitularCliError('Schema tenant inválido.');
   return runInTenantSchema(dataSource, schemaName, (queryRunner) =>
-    verifyAnonymizedTenantInTransaction(queryRunner, schemaName, keys),
+    runWithCliTenant(queryRunner, schemaName, () =>
+      verifyAnonymizedTenantInTransaction(queryRunner, schemaName, keys),
+    ),
   );
 }
 
