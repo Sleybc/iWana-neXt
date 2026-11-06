@@ -129,6 +129,7 @@ describe('ContractsService.changePlan', () => {
       'tenant_plan_test',
       'plan-new',
       CustomerSegment.SOHO,
+      expect.objectContaining({ manager: expect.anything() }),
     );
     expect(manager.findOne).toHaveBeenCalledWith(
       Contract,
@@ -156,6 +157,7 @@ describe('ContractsService.changePlan', () => {
       'tenant_plan_test',
       'plan-new',
       CustomerSegment.CORPORATE,
+      expect.objectContaining({ manager: expect.anything() }),
     );
     expect(catalog.getPlanById).toHaveBeenCalledTimes(1);
     expect(vat.resolve).toHaveBeenCalledWith(

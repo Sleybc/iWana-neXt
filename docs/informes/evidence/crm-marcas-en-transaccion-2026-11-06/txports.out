@@ -1,0 +1,96 @@
+assurance/services/tickets.service.ts | 625 | transitionStatus | directo-conManager | this.fieldServiceWorkPort.cancelActiveForTicket
+assurance/services/tickets.service.ts | 708 | requestFieldService | directo-SINmanager | this.fieldServicePort.requestFieldService
+billing/payments/billing-payments.service.ts | 232 | registerPayment | directo-conManager | this.contractReadPort.lockTitularForBillingWrite
+billing/payments/billing-payments.service.ts | 334 | allocateCredit | directo-conManager | this.contractReadPort.lockTitularForBillingWrite
+crm/contracts/contracts.service.ts | 177 | create | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 184 | create | via requireContractualAuthorization | this.privacyAuthorizationReadPort.hasActive
+crm/contracts/contracts.service.ts | 278 | createFromExpediente | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 285 | createFromExpediente | via requireContractualAuthorization | this.privacyAuthorizationReadPort.hasActive
+crm/contracts/contracts.service.ts | 599 | getCutoffAgenda | directo-SINmanager | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 853 | update | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 964 | changePlan | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 994 | changePlan | directo-SINmanager | this.commercialCatalogPort.getPlanById
+crm/contracts/contracts.service.ts | 1013 | changePlan | directo-SINmanager | this.commercialCatalogPort.createSnapshot
+crm/contracts/contracts.service.ts | 1021 | changePlan | directo-SINmanager | this.commercialCatalogPort.getPlanById
+crm/contracts/contracts.service.ts | 1053 | changePlan | via _resolveVatSnapshot | this.commercialCatalogPort.getPlanById
+crm/contracts/contracts.service.ts | 1100 | updateServicePoint | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1114 | updateServicePoint | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1137 | updateServicePoint | via _resolveVatSnapshot | this.commercialCatalogPort.getPlanById
+crm/contracts/contracts.service.ts | 1175 | uploadStratumEvidence | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1211 | uploadStratumEvidence | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1229 | uploadStratumEvidence | via _resolveVatSnapshot | this.commercialCatalogPort.getPlanById
+crm/contracts/contracts.service.ts | 1260 | removeStratumEvidence | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1284 | removeStratumEvidence | via _resolveVatSnapshot | this.commercialCatalogPort.getPlanById
+crm/contracts/contracts.service.ts | 1461 | remove | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1633 | _transition | via assertSubscriberNotBlocked | this.privacyMarksReadPort.activeMarks
+crm/contracts/contracts.service.ts | 1723 | _transition | via _resolveVatSnapshot | this.commercialCatalogPort.getPlanById
+crm/reviews/activation.service.ts | 45 | closeSuccess | directo-SINmanager | this.inventoryAssignmentPort.registerAssignment
+crm/reviews/activation.service.ts | 70 | closeSuccess | directo-SINmanager | this.billingActivationPort.activate
+crm/reviews/activation.service.ts | 76 | closeSuccess | directo-SINmanager | this.provisioningActivationPort.activate
+crm/reviews/review-coordination.service.ts | 33 | sendToReview | directo-SINmanager | this.executionPolicyReadPort.resolvePolicy
+crm/reviews/review-coordination.service.ts | 34 | sendToReview | directo-SINmanager | this.expansionRequestPort.createRequest
+crm/reviews/review-coordination.service.ts | 77 | applyReviewDecision | directo-SINmanager | this.executionPolicyReadPort.resolvePolicy
+crm/subscribers/subscriber-tax-profile.service.ts | 88 | getOrCreateProfile | via _suggestNonVatApplications | this.taxApplicationPort.resolve,this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 96 | getOrCreateProfile | via _toSnapshot | this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 129 | saveAssignments | directo-SINmanager | this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 199 | saveAssignments | via _toSnapshot | this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 263 | updateAssignment | via _toSnapshot | this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 289 | suggestVatForSubscriber | via _suggestNonVatApplications | this.taxApplicationPort.resolve,this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 295 | suggestVatForSubscriber | via _toSnapshot | this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 378 | confirmProfile | via _toSnapshot | this.taxCatalogPort.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 409 | confirmProfile | via _toSnapshot | this.taxCatalogPort.findById
+crm/subscribers/subscribers.service.ts | 563 | create | directo-conManager | this.partyWritePort.ensurePartyWithRole
+crm/subscribers/subscribers.service.ts | 604 | create | directo-conManager | this.partyWritePort.ensurePartyWithRole
+crm/subscribers/subscribers.service.ts | 639 | create | via findConsentLegalText | this.privacyLegalTextReadPort.findByVersion
+crm/subscribers/subscribers.service.ts | 1173 | update | directo-conManager | this.partyWritePort.ensurePartyWithRole
+crm/subscribers/subscribers.service.ts | 1833 | loadSubscriberQuotes | directo-conManager | quoteReadPort.findForSubscriber
+inventory/services/inventory-item.service.ts | 1213 | listCatalogOptions | via resolveSupplierNames | this.supplierPartyPort.getSupplierSummary
+inventory/services/purchasing-query.service.ts | 499 | getRequestDetail | directo-SINmanager | this.supplierPartyPort.getSupplierSummariesBatch
+inventory/services/rfq.service.ts | 157 | invite | directo-SINmanager | this.supplierPartyPort.filterActiveSupplierRefs
+inventory/services/serialized-asset.service.ts | 438 | getById | via resolvePurchaseOrigin | this.supplierPartyPort.getSupplierSummary
+inventory/services/supplier-profile.service.ts | 81 | create | directo-conManager | this.partyWritePort.ensurePartyWithRole
+inventory/services/supplier-profile.service.ts | 104 | create | directo-SINmanager | this.supplierPartyPort.summaryFromIdentity
+inventory/services/supplier-profile.service.ts | 195 | list | directo-SINmanager | this.supplierPartyPort.searchSuppliers
+inventory/services/supplier-profile.service.ts | 221 | list | via enrichProfiles | this.supplierPartyPort.getSupplierSummariesBatch
+inventory/services/supplier-profile.service.ts | 245 | get | directo-SINmanager | this.supplierPartyPort.getSupplierSummary
+inventory/services/supplier-profile.service.ts | 300 | update | directo-SINmanager | this.supplierPartyPort.getSupplierSummary
+inventory/services/supplier-profile.service.ts | 379 | setStatus | directo-SINmanager | this.supplierPartyPort.getSupplierSummary
+inventory/services/supplier-profile.service.ts | 388 | setStatus | directo-SINmanager | this.supplierPartyPort.getSupplierSummary
+network/network-catalog.service.ts | 179 | listRouters | directo-SINmanager | this.organizationSiteReadPort.findRouterSummariesByIds
+network/network-catalog.service.ts | 221 | getRouterDetail | directo-SINmanager | this.organizationSiteReadPort.findRouterSummaryById
+network/network-catalog.service.ts | 224 | getRouterDetail | directo-SINmanager | this.commercialNodeReadPort.findRouterSummaryById
+network/network-catalog.service.ts | 470 | updateRouter | via validateRouterReferenceChanges | this.organizationSiteReadPort.findReferenceById,this.commercialNodeReadPort.findReferenceById
+network/service-provisioning.service.ts | 148 | reserve | directo-SINmanager | this.subscriberContextPort.getForSubscriber
+network/service-provisioning.service.ts | 157 | reserve | directo-SINmanager | this.installedEquipmentReadPort.getFirstInstalledAtCustomer
+network/service-provisioning.service.ts | 229 | reserve | directo-SINmanager | this.routerProvisioningPort.apply
+network/service-provisioning.service.ts | 241 | reserve | via releaseExistingWithin | this.routerProvisioningPort.remove
+network/service-provisioning.service.ts | 287 | reserve | directo-SINmanager | this.routerProvisioningPort.apply
+network/service-provisioning.service.ts | 363 | certify | directo-SINmanager | this.executionOrderReadPort.hasEvidence
+network/service-provisioning.service.ts | 459 | release | directo-SINmanager | this.routerProvisioningPort.remove
+network/service-provisioning.service.ts | 632 | regularize | via releaseExistingWithin | this.routerProvisioningPort.remove
+network/service-provisioning.service.ts | 648 | regularize | directo-SINmanager | this.subscriberContextPort.getForSubscriber
+network/service-provisioning.service.ts | 657 | regularize | directo-SINmanager | this.installedEquipmentReadPort.getFirstInstalledAtCustomer
+network/service-provisioning.service.ts | 970 | listInbox | directo-SINmanager | this.executionOrderReadPort.getExecutionSnapshots
+network/service-provisioning.service.ts | 987 | listInbox | directo-SINmanager | this.executionOrderReadPort.listInstallationOrders
+privacy/alerts/privacy-due-alerts.processor.ts | 233 | processTenant | directo-conManager | this.permissionHoldersReadPort.holders
+privacy/authorizations/authorizations.service.ts | 52 | create | directo-conManager | this.writePort.record
+privacy/requests/requests.service.ts | 285 | create | directo-conManager | this.impersonationPort.suspendForImpersonation
+privacy/requests/requests.service.ts | 509 | erasurePreview | via hasConservationDuty | this.standingPort.standing,this.billingStandingPort.lastFiscalDocumentAt
+privacy/requests/requests.service.ts | 512 | erasurePreview | directo-conManager | this.requireErasurePort().plan
+privacy/requests/requests.service.ts | 830 | transition | via resolveSuppression | this.standingPort.standing,this.billingStandingPort.lastFiscalDocumentAt
+privacy/requests/requests.service.ts | 851 | transition | via hasConservationDuty | this.standingPort.standing,this.billingStandingPort.lastFiscalDocumentAt
+privacy/requests/requests.service.ts | 901 | transition | via conservationDuty | this.standingPort.standing,this.billingStandingPort.lastFiscalDocumentAt
+tasks/services/execution-orders.service.ts | 701 | assertActorAccess | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+tasks/services/execution-orders.service.ts | 1144 | dispatchFromCoordination | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+tasks/services/execution-orders.service.ts | 1967 | reverseItemUsage | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+tasks/services/execution-orders.service.ts | 2175 | close | directo-SINmanager | this.serviceProvisioningReadPort.getGateStatus
+tasks/services/execution-orders.service.ts | 2480 | annul | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+tasks/services/execution-orders.service.ts | 3090 | createFollowUp | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+tasks/services/execution-orders.service.ts | 3187 | redriveEvent | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+tasks/services/execution-orders.service.ts | 3273 | assertActorCanRedrive | via assertSupervisionScope | this.organizationOperationalAccessPort.canSuperviseExecutionOrder
+wfm/services/schedule-events.service.ts | 359 | create | directo-conManager | this.assertExecutionOrderPort().linkFromSchedulingWithManager
+wfm/services/schedule-events.service.ts | 506 | update | via assertInstallationScheduleWindow | this.tenantSettingsReadPort.getTimezone
+wfm/services/schedule-events.service.ts | 632 | reschedule | via assertInstallationScheduleWindow | this.tenantSettingsReadPort.getTimezone
+wfm/services/schedule-events.service.ts | 680 | reschedule | directo-conManager | this.assertExecutionOrderPort().rescheduleFromSchedulingWithManager
+wfm/services/visit-requests.service.ts | 871 | scheduleVisitRequest | via assertInstallationScheduleWindow | this.tenantSettingsReadPort.getTimezone
+total 95

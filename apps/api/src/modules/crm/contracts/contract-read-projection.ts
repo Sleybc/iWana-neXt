@@ -51,7 +51,11 @@ export async function projectContractsForRead(
       message: 'No se pudo aplicar la protección de privacidad al contrato.',
     });
   }
-  const marksByParty = partyIds.length ? await privacyMarksReadPort!.activeMarks(partyIds) : {};
+  // `manager` es el de la transacción del llamante (listado, detalle, ficha 360°):
+  // la lectura de marcas no abre una conexión nueva mientras ésta se retiene.
+  const marksByParty = partyIds.length
+    ? await privacyMarksReadPort!.activeMarks(partyIds, { manager })
+    : {};
 
   let blockedServed = 0;
   const data = contracts.map((contract) => {

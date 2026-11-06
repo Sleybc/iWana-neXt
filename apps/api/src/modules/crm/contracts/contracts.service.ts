@@ -174,14 +174,18 @@ export class ContractsService {
           legalRepresentativePartyId: true,
         },
       );
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
       if (dto.billingCycleDay !== undefined) {
         await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
       }
       if (subscriber.status === SubscriberStatus.CANCELLED) {
         throw this.cancelledSubscriberConflict();
       }
-      await this.requireContractualAuthorization(subscriber.partyId);
+      await this.requireContractualAuthorization(subscriber.partyId, qr.manager);
       this.subscriberFiscalCompletenessService.assertComplete(subscriber);
 
       const installationStratum = dto.installationStratum ?? null;
@@ -275,14 +279,18 @@ export class ContractsService {
         postalCode: true,
         customerSegment: true,
       });
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
       if (dto.billingCycleDay !== undefined) {
         await this.assertActiveBillingCycle(qr, dto.billingCycleDay);
       }
       if (subscriber.status === SubscriberStatus.CANCELLED) {
         throw this.cancelledSubscriberConflict();
       }
-      await this.requireContractualAuthorization(subscriber.partyId);
+      await this.requireContractualAuthorization(subscriber.partyId, qr.manager);
       this.subscriberFiscalCompletenessService.assertComplete(subscriber);
 
       // Resolver el expediente: usar el del DTO si viene, o el del subscriber
@@ -596,7 +604,7 @@ export class ContractsService {
       }
       const marksByParty =
         partyIds.length > 0 && this.privacyMarksReadPort
-          ? await this.privacyMarksReadPort.activeMarks(partyIds)
+          ? await this.privacyMarksReadPort.activeMarks(partyIds, { manager: qr.manager })
           : {};
       const items = rows.map((row) =>
         this.toCutoffAgendaItem(row, role, canSeeBlocked, marksByParty, date),
@@ -785,9 +793,15 @@ export class ContractsService {
     }
   }
 
+  /**
+   * `manager` es opcional: dentro de una transacción del llamante se pasa su
+   * manager para no pedir otra conexión al pool; fuera de ella se omite y la
+   * lectura abre su propia transacción tenant.
+   */
   private async assertSubscriberNotBlocked(
     partyId: string | null,
     anonymizedAt: Date | string | null,
+    manager?: EntityManager,
   ): Promise<void> {
     if (anonymizedAt != null) throw titularAnonymizedConflict();
     if (!partyId) return;
@@ -797,7 +811,10 @@ export class ContractsService {
         message: 'No se pudo verificar el estado de privacidad del titular.',
       });
     }
-    const marks = await this.privacyMarksReadPort.activeMarks([partyId]);
+    const marks = await this.privacyMarksReadPort.activeMarks(
+      [partyId],
+      manager ? { manager } : undefined,
+    );
     if ((marks[partyId] ?? []).includes('DATOS_BLOQUEADOS')) {
       throw new ConflictException({
         code: 'PRIVACY_DATA_BLOCKED',
@@ -822,6 +839,7 @@ export class ContractsService {
       await this.assertSubscriberNotBlocked(subscriber.partyId, null);
       return;
     }
+    // Fuera de una transacción del llamante: la guarda abre su propia conexión.
     await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
   }
 
@@ -850,7 +868,11 @@ export class ContractsService {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const result = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
       const entity = await qr.manager.findOne(Contract, {
         where: { id, tenantId },
         lock: { mode: 'pessimistic_write' },
@@ -961,7 +983,11 @@ export class ContractsService {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
       const entity = await qr.manager.findOne(Contract, {
         where: { id, tenantId },
         lock: { mode: 'pessimistic_write' },
@@ -991,7 +1017,9 @@ export class ContractsService {
         });
       let plan;
       try {
-        plan = await this.commercialCatalogPort.getPlanById(tenantId, schemaName, command.planId);
+        plan = await this.commercialCatalogPort.getPlanById(tenantId, schemaName, command.planId, {
+          manager: qr.manager,
+        });
       } catch (error) {
         // Los identificadores heredados son texto; un UUID inválido tampoco es un plan disponible.
         if (
@@ -1015,6 +1043,7 @@ export class ContractsService {
           schemaName,
           command.planId,
           entity.customerSegment ?? subscriber.customerSegment,
+          { manager: qr.manager },
         );
       } catch (error) {
         if (!(error instanceof NotFoundException)) throw error;
@@ -1022,6 +1051,7 @@ export class ContractsService {
           tenantId,
           schemaName,
           command.planId,
+          { manager: qr.manager },
         );
         if (!stillAvailable?.isActive) throw unavailable();
         throw priceRequired();
@@ -1050,7 +1080,7 @@ export class ContractsService {
           entity.installationStratum,
           subscriber.personType,
         );
-        next.vatSnapshot = await this._resolveVatSnapshot(next, snapshot);
+        next.vatSnapshot = await this._resolveVatSnapshot(next, snapshot, qr.manager);
       }
       // PostgreSQL puede actualizar varias veces dentro del mismo milisegundo: la versión
       // expuesta al cliente debe avanzar siempre tras una modificación comercial.
@@ -1097,7 +1127,11 @@ export class ContractsService {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
     });
     if (dto.serviceUsage === undefined && dto.installationStratum === undefined) {
       throw new UnprocessableEntityException({
@@ -1111,7 +1145,11 @@ export class ContractsService {
       schemaName,
       async (qr) => {
         const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        await this.assertSubscriberNotBlocked(
+          subscriber.partyId,
+          subscriber.anonymizedAt,
+          qr.manager,
+        );
         const entity = await qr.manager.findOne(Contract, {
           where: { id, tenantId },
           lock: { mode: 'pessimistic_write' },
@@ -1134,7 +1172,7 @@ export class ContractsService {
         const previousTreatment = this._snapshotTreatment(entity.vatSnapshot);
         entity.serviceUsage = serviceUsage;
         entity.installationStratum = installationStratum;
-        entity.vatSnapshot = await this._resolveVatSnapshot(entity);
+        entity.vatSnapshot = await this._resolveVatSnapshot(entity, undefined, qr.manager);
 
         this.advanceContractVersion(entity);
         const saved = await qr.manager.save(Contract, entity);
@@ -1172,7 +1210,11 @@ export class ContractsService {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
     });
     if (!file) {
       throw new BadRequestException('Se requiere el campo "file" con el soporte del estrato.');
@@ -1208,7 +1250,11 @@ export class ContractsService {
     try {
       updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
         const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        await this.assertSubscriberNotBlocked(
+          subscriber.partyId,
+          subscriber.anonymizedAt,
+          qr.manager,
+        );
         const entity = await qr.manager.findOne(Contract, {
           where: { id, tenantId },
           lock: { mode: 'pessimistic_write' },
@@ -1226,7 +1272,7 @@ export class ContractsService {
         const previousAssetId = entity.stratumEvidenceMediaId;
         entity.stratumEvidenceMediaId = asset.id;
         if (entity.status === ContractStatus.ACTIVE) {
-          entity.vatSnapshot = await this._resolveVatSnapshot(entity);
+          entity.vatSnapshot = await this._resolveVatSnapshot(entity, undefined, qr.manager);
         }
         this.advanceContractVersion(entity);
         const saved = await qr.manager.save(Contract, entity);
@@ -1257,7 +1303,11 @@ export class ContractsService {
       schemaName,
       async (qr) => {
         const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        await this.assertSubscriberNotBlocked(
+          subscriber.partyId,
+          subscriber.anonymizedAt,
+          qr.manager,
+        );
         const entity = await qr.manager.findOne(Contract, {
           where: { id, tenantId },
           lock: { mode: 'pessimistic_write' },
@@ -1281,7 +1331,7 @@ export class ContractsService {
 
         entity.stratumEvidenceMediaId = null;
         if (entity.status === ContractStatus.ACTIVE) {
-          entity.vatSnapshot = await this._resolveVatSnapshot(entity);
+          entity.vatSnapshot = await this._resolveVatSnapshot(entity, undefined, qr.manager);
         }
         this.advanceContractVersion(entity);
         const saved = await qr.manager.save(Contract, entity);
@@ -1458,7 +1508,11 @@ export class ContractsService {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
     const previousStatus = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
-      await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+      await this.assertSubscriberNotBlocked(
+        subscriber.partyId,
+        subscriber.anonymizedAt,
+        qr.manager,
+      );
       const entity = await qr.manager.findOne(Contract, {
         where: { id, tenantId },
         lock: { mode: 'pessimistic_write' },
@@ -1482,7 +1536,10 @@ export class ContractsService {
 
   // ── Helpers privados ────────────────────────────────────────────────────────
 
-  private async requireContractualAuthorization(partyId: string | null): Promise<void> {
+  private async requireContractualAuthorization(
+    partyId: string | null,
+    manager?: EntityManager,
+  ): Promise<void> {
     if (!partyId) {
       throw new UnprocessableEntityException({
         code: 'CONTRACT_DATA_AUTHORIZATION_REQUIRED',
@@ -1495,6 +1552,7 @@ export class ContractsService {
     const authorization = await this.privacyAuthorizationReadPort.hasActive(
       partyId,
       'TRATAMIENTO_CONTRACTUAL',
+      manager ? { manager } : undefined,
     );
     if (!authorization.active) {
       throw new UnprocessableEntityException({
@@ -1612,7 +1670,7 @@ export class ContractsService {
         contract.installationStratum,
         subscriber.personType,
       );
-      contract.vatSnapshot = await this._resolveVatSnapshot(contract);
+      contract.vatSnapshot = await this._resolveVatSnapshot(contract, undefined, qr.manager);
       await this.assertContractVersionForSave(qr, contract);
       this.advanceContractVersion(contract);
       await qr.manager.save(Contract, contract);
@@ -1630,7 +1688,11 @@ export class ContractsService {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
       const anonymized = subscriber.anonymizedAt != null;
       if (!anonymized) {
-        await this.assertSubscriberNotBlocked(subscriber.partyId, subscriber.anonymizedAt);
+        await this.assertSubscriberNotBlocked(
+          subscriber.partyId,
+          subscriber.anonymizedAt,
+          qr.manager,
+        );
       }
       const entity = await qr.manager.findOne(Contract, {
         where: { id, tenantId },
@@ -1720,7 +1782,7 @@ export class ContractsService {
           entity.installationStratum,
           subscriber.personType,
         );
-        entity.vatSnapshot = await this._resolveVatSnapshot(entity);
+        entity.vatSnapshot = await this._resolveVatSnapshot(entity, undefined, qr.manager);
       }
 
       const previousStatus = currentStatus;
@@ -1902,14 +1964,25 @@ export class ContractsService {
     }
   }
 
+  /**
+   * `manager` es el de la transacción del llamante cuando la resolución corre
+   * dentro de una; sin él las lecturas de catálogo y media abren su propia
+   * conexión, como antes (D3).
+   */
   private async _resolveVatSnapshot(
     contract: Contract,
     capturedPlan?: ContractPlanTaxSnapshot,
+    manager?: EntityManager,
   ): Promise<Contract['vatSnapshot']> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const plan =
       capturedPlan ??
-      (await this.commercialCatalogPort.getPlanById(tenantId, schemaName, contract.planId));
+      (await this.commercialCatalogPort.getPlanById(
+        tenantId,
+        schemaName,
+        contract.planId,
+        manager ? { manager } : undefined,
+      ));
     if (!plan || !plan.vatConcept) {
       throw new UnprocessableEntityException({
         code: 'VAT_CONCEPT_REQUIRED',
@@ -1923,7 +1996,11 @@ export class ContractsService {
       });
     }
 
-    const stratumEvidenceAvailable = await this._hasVerifiedStratumEvidence(contract, schemaName);
+    const stratumEvidenceAvailable = await this._hasVerifiedStratumEvidence(
+      contract,
+      schemaName,
+      manager,
+    );
     if (contract.stratumEvidenceMediaId && !stratumEvidenceAvailable) {
       this.logger.warn(
         'Soporte de estrato heredado no verificable; se aplicará el tratamiento estándar.',
@@ -1976,11 +2053,16 @@ export class ContractsService {
   private async _hasVerifiedStratumEvidence(
     contract: Contract,
     schemaName: string,
+    manager?: EntityManager,
   ): Promise<boolean> {
     const mediaId = contract.stratumEvidenceMediaId;
     if (!mediaId) return false;
     try {
-      const asset = await this.mediaService.findOne(mediaId, schemaName);
+      const asset = await this.mediaService.findOne(
+        mediaId,
+        schemaName,
+        manager ? { manager } : undefined,
+      );
       return asset.usage === MediaUsage.STRATUM_EVIDENCE;
     } catch (error) {
       if (error instanceof NotFoundException) return false;

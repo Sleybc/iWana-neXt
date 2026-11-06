@@ -4,7 +4,10 @@ import { ConsentChannel, DataPurpose, DataAuthorizationView } from '@iwana/share
 import { DataSource, EntityManager } from 'typeorm';
 import { DataAuthorizationEntity } from '../entities/data-authorization.entity';
 import { LegalTextEntity } from '../entities/legal-text.entity';
-import { IPrivacyAuthorizationReadPort } from '../ports/privacy-authorization-read.port';
+import {
+  IPrivacyAuthorizationReadPort,
+  PrivacyAuthorizationState,
+} from '../ports/privacy-authorization-read.port';
 import {
   IPrivacyAuthorizationWritePort,
   PrivacyAuthorizationWriteInput,
@@ -22,39 +25,15 @@ export class PrivacyAuthorizationAdapter
   async hasActive(
     partyId: string,
     purpose: DataPurpose,
-  ): Promise<{
-    active: boolean;
-    authorizationId: string | null;
-    legalTextVersion: string | null;
-    legacyUnverified: boolean;
-  }> {
-    return withPrivacyTenant(this.dataSource, async (manager) => {
-      const latest = await manager.getRepository(DataAuthorizationEntity).findOne({
-        where: { partyId, purpose },
-        order: { capturedAt: 'DESC', id: 'DESC' },
-      });
-      if (!latest) {
-        return {
-          active: false,
-          authorizationId: null,
-          legalTextVersion: null,
-          legacyUnverified: false,
-        };
-      }
-
-      const legalText = latest.legalTextId
-        ? await manager.getRepository(LegalTextEntity).findOne({
-            where: { id: latest.legalTextId },
-          })
-        : null;
-      const active = latest.granted;
-      return {
-        active,
-        authorizationId: active ? latest.id : null,
-        legalTextVersion: active ? (legalText?.version ?? null) : null,
-        legacyUnverified: active && latest.kind === 'LEGACY_IMPORT',
-      };
-    });
+    ctx?: { manager: EntityManager },
+  ): Promise<PrivacyAuthorizationState> {
+    // Con contexto se reutiliza la transacción del llamante; sin él la lectura
+    // abre su propia transacción tenant, como antes.
+    return ctx
+      ? this.loadAuthorizationState(partyId, purpose, ctx.manager)
+      : withPrivacyTenant(this.dataSource, (manager) =>
+          this.loadAuthorizationState(partyId, purpose, manager),
+        );
   }
 
   async listForParty(partyId: string): Promise<DataAuthorizationView[]> {
@@ -74,6 +53,42 @@ export class PrivacyAuthorizationAdapter
         capturedAt: record.capturedAt.toISOString(),
       }));
     });
+  }
+
+  /**
+   * Lectura sobre el manager recibido: propio (withPrivacyTenant) o el de la
+   * transacción del llamante.
+   */
+  private async loadAuthorizationState(
+    partyId: string,
+    purpose: DataPurpose,
+    manager: EntityManager,
+  ): Promise<PrivacyAuthorizationState> {
+    const latest = await manager.getRepository(DataAuthorizationEntity).findOne({
+      where: { partyId, purpose },
+      order: { capturedAt: 'DESC', id: 'DESC' },
+    });
+    if (!latest) {
+      return {
+        active: false,
+        authorizationId: null,
+        legalTextVersion: null,
+        legacyUnverified: false,
+      };
+    }
+
+    const legalText = latest.legalTextId
+      ? await manager.getRepository(LegalTextEntity).findOne({
+          where: { id: latest.legalTextId },
+        })
+      : null;
+    const active = latest.granted;
+    return {
+      active,
+      authorizationId: active ? latest.id : null,
+      legalTextVersion: active ? (legalText?.version ?? null) : null,
+      legacyUnverified: active && latest.kind === 'LEGACY_IMPORT',
+    };
   }
 
   async record(

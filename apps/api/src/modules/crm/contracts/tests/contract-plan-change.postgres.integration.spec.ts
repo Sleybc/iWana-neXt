@@ -253,6 +253,7 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
         schemaName,
         'plan-new',
         CustomerSegment.SOHO,
+        expect.objectContaining({ manager: expect.anything() }),
       );
     },
   );

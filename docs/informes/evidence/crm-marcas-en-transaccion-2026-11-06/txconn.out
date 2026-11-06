@@ -1,0 +1,161 @@
+assurance/services/tickets.service.ts | 708 | requestFieldService | fieldServicePort.requestFieldService -> AssuranceFieldServiceAdapter | bullmq:this.queue.add@AssuranceFieldServiceAdapter.requestFieldService
+auth/auth.service.ts | 1053 | changePassword | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 1087 | changePassword | this.redis.set | ext:this.redis.set
+auth/auth.service.ts | 1091 | changePassword | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 1221 | verifyEmail | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 1265 | resendVerificationEmail | this.mailerService.sendMail | ext:this.mailerService.sendMail
+auth/auth.service.ts | 1265 | resendVerificationEmail | mailerService.sendMail -> MailerService | ext:this.transporter.sendMail@MailerService.sendMail
+auth/auth.service.ts | 1351 | regenerateTenantAdminCredentials | this.redis.set | ext:this.redis.set
+auth/auth.service.ts | 394 | login | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 458 | login | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 550 | refreshTokens | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 886 | disableMfa | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 929 | forgotPassword | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+auth/auth.service.ts | 949 | forgotPassword | this.mailerService.sendMail | ext:this.mailerService.sendMail
+auth/auth.service.ts | 949 | forgotPassword | mailerService.sendMail -> MailerService | ext:this.transporter.sendMail@MailerService.sendMail
+auth/auth.service.ts | 998 | resetPassword | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/contracts/contracts.service.ts | 1013 | changePlan | commercialCatalogPort.createSnapshot -> CommercialCatalogReadAdapter | conn@CommercialCatalogReadAdapter.createSnapshot
+crm/contracts/contracts.service.ts | 1021 | changePlan | commercialCatalogPort.getPlanById -> CommercialCatalogReadAdapter | conn@CommercialCatalogReadAdapter.getPlanById
+crm/contracts/contracts.service.ts | 1053 | changePlan | this._resolveVatSnapshot | conn@CommercialCatalogReadAdapter.getPlanById ; conn@MediaService.findOne
+crm/contracts/contracts.service.ts | 1100 | updateServicePoint | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1114 | updateServicePoint | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1137 | updateServicePoint | this._resolveVatSnapshot | conn@CommercialCatalogReadAdapter.getPlanById ; conn@MediaService.findOne
+crm/contracts/contracts.service.ts | 1175 | uploadStratumEvidence | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1211 | uploadStratumEvidence | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1229 | uploadStratumEvidence | this._resolveVatSnapshot | conn@CommercialCatalogReadAdapter.getPlanById ; conn@MediaService.findOne
+crm/contracts/contracts.service.ts | 1233 | uploadStratumEvidence | this._auditStratumEvidenceChange | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/contracts/contracts.service.ts | 1260 | removeStratumEvidence | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1284 | removeStratumEvidence | this._resolveVatSnapshot | conn@CommercialCatalogReadAdapter.getPlanById ; conn@MediaService.findOne
+crm/contracts/contracts.service.ts | 1288 | removeStratumEvidence | this._auditStratumEvidenceChange | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/contracts/contracts.service.ts | 1461 | remove | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1633 | _transition | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 1723 | _transition | this._resolveVatSnapshot | conn@CommercialCatalogReadAdapter.getPlanById ; conn@MediaService.findOne
+crm/contracts/contracts.service.ts | 177 | create | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 184 | create | this.requireContractualAuthorization | conn@PrivacyAuthorizationAdapter.hasActive
+crm/contracts/contracts.service.ts | 278 | createFromExpediente | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 285 | createFromExpediente | this.requireContractualAuthorization | conn@PrivacyAuthorizationAdapter.hasActive
+crm/contracts/contracts.service.ts | 599 | getCutoffAgenda | privacyMarksReadPort.activeMarks -> PrivacyMarksAdapter | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 853 | update | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 964 | changePlan | this.assertSubscriberNotBlocked | conn@PrivacyMarksAdapter.activeMarks
+crm/contracts/contracts.service.ts | 994 | changePlan | commercialCatalogPort.getPlanById -> CommercialCatalogReadAdapter | conn@CommercialCatalogReadAdapter.getPlanById
+crm/potentials/potentials.service.ts | 192 | qualify | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/prospects/prospects.service.ts | 106 | rescheduleInstallation | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/prospects/prospects.service.ts | 49 | scheduleInstallation | quotesService.createQuoteSnapshot -> ProspectQuotesService | conn@ProspectQuotesService.createQuoteSnapshot
+crm/prospects/prospects.service.ts | 66 | scheduleInstallation | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/responsibilities/responsibilities.service.ts | 205 | getResponsibilityHistory | this.resolveActorsBatch | conn@ResponsibilitiesService.resolveActorsBatch
+crm/responsibilities/responsibilities.service.ts | 57 | getResponsibility | this.resolveActor | conn@ResponsibilitiesService.resolveActor
+crm/reviews/activation.service.ts | 83 | closeSuccess | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/reviews/review-coordination.service.ts | 48 | sendToReview | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/reviews/review-coordination.service.ts | 84 | applyReviewDecision | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+crm/subscribers/subscriber-tax-profile.service.ts | 129 | saveAssignments | taxCatalogPort.findById -> TaxCatalogReadAdapter | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 199 | saveAssignments | this._toSnapshot | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 263 | updateAssignment | this._toSnapshot | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 295 | suggestVatForSubscriber | this._toSnapshot | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 378 | confirmProfile | this._toSnapshot | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 409 | confirmProfile | this._toSnapshot | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscriber-tax-profile.service.ts | 96 | getOrCreateProfile | this._toSnapshot | conn@TaxCatalogReadAdapter.findById
+crm/subscribers/subscribers.service.ts | 639 | create | this.findConsentLegalText | conn@LegalTextsService.findByVersion
+inventory/services/inventory-item.service.ts | 1213 | listCatalogOptions | this.resolveSupplierNames | conn@PartyReadAdapter.getById ; conn@PartyReadAdapter.listContacts
+inventory/services/inventory-item.service.ts | 964 | update | this.resolveCategoryForUpdate | conn@InventoryCategoryService.resolveCategoryForItem ; conn@InventoryItemService.resolveCategoryForUpdate
+inventory/services/purchasing-query.service.ts | 499 | getRequestDetail | supplierPartyPort.getSupplierSummariesBatch -> SupplierPartyPortAdapter | conn@PartyReadAdapter.getByIds ; conn@PartyReadAdapter.listContactsForIds
+inventory/services/rfq.service.ts | 157 | invite | supplierPartyPort.filterActiveSupplierRefs -> SupplierPartyPortAdapter | conn@PartyReadAdapter.filterPartyIdsByActiveRole
+inventory/services/supplier-profile.service.ts | 195 | list | supplierPartyPort.searchSuppliers -> SupplierPartyPortAdapter | conn@PartyReadAdapter.searchByRole
+inventory/services/supplier-profile.service.ts | 221 | list | this.enrichProfiles | conn@PartyReadAdapter.getByIds ; conn@PartyReadAdapter.listContactsForIds
+inventory/services/supplier-profile.service.ts | 245 | get | supplierPartyPort.getSupplierSummary -> SupplierPartyPortAdapter | conn@PartyReadAdapter.getById ; conn@PartyReadAdapter.listContacts
+inventory/services/supplier-profile.service.ts | 300 | update | supplierPartyPort.getSupplierSummary -> SupplierPartyPortAdapter | conn@PartyReadAdapter.getById ; conn@PartyReadAdapter.listContacts
+inventory/services/supplier-profile.service.ts | 379 | setStatus | supplierPartyPort.getSupplierSummary -> SupplierPartyPortAdapter | conn@PartyReadAdapter.getById ; conn@PartyReadAdapter.listContacts
+inventory/services/supplier-profile.service.ts | 388 | setStatus | supplierPartyPort.getSupplierSummary -> SupplierPartyPortAdapter | conn@PartyReadAdapter.getById ; conn@PartyReadAdapter.listContacts
+network/network-catalog.service.ts | 179 | listRouters | organizationSiteReadPort.findRouterSummariesByIds -> OrganizationSiteReadAdapter | conn@OrganizationSiteReadAdapter.findRouterSummariesByIds
+network/network-catalog.service.ts | 213 | getRouterDetail | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 221 | getRouterDetail | organizationSiteReadPort.findRouterSummaryById -> OrganizationSiteReadAdapter | conn@OrganizationSiteReadAdapter.findRouterSummaryById
+network/network-catalog.service.ts | 224 | getRouterDetail | commercialNodeReadPort.findRouterSummaryById -> CommercialNodeReadAdapter | conn@CommercialNodeReadAdapter.findRouterSummaryById
+network/network-catalog.service.ts | 281 | createAssistedIpv4Network | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 302 | createAssistedIpv4Network | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 464 | updateRouter | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 470 | updateRouter | this.validateRouterReferenceChanges | conn@OrganizationSiteReadAdapter.findReferenceById ; ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 558 | setRouterStatus | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 662 | createIpv4Network | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 748 | updateIpv4Network | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-catalog.service.ts | 860 | setIpv4NetworkStatus | authorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 152 | createRouterInterface | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 297 | updateRouterInterface | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 352 | setRouterInterfaceStatus | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 380 | listInterfaceIpv4Addresses | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 411 | createInterfaceIpv4Address | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 483 | updateInterfaceIpv4Address | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 528 | correctInterfaceIpv4Address | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/network-interface-catalog.service.ts | 95 | listRouterInterfaces | this.authorize | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 1095 | authorizeTargetAndLoadExecutionOrder | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 136 | reserve | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 148 | reserve | subscriberContextPort.getForSubscriber -> SubscriberServiceContextReadAdapter | conn@SubscriberServiceContextReadAdapter.getForSubscriber ; conn@TenantPlanCatalogReadAdapter.getActivePlans
+network/service-provisioning.service.ts | 157 | reserve | installedEquipmentReadPort.getFirstInstalledAtCustomer -> InstalledEquipmentReadAdapter | conn@InstalledEquipmentReadAdapter.getFirstInstalledAtCustomer
+network/service-provisioning.service.ts | 184 | reserve | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 344 | certify | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 363 | certify | executionOrderReadPort.hasEvidence -> ExecutionOrdersService | conn@ExecutionOrdersService.hasEvidence
+network/service-provisioning.service.ts | 424 | release | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 432 | release | networkAuthorization.requireTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 437 | release | networkAuthorization.requireSiteAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 523 | regularize | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 563 | regularize | networkAuthorization.requireSiteOrTenantWideAction -> NetworkAuthorizationFacade | ext:this.redis.get@EffectivePermissionsService.getEffectivePermissionsForUser ; ext:this.redis.set@EffectivePermissionsService.getEffectivePermissionsForUser
+network/service-provisioning.service.ts | 648 | regularize | subscriberContextPort.getForSubscriber -> SubscriberServiceContextReadAdapter | conn@SubscriberServiceContextReadAdapter.getForSubscriber ; conn@TenantPlanCatalogReadAdapter.getActivePlans
+network/service-provisioning.service.ts | 657 | regularize | installedEquipmentReadPort.getFirstInstalledAtCustomer -> InstalledEquipmentReadAdapter | conn@InstalledEquipmentReadAdapter.getFirstInstalledAtCustomer
+network/service-provisioning.service.ts | 970 | listInbox | executionOrderReadPort.getExecutionSnapshots -> ExecutionOrdersService | conn@ExecutionOrdersService.getExecutionSnapshots
+network/service-provisioning.service.ts | 987 | listInbox | executionOrderReadPort.listInstallationOrders -> ExecutionOrdersService | conn@ExecutionOrdersService.listInstallationOrders
+tasks/services/execution-orders.service.ts | 1885 | registerItemUsage | this.assertMaterialRequirementKey | conn@InventoryItemService.getById ; conn@InventoryItemService.loadCategoryMap
+tasks/services/execution-orders.service.ts | 2175 | close | serviceProvisioningReadPort.getGateStatus -> ServiceProvisioningReadAdapter | conn@ServiceProvisioningReadAdapter.getGateStatus
+tasks/services/execution-orders.service.ts | 2254 | close | this.buildMaterialEvaluationUsages | conn@InventoryItemService.getById ; conn@InventoryItemService.loadCategoryMap
+tasks/services/tasks.service.ts | 355 | update | this.assertRecipientIsAllowed | conn@TenantService.getPrincipalAdminUserId ; conn@UsersService.findUserDtoById
+tenant/tenant.service.ts | 1008 | updatePlanCatalogItem | this.getPlanCatalog | conn@TenantService.getPlanCatalog
+tenant/tenant.service.ts | 1031 | removePlanCatalogItem | this.getPlanCatalog | conn@TenantService.getPlanCatalog
+tenant/tenant.service.ts | 1040 | removePlanCatalogItem | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 1051 | removePlanCatalogItem | this.getPlanCatalog | conn@TenantService.getPlanCatalog
+tenant/tenant.service.ts | 681 | createCommercialNode | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 691 | createCommercialNode | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 721 | updateCommercialNode | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 732 | updateCommercialNode | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 753 | createCoverageZone | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 763 | createCoverageZone | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 791 | updateCoverageZone | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 802 | updateCoverageZone | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 825 | removeCoverageNode | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 834 | removeCoverageNode | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 845 | removeCoverageNode | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 868 | removeCoverageZone | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 877 | removeCoverageZone | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 888 | removeCoverageZone | this.getCoverageAdmin | conn@TenantService.getCoverageAdmin
+tenant/tenant.service.ts | 947 | createPlanCatalogItem | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+tenant/tenant.service.ts | 957 | createPlanCatalogItem | this.getPlanCatalog | conn@TenantService.getPlanCatalog
+tenant/tenant.service.ts | 997 | updatePlanCatalogItem | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1064 | update | tenantService.getPrincipalAdminUserId -> TenantService | conn@TenantService.getPrincipalAdminUserId
+users/users.service.ts | 1100 | update | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1114 | update | this.writeIdempotencyRecord | ext:this.redis.set@UsersService.writeIdempotencyRecord
+users/users.service.ts | 1118 | update | searchQueueService.enqueueUserUpsert -> SearchQueueService | bullmq:this.searchIndexQueue.add@SearchQueueService.enqueueUserUpsert
+users/users.service.ts | 1127 | update | effectivePermissionsService.invalidateUserPermissions -> EffectivePermissionsService | ext:this.redis.del@EffectivePermissionsService.invalidateUserPermissions
+users/users.service.ts | 1184 | changeLoginEmail | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1231 | changeLoginEmail | this.isPrincipalAdminUser | conn@TenantService.getPrincipalAdminUserId
+users/users.service.ts | 1235 | changeLoginEmail | tenantService.updateTenantSelfProfile -> TenantService | conn@TenantService.updateTenantSelfProfile ; ext:this.redis.del@TenantService.invalidateTenantCache ; ext:this.redis.set@TenantService.cacheTenant
+users/users.service.ts | 1242 | changeLoginEmail | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1262 | changeLoginEmail | this.mailerService.sendMail | ext:this.mailerService.sendMail
+users/users.service.ts | 1262 | changeLoginEmail | mailerService.sendMail -> MailerService | ext:this.transporter.sendMail@MailerService.sendMail
+users/users.service.ts | 1274 | changeLoginEmail | this.mailerService.sendMail | ext:this.mailerService.sendMail
+users/users.service.ts | 1274 | changeLoginEmail | mailerService.sendMail -> MailerService | ext:this.transporter.sendMail@MailerService.sendMail
+users/users.service.ts | 1285 | changeLoginEmail | searchQueueService.enqueueUserUpsert -> SearchQueueService | bullmq:this.searchIndexQueue.add@SearchQueueService.enqueueUserUpsert
+users/users.service.ts | 1342 | changeLoginEmailAsAdmin | this.isPrincipalAdminUser | conn@TenantService.getPrincipalAdminUserId
+users/users.service.ts | 1372 | changeLoginEmailAsAdmin | this.isPrincipalAdminUser | conn@TenantService.getPrincipalAdminUserId
+users/users.service.ts | 1376 | changeLoginEmailAsAdmin | tenantService.updateTenantSelfProfile -> TenantService | conn@TenantService.updateTenantSelfProfile ; ext:this.redis.del@TenantService.invalidateTenantCache ; ext:this.redis.set@TenantService.cacheTenant
+users/users.service.ts | 1383 | changeLoginEmailAsAdmin | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1399 | changeLoginEmailAsAdmin | this.writeIdempotencyRecord | ext:this.redis.set@UsersService.writeIdempotencyRecord
+users/users.service.ts | 1403 | changeLoginEmailAsAdmin | searchQueueService.enqueueUserUpsert -> SearchQueueService | bullmq:this.searchIndexQueue.add@SearchQueueService.enqueueUserUpsert
+users/users.service.ts | 1443 | remove | this.isPrincipalAdminUser | conn@TenantService.getPrincipalAdminUserId
+users/users.service.ts | 1453 | remove | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1461 | remove | searchQueueService.enqueueUserDelete -> SearchQueueService | bullmq:this.searchIndexQueue.add@SearchQueueService.enqueueUserDelete
+users/users.service.ts | 1588 | resetPassword | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 1603 | resetPassword | this.writeIdempotencyRecord | ext:this.redis.set@UsersService.writeIdempotencyRecord
+users/users.service.ts | 1727 | updateMe | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 693 | create | auditService.log -> AuditService | conn@PlatformAuditService.log ; conn@AuditService.log
+users/users.service.ts | 708 | create | this.writeIdempotencyRecord | ext:this.redis.set@UsersService.writeIdempotencyRecord
+users/users.service.ts | 716 | create | searchQueueService.enqueueUserUpsert -> SearchQueueService | bullmq:this.searchIndexQueue.add@SearchQueueService.enqueueUserUpsert
+wfm/services/schedule-events.service.ts | 516 | update | conflictService.hasConflict -> ScheduleConflictService | conn@ScheduleConflictService.hasConflict
+wfm/services/visit-requests.service.ts | 744 | prepareVisitRequestRecommendation | this.assertEligibleOperationalCandidates | conn@TenantService.getPrincipalAdminUserId ; conn@UsersService.findAll
+wfm/services/visit-requests.service.ts | 866 | scheduleVisitRequest | this.assertEligibleOperationalAssignee | conn@TenantService.getPrincipalAdminUserId ; conn@UsersService.findAll
+wfm/services/visit-requests.service.ts | 957 | scheduleVisitRequest | this.resolveCustomerDisplayName | conn@ExpedienteService.findDisplayNameById ; conn@ExpedienteService.findDisplayNameByShortCode

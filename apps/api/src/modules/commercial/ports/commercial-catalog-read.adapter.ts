@@ -84,22 +84,36 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     tenantId: string,
     schemaName: string,
     planId: string,
+    ctx?: { manager: EntityManager },
   ): Promise<CommercialCatalogItem | null> {
-    const ctx = this.scopedTenant(tenantId, schemaName);
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
-      const item = await qr.manager.findOne(CatalogItem, {
-        where: {
-          id: planId,
-          tenantId: ctx.tenantId,
-          type: CatalogItemType.PLAN,
-          isActive: true,
-          deletedAt: IsNull(),
-        },
-      });
-      if (!item) return null;
-      const [mapped] = await this.mapPlans(qr.manager, [item]);
-      return mapped ?? null;
+    const scope = this.scopedTenant(tenantId, schemaName);
+    // Solo lectura (D3): con contexto se reutiliza la transacción del llamante.
+    if (ctx) {
+      return this.loadPlanById(planId, scope.tenantId, ctx.manager);
+    }
+    return runInTenantSchema(this.dataSource, scope.schemaName, (qr) =>
+      this.loadPlanById(planId, scope.tenantId, qr.manager),
+    );
+  }
+
+  /** Lectura del plan sobre el manager recibido (propio o de la transacción). */
+  private async loadPlanById(
+    planId: string,
+    tenantId: string,
+    manager: EntityManager,
+  ): Promise<CommercialCatalogItem | null> {
+    const item = await manager.findOne(CatalogItem, {
+      where: {
+        id: planId,
+        tenantId,
+        type: CatalogItemType.PLAN,
+        isActive: true,
+        deletedAt: IsNull(),
+      },
     });
+    if (!item) return null;
+    const [mapped] = await this.mapPlans(manager, [item]);
+    return mapped ?? null;
   }
 
   private async mapPlans(
@@ -153,43 +167,58 @@ export class CommercialCatalogReadAdapter extends CommercialCatalogReadPort {
     schemaName: string,
     itemId: string,
     segment: CustomerSegment = CustomerSegment.RESIDENTIAL,
+    ctx?: { manager: EntityManager },
   ): Promise<CommercialItemSnapshot> {
-    const ctx = this.scopedTenant(tenantId, schemaName);
-    return runInTenantSchema(this.dataSource, ctx.schemaName, async (qr) => {
-      const item = await qr.manager.findOne(CatalogItem, {
-        where: { id: itemId, tenantId: ctx.tenantId, isActive: true, deletedAt: IsNull() },
-      });
-      if (!item) throw new NotFoundException(`Ítem de catálogo ${itemId} no encontrado o inactivo`);
+    const scope = this.scopedTenant(tenantId, schemaName);
+    // Solo lectura (D3): con contexto se reutiliza la transacción del llamante.
+    if (ctx) {
+      return this.loadSnapshot(itemId, scope.tenantId, segment, ctx.manager);
+    }
+    return runInTenantSchema(this.dataSource, scope.schemaName, (qr) =>
+      this.loadSnapshot(itemId, scope.tenantId, segment, qr.manager),
+    );
+  }
 
-      const price = await qr.manager.findOne(CatalogPriceHistory, {
-        where: {
-          itemId,
-          tenantId: ctx.tenantId,
-          customerSegment: segment,
-          isCurrent: true,
-        },
-      });
-      if (!price) {
-        throw new NotFoundException(
-          `No hay precio vigente para ítem ${itemId} en segmento ${segment}`,
-        );
-      }
-
-      const detail = await qr.manager.findOne(PlanDetail, { where: { itemId } });
-
-      return {
-        planId: item.id,
-        name: item.name,
-        downloadSpeed: detail?.downloadSpeedMbps ?? 0,
-        uploadSpeed: detail?.uploadSpeedMbps ?? 0,
-        monthlyPrice: parseFloat(price.basePrice),
-        installationFee: parseFloat(price.installationFee),
-        technology: detail?.technology ?? 'N/A',
-        vatConcept: item.vatConcept,
-        networkType: detail?.networkType ?? NetworkType.FIXED,
-        snapshotAt: new Date(),
-      };
+  /** Snapshot sobre el manager recibido (propio o de la transacción). */
+  private async loadSnapshot(
+    itemId: string,
+    tenantId: string,
+    segment: CustomerSegment,
+    manager: EntityManager,
+  ): Promise<CommercialItemSnapshot> {
+    const item = await manager.findOne(CatalogItem, {
+      where: { id: itemId, tenantId, isActive: true, deletedAt: IsNull() },
     });
+    if (!item) throw new NotFoundException(`Ítem de catálogo ${itemId} no encontrado o inactivo`);
+
+    const price = await manager.findOne(CatalogPriceHistory, {
+      where: {
+        itemId,
+        tenantId,
+        customerSegment: segment,
+        isCurrent: true,
+      },
+    });
+    if (!price) {
+      throw new NotFoundException(
+        `No hay precio vigente para ítem ${itemId} en segmento ${segment}`,
+      );
+    }
+
+    const detail = await manager.findOne(PlanDetail, { where: { itemId } });
+
+    return {
+      planId: item.id,
+      name: item.name,
+      downloadSpeed: detail?.downloadSpeedMbps ?? 0,
+      uploadSpeed: detail?.uploadSpeedMbps ?? 0,
+      monthlyPrice: parseFloat(price.basePrice),
+      installationFee: parseFloat(price.installationFee),
+      technology: detail?.technology ?? 'N/A',
+      vatConcept: item.vatConcept,
+      networkType: detail?.networkType ?? NetworkType.FIXED,
+      snapshotAt: new Date(),
+    };
   }
 
   async getActiveProducts(

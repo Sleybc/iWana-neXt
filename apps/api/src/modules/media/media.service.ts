@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { MediaAsset, MediaUsage, summarizeErrorForLog } from '@iwana/db';
 import { STORAGE_PORT, type StoragePort } from '@iwana/storage';
@@ -313,9 +313,15 @@ export class MediaService {
   /**
    * Obtiene un asset por ID y verifica que pertenece al tenant indicado.
    */
-  async findOne(id: string, tenantSchema: string): Promise<MediaAssetResponseDto> {
+  async findOne(
+    id: string,
+    tenantSchema: string,
+    ctx?: { manager: EntityManager },
+  ): Promise<MediaAssetResponseDto> {
     this.assertTenantSchema(tenantSchema);
-    const asset = await this.mediaRepo.findOne({
+    // Solo lectura (D3): con contexto se reutiliza la transacción del llamante.
+    const repository = ctx ? ctx.manager.getRepository(MediaAsset) : this.mediaRepo;
+    const asset = await repository.findOne({
       where: { id, tenantSchema, deletedAt: IsNull() },
     });
 

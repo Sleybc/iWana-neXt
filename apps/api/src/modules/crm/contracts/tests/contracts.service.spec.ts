@@ -37,6 +37,7 @@ import { SubscriberFiscalCompletenessService } from '../../subscribers/subscribe
 import { SubscriberLifecycleService } from '../../subscribers/subscriber-lifecycle.service';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
 import { ContractsTenantSettingsReadPort } from '../ports/contracts-tenant-settings-read.port';
+import { BillingAccountReadPort } from '../../../billing/ports/billing-account-read.port';
 
 const syntheticFiscalCryptoKey = Buffer.from(
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -245,6 +246,7 @@ describe('ContractsService', () => {
     partyIdsWithActiveMark: jest.fn().mockResolvedValue([]),
   };
   const tenantSettingsReadPort = { getTimezone: jest.fn() };
+  const billingAccountReadPort = { periodStates: jest.fn().mockResolvedValue({}) };
   const configService = {
     get: jest.fn((key: string, fallback?: unknown) => {
       if (key === 'STORAGE_DRIVER') return 'minio';
@@ -277,6 +279,7 @@ describe('ContractsService', () => {
     };
     privacyMarksReadPort.activeMarks.mockResolvedValue({});
     tenantSettingsReadPort.getTimezone.mockResolvedValue('America/Bogota');
+    billingAccountReadPort.periodStates.mockResolvedValue({});
     subscriberLifecycleService.transitionContract.mockResolvedValue(undefined);
     configService.get.mockImplementation((key: string, fallback?: unknown) =>
       key === 'STORAGE_DRIVER'
@@ -304,6 +307,7 @@ describe('ContractsService', () => {
         { provide: IPrivacyAuthorizationReadPort, useValue: privacyAuthorizationReadPort },
         { provide: IPrivacyMarksReadPort, useValue: privacyMarksReadPort },
         { provide: ContractsTenantSettingsReadPort, useValue: tenantSettingsReadPort },
+        { provide: BillingAccountReadPort, useValue: billingAccountReadPort },
         { provide: SubscriberLifecycleService, useValue: subscriberLifecycleService },
       ],
     }).compile();
@@ -992,9 +996,11 @@ describe('ContractsService', () => {
       });
 
       expect(save).not.toHaveBeenCalled();
+      // D2/D3: el alta corre dentro de la transacción y pasa su manager al puerto.
       expect(privacyAuthorizationReadPort.hasActive).toHaveBeenCalledWith(
         'party-test-uuid',
         'TRATAMIENTO_CONTRACTUAL',
+        expect.objectContaining({ manager: expect.anything() }),
       );
     });
 
@@ -1959,6 +1965,7 @@ describe('ContractsService', () => {
         'ten-1',
         'tenant_test',
         contract.planId,
+        expect.objectContaining({ manager: expect.anything() }),
       );
       expect(auditService.logWithin).toHaveBeenCalledWith(
         {
@@ -2423,6 +2430,31 @@ describe('ContractsService', () => {
       ...overrides,
     });
 
+    it('añade el estado de pago del periodo desde el puerto de Billing', async () => {
+      mockAgendaRows = [agendaRow()];
+      billingAccountReadPort.periodStates.mockResolvedValueOnce({
+        'ctr-1': { state: 'PAGADO', paidAmount: '119.00', totalAmount: '119.00' },
+      });
+
+      const result = await service.getCutoffAgenda(
+        { date: '2026-11-15', page: 1, limit: 25 },
+        'SALES',
+      );
+
+      expect(billingAccountReadPort.periodStates).toHaveBeenCalledWith(['ctr-1'], '2026-11-15');
+      expect(result.items[0]).toMatchObject({
+        contractId: 'ctr-1',
+        paymentState: 'PAGADO',
+        paymentPaidAmount: '119.00',
+        paymentTotalAmount: '119.00',
+      });
+      expect(
+        mockContractQuery.mock.calls.some(([sql]) =>
+          /UPDATE\s+(contracts|subscribers)/iu.test(String(sql)),
+        ),
+      ).toBe(false);
+    });
+
     it('cuenta servicios, marca bloqueados atendidos y proyecta plan y nombre por tipo de titular', async () => {
       mockAgendaRows = [
         agendaRow(),
@@ -2460,10 +2492,13 @@ describe('ContractsService', () => {
         cutoffDate: '2026-11-15',
       });
       expect(result.items[1]).toMatchObject({ contractId: 'ctr-2', planName: null });
-      expect(auditService.log).toHaveBeenCalledWith(
+      // BR-8: la auditoría ocurre antes de responder y un fallo suyo es 503,
+      // así que la agenda escribe con logWithin (transaccional), no con log.
+      expect(auditService.logWithin).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.LIST_ACCESS,
           entityType: 'BillingCycleCutoffAgenda',
+          entityId: 'N/A',
           userId: 'actor-1',
           newValue: {
             date: '2026-11-15',
@@ -2472,6 +2507,7 @@ describe('ContractsService', () => {
             blockedServed: 1,
           },
         }),
+        expect.anything(),
       );
     });
 
@@ -2630,7 +2666,8 @@ describe('ContractsService', () => {
       await expect(service.assertContractNotBlocked('ctr-1')).resolves.toBeUndefined();
       expect(readOrder).toEqual(['contract', 'subscriber']);
       expect(findOne).toHaveBeenCalledWith('ctr-1');
-      expect(privacyMarksReadPort.activeMarks).toHaveBeenCalledWith(['party-test-uuid']);
+      // Fuera de transacción la guarda no pasa manager: el segundo argumento es undefined.
+      expect(privacyMarksReadPort.activeMarks).toHaveBeenCalledWith(['party-test-uuid'], undefined);
       expect(findOne.mock.invocationCallOrder[0]!).toBeLessThan(
         privacyMarksReadPort.activeMarks.mock.invocationCallOrder[0]!,
       );

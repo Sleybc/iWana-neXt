@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { EntityManager } from 'typeorm';
 import { CustomerSegment, NetworkType, VatConcept } from '@iwana/shared';
 
 /**
@@ -65,12 +66,16 @@ export abstract class CommercialCatalogReadPort {
   /**
    * Crea un snapshot inmutable del ítem para ser guardado en cotizaciones/contratos.
    * `segment` es aditivo; si el caller no lo pasa, el adapter usa RESIDENTIAL.
+   *
+   * Solo lee (D3): con `ctx` reutiliza la conexión de la transacción del
+   * llamante; sin `ctx` abre su propia transacción tenant.
    */
   abstract createSnapshot(
     tenantId: string,
     schemaName: string,
     itemId: string,
     segment?: CustomerSegment,
+    ctx?: { manager: EntityManager },
   ): Promise<CommercialItemSnapshot>;
 
   /** Productos adicionales activos del catálogo comercial. */
@@ -86,10 +91,16 @@ export abstract class CommercialCatalogReadPort {
     productId: string,
   ): Promise<CommercialProductReference | null>;
 
-  /** Plan activo por id (CRM / cotización). */
+  /**
+   * Plan activo por id (CRM / cotización).
+   *
+   * Solo lee (D3): con `ctx` reutiliza la conexión de la transacción del
+   * llamante; sin `ctx` abre su propia transacción tenant.
+   */
   abstract getPlanById(
     tenantId: string,
     schemaName: string,
     planId: string,
+    ctx?: { manager: EntityManager },
   ): Promise<CommercialCatalogItem | null>;
 }
