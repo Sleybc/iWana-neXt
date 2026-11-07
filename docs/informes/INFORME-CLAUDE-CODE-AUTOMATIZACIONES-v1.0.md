@@ -1,9 +1,9 @@
 # INFORME — Automatizaciones de Claude Code
 
 **Modo activo:** ejecutor
-**Version:** 1.3
+**Version:** 1.4
 **Estado:** Vigente
-**Fecha:** 2026-10-08 (**v1.1: 2026-10-09 — cierre de las cinco decisiones abiertas**, ver §9; **v1.2: 2026-10-09 — segunda pasada: decisiones de guard-bash, Redis, tests de hooks y commit**, ver §10; **v1.3: 2026-10-09 — segunda ola implementada y diagnóstico de CI**, ver §11)
+**Fecha:** 2026-10-08 (**v1.1: 2026-10-09 — cierre de las cinco decisiones abiertas**, ver §9; **v1.2: 2026-10-09 — segunda pasada: decisiones de guard-bash, Redis, tests de hooks y commit**, ver §10; **v1.3: 2026-10-09 — segunda ola implementada y diagnóstico de CI**, ver §11; **v1.4: 2026-10-31 — tercera pasada: CI de `main`, documentos versionados, pruebas ajustadas y checkpoint de commits**, ver §12)
 **Origen:** analisis `claude-code-setup` (`claude-automation-recommender`) del 2026-10-08; implementacion aprobada por el usuario con 15 recomendaciones.
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
@@ -280,3 +280,31 @@ CI de `main` falla desde el 2026-10-06 en tres commits seguidos. Dos causas inde
 | `scripts/claude-hooks.test.mjs` | 10 tests, 10 pass |
 | `sync:agents:check` · `sync:skills:check` · `sync:mcp:check` | 13 agentes · 51 skills · 4 + 6 servidores, todos OK |
 | Catálogo de skills | 51 en `core` = 51 directorios = `coreCount` |
+
+## 12. Actualizacion 2026-10-31 (v1.4) — Tercera pasada de `claude-code-setup`
+
+**Origen:** el usuario pidió implementar las cinco recomendaciones del análisis del 2026-10-31. Cada pieza cubre un incidente registrado que la configuración vigente no evitaba. No se agregaron servidores MCP ni plugins: `gh` está autenticado y cubre GitHub, y los cuatro MCP del repo cubren documentación, navegador, Postgres y Redis.
+
+| Pieza | Tipo | Ubicación | Incidente que cubre |
+| --- | --- | --- | --- |
+| CI de `main` al abrir | Hook SessionStart (ampliación) | `.claude/hooks/session-context.mjs` | CI de `main` en rojo sin que nadie lo viera: 12 a 14-10, 16-10 y 17-10. Nueva línea `CI main: <conclusión> · <sha> <título> · run <id>`; solo consulta `gh` si hay upstream y la omite sin red o sin remoto. |
+| `post-push-ci` | Hook PostToolUse (Bash\|PowerShell) | `.claude/hooks/post-push-ci.mjs` | Mismo origen. Tras un `git push` devuelve un `additionalContext` con `gh run list --commit <sha>`. Ignora el cuerpo de los heredocs y no bloquea nunca. |
+| Documentos versionados | Hook PreToolUse (ampliación) | `.claude/hooks/guard-paths.mjs` | El 2026-10-12, un `Write` reemplazó el informe T11 que otra sesión había creado sobre el mismo checkout. Niega `Write` sobre un `.md` existente de `docs/{adrs,hlds,informes,plans,prds,prompts,specs}/`; `Edit` sigue permitido. |
+| `gate-verifier` | Subagente (ajuste) | `.claude/agents/gate-verifier.md` + perfil v1.1 | Suite completa cuando el diff toca un `@Module` (privacy B6, 2026-10-29); G6.5 solo con la corrida de CI del commit; las pruebas ajustadas se derivan a `test-change-reviewer`. |
+| `test-change-reviewer` | Subagente nuevo | `.claude/agents/test-change-reviewer.md` + perfil `Perfil_IA_Revisor_Cambios_Pruebas_v1.md` (AI-TEST-CHANGE-REV) | Tres fixtures «obsoletos» que ocultaban regresiones con las suites verdes (ADR-100 el 2026-10-26; MOD05 360° el 2026-10-31). Alta según el protocolo §9 (v1.8) y el informe de roles §12. |
+| `iwana-checkpoint-commit` | Skill (solo usuario) | `.agents/skills/iwana-checkpoint-commit/SKILL.md` | Cinco incidentes de commit y push (2026-10-17 a 2026-10-31): migración NOT NULL pusheada sola, `.cache/` en el índice, `next-env.d.ts` en el stash, edición del árbol durante F1 y líneas reordenadas por staging parcial. Empaqueta las reglas 2, 4 enmendada, 4-ter y 7 de `PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`, que sigue prevaleciendo. Registrada en INDEX v1.8 y MANIFEST v1.8. |
+
+### 12.1 Descartado a propósito
+
+- **Typecheck o ESLint por edición:** `format-file` ya documenta por qué ESLint queda en lint-staged y CI. El hook más lento por edición tiene un p95 de unos 0,36 s (`pnpm hooks:timings`), y un `tsc` por paquete lo multiplicaría.
+- **MCP de GitHub en el repo:** se mantiene la decisión del 2026-10-08. `gh` cubre la lectura de CI.
+
+### 12.2 Verificación de v1.4
+
+| Prueba | Resultado |
+| --- | --- |
+| `pnpm test:tooling` | 182 tests, 182 pass, 0 fail, 0 skipped |
+| `scripts/claude-hooks.test.mjs` | 13 tests, 13 pass. Nuevos: Write sobre un informe existente (bloquea), versión nueva, Edit y fuera de `docs/` (pasan); `post-push-ci` con cuatro formas de push y tres que no lo son; `session-context` sin upstream no consulta `gh` |
+| Árbol real | `session-context` en 1,1 s, con la línea `CI main: success · 6dbdda8a … · run 41249281896`; `guard-paths` niega un `Write` sobre este informe (exit 2); `post-push-ci` devuelve el recordatorio con el SHA de `HEAD` |
+| `sync:agents:check` · `sync:skills:check` · `sync:mcp:check` | 14 agentes · 52 skills · 4 + 6 servidores, todos OK |
+| `audit:adr-citations` · `audit:doc-locations` | `BLOQUEANTE: 0` en ambas |

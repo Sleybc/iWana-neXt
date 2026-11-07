@@ -1,8 +1,10 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.7
+**Version:** 1.8
 **Estado:** Aprobado
-**Fecha:** 2026-10-19
+**Fecha:** 2026-10-31
+
+**Cambio v1.7 → v1.8 (2026-10-31):** alta de una skill propia del repo (tercera pasada de `claude-code-setup`): `iwana-checkpoint-commit` (flujo de trabajo; solo la invoca el usuario). Empaqueta las reglas 2, 4 enmendada, 4-ter y 7 de `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`: verificar exactamente el índice con `stash --keep-index` y las exclusiones de `next-env.d.ts`, respaldar con SHA-256 los archivos parcialmente en el índice y revisar la corrida de CI de cada push. Nace de cinco incidentes de commit y push entre el 2026-10-17 y el 2026-10-31; el prompt sigue prevaleciendo. `coreCount` pasa de 51 a 52. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`.
 
 **Cambio v1.6 → v1.7 (2026-10-19):** se gobiernan por primera vez las **skills externas de plugin**: 40 skills que Claude Code recibe de la cuenta (23 de 6 plugins con skills y 17 sincronizadas de claude.ai, el 2026-10-16/17) y que no viven en el repo. Nueva seccion [Skills externas de plugin (solo Claude Code)](#skills-externas-de-plugin-solo-claude-code): 15 se admiten como **apoyo** con disparador, skill del repo que prevalece y subagente; 25 quedan **fuera del dispatch** con su motivo. No entran al catalogo core: `coreCount` sigue en 51 y `pnpm sync:skills` no las toca. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.
 
@@ -83,6 +85,7 @@ Estados admitidos:
 - iwana-cierre-fase
 - iwana-matriz-motivos
 - iwana-queue-inspect
+- iwana-checkpoint-commit
 
 ### Arquitectura y gobierno
 
@@ -139,6 +142,7 @@ Estados admitidos:
 - dispatching-parallel-agents
 - executing-plans
 - finishing-a-development-branch
+- iwana-checkpoint-commit
 - iwana-cierre-fase
 - receiving-code-review
 - requesting-code-review

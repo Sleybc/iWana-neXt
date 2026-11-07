@@ -1,8 +1,8 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.9
+**Versión:** 1.11
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13
 **Sin pendientes de gobernanza abiertos.** La decisión menor que abrió v1.7 se cerró en v1.8 (§10.3). El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
@@ -331,3 +331,31 @@ Los subagentes remiten ahora a su perfil (`pnpm sync:agents:check` → 11 agente
 | AI-E2E-TRIAGE | `e2e-triage` (sonnet, sin edición) | [Perfil_IA_Triador_E2E_v1.md](../roles/Perfil_IA_Triador_E2E_v1.md) | El triaje de fallos E2E se repetía a mano en cada ola de UI; los separa en regresión, flaky o entorno antes de tocar código. No sustituye a AI-SR-QA. |
 
 Alta en un solo acto según el protocolo §9 (v1.7): perfil, fila en *Verificadores auxiliares*, mención en §1, subagente en `.claude/agents/` con `pnpm sync:agents` y este registro. Ninguno entra en la RACI ni recibe escalaciones.
+
+## 12. Actualización 2026-10-31 — Revisor de pruebas ajustadas y ajuste del verificador de gates
+
+**Origen:** tercera pasada del análisis `claude-code-setup`, implementación aprobada por el usuario titular del repositorio. Detalle en [INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0](INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md) §12.
+
+| Identificador | Subagente | Perfil | Motivo |
+| --- | --- | --- | --- |
+| AI-TEST-CHANGE-REV | `test-change-reviewer` (sonnet, solo lectura) | [Perfil_IA_Revisor_Cambios_Pruebas_v1.md](../roles/Perfil_IA_Revisor_Cambios_Pruebas_v1.md) | En tres casos (ADR-100 el 2026-10-26, dos veces; MOD05 360° el 2026-10-31), ajustar una prueba «obsoleta» habría ocultado una regresión real con las suites en verde y GO de AI-GATE-VERIFIER. Solo los detectó la lectura del diff. Ningún verificador revisaba el ajuste de pruebas existentes. |
+
+Alta en un solo acto según el protocolo §9 (v1.8): perfil, fila en *Verificadores auxiliares*, mención en §1, subagente en `.claude/agents/` con `pnpm sync:agents` y este registro. No entra en la RACI ni recibe escalaciones.
+
+**Ajuste de AI-GATE-VERIFIER (perfil v1.1, sin cambio de categoría):**
+- Si el diff toca un `*.module.ts`, la suite del paquete corre completa. Precedente: privacy B6, el 2026-10-29.
+- G6.5 solo se marca con la corrida de CI del commit pusheado. Precedentes: CI de `main` en rojo sin que nadie lo viera el 12-10, el 16-10 y el 17-10.
+- Las pruebas ajustadas se derivan a AI-TEST-CHANGE-REV, y el verificador nunca propone ajustar una prueba roja por «obsoleta».
+
+## 13. Actualización 2026-11-07 — Carraca de conteos y criterio de simplicidad
+
+**Origen:** contraste de la [referencia de metodología Karpathy](../referencias/REFERENCIA-KARPATHY-METODOLOGIA-IA-v1.0.md) con el método vigente; de sus candidatas, solo estas dos cubrían un hueco real (§10 de la referencia). Implementación aprobada por el usuario titular del repositorio.
+
+**Carraca de conteos (gate 14 del protocolo v1.9 y gate homónimo de `AGENTS.md`).** Los gates exigían conteos reales al cierre, pero nada los comparaba con el inicio de la ola: una prueba borrada, saltada o que no corrió no cambia un verde. Ese hueco está detrás de varios incidentes registrados (caché de Turbo, `--passWithNoTests`, `describe.skip`, suites focales verdes con CI rojo, fixtures «obsoletos»).
+- `iwana-test-evidence`: secciones «Línea base» (al iniciar la ola, en el plan o el INFORME) y «Comparación con la línea base» (al cerrar).
+- AI-GATE-VERIFIER (perfil v1.2, paso 10 del subagente): una baja de `Tests`/`Suites` sin veredicto *justificado* de AI-TEST-CHANGE-REV, o un `skipped` nuevo sin causa, deja el gate de tests **sin evidencia**; un fallo ausente de la línea base, **falla**.
+- `PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH`: el plan de orquestación incluye la sección `## Linea base de pruebas`.
+
+**Criterio de simplicidad (`AGENTS.md` → General Recommendations).** Criterio de revisión, no gate: a igual resultado gana el diff más chico, y el INFORME de cierre declara las líneas agregadas y quitadas de la ola.
+
+**Descartadas por no mejorar el método** (detalle en la referencia §10): evaluador inmutable por permiso (lo cubre AI-TEST-CHANGE-REV sin romper TDD), bitácora de descartes, higiene de contexto, *lint* documental y autonomía sin confirmaciones. El set de evaluación privado queda diferido hasta que haya que elegir modelo o esfuerzo de un subagente.

@@ -60,6 +60,50 @@ test('guard-paths: bloquea rutas reservadas y deja pasar el resto', () => {
   }
 });
 
+test('guard-paths: Write no sobrescribe un documento versionado existente; Edit sí lo cambia', () => {
+  const dir = fixture({ 'docs/informes/INFORME-MOD05-X-v1.0.md': 'x' });
+  try {
+    const existing = join(dir, 'docs/informes/INFORME-MOD05-X-v1.0.md');
+    const fresh = join(dir, 'docs/informes/INFORME-MOD05-X-v1.1.md');
+    const write = (path) => runHook('guard-paths.mjs', { tool_name: 'Write', ...edit(path) });
+    const blocked = write(existing);
+    assert.equal(blocked.code, 2);
+    assert.match(blocked.stderr, /ya existe/);
+    assert.equal(write(fresh).code, 0, 'versión nueva');
+    assert.equal(
+      runHook('guard-paths.mjs', { tool_name: 'Edit', ...edit(existing) }).code,
+      0,
+      'Edit sobre el existente',
+    );
+    writeFileSync(join(dir, 'notas.md'), 'x');
+    assert.equal(write(join(dir, 'notas.md')).code, 0, 'fuera de docs/');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('post-push-ci: tras un git push recuerda revisar el CI y en lo demás calla', () => {
+  for (const command of [
+    'git push',
+    'git push origin main',
+    'git commit -m "x" && git push',
+    'git -C C:/appiw push',
+  ]) {
+    const { code, stdout } = runHook('post-push-ci.mjs', { tool_input: { command } });
+    assert.equal(code, 0, command);
+    assert.match(JSON.parse(stdout).hookSpecificOutput.additionalContext, /gh run list/, command);
+  }
+  for (const command of [
+    'git status',
+    'git log --grep "git push"',
+    "git commit -F - <<'EOF'\ndocs: tras el push\ngit push\nEOF",
+  ]) {
+    const { code, stdout } = runHook('post-push-ci.mjs', { tool_input: { command } });
+    assert.equal(code, 0, command);
+    assert.equal(stdout, '', command);
+  }
+});
+
 test('guard-bash: niega ramas, --no-verify, escrituras protegidas y acciones destructivas', () => {
   for (const command of [
     'git checkout -b feature/x',
@@ -257,6 +301,7 @@ test('session-context: informa rama, cambios y plan más reciente sin bloquear n
     assert.match(stdout, /último commit: \w+ base/);
     assert.match(stdout, /Árbol: 1 rutas con cambios sin commitear/);
     assert.match(stdout, /Plan más reciente: docs\/plans\/2026-10-09-nuevo\.md/);
+    assert.doesNotMatch(stdout, /CI main/, 'sin upstream no consulta gh');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

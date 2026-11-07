@@ -4,6 +4,8 @@
  * edición; una escritura vía Bash no pasa por aquí.
  */
 
+import { existsSync } from 'node:fs';
+
 import { block, readHookInput, toolFilePath } from './lib/hook-input.mjs';
 
 const RULES = [
@@ -25,7 +27,12 @@ const RULES = [
   [/(^|\/)\.mcp\.json$/, 'archivo generado: edita .agents/mcp/servers.json y corre pnpm sync:mcp'],
 ];
 
-const file = toolFilePath(await readHookInput());
+// Artefactos versionados: el 12-10 un Write reemplazó el informe T11 que otra sesión
+// acababa de crear sobre el mismo checkout. Un Write solo crea; para cambiar, Edit.
+const VERSIONED_DOC = /(^|\/)docs\/(adrs|hlds|informes|plans|prds|prompts|specs)\/.+\.md$/;
+
+const input = await readHookInput();
+const file = toolFilePath(input);
 if (!file) process.exit(0);
 
 const hit = RULES.find(([pattern]) => pattern.test(file));
@@ -34,4 +41,12 @@ if (hit) block(`Bloqueado: ${hit[1]} (${file})`);
 // AGENTS.md → Documentation Rules: ningún prompt fuera de docs/prompts/.
 if (/(^|\/)PROMPT-[^/]*\.md$/.test(file) && !file.includes('docs/prompts/')) {
   block(`Bloqueado: los prompts viven solo en docs/prompts/ (${file})`);
+}
+
+if (input.tool_name === 'Write' && VERSIONED_DOC.test(file) && existsSync(file)) {
+  block(
+    `Bloqueado: ${file} ya existe y Write lo sobrescribiría entero. Usa Edit para cambiarlo, ` +
+      'o la siguiente versión libre (-vX.Y) si es un documento nuevo; si otra sesión lo creó, ' +
+      'repórtalo al orquestador.',
+  );
 }

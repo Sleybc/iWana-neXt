@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.7
+**Version:** 1.8
 **Estado:** Aprobado
-**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; **v1.7: 2026-10-19 — gobierno de las skills externas de plugin (solo Claude Code), catálogo core sin cambios**; ver change-log)
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; **v1.7: 2026-10-19 — gobierno de las skills externas de plugin (solo Claude Code), catálogo core sin cambios**; **v1.8: 2026-10-31 — alta de `iwana-checkpoint-commit`, catálogo 51 → 52**; ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -781,3 +781,20 @@ Reglas del nivel externo: solo Claude Code; **nunca obligatorias** en una matriz
 ### Estado posterior
 
 Catalogo core: **51 skills**, sin cambios. Nivel externo gobernado: **15 de apoyo** (2 latentes) y **25 fuera del dispatch**, sobre 40 skills externas.
+
+## Actualizacion 2026-10-31 — Alta de iwana-checkpoint-commit (51 -> 52)
+
+**Origen:** tercera pasada de `claude-code-setup`, implementación aprobada por el usuario. Detalle en `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md` §12.
+
+`iwana-checkpoint-commit` (flujo de trabajo, `disable-model-invocation: true`) empaqueta el procedimiento de commit por ola sobre `main` con cambios de varias olas: índice armado con rutas explícitas y guarda de `.cache/`, respaldo SHA-256 de los archivos parcialmente en el índice, `stash --keep-index` que excluye los dos `next-env.d.ts`, gate sobre el índice aislado, comprobación tras el `pop` y revisión de la corrida de CI de cada push. Es especializada por necesidad y no reemplaza a ninguna activa. Complementa a `finishing-a-development-branch`, que asume ramas que este repo no usa, y se apoya en `iwana-test-evidence`. La norma sigue en `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`; si divergen, prevalece el prompt.
+
+### Archivos actualizados
+
+- `.agents/skills/iwana-checkpoint-commit/SKILL.md` — nueva.
+- `.agents/skills/INDEX.md` — v1.7 -> **v1.8**; alta en «Especializadas por necesidad» y «Flujos de trabajo».
+- `.agents/skills/MANIFEST.json` — v1.7 -> **v1.8**; `specializedOnDemand` y `core.workflow`; `summary.coreCount` **52**.
+- `.claude/skills/iwana-checkpoint-commit/SKILL.md` — puntero generado por `pnpm sync:skills`.
+
+### Estado posterior
+
+Catalogo core: **52 skills** (52 directorios = `coreCount`); `pnpm sync:skills:check` OK.

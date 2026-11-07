@@ -38,7 +38,7 @@ Segun la tarea: PRD de modulo, HLD, ADR propuesto, prompt de ejecucion por fase,
 Cuando la tarea **cierra un alcance** —PRD, spec, plan de fase, o informe que aprueba trabajo ejecutable— no basta con la definicion. Se emiten **cuatro** artefactos juntos:
 
 1. **La definicion** — PRD, HLD, spec o informe.
-2. **El plan de orquestacion** — `docs/plans/YYYY-MM-DD-<nombre>.md`: bloques, dependencias, ruta critica, olas, gates y bloqueos.
+2. **El plan de orquestacion** — `docs/plans/YYYY-MM-DD-<nombre>.md`: bloques, dependencias, ruta critica, olas, gates y bloqueos. Incluye una seccion `## Linea base de pruebas` que el primer bloque de cada ola llena **antes de tocar codigo** (skill `iwana-test-evidence` → «Linea base»); el gate 14 del protocolo compara contra ella al cerrar. El INFORME de cierre lleva la comparacion antes → despues por paquete y las lineas agregadas/quitadas de la ola (`AGENTS.md` → Simplicidad).
 3. **La matriz de dispatch** — dentro del plan: por bloque, el subagente de `.claude/agents/` y sus skills **obligatorias / de apoyo con condicion / descartadas con motivo**, cada una verificada contra disco.
 4. **El prompt corto de lanzamiento** — `docs/prompts/PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, techo de 40 lineas, espejado en la seccion `## Lanzamiento` del plan.
 
