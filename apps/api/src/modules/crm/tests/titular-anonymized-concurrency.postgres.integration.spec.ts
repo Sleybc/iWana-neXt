@@ -1,5 +1,8 @@
 import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
 import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
+import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
+import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
 import { randomUUID } from 'node:crypto';
 import { ConflictException, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -586,6 +589,9 @@ describeWithDb('DT-3 RER: concurrencia de titular anonimizado contra PostgreSQL 
       new OperationalTaskTitularErasureParticipant(config),
       new MediaTitularErasureParticipant(),
       new BillingTitularErasureParticipant(),
+      new AssuranceTitularErasureParticipant(config),
+      new NetworkTitularErasureParticipant(config),
+      new SupplierProfileReadAdapter(),
     );
     const storage = {} as StoragePort;
     const mediaService = new MediaService(dataSource.getRepository(MediaAsset), storage, config);

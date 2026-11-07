@@ -1,3 +1,5 @@
+import type { TitularWriteReference } from './titular-write-reference';
+import type { QueryRunner } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
 export interface SubscriberServiceContractRef {
@@ -18,5 +20,10 @@ export interface SubscriberServiceContext {
 /** Contexto comercial mínimo para aprovisionar, sin exponer datos personales. */
 @Injectable()
 export abstract class SubscriberServiceContextReadPort {
+  abstract assertWritableReferences(
+    references: TitularWriteReference[],
+    qr: QueryRunner,
+  ): Promise<void>;
+
   abstract getForSubscriber(subscriberId: string): Promise<SubscriberServiceContext | null>;
 }

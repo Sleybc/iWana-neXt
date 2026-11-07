@@ -535,6 +535,10 @@ export class ServiceProvisioningService {
       }
       const subscriberId = order.subscriberId;
       if (!subscriberId) throw this.orderNotEligible();
+      await this.subscriberContextPort.assertWritableReferences(
+        [{ type: 'SUBSCRIBER', id: subscriberId }],
+        qr,
+      );
       this.assertReservationsOpen();
 
       await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [

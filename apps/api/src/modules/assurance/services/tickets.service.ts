@@ -1,3 +1,4 @@
+import { ticketTitularReferences } from '../privacy/ticket-titular-references';
 import {
   BadRequestException,
   ConflictException,
@@ -169,6 +170,10 @@ export class TicketsService {
     const validated = CreateTicketSchema.parse(input);
 
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        ticketTitularReferences(validated),
+        qr,
+      );
       const createdAt = new Date();
       const isPqr = validated.type === TicketType.PQR;
       const initialStatus = validated.assignedUserId ? TicketStatus.ASSIGNED : TicketStatus.OPEN;
@@ -476,6 +481,11 @@ export class TicketsService {
 
       this._ensureOwnership(ticket, actor);
 
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        ticketTitularReferences(ticket),
+        qr,
+      );
+
       const updates: Partial<SupportTicket> = {};
       if (validated.subject !== undefined) updates.subject = validated.subject;
       if (validated.description !== undefined) updates.description = validated.description;
@@ -667,6 +677,11 @@ export class TicketsService {
 
       this._ensureOwnership(ticket, actor);
 
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        ticketTitularReferences(ticket),
+        qr,
+      );
+
       if (![TicketStatus.IN_PROGRESS, TicketStatus.PENDING_INTERNAL].includes(ticket.status)) {
         throw new BadRequestException(
           'Solo se puede solicitar trabajo de campo desde IN_PROGRESS o PENDING_INTERNAL',
@@ -736,6 +751,11 @@ export class TicketsService {
 
       this._ensureOwnership(ticket, actor);
 
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        ticketTitularReferences(ticket),
+        qr,
+      );
+
       const link = qr.manager.create(TicketWorkOrderLink, {
         ticketId: id,
         tenantId,
@@ -800,6 +820,10 @@ export class TicketsService {
         return { ticket: existing, created: false };
       }
 
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        [{ type: 'EXPEDIENTE', id: dto.expedienteId }],
+        qr,
+      );
       const ticketNumber = await this.generateTicketNumber(qr.manager, ctx.tenantId);
 
       const ticket = qr.manager.create(SupportTicket, {

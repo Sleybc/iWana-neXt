@@ -234,7 +234,12 @@ describe('PrivacyRequestDetail · supresión', () => {
     getErasurePreviewMock.mockResolvedValueOnce({
       ...eligiblePreview,
       eligible: false,
-      blockers: ['UNRECONCILED_TITULAR', 'ACTIVE_USER_ACCOUNT', 'TOO_MANY_CANDIDATES'],
+      blockers: [
+        'UNRECONCILED_TITULAR',
+        'ACTIVE_USER_ACCOUNT',
+        'TOO_MANY_CANDIDATES',
+        'SUPPLIER_PROFILE_LINKED',
+      ],
     });
     renderDetail();
 
@@ -251,6 +256,10 @@ describe('PrivacyRequestDetail · supresión', () => {
         'Hay demasiados expedientes para resolver desde la pantalla. Usa el procedimiento de emergencia del Oficial de protección de datos',
       ),
     ).toBeVisible();
+    expect(
+      screen.getByText('La persona titular también es proveedor; requiere resolución manual.'),
+    ).toBeVisible();
+    expect(screen.queryByText('SUPPLIER_PROFILE_LINKED')).not.toBeInTheDocument();
     expect(screen.queryByText('ACTIVE_USER_ACCOUNT')).not.toBeInTheDocument();
     expect(screen.queryByText('TOO_MANY_CANDIDATES')).not.toBeInTheDocument();
 
@@ -313,7 +322,7 @@ describe('PrivacyRequestDetail · supresión', () => {
     expect(screen.getByText('Traslado extemporáneo')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Supresión ejecutada' })).toBeInTheDocument();
     expect(screen.getByText('Identificación')).toBeInTheDocument();
-    expect(screen.getByText('Operación en campo')).toBeInTheDocument();
+    expect(screen.getByText('Operación y soporte')).toBeInTheDocument();
     expect(screen.queryByText('IDENTIFICACION')).not.toBeInTheDocument();
   });
 });

@@ -1,3 +1,7 @@
+import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
+import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
+import { erasureSupplierProfile } from '../../privacy/requests/erasure-errors';
 import {
   ConflictException,
   Inject,
@@ -68,6 +72,9 @@ interface ResolvedScope {
 export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
   private readonly logger = new Logger(CrmPersonalDataErasureAdapter.name);
   private readonly participants: readonly NamedParticipant[];
+  private readonly assurance: AssuranceTitularErasureParticipant;
+  private readonly network: NetworkTitularErasureParticipant;
+  private readonly suppliers: SupplierProfileReadAdapter;
 
   constructor(
     private readonly crm: CrmTitularErasureParticipant,
@@ -80,15 +87,36 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     @Optional()
     @Inject(BillingTitularErasureParticipant)
     private readonly billing?: BillingTitularErasureParticipant,
+    @Optional()
+    @Inject(AssuranceTitularErasureParticipant)
+    assurance?: AssuranceTitularErasureParticipant,
+    @Optional()
+    @Inject(NetworkTitularErasureParticipant)
+    network?: NetworkTitularErasureParticipant,
+    @Optional()
+    @Inject(SupplierProfileReadAdapter)
+    suppliers?: SupplierProfileReadAdapter,
   ) {
     super();
+    // Sin valores por defecto: un cableado olvidado fallaba en silencio con
+    // participantes creados con un ConfigService vacío. Falla cerrado aquí.
+    if (!assurance || !network || !suppliers) {
+      throw new Error(
+        'CrmPersonalDataErasureAdapter exige assurance, network y suppliers; registra sus módulos.',
+      );
+    }
+    this.assurance = assurance;
+    this.network = network;
+    this.suppliers = suppliers;
     this.participants = [
       { name: 'crm', participant: crm },
       { name: 'party', participant: party },
       { name: 'users', participant: users },
+      { name: 'assurance', participant: assurance },
       { name: 'wfm', participant: wfm },
       { name: 'execution-orders', participant: executionOrders },
       { name: 'operational-tasks', participant: operationalTasks },
+      { name: 'network', participant: network },
       { name: 'media', participant: media },
       ...(billing ? [{ name: 'billing', participant: billing }] : []),
     ];
@@ -111,8 +139,13 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
       blockers: resolved.blockers.filter(
         (
           blocker,
-        ): blocker is Extract<ErasureBlocker, 'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT'> =>
-          blocker === 'UNRECONCILED_TITULAR' || blocker === 'ACTIVE_USER_ACCOUNT',
+        ): blocker is Extract<
+          ErasureBlocker,
+          'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT' | 'SUPPLIER_PROFILE_LINKED'
+        > =>
+          blocker === 'UNRECONCILED_TITULAR' ||
+          blocker === 'ACTIVE_USER_ACCOUNT' ||
+          blocker === 'SUPPLIER_PROFILE_LINKED',
       ),
       counts,
     };
@@ -144,6 +177,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
         message: 'El titular debe conciliarse antes de suprimir los datos.',
       });
     }
+
+    if (resolved.blockers.includes('SUPPLIER_PROFILE_LINKED')) throw erasureSupplierProfile();
 
     const applied: TitularErasureTableResult[] = [];
     for (const entry of this.participants) {
@@ -184,6 +219,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     this.assertBillingParticipantRegistered();
     await this.resolveParticipants(scope, qr);
     if (mode === 'apply') {
+      if (scope.partyId && (await this.suppliers.hasSupplierProfile(scope.partyId, qr)))
+        throw erasureSupplierProfile();
       const active = await this.users.activeAccountCount(scope.userIds, qr);
       if (active > 0) {
         throw new Error(`Hay ${active} cuenta(s) enlazada(s) activa(s); no se aplicaron cambios.`);
@@ -266,6 +303,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     }
     const activeAccountCount = await this.users.activeAccountCount(userIds, qr);
     if (activeAccountCount > 0) blockers.push('ACTIVE_USER_ACCOUNT');
+    if (scope.partyId && (await this.suppliers.hasSupplierProfile(scope.partyId, qr)))
+      blockers.push('SUPPLIER_PROFILE_LINKED');
 
     await this.resolveParticipants(scope, qr, true);
     const results: TitularErasureTableResult[] = [];

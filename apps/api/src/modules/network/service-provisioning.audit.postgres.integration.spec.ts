@@ -85,6 +85,7 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
     hasOpenWithdrawalOrders: jest.fn(),
   };
   const subscriberServiceContextReadPort = {
+    assertWritableReferences: jest.fn().mockResolvedValue(undefined),
     getForSubscriber: jest.fn().mockResolvedValue({
       expedienteId: null,
       planId: null,

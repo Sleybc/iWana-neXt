@@ -1,0 +1,530 @@
+{
+  "numTotalTestSuites": 74,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 4,
+  "numPassedTestSuites": 70,
+  "numFailedTests": 0,
+  "numPendingTests": 24,
+  "numPassedTests": 482,
+  "numTotalTests": 506,
+  "suites": [
+    {
+      "file": "apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 71,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/inventory/tests/inventory-execution-request.ola3d.postgres.integration.spec.ts",
+      "status": "skipped",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 13
+    },
+    {
+      "file": "apps/api/src/modules/crm/tests/titular-anonymized-concurrency.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/b5-identity-conversion.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts",
+      "status": "skipped",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 5
+    },
+    {
+      "file": "apps/api/src/modules/crm/contracts/tests/contracts.service.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.service.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/network/network-execution-event.postgres.integration.spec.ts",
+      "status": "skipped",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 5
+    },
+    {
+      "file": "apps/api/src/modules/network/tests/network-catalog.d23.http.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/network/tests/network-execution-event.wiring.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/contact-pending.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/billing-br2.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/contracts/tests/crm-privacy-marks-in-transaction.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/payments/billing-payments.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/billing-g3-concurrency.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/tests/subscriber-lifecycle.service.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/billing-br4.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/privacy/text-erasure-scope.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/wfm/tests/schedule-events.execution-order.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/inventory/tests/asset-loan.transactional.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/billing-br6.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.close-by-result.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/network/tests/ipam.service.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/contracts/tests/contract-plan-change.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/retention-clock.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/inventory/tests/stock-reservations.transactional.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/auth/auth-login-lockout.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.dispatch.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/inventory/tests/useful-life-alerts.parity.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/report-subscriber-phone-readiness.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/billing-agenda.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/contracts/billing-contract-read.adapter.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/expedientes/tests/g1-conversion-failure.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/billing/generation/billing-generation.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.assign-persistence.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.annulment.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/wfm/tests/subscriber-support.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tenant/tenant-migrations-second-schema.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscribers-update-audit.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscriber-rut-responsibilities.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/assurance/tests/tickets.subscriber-filter.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.origin-identity.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.read-port.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscriber-birth-date.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/purposes/privacy-purposes.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/network/tests/network-catalog.service.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/tests/subscriber-tax-confirm.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/tasks/tests/execution-orders.item-usage-projection.postgres.integration.spec.ts",
+      "status": "skipped",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1
+    },
+    {
+      "file": "apps/api/src/modules/inventory/ports/installed-equipment-read.adapter.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/crm-subscriber-read.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/audit/audit.service.transaction.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/backfill-placeholder-contacts.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/report-ticket-subscriber-links.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/wfm/tests/work-order-source-context-tasks.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscriber-status-transition.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/organization/organization-site-code.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscriber-360-quotes.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/report-lifecycle-inconsistencies.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/backfill-fiscal-document.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/inventory/tests/asset-loan-read-port.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/cli/backfill-party-pii.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/responsibilities/tests/responsibilities.service.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/privacy/authorizations/privacy-authorization.adapter.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscriber-null-encryption-rotation.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "apps/api/src/modules/crm/subscribers/subscriber-enum-parity.postgres.integration.spec.ts",
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}

@@ -245,5 +245,6 @@ describe('Privacy OpenAPI', () => {
     const blockerItems = (previewProperties?.blockers as Record<string, unknown> | undefined)
       ?.items as Record<string, unknown> | undefined;
     expect(blockerItems?.enum).toContain('TOO_MANY_CANDIDATES');
+    expect(blockerItems?.enum).toContain('SUPPLIER_PROFILE_LINKED');
   });
 });

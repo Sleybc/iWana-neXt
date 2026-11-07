@@ -27,7 +27,7 @@ function zeroCounts(): Record<(typeof ERASURE_CATEGORIES)[number], number> {
 }
 
 describe('contratos de supresión de privacidad (Fase 1b)', () => {
-  it('fija las nueve categorías y los seis bloqueos de anonimización', () => {
+  it('fija las nueve categorías y los siete bloqueos de anonimización', () => {
     for (const category of ERASURE_CATEGORIES) {
       expect(erasureCategorySchema.safeParse(category).success).toBe(true);
     }
@@ -38,6 +38,7 @@ describe('contratos de supresión de privacidad (Fase 1b)', () => {
       'CONSERVATION_DUTY',
       'UNRECONCILED_TITULAR',
       'ACTIVE_USER_ACCOUNT',
+      'SUPPLIER_PROFILE_LINKED',
       'TOO_MANY_CANDIDATES',
     ]) {
       expect(erasureBlockerSchema.safeParse(blocker).success).toBe(true);

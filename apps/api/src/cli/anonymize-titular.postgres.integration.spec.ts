@@ -1491,7 +1491,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       ).toEqual([{ title: 'ANONIMIZADO', description: null, result_notes: null }]);
       expect(
         await dataSource.query(`SELECT reason, notes FROM ${q}.schedule_reschedule_logs`),
-      ).toEqual([{ reason: 'OPERATIONAL_REASON', notes: null }]);
+      ).toEqual([{ reason: 'ANONIMIZADO', notes: null }]);
       expect(
         await dataSource.query(
           `SELECT customer_display_label, work_summary, service_address, municipality, sector,

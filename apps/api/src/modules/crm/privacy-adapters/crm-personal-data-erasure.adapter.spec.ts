@@ -49,6 +49,10 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
       activeAccountCount: jest.fn().mockResolvedValue(0),
     };
     wfm = participant();
+    const suppliers = {
+      ...participant(),
+      hasSupplierProfile: jest.fn().mockResolvedValue(false),
+    };
     adapter = new CrmPersonalDataErasureAdapter(
       crm as never,
       participant() as never,
@@ -58,6 +62,9 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
       participant() as never,
       participant() as never,
       participant() as never,
+      participant() as never,
+      participant() as never,
+      suppliers as never,
     );
     loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
@@ -86,6 +93,10 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
       participant() as never,
       users as never,
       wfm as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+      undefined,
       participant() as never,
       participant() as never,
       participant() as never,
@@ -148,5 +159,21 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
     expect(plan.candidateExpedienteIds).toEqual([]);
     expect(plan.blockers).toEqual([]);
     expect(Object.values(plan.counts).every((count) => count === 0)).toBe(true);
+  });
+
+  it('falla cerrado si falta el cableado de assurance, network o suppliers', () => {
+    expect(
+      () =>
+        new CrmPersonalDataErasureAdapter(
+          crm as never,
+          participant() as never,
+          users as never,
+          wfm as never,
+          participant() as never,
+          participant() as never,
+          participant() as never,
+          participant() as never,
+        ),
+    ).toThrow('exige assurance, network y suppliers');
   });
 });

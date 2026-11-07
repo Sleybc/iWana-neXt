@@ -27,6 +27,9 @@ import { AuditService } from '../modules/audit/audit.service';
 import { EffectivePermissionsService } from '../modules/access-control/services/effective-permissions.service';
 import { BillingStandingReadAdapter } from '../modules/billing/privacy/billing-standing-read.adapter';
 import { BillingTitularErasureParticipant } from '../modules/billing/privacy/billing-titular-erasure.participant';
+import { AssuranceTitularErasureParticipant } from '../modules/assurance/privacy/assurance-titular-erasure.participant';
+import { NetworkTitularErasureParticipant } from '../modules/network/privacy/network-titular-erasure.participant';
+import { SupplierProfileReadAdapter } from '../modules/inventory/privacy/supplier-profile-read.adapter';
 import { CrmPersonalDataErasureAdapter } from '../modules/crm/privacy-adapters/crm-personal-data-erasure.adapter';
 import { CrmTitularErasureParticipant } from '../modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
 import { MediaService } from '../modules/media/media.service';
@@ -527,6 +530,9 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
         BillingTitularErasureParticipant,
         BillingStandingReadAdapter,
         { provide: IBillingStandingReadPort, useExisting: BillingStandingReadAdapter },
+        AssuranceTitularErasureParticipant,
+        NetworkTitularErasureParticipant,
+        SupplierProfileReadAdapter,
         CrmPersonalDataErasureAdapter,
         { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
         {

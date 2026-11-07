@@ -1,3 +1,5 @@
+import type { TitularWriteReference } from './titular-write-reference';
+import type { QueryRunner } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
 export interface CrmSubscriberSummarySnapshot {
@@ -9,6 +11,11 @@ export interface CrmSubscriberSummarySnapshot {
 /** Puerto de lectura CRM para módulos que necesitan una proyección del suscriptor. */
 @Injectable()
 export abstract class CrmSubscriberReadPort {
+  abstract assertWritableReferences(
+    references: TitularWriteReference[],
+    qr: QueryRunner,
+  ): Promise<void>;
+
   abstract findSummaryByExpedienteId(
     expedienteId: string,
   ): Promise<CrmSubscriberSummarySnapshot | null>;

@@ -1,0 +1,32 @@
+[
+  {
+    "file": "apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts",
+    "expectation_calls": 87,
+    "unchanged": true,
+    "sha256": "da9c70f6d3f334872d2bd5c9d7e943a2eb5e5800a19b8d0e41719fc26acd6eed"
+  },
+  {
+    "file": "apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts",
+    "expectation_calls": 6,
+    "unchanged": true,
+    "sha256": "00d36ff171c3f385cb6c365f08474545e37da48b49533bb521a8f305afe058c3"
+  },
+  {
+    "file": "apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts",
+    "expectation_calls": 4,
+    "unchanged": true,
+    "sha256": "760180cc26b3df429dbd17e458dd79e15f14215923e156b89b563e135986740d"
+  },
+  {
+    "file": "apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts",
+    "expectation_calls": 334,
+    "unchanged": true,
+    "sha256": "401a48189eb1f764fdd715aae58bcc99e3b28f7e7b83f5c6fe499fcace58bc6c"
+  },
+  {
+    "file": "apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts",
+    "expectation_calls": 48,
+    "unchanged": true,
+    "sha256": "78c8056967dcd4717ec52f5a98f5949bc55a5360d92c7ee1504f8bbafa776bcf"
+  }
+]

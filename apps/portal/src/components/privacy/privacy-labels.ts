@@ -66,7 +66,7 @@ export const ERASURE_CATEGORY_OPTIONS: ReadonlyArray<{ value: ErasureCategory; l
   { value: 'EVIDENCIA_CONSENTIMIENTO', label: 'Evidencia de autorización' },
   { value: 'CUENTA_USUARIO', label: 'Cuenta de usuario' },
   { value: 'EVIDENCIA_DOCUMENTAL', label: 'Documentos adjuntos' },
-  { value: 'OPERACION_CAMPO', label: 'Operación en campo' },
+  { value: 'OPERACION_CAMPO', label: 'Operación y soporte' },
 ];
 
 export const ERASURE_BLOCKER_LABELS: Record<ErasureBlocker, string> = {
@@ -74,6 +74,7 @@ export const ERASURE_BLOCKER_LABELS: Record<ErasureBlocker, string> = {
   INVALID_STATUS: 'La solicitud no está en un estado que permita resolverla.',
   CONSERVATION_DUTY: 'Existe un deber de conservación vigente para estos datos.',
   UNRECONCILED_TITULAR: 'No fue posible conciliar los datos con una única persona titular.',
+  SUPPLIER_PROFILE_LINKED: 'La persona titular también es proveedor; requiere resolución manual.',
   ACTIVE_USER_ACCOUNT: 'La persona titular tiene una cuenta de usuario activa.',
   TOO_MANY_CANDIDATES:
     'Hay demasiados expedientes para resolver desde la pantalla. Usa el procedimiento de emergencia del Oficial de protección de datos',

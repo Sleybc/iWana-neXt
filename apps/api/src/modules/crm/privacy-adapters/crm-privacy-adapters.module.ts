@@ -1,3 +1,6 @@
+import { AssurancePrivacyModule } from '../../assurance/privacy/assurance-privacy.module';
+import { NetworkPrivacyModule } from '../../network/privacy/network-privacy.module';
+import { InventoryPrivacyModule } from '../../inventory/privacy/inventory-privacy.module';
 import { BillingPrivacyModule } from '../../billing/privacy/billing-privacy.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -23,9 +26,12 @@ import { TasksPrivacyModule } from '../../tasks/privacy/tasks-privacy.module';
     AuditModule,
     PartiesPrivacyModule,
     UsersPrivacyModule,
-    MediaPrivacyModule,
+    AssurancePrivacyModule,
     WfmPrivacyModule,
     TasksPrivacyModule,
+    NetworkPrivacyModule,
+    MediaPrivacyModule,
+    InventoryPrivacyModule,
     BillingPrivacyModule,
   ],
   providers: [

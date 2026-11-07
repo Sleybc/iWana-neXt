@@ -52,7 +52,10 @@ const WORK_ORDER_TASK_RULES: FieldRule[] = [
   { column: 'result_notes', kind: 'null' },
 ];
 
-const RESCHEDULE_RULES: FieldRule[] = [{ column: 'notes', kind: 'null' }];
+const RESCHEDULE_RULES: FieldRule[] = [
+  { column: 'notes', kind: 'null' },
+  { column: 'reason', kind: 'marker' },
+];
 
 function uuidMembership(
   column: string,
@@ -101,6 +104,13 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
       columns,
       'visit_requests',
     );
+    for (const [column, ids] of [
+      ['contract_id', related.contractIds ?? []],
+      ['ticket_id', related.ticketIds ?? []],
+    ] as const) {
+      const predicate = textMembership(column, ids, visitParameters, columns, 'visit_requests');
+      if (predicate) visitPredicates.push(predicate);
+    }
     if (visitExpedientes) visitPredicates.push(visitExpedientes);
     if (visitSubscribers) visitPredicates.push(visitSubscribers);
     related.visitRequestIds = await selectErasureIds(
@@ -135,6 +145,20 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
         'schedule_events',
       ),
       uuidMembership('id', visitScheduleRefs, scheduleParameters, columns, 'schedule_events'),
+      uuidMembership(
+        'contract_id',
+        related.contractIds ?? [],
+        scheduleParameters,
+        columns,
+        'schedule_events',
+      ),
+      textMembership(
+        'ticket_id',
+        related.ticketIds ?? [],
+        scheduleParameters,
+        columns,
+        'schedule_events',
+      ),
     ].filter((value): value is string => Boolean(value));
     related.scheduleEventIds = await selectErasureIds(
       qr,
@@ -163,7 +187,13 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
     const workPredicates = [
       uuidMembership(
         'id',
-        [...new Set([...visitWorkRefs, ...scheduleWorkRefs])],
+        [
+          ...new Set([
+            ...visitWorkRefs,
+            ...scheduleWorkRefs,
+            ...(related.ticketWorkOrderIds ?? []),
+          ]),
+        ],
         workParameters,
         columns,
         'work_orders',
@@ -185,6 +215,16 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
     );
     if (sourceRef && columns.has('work_orders.source_context')) {
       workPredicates.push(`("source_context" = 'CRM' AND ${sourceRef})`);
+    }
+    const assuranceRef = textMembership(
+      'source_ref',
+      related.ticketIds ?? [],
+      workParameters,
+      columns,
+      'work_orders',
+    );
+    if (assuranceRef && columns.has('work_orders.source_context')) {
+      workPredicates.push(`("source_context"::text = 'ASSURANCE' AND ${assuranceRef})`);
     }
     related.workOrderIds = await selectErasureIds(
       qr,

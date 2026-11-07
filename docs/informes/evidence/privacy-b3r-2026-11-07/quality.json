@@ -1,0 +1,39 @@
+{
+  "typecheck": {
+    "exit_code": 0,
+    "command": ["pnpm.cmd", "--filter", "@iwana/api", "typecheck"]
+  },
+  "eslint": {
+    "exit_code": 0,
+    "command": [
+      "pnpm.cmd",
+      "--filter",
+      "@iwana/api",
+      "exec",
+      "eslint",
+      "src/modules/inventory/privacy/supplier-profile-read.adapter.ts",
+      "src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts",
+      "src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts",
+      "src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts",
+      "src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts",
+      "src/modules/network/service-provisioning.audit.postgres.integration.spec.ts",
+      "src/modules/inventory/privacy/supplier-profile-read.adapter.spec.ts"
+    ]
+  },
+  "prettier": {
+    "exit_code": 0,
+    "command": [
+      "pnpm.cmd",
+      "exec",
+      "prettier",
+      "--check",
+      "apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.ts",
+      "apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts",
+      "apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts",
+      "apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts",
+      "apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts",
+      "apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts",
+      "apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.spec.ts"
+    ]
+  }
+}

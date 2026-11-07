@@ -1,3 +1,5 @@
+import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
+import { ticketTitularReferences } from '../privacy/ticket-titular-references';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -15,6 +17,7 @@ export class CommentsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly timelineService: TimelineService,
+    private readonly crmSubscriberReadPort: CrmSubscriberReadPort,
   ) {}
 
   async addComment(
@@ -38,6 +41,11 @@ export class CommentsService {
       ) {
         throw new ForbiddenException('No tienes acceso a este ticket');
       }
+
+      await this.crmSubscriberReadPort.assertWritableReferences(
+        ticketTitularReferences(ticket),
+        qr,
+      );
 
       const comment = qr.manager.create(TicketComment, {
         ticketId,

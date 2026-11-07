@@ -16,6 +16,8 @@ export interface TitularErasureScope {
   /** Identificadores internos que encadenan participantes de la supresión. */
   relatedIds?: {
     contractIds?: string[];
+    ticketIds?: string[];
+    ticketWorkOrderIds?: string[];
     visitRequestIds?: string[];
     scheduleEventIds?: string[];
     workOrderIds?: string[];

@@ -75,7 +75,7 @@ describe('TicketsService', () => {
   let pqrService: jest.Mocked<PqrService>;
   let timelineService: jest.Mocked<TimelineService>;
   let fieldServicePort: jest.Mocked<AssuranceFieldServicePort>;
-  let crmSubscriberReadPort: { listContractIds: jest.Mock };
+  let crmSubscriberReadPort: { listContractIds: jest.Mock; assertWritableReferences: jest.Mock };
 
   const actor: JwtPayload = {
     sub: 'support-001',
@@ -127,7 +127,10 @@ describe('TicketsService', () => {
     fieldServicePort = {
       requestFieldService: jest.fn().mockResolvedValue(undefined),
     } as jest.Mocked<AssuranceFieldServicePort>;
-    crmSubscriberReadPort = { listContractIds: jest.fn().mockResolvedValue([]) };
+    crmSubscriberReadPort = {
+      listContractIds: jest.fn().mockResolvedValue([]),
+      assertWritableReferences: jest.fn().mockResolvedValue(undefined),
+    };
 
     service = new TicketsService(
       {} as DataSource,
@@ -1193,6 +1196,167 @@ describe('TicketsService', () => {
         }),
       );
       expect(saveMock).toHaveBeenCalled();
+    });
+  });
+  it('D-BT-7 rechaza el ticket antes de escribir si CRM informa titular anonimizado', async () => {
+    const conflict = new Error('titular anonimizado');
+    crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({ manager: {} } as never),
+    );
+    await expect(
+      service.create(
+        {
+          type: TicketType.CUSTOMER_INCIDENT,
+          source: TicketSource.MANUAL,
+          subject: 'Sonda',
+          requesterType: TicketRequesterType.SUBSCRIBER,
+          requesterRefId: 'subscriber',
+        } as never,
+        actor,
+      ),
+    ).rejects.toBe(conflict);
+    expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalled();
+  });
+  it('D-BT-7 el creador automático de instalación también consulta CRM antes de escribir', async () => {
+    const conflict = new Error('titular anonimizado');
+    crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({ manager: { findOne: jest.fn().mockResolvedValue(null) } } as never),
+    );
+    await expect(
+      service.findOrCreateInstallationTicket(
+        { expedienteId: 'expediente', expedienteFullName: 'Sonda titular' },
+        actor.sub,
+      ),
+    ).rejects.toBe(conflict);
+    expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalledWith(
+      [{ type: 'EXPEDIENTE', id: 'expediente' }],
+      expect.anything(),
+    );
+  });
+
+  describe('D-BT-7 ampliado (B5-R): escrituras sobre ticket existente', () => {
+    const storedTicket = {
+      id: 'ticket-b5r-001',
+      type: TicketType.CUSTOMER_INCIDENT,
+      status: TicketStatus.IN_PROGRESS,
+      requesterType: TicketRequesterType.SUBSCRIBER,
+      requesterRefId: 'subscriber-b5r-001',
+      subjectType: TicketSubjectType.SUBSCRIBER,
+      subjectRefId: 'subscriber-b5r-001',
+      assignedUserId: 'support-001',
+    };
+    const expectedRefs = [
+      { type: 'SUBSCRIBER', id: 'subscriber-b5r-001' },
+      { type: 'SUBSCRIBER', id: 'subscriber-b5r-001' },
+    ];
+
+    it('update rechaza asunto y descripción contra titular suprimido sin escribir', async () => {
+      const conflict = new Error('titular anonimizado');
+      crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
+      const updateMock = jest.fn();
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({
+          manager: {
+            findOne: jest.fn().mockResolvedValue(storedTicket),
+            update: updateMock,
+            findOneByOrFail: jest.fn(),
+          },
+        } as never),
+      );
+      await expect(
+        service.update(
+          'ticket-b5r-001',
+          { subject: 'Asunto tardío', description: 'Texto tardío' } as never,
+          actor,
+        ),
+      ).rejects.toBe(conflict);
+      expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalledWith(
+        expectedRefs,
+        expect.anything(),
+      );
+      expect(updateMock).not.toHaveBeenCalled();
+    });
+
+    it('requestFieldService rechaza contra titular suprimido y no encola nada', async () => {
+      const conflict = new Error('titular anonimizado');
+      crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
+      const saveMock = jest.fn();
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({
+          manager: {
+            findOne: jest.fn().mockResolvedValue(storedTicket),
+            create: jest.fn(),
+            save: saveMock,
+            update: jest.fn(),
+          },
+        } as never),
+      );
+      await expect(service.requestFieldService('ticket-b5r-001', {} as never, actor)).rejects.toBe(
+        conflict,
+      );
+      expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalledWith(
+        expectedRefs,
+        expect.anything(),
+      );
+      expect(saveMock).not.toHaveBeenCalled();
+      expect(fieldServicePort.requestFieldService).not.toHaveBeenCalled();
+    });
+
+    it('linkWorkOrder rechaza las notas del vínculo contra titular suprimido', async () => {
+      const conflict = new Error('titular anonimizado');
+      crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
+      const saveMock = jest.fn();
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({
+          manager: {
+            findOne: jest.fn().mockResolvedValue(storedTicket),
+            create: jest.fn(),
+            save: saveMock,
+            update: jest.fn(),
+          },
+        } as never),
+      );
+      await expect(
+        service.linkWorkOrder(
+          'ticket-b5r-001',
+          { workOrderId: '00000000-0000-4000-8000-000000000001', notes: 'Nota tardía' } as never,
+          actor,
+        ),
+      ).rejects.toBe(conflict);
+      expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalledWith(
+        expectedRefs,
+        expect.anything(),
+      );
+      expect(saveMock).not.toHaveBeenCalled();
+    });
+
+    it('transitionStatus sigue pudiendo cerrar el ticket de un titular suprimido', async () => {
+      crmSubscriberReadPort.assertWritableReferences.mockRejectedValue(
+        new Error('no debe llamarse'),
+      );
+      const updateMock = jest.fn().mockResolvedValue(undefined);
+      const closedTicket = { ...storedTicket, status: TicketStatus.CLOSED };
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+        fn({
+          manager: {
+            findOne: jest
+              .fn()
+              .mockResolvedValue({ ...storedTicket, status: TicketStatus.RESOLVED }),
+            update: updateMock,
+            findOneByOrFail: jest.fn().mockResolvedValue(closedTicket),
+          },
+        } as never),
+      );
+      const result = await service.transitionStatus(
+        'ticket-b5r-001',
+        { status: TicketStatus.CLOSED } as never,
+        actor,
+      );
+      expect(result).toEqual(closedTicket);
+      expect(updateMock).toHaveBeenCalled();
+      expect(crmSubscriberReadPort.assertWritableReferences).not.toHaveBeenCalled();
     });
   });
 });

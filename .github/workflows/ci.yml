@@ -521,8 +521,10 @@ jobs:
       # Jest deja un JSON temporal para detectar archivos ausentes y suites
       # omitidas completas. No se publica el reporte bruto.
       - name: Integration tests — API (PostgreSQL real)
-        # Máximo medido: 62 s; 5 min da margen ante variación de runner/DB y evita cuelgues largos.
-        timeout-minutes: 5
+        # Medido en CI sobre 5d6a366b (2026-11-07): 3 min 56 s (12:57:02 a 13:00:58);
+        # el comentario anterior decía «máximo 62 s» y quedó obsoleto. 10 min da
+        # margen ante variación de runner/DB (el barrido añade unas 6 suites) y evita cuelgues largos.
+        timeout-minutes: 10
         shell: bash
         run: |
           set -uo pipefail

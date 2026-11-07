@@ -1,0 +1,2009 @@
+diff --git a/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts b/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
+index cff6a833..8bc4b873 100644
+--- a/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
++++ b/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
+@@ -1491,7 +1491,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
+       ).toEqual([{ title: 'ANONIMIZADO', description: null, result_notes: null }]);
+       expect(
+         await dataSource.query(`SELECT reason, notes FROM ${q}.schedule_reschedule_logs`),
+-      ).toEqual([{ reason: 'OPERATIONAL_REASON', notes: null }]);
++      ).toEqual([{ reason: 'ANONIMIZADO', notes: null }]);
+       expect(
+         await dataSource.query(
+           `SELECT customer_display_label, work_summary, service_address, municipality, sector,
+diff --git a/apps/api/src/cli/anonymize-titular.ts b/apps/api/src/cli/anonymize-titular.ts
+index 6eec1603..56940d70 100644
+--- a/apps/api/src/cli/anonymize-titular.ts
++++ b/apps/api/src/cli/anonymize-titular.ts
+@@ -1,3 +1,6 @@
++import { AssuranceTitularErasureParticipant } from '../modules/assurance/privacy/assurance-titular-erasure.participant';
++import { NetworkTitularErasureParticipant } from '../modules/network/privacy/network-titular-erasure.participant';
++import { SupplierProfileReadAdapter } from '../modules/inventory/privacy/supplier-profile-read.adapter';
+ import { BillingTitularErasureParticipant } from '../modules/billing/privacy/billing-titular-erasure.participant';
+ /**
+  * Anonimización asistida de un titular, limitada al alcance aprobado en ADR-094.
+@@ -1076,6 +1079,9 @@ async function anonymizeTitularInTransaction(
+     new OperationalTaskTitularErasureParticipant(config),
+     new MediaTitularErasureParticipant(),
+     new BillingTitularErasureParticipant(),
++    new AssuranceTitularErasureParticipant(config),
++    new NetworkTitularErasureParticipant(config),
++    new SupplierProfileReadAdapter(),
+   );
+   const scope = await adapter.resolveCliScope(
+     {
+@@ -1258,6 +1264,9 @@ function createErasureAdapter(config: ConfigService): CrmPersonalDataErasureAdap
+     new OperationalTaskTitularErasureParticipant(config),
+     new MediaTitularErasureParticipant(),
+     new BillingTitularErasureParticipant(),
++    new AssuranceTitularErasureParticipant(config),
++    new NetworkTitularErasureParticipant(config),
++    new SupplierProfileReadAdapter(),
+   );
+ }
+ 
+diff --git a/apps/api/src/modules/assurance/services/comments.service.ts b/apps/api/src/modules/assurance/services/comments.service.ts
+index d5356ff8..36c1a9af 100644
+--- a/apps/api/src/modules/assurance/services/comments.service.ts
++++ b/apps/api/src/modules/assurance/services/comments.service.ts
+@@ -1,3 +1,5 @@
++import { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
++import { ticketTitularReferences } from '../privacy/ticket-titular-references';
+ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+ import { InjectDataSource } from '@nestjs/typeorm';
+ import { DataSource } from 'typeorm';
+@@ -15,6 +17,7 @@ export class CommentsService {
+   constructor(
+     @InjectDataSource() private readonly dataSource: DataSource,
+     private readonly timelineService: TimelineService,
++    private readonly crmSubscriberReadPort: CrmSubscriberReadPort,
+   ) {}
+ 
+   async addComment(
+@@ -39,6 +42,11 @@ export class CommentsService {
+         throw new ForbiddenException('No tienes acceso a este ticket');
+       }
+ 
++      await this.crmSubscriberReadPort.assertWritableReferences(
++        ticketTitularReferences(ticket),
++        qr,
++      );
++
+       const comment = qr.manager.create(TicketComment, {
+         ticketId,
+         tenantId,
+diff --git a/apps/api/src/modules/assurance/services/tickets.service.ts b/apps/api/src/modules/assurance/services/tickets.service.ts
+index 99fd3e06..c6c05715 100644
+--- a/apps/api/src/modules/assurance/services/tickets.service.ts
++++ b/apps/api/src/modules/assurance/services/tickets.service.ts
+@@ -1,3 +1,4 @@
++import { ticketTitularReferences } from '../privacy/ticket-titular-references';
+ import {
+   BadRequestException,
+   ConflictException,
+@@ -169,6 +170,10 @@ export class TicketsService {
+     const validated = CreateTicketSchema.parse(input);
+ 
+     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
++      await this.crmSubscriberReadPort.assertWritableReferences(
++        ticketTitularReferences(validated),
++        qr,
++      );
+       const createdAt = new Date();
+       const isPqr = validated.type === TicketType.PQR;
+       const initialStatus = validated.assignedUserId ? TicketStatus.ASSIGNED : TicketStatus.OPEN;
+@@ -800,6 +805,10 @@ export class TicketsService {
+         return { ticket: existing, created: false };
+       }
+ 
++      await this.crmSubscriberReadPort.assertWritableReferences(
++        [{ type: 'EXPEDIENTE', id: dto.expedienteId }],
++        qr,
++      );
+       const ticketNumber = await this.generateTicketNumber(qr.manager, ctx.tenantId);
+ 
+       const ticket = qr.manager.create(SupportTicket, {
+diff --git a/apps/api/src/modules/assurance/tests/comments.service.spec.ts b/apps/api/src/modules/assurance/tests/comments.service.spec.ts
+index ab7a3240..c747a3e8 100644
+--- a/apps/api/src/modules/assurance/tests/comments.service.spec.ts
++++ b/apps/api/src/modules/assurance/tests/comments.service.spec.ts
+@@ -1,3 +1,4 @@
++import { titularAnonymizedConflict } from '../../crm/subscribers/guards/titular-anonymized-conflict';
+ import { ForbiddenException } from '@nestjs/common';
+ import { DataSource } from 'typeorm';
+ import { runInTenantSchema } from '@iwana/db';
+@@ -41,7 +42,9 @@ describe('CommentsService', () => {
+       listTimeline: jest.fn(),
+     } as unknown as jest.Mocked<TimelineService>;
+ 
+-    service = new CommentsService({} as DataSource, timelineService);
++    service = new CommentsService({} as DataSource, timelineService, {
++      assertWritableReferences: jest.fn().mockResolvedValue(undefined),
++    } as never);
+   });
+ 
+   it('hides internal comments from restricted roles', async () => {
+@@ -132,4 +135,28 @@ describe('CommentsService', () => {
+       }),
+     );
+   });
++  it('D-BT-7 el comentario propaga el 409 de CRM sin guardar texto', async () => {
++    const guard = {
++      assertWritableReferences: jest.fn().mockRejectedValue(titularAnonymizedConflict()),
++    };
++    const guarded = new CommentsService({} as DataSource, timelineService, guard as never);
++    const save = jest.fn();
++    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
++      fn({
++        manager: {
++          findOne: jest.fn().mockResolvedValue({
++            id: 'ticket',
++            assignedUserId: technicianActor.sub,
++            requesterType: 'SUBSCRIBER',
++            requesterRefId: 'subscriber',
++          }),
++          save,
++        },
++      } as never),
++    );
++    await expect(
++      guarded.addComment('ticket', { body: 'Sonda' }, technicianActor),
++    ).rejects.toMatchObject({ status: 409, response: { code: 'PRIVACY_TITULAR_ANONYMIZED' } });
++    expect(save).not.toHaveBeenCalled();
++  });
+ });
+diff --git a/apps/api/src/modules/assurance/tests/tickets.service.spec.ts b/apps/api/src/modules/assurance/tests/tickets.service.spec.ts
+index 38ebb347..eb74445d 100644
+--- a/apps/api/src/modules/assurance/tests/tickets.service.spec.ts
++++ b/apps/api/src/modules/assurance/tests/tickets.service.spec.ts
+@@ -75,7 +75,7 @@ describe('TicketsService', () => {
+   let pqrService: jest.Mocked<PqrService>;
+   let timelineService: jest.Mocked<TimelineService>;
+   let fieldServicePort: jest.Mocked<AssuranceFieldServicePort>;
+-  let crmSubscriberReadPort: { listContractIds: jest.Mock };
++  let crmSubscriberReadPort: { listContractIds: jest.Mock; assertWritableReferences: jest.Mock };
+ 
+   const actor: JwtPayload = {
+     sub: 'support-001',
+@@ -127,7 +127,10 @@ describe('TicketsService', () => {
+     fieldServicePort = {
+       requestFieldService: jest.fn().mockResolvedValue(undefined),
+     } as jest.Mocked<AssuranceFieldServicePort>;
+-    crmSubscriberReadPort = { listContractIds: jest.fn().mockResolvedValue([]) };
++    crmSubscriberReadPort = {
++      listContractIds: jest.fn().mockResolvedValue([]),
++      assertWritableReferences: jest.fn().mockResolvedValue(undefined),
++    };
+ 
+     service = new TicketsService(
+       {} as DataSource,
+@@ -1195,4 +1198,41 @@ describe('TicketsService', () => {
+       expect(saveMock).toHaveBeenCalled();
+     });
+   });
++  it('D-BT-7 rechaza el ticket antes de escribir si CRM informa titular anonimizado', async () => {
++    const conflict = new Error('titular anonimizado');
++    crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
++    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
++      fn({ manager: {} } as never),
++    );
++    await expect(
++      service.create(
++        {
++          type: TicketType.CUSTOMER_INCIDENT,
++          source: TicketSource.MANUAL,
++          subject: 'Sonda',
++          requesterType: TicketRequesterType.SUBSCRIBER,
++          requesterRefId: 'subscriber',
++        } as never,
++        actor,
++      ),
++    ).rejects.toBe(conflict);
++    expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalled();
++  });
++  it('D-BT-7 el creador automático de instalación también consulta CRM antes de escribir', async () => {
++    const conflict = new Error('titular anonimizado');
++    crmSubscriberReadPort.assertWritableReferences.mockRejectedValueOnce(conflict);
++    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
++      fn({ manager: { findOne: jest.fn().mockResolvedValue(null) } } as never),
++    );
++    await expect(
++      service.findOrCreateInstallationTicket(
++        { expedienteId: 'expediente', expedienteFullName: 'Sonda titular' },
++        actor.sub,
++      ),
++    ).rejects.toBe(conflict);
++    expect(crmSubscriberReadPort.assertWritableReferences).toHaveBeenCalledWith(
++      [{ type: 'EXPEDIENTE', id: 'expediente' }],
++      expect.anything(),
++    );
++  });
+ });
+diff --git a/apps/api/src/modules/crm/ports/crm-subscriber-read.port.ts b/apps/api/src/modules/crm/ports/crm-subscriber-read.port.ts
+index 50c184ab..6128e1ba 100644
+--- a/apps/api/src/modules/crm/ports/crm-subscriber-read.port.ts
++++ b/apps/api/src/modules/crm/ports/crm-subscriber-read.port.ts
+@@ -1,3 +1,5 @@
++import type { TitularWriteReference } from './titular-write-reference';
++import type { QueryRunner } from 'typeorm';
+ import { Injectable } from '@nestjs/common';
+ 
+ export interface CrmSubscriberSummarySnapshot {
+@@ -9,6 +11,11 @@ export interface CrmSubscriberSummarySnapshot {
+ /** Puerto de lectura CRM para módulos que necesitan una proyección del suscriptor. */
+ @Injectable()
+ export abstract class CrmSubscriberReadPort {
++  abstract assertWritableReferences(
++    references: TitularWriteReference[],
++    qr: QueryRunner,
++  ): Promise<void>;
++
+   abstract findSummaryByExpedienteId(
+     expedienteId: string,
+   ): Promise<CrmSubscriberSummarySnapshot | null>;
+diff --git a/apps/api/src/modules/crm/ports/subscriber-service-context-read.port.ts b/apps/api/src/modules/crm/ports/subscriber-service-context-read.port.ts
+index f45a4543..b096a694 100644
+--- a/apps/api/src/modules/crm/ports/subscriber-service-context-read.port.ts
++++ b/apps/api/src/modules/crm/ports/subscriber-service-context-read.port.ts
+@@ -1,3 +1,5 @@
++import type { TitularWriteReference } from './titular-write-reference';
++import type { QueryRunner } from 'typeorm';
+ import { Injectable } from '@nestjs/common';
+ 
+ export interface SubscriberServiceContractRef {
+@@ -18,5 +20,10 @@ export interface SubscriberServiceContext {
+ /** Contexto comercial mínimo para aprovisionar, sin exponer datos personales. */
+ @Injectable()
+ export abstract class SubscriberServiceContextReadPort {
++  abstract assertWritableReferences(
++    references: TitularWriteReference[],
++    qr: QueryRunner,
++  ): Promise<void>;
++
+   abstract getForSubscriber(subscriberId: string): Promise<SubscriberServiceContext | null>;
+ }
+diff --git a/apps/api/src/modules/crm/privacy-adapters/crm-personal-data-erasure.adapter.ts b/apps/api/src/modules/crm/privacy-adapters/crm-personal-data-erasure.adapter.ts
+index 73777d54..9bb7f22a 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/crm-personal-data-erasure.adapter.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/crm-personal-data-erasure.adapter.ts
+@@ -1,3 +1,8 @@
++import { ConfigService } from '@nestjs/config';
++import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
++import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
++import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
++import { erasureSupplierProfile } from '../../privacy/requests/erasure-errors';
+ import {
+   ConflictException,
+   Inject,
+@@ -80,15 +85,24 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
+     @Optional()
+     @Inject(BillingTitularErasureParticipant)
+     private readonly billing?: BillingTitularErasureParticipant,
++    private readonly assurance: AssuranceTitularErasureParticipant = new AssuranceTitularErasureParticipant(
++      new ConfigService(),
++    ),
++    private readonly network: NetworkTitularErasureParticipant = new NetworkTitularErasureParticipant(
++      new ConfigService(),
++    ),
++    private readonly suppliers: SupplierProfileReadAdapter = new SupplierProfileReadAdapter(),
+   ) {
+     super();
+     this.participants = [
+       { name: 'crm', participant: crm },
+       { name: 'party', participant: party },
+       { name: 'users', participant: users },
++      { name: 'assurance', participant: assurance },
+       { name: 'wfm', participant: wfm },
+       { name: 'execution-orders', participant: executionOrders },
+       { name: 'operational-tasks', participant: operationalTasks },
++      { name: 'network', participant: network },
+       { name: 'media', participant: media },
+       ...(billing ? [{ name: 'billing', participant: billing }] : []),
+     ];
+@@ -111,8 +125,13 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
+       blockers: resolved.blockers.filter(
+         (
+           blocker,
+-        ): blocker is Extract<ErasureBlocker, 'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT'> =>
+-          blocker === 'UNRECONCILED_TITULAR' || blocker === 'ACTIVE_USER_ACCOUNT',
++        ): blocker is Extract<
++          ErasureBlocker,
++          'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT' | 'SUPPLIER_PROFILE_LINKED'
++        > =>
++          blocker === 'UNRECONCILED_TITULAR' ||
++          blocker === 'ACTIVE_USER_ACCOUNT' ||
++          blocker === 'SUPPLIER_PROFILE_LINKED',
+       ),
+       counts,
+     };
+@@ -145,6 +164,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
+       });
+     }
+ 
++    if (resolved.blockers.includes('SUPPLIER_PROFILE_LINKED')) throw erasureSupplierProfile();
++
+     const applied: TitularErasureTableResult[] = [];
+     for (const entry of this.participants) {
+       applied.push(
+@@ -184,6 +205,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
+     this.assertBillingParticipantRegistered();
+     await this.resolveParticipants(scope, qr);
+     if (mode === 'apply') {
++      if (scope.partyId && (await this.suppliers.hasSupplierProfile(scope.partyId, qr)))
++        throw erasureSupplierProfile();
+       const active = await this.users.activeAccountCount(scope.userIds, qr);
+       if (active > 0) {
+         throw new Error(`Hay ${active} cuenta(s) enlazada(s) activa(s); no se aplicaron cambios.`);
+@@ -266,6 +289,8 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
+     }
+     const activeAccountCount = await this.users.activeAccountCount(userIds, qr);
+     if (activeAccountCount > 0) blockers.push('ACTIVE_USER_ACCOUNT');
++    if (scope.partyId && (await this.suppliers.hasSupplierProfile(scope.partyId, qr)))
++      blockers.push('SUPPLIER_PROFILE_LINKED');
+ 
+     await this.resolveParticipants(scope, qr, true);
+     const results: TitularErasureTableResult[] = [];
+diff --git a/apps/api/src/modules/crm/privacy-adapters/crm-privacy-adapters.module.ts b/apps/api/src/modules/crm/privacy-adapters/crm-privacy-adapters.module.ts
+index f4116e06..fd6a9185 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/crm-privacy-adapters.module.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/crm-privacy-adapters.module.ts
+@@ -1,3 +1,6 @@
++import { AssurancePrivacyModule } from '../../assurance/privacy/assurance-privacy.module';
++import { NetworkPrivacyModule } from '../../network/privacy/network-privacy.module';
++import { InventoryPrivacyModule } from '../../inventory/privacy/inventory-privacy.module';
+ import { BillingPrivacyModule } from '../../billing/privacy/billing-privacy.module';
+ import { Module } from '@nestjs/common';
+ import { TypeOrmModule } from '@nestjs/typeorm';
+@@ -23,9 +26,12 @@ import { TasksPrivacyModule } from '../../tasks/privacy/tasks-privacy.module';
+     AuditModule,
+     PartiesPrivacyModule,
+     UsersPrivacyModule,
+-    MediaPrivacyModule,
++    AssurancePrivacyModule,
+     WfmPrivacyModule,
+     TasksPrivacyModule,
++    NetworkPrivacyModule,
++    MediaPrivacyModule,
++    InventoryPrivacyModule,
+     BillingPrivacyModule,
+   ],
+   providers: [
+diff --git a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure.types.ts b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure.types.ts
+index 36b2db9e..421bfb45 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure.types.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure.types.ts
+@@ -16,6 +16,8 @@ export interface TitularErasureScope {
+   /** Identificadores internos que encadenan participantes de la supresión. */
+   relatedIds?: {
+     contractIds?: string[];
++    ticketIds?: string[];
++    ticketWorkOrderIds?: string[];
+     visitRequestIds?: string[];
+     scheduleEventIds?: string[];
+     workOrderIds?: string[];
+diff --git a/apps/api/src/modules/crm/subscribers/subscriber-service-context-read.adapter.ts b/apps/api/src/modules/crm/subscribers/subscriber-service-context-read.adapter.ts
+index ca34add0..91250523 100644
+--- a/apps/api/src/modules/crm/subscribers/subscriber-service-context-read.adapter.ts
++++ b/apps/api/src/modules/crm/subscribers/subscriber-service-context-read.adapter.ts
+@@ -1,3 +1,6 @@
++import type { QueryRunner } from 'typeorm';
++import type { TitularWriteReference } from '../ports/titular-write-reference';
++import { assertTitularWritable } from './guards/assert-titular-writable';
+ import { Injectable } from '@nestjs/common';
+ import { InjectDataSource } from '@nestjs/typeorm';
+ import { runInTenantSchema, TenantContext } from '@iwana/db';
+@@ -21,6 +24,10 @@ export class SubscriberServiceContextReadAdapter extends SubscriberServiceContex
+     super();
+   }
+ 
++  assertWritableReferences(references: TitularWriteReference[], qr: QueryRunner): Promise<void> {
++    return assertTitularWritable(references, qr);
++  }
++
+   async getForSubscriber(subscriberId: string): Promise<SubscriberServiceContext | null> {
+     const { tenantId, schemaName } = TenantContext.getOrThrow();
+     const base = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+diff --git a/apps/api/src/modules/crm/subscribers/subscribers.service.ts b/apps/api/src/modules/crm/subscribers/subscribers.service.ts
+index 7fc5ee12..2762ccce 100644
+--- a/apps/api/src/modules/crm/subscribers/subscribers.service.ts
++++ b/apps/api/src/modules/crm/subscribers/subscribers.service.ts
+@@ -1,3 +1,6 @@
++import type { TitularWriteReference } from '../ports/titular-write-reference';
++import type { QueryRunner } from 'typeorm';
++import { assertTitularWritable } from './guards/assert-titular-writable';
+ import {
+   BadRequestException,
+   Inject,
+@@ -1483,6 +1486,10 @@ export class SubscribersService implements CrmSubscriberReadPort {
+     );
+   }
+ 
++  assertWritableReferences(references: TitularWriteReference[], qr: QueryRunner): Promise<void> {
++    return assertTitularWritable(references, qr);
++  }
++
+   async findSummaryByExpedienteId(
+     expedienteId: string,
+   ): Promise<{ id: string; status: SubscriberStatus; fullName: string } | null> {
+diff --git a/apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts b/apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts
+index c96f3017..2cd6d3f8 100644
+--- a/apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts
++++ b/apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts
+@@ -1,3 +1,6 @@
++import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
++import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
++import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
+ import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
+ import { randomBytes, randomUUID } from 'node:crypto';
+ import { ConfigService } from '@nestjs/config';
+@@ -64,6 +67,9 @@ describeWithDb('Media erasure por el adaptador API — evidencia de autorizació
+       new OperationalTaskTitularErasureParticipant(config),
+       new MediaTitularErasureParticipant(),
+       new BillingTitularErasureParticipant(),
++      new AssuranceTitularErasureParticipant(config),
++      new NetworkTitularErasureParticipant(config),
++      new SupplierProfileReadAdapter(),
+     );
+   });
+ 
+diff --git a/apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts b/apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts
+index 87e6eb73..262fcd2c 100644
+--- a/apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts
++++ b/apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts
+@@ -85,6 +85,7 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
+     hasOpenWithdrawalOrders: jest.fn(),
+   };
+   const subscriberServiceContextReadPort = {
++    assertWritableReferences: jest.fn().mockResolvedValue(undefined),
+     getForSubscriber: jest.fn().mockResolvedValue({
+       expedienteId: null,
+       planId: null,
+diff --git a/apps/api/src/modules/network/service-provisioning.service.spec.ts b/apps/api/src/modules/network/service-provisioning.service.spec.ts
+index 568da25a..7e698c90 100644
+--- a/apps/api/src/modules/network/service-provisioning.service.spec.ts
++++ b/apps/api/src/modules/network/service-provisioning.service.spec.ts
+@@ -1,3 +1,4 @@
++import { titularAnonymizedConflict } from '../crm/subscribers/guards/titular-anonymized-conflict';
+ import { ConflictException, NotFoundException } from '@nestjs/common';
+ import { DataSource } from 'typeorm';
+ import {
+@@ -128,6 +129,7 @@ function createService(overrides?: {
+   };
+   const auditService = { logWithin: jest.fn().mockResolvedValue(undefined) };
+   const subscriberContextPort = {
++    assertWritableReferences: jest.fn().mockResolvedValue(undefined),
+     getForSubscriber: jest.fn().mockResolvedValue(null),
+     ...overrides?.subscriberContextPort,
+   };
+@@ -2396,4 +2398,36 @@ describe('ServiceProvisioningService uncovered lifecycle branches', () => {
+       response: expect.objectContaining({ code: 'PROVISIONING_ORDER_NOT_ELIGIBLE' }),
+     });
+   });
++  it('D-BT-7 regularizar propaga el 409 de CRM antes de escribir', async () => {
++    const { service, manager, subscriberContextPort } = createService({
++      executionOrderReadPort: {
++        getExecutionSnapshot: jest.fn().mockResolvedValue(
++          order('technician-001', {
++            id: regularizeBody.executionOrderId,
++            status: ExecutionOrderStatus.COMPLETED,
++            result: ExecutionOrderResult.EXECUTED,
++          }),
++        ),
++      },
++    });
++    manager.findOne.mockImplementation(async (entity) => {
++      if (entity === NetworkRouter)
++        return { id: regularizeBody.routerId, organizationSiteId: null, status: 'ACTIVE' } as never;
++      if (entity === Ipv4Network)
++        return {
++          id: regularizeBody.ipv4NetworkId,
++          routerId: regularizeBody.routerId,
++          status: 'ACTIVE',
++        } as never;
++      return null;
++    });
++    jest
++      .spyOn(subscriberContextPort, 'assertWritableReferences')
++      .mockRejectedValueOnce(titularAnonymizedConflict());
++    await expect(service.regularize(regularizeBody, actor)).rejects.toMatchObject({
++      status: 409,
++      response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
++    });
++    expect(manager.save).not.toHaveBeenCalled();
++  });
+ });
+diff --git a/apps/api/src/modules/network/service-provisioning.service.ts b/apps/api/src/modules/network/service-provisioning.service.ts
+index 8b697431..20106d25 100644
+--- a/apps/api/src/modules/network/service-provisioning.service.ts
++++ b/apps/api/src/modules/network/service-provisioning.service.ts
+@@ -535,6 +535,10 @@ export class ServiceProvisioningService {
+       }
+       const subscriberId = order.subscriberId;
+       if (!subscriberId) throw this.orderNotEligible();
++      await this.subscriberContextPort.assertWritableReferences(
++        [{ type: 'SUBSCRIBER', id: subscriberId }],
++        qr,
++      );
+       this.assertReservationsOpen();
+ 
+       await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+diff --git a/apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts b/apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts
+index 0213cb75..572140c7 100644
+--- a/apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts
++++ b/apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts
+@@ -273,6 +273,7 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
+       listInstallationOrders: jest.fn().mockResolvedValue({ rows: [], total: 0 }),
+     } as unknown as ExecutionOrderReadPort;
+     const subscriberContextPort = {
++      assertWritableReferences: jest.fn().mockResolvedValue(undefined),
+       getForSubscriber: jest.fn().mockResolvedValue({
+         expedienteId: null,
+         planId: null,
+diff --git a/apps/api/src/modules/privacy/ports/personal-data-erasure.port.ts b/apps/api/src/modules/privacy/ports/personal-data-erasure.port.ts
+index 34d587af..ae95e94d 100644
+--- a/apps/api/src/modules/privacy/ports/personal-data-erasure.port.ts
++++ b/apps/api/src/modules/privacy/ports/personal-data-erasure.port.ts
+@@ -8,7 +8,10 @@ export interface PersonalDataErasureTarget {
+ }
+ export interface PersonalDataErasurePlan {
+   candidateExpedienteIds: string[];
+-  blockers: Extract<ErasureBlocker, 'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT'>[];
++  blockers: Extract<
++    ErasureBlocker,
++    'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT' | 'SUPPLIER_PROFILE_LINKED'
++  >[];
+   counts: Record<ErasureCategory, number>;
+ }
+ export abstract class IPersonalDataErasurePort {
+diff --git a/apps/api/src/modules/privacy/privacy-openapi.schemas.ts b/apps/api/src/modules/privacy/privacy-openapi.schemas.ts
+index 3e62f634..c904d7c8 100644
+--- a/apps/api/src/modules/privacy/privacy-openapi.schemas.ts
++++ b/apps/api/src/modules/privacy/privacy-openapi.schemas.ts
+@@ -257,6 +257,7 @@ const erasureBlocker = {
+     'CONSERVATION_DUTY',
+     'UNRECONCILED_TITULAR',
+     'ACTIVE_USER_ACCOUNT',
++    'SUPPLIER_PROFILE_LINKED',
+     'TOO_MANY_CANDIDATES',
+   ],
+ } satisfies SchemaObject;
+diff --git a/apps/api/src/modules/privacy/privacy.swagger.spec.ts b/apps/api/src/modules/privacy/privacy.swagger.spec.ts
+index 12b0979a..914d081c 100644
+--- a/apps/api/src/modules/privacy/privacy.swagger.spec.ts
++++ b/apps/api/src/modules/privacy/privacy.swagger.spec.ts
+@@ -245,5 +245,6 @@ describe('Privacy OpenAPI', () => {
+     const blockerItems = (previewProperties?.blockers as Record<string, unknown> | undefined)
+       ?.items as Record<string, unknown> | undefined;
+     expect(blockerItems?.enum).toContain('TOO_MANY_CANDIDATES');
++    expect(blockerItems?.enum).toContain('SUPPLIER_PROFILE_LINKED');
+   });
+ });
+diff --git a/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts
+index 6bda7d20..e8ad4e27 100644
+--- a/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts
+@@ -1,3 +1,6 @@
++import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
++import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
++import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
+ import { CrmContractStandingReadAdapter } from '../../crm/privacy-adapters/crm-contract-standing-read.adapter';
+ import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
+ import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
+@@ -369,6 +372,9 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+         BillingTitularErasureParticipant,
+         BillingStandingReadAdapter,
+         { provide: IBillingStandingReadPort, useExisting: BillingStandingReadAdapter },
++        AssuranceTitularErasureParticipant,
++        NetworkTitularErasureParticipant,
++        SupplierProfileReadAdapter,
+         CrmPersonalDataErasureAdapter,
+         { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
+         {
+diff --git a/apps/api/src/modules/privacy/requests/erasure-errors.ts b/apps/api/src/modules/privacy/requests/erasure-errors.ts
+index 112f2c4f..632de3fd 100644
+--- a/apps/api/src/modules/privacy/requests/erasure-errors.ts
++++ b/apps/api/src/modules/privacy/requests/erasure-errors.ts
+@@ -71,3 +71,10 @@ export function erasureVerificationFailed(): ConflictException {
+       'nada se confirmó.',
+   });
+ }
++
++export function erasureSupplierProfile(): ConflictException {
++  return new ConflictException({
++    code: 'PRIVACY_ERASURE_SUPPLIER_PROFILE',
++    message: 'La persona titular también es proveedor; requiere resolución manual.',
++  });
++}
+diff --git a/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts
+index 14b1e996..5051a91a 100644
+--- a/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts
+@@ -1,3 +1,6 @@
++import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
++import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
++import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
+ import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
+ import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
+ import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
+@@ -371,6 +374,9 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+         BillingTitularErasureParticipant,
+         BillingStandingReadAdapter,
+         { provide: IBillingStandingReadPort, useExisting: BillingStandingReadAdapter },
++        AssuranceTitularErasureParticipant,
++        NetworkTitularErasureParticipant,
++        SupplierProfileReadAdapter,
+         CrmPersonalDataErasureAdapter,
+         { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
+         {
+diff --git a/apps/api/src/modules/tasks/privacy/execution-order-titular-erasure.participant.ts b/apps/api/src/modules/tasks/privacy/execution-order-titular-erasure.participant.ts
+index 73be6cc3..844e5a17 100644
+--- a/apps/api/src/modules/tasks/privacy/execution-order-titular-erasure.participant.ts
++++ b/apps/api/src/modules/tasks/privacy/execution-order-titular-erasure.participant.ts
+@@ -28,6 +28,7 @@ const EXECUTION_ORDER_RULES: FieldRule[] = [
+   { column: 'template_requirements_snapshot', kind: 'empty-json' },
+ ];
+ 
++const REVERSAL_RULES: FieldRule[] = [{ column: 'reason', kind: 'marker' }];
+ const ACTIVITY_RULES: FieldRule[] = [{ column: 'description', kind: 'marker' }];
+ const EVIDENCE_RULES: FieldRule[] = [
+   { column: 'notes', kind: 'null' },
+@@ -78,6 +79,10 @@ export class ExecutionOrderTitularErasureParticipant implements TitularErasurePa
+         parameters,
+       ),
+     ].filter((value): value is string => Boolean(value));
++    if (scope.subscriberIds.length > 0 && columns.has('execution_orders.subscriber_id')) {
++      parameters.push(scope.subscriberIds);
++      predicates.push(`"subscriber_id"::text = ANY($${parameters.length}::text[])`);
++    }
+     related.executionOrderIds = await selectErasureIds(
+       qr,
+       'execution_orders',
+@@ -122,6 +127,11 @@ export class ExecutionOrderTitularErasureParticipant implements TitularErasurePa
+     const executionOrderIds = scope.relatedIds?.executionOrderIds ?? [];
+     const tables = [
+       ['execution_orders', executionOrderIds, EXECUTION_ORDER_RULES],
++      [
++        'execution_order_item_usage_reversals',
++        await this.childIds(qr, 'execution_order_item_usage_reversals', executionOrderIds, columns),
++        REVERSAL_RULES,
++      ],
+       [
+         'execution_order_activities',
+         await this.childIds(qr, 'execution_order_activities', executionOrderIds, columns),
+diff --git a/apps/api/src/modules/tasks/privacy/operational-task-titular-erasure.participant.ts b/apps/api/src/modules/tasks/privacy/operational-task-titular-erasure.participant.ts
+index e9a6fd5b..52e01be5 100644
+--- a/apps/api/src/modules/tasks/privacy/operational-task-titular-erasure.participant.ts
++++ b/apps/api/src/modules/tasks/privacy/operational-task-titular-erasure.participant.ts
+@@ -103,6 +103,14 @@ export class OperationalTaskTitularErasureParticipant implements TitularErasureP
+       parameters,
+     );
+     if (taskOrigin) predicates.push(taskOrigin);
++    const ticket = textMembership(
++      'operational_tasks',
++      'ticket_id',
++      related.ticketIds ?? [],
++      columns,
++      parameters,
++    );
++    if (ticket) predicates.push(ticket);
+     related.operationalTaskIds = await selectErasureIds(
+       qr,
+       'operational_tasks',
+diff --git a/apps/api/src/modules/wfm/privacy/wfm-titular-erasure.participant.ts b/apps/api/src/modules/wfm/privacy/wfm-titular-erasure.participant.ts
+index a775e0b3..82e124f1 100644
+--- a/apps/api/src/modules/wfm/privacy/wfm-titular-erasure.participant.ts
++++ b/apps/api/src/modules/wfm/privacy/wfm-titular-erasure.participant.ts
+@@ -52,7 +52,10 @@ const WORK_ORDER_TASK_RULES: FieldRule[] = [
+   { column: 'result_notes', kind: 'null' },
+ ];
+ 
+-const RESCHEDULE_RULES: FieldRule[] = [{ column: 'notes', kind: 'null' }];
++const RESCHEDULE_RULES: FieldRule[] = [
++  { column: 'notes', kind: 'null' },
++  { column: 'reason', kind: 'marker' },
++];
+ 
+ function uuidMembership(
+   column: string,
+@@ -101,6 +104,13 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
+       columns,
+       'visit_requests',
+     );
++    for (const [column, ids] of [
++      ['contract_id', related.contractIds ?? []],
++      ['ticket_id', related.ticketIds ?? []],
++    ] as const) {
++      const predicate = textMembership(column, ids, visitParameters, columns, 'visit_requests');
++      if (predicate) visitPredicates.push(predicate);
++    }
+     if (visitExpedientes) visitPredicates.push(visitExpedientes);
+     if (visitSubscribers) visitPredicates.push(visitSubscribers);
+     related.visitRequestIds = await selectErasureIds(
+@@ -135,6 +145,20 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
+         'schedule_events',
+       ),
+       uuidMembership('id', visitScheduleRefs, scheduleParameters, columns, 'schedule_events'),
++      uuidMembership(
++        'contract_id',
++        related.contractIds ?? [],
++        scheduleParameters,
++        columns,
++        'schedule_events',
++      ),
++      textMembership(
++        'ticket_id',
++        related.ticketIds ?? [],
++        scheduleParameters,
++        columns,
++        'schedule_events',
++      ),
+     ].filter((value): value is string => Boolean(value));
+     related.scheduleEventIds = await selectErasureIds(
+       qr,
+@@ -163,7 +187,13 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
+     const workPredicates = [
+       uuidMembership(
+         'id',
+-        [...new Set([...visitWorkRefs, ...scheduleWorkRefs])],
++        [
++          ...new Set([
++            ...visitWorkRefs,
++            ...scheduleWorkRefs,
++            ...(related.ticketWorkOrderIds ?? []),
++          ]),
++        ],
+         workParameters,
+         columns,
+         'work_orders',
+@@ -186,6 +216,16 @@ export class WfmTitularErasureParticipant implements TitularErasureParticipant {
+     if (sourceRef && columns.has('work_orders.source_context')) {
+       workPredicates.push(`("source_context" = 'CRM' AND ${sourceRef})`);
+     }
++    const assuranceRef = textMembership(
++      'source_ref',
++      related.ticketIds ?? [],
++      workParameters,
++      columns,
++      'work_orders',
++    );
++    if (assuranceRef && columns.has('work_orders.source_context')) {
++      workPredicates.push(`("source_context"::text = 'ASSURANCE' AND ${assuranceRef})`);
++    }
+     related.workOrderIds = await selectErasureIds(
+       qr,
+       'work_orders',
+diff --git a/apps/portal/src/components/privacy/PrivacyRequestDetail.spec.tsx b/apps/portal/src/components/privacy/PrivacyRequestDetail.spec.tsx
+index 09c260b2..de5409f0 100644
+--- a/apps/portal/src/components/privacy/PrivacyRequestDetail.spec.tsx
++++ b/apps/portal/src/components/privacy/PrivacyRequestDetail.spec.tsx
+@@ -234,7 +234,12 @@ describe('PrivacyRequestDetail · supresión', () => {
+     getErasurePreviewMock.mockResolvedValueOnce({
+       ...eligiblePreview,
+       eligible: false,
+-      blockers: ['UNRECONCILED_TITULAR', 'ACTIVE_USER_ACCOUNT', 'TOO_MANY_CANDIDATES'],
++      blockers: [
++        'UNRECONCILED_TITULAR',
++        'ACTIVE_USER_ACCOUNT',
++        'TOO_MANY_CANDIDATES',
++        'SUPPLIER_PROFILE_LINKED',
++      ],
+     });
+     renderDetail();
+ 
+@@ -251,6 +256,10 @@ describe('PrivacyRequestDetail · supresión', () => {
+         'Hay demasiados expedientes para resolver desde la pantalla. Usa el procedimiento de emergencia del Oficial de protección de datos',
+       ),
+     ).toBeVisible();
++    expect(
++      screen.getByText('La persona titular también es proveedor; requiere resolución manual.'),
++    ).toBeVisible();
++    expect(screen.queryByText('SUPPLIER_PROFILE_LINKED')).not.toBeInTheDocument();
+     expect(screen.queryByText('ACTIVE_USER_ACCOUNT')).not.toBeInTheDocument();
+     expect(screen.queryByText('TOO_MANY_CANDIDATES')).not.toBeInTheDocument();
+ 
+@@ -313,7 +322,7 @@ describe('PrivacyRequestDetail · supresión', () => {
+     expect(screen.getByText('Traslado extemporáneo')).toBeInTheDocument();
+     expect(screen.getByRole('heading', { name: 'Supresión ejecutada' })).toBeInTheDocument();
+     expect(screen.getByText('Identificación')).toBeInTheDocument();
+-    expect(screen.getByText('Operación en campo')).toBeInTheDocument();
++    expect(screen.getByText('Operación y soporte')).toBeInTheDocument();
+     expect(screen.queryByText('IDENTIFICACION')).not.toBeInTheDocument();
+   });
+ });
+diff --git a/apps/portal/src/components/privacy/privacy-labels.ts b/apps/portal/src/components/privacy/privacy-labels.ts
+index c3a1f812..a31d0938 100644
+--- a/apps/portal/src/components/privacy/privacy-labels.ts
++++ b/apps/portal/src/components/privacy/privacy-labels.ts
+@@ -66,7 +66,7 @@ export const ERASURE_CATEGORY_OPTIONS: ReadonlyArray<{ value: ErasureCategory; l
+   { value: 'EVIDENCIA_CONSENTIMIENTO', label: 'Evidencia de autorización' },
+   { value: 'CUENTA_USUARIO', label: 'Cuenta de usuario' },
+   { value: 'EVIDENCIA_DOCUMENTAL', label: 'Documentos adjuntos' },
+-  { value: 'OPERACION_CAMPO', label: 'Operación en campo' },
++  { value: 'OPERACION_CAMPO', label: 'Operación y soporte' },
+ ];
+ 
+ export const ERASURE_BLOCKER_LABELS: Record<ErasureBlocker, string> = {
+@@ -74,6 +74,7 @@ export const ERASURE_BLOCKER_LABELS: Record<ErasureBlocker, string> = {
+   INVALID_STATUS: 'La solicitud no está en un estado que permita resolverla.',
+   CONSERVATION_DUTY: 'Existe un deber de conservación vigente para estos datos.',
+   UNRECONCILED_TITULAR: 'No fue posible conciliar los datos con una única persona titular.',
++  SUPPLIER_PROFILE_LINKED: 'La persona titular también es proveedor; requiere resolución manual.',
+   ACTIVE_USER_ACCOUNT: 'La persona titular tiene una cuenta de usuario activa.',
+   TOO_MANY_CANDIDATES:
+     'Hay demasiados expedientes para resolver desde la pantalla. Usa el procedimiento de emergencia del Oficial de protección de datos',
+diff --git a/packages/shared/src/schemas/privacy/erasure.spec.ts b/packages/shared/src/schemas/privacy/erasure.spec.ts
+index 9e1ebdc2..ccf2a81b 100644
+--- a/packages/shared/src/schemas/privacy/erasure.spec.ts
++++ b/packages/shared/src/schemas/privacy/erasure.spec.ts
+@@ -27,7 +27,7 @@ function zeroCounts(): Record<(typeof ERASURE_CATEGORIES)[number], number> {
+ }
+ 
+ describe('contratos de supresión de privacidad (Fase 1b)', () => {
+-  it('fija las nueve categorías y los seis bloqueos de anonimización', () => {
++  it('fija las nueve categorías y los siete bloqueos de anonimización', () => {
+     for (const category of ERASURE_CATEGORIES) {
+       expect(erasureCategorySchema.safeParse(category).success).toBe(true);
+     }
+@@ -38,6 +38,7 @@ describe('contratos de supresión de privacidad (Fase 1b)', () => {
+       'CONSERVATION_DUTY',
+       'UNRECONCILED_TITULAR',
+       'ACTIVE_USER_ACCOUNT',
++      'SUPPLIER_PROFILE_LINKED',
+       'TOO_MANY_CANDIDATES',
+     ]) {
+       expect(erasureBlockerSchema.safeParse(blocker).success).toBe(true);
+diff --git a/packages/shared/src/schemas/privacy/requests.ts b/packages/shared/src/schemas/privacy/requests.ts
+index 09e45fca..81e6572a 100644
+--- a/packages/shared/src/schemas/privacy/requests.ts
++++ b/packages/shared/src/schemas/privacy/requests.ts
+@@ -64,6 +64,7 @@ export const erasureBlockerSchema = z.enum([
+   'CONSERVATION_DUTY',
+   'UNRECONCILED_TITULAR',
+   'ACTIVE_USER_ACCOUNT',
++  'SUPPLIER_PROFILE_LINKED',
+   'TOO_MANY_CANDIDATES',
+ ]);
+ 
+diff --git a/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts b/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts
+new file mode 100644
+index 00000000..e8af9ac9
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts
+@@ -0,0 +1,8 @@
++import { Module } from '@nestjs/common';
++import { AssuranceTitularErasureParticipant } from './assurance-titular-erasure.participant';
++
++@Module({
++  providers: [AssuranceTitularErasureParticipant],
++  exports: [AssuranceTitularErasureParticipant],
++})
++export class AssurancePrivacyModule {}
+diff --git a/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.spec.ts b/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.spec.ts
+new file mode 100644
+index 00000000..fb410380
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.spec.ts
+@@ -0,0 +1,54 @@
++import { ConfigService } from '@nestjs/config';
++import type { QueryRunner } from 'typeorm';
++import * as sql from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++import { AssuranceTitularErasureParticipant } from './assurance-titular-erasure.participant';
++
++describe('B3 — alcance de tickets', () => {
++  afterEach(() => jest.restoreAllMocks());
++  it('exige tipo y referencia textual y publica tickets y sus dos vínculos a OT', async () => {
++    const columns = new Map(
++      [
++        'id',
++        'requester_type',
++        'requester_ref_id',
++        'subject_type',
++        'subject_ref_id',
++        'work_order_id',
++      ].map((column) => [
++        `support_tickets.${column}`,
++        {
++          table_name: 'support_tickets',
++          column_name: column,
++          is_nullable: 'YES' as const,
++          data_type: 'text',
++          udt_name: 'text',
++        },
++      ]),
++    );
++    jest.spyOn(sql, 'readTenantColumns').mockResolvedValue(columns);
++    const select = jest.spyOn(sql, 'selectErasureIds').mockResolvedValue(['ticket']);
++    jest.spyOn(sql, 'selectErasureColumnValues').mockResolvedValue(['work']);
++    const scope = {
++      partyId: null,
++      subscriberIds: ['subscriber'],
++      expedienteIds: ['expediente'],
++      userIds: [],
++      relatedIds: {
++        contractIds: ['contract'],
++        ticketIds: [] as string[],
++        ticketWorkOrderIds: [] as string[],
++      },
++    };
++    await new AssuranceTitularErasureParticipant(new ConfigService()).resolveScope(
++      scope,
++      {} as QueryRunner,
++    );
++    const predicates = select.mock.calls[0]?.[3].join(' OR ');
++    expect(predicates).toContain("requester_type\"::text = 'SUBSCRIBER'");
++    expect(predicates).toContain("subject_type\"::text = 'CONTRACT'");
++    expect(predicates).toContain("subject_type\"::text = 'EXPEDIENTE'");
++    expect(predicates).toContain('::text[])');
++    expect(scope.relatedIds.ticketIds).toEqual(['ticket']);
++    expect(scope.relatedIds.ticketWorkOrderIds).toEqual(['work']);
++  });
++});
+diff --git a/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts b/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts
+new file mode 100644
+index 00000000..bf7ea45d
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts
+@@ -0,0 +1,134 @@
++import { Injectable } from '@nestjs/common';
++import { ConfigService } from '@nestjs/config';
++import type { QueryRunner } from 'typeorm';
++import {
++  anonymizeConfiguredTable,
++  loadErasureKeys,
++  readTenantColumns,
++  selectErasureIds,
++  selectErasureColumnValues,
++  type FieldRule,
++  type TenantColumn,
++} from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++import type {
++  TitularErasureParticipant,
++  TitularErasureScope,
++  TitularErasureTableResult,
++} from '../../crm/privacy-adapters/titular-erasure/titular-erasure.types';
++
++@Injectable()
++export class AssuranceTitularErasureParticipant implements TitularErasureParticipant {
++  constructor(private readonly config: ConfigService) {}
++
++  async resolveScope(scope: TitularErasureScope, qr: QueryRunner): Promise<void> {
++    const columns = await readTenantColumns(qr);
++    const related = (scope.relatedIds ??= {});
++    const parameters: unknown[] = [];
++    const predicates: string[] = [];
++    for (const [typeColumn, refColumn, type, ids] of [
++      ['requester_type', 'requester_ref_id', 'SUBSCRIBER', scope.subscriberIds],
++      ['subject_type', 'subject_ref_id', 'SUBSCRIBER', scope.subscriberIds],
++      ['subject_type', 'subject_ref_id', 'CONTRACT', related.contractIds ?? []],
++      ['subject_type', 'subject_ref_id', 'EXPEDIENTE', scope.expedienteIds],
++    ] as const) {
++      if (
++        ids.length === 0 ||
++        !columns.has(`support_tickets.${typeColumn}`) ||
++        !columns.has(`support_tickets.${refColumn}`)
++      )
++        continue;
++      parameters.push(ids);
++      predicates.push(
++        `("${typeColumn}"::text = '${type}' AND "${refColumn}"::text = ANY($${parameters.length}::text[]))`,
++      );
++    }
++    related.ticketIds = await selectErasureIds(
++      qr,
++      'support_tickets',
++      columns,
++      predicates,
++      parameters,
++    );
++    const linkIds = await this.childIds(qr, 'ticket_work_order_links', related.ticketIds, columns);
++    related.ticketWorkOrderIds = [
++      ...new Set([
++        ...(await selectErasureColumnValues(
++          qr,
++          'support_tickets',
++          'work_order_id',
++          related.ticketIds,
++          columns,
++        )),
++        ...(await selectErasureColumnValues(
++          qr,
++          'ticket_work_order_links',
++          'work_order_id',
++          linkIds,
++          columns,
++        )),
++      ]),
++    ];
++  }
++
++  plan(scope: TitularErasureScope, qr: QueryRunner): Promise<TitularErasureTableResult[]> {
++    return this.run(scope, qr, 'dry-run');
++  }
++  apply(
++    scope: TitularErasureScope,
++    qr: QueryRunner,
++    mode: 'dry-run' | 'apply',
++  ): Promise<TitularErasureTableResult[]> {
++    return this.run(scope, qr, mode);
++  }
++
++  private async run(
++    scope: TitularErasureScope,
++    qr: QueryRunner,
++    mode: 'dry-run' | 'apply',
++  ): Promise<TitularErasureTableResult[]> {
++    const columns = await readTenantColumns(qr);
++    const keys = scope.cryptoKeys ?? loadErasureKeys(this.config);
++    const ticketIds = scope.relatedIds?.ticketIds ?? [];
++    const tables: ReadonlyArray<readonly [string, FieldRule[]]> = [
++      [
++        'support_tickets',
++        [
++          { column: 'subject', kind: 'marker' },
++          { column: 'description', kind: 'null' },
++        ],
++      ],
++      ['ticket_comments', [{ column: 'body', kind: 'marker' }]],
++      ['ticket_timeline_events', [{ column: 'payload', kind: 'empty-json' }]],
++      ['ticket_work_order_links', [{ column: 'notes', kind: 'null' }]],
++      ['ticket_pqr_records', [{ column: 'notes', kind: 'null' }]],
++    ];
++    const results: TitularErasureTableResult[] = [];
++    for (const [table, rules] of tables) {
++      const ids =
++        table === 'support_tickets'
++          ? ticketIds
++          : await this.childIds(qr, table, ticketIds, columns);
++      results.push({
++        table,
++        category: 'OPERACION_CAMPO',
++        ...(await anonymizeConfiguredTable(qr, table, ids, rules, columns, keys, mode)),
++      });
++    }
++    return results;
++  }
++
++  private childIds(
++    qr: QueryRunner,
++    table: string,
++    ids: string[],
++    columns: Map<string, TenantColumn>,
++  ): Promise<string[]> {
++    return selectErasureIds(
++      qr,
++      table,
++      columns,
++      ids.length && columns.has(`${table}.ticket_id`) ? ['"ticket_id" = ANY($1::uuid[])'] : [],
++      ids.length && columns.has(`${table}.ticket_id`) ? [ids] : [],
++    );
++  }
++}
+diff --git a/apps/api/src/modules/assurance/privacy/ticket-titular-references.ts b/apps/api/src/modules/assurance/privacy/ticket-titular-references.ts
+new file mode 100644
+index 00000000..76f30677
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/ticket-titular-references.ts
+@@ -0,0 +1,20 @@
++import type { TitularWriteReference } from '../../crm/ports/titular-write-reference';
++
++export function ticketTitularReferences(ticket: {
++  requesterType: string;
++  requesterRefId?: string | null | undefined;
++  subjectType?: string | null | undefined;
++  subjectRefId?: string | null | undefined;
++}): TitularWriteReference[] {
++  const refs: TitularWriteReference[] = [];
++  if (ticket.requesterType === 'SUBSCRIBER' && ticket.requesterRefId)
++    refs.push({ type: 'SUBSCRIBER', id: ticket.requesterRefId });
++  if (
++    ticket.subjectRefId &&
++    (ticket.subjectType === 'SUBSCRIBER' ||
++      ticket.subjectType === 'CONTRACT' ||
++      ticket.subjectType === 'EXPEDIENTE')
++  )
++    refs.push({ type: ticket.subjectType, id: ticket.subjectRefId });
++  return refs;
++}
+diff --git a/apps/api/src/modules/crm/ports/titular-write-reference.ts b/apps/api/src/modules/crm/ports/titular-write-reference.ts
+new file mode 100644
+index 00000000..86de46a5
+--- /dev/null
++++ b/apps/api/src/modules/crm/ports/titular-write-reference.ts
+@@ -0,0 +1,4 @@
++export interface TitularWriteReference {
++  type: 'SUBSCRIBER' | 'CONTRACT' | 'EXPEDIENTE';
++  id: string;
++}
+diff --git a/apps/api/src/modules/crm/privacy-adapters/crm-supplier-blocker.spec.ts b/apps/api/src/modules/crm/privacy-adapters/crm-supplier-blocker.spec.ts
+new file mode 100644
+index 00000000..3e22c357
+--- /dev/null
++++ b/apps/api/src/modules/crm/privacy-adapters/crm-supplier-blocker.spec.ts
+@@ -0,0 +1,86 @@
++import type { EntityManager } from 'typeorm';
++import { CrmPersonalDataErasureAdapter } from './crm-personal-data-erasure.adapter';
++
++describe('B3 — bloqueo de proveedor', () => {
++  const participant = () => ({
++    plan: jest.fn().mockResolvedValue([]),
++    apply: jest.fn().mockResolvedValue([]),
++  });
++  function setup(linked: boolean) {
++    const supplier = { hasSupplierProfile: jest.fn().mockResolvedValue(linked) };
++    const crm = { ...participant(), findSubscriberIds: jest.fn().mockResolvedValue([]) };
++    const users = {
++      ...participant(),
++      findUserIds: jest.fn().mockResolvedValue([]),
++      activeAccountCount: jest.fn().mockResolvedValue(0),
++    };
++    const adapter = Reflect.construct(CrmPersonalDataErasureAdapter, [
++      crm,
++      participant(),
++      users,
++      participant(),
++      participant(),
++      participant(),
++      participant(),
++      participant(),
++      participant(),
++      participant(),
++      supplier,
++    ]) as CrmPersonalDataErasureAdapter;
++    const qr = { isTransactionActive: true, query: jest.fn().mockResolvedValue([]) };
++    const manager = { queryRunner: qr } as unknown as EntityManager;
++    return { adapter, supplier, manager, qr };
++  }
++  it.each([true, false])('la vista previa refleja proveedor=%s', async (linked) => {
++    const { adapter, manager, supplier, qr } = setup(linked);
++    const plan = await adapter.plan(
++      { requestId: 'request', partyId: 'party', requesterDocumentHmac: null },
++      { manager },
++    );
++    expect(plan.blockers).toEqual(linked ? ['SUPPLIER_PROFILE_LINKED'] : []);
++    expect(supplier.hasSupplierProfile).toHaveBeenCalledWith('party', qr);
++  });
++  it('sin Party no consulta proveedores', async () => {
++    const { adapter, manager, supplier } = setup(true);
++    expect(
++      (
++        await adapter.plan(
++          { requestId: 'request', partyId: null, requesterDocumentHmac: null },
++          { manager },
++        )
++      ).blockers,
++    ).toEqual([]);
++    expect(supplier.hasSupplierProfile).not.toHaveBeenCalled();
++  });
++  it('anonymize rechaza con 409 sin aplicar participantes', async () => {
++    const { adapter, manager } = setup(true);
++    await expect(
++      adapter.anonymize(
++        {
++          requestId: 'request',
++          partyId: 'party',
++          requesterDocumentHmac: null,
++          expedienteIds: [],
++          actorId: 'actor',
++        },
++        { manager },
++      ),
++    ).rejects.toMatchObject({
++      status: 409,
++      response: { code: 'PRIVACY_ERASURE_SUPPLIER_PROFILE' },
++    });
++  });
++  it('el CLI tampoco aplica sobre un Party proveedor', async () => {
++    const { adapter, qr } = setup(true);
++    await expect(
++      adapter.applyScope(
++        { partyId: 'party', subscriberIds: [], expedienteIds: [], userIds: [] },
++        qr as never,
++        'apply',
++      ),
++    ).rejects.toMatchObject({
++      status: 409,
++      response: { code: 'PRIVACY_ERASURE_SUPPLIER_PROFILE' },
++    });
++  });
++});
+diff --git a/apps/api/src/modules/crm/subscribers/guards/assert-titular-writable.ts b/apps/api/src/modules/crm/subscribers/guards/assert-titular-writable.ts
+new file mode 100644
+index 00000000..c98a41de
+--- /dev/null
++++ b/apps/api/src/modules/crm/subscribers/guards/assert-titular-writable.ts
+@@ -0,0 +1,36 @@
++import type { QueryRunner } from 'typeorm';
++import { titularAnonymizedConflict } from './titular-anonymized-conflict';
++
++import type { TitularWriteReference } from '../../ports/titular-write-reference';
++
++/** Bloquea las filas CRM en la misma transacción que escribirá el texto. */
++export async function assertTitularWritable(
++  references: TitularWriteReference[],
++  qr: QueryRunner,
++): Promise<void> {
++  const contractIds = references.filter((ref) => ref.type === 'CONTRACT').map((ref) => ref.id);
++  const subscriberIds = references.filter((ref) => ref.type === 'SUBSCRIBER').map((ref) => ref.id);
++  const expedienteIds = references.filter((ref) => ref.type === 'EXPEDIENTE').map((ref) => ref.id);
++  if (contractIds.length) {
++    const contracts = (await qr.query(
++      'SELECT subscriber_id::text AS subscriber_id FROM contracts WHERE id::text = ANY($1::text[])',
++      [contractIds],
++    )) as Array<{ subscriber_id: string }>;
++    subscriberIds.push(...contracts.map((row) => row.subscriber_id));
++  }
++  if (subscriberIds.length) {
++    const rows = (await qr.query(
++      'SELECT id, anonymized_at, expediente_id::text AS expediente_id FROM subscribers WHERE id::text = ANY($1::text[]) ORDER BY id FOR UPDATE',
++      [[...new Set(subscriberIds)]],
++    )) as Array<{ anonymized_at: Date | null; expediente_id: string | null }>;
++    if (rows.some((row) => row.anonymized_at !== null)) throw titularAnonymizedConflict();
++    expedienteIds.push(...rows.flatMap((row) => (row.expediente_id ? [row.expediente_id] : [])));
++  }
++  if (expedienteIds.length) {
++    const rows = (await qr.query(
++      'SELECT id, anonymized_at FROM expediente_records WHERE id::text = ANY($1::text[]) ORDER BY id FOR UPDATE',
++      [[...new Set(expedienteIds)]],
++    )) as Array<{ anonymized_at: Date | null }>;
++    if (rows.some((row) => row.anonymized_at !== null)) throw titularAnonymizedConflict();
++  }
++}
+diff --git a/apps/api/src/modules/inventory/privacy/inventory-privacy.module.ts b/apps/api/src/modules/inventory/privacy/inventory-privacy.module.ts
+new file mode 100644
+index 00000000..139ed0e1
+--- /dev/null
++++ b/apps/api/src/modules/inventory/privacy/inventory-privacy.module.ts
+@@ -0,0 +1,5 @@
++import { Module } from '@nestjs/common';
++import { SupplierProfileReadAdapter } from './supplier-profile-read.adapter';
++
++@Module({ providers: [SupplierProfileReadAdapter], exports: [SupplierProfileReadAdapter] })
++export class InventoryPrivacyModule {}
+diff --git a/apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.spec.ts b/apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.spec.ts
+new file mode 100644
+index 00000000..51dc735e
+--- /dev/null
++++ b/apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.spec.ts
+@@ -0,0 +1,60 @@
++import type { QueryRunner } from 'typeorm';
++import { SupplierProfileReadAdapter } from './supplier-profile-read.adapter';
++
++describe('SupplierProfileReadAdapter', () => {
++  const adapter = new SupplierProfileReadAdapter();
++  const partyId = 'party-fixture';
++  const catalog = [
++    {
++      table_name: 'supplier_profiles',
++      column_name: 'party_ref_id',
++      is_nullable: 'NO',
++      data_type: 'uuid',
++      udt_name: 'uuid',
++    },
++  ];
++
++  it('devuelve false en un schema parcial sin consultar la tabla ausente', async () => {
++    const query = jest.fn().mockImplementation(async (sql: string) => {
++      if (sql.includes('information_schema.columns')) return [];
++      throw Object.assign(new Error('Tabla ausente en el schema sintético'), { code: '42P01' });
++    });
++
++    await expect(
++      adapter.hasSupplierProfile(partyId, { query } as unknown as QueryRunner),
++    ).resolves.toBe(false);
++    expect(query).toHaveBeenCalledTimes(1);
++    expect(query).toHaveBeenCalledWith(expect.stringContaining('information_schema.columns'));
++  });
++
++  it.each([true, false])(
++    'con tabla presente devuelve proveedor=%s para el Party',
++    async (linked) => {
++      const query = jest.fn().mockResolvedValueOnce(catalog).mockResolvedValueOnce([{ linked }]);
++
++      await expect(
++        adapter.hasSupplierProfile(partyId, { query } as unknown as QueryRunner),
++      ).resolves.toBe(linked);
++      expect(query).toHaveBeenCalledWith(expect.stringContaining('party_ref_id::text = $1::text'), [
++        partyId,
++      ]);
++    },
++  );
++
++  it('devuelve false si la consulta de existencia no devuelve filas', async () => {
++    const query = jest.fn().mockResolvedValueOnce(catalog).mockResolvedValueOnce([]);
++
++    await expect(
++      adapter.hasSupplierProfile(partyId, { query } as unknown as QueryRunner),
++    ).resolves.toBe(false);
++  });
++
++  it('propaga un fallo de lectura del catálogo sin confundirlo con tabla ausente', async () => {
++    const failure = new Error('Fallo sintético de catálogo');
++    const query = jest.fn().mockRejectedValue(failure);
++
++    await expect(
++      adapter.hasSupplierProfile(partyId, { query } as unknown as QueryRunner),
++    ).rejects.toBe(failure);
++  });
++});
+diff --git a/apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.ts b/apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.ts
+new file mode 100644
+index 00000000..586c4ade
+--- /dev/null
++++ b/apps/api/src/modules/inventory/privacy/supplier-profile-read.adapter.ts
+@@ -0,0 +1,20 @@
++import { Injectable } from '@nestjs/common';
++import type { QueryRunner } from 'typeorm';
++import {
++  readTenantColumns,
++  tableExists,
++} from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++
++@Injectable()
++export class SupplierProfileReadAdapter {
++  async hasSupplierProfile(partyId: string, qr: QueryRunner): Promise<boolean> {
++    const columns = await readTenantColumns(qr);
++    if (!tableExists(columns, 'supplier_profiles')) return false;
++
++    const rows = (await qr.query(
++      'SELECT EXISTS (SELECT 1 FROM supplier_profiles WHERE party_ref_id::text = $1::text) AS linked',
++      [partyId],
++    )) as Array<{ linked: boolean }>;
++    return rows[0]?.linked === true;
++  }
++}
+diff --git a/apps/api/src/modules/network/privacy/network-privacy.module.ts b/apps/api/src/modules/network/privacy/network-privacy.module.ts
+new file mode 100644
+index 00000000..22f3abf5
+--- /dev/null
++++ b/apps/api/src/modules/network/privacy/network-privacy.module.ts
+@@ -0,0 +1,8 @@
++import { Module } from '@nestjs/common';
++import { NetworkTitularErasureParticipant } from './network-titular-erasure.participant';
++
++@Module({
++  providers: [NetworkTitularErasureParticipant],
++  exports: [NetworkTitularErasureParticipant],
++})
++export class NetworkPrivacyModule {}
+diff --git a/apps/api/src/modules/network/privacy/network-titular-erasure.participant.ts b/apps/api/src/modules/network/privacy/network-titular-erasure.participant.ts
+new file mode 100644
+index 00000000..50fa67b2
+--- /dev/null
++++ b/apps/api/src/modules/network/privacy/network-titular-erasure.participant.ts
+@@ -0,0 +1,59 @@
++import { Injectable } from '@nestjs/common';
++import { ConfigService } from '@nestjs/config';
++import type { QueryRunner } from 'typeorm';
++import {
++  anonymizeConfiguredTable,
++  loadErasureKeys,
++  readTenantColumns,
++  selectErasureIds,
++  type FieldRule,
++} from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++import type {
++  TitularErasureParticipant,
++  TitularErasureScope,
++  TitularErasureTableResult,
++} from '../../crm/privacy-adapters/titular-erasure/titular-erasure.types';
++
++@Injectable()
++export class NetworkTitularErasureParticipant implements TitularErasureParticipant {
++  constructor(private readonly config: ConfigService) {}
++  plan(scope: TitularErasureScope, qr: QueryRunner): Promise<TitularErasureTableResult[]> {
++    return this.apply(scope, qr, 'dry-run');
++  }
++  async apply(
++    scope: TitularErasureScope,
++    qr: QueryRunner,
++    mode: 'dry-run' | 'apply',
++  ): Promise<TitularErasureTableResult[]> {
++    const columns = await readTenantColumns(qr);
++    const parameters: unknown[] = [];
++    const predicates: string[] = [];
++    for (const [column, ids] of [
++      ['subscriber_id', scope.subscriberIds],
++      ['expediente_id', scope.expedienteIds],
++      ['contract_id', scope.relatedIds?.contractIds ?? []],
++    ] as const) {
++      if (!ids.length || !columns.has(`service_provisionings.${column}`)) continue;
++      parameters.push(ids);
++      predicates.push(`"${column}"::text = ANY($${parameters.length}::text[])`);
++    }
++    const ids = await selectErasureIds(
++      qr,
++      'service_provisionings',
++      columns,
++      predicates,
++      parameters,
++    );
++    const rules: FieldRule[] = [{ column: 'regularization_reason', kind: 'marker' }];
++    const result = await anonymizeConfiguredTable(
++      qr,
++      'service_provisionings',
++      ids,
++      rules,
++      columns,
++      scope.cryptoKeys ?? loadErasureKeys(this.config),
++      mode,
++    );
++    return [{ table: 'service_provisionings', category: 'OPERACION_CAMPO', ...result }];
++  }
++}
+diff --git a/apps/api/src/modules/tasks/privacy/text-erasure-scope.postgres.integration.spec.ts b/apps/api/src/modules/tasks/privacy/text-erasure-scope.postgres.integration.spec.ts
+new file mode 100644
+index 00000000..a7e65d0e
+--- /dev/null
++++ b/apps/api/src/modules/tasks/privacy/text-erasure-scope.postgres.integration.spec.ts
+@@ -0,0 +1,426 @@
++import { assertTitularWritable } from '../../crm/subscribers/guards/assert-titular-writable';
++import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
++import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
++import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
++import { OperationalTaskTitularErasureParticipant } from './operational-task-titular-erasure.participant';
++import type { TitularErasureScope } from '../../crm/privacy-adapters/titular-erasure/titular-erasure.types';
++import { randomUUID } from 'node:crypto';
++import { ConfigService } from '@nestjs/config';
++import { DataSource, QueryRunner } from 'typeorm';
++import { resolveMigrationDbCredentials } from '../../../../../../packages/database/src/db-credentials';
++import {
++  applyTenantMigrationsInOrder,
++  createTenantDataSource,
++  TENANT_MIGRATIONS,
++} from '../../../../../../packages/database/src/migrations/tenant/runner';
++import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-erasure.participant';
++import { ExecutionOrderTitularErasureParticipant } from './execution-order-titular-erasure.participant';
++import type { ErasureKeys } from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++
++const integrationEnabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
++const databaseName = process.env['DB_NAME'] ?? '';
++const safeDatabaseName = /^iwana_it_g7_[a-z0-9_]+$/u;
++const supportedDatabaseName = databaseName === 'test' || safeDatabaseName.test(databaseName);
++const describeWithDb = integrationEnabled && supportedDatabaseName ? describe : describe.skip;
++
++if (integrationEnabled && !supportedDatabaseName) {
++  console.warn(
++    `[B3] Integración omitida: DB_NAME debe ser test o iwana_it_g7_*; recibida ${databaseName || '(vacía)'}.`,
++  );
++}
++
++jest.setTimeout(900_000);
++
++describeWithDb('B3 — supresión CRM sobre migraciones tenant reales', () => {
++  const schemaName = `tenant_it_g7_b3_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
++  const tenantId = randomUUID();
++  const tenantSlug = `privacy-g7-${randomUUID().slice(0, 8)}`;
++  const actorId = randomUUID();
++  const keys: ErasureKeys = {
++    hashKey: Buffer.alloc(32, 1),
++    activeEncryptionKey: Buffer.alloc(32, 2),
++    previousEncryptionKey: null,
++  };
++  let baseDataSource: DataSource | undefined;
++  let tenantDataSource: DataSource | undefined;
++  let queryRunner: QueryRunner | undefined;
++
++  beforeAll(async () => {
++    const credentials = resolveMigrationDbCredentials();
++    baseDataSource = new DataSource({
++      type: 'postgres',
++      host: process.env['DB_HOST'] ?? 'localhost',
++      port: Number.parseInt(process.env['DB_PORT'] ?? '5432', 10),
++      username: credentials.username,
++      password: credentials.password,
++      database: process.env['DB_NAME'] ?? 'iwana',
++      entities: [],
++      migrations: [],
++      synchronize: false,
++      logging: false,
++      extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
++    });
++    await baseDataSource.initialize();
++
++    const bootstrap = baseDataSource.createQueryRunner();
++    try {
++      await bootstrap.query(`CREATE SCHEMA "${schemaName}"`);
++      await bootstrap.query(
++        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
++         VALUES ($1, 'B3 synthetic fixture', $2, $3, 'INACTIVE', 'b1c@invalid.example')`,
++        [tenantId, tenantSlug, schemaName],
++      );
++    } finally {
++      await bootstrap.release();
++    }
++
++    tenantDataSource = createTenantDataSource(baseDataSource, schemaName, tenantSlug);
++    await tenantDataSource.initialize();
++    await applyTenantMigrationsInOrder(tenantDataSource, {
++      ...process.env,
++      IWANA_APPLY_PII_CONTRACT: 'true',
++    });
++    queryRunner = tenantDataSource.createQueryRunner();
++    await queryRunner.connect();
++    const [migrationCountRow] = (await queryRunner.query(
++      'SELECT COUNT(*)::int AS count FROM typeorm_migrations',
++    )) as Array<{ count: number }>;
++    const appliedMigrationCount = migrationCountRow?.count ?? 0;
++    console.info(
++      `[B3] Tenant migrations applied: ${appliedMigrationCount}/${TENANT_MIGRATIONS.length}.`,
++    );
++    expect(appliedMigrationCount).toBe(TENANT_MIGRATIONS.length);
++  });
++
++  afterAll(async () => {
++    try {
++      if (queryRunner && !queryRunner.isReleased) await queryRunner.release();
++    } finally {
++      if (tenantDataSource?.isInitialized) await tenantDataSource.destroy();
++      if (baseDataSource?.isInitialized) {
++        const cleanup = baseDataSource.createQueryRunner();
++        try {
++          await cleanup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
++          await cleanup.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
++        } finally {
++          await cleanup.release();
++          await baseDataSource.destroy();
++        }
++      }
++    }
++  });
++
++  beforeEach(async () => {
++    if (!queryRunner) throw new Error('Conexión de prueba ausente.');
++    await queryRunner.startTransaction();
++    await queryRunner.query("SELECT set_config('iwana.titular_erasure', 'on', true)");
++  });
++  afterEach(async () => {
++    if (queryRunner?.isTransactionActive) await queryRunner.rollbackTransaction();
++  });
++
++  it('R-13 conserva el asiento y las cuatro fechas y sustituye el motivo', async () => {
++    const qr = queryRunner!;
++    const eventId = randomUUID();
++    await qr.query(
++      `INSERT INTO schedule_reschedule_logs
++      (tenant_id, schedule_event_id, from_start_at, from_end_at, to_start_at, to_end_at, reason, notes, changed_by)
++      VALUES ($1, $2, '2026-01-01T08:00Z', '2026-01-01T09:00Z', '2026-01-02T08:00Z', '2026-01-02T09:00Z', 'Sonda de motivo', 'Sonda de nota', $3)`,
++      [tenantId, eventId, actorId],
++    );
++    const [before] = await qr.query('SELECT * FROM schedule_reschedule_logs');
++    await new WfmTitularErasureParticipant(new ConfigService()).apply(
++      {
++        partyId: null,
++        subscriberIds: [],
++        expedienteIds: [],
++        userIds: [],
++        cryptoKeys: keys,
++        relatedIds: { scheduleEventIds: [eventId] },
++      },
++      qr,
++      'apply',
++    );
++    const [after] = await qr.query('SELECT * FROM schedule_reschedule_logs');
++    expect(after).toEqual({ ...before, reason: 'ANONIMIZADO', notes: null });
++  });
++
++  it('R-12 conserva el reverso y marca su motivo NOT NULL', async () => {
++    const qr = queryRunner!;
++    const orderId = randomUUID();
++    await qr.query(
++      `INSERT INTO execution_order_item_usage_reversals
++      (tenant_id, execution_order_id, item_usage_id, reversal_request_id, reason, requested_by)
++      VALUES ($1, $2, $3, $4, 'Sonda de reverso', $5)`,
++      [tenantId, orderId, randomUUID(), randomUUID(), actorId],
++    );
++    const [before] = await qr.query('SELECT * FROM execution_order_item_usage_reversals');
++    await new ExecutionOrderTitularErasureParticipant(new ConfigService()).apply(
++      {
++        partyId: null,
++        subscriberIds: [],
++        expedienteIds: [],
++        userIds: [],
++        cryptoKeys: keys,
++        relatedIds: { executionOrderIds: [orderId] },
++      },
++      qr,
++      'apply',
++    );
++    const [after] = await qr.query('SELECT * FROM execution_order_item_usage_reversals');
++    expect(after).toEqual({ ...before, reason: 'ANONIMIZADO' });
++  });
++  function scope(): TitularErasureScope {
++    return {
++      partyId: null,
++      subscriberIds: [randomUUID()],
++      expedienteIds: [randomUUID()],
++      userIds: [],
++      cryptoKeys: keys,
++      relatedIds: { contractIds: [randomUUID()] },
++    };
++  }
++
++  it.each(['same', 'other', 'none'])(
++    'D-BT-8 proveedor=%s se limita al Party consultado',
++    async (kind) => {
++      const qr = queryRunner!;
++      const partyId = randomUUID();
++      if (kind !== 'none')
++        await qr.query(
++          `INSERT INTO supplier_profiles (tenant_id, party_ref_id, party_role_id, supplier_code) VALUES ($1, $2, $3, 'SYNTHETIC')`,
++          [tenantId, kind === 'same' ? partyId : randomUUID(), randomUUID()],
++        );
++      expect(await new SupplierProfileReadAdapter().hasSupplierProfile(partyId, qr)).toBe(
++        kind === 'same',
++      );
++    },
++  );
++
++  it('R-3 a R-6 exige tipos exactos y conserva las referencias, fechas y SLA', async () => {
++    const qr = queryRunner!;
++    const current = scope();
++    const cases = [
++      ['SUBSCRIBER', current.subscriberIds[0], null, null, true],
++      ['EXTERNAL', null, 'SUBSCRIBER', current.subscriberIds[0], true],
++      ['EXTERNAL', null, 'CONTRACT', current.relatedIds!.contractIds![0], true],
++      ['EXTERNAL', null, 'EXPEDIENTE', current.expedienteIds[0], true],
++      ['EXTERNAL', current.subscriberIds[0], 'SERVICE', current.relatedIds!.contractIds![0], false],
++      ['SUBSCRIBER', 'not-a-uuid', 'DEVICE', current.subscriberIds[0], false],
++      ['SUBSCRIBER', randomUUID(), null, null, false],
++    ] as const;
++    const selected: string[] = [];
++    for (let i = 0; i < cases.length; i++) {
++      const [requester, requesterRef, subject, subjectRef, matches] = cases[i]!;
++      const [row] = await qr.query(
++        `INSERT INTO support_tickets (tenant_id, ticket_number, type, subject, description, requester_type, requester_ref_id, subject_type, subject_ref_id, created_by_user_id) VALUES ($1, $2, 'CUSTOMER_INCIDENT', 'Sonda asunto', 'Sonda descripción', $3, $4, $5, $6, $7) RETURNING id::text`,
++        [tenantId, `T-${i}`, requester, requesterRef, subject, subjectRef, actorId],
++      );
++      if (matches) selected.push(row.id);
++    }
++    const ticketId = selected[0];
++    const workId = randomUUID();
++    await qr.query('UPDATE support_tickets SET work_order_id=$1 WHERE id=$2', [workId, ticketId]);
++    const linkWorkId = randomUUID();
++    await qr.query(
++      `INSERT INTO ticket_comments (ticket_id, tenant_id, body, author_user_id) VALUES ($1, $2, 'Sonda comentario', $3)`,
++      [ticketId, tenantId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO ticket_timeline_events (ticket_id, tenant_id, event_type, payload) VALUES ($1, $2, 'CREATED', '{"notes":"Sonda"}')`,
++      [ticketId, tenantId],
++    );
++    await qr.query(
++      `INSERT INTO ticket_work_order_links (ticket_id, tenant_id, work_order_id, requested_at, requested_by_user_id, notes) VALUES ($1, $2, $3, now(), $4, 'Sonda')`,
++      [ticketId, tenantId, linkWorkId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO ticket_pqr_records (ticket_id, tenant_id, deadline_type, deadline_at, notes) VALUES ($1, $2, 'INITIAL_RESPONSE', now(), 'Sonda')`,
++      [ticketId, tenantId],
++    );
++    const before = await qr.query('SELECT * FROM support_tickets ORDER BY id');
++    const participant = new AssuranceTitularErasureParticipant(new ConfigService());
++    await participant.resolveScope(current, qr);
++    expect(current.relatedIds!.ticketIds!.sort()).toEqual(selected.sort());
++    expect(current.relatedIds!.ticketWorkOrderIds!.sort()).toEqual([workId, linkWorkId].sort());
++    const dry = await participant.plan(current, qr);
++    expect(dry.reduce((n, row) => n + row.changed, 0)).toBe(0);
++    expect(await qr.query('SELECT * FROM support_tickets ORDER BY id')).toEqual(before);
++    const result = await participant.apply(current, qr, 'apply');
++    expect(result.every((row) => row.residual === 0)).toBe(true);
++    const after = await qr.query('SELECT * FROM support_tickets ORDER BY id');
++    for (let i = 0; i < before.length; i++) {
++      const row = before[i];
++      expect(after[i]).toEqual(
++        selected.includes(row.id)
++          ? { ...row, subject: 'ANONIMIZADO', description: null, updated_at: after[i].updated_at }
++          : row,
++      );
++    }
++    expect((await qr.query('SELECT body FROM ticket_comments'))[0].body).toBe('ANONIMIZADO');
++    expect((await qr.query('SELECT payload FROM ticket_timeline_events'))[0].payload).toEqual({});
++    expect((await qr.query('SELECT notes FROM ticket_work_order_links'))[0].notes).toBeNull();
++    expect((await qr.query('SELECT notes FROM ticket_pqr_records'))[0].notes).toBeNull();
++    expect(
++      (await participant.apply(current, qr, 'apply')).every(
++        (row) => row.changed === 0 && row.residual === 0,
++      ),
++    ).toBe(true);
++  });
++
++  it('A-2/A-3/A-4 siguen contrato, ticket y sus OT sin confundir varchar con UUID', async () => {
++    const qr = queryRunner!;
++    const current = scope();
++    const ticketId = randomUUID();
++    const workId = randomUUID();
++    current.relatedIds!.ticketIds = [ticketId];
++    current.relatedIds!.ticketWorkOrderIds = [workId];
++    await qr.query(
++      `INSERT INTO visit_requests (tenant_id, status, origin_context, work_type, priority, title, contract_id, requested_by_user_id) VALUES ($1, 'PENDING', 'MANUAL', 'INSTALLATION', 'NORMAL', 'Sonda visita contrato', $2, $3)`,
++      [tenantId, current.relatedIds!.contractIds![0], actorId],
++    );
++    await qr.query(
++      `INSERT INTO visit_requests (tenant_id, status, origin_context, work_type, priority, title, ticket_id, requested_by_user_id) VALUES ($1, 'PENDING', 'MANUAL', 'INSTALLATION', 'NORMAL', 'Sonda visita ticket', $2, $3)`,
++      [tenantId, ticketId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO schedule_events (tenant_id, type, title, scheduled_start_at, scheduled_end_at, assigned_user_id, contract_id, created_by) VALUES ($1, 'INSTALLATION', 'Sonda contrato', now(), now() + interval '1 hour', $2, $3, $2)`,
++      [tenantId, actorId, current.relatedIds!.contractIds![0]],
++    );
++    await qr.query(
++      `INSERT INTO schedule_events (tenant_id, type, title, scheduled_start_at, scheduled_end_at, assigned_user_id, ticket_id, created_by) VALUES ($1, 'INSTALLATION', 'Sonda ticket', now(), now() + interval '1 hour', $2, $3, $2)`,
++      [tenantId, actorId, ticketId],
++    );
++    await qr.query(
++      `INSERT INTO work_orders (id, tenant_id, code, type, source_context, source_ref, summary, created_by, assigned_user_id) VALUES ($1, $2, 'W1', 'INSTALLATION', 'MANUAL', null, 'Sonda vínculo', $3, $3), ($4, $2, 'W2', 'INSTALLATION', 'ASSURANCE', $5, 'Sonda origen', $3, $3)`,
++      [workId, tenantId, actorId, randomUUID(), ticketId],
++    );
++    await qr.query(
++      `INSERT INTO operational_tasks (tenant_id, task_number, type, title, origin_context, ticket_id, responsible_type, responsible_ref_id, recipient_type, execution_mode) VALUES ($1, 'TASK1', (SELECT enumlabel::task_type FROM pg_enum WHERE enumtypid='task_type'::regtype ORDER BY enumsortorder LIMIT 1), 'Sonda tarea', 'ASSURANCE', $2, (SELECT enumlabel::task_responsible_type FROM pg_enum WHERE enumtypid='task_responsible_type'::regtype ORDER BY enumsortorder LIMIT 1), $3, (SELECT enumlabel::task_recipient_type FROM pg_enum WHERE enumtypid='task_recipient_type'::regtype ORDER BY enumsortorder LIMIT 1), (SELECT enumlabel::task_execution_mode FROM pg_enum WHERE enumtypid='task_execution_mode'::regtype ORDER BY enumsortorder LIMIT 1))`,
++      [tenantId, ticketId, actorId],
++    );
++    const wfm = new WfmTitularErasureParticipant(new ConfigService());
++    await wfm.resolveScope(current, qr);
++    expect(current.relatedIds!.visitRequestIds).toHaveLength(2);
++    expect(current.relatedIds!.scheduleEventIds).toHaveLength(2);
++    expect(current.relatedIds!.workOrderIds).toHaveLength(2);
++    const tasks = new OperationalTaskTitularErasureParticipant(new ConfigService());
++    await tasks.resolveScope(current, qr);
++    expect(current.relatedIds!.operationalTaskIds).toHaveLength(1);
++    expect((await wfm.apply(current, qr, 'apply')).every((row) => row.residual === 0)).toBe(true);
++    expect((await tasks.apply(current, qr, 'apply')).every((row) => row.residual === 0)).toBe(true);
++  });
++
++  it('A-1 alcanza la OT directa por suscriptor sin visita ni agenda', async () => {
++    const qr = queryRunner!;
++    const current = scope();
++    await qr.query(
++      `INSERT INTO execution_orders (tenant_id, execution_order_number, origin_context, customer_display_label, work_type, work_summary, subscriber_id) VALUES ($1, 'E1', 'CRM', 'Sonda titular', 'INSTALLATION', 'Sonda resumen', $2)`,
++      [tenantId, current.subscriberIds[0]],
++    );
++    const participant = new ExecutionOrderTitularErasureParticipant(new ConfigService());
++    await participant.resolveScope(current, qr);
++    expect(current.relatedIds!.executionOrderIds).toHaveLength(1);
++    expect((await participant.apply(current, qr, 'apply')).every((row) => row.residual === 0)).toBe(
++      true,
++    );
++  });
++
++  it('R-2 marca el motivo con ck_sp_regularized activo y conserva la regularización', async () => {
++    const qr = queryRunner!;
++    const current = scope();
++    const routerId = randomUUID();
++    const networkId = randomUUID();
++    await qr.query(
++      `INSERT INTO network_routers (id, tenant_id, name, management_host, supported_control_methods, created_by) VALUES ($1, $2, 'Sonda router', '192.0.2.1', ARRAY['PCQ_ADDRESS_LIST'], $3)`,
++      [routerId, tenantId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO ipv4_networks (id, tenant_id, router_id, name, cidr, gateway, assignable_from, assignable_to, default_control_method, created_by) VALUES ($1, $2, $3, 'Sonda red', '192.0.2.0/24', '192.0.2.1', '192.0.2.2', '192.0.2.254', 'PCQ_ADDRESS_LIST', $4)`,
++      [networkId, tenantId, routerId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO service_provisionings (tenant_id, subscriber_id, execution_order_id, execution_order_number, router_id, ipv4_network_id, control_method, control_params, status, origin, regularization_reason, regularized_by, regularized_at) VALUES ($1, $2, $3, 'E1', $4, $5, 'PCQ_ADDRESS_LIST', '{}', 'ACTIVE', 'REGULARIZED', 'Sonda motivo', $6, now())`,
++      [tenantId, current.subscriberIds[0], randomUUID(), routerId, networkId, actorId],
++    );
++    const [before] = await qr.query('SELECT * FROM service_provisionings');
++    const networkParticipant = new NetworkTitularErasureParticipant(new ConfigService());
++    expect((await networkParticipant.plan(current, qr))[0]).toMatchObject({
++      selected: 1,
++      changed: 0,
++      residual: 1,
++    });
++    expect(
++      (await qr.query('SELECT regularization_reason FROM service_provisionings'))[0]
++        .regularization_reason,
++    ).toBe('Sonda motivo');
++    const result = await networkParticipant.apply(current, qr, 'apply');
++    expect(result[0]).toMatchObject({ category: 'OPERACION_CAMPO', changed: 1, residual: 0 });
++    const [after] = await qr.query('SELECT * FROM service_provisionings');
++    expect(after).toEqual({
++      ...before,
++      regularization_reason: 'ANONIMIZADO',
++      updated_at: after.updated_at,
++    });
++  });
++
++  it.each(['SUBSCRIBER', 'EXPEDIENTE', 'CONTRACT'] as const)(
++    'D-BT-7 rechaza %s anonimizado mediante lectura CRM con bloqueo',
++    async (type) => {
++      const qr = queryRunner!;
++      const subscriberId = randomUUID();
++      const expedienteId = randomUUID();
++      const contractId = randomUUID();
++      await qr.query(
++        `INSERT INTO expediente_records (id, tenant_id, full_name, created_by) VALUES ($1, $2, 'Sonda expediente', $3)`,
++        [expedienteId, tenantId, actorId],
++      );
++      await qr.query(
++        `INSERT INTO subscribers (id, tenant_id, expediente_id, person_type, customer_segment, document_type, document_number_encrypted, first_name, last_name, stratum, email_encrypted, phone_encrypted, vat_treatment, tax_regime, address, created_by) VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', 'synthetic-encrypted', 'Fixture', 'B3', 3, 'synthetic-email', 'synthetic-phone', 'STANDARD', 'SIMPLIFIED', 'Sonda dirección', $4)`,
++        [subscriberId, tenantId, expedienteId, actorId],
++      );
++      await qr.query(
++        `INSERT INTO contracts (id, tenant_id, subscriber_id, plan_id, plan_snapshot_json, status, alias, service_usage) VALUES ($1, $2, $3, 'fixture-plan', '{}', 'DRAFT', 'Sonda contrato', 'NON_RESIDENTIAL')`,
++        [contractId, tenantId, subscriberId],
++      );
++      const id =
++        type === 'CONTRACT' ? contractId : type === 'SUBSCRIBER' ? subscriberId : expedienteId;
++      await expect(assertTitularWritable([{ type, id }], qr)).resolves.toBeUndefined();
++      if (type === 'EXPEDIENTE')
++        await qr.query(
++          'UPDATE expediente_records SET anonymized_at=now(), anonymized_request_id=$1 WHERE id=$2',
++          [randomUUID(), expedienteId],
++        );
++      else
++        await qr.query(
++          'UPDATE subscribers SET anonymized_at=now(), anonymized_request_id=$1 WHERE id=$2',
++          [randomUUID(), subscriberId],
++        );
++      await expect(assertTitularWritable([{ type, id }], qr)).rejects.toMatchObject({
++        status: 409,
++        response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
++      });
++    },
++  );
++  it('el alcance vacío no toca filas y permite resolver las claves desde ConfigService', async () => {
++    const qr = queryRunner!;
++    const config = new ConfigService({
++      PII_HASH_KEY: keys.hashKey.toString('hex'),
++      PII_ENCRYPTION_KEY: keys.activeEncryptionKey.toString('hex'),
++      MFA_ENCRYPTION_KEY: keys.activeEncryptionKey.toString('hex'),
++    });
++    const empty = { partyId: null, subscriberIds: [], expedienteIds: [], userIds: [] };
++    const assurance = new AssuranceTitularErasureParticipant(config);
++    await assurance.resolveScope(empty, qr);
++    expect(
++      (await assurance.plan(empty, qr)).every(
++        (row) => row.selected === 0 && row.changed === 0 && row.residual === 0,
++      ),
++    ).toBe(true);
++    expect((await new NetworkTitularErasureParticipant(config).plan(empty, qr))[0]).toMatchObject({
++      selected: 0,
++      changed: 0,
++      residual: 0,
++    });
++  });
++});
+diff --git a/apps/api/src/modules/tasks/privacy/text-erasure-scope.spec.ts b/apps/api/src/modules/tasks/privacy/text-erasure-scope.spec.ts
+new file mode 100644
+index 00000000..132ba7e7
+--- /dev/null
++++ b/apps/api/src/modules/tasks/privacy/text-erasure-scope.spec.ts
+@@ -0,0 +1,139 @@
++import { ConfigService } from '@nestjs/config';
++import type { QueryRunner } from 'typeorm';
++import * as sql from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++import type { TitularErasureScope } from '../../crm/privacy-adapters/titular-erasure/titular-erasure.types';
++import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-erasure.participant';
++import { ExecutionOrderTitularErasureParticipant } from './execution-order-titular-erasure.participant';
++import { OperationalTaskTitularErasureParticipant } from './operational-task-titular-erasure.participant';
++
++describe('B3 — alcance operativo y texto libre', () => {
++  const config = new ConfigService();
++  const qr = { query: jest.fn().mockResolvedValue([]) } as unknown as QueryRunner;
++  let scope: TitularErasureScope;
++  const columns = new Map<string, sql.TenantColumn>();
++
++  beforeEach(() => {
++    scope = {
++      partyId: null,
++      subscriberIds: ['subscriber'],
++      expedienteIds: ['expediente'],
++      userIds: [],
++      relatedIds: Object.assign(
++        { contractIds: ['contract'] },
++        { ticketIds: ['ticket'], ticketWorkOrderIds: ['work'] },
++      ),
++      cryptoKeys: {
++        hashKey: Buffer.alloc(32, 1),
++        activeEncryptionKey: Buffer.alloc(32, 2),
++        previousEncryptionKey: null,
++      },
++    };
++    columns.clear();
++    for (const [table, names] of Object.entries({
++      execution_orders: ['id', 'subscriber_id'],
++      visit_requests: ['id', 'contract_id', 'ticket_id'],
++      schedule_events: ['id', 'contract_id', 'ticket_id'],
++      work_orders: ['id', 'source_context', 'source_ref'],
++      operational_tasks: ['id', 'ticket_id'],
++    })) {
++      for (const column of names)
++        columns.set(`${table}.${column}`, {
++          table_name: table,
++          column_name: column,
++          is_nullable: 'YES',
++          data_type: 'text',
++          udt_name: 'text',
++        });
++    }
++    jest.spyOn(sql, 'readTenantColumns').mockResolvedValue(columns);
++    jest.spyOn(sql, 'selectErasureIds').mockResolvedValue([]);
++    jest.spyOn(sql, 'selectErasureColumnValues').mockResolvedValue([]);
++    jest
++      .spyOn(sql, 'anonymizeConfiguredTable')
++      .mockResolvedValue({ selected: 0, changed: 0, residual: 0 });
++  });
++
++  afterEach(() => jest.restoreAllMocks());
++
++  it('A-1 alcanza la OT directa por subscriber_id como texto', async () => {
++    await new ExecutionOrderTitularErasureParticipant(config).resolveScope(scope, qr);
++    expect(sql.selectErasureIds).toHaveBeenCalledWith(
++      qr,
++      'execution_orders',
++      columns,
++      expect.arrayContaining(['"subscriber_id"::text = ANY($1::text[])']),
++      [['subscriber']],
++    );
++  });
++
++  it.each(['visit_requests', 'schedule_events'])(
++    'A-2 alcanza %s por contrato y ticket',
++    async (table) => {
++      await new WfmTitularErasureParticipant(config).resolveScope(scope, qr);
++      expect(sql.selectErasureIds).toHaveBeenCalledWith(
++        qr,
++        table,
++        columns,
++        expect.arrayContaining([
++          expect.stringContaining('"contract_id"'),
++          expect.stringContaining('"ticket_id"'),
++        ]),
++        expect.arrayContaining([['contract'], ['ticket']]),
++      );
++    },
++  );
++
++  it('A-3 alcanza la OT por id publicado y por origen ASSURANCE', async () => {
++    await new WfmTitularErasureParticipant(config).resolveScope(scope, qr);
++    expect(sql.selectErasureIds).toHaveBeenCalledWith(
++      qr,
++      'work_orders',
++      columns,
++      expect.arrayContaining([
++        expect.stringContaining('ASSURANCE'),
++        expect.stringContaining('"id"'),
++      ]),
++      expect.arrayContaining([['work'], ['ticket']]),
++    );
++  });
++
++  it('A-4 alcanza tareas por ticket_id', async () => {
++    await new OperationalTaskTitularErasureParticipant(config).resolveScope(scope, qr);
++    expect(sql.selectErasureIds).toHaveBeenCalledWith(
++      qr,
++      'operational_tasks',
++      columns,
++      expect.arrayContaining([expect.stringContaining('"ticket_id"::text')]),
++      [['ticket']],
++    );
++  });
++
++  it('R-12 marca el motivo de reversión sin borrar el asiento', async () => {
++    await new ExecutionOrderTitularErasureParticipant(config).apply(scope, qr, 'apply');
++    expect(sql.anonymizeConfiguredTable).toHaveBeenCalledWith(
++      qr,
++      'execution_order_item_usage_reversals',
++      [],
++      [{ column: 'reason', kind: 'marker' }],
++      columns,
++      scope.cryptoKeys,
++      'apply',
++    );
++  });
++
++  it('R-13 marca reason y anula notes conservando fechas', async () => {
++    await new WfmTitularErasureParticipant(config).apply(scope, qr, 'apply');
++    expect(sql.anonymizeConfiguredTable).toHaveBeenCalledWith(
++      qr,
++      'schedule_reschedule_logs',
++      [],
++      expect.arrayContaining([
++        { column: 'reason', kind: 'marker' },
++        { column: 'notes', kind: 'null' },
++      ]),
++      columns,
++      scope.cryptoKeys,
++      'apply',
++    );
++  });
++});

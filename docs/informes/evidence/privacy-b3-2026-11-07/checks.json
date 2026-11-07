@@ -1,0 +1,64 @@
+{
+  "date": "2026-11-07",
+  "branch": "main",
+  "api_full": {
+    "command": "pnpm --filter @iwana/api exec jest --no-cache --maxWorkers=2",
+    "suites_passed": 480,
+    "suites_failed": 0,
+    "tests_passed": 6371,
+    "tests_failed": 0,
+    "tests_skipped": 0
+  },
+  "api_focused": {
+    "suites_passed": 9,
+    "tests_passed": 142
+  },
+  "integration": {
+    "command": "pnpm --filter @iwana/api exec jest --config jest.integration.config.js text-erasure-scope.postgres.integration.spec.ts --runInBand --no-cache",
+    "suites_passed": 1,
+    "tests_passed": 13,
+    "tests_skipped": 0,
+    "database": "test",
+    "public_migrations": 27,
+    "tenant_migrations_applied": 172,
+    "tenant_migrations_registered": 172,
+    "transaction_local_setting": "iwana.titular_erasure=on"
+  },
+  "shared": {
+    "command": "pnpm --filter @iwana/shared exec jest erasure.spec.ts --runInBand --no-cache",
+    "suites_passed": 1,
+    "tests_passed": 5
+  },
+  "portal": {
+    "command": "pnpm --filter @iwana/portal exec jest PrivacyRequestDetail.spec.tsx --runInBand --no-cache",
+    "suites_passed": 1,
+    "tests_passed": 7
+  },
+  "typecheck": {
+    "api": "passed",
+    "shared": "passed",
+    "portal": "passed"
+  },
+  "eslint": {
+    "api": {
+      "errors": 0,
+      "warnings": 7
+    },
+    "shared": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "portal": {
+      "errors": 0,
+      "warnings": 42
+    }
+  },
+  "prettier": {
+    "b3_files": 38,
+    "b3_exit_code": 0,
+    "global_exit_code": 1,
+    "global_files_with_issues_outside_b3": 460
+  },
+  "diff_reverse_check": "passed",
+  "new_migrations": 0
+}

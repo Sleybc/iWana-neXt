@@ -1,3 +1,6 @@
+import { AssuranceTitularErasureParticipant } from '../modules/assurance/privacy/assurance-titular-erasure.participant';
+import { NetworkTitularErasureParticipant } from '../modules/network/privacy/network-titular-erasure.participant';
+import { SupplierProfileReadAdapter } from '../modules/inventory/privacy/supplier-profile-read.adapter';
 import { BillingTitularErasureParticipant } from '../modules/billing/privacy/billing-titular-erasure.participant';
 /**
  * Anonimización asistida de un titular, limitada al alcance aprobado en ADR-094.
@@ -1076,6 +1079,9 @@ async function anonymizeTitularInTransaction(
     new OperationalTaskTitularErasureParticipant(config),
     new MediaTitularErasureParticipant(),
     new BillingTitularErasureParticipant(),
+    new AssuranceTitularErasureParticipant(config),
+    new NetworkTitularErasureParticipant(config),
+    new SupplierProfileReadAdapter(),
   );
   const scope = await adapter.resolveCliScope(
     {
@@ -1258,6 +1264,9 @@ function createErasureAdapter(config: ConfigService): CrmPersonalDataErasureAdap
     new OperationalTaskTitularErasureParticipant(config),
     new MediaTitularErasureParticipant(),
     new BillingTitularErasureParticipant(),
+    new AssuranceTitularErasureParticipant(config),
+    new NetworkTitularErasureParticipant(config),
+    new SupplierProfileReadAdapter(),
   );
 }
 

@@ -71,3 +71,10 @@ export function erasureVerificationFailed(): ConflictException {
       'nada se confirmó.',
   });
 }
+
+export function erasureSupplierProfile(): ConflictException {
+  return new ConflictException({
+    code: 'PRIVACY_ERASURE_SUPPLIER_PROFILE',
+    message: 'La persona titular también es proveedor; requiere resolución manual.',
+  });
+}

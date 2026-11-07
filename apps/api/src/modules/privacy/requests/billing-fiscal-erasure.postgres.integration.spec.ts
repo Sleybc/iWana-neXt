@@ -1,3 +1,6 @@
+import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
+import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
 import { CrmContractStandingReadAdapter } from '../../crm/privacy-adapters/crm-contract-standing-read.adapter';
 import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
 import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
@@ -369,6 +372,9 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
         BillingTitularErasureParticipant,
         BillingStandingReadAdapter,
         { provide: IBillingStandingReadPort, useExisting: BillingStandingReadAdapter },
+        AssuranceTitularErasureParticipant,
+        NetworkTitularErasureParticipant,
+        SupplierProfileReadAdapter,
         CrmPersonalDataErasureAdapter,
         { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
         {

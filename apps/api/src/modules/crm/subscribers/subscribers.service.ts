@@ -1,3 +1,6 @@
+import type { TitularWriteReference } from '../ports/titular-write-reference';
+import type { QueryRunner } from 'typeorm';
+import { assertTitularWritable } from './guards/assert-titular-writable';
 import {
   BadRequestException,
   Inject,
@@ -1481,6 +1484,10 @@ export class SubscribersService implements CrmSubscriberReadPort {
     return runInTenantSchema(this.dataSource, schemaName, async (qr) =>
       qr.manager.findOne(Subscriber, { where: { expedienteId } }),
     );
+  }
+
+  assertWritableReferences(references: TitularWriteReference[], qr: QueryRunner): Promise<void> {
+    return assertTitularWritable(references, qr);
   }
 
   async findSummaryByExpedienteId(

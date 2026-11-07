@@ -1,3 +1,6 @@
+import type { QueryRunner } from 'typeorm';
+import type { TitularWriteReference } from '../ports/titular-write-reference';
+import { assertTitularWritable } from './guards/assert-titular-writable';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { runInTenantSchema, TenantContext } from '@iwana/db';
@@ -19,6 +22,10 @@ export class SubscriberServiceContextReadAdapter extends SubscriberServiceContex
     private readonly planCatalogReadPort: PlanCatalogReadPort,
   ) {
     super();
+  }
+
+  assertWritableReferences(references: TitularWriteReference[], qr: QueryRunner): Promise<void> {
+    return assertTitularWritable(references, qr);
   }
 
   async getForSubscriber(subscriberId: string): Promise<SubscriberServiceContext | null> {

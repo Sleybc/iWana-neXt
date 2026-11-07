@@ -1,0 +1,36 @@
+{
+  "numTotalTestSuites": 74,
+  "numFailedTestSuites": 6,
+  "numPendingTestSuites": 4,
+  "numPassedTestSuites": 64,
+  "numFailedTests": 23,
+  "numPendingTests": 24,
+  "numPassedTests": 459,
+  "numTotalTests": 506,
+  "failures": [
+    {
+      "file": "apps/api/src/modules/network/tests/network-interface-ip-protection.races.postgres.integration.spec.ts",
+      "failed_tests": 11
+    },
+    {
+      "file": "apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts",
+      "failed_tests": 6
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts",
+      "failed_tests": 1
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts",
+      "failed_tests": 1
+    },
+    {
+      "file": "apps/api/src/modules/network/service-provisioning.audit.postgres.integration.spec.ts",
+      "failed_tests": 3
+    },
+    {
+      "file": "apps/api/src/modules/media/privacy/media-titular-erasure.api.postgres.integration.spec.ts",
+      "failed_tests": 1
+    }
+  ]
+}

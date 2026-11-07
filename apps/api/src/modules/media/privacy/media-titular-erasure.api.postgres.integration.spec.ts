@@ -1,3 +1,6 @@
+import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
+import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
 import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
@@ -64,6 +67,9 @@ describeWithDb('Media erasure por el adaptador API — evidencia de autorizació
       new OperationalTaskTitularErasureParticipant(config),
       new MediaTitularErasureParticipant(),
       new BillingTitularErasureParticipant(),
+      new AssuranceTitularErasureParticipant(config),
+      new NetworkTitularErasureParticipant(config),
+      new SupplierProfileReadAdapter(),
     );
   });
 

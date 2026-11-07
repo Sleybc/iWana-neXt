@@ -103,6 +103,14 @@ export class OperationalTaskTitularErasureParticipant implements TitularErasureP
       parameters,
     );
     if (taskOrigin) predicates.push(taskOrigin);
+    const ticket = textMembership(
+      'operational_tasks',
+      'ticket_id',
+      related.ticketIds ?? [],
+      columns,
+      parameters,
+    );
+    if (ticket) predicates.push(ticket);
     related.operationalTaskIds = await selectErasureIds(
       qr,
       'operational_tasks',

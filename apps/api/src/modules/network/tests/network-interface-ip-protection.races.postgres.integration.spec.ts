@@ -273,6 +273,7 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
       listInstallationOrders: jest.fn().mockResolvedValue({ rows: [], total: 0 }),
     } as unknown as ExecutionOrderReadPort;
     const subscriberContextPort = {
+      assertWritableReferences: jest.fn().mockResolvedValue(undefined),
       getForSubscriber: jest.fn().mockResolvedValue({
         expedienteId: null,
         planId: null,

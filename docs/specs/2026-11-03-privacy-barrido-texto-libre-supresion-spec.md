@@ -2,7 +2,7 @@
 
 **Versión:** 1.1
 **Cambio v1.0 → v1.1 (2026-11-04, revisión de B1 y B2 contra Postgres real):** dos errores de esta spec. R-14 mandaba `installation_stratum` a `NULL`, lo que viola `chk_contract_residential_stratum` y aborta la supresión de todo contrato residencial. C-1 daba por filtrado un tercer escritor que no lo está. Se añaden D-BT-13 y CA-BT-17 a 19.
-**Estado:** Propuesta. Pendiente del G0 del CTO sobre §13. Amplía el alcance de la supresión; no se implementa nada antes de ese G0. **B1 y B2 se ejecutaron sin ese G0 y sin H-2 aplicado. Decisión del 2026-11-04 (§13, punto 9): se regularizan con B1c.** Eso habilita solo B1c. Los demás puntos de §13 siguen pendientes, y el diff no se publica hasta cerrarlos.
+**Estado:** Aprobada. G0 del CTO el 2026-11-07: los puntos 1 a 8 de §13 como se recomendaron. **B1 y B2 se ejecutaron sin ese G0 y sin H-2 aplicado. Decisión del 2026-11-04 (§13, punto 9): se regularizan con B1c.** Eso habilita solo B1c. La Ola 1 se publicó en `90d42c7f` el 2026-11-06 por excepción del CTO, con G6.5 registrado en `84cba824`. Los puntos 1 a 8 se aprobaron el 2026-11-07: se abre la Ola 2. El barrido sigue bloqueando G7 hasta su cierre y las respuestas del abogado (§13, punto 10).
 **Fecha:** 2026-11-03, revisada el 2026-11-04
 **Modo activo:** Architect
 **Autor:** AI-EM-ARCH
@@ -183,9 +183,13 @@ Los dos logs conservan id y evento, y dejan de imprimir el motivo.
 
 `assurance` y `network` no consultan `anonymized_at`: una fila nueva después del borrado quedaría fuera para siempre. Se aplica `titularAnonymizedConflict` al crear ticket, comentario y regularización contra un suscriptor o expediente anonimizado, por el puerto de lectura de CRM, como en `responsibilities.service.ts:89`. Sin trigger nuevo, por el mismo motivo que D-HN-8.
 
+**Ampliado el 2026-11-07 tras B5 (P1 de `sec-eng`):** la misma guarda cubre las escrituras de texto sobre un ticket ya existente del titular suprimido: `tickets.service.ts` `update` (asunto y descripción), `requestFieldService` (crea trabajo de campo y lo encola con el asunto) y `linkWorkOrder` (notas del vínculo). **`transitionStatus` queda abierto a propósito:** un ticket abierto al suprimir debe poder cerrarse, y `RESOLVED` exige notas. Ese texto queda como límite conocido (§10).
+
 ### D-BT-8. Titular que también es proveedor
 
 Recomendación: **bloqueante en la vista previa** si el Party tiene `supplier_profiles`, con resolución manual. Compras tiene su propio deber contable, y un participante de `inventory` para un caso raro no compensa hoy. Se revisa si aparece el primer caso.
+
+**Forma, fijada el 2026-11-07 al ejecutar B3:** bloqueante nuevo `SUPPLIER_PROFILE_LINKED` en `erasureBlockerSchema` y en la unión del puerto `IPersonalDataErasurePort`. `inventory` es dueño de `supplier_profiles`, así que expone su lectura en un módulo `modules/inventory/privacy/`, como el resto de participantes, y CRM lo importa. La comprobación usa el Party resuelto en el alcance, comparando `party_ref_id` como texto; sin Party no aplica. `anonymize` rechaza con 409 `PRIVACY_ERASURE_SUPPLIER_PROFILE`, como `ACTIVE_USER_ACCOUNT`. El portal muestra «La persona titular también es proveedor; requiere resolución manual.». El contrato compartido cambia: `contract-drift-reviewer` entra en B5.
 
 ### D-BT-9. Categorías sin migración
 
@@ -225,7 +229,7 @@ La unitaria simula la base y no ve un `CHECK`. Por eso:
 - **Terceros:** una nota de otro titular que nombre al suprimido es indetectable. Igual que H-2 §6.
 - **Tickets sin vínculo:** `requester_type = 'EXTERNAL'` o `'ANONYMOUS'` sin referencia, o `subject_type = 'SERVICE'`, `'DEVICE'` y `'WORK_ORDER'`, no se atribuyen. Solo se alcanzan si además tienen otro vínculo.
 - **Copias de seguridad:** igual que D7.
-- **Ticket abierto al suprimir:** se anonimiza sin cerrarlo. La supresión ya exige no tener contratos abiertos.
+- **Ticket abierto al suprimir:** se anonimiza sin cerrarlo. Puede cerrarse después, y las notas de esa transición (`ticket_timeline_events.payload.notes`) se escriben en claro: el operador no debe nombrar al titular, y `--verify-only` las delata para remediarlas con `--apply` (D-BT-12). La supresión ya exige no tener contratos abiertos.
 
 ## 11. Criterios de aceptación
 
@@ -267,7 +271,9 @@ Sin revisar y sin tocar. MOD14 debe clasificarlas antes de su G7: D-BT-10 lo for
 6. **Proveedor:** bloqueante en la vista previa (D-BT-8).
 7. **Invariante en CI** (D-BT-10). Se recomienda como condición, no como mejora: H-2, H-3 y H-4 existen por no tenerlo.
 8. **Bloqueante de G7:** registrar R-1 a R-14, A-1 a A-4 y C-1 como condición de salida.
-9. **Ejecución adelantada. Decidido el 2026-11-04: regularizar con B1c, sin revertir.** No aprueba los puntos 1 a 8. Actualizado el 2026-11-04: la regla de H-2 (`crm_lifecycle_changes.note_encrypted`) está en el árbol: el CTO confirmó que lanzó H-2 B1. Sigue sin commit. Su G0 quedó registrado el 2026-11-04 en la spec H-2.
+**G0 del 2026-11-07:** puntos 1 a 8 aprobados como se recomendaron.
+
+9. **Ejecución adelantada. Decidido el 2026-11-04: regularizar con B1c, sin revertir.** No aprueba los puntos 1 a 8. Actualizado el 2026-11-04: la regla de H-2 (`crm_lifecycle_changes.note_encrypted`) está en el árbol: el CTO confirmó que lanzó H-2 B1. Su G0 quedó registrado el 2026-11-04 en la spec H-2, y salió publicada en el mismo commit `90d42c7f`.
 10. **⚠ Preguntas para el abogado**, que no bloquean la construcción y sí producción. Esta spec no es una conclusión jurídica:
    - ¿El contenido de una PQR o de un ticket tiene deber de conservación propio en el régimen de usuarios de telecomunicaciones? No se verificó. D7 no tiene categoría para ello, así que aquí se anula.
    - ¿`subscriber_tax_assignments.reason` es soporte contable, con 10 años? Es «motivo auditable».

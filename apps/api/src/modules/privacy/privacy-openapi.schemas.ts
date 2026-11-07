@@ -257,6 +257,7 @@ const erasureBlocker = {
     'CONSERVATION_DUTY',
     'UNRECONCILED_TITULAR',
     'ACTIVE_USER_ACCOUNT',
+    'SUPPLIER_PROFILE_LINKED',
     'TOO_MANY_CANDIDATES',
   ],
 } satisfies SchemaObject;

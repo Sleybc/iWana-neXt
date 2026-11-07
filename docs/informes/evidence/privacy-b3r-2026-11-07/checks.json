@@ -1,0 +1,74 @@
+{
+  "date": "2026-11-07",
+  "branch": "main",
+  "status": "BLOQUEO",
+  "integration": {
+    "command": "pnpm --filter @iwana/api exec jest --config jest.integration.config.js --no-cache",
+    "exit_code": 1,
+    "numTotalTestSuites": 74,
+    "numFailedTestSuites": 1,
+    "numPendingTestSuites": 4,
+    "numPassedTestSuites": 69,
+    "numFailedTests": 1,
+    "numPendingTests": 24,
+    "numPassedTests": 481,
+    "numTotalTests": 506
+  },
+  "unit": {
+    "command": "pnpm --filter @iwana/api exec jest --no-cache --maxWorkers=2",
+    "exit_code": 0,
+    "numTotalTestSuites": 481,
+    "numFailedTestSuites": 0,
+    "numPendingTestSuites": 0,
+    "numPassedTestSuites": 481,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numPassedTests": 6376,
+    "numTotalTests": 6376
+  },
+  "new_unit": {
+    "red": {
+      "failed": 2,
+      "passed": 3
+    },
+    "final": {
+      "passed": 5,
+      "failed": 0
+    }
+  },
+  "database": {
+    "name": "test",
+    "public_migrations": 28,
+    "tenant_schema": "tenant_test",
+    "tenant_migrations": 172,
+    "separate_bootstrap_migrator_app_roles": true,
+    "least_privilege_applied": true,
+    "deferred_contract_enabled": true
+  },
+  "environment": {
+    "CI": "true",
+    "IWANA_DB_INTEGRATION_AVAILABLE": "true",
+    "E2E_TENANT_SLUG": "test",
+    "MFA_ENCRYPTION_KEY": "synthetic",
+    "PII_HASH_KEY": "synthetic",
+    "IWANA_K2_REENCRYPT_INTEGRATION": "unset",
+    "IWANA_REDIS_INTEGRATION_AVAILABLE": "unset"
+  },
+  "blocker": {
+    "file": "apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts",
+    "line": 1494,
+    "field": "schedule_reschedule_logs.reason",
+    "expected": "OPERATIONAL_REASON",
+    "actual": "ANONIMIZADO",
+    "expectation_unchanged": true
+  },
+  "cli_changed_in_b3r": false,
+  "assertions_in_existing_integration_specs_unchanged": true,
+  "changed_code_paths": 7,
+  "new_migrations": 0,
+  "quality": {
+    "typecheck": 0,
+    "eslint": 0,
+    "prettier": 0
+  }
+}

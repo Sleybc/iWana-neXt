@@ -2,7 +2,7 @@
 
 **Plan:** `docs/plans/2026-11-03-privacy-barrido-texto-libre-orquestacion.md` v1.2 · **Spec:** `docs/specs/2026-11-03-privacy-barrido-texto-libre-supresion-spec.md` v1.1
 **Ola que lanza:** corrección de Ola 1, B1c-2 (B1c ya ejecutado) · **Gates:** spec §13, punto 9 {decidido 2026-11-04: regularizar} · puntos 1 a 8 {pendientes}
-**Bloqueos abiertos:** ninguno para B1c-2, salvo otro escritor activo. [BLOQUEO] sin commit ni push hasta cerrar spec §13, puntos 1 a 8. [BLOQUEO] si H-2 o K2 entran en vuelo sobre `crm-titular-erasure.participant.ts`: se comprueba al lanzar.
+**Ejecutado.** B1c-2 cerró la Ola 1, publicada en `90d42c7f`. Queda como registro. **Bloqueos abiertos al lanzarlo:** ninguno para B1c-2, salvo otro escritor activo. [BLOQUEO] sin commit ni push hasta cerrar spec §13, puntos 1 a 8. [BLOQUEO] si H-2 o K2 entran en vuelo sobre `crm-titular-erasure.participant.ts`: se comprueba al lanzar.
 
 | # | Subagente | Encargo | Skills a leer antes |
 | --- | --- | --- | --- |

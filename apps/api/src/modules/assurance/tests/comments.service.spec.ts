@@ -1,3 +1,4 @@
+import { titularAnonymizedConflict } from '../../crm/subscribers/guards/titular-anonymized-conflict';
 import { ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { runInTenantSchema } from '@iwana/db';
@@ -41,7 +42,9 @@ describe('CommentsService', () => {
       listTimeline: jest.fn(),
     } as unknown as jest.Mocked<TimelineService>;
 
-    service = new CommentsService({} as DataSource, timelineService);
+    service = new CommentsService({} as DataSource, timelineService, {
+      assertWritableReferences: jest.fn().mockResolvedValue(undefined),
+    } as never);
   });
 
   it('hides internal comments from restricted roles', async () => {
@@ -131,5 +134,29 @@ describe('CommentsService', () => {
         }),
       }),
     );
+  });
+  it('D-BT-7 el comentario propaga el 409 de CRM sin guardar texto', async () => {
+    const guard = {
+      assertWritableReferences: jest.fn().mockRejectedValue(titularAnonymizedConflict()),
+    };
+    const guarded = new CommentsService({} as DataSource, timelineService, guard as never);
+    const save = jest.fn();
+    mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, fn) =>
+      fn({
+        manager: {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'ticket',
+            assignedUserId: technicianActor.sub,
+            requesterType: 'SUBSCRIBER',
+            requesterRefId: 'subscriber',
+          }),
+          save,
+        },
+      } as never),
+    );
+    await expect(
+      guarded.addComment('ticket', { body: 'Sonda' }, technicianActor),
+    ).rejects.toMatchObject({ status: 409, response: { code: 'PRIVACY_TITULAR_ANONYMIZED' } });
+    expect(save).not.toHaveBeenCalled();
   });
 });

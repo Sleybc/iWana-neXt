@@ -8,7 +8,10 @@ export interface PersonalDataErasureTarget {
 }
 export interface PersonalDataErasurePlan {
   candidateExpedienteIds: string[];
-  blockers: Extract<ErasureBlocker, 'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT'>[];
+  blockers: Extract<
+    ErasureBlocker,
+    'UNRECONCILED_TITULAR' | 'ACTIVE_USER_ACCOUNT' | 'SUPPLIER_PROFILE_LINKED'
+  >[];
   counts: Record<ErasureCategory, number>;
 }
 export abstract class IPersonalDataErasurePort {

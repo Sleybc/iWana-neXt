@@ -1,3 +1,4 @@
+import { titularAnonymizedConflict } from '../crm/subscribers/guards/titular-anonymized-conflict';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
@@ -128,6 +129,7 @@ function createService(overrides?: {
   };
   const auditService = { logWithin: jest.fn().mockResolvedValue(undefined) };
   const subscriberContextPort = {
+    assertWritableReferences: jest.fn().mockResolvedValue(undefined),
     getForSubscriber: jest.fn().mockResolvedValue(null),
     ...overrides?.subscriberContextPort,
   };
@@ -2395,5 +2397,37 @@ describe('ServiceProvisioningService uncovered lifecycle branches', () => {
     await expect(service.getOrderContext('eo-001', actor)).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'PROVISIONING_ORDER_NOT_ELIGIBLE' }),
     });
+  });
+  it('D-BT-7 regularizar propaga el 409 de CRM antes de escribir', async () => {
+    const { service, manager, subscriberContextPort } = createService({
+      executionOrderReadPort: {
+        getExecutionSnapshot: jest.fn().mockResolvedValue(
+          order('technician-001', {
+            id: regularizeBody.executionOrderId,
+            status: ExecutionOrderStatus.COMPLETED,
+            result: ExecutionOrderResult.EXECUTED,
+          }),
+        ),
+      },
+    });
+    manager.findOne.mockImplementation(async (entity) => {
+      if (entity === NetworkRouter)
+        return { id: regularizeBody.routerId, organizationSiteId: null, status: 'ACTIVE' } as never;
+      if (entity === Ipv4Network)
+        return {
+          id: regularizeBody.ipv4NetworkId,
+          routerId: regularizeBody.routerId,
+          status: 'ACTIVE',
+        } as never;
+      return null;
+    });
+    jest
+      .spyOn(subscriberContextPort, 'assertWritableReferences')
+      .mockRejectedValueOnce(titularAnonymizedConflict());
+    await expect(service.regularize(regularizeBody, actor)).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'PRIVACY_TITULAR_ANONYMIZED' },
+    });
+    expect(manager.save).not.toHaveBeenCalled();
   });
 });

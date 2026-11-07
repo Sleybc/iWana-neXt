@@ -28,6 +28,7 @@ const EXECUTION_ORDER_RULES: FieldRule[] = [
   { column: 'template_requirements_snapshot', kind: 'empty-json' },
 ];
 
+const REVERSAL_RULES: FieldRule[] = [{ column: 'reason', kind: 'marker' }];
 const ACTIVITY_RULES: FieldRule[] = [{ column: 'description', kind: 'marker' }];
 const EVIDENCE_RULES: FieldRule[] = [
   { column: 'notes', kind: 'null' },
@@ -78,6 +79,10 @@ export class ExecutionOrderTitularErasureParticipant implements TitularErasurePa
         parameters,
       ),
     ].filter((value): value is string => Boolean(value));
+    if (scope.subscriberIds.length > 0 && columns.has('execution_orders.subscriber_id')) {
+      parameters.push(scope.subscriberIds);
+      predicates.push(`"subscriber_id"::text = ANY($${parameters.length}::text[])`);
+    }
     related.executionOrderIds = await selectErasureIds(
       qr,
       'execution_orders',
@@ -122,6 +127,11 @@ export class ExecutionOrderTitularErasureParticipant implements TitularErasurePa
     const executionOrderIds = scope.relatedIds?.executionOrderIds ?? [];
     const tables = [
       ['execution_orders', executionOrderIds, EXECUTION_ORDER_RULES],
+      [
+        'execution_order_item_usage_reversals',
+        await this.childIds(qr, 'execution_order_item_usage_reversals', executionOrderIds, columns),
+        REVERSAL_RULES,
+      ],
       [
         'execution_order_activities',
         await this.childIds(qr, 'execution_order_activities', executionOrderIds, columns),

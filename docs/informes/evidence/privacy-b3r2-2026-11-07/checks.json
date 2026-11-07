@@ -1,0 +1,37 @@
+{
+  "date": "2026-11-07",
+  "branch": "main",
+  "status": "verified",
+  "command": "pnpm --filter @iwana/api exec jest --config jest.integration.config.js --no-cache",
+  "exit_code": 0,
+  "environment": {
+    "CI": "true",
+    "IWANA_DB_INTEGRATION_AVAILABLE": "true",
+    "E2E_TENANT_SLUG": "test",
+    "DB_NAME": "test",
+    "MFA_ENCRYPTION_KEY": "synthetic",
+    "PII_HASH_KEY": "synthetic",
+    "IWANA_APPLY_PII_CONTRACT": "true"
+  },
+  "integration": {
+    "numTotalTestSuites": 74,
+    "numFailedTestSuites": 0,
+    "numPendingTestSuites": 4,
+    "numPassedTestSuites": 70,
+    "numFailedTests": 0,
+    "numPendingTests": 24,
+    "numPassedTests": 482,
+    "numTotalTests": 506
+  },
+  "duration_seconds": 224.151,
+  "database": {
+    "public_migrations": 28,
+    "tenant_schema": "tenant_test",
+    "tenant_migrations": 172,
+    "least_privilege_applied": true,
+    "separate_bootstrap_migrator_app_roles": true
+  },
+  "all_other_cli_spec_bytes_unchanged": true,
+  "new_migrations": 0,
+  "cumulative_code_paths": 45
+}

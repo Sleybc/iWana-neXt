@@ -1,0 +1,10 @@
+{
+  "file": "apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts",
+  "only_change": {
+    "before": ").toEqual([{ reason: 'OPERATIONAL_REASON', notes: null }]);",
+    "after": ").toEqual([{ reason: 'ANONIMIZADO', notes: null }]);"
+  },
+  "before_sha256": "f8885399f0af543fe9947c257e5dd47930ce01f3a8c182a3c639dda96b4320fd",
+  "after_sha256": "2eb562a765f72b07a9ac57e5bf6e1eec222a5c7439e3afb461ca441068c65b9c",
+  "all_other_bytes_unchanged": true
+}

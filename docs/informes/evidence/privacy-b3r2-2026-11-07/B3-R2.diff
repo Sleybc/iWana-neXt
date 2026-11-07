@@ -1,0 +1,13 @@
+diff --git a/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts b/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
+index cff6a833..8bc4b873 100644
+--- a/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
++++ b/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
+@@ -1491,7 +1491,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
+       ).toEqual([{ title: 'ANONIMIZADO', description: null, result_notes: null }]);
+       expect(
+         await dataSource.query(`SELECT reason, notes FROM ${q}.schedule_reschedule_logs`),
+-      ).toEqual([{ reason: 'OPERATIONAL_REASON', notes: null }]);
++      ).toEqual([{ reason: 'ANONIMIZADO', notes: null }]);
+       expect(
+         await dataSource.query(
+           `SELECT customer_display_label, work_summary, service_address, municipality, sector,
