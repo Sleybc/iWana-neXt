@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
 import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
 import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
@@ -390,8 +391,10 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
             IPersonalDataErasurePort,
             IBillingStandingReadPort,
           ],
-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
-            new PrivacyRequestsService(...deps),
+          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
+            deps[9] = new PqrRetentionReadAdapter();
+            return new PrivacyRequestsService(...deps);
+          },
         },
       ],
     }).compile();
@@ -446,6 +449,22 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
       VALUES ($1,$2,$3,$4,$5,'BORRADOR',CURRENT_DATE,10,0,10)`,
       [draftDoc, tenantId, draftPeriod, ids.contract, ids.subscriber],
     );
+    const taxProfile = randomUUID();
+    const taxAssignment = randomUUID();
+    await dataSource.query(
+      `INSERT INTO ${q}.subscriber_tax_profiles (id,tenant_id,subscriber_id) VALUES ($1,$2,$3)`,
+      [taxProfile, tenantId, ids.subscriber],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.subscriber_tax_assignments (id,tenant_id,profile_id,tax_definition_id,tax_name_snapshot,reason) VALUES ($1,$2,$3,$4,'Sonda','Motivo fiscal sintético')`,
+      [taxAssignment, tenantId, taxProfile, randomUUID()],
+    );
+    await runInTenantSchema(dataSource, schemaName, (runner) =>
+      runner.query(
+        "UPDATE contracts SET installation_stratum=3,installation_city='Ciudad sintética',installation_department='Departamento sintético' WHERE id=$1",
+        [ids.contract],
+      ),
+    );
     const requestId = await createVerifiedSuppression();
     const body = {
       responseText: 'Supresión sintética.',
@@ -455,6 +474,28 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
     await expect(
       inTenant(() => service.transition(requestId, 'resolve', body, actorId)),
     ).rejects.toThrow('deber de conservación');
+    // CA-BT-22: el bloqueo fiscal conserva el soporte tributario y la ubicación.
+    expect(
+      await dataSource.query(`SELECT reason FROM ${q}.subscriber_tax_assignments WHERE id=$1`, [
+        taxAssignment,
+      ]),
+    ).toEqual([{ reason: 'Motivo fiscal sintético' }]);
+    expect(
+      await dataSource.query(`SELECT stratum FROM ${q}.subscribers WHERE id=$1`, [ids.subscriber]),
+    ).toEqual([{ stratum: 2 }]);
+    expect(
+      await dataSource.query(
+        `SELECT installation_stratum,installation_city,installation_department FROM ${q}.contracts WHERE id=$1`,
+        [ids.contract],
+      ),
+    ).toEqual([
+      {
+        installation_stratum: 3,
+        installation_city: 'Ciudad sintética',
+        installation_department: 'Departamento sintético',
+      },
+    ]);
+
     await dataSource.query(
       `UPDATE ${q}.billing_documents SET issue_date = CURRENT_DATE - interval '11 years' WHERE id = $1`,
       [fiscalDoc],

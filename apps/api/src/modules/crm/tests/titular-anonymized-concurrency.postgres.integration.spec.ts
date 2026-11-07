@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
 import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
 import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
@@ -605,6 +606,7 @@ describeWithDb('DT-3 RER: concurrencia de titular anonimizado contra PostgreSQL 
       undefined,
       erasureAdapter,
       new BillingStandingReadAdapter(),
+      new PqrRetentionReadAdapter(),
     );
     const contractsService = new ContractsService(
       dataSource,

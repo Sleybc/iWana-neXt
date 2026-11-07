@@ -1,0 +1,387 @@
+{
+  "generatedAt": "2026-11-07T19:11:13.731Z",
+  "head": "c1b56c835c3de25fbbae858c8e561cdd34a57496",
+  "branch": "main",
+  "baselineCi": {
+    "run": 42398209146,
+    "status": "success",
+    "apiIntegration": {
+      "suites": {
+        "total": 76,
+        "passed": 73,
+        "omitted": 3
+      },
+      "tests": {
+        "total": 522,
+        "passed": 503,
+        "omitted": 19
+      }
+    },
+    "databaseIntegration": {
+      "suites": 53,
+      "tests": 153,
+      "omitted": 0
+    }
+  },
+  "database": {
+    "name": "test",
+    "container": "iwana_b7_test",
+    "host": "127.0.0.1",
+    "port": 15433,
+    "publicMigrations": 28,
+    "tenantMigrations": 173,
+    "newMigration": 177
+  },
+  "integrationEnvironment": {
+    "CI": true,
+    "IWANA_DB_INTEGRATION_AVAILABLE": true,
+    "IWANA_K2_REENCRYPT_INTEGRATION": true,
+    "GITHUB_ACTIONS": true,
+    "E2E_TENANT_SLUG": "test",
+    "IWANA_APPLY_PII_CONTRACT": "unset for general CI suite; true in B7 full-chain fixture",
+    "cryptographicKeys": "synthetic"
+  },
+  "commands": [
+    "pnpm --filter @iwana/api exec jest --no-cache --maxWorkers=2 --json --outputFile <temporary-api-unit.json>",
+    "pnpm --filter @iwana/db exec jest --no-cache --maxWorkers=2 --json --outputFile <temporary-db-unit.json>",
+    "pnpm --filter @iwana/api exec jest --config jest.integration.config.js --no-cache --json --outputFile <temporary-api-integration.json>",
+    "pnpm --filter @iwana/db exec jest --config jest.integration.config.js --no-cache --json --outputFile <temporary-db-integration.json>",
+    "pnpm --filter @iwana/api typecheck",
+    "pnpm --filter @iwana/db typecheck",
+    "pnpm exec eslint <36 scoped TypeScript files>",
+    "pnpm exec prettier --check <36 scoped TypeScript files>"
+  ],
+  "results": {
+    "apiBaseline": {
+      "suites": {
+        "total": 481,
+        "passed": 481,
+        "failed": 0,
+        "omitted": 0
+      },
+      "tests": {
+        "total": 6381,
+        "passed": 6381,
+        "failed": 0,
+        "omitted": 0
+      },
+      "durationSeconds": 238.837,
+      "startedAt": "2026-11-07T18:32:10.768Z",
+      "summaries": [
+        "Test Suites: 481 passed, 481 total",
+        "Tests:       6381 passed, 6381 total",
+        "Time:        238.837 s"
+      ],
+      "omittedSuites": []
+    },
+    "databaseBaseline": {
+      "suites": {
+        "total": 78,
+        "passed": 78,
+        "failed": 0,
+        "omitted": 0
+      },
+      "tests": {
+        "total": 426,
+        "passed": 426,
+        "failed": 0,
+        "omitted": 0
+      },
+      "durationSeconds": 13.548,
+      "startedAt": "2026-11-07T18:32:10.713Z",
+      "summaries": [
+        "Test Suites: 78 passed, 78 total",
+        "Tests:       426 passed, 426 total",
+        "Time:        13.548 s"
+      ],
+      "omittedSuites": []
+    },
+    "apiUnit": {
+      "suites": {
+        "total": 483,
+        "passed": 483,
+        "failed": 0,
+        "omitted": 0
+      },
+      "tests": {
+        "total": 6393,
+        "passed": 6393,
+        "failed": 0,
+        "omitted": 0
+      },
+      "durationSeconds": 245.697,
+      "startedAt": "2026-11-07T19:05:27.762Z",
+      "summaries": [
+        "Test Suites: 483 passed, 483 total",
+        "Tests:       6393 passed, 6393 total",
+        "Time:        245.697 s"
+      ],
+      "omittedSuites": []
+    },
+    "databaseUnit": {
+      "suites": {
+        "total": 78,
+        "passed": 78,
+        "failed": 0,
+        "omitted": 0
+      },
+      "tests": {
+        "total": 426,
+        "passed": 426,
+        "failed": 0,
+        "omitted": 0
+      },
+      "durationSeconds": 24.515,
+      "startedAt": "2026-11-07T18:54:29.760Z",
+      "summaries": [
+        "Test Suites: 78 passed, 78 total",
+        "Tests:       426 passed, 426 total",
+        "Time:        24.515 s"
+      ],
+      "omittedSuites": []
+    },
+    "apiIntegration": {
+      "suites": {
+        "total": 77,
+        "passed": 74,
+        "failed": 0,
+        "omitted": 3
+      },
+      "tests": {
+        "total": 540,
+        "passed": 521,
+        "failed": 0,
+        "omitted": 19
+      },
+      "durationSeconds": 385.33,
+      "startedAt": "2026-11-07T19:04:04.337Z",
+      "summaries": [
+        "Test Suites: 3 skipped, 74 passed, 74 of 77 total",
+        "Tests:       19 skipped, 521 passed, 540 total",
+        "Time:        385.33 s"
+      ],
+      "omittedSuites": [
+        {
+          "file": "apps/api/src/modules/inventory/tests/inventory-execution-request.ola3d.postgres.integration.spec.ts",
+          "tests": [
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta SUBSCRIBER_REQUIRED llega al recibo y publica el evento de rechazo sin reintento",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta CUSTODY_INSUFFICIENT llega al recibo y a REJECTED sin reintento",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta confirma una solicitud consumible repartida entre dos lotes FEFO",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta rechaza CUSTODY_INSUFFICIENT cuando la suma disponible de los lotes no alcanza",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta asigna por FEFO el lote a un serial que no tiene lote y no modifica el activo",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta revierte en Redis y PostgreSQL un movimiento repartido y conserva el lote por línea",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta ITEM_INACTIVE llega al recibo y a REJECTED sin reintento",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta SERIAL_NOT_IN_CUSTODY llega al recibo y a REJECTED sin reintento",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta REVERSAL_ORIGINAL_NOT_FOUND atraviesa Redis y persiste la decisión de reverso en PostgreSQL",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta REVERSAL_CUSTODY_INACTIVE atraviesa Redis y persiste la decisión de reverso en PostgreSQL",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta REVERSAL_ASSET_MOVED atraviesa Redis y persiste la decisión de reverso en PostgreSQL",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta REVERSAL_LOAN_MISMATCH atraviesa Redis y persiste la decisión de reverso en PostgreSQL",
+            "R-CA04 — API: MOD11 → Redis → MOD12 → recibo y evento de respuesta serializa dos reversos simultáneos del mismo movimiento en PostgreSQL"
+          ]
+        },
+        {
+          "file": "apps/api/src/modules/network/network-execution-event.postgres.integration.spec.ts",
+          "tests": [
+            "MOD13 B3: eventos, inbox y reconciliación — PostgreSQL + Redis reales registra SIGNATURE_INVALID en el inbox real sin sobrescribir una identidad ya recibida",
+            "MOD13 B3: eventos, inbox y reconciliación — PostgreSQL + Redis reales CA-NET-07/09: activa una certificación; el listener CRM falla, conserva PENDING y reintenta inbox único",
+            "MOD13 B3: eventos, inbox y reconciliación — PostgreSQL + Redis reales CA-NET-10: conserva el servicio ACTIVE y registra contacto pendiente al fallar la transición CRM",
+            "MOD13 B3: eventos, inbox y reconciliación — PostgreSQL + Redis reales CA-NET-11: regularize aplica R12/R6 ter, activa y reintenta la misma fila en Postgres",
+            "MOD13 B3: eventos, inbox y reconciliación — PostgreSQL + Redis reales CA-NET-08: reconcilia una OT cancelada y libera servicio e IP con RECONCILED"
+          ]
+        },
+        {
+          "file": "apps/api/src/modules/tasks/tests/execution-orders.item-usage-projection.postgres.integration.spec.ts",
+          "tests": [
+            "Execution order usage projection — PostgreSQL sintético listItemUsage devuelve rejectionReasonCode leído desde PostgreSQL"
+          ]
+        }
+      ]
+    },
+    "k2": {
+      "file": "apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts",
+      "passed": 5,
+      "total": 5,
+      "status": "passed"
+    },
+    "databaseIntegration": {
+      "suites": {
+        "total": 53,
+        "passed": 53,
+        "failed": 0,
+        "omitted": 0
+      },
+      "tests": {
+        "total": 153,
+        "passed": 153,
+        "failed": 0,
+        "omitted": 0
+      },
+      "durationSeconds": 75.787,
+      "startedAt": "2026-11-07T19:02:13.316Z",
+      "summaries": [
+        "Test Suites: 53 passed, 53 total",
+        "Tests:       153 passed, 153 total",
+        "Time:        75.787 s"
+      ],
+      "omittedSuites": []
+    }
+  },
+  "checks": {
+    "eslint": "",
+    "prettier": "Checking formatting...\nAll matched files use Prettier code style!\n",
+    "api-typecheck": "\r\n> @iwana/api@0.1.0 typecheck C:\\appiw\\apps\\api\r\n> tsc --noEmit -p tsconfig.typecheck.json\r\n\r\n",
+    "db-typecheck": "\r\n> @iwana/db@0.1.0 typecheck C:\\appiw\\packages\\database\r\n> tsc --noEmit -p tsconfig.typecheck.json\r\n\r\n"
+  },
+  "codeDiff": {
+    "files": 36,
+    "added": 1126,
+    "removed": 81,
+    "sha256": "05af8ffe60b9c02f339477fe8f0a0792465734e44f75f35f49347fd1c744c529"
+  },
+  "files": [
+    {
+      "file": "apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts",
+      "sha256": "c0daa72534febc6a77ac47139b24aa6919cd6c844199602b7d25979a6f9abd1d"
+    },
+    {
+      "file": "apps/api/src/cli/anonymize-titular.ts",
+      "sha256": "fd8748875cbc05acc7c7e127a184a9de1108907246065f4d44541b771104670e"
+    },
+    {
+      "file": "apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts",
+      "sha256": "55883d24a137e5226da82f9bf5fcc772df70297f3dd2d78126b0e88d12317f1b"
+    },
+    {
+      "file": "apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts",
+      "sha256": "cd209ad3de5dc29b44eb146b901c44561fa0d0551ce6fcf878e3bb4aa9a2fd43"
+    },
+    {
+      "file": "apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts",
+      "sha256": "bf5a4e0ac0a4df3a03387228e3eb68c6f07c319eef001983bc0a58b2e9c5a2aa"
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.spec.ts",
+      "sha256": "9ebdf775a590d4d768e8e568d04e61af4d0ff27ac70fed389cd6ab8d85765197"
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.ts",
+      "sha256": "0b40210ffd6db119a22961c62d42bd2dd633eccb7434905c2add287c1c74903b"
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.postgres.integration.spec.ts",
+      "sha256": "c602fc3ace729a8924749c2db89f3acae6f53ca160f6c770f404c6d797a530e2"
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.spec.ts",
+      "sha256": "ace971670b1a9b4b60f425a73fe9235cc2fb70ef31c5d227d9324dde0980d66a"
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts",
+      "sha256": "a2f2951504b9bde1fab27722c5591d2ea5d3e5723931cdbd6382fe76869f8dcd"
+    },
+    {
+      "file": "apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.ts",
+      "sha256": "e18e83d37b3321a01cd1b1e1e6172732274b7eb33e4aaf694c25a6282a88f4a5"
+    },
+    {
+      "file": "apps/api/src/modules/crm/tests/titular-anonymized-concurrency.postgres.integration.spec.ts",
+      "sha256": "775a7e17ec90e827082d8a366c8d4c57087f6cccbfbe549e2e209218c337333b"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.postgres.integration.spec.ts",
+      "sha256": "fb2943dfc3d6ed2c0d616baea0af70e8ac4b482aab7e67dc08ffc87db13543b5"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/privacy.module.spec.ts",
+      "sha256": "211f965bbedf0d9e65d5833d2d4edd2a010a177fcfa44f0c4fa41c214239d004"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/privacy.module.ts",
+      "sha256": "142020f4a978151958e6c1d83f2f9c6485b9db36855201d2710e49adc06db8f6"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts",
+      "sha256": "8dc0c6679b4948991ae11f37cbff26945014ca2a6441a6c2ca76c9a39128e6ac"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/ports/contract-standing-read.port.ts",
+      "sha256": "a55f32a000769fe5e08011b7bf0754f707f31384ce18091d8534bd35822921d8"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/ports/unavailable-contract-standing.adapter.ts",
+      "sha256": "ab7b7819b86467f8895294366dda42f8aa24cfac6eee18629a2c7a8e5872b006"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts",
+      "sha256": "97296d920001edfb63e2a40013c56e30c0a3982eeabeafb68a1f48c8b3e3509f"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.controller.http.spec.ts",
+      "sha256": "a361cb5aa9eabc5df47b68463bf6f1fb4aca57dca919450f4acc936920bb5f93"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.service.a22.spec.ts",
+      "sha256": "9c2357652b1e197052f13312d9309532dad497e8fd73d0fd4813146c61251e4e"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.service.coverage.spec.ts",
+      "sha256": "8bf4ea55a3e6a15b1082d7c5817d573f66cd83b32314ceb800f67db84cd19d3a"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.service.detail.spec.ts",
+      "sha256": "77b72053bc94f4455a817a8c374fce86440ff7e23aaf1e708ac9d2d27cb7f397"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.service.postgres.integration.spec.ts",
+      "sha256": "a3642869c4e5579386097e69ca0607584f930aa9c57d1f6bd20122055a3939cb"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/requests.service.ts",
+      "sha256": "bbe79c674dcb69d8f49e6cb86dd2fbffc9b5edb031236fbc01347beef216c3d3"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/retention-clock.postgres.integration.spec.ts",
+      "sha256": "6a3686d9bed6d944d194c4fa117c2a752d7ca18708b93d8e9f94be0d19780872"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/text-erasure-sweep.postgres.integration.spec.ts",
+      "sha256": "d30afecf264a4fd4b17a42e03603657b9548ead041f0c95d333df6fedbf4b6fc"
+    },
+    {
+      "file": "packages/database/src/migrations/tenant/runner.ts",
+      "sha256": "543fc8c2217a8b51cd8243eeb766e1b067991a2a3450a88105eef7b3b537ec90"
+    },
+    {
+      "file": "apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.spec.ts",
+      "sha256": "30e2a7567e249ff7440e44f75d49f9190783aa9294930425909954ca0970ca77"
+    },
+    {
+      "file": "apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.ts",
+      "sha256": "f7ea01d4f498c037275c0af8885354ff8ba0a8011042dfb7de42af9bf54deade"
+    },
+    {
+      "file": "apps/api/src/modules/assurance/privacy/ticket-scope.ts",
+      "sha256": "476f211c97970fd66a3e2aa742bae95d28f592b2956164f6d850f8937c0e8d20"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/ports/pqr-retention-read.port.ts",
+      "sha256": "18448037ff26d5b53e724dc29bb5f0b89b3c82fc19efb3bd74fb5f2b8a18944e"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/pqr-retention.postgres.integration.spec.ts",
+      "sha256": "36d651c698b62f4b45f20d7e4f88edf73277ae7bcc4b0a10e1e5d7c1e8ac364e"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/pqr-retention.spec.ts",
+      "sha256": "431fb84ae549a007eea175c4ed0244d4bfb697554184ea9e19417ed4ca44f742"
+    },
+    {
+      "file": "apps/api/src/modules/privacy/requests/pqr-retention.ts",
+      "sha256": "b0bda1ac0f17b1dbb8445430948cd3435f99ad17571b74994cade54c0fdbedd5"
+    },
+    {
+      "file": "packages/database/src/migrations/tenant/177_privacy_pqr_retention_and_null_stratum.ts",
+      "sha256": "9d9ca7b04fd659bda0b833b029c31f89a1f78e968ee742d90525893f74fb30d8"
+    }
+  ]
+}

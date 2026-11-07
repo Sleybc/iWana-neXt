@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
@@ -128,6 +129,10 @@ describeWithDatabase('PrivacyDueAlertsProcessor — integración PostgreSQL con 
       impersonationPort as unknown as IContractImpersonationPort,
       standingPort as unknown as IContractStandingReadPort,
       { findOne: jest.fn() } as never,
+      undefined,
+      undefined,
+      undefined,
+      new PqrRetentionReadAdapter(),
     );
     processor = new PrivacyDueAlertsProcessor(
       dataSource,

@@ -1,0 +1,1904 @@
+diff --git a/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts b/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
+index 8bc4b873..a1cadfbb 100644
+--- a/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
++++ b/apps/api/src/cli/anonymize-titular.postgres.integration.spec.ts
+@@ -794,6 +794,113 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
+     }
+   });
+ 
++  it('CA-BT-26: verify-only detecta estratos 1 previos y apply los corrige', async () => {
++    const schema = `tenant_anonymize_cli_${randomBytes(5).toString('hex')}`;
++    const q = quoteIdentifier(schema);
++    const tenantId = randomUUID();
++    const partyId = randomUUID();
++    const subscriberId = randomUUID();
++    const requestId = randomUUID();
++    const actorId = randomUUID();
++    const migrationDataSource = createTenantDataSource(dataSource, schema, `anonymize-${schema}`);
++
++    try {
++      await dataSource.query(
++        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
++         VALUES ($1, 'Anonymize synthetic fixture', $2, $3, 'ACTIVE', 'anonymize-it@example.invalid')`,
++        [tenantId, `anonymize-${schema.slice(-10)}`, schema],
++      );
++      await dataSource.query(`CREATE SCHEMA ${q}`);
++      await migrationDataSource.initialize();
++      try {
++        await applyTenantMigrationsInOrder(migrationDataSource);
++      } finally {
++        await migrationDataSource.destroy();
++      }
++
++      await dataSource.query(
++        `INSERT INTO ${q}.party
++          (id, party_type, document_type, document_number, display_name)
++         VALUES ($1, 'NATURAL', 'CC', $2, 'Titular sintético')`,
++        [partyId, encryptAes256Gcm('synthetic-party-document', ENCRYPTION_KEY)],
++      );
++      await dataSource.query(
++        `INSERT INTO ${q}.subscribers
++          (id, tenant_id, party_id, person_type, customer_segment, document_type,
++           document_number_encrypted, first_name, last_name, stratum, email_encrypted,
++           phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
++         VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4,
++           'Nombre sintético', 'Apellido sintético', 2, $5, $6, 'STANDARD', 'COMMON',
++           'RESPONSABLE', 'Dirección sintética', $7)`,
++        [
++          subscriberId,
++          tenantId,
++          partyId,
++          encryptAes256Gcm('synthetic-subscriber-document', ENCRYPTION_KEY),
++          encryptAes256Gcm('synthetic-email', ENCRYPTION_KEY),
++          encryptAes256Gcm('synthetic-phone', ENCRYPTION_KEY),
++          actorId,
++        ],
++      );
++      await dataSource.query(
++        `INSERT INTO ${q}.data_subject_requests
++          (id, party_id, requester_kind, identity_verification_method, identity_verified_at,
++           identity_verified_by, kind, "right", status, received_at, due_at, complete_at,
++           erased_at, erasure_categories)
++         VALUES ($1, $2, 'TITULAR', 'DOCUMENTO_PRESENCIAL', now(), $3,
++           'CONSULTA', 'SUPRIMIR', 'RESUELTA', now(), CURRENT_DATE + 30, now(),
++           now(), ARRAY['IDENTIFICACION']::text[])`,
++        [requestId, partyId, actorId],
++      );
++
++      const contractId = randomUUID();
++      await dataSource.query(
++        `INSERT INTO ${q}.contracts (id,tenant_id,subscriber_id,plan_id,plan_snapshot_json,status,terminated_at,service_usage,installation_stratum) VALUES ($1,$2,$3,'synthetic-plan','{}','TERMINATED','2000-01-01','RESIDENTIAL',3)`,
++        [contractId, tenantId, subscriberId],
++      );
++      const ticketId = randomUUID();
++      await dataSource.query(
++        `INSERT INTO ${q}.support_tickets (id,tenant_id,ticket_number,type,subject,requester_type,requester_ref_id,created_by_user_id) VALUES ($1,$2,'PQR-B7-CLI','PQR','Sonda CLI','SUBSCRIBER',$3,$4)`,
++        [ticketId, tenantId, subscriberId, actorId],
++      );
++      await expect(
++        anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply'),
++      ).rejects.toThrow('deber de conservación');
++      expect(
++        await dataSource.query(`SELECT stratum FROM ${q}.subscribers WHERE id=$1`, [subscriberId]),
++      ).toEqual([{ stratum: 2 }]);
++      await dataSource.query(
++        `INSERT INTO ${q}.ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at) VALUES ($1,$2,'FINAL_RESOLUTION',now(),now()-interval '4 years',now()-interval '4 years')`,
++        [ticketId, tenantId],
++      );
++      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
++      await runInTenantSchema(dataSource, schema, async (qr) => {
++        await qr.query("SELECT set_config('iwana.titular_erasure','on',true)");
++        await qr.query('UPDATE subscribers SET stratum=1 WHERE id=$1', [subscriberId]);
++        await qr.query('UPDATE contracts SET installation_stratum=1 WHERE id=$1', [contractId]);
++      });
++      const before = await verifyAnonymizedTenant(dataSource, schema, KEYS);
++      expect(before.residualFields).toBeGreaterThan(0);
++      expect(
++        before.findings.flatMap((finding) => finding.tables.map((table) => table.table)),
++      ).toEqual(expect.arrayContaining(['subscribers', 'contracts']));
++      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
++      expect((await verifyAnonymizedTenant(dataSource, schema, KEYS)).residualFields).toBe(0);
++      expect(
++        await dataSource.query(`SELECT stratum FROM ${q}.subscribers WHERE id=$1`, [subscriberId]),
++      ).toEqual([{ stratum: null }]);
++      expect(
++        await dataSource.query(
++          `SELECT installation_stratum,anonymized_at IS NOT NULL AS marked FROM ${q}.contracts WHERE id=$1`,
++          [contractId],
++        ),
++      ).toEqual([{ installation_stratum: null, marked: true }]);
++    } finally {
++      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
++      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
++    }
++  }, 180_000);
++
+   it('conserva evidencia de autorización no compartida y activa en el CLI', async () => {
+     const fixture = await createFixture(dataSource);
+     const q = quoteIdentifier(fixture.schema);
+@@ -1184,7 +1291,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
+           plan_snapshot_json: { plan: {} },
+           installation_city: null,
+           installation_department: null,
+-          installation_stratum: 1,
++          installation_stratum: null,
+           service_usage: 'RESIDENTIAL',
+           customer_segment: 'STANDARD',
+           status: 'ACTIVE',
+diff --git a/apps/api/src/cli/anonymize-titular.ts b/apps/api/src/cli/anonymize-titular.ts
+index 56940d70..0a794ff4 100644
+--- a/apps/api/src/cli/anonymize-titular.ts
++++ b/apps/api/src/cli/anonymize-titular.ts
+@@ -11,6 +11,9 @@ import { resolve } from 'node:path';
+ import { ConfigService } from '@nestjs/config';
+ import { AppDataSource, isValidSchemaName, runInTenantSchema, TenantContext } from '@iwana/db';
+ import type { DataSource, QueryRunner } from 'typeorm';
++import { PqrRetentionReadAdapter } from '../modules/assurance/privacy/pqr-retention-read.adapter';
++import { hasPqrConservationDuty } from '../modules/privacy/requests/pqr-retention';
++import { bogotaCivilDate } from '../modules/privacy/ports/privacy-tenant-query';
+ import {
+   decryptAes256Gcm,
+   encryptAes256Gcm,
+@@ -1141,6 +1144,23 @@ async function anonymizeTitularInTransaction(
+   report.totals.unmatchedExpedientes = unmatchedExpedientes;
+   report.verification.activeMediaAssets = stratumMedia.active;
+ 
++  await crmParticipant.resolveScope(scope, queryRunner);
++  if (
++    await hasPqrConservationDuty(
++      new PqrRetentionReadAdapter(),
++      {
++        subscriberIds: scope.subscriberIds,
++        contractIds: scope.relatedIds?.contractIds ?? [],
++        expedienteIds: scope.expedienteIds,
++      },
++      queryRunner.manager,
++      bogotaCivilDate(new Date()),
++    )
++  ) {
++    throw new AnonymizeTitularCliError(
++      'La solicitud requiere una decisión de no procedencia por deber de conservación.',
++    );
++  }
+   const participantResults = await adapter.applyScope(scope, queryRunner, mode);
+   for (const result of participantResults) {
+     if (result.selected > 0 && result.table === 'visit_requests') {
+diff --git a/apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts b/apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts
+index 2541f508..2c960535 100644
+--- a/apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts
++++ b/apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../modules/assurance/privacy/pqr-retention-read.adapter';
+ import { randomBytes, randomUUID } from 'node:crypto';
+ import { ConfigService } from '@nestjs/config';
+ import { Test } from '@nestjs/testing';
+@@ -502,6 +503,8 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
+           provide: IContractStandingReadPort,
+           useValue: {
+             standing: jest.fn().mockResolvedValue({
++              contractIds: [],
++              expedienteIds: [],
+               subscriberIds: [],
+               openContractIds: [],
+               lastTerminatedAt: null,
+@@ -548,8 +551,10 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
+             IPersonalDataErasurePort,
+             IBillingStandingReadPort,
+           ],
+-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
+-            new PrivacyRequestsService(...deps),
++          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
++            deps[9] = new PqrRetentionReadAdapter();
++            return new PrivacyRequestsService(...deps);
++          },
+         },
+       ],
+     }).compile();
+diff --git a/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts b/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts
+index e8af9ac9..3b1da1f6 100644
+--- a/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts
++++ b/apps/api/src/modules/assurance/privacy/assurance-privacy.module.ts
+@@ -1,8 +1,14 @@
+ import { Module } from '@nestjs/common';
++import { IPqrRetentionReadPort } from '../../privacy/requests/ports/pqr-retention-read.port';
++import { PqrRetentionReadAdapter } from './pqr-retention-read.adapter';
+ import { AssuranceTitularErasureParticipant } from './assurance-titular-erasure.participant';
+ 
+ @Module({
+-  providers: [AssuranceTitularErasureParticipant],
+-  exports: [AssuranceTitularErasureParticipant],
++  providers: [
++    AssuranceTitularErasureParticipant,
++    PqrRetentionReadAdapter,
++    { provide: IPqrRetentionReadPort, useExisting: PqrRetentionReadAdapter },
++  ],
++  exports: [AssuranceTitularErasureParticipant, IPqrRetentionReadPort],
+ })
+ export class AssurancePrivacyModule {}
+diff --git a/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts b/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts
+index bf7ea45d..f72cb33a 100644
+--- a/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts
++++ b/apps/api/src/modules/assurance/privacy/assurance-titular-erasure.participant.ts
+@@ -1,6 +1,7 @@
+ import { Injectable } from '@nestjs/common';
+ import { ConfigService } from '@nestjs/config';
+ import type { QueryRunner } from 'typeorm';
++import { ticketScopePredicates } from './ticket-scope';
+ import {
+   anonymizeConfiguredTable,
+   loadErasureKeys,
+@@ -24,24 +25,15 @@ export class AssuranceTitularErasureParticipant implements TitularErasurePartici
+     const columns = await readTenantColumns(qr);
+     const related = (scope.relatedIds ??= {});
+     const parameters: unknown[] = [];
+-    const predicates: string[] = [];
+-    for (const [typeColumn, refColumn, type, ids] of [
+-      ['requester_type', 'requester_ref_id', 'SUBSCRIBER', scope.subscriberIds],
+-      ['subject_type', 'subject_ref_id', 'SUBSCRIBER', scope.subscriberIds],
+-      ['subject_type', 'subject_ref_id', 'CONTRACT', related.contractIds ?? []],
+-      ['subject_type', 'subject_ref_id', 'EXPEDIENTE', scope.expedienteIds],
+-    ] as const) {
+-      if (
+-        ids.length === 0 ||
+-        !columns.has(`support_tickets.${typeColumn}`) ||
+-        !columns.has(`support_tickets.${refColumn}`)
+-      )
+-        continue;
+-      parameters.push(ids);
+-      predicates.push(
+-        `("${typeColumn}"::text = '${type}' AND "${refColumn}"::text = ANY($${parameters.length}::text[]))`,
+-      );
+-    }
++    const predicates = ticketScopePredicates(
++      {
++        subscriberIds: scope.subscriberIds,
++        contractIds: related.contractIds ?? [],
++        expedienteIds: scope.expedienteIds,
++      },
++      columns,
++      parameters,
++    );
+     related.ticketIds = await selectErasureIds(
+       qr,
+       'support_tickets',
+diff --git a/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.spec.ts b/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.spec.ts
+index a9b0e154..f9d250cc 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.spec.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.spec.ts
+@@ -16,7 +16,11 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
+         .fn()
+         .mockResolvedValueOnce([{ id: 'subscriber-test' }])
+         .mockResolvedValueOnce([
+-          { open_contract_ids: ['contract-test'], last_terminated_at: date },
++          {
++            contract_ids: ['contract-test'],
++            open_contract_ids: ['contract-test'],
++            last_terminated_at: date,
++          },
+         ]);
+       const result = await TenantContext.run(tenantContext, () =>
+         new CrmContractStandingReadAdapter().standing('party-test', {
+@@ -24,6 +28,8 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
+         }),
+       );
+       expect(result).toEqual({
++        contractIds: ['contract-test'],
++        expedienteIds: [],
+         subscriberIds: ['subscriber-test'],
+         openContractIds: ['contract-test'],
+         lastTerminatedAt: '2020-01-01T00:00:00.000Z',
+@@ -52,6 +58,8 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
+           }),
+         ),
+       ).toEqual({
++        contractIds: [],
++        expedienteIds: [],
+         subscriberIds: ['subscriber-test'],
+         openContractIds: [],
+         lastTerminatedAt: null,
+diff --git a/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.ts b/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.ts
+index b9935669..8376ebe7 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/crm-contract-standing-read.adapter.ts
+@@ -6,20 +6,22 @@ import { IContractStandingReadPort } from '../../privacy/requests/ports/contract
+ @Injectable()
+ export class CrmContractStandingReadAdapter implements IContractStandingReadPort {
+   async standing(
+-    partyId: string,
+-    ctx: { manager: EntityManager },
++    partyId: string | null,
++    ctx: { manager: EntityManager; requesterDocumentHmac?: string | null },
+   ): Promise<{
+     subscriberIds: string[];
++    contractIds: string[];
++    expedienteIds: string[];
+     openContractIds: string[];
+     lastTerminatedAt: string | null;
+   }> {
+     const tenantId = TenantContext.getOrThrow().tenantId;
+     const subscribers = (await ctx.manager.query(
+-      'SELECT id::text AS id FROM subscribers WHERE party_id = $1 AND tenant_id = $2 ORDER BY id',
++      "SELECT s.id::text AS id, to_jsonb(s)->>'expediente_id' AS expediente_id FROM subscribers s WHERE s.party_id = $1 AND s.tenant_id = $2 ORDER BY s.id",
+       [partyId, tenantId],
+-    )) as Array<{ id: string }>;
++    )) as Array<{ id: string; expediente_id: string | null }>;
+     const rows = (await ctx.manager.query(
+-      `SELECT COALESCE(array_agg(c.id ORDER BY c.id) FILTER (
++      `SELECT COALESCE(array_agg(c.id ORDER BY c.id), ARRAY[]::uuid[]) AS contract_ids, COALESCE(array_agg(c.id ORDER BY c.id) FILTER (
+                   WHERE c.status NOT IN ('TERMINATED', 'ARCHIVED')
+                 ), ARRAY[]::uuid[]) AS open_contract_ids,
+                 max(c.terminated_at) FILTER (
+@@ -29,10 +31,26 @@ export class CrmContractStandingReadAdapter implements IContractStandingReadPort
+            JOIN subscribers s ON s.id = c.subscriber_id AND s.tenant_id = c.tenant_id
+           WHERE s.party_id = $1 AND s.tenant_id = $2 AND c.deleted_at IS NULL`,
+       [partyId, tenantId],
+-    )) as Array<{ open_contract_ids: string[]; last_terminated_at: Date | string | null }>;
++    )) as Array<{
++      contract_ids: string[];
++      open_contract_ids: string[];
++      last_terminated_at: Date | string | null;
++    }>;
+     const openContractIds = rows[0]?.open_contract_ids ?? [];
+     const lastTerminatedAt = rows[0]?.last_terminated_at;
++    const expedienteIds = subscribers.flatMap((row) =>
++      row.expediente_id ? [row.expediente_id] : [],
++    );
++    if (ctx.requesterDocumentHmac) {
++      const expedientes = (await ctx.manager.query(
++        'SELECT id::text AS id FROM expediente_records WHERE document_number_hmac = $1 AND tenant_id = $2 ORDER BY id',
++        [ctx.requesterDocumentHmac, tenantId],
++      )) as Array<{ id: string }>;
++      expedienteIds.push(...expedientes.map((row) => row.id));
++    }
+     return {
++      contractIds: rows[0]?.contract_ids ?? [],
++      expedienteIds: [...new Set(expedienteIds)].sort(),
+       subscriberIds: subscribers.map(({ id }) => id),
+       openContractIds,
+       lastTerminatedAt: lastTerminatedAt ? new Date(lastTerminatedAt).toISOString() : null,
+diff --git a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.postgres.integration.spec.ts b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.postgres.integration.spec.ts
+index 2f31e4ad..da76e140 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.postgres.integration.spec.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.postgres.integration.spec.ts
+@@ -178,12 +178,12 @@ describeWithDb('B1c — supresión CRM sobre migraciones tenant reales', () => {
+       {
+         id: nonResidentialContractId,
+         service_usage: 'NON_RESIDENTIAL',
+-        installation_stratum: 1,
++        installation_stratum: null,
+       },
+       {
+         id: residentialContractId,
+         service_usage: 'RESIDENTIAL',
+-        installation_stratum: 1,
++        installation_stratum: null,
+       },
+     ]);
+   });
+diff --git a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.spec.ts b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.spec.ts
+index 0689e53a..d404c2e4 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.spec.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.spec.ts
+@@ -309,7 +309,7 @@ describe('CrmTitularErasureParticipant', () => {
+     });
+   });
+ 
+-  it('marca installation_stratum como entero válido y conserva service_usage', async () => {
++  it('anula installation_stratum y conserva service_usage', async () => {
+     const { queryRunner, queries, queryArguments } = createQueryRunner();
+ 
+     await participant.apply(
+@@ -331,7 +331,8 @@ describe('CrmTitularErasureParticipant', () => {
+     );
+     expect(contractLocationUpdate).toBeDefined();
+     const updateIndex = queries.indexOf(contractLocationUpdate!);
+-    expect(queryArguments[updateIndex]).toContain(1);
++    const parameter = /"installation_stratum" = \$(\d+)/u.exec(contractLocationUpdate!);
++    expect(queryArguments[updateIndex]?.[Number(parameter?.[1]) - 1]).toBeNull();
+     expect(contractLocationUpdate).not.toMatch(/"service_usage"\s*=/iu);
+   });
+ 
+diff --git a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts
+index 1456ab82..bb2d26b9 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts
+@@ -106,7 +106,7 @@ const CRM_RULES: Record<string, FieldRule[]> = {
+     { column: 'phone_hash', kind: 'legacy-hash', marker: 'subscriber-phone' },
+     { column: 'first_name', kind: 'marker' },
+     { column: 'last_name', kind: 'marker' },
+-    { column: 'stratum', kind: 'integer-marker' },
++    { column: 'stratum', kind: 'null' },
+     { column: 'birth_date', kind: 'null' },
+     { column: 'nit', kind: 'marker' },
+     { column: 'nit_verification_digit', kind: 'null' },
+@@ -143,7 +143,7 @@ const CRM_RULES: Record<string, FieldRule[]> = {
+ const CONTRACT_LOCATION_RULES: FieldRule[] = [
+   { column: 'installation_city', kind: 'null' },
+   { column: 'installation_department', kind: 'null' },
+-  { column: 'installation_stratum', kind: 'integer-marker' },
++  { column: 'installation_stratum', kind: 'null' },
+   { column: 'installation_address', kind: 'null' },
+   { column: 'installation_postal_code', kind: 'null' },
+   { column: 'installation_notes', kind: 'null' },
+@@ -597,28 +597,53 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
+     const contracts =
+       scope.relatedIds?.contractIds ??
+       (await this.idsForContracts(qr, columns, scope.subscriberIds));
++    let contractMarkerChanges = 0;
++    let contractMarkerResidual = 0;
++    if (contracts.length > 0 && columnOf(columns, 'contracts', 'anonymized_at')) {
++      const unmarked = (await qr.query(
++        'SELECT id FROM contracts WHERE id = ANY($1::uuid[]) AND anonymized_at IS NULL FOR UPDATE',
++        [contracts],
++      )) as Array<{ id: string }>;
++      if (mode === 'apply' && unmarked.length > 0) {
++        const updatedAt = columnOf(columns, 'contracts', 'updated_at')
++          ? ", updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')"
++          : '';
++        const updated = normalizeErasureRows<{ id: string }>(
++          await qr.query(
++            `UPDATE contracts SET anonymized_at = now()${updatedAt} WHERE id = ANY($1::uuid[]) AND anonymized_at IS NULL RETURNING id`,
++            [contracts],
++          ),
++        );
++        contractMarkerChanges = updated.length;
++        if (updatedAt) for (const row of updated) updatedAtAdvanced.add(`contracts:${row.id}`);
++        const remaining = (await qr.query(
++          'SELECT id FROM contracts WHERE id = ANY($1::uuid[]) AND anonymized_at IS NULL',
++          [contracts],
++        )) as Array<{ id: string }>;
++        contractMarkerResidual = remaining.length;
++      } else contractMarkerResidual = unmarked.length;
++    }
+     for (const [category, rules] of [
+       ['UBICACION', CONTRACT_LOCATION_RULES],
+       ['FISCAL', CONTRACT_FISCAL_RULES],
+       ['COMERCIAL', CONTRACT_COMMERCIAL_RULES],
+     ] as const) {
+-      results.push(
+-        fieldResult(
+-          'contracts',
+-          category,
+-          await anonymizeConfiguredTable(
+-            qr,
+-            'contracts',
+-            contracts,
+-            rules,
+-            columns,
+-            keys,
+-            mode,
+-            undefined,
+-            updatedAtAdvanced,
+-          ),
+-        ),
++      const result = await anonymizeConfiguredTable(
++        qr,
++        'contracts',
++        contracts,
++        rules,
++        columns,
++        keys,
++        mode,
++        undefined,
++        updatedAtAdvanced,
+       );
++      if (category === 'UBICACION') {
++        result.changed = Math.max(result.changed, contractMarkerChanges);
++        result.residual += contractMarkerResidual;
++      }
++      results.push(fieldResult('contracts', category, result));
+     }
+     const contractColumns = ['vat_snapshot', 'plan_snapshot_json'].filter((column) =>
+       columnOf(columns, 'contracts', column),
+diff --git a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.ts b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.ts
+index 980d9901..f8d0cbf7 100644
+--- a/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.ts
++++ b/apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.ts
+@@ -24,14 +24,7 @@ export interface ErasureKeys {
+ 
+ export interface FieldRule {
+   column: string;
+-  kind:
+-    | 'null'
+-    | 'marker'
+-    | 'integer-marker'
+-    | 'false'
+-    | 'empty-json'
+-    | 'encrypted-marker'
+-    | 'legacy-hash';
++  kind: 'null' | 'marker' | 'false' | 'empty-json' | 'encrypted-marker' | 'legacy-hash';
+   marker?: string;
+   notNullFallback?: 'marker' | 'encrypted-marker' | 'empty-json' | 'legacy-hash';
+ }
+@@ -158,7 +151,6 @@ function expectedFromRule(rule: FieldRule, column: TenantColumn): ExpectedValue
+   if (rule.kind === 'marker') {
+     return { kind: 'value', value: rule.marker ?? ANONYMIZED };
+   }
+-  if (rule.kind === 'integer-marker') return { kind: 'value', value: 1 };
+   if (rule.kind === 'false') return { kind: 'value', value: false };
+   if (rule.kind === 'empty-json') return { kind: 'json-empty' };
+   if (rule.kind === 'encrypted-marker') {
+diff --git a/apps/api/src/modules/crm/tests/titular-anonymized-concurrency.postgres.integration.spec.ts b/apps/api/src/modules/crm/tests/titular-anonymized-concurrency.postgres.integration.spec.ts
+index 665135e5..befe5a62 100644
+--- a/apps/api/src/modules/crm/tests/titular-anonymized-concurrency.postgres.integration.spec.ts
++++ b/apps/api/src/modules/crm/tests/titular-anonymized-concurrency.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { BillingStandingReadAdapter } from '../../billing/privacy/billing-standing-read.adapter';
+ import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
+ import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+@@ -605,6 +606,7 @@ describeWithDb('DT-3 RER: concurrencia de titular anonimizado contra PostgreSQL
+       undefined,
+       erasureAdapter,
+       new BillingStandingReadAdapter(),
++      new PqrRetentionReadAdapter(),
+     );
+     const contractsService = new ContractsService(
+       dataSource,
+diff --git a/apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.postgres.integration.spec.ts b/apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.postgres.integration.spec.ts
+index 17f86539..2c6afa92 100644
+--- a/apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/alerts/privacy-due-alerts.processor.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { randomBytes } from 'node:crypto';
+ import { ConfigService } from '@nestjs/config';
+ import { resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
+@@ -128,6 +129,10 @@ describeWithDatabase('PrivacyDueAlertsProcessor — integración PostgreSQL con
+       impersonationPort as unknown as IContractImpersonationPort,
+       standingPort as unknown as IContractStandingReadPort,
+       { findOne: jest.fn() } as never,
++      undefined,
++      undefined,
++      undefined,
++      new PqrRetentionReadAdapter(),
+     );
+     processor = new PrivacyDueAlertsProcessor(
+       dataSource,
+diff --git a/apps/api/src/modules/privacy/privacy.module.spec.ts b/apps/api/src/modules/privacy/privacy.module.spec.ts
+index d389d5ea..e99ac9f1 100644
+--- a/apps/api/src/modules/privacy/privacy.module.spec.ts
++++ b/apps/api/src/modules/privacy/privacy.module.spec.ts
+@@ -75,7 +75,7 @@ describe('PrivacyModule composition', () => {
+       (entry) => typeof entry === 'object' && entry !== null && 'forwardRef' in entry,
+     ) as { forwardRef: () => unknown } | undefined;
+ 
+-    expect(imports).toHaveLength(7);
++    expect(imports).toHaveLength(8);
+     expect(imports).toContain(BillingPrivacyModule);
+     expect(controllers).toHaveLength(9);
+     expect(controllers).toContain(PurposesController);
+diff --git a/apps/api/src/modules/privacy/privacy.module.ts b/apps/api/src/modules/privacy/privacy.module.ts
+index 908100be..b37f0326 100644
+--- a/apps/api/src/modules/privacy/privacy.module.ts
++++ b/apps/api/src/modules/privacy/privacy.module.ts
+@@ -1,3 +1,4 @@
++import { AssurancePrivacyModule } from '../assurance/privacy/assurance-privacy.module';
+ import { BillingPrivacyModule } from '../billing/privacy/billing-privacy.module';
+ import { forwardRef, Module } from '@nestjs/common';
+ import { BullModule } from '@nestjs/bullmq';
+@@ -60,6 +61,7 @@ import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
+     AuditModule,
+     MediaModule,
+     BillingPrivacyModule,
++    AssurancePrivacyModule,
+     forwardRef(() => CrmPrivacyAdaptersModule),
+     BullModule.registerQueue({ name: PRIVACY_DUE_ALERTS_QUEUE }),
+   ],
+diff --git a/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts
+index e8ad4e27..78234ebf 100644
+--- a/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/billing-fiscal-erasure.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+ import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
+ import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
+@@ -390,8 +391,10 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+             IPersonalDataErasurePort,
+             IBillingStandingReadPort,
+           ],
+-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
+-            new PrivacyRequestsService(...deps),
++          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
++            deps[9] = new PqrRetentionReadAdapter();
++            return new PrivacyRequestsService(...deps);
++          },
+         },
+       ],
+     }).compile();
+@@ -446,6 +449,22 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+       VALUES ($1,$2,$3,$4,$5,'BORRADOR',CURRENT_DATE,10,0,10)`,
+       [draftDoc, tenantId, draftPeriod, ids.contract, ids.subscriber],
+     );
++    const taxProfile = randomUUID();
++    const taxAssignment = randomUUID();
++    await dataSource.query(
++      `INSERT INTO ${q}.subscriber_tax_profiles (id,tenant_id,subscriber_id) VALUES ($1,$2,$3)`,
++      [taxProfile, tenantId, ids.subscriber],
++    );
++    await dataSource.query(
++      `INSERT INTO ${q}.subscriber_tax_assignments (id,tenant_id,profile_id,tax_definition_id,tax_name_snapshot,reason) VALUES ($1,$2,$3,$4,'Sonda','Motivo fiscal sintético')`,
++      [taxAssignment, tenantId, taxProfile, randomUUID()],
++    );
++    await runInTenantSchema(dataSource, schemaName, (runner) =>
++      runner.query(
++        "UPDATE contracts SET installation_stratum=3,installation_city='Ciudad sintética',installation_department='Departamento sintético' WHERE id=$1",
++        [ids.contract],
++      ),
++    );
+     const requestId = await createVerifiedSuppression();
+     const body = {
+       responseText: 'Supresión sintética.',
+@@ -455,6 +474,28 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+     await expect(
+       inTenant(() => service.transition(requestId, 'resolve', body, actorId)),
+     ).rejects.toThrow('deber de conservación');
++    // CA-BT-22: el bloqueo fiscal conserva el soporte tributario y la ubicación.
++    expect(
++      await dataSource.query(`SELECT reason FROM ${q}.subscriber_tax_assignments WHERE id=$1`, [
++        taxAssignment,
++      ]),
++    ).toEqual([{ reason: 'Motivo fiscal sintético' }]);
++    expect(
++      await dataSource.query(`SELECT stratum FROM ${q}.subscribers WHERE id=$1`, [ids.subscriber]),
++    ).toEqual([{ stratum: 2 }]);
++    expect(
++      await dataSource.query(
++        `SELECT installation_stratum,installation_city,installation_department FROM ${q}.contracts WHERE id=$1`,
++        [ids.contract],
++      ),
++    ).toEqual([
++      {
++        installation_stratum: 3,
++        installation_city: 'Ciudad sintética',
++        installation_department: 'Departamento sintético',
++      },
++    ]);
++
+     await dataSource.query(
+       `UPDATE ${q}.billing_documents SET issue_date = CURRENT_DATE - interval '11 years' WHERE id = $1`,
+       [fiscalDoc],
+diff --git a/apps/api/src/modules/privacy/requests/ports/contract-standing-read.port.ts b/apps/api/src/modules/privacy/requests/ports/contract-standing-read.port.ts
+index 1ef8ddff..9a0c09f1 100644
+--- a/apps/api/src/modules/privacy/requests/ports/contract-standing-read.port.ts
++++ b/apps/api/src/modules/privacy/requests/ports/contract-standing-read.port.ts
+@@ -2,10 +2,12 @@ import type { EntityManager } from 'typeorm';
+ 
+ export abstract class IContractStandingReadPort {
+   abstract standing(
+-    partyId: string,
+-    ctx: { manager: EntityManager },
++    partyId: string | null,
++    ctx: { manager: EntityManager; requesterDocumentHmac?: string | null },
+   ): Promise<{
+     subscriberIds: string[];
++    contractIds: string[];
++    expedienteIds: string[];
+     openContractIds: string[];
+     lastTerminatedAt: string | null;
+   }>;
+diff --git a/apps/api/src/modules/privacy/requests/ports/unavailable-contract-standing.adapter.ts b/apps/api/src/modules/privacy/requests/ports/unavailable-contract-standing.adapter.ts
+index 0ac84767..b1c0c4e7 100644
+--- a/apps/api/src/modules/privacy/requests/ports/unavailable-contract-standing.adapter.ts
++++ b/apps/api/src/modules/privacy/requests/ports/unavailable-contract-standing.adapter.ts
+@@ -6,6 +6,8 @@ import { IContractStandingReadPort } from './contract-standing-read.port';
+ export class ContractStandingUnavailableAdapter implements IContractStandingReadPort {
+   async standing(): Promise<{
+     subscriberIds: string[];
++    contractIds: string[];
++    expedienteIds: string[];
+     openContractIds: string[];
+     lastTerminatedAt: string | null;
+   }> {
+diff --git a/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts
+index 5051a91a..bed35bfc 100644
+--- a/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/privacy-erasure-api.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
+ import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
+ import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
+@@ -356,6 +357,8 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+           provide: IContractStandingReadPort,
+           useValue: {
+             standing: jest.fn().mockResolvedValue({
++              contractIds: [],
++              expedienteIds: [],
+               subscriberIds: [],
+               openContractIds: [],
+               lastTerminatedAt: null,
+@@ -392,8 +395,10 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
+             IPersonalDataErasurePort,
+             IBillingStandingReadPort,
+           ],
+-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
+-            new PrivacyRequestsService(...deps),
++          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
++            deps[9] = new PqrRetentionReadAdapter();
++            return new PrivacyRequestsService(...deps);
++          },
+         },
+       ],
+     }).compile();
+diff --git a/apps/api/src/modules/privacy/requests/requests.controller.http.spec.ts b/apps/api/src/modules/privacy/requests/requests.controller.http.spec.ts
+index 8e91f87c..edf4319b 100644
+--- a/apps/api/src/modules/privacy/requests/requests.controller.http.spec.ts
++++ b/apps/api/src/modules/privacy/requests/requests.controller.http.spec.ts
+@@ -55,6 +55,12 @@ describe('PrivacyRequestsController HTTP', () => {
+       { suspendForImpersonation: jest.fn() } as unknown as IContractImpersonationPort,
+       { standing: jest.fn() } as unknown as IContractStandingReadPort,
+       { findOne: jest.fn() } as unknown as MediaService,
++      undefined,
++      undefined,
++      undefined,
++      {
++        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
++      } as never,
+     );
+     requestsService.completeTask.mockImplementation(
+       (id: string, idForTask: string, note: string, userId: string) =>
+diff --git a/apps/api/src/modules/privacy/requests/requests.service.a22.spec.ts b/apps/api/src/modules/privacy/requests/requests.service.a22.spec.ts
+index 63a09c19..6695aa54 100644
+--- a/apps/api/src/modules/privacy/requests/requests.service.a22.spec.ts
++++ b/apps/api/src/modules/privacy/requests/requests.service.a22.spec.ts
+@@ -35,6 +35,12 @@ describe('PrivacyRequestsService — A22', () => {
+       {} as IContractImpersonationPort,
+       {} as IContractStandingReadPort,
+       {} as MediaService,
++      undefined,
++      undefined,
++      undefined,
++      {
++        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
++      } as never,
+     );
+     jest
+       .spyOn(service, 'get')
+diff --git a/apps/api/src/modules/privacy/requests/requests.service.coverage.spec.ts b/apps/api/src/modules/privacy/requests/requests.service.coverage.spec.ts
+index 7343a953..e8102251 100644
+--- a/apps/api/src/modules/privacy/requests/requests.service.coverage.spec.ts
++++ b/apps/api/src/modules/privacy/requests/requests.service.coverage.spec.ts
+@@ -116,6 +116,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       suspendedContractIds: [contractId],
+     });
+     standingPort.standing.mockReset().mockResolvedValue({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: null,
+     });
+@@ -151,6 +153,9 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       effectivePermissionsService as unknown as EffectivePermissionsService,
+       erasurePort as never,
+       billingStandingPort,
++      {
++        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
++      } as never,
+     );
+     jest.spyOn(service, 'get').mockResolvedValue({} as never);
+   });
+@@ -655,6 +660,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       }),
+     ]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [contractId],
+       lastTerminatedAt: null,
+     });
+@@ -690,6 +697,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       ])
+       .mockResolvedValueOnce([{ years: 10 }]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: null,
+       subscriberIds: [],
+@@ -717,6 +726,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       ])
+       .mockResolvedValueOnce([{ years: 10 }]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: '2020-01-01',
+       subscriberIds: [],
+@@ -739,6 +750,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       ])
+       .mockResolvedValueOnce([]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: null,
+       subscriberIds: [],
+@@ -765,6 +778,10 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       mediaService as unknown as MediaService,
+       effectivePermissionsService as unknown as EffectivePermissionsService,
+       erasurePort as never,
++      undefined,
++      {
++        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
++      } as never,
+     );
+     manager.query.mockResolvedValueOnce([
+       requestRow({
+@@ -775,6 +792,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       }),
+     ]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: null,
+       subscriberIds: [],
+@@ -1006,6 +1025,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+     });
+     manager.query.mockResolvedValueOnce([suppression]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [contractId],
+       lastTerminatedAt: null,
+     });
+@@ -1025,6 +1046,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+ 
+     manager.query.mockReset().mockResolvedValueOnce([suppression]).mockResolvedValue([]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [contractId],
+       lastTerminatedAt: null,
+     });
+@@ -1056,6 +1079,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       .mockResolvedValueOnce([{ years: 2 }])
+       .mockResolvedValue([]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: '2025-01-01',
+     });
+@@ -1098,6 +1123,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
+       ])
+       .mockResolvedValueOnce([{ years: 2 }]);
+     standingPort.standing.mockResolvedValueOnce({
++      contractIds: [],
++      expedienteIds: [],
+       openContractIds: [],
+       lastTerminatedAt: '2020-01-01',
+     });
+diff --git a/apps/api/src/modules/privacy/requests/requests.service.detail.spec.ts b/apps/api/src/modules/privacy/requests/requests.service.detail.spec.ts
+index 004d8993..45d47a71 100644
+--- a/apps/api/src/modules/privacy/requests/requests.service.detail.spec.ts
++++ b/apps/api/src/modules/privacy/requests/requests.service.detail.spec.ts
+@@ -93,6 +93,11 @@ describe('PrivacyRequestsService — detalle A23', () => {
+       {} as IContractStandingReadPort,
+       {} as MediaService,
+       effectivePermissionsService as unknown as EffectivePermissionsService,
++      undefined,
++      undefined,
++      {
++        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
++      } as never,
+     );
+   });
+ 
+diff --git a/apps/api/src/modules/privacy/requests/requests.service.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/requests.service.postgres.integration.spec.ts
+index 507eeb0b..92fc38e3 100644
+--- a/apps/api/src/modules/privacy/requests/requests.service.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/requests.service.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { randomBytes, randomUUID } from 'node:crypto';
+ import { ConfigService } from '@nestjs/config';
+ import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
+@@ -249,6 +250,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () =>
+       effectivePermissionsService as unknown as EffectivePermissionsService,
+       erasurePort as unknown as IPersonalDataErasurePort,
+       { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
++      new PqrRetentionReadAdapter(),
+     );
+   });
+ 
+@@ -271,6 +273,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () =>
+     });
+     standingPort.standing.mockReset();
+     standingPort.standing.mockResolvedValue({
++      contractIds: [],
++      expedienteIds: [],
+       subscriberIds: [],
+       openContractIds: [],
+       lastTerminatedAt: null,
+@@ -372,6 +376,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () =>
+ 
+   it('cierra DATOS_BLOQUEADOS al resolver la supresión tras vencer la retención', async () => {
+     standingPort.standing.mockResolvedValue({
++      contractIds: [],
++      expedienteIds: [],
+       subscriberIds: [],
+       openContractIds: [],
+       lastTerminatedAt: '2010-01-01',
+@@ -542,6 +548,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () =>
+ 
+   it('R3: impide resolver revocación contractual con contrato abierto y exige fundamento contractual', async () => {
+     standingPort.standing.mockResolvedValue({
++      contractIds: [],
++      expedienteIds: [],
+       subscriberIds: [],
+       openContractIds: [suspendedContractId],
+       lastTerminatedAt: null,
+@@ -595,6 +603,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () =>
+ 
+   it('R3/R4: la retención impide resolver y el rechazo de supresión abre DATOS_BLOQUEADOS', async () => {
+     standingPort.standing.mockResolvedValue({
++      contractIds: [],
++      expedienteIds: [],
+       subscriberIds: [],
+       openContractIds: [],
+       lastTerminatedAt: '2025-01-15T00:00:00.000Z',
+diff --git a/apps/api/src/modules/privacy/requests/requests.service.ts b/apps/api/src/modules/privacy/requests/requests.service.ts
+index 4446b571..9c041c4e 100644
+--- a/apps/api/src/modules/privacy/requests/requests.service.ts
++++ b/apps/api/src/modules/privacy/requests/requests.service.ts
+@@ -1,8 +1,11 @@
++import { IPqrRetentionReadPort } from './ports/pqr-retention-read.port';
++import { hasPqrConservationDuty } from './pqr-retention';
+ import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
+ import {
+   BadRequestException,
+   ConflictException,
+   Injectable,
++  Optional,
+   NotFoundException,
+   ServiceUnavailableException,
+   UnprocessableEntityException,
+@@ -233,6 +236,7 @@ export class PrivacyRequestsService {
+     private readonly effectivePermissionsService?: EffectivePermissionsService,
+     private readonly erasurePort?: IPersonalDataErasurePort,
+     private readonly billingStandingPort?: IBillingStandingReadPort,
++    @Optional() private readonly pqrRetentionPort?: IPqrRetentionReadPort,
+   ) {
+     const keys = loadPiiAesGcmKeyPair(configService);
+     this.encryptionKey = keys.activeKey;
+@@ -506,7 +510,13 @@ export class PrivacyRequestsService {
+       const status = current['status'] as RequestStatus;
+       if (status !== 'EN_TRAMITE' && status !== 'PRORROGADA') blockers.push('INVALID_STATUS');
+       const partyId = nullableString(current['party_id']);
+-      if (partyId && (await this.hasConservationDuty(manager, partyId))) {
++      if (
++        await this.hasConservationDuty(
++          manager,
++          partyId,
++          nullableString(current['requester_document_hmac']),
++        )
++      ) {
+         blockers.push('CONSERVATION_DUTY');
+       }
+       const plan = await this.requireErasurePort().plan(
+@@ -848,7 +858,13 @@ export class PrivacyRequestsService {
+               'No se puede verificar el deber de conservación sin identificar al titular.',
+             );
+           }
+-          if (await this.hasConservationDuty(manager, partyId)) {
++          if (
++            await this.hasConservationDuty(
++              manager,
++              partyId,
++              nullableString(current['requester_document_hmac']),
++            )
++          ) {
+             throw new ConflictException(
+               'La solicitud requiere una decisión de no procedencia por deber de conservación.',
+             );
+@@ -898,7 +914,11 @@ export class PrivacyRequestsService {
+           (right === 'SUPRIMIR' ||
+             (right === 'REVOCAR' && current['purpose'] === 'TRATAMIENTO_CONTRACTUAL'));
+         const duty = requiresConservationCheck
+-          ? await this.conservationDuty(manager, partyId)
++          ? await this.conservationDuty(
++              manager,
++              partyId,
++              nullableString(current['requester_document_hmac']),
++            )
+           : { applies: false, openContract: false, retention: false };
+ 
+         if (requiresConservationCheck && !partyId) {
+@@ -1028,7 +1048,13 @@ export class PrivacyRequestsService {
+     };
+     const port = this.requireErasurePort();
+     const plan = await port.plan(target, { manager });
+-    if (partyId && (await this.hasConservationDuty(manager, partyId))) {
++    if (
++      await this.hasConservationDuty(
++        manager,
++        partyId,
++        nullableString(current['requester_document_hmac']),
++      )
++    ) {
+       throw new ConflictException(
+         'La solicitud requiere una decisión de no procedencia por deber de conservación.',
+       );
+@@ -1129,9 +1155,11 @@ export class PrivacyRequestsService {
+   private async conservationDuty(
+     manager: EntityManager,
+     partyId: string | null,
++    requesterDocumentHmac: string | null = null,
+   ): Promise<{ applies: boolean; openContract: boolean; retention: boolean }> {
+-    if (!partyId) return { applies: false, openContract: false, retention: false };
+-    const standing = await this.standingPort.standing(partyId, { manager });
++    if (!partyId && !requesterDocumentHmac)
++      return { applies: false, openContract: false, retention: false };
++    const standing = await this.standingPort.standing(partyId, { manager, requesterDocumentHmac });
+     const openContract = standing.openContractIds.length > 0;
+     if (!this.billingStandingPort) throw new Error('Billing standing port is not registered');
+     const fiscalDate = await this.billingStandingPort.lastFiscalDocumentAt(standing.subscriberIds, {
+@@ -1153,12 +1181,26 @@ export class PrivacyRequestsService {
+       SUBSCRIBER_RETENTION_CATEGORY,
+     );
+     const fiscalRetention = await retained(fiscalDate, 'FACTURACION_SOPORTES_CONTABLES');
+-    const retention = contractRetention || fiscalRetention;
++    const pqrRetention = await hasPqrConservationDuty(
++      this.pqrRetentionPort,
++      {
++        subscriberIds: standing.subscriberIds ?? [],
++        contractIds: standing.contractIds ?? [],
++        expedienteIds: standing.expedienteIds ?? [],
++      },
++      manager,
++      today,
++    );
++    const retention = contractRetention || fiscalRetention || pqrRetention;
+     return { applies: openContract || retention, openContract, retention };
+   }
+ 
+-  private async hasConservationDuty(manager: EntityManager, partyId: string): Promise<boolean> {
+-    return (await this.conservationDuty(manager, partyId)).applies;
++  private async hasConservationDuty(
++    manager: EntityManager,
++    partyId: string | null,
++    requesterDocumentHmac: string | null = null,
++  ): Promise<boolean> {
++    return (await this.conservationDuty(manager, partyId, requesterDocumentHmac)).applies;
+   }
+ 
+   private assertIdentityMethodForRequester(
+diff --git a/apps/api/src/modules/privacy/requests/retention-clock.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/retention-clock.postgres.integration.spec.ts
+index 96aa5632..bef8788b 100644
+--- a/apps/api/src/modules/privacy/requests/retention-clock.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/retention-clock.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { randomBytes, randomUUID } from 'node:crypto';
+ import { ConfigService } from '@nestjs/config';
+ import { ConflictException } from '@nestjs/common';
+@@ -260,6 +261,7 @@ describeWithDb('Retención del suscriptor (O-1) en PostgreSQL real', () => {
+       effectivePermissionsService as never,
+       erasurePort as unknown as IPersonalDataErasurePort,
+       { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
++      new PqrRetentionReadAdapter(),
+     );
+   });
+ 
+diff --git a/apps/api/src/modules/privacy/requests/text-erasure-sweep.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/text-erasure-sweep.postgres.integration.spec.ts
+index 42ba249b..88721f2b 100644
+--- a/apps/api/src/modules/privacy/requests/text-erasure-sweep.postgres.integration.spec.ts
++++ b/apps/api/src/modules/privacy/requests/text-erasure-sweep.postgres.integration.spec.ts
+@@ -1,3 +1,4 @@
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
+ import { randomUUID } from 'node:crypto';
+ import { ConflictException } from '@nestjs/common';
+ import { ConfigService } from '@nestjs/config';
+@@ -273,6 +274,8 @@ describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reale
+           provide: IContractStandingReadPort,
+           useValue: {
+             standing: jest.fn().mockResolvedValue({
++              contractIds: [],
++              expedienteIds: [],
+               subscriberIds: [],
+               openContractIds: [],
+               lastTerminatedAt: null,
+@@ -319,8 +322,10 @@ describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reale
+             IPersonalDataErasurePort,
+             IBillingStandingReadPort,
+           ],
+-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
+-            new PrivacyRequestsService(...deps),
++          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
++            deps[9] = new PqrRetentionReadAdapter();
++            return new PrivacyRequestsService(...deps);
++          },
+         },
+       ],
+     }).compile();
+@@ -1213,13 +1218,13 @@ describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reale
+       {
+         installation_city: null,
+         installation_department: null,
+-        installation_stratum: 1,
++        installation_stratum: null,
+         service_usage: 'NON_RESIDENTIAL',
+       },
+       {
+         installation_city: null,
+         installation_department: null,
+-        installation_stratum: 1,
++        installation_stratum: null,
+         service_usage: 'RESIDENTIAL',
+       },
+     ]);
+diff --git a/packages/database/src/migrations/tenant/runner.ts b/packages/database/src/migrations/tenant/runner.ts
+index 950fe0da..3aff47d2 100644
+--- a/packages/database/src/migrations/tenant/runner.ts
++++ b/packages/database/src/migrations/tenant/runner.ts
+@@ -1,3 +1,4 @@
++import { PrivacyPqrRetentionAndNullStratum1770000000177 } from './177_privacy_pqr_retention_and_null_stratum';
+ import { DropWfmTechnicianBusinessOverrides1748566800000 } from './041_drop_wfm_technician_business_overrides';
+ import { CreateWfmOperationalEventualities1748653200042 } from './042_create_wfm_operational_eventualities';
+ import { AddOrganizationSiteContactFields1748698800043 } from './043_add_organization_site_contact_fields';
+@@ -347,6 +348,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
+   SeedBillingPermissions1740000000174,
+   BillingContractPriceBackfill1750000000175,
+   SubscriberDocumentNullWhenAnonymized1760000000176,
++  PrivacyPqrRetentionAndNullStratum1770000000177,
+ ];
+ 
+ const MIGRATION_LOCK_NAMESPACE = 42;
+diff --git a/apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.spec.ts b/apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.spec.ts
+new file mode 100644
+index 00000000..2036c5af
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.spec.ts
+@@ -0,0 +1,49 @@
++import { TenantContext } from '@iwana/db';
++import type { EntityManager } from 'typeorm';
++import * as sql from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++import { PqrRetentionReadAdapter } from './pqr-retention-read.adapter';
++
++describe('PqrRetentionReadAdapter — guardas de lectura', () => {
++  const scope = { subscriberIds: ['subscriber'], contractIds: [], expedienteIds: [] };
++  afterEach(() => jest.restoreAllMocks());
++
++  it('no consulta datos sin un alcance atribuible', async () => {
++    const query = jest.fn();
++    const manager = { query } as unknown as EntityManager;
++    expect(
++      await new PqrRetentionReadAdapter().read(
++        { subscriberIds: [], contractIds: [], expedienteIds: [] },
++        { manager },
++      ),
++    ).toEqual({ hasUnanswered: false, lastResponseAt: null });
++    expect(query).not.toHaveBeenCalled();
++  });
++
++  it.each([undefined, { isTransactionActive: false }])(
++    'falla cerrado sin transacción tenant activa: %s',
++    async (queryRunner) => {
++      const manager = { queryRunner, query: jest.fn() } as unknown as EntityManager;
++      await expect(new PqrRetentionReadAdapter().read(scope, { manager })).rejects.toThrow(
++        'transacción tenant activa',
++      );
++      expect(manager.query).not.toHaveBeenCalled();
++    },
++  );
++
++  it.each(['sin tablas', 'sin referencias'])('tolera esquemas parciales: %s', async (kind) => {
++    const names = kind === 'sin tablas' ? [] : ['support_tickets.id', 'ticket_pqr_records.id'];
++    jest
++      .spyOn(sql, 'readTenantColumns')
++      .mockResolvedValue(new Map(names.map((name) => [name, {} as sql.TenantColumn])));
++    const manager = {
++      queryRunner: { isTransactionActive: true },
++      query: jest.fn(),
++    } as unknown as EntityManager;
++    const result = await TenantContext.run(
++      { tenantId: 'tenant-test', schemaName: 'tenant_test', tenantSlug: 'test' },
++      () => new PqrRetentionReadAdapter().read(scope, { manager }),
++    );
++    expect(result).toEqual({ hasUnanswered: false, lastResponseAt: null });
++    expect(manager.query).not.toHaveBeenCalled();
++  });
++});
+diff --git a/apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.ts b/apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.ts
+new file mode 100644
+index 00000000..47cb7d11
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/pqr-retention-read.adapter.ts
+@@ -0,0 +1,47 @@
++import { Injectable } from '@nestjs/common';
++import type { EntityManager } from 'typeorm';
++import { TenantContext } from '@iwana/db';
++import {
++  IPqrRetentionReadPort,
++  type PqrRetentionScope,
++  type PqrRetentionStanding,
++} from '../../privacy/requests/ports/pqr-retention-read.port';
++import {
++  readTenantColumns,
++  tableExists,
++} from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++import { ticketScopePredicates } from './ticket-scope';
++
++@Injectable()
++export class PqrRetentionReadAdapter extends IPqrRetentionReadPort {
++  async read(
++    scope: PqrRetentionScope,
++    ctx: { manager: EntityManager },
++  ): Promise<PqrRetentionStanding> {
++    const empty = { hasUnanswered: false, lastResponseAt: null };
++    if (!scope.subscriberIds.length && !scope.contractIds.length && !scope.expedienteIds.length)
++      return empty;
++    const qr = ctx.manager.queryRunner;
++    if (!qr?.isTransactionActive)
++      throw new Error('La lectura de retención exige una transacción tenant activa.');
++    const columns = await readTenantColumns(qr);
++    if (!tableExists(columns, 'support_tickets') || !tableExists(columns, 'ticket_pqr_records'))
++      return empty;
++    const parameters: unknown[] = [TenantContext.getOrThrow().tenantId];
++    const predicates = ticketScopePredicates(scope, columns, parameters);
++    if (!predicates.length) return empty;
++    const rows = (await ctx.manager.query(
++      `WITH responses AS (
++      SELECT t.id, max(COALESCE(p.notified_at, p.resolved_at)) AS response_at
++      FROM support_tickets t LEFT JOIN ticket_pqr_records p ON p.ticket_id = t.id AND p.tenant_id = t.tenant_id AND p.deadline_type::text = 'FINAL_RESOLUTION'
++      WHERE t.tenant_id = $1 AND t.type::text = 'PQR' AND (${predicates.join(' OR ')}) GROUP BY t.id
++    ) SELECT COALESCE(bool_or(response_at IS NULL), false) AS has_unanswered, max(response_at) AS last_response_at FROM responses`,
++      parameters,
++    )) as Array<{ has_unanswered: boolean; last_response_at: Date | string | null }>;
++    const last = rows[0]?.last_response_at;
++    return {
++      hasUnanswered: rows[0]?.has_unanswered === true,
++      lastResponseAt: last ? new Date(last).toISOString() : null,
++    };
++  }
++}
+diff --git a/apps/api/src/modules/assurance/privacy/ticket-scope.ts b/apps/api/src/modules/assurance/privacy/ticket-scope.ts
+new file mode 100644
+index 00000000..2830ea6b
+--- /dev/null
++++ b/apps/api/src/modules/assurance/privacy/ticket-scope.ts
+@@ -0,0 +1,34 @@
++import type { TenantColumn } from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++
++export interface TicketTitularScope {
++  subscriberIds: string[];
++  contractIds: string[];
++  expedienteIds: string[];
++}
++
++/** D-BT-2: exige tipo y referencia exactos, sin convertir referencias externas a UUID. */
++export function ticketScopePredicates(
++  scope: TicketTitularScope,
++  columns: Map<string, TenantColumn>,
++  parameters: unknown[],
++): string[] {
++  const predicates: string[] = [];
++  for (const [typeColumn, refColumn, type, ids] of [
++    ['requester_type', 'requester_ref_id', 'SUBSCRIBER', scope.subscriberIds],
++    ['subject_type', 'subject_ref_id', 'SUBSCRIBER', scope.subscriberIds],
++    ['subject_type', 'subject_ref_id', 'CONTRACT', scope.contractIds],
++    ['subject_type', 'subject_ref_id', 'EXPEDIENTE', scope.expedienteIds],
++  ] as const) {
++    if (
++      !ids.length ||
++      !columns.has(`support_tickets.${typeColumn}`) ||
++      !columns.has(`support_tickets.${refColumn}`)
++    )
++      continue;
++    parameters.push(ids);
++    predicates.push(
++      `("${typeColumn}"::text = '${type}' AND "${refColumn}"::text = ANY($${parameters.length}::text[]))`,
++    );
++  }
++  return predicates;
++}
+diff --git a/apps/api/src/modules/privacy/requests/ports/pqr-retention-read.port.ts b/apps/api/src/modules/privacy/requests/ports/pqr-retention-read.port.ts
+new file mode 100644
+index 00000000..cc5dc7a8
+--- /dev/null
++++ b/apps/api/src/modules/privacy/requests/ports/pqr-retention-read.port.ts
+@@ -0,0 +1,17 @@
++import type { EntityManager } from 'typeorm';
++
++export interface PqrRetentionScope {
++  subscriberIds: string[];
++  contractIds: string[];
++  expedienteIds: string[];
++}
++export interface PqrRetentionStanding {
++  hasUnanswered: boolean;
++  lastResponseAt: string | null;
++}
++export abstract class IPqrRetentionReadPort {
++  abstract read(
++    scope: PqrRetentionScope,
++    ctx: { manager: EntityManager },
++  ): Promise<PqrRetentionStanding>;
++}
+diff --git a/apps/api/src/modules/privacy/requests/pqr-retention.postgres.integration.spec.ts b/apps/api/src/modules/privacy/requests/pqr-retention.postgres.integration.spec.ts
+new file mode 100644
+index 00000000..a875432a
+--- /dev/null
++++ b/apps/api/src/modules/privacy/requests/pqr-retention.postgres.integration.spec.ts
+@@ -0,0 +1,428 @@
++import { TenantContext } from '@iwana/db';
++import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
++import { CrmContractStandingReadAdapter } from '../../crm/privacy-adapters/crm-contract-standing-read.adapter';
++import { PrivacyRequestsService } from './requests.service';
++import { PrivacyPqrRetentionAndNullStratum1770000000177 } from '../../../../../../packages/database/src/migrations/tenant/177_privacy_pqr_retention_and_null_stratum';
++import { randomUUID } from 'node:crypto';
++import { ConfigService } from '@nestjs/config';
++import { DataSource, QueryRunner } from 'typeorm';
++import { resolveMigrationDbCredentials } from '../../../../../../packages/database/src/db-credentials';
++import {
++  applyTenantMigrationsInOrder,
++  createTenantDataSource,
++  TENANT_MIGRATIONS,
++} from '../../../../../../packages/database/src/migrations/tenant/runner';
++import { CrmTitularErasureParticipant } from '../../crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
++import type { ErasureKeys } from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
++
++const integrationEnabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
++const databaseName = process.env['DB_NAME'] ?? '';
++const safeDatabaseName = /^iwana_it_g7_[a-z0-9_]+$/u;
++const supportedDatabaseName = databaseName === 'test' || safeDatabaseName.test(databaseName);
++const describeWithDb = integrationEnabled && supportedDatabaseName ? describe : describe.skip;
++
++if (integrationEnabled && !supportedDatabaseName) {
++  console.warn(
++    `[B7] Integración omitida: DB_NAME debe ser test o iwana_it_g7_*; recibida ${databaseName || '(vacía)'}.`,
++  );
++}
++
++jest.setTimeout(900_000);
++
++describeWithDb('B7 — supresión CRM sobre migraciones tenant reales', () => {
++  const schemaName = `tenant_it_g7_b7_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
++  const tenantId = randomUUID();
++  const tenantSlug = `privacy-g7-${randomUUID().slice(0, 8)}`;
++  const actorId = randomUUID();
++  const keys: ErasureKeys = {
++    hashKey: Buffer.alloc(32, 1),
++    activeEncryptionKey: Buffer.alloc(32, 2),
++    previousEncryptionKey: null,
++  };
++  let baseDataSource: DataSource | undefined;
++  let tenantDataSource: DataSource | undefined;
++  let queryRunner: QueryRunner | undefined;
++
++  beforeAll(async () => {
++    const credentials = resolveMigrationDbCredentials();
++    baseDataSource = new DataSource({
++      type: 'postgres',
++      host: process.env['DB_HOST'] ?? 'localhost',
++      port: Number.parseInt(process.env['DB_PORT'] ?? '5432', 10),
++      username: credentials.username,
++      password: credentials.password,
++      database: process.env['DB_NAME'] ?? 'iwana',
++      entities: [],
++      migrations: [],
++      synchronize: false,
++      logging: false,
++      extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
++    });
++    await baseDataSource.initialize();
++
++    const bootstrap = baseDataSource.createQueryRunner();
++    try {
++      await bootstrap.query(`CREATE SCHEMA "${schemaName}"`);
++      await bootstrap.query(
++        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
++         VALUES ($1, 'B7 synthetic fixture', $2, $3, 'INACTIVE', 'b1c@invalid.example')`,
++        [tenantId, tenantSlug, schemaName],
++      );
++    } finally {
++      await bootstrap.release();
++    }
++
++    tenantDataSource = createTenantDataSource(baseDataSource, schemaName, tenantSlug);
++    await tenantDataSource.initialize();
++    await applyTenantMigrationsInOrder(tenantDataSource, {
++      ...process.env,
++      IWANA_APPLY_PII_CONTRACT: 'true',
++    });
++    queryRunner = tenantDataSource.createQueryRunner();
++    await queryRunner.connect();
++    const [migrationCountRow] = (await queryRunner.query(
++      'SELECT COUNT(*)::int AS count FROM typeorm_migrations',
++    )) as Array<{ count: number }>;
++    const appliedMigrationCount = migrationCountRow?.count ?? 0;
++    console.info(
++      `[B7] Tenant migrations applied: ${appliedMigrationCount}/${TENANT_MIGRATIONS.length}.`,
++    );
++    expect(appliedMigrationCount).toBe(TENANT_MIGRATIONS.length);
++  });
++
++  afterAll(async () => {
++    try {
++      if (queryRunner && !queryRunner.isReleased) await queryRunner.release();
++    } finally {
++      if (tenantDataSource?.isInitialized) await tenantDataSource.destroy();
++      if (baseDataSource?.isInitialized) {
++        const cleanup = baseDataSource.createQueryRunner();
++        try {
++          await cleanup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
++          await cleanup.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
++        } finally {
++          await cleanup.release();
++          await baseDataSource.destroy();
++        }
++      }
++    }
++  });
++
++  beforeEach(async () => {
++    await queryRunner!.startTransaction();
++    await queryRunner!.query("SELECT set_config('iwana.titular_erasure', 'on', true)");
++  });
++  afterEach(async () => {
++    if (queryRunner?.isTransactionActive) await queryRunner.rollbackTransaction();
++  });
++
++  it('CA-BT-25 instala las dos políticas de retención nuevas', async () => {
++    const rows = await queryRunner!.query(
++      "SELECT category, years FROM retention_policies WHERE category IN ('PQR_SOPORTES','SOLICITUDES_TITULAR') ORDER BY category",
++    );
++    expect(rows).toEqual([
++      { category: 'PQR_SOPORTES', years: 3 },
++      { category: 'SOLICITUDES_TITULAR', years: 5 },
++    ]);
++  });
++
++  it('CA-BT-23 anula estrato sin falsear RESIDENTIAL ni NON_RESIDENTIAL', async () => {
++    const qr = queryRunner!;
++    const subscriber = randomUUID();
++    const requestId = randomUUID();
++    await qr.query(
++      `INSERT INTO subscribers (id, tenant_id, person_type, customer_segment, document_type, document_number_encrypted, first_name, last_name, stratum, email_encrypted, phone_encrypted, vat_treatment, tax_regime, address, created_by) VALUES ($1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', 'synthetic', 'Fixture', 'B7', 3, 'synthetic', 'synthetic', 'STANDARD', 'SIMPLIFIED', 'Sintética', $3)`,
++      [subscriber, tenantId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO contracts (tenant_id, subscriber_id, plan_id, plan_snapshot_json, status, alias, service_usage, installation_stratum, terminated_at) VALUES ($1,$2,'fixture-plan','{}','TERMINATED','Sonda residencial','RESIDENTIAL',4,'2010-01-01'),($1,$2,'fixture-plan','{}','TERMINATED','Sonda no residencial','NON_RESIDENTIAL',NULL,'2010-01-01')`,
++      [tenantId, subscriber],
++    );
++    const participant = new CrmTitularErasureParticipant(new ConfigService());
++    const scope = {
++      partyId: null,
++      subscriberIds: [subscriber],
++      expedienteIds: [],
++      userIds: [],
++      requestId,
++      cryptoKeys: keys,
++    };
++    await participant.resolveScope(scope, qr);
++    await participant.apply(scope, qr, 'apply');
++    expect(
++      (await qr.query('SELECT stratum FROM subscribers WHERE id=$1', [subscriber]))[0].stratum,
++    ).toBeNull();
++    const contracts = await qr.query(
++      "SELECT installation_stratum, to_jsonb(c)->>'anonymized_at' AS anonymized_at FROM contracts c",
++    );
++    expect(contracts).toHaveLength(2);
++    for (const contract of contracts) {
++      expect(contract.installation_stratum).toBeNull();
++      expect(contract.anonymized_at).toBeTruthy();
++    }
++  });
++  function inTenant<T>(operation: () => Promise<T>): Promise<T> {
++    return TenantContext.run({ tenantId, schemaName, tenantSlug }, operation);
++  }
++  function serviceFor(expedienteId: string) {
++    const qr = queryRunner!;
++    const source = {
++      createQueryRunner: () =>
++        new Proxy(qr, {
++          get(target, property) {
++            if (property === 'release') return async () => undefined;
++            const value = Reflect.get(target, property);
++            return typeof value === 'function' ? value.bind(target) : value;
++          },
++        }),
++    } as unknown as DataSource;
++    const key = keys.activeEncryptionKey.toString('hex');
++    const erasure = {
++      plan: jest
++        .fn()
++        .mockResolvedValue({ candidateExpedienteIds: [expedienteId], blockers: [], counts: {} }),
++      anonymize: jest.fn().mockResolvedValue({ categories: [], changedRows: 0 }),
++    };
++    const service = new PrivacyRequestsService(
++      source,
++      new ConfigService({
++        MFA_ENCRYPTION_KEY: key,
++        PII_ENCRYPTION_KEY: key,
++        PII_HASH_KEY: keys.hashKey.toString('hex'),
++      }),
++      { log: jest.fn(), logWithin: jest.fn() } as never,
++      {} as never,
++      new CrmContractStandingReadAdapter(),
++      {} as never,
++      { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) } as never,
++      erasure,
++      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
++      new PqrRetentionReadAdapter(),
++    );
++    return { service, erasure };
++  }
++  async function prospect() {
++    const qr = queryRunner!;
++    const party = randomUUID(),
++      expediente = randomUUID(),
++      request = randomUUID(),
++      ticket = randomUUID();
++    const hmac = `synthetic-${randomUUID()}`;
++    await qr.query(
++      `INSERT INTO party (id,party_type,document_type,document_number,display_name) VALUES ($1,'NATURAL','OTHER',$2,'Sonda B7')`,
++      [party, randomUUID()],
++    );
++    await qr.query(
++      `INSERT INTO expediente_records (id,tenant_id,full_name,document_number_hmac,created_by) VALUES ($1,$2,'Sonda B7',$3,$4)`,
++      [expediente, tenantId, hmac, actorId],
++    );
++    await qr.query(
++      `INSERT INTO data_subject_requests (id,party_id,requester_kind,kind,"right",status,received_at,complete_at,due_at,identity_verification_method,identity_verified_at,identity_verified_by,requester_document_hmac) VALUES ($1,$2,'TITULAR','CONSULTA','SUPRIMIR','EN_TRAMITE',now(),now(),CURRENT_DATE + 15,'DOCUMENTO_PRESENCIAL',now(),$3,$4)`,
++      [request, party, actorId, hmac],
++    );
++    await qr.query(
++      `INSERT INTO support_tickets (id,tenant_id,ticket_number,type,subject,requester_type,subject_type,subject_ref_id,created_by_user_id) VALUES ($1,$2,$3,'PQR','Sonda PQR','EXTERNAL','EXPEDIENTE',$4,$5)`,
++      [ticket, tenantId, `PQR-${ticket.slice(0, 8)}`, expediente, actorId],
++    );
++    return { party, expediente, request, ticket };
++  }
++  async function response(ticket: string, notified: Date | null, resolved: Date | null) {
++    await queryRunner!.query(
++      `INSERT INTO ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at,notes) VALUES ($1,$2,'FINAL_RESOLUTION',now(),$3,$4,'Sonda soporte')`,
++      [ticket, tenantId, notified, resolved],
++    );
++  }
++  function yearsAgo(years: number, days = 0) {
++    const date = new Date();
++    date.setUTCFullYear(date.getUTCFullYear() - years);
++    date.setUTCDate(date.getUTCDate() - days);
++    return date;
++  }
++  it.each(['notificada', 'respuesta sin notificación', 'sin respuesta', 'vencida'])(
++    'CA-BT-20: prospecto con PQR %s',
++    async (kind) => {
++      const subject = await prospect();
++      if (kind === 'notificada') await response(subject.ticket, yearsAgo(2), yearsAgo(4));
++      if (kind === 'respuesta sin notificación') await response(subject.ticket, null, yearsAgo(2));
++      if (kind === 'vencida') await response(subject.ticket, yearsAgo(3, 1), yearsAgo(4));
++      const { service, erasure } = serviceFor(subject.expediente);
++      const preview = await inTenant(() => service.erasurePreview(subject.request));
++      if (kind === 'vencida') expect(preview.eligible).toBe(true);
++      else {
++        expect(preview.blockers).toContain('CONSERVATION_DUTY');
++        await expect(
++          inTenant(() =>
++            service.transition(
++              subject.request,
++              'resolve',
++              {
++                responseText: 'Sonda',
++                responseChannel: 'EMAIL',
++                erasure: { confirm: true, expedienteIds: [subject.expediente] },
++              },
++              actorId,
++            ),
++          ),
++        ).rejects.toThrow('deber de conservación');
++        expect(erasure.anonymize).not.toHaveBeenCalled();
++        await inTenant(() =>
++          service.transition(
++            subject.request,
++            'reject',
++            {
++              responseText: 'Sonda de conservación',
++              responseChannel: 'EMAIL',
++              legalBasis: 'DEBER_LEGAL_CONSERVACION',
++            },
++            actorId,
++          ),
++        );
++        expect(
++          (
++            await queryRunner!.query('SELECT status FROM data_subject_requests WHERE id=$1', [
++              subject.request,
++            ])
++          )[0].status,
++        ).toBe('NO_PROCEDENTE');
++        expect(
++          (
++            await queryRunner!.query('SELECT mark FROM party_privacy_marks WHERE party_id=$1', [
++              subject.party,
++            ])
++          ).some((row: { mark: string }) => row.mark === 'DATOS_BLOQUEADOS'),
++        ).toBe(true);
++      }
++    },
++  );
++  it('CA-BT-21: no atribuye una PQR de otro titular por coincidencia del texto sin el tipo', async () => {
++    const other = await prospect();
++    const scope = {
++      subscriberIds: [other.expediente],
++      contractIds: [other.expediente],
++      expedienteIds: [randomUUID()],
++    };
++    expect(
++      await inTenant(() =>
++        new PqrRetentionReadAdapter().read(scope, { manager: queryRunner!.manager }),
++      ),
++    ).toEqual({ hasUnanswered: false, lastResponseAt: null });
++  });
++  it('una respuesta inicial no sustituye la respuesta definitiva pendiente', async () => {
++    const subject = await prospect();
++    await queryRunner!.query(
++      `INSERT INTO ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at) VALUES ($1,$2,'INITIAL_RESPONSE',now(),now(),now())`,
++      [subject.ticket, tenantId],
++    );
++    expect(
++      (await inTenant(() => serviceFor(subject.expediente).service.erasurePreview(subject.request)))
++        .blockers,
++    ).toContain('CONSERVATION_DUTY');
++  });
++  it('CA-BT-21: excluye la PQR sin respuesta de otro titular del mismo tenant', async () => {
++    const subject = await prospect();
++    await response(subject.ticket, yearsAgo(4), yearsAgo(4));
++    await prospect();
++    const preview = await inTenant(() =>
++      serviceFor(subject.expediente).service.erasurePreview(subject.request),
++    );
++    expect(preview.eligible).toBe(true);
++    expect(preview.blockers).not.toContain('CONSERVATION_DUTY');
++  });
++  it.each(['SUBSCRIBER_REQUESTER', 'SUBSCRIBER', 'CONTRACT', 'EXPEDIENTE'])(
++    'D-BT-14 sigue la referencia exacta %s',
++    async (type) => {
++      const subject = await prospect();
++      const id = randomUUID();
++      await queryRunner!.query(
++        'UPDATE support_tickets SET requester_type=$1,requester_ref_id=$2,subject_type=$3,subject_ref_id=$4 WHERE id=$5',
++        [
++          type === 'SUBSCRIBER_REQUESTER' ? 'SUBSCRIBER' : 'EXTERNAL',
++          type === 'SUBSCRIBER_REQUESTER' ? id : null,
++          type === 'SUBSCRIBER_REQUESTER' ? null : type,
++          type === 'SUBSCRIBER_REQUESTER' ? null : id,
++          subject.ticket,
++        ],
++      );
++      const scope = { subscriberIds: [id], contractIds: [id], expedienteIds: [id] };
++      expect(
++        (
++          await inTenant(() =>
++            new PqrRetentionReadAdapter().read(scope, { manager: queryRunner!.manager }),
++          )
++        ).hasUnanswered,
++      ).toBe(true);
++    },
++  );
++  async function rejectsCheck(sql: string, parameters: unknown[]) {
++    const qr = queryRunner!;
++    await qr.query('SAVEPOINT invalid_input');
++    try {
++      await expect(qr.query(sql, parameters)).rejects.toMatchObject({
++        driverError: { code: '23514' },
++      });
++    } finally {
++      await qr.query('ROLLBACK TO SAVEPOINT invalid_input');
++    }
++  }
++  it('CA-BT-24 rechaza estrato NULL de un suscriptor natural vivo', async () => {
++    await rejectsCheck(
++      `INSERT INTO subscribers (tenant_id,person_type,customer_segment,document_type,document_number_encrypted,first_name,last_name,stratum,email_encrypted,phone_encrypted,vat_treatment,tax_regime,address,created_by) VALUES ($1,'NATURAL','RESIDENTIAL','CC','synthetic','Fixture','B7',NULL,'synthetic','synthetic','STANDARD','SIMPLIFIED','Sonda',$2)`,
++      [tenantId, actorId],
++    );
++  });
++  it('CA-BT-24 rechaza contrato residencial vivo sin estrato', async () => {
++    await rejectsCheck(
++      `INSERT INTO contracts (tenant_id,subscriber_id,plan_id,plan_snapshot_json,status,alias,service_usage,installation_stratum) VALUES ($1,$2,'fixture-plan','{}','DRAFT','Sonda','RESIDENTIAL',NULL)`,
++      [tenantId, randomUUID()],
++    );
++  });
++  it('CA-BT-25: up/down/up y políticas que no permiten acortar la retención', async () => {
++    const qr = queryRunner!;
++    const migration = new PrivacyPqrRetentionAndNullStratum1770000000177();
++    await rejectsCheck("UPDATE retention_policies SET years=2 WHERE category='PQR_SOPORTES'", []);
++    await rejectsCheck(
++      "UPDATE retention_policies SET years=4 WHERE category='SOLICITUDES_TITULAR'",
++      [],
++    );
++    await migration.down(qr);
++    const constraints = await qr.query(
++      "SELECT convalidated FROM pg_constraint WHERE conrelid IN ('contracts'::regclass,'subscribers'::regclass) AND conname IN ('chk_contract_residential_stratum','chk_subscriber_person_fields')",
++    );
++    expect(constraints).toEqual([{ convalidated: false }, { convalidated: false }]);
++    expect(
++      await qr.query(
++        "SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='contracts' AND column_name='anonymized_at'",
++      ),
++    ).toEqual([]);
++    await migration.up(qr);
++    expect(
++      (
++        await qr.query(
++          "SELECT count(*)::int AS n FROM retention_policies WHERE category IN ('PQR_SOPORTES','SOLICITUDES_TITULAR')",
++        )
++      )[0].n,
++    ).toBe(2);
++  });
++
++  it('CA-BT-25: down conserva los NULL de filas anonimizadas sin inventar estratos', async () => {
++    const qr = queryRunner!;
++    const subscriber = randomUUID();
++    await qr.query(
++      `INSERT INTO subscribers (id,tenant_id,person_type,customer_segment,document_type,first_name,last_name,stratum,anonymized_at,anonymized_request_id,vat_treatment,tax_regime,address,created_by) VALUES ($1,$2,'NATURAL','RESIDENTIAL','CC','ANONIMIZADO','ANONIMIZADO',NULL,now(),gen_random_uuid(),'STANDARD','SIMPLIFIED','ANONIMIZADO',$3)`,
++      [subscriber, tenantId, actorId],
++    );
++    await qr.query(
++      `INSERT INTO contracts (tenant_id,subscriber_id,plan_id,plan_snapshot_json,status,service_usage,installation_stratum,anonymized_at) VALUES ($1,$2,'synthetic-plan','{}','DRAFT','RESIDENTIAL',NULL,now())`,
++      [tenantId, subscriber],
++    );
++    await new PrivacyPqrRetentionAndNullStratum1770000000177().down(qr);
++    expect(await qr.query('SELECT stratum FROM subscribers WHERE id=$1', [subscriber])).toEqual([
++      { stratum: null },
++    ]);
++    expect(
++      await qr.query('SELECT installation_stratum FROM contracts WHERE subscriber_id=$1', [
++        subscriber,
++      ]),
++    ).toEqual([{ installation_stratum: null }]);
++  });
++});
+diff --git a/apps/api/src/modules/privacy/requests/pqr-retention.spec.ts b/apps/api/src/modules/privacy/requests/pqr-retention.spec.ts
+new file mode 100644
+index 00000000..90550c60
+--- /dev/null
++++ b/apps/api/src/modules/privacy/requests/pqr-retention.spec.ts
+@@ -0,0 +1,76 @@
++import { ConfigService } from '@nestjs/config';
++import type { EntityManager } from 'typeorm';
++import { PrivacyRequestsService } from './requests.service';
++import { hasPqrConservationDuty } from './pqr-retention';
++
++describe('B7 — reloj de retención PQR', () => {
++  beforeEach(() => jest.useFakeTimers().setSystemTime(new Date('2026-11-07T15:00:00Z')));
++  afterEach(() => jest.useRealTimers());
++  it('falla cerrado si falta el puerto de PQR con un expediente atribuible', async () => {
++    await expect(
++      hasPqrConservationDuty(
++        undefined,
++        { subscriberIds: [], contractIds: [], expedienteIds: ['expediente'] },
++        {} as EntityManager,
++        '2026-11-07',
++      ),
++    ).rejects.toThrow('PQR retention port');
++  });
++  it('falla cerrado si falta la política de una PQR respondida', async () => {
++    const port = {
++      read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: '2025-11-07' }),
++    };
++    const manager = { query: jest.fn().mockResolvedValue([]) } as unknown as EntityManager;
++    await expect(
++      hasPqrConservationDuty(
++        port,
++        { subscriberIds: [], contractIds: [], expedienteIds: ['expediente'] },
++        manager,
++        '2026-11-07',
++      ),
++    ).rejects.toThrow('Missing retention policy');
++  });
++  it.each([
++    ['respuesta reciente', false, '2024-11-07', 3, true],
++    ['respuesta vencida', false, '2023-11-06', 3, false],
++    ['sin respuesta', true, null, 3, true],
++    ['plazo ampliado', false, '2022-11-07', 5, true],
++    ['sin PQR', false, null, 3, false],
++  ])('%s', async (_label, hasUnanswered, lastResponseAt, years, applies) => {
++    const pqr = { read: jest.fn().mockResolvedValue({ hasUnanswered, lastResponseAt }) };
++    const standing = {
++      standing: jest.fn().mockResolvedValue({
++        subscriberIds: [],
++        contractIds: [],
++        expedienteIds: ['expediente'],
++        openContractIds: [],
++        lastTerminatedAt: null,
++      }),
++    };
++    const key = '01'.repeat(32);
++    const service = Reflect.construct(PrivacyRequestsService, [
++      {},
++      new ConfigService({ MFA_ENCRYPTION_KEY: key, PII_ENCRYPTION_KEY: key, PII_HASH_KEY: key }),
++      {},
++      {},
++      standing,
++      {},
++      undefined,
++      undefined,
++      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
++      pqr,
++    ]) as unknown as {
++      conservationDuty(
++        manager: EntityManager,
++        party: string,
++        hmac: string,
++      ): Promise<{ applies: boolean }>;
++    };
++    const manager = { query: jest.fn().mockResolvedValue([{ years }]) } as unknown as EntityManager;
++    expect((await service.conservationDuty(manager, 'party', 'hmac')).applies).toBe(applies);
++    expect(pqr.read).toHaveBeenCalledWith(
++      { subscriberIds: [], contractIds: [], expedienteIds: ['expediente'] },
++      { manager },
++    );
++  });
++});
+diff --git a/apps/api/src/modules/privacy/requests/pqr-retention.ts b/apps/api/src/modules/privacy/requests/pqr-retention.ts
+new file mode 100644
+index 00000000..fb98bfc4
+--- /dev/null
++++ b/apps/api/src/modules/privacy/requests/pqr-retention.ts
+@@ -0,0 +1,23 @@
++import type { EntityManager } from 'typeorm';
++import { addCalendarMonths } from '@iwana/shared';
++import { IPqrRetentionReadPort, type PqrRetentionScope } from './ports/pqr-retention-read.port';
++
++export async function hasPqrConservationDuty(
++  port: IPqrRetentionReadPort | undefined,
++  scope: PqrRetentionScope,
++  manager: EntityManager,
++  today: string,
++): Promise<boolean> {
++  if (!scope.subscriberIds.length && !scope.contractIds.length && !scope.expedienteIds.length)
++    return false;
++  if (!port) throw new Error('PQR retention port is not registered');
++  const standing = await port.read(scope, { manager });
++  if (standing.hasUnanswered) return true;
++  if (!standing.lastResponseAt) return false;
++  const rows = (await manager.query('SELECT years FROM retention_policies WHERE category = $1', [
++    'PQR_SOPORTES',
++  ])) as Array<{ years: number }>;
++  const years = Number(rows[0]?.years ?? 0);
++  if (!years) throw new Error('Missing retention policy: PQR_SOPORTES');
++  return addCalendarMonths(standing.lastResponseAt.slice(0, 10), years * 12) > today;
++}
+diff --git a/packages/database/src/migrations/tenant/177_privacy_pqr_retention_and_null_stratum.ts b/packages/database/src/migrations/tenant/177_privacy_pqr_retention_and_null_stratum.ts
+new file mode 100644
+index 00000000..e07f2b2f
+--- /dev/null
++++ b/packages/database/src/migrations/tenant/177_privacy_pqr_retention_and_null_stratum.ts
+@@ -0,0 +1,33 @@
++import { MigrationInterface, QueryRunner } from 'typeorm';
++
++const NATURAL_DOCUMENT =
++  "person_type = 'NATURAL' AND document_type IS NOT NULL AND (document_number_encrypted IS NOT NULL OR anonymized_at IS NOT NULL) AND first_name IS NOT NULL AND last_name IS NOT NULL";
++const JURIDICA = "person_type = 'JURIDICA' AND nit IS NOT NULL AND business_name IS NOT NULL";
++
++/** ADR-104: estrato desconocido solo tras anonimizar; relojes de PQR y solicitudes.
++ * down restaura los CHECK sin validar las filas ya anonimizadas y sin inventar estratos.
++ */
++export class PrivacyPqrRetentionAndNullStratum1770000000177 implements MigrationInterface {
++  name = 'PrivacyPqrRetentionAndNullStratum1770000000177';
++  async up(qr: QueryRunner): Promise<void> {
++    await qr.query('ALTER TABLE contracts ADD COLUMN anonymized_at timestamptz NULL');
++    await qr.query(`ALTER TABLE contracts DROP CONSTRAINT chk_contract_residential_stratum,
++      ADD CONSTRAINT chk_contract_residential_stratum CHECK (service_usage IS DISTINCT FROM 'RESIDENTIAL' OR installation_stratum IS NOT NULL OR anonymized_at IS NOT NULL)`);
++    await qr.query(`ALTER TABLE subscribers DROP CONSTRAINT chk_subscriber_person_fields,
++      ADD CONSTRAINT chk_subscriber_person_fields CHECK ((${NATURAL_DOCUMENT} AND (stratum IS NOT NULL OR anonymized_at IS NOT NULL)) OR (${JURIDICA}))`);
++    await qr.query(`INSERT INTO retention_policies (category,years,start_event,legal_basis,is_legal_minimum)
++      VALUES ('PQR_SOPORTES',3,'NOTIFICACION_RESPUESTA_DEFINITIVA','ADR-104 E1',true),
++             ('SOLICITUDES_TITULAR',5,'RESOLUCION_SOLICITUD','ADR-104 E2',true)
++      ON CONFLICT (category) DO NOTHING`);
++  }
++  async down(qr: QueryRunner): Promise<void> {
++    await qr.query(`ALTER TABLE subscribers DROP CONSTRAINT chk_subscriber_person_fields,
++      ADD CONSTRAINT chk_subscriber_person_fields CHECK ((${NATURAL_DOCUMENT} AND stratum IS NOT NULL) OR (${JURIDICA})) NOT VALID`);
++    await qr.query(`ALTER TABLE contracts DROP CONSTRAINT chk_contract_residential_stratum,
++      ADD CONSTRAINT chk_contract_residential_stratum CHECK (service_usage IS DISTINCT FROM 'RESIDENTIAL' OR installation_stratum IS NOT NULL) NOT VALID`);
++    await qr.query('ALTER TABLE contracts DROP COLUMN anonymized_at');
++    await qr.query(
++      "DELETE FROM retention_policies WHERE category IN ('PQR_SOPORTES','SOLICITUDES_TITULAR')",
++    );
++  }
++}

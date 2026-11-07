@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { AssuranceTitularErasureParticipant } from '../../assurance/privacy/assurance-titular-erasure.participant';
 import { NetworkTitularErasureParticipant } from '../../network/privacy/network-titular-erasure.participant';
 import { SupplierProfileReadAdapter } from '../../inventory/privacy/supplier-profile-read.adapter';
@@ -356,6 +357,8 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
           provide: IContractStandingReadPort,
           useValue: {
             standing: jest.fn().mockResolvedValue({
+              contractIds: [],
+              expedienteIds: [],
               subscriberIds: [],
               openContractIds: [],
               lastTerminatedAt: null,
@@ -392,8 +395,10 @@ describeWithDb('Privacy erasure por la API — adaptador CRM real en PostgreSQL'
             IPersonalDataErasurePort,
             IBillingStandingReadPort,
           ],
-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
-            new PrivacyRequestsService(...deps),
+          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
+            deps[9] = new PqrRetentionReadAdapter();
+            return new PrivacyRequestsService(...deps);
+          },
         },
       ],
     }).compile();

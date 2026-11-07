@@ -11,6 +11,9 @@ import { resolve } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { AppDataSource, isValidSchemaName, runInTenantSchema, TenantContext } from '@iwana/db';
 import type { DataSource, QueryRunner } from 'typeorm';
+import { PqrRetentionReadAdapter } from '../modules/assurance/privacy/pqr-retention-read.adapter';
+import { hasPqrConservationDuty } from '../modules/privacy/requests/pqr-retention';
+import { bogotaCivilDate } from '../modules/privacy/ports/privacy-tenant-query';
 import {
   decryptAes256Gcm,
   encryptAes256Gcm,
@@ -1141,6 +1144,23 @@ async function anonymizeTitularInTransaction(
   report.totals.unmatchedExpedientes = unmatchedExpedientes;
   report.verification.activeMediaAssets = stratumMedia.active;
 
+  await crmParticipant.resolveScope(scope, queryRunner);
+  if (
+    await hasPqrConservationDuty(
+      new PqrRetentionReadAdapter(),
+      {
+        subscriberIds: scope.subscriberIds,
+        contractIds: scope.relatedIds?.contractIds ?? [],
+        expedienteIds: scope.expedienteIds,
+      },
+      queryRunner.manager,
+      bogotaCivilDate(new Date()),
+    )
+  ) {
+    throw new AnonymizeTitularCliError(
+      'La solicitud requiere una decisión de no procedencia por deber de conservación.',
+    );
+  }
   const participantResults = await adapter.applyScope(scope, queryRunner, mode);
   for (const result of participantResults) {
     if (result.selected > 0 && result.table === 'visit_requests') {

@@ -794,6 +794,113 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     }
   });
 
+  it('CA-BT-26: verify-only detecta estratos 1 previos y apply los corrige', async () => {
+    const schema = `tenant_anonymize_cli_${randomBytes(5).toString('hex')}`;
+    const q = quoteIdentifier(schema);
+    const tenantId = randomUUID();
+    const partyId = randomUUID();
+    const subscriberId = randomUUID();
+    const requestId = randomUUID();
+    const actorId = randomUUID();
+    const migrationDataSource = createTenantDataSource(dataSource, schema, `anonymize-${schema}`);
+
+    try {
+      await dataSource.query(
+        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+         VALUES ($1, 'Anonymize synthetic fixture', $2, $3, 'ACTIVE', 'anonymize-it@example.invalid')`,
+        [tenantId, `anonymize-${schema.slice(-10)}`, schema],
+      );
+      await dataSource.query(`CREATE SCHEMA ${q}`);
+      await migrationDataSource.initialize();
+      try {
+        await applyTenantMigrationsInOrder(migrationDataSource);
+      } finally {
+        await migrationDataSource.destroy();
+      }
+
+      await dataSource.query(
+        `INSERT INTO ${q}.party
+          (id, party_type, document_type, document_number, display_name)
+         VALUES ($1, 'NATURAL', 'CC', $2, 'Titular sintético')`,
+        [partyId, encryptAes256Gcm('synthetic-party-document', ENCRYPTION_KEY)],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.subscribers
+          (id, tenant_id, party_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, email_encrypted,
+           phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
+         VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4,
+           'Nombre sintético', 'Apellido sintético', 2, $5, $6, 'STANDARD', 'COMMON',
+           'RESPONSABLE', 'Dirección sintética', $7)`,
+        [
+          subscriberId,
+          tenantId,
+          partyId,
+          encryptAes256Gcm('synthetic-subscriber-document', ENCRYPTION_KEY),
+          encryptAes256Gcm('synthetic-email', ENCRYPTION_KEY),
+          encryptAes256Gcm('synthetic-phone', ENCRYPTION_KEY),
+          actorId,
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.data_subject_requests
+          (id, party_id, requester_kind, identity_verification_method, identity_verified_at,
+           identity_verified_by, kind, "right", status, received_at, due_at, complete_at,
+           erased_at, erasure_categories)
+         VALUES ($1, $2, 'TITULAR', 'DOCUMENTO_PRESENCIAL', now(), $3,
+           'CONSULTA', 'SUPRIMIR', 'RESUELTA', now(), CURRENT_DATE + 30, now(),
+           now(), ARRAY['IDENTIFICACION']::text[])`,
+        [requestId, partyId, actorId],
+      );
+
+      const contractId = randomUUID();
+      await dataSource.query(
+        `INSERT INTO ${q}.contracts (id,tenant_id,subscriber_id,plan_id,plan_snapshot_json,status,terminated_at,service_usage,installation_stratum) VALUES ($1,$2,$3,'synthetic-plan','{}','TERMINATED','2000-01-01','RESIDENTIAL',3)`,
+        [contractId, tenantId, subscriberId],
+      );
+      const ticketId = randomUUID();
+      await dataSource.query(
+        `INSERT INTO ${q}.support_tickets (id,tenant_id,ticket_number,type,subject,requester_type,requester_ref_id,created_by_user_id) VALUES ($1,$2,'PQR-B7-CLI','PQR','Sonda CLI','SUBSCRIBER',$3,$4)`,
+        [ticketId, tenantId, subscriberId, actorId],
+      );
+      await expect(
+        anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply'),
+      ).rejects.toThrow('deber de conservación');
+      expect(
+        await dataSource.query(`SELECT stratum FROM ${q}.subscribers WHERE id=$1`, [subscriberId]),
+      ).toEqual([{ stratum: 2 }]);
+      await dataSource.query(
+        `INSERT INTO ${q}.ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at) VALUES ($1,$2,'FINAL_RESOLUTION',now(),now()-interval '4 years',now()-interval '4 years')`,
+        [ticketId, tenantId],
+      );
+      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
+      await runInTenantSchema(dataSource, schema, async (qr) => {
+        await qr.query("SELECT set_config('iwana.titular_erasure','on',true)");
+        await qr.query('UPDATE subscribers SET stratum=1 WHERE id=$1', [subscriberId]);
+        await qr.query('UPDATE contracts SET installation_stratum=1 WHERE id=$1', [contractId]);
+      });
+      const before = await verifyAnonymizedTenant(dataSource, schema, KEYS);
+      expect(before.residualFields).toBeGreaterThan(0);
+      expect(
+        before.findings.flatMap((finding) => finding.tables.map((table) => table.table)),
+      ).toEqual(expect.arrayContaining(['subscribers', 'contracts']));
+      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
+      expect((await verifyAnonymizedTenant(dataSource, schema, KEYS)).residualFields).toBe(0);
+      expect(
+        await dataSource.query(`SELECT stratum FROM ${q}.subscribers WHERE id=$1`, [subscriberId]),
+      ).toEqual([{ stratum: null }]);
+      expect(
+        await dataSource.query(
+          `SELECT installation_stratum,anonymized_at IS NOT NULL AS marked FROM ${q}.contracts WHERE id=$1`,
+          [contractId],
+        ),
+      ).toEqual([{ installation_stratum: null, marked: true }]);
+    } finally {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    }
+  }, 180_000);
+
   it('conserva evidencia de autorización no compartida y activa en el CLI', async () => {
     const fixture = await createFixture(dataSource);
     const q = quoteIdentifier(fixture.schema);
@@ -1184,7 +1291,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           plan_snapshot_json: { plan: {} },
           installation_city: null,
           installation_department: null,
-          installation_stratum: 1,
+          installation_stratum: null,
           service_usage: 'RESIDENTIAL',
           customer_segment: 'STANDARD',
           status: 'ACTIVE',

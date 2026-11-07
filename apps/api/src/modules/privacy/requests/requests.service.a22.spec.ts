@@ -35,6 +35,12 @@ describe('PrivacyRequestsService — A22', () => {
       {} as IContractImpersonationPort,
       {} as IContractStandingReadPort,
       {} as MediaService,
+      undefined,
+      undefined,
+      undefined,
+      {
+        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
+      } as never,
     );
     jest
       .spyOn(service, 'get')

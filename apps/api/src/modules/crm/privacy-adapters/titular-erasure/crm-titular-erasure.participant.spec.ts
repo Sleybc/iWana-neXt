@@ -309,7 +309,7 @@ describe('CrmTitularErasureParticipant', () => {
     });
   });
 
-  it('marca installation_stratum como entero válido y conserva service_usage', async () => {
+  it('anula installation_stratum y conserva service_usage', async () => {
     const { queryRunner, queries, queryArguments } = createQueryRunner();
 
     await participant.apply(
@@ -331,7 +331,8 @@ describe('CrmTitularErasureParticipant', () => {
     );
     expect(contractLocationUpdate).toBeDefined();
     const updateIndex = queries.indexOf(contractLocationUpdate!);
-    expect(queryArguments[updateIndex]).toContain(1);
+    const parameter = /"installation_stratum" = \$(\d+)/u.exec(contractLocationUpdate!);
+    expect(queryArguments[updateIndex]?.[Number(parameter?.[1]) - 1]).toBeNull();
     expect(contractLocationUpdate).not.toMatch(/"service_usage"\s*=/iu);
   });
 

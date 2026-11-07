@@ -93,6 +93,11 @@ describe('PrivacyRequestsService — detalle A23', () => {
       {} as IContractStandingReadPort,
       {} as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
+      undefined,
+      undefined,
+      {
+        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
+      } as never,
     );
   });
 

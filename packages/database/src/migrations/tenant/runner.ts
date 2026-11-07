@@ -1,3 +1,4 @@
+import { PrivacyPqrRetentionAndNullStratum1770000000177 } from './177_privacy_pqr_retention_and_null_stratum';
 import { DropWfmTechnicianBusinessOverrides1748566800000 } from './041_drop_wfm_technician_business_overrides';
 import { CreateWfmOperationalEventualities1748653200042 } from './042_create_wfm_operational_eventualities';
 import { AddOrganizationSiteContactFields1748698800043 } from './043_add_organization_site_contact_fields';
@@ -347,6 +348,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SeedBillingPermissions1740000000174,
   BillingContractPriceBackfill1750000000175,
   SubscriberDocumentNullWhenAnonymized1760000000176,
+  PrivacyPqrRetentionAndNullStratum1770000000177,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

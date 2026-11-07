@@ -6,6 +6,8 @@ import { IContractStandingReadPort } from './contract-standing-read.port';
 export class ContractStandingUnavailableAdapter implements IContractStandingReadPort {
   async standing(): Promise<{
     subscriberIds: string[];
+    contractIds: string[];
+    expedienteIds: string[];
     openContractIds: string[];
     lastTerminatedAt: string | null;
   }> {

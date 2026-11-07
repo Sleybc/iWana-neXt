@@ -75,7 +75,7 @@ describe('PrivacyModule composition', () => {
       (entry) => typeof entry === 'object' && entry !== null && 'forwardRef' in entry,
     ) as { forwardRef: () => unknown } | undefined;
 
-    expect(imports).toHaveLength(7);
+    expect(imports).toHaveLength(8);
     expect(imports).toContain(BillingPrivacyModule);
     expect(controllers).toHaveLength(9);
     expect(controllers).toContain(PurposesController);

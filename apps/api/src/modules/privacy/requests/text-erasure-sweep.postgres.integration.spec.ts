@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { randomUUID } from 'node:crypto';
 import { ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -273,6 +274,8 @@ describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reale
           provide: IContractStandingReadPort,
           useValue: {
             standing: jest.fn().mockResolvedValue({
+              contractIds: [],
+              expedienteIds: [],
               subscriberIds: [],
               openContractIds: [],
               lastTerminatedAt: null,
@@ -319,8 +322,10 @@ describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reale
             IPersonalDataErasurePort,
             IBillingStandingReadPort,
           ],
-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
-            new PrivacyRequestsService(...deps),
+          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
+            deps[9] = new PqrRetentionReadAdapter();
+            return new PrivacyRequestsService(...deps);
+          },
         },
       ],
     }).compile();
@@ -1213,13 +1218,13 @@ describeWithDb('B4 — barrido de texto libre por la API sobre migraciones reale
       {
         installation_city: null,
         installation_department: null,
-        installation_stratum: 1,
+        installation_stratum: null,
         service_usage: 'NON_RESIDENTIAL',
       },
       {
         installation_city: null,
         installation_department: null,
-        installation_stratum: 1,
+        installation_stratum: null,
         service_usage: 'RESIDENTIAL',
       },
     ]);

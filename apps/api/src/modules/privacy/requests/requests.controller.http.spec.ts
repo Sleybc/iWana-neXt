@@ -55,6 +55,12 @@ describe('PrivacyRequestsController HTTP', () => {
       { suspendForImpersonation: jest.fn() } as unknown as IContractImpersonationPort,
       { standing: jest.fn() } as unknown as IContractStandingReadPort,
       { findOne: jest.fn() } as unknown as MediaService,
+      undefined,
+      undefined,
+      undefined,
+      {
+        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
+      } as never,
     );
     requestsService.completeTask.mockImplementation(
       (id: string, idForTask: string, note: string, userId: string) =>

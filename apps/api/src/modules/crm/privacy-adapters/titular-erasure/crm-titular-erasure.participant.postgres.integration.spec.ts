@@ -178,12 +178,12 @@ describeWithDb('B1c — supresión CRM sobre migraciones tenant reales', () => {
       {
         id: nonResidentialContractId,
         service_usage: 'NON_RESIDENTIAL',
-        installation_stratum: 1,
+        installation_stratum: null,
       },
       {
         id: residentialContractId,
         service_usage: 'RESIDENTIAL',
-        installation_stratum: 1,
+        installation_stratum: null,
       },
     ]);
   });

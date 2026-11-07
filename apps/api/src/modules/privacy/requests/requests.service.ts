@@ -1,8 +1,11 @@
+import { IPqrRetentionReadPort } from './ports/pqr-retention-read.port';
+import { hasPqrConservationDuty } from './pqr-retention';
 import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -233,6 +236,7 @@ export class PrivacyRequestsService {
     private readonly effectivePermissionsService?: EffectivePermissionsService,
     private readonly erasurePort?: IPersonalDataErasurePort,
     private readonly billingStandingPort?: IBillingStandingReadPort,
+    @Optional() private readonly pqrRetentionPort?: IPqrRetentionReadPort,
   ) {
     const keys = loadPiiAesGcmKeyPair(configService);
     this.encryptionKey = keys.activeKey;
@@ -506,7 +510,13 @@ export class PrivacyRequestsService {
       const status = current['status'] as RequestStatus;
       if (status !== 'EN_TRAMITE' && status !== 'PRORROGADA') blockers.push('INVALID_STATUS');
       const partyId = nullableString(current['party_id']);
-      if (partyId && (await this.hasConservationDuty(manager, partyId))) {
+      if (
+        await this.hasConservationDuty(
+          manager,
+          partyId,
+          nullableString(current['requester_document_hmac']),
+        )
+      ) {
         blockers.push('CONSERVATION_DUTY');
       }
       const plan = await this.requireErasurePort().plan(
@@ -848,7 +858,13 @@ export class PrivacyRequestsService {
               'No se puede verificar el deber de conservación sin identificar al titular.',
             );
           }
-          if (await this.hasConservationDuty(manager, partyId)) {
+          if (
+            await this.hasConservationDuty(
+              manager,
+              partyId,
+              nullableString(current['requester_document_hmac']),
+            )
+          ) {
             throw new ConflictException(
               'La solicitud requiere una decisión de no procedencia por deber de conservación.',
             );
@@ -898,7 +914,11 @@ export class PrivacyRequestsService {
           (right === 'SUPRIMIR' ||
             (right === 'REVOCAR' && current['purpose'] === 'TRATAMIENTO_CONTRACTUAL'));
         const duty = requiresConservationCheck
-          ? await this.conservationDuty(manager, partyId)
+          ? await this.conservationDuty(
+              manager,
+              partyId,
+              nullableString(current['requester_document_hmac']),
+            )
           : { applies: false, openContract: false, retention: false };
 
         if (requiresConservationCheck && !partyId) {
@@ -1028,7 +1048,13 @@ export class PrivacyRequestsService {
     };
     const port = this.requireErasurePort();
     const plan = await port.plan(target, { manager });
-    if (partyId && (await this.hasConservationDuty(manager, partyId))) {
+    if (
+      await this.hasConservationDuty(
+        manager,
+        partyId,
+        nullableString(current['requester_document_hmac']),
+      )
+    ) {
       throw new ConflictException(
         'La solicitud requiere una decisión de no procedencia por deber de conservación.',
       );
@@ -1129,9 +1155,11 @@ export class PrivacyRequestsService {
   private async conservationDuty(
     manager: EntityManager,
     partyId: string | null,
+    requesterDocumentHmac: string | null = null,
   ): Promise<{ applies: boolean; openContract: boolean; retention: boolean }> {
-    if (!partyId) return { applies: false, openContract: false, retention: false };
-    const standing = await this.standingPort.standing(partyId, { manager });
+    if (!partyId && !requesterDocumentHmac)
+      return { applies: false, openContract: false, retention: false };
+    const standing = await this.standingPort.standing(partyId, { manager, requesterDocumentHmac });
     const openContract = standing.openContractIds.length > 0;
     if (!this.billingStandingPort) throw new Error('Billing standing port is not registered');
     const fiscalDate = await this.billingStandingPort.lastFiscalDocumentAt(standing.subscriberIds, {
@@ -1153,12 +1181,26 @@ export class PrivacyRequestsService {
       SUBSCRIBER_RETENTION_CATEGORY,
     );
     const fiscalRetention = await retained(fiscalDate, 'FACTURACION_SOPORTES_CONTABLES');
-    const retention = contractRetention || fiscalRetention;
+    const pqrRetention = await hasPqrConservationDuty(
+      this.pqrRetentionPort,
+      {
+        subscriberIds: standing.subscriberIds ?? [],
+        contractIds: standing.contractIds ?? [],
+        expedienteIds: standing.expedienteIds ?? [],
+      },
+      manager,
+      today,
+    );
+    const retention = contractRetention || fiscalRetention || pqrRetention;
     return { applies: openContract || retention, openContract, retention };
   }
 
-  private async hasConservationDuty(manager: EntityManager, partyId: string): Promise<boolean> {
-    return (await this.conservationDuty(manager, partyId)).applies;
+  private async hasConservationDuty(
+    manager: EntityManager,
+    partyId: string | null,
+    requesterDocumentHmac: string | null = null,
+  ): Promise<boolean> {
+    return (await this.conservationDuty(manager, partyId, requesterDocumentHmac)).applies;
   }
 
   private assertIdentityMethodForRequester(

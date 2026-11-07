@@ -116,6 +116,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       suspendedContractIds: [contractId],
     });
     standingPort.standing.mockReset().mockResolvedValue({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: null,
     });
@@ -151,6 +153,9 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       effectivePermissionsService as unknown as EffectivePermissionsService,
       erasurePort as never,
       billingStandingPort,
+      {
+        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
+      } as never,
     );
     jest.spyOn(service, 'get').mockResolvedValue({} as never);
   });
@@ -655,6 +660,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       }),
     ]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [contractId],
       lastTerminatedAt: null,
     });
@@ -690,6 +697,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       ])
       .mockResolvedValueOnce([{ years: 10 }]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: null,
       subscriberIds: [],
@@ -717,6 +726,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       ])
       .mockResolvedValueOnce([{ years: 10 }]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: '2020-01-01',
       subscriberIds: [],
@@ -739,6 +750,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       ])
       .mockResolvedValueOnce([]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: null,
       subscriberIds: [],
@@ -765,6 +778,10 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       mediaService as unknown as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
       erasurePort as never,
+      undefined,
+      {
+        read: jest.fn().mockResolvedValue({ hasUnanswered: false, lastResponseAt: null }),
+      } as never,
     );
     manager.query.mockResolvedValueOnce([
       requestRow({
@@ -775,6 +792,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       }),
     ]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: null,
       subscriberIds: [],
@@ -1006,6 +1025,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     });
     manager.query.mockResolvedValueOnce([suppression]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [contractId],
       lastTerminatedAt: null,
     });
@@ -1025,6 +1046,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
 
     manager.query.mockReset().mockResolvedValueOnce([suppression]).mockResolvedValue([]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [contractId],
       lastTerminatedAt: null,
     });
@@ -1056,6 +1079,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       .mockResolvedValueOnce([{ years: 2 }])
       .mockResolvedValue([]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: '2025-01-01',
     });
@@ -1098,6 +1123,8 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
       ])
       .mockResolvedValueOnce([{ years: 2 }]);
     standingPort.standing.mockResolvedValueOnce({
+      contractIds: [],
+      expedienteIds: [],
       openContractIds: [],
       lastTerminatedAt: '2020-01-01',
     });

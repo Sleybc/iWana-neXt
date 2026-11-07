@@ -1,6 +1,7 @@
 # Spec — `privacy` · Barrido de texto libre en la supresión (H-3, H-4 y siguientes)
 
-**Versión:** 1.1
+**Versión:** 1.2
+**Cambio v1.1 → v1.2 (2026-11-07, respuesta jurídica):** §14. La PQR gana reloj propio (D-BT-14) y el estrato anonimizado pasa de `1` a `NULL` (D-BT-15), con [ADR-104](../adrs/ADR-104-Enmienda-ADR-094-D7-Retencion-PQR-y-Veracidad.md). R-11 y el resto de R-14 no cambian: ya los protege el deber de conservación. **§14 aprobada por el CTO el 2026-11-07 (puntos 11 y 12), con ADR-104.**
 **Cambio v1.0 → v1.1 (2026-11-04, revisión de B1 y B2 contra Postgres real):** dos errores de esta spec. R-14 mandaba `installation_stratum` a `NULL`, lo que viola `chk_contract_residential_stratum` y aborta la supresión de todo contrato residencial. C-1 daba por filtrado un tercer escritor que no lo está. Se añaden D-BT-13 y CA-BT-17 a 19.
 **Estado:** Aprobada. G0 del CTO el 2026-11-07: los puntos 1 a 8 de §13 como se recomendaron. **B1 y B2 se ejecutaron sin ese G0 y sin H-2 aplicado. Decisión del 2026-11-04 (§13, punto 9): se regularizan con B1c.** Eso habilita solo B1c. La Ola 1 se publicó en `90d42c7f` el 2026-11-06 por excepción del CTO, con G6.5 registrado en `84cba824`. Los puntos 1 a 8 se aprobaron el 2026-11-07: se abre la Ola 2. El barrido sigue bloqueando G7 hasta su cierre y las respuestas del abogado (§13, punto 10).
 **Fecha:** 2026-11-03, revisada el 2026-11-04
@@ -274,8 +275,55 @@ Sin revisar y sin tocar. MOD14 debe clasificarlas antes de su G7: D-BT-10 lo for
 **G0 del 2026-11-07:** puntos 1 a 8 aprobados como se recomendaron.
 
 9. **Ejecución adelantada. Decidido el 2026-11-04: regularizar con B1c, sin revertir.** No aprueba los puntos 1 a 8. Actualizado el 2026-11-04: la regla de H-2 (`crm_lifecycle_changes.note_encrypted`) está en el árbol: el CTO confirmó que lanzó H-2 B1. Su G0 quedó registrado el 2026-11-04 en la spec H-2, y salió publicada en el mismo commit `90d42c7f`.
-10. **⚠ Preguntas para el abogado**, que no bloquean la construcción y sí producción. Esta spec no es una conclusión jurídica:
+10. **⚠ Preguntas para el abogado**, que no bloquean la construcción y sí producción. Esta spec no es una conclusión jurídica. **2026-11-07: llegó una respuesta atribuida al abogado, sin firma.** Concluye conservar el texto de PQR con la identidad disociada, conservar `subscriber_tax_assignments.reason`, conservar `transferred_to` y `response_text` con datos identificativos enmascarados, y conservar ciudad, departamento y estrato. La contrastación de AI-EM-ARCH halló citas erróneas: «CUS» por CUN, la excepción de supresión atribuida a los arts. 9 y 10 de la Ley 1581 (está en el art. 9 del Decreto 1377 de 2013), art. 10 lit. b (datos públicos) para soportes tributarios, una definición de dato anonimizado en el art. 2.2.2.25.1.3 del Decreto 1074 que no existe allí, y el art. 476 del ET con estratos 1 a 3 (hoy estrato 3; los estratos 1 y 2 están en el art. 481). **No es dictamen hasta que el abogado la firme y corrija esas citas**; no cambia ninguna regla todavía. **Segunda respuesta, 2026-11-07, con fuentes; AI-EM-ARCH verificó las principales:** Circular Única SIC, Título III, num. 1.3.7 (conservar hasta 3 años desde la respuesta el paquete de la PQR: solicitud, anexos, respuesta, soportes, recurso y notificación) y solicitudes de terminación 3 años desde la terminación; art. 632 ET y art. 46 Ley 962 (firmeza) más art. 28 Ley 962 (10 años) para el motivo tributario; art. 343 Ley 1819 (ICA por municipio del suscriptor en el contrato). Concluye: PQR íntegra y con acceso restringido durante 3 años y anonimizada después; `reason` tributario conservado hasta 10 años si funda el tratamiento; ciudad, departamento y estrato **no** son agregados, pero estrato y municipio son soporte tributario durante la conservación. **Alerta R-14: la marca `1` fabrica un estrato exento de IVA y contraviene la veracidad (art. 4 lit. d); también afecta a `subscribers.stratum`.** Pendiente: confirmar firma del abogado y reabrir R-3 a R-6, R-11 y R-14 en una spec v1.2 con conservación diferida (enmienda de ADR-094 D7):
    - ¿El contenido de una PQR o de un ticket tiene deber de conservación propio en el régimen de usuarios de telecomunicaciones? No se verificó. D7 no tiene categoría para ello, así que aquí se anula.
    - ¿`subscriber_tax_assignments.reason` es soporte contable, con 10 años? Es «motivo auditable».
    - ¿Basta conservar en claro `response_text` y `transferred_to` como prueba, o deben reducirse?
    - ¿Conservar ciudad, departamento y estrato cabe en «agregados sin identificación» si se quisiera mantenerlos? Aquí se anulan (R-14).
+
+## 14. Ajustes tras la respuesta jurídica (v1.2)
+
+Origen: respuesta del abogado del 2026-11-07 (§13, punto 10), verificada. Se formaliza en [ADR-104](../adrs/ADR-104-Enmienda-ADR-094-D7-Retencion-PQR-y-Veracidad.md), que enmienda ADR-094 D7.
+
+**Qué ya estaba cubierto.** La supresión solo procede si `conservationDuty` (`requests.service.ts`) no encuentra un contrato abierto, una terminación de menos de 5 años ni un documento fiscal de menos de 10 años. Así, cuando R-11 y R-14 se aplican, ya venció el plazo que los hacía soporte tributario, y la solicitud de terminación (3 años) cae dentro de los 5 del contrato. Esas reglas no cambian. Lo que faltaba es una prueba que lo demuestre (CA-BT-22).
+
+### D-BT-14. PQR con reloj propio
+
+Categoría `PQR_SOPORTES` (ADR-104 E1): 3 años desde la notificación de la respuesta definitiva (`ticket_pqr_records.notified_at`; si falta, `resolved_at`). Una PQR sin respuesta también impide suprimir. `conservationDuty` suma esa condición mediante un puerto de `privacy` (`IPqrRetentionReadPort`) que implementa `assurance/privacy/`. El alcance de tickets es el mismo de D-BT-2. Para eso, el puerto de situación contractual de CRM devuelve también `contractIds` y `expedienteIds`. Si la condición se cumple, la vista previa da `CONSERVATION_DUTY` y la resolución queda en no procedente con bloqueo, como hoy. R-3 a R-6 no cambian: anonimizan cuando la supresión sí procede.
+
+### D-BT-15. El estrato anonimizado es `NULL`, nunca `1`
+
+ADR-104 E3. `subscribers.stratum` y `contracts.installation_stratum` pasan a `{ kind: 'null' }`. La migración:
+
+- añade `contracts.anonymized_at timestamptz NULL`, que el participante CRM fija al anonimizar el contrato;
+- redefine `chk_contract_residential_stratum` para aceptar `NULL` con `anonymized_at` fijado;
+- redefine `chk_subscriber_person_fields` para aceptar `stratum` en `NULL` con `anonymized_at`, sobre la versión de la 176;
+- siembra `PQR_SOPORTES` (3) y `SOLICITUDES_TITULAR` (5) en `retention_policies`;
+- en `down`, restaura los CHECK con `NOT VALID`, igual que la 176.
+
+Se retira el tipo `integer-marker` si ninguna regla lo usa. Corrige D-BT-3 (R-14) y D-BT-13, que fijaron la marca `1`.
+
+### D-BT-16. Sin otros cambios de reglas
+
+R-11, ciudad y departamento de R-14, y `data_subject_requests` quedan igual. `SOLICITUDES_TITULAR` solo se siembra: aplicarla requiere H-EXP (ADR-104 §5).
+
+### Criterios de aceptación de v1.2
+
+| CA | Criterio | Prueba |
+| --- | --- | --- |
+| CA-BT-20 | Un prospecto con una PQR notificada hace 2 años da `CONSERVATION_DUTY`; con una de hace 3 años y 1 día, procede; con una PQR sin respuesta, no procede | Integración Postgres |
+| CA-BT-21 | El alcance de PQR no toma la PQR de otro titular del mismo tenant | Integración |
+| CA-BT-22 | Un titular con documento fiscal de menos de 10 años no se suprime y conserva `subscriber_tax_assignments.reason`, estrato, ciudad y departamento | Integración |
+| CA-BT-23 | Tras suprimir, `subscribers.stratum` y `contracts.installation_stratum` son `NULL` en `RESIDENTIAL` y en `NON_RESIDENTIAL`, y `contracts.anonymized_at` está fijado; ninguna fila queda con estrato `1` por la supresión | Integración sobre migraciones reales |
+| CA-BT-24 | Los CHECK siguen rechazando estrato `NULL` en un contrato `RESIDENTIAL` o en un suscriptor natural no anonimizados | Integración |
+| CA-BT-25 | La migración sube y baja sobre la cadena completa; `retention_policies` tiene las dos categorías y el trigger impide acortarlas | Integración de migración |
+| CA-BT-26 | `--verify-only` delata un estrato `1` dejado por la versión anterior y `--apply` lo corrige | Integración |
+
+### Puntos para el G0 del CTO (v1.2)
+
+**G0 del 2026-11-07: puntos 11 y 12 aprobados; 13 y 14 quedan como acciones abiertas.**
+
+11. Aprobar ADR-104 (E1 a E3) y esta sección.
+12. Aceptar que una PQR bloquee la supresión entera durante su plazo (ADR-104 A1).
+13. Pedir al abogado la firma de su respuesta.
+14. Abrir la spec de H-EXP: anonimizar al vencer la retención, que D7 exige y no existe.

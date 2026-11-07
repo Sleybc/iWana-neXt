@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../modules/assurance/privacy/pqr-retention-read.adapter';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -502,6 +503,8 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
           provide: IContractStandingReadPort,
           useValue: {
             standing: jest.fn().mockResolvedValue({
+              contractIds: [],
+              expedienteIds: [],
               subscriberIds: [],
               openContractIds: [],
               lastTerminatedAt: null,
@@ -548,8 +551,10 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
             IPersonalDataErasurePort,
             IBillingStandingReadPort,
           ],
-          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
-            new PrivacyRequestsService(...deps),
+          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) => {
+            deps[9] = new PqrRetentionReadAdapter();
+            return new PrivacyRequestsService(...deps);
+          },
         },
       ],
     }).compile();

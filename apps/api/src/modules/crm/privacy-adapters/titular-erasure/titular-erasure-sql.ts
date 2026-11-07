@@ -24,14 +24,7 @@ export interface ErasureKeys {
 
 export interface FieldRule {
   column: string;
-  kind:
-    | 'null'
-    | 'marker'
-    | 'integer-marker'
-    | 'false'
-    | 'empty-json'
-    | 'encrypted-marker'
-    | 'legacy-hash';
+  kind: 'null' | 'marker' | 'false' | 'empty-json' | 'encrypted-marker' | 'legacy-hash';
   marker?: string;
   notNullFallback?: 'marker' | 'encrypted-marker' | 'empty-json' | 'legacy-hash';
 }
@@ -158,7 +151,6 @@ function expectedFromRule(rule: FieldRule, column: TenantColumn): ExpectedValue 
   if (rule.kind === 'marker') {
     return { kind: 'value', value: rule.marker ?? ANONYMIZED };
   }
-  if (rule.kind === 'integer-marker') return { kind: 'value', value: 1 };
   if (rule.kind === 'false') return { kind: 'value', value: false };
   if (rule.kind === 'empty-json') return { kind: 'json-empty' };
   if (rule.kind === 'encrypted-marker') {

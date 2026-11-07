@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
@@ -249,6 +250,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       effectivePermissionsService as unknown as EffectivePermissionsService,
       erasurePort as unknown as IPersonalDataErasurePort,
       { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
+      new PqrRetentionReadAdapter(),
     );
   });
 
@@ -271,6 +273,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     });
     standingPort.standing.mockReset();
     standingPort.standing.mockResolvedValue({
+      contractIds: [],
+      expedienteIds: [],
       subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: null,
@@ -372,6 +376,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   it('cierra DATOS_BLOQUEADOS al resolver la supresión tras vencer la retención', async () => {
     standingPort.standing.mockResolvedValue({
+      contractIds: [],
+      expedienteIds: [],
       subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: '2010-01-01',
@@ -542,6 +548,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   it('R3: impide resolver revocación contractual con contrato abierto y exige fundamento contractual', async () => {
     standingPort.standing.mockResolvedValue({
+      contractIds: [],
+      expedienteIds: [],
       subscriberIds: [],
       openContractIds: [suspendedContractId],
       lastTerminatedAt: null,
@@ -595,6 +603,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
 
   it('R3/R4: la retención impide resolver y el rechazo de supresión abre DATOS_BLOQUEADOS', async () => {
     standingPort.standing.mockResolvedValue({
+      contractIds: [],
+      expedienteIds: [],
       subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: '2025-01-15T00:00:00.000Z',

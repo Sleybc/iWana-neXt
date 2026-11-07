@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { QueryRunner } from 'typeorm';
+import { ticketScopePredicates } from './ticket-scope';
 import {
   anonymizeConfiguredTable,
   loadErasureKeys,
@@ -24,24 +25,15 @@ export class AssuranceTitularErasureParticipant implements TitularErasurePartici
     const columns = await readTenantColumns(qr);
     const related = (scope.relatedIds ??= {});
     const parameters: unknown[] = [];
-    const predicates: string[] = [];
-    for (const [typeColumn, refColumn, type, ids] of [
-      ['requester_type', 'requester_ref_id', 'SUBSCRIBER', scope.subscriberIds],
-      ['subject_type', 'subject_ref_id', 'SUBSCRIBER', scope.subscriberIds],
-      ['subject_type', 'subject_ref_id', 'CONTRACT', related.contractIds ?? []],
-      ['subject_type', 'subject_ref_id', 'EXPEDIENTE', scope.expedienteIds],
-    ] as const) {
-      if (
-        ids.length === 0 ||
-        !columns.has(`support_tickets.${typeColumn}`) ||
-        !columns.has(`support_tickets.${refColumn}`)
-      )
-        continue;
-      parameters.push(ids);
-      predicates.push(
-        `("${typeColumn}"::text = '${type}' AND "${refColumn}"::text = ANY($${parameters.length}::text[]))`,
-      );
-    }
+    const predicates = ticketScopePredicates(
+      {
+        subscriberIds: scope.subscriberIds,
+        contractIds: related.contractIds ?? [],
+        expedienteIds: scope.expedienteIds,
+      },
+      columns,
+      parameters,
+    );
     related.ticketIds = await selectErasureIds(
       qr,
       'support_tickets',

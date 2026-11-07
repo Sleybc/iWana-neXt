@@ -106,7 +106,7 @@ const CRM_RULES: Record<string, FieldRule[]> = {
     { column: 'phone_hash', kind: 'legacy-hash', marker: 'subscriber-phone' },
     { column: 'first_name', kind: 'marker' },
     { column: 'last_name', kind: 'marker' },
-    { column: 'stratum', kind: 'integer-marker' },
+    { column: 'stratum', kind: 'null' },
     { column: 'birth_date', kind: 'null' },
     { column: 'nit', kind: 'marker' },
     { column: 'nit_verification_digit', kind: 'null' },
@@ -143,7 +143,7 @@ const CRM_RULES: Record<string, FieldRule[]> = {
 const CONTRACT_LOCATION_RULES: FieldRule[] = [
   { column: 'installation_city', kind: 'null' },
   { column: 'installation_department', kind: 'null' },
-  { column: 'installation_stratum', kind: 'integer-marker' },
+  { column: 'installation_stratum', kind: 'null' },
   { column: 'installation_address', kind: 'null' },
   { column: 'installation_postal_code', kind: 'null' },
   { column: 'installation_notes', kind: 'null' },
@@ -597,28 +597,53 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
     const contracts =
       scope.relatedIds?.contractIds ??
       (await this.idsForContracts(qr, columns, scope.subscriberIds));
+    let contractMarkerChanges = 0;
+    let contractMarkerResidual = 0;
+    if (contracts.length > 0 && columnOf(columns, 'contracts', 'anonymized_at')) {
+      const unmarked = (await qr.query(
+        'SELECT id FROM contracts WHERE id = ANY($1::uuid[]) AND anonymized_at IS NULL FOR UPDATE',
+        [contracts],
+      )) as Array<{ id: string }>;
+      if (mode === 'apply' && unmarked.length > 0) {
+        const updatedAt = columnOf(columns, 'contracts', 'updated_at')
+          ? ", updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), date_trunc('milliseconds', updated_at) + interval '1 millisecond')"
+          : '';
+        const updated = normalizeErasureRows<{ id: string }>(
+          await qr.query(
+            `UPDATE contracts SET anonymized_at = now()${updatedAt} WHERE id = ANY($1::uuid[]) AND anonymized_at IS NULL RETURNING id`,
+            [contracts],
+          ),
+        );
+        contractMarkerChanges = updated.length;
+        if (updatedAt) for (const row of updated) updatedAtAdvanced.add(`contracts:${row.id}`);
+        const remaining = (await qr.query(
+          'SELECT id FROM contracts WHERE id = ANY($1::uuid[]) AND anonymized_at IS NULL',
+          [contracts],
+        )) as Array<{ id: string }>;
+        contractMarkerResidual = remaining.length;
+      } else contractMarkerResidual = unmarked.length;
+    }
     for (const [category, rules] of [
       ['UBICACION', CONTRACT_LOCATION_RULES],
       ['FISCAL', CONTRACT_FISCAL_RULES],
       ['COMERCIAL', CONTRACT_COMMERCIAL_RULES],
     ] as const) {
-      results.push(
-        fieldResult(
-          'contracts',
-          category,
-          await anonymizeConfiguredTable(
-            qr,
-            'contracts',
-            contracts,
-            rules,
-            columns,
-            keys,
-            mode,
-            undefined,
-            updatedAtAdvanced,
-          ),
-        ),
+      const result = await anonymizeConfiguredTable(
+        qr,
+        'contracts',
+        contracts,
+        rules,
+        columns,
+        keys,
+        mode,
+        undefined,
+        updatedAtAdvanced,
       );
+      if (category === 'UBICACION') {
+        result.changed = Math.max(result.changed, contractMarkerChanges);
+        result.residual += contractMarkerResidual;
+      }
+      results.push(fieldResult('contracts', category, result));
     }
     const contractColumns = ['vat_snapshot', 'plan_snapshot_json'].filter((column) =>
       columnOf(columns, 'contracts', column),

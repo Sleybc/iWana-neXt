@@ -1,3 +1,4 @@
+import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { ConflictException } from '@nestjs/common';
@@ -260,6 +261,7 @@ describeWithDb('Retención del suscriptor (O-1) en PostgreSQL real', () => {
       effectivePermissionsService as never,
       erasurePort as unknown as IPersonalDataErasurePort,
       { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
+      new PqrRetentionReadAdapter(),
     );
   });
 

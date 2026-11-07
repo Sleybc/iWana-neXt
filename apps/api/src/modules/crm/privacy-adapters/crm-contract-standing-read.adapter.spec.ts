@@ -16,7 +16,11 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
         .fn()
         .mockResolvedValueOnce([{ id: 'subscriber-test' }])
         .mockResolvedValueOnce([
-          { open_contract_ids: ['contract-test'], last_terminated_at: date },
+          {
+            contract_ids: ['contract-test'],
+            open_contract_ids: ['contract-test'],
+            last_terminated_at: date,
+          },
         ]);
       const result = await TenantContext.run(tenantContext, () =>
         new CrmContractStandingReadAdapter().standing('party-test', {
@@ -24,6 +28,8 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
         }),
       );
       expect(result).toEqual({
+        contractIds: ['contract-test'],
+        expedienteIds: [],
         subscriberIds: ['subscriber-test'],
         openContractIds: ['contract-test'],
         lastTerminatedAt: '2020-01-01T00:00:00.000Z',
@@ -52,6 +58,8 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
           }),
         ),
       ).toEqual({
+        contractIds: [],
+        expedienteIds: [],
         subscriberIds: ['subscriber-test'],
         openContractIds: [],
         lastTerminatedAt: null,
