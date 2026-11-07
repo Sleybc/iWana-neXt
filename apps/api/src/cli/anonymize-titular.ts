@@ -1436,9 +1436,11 @@ function loadKeys(config: ConfigService): AnonymizeTitularKeys {
   };
 }
 
-async function resolveTenantSchema(
+/** `anyStatus` es solo para `--verify-only`, de lectura: K2 cubre todo tenant registrado. */
+export async function resolveTenantSchema(
   dataSource: DataSource,
   tenantRef: string,
+  options: { anyStatus?: boolean } = {},
 ): Promise<{ schemaName: string }> {
   const uuid = isUuid(tenantRef);
   const rows = uuid
@@ -1451,7 +1453,8 @@ async function resolveTenantSchema(
         [tenantRef],
       );
   const tenant = (rows as Array<{ schema_name: string; status: string }>)[0];
-  if (!tenant || tenant.status !== 'ACTIVE' || !isValidSchemaName(tenant.schema_name)) {
+  const statusAllowed = options.anyStatus === true || tenant?.status === 'ACTIVE';
+  if (!tenant || !statusAllowed || !isValidSchemaName(tenant.schema_name)) {
     throw new AnonymizeTitularCliError('Tenant inexistente, inactivo o con schema inválido.');
   }
   return { schemaName: tenant.schema_name };
@@ -1484,7 +1487,9 @@ async function main(): Promise<void> {
   const keys = loadKeys(config);
   await AppDataSource.initialize();
   try {
-    const tenant = await resolveTenantSchema(AppDataSource, flags.tenant);
+    const tenant = await resolveTenantSchema(AppDataSource, flags.tenant, {
+      anyStatus: flags.verifyOnly,
+    });
     if (flags.verifyOnly) {
       const report = await verifyAnonymizedTenant(AppDataSource, tenant.schemaName, keys);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

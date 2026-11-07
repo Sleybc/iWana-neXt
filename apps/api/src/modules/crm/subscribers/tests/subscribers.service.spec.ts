@@ -206,6 +206,61 @@ describe('SubscribersService', () => {
       const result = (service as any).decryptSubscriberFields(subscriber);
       expect(result).toBeDefined();
     });
+
+    describe('CA-K2A-07: lectura de un titular anonimizado', () => {
+      const anonymizedAt = new Date('2026-11-01T00:00:00.000Z');
+
+      it.each([
+        ['documento en NULL', null],
+        ['marca cifrada con una clave retirada', 'marca-con-clave-retirada'],
+      ])('devuelve la constante sin descifrar ni avisar: %s', (_caso, documentNumberEncrypted) => {
+        const decryptValue = jest.spyOn(service as any, 'decryptValue');
+        const warn = jest.spyOn((service as any).logger, 'warn');
+        const subscriber = buildSubscriber({
+          anonymizedAt,
+          documentNumberEncrypted,
+          emailEncrypted: null,
+          phoneEncrypted: null,
+        });
+
+        const result = (service as any).decryptSubscriberFields(subscriber);
+
+        expect(result.documentNumber).toBe('ANONIMIZADO');
+        expect(decryptValue).not.toHaveBeenCalled();
+        expect(warn).not.toHaveBeenCalled();
+      });
+
+      it('findById entrega la constante aunque la columna esté en NULL', async () => {
+        const anonymized = buildSubscriber({
+          anonymizedAt,
+          documentNumberEncrypted: null,
+          emailEncrypted: null,
+          phoneEncrypted: null,
+        });
+        const manager = { findOne: jest.fn().mockResolvedValueOnce(anonymized) };
+        mockRunInTenantSchema.mockImplementation(async (_ds, _schema, callback) =>
+          callback({ manager }),
+        );
+
+        const result = await service.findById(anonymized.id);
+
+        expect((result as Subscriber & { documentNumber?: string }).documentNumber).toBe(
+          'ANONIMIZADO',
+        );
+      });
+
+      it('no inventa la constante en un suscriptor sin anonimizar y sin documento', () => {
+        const subscriber = buildSubscriber({
+          documentNumberEncrypted: null,
+          emailEncrypted: null,
+          phoneEncrypted: null,
+        });
+
+        const result = (service as any).decryptSubscriberFields(subscriber);
+
+        expect(result.documentNumber).toBeUndefined();
+      });
+    });
   });
 
   // ── Cálculo automático de IVA ──

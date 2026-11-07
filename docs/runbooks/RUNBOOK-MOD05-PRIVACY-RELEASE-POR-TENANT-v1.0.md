@@ -259,20 +259,30 @@ El `--apply` se ejecuta solo después de revisar el dry-run. El CLI se limita a 
 **Comandos exactos:** mantener `PII_DECRYPT_LEGACY_MFA=true` durante todo el barrido. Ejecutar por cada schema de tenant registrado, sin importar su estado, conforme a la ventana aprobada; el CLI valida el registro y la existencia del namespace:
 
 ```bash
+set -euo pipefail
 pnpm --filter @iwana/api build
+pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js \
+  --tenant "$TENANT_REF" --verify-only |
+  jq -e 'select(.residualFields == 0 and (.findings | length) == 0) | {titularesChecked, markedSubscribers, markedExpedientes, residualFields}'
 pnpm --filter @iwana/api encryption:reencrypt -- --mfa-to-pii --schema="$TENANT_SCHEMA"
 pnpm --filter @iwana/api encryption:reencrypt -- --mfa-to-pii --apply --schema="$TENANT_SCHEMA"
 pnpm --filter @iwana/api encryption:reencrypt -- --mfa-to-pii --apply --schema="$TENANT_SCHEMA"
 pnpm --filter @iwana/api encryption:reencrypt -- --verify-pii-only --schema="$TENANT_SCHEMA"
 ```
 
+**Verificación previa.** `--verify-only` de `anonymize-titular` es obligatorio por tenant antes de K2 (spec K2 anonimizados, D-K2A-5): es lo único que ve una marca cifrada de un titular anonimizado si ya está en la clave activa, y esa marca bloquearía la siguiente rotación sin que K2 la vea. El CLI sale con `0` aunque haya residuales, por eso el criterio es el `jq -e`. Aquí el criterio son los residuales, no los marcados; el Paso 6 bis conserva su exigencia de 0 marcados. Admite cualquier tenant registrado, como K2; `--apply` sigue exigiendo `ACTIVE`. Un residual en un tenant con otro status detiene K2 en ese schema y se escala, sin cambiar su status.
+
+**Dry-run sin cambios persistentes.** Por cada celda que recifraría, el dry-run ejecuta el `UPDATE` real en una transacción que siempre se revierte. `write_blocked` distinto de `0`, en totales o por objetivo, da `blocking=yes` y salida `1`: no ejecutar `--apply`, que abortaría y dejaría pendientes las celdas siguientes.
+
+**Marcas antiguas.** En esta ventana no se esperan: un residual o un `write_blocked` es parada y se escala. La remediación de D-K2A-5 es para desarrollo y ensayo, y está en el [runbook de rotación §6ter](./RUNBOOK-ENCRYPTION-KEY-ROTATION-v1.0.md).
+
 Revisar el dry-run antes de escribir; la segunda aplicación evidencia idempotencia. Para cada tenant, continuar solo si no hay errores de descifrado, los conteos del verify son cero y la segunda aplicación no recifra filas. La salida operativa solo puede contener modo, schema y conteos agregados; nunca valores, ciphertext, HMAC, claves ni IDs de fila.
 
-**Evidencia sin PII:** salida sanitizada de dry-run/apply/segunda aplicación/verify con conteos por tabla y columna, total de candidatos/recifrados, errores de descifrado y cero filas pendientes de MFA por cada tenant procesado; registrar también versión del artefacto y exit codes. El inventario de verificación debe cubrir todo schema de tenant registrado, sin importar status. Si el schema no existe en el registro o namespace, faltan tablas/objetivos o el verify no termina en cero, conservar `PII_DECRYPT_LEGACY_MFA=true` y escalar. La integración K2Δ usa 17 destinos respaldados por migraciones, con dry-run/apply y verify; no extrapolar esos conteos al tenant de release. El informe K2Δ registra 3 suites/53 pruebas enfocadas y 1 integración PostgreSQL aprobada; véase [K2Δ v1.1](../informes/INFORME-MOD05-G7-K2-v1.1.md). La corrida Turbo API posterior a K2Δ/L1 reporta sus conteos en los informes de esos bloques y no sustituye los conteos por tenant del CLI.
+**Evidencia sin PII:** conteos agregados de `--verify-only` (sin su JSON completo ni ids) y salida sanitizada de dry-run/apply/segunda aplicación/verify con conteos por tabla y columna, total de candidatos/recifrados, `write_blocked`, errores de descifrado y cero filas pendientes de MFA por cada tenant procesado; registrar también versión del artefacto y exit codes. El inventario de verificación debe cubrir todo schema de tenant registrado, sin importar status. Si el schema no existe en el registro o namespace, faltan tablas/objetivos o el verify no termina en cero, conservar `PII_DECRYPT_LEGACY_MFA=true` y escalar. La integración K2Δ usa 17 destinos respaldados por migraciones, con dry-run/apply y verify; no extrapolar esos conteos al tenant de release. El informe K2Δ registra 3 suites/53 pruebas enfocadas y 1 integración PostgreSQL aprobada; véase [K2Δ v1.1](../informes/INFORME-MOD05-G7-K2-v1.1.md). La corrida Turbo API posterior a K2Δ/L1 reporta sus conteos en los informes de esos bloques y no sustituye los conteos por tenant del CLI.
 
-**Parada:** K1/K2 no están aprobados por SEC-ENG para la ventana, clave PII ausente/no separada, bandera legado distinta de `true`, cualquier tenant registrado sin evidencia, error de descifrado, tablas/objetivos ausentes, verify distinto de cero o segunda aplicación no idempotente. No cambiar la bandera a `false` hasta que cada schema tenant registrado, cualquiera que sea su status, tenga verify cero.
+**Parada:** K1/K2 no están aprobados por SEC-ENG para la ventana, clave PII ausente/no separada, bandera legado distinta de `true`, cualquier tenant registrado sin evidencia, `--verify-only` con residuales o sin poder ejecutarse, `write_blocked` distinto de cero, error de descifrado, tablas/objetivos ausentes, verify distinto de cero o segunda aplicación no idempotente. No cambiar la bandera a `false` hasta que cada schema tenant registrado, cualquiera que sea su status, tenga verify cero.
 
-**Rollback:** dry-run no modifica. Si una aplicación falla, detener el barrido y conservar ambas familias de clave y `PII_DECRYPT_LEGACY_MFA=true`; obtener conteos/verificación antes de decidir. Ante cambios persistidos con verify incompleto, seguir el restore por tenant de §11 dentro del mecanismo aprobado. Nunca retirar claves previas ni recifrar hacia atrás como atajo.
+**Rollback:** el dry-run no deja cambios persistentes. Si una aplicación falla, detener el barrido y conservar ambas familias de clave y `PII_DECRYPT_LEGACY_MFA=true`; obtener conteos/verificación antes de decidir. Ante cambios persistidos con verify incompleto, seguir el restore por tenant de §11 dentro del mecanismo aprobado. Nunca retirar claves previas ni recifrar hacia atrás como atajo.
 
 ### Paso 6 bis — Comprobaciones de privacidad de solo lectura
 

@@ -1,9 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
-import { resolveMigrationDbCredentials } from '@iwana/db';
+import { resolveMigrationDbCredentials, runInTenantSchema } from '@iwana/db';
 import { decryptAes256Gcm, encryptAes256Gcm } from '../common/crypto/aes-gcm.util';
 import { hmacPii } from '../common/crypto/pii-hash-key.util';
+import { TypeOrmReencryptDbAdapter } from '../common/crypto/reencrypt-aes.db-adapter';
 import { anonymizeTitularInTenantSchema, verifyAnonymizedTenant } from './anonymize-titular';
+import { MfaToPiiMode, runMfaToPii } from './reencrypt-aes.pii';
 import {
   applyTenantMigrationsInOrder,
   createTenantDataSource,
@@ -13,6 +15,8 @@ const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const HASH_KEY = Buffer.from('26'.repeat(32), 'hex');
 const ENCRYPTION_KEY = Buffer.from('37'.repeat(32), 'hex');
+const RETIRED_ENCRYPTION_KEY = Buffer.from('48'.repeat(32), 'hex');
+const MFA_SOURCE_KEY = Buffer.from('59'.repeat(32), 'hex');
 const KEYS = {
   hashKey: HASH_KEY,
   activeEncryptionKey: ENCRYPTION_KEY,
@@ -358,6 +362,122 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
   afterAll(async () => {
     if (dataSource?.isInitialized) await dataSource.destroy();
   });
+
+  /**
+   * Titular suprimido por el CLI sobre la cadena migrada, con el CHECK real, y con la marca que
+   * dejaba el borrado anterior a la 176. Solo esa celda se simula: el resto es la fila real, y el
+   * trigger se suspende en la transacción de la siembra porque la marca ya no se puede escribir.
+   */
+  async function withLegacyMarkerTitular(
+    markerKey: Buffer,
+    assertions: (titular: {
+      schema: string;
+      requestId: string;
+      subscriberId: string;
+      readDocument: () => Promise<unknown>;
+      runK2: (mode: MfaToPiiMode) => ReturnType<typeof runMfaToPii>;
+    }) => Promise<void>,
+  ): Promise<void> {
+    const schema = `tenant_anonymize_k2_${randomBytes(5).toString('hex')}`;
+    const q = quoteIdentifier(schema);
+    const tenantId = randomUUID();
+    const partyId = randomUUID();
+    const subscriberId = randomUUID();
+    const requestId = randomUUID();
+    const actorId = randomUUID();
+    const migrationDataSource = createTenantDataSource(dataSource, schema, `anonymize-${schema}`);
+
+    try {
+      await dataSource.query(
+        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+         VALUES ($1, 'Anonymize K2 synthetic fixture', $2, $3, 'ACTIVE', 'anonymize-it@example.invalid')`,
+        [tenantId, `anonymize-${schema.slice(-10)}`, schema],
+      );
+      await dataSource.query(`CREATE SCHEMA ${q}`);
+      await migrationDataSource.initialize();
+      try {
+        await applyTenantMigrationsInOrder(migrationDataSource);
+      } finally {
+        await migrationDataSource.destroy();
+      }
+
+      await dataSource.query(
+        `INSERT INTO ${q}.party
+          (id, party_type, document_type, document_number, display_name)
+         VALUES ($1, 'NATURAL', 'CC', $2, 'Titular sintético')`,
+        [partyId, encryptAes256Gcm('synthetic-party-document', ENCRYPTION_KEY)],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.subscribers
+          (id, tenant_id, party_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, email_encrypted,
+           phone_encrypted, vat_treatment, tax_regime, vat_responsibility, address, created_by)
+         VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', $4,
+           'Nombre sintético', 'Apellido sintético', 2, $5, $6, 'STANDARD', 'COMMON',
+           'RESPONSABLE', 'Dirección sintética', $7)`,
+        [
+          subscriberId,
+          tenantId,
+          partyId,
+          encryptAes256Gcm('synthetic-subscriber-document', ENCRYPTION_KEY),
+          encryptAes256Gcm('synthetic-email', ENCRYPTION_KEY),
+          encryptAes256Gcm('synthetic-phone', ENCRYPTION_KEY),
+          actorId,
+        ],
+      );
+      await dataSource.query(
+        `INSERT INTO ${q}.data_subject_requests
+          (id, party_id, requester_kind, identity_verification_method, identity_verified_at,
+           identity_verified_by, kind, "right", status, received_at, due_at, complete_at,
+           erased_at, erasure_categories)
+         VALUES ($1, $2, 'TITULAR', 'DOCUMENTO_PRESENCIAL', now(), $3,
+           'CONSULTA', 'SUPRIMIR', 'RESUELTA', now(), CURRENT_DATE + 30, now(),
+           now(), ARRAY['IDENTIFICACION']::text[])`,
+        [requestId, partyId, actorId],
+      );
+      await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
+
+      await runInTenantSchema(dataSource, schema, async (queryRunner) => {
+        await queryRunner.query(
+          'ALTER TABLE subscribers DISABLE TRIGGER trg_subscribers_prevent_anonymized_mutation',
+        );
+        await queryRunner.query(
+          'UPDATE subscribers SET document_number_encrypted = $2 WHERE id = $1',
+          [subscriberId, encryptAes256Gcm('ANONIMIZADO', markerKey)],
+        );
+        await queryRunner.query(
+          'ALTER TABLE subscribers ENABLE TRIGGER trg_subscribers_prevent_anonymized_mutation',
+        );
+      });
+
+      await assertions({
+        schema,
+        requestId,
+        subscriberId,
+        readDocument: async () => {
+          const rows = (await dataSource.query(
+            `SELECT document_number_encrypted FROM ${q}.subscribers WHERE id = $1`,
+            [subscriberId],
+          )) as Array<{ document_number_encrypted: string | null }>;
+          return rows[0]?.document_number_encrypted;
+        },
+        runK2: (mode) =>
+          runMfaToPii(new TypeOrmReencryptDbAdapter(dataSource), {
+            mode,
+            schemaFilter: schema,
+            eligibleTenantSchemas: [schema],
+            keys: {
+              piiActiveKey: ENCRYPTION_KEY,
+              piiPreviousKey: RETIRED_ENCRYPTION_KEY,
+              mfaKeys: [MFA_SOURCE_KEY],
+            },
+          }),
+      });
+    } finally {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    }
+  }
 
   it('remedia notas previas en una solicitud resuelta usando las migraciones reales', async () => {
     const schema = `tenant_anonymize_cli_${randomBytes(5).toString('hex')}`;
@@ -1423,4 +1543,91 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
     }
   });
+
+  // CA-K2A-06 (D-K2A-5): remediación de una marca anterior a la 176, cifrada con clave retirada.
+  it('el verificador reporta la marca antigua, el CLI la deja en NULL y K2 verifica en 0', async () => {
+    await withLegacyMarkerTitular(
+      RETIRED_ENCRYPTION_KEY,
+      async ({ schema, requestId, subscriberId, readDocument, runK2 }) => {
+        const before = await verifyAnonymizedTenant(dataSource, schema, KEYS);
+        expect(before.findings).toEqual([
+          {
+            titularIds: [subscriberId],
+            residualFields: 1,
+            tables: [{ table: 'subscribers', residualFields: 1 }],
+          },
+        ]);
+        const dryRunBefore = await runK2('dry-run');
+        expect(dryRunBefore.totals.writeBlocked).toBe(1);
+        expect(dryRunBefore.hasBlockingIssues).toBe(true);
+
+        const report = await anonymizeTitularInTenantSchema(
+          dataSource,
+          schema,
+          requestId,
+          [],
+          false,
+          KEYS,
+          'apply',
+        );
+        expect(report.verification.residualFields).toBe(0);
+        expect(await readDocument()).toBeNull();
+
+        const after = await verifyAnonymizedTenant(dataSource, schema, KEYS);
+        expect(after.residualFields).toBe(0);
+        expect(after.findings).toEqual([]);
+
+        const dryRunAfter = await runK2('dry-run');
+        expect(dryRunAfter.totals.writeBlocked).toBe(0);
+        expect(dryRunAfter.hasBlockingIssues).toBe(false);
+        const verification = await runK2('verify-pii-only');
+        expect(verification.hasBlockingIssues).toBe(false);
+        expect(verification.totals.pending).toBe(0);
+        expect(verification.totals.piiPreviousRemaining).toBe(0);
+
+        await expect(
+          runInTenantSchema(dataSource, schema, (queryRunner) =>
+            queryRunner.query('UPDATE subscribers SET updated_at = now() WHERE id = $1', [
+              subscriberId,
+            ]),
+          ),
+        ).rejects.toMatchObject({ driverError: expect.objectContaining({ code: '55000' }) });
+      },
+    );
+  }, 180_000);
+
+  // CA-K2A-13 (D-K2A-6, «Límite»): K2 no ve esta marca; bloquearía la siguiente rotación.
+  it('una marca ya cifrada con la clave activa pasa K2 y solo el verificador la delata', async () => {
+    await withLegacyMarkerTitular(
+      ENCRYPTION_KEY,
+      async ({ schema, subscriberId, readDocument, runK2 }) => {
+        const marker = await readDocument();
+        expect(marker).toEqual(expect.any(String));
+
+        const dryRun = await runK2('dry-run');
+        expect(dryRun.totals.writeBlocked).toBe(0);
+        expect(dryRun.hasBlockingIssues).toBe(false);
+        expect(
+          dryRun.targets.find(
+            ({ entityType }) => entityType === 'subscriber.documentNumberEncrypted',
+          ),
+        ).toMatchObject({ candidates: 1, skippedAlreadyPii: 1, reencrypted: 0, writeBlocked: 0 });
+
+        const verification = await runK2('verify-pii-only');
+        expect(verification.hasBlockingIssues).toBe(false);
+        expect(verification.totals.pending).toBe(0);
+        expect(verification.totals.piiPreviousRemaining).toBe(0);
+
+        const residuals = await verifyAnonymizedTenant(dataSource, schema, KEYS);
+        expect(residuals.findings).toEqual([
+          {
+            titularIds: [subscriberId],
+            residualFields: 1,
+            tables: [{ table: 'subscribers', residualFields: 1 }],
+          },
+        ]);
+        expect(await readDocument()).toBe(marker);
+      },
+    );
+  }, 180_000);
 });

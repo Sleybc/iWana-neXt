@@ -214,7 +214,6 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
     'potential_leads.phone_encrypted',
   ],
   'apps/api/src/modules/crm/privacy-adapters/titular-erasure/titular-erasure-sql.ts': [
-    'subscribers.document_number_encrypted',
     'subscribers.email_encrypted',
     'subscribers.phone_encrypted',
     'expediente_records.document_number_encrypted',

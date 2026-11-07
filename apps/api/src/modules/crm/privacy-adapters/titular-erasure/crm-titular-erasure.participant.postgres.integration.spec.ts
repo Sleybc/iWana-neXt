@@ -7,7 +7,9 @@ import {
   createTenantDataSource,
   TENANT_MIGRATIONS,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
+import * as erasureSql from './titular-erasure-sql';
 import type { ErasureKeys } from './titular-erasure-sql';
+import type { TitularErasureTableResult } from './titular-erasure.types';
 import { CrmTitularErasureParticipant } from './crm-titular-erasure.participant';
 
 const integrationEnabled = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -184,5 +186,158 @@ describeWithDb('B1c — supresión CRM sobre migraciones tenant reales', () => {
         installation_stratum: 1,
       },
     ]);
+  });
+
+  describe('D-K2A-1 y D-K2A-3 — el documento queda en NULL y la fila se marca antes', () => {
+    interface SubscriberState {
+      document_number_encrypted: string | null;
+      first_name: string | null;
+      anonymized_at: Date | null;
+    }
+
+    function requireQueryRunner(): QueryRunner {
+      if (!queryRunner) throw new Error('QueryRunner de integración no inicializado.');
+      return queryRunner;
+    }
+
+    async function insertNatural(): Promise<string> {
+      const id = randomUUID();
+      await requireQueryRunner().query(
+        `INSERT INTO subscribers (
+           id, tenant_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum,
+           email_encrypted, phone_encrypted, vat_treatment, tax_regime,
+           address, created_by
+         ) VALUES (
+           $1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', 'synthetic-encrypted',
+           'Fixture', 'K2A', 3, 'synthetic-email', 'synthetic-phone',
+           'STANDARD', 'SIMPLIFIED', 'Dirección sintética', $3
+         )`,
+        [id, tenantId, actorId],
+      );
+      return id;
+    }
+
+    async function insertJuridica(): Promise<string> {
+      const id = randomUUID();
+      await requireQueryRunner().query(
+        `INSERT INTO subscribers (
+           id, tenant_id, person_type, customer_segment, nit, business_name,
+           email_encrypted, phone_encrypted, vat_treatment, tax_regime,
+           address, created_by
+         ) VALUES (
+           $1, $2, 'JURIDICA', 'PYME', '900000000', 'Empresa sintética',
+           'synthetic-email', 'synthetic-phone', 'STANDARD', 'SIMPLIFIED',
+           'Dirección sintética', $3
+         )`,
+        [id, tenantId, actorId],
+      );
+      return id;
+    }
+
+    async function readState(id: string): Promise<SubscriberState> {
+      const rows = (await requireQueryRunner().query(
+        `SELECT document_number_encrypted, first_name, anonymized_at
+           FROM subscribers WHERE id = $1`,
+        [id],
+      )) as SubscriberState[];
+      const [row] = rows;
+      if (!row) throw new Error('El suscriptor de la prueba no existe.');
+      return row;
+    }
+
+    async function erase(id: string): Promise<TitularErasureTableResult[]> {
+      const runner = requireQueryRunner();
+      const participant = new CrmTitularErasureParticipant(
+        new ConfigService({ PII_HASH_KEY: keys.hashKey.toString('hex') }),
+      );
+      await runner.startTransaction();
+      try {
+        await runner.query(`SELECT set_config('iwana.titular_erasure', 'on', true)`);
+        const results = await participant.apply(
+          {
+            partyId: null,
+            subscriberIds: [id],
+            expedienteIds: [],
+            userIds: [],
+            requestId: randomUUID(),
+            cryptoKeys: keys,
+          },
+          runner,
+          'apply',
+        );
+        await runner.commitTransaction();
+        return results;
+      } catch (error) {
+        await runner.rollbackTransaction();
+        throw error;
+      }
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('CA-K2A-01 deja en NULL el documento de un titular natural, con marca y sin residuos', async () => {
+      const id = await insertNatural();
+
+      const results = await erase(id);
+
+      const state = await readState(id);
+      expect(state.document_number_encrypted).toBeNull();
+      expect(state.anonymized_at).toBeInstanceOf(Date);
+      expect(results.find((result) => result.table === 'subscribers')).toMatchObject({
+        selected: 1,
+        changed: 1,
+        residual: 0,
+      });
+      expect(results.filter((result) => result.residual !== 0)).toEqual([]);
+    });
+
+    it('CA-K2A-01 no escribe marca cifrada en un titular jurídico sin documento', async () => {
+      const id = await insertJuridica();
+
+      const results = await erase(id);
+
+      const state = await readState(id);
+      expect(state.document_number_encrypted).toBeNull();
+      expect(state.anonymized_at).toBeInstanceOf(Date);
+      expect(results.filter((result) => result.residual !== 0)).toEqual([]);
+    });
+
+    it('D-K2A-3 marca antes de anular y avanza la versión una sola vez', async () => {
+      const id = await insertNatural();
+      const query = jest.spyOn(requireQueryRunner(), 'query');
+
+      await erase(id);
+
+      const updates = query.mock.calls
+        .map(([sql]) => String(sql))
+        .filter((sql) => /^\s*UPDATE "subscribers"/u.test(sql));
+      expect(updates).toHaveLength(2);
+      expect(updates[0]).toContain('anonymized_at = COALESCE');
+      expect(updates[0]).toContain('updated_at');
+      expect(updates[1]).toContain('"document_number_encrypted" = ');
+      expect(updates[1]).not.toContain('updated_at');
+    });
+
+    it('CA-K2A-01 con el orden invertido falla con 23514 y no aplica nada', async () => {
+      const id = await insertNatural();
+      const before = await readState(id);
+      const markAnonymizedRows = erasureSql.markAnonymizedRows;
+      jest
+        .spyOn(erasureSql, 'markAnonymizedRows')
+        .mockImplementation(async (qr, table, ids, ...rest) =>
+          table === 'subscribers'
+            ? { changed: 0, residual: 0 }
+            : markAnonymizedRows(qr, table, ids, ...rest),
+        );
+
+      await expect(erase(id)).rejects.toMatchObject({
+        driverError: { code: '23514', constraint: 'chk_subscriber_person_fields' },
+      });
+
+      expect(await readState(id)).toEqual(before);
+    });
   });
 });

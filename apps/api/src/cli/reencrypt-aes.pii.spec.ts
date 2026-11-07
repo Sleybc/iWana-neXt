@@ -4,12 +4,12 @@ import {
   parseEncryptionKeyHex,
 } from '../common/crypto/aes-gcm.util';
 import { EncryptedColumnTarget } from '../common/crypto/reencrypt-aes.targets';
-import { ReencryptDbPort } from '../common/crypto/reencrypt-aes.orchestrator';
 import {
   formatMfaToPiiReport,
   listEligiblePiiTenantSchemas,
   loadMfaToPiiKeys,
   PII_ENCRYPTED_TARGETS,
+  PiiReencryptDbPort,
   runMfaToPii,
 } from './reencrypt-aes.pii';
 
@@ -27,8 +27,12 @@ const target: EncryptedColumnTarget = {
   requireCiphertextShape: true,
 };
 
-class MemoryDb implements ReencryptDbPort {
+class MemoryDb implements PiiReencryptDbPort {
   readonly updates: Array<{ table: string; id: string; value: string }> = [];
+  readonly probes: Array<{ table: string; id: string; value: string }> = [];
+  /** SQLSTATE que la sonda devuelve para una fila, por id. */
+  readonly blockedWrites = new Map<string, string>();
+  probeFailure: Error | null = null;
   private readonly rows = new Map<string, Array<{ id: string; value: string | null }>>();
   readonly missingTables = new Set<string>();
 
@@ -78,6 +82,17 @@ class MemoryDb implements ReencryptDbPort {
     const row = rows.find((candidate) => candidate.id === id);
     if (row) row.value = newCiphertext;
     this.updates.push({ table: selectedTarget.table, id, value: newCiphertext });
+  }
+
+  async probeEncryptedWrite(
+    _schemaName: string,
+    selectedTarget: EncryptedColumnTarget,
+    id: string,
+    newCiphertext: string,
+  ): Promise<string | null> {
+    this.probes.push({ table: selectedTarget.table, id, value: newCiphertext });
+    if (this.probeFailure) throw this.probeFailure;
+    return this.blockedWrites.get(id) ?? null;
   }
 
   getRows(table: string, column: string): Array<{ id: string; value: string | null }> {
@@ -293,5 +308,181 @@ describe('reencrypt-aes PII inventory and runner', () => {
     await expect(listEligiblePiiTenantSchemas(duplicateRows, 'tenant_k2_inactive')).rejects.toThrow(
       'Schema tenant no registrado, sin namespace o no elegible para K2.',
     );
+  });
+});
+
+describe('reencrypt-aes PII — sonda de escritura del dry-run (D-K2A-6)', () => {
+  const phoneTarget: EncryptedColumnTarget = {
+    ...target,
+    entityType: 'subscriber.phoneEncrypted',
+    column: 'phone_encrypted',
+  };
+
+  function legacyCell(id: string): { id: string; value: string } {
+    return { id, value: encryptAes256Gcm('synthetic-legacy-cell', MFA_KEY) };
+  }
+
+  it('cuenta writeBlocked por objetivo y en totales, y lo suma a pending sin duplicar la celda', async () => {
+    const blocked = legacyCell('row-blocked');
+    const db = new MemoryDb([
+      {
+        table: 'subscribers',
+        column: 'email_encrypted',
+        rows: [blocked, legacyCell('row-writable')],
+      },
+    ]);
+    db.blockedWrites.set('row-blocked', '55000');
+
+    const report = await runMfaToPii(db, { mode: 'dry-run', keys, targets: [target] });
+
+    expect(report.targets[0]).toMatchObject({
+      candidates: 2,
+      reencrypted: 1,
+      writeBlocked: 1,
+      writeBlockedBySqlState: { '55000': 1 },
+    });
+    expect(report.totals).toMatchObject({ candidates: 2, reencrypted: 1, writeBlocked: 1 });
+    expect(report.totals.pending).toBe(2);
+    expect(report.hasBlockingIssues).toBe(true);
+  });
+
+  it('la sonda no persiste nada y ensaya un ciphertext que abre con la clave activa', async () => {
+    const cell = legacyCell('row-1');
+    const db = new MemoryDb([{ table: 'subscribers', column: 'email_encrypted', rows: [cell] }]);
+
+    const report = await runMfaToPii(db, { mode: 'dry-run', keys, targets: [target] });
+
+    expect(report.hasBlockingIssues).toBe(false);
+    expect(report.totals).toMatchObject({ reencrypted: 1, writeBlocked: 0, pending: 1 });
+    expect(db.updates).toHaveLength(0);
+    expect(db.getRows('subscribers', 'email_encrypted')[0]?.value).toBe(cell.value);
+    expect(db.probes).toHaveLength(1);
+    expect(db.probes[0]).toMatchObject({ table: 'subscribers', id: 'row-1' });
+    expect(decryptAes256Gcm(db.probes[0]!.value, PII_KEY)).toBe('synthetic-legacy-cell');
+  });
+
+  it('sondea cada celda que recifraría, también de PII previa y por páginas', async () => {
+    const previous = {
+      id: 'row-previous',
+      value: encryptAes256Gcm('synthetic-previous', PII_PREVIOUS_KEY),
+    };
+    const db = new MemoryDb([
+      {
+        table: 'subscribers',
+        column: 'email_encrypted',
+        rows: [legacyCell('row-mfa'), previous],
+      },
+    ]);
+
+    await runMfaToPii(db, { mode: 'dry-run', pageSize: 1, keys, targets: [target] });
+
+    expect(db.probes.map((probe) => probe.id)).toEqual(['row-mfa', 'row-previous']);
+  });
+
+  it('no sondea skipped_pii: una marca en la clave activa pasa con write_blocked=0 (límite v1.1)', async () => {
+    const db = new MemoryDb([
+      {
+        table: 'subscribers',
+        column: 'email_encrypted',
+        rows: [{ id: 'row-active', value: encryptAes256Gcm('synthetic-marker', PII_KEY) }],
+      },
+    ]);
+    db.blockedWrites.set('row-active', '55000');
+
+    const report = await runMfaToPii(db, { mode: 'dry-run', keys, targets: [target] });
+
+    expect(db.probes).toHaveLength(0);
+    expect(report.totals).toMatchObject({ skippedAlreadyPii: 1, writeBlocked: 0 });
+    expect(report.hasBlockingIssues).toBe(false);
+  });
+
+  it('no sondea lo que K2 no recifraría: texto claro ni celdas que ninguna clave abre', async () => {
+    const unknownKey = parseEncryptionKeyHex('1122334455667788'.repeat(4));
+    const db = new MemoryDb([
+      {
+        table: 'subscribers',
+        column: 'email_encrypted',
+        rows: [
+          { id: 'row-plain', value: 'synthetic' },
+          { id: 'row-unknown', value: encryptAes256Gcm('synthetic', unknownKey) },
+        ],
+      },
+    ]);
+
+    const report = await runMfaToPii(db, { mode: 'dry-run', keys, targets: [target] });
+
+    expect(db.probes).toHaveLength(0);
+    expect(report.totals).toMatchObject({ nonCiphertext: 1, decryptErrors: 1, writeBlocked: 0 });
+  });
+
+  it.each(['apply', 'verify-pii-only'] as const)('%s no llama a la sonda', async (mode) => {
+    const db = new MemoryDb([
+      { table: 'subscribers', column: 'email_encrypted', rows: [legacyCell('row-1')] },
+    ]);
+    db.blockedWrites.set('row-1', '55000');
+
+    const report = await runMfaToPii(db, { mode, keys, targets: [target] });
+
+    expect(db.probes).toHaveLength(0);
+    expect(report.totals.writeBlocked).toBe(0);
+  });
+
+  it('propaga un error no SQL de la sonda en vez de contarlo como bloqueo', async () => {
+    const db = new MemoryDb([
+      { table: 'subscribers', column: 'email_encrypted', rows: [legacyCell('row-1')] },
+    ]);
+    const failure = new Error('synthetic-connection-failure');
+    db.probeFailure = failure;
+
+    await expect(runMfaToPii(db, { mode: 'dry-run', keys, targets: [target] })).rejects.toBe(
+      failure,
+    );
+  });
+
+  it('el reporte agrega write_blocked por SQLSTATE y objetivo, sin valores ni ids', async () => {
+    const cells = [legacyCell('row-sentinel-a'), legacyCell('row-sentinel-b')];
+    const phoneCell = legacyCell('row-sentinel-c');
+    const db = new MemoryDb([
+      { table: 'subscribers', column: 'email_encrypted', rows: cells },
+      { table: 'subscribers', column: 'phone_encrypted', rows: [phoneCell] },
+    ]);
+    db.blockedWrites.set('row-sentinel-a', '55000');
+    db.blockedWrites.set('row-sentinel-b', '23514');
+    db.blockedWrites.set('row-sentinel-c', '55000');
+
+    const report = await runMfaToPii(db, {
+      mode: 'dry-run',
+      keys,
+      targets: [target, phoneTarget],
+    });
+    const output = formatMfaToPiiReport(report);
+    const lines = output.split('\n');
+
+    expect(lines.find((line) => line.includes(' totals '))).toContain('write_blocked=3');
+    const emailLine = lines.find((line) => line.includes('subscriber.emailEncrypted:'));
+    expect(emailLine).toContain('write_blocked=2 write_blocked_23514=1 write_blocked_55000=1');
+    const phoneLine = lines.find((line) => line.includes('subscriber.phoneEncrypted:'));
+    expect(phoneLine).toContain('write_blocked=1 write_blocked_55000=1');
+    expect(phoneLine).not.toContain('write_blocked_23514');
+    expect(output).toContain('blocking=yes');
+
+    expect(output).not.toContain('row-sentinel');
+    expect(output).not.toContain('synthetic');
+    for (const cell of [...cells, phoneCell]) expect(output).not.toContain(cell.value);
+    for (const probe of db.probes) expect(output).not.toContain(probe.value);
+  });
+
+  it('sin bloqueos el reporte dice write_blocked=0 y no emite agregados por SQLSTATE', async () => {
+    const db = new MemoryDb([
+      { table: 'subscribers', column: 'email_encrypted', rows: [legacyCell('row-1')] },
+    ]);
+
+    const output = formatMfaToPiiReport(
+      await runMfaToPii(db, { mode: 'dry-run', keys, targets: [target] }),
+    );
+
+    expect(output).toContain('write_blocked=0');
+    expect(output).not.toMatch(/write_blocked_/u);
+    expect(output).toContain('blocking=no');
   });
 });

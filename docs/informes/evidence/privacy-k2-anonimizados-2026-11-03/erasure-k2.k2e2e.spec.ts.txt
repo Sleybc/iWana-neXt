@@ -1,0 +1,711 @@
+/* Runner desechable de la spec K2/anonimizados (2026-11-03). Base iwana_it_g7_k2spec; datos sintéticos. */
+import { appendFileSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { ConfigService } from '@nestjs/config';
+import { Test } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { resolveMigrationDbCredentials, runInTenantSchema, TenantContext } from '@iwana/db';
+import { DataSource } from 'typeorm';
+import { AccessPermissionKey, DocumentTypeParty, normalizeDocumentNumber } from '@iwana/shared';
+import { hmacPii } from 'C:/appiw/apps/api/src/common/crypto/pii-hash-key.util';
+import {
+  decryptAes256Gcm,
+  encryptAes256Gcm,
+  parseEncryptionKeyHex,
+} from 'C:/appiw/apps/api/src/common/crypto/aes-gcm.util';
+import { TypeOrmReencryptDbAdapter } from 'C:/appiw/apps/api/src/common/crypto/reencrypt-aes.db-adapter';
+import {
+  formatMfaToPiiReport,
+  PII_ENCRYPTED_TARGETS,
+  runMfaToPii,
+} from 'C:/appiw/apps/api/src/cli/reencrypt-aes.pii';
+import { AuditService } from 'C:/appiw/apps/api/src/modules/audit/audit.service';
+import { EffectivePermissionsService } from 'C:/appiw/apps/api/src/modules/access-control/services/effective-permissions.service';
+import { MediaService } from 'C:/appiw/apps/api/src/modules/media/media.service';
+import { CrmPersonalDataErasureAdapter } from 'C:/appiw/apps/api/src/modules/crm/privacy-adapters/crm-personal-data-erasure.adapter';
+import { CrmTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
+import { PartyTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/parties/privacy/party-titular-erasure.participant';
+import { UserAccountErasureParticipant } from 'C:/appiw/apps/api/src/modules/users/privacy/user-account-erasure.participant';
+import { WfmTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/wfm/privacy/wfm-titular-erasure.participant';
+import { ExecutionOrderTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/tasks/privacy/execution-order-titular-erasure.participant';
+import { OperationalTaskTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/tasks/privacy/operational-task-titular-erasure.participant';
+import { MediaTitularErasureParticipant } from 'C:/appiw/apps/api/src/modules/media/privacy/media-titular-erasure.participant';
+import { IContractImpersonationPort } from 'C:/appiw/apps/api/src/modules/privacy/ports/contract-impersonation.port';
+import { IPersonalDataErasurePort } from 'C:/appiw/apps/api/src/modules/privacy/ports/personal-data-erasure.port';
+import { IContractStandingReadPort } from 'C:/appiw/apps/api/src/modules/privacy/requests/ports/contract-standing-read.port';
+import { PrivacyRequestsService } from 'C:/appiw/apps/api/src/modules/privacy/requests/requests.service';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from 'C:/appiw/packages/database/src/migrations/tenant/runner';
+
+const OUT = process.env['K2_EVIDENCE'] as string;
+const log = (step: string, data: unknown) => {
+  appendFileSync(OUT, `${JSON.stringify({ step, data })}\n`);
+};
+const M = '0123456789abcdef'.repeat(4);
+const K1 = '89abcdef01234567'.repeat(4);
+const K2 = '76543210fedcba98'.repeat(4);
+const K3 = 'fedcba9876543210'.repeat(4);
+const H = 'abcdef0123456789'.repeat(4);
+const k = (hex: string) => parseEncryptionKeyHex(hex);
+const MFA_MODE = process.env['K2_ERASURE_KEY'] === 'mfa';
+const ERASURE_KEY = MFA_MODE ? M : K1;
+const schemaName = `tenant_k2e2e_${randomBytes(4).toString('hex')}`;
+const q = `"${schemaName}"`;
+const tenantId = randomUUID();
+const actorId = randomUUID();
+const ids = {
+  liveLow: '00000000-0000-4000-8000-000000000001',
+  natural: '50000000-0000-4000-8000-000000000002',
+  juridica: '60000000-0000-4000-8000-000000000003',
+  liveHigh: 'f0000000-0000-4000-8000-000000000004',
+  partyNatural: randomUUID(),
+  partyJuridica: randomUUID(),
+  expediente: randomUUID(),
+  contract: randomUUID(),
+};
+const naturalDocument = '90000123';
+const juridicaDocument = '900000123';
+
+describe('K2 sobre borrado real', () => {
+  let ds: DataSource;
+  let boot: DataSource;
+  let app: DataSource;
+  let service: PrivacyRequestsService;
+  const config = {
+    getOrThrow: (key: string) => {
+      if (key === 'MFA_ENCRYPTION_KEY') return M;
+      if (key === 'PII_HASH_KEY') return H;
+      throw new Error('Clave sintética no configurada.');
+    },
+    get: (key: string) => (key === 'PII_ENCRYPTION_KEY' && !MFA_MODE ? K1 : undefined),
+  } as unknown as ConfigService;
+  const inTenant = <T>(op: () => Promise<T>) =>
+    TenantContext.run({ tenantId, schemaName, tenantSlug: 'k2e2e' }, op);
+  const conn = (username: string, password: string) =>
+    new DataSource({
+      type: 'postgres',
+      host: process.env['DB_HOST'],
+      port: Number(process.env['DB_PORT']),
+      username,
+      password,
+      database: process.env['DB_NAME'],
+      entities: [],
+      migrations: [],
+      synchronize: false,
+      logging: false,
+      extra: { max: 3, min: 1 },
+    });
+
+  async function suppress(partyId: string, docType: DocumentTypeParty, doc: string) {
+    const created = await inTenant(() =>
+      service.create(
+        {
+          kind: 'CONSULTA',
+          right: 'SUPRIMIR',
+          partyId,
+          requesterKind: 'TITULAR',
+          requesterName: 'Titular ficticio',
+          requesterDocumentType: docType,
+          requesterDocument: doc,
+          requesterContact: 'titular@example.invalid',
+          identityVerificationMethod: 'DOCUMENTO_PRESENCIAL',
+        } as never,
+        actorId,
+      ),
+    );
+    await inTenant(() => service.transition(created.request.id, 'complete', {}, actorId));
+    const preview = await inTenant(() => service.erasurePreview(created.request.id));
+    log('preview', {
+      eligible: preview.eligible,
+      blockers: preview.blockers,
+      expedientes: preview.candidateExpedienteIds.length,
+    });
+    await inTenant(() =>
+      service.transition(
+        created.request.id,
+        'resolve',
+        {
+          responseText: 'Supresión aplicada en la integración.',
+          responseChannel: 'EMAIL',
+          erasure: { confirm: true, expedienteIds: preview.candidateExpedienteIds },
+        } as never,
+        actorId,
+      ),
+    );
+    return created.request.id;
+  }
+
+  beforeAll(async () => {
+    if (!/^iwana_it_g7_/u.test(process.env['DB_NAME'] ?? '')) {
+      throw new Error('DB_NAME no desechable');
+    }
+    const c = resolveMigrationDbCredentials();
+    ds = conn(c.username, c.password);
+    await ds.initialize();
+    boot = conn(process.env['DB_BOOTSTRAP_USER'] as string, process.env['DB_BOOTSTRAP_PASSWORD'] as string);
+    await boot.initialize();
+    await ds.query(`CREATE SCHEMA ${q}`);
+    await ds.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, 'K2 e2e', $2, $3, 'ACTIVE', 'k2@example.invalid')`,
+      [tenantId, `k2e2e-${schemaName.slice(-8)}`, schemaName],
+    );
+    const t0 = Date.now();
+    const tds = createTenantDataSource(ds, schemaName, `k2e2e-${schemaName}`);
+    await tds.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tds);
+    } finally {
+      await tds.destroy();
+    }
+    log('chain-ms', Date.now() - t0);
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        { provide: getDataSourceToken(), useValue: ds },
+        { provide: ConfigService, useValue: config },
+        {
+          provide: AuditService,
+          useValue: {
+            log: jest.fn().mockResolvedValue(undefined),
+            logWithin: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: IContractImpersonationPort, useValue: { suspendForImpersonation: jest.fn() } },
+        {
+          provide: IContractStandingReadPort,
+          useValue: {
+            standing: jest.fn().mockResolvedValue({ openContractIds: [], lastTerminatedAt: null }),
+          },
+        },
+        { provide: MediaService, useValue: { findOne: jest.fn() } },
+        {
+          provide: EffectivePermissionsService,
+          useValue: {
+            getEffectivePermissionsForUser: jest
+              .fn()
+              .mockResolvedValue([
+                AccessPermissionKey.PRIVACY_READ,
+                AccessPermissionKey.PRIVACY_MANAGE,
+              ]),
+          },
+        },
+        CrmTitularErasureParticipant,
+        PartyTitularErasureParticipant,
+        UserAccountErasureParticipant,
+        WfmTitularErasureParticipant,
+        ExecutionOrderTitularErasureParticipant,
+        OperationalTaskTitularErasureParticipant,
+        MediaTitularErasureParticipant,
+        CrmPersonalDataErasureAdapter,
+        { provide: IPersonalDataErasurePort, useExisting: CrmPersonalDataErasureAdapter },
+        {
+          provide: PrivacyRequestsService,
+          inject: [
+            getDataSourceToken(),
+            ConfigService,
+            AuditService,
+            IContractImpersonationPort,
+            IContractStandingReadPort,
+            MediaService,
+            EffectivePermissionsService,
+            IPersonalDataErasurePort,
+          ],
+          useFactory: (...deps: ConstructorParameters<typeof PrivacyRequestsService>) =>
+            new PrivacyRequestsService(...deps),
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(PrivacyRequestsService);
+  }, 280000);
+
+  afterAll(async () => {
+    if (app?.isInitialized) await app.destroy();
+    if (boot?.isInitialized) await boot.destroy();
+    if (ds?.isInitialized) await ds.destroy();
+  });
+
+  const enc = (v: string) => encryptAes256Gcm(v, k(ERASURE_KEY));
+  async function seedLive(id: string, label: string) {
+    await ds.query(
+      `INSERT INTO ${q}.subscribers (id, tenant_id, status, person_type, customer_segment, document_type,
+         document_number_encrypted, first_name, last_name, stratum, vat_treatment, address, created_by, email_encrypted)
+       VALUES ($1,$2,'LEAD','NATURAL','RESIDENTIAL','CC',$3,'Vivo','Sintético',3,'STANDARD','Dirección sintética',$4,$5)`,
+      [id, tenantId, enc(`synthetic-doc-${label}`), actorId, enc(`synthetic-email-${label}`)],
+    );
+  }
+
+  it('A. borrado real y K2 sin cambios', async () => {
+    const hash = k(H);
+    await seedLive(ids.liveLow, 'low');
+    await seedLive(ids.liveHigh, 'high');
+    await ds.query(
+      `INSERT INTO ${q}.expediente_records (id, tenant_id, full_name, document_type, document_number_encrypted,
+         document_number_hmac, fiscal_document_encrypted, created_by)
+       VALUES ($1,$2,'Prospecto ficticio','CC',$3,$4,$5,$6)`,
+      [
+        ids.expediente,
+        tenantId,
+        enc('synthetic-exp-doc'),
+        hmacPii(normalizeDocumentNumber(DocumentTypeParty.CC, naturalDocument), hash),
+        enc('synthetic-exp-fiscal'),
+        actorId,
+      ],
+    );
+    await ds.query(
+      `INSERT INTO ${q}.party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1,'NATURAL','CC',$2,'Titular ficticio')`,
+      [ids.partyNatural, enc('synthetic-party-doc')],
+    );
+    await ds.query(
+      `INSERT INTO ${q}.party_contact (party_id, type, value_encrypted) VALUES ($1,'EMAIL',$2)`,
+      [ids.partyNatural, enc('synthetic-contact')],
+    );
+    await ds.query(
+      `INSERT INTO ${q}.subscribers (id, tenant_id, party_id, person_type, customer_segment, document_type,
+         document_number_encrypted, first_name, last_name, stratum, email_encrypted, phone_encrypted,
+         vat_treatment, tax_regime, vat_responsibility, address, created_by)
+       VALUES ($1,$2,$3,'NATURAL','RESIDENTIAL','CC',$4,'Nombre ficticio','Apellido ficticio',2,$5,$6,
+         'STANDARD','COMMON','RESPONSABLE','Dirección ficticia',$7)`,
+      [
+        ids.natural,
+        tenantId,
+        ids.partyNatural,
+        enc('synthetic-sub-doc'),
+        enc('synthetic-email'),
+        enc('synthetic-phone'),
+        actorId,
+      ],
+    );
+    await ds.query(
+      `INSERT INTO ${q}.contracts (id, tenant_id, subscriber_id, plan_id, plan_snapshot_json, fiscal_document_encrypted)
+       VALUES ($1,$2,$3,'synthetic-plan','{}'::jsonb,$4)`,
+      [ids.contract, tenantId, ids.natural, enc('synthetic-contract-fiscal')],
+    );
+    await ds.query(
+      `INSERT INTO ${q}.crm_lifecycle_changes (tenant_id, entity_type, entity_id, subscriber_id, from_status,
+         to_status, reason_code, source, batch_id, note_encrypted)
+       VALUES ($1,'SUBSCRIBER',$2,$2,'ACTIVE','SUSPENDED','MORA','MANUAL',$3,$4)`,
+      [tenantId, ids.natural, randomUUID(), enc('synthetic-note')],
+    );
+
+    await suppress(ids.partyNatural, DocumentTypeParty.CC, naturalDocument);
+
+    // Jurídica: la regla encrypted-marker no distingue person_type.
+    await ds.query(
+      `INSERT INTO ${q}.party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1,'ORGANIZATION','NIT',$2,'Empresa ficticia')`,
+      [ids.partyJuridica, enc('synthetic-party-nit')],
+    );
+    await ds.query(
+      `INSERT INTO ${q}.subscribers (id, tenant_id, party_id, person_type, customer_segment, nit, business_name,
+         vat_treatment, address, created_by)
+       VALUES ($1,$2,$3,'JURIDICA','PYME','900000123','Empresa ficticia','STANDARD','Dirección ficticia',$4)`,
+      [ids.juridica, tenantId, ids.partyJuridica, actorId],
+    );
+    try {
+      await suppress(ids.partyJuridica, DocumentTypeParty.NIT, juridicaDocument);
+      log('juridica-suppress', 'ok');
+    } catch (e) {
+      log('juridica-suppress-error', { name: (e as Error).name, message: (e as Error).message });
+    }
+
+    log(
+      'subscribers-after-erasure',
+      await ds.query(
+        `SELECT id::text, person_type, anonymized_at IS NOT NULL AS anon, length(document_number_encrypted) AS doc_len,
+           email_encrypted IS NOT NULL AS email, phone_encrypted IS NOT NULL AS phone,
+           alt_contact_phone_encrypted IS NOT NULL AS alt, whatsapp_encrypted IS NOT NULL AS wa
+         FROM ${q}.subscribers ORDER BY id`,
+      ),
+    );
+    const markers = await ds.query(
+      `SELECT id::text, document_number_encrypted AS c FROM ${q}.subscribers WHERE anonymized_at IS NOT NULL`,
+    );
+    log(
+      'marker-plaintext',
+      markers.map((r: { id: string; c: string | null }) => ({
+        id: r.id,
+        plain: r.c ? decryptAes256Gcm(r.c, k(ERASURE_KEY), null) : null,
+      })),
+    );
+    const perTarget: unknown[] = [];
+    for (const t of PII_ENCRYPTED_TARGETS) {
+      const anonCol = ['subscribers', 'expediente_records', 'party'].includes(t.table)
+        ? 'anonymized_at IS NOT NULL'
+        : 'NULL::boolean';
+      const [r] = await ds.query(
+        `SELECT count(*) FILTER (WHERE "${t.column}" IS NOT NULL)::int AS non_null,
+           count(*) FILTER (WHERE "${t.column}" IS NOT NULL AND ${anonCol})::int AS non_null_anon
+         FROM ${q}."${t.table}"`,
+      );
+      perTarget.push({ target: `${t.table}.${t.column}`, ...r });
+    }
+    log('targets-after-erasure', perTarget);
+    const [c] = await ds.query(
+      `SELECT fiscal_document_encrypted IS NULL AS fiscal_null FROM ${q}.contracts WHERE id=$1`,
+      [ids.contract],
+    );
+    log('contract-fiscal-null', c);
+    const [p] = await ds.query(`SELECT document_number AS c FROM ${q}.party WHERE id=$1`, [
+      ids.partyNatural,
+    ]);
+    log(
+      'party-marker',
+      decryptAes256Gcm(p.c, k(ERASURE_KEY), null).replace(/[0-9a-f-]{36}/u, '<id>'),
+    );
+    const pairs = PII_ENCRYPTED_TARGETS.map((t) => `('${t.table}','${t.column}')`).join(',');
+    log(
+      'targets-not-nullable',
+      await ds.query(
+        `SELECT table_name, column_name FROM information_schema.columns
+         WHERE table_schema=$1 AND (table_name, column_name) IN (${pairs}) AND is_nullable='NO'`,
+        [schemaName],
+      ),
+    );
+    log(
+      'triggers-on-targets',
+      await ds.query(
+        `SELECT c.relname, t.tgname, pg_get_triggerdef(t.oid) AS def
+         FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname=$1 AND NOT t.tgisinternal AND c.relname = ANY($2) ORDER BY 1,2`,
+        [schemaName, [...new Set(PII_ENCRYPTED_TARGETS.map((t) => t.table))]],
+      ),
+    );
+    log(
+      'constraints-document',
+      await ds.query(
+        `SELECT conname, conrelid::regclass::text AS tbl, pg_get_constraintdef(oid) AS def FROM pg_constraint
+         WHERE connamespace=(SELECT oid FROM pg_namespace WHERE nspname=$1)
+           AND pg_get_constraintdef(oid) ~ 'document_number'`,
+        [schemaName],
+      ),
+    );
+    log(
+      'indexes-document',
+      await ds.query(
+        `SELECT tablename, indexname, indexdef FROM pg_indexes
+         WHERE schemaname=$1 AND tablename IN ('subscribers','party','expediente_records') AND indexdef ~ 'document_number'`,
+        [schemaName],
+      ),
+    );
+    log('ownership', {
+      own: await ds.query(
+        `SELECT c.relname, pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname=$1 AND c.relname IN ('subscribers','expediente_records','party')`,
+        [schemaName],
+      ),
+      fn: await ds.query(
+        `SELECT p.proname, pg_get_userbyid(p.proowner) AS owner, p.prosecdef FROM pg_proc p
+         JOIN pg_namespace n ON n.oid=p.pronamespace
+         WHERE n.nspname=$1 AND p.proname='titular_prevent_anonymized_mutation'`,
+        [schemaName],
+      ),
+      whoami: await ds.query('SELECT session_user, current_user'),
+    });
+
+    const db = new TypeOrmReencryptDbAdapter(ds);
+    const keys = { piiActiveKey: k(K2), piiPreviousKey: MFA_MODE ? null : k(K1), mfaKeys: [k(M)] };
+    const opts = {
+      schemaFilter: schemaName,
+      eligibleTenantSchemas: [schemaName],
+      pageSize: 200,
+      keys,
+    };
+    const dry = await runMfaToPii(db, { ...opts, mode: 'dry-run' });
+    log('k2-dry-run', formatMfaToPiiReport(dry).split('\n'));
+    // Prototipo: sonda de escritura con ROLLBACK para el dry-run.
+    const fingerprint = async () =>
+      (await ds.query(`SELECT md5(string_agg(s::text, '|' ORDER BY id)) AS h, max(xmin::text) AS x FROM ${q}.subscribers s`))[0];
+    const fpBefore = await fingerprint();
+    const probe: Record<string, number> = {};
+    for (const t of PII_ENCRYPTED_TARGETS) {
+      const cells = await ds.query(`SELECT id::text AS id FROM ${q}."${t.table}" WHERE "${t.column}" IS NOT NULL`);
+      for (const cell of cells) {
+        const qr = ds.createQueryRunner();
+        await qr.connect();
+        await qr.startTransaction();
+        try {
+          await qr.query(`SET LOCAL search_path TO ${q}, public`);
+          await qr.query(`UPDATE "${t.table}" SET "${t.column}" = "${t.column}" WHERE id = $1`, [cell.id]);
+        } catch (e) {
+          const code = (e as { driverError?: { code?: string } }).driverError?.code ?? 'unknown';
+          const key = `${t.table}.${t.column}:${code}`;
+          probe[key] = (probe[key] ?? 0) + 1;
+        } finally {
+          await qr.rollbackTransaction();
+          await qr.release();
+        }
+      }
+    }
+    log('sonda-dry-run', { probe, sinCambios: JSON.stringify(fpBefore) === JSON.stringify(await fingerprint()) });
+    let abortError: unknown = null;
+    try {
+      await runMfaToPii(db, { ...opts, mode: 'apply' });
+    } catch (e) {
+      abortError = e;
+    }
+    const de = abortError as { driverError?: Record<string, unknown>; query?: string } | null;
+    log('k2-apply-abort', {
+      code: de?.driverError?.['code'],
+      hint: de?.driverError?.['hint'],
+      where: de?.driverError?.['where'],
+      query: de?.query,
+    });
+    const verify = await runMfaToPii(db, { ...opts, mode: 'verify-pii-only' });
+    log('k2-verify-after-abort', formatMfaToPiiReport(verify).split('\n'));
+    expect(abortError).not.toBeNull();
+  });
+
+  it('B. quién puede fijar el GUC y qué abre', async () => {
+    await boot.query(`GRANT USAGE ON SCHEMA ${q} TO iwana_app`);
+    await boot.query(`GRANT SELECT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${q} TO iwana_app`);
+    app = conn(process.env['DB_APP_USER'] as string, process.env['DB_APP_PASSWORD'] as string);
+    await app.initialize();
+    let out: Record<string, unknown> = {};
+    const attempt = async (
+      label: string,
+      connection: DataSource,
+      gucs: string[],
+      sql: string,
+      params: unknown[],
+    ) => {
+      const qr = connection.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+      try {
+        await qr.query(`SET LOCAL search_path TO ${q}, public`);
+        for (const g of gucs) await qr.query(`SELECT set_config($1,'on',true)`, [g]);
+        const r = await qr.query(sql, params);
+        out[label] = { ok: true, rows: Array.isArray(r) ? r[1] : r };
+      } catch (e) {
+        out[label] = { ok: false, code: (e as { driverError?: { code?: string } }).driverError?.code };
+      } finally {
+        await qr.rollbackTransaction();
+        await qr.release();
+      }
+    };
+    const set = `UPDATE subscribers SET first_name='RESTAURADO' WHERE id=$1`;
+    const marker = `UPDATE subscribers SET document_number_encrypted=$2 WHERE id=$1`;
+    const fake = encryptAes256Gcm('synthetic-real-doc', k(K2));
+    await attempt('app-sin-guc-first_name', app, [], set, [ids.natural]);
+    await attempt('app-guc-erasure-first_name', app, ['iwana.titular_erasure'], set, [ids.natural]);
+    await attempt('app-guc-erasure-marca', app, ['iwana.titular_erasure'], marker, [ids.natural, fake]);
+    await attempt(
+      'app-guc-erasure-delete',
+      app,
+      ['iwana.titular_erasure'],
+      `DELETE FROM subscribers WHERE id=$1`,
+      [ids.natural],
+    );
+    log('guc-existente', out);
+
+    // Prototipo de la opción A, solo en este esquema desechable.
+    const original = (
+      await ds.query(
+        `SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+         WHERE n.nspname=$1 AND p.proname='titular_prevent_anonymized_mutation'`,
+        [schemaName],
+      )
+    )[0].def as string;
+    const patched = original.replace(
+      /BEGIN\s+IF current_setting\('iwana\.titular_erasure', true\) = 'on' THEN/u,
+      () => `BEGIN
+        IF TG_OP = 'UPDATE'
+           AND current_setting('iwana.pii_reencrypt', true) = 'on'
+           AND TG_TABLE_NAME = 'subscribers'
+           AND pg_has_role(session_user, (SELECT relowner FROM pg_class WHERE oid = TG_RELID), 'MEMBER')
+           AND OLD.anonymized_at IS NOT NULL
+           AND NEW.document_number_encrypted ~ '^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$'
+           AND (to_jsonb(NEW) - 'document_number_encrypted') IS NOT DISTINCT FROM (to_jsonb(OLD) - 'document_number_encrypted') THEN
+          RETURN NEW;
+        END IF;
+        IF current_setting('iwana.titular_erasure', true) = 'on' THEN`,
+    );
+    expect(patched).not.toBe(original);
+    await ds.query(patched);
+    out = {};
+    await attempt('migrator-guc-marca', ds, ['iwana.pii_reencrypt'], marker, [ids.natural, fake]);
+    await attempt('migrator-guc-texto-plano', ds, ['iwana.pii_reencrypt'], marker, [
+      ids.natural,
+      'synthetic-plain',
+    ]);
+    await attempt('migrator-guc-first_name', ds, ['iwana.pii_reencrypt'], set, [ids.natural]);
+    await attempt('migrator-sin-guc-marca', ds, [], marker, [ids.natural, fake]);
+    await attempt('app-guc-marca', app, ['iwana.pii_reencrypt'], marker, [ids.natural, fake]);
+    await attempt(
+      'migrator-guc-delete',
+      ds,
+      ['iwana.pii_reencrypt'],
+      `DELETE FROM subscribers WHERE id=$1`,
+      [ids.natural],
+    );
+    log('prototipo-opcion-a', out);
+
+    class GucDb extends TypeOrmReencryptDbAdapter {
+      override async updateEncryptedValue(
+        schema: string,
+        target: { table: string; column: string; idColumn: string },
+        id: string,
+        value: string,
+      ) {
+        await runInTenantSchema(ds, schema, async (qr) => {
+          await qr.query(`SELECT set_config('iwana.pii_reencrypt','on',true)`);
+          await qr.query(
+            `UPDATE "${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2`,
+            [value, id],
+          );
+        });
+      }
+    }
+    const before = await ds.query(`SELECT updated_at FROM ${q}.subscribers WHERE id=$1`, [
+      ids.natural,
+    ]);
+    const db = new GucDb(ds);
+    const keys = { piiActiveKey: k(K2), piiPreviousKey: k(K1), mfaKeys: [k(M)] };
+    const opts = {
+      schemaFilter: schemaName,
+      eligibleTenantSchemas: [schemaName],
+      pageSize: 200,
+      keys,
+    };
+    log(
+      'prototipo-a-apply',
+      formatMfaToPiiReport(await runMfaToPii(db as never, { ...opts, mode: 'apply' })).split('\n'),
+    );
+    log(
+      'prototipo-a-verify',
+      formatMfaToPiiReport(
+        await runMfaToPii(db as never, { ...opts, mode: 'verify-pii-only' }),
+      ).split('\n'),
+    );
+    const after = await ds.query(`SELECT updated_at FROM ${q}.subscribers WHERE id=$1`, [
+      ids.natural,
+    ]);
+    log(
+      'prototipo-a-updated_at-igual',
+      String(before[0].updated_at) === String(after[0].updated_at),
+    );
+    await ds.query(original);
+  });
+
+  it('C. opción sin clave: NULL y centinela', async () => {
+    const out: Record<string, unknown> = {};
+    const run = async (label: string, sql: string, params: unknown[] = [], guc = false) => {
+      const qr = ds.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+      try {
+        await qr.query(`SET LOCAL search_path TO ${q}, public`);
+        if (guc) await qr.query(`SELECT set_config('iwana.titular_erasure','on',true)`);
+        await qr.query(sql, params);
+        await qr.commitTransaction();
+        out[label] = 'ok';
+      } catch (e) {
+        await qr.rollbackTransaction();
+        out[label] = (e as { driverError?: { code?: string } }).driverError?.code ?? String(e);
+      } finally {
+        await qr.release();
+      }
+    };
+    await run(
+      'null-con-check-actual',
+      `UPDATE subscribers SET document_number_encrypted=NULL WHERE id=$1`,
+      [ids.natural],
+      true,
+    );
+    await run(
+      'check-relajado',
+      `ALTER TABLE subscribers DROP CONSTRAINT chk_subscriber_person_fields,
+       ADD CONSTRAINT chk_subscriber_person_fields CHECK (
+        (person_type = 'NATURAL' AND document_type IS NOT NULL
+          AND (document_number_encrypted IS NOT NULL OR anonymized_at IS NOT NULL)
+          AND first_name IS NOT NULL AND last_name IS NOT NULL AND stratum IS NOT NULL)
+        OR (person_type = 'JURIDICA' AND nit IS NOT NULL AND business_name IS NOT NULL))`,
+    );
+    await run(
+      'null-antes-de-marcar',
+      `UPDATE subscribers SET document_number_encrypted=NULL WHERE id=$1`,
+      [ids.liveLow],
+      true,
+    );
+    await run(
+      'backfill-null',
+      `UPDATE subscribers SET document_number_encrypted=NULL WHERE anonymized_at IS NOT NULL`,
+      [],
+      true,
+    );
+    log('opcion-b-null', out);
+    const db = new TypeOrmReencryptDbAdapter(ds);
+    const keys = { piiActiveKey: k(K3), piiPreviousKey: k(K2), mfaKeys: [k(M)] };
+    const opts = {
+      schemaFilter: schemaName,
+      eligibleTenantSchemas: [schemaName],
+      pageSize: 200,
+      keys,
+    };
+    log(
+      'opcion-b-dry',
+      formatMfaToPiiReport(await runMfaToPii(db, { ...opts, mode: 'dry-run' })).split('\n'),
+    );
+    log(
+      'opcion-b-apply',
+      formatMfaToPiiReport(await runMfaToPii(db, { ...opts, mode: 'apply' })).split('\n'),
+    );
+    log(
+      'opcion-b-verify',
+      formatMfaToPiiReport(await runMfaToPii(db, { ...opts, mode: 'verify-pii-only' })).split('\n'),
+    );
+    await run(
+      'centinela',
+      `UPDATE subscribers SET document_number_encrypted='ANONIMIZADO' WHERE id=$1`,
+      [ids.natural],
+      true,
+    );
+    log('centinela-update', out['centinela']);
+    log(
+      'opcion-b-centinela-dry',
+      formatMfaToPiiReport(await runMfaToPii(db, { ...opts, mode: 'dry-run' })).split('\n'),
+    );
+    // Orden marcar → anular, con el CHECK relajado.
+    const qr2 = ds.createQueryRunner();
+    await qr2.connect();
+    await qr2.startTransaction();
+    let orden = 'ok';
+    try {
+      await qr2.query(`SET LOCAL search_path TO ${q}, public`);
+      await qr2.query(`SELECT set_config('iwana.titular_erasure','on',true)`);
+      await qr2.query(`UPDATE subscribers SET anonymized_at = now(), anonymized_request_id = $2 WHERE id = $1`, [ids.liveLow, randomUUID()]);
+      await qr2.query(`UPDATE subscribers SET document_number_encrypted = NULL WHERE id = $1`, [ids.liveLow]);
+    } catch (e) {
+      orden = (e as { driverError?: { code?: string } }).driverError?.code ?? String(e);
+    } finally {
+      await qr2.rollbackTransaction();
+      await qr2.release();
+    }
+    log('orden-marcar-primero', orden);
+    // Reversibilidad: down con NOT VALID con filas NULL presentes.
+    const down: Record<string, unknown> = {};
+    const out2 = out;
+    await run('null-previo', `UPDATE subscribers SET document_number_encrypted=NULL WHERE id=$1`, [ids.natural], true);
+    await run('down-not-valid', `ALTER TABLE subscribers DROP CONSTRAINT chk_subscriber_person_fields,
+      ADD CONSTRAINT chk_subscriber_person_fields CHECK (
+        (person_type = 'NATURAL' AND document_type IS NOT NULL AND document_number_encrypted IS NOT NULL
+          AND first_name IS NOT NULL AND last_name IS NOT NULL AND stratum IS NOT NULL)
+        OR (person_type = 'JURIDICA' AND nit IS NOT NULL AND business_name IS NOT NULL)) NOT VALID`);
+    await run('validate-tras-down', `ALTER TABLE subscribers VALIDATE CONSTRAINT chk_subscriber_person_fields`);
+    await run('natural-null-tras-down', `UPDATE subscribers SET document_number_encrypted=NULL WHERE id=$1`, [ids.liveHigh], true);
+    await run('up-otra-vez', `ALTER TABLE subscribers DROP CONSTRAINT chk_subscriber_person_fields,
+      ADD CONSTRAINT chk_subscriber_person_fields CHECK (
+        (person_type = 'NATURAL' AND document_type IS NOT NULL
+          AND (document_number_encrypted IS NOT NULL OR anonymized_at IS NOT NULL)
+          AND first_name IS NOT NULL AND last_name IS NOT NULL AND stratum IS NOT NULL)
+        OR (person_type = 'JURIDICA' AND nit IS NOT NULL AND business_name IS NOT NULL))`);
+    down['resultado'] = { p: out2['null-previo'], d: out2['down-not-valid'], v: out2['validate-tras-down'], n: out2['natural-null-tras-down'], u: out2['up-otra-vez'] };
+    log('down-up', down);
+    await ds.query(`DROP SCHEMA ${q} CASCADE`);
+    await ds.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+  });
+});

@@ -12,7 +12,7 @@
  * también el `SET LOCAL search_path` y el ciclo transacción/rollback/release,
  * que es donde vive el riesgo de fuga entre tenants.
  */
-import { DataSource, QueryRunner } from 'typeorm';
+import { DataSource, QueryFailedError, QueryRunner } from 'typeorm';
 
 import { TypeOrmReencryptDbAdapter } from './reencrypt-aes.db-adapter';
 import { EncryptedColumnTarget } from './reencrypt-aes.targets';
@@ -269,5 +269,84 @@ describe('TypeOrmReencryptDbAdapter', () => {
 
       expect(h.lifecycle).toEqual(['connect', 'start', 'rollback', 'release']);
     });
+  });
+
+  describe('probeEncryptedWrite', () => {
+    function failUpdateWith(h: ReturnType<typeof createHarness>, failure: Error): void {
+      (h.queryRunner.query as jest.Mock).mockImplementation(async (sql: string) => {
+        if (sql.startsWith('SET LOCAL')) return [];
+        throw failure;
+      });
+    }
+
+    function queryFailed(code: unknown): QueryFailedError {
+      const driverError = Object.assign(new Error('synthetic-driver-message'), { code });
+      return new QueryFailedError('UPDATE', ['synthetic-ciphertext', 'id-9'], driverError);
+    }
+
+    it('emite el mismo UPDATE que apply, bajo search_path, y nunca confirma', async () => {
+      const applied = createHarness([]);
+      await applied.adapter.updateEncryptedValue('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo');
+      const probed = createHarness([]);
+
+      await expect(
+        probed.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+      ).resolves.toBeNull();
+
+      expect(probed.runnerCalls).toEqual(applied.runnerCalls);
+      expect(probed.queryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(probed.lifecycle).toEqual(['connect', 'start', 'rollback', 'release']);
+    });
+
+    it('devuelve el SQLSTATE de un QueryFailedError y revierte', async () => {
+      const h = createHarness([]);
+      failUpdateWith(h, queryFailed('55000'));
+
+      await expect(
+        h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+      ).resolves.toBe('55000');
+
+      expect(h.queryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(h.lifecycle).toEqual(['connect', 'start', 'rollback', 'release']);
+    });
+
+    it('propaga un error no SQL, tras revertir', async () => {
+      const h = createHarness([]);
+      const failure = new Error('synthetic-connection-failure');
+      failUpdateWith(h, failure);
+
+      await expect(
+        h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+      ).rejects.toBe(failure);
+
+      expect(h.lifecycle).toEqual(['connect', 'start', 'rollback', 'release']);
+    });
+
+    it.each([[undefined], [55000], ['ECONNRESET'], ['55000; synthetic']])(
+      'propaga un QueryFailedError cuyo código %p no es un SQLSTATE: nunca lo da por escribible',
+      async (code) => {
+        const h = createHarness([]);
+        const failure = queryFailed(code);
+        failUpdateWith(h, failure);
+
+        await expect(
+          h.adapter.probeEncryptedWrite('tenant_alfa', TENANT_TARGET, 'id-9', 'nuevo'),
+        ).rejects.toBe(failure);
+      },
+    );
+
+    it.each(['public', 'public_ojo'])(
+      'rechaza %s antes de abrir la transacción: PII solo vive en schemas tenant',
+      async (schemaName) => {
+        const h = createHarness([]);
+
+        await expect(
+          h.adapter.probeEncryptedWrite(schemaName, TENANT_TARGET, 'id-9', 'nuevo'),
+        ).rejects.toThrow(/Schema name invalido/);
+
+        expect(h.dataSource.createQueryRunner).not.toHaveBeenCalled();
+        expect(h.dataSourceCalls).toHaveLength(0);
+      },
+    );
   });
 });

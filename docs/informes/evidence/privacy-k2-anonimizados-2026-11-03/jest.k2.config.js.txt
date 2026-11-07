@@ -1,0 +1,27 @@
+const path = require('node:path');
+module.exports = {
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  rootDir: 'C:/appiw/apps/api/src',
+  roots: [path.resolve(__dirname)],
+  testRegex: '.*\\.k2e2e\\.spec\\.ts$',
+  transform: {
+    '^.+\\.ts$': [
+      'C:/appiw/apps/api/node_modules/ts-jest',
+      {
+        diagnostics: false,
+        isolatedModules: true,
+        tsconfig: { strictPropertyInitialization: false, types: ['node', 'jest'] },
+      },
+    ],
+  },
+  moduleNameMapper: {
+    '^@iwana/db$': 'C:/appiw/packages/database/src/index.ts',
+    '^@iwana/db/(.*)$': 'C:/appiw/packages/database/src/$1',
+    '^@iwana/shared$': 'C:/appiw/packages/shared/src/index.ts',
+    '^@iwana/shared/(.*)$': 'C:/appiw/packages/shared/src/$1',
+  },
+  modulePaths: ['C:/appiw/apps/api/node_modules'],
+  testEnvironment: 'node',
+  maxWorkers: 1,
+  testTimeout: 300000,
+};

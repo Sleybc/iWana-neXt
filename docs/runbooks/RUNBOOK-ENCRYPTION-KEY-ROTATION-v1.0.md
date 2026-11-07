@@ -133,7 +133,30 @@ Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos 
 2. **Generar.** Usar el procedimiento común de §1 e importar la clave nueva bajo `PII_ENCRYPTION_KEY`, distinta de MFA, sin mostrar su valor. La misma regla aplica al crear `PII_ENCRYPTION_KEY_PREVIOUS` en una rotación posterior. No reutilizar claves entre entornos.
 
 3. **Desplegar el lector compatible.** Con escrituras detenidas según la ventana, configurar `PII_ENCRYPTION_KEY` nueva, `PII_ENCRYPTION_KEY_PREVIOUS` vacía y `PII_DECRYPT_LEGACY_MFA=true`. Mantener las variables MFA actuales (incluida `MFA_ENCRYPTION_KEY_PREVIOUS` si la requiere su rotación separada). No dejar convivir instancias del binario anterior con las nuevas escrituras PII: la versión anterior solo entiende la clave MFA. Arrancar el conjunto aprobado y comprobar health/MFA/lectura PII. Mantener el fallback MFA hasta verificar todo el inventario de tenants.
-4. **Recifrar por tenant.** Compilar `@iwana/api` y ejecutar el CLI K2 con un `schema_name` verificado por invocación. Los modos PII resuelven el schema con consulta parametrizada a `public.tenants`, sin filtrar por status; exigen fila de tenant registrada y namespace físico existente. Así se cubren schemas retenidos en cualquier estado (`ACTIVE`, `INACTIVE`, `SUSPENDED` o `MARKED_FOR_DELETION`). Schema ausente/no registrado falla antes de consultar tablas tenant; tablas u objetivos faltantes impiden completar verify. No admiten `public` ni ejecución de flota. El flujo MFA general conserva su restricción a tenants `ACTIVE`. `--mfa-to-pii` es dry-run por defecto; inspeccionar sus conteos antes de usar `--apply`. Aplicar dos veces para comprobar idempotencia y ejecutar `--verify-pii-only`. Comandos exactos:
+4. **Recifrar por tenant.** Compilar `@iwana/api` y ejecutar el CLI K2 con un `schema_name` verificado por invocación. Los modos PII resuelven el schema con consulta parametrizada a `public.tenants`, sin filtrar por status; exigen fila de tenant registrada y namespace físico existente. Así se cubren schemas retenidos en cualquier estado (`ACTIVE`, `INACTIVE`, `SUSPENDED` o `MARKED_FOR_DELETION`). Schema ausente/no registrado falla antes de consultar tablas tenant; tablas u objetivos faltantes impiden completar verify. No admiten `public` ni ejecución de flota. El flujo MFA general conserva su restricción a tenants `ACTIVE`. `--mfa-to-pii` es dry-run por defecto; inspeccionar sus conteos antes de usar `--apply`. Aplicar dos veces para comprobar idempotencia y ejecutar `--verify-pii-only`.
+
+   **Verificación previa obligatoria.** Antes del dry-run de cada tenant, correr `--verify-only` de `anonymize-titular` (spec K2 anonimizados, D-K2A-5). Es lo único que ve una marca cifrada de un titular anonimizado si ya está en la clave activa: el dry-run la cuenta como `skipped_pii`, K2 pasa y la marca bloquea la **siguiente** rotación. `TENANT_REF` es el UUID o slug del tenant, no el `schema_name`. El CLI sale con `0` aunque haya residuales, por eso el criterio es el `jq -e`; no guardar su salida cruda, que contiene ids:
+
+   ```bash
+   set -euo pipefail
+   pnpm --filter @iwana/api build
+   pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js \
+     --tenant "$TENANT_REF" --verify-only |
+     jq -e 'select(.residualFields == 0 and (.findings | length) == 0) | {titularesChecked, markedSubscribers, markedExpedientes, residualFields}'
+   ```
+
+   Continuar con K2 solo si termina en `0`. Titulares marcados con `residualFields` en `0` no son un hallazgo aquí. `--verify-only` admite cualquier tenant registrado, como K2; `--apply` sigue exigiendo `ACTIVE`. Un residual en un tenant con otro status detiene K2 en ese schema y se escala; no cambiar su status para sortearlo.
+
+   **Remediación de marcas antiguas (D-K2A-5).** No hay filas de producción que remediar, porque la privacidad no ha corrido allí: en producción, un residual es una parada y se escala. En desarrollo y ensayo, reejecutar `anonymize-titular` por cada solicitud afectada; la deja en `NULL`, sin migración de datos y sin fijar `iwana.titular_erasure` a mano. `REQUEST_ID` es la solicitud de supresión que consta en `anonymized_request_id` de la fila:
+
+   ```bash
+   pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant "$TENANT_REF" --request "$REQUEST_ID"
+   pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant "$TENANT_REF" --request "$REQUEST_ID" --apply
+   ```
+
+   Repetir `--verify-only` hasta `residualFields` en `0` y volver a empezar por el dry-run de K2. Si el CLI no deja la fila en `NULL`, detenerse y escalar a AI-EM-ARCH.
+
+   **Comandos K2 exactos:**
 
    ```bash
    pnpm --filter @iwana/api build
@@ -143,11 +166,13 @@ Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos 
    pnpm --filter @iwana/api encryption:reencrypt -- --verify-pii-only --schema="$TENANT_SCHEMA"
    ```
 
-   `TENANT_SCHEMA` es el `schema_name` verificado en el inventario, no el UUID ni el slug. Ejecutar dry-run, apply, segunda aplicación y verify para cada schema registrado con namespace, cualquiera que sea el status del tenant; no cambiar el estado de tenants. Si faltan tablas/objetivos o verify no termina en cero, detener el barrido y mantener la clave legado. El ensayo K2 documentó 21 candidatos, 21 recifrados en la primera aplicación, 0 en la segunda y verify con 0 filas que solo abran con claves MFA; `NULL` se conservó. La salida contiene modo, schema/tipo y conteos, sin valores, texto claro ni IDs. Véase [informe K2](../informes/INFORME-MOD05-G7-K2-v1.0.md). No retirar `MFA_ENCRYPTION_KEY` ni desactivar lectura MFA legado mientras queden filas sin verificar.
+   **El dry-run ensaya la escritura.** Es un dry-run sin cambios persistentes, no un dry-run sin escritura: por cada celda que recifraría ejecuta el `UPDATE` real en una transacción que siempre se revierte, con bloqueos de fila de milisegundos. Por eso corre dentro de la ventana. `write_blocked` distinto de `0`, en totales o por objetivo (por ejemplo `write_blocked_55000=1`), es una **parada**: el reporte da `blocking=yes`, el CLI sale con `1` y no se ejecuta `--apply`, que abortaría en la primera celda bloqueada y dejaría pendientes las siguientes. Remediar como arriba si es una marca antigua; cualquier otro SQLSTATE se escala.
+
+   `TENANT_SCHEMA` es el `schema_name` verificado en el inventario, no el UUID ni el slug. Ejecutar verificación previa, dry-run, apply, segunda aplicación y verify para cada schema registrado con namespace, cualquiera que sea el status del tenant; no cambiar el estado de tenants. Si faltan tablas/objetivos o verify no termina en cero, detener el barrido y mantener la clave legado. El ensayo K2 documentó 21 candidatos, 21 recifrados en la primera aplicación, 0 en la segunda y verify con 0 filas que solo abran con claves MFA; `NULL` se conservó. La salida contiene modo, schema/tipo y conteos, sin valores, texto claro ni IDs. Véase [informe K2](../informes/INFORME-MOD05-G7-K2-v1.0.md). No retirar `MFA_ENCRYPTION_KEY` ni desactivar lectura MFA legado mientras queden filas sin verificar.
 
 5. **Cerrar lectura legado.** Cambiar `PII_DECRYPT_LEGACY_MFA=false` únicamente cuando cada tenant registrado, sin importar status, tenga verify en cero. K2 requiere ejecutar el comando de forma explícita para cada schema y no ofrece una corrida de flota. Si un schema no se puede resolver, faltan tablas/objetivos o su verify no termina en cero, mantener `PII_DECRYPT_LEGACY_MFA=true` en el API y migrator. Tras completar el inventario, desplegar el booleano `false`, reiniciar el conjunto aprobado y repetir health/smoke de lectura PII y MFA. `MFA_ENCRYPTION_KEY` permanece necesaria para MFA.
 
-**Parada:** claves ausentes/iguales, Compose incompleto, cualquier error de descifrado, tenant sin evidencia, o smoke rojo. Mantener `PII_DECRYPT_LEGACY_MFA=true`, claves anteriores y mantenimiento; escalar al dueño de K/SEC-ENG. No desactivar el fallback por calendario.
+**Parada:** claves ausentes/iguales, Compose incompleto, cualquier error de descifrado, `--verify-only` con residuales o sin poder ejecutarse, `write_blocked` distinto de `0`, tenant sin evidencia, o smoke rojo. Mantener `PII_DECRYPT_LEGACY_MFA=true`, claves anteriores y mantenimiento; escalar al dueño de K/SEC-ENG. No desactivar el fallback por calendario.
 
 **Rollback:** la antigua versión de la aplicación no puede leer ciphertext escrito con la clave PII. No volver a ella después de la primera escritura PII, salvo que se restaure el backup compatible y verificado conforme al runbook de release. En una ventana de recifrado incompleta, conservar las claves MFA y PII actuales/previas y la bandera legado en `true`; no recifrar hacia atrás ni retirar ninguna clave hasta un plan revisado.
 

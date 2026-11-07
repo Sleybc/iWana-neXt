@@ -1,4 +1,5 @@
-import { parseAnonymizeTitularArgs } from './anonymize-titular';
+import type { DataSource } from 'typeorm';
+import { parseAnonymizeTitularArgs, resolveTenantSchema } from './anonymize-titular';
 
 const REQUEST_ID = '5d1ce8e0-6447-44a1-a27e-84f856622a47';
 const EXPEDIENTE_ID = '6a6286b9-8ea8-42ca-823d-5fc2515be820';
@@ -80,5 +81,36 @@ describe('parseAnonymizeTitularArgs', () => {
     expect(() => parseAnonymizeTitularArgs(['--request', 'not-a-uuid'])).toThrow(
       '--request requiere un UUID válido.',
     );
+  });
+});
+
+describe('resolveTenantSchema', () => {
+  const dataSourceWith = (status: string | null) =>
+    ({
+      query: jest.fn().mockResolvedValue(status ? [{ schema_name: 'tenant_demo', status }] : []),
+    }) as unknown as DataSource;
+
+  it.each(['INACTIVE', 'SUSPENDED', 'MARKED_FOR_DELETION'])(
+    'verify-only admite un tenant %s, igual que K2',
+    async (status) => {
+      await expect(
+        resolveTenantSchema(dataSourceWith(status), 'isp-demo', { anyStatus: true }),
+      ).resolves.toEqual({ schemaName: 'tenant_demo' });
+    },
+  );
+
+  it('la anonimización sigue exigiendo un tenant ACTIVE', async () => {
+    await expect(resolveTenantSchema(dataSourceWith('ACTIVE'), 'isp-demo')).resolves.toEqual({
+      schemaName: 'tenant_demo',
+    });
+    await expect(resolveTenantSchema(dataSourceWith('SUSPENDED'), 'isp-demo')).rejects.toThrow(
+      'Tenant inexistente, inactivo o con schema inválido.',
+    );
+  });
+
+  it('verify-only sigue rechazando un tenant no registrado', async () => {
+    await expect(
+      resolveTenantSchema(dataSourceWith(null), 'isp-demo', { anyStatus: true }),
+    ).rejects.toThrow('Tenant inexistente, inactivo o con schema inválido.');
   });
 });

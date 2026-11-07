@@ -12,6 +12,17 @@ import { EncryptedColumnTarget } from '../common/crypto/reencrypt-aes.targets';
 
 export type MfaToPiiMode = 'dry-run' | 'apply' | 'verify-pii-only';
 
+/** Puerto del recifrado PII: añade la sonda del dry-run sin tocar el puerto MFA. */
+export interface PiiReencryptDbPort extends ReencryptDbPort {
+  /** Ensaya la escritura de `apply`, siempre la revierte y devuelve el SQLSTATE si falla. */
+  probeEncryptedWrite(
+    schemaName: string,
+    target: EncryptedColumnTarget,
+    id: string,
+    newCiphertext: string,
+  ): Promise<string | null>;
+}
+
 export type MfaToPiiKeys = {
   piiActiveKey: Buffer;
   piiPreviousKey: Buffer | null;
@@ -38,13 +49,18 @@ export type MfaToPiiTargetMetrics = {
   decryptErrors: number;
   mfaOnlyRemaining: number;
   piiPreviousRemaining: number;
+  /** Celdas que el dry-run recifraría pero la base rechaza. No cuentan en `reencrypted`. */
+  writeBlocked: number;
+  writeBlockedBySqlState: Record<string, number>;
 };
 
 export type MfaToPiiReport = {
   mode: MfaToPiiMode;
   schemasProcessed: string[];
   targets: MfaToPiiTargetMetrics[];
-  totals: Omit<MfaToPiiTargetMetrics, 'schemaName' | 'entityType'> & { pending: number };
+  totals: Omit<MfaToPiiTargetMetrics, 'schemaName' | 'entityType' | 'writeBlockedBySqlState'> & {
+    pending: number;
+  };
   hasBlockingIssues: boolean;
 };
 
@@ -202,6 +218,8 @@ function blankMetrics(schemaName: string, entityType: string): MfaToPiiTargetMet
     decryptErrors: 0,
     mfaOnlyRemaining: 0,
     piiPreviousRemaining: 0,
+    writeBlocked: 0,
+    writeBlockedBySqlState: {},
   };
 }
 
@@ -223,6 +241,7 @@ function sumMetrics(targets: MfaToPiiTargetMetrics[]): MfaToPiiReport['totals'] 
     decryptErrors: 0,
     mfaOnlyRemaining: 0,
     piiPreviousRemaining: 0,
+    writeBlocked: 0,
     pending: 0,
   };
   for (const metric of targets) {
@@ -234,12 +253,13 @@ function sumMetrics(targets: MfaToPiiTargetMetrics[]): MfaToPiiReport['totals'] 
     totals.decryptErrors += metric.decryptErrors;
     totals.mfaOnlyRemaining += metric.mfaOnlyRemaining;
     totals.piiPreviousRemaining += metric.piiPreviousRemaining;
+    totals.writeBlocked += metric.writeBlocked;
   }
   return totals;
 }
 
 async function processTarget(
-  db: ReencryptDbPort,
+  db: PiiReencryptDbPort,
   schemaName: string,
   target: EncryptedColumnTarget,
   options: MfaToPiiOptions,
@@ -308,6 +328,14 @@ async function processTarget(
       const ciphertext = encryptAes256Gcm(plaintext, options.keys.piiActiveKey);
       if (options.mode === 'apply') {
         await db.updateEncryptedValue(schemaName, target, row.id, ciphertext);
+      } else {
+        const sqlState = await db.probeEncryptedWrite(schemaName, target, row.id, ciphertext);
+        if (sqlState !== null) {
+          metrics.writeBlocked += 1;
+          metrics.writeBlockedBySqlState[sqlState] =
+            (metrics.writeBlockedBySqlState[sqlState] ?? 0) + 1;
+          continue;
+        }
       }
       metrics.reencrypted += 1;
     }
@@ -321,7 +349,7 @@ async function processTarget(
 
 /** Recifra PII con claves MFA históricas a la clave PII activa por schema tenant. */
 export async function runMfaToPii(
-  db: ReencryptDbPort,
+  db: PiiReencryptDbPort,
   options: MfaToPiiOptions,
 ): Promise<MfaToPiiReport> {
   const schemaFilter = options.schemaFilter?.trim();
@@ -351,11 +379,13 @@ export async function runMfaToPii(
     totals.skippedMissingTable +
     totals.nonCiphertext +
     totals.decryptErrors +
+    totals.writeBlocked +
     (options.mode === 'verify-pii-only'
       ? totals.mfaOnlyRemaining + totals.piiPreviousRemaining
       : 0);
   const hasBlockingIssues =
     totals.skippedMissingTable > 0 ||
+    totals.writeBlocked > 0 ||
     (options.mode === 'verify-pii-only'
       ? totals.nonCiphertext > 0 ||
         totals.decryptErrors > 0 ||
@@ -372,11 +402,19 @@ export async function runMfaToPii(
   };
 }
 
+/** Solo conteos: el SQLSTATE se agrega por objetivo, nunca por fila. */
+function formatWriteBlocked(metric: MfaToPiiTargetMetrics): string {
+  const bySqlState = Object.entries(metric.writeBlockedBySqlState)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([sqlState, count]) => ` write_blocked_${sqlState}=${count}`);
+  return `write_blocked=${metric.writeBlocked}${bySqlState.join('')}`;
+}
+
 export function formatMfaToPiiReport(report: MfaToPiiReport): string {
   const lines = [
     `[REENCRYPT-PII] mode=${report.mode}`,
     `[REENCRYPT-PII] schemas=${report.schemasProcessed.length} [${report.schemasProcessed.join(', ')}]`,
-    `[REENCRYPT-PII] totals candidates=${report.totals.candidates} reencrypted=${report.totals.reencrypted} skipped_pii=${report.totals.skippedAlreadyPii} non_ciphertext=${report.totals.nonCiphertext} decrypt_errors=${report.totals.decryptErrors} mfa_only_remaining=${report.totals.mfaOnlyRemaining} pii_previous_remaining=${report.totals.piiPreviousRemaining} pending=${report.totals.pending} missing_table_targets=${report.totals.skippedMissingTable}`,
+    `[REENCRYPT-PII] totals candidates=${report.totals.candidates} reencrypted=${report.totals.reencrypted} skipped_pii=${report.totals.skippedAlreadyPii} non_ciphertext=${report.totals.nonCiphertext} decrypt_errors=${report.totals.decryptErrors} mfa_only_remaining=${report.totals.mfaOnlyRemaining} pii_previous_remaining=${report.totals.piiPreviousRemaining} write_blocked=${report.totals.writeBlocked} pending=${report.totals.pending} missing_table_targets=${report.totals.skippedMissingTable}`,
   ];
 
   for (const metric of report.targets) {
@@ -391,7 +429,7 @@ export function formatMfaToPiiReport(report: MfaToPiiReport): string {
       continue;
     }
     lines.push(
-      `[REENCRYPT-PII] ${metric.schemaName}/${metric.entityType}: candidates=${metric.candidates} reencrypted=${metric.reencrypted} skipped_pii=${metric.skippedAlreadyPii} non_ciphertext=${metric.nonCiphertext} decrypt_errors=${metric.decryptErrors} mfa_only_remaining=${metric.mfaOnlyRemaining} pii_previous_remaining=${metric.piiPreviousRemaining}${metric.skippedMissingTable ? ' table_missing=1' : ''}`,
+      `[REENCRYPT-PII] ${metric.schemaName}/${metric.entityType}: candidates=${metric.candidates} reencrypted=${metric.reencrypted} skipped_pii=${metric.skippedAlreadyPii} non_ciphertext=${metric.nonCiphertext} decrypt_errors=${metric.decryptErrors} mfa_only_remaining=${metric.mfaOnlyRemaining} pii_previous_remaining=${metric.piiPreviousRemaining} ${formatWriteBlocked(metric)}${metric.skippedMissingTable ? ' table_missing=1' : ''}`,
     );
   }
 

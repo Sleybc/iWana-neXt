@@ -132,6 +132,7 @@ import { PrivacyDenunciaOperador1720000000172 } from './172_privacy_denuncia_ope
 import { BillingCore1730000000173 } from './173_billing_core';
 import { SeedBillingPermissions1740000000174 } from './174_seed_billing_permissions';
 import { BillingContractPriceBackfill1750000000175 } from './175_billing_contract_price_backfill';
+import { SubscriberDocumentNullWhenAnonymized1760000000176 } from './176_subscriber_document_null_when_anonymized';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -345,6 +346,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   BillingCore1730000000173,
   SeedBillingPermissions1740000000174,
   BillingContractPriceBackfill1750000000175,
+  SubscriberDocumentNullWhenAnonymized1760000000176,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

@@ -95,6 +95,7 @@ import {
 import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
 import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 import { CrmQuoteReadPort } from '../ports/crm-quote-read.port';
+import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
 import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
 const SUBSCRIBER_SECTION_SCHEMAS = {
@@ -2033,7 +2034,10 @@ export class SubscribersService implements CrmSubscriberReadPort {
    * Descifra campos PII del suscriptor para respuesta.
    */
   private decryptSubscriberFields(subscriber: Subscriber): Subscriber {
-    if (subscriber.documentNumberEncrypted) {
+    // D-K2A-4: un titular suprimido no conserva documento; vacío se leería como «pendiente».
+    if (subscriber.anonymizedAt != null) {
+      (subscriber as Subscriber & { documentNumber?: string }).documentNumber = ANONYMIZED;
+    } else if (subscriber.documentNumberEncrypted) {
       try {
         (subscriber as Subscriber & { documentNumber?: string }).documentNumber = this.decryptValue(
           subscriber.documentNumberEncrypted,

@@ -530,7 +530,7 @@ jobs:
           log=/tmp/api-integration.log
           rm -f "$report" "$log"
 
-          IWANA_DB_INTEGRATION_AVAILABLE=true E2E_TENANT_SLUG=test \
+          IWANA_DB_INTEGRATION_AVAILABLE=true IWANA_K2_REENCRYPT_INTEGRATION=true E2E_TENANT_SLUG=test \
             pnpm --filter @iwana/api exec jest \
               --config jest.integration.config.js \
               --passWithNoTests \
@@ -672,6 +672,25 @@ jobs:
             errors.push('B5 debe aparecer ejecutada con exactamente 17/17 tests aprobados y 0 omitidos.');
           }
 
+          const k2Spec = 'apps/api/src/cli/reencrypt-aes.pii.postgres.integration.spec.ts';
+          const k2 = results.get(k2Spec);
+          const k2Assertions = k2?.assertionResults ?? [];
+          const k2Passed = k2Assertions.filter((assertion) => assertion.status === 'passed').length;
+          const k2Failed = k2Assertions.filter((assertion) => assertion.status === 'failed').length;
+          const k2Pending = k2Assertions.filter((assertion) => assertion.status === 'pending').length;
+          const k2Todo = k2Assertions.filter((assertion) => assertion.status === 'todo').length;
+          if (
+            !k2 ||
+            k2.status !== 'passed' ||
+            k2Assertions.length !== 5 ||
+            k2Passed !== 5 ||
+            k2Failed !== 0 ||
+            k2Pending !== 0 ||
+            k2Todo !== 0
+          ) {
+            errors.push('K2 debe aparecer ejecutada con exactamente 5/5 tests aprobados y 0 omitidos.');
+          }
+
           if (errors.length > 0) {
             console.error('Gate de omisiones de integración API: FAIL');
             for (const error of errors) console.error(`- ${error}`);
@@ -681,7 +700,7 @@ jobs:
           const omittedCount = missingFromReport.size + completelySkipped.size;
           const omittedLabel = omittedCount === 1 ? 'omisión declarada' : 'omisiones declaradas';
           console.log(
-            `Gate de omisiones de integración API: PASS (${discovered.size} specs; ${omittedCount} ${omittedLabel}; B5 17/17)`,
+            `Gate de omisiones de integración API: PASS (${discovered.size} specs; ${omittedCount} ${omittedLabel}; B5 17/17; K2 5/5)`,
           );
           API_INTEGRATION_GATE
 

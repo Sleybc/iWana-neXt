@@ -1,14 +1,25 @@
-import { DataSource, QueryRunner } from 'typeorm';
+import { DataSource, QueryFailedError, QueryRunner } from 'typeorm';
 import { isValidSchemaName, runInTenantSchema } from '@iwana/db';
-import { EncryptedCellRow, ReencryptDbPort } from './reencrypt-aes.orchestrator';
+import type { PiiReencryptDbPort } from '../../cli/reencrypt-aes.pii';
+import { EncryptedCellRow } from './reencrypt-aes.orchestrator';
 import { EncryptedColumnTarget } from './reencrypt-aes.targets';
+
+const SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/u;
+
+/** Fuerza el rollback de `runInTenantSchema`, que confirma si el callback termina bien. */
+class ProbeRollbackSignal extends Error {}
+
+function readSqlState(error: QueryFailedError): string | null {
+  const { code } = error.driverError as { code?: unknown };
+  return typeof code === 'string' && SQLSTATE_PATTERN.test(code) ? code : null;
+}
 
 /**
  * Adapter TypeORM para el CLI de recifrado.
  * Public: queries calificadas `public."tabla"`.
  * Tenant: `runInTenantSchema` + SET LOCAL search_path.
  */
-export class TypeOrmReencryptDbAdapter implements ReencryptDbPort {
+export class TypeOrmReencryptDbAdapter implements PiiReencryptDbPort {
   constructor(private readonly dataSource: DataSource) {}
 
   async listActiveTenantSchemas(): Promise<string[]> {
@@ -71,11 +82,45 @@ export class TypeOrmReencryptDbAdapter implements ReencryptDbPort {
     }
 
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
-      await qr.query(
-        `UPDATE "${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2`,
-        [newCiphertext, id],
-      );
+      await this.updateTenantCell(qr, target, id, newCiphertext);
     });
+  }
+
+  /**
+   * Ensaya el UPDATE de `apply` y siempre lo revierte. Solo schemas tenant: un
+   * `public` lo rechaza `runInTenantSchema`. Un `QueryFailedError` sin SQLSTATE
+   * se propaga: devolver `null` lo daría por escribible.
+   */
+  async probeEncryptedWrite(
+    schemaName: string,
+    target: EncryptedColumnTarget,
+    id: string,
+    newCiphertext: string,
+  ): Promise<string | null> {
+    try {
+      await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
+        await this.updateTenantCell(qr, target, id, newCiphertext);
+        throw new ProbeRollbackSignal();
+      });
+    } catch (error) {
+      if (error instanceof ProbeRollbackSignal) return null;
+      const sqlState = error instanceof QueryFailedError ? readSqlState(error) : null;
+      if (sqlState === null) throw error;
+      return sqlState;
+    }
+    throw new Error('La sonda de escritura terminó sin revertir.');
+  }
+
+  private async updateTenantCell(
+    qr: QueryRunner,
+    target: EncryptedColumnTarget,
+    id: string,
+    newCiphertext: string,
+  ): Promise<void> {
+    await qr.query(
+      `UPDATE "${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2`,
+      [newCiphertext, id],
+    );
   }
 
   private async fetchPublicBatch(

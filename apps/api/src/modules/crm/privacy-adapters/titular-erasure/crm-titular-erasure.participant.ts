@@ -97,7 +97,7 @@ const CRM_RULES: Record<string, FieldRule[]> = {
   ],
   subscribers: [
     { column: 'document_type', kind: 'marker' },
-    { column: 'document_number_encrypted', kind: 'encrypted-marker' },
+    { column: 'document_number_encrypted', kind: 'null' },
     { column: 'document_number_hmac', kind: 'null' },
     { column: 'document_number_hash', kind: 'legacy-hash', marker: 'subscriber-document' },
     { column: 'email_hmac', kind: 'null' },
@@ -452,6 +452,21 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
       subscribers: scope.subscriberIds,
     };
     for (const table of ['expediente_records', 'subscribers'] as const) {
+      // D-K2A-3: el CHECK de la 176 solo admite el documento en NULL en una fila ya marcada.
+      if (mode === 'apply' && table === 'subscribers') {
+        if (!scope.requestId)
+          throw new Error('Falta el identificador de la solicitud de supresión.');
+        const marker = await markAnonymizedRows(
+          qr,
+          table,
+          scope.subscriberIds,
+          scope.requestId,
+          columns,
+          updatedAtAdvanced,
+        );
+        if (marker.residual > 0)
+          throw new Error('No se pudo verificar la marca de anonimización de suscriptores.');
+      }
       const result = await anonymizeConfiguredTable(
         qr,
         table,
@@ -479,20 +494,6 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
         );
         if (marker.residual > 0)
           throw new Error('No se pudo verificar la marca de anonimización de expedientes.');
-      }
-      if (mode === 'apply' && table === 'subscribers') {
-        if (!scope.requestId)
-          throw new Error('Falta el identificador de la solicitud de supresión.');
-        const marker = await markAnonymizedRows(
-          qr,
-          table,
-          scope.subscriberIds,
-          scope.requestId,
-          columns,
-          updatedAtAdvanced,
-        );
-        if (marker.residual > 0)
-          throw new Error('No se pudo verificar la marca de anonimización de suscriptores.');
       }
     }
 

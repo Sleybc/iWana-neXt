@@ -274,6 +274,96 @@ describe('CLI reencrypt-aes — opt-in de integración K2', () => {
   });
 });
 
+describe('CLI reencrypt-aes — destino test de la integración K2 en CI', () => {
+  it.each(['127.0.0.1', 'localhost', '::1'])(
+    'con ciRunner y opt-in acepta test en loopback %s',
+    (databaseHost) => {
+      expect(
+        resolveK2ReencryptIntegrationEnabled({
+          optIn: 'true',
+          databaseName: 'test',
+          databaseHost,
+          ciRunner: true,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it('con ciRunner sigue aceptando un destino desechable propio', () => {
+    expect(
+      resolveK2ReencryptIntegrationEnabled({
+        optIn: 'true',
+        databaseName: 'iwana_it_g7_ci',
+        databaseHost: '127.0.0.1',
+        ciRunner: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('con ciRunner y sin opt-in K2 no corre', () => {
+    expect(
+      resolveK2ReencryptIntegrationEnabled({
+        databaseName: 'test',
+        databaseHost: '127.0.0.1',
+        ciRunner: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('con ciRunner en false test se rechaza', () => {
+    expect(() =>
+      resolveK2ReencryptIntegrationEnabled({
+        optIn: 'true',
+        databaseName: 'test',
+        databaseHost: '127.0.0.1',
+        ciRunner: false,
+      }),
+    ).toThrow('La integración K2 solo acepta una DB_NAME iwana_it_g7_* desechable.');
+  });
+
+  it('con ciRunner rechaza test en un host externo', () => {
+    expect(() =>
+      resolveK2ReencryptIntegrationEnabled({
+        optIn: 'true',
+        databaseName: 'test',
+        databaseHost: 'external.example.invalid',
+        ciRunner: true,
+      }),
+    ).toThrow('La integración K2 solo acepta un DB_HOST loopback.');
+  });
+
+  it.each(['dbiw', 'tenant_iwana', 'postgres', 'test_prod', 'TEST', ''])(
+    'con ciRunner rechaza la base %p',
+    (databaseName) => {
+      expect(() =>
+        resolveK2ReencryptIntegrationEnabled({
+          optIn: 'true',
+          databaseName,
+          databaseHost: '127.0.0.1',
+          ciRunner: true,
+        }),
+      ).toThrow('La integración K2 solo acepta una DB_NAME iwana_it_g7_* desechable.');
+    },
+  );
+
+  it('GITHUB_ACTIONS no habilita test por sí solo: la bandera la pasa quien llama', () => {
+    const previous = process.env['GITHUB_ACTIONS'];
+    process.env['GITHUB_ACTIONS'] = 'true';
+    try {
+      expect(() =>
+        assertSafeDisposableIntegrationTarget({
+          enabled: true,
+          databaseName: 'test',
+          databaseHost: '127.0.0.1',
+        }),
+      ).toThrow('La integración K2 solo acepta una DB_NAME iwana_it_g7_* desechable.');
+    } finally {
+      if (previous === undefined) delete process.env['GITHUB_ACTIONS'];
+      else process.env['GITHUB_ACTIONS'] = previous;
+    }
+  });
+});
+
 describe('CLI reencrypt-aes — resolveMode', () => {
   const base: CliFlags = {
     apply: false,
