@@ -70,7 +70,7 @@ Toda decisión está en la spec; esto solo acota. Trabajo en `main`, sin ramas, 
 | G3 | CA-K2A-01 a 09 y CA-K2A-13 en verde contra PostgreSQL real, con conteo |
 | G4 | Integración K2 ejecutada en el paso de API, N/N; manifiesto con 3 omisiones |
 | G6 | B5 sin bloqueantes. **Cerrado el 2026-11-07:** `sec-eng` GO con tres P2 antes de G7 (ids en la salida de `--verify-only`, `--verify-only` no es de solo lectura por construcción, contradicción de remediación en runbooks) y dictamen H-1 (trigger monótono + bitácora); boundaries y `test-change-reviewer` sin bloqueantes; `gate-verifier` sin rojos: API 477/6.351, DB 78/426, integración DB 53/153, integración API 70 + 3 omitidas, K2 5/5 con entorno de CI |
-| G6.5 | CI de `main` en verde sobre el SHA publicado, con todos sus pasos |
+| G6.5 | CI de `main` en verde sobre el SHA publicado, con todos sus pasos. **Cerrado el 2026-11-07:** `648a0790`, CI 42370530956 al primer intento, gate `K2 5/5`. Después, P2-1 y P2-2 de `sec-eng` cerrados en código (salida de `--verify-only` sin ids y lectura que siempre revierte) y P2-3 en runbooks; la guarda de reaplicación se descartó y H-1 pasa a su [spec](../specs/2026-11-07-privacy-h1-guc-supresion-spec.md) |
 | G7 | Sigue diferido hasta la beta. Esta fase retira el bloqueo, no concede G7 |
 
 ## 6. Riesgos

@@ -1,5 +1,10 @@
 import type { DataSource } from 'typeorm';
-import { parseAnonymizeTitularArgs, resolveTenantSchema } from './anonymize-titular';
+import {
+  parseAnonymizeTitularArgs,
+  resolveTenantSchema,
+  toVerificationOutput,
+  type AnonymizedTenantVerificationReport,
+} from './anonymize-titular';
 
 const REQUEST_ID = '5d1ce8e0-6447-44a1-a27e-84f856622a47';
 const EXPEDIENTE_ID = '6a6286b9-8ea8-42ca-823d-5fc2515be820';
@@ -112,5 +117,53 @@ describe('resolveTenantSchema', () => {
     await expect(
       resolveTenantSchema(dataSourceWith(null), 'isp-demo', { anyStatus: true }),
     ).rejects.toThrow('Tenant inexistente, inactivo o con schema inválido.');
+  });
+});
+
+describe('banderas de remediación y de solicitudes (P2 de seguridad)', () => {
+  it('--with-request-ids solo acompaña a --verify-only', () => {
+    expect(
+      parseAnonymizeTitularArgs(['--tenant', 'isp-demo', '--verify-only', '--with-request-ids'])
+        .withRequestIds,
+    ).toBe(true);
+    expect(() =>
+      parseAnonymizeTitularArgs([
+        '--tenant',
+        'isp-demo',
+        '--request',
+        REQUEST_ID,
+        '--with-request-ids',
+      ]),
+    ).toThrow('--with-request-ids solo se usa con --verify-only.');
+  });
+});
+
+describe('toVerificationOutput', () => {
+  const report: AnonymizedTenantVerificationReport = {
+    tenantSchema: 'tenant_demo',
+    titularesChecked: 2,
+    markedSubscribers: 1,
+    markedExpedientes: 1,
+    residualFields: 3,
+    findings: [
+      {
+        titularIds: ['8f1d2c6e-1111-4c3b-9d5e-000000000001'],
+        residualFields: 3,
+        tables: [{ table: 'subscribers', residualFields: 3 }],
+      },
+    ],
+  };
+
+  it('por defecto no imprime ids de titulares ni solicitudes', () => {
+    const output = toVerificationOutput(report);
+    expect(output.findings).toEqual([
+      { residualFields: 3, tables: [{ table: 'subscribers', residualFields: 3 }] },
+    ]);
+    expect(output).not.toHaveProperty('requestIds');
+    expect(JSON.stringify(output)).not.toContain('8f1d2c6e');
+  });
+
+  it('añade las solicitudes solo cuando se piden', () => {
+    expect(toVerificationOutput(report, [REQUEST_ID]).requestIds).toEqual([REQUEST_ID]);
   });
 });

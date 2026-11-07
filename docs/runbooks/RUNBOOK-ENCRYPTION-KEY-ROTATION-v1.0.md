@@ -135,7 +135,7 @@ Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos 
 3. **Desplegar el lector compatible.** Con escrituras detenidas según la ventana, configurar `PII_ENCRYPTION_KEY` nueva, `PII_ENCRYPTION_KEY_PREVIOUS` vacía y `PII_DECRYPT_LEGACY_MFA=true`. Mantener las variables MFA actuales (incluida `MFA_ENCRYPTION_KEY_PREVIOUS` si la requiere su rotación separada). No dejar convivir instancias del binario anterior con las nuevas escrituras PII: la versión anterior solo entiende la clave MFA. Arrancar el conjunto aprobado y comprobar health/MFA/lectura PII. Mantener el fallback MFA hasta verificar todo el inventario de tenants.
 4. **Recifrar por tenant.** Compilar `@iwana/api` y ejecutar el CLI K2 con un `schema_name` verificado por invocación. Los modos PII resuelven el schema con consulta parametrizada a `public.tenants`, sin filtrar por status; exigen fila de tenant registrada y namespace físico existente. Así se cubren schemas retenidos en cualquier estado (`ACTIVE`, `INACTIVE`, `SUSPENDED` o `MARKED_FOR_DELETION`). Schema ausente/no registrado falla antes de consultar tablas tenant; tablas u objetivos faltantes impiden completar verify. No admiten `public` ni ejecución de flota. El flujo MFA general conserva su restricción a tenants `ACTIVE`. `--mfa-to-pii` es dry-run por defecto; inspeccionar sus conteos antes de usar `--apply`. Aplicar dos veces para comprobar idempotencia y ejecutar `--verify-pii-only`.
 
-   **Verificación previa obligatoria.** Antes del dry-run de cada tenant, correr `--verify-only` de `anonymize-titular` (spec K2 anonimizados, D-K2A-5). Es lo único que ve una marca cifrada de un titular anonimizado si ya está en la clave activa: el dry-run la cuenta como `skipped_pii`, K2 pasa y la marca bloquea la **siguiente** rotación. `TENANT_REF` es el UUID o slug del tenant, no el `schema_name`. El CLI sale con `0` aunque haya residuales, por eso el criterio es el `jq -e`; no guardar su salida cruda, que contiene ids:
+   **Verificación previa obligatoria.** Antes del dry-run de cada tenant, correr `--verify-only` de `anonymize-titular` (spec K2 anonimizados, D-K2A-5). Es lo único que ve una marca cifrada de un titular anonimizado si ya está en la clave activa: el dry-run la cuenta como `skipped_pii`, K2 pasa y la marca bloquea la **siguiente** rotación. `TENANT_REF` es el UUID o slug del tenant, no el `schema_name`. El CLI sale con `0` aunque haya residuales, por eso el criterio es el `jq -e`. Su salida solo trae conteos, sin ids, y la lectura se revierte siempre (no confirma ni retiene bloqueos más allá de `lock_timeout`):
 
    ```bash
    set -euo pipefail
@@ -147,12 +147,16 @@ Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos 
 
    Continuar con K2 solo si termina en `0`. Titulares marcados con `residualFields` en `0` no son un hallazgo aquí. `--verify-only` admite cualquier tenant registrado, como K2; `--apply` sigue exigiendo `ACTIVE`. Un residual en un tenant con otro status detiene K2 en ese schema y se escala; no cambiar su status para sortearlo.
 
-   **Remediación de marcas antiguas (D-K2A-5).** No hay filas de producción que remediar, porque la privacidad no ha corrido allí: en producción, un residual es una parada y se escala. En desarrollo y ensayo, reejecutar `anonymize-titular` por cada solicitud afectada; la deja en `NULL`, sin migración de datos y sin fijar `iwana.titular_erasure` a mano. `REQUEST_ID` es la solicitud de supresión que consta en `anonymized_request_id` de la fila:
+   **Remediación de marcas antiguas (D-K2A-5).** No hay filas de producción que remediar, porque la privacidad no ha corrido allí: en producción, un residual es una parada y se escala. En desarrollo y ensayo, reejecutar `anonymize-titular` por cada solicitud afectada; la deja en `NULL`, sin migración de datos y sin fijar `iwana.titular_erasure` a mano. Las solicitudes salen de `--with-request-ids`, que solo se usa aquí: se leen en la terminal, no se guardan ni se pegan en el ticket. Registrar en el ticket la solicitud remediada y los conteos:
 
    ```bash
+   pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js \
+     --tenant "$TENANT_REF" --verify-only --with-request-ids | jq -r '.requestIds[]'
    pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant "$TENANT_REF" --request "$REQUEST_ID"
    pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant "$TENANT_REF" --request "$REQUEST_ID" --apply
    ```
+
+   Reaplicar es idempotente y solo lleva al estado suprimido (también lo usa la remediación de H-2, D-HN-7). El CLI aún no escribe auditoría propia: hasta que exista (spec H-1, bitácora), la constancia es la del ticket.
 
    Repetir `--verify-only` hasta `residualFields` en `0` y volver a empezar por el dry-run de K2. Si el CLI no deja la fila en `NULL`, detenerse y escalar a AI-EM-ARCH.
 

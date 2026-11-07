@@ -37,6 +37,8 @@ export interface AnonymizeTitularFlags {
   mode: AnonymizeTitularMode;
   help: boolean;
   verifyOnly: boolean;
+  /** Añade a `--verify-only` las solicitudes afectadas; por defecto solo hay conteos. */
+  withRequestIds?: boolean;
 }
 
 export interface AnonymizeTitularKeys {
@@ -337,6 +339,12 @@ export function parseAnonymizeTitularArgs(argv: string[]): AnonymizeTitularFlags
       flags.confirmUnmatched = true;
       continue;
     }
+    if (arg === '--with-request-ids') {
+      if (flags.withRequestIds)
+        throw new AnonymizeTitularCliError('--with-request-ids no se puede repetir.');
+      flags.withRequestIds = true;
+      continue;
+    }
     if (arg === '--verify-only') {
       if (flags.verifyOnly || modeSeen) {
         throw new AnonymizeTitularCliError('Usa --verify-only sin --dry-run ni --apply.');
@@ -393,6 +401,9 @@ export function parseAnonymizeTitularArgs(argv: string[]): AnonymizeTitularFlags
     throw new AnonymizeTitularCliError(
       '--verify-only requiere solo --tenant; no acepta solicitud ni expedientes.',
     );
+  }
+  if (flags.withRequestIds && !flags.verifyOnly) {
+    throw new AnonymizeTitularCliError('--with-request-ids solo se usa con --verify-only.');
   }
 
   return flags;
@@ -1400,13 +1411,91 @@ async function verifyAnonymizedTenantInTransaction(
   };
 }
 
+class RolledBackResult<T> extends Error {
+  constructor(readonly result: T) {
+    super('rollback');
+  }
+}
+
+/**
+ * Lectura en una transacción que nunca confirma. `lock_timeout` evita retener a
+ * los escritores del tenant si una fila está ocupada.
+ */
+export async function runRolledBackInTenantSchema<T>(
+  dataSource: DataSource,
+  schemaName: string,
+  operation: (queryRunner: QueryRunner) => Promise<T>,
+): Promise<T> {
+  try {
+    await runInTenantSchema(dataSource, schemaName, async (queryRunner) => {
+      await queryRunner.query(`SET LOCAL lock_timeout = '5s'`);
+      throw new RolledBackResult(await operation(queryRunner));
+    });
+  } catch (error) {
+    if (error instanceof RolledBackResult) return error.result as T;
+    throw error;
+  }
+  throw new Error('La lectura terminó sin revertir.');
+}
+
+export interface AnonymizedTenantVerificationOutput {
+  tenantSchema: string;
+  titularesChecked: number;
+  markedSubscribers: number;
+  markedExpedientes: number;
+  residualFields: number;
+  findings: Array<Omit<AnonymizedTenantVerificationFinding, 'titularIds'>>;
+  requestIds?: string[];
+}
+
+/** Lo que imprime `--verify-only`: conteos, sin ids de titulares. */
+export function toVerificationOutput(
+  report: AnonymizedTenantVerificationReport,
+  requestIds?: string[],
+): AnonymizedTenantVerificationOutput {
+  return {
+    tenantSchema: report.tenantSchema,
+    titularesChecked: report.titularesChecked,
+    markedSubscribers: report.markedSubscribers,
+    markedExpedientes: report.markedExpedientes,
+    residualFields: report.residualFields,
+    findings: report.findings.map(({ residualFields, tables }) => ({ residualFields, tables })),
+    ...(requestIds ? { requestIds } : {}),
+  };
+}
+
+/** Solicitudes de supresión de los titulares con residuales, para remediar. */
+export async function listFindingRequestIds(
+  dataSource: DataSource,
+  schemaName: string,
+  report: AnonymizedTenantVerificationReport,
+): Promise<string[]> {
+  const titularIds = [...new Set(report.findings.flatMap((finding) => finding.titularIds))];
+  if (titularIds.length === 0) return [];
+  if (!isValidSchemaName(schemaName)) throw new AnonymizeTitularCliError('Schema tenant inválido.');
+  const rows = await runRolledBackInTenantSchema(
+    dataSource,
+    schemaName,
+    async (queryRunner) =>
+      (await queryRunner.query(
+        `SELECT anonymized_request_id::text AS id FROM subscribers
+        WHERE id = ANY($1::uuid[]) AND anonymized_request_id IS NOT NULL
+       UNION
+       SELECT anonymized_request_id::text FROM expediente_records
+        WHERE id = ANY($1::uuid[]) AND anonymized_request_id IS NOT NULL`,
+        [titularIds],
+      )) as Array<{ id: string }>,
+  );
+  return rows.map((row) => row.id).sort();
+}
+
 export async function verifyAnonymizedTenant(
   dataSource: DataSource,
   schemaName: string,
   keys: AnonymizeTitularKeys,
 ): Promise<AnonymizedTenantVerificationReport> {
   if (!isValidSchemaName(schemaName)) throw new AnonymizeTitularCliError('Schema tenant inválido.');
-  return runInTenantSchema(dataSource, schemaName, (queryRunner) =>
+  return runRolledBackInTenantSchema(dataSource, schemaName, (queryRunner) =>
     runWithCliTenant(queryRunner, schemaName, () =>
       verifyAnonymizedTenantInTransaction(queryRunner, schemaName, keys),
     ),
@@ -1469,7 +1558,8 @@ function printHelp(): void {
       `--apply                Anonimiza en una sola transacción y verifica el resultado.\n` +
       `--expediente           Puede repetirse. Si falta o no coincide el HMAC, requiere confirmación.\n` +
       `--confirm-unmatched    Exige que el motivo ya conste en el ticket.\n` +
-      `--verify-only          Solo lectura; informa ids y conteos de residuales por tenant.\n`,
+      `--verify-only          Solo lectura, siempre revierte; informa conteos de residuales por tenant.\n` +
+      `--with-request-ids     Con --verify-only: añade las solicitudes con residuales. No guardar la salida.\n`,
   );
 }
 
@@ -1492,7 +1582,12 @@ async function main(): Promise<void> {
     });
     if (flags.verifyOnly) {
       const report = await verifyAnonymizedTenant(AppDataSource, tenant.schemaName, keys);
-      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      const requestIds = flags.withRequestIds
+        ? await listFindingRequestIds(AppDataSource, tenant.schemaName, report)
+        : undefined;
+      process.stdout.write(
+        `${JSON.stringify(toVerificationOutput(report, requestIds), null, 2)}\n`,
+      );
       return;
     }
     const report = await anonymizeTitularInTenantSchema(

@@ -4,7 +4,13 @@ import { resolveMigrationDbCredentials, runInTenantSchema } from '@iwana/db';
 import { decryptAes256Gcm, encryptAes256Gcm } from '../common/crypto/aes-gcm.util';
 import { hmacPii } from '../common/crypto/pii-hash-key.util';
 import { TypeOrmReencryptDbAdapter } from '../common/crypto/reencrypt-aes.db-adapter';
-import { anonymizeTitularInTenantSchema, verifyAnonymizedTenant } from './anonymize-titular';
+import {
+  anonymizeTitularInTenantSchema,
+  listFindingRequestIds,
+  runRolledBackInTenantSchema,
+  toVerificationOutput,
+  verifyAnonymizedTenant,
+} from './anonymize-titular';
 import { MfaToPiiMode, runMfaToPii } from './reencrypt-aes.pii';
 import {
   applyTenantMigrationsInOrder,
@@ -1561,6 +1567,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         expect(dryRunBefore.totals.writeBlocked).toBe(1);
         expect(dryRunBefore.hasBlockingIssues).toBe(true);
 
+        // P2 de seguridad: la salida no lleva ids; las solicitudes solo se piden aparte.
+        expect(JSON.stringify(toVerificationOutput(before))).not.toContain(subscriberId);
+        expect(await listFindingRequestIds(dataSource, schema, before)).toEqual([requestId]);
+
         const report = await anonymizeTitularInTenantSchema(
           dataSource,
           schema,
@@ -1627,6 +1637,25 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           },
         ]);
         expect(await readDocument()).toBe(marker);
+
+        // P2 de seguridad: la lectura de la verificación nunca confirma.
+        const tenantName = async () =>
+          (
+            (await dataSource.query('SELECT name FROM public.tenants WHERE schema_name = $1', [
+              schema,
+            ])) as Array<{ name: string }>
+          )[0]?.name;
+        const nameBefore = await tenantName();
+        await expect(
+          runRolledBackInTenantSchema(dataSource, schema, async (queryRunner) => {
+            await queryRunner.query(
+              `UPDATE public.tenants SET name = name || '-x' WHERE schema_name = $1`,
+              [schema],
+            );
+            return 'leído';
+          }),
+        ).resolves.toBe('leído');
+        expect(await tenantName()).toBe(nameBefore);
       },
     );
   }, 180_000);
