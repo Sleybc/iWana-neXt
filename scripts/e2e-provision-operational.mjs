@@ -1563,6 +1563,29 @@ function describeFailedTest(test) {
     : text;
 }
 
+// Primer error del test, saneado: sin ANSI, sin saltos, sin tokens ni
+// credenciales y truncado. Sin esto el CI solo dice qué test cayó, no por qué.
+function describeFailedError(test, result) {
+  const location = test.location && test.location.file
+    ? relative(process.cwd(), test.location.file).split(sep).join('/') + ':' +
+      (Number.isInteger(test.location.line) ? test.location.line : 0)
+    : 'spec-desconocido:0';
+  const error = (result.errors && result.errors[0]) || result.error || {};
+  const raw = String(error.message ?? error.value ?? 'sin mensaje');
+  const text = raw
+    .replace(/\u001b\[[0-9;]*[A-Za-z]/gu, '')
+    .replace(/[\u0000-\u001f\u007f]+/gu, ' ')
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/=-]+/giu, 'Bearer [redactado]')
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/gu, '[jwt-redactado]')
+    .replace(/((?:password|passwd|secret|token|api[_-]?key)["']?\s*[:=]\s*)["']?[^\s"',}]+/giu, '$1[redactado]')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const full = location + ' › ' + text;
+  return full.length > MAX_FAILED_TEST_LENGTH
+    ? full.slice(0, MAX_FAILED_TEST_LENGTH - 1) + '…'
+    : full;
+}
+
 class OperationalMarkerReporter {
   constructor() {
     this.totalTests = 0;
@@ -1591,6 +1614,7 @@ class OperationalMarkerReporter {
     let skipReasonCount = 0;
     let missingSkipReasons = 0;
     const failedTests = [];
+    const failedErrors = [];
 
     for (const { test, result, annotations } of this.resultsByTest.values()) {
       if (result.status === 'passed') {
@@ -1614,6 +1638,7 @@ class OperationalMarkerReporter {
         // timedOut/interrupted también son fallos del gate, no falsos verdes.
         failed += 1;
         failedTests.push(describeFailedTest(test) + ' [' + result.status + ']');
+        failedErrors.push(describeFailedError(test, result));
       }
     }
 
@@ -1627,6 +1652,9 @@ class OperationalMarkerReporter {
     process.stdout.write('E2E_PLAYWRIGHT_MISSING_SKIP_REASONS=' + missingSkipReasons + '\n');
     for (const failedTest of failedTests.sort().slice(0, MAX_FAILED_TEST_MARKERS)) {
       process.stdout.write('E2E_PLAYWRIGHT_FAILED_TEST=' + failedTest + '\n');
+    }
+    for (const failedError of failedErrors.sort().slice(0, MAX_FAILED_TEST_MARKERS)) {
+      process.stdout.write('E2E_PLAYWRIGHT_FAILED_ERROR=' + failedError + '\n');
     }
     if (failedTests.length > MAX_FAILED_TEST_MARKERS) {
       process.stdout.write(
