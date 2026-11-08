@@ -1,8 +1,9 @@
 # ADR-094: Modelo de protección de datos personales (Habeas Data) para iWana neXt
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Estado:** Aprobado
 **Aprobado por:** CTO — 2026-10-14, sin cambios de contenido. Con la aprobación se adopta la **retención de prospectos sin contrato en 24 meses** (§D7, §7.2). El número de módulo de `privacy` queda pendiente del roadmap. Los puntos ⚠ siguen pendientes de dictamen jurídico y **bloquean producción**, no la construcción
+**Enmienda 1.1:** aprobada por el CTO el 2026-11-08. Añade a §D7 la retención del expediente de vinculación y la renuncia al cobro por ISP. Se basa en el criterio jurídico contrastado en [INFORME-PRIVACY-CONTRASTE-DICTAMEN-JURIDICO-v1.0](../informes/INFORME-PRIVACY-CONTRASTE-DICTAMEN-JURIDICO-v1.0.md) §8. Ese texto **no tiene firma de abogado registrada**: el CTO asume el criterio, y la firma sigue pendiente para `docs/legal/`
 **Fecha:** 2026-10-14
 **Modo activo:** Architect + Product Architect
 **Autor:** AI-EM-ARCH
@@ -162,6 +163,24 @@ Catálogo `retention_policies`, sembrado y editable solo para **alargar** los pl
 | Soporte de estrato (ADR-093) | El de la facturación a la que dio beneficio | Último documento facturado | H10 |
 | Autorizaciones y su evidencia | Mientras exista cualquier dato del titular, + 5 años | — | Prueba de la autorización |
 | Logs de IP y conexión | ⚠ dictamen | — | H13 |
+| Expediente de vinculación: documentos aportados para aprobar el contrato (v1.1) | La fecha más tardía de A, B, C y D, por contrato (ver abajo) | — | Ley 2573 arts. 5 num. 7, 8 y 9; Ley 1266 art. 13; H9 |
+
+**Expediente de vinculación (enmienda 1.1).** Se **bloquea, no se suprime**, hasta la fecha más tardía de:
+
+| Hito | Fin | Fundamento |
+| --- | --- | --- |
+| A. Piso | Terminación del contrato + 5 años | Decreto 1704 art. 4 (H9) |
+| B. Fin de la exposición | Primer evento entre: pago más la permanencia del reporte, si lo hubo (el menor entre el doble de la mora y 4 años); castigo con renuncia al cobro y sin reporte activo; o exigibilidad + 10 años | Ley 2573 arts. 5, 8 y 9; Ley 1266 art. 13; CC art. 2536 |
+| C. Reclamo por suplantación | Decisión judicial que cierra la actuación penal + 3 años | Ley 2573 art. 9; CPACA art. 52 |
+| D. Orden de conservación | La que fije la Fiscalía o el juez | Orden judicial |
+
+- **Renuncia al cobro por ISP.** La decide cada ISP, porque es el acreedor y el Responsable. Es un parámetro por tenant:
+  - **sin configurar:** no hay renuncia, y B corre hasta exigibilidad + 10 años;
+  - **configurado:** B se calcula con ese plazo;
+  - **cambios:** se registran con fecha y aplican a las obligaciones que venzan después.
+- **Castigar no es borrar.** Una deuda castigada pasa al estado «castigada con renuncia»: se detienen el cobro y el reporte, y la facturación y los soportes se conservan 10 años (H10). Si hubo reporte a centrales, se actualiza al renunciar.
+- **Acceso durante el bloqueo:** solo los roles de atención de suplantación y legal.
+- **Riesgo residual aceptado:** la suplantación se descubre después de vencidos los cuatro hitos y el titular pide los documentos. Para entonces no hay cobro ni reporte, así que la Ley 2573 no se activa frente al ISP, y durante los primeros 5 años la Fiscalía cuenta con los datos del Decreto 1704. Una retención sin plazo para cubrir ese caso sería más difícil de justificar ante la SIC que el riesgo mismo.
 
 **Supresión procedente** (o retención vencida) → **anonimización**:
 - se sobrescriben las columnas personales;

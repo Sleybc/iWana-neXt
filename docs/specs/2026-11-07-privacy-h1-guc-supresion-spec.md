@@ -1,7 +1,7 @@
 # Spec — `privacy` · H-1: el GUC de supresión no protege frente a SQL en la API
 
 **Versión:** 1.0
-**Estado:** Aprobada. G0 del CTO el 2026-11-07: opciones 1 y 3 (§7). Sin implementar.
+**Estado:** Aprobada. G0 del CTO el 2026-11-07: opciones 1 y 3 (§7). Publicada en `49e8448f` (G6.5 ✅ 2026-11-08). D-H1-5 cerrada por el CTO el 2026-11-08.
 **Fecha:** 2026-11-07
 **Autor:** AI-EM-ARCH
 **Prioridad:** antes de G7. No bloquea K2, que no usa el GUC (spec K2 anonimizados, salida B).
@@ -117,6 +117,16 @@ La misma retención que el registro de supresión de la solicitud. Lectura solo 
 
 La spec DT-3 cambia «rechaza todo `UPDATE`» por «rechaza todo cambio que no lleve al estado suprimido», y cita esta spec. `crm-blocked-mutations.arch.spec.ts` no cambia: el GUC sigue reservado a los dos archivos de §2.
 
-### D-H1-5. Dictamen jurídico (punto 5)
+### D-H1-5. Alcance legal de la integridad de la supresión (punto 5)
 
-Sigue abierto, con abogado (ADR-094 §7.3). No bloquea la implementación; bloquea declarar cumplida la integridad de la supresión en G7.
+**Cerrada por el CTO el 2026-11-08.** El criterio jurídico de soporte está contrastado en [INFORME-PRIVACY-CONTRASTE-DICTAMEN-JURIDICO-v1.0](../informes/INFORME-PRIVACY-CONTRASTE-DICTAMEN-JURIDICO-v1.0.md) §3 y §8, y **no tiene firma de abogado registrada**. El CTO asume el criterio; la firma sigue pendiente para `docs/legal/`.
+
+Para declarar cumplida la integridad de la supresión en G7 hace falta:
+
+1. **Inventario de ubicaciones** del titular: tablas, adjuntos y metadatos, colas, cachés, réplicas, exportaciones, logs, encargados y backups.
+2. **Evidencia de ejecución** por ubicación, y **pruebas de no reaparición**. El trigger monótono y la bitácora de esta spec cubren la base.
+3. **Registro de excepciones:** dato conservado, fundamento, finalidad, acceso y vencimiento. Incluye el expediente de vinculación (ADR-094 §D7, enmienda 1.1), la facturación y la propia bitácora (D-H1-3).
+4. **«Anonimizado» solo donde se demuestre irreversibilidad.** Un titular suprimido que conserva su UUID enlazado a contratos o facturas es dato personal conservado por excepción, y así se declara.
+5. **Backups:** la supresión se reaplica antes de habilitar una restauración. La rotación de copias, por sí sola, no acredita la supresión.
+
+Si queda una copia recuperable sin excepción justificada, G7 no certifica «supresión integral completada».
