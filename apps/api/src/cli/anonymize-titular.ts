@@ -958,6 +958,49 @@ async function countChildRows(
   return countRows(queryRunner, table, 'expediente_id = ANY($1::uuid[])', [expedienteIds]);
 }
 
+/** Expedientes que esta solicitud ya marcó: `--apply --request` los remedia sin `--expediente` (R2). */
+async function findMarkedExpedienteIds(
+  queryRunner: QueryRunner,
+  columns: Map<string, TenantColumn>,
+  requestId: string,
+): Promise<string[]> {
+  if (
+    !tableExists(columns, 'expediente_records') ||
+    !columnOf(columns, 'expediente_records', 'anonymized_request_id')
+  ) {
+    return [];
+  }
+  const rows = (await queryRunner.query(
+    `SELECT id::text AS id FROM expediente_records
+       WHERE anonymized_request_id = $1::uuid ORDER BY id::text FOR SHARE`,
+    [requestId],
+  )) as Array<{ id: string }>;
+  return [...new Set(rows.map((row) => String(row.id).toLowerCase()))];
+}
+
+/** Suscriptores que esta solicitud ya marcó: mismo alcance de remediación (R2). */
+async function findMarkedSubscriberRows(
+  queryRunner: QueryRunner,
+  columns: Map<string, TenantColumn>,
+  requestId: string,
+): Promise<SubscriberRow[]> {
+  if (
+    !tableExists(columns, 'subscribers') ||
+    !columnOf(columns, 'subscribers', 'anonymized_request_id')
+  ) {
+    return [];
+  }
+  const userIdSelect = columnOf(columns, 'subscribers', 'user_id')
+    ? 'user_id::text'
+    : 'NULL::text AS user_id';
+  const rows = (await queryRunner.query(
+    `SELECT id::text, ${userIdSelect}
+       FROM subscribers WHERE anonymized_request_id = $1::uuid ORDER BY id::text FOR SHARE`,
+    [requestId],
+  )) as SubscriberRow[];
+  return rows;
+}
+
 async function anonymizeTitularInTransaction(
   queryRunner: QueryRunner,
   tenantSchema: string,
@@ -998,23 +1041,29 @@ async function anonymizeTitularInTransaction(
     }
   }
 
+  const markedExpedienteIds = await findMarkedExpedienteIds(queryRunner, columns, requestId);
+  const markedExpedienteSet = new Set(markedExpedienteIds);
+  const effectiveExpedienteIds = [...new Set([...expedienteIds, ...markedExpedienteIds])].sort();
+
   let expedienteRows: ExpedienteRow[] = [];
-  if (expedienteIds.length > 0) {
+  if (effectiveExpedienteIds.length > 0) {
     const hmacColumn = columnOf(columns, 'expediente_records', 'document_number_hmac');
     const hmacSelect = hmacColumn ? 'document_number_hmac' : 'NULL::text AS document_number_hmac';
     expedienteRows = (await queryRunner.query(
       `SELECT id::text, ${hmacSelect}
          FROM expediente_records WHERE id = ANY($1::uuid[]) FOR UPDATE`,
-      [expedienteIds],
+      [effectiveExpedienteIds],
     )) as ExpedienteRow[];
-    if (expedienteRows.length !== expedienteIds.length) {
+    if (expedienteRows.length !== effectiveExpedienteIds.length) {
       throw new AnonymizeTitularCliError(
-        `No se encontraron ${expedienteIds.length - expedienteRows.length} expediente(s) indicados; no se aplicaron cambios.`,
+        `No se encontraron ${effectiveExpedienteIds.length - expedienteRows.length} expediente(s) indicados; no se aplicaron cambios.`,
       );
     }
   }
   let unmatchedExpedientes = 0;
   for (const row of expedienteRows) {
+    // Ya marcado por esta solicitud: es remediación, no un alcance nuevo sin HMAC.
+    if (markedExpedienteSet.has(String(row.id).toLowerCase())) continue;
     if (
       requestRow.requester_document_hmac &&
       row.document_number_hmac === requestRow.requester_document_hmac
@@ -1069,6 +1118,18 @@ async function anonymizeTitularInTransaction(
       [partyId],
     )) as SubscriberRow[];
   }
+  for (const markedRow of await findMarkedSubscriberRows(queryRunner, columns, requestId)) {
+    if (
+      !subscriberRows.some(
+        (row) => String(row.id).toLowerCase() === String(markedRow.id).toLowerCase(),
+      )
+    ) {
+      subscriberRows.push(markedRow);
+    }
+  }
+  subscriberRows.sort((left, right) =>
+    String(left.id).toLowerCase().localeCompare(String(right.id).toLowerCase()),
+  );
   const subscriberIds = subscriberRows.map((row) => row.id);
   const config = new ConfigService(process.env);
   const crmParticipant = new CrmTitularErasureParticipant(config);
@@ -1092,11 +1153,24 @@ async function anonymizeTitularInTransaction(
       partyId,
       requesterDocumentHmac: requestRow.requester_document_hmac,
     },
-    expedienteIds,
+    effectiveExpedienteIds,
     queryRunner,
     tenantSchema,
     keys,
   );
+  // R2: un `--apply` con alcance vacío terminaba en exit 0 sin cambiar nada.
+  // Falla cerrado solo en apply; dry-run y --verify-only no cambian.
+  if (
+    mode === 'apply' &&
+    scope.expedienteIds.length === 0 &&
+    scope.subscriberIds.length === 0 &&
+    partyRows.length === 0 &&
+    scope.userIds.length === 0
+  ) {
+    throw new AnonymizeTitularCliError(
+      'El alcance de la solicitud está vacío; indica --expediente o revisa la solicitud. No se aplicaron cambios.',
+    );
+  }
   const userIds = scope.userIds;
   if (userIds.length > 0 && !tableExists(columns, 'users')) {
     throw new AnonymizeTitularCliError('No se puede comprobar la baja de las cuentas enlazadas.');
@@ -1119,19 +1193,19 @@ async function anonymizeTitularInTransaction(
     queryRunner,
     columns,
     'contact_attempts',
-    expedienteIds,
+    effectiveExpedienteIds,
   );
   report.totals.consentRecords = await countChildRows(
     queryRunner,
     columns,
     'consent_records',
-    expedienteIds,
+    effectiveExpedienteIds,
   );
   report.totals.coverageChecks = await countChildRows(
     queryRunner,
     columns,
     'coverage_checks',
-    expedienteIds,
+    effectiveExpedienteIds,
   );
   report.totals.parties = partyRows.length;
   report.totals.partyContacts =
@@ -1586,6 +1660,7 @@ function printHelp(): void {
       `--dry-run              Predeterminado; informa conteos sin cambiar datos.\n` +
       `--apply                Anonimiza en una sola transacción y verifica el resultado.\n` +
       `--expediente           Puede repetirse. Si falta o no coincide el HMAC, requiere confirmación.\n` +
+      `                         Sin --expediente, --apply reintenta lo ya marcado por la solicitud y aborta si el alcance queda vacío.\n` +
       `--confirm-unmatched    Exige que el motivo ya conste en el ticket.\n` +
       `--verify-only          Solo lectura, siempre revierte; informa conteos de residuales por tenant.\n` +
       `--with-request-ids     Con --verify-only: añade las solicitudes con residuales. No guardar la salida.\n`,

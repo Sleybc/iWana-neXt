@@ -26,13 +26,18 @@ import { WfmTitularErasureParticipant } from '../../wfm/privacy/wfm-titular-eras
 import { ExecutionOrderTitularErasureParticipant } from '../../tasks/privacy/execution-order-titular-erasure.participant';
 import { OperationalTaskTitularErasureParticipant } from '../../tasks/privacy/operational-task-titular-erasure.participant';
 import { BillingTitularErasureParticipant } from '../../billing/privacy/billing-titular-erasure.participant';
-import type { ErasureKeys } from './titular-erasure/titular-erasure-sql';
+import {
+  columnOf,
+  readTenantColumns,
+  tableExists,
+  type ErasureKeys,
+  type TenantColumn,
+} from './titular-erasure/titular-erasure-sql';
 import type {
   TitularErasureParticipant,
   TitularErasureScope,
   TitularErasureTableResult,
 } from './titular-erasure/titular-erasure.types';
-import { readTenantColumns } from './titular-erasure/titular-erasure-sql';
 
 const CATEGORIES = [
   'IDENTIFICACION',
@@ -241,12 +246,28 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     cryptoKeys: ErasureKeys,
   ): Promise<TitularErasureScope> {
     this.assertBillingParticipantRegistered();
-    const subscriberIds = await this.crm.findSubscriberIds(qr, target.partyId);
+    const columns = await readTenantColumns(qr);
+    const explicitExpedienteIds = [...new Set(expedienteIds.map((id) => id.toLowerCase()))];
+    const markedExpedienteIds = await this.findExpedienteIdsByAnonymizedRequest(
+      qr,
+      columns,
+      target.requestId,
+    );
+    const mergedExpedienteIds = [
+      ...new Set([...explicitExpedienteIds, ...markedExpedienteIds]),
+    ].sort();
+    const byPartySubscriberIds = await this.crm.findSubscriberIds(qr, target.partyId);
+    const markedSubscriberIds = await this.findSubscriberIdsByAnonymizedRequest(
+      qr,
+      columns,
+      target.requestId,
+    );
+    const subscriberIds = [...new Set([...byPartySubscriberIds, ...markedSubscriberIds])].sort();
     const userIds = await this.users.findUserIds(
       {
         partyId: target.partyId,
         subscriberIds,
-        expedienteIds,
+        expedienteIds: mergedExpedienteIds,
         userIds: [],
       },
       qr,
@@ -254,13 +275,59 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     return {
       partyId: target.partyId,
       subscriberIds,
-      expedienteIds,
+      expedienteIds: mergedExpedienteIds,
       userIds,
       requestId: target.requestId,
       requesterDocumentHmac: target.requesterDocumentHmac,
       tenantSchema,
       cryptoKeys,
     };
+  }
+
+  /**
+   * Remediación por solicitud (R2): un `--apply --request` sobre una solicitud
+   * ya resuelta vuelve a seleccionar los expedientes que esa solicitud marcó,
+   * sin exigir `--expediente`. Solo lee marcas; no cambia el comportamiento API.
+   */
+  private async findExpedienteIdsByAnonymizedRequest(
+    qr: QueryRunner,
+    columns: Map<string, TenantColumn>,
+    requestId: string,
+  ): Promise<string[]> {
+    if (!requestId) return [];
+    if (
+      !tableExists(columns, 'expediente_records') ||
+      !columnOf(columns, 'expediente_records', 'anonymized_request_id')
+    ) {
+      return [];
+    }
+    const rows = (await qr.query(
+      `SELECT id::text AS id FROM expediente_records
+         WHERE anonymized_request_id = $1::uuid ORDER BY id::text FOR SHARE`,
+      [requestId],
+    )) as Array<{ id: string }>;
+    return [...new Set(rows.map((row) => String(row.id).toLowerCase()))];
+  }
+
+  /** Igual que expedientes: suscriptores ya marcados por esta solicitud. */
+  private async findSubscriberIdsByAnonymizedRequest(
+    qr: QueryRunner,
+    columns: Map<string, TenantColumn>,
+    requestId: string,
+  ): Promise<string[]> {
+    if (!requestId) return [];
+    if (
+      !tableExists(columns, 'subscribers') ||
+      !columnOf(columns, 'subscribers', 'anonymized_request_id')
+    ) {
+      return [];
+    }
+    const rows = (await qr.query(
+      `SELECT id::text AS id FROM subscribers
+         WHERE anonymized_request_id = $1::uuid ORDER BY id::text FOR SHARE`,
+      [requestId],
+    )) as Array<{ id: string }>;
+    return [...new Set(rows.map((row) => String(row.id).toLowerCase()))];
   }
 
   private async resolve(

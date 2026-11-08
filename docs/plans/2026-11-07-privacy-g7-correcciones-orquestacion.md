@@ -96,3 +96,8 @@ Siguiente: bloque R1 ([lanzador](../prompts/PROMPT-PRIVACY-G7-CORRECCIONES-R1-LA
 - **G7-R (`sec-eng`):** sin P1. `void_note` y el respaldo 175 no dejan texto; las guardas de anulación se serializan con la supresión (`FOR SHARE` frente a `FOR UPDATE`); las exclusiones de muestra tienen escritor real; la evidencia no tiene identificadores. Un hallazgo Medio: el del CLI.
 - **G7-Q, completado por AI-EM-ARCH:** unitarias de `apps/api` 483 suites y 6.396 pruebas sin caché (180 s); integración completa como en CI 74 suites y 518 pruebas, 0 fallos (272 s); typecheck y lint en 0 errores (7 avisos ajenos); 0 U+FFFD.
 - **R2, corrección del CLI (Medio, antes de cualquier `--apply` fuera de T01):** [lanzador](../prompts/PROMPT-PRIVACY-G7-CLI-R2-LAUNCH-v1.0.md). Va antes de la Fase 1 de H-EXP, que reutiliza el mismo adaptador.
+
+### 6.3 G6.5 de R1 ✅ y G6 de R2 ✅ (2026-11-08)
+
+- **R1, `46b12118`:** CI `42477293930` en verde en el intento 2 y E2E Web Admin Smoke `42477293805` en verde. El intento 1 falló en las mismas 4 pruebas de `portal-billing-flow.spec.ts` (desde la línea 613) que en `c1b56c83`. Hipótesis sin verificar: la prueba elige el primer «Titular Sintético», nombre que crean otras tres specs E2E, y el orden decide a quién se le paga. Seguimiento de MOD14.
+- **R2, sin commit:** integración completa como en CI 74 suites y 519 pruebas, 0 fallos (269 s), con la prueba nueva del CLI en verde; unitarias 483 y 6.396 según el ejecutor; typecheck, ESLint y Prettier limpios.

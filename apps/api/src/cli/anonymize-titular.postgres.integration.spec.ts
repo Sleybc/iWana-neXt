@@ -599,6 +599,92 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     }
   }, 180_000);
 
+  it('R2: --apply solo con --request remedia un expediente ya anonimizado y falla cerrado con alcance vacío', async () => {
+    const fixture = await createFixture(dataSource);
+    const q = quoteIdentifier(fixture.schema);
+    try {
+      const first = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [fixture.expedienteId],
+        false,
+        KEYS,
+        'apply',
+      );
+      expect(first.verification.residualFields).toBe(0);
+
+      await dataSource.query(
+        `UPDATE ${q}.expediente_records SET full_name = 'residuo sintetico de remediacion' WHERE id = $1`,
+        [fixture.expedienteId],
+      );
+      const dirty = await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS);
+      expect(dirty.residualFields).toBeGreaterThan(0);
+
+      const dry = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [],
+        false,
+        KEYS,
+        'dry-run',
+      );
+      expect(dry.applied).toBe(false);
+      expect((await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS)).residualFields).toBe(
+        dirty.residualFields,
+      );
+
+      const remediated = await anonymizeTitularInTenantSchema(
+        dataSource,
+        fixture.schema,
+        fixture.requestId,
+        [],
+        false,
+        KEYS,
+        'apply',
+      );
+      expect(remediated.verification.residualFields).toBe(0);
+      expect(await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS)).toMatchObject({
+        residualFields: 0,
+        findings: [],
+      });
+
+      const emptyRequestId = randomUUID();
+      await dataSource.query(
+        `INSERT INTO ${q}.data_subject_requests
+          (id, party_id, requester_document_hmac, requester_evidence_media_id, response_text)
+         VALUES ($1, NULL, NULL, NULL, 'solicitud sintetica sin alcance')`,
+        [emptyRequestId],
+      );
+      await expect(
+        anonymizeTitularInTenantSchema(
+          dataSource,
+          fixture.schema,
+          emptyRequestId,
+          [],
+          false,
+          KEYS,
+          'dry-run',
+        ),
+      ).resolves.toMatchObject({ applied: false });
+      await expect(
+        anonymizeTitularInTenantSchema(
+          dataSource,
+          fixture.schema,
+          emptyRequestId,
+          [],
+          false,
+          KEYS,
+          'apply',
+        ),
+      ).rejects.toThrow('--expediente');
+    } finally {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE schema_name = $1', [fixture.schema]);
+    }
+  });
+
   it('anonimiza prospecto, usa dry-run por defecto, verifica e itera idempotentemente', async () => {
     const fixture = await createFixture(dataSource);
     const q = quoteIdentifier(fixture.schema);
