@@ -454,6 +454,26 @@ jobs:
         shell: bash
         run: bash scripts/db/apply-least-privilege.sh
 
+      # H-1: fuera de una base de pruebas, iwana_app no crea objetos (CREATE en la
+      # base, TEMP ni CREATE en public). La base `test` lo conserva para las suites.
+      - name: Least-privilege gate — app sin DDL fuera de pruebas (H-1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD="${DB_BOOTSTRAP_PASSWORD}"
+          PSQL=(psql -v ON_ERROR_STOP=1 -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_BOOTSTRAP_USER}")
+          "${PSQL[@]}" -d "${DB_NAME}" -qc 'DROP DATABASE IF EXISTS lp_guard' -c 'CREATE DATABASE lp_guard'
+          DB_NAME=lp_guard bash scripts/db/apply-least-privilege.sh
+          RESULT=$("${PSQL[@]}" -d lp_guard -tAc "SELECT has_database_privilege('${DB_APP_USER}', 'lp_guard', 'CREATE')
+            OR has_database_privilege('${DB_APP_USER}', 'lp_guard', 'TEMP')
+            OR has_schema_privilege('${DB_APP_USER}', 'public', 'CREATE')")
+          "${PSQL[@]}" -d "${DB_NAME}" -qc 'DROP DATABASE lp_guard'
+          if [[ "${RESULT}" != "f" ]]; then
+            echo "❌ ${DB_APP_USER} conserva CREATE/TEMP fuera de la base de pruebas"
+            exit 1
+          fi
+          echo "✅ ${DB_APP_USER} sin CREATE ni TEMP fuera de pruebas"
+
       - name: Check no pending public migrations
         shell: bash
         run: |

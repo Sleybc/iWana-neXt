@@ -75,12 +75,19 @@ SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db_name', :'app_user')
 \gexec
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db_name', :'migrator_user')
 \gexec
-SELECT format('GRANT CREATE ON DATABASE %I TO %I', :'db_name', :'app_user')
-\gexec
 SELECT format('GRANT CREATE ON DATABASE %I TO %I', :'db_name', :'migrator_user')
 \gexec
 
-SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'app_user')
+-- H-1: el rol de la API no crea objetos (ni en la base, ni en public, ni TEMP).
+SELECT format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', :'db_name')
+\gexec
+SELECT format('GRANT TEMPORARY ON DATABASE %I TO %I', :'db_name', :'migrator_user')
+\gexec
+SELECT format('REVOKE CREATE, TEMPORARY ON DATABASE %I FROM %I', :'db_name', :'app_user')
+\gexec
+SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'app_user')
+\gexec
+SELECT format('REVOKE CREATE ON SCHEMA public FROM %I', :'app_user')
 \gexec
 SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'migrator_user')
 \gexec

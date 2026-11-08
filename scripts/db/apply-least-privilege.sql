@@ -53,13 +53,36 @@ SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'app_us
 \gexec
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'migrator_user')
 \gexec
-SELECT format('GRANT CREATE ON DATABASE %I TO %I', current_database(), :'app_user')
-\gexec
 SELECT format('GRANT CREATE ON DATABASE %I TO %I', current_database(), :'migrator_user')
 \gexec
 
-GRANT USAGE, CREATE ON SCHEMA public TO :"app_user";
+GRANT USAGE ON SCHEMA public TO :"app_user";
 GRANT USAGE, CREATE ON SCHEMA public TO :"migrator_user";
+
+-- H-1 (2026-11-08): el rol de la API no crea objetos. Con CREATE en la base, en
+-- public o TEMP, iwana_app podía crear tablas u operadores que sombrearan los
+-- del trigger de supresión. PostgreSQL concede TEMP a PUBLIC por defecto.
+SELECT format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database())
+\gexec
+SELECT format('GRANT TEMPORARY ON DATABASE %I TO %I', current_database(), :'migrator_user')
+\gexec
+
+-- app_ddl=on SOLO en bases de prueba: las suites de integración crean schemas
+-- desechables conectadas como iwana_app. Los lanzadores lo activan para la base
+-- `test` (o *_test) o con DB_APP_DDL=on; en cualquier otra base queda revocado.
+\if :{?app_ddl}
+\else
+\set app_ddl off
+\endif
+\if :app_ddl
+SELECT format('GRANT CREATE, TEMPORARY ON DATABASE %I TO %I', current_database(), :'app_user')
+\gexec
+GRANT CREATE ON SCHEMA public TO :"app_user";
+\else
+SELECT format('REVOKE CREATE, TEMPORARY ON DATABASE %I FROM %I', current_database(), :'app_user')
+\gexec
+REVOKE CREATE ON SCHEMA public FROM :"app_user";
+\endif
 
 -- Función + event trigger (misma lógica que docker/postgres/init/02-*.sql)
 CREATE OR REPLACE FUNCTION public.iwana_reassign_audit_table_owner()

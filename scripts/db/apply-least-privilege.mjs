@@ -63,6 +63,18 @@ const appUser = process.env.DB_APP_USER ?? 'iwana_app';
 const migratorUser = process.env.DB_MIGRATOR_USER ?? 'iwana_migrator';
 const mode = process.env.LEAST_PRIVILEGE_MODE ?? 'docker';
 
+/**
+ * H-1: DDL de iwana_app solo en bases de prueba (las suites de integración crean
+ * schemas como app). DB_APP_DDL=on|off lo fuerza; si no, on solo para test/*_test.
+ */
+const appDdl =
+  process.env.DB_APP_DDL ?? (dbName === 'test' || dbName.endsWith('_test') ? 'on' : 'off');
+if (appDdl !== 'on' && appDdl !== 'off') {
+  console.error(`apply-least-privilege: DB_APP_DDL debe ser on u off (recibido: ${appDdl}).`);
+  process.exit(1);
+}
+console.log(`apply-least-privilege: DDL de ${appUser} en ${dbName} = ${appDdl}`);
+
 if (bootstrapUser === appUser || bootstrapUser === migratorUser) {
   console.error(
     `apply-least-privilege: FALLO DURO (GSEC-N1) — DB_BOOTSTRAP_USER (${bootstrapUser}) no puede ser igual a app/migrator.`,
@@ -158,6 +170,8 @@ function runPsqlDocker() {
       `app_pass=${appPass}`,
       '-v',
       `migrator_pass=${migratorPass}`,
+      '-v',
+      `app_ddl=${appDdl}`,
     ],
     { input: sql, stdio: ['pipe', 'inherit', 'inherit'] },
   );
@@ -194,6 +208,8 @@ function runPsqlHost() {
       `app_pass=${appPass}`,
       '-v',
       `migrator_pass=${migratorPass}`,
+      '-v',
+      `app_ddl=${appDdl}`,
     ],
     {
       input: sql,

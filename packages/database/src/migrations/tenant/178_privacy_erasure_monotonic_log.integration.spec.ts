@@ -271,7 +271,12 @@ describePg('178 — trigger monótono y bitácora append-only (H-1 B1)', () => {
     );
     expect(Number(before[0]?.total ?? '0')).toBeGreaterThanOrEqual(1);
 
+    // Con un titular suprimido, el down exige la confirmación explícita del operador.
+    await expect(migration.down(qr)).rejects.toThrow('reabre H-1');
+    expect(await logTriggerTables()).toEqual(['contracts', 'expediente_records', 'subscribers']);
+    await qr.query(`SELECT set_config('iwana.allow_h1_revert', 'on', false)`);
     await migration.down(qr);
+    await qr.query(`SELECT set_config('iwana.allow_h1_revert', '', false)`);
     expect(await tableExists('privacy_erasure_mutation_log')).toBe(true);
     const after: Array<{ total: string }> = await qr.query(
       'SELECT COUNT(*)::text AS total FROM privacy_erasure_mutation_log',
@@ -862,7 +867,10 @@ describePg('178 — trigger monótono y bitácora append-only (H-1 B1)', () => {
     await insertContract(aliveContract, alive);
     await suppressSubscriber(suppressed);
 
+    await expect(migration.down(qr)).rejects.toThrow('iwana.allow_h1_revert');
+    await qr.query(`SELECT set_config('iwana.allow_h1_revert', 'on', false)`);
     await migration.down(qr);
+    await qr.query(`SELECT set_config('iwana.allow_h1_revert', '', false)`);
     // down: la 150, la 170 y la 169 vuelven a su estado previo; tabla y guardias se conservan.
     expect(await functionConfig('titular_prevent_anonymization_rewrite')).toBeNull();
     expect(await functionConfig('contract_preserve_retention_clock')).toBeNull();

@@ -1047,6 +1047,21 @@ export class PrivacyErasureMonotonicLog1780000000178 implements MigrationInterfa
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // Revertir con titulares suprimidos reabre H-1 entero: vuelve el trigger que
+    // acepta cualquier escritura con el GUC y se quitan los search_path fijados.
+    // Solo procede si el operador lo confirma en la sesión (runbook de supresión).
+    const guard: Array<{ suppressed: number; allow: string | null }> = await queryRunner.query(`
+      SELECT (SELECT COUNT(*) FROM subscribers WHERE anonymized_at IS NOT NULL)::int AS suppressed,
+             current_setting('iwana.allow_h1_revert', true) AS allow
+    `);
+    const suppressed = Number(guard[0]?.suppressed ?? 0);
+    if (suppressed > 0 && guard[0]?.allow !== 'on') {
+      throw new Error(
+        `178 down rechazado: hay ${suppressed} titular(es) suprimido(s) y revertir reabre H-1 ` +
+          '(trigger no monótono y search_path sin fijar). Si es deliberado, fija ' +
+          "SET iwana.allow_h1_revert = 'on' en la sesión y repite.",
+      );
+    }
     for (const table of LOGGED_TABLES) {
       await queryRunner.query(`DROP TRIGGER IF EXISTS ${LOG_TRIGGER} ON ${table}`);
     }

@@ -226,6 +226,16 @@ El SQL de ops sigue siendo la fuente para **crear** roles en lab; la migración 
 3. API y worker: solo `iwana_app`.
 4. Migraciones y jobs de mantenimiento audit (`SET LOCAL iwana.audit_maintenance`): solo `iwana_migrator`.
 5. Go de cambio de credenciales: ventana + rollback (revertir `DB_USER` al bootstrap solo en emergencia, no como estado estable).
+6. **`iwana_app` no crea objetos (H-1, 2026-11-08).** Sin `CREATE` ni `TEMPORARY` en la base y sin `CREATE` en `public`. `TEMPORARY` también se revoca a `PUBLIC` y se concede solo a `iwana_migrator`. Con esos privilegios, la app podía crear tablas u operadores que sombrearan los del trigger de supresión. Los aprovisionamientos de tenant usan `iwana_migrator`, así que el runtime no los necesita.
+   - `01-create-roles.sh` los niega en el primer init.
+   - `apply-least-privilege.{sh,mjs,sql}` los retira al reaplicarse. Se conceden solo a una base de pruebas (`test` o `*_test`), porque las suites de integración crean schemas desechables como `iwana_app`. `DB_APP_DDL=on|off` fuerza el valor.
+   - Gate de CI «Least-privilege gate — app sin DDL fuera de pruebas (H-1)»: aplica el script a una base sonda y falla si `iwana_app` conserva alguno.
+   - **Bases ya existentes (staging, producción):** reaplicar `pnpm db:apply-least-privilege` con `DB_NAME` de esa base, y comprobar como bootstrap:
+     ```sql
+     SELECT has_database_privilege('iwana_app', current_database(), 'CREATE'),
+            has_database_privilege('iwana_app', current_database(), 'TEMP'),
+            has_schema_privilege('iwana_app', 'public', 'CREATE');  -- f, f, f
+     ```
 
 ---
 

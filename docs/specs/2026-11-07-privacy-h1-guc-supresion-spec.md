@@ -99,7 +99,7 @@ Una migración tenant nueva reemplaza `titular_prevent_anonymized_mutation()`. N
 
 **`search_path` fijo (corrección del 2026-11-08, P1-1 de `sec-eng`).** El trigger corre con los privilegios y el `search_path` de quien lo dispara, que es justo el actor a contener. Con un `search_path` heredado, `iwana_app` podía tapar `subscribers` con una tabla temporal o crear operadores falsos en `public`. Las funciones de la 178, y las de la 150 y la 170 que comparten tabla, fijan `search_path = pg_catalog, pg_temp`, y la consulta a `subscribers` va calificada con `TG_TABLE_SCHEMA`. La 178 rellena también `contracts.anonymized_at` donde el suscriptor ya estaba suprimido.
 
-**Rollback.** El `down` de la 178 restaura la 169 tal cual, y con ella el `search_path` heredado: reabre el P1-1 y el paso libre con el GUC. En producción, revertir la 178 reabre H-1 entero; se trata como incidente de seguridad, no como rollback de rutina.
+**Rollback.** El `down` de la 178 restaura la 169 tal cual, y con ella el `search_path` heredado: reabre el P1-1 y el paso libre con el GUC. En producción, revertir la 178 reabre H-1 entero; se trata como incidente de seguridad, no como rollback de rutina. **Guarda (2026-11-08):** el `down` se niega si el schema tiene algún titular suprimido, salvo que el operador fije `SET iwana.allow_h1_revert = 'on'` en la sesión. El mensaje de error explica que revertir reabre H-1. En un schema sin supresiones revierte como antes.
 
 ### D-H1-2. Bitácora append-only
 
