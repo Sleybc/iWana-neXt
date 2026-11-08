@@ -20,6 +20,9 @@ export type {
   UsersBulkCreateJobUserItem,
 } from './users-bulk-create.contract';
 
+export type { PrivacyRetentionExpiryTenantJob } from './retention-expiry.contract';
+export { PrivacyRetentionExpiryTenantJobSchema } from './retention-expiry.contract';
+
 /** Payload del job de provisioning de un tenant nuevo. */
 export interface ProvisioningJobPayload {
   tenantId: string;

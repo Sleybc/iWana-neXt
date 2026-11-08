@@ -39,6 +39,10 @@ export function calculateRequestTaskDueAt(
       return complaintDueAt;
     case 'ENTREGAR_COPIA_DOCUMENTOS':
       return requestDueAt;
+    case 'CLASIFICAR_DESTINO_TRASLADO':
+      // D-EXP-3: el vencimiento (5 días hábiles) se fija al crear la tarea en
+      // RetentionExpiryService; aquí no hay "hoy" contra qué calcularlo.
+      throw new RangeError('El vencimiento se fija al crear la tarea de clasificación.');
   }
 }
 

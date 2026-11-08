@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { requestTaskKindSchema } from '@iwana/shared';
 import { DataSource, QueryRunner } from 'typeorm';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
@@ -211,6 +210,14 @@ describePg('172 — tareas de denuncia y comunicación en PostgreSQL real', () =
   });
 
   it('CA-DO-06: el CHECK de PostgreSQL tiene paridad exacta con requestTaskKindSchema', async () => {
+    // Congelado a la 172: la 179 añade CLASIFICAR_DESTINO_TRASLADO y la
+    // paridad en la punta vive en 179_retention_expiry_ledger.integration.spec.ts.
+    const expected172 = [
+      'COMUNICAR_PLAZO_DENUNCIA',
+      'ENTREGAR_COPIA_DOCUMENTOS',
+      'FORMULAR_DENUNCIA_OPERADOR',
+      'SUSPENDER_COBRO_EXTERNO',
+    ].sort();
     const constraint = (await qr.query(`
       SELECT pg_get_constraintdef(oid) AS definition
       FROM pg_constraint
@@ -222,6 +229,6 @@ describePg('172 — tareas de denuncia y comunicación en PostgreSQL real', () =
       (match) => match[1],
     ).sort();
 
-    expect(databaseKinds).toEqual([...requestTaskKindSchema.options].sort());
+    expect(databaseKinds).toEqual(expected172);
   });
 });

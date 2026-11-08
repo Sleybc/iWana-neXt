@@ -29,12 +29,13 @@ describe('contratos de solicitudes de privacidad v1.1', () => {
     receivedAt: '2026-07-06',
   };
 
-  it('publica los cuatro tipos de tarea y valida las notas de las tareas de suplantación', () => {
+  it('publica los cinco tipos de tarea y valida las notas de las tareas de suplantación', () => {
     expect(requestTaskKindSchema.options).toEqual([
       'SUSPENDER_COBRO_EXTERNO',
       'ENTREGAR_COPIA_DOCUMENTOS',
       'FORMULAR_DENUNCIA_OPERADOR',
       'COMUNICAR_PLAZO_DENUNCIA',
+      'CLASIFICAR_DESTINO_TRASLADO',
     ]);
     expect(completeRequestTaskOperatorSchema.safeParse({ note: 'Radicado 123' }).success).toBe(
       true,

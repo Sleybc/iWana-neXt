@@ -1290,7 +1290,7 @@ async function anonymizeTitularInTransaction(
 }
 
 /** Ejecuta dry-run o apply en una transacción con SET LOCAL search_path. */
-async function runWithCliTenant<T>(
+export async function runWithCliTenant<T>(
   queryRunner: QueryRunner,
   schemaName: string,
   operation: () => Promise<T>,
@@ -1348,7 +1348,7 @@ export interface AnonymizedTenantVerificationReport {
   findings: AnonymizedTenantVerificationFinding[];
 }
 
-function createErasureAdapter(config: ConfigService): CrmPersonalDataErasureAdapter {
+export function createErasureAdapter(config: ConfigService): CrmPersonalDataErasureAdapter {
   return new CrmPersonalDataErasureAdapter(
     new CrmTitularErasureParticipant(config),
     new PartyTitularErasureParticipant(config),
@@ -1605,7 +1605,7 @@ export async function verifyAnonymizedTenant(
   );
 }
 
-function ensureCliEnvLoaded(): void {
+export function ensureCliEnvLoaded(): void {
   const loadEnvFile = (process as NodeJS.Process & { loadEnvFile?: (path?: string) => void })
     .loadEnvFile;
   if (!loadEnvFile) return;

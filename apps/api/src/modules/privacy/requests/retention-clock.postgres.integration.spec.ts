@@ -261,7 +261,10 @@ describeWithDb('Retención del suscriptor (O-1) en PostgreSQL real', () => {
       mediaService as unknown as MediaService,
       effectivePermissionsService as never,
       erasurePort as unknown as IPersonalDataErasurePort,
-      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
+      {
+        lastFiscalDocumentAt: jest.fn().mockResolvedValue(null),
+        hasUnreconciledFiscalClock: jest.fn().mockResolvedValue(false),
+      },
       new PqrRetentionReadAdapter(),
     );
   });

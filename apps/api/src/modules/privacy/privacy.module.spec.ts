@@ -12,6 +12,7 @@ import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { PrivacyRequestsService } from './requests/requests.service';
 import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-adapters.module';
 import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants';
+import { RETENTION_EXPIRY_QUEUE } from './retention/retention-expiry.constants';
 import { EVIDENCE_ANALYSIS_QUEUE } from '../media/evidence-asset.provider';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { MailerModule } from '../mailer/mailer.module';
@@ -75,7 +76,7 @@ describe('PrivacyModule composition', () => {
       (entry) => typeof entry === 'object' && entry !== null && 'forwardRef' in entry,
     ) as { forwardRef: () => unknown } | undefined;
 
-    expect(imports).toHaveLength(8);
+    expect(imports).toHaveLength(9);
     expect(imports).toContain(BillingPrivacyModule);
     expect(controllers).toHaveLength(9);
     expect(controllers).toContain(PurposesController);
@@ -99,6 +100,8 @@ describe('PrivacyModule composition', () => {
       ],
     })
       .overrideProvider(getQueueToken(PRIVACY_DUE_ALERTS_QUEUE))
+      .useValue({ add: jest.fn() })
+      .overrideProvider(getQueueToken(RETENTION_EXPIRY_QUEUE))
       .useValue({ add: jest.fn() })
       .overrideProvider(getQueueToken(EVIDENCE_ANALYSIS_QUEUE))
       .useValue({ add: jest.fn() })

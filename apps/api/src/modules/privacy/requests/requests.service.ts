@@ -1,6 +1,6 @@
 import { IPqrRetentionReadPort } from './ports/pqr-retention-read.port';
-import { hasPqrConservationDuty } from './pqr-retention';
 import { IBillingStandingReadPort } from './ports/billing-standing-read.port';
+import { ConservationDutyService } from '../retention/conservation-duty.service';
 import {
   BadRequestException,
   ConflictException,
@@ -14,7 +14,6 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   addColombiaBusinessDays,
-  addCalendarMonths,
   AuditAction,
   AccessPermissionKey,
   CreateDataSubjectRequest,
@@ -134,7 +133,6 @@ type RequestCreateResponse = {
 };
 
 const OPEN_STATUSES: RequestStatus[] = ['RADICADA', 'INCOMPLETA', 'EN_TRAMITE', 'PRORROGADA'];
-const SUBSCRIBER_RETENTION_CATEGORY = 'IDENTIFICACION_DIRECCION_CONTRATO_SUSCRIPTOR';
 
 function stringValue(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -237,12 +235,20 @@ export class PrivacyRequestsService {
     private readonly erasurePort?: IPersonalDataErasurePort,
     private readonly billingStandingPort?: IBillingStandingReadPort,
     @Optional() private readonly pqrRetentionPort?: IPqrRetentionReadPort,
+    @Optional() conservationDutyService?: ConservationDutyService,
   ) {
     const keys = loadPiiAesGcmKeyPair(configService);
     this.encryptionKey = keys.activeKey;
     this.previousEncryptionKeys = keys.previousKey;
     this.hashKey = resolvePiiHashKey(configService);
+    // Evaluación compartida H-EXP: en Nest la inyecta el módulo; fuera de él
+    // (specs existentes) se construye con los mismos puertos ya recibidos.
+    this.duty =
+      conservationDutyService ??
+      new ConservationDutyService(standingPort, billingStandingPort, pqrRetentionPort);
   }
+
+  private readonly duty: ConservationDutyService;
 
   async create(input: CreateDataSubjectRequest, actorId: string): Promise<RequestCreateResponse> {
     const { schemaName } = TenantContext.getOrThrow();
@@ -736,7 +742,7 @@ export class PrivacyRequestsService {
     const rows = (await manager.query(
       `WITH desisted AS (
          UPDATE data_subject_requests
-         SET status = 'DESISTIDA'
+         SET status = 'DESISTIDA', closed_at = now()
          WHERE status = 'INCOMPLETA' AND desist_at <= $1::date
          RETURNING id
        ), logged AS (
@@ -973,9 +979,9 @@ export class PrivacyRequestsService {
         reasonCode = String(body['reason']);
         await manager.query(
           `UPDATE data_subject_requests
-           SET status = $2, transferred_to = $3, response_channel = $4
+           SET status = $2, transferred_to = $3, response_channel = $4, closed_at = $5
            WHERE id = $1`,
-          [id, nextStatus, body['transferredTo'], body['channel']],
+          [id, nextStatus, body['transferredTo'], body['channel'], now],
         );
       }
 
@@ -1157,42 +1163,7 @@ export class PrivacyRequestsService {
     partyId: string | null,
     requesterDocumentHmac: string | null = null,
   ): Promise<{ applies: boolean; openContract: boolean; retention: boolean }> {
-    if (!partyId && !requesterDocumentHmac)
-      return { applies: false, openContract: false, retention: false };
-    const standing = await this.standingPort.standing(partyId, { manager, requesterDocumentHmac });
-    const openContract = standing.openContractIds.length > 0;
-    if (!this.billingStandingPort) throw new Error('Billing standing port is not registered');
-    const fiscalDate = await this.billingStandingPort.lastFiscalDocumentAt(standing.subscriberIds, {
-      manager,
-    });
-    const today = bogotaCivilDate(new Date());
-    const retained = async (date: string | null, category: string): Promise<boolean> => {
-      if (!date) return false;
-      const policies = (await manager.query(
-        'SELECT years FROM retention_policies WHERE category = $1',
-        [category],
-      )) as Array<{ years: number }>;
-      const years = Number(policies[0]?.years ?? 0);
-      if (!years) throw new Error(`Missing retention policy: ${category}`);
-      return addCalendarMonths(date.slice(0, 10), years * 12) > today;
-    };
-    const contractRetention = await retained(
-      standing.lastTerminatedAt,
-      SUBSCRIBER_RETENTION_CATEGORY,
-    );
-    const fiscalRetention = await retained(fiscalDate, 'FACTURACION_SOPORTES_CONTABLES');
-    const pqrRetention = await hasPqrConservationDuty(
-      this.pqrRetentionPort,
-      {
-        subscriberIds: standing.subscriberIds ?? [],
-        contractIds: standing.contractIds ?? [],
-        expedienteIds: standing.expedienteIds ?? [],
-      },
-      manager,
-      today,
-    );
-    const retention = contractRetention || fiscalRetention || pqrRetention;
-    return { applies: openContract || retention, openContract, retention };
+    return this.duty.evaluate(manager, partyId, requesterDocumentHmac);
   }
 
   private async hasConservationDuty(
@@ -1200,7 +1171,7 @@ export class PrivacyRequestsService {
     partyId: string | null,
     requesterDocumentHmac: string | null = null,
   ): Promise<boolean> {
-    return (await this.conservationDuty(manager, partyId, requesterDocumentHmac)).applies;
+    return this.duty.hasDuty(manager, partyId, requesterDocumentHmac);
   }
 
   private assertIdentityMethodForRequester(

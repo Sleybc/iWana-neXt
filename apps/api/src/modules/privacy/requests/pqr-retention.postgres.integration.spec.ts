@@ -196,7 +196,10 @@ describeWithDb('B7 — supresión CRM sobre migraciones tenant reales', () => {
       {} as never,
       { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) } as never,
       erasure,
-      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
+      {
+        lastFiscalDocumentAt: jest.fn().mockResolvedValue(null),
+        hasUnreconciledFiscalClock: jest.fn().mockResolvedValue(false),
+      },
       new PqrRetentionReadAdapter(),
     );
     return { service, erasure };
@@ -311,6 +314,22 @@ describeWithDb('B7 — supresión CRM sobre migraciones tenant reales', () => {
     const subject = await prospect();
     await queryRunner!.query(
       `INSERT INTO ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at) VALUES ($1,$2,'INITIAL_RESPONSE',now(),now(),now())`,
+      [subject.ticket, tenantId],
+    );
+    expect(
+      (await inTenant(() => serviceFor(subject.expediente).service.erasurePreview(subject.request)))
+        .blockers,
+    ).toContain('CONSERVATION_DUTY');
+  });
+  it('H-EXP: un recurso pendiente no queda oculto por un FINAL_RESOLUTION respondido', async () => {
+    const subject = await prospect();
+    // FINAL respondido hace más de 3 años (reloj vencido) + recurso pendiente.
+    await queryRunner!.query(
+      `INSERT INTO ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at) VALUES ($1,$2,'FINAL_RESOLUTION','2020-06-01','2020-06-01T12:00:00Z','2020-06-01T12:00:00Z')`,
+      [subject.ticket, tenantId],
+    );
+    await queryRunner!.query(
+      `INSERT INTO ticket_pqr_records (ticket_id,tenant_id,deadline_type,deadline_at,notified_at,resolved_at) VALUES ($1,$2,'CORRECTION',now(),NULL,NULL)`,
       [subject.ticket, tenantId],
     );
     expect(

@@ -101,7 +101,10 @@ describe('PrivacyRequestsService — cobertura de operaciones', () => {
     plan: jest.fn(),
     anonymize: jest.fn(),
   };
-  const billingStandingPort = { lastFiscalDocumentAt: jest.fn() };
+  const billingStandingPort = {
+    lastFiscalDocumentAt: jest.fn(),
+    hasUnreconciledFiscalClock: jest.fn().mockResolvedValue(false),
+  };
   let service: PrivacyRequestsService;
 
   beforeEach(() => {

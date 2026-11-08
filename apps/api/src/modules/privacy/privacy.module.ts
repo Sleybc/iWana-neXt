@@ -41,6 +41,12 @@ import { CrmPrivacyAdaptersModule } from '../crm/privacy-adapters/crm-privacy-ad
 import { PrivacyDueAlertsProcessor } from './alerts/privacy-due-alerts.processor';
 import { PrivacyDueAlertsMetrics } from './alerts/privacy-due-alerts.metrics';
 import { PRIVACY_DUE_ALERTS_QUEUE } from './alerts/privacy-due-alerts.constants';
+import { ConservationDutyService } from './retention/conservation-duty.service';
+import { RetentionExpiryService } from './retention/retention-expiry.service';
+import { RetentionExpiryProcessor } from './retention/retention-expiry.processor';
+import { RETENTION_EXPIRY_QUEUE } from './retention/retention-expiry.constants';
+import { RetentionAuditPort } from './retention/retention-audit.port';
+import { AuditService } from '../audit/audit.service';
 import { PurposesController } from './purposes/purposes.controller';
 import { PurposesService } from './purposes/purposes.service';
 import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
@@ -64,6 +70,7 @@ import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
     AssurancePrivacyModule,
     forwardRef(() => CrmPrivacyAdaptersModule),
     BullModule.registerQueue({ name: PRIVACY_DUE_ALERTS_QUEUE }),
+    BullModule.registerQueue({ name: RETENTION_EXPIRY_QUEUE }),
   ],
   controllers: [
     AuthorizationsController,
@@ -101,6 +108,13 @@ import { IPrivacyPurposeReadPort } from './ports/privacy-purpose-read.port';
       useExisting: LegalTextsService,
     },
     RetentionService,
+    ConservationDutyService,
+    RetentionExpiryService,
+    {
+      provide: RetentionAuditPort,
+      useExisting: AuditService,
+    },
+    RetentionExpiryProcessor,
     IncidentsService,
     PrivacyInventoryService,
     PrivacyRequestsService,

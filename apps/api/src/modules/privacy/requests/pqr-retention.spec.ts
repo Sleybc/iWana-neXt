@@ -57,7 +57,10 @@ describe('B7 — reloj de retención PQR', () => {
       {},
       undefined,
       undefined,
-      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
+      {
+        lastFiscalDocumentAt: jest.fn().mockResolvedValue(null),
+        hasUnreconciledFiscalClock: jest.fn().mockResolvedValue(false),
+      },
       pqr,
     ]) as unknown as {
       conservationDuty(

@@ -31,11 +31,28 @@ export class PqrRetentionReadAdapter extends IPqrRetentionReadPort {
     const predicates = ticketScopePredicates(scope, columns, parameters);
     if (!predicates.length) return empty;
     const rows = (await ctx.manager.query(
-      `WITH responses AS (
-      SELECT t.id, max(COALESCE(p.notified_at, p.resolved_at)) AS response_at
-      FROM support_tickets t LEFT JOIN ticket_pqr_records p ON p.ticket_id = t.id AND p.tenant_id = t.tenant_id AND p.deadline_type::text = 'FINAL_RESOLUTION'
-      WHERE t.tenant_id = $1 AND t.type::text = 'PQR' AND (${predicates.join(' OR ')}) GROUP BY t.id
-    ) SELECT COALESCE(bool_or(response_at IS NULL), false) AS has_unanswered, max(response_at) AS last_response_at FROM responses`,
+      `WITH records AS (
+       SELECT t.id,
+              max(COALESCE(p.notified_at, p.resolved_at)) FILTER (
+                WHERE p.deadline_type::text = 'FINAL_RESOLUTION'
+              ) AS final_at,
+              bool_or(
+                p.deadline_type::text = 'FINAL_RESOLUTION'
+                AND (p.notified_at IS NOT NULL OR p.resolved_at IS NOT NULL)
+              ) AS has_final,
+              bool_or(p.notified_at IS NULL AND p.resolved_at IS NULL) AS has_pending
+         FROM support_tickets t
+         LEFT JOIN ticket_pqr_records p
+           ON p.ticket_id = t.id AND p.tenant_id = t.tenant_id
+        WHERE t.tenant_id = $1 AND t.type::text = 'PQR' AND (${predicates.join(' OR ')})
+        GROUP BY t.id
+     ) SELECT COALESCE(
+              bool_or(
+                COALESCE(has_final, false) = false OR COALESCE(has_pending, false)
+              ),
+              false
+            ) AS has_unanswered,
+              max(final_at) AS last_response_at FROM records`,
       parameters,
     )) as Array<{ has_unanswered: boolean; last_response_at: Date | string | null }>;
     const last = rows[0]?.last_response_at;

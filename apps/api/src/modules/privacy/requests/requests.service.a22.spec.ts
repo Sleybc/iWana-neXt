@@ -160,6 +160,7 @@ describe('PrivacyRequestsService — A22', () => {
       'TRASLADADA',
       'Entidad competente',
       'EMAIL',
+      expect.any(Date),
     ]);
   });
 

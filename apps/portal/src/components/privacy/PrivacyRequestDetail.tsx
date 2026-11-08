@@ -52,12 +52,14 @@ const REQUEST_TASK_LABELS: Record<RequestTaskKind, string> = {
   ENTREGAR_COPIA_DOCUMENTOS: 'Entregar copia de los documentos de aprobación',
   FORMULAR_DENUNCIA_OPERADOR: 'Formular la denuncia penal de la empresa',
   COMUNICAR_PLAZO_DENUNCIA: 'Comunicar al titular el plazo para denunciar',
+  CLASIFICAR_DESTINO_TRASLADO: 'Clasificar la entidad destino del traslado',
 };
 const REQUEST_TASK_NOTE_HELP: Record<RequestTaskKind, string> = {
   SUSPENDER_COBRO_EXTERNO: 'Describe la suspensión del cobro que quedó registrada.',
   ENTREGAR_COPIA_DOCUMENTOS: 'Indica los documentos que se entregaron.',
   FORMULAR_DENUNCIA_OPERADOR: 'Número de radicado o noticia criminal',
   COMUNICAR_PLAZO_DENUNCIA: 'Canal y fecha de la comunicación',
+  CLASIFICAR_DESTINO_TRASLADO: 'Código institucional o decisión de la clasificación',
 };
 
 function isClosed(status: string): boolean {

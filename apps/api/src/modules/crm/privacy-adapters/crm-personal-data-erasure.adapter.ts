@@ -11,6 +11,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { ErasureBlocker, ErasureCategory } from '@iwana/shared';
+import { ExpedienteStatus } from '@iwana/shared';
 import { QueryFailedError, type EntityManager, type QueryRunner } from 'typeorm';
 import { summarizeErrorForLog } from '@iwana/db';
 import {
@@ -238,6 +239,68 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     return results;
   }
 
+  /**
+   * Alcance explícito de prospecto (H-EXP B2-R2, D-EXP-2): toma solo el
+   * expediente indicado y lo revalida en la transacción con `FOR UPDATE`
+   * (DESCARTADO, sin suscriptor enlazado, sin contrato). Nunca amplía por
+   * HMAC: el HMAC, si viene, se ignora. Si algo falla, blocker y ningún
+   * cambio; los demás participantes reciben el mismo alcance vacío fuera
+   * del expediente y no escriben fuera de él.
+   */
+  private async resolveProspectScope(
+    target: PersonalDataErasureTarget,
+    qr: QueryRunner,
+  ): Promise<ResolvedScope> {
+    const expedienteId = target.prospectExpedienteId as string;
+    const rows = (await qr.query(
+      `SELECT e.id::text AS id, e.status AS status,
+              EXISTS (SELECT 1 FROM subscribers s WHERE s.expediente_id = e.id) AS has_subscriber,
+              EXISTS (
+                SELECT 1 FROM subscribers s
+                JOIN contracts c ON c.subscriber_id = s.id AND c.deleted_at IS NULL
+                WHERE s.expediente_id = e.id
+              ) AS has_contract
+         FROM expediente_records e
+        WHERE e.id = $1::uuid
+        FOR UPDATE`,
+      [expedienteId],
+    )) as Array<{ id: string; status: string; has_subscriber: boolean; has_contract: boolean }>;
+    const row = rows[0];
+    const blockers: ErasureBlocker[] = [];
+    if (
+      !row ||
+      row.status !== ExpedienteStatus.DESCARTADO ||
+      row.has_subscriber ||
+      row.has_contract
+    ) {
+      blockers.push('UNRECONCILED_TITULAR');
+    }
+    const scope: TitularErasureScope = {
+      partyId: null,
+      subscriberIds: [],
+      expedienteIds: blockers.length > 0 ? [] : [expedienteId],
+      userIds: [],
+      requestId: target.requestId,
+      requesterDocumentHmac: target.requesterDocumentHmac,
+    };
+    const userIds = await this.users.findUserIds(scope, qr);
+    scope.userIds = userIds;
+    const schemaRows = (await qr.query('SELECT current_schema() AS schema_name')) as Array<{
+      schema_name: string;
+    }>;
+    if (schemaRows[0]?.schema_name) scope.tenantSchema = schemaRows[0].schema_name;
+    const activeAccountCount = await this.users.activeAccountCount(userIds, qr);
+    if (activeAccountCount > 0) blockers.push('ACTIVE_USER_ACCOUNT');
+    await this.resolveParticipants(scope, qr, true);
+    const results: TitularErasureTableResult[] = [];
+    for (const entry of this.participants) {
+      results.push(
+        ...(await this.runParticipant(entry, 'plan', () => entry.participant.plan(scope, qr))),
+      );
+    }
+    return { scope, candidateExpedienteIds: [expedienteId], blockers, results };
+  }
+
   async resolveCliScope(
     target: PersonalDataErasureTarget,
     expedienteIds: string[],
@@ -334,6 +397,9 @@ export class CrmPersonalDataErasureAdapter extends IPersonalDataErasurePort {
     target: PersonalDataErasureTarget,
     qr: QueryRunner,
   ): Promise<ResolvedScope> {
+    if (target.prospectExpedienteId) {
+      return this.resolveProspectScope(target, qr);
+    }
     const columns = await readTenantColumns(qr);
     const candidateExpedienteIds = target.requesterDocumentHmac
       ? await this.crm.findExpedienteIdsByDocumentHmac(qr, target.requesterDocumentHmac)

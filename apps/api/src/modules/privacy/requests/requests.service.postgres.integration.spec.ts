@@ -45,6 +45,8 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
   let service: PrivacyRequestsService;
   const standingPort: jest.Mocked<IContractStandingReadPort> = {
     standing: jest.fn(),
+    findProspectDiscard: jest.fn().mockResolvedValue([]),
+    listProspectDiscard: jest.fn().mockResolvedValue([]),
   };
   const impersonationPort: jest.Mocked<IContractImpersonationPort> = {
     suspendForImpersonation: jest.fn(),
@@ -161,6 +163,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
         resolved_at timestamptz,
         resolved_by uuid,
         transferred_to varchar(200),
+        closed_at timestamptz,
         disputed_contract_ids uuid[] NOT NULL DEFAULT '{}',
         legal_basis text,
         erased_at timestamptz,
@@ -249,7 +252,10 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       mediaService as unknown as MediaService,
       effectivePermissionsService as unknown as EffectivePermissionsService,
       erasurePort as unknown as IPersonalDataErasurePort,
-      { lastFiscalDocumentAt: jest.fn().mockResolvedValue(null) },
+      {
+        lastFiscalDocumentAt: jest.fn().mockResolvedValue(null),
+        hasUnreconciledFiscalClock: jest.fn().mockResolvedValue(false),
+      },
       new PqrRetentionReadAdapter(),
     );
   });
@@ -278,6 +284,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: null,
+      unreconciledContractClock: false,
     });
     mediaService.findOne.mockReset();
     mediaService.getPrivacyEvidenceSignedUrl.mockReset();
@@ -381,6 +388,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: '2010-01-01',
+      unreconciledContractClock: false,
     });
     erasurePort.anonymize.mockResolvedValue({ categories: [], changedRows: 0 });
     const request = await createRequest({ right: 'SUPRIMIR' });
@@ -553,6 +561,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       subscriberIds: [],
       openContractIds: [suspendedContractId],
       lastTerminatedAt: null,
+      unreconciledContractClock: false,
     });
     const request = await createRequest({ right: 'REVOCAR', purpose: 'TRATAMIENTO_CONTRACTUAL' });
     await inTenant(() => service.transition(request.request.id, 'complete', {}, actorId));
@@ -608,6 +617,7 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       subscriberIds: [],
       openContractIds: [],
       lastTerminatedAt: '2025-01-15T00:00:00.000Z',
+      unreconciledContractClock: false,
     });
     const request = await createRequest({ right: 'SUPRIMIR' });
     await inTenant(() => service.transition(request.request.id, 'complete', {}, actorId));

@@ -33,6 +33,7 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
         subscriberIds: ['subscriber-test'],
         openContractIds: ['contract-test'],
         lastTerminatedAt: '2020-01-01T00:00:00.000Z',
+        unreconciledContractClock: false,
       });
       expect(query).toHaveBeenCalledTimes(2);
       expect(query.mock.calls[0][0]).toContain('tenant_id = $2');
@@ -63,6 +64,7 @@ describe('CrmContractStandingReadAdapter retention clock', () => {
         subscriberIds: ['subscriber-test'],
         openContractIds: [],
         lastTerminatedAt: null,
+        unreconciledContractClock: false,
       });
     },
   );

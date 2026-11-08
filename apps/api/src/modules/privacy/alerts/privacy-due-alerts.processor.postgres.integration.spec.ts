@@ -80,6 +80,7 @@ describeWithDatabase('PrivacyDueAlertsProcessor — integración PostgreSQL con 
         status text NOT NULL,
         desist_at date,
         extended_until date,
+        closed_at timestamptz,
         due_at date NOT NULL
       )
     `);

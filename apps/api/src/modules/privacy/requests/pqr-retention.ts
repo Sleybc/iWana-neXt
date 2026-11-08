@@ -1,5 +1,6 @@
 import type { EntityManager } from 'typeorm';
 import { addCalendarMonths } from '@iwana/shared';
+import { toBogotaCivilDate } from '../ports/privacy-tenant-query';
 import { IPqrRetentionReadPort, type PqrRetentionScope } from './ports/pqr-retention-read.port';
 
 export async function hasPqrConservationDuty(
@@ -19,5 +20,5 @@ export async function hasPqrConservationDuty(
   ])) as Array<{ years: number }>;
   const years = Number(rows[0]?.years ?? 0);
   if (!years) throw new Error('Missing retention policy: PQR_SOPORTES');
-  return addCalendarMonths(standing.lastResponseAt.slice(0, 10), years * 12) > today;
+  return addCalendarMonths(toBogotaCivilDate(standing.lastResponseAt), years * 12) > today;
 }

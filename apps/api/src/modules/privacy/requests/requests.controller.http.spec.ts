@@ -207,6 +207,7 @@ describe('PrivacyRequestsController HTTP', () => {
       'ENTREGAR_COPIA_DOCUMENTOS',
       'FORMULAR_DENUNCIA_OPERADOR',
       'COMUNICAR_PLAZO_DENUNCIA',
+      'CLASIFICAR_DESTINO_TRASLADO',
     ]);
     expect(note).toMatchObject({ type: 'string', minLength: 1, maxLength: 1000 });
     expect(note['description']).toContain('1 a 120 caracteres');

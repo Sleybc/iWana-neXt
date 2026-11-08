@@ -303,3 +303,58 @@ ROLLBACK;
 Cada fila de `residuos` debe ser `0`. La solicitud conserva su `requester_document_hmac` y `data_authorizations` conserva su evidencia según ADR-094 §D7; por eso no se incluyen en esta consulta. `users.email_hmac` se excluye deliberadamente del conteo: debe ser el HMAC del correo sintético único y el CLI valida esa excepción con la clave de configuración.
 
 En el ticket se guardan únicamente tenant, UUID interno de solicitud, aprobación, ejecutor/revisor, fecha y conteos de dry-run/apply/verificación. No se adjuntan logs con PII ni resultados SQL por fila.
+
+### A.4 Vencimiento de retención (`privacy:expire-retention`, H-EXP)
+
+Barre por tenant, en este orden, los titulares con `DATOS_BLOQUEADOS` cuyo deber de conservación venció, los prospectos descartados sin contrato y las solicitudes terminales cuyo paquete toca minimizar (spec H-EXP v1.1, D-EXP-1 a D-EXP-3). Usa la misma evaluación que la API.
+
+Requiere el paquete compilado (`pnpm --filter @iwana/api build`), igual que A.2.
+
+```powershell
+pnpm --filter @iwana/api privacy:expire-retention --tenant <uuid-o-slug>                 # dry-run
+pnpm --filter @iwana/api privacy:expire-retention --tenant <uuid-o-slug> --apply
+pnpm --filter @iwana/api privacy:expire-retention --tenant <uuid-o-slug> --verify-only
+```
+
+**Dry-run (por defecto).** Siempre revierte y no escribe dominio ni ledger. La salida JSON separa:
+
+- `eligible`: titulares, prospectos y solicitudes que `--apply` procesaría.
+- `unreconciled`: objetivos que `--apply` dejará en `ATTENTION_REQUIRED`, cada uno con su `reasonCode`. No se anonimizan ni se minimizan.
+
+Solo lleva UUID internos y códigos, sin valores personales.
+
+**Códigos que exigen conciliación antes de volver a correr:**
+
+| `reasonCode` | Qué falta | Quién concilia |
+| --- | --- | --- |
+| `CONTRACT_UNRECONCILED` | Un contrato terminado del titular sin `terminated_at` válido (basta uno) | CRM / Comercial |
+| `FISCAL_UNRECONCILED` | Un documento fiscal emitido o anulado sin `issue_date` válida | Facturación |
+| `PROSPECT_UNRECONCILED` | Un prospecto `DESCARTADO` sin fecha de descarte verificable | CRM / Comercial |
+| `MISSING_REQUEST_CLOSURE` | Una solicitud terminal sin fecha de cierre (`resolved_at` o `closed_at`) | Oficial de privacidad |
+
+El reloj nunca se inventa: un dato ausente no equivale a un plazo cero. Un contrato abierto o un deber de conservación vigente (contractual, fiscal o PQR) conservan por sí mismos. En esos casos el titular no aparece como no conciliado, y la incidencia reaparece cuando ese deber termina. Por la API pasa lo mismo: el 409 `CONTRACT_UNRECONCILED` o `FISCAL_UNRECONCILED` solo responde cuando nada más justifica conservar. Un prospecto con una PQR respondida hace menos de 3 años, o sin respuesta, se conserva por `PQR_SOPORTES` (ADR-104).
+
+**`--apply`.** Procesa por lotes de 100 hasta `COMPLETE` o `ATTENTION_REQUIRED`. Cada objetivo deja su fila en `privacy_retention_expiry_runs` con `estado` y `reason_code`.
+
+**Códigos de salida:**
+
+| Código | Modo | Significado | Acción |
+| --- | --- | --- | --- |
+| `0` | `--apply` | Todo lote en `COMPLETE` y ningún objetivo en `ATTENTION_REQUIRED` ni `FAILED` | Registrar conteos en el ticket |
+| `0` | dry-run | Previsualización emitida (aunque `unreconciled` no esté vacío) | Revisar `unreconciled` antes de `--apply` |
+| `0` | `--verify-only` | Tenant conciliado | Registrar conteos en el ticket |
+| `1` | cualquiera | Error de ejecución (conexión, tenant, argumentos); en `--verify-only`, tenant no conciliado | Revisar el mensaje saneado; en `--verify-only`, leer los contadores |
+| `2` | `--apply` | Algún lote dejó objetivos en `ATTENTION_REQUIRED` o `FAILED` | Leer `reasonCounts`, conciliar según la tabla anterior y volver a correr |
+
+Un `2` no revierte lo ya completado: cada objetivo va en su propio `SAVEPOINT` y el ledger hace idempotente el reintento. Para listar lo pendiente sin valores personales:
+
+```sql
+BEGIN;
+SELECT format('SET LOCAL search_path TO %I', :'tenant_schema') \gexec
+SELECT tipo, estado, reason_code, count(*)::int AS objetivos
+  FROM privacy_retention_expiry_runs
+ WHERE estado IN ('ATTENTION_REQUIRED', 'FAILED')
+ GROUP BY tipo, estado, reason_code
+ ORDER BY tipo, estado, reason_code;
+ROLLBACK;
+```

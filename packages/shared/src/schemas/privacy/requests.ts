@@ -46,6 +46,7 @@ export const requestTaskKindSchema = z.enum([
   'ENTREGAR_COPIA_DOCUMENTOS',
   'FORMULAR_DENUNCIA_OPERADOR',
   'COMUNICAR_PLAZO_DENUNCIA',
+  'CLASIFICAR_DESTINO_TRASLADO',
 ]);
 export const erasureCategorySchema = z.enum([
   'IDENTIFICACION',

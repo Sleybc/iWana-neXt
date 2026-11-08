@@ -5,6 +5,14 @@ export interface PersonalDataErasureTarget {
   requestId: string;
   partyId: string | null;
   requesterDocumentHmac: string | null;
+  /**
+   * Alcance explícito de prospecto (H-EXP B2-R2, D-EXP-2): un único
+   * expediente DESCARTADO sin suscriptor ni contrato enlazados. Con él,
+   * `resolve()` toma solo ese expediente, lo revalida en la transacción con
+   * `FOR UPDATE` y nunca amplía por HMAC. Sin él, el comportamiento es
+   * idéntico al histórico (candidatos por HMAC del titular).
+   */
+  prospectExpedienteId?: string;
 }
 export interface PersonalDataErasurePlan {
   candidateExpedienteIds: string[];

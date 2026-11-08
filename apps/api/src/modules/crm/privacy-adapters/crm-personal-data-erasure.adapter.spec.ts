@@ -1,4 +1,4 @@
-import { Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { QueryFailedError, type EntityManager, type QueryRunner } from 'typeorm';
 import { CrmPersonalDataErasureAdapter } from './crm-personal-data-erasure.adapter';
 
@@ -175,5 +175,115 @@ describe('CrmPersonalDataErasureAdapter — errores de participantes', () => {
           participant() as never,
         ),
     ).toThrow('exige assurance, network y suppliers');
+  });
+});
+
+describe('CrmPersonalDataErasureAdapter — alcance explícito de prospecto (H-EXP B2-R2)', () => {
+  const prospectId = 'aaaaaaaa-1111-4111-8111-111111111111';
+  const baseTarget = {
+    requestId: 'req-prospecto',
+    partyId: null,
+    requesterDocumentHmac: null,
+    prospectExpedienteId: prospectId,
+  };
+  const cleanRow = {
+    id: prospectId,
+    status: 'DESCARTADO',
+    has_subscriber: false,
+    has_contract: false,
+  };
+
+  function prospectHarness(row: Record<string, unknown> | null) {
+    const localQr = {
+      isTransactionActive: true,
+      query: jest.fn(async (sql: string) => {
+        if (typeof sql === 'string' && sql.includes('FROM expediente_records')) {
+          return row ? [row] : [];
+        }
+        return [];
+      }),
+    };
+    const localManager = {
+      queryRunner: localQr as unknown as QueryRunner,
+    } as unknown as EntityManager;
+    const localCrm = {
+      ...participant(),
+      findSubscriberIds: jest.fn().mockResolvedValue([]),
+      findExpedienteIdsByDocumentHmac: jest.fn().mockResolvedValue(['otro-expediente']),
+    };
+    const localUsers = {
+      ...participant(),
+      findUserIds: jest.fn().mockResolvedValue([]),
+      activeAccountCount: jest.fn().mockResolvedValue(0),
+    };
+    const localSuppliers = {
+      ...participant(),
+      hasSupplierProfile: jest.fn().mockResolvedValue(false),
+    };
+    const localAdapter = new CrmPersonalDataErasureAdapter(
+      localCrm as never,
+      participant() as never,
+      localUsers as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+      participant() as never,
+      localSuppliers as never,
+    );
+    return { localQr, localManager, localCrm, localAdapter };
+  }
+
+  it('plan toma solo el expediente del prospecto sin ampliar por HMAC', async () => {
+    const { localManager, localCrm, localAdapter } = prospectHarness(cleanRow);
+    const withHmac = { ...baseTarget, requesterDocumentHmac: 'hmac-ajeno' };
+
+    const plan = await localAdapter.plan(withHmac, { manager: localManager });
+
+    expect(plan.candidateExpedienteIds).toEqual([prospectId]);
+    expect(plan.blockers).toEqual([]);
+    expect(localCrm.findExpedienteIdsByDocumentHmac).not.toHaveBeenCalled();
+  });
+
+  it('anonymize valida y anonimiza solo el expediente del alcance', async () => {
+    const { localManager, localAdapter } = prospectHarness(cleanRow);
+
+    const result = await localAdapter.anonymize(
+      { ...baseTarget, expedienteIds: [prospectId], actorId: 'actor-1' },
+      { manager: localManager },
+    );
+
+    expect(result.changedRows).toBe(0);
+    expect(result.categories).toEqual([]);
+  });
+
+  it('un contrato sobrevenido entre plan y anonymize bloquea sin cambios', async () => {
+    const contractedRow = { ...cleanRow, has_subscriber: true, has_contract: true };
+    const { localManager, localAdapter } = prospectHarness(contractedRow);
+
+    const plan = await localAdapter.plan(baseTarget, { manager: localManager });
+    expect(plan.blockers).toEqual(['UNRECONCILED_TITULAR']);
+
+    const error = await localAdapter
+      .anonymize(
+        { ...baseTarget, expedienteIds: [prospectId], actorId: 'actor-1' },
+        { manager: localManager },
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      code: 'PRIVACY_ERASURE_UNRECONCILED_TITULAR',
+    });
+  });
+
+  it('un prospecto no descartado bloquea sin cambios', async () => {
+    const activeRow = { ...cleanRow, status: 'CONTACTADO' };
+    const { localManager, localAdapter } = prospectHarness(activeRow);
+
+    const plan = await localAdapter.plan(baseTarget, { manager: localManager });
+    expect(plan.blockers).toEqual(['UNRECONCILED_TITULAR']);
   });
 });

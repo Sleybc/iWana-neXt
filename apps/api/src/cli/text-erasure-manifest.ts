@@ -10,8 +10,10 @@
  * no se toca), PENDIENTE-MOD14 (spec 2026-11-03 §12 H-5: solo listadas, B4 no
  * decide por ellas; el invariante las reconoce pero no las justifica).
  * R-1 a R-14 pasan a CUBIERTA por B3; R-15 queda EXCLUIDA-condicional con el
- * bloqueante D-BT-8. Total: 708 entradas
- * (CUBIERTA=184, EXCLUIDA=524, PENDIENTE-MOD14=0).
+ * bloqueante D-BT-8. Total: 715 entradas
+ * (CUBIERTA=184, EXCLUIDA=531, PENDIENTE-MOD14=0).
+ * La entrada 715 es privacy_retention_expiry_runs.reason_code (migracion 179,
+ * B2-R2): CODIGO, sin texto libre.
  * MOD14 clasificada en INFORME-MOD14-PRIVACY-CLASIFICACION-v1.0.md (2026-11-07).
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
@@ -864,6 +866,24 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'suspended_contract_ids',
     k: 'EXCLUIDA',
     d: 'PRUEBA: se conserva por R6 y ADR-094 D7',
+  },
+  {
+    t: 'data_subject_requests',
+    c: 'transfer_destination_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: entidad destino del catálogo, minimización D-EXP-3',
+  },
+  {
+    t: 'data_subject_requests',
+    c: 'transfer_destination_kind',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clasificación del traslado, minimización D-EXP-3',
+  },
+  {
+    t: 'data_subject_requests',
+    c: 'transfer_destination_name',
+    k: 'EXCLUIDA',
+    d: 'NOMBRE PÚBLICO: solo normalizado de institución, minimización D-EXP-3',
   },
   {
     t: 'data_subject_requests',
@@ -2419,6 +2439,30 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'purpose',
     k: 'EXCLUIDA',
     d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'privacy_retention_expiry_cursors',
+    c: 'phase',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: fase del barrido H-EXP, sin texto libre',
+  },
+  {
+    t: 'privacy_retention_expiry_runs',
+    c: 'estado',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: estado del acto del barrido H-EXP, sin texto libre',
+  },
+  {
+    t: 'privacy_retention_expiry_runs',
+    c: 'reason_code',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: motivo saneado del acto del barrido H-EXP, sin texto libre',
+  },
+  {
+    t: 'privacy_retention_expiry_runs',
+    c: 'tipo',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: tipo de objetivo del barrido H-EXP, sin texto libre',
   },
   {
     t: 'product_details',
