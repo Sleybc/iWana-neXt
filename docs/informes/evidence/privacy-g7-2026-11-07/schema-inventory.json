@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "date": "2026-11-07",
+  "environment": "local-development",
+  "tenant_schemas": 125,
+  "unregistered_schemas": 1,
+  "registered_missing_schema": 0,
+  "note": "No se atribuye origen fixture solo por nombre; schemas sin registro quedan fuera del CLI que resuelve public.tenants."
+}

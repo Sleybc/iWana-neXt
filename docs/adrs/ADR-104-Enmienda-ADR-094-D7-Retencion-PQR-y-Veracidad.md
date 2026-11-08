@@ -2,13 +2,13 @@
 
 **Versión:** 1.0
 **Estado:** Aprobado
-**Aprobado por:** CTO, 2026-11-07: §6 puntos 1 a 3, con bloqueo total por PQR (A1 descartada por ahora). Quedan abiertos el punto 4 (firma del abogado, ⚠ bloquea producción) y el 5 (spec de H-EXP)
+**Aprobado por:** CTO, 2026-11-07: §6 puntos 1 a 3, con bloqueo total por PQR (A1 descartada por ahora). Seguimiento del mismo día: punto 4 cerrado por confirmación del responsable de que el abogado ya firmó ([acta](../legal/ACTA-PRIVACY-RETENCION-IWANA-2026-11-07.md)); punto 5 atendido con la [spec H-EXP v1.0](../specs/2026-11-07-privacy-h-exp-retencion-spec.md), pendiente de revisión e implementación. No cambia E1–E3
 **Fecha:** 2026-11-07
 **Autor:** AI-EM-ARCH
 **Modo activo:** Architect
 **Módulos:** `privacy` (catálogo de retención y deber de conservación), `assurance` (dueño de las PQR), CRM (estrato del suscriptor y del contrato)
 **Relacionado:** [ADR-094](ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md) D7 (Aprobado; se enmienda) · [ADR-093](ADR-093-Tratamiento-IVA-Internet-por-Punto-y-Linea-de-Servicio.md) (el estrato funda el IVA) · [spec del barrido v1.2](../specs/2026-11-03-privacy-barrido-texto-libre-supresion-spec.md) §14
-**Origen:** respuesta del abogado del 2026-11-07 a la spec del barrido, §13 punto 10, verificada por AI-EM-ARCH. ⚠ Falta su firma para registrarla como dictamen.
+**Origen:** segunda respuesta del abogado del 2026-11-07 a la spec del barrido, §13 punto 10, verificada por AI-EM-ARCH. Firma confirmada por el responsable del proyecto el 2026-11-07; original bajo custodia externa, referenciado en el acta. No se incorpora el documento firmado al repositorio.
 
 ---
 
@@ -79,8 +79,8 @@ La regla aplica a todo campo que se añada después: estrato, segmento, régimen
 1. Aprobar E1, con bloqueo total (A1 descartada por ahora).
 2. Aprobar E2, en 5 años.
 3. Aprobar E3 y la migración.
-4. Pedir al abogado que firme la respuesta del 2026-11-07, para registrarla como dictamen en `docs/legal/`.
-5. Abrir la spec de H-EXP.
+4. **Cerrado, 2026-11-07:** firma confirmada por el responsable del proyecto; referencia sin PII en el acta de `docs/legal/` enlazada en la cabecera.
+5. **Definición emitida, 2026-11-07:** [spec H-EXP v1.0](../specs/2026-11-07-privacy-h-exp-retencion-spec.md). La emisión no equivale a aprobación, implementación ni cierre de G7.
 
 ## 7. Referencias
 

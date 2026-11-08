@@ -517,9 +517,9 @@ export class BillingDocumentsService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const events = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const rows = (await qr.query(
-        'SELECT id::text, period_id::text, status FROM billing_documents WHERE tenant_id = $1 AND id = $2 FOR UPDATE',
+        'SELECT id::text, period_id::text, status, subscriber_id::text FROM billing_documents WHERE tenant_id = $1 AND id = $2 FOR UPDATE',
         [tenantId, documentId],
-      )) as Array<{ id: string; period_id: string; status: string }>;
+      )) as Array<{ id: string; period_id: string; status: string; subscriber_id: string }>;
       if (!rows[0])
         throw new NotFoundException({
           code: 'BILLING_DOCUMENT_NOT_FOUND',
@@ -530,6 +530,15 @@ export class BillingDocumentsService {
           code: BILLING_ERROR_CODES.BILLING_DOCUMENT_NOT_ISSUED,
           message: 'Solo se pueden anular documentos emitidos.',
         });
+      const titular = await this.contracts.lockTitularForBillingWrite(rows[0].subscriber_id, {
+        manager: qr.manager,
+      });
+      if (!titular.exists || titular.anonymized) {
+        throw new ConflictException({
+          code: BILLING_ERROR_CODES.PRIVACY_TITULAR_ANONYMIZED,
+          message: 'El titular está anonimizado.',
+        });
+      }
       await qr.query(
         `UPDATE billing_documents SET status='ANULADO', void_reason_code=$1, void_note=$2, voided_at=now(), voided_by=$3, updated_at=now() WHERE id=$4 AND tenant_id=$5`,
         [reasonCode, note ?? null, actorId, documentId, tenantId],

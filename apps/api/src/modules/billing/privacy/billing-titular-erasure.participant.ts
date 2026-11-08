@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '@iwana/db';
 import type { QueryRunner } from 'typeorm';
+import { normalizeErasureRows } from '../../crm/privacy-adapters/titular-erasure/titular-erasure-sql';
 import type {
   TitularErasureParticipant,
   TitularErasureScope,
@@ -42,7 +43,7 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
             AND (status = 'BORRADOR' OR (status IN ('EMITIDO', 'ANULADO') AND
-                 (buyer_document_encrypted IS NOT NULL OR
+                 (void_note IS NOT NULL OR buyer_document_encrypted IS NOT NULL OR
                   (buyer_snapshot IS NOT NULL AND (
                     (buyer_snapshot ? 'displayName' AND buyer_snapshot->>'displayName' IS DISTINCT FROM $3) OR
                     (buyer_snapshot ? 'documentType' AND buyer_snapshot->>'documentType' IS DISTINCT FROM $3) OR
@@ -68,7 +69,7 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
            FROM billing_payments
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
-            AND (reference IS NOT NULL OR note IS NOT NULL)`,
+            AND (reference IS NOT NULL OR note IS NOT NULL OR void_note IS NOT NULL)`,
       [tenantId, subscriberIds],
     );
 
@@ -76,8 +77,9 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
     let changedLines = 0;
     let changedPayments = 0;
     if (mode === 'apply') {
-      const updatedDocuments = (await qr.query(
-        `UPDATE billing_documents
+      const updatedDocuments = normalizeErasureRows<IdRow>(
+        await qr.query(
+          `UPDATE billing_documents
             SET buyer_snapshot = CASE
                   WHEN buyer_snapshot IS NULL THEN NULL
                   ELSE
@@ -92,41 +94,47 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
                       ELSE '{}'::jsonb END)
                 END,
                 buyer_document_encrypted = NULL,
+                void_note = NULL,
                 updated_at = now()
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
             AND status IN ('EMITIDO', 'ANULADO')
-            AND (buyer_document_encrypted IS NOT NULL OR
+            AND (void_note IS NOT NULL OR buyer_document_encrypted IS NOT NULL OR
                  (buyer_snapshot IS NOT NULL AND (
                    (buyer_snapshot ? 'displayName' AND buyer_snapshot->>'displayName' IS DISTINCT FROM $3) OR
                    (buyer_snapshot ? 'documentType' AND buyer_snapshot->>'documentType' IS DISTINCT FROM $3) OR
                    (buyer_snapshot ? 'address' AND buyer_snapshot->>'address' IS DISTINCT FROM $3)
                  )))
           RETURNING id::text AS id`,
-        [tenantId, subscriberIds, SUPPRESSION_MARKER],
-      )) as IdRow[];
+          [tenantId, subscriberIds, SUPPRESSION_MARKER],
+        ),
+      );
       changedDocuments += updatedDocuments.length;
 
-      const deletedDrafts = (await qr.query(
-        `DELETE FROM billing_documents
+      const deletedDrafts = normalizeErasureRows<IdRow>(
+        await qr.query(
+          `DELETE FROM billing_documents
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
             AND status = 'BORRADOR'
           RETURNING id::text AS id`,
-        [tenantId, subscriberIds],
-      )) as IdRow[];
+          [tenantId, subscriberIds],
+        ),
+      );
       changedDocuments += deletedDrafts.length;
       changedLines = lines;
 
-      const updatedPayments = (await qr.query(
-        `UPDATE billing_payments
-            SET reference = NULL, note = NULL
+      const updatedPayments = normalizeErasureRows<IdRow>(
+        await qr.query(
+          `UPDATE billing_payments
+            SET reference = NULL, note = NULL, void_note = NULL
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
-            AND (reference IS NOT NULL OR note IS NOT NULL)
+            AND (reference IS NOT NULL OR note IS NOT NULL OR void_note IS NOT NULL)
           RETURNING id::text AS id`,
-        [tenantId, subscriberIds],
-      )) as IdRow[];
+          [tenantId, subscriberIds],
+        ),
+      );
       changedPayments = updatedPayments.length;
     }
 
@@ -136,7 +144,7 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
            FROM billing_documents
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
-            AND (status = 'BORRADOR' OR buyer_document_encrypted IS NOT NULL OR
+            AND (status = 'BORRADOR' OR void_note IS NOT NULL OR buyer_document_encrypted IS NOT NULL OR
                  (buyer_snapshot IS NOT NULL AND (
                    (buyer_snapshot ? 'displayName' AND buyer_snapshot->>'displayName' IS DISTINCT FROM $3) OR
                    (buyer_snapshot ? 'documentType' AND buyer_snapshot->>'documentType' IS DISTINCT FROM $3) OR
@@ -162,7 +170,7 @@ export class BillingTitularErasureParticipant implements TitularErasureParticipa
            FROM billing_payments
           WHERE tenant_id = $1::uuid
             AND subscriber_id = ANY($2::uuid[])
-            AND (reference IS NOT NULL OR note IS NOT NULL)`,
+            AND (reference IS NOT NULL OR note IS NOT NULL OR void_note IS NOT NULL)`,
       [tenantId, subscriberIds],
     );
 

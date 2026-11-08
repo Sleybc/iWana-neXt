@@ -57,13 +57,13 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
   );
   await dataSource.query(`CREATE TABLE ${q}.billing_documents (
     id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL,
-    status text NOT NULL, buyer_snapshot jsonb, buyer_document_encrypted varchar(500), updated_at timestamptz
+    status text NOT NULL, void_note text, buyer_snapshot jsonb, buyer_document_encrypted varchar(500), updated_at timestamptz
   )`);
   await dataSource.query(
     `CREATE TABLE ${q}.billing_document_lines (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, document_id uuid NOT NULL)`,
   );
   await dataSource.query(
-    `CREATE TABLE ${q}.billing_payments (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL, reference text, note text, updated_at timestamptz)`,
+    `CREATE TABLE ${q}.billing_payments (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL, reference text, note text, void_note text, updated_at timestamptz)`,
   );
 
   await dataSource.query(`CREATE TABLE ${q}.potential_leads (id uuid PRIMARY KEY)`);

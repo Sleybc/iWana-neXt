@@ -107,7 +107,7 @@ Filas con `subscriber_id = ANY(scope.subscriberIds)` y `note_encrypted IS NOT NU
 
 ### D-HN-3. Dueño y categoría
 
-`CrmTitularErasureParticipant`. Siguen siendo siete participantes. Categoría `COMERCIAL`, ya existente: la lista cerrada de la 149 no cambia.
+`CrmTitularErasureParticipant`. Eran siete participantes; desde el barrido de texto libre son nueve, más Billing ([spec del barrido](2026-11-03-privacy-barrido-texto-libre-supresion-spec.md) D-BT-2). Categoría `COMERCIAL`, ya existente: la lista cerrada de la 149 no cambia.
 
 ### D-HN-4. Qué se conserva
 
@@ -207,6 +207,8 @@ H-2 existió porque ninguna prueba cruza el inventario de cifrado con el alcance
 | H-6 | `targets-after-erasure` da `non_null_anon: 0` por construcción en tablas sin `anonymized_at`. Quien lo relea puede concluir lo contrario (§2.2) | Aviso. La evidencia no se reescribe |
 
 H-3 y H-4 salen de buscar nombres de columna en migraciones y participantes, sin corrida. Son posibles residuos, no confirmados.
+
+**Actualización 2026-11-07:** el [barrido de texto libre](2026-11-03-privacy-barrido-texto-libre-supresion-spec.md) confirmó H-3 y H-4 con canarios y los cubrió (R-1 y R-2), junto con otros residuos; H-5 queda listado allí (§12) para MOD14.
 
 ## 10. Puntos del G0 del CTO
 

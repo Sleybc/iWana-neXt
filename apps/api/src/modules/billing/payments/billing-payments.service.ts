@@ -345,6 +345,7 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           errorResponse('BILLING_PAYMENT_NOT_FOUND', 'No se encontró el pago.'),
         );
       if (payment.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
+
       if (payment.subscriber_id !== command.subscriberId) {
         throw new UnprocessableEntityException(
           errorResponse('VALIDATION_ERROR', 'El titular del pago no coincide.'),
@@ -400,6 +401,14 @@ export class BillingPaymentsService extends BillingAccountReadPort {
           errorResponse('BILLING_PAYMENT_NOT_FOUND', 'No se encontró el pago.'),
         );
       if (payment.status !== 'REGISTRADO') throw this.paymentVoidedConflict();
+
+      const titular = await this.contractReadPort.lockTitularForBillingWrite(
+        payment.subscriber_id,
+        {
+          manager: qr.manager,
+        },
+      );
+      if (!titular.exists || titular.anonymized) throw this.anonymizedConflict();
 
       const allocations = (await qr.manager.query(
         `SELECT DISTINCT d.period_id::text AS period_id

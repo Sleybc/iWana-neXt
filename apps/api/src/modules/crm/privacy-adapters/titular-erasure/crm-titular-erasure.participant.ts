@@ -655,13 +655,18 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
         await redactSnapshots(qr, 'contracts', contracts, contractColumns, mode, updatedAtAdvanced),
       ),
     );
-    results.push(
-      fieldResult(
-        'crm_contract_alias_backup_168',
-        'COMERCIAL',
-        await this.eraseContractAliasBackup(qr, columns, contracts, mode),
-      ),
-    );
+    for (const backup of [
+      'crm_contract_alias_backup_168',
+      'crm_contract_price_backup_175',
+    ] as const) {
+      results.push(
+        fieldResult(
+          backup,
+          'COMERCIAL',
+          await this.eraseContractBackup(qr, columns, contracts, mode, backup),
+        ),
+      );
+    }
 
     const quotes = await this.idsForQuotes(qr, columns, scope.subscriberIds, scope.expedienteIds);
     results.push(
@@ -681,16 +686,17 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
     return results;
   }
 
-  private async eraseContractAliasBackup(
+  private async eraseContractBackup(
     qr: QueryRunner,
     columns: Map<string, TenantColumn>,
     contractIds: string[],
     mode: 'dry-run' | 'apply',
+    table: 'crm_contract_alias_backup_168' | 'crm_contract_price_backup_175',
   ): Promise<{ selected: number; changed: number; residual: number }> {
     if (
       contractIds.length === 0 ||
-      !tableExists(columns, 'crm_contract_alias_backup_168') ||
-      !columnOf(columns, 'crm_contract_alias_backup_168', 'contract_id')
+      !tableExists(columns, table) ||
+      !columnOf(columns, table, 'contract_id')
     ) {
       return { selected: 0, changed: 0, residual: 0 };
     }
@@ -698,7 +704,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
     const selected = normalizeErasureRows<{ contract_id: string }>(
       await qr.query(
         `SELECT contract_id::text AS contract_id
-           FROM crm_contract_alias_backup_168
+           FROM ${table}
           WHERE contract_id = ANY($1::uuid[])
           FOR UPDATE`,
         [contractIds],
@@ -710,7 +716,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
 
     const deleted = normalizeErasureRows<{ contract_id: string }>(
       await qr.query(
-        `DELETE FROM crm_contract_alias_backup_168
+        `DELETE FROM ${table}
           WHERE contract_id = ANY($1::uuid[])
           RETURNING contract_id::text AS contract_id`,
         [contractIds],
@@ -719,7 +725,7 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
     const residual = normalizeErasureRows<{ contract_id: string }>(
       await qr.query(
         `SELECT contract_id::text AS contract_id
-           FROM crm_contract_alias_backup_168
+           FROM ${table}
           WHERE contract_id = ANY($1::uuid[])`,
         [contractIds],
       ),

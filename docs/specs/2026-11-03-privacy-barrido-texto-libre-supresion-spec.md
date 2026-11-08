@@ -325,5 +325,5 @@ R-11, ciudad y departamento de R-14, y `data_subject_requests` quedan igual. `SO
 
 11. Aprobar ADR-104 (E1 a E3) y esta sección.
 12. Aceptar que una PQR bloquee la supresión entera durante su plazo (ADR-104 A1).
-13. Pedir al abogado la firma de su respuesta.
-14. Abrir la spec de H-EXP: anonimizar al vencer la retención, que D7 exige y no existe.
+13. **Cerrado, 2026-11-07:** el responsable del proyecto confirma que el abogado ya firmó la segunda respuesta. [Acta de referencia y custodia externa](../legal/ACTA-PRIVACY-RETENCION-IWANA-2026-11-07.md). Esta actualización prevalece sobre las menciones históricas a firma pendiente de §13 punto 10.
+14. **Definición emitida, 2026-11-07:** [spec H-EXP v1.0](2026-11-07-privacy-h-exp-retencion-spec.md). La anonimización al vencer la retención sigue pendiente de implementación y verificación; crear la spec no cierra ese requisito de G7.

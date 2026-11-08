@@ -163,6 +163,20 @@ describe('BillingPaymentsService — rechazos y acceso a datos protegidos', () =
     );
   });
 
+  it('impide reintroducir notas al anular un pago de titular anonimizado', async () => {
+    contracts.lockTitularForBillingWrite.mockResolvedValueOnce({ exists: true, anonymized: true });
+    await expect(
+      service.voidPayment(
+        PAYMENT,
+        { reasonCode: 'ERROR_DE_REGISTRO', note: 'nota sintética' },
+        ACTOR,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PRIVACY_TITULAR_ANONYMIZED' } });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE billing_payments'))).toBe(
+      false,
+    );
+  });
+
   describe('registro de pago', () => {
     it('rechaza un cuerpo inválido antes de abrir transacción', async () => {
       await expect(service.registerPayment({}, 'clave', ACTOR)).rejects.toBeInstanceOf(

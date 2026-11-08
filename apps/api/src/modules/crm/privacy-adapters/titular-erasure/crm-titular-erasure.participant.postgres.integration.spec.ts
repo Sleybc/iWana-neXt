@@ -188,6 +188,50 @@ describeWithDb('B1c — supresión CRM sobre migraciones tenant reales', () => {
     ]);
   });
 
+  it('elimina el respaldo 175 del alcance sin tocar otro contrato y verifica la reejecución', async () => {
+    if (!queryRunner) throw new Error('QueryRunner no inicializado.');
+    const own = randomUUID();
+    const other = randomUUID();
+    await queryRunner.query(
+      `INSERT INTO crm_contract_price_backup_175 (contract_id,plan_snapshot_json)
+      VALUES ($1,'{"name":"canario sintético"}'),($2,'{"name":"otro canario sintético"}')`,
+      [own, other],
+    );
+    const participant = new CrmTitularErasureParticipant(
+      new ConfigService({ PII_HASH_KEY: keys.hashKey.toString('hex') }),
+    );
+    const scope = {
+      partyId: null,
+      subscriberIds: [],
+      expedienteIds: [],
+      userIds: [],
+      requestId: randomUUID(),
+      cryptoKeys: keys,
+      relatedIds: { contractIds: [own] },
+    };
+    const preview = await participant.apply(scope, queryRunner, 'dry-run');
+    expect(preview.find((r) => r.table === 'crm_contract_price_backup_175')).toMatchObject({
+      selected: 1,
+      changed: 0,
+      residual: 1,
+    });
+    const applied = await participant.apply(scope, queryRunner, 'apply');
+    expect(applied.find((r) => r.table === 'crm_contract_price_backup_175')).toMatchObject({
+      selected: 1,
+      changed: 1,
+      residual: 0,
+    });
+    expect(
+      await queryRunner.query('SELECT contract_id FROM crm_contract_price_backup_175'),
+    ).toEqual([{ contract_id: other }]);
+    const again = await participant.apply(scope, queryRunner, 'apply');
+    expect(again.find((r) => r.table === 'crm_contract_price_backup_175')).toMatchObject({
+      selected: 0,
+      changed: 0,
+      residual: 0,
+    });
+  });
+
   describe('D-K2A-1 y D-K2A-3 — el documento queda en NULL y la fila se marca antes', () => {
     interface SubscriberState {
       document_number_encrypted: string | null;

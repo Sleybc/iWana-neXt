@@ -464,6 +464,26 @@ describe('BillingDocumentsService — emisión, anulación y descarte', () => {
   });
 
   describe('anulación', () => {
+    it('impide reintroducir notas al anular un documento de titular anonimizado', async () => {
+      route({
+        'SELECT id::text, period_id::text, status': [
+          { id: DOCUMENT, period_id: PERIOD, subscriber_id: SUBSCRIBER, status: 'EMITIDO' },
+        ],
+      });
+      contracts.lockTitularForBillingWrite.mockResolvedValueOnce({
+        exists: true,
+        anonymized: true,
+      });
+      await expect(
+        service.void(DOCUMENT, 'ERROR_DE_VALOR', 'nota sintética', ACTOR),
+      ).rejects.toMatchObject({
+        response: { code: BILLING_ERROR_CODES.PRIVACY_TITULAR_ANONYMIZED },
+      });
+      expect(
+        query.mock.calls.some(([sql]) => String(sql).includes('UPDATE billing_documents')),
+      ).toBe(false);
+    });
+
     it('rechaza un documento inexistente', async () => {
       route({ 'SELECT id::text, period_id::text, status': [] });
       await expect(

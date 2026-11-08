@@ -24,7 +24,7 @@ if (integrationEnabled && !supportedDatabaseName) {
 jest.setTimeout(900_000);
 
 const EXPECTED_MANIFEST_SIZE = 704;
-const EXPECTED_PENDING_MOD14 = 37;
+const EXPECTED_CLASSIFIED_MOD14 = 37;
 
 /**
  * Predicado textual D-BT-10: el mismo que produjo el manifiesto desde
@@ -70,14 +70,14 @@ describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
     }
   });
 
-  it('MOD14 queda como PENDIENTE-MOD14 sin decidir por ella', () => {
+  it('MOD14 clasifica sus 37 columnas con siete reglas de supresión y cero pendientes', () => {
     const pending = TEXT_ERASURE_MANIFEST.filter((entry) => entry.k === 'PENDIENTE-MOD14');
-    expect(pending).toHaveLength(EXPECTED_PENDING_MOD14);
-    for (const entry of pending) {
-      expect(entry.t.startsWith('billing_') || entry.t === 'crm_contract_price_backup_175').toBe(
-        true,
-      );
-    }
+    expect(pending).toHaveLength(0);
+    const classified = TEXT_ERASURE_MANIFEST.filter(
+      (entry) => entry.t.startsWith('billing_') || entry.t === 'crm_contract_price_backup_175',
+    );
+    expect(classified).toHaveLength(EXPECTED_CLASSIFIED_MOD14);
+    expect(classified.filter((entry) => entry.k === 'CUBIERTA')).toHaveLength(7);
   });
 
   it('CA-BT-12 detecta en rojo una columna nueva sin clasificar', () => {

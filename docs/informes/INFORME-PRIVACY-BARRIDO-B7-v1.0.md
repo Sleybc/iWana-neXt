@@ -81,11 +81,11 @@ Ratchet de integración API frente al CI inicial: suites aprobadas **73 → 74**
 
 K2 en la integración completa final: **5/5 aprobadas**, con `IWANA_K2_REENCRYPT_INTEGRATION=true` y el reconocimiento de entorno de CI para la base desechable `test`. La migración sube y baja sobre la cadena completa; el caso adicional demuestra que `down` conserva los estratos `NULL` ya anonimizados.
 
-`typecheck` de API y database: **exit 0**. ESLint y Prettier de los **36 archivos TypeScript** del alcance: **exit 0**. `git diff --check` del alcance no informa errores. Los comandos y resúmenes literales están en [verification.json](../quality/privacy-barrido-b7/verification.json); la [cobertura](../quality/privacy-barrido-b7/coverage-summary.json) conserva las cuatro mediciones por archivo.
+`typecheck` de API y database: **exit 0**. ESLint y Prettier de los **36 archivos TypeScript** del alcance: **exit 0**. `git diff --check` del alcance no informa errores. Los comandos y resúmenes literales están en [verification.json](evidence/privacy-barrido-b7-2026-11-07/verification.json); la [cobertura](evidence/privacy-barrido-b7-2026-11-07/coverage-summary.json) conserva las cuatro mediciones por archivo.
 
 ## Diff y simplicidad
 
-[Diff completo B7](../quality/privacy-barrido-b7/B7.diff), incluido el código nuevo sin añadirlo al índice: **36 archivos de código, 1126 líneas agregadas y 81 quitadas**. El manifiesto de evidencia incluye el SHA-256 de cada archivo y del patch. El informe y los artefactos de evidencia se contabilizan aparte.
+[Diff completo B7](evidence/privacy-barrido-b7-2026-11-07/B7.diff), incluido el código nuevo sin añadirlo al índice: **36 archivos de código, 1126 líneas agregadas y 81 quitadas**. El manifiesto de evidencia incluye el SHA-256 de cada archivo y del patch. El informe y los artefactos de evidencia se contabilizan aparte.
 
 Se eliminan el tipo y la rama `integer-marker` y los predicados duplicados del alcance de tickets. El helper del reloj evita duplicar la política entre API y CLI; el helper de alcance garantiza que conservación y barrido sigan las mismas cuatro referencias. El resto de las adiciones son la migración, los puertos, el cableado y pruebas de comportamiento y montaje necesarias para la cadena completa.
 

@@ -91,6 +91,9 @@ Al vencer la retención, el caso pasa al **Procedimiento B** (anonimización), s
 | Sin contratos abiertos                              | Ficha 360° → Servicios → Contratos                                                                                                                 |
 | Retención vencida, o titular que solo fue prospecto | Catálogo de retención (5 años desde la terminación; prospecto: 24 meses desde el descarte, o de inmediato si lo pide el titular y no hay contrato) |
 | Sin una autoridad que haya ordenado conservar       | Registro del caso                                                                                                                                  |
+| Sin facturación de menos de 10 años | Vista previa de la solicitud: `CONSERVATION_DUTY` |
+| Sin PQR respondida hace menos de 3 años ni PQR sin respuesta (ADR-104 E1) | Vista previa de la solicitud: `CONSERVATION_DUTY` |
+| El titular no es también proveedor | Vista previa de la solicitud: `SUPPLIER_PROFILE_LINKED` |
 
 Si alguna falla, la solicitud es **No procede** y aplica el Procedimiento A.
 
@@ -105,9 +108,9 @@ Si alguna falla, la solicitud es **No procede** y aplica el Procedimiento A.
 
 - las facturas y los soportes contables (Billing, 10 años);
 - los agregados sin identificación;
-- `audit_logs`, que no contienen PII por diseño;
+- `audit_logs`: desde `90d42c7f` (D-BT-5) los escritores no le pasan texto libre; las filas anteriores pueden contenerlo, y el trigger impide reescribirlas;
 - `data_authorizations`, que es la prueba de la autorización mientras corre su plazo (ADR-094 D7);
-- la propia solicitud, que es la prueba de cumplimiento.
+- la propia solicitud, que es la prueba de cumplimiento, 5 años desde su resolución (`SOLICITUDES_TITULAR`, ADR-104 E2).
 
 ### 5.3 Ejecutar
 
@@ -192,9 +195,9 @@ El CLI toma el `party_id` únicamente de la solicitud. Los expedientes son IDs U
 | `schedule_events` (D1 Fase 1b) | Mismo alcance. `title` → `ANONIMIZADO`; `description`, `address`, `municipality`, `sector`, `latitude`, `longitude`, `failure_reason`, `review_notes` → `NULL`. Se conservan estados, ventanas, asignaciones, vínculos (`expediente_id`, `subscriber_id`, `ticket_id`, `contract_id`, `work_order_id`, `execution_order_id`) y fechas. |
 | `work_orders` (D1 Fase 1b) | Alcance: vinculadas a visitas o eventos del alcance. `summary` → `ANONIMIZADO`; `notes` → `NULL`. Se conservan `code`, type, status, priority, orígenes y fechas. |
 | `work_order_tasks` (D1 Fase 1b) | Alcance: tareas de work orders del alcance. `title` → `ANONIMIZADO`; `description`, `result_notes` → `NULL`. Se conservan estado, llegada/salida y fechas. |
-| `schedule_reschedule_logs` (D1 Fase 1b) | Alcance: logs de eventos del alcance. `notes` → `NULL`; `reason` se conserva (motivo corto operativo). El registro append-only se conserva. |
+| `schedule_reschedule_logs` (D1 Fase 1b) | Alcance: logs de eventos del alcance. `notes` → `NULL`; `reason` → `ANONIMIZADO` (A.1 bis, R-13; antes «se conserva»). El registro append-only se conserva. |
 | `execution_orders` (D1 Fase 1b) | Alcance: con `visit_request_id` o `schedule_event_id` del alcance (`subscriber_id` es `VARCHAR(160)`: comparar como texto). `customer_display_label`, `work_summary` → `ANONIMIZADO`; `service_address`, `municipality`, `sector`, `work_instructions`, `close_notes`, `template_label` → `NULL`; `template_requirements_snapshot` → `{}`. Se conservan número, estados, ventanas, asignaciones, orígenes (`task_id`, `ticket_id`, `origin_ref_id`), plantilla (`template_id`, `template_version_id`, `template_key`, `template_version_number`), `version`, `is_annulled` y fechas. |
-| `execution_order_activities` (D1 Fase 1b) | Alcance: actividades de órdenes del alcance. `description` → `NULL` (es `NOT NULL`: preceder de `ALTER TABLE … ALTER COLUMN description DROP NOT NULL` registrado en el ticket, o centinela `ANONIMIZADO` si `tasks` lo prefiere). Se conservan tipo, actor y fechas. |
+| `execution_order_activities` (D1 Fase 1b) | Alcance: actividades de órdenes del alcance. `description` → `ANONIMIZADO` (es `NOT NULL`; ver A.1 bis). Se conservan tipo, actor y fechas. |
 | `execution_order_evidence` (D1 Fase 1b) | Alcance: evidencias de órdenes del alcance. `notes`, `file_name` → `NULL`. El vínculo `media_asset_id` lo trata Media (soft-delete si no compartida). Se conservan tipo, `requirement_key`, `asset_status`, `captured_at`, actor y fechas. |
 | `execution_order_status_transitions` (D1) | Alcance: asientos de órdenes del alcance. `reason` → `NULL`; `changed_by` se conserva (actor técnico; la purga de retención distingue centinela/NULL). Se conservan estados, instante, `correction_of_id` y fechas. |
 | `operational_tasks` (D1 Fase 1b) | Alcance: tareas referenciadas por `execution_orders.task_id` del alcance o por `origin_ref` de visitas del alcance con origen TASKS. `title` → `ANONIMIZADO`; `description`, `recipient_label` → `NULL`. Se conservan `task_number`, type, status, priority, orígenes, destinatario (`recipient_type`, `recipient_ref_id`) y fechas. |
@@ -205,6 +208,33 @@ El CLI toma el `party_id` únicamente de la solicitud. Los expedientes son IDs U
 `potential_leads` no se modifica: si la tabla existe y contiene filas, la operación aborta mostrando solo el conteo. `data_subject_requests` y `data_authorizations` se leen únicamente para resolver Party, coincidencia HMAC y evidencia; no reciben `INSERT`, `UPDATE` ni `DELETE`. Se excluye la evidencia adjunta a solicitudes. No se toca `audit_logs`, Billing, otros módulos ni DDL.
 
 Los demás HMAC del alcance se ponen en `NULL`. Si una columna histórica de hash no-HMAC es obligatoria, se escribe SHA-256 de una marca y el UUID de su fila, único por ID y sin conservar el digest anterior. Los secretos cifrados obligatorios se verifican en memoria con la clave activa o la previa; no se imprimen plaintexts ni ciphertexts.
+
+### A.1 bis — Barrido de texto libre (2026-11-07)
+
+Ampliación por la [spec del barrido](../specs/2026-11-03-privacy-barrido-texto-libre-supresion-spec.md) v1.2 y [ADR-104](../adrs/ADR-104-Enmienda-ADR-094-D7-Retencion-PQR-y-Veracidad.md), publicada en `90d42c7f`, `c1b56c83` y `74c3a984`. Prevalece sobre las filas de A.1 que la contradigan. La API y el CLI aplican los mismos nueve participantes (R13), en este orden: CRM, Party, usuarios, `assurance`, WFM, órdenes de ejecución, tareas operativas, `network`, Media; Billing actúa al final.
+
+| Tabla | Campos | Dueño |
+| --- | --- | --- |
+| `contracts` | Ubicación: `installation_city`, `installation_department`, `installation_address`, `installation_postal_code`, `installation_notes` → `NULL`; `installation_stratum` → `NULL`, nunca `1` (ADR-104 E3), con `anonymized_at` fijado. Fiscal: `fiscal_name`, `fiscal_document`, `fiscal_document_encrypted`, `fiscal_document_hmac`, `fiscal_address` → `NULL`. `alias` → marca. Instantáneas JSON: se redactan las claves personales | CRM |
+| `quotes` | Instantáneas JSON: se redactan las claves personales | CRM |
+| `subscribers` | `stratum` → `NULL`, nunca `1` (ADR-104 E3) | CRM |
+| `expediente_records` | `source` → `OTRO` | CRM |
+| `operational_responsibility_history`, `status_changes`, `sales_attributions`, `subscriber_tax_assignments` | `notes`, `reason`, `revoked_reason` → `NULL`, solo en filas con texto | CRM |
+| `crm_lifecycle_changes` | `note_encrypted` → `NULL` (H-2) | CRM |
+| `crm_contract_alias_backup_168` | Se borra la fila: es un respaldo, no un registro | CRM |
+| `support_tickets` | `subject` → marca; `description` → `NULL`. Alcance: solicitante o asunto `SUBSCRIBER`, `CONTRACT` o `EXPEDIENTE` del titular, comparando como texto | `assurance` |
+| `ticket_comments`, `ticket_timeline_events`, `ticket_work_order_links`, `ticket_pqr_records` | `body` → marca; `payload` → `{}`; `notes` → `NULL` | `assurance` |
+| `service_provisionings` | `regularization_reason` → marca (`ck_sp_regularized`) | `network` |
+| `execution_order_item_usage_reversals` | `reason` → marca | órdenes de ejecución |
+| `schedule_reschedule_logs` | `reason` → `ANONIMIZADO`. **Sustituye** el «se conserva» de A.1: es texto libre sin catálogo (R-13) | WFM |
+
+**Alcance ampliado (A-1 a A-4):** órdenes de ejecución directas por `subscriber_id`; visitas y agenda ligadas solo por `contract_id` o `ticket_id`; work orders y tareas operativas ligadas a tickets del alcance.
+
+**Correcciones a A.1:** `execution_order_activities.description` usa la marca `ANONIMIZADO`, no `NULL`. El outbox no entra en la verificación de residuos.
+
+**Cuándo no procede (además de §5.1):** una PQR del titular respondida hace menos de 3 años, o sin respuesta, da `CONSERVATION_DUTY` (ADR-104 E1). Un titular que también es proveedor (`supplier_profiles`) da `SUPPLIER_PROFILE_LINKED` y exige resolución manual.
+
+**Escritura posterior:** crear o editar un ticket, un comentario, un vínculo de OT, un trabajo de campo o una regularización sobre un titular suprimido da 409. Cerrar un ticket sigue permitido: sus notas de cierre quedan en claro y `--verify-only` las delata.
 
 ### A.2 Ejecución
 
@@ -225,7 +255,7 @@ El modo `--apply` aplica y verifica en una sola transacción, con `SET LOCAL sea
 
 ### A.3 Verificación
 
-La verificación completa de columnas personales y ciphertexts es la que ejecuta `--apply`: debe terminar con `residualFields: 0` y `activeMediaAssets: 0`. Como comprobación suplementaria de HMAC, desde `psql` se puede contar residuos sin seleccionar valores. Sustituir `tenant_schema`, `request_id` y la lista CSV de expedientes; si no hay expedientes, usar una cadena vacía. La consulta no modifica tablas y devuelve únicamente conteos:
+La verificación completa de columnas personales y ciphertexts es la que ejecuta `--apply`: debe terminar con `residualFields: 0` y `activeMediaAssets: 0`. **Alcance de ese cero:** solo comprueba las columnas que tienen regla. Que ninguna columna textual quede sin clasificar lo garantiza otra prueba, la de cobertura sobre el esquema migrado (`text-erasure-coverage.postgres.integration.spec.ts`, D-BT-10), que corre en CI. Como comprobación suplementaria de HMAC, desde `psql` se puede contar residuos sin seleccionar valores. Sustituir `tenant_schema`, `request_id` y la lista CSV de expedientes; si no hay expedientes, usar una cadena vacía. La consulta no modifica tablas y devuelve únicamente conteos:
 
 ```sql
 BEGIN;
