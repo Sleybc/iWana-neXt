@@ -1,12 +1,12 @@
 # MOD05 — Consolidación del clúster D + E + F + U
 
-**Versión:** 1.0 · **Fecha:** 2026-11-01 · **Estado:** NO-GO — G1 repetido con fallos
+**Versión:** 1.0 · **Fecha:** 2026-11-01 · **Estado:** Cerrado el 2026-11-07. GO con G6.5 cumplido, ver §«Cierre AI-EM-ARCH». El dictamen siguiente conserva el NO-GO de la repetición de G1 de §C1b como registro histórico.
 **Base revisada:** `main`, árbol de trabajo separado tras K3 autorizado para cerrar el boundary Quotes → Subscribers.
 
 **Prompt:** [PROMPT-MOD05-CONSOLIDACION-CLUSTER-v1.0.md](../prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-v1.0.md) · **Plan:** [2026-10-31-mod05-consolidacion-cluster.md](../plans/2026-10-31-mod05-consolidacion-cluster.md).
 **Evidencia Ola 1:** [INFORME-MOD05-CONSOLIDACION-CLUSTER-OLA1-v1.0.md](INFORME-MOD05-CONSOLIDACION-CLUSTER-OLA1-v1.0.md).
 
-## Dictamen
+## Dictamen (2026-11-01; histórico, supersedido por §«Cierre AI-EM-ARCH»)
 
 La primera corrida quedó en NO-GO por seguridad y por falta de entorno E2E. K3 y K4 atendieron esos puntos. C1b encontró después un P1 de boundary: `SubscribersService` consultaba `Quote` directamente. Tras la autorización del usuario, K3 trasladó la lectura al módulo Quotes mediante `CrmQuoteReadPort`; la prueba unitaria del adaptador y la integración 360° real pasaron. La repetición completa de G1 está documentada en §C1b: typecheck/lint, E2E, migraciones 167/168 y auditorías pasan, pero las suites completas de API, DB y portal, tres integraciones PostgreSQL, la cobertura de ramas del perfil tributario (79,22 %) y el hash/patch B1 mantienen el NO-GO. No se hizo staging, stash ni commit.
 
@@ -1737,3 +1737,35 @@ La actualización de resultados G6.5 en esta sección se hizo después del commi
 **Las otras 7 fallas locales no son regresiones.** Las tres specs (`ciclo-facturacion-live`, `privacy-fase-1b-live` y `privacy-live`) fallan en local con timeout de setup, HTTP 500 en `login` y login colgado. Pasaron en el job R4.1 del CI (run 41439195912) con **el mismo código de producto**: allí la suite completa dio 327 aprobadas, 3 fallidas (las ya corregidas) y 1 omitida, sobre 331. La corrida local de esa misma suite dio 309, 21 y 1. Ningún archivo de producción cambió desde ese run: H2, H3 y H5 solo tocan pruebas y `ci.yml`. La diferencia es del entorno local, que corrió la suite completa con el provisioner en una sola máquina.
 
 **Recomendación:** dar por cumplida la condición del CTO en su intención, que era no publicar pruebas que oculten fallos, y lanzar H4. El juez definitivo es G6.5: todos los workflows del nuevo SHA en `success`. Si R4.1 vuelve a fallar en CI en esas specs, se tratará como hallazgo nuevo. Requiere confirmación del CTO, porque la condición literal decía «H5 en verde».
+
+## Cierre AI-EM-ARCH (2026-11-07)
+
+**Dictamen: GO. El clúster MOD05 (D, E, F, U) y DT-3 quedan publicados en `main`, con G6.5 cumplido.** Se cierra el informe y el [plan](../plans/2026-10-31-mod05-consolidacion-cluster.md). El NO-GO de la cabecera original y de §Dictamen corresponde a la repetición de G1 de §C1b (2026-11-01) y se conserva como historia.
+
+**Verificado por AI-EM-ARCH el 2026-11-07** con `gh run list --commit <sha>`:
+
+| SHA | Contenido | Workflows |
+| --- | --- | --- |
+| `3200cf9a` | Último commit de H4 (registro de la autorización). Incluye por ancestro `0dbc9cef` (fixtures herméticos) y `a491605d` (runners `ubuntu-24.04`) | `CI` [41449913367](https://github.com/Sleybc/iWana-neXt/actions/runs/41449913367) y `E2E Web Admin Smoke` [41449913339](https://github.com/Sleybc/iWana-neXt/actions/runs/41449913339), ambos en `success` |
+| `e7f8613a` | Registro de la publicación de H4 y del G6.5 | `CI` [41456557300](https://github.com/Sleybc/iWana-neXt/actions/runs/41456557300) y `E2E Web Admin Smoke` [41456557590](https://github.com/Sleybc/iWana-neXt/actions/runs/41456557590), ambos en `success` |
+
+**Commits del clúster:** `78d3e4fb`, `4cfeed5f`, `0175aca2`, `a8324a84`, `ee7f89f3` (C4e); `50231284` (C4f); `9e3956d7` (registro de C4e y C4f, publicado en F3); `0dbc9cef`, `a491605d`, `3200cf9a` (H4); `e7f8613a` (registro).
+
+**Lecciones que quedan como regla de proceso:**
+
+1. G6.5 se verifica sobre **todos** los workflows del SHA, nunca solo sobre uno. F3 lo declaró mirando el smoke con el `CI` en rojo.
+2. El G1 previo a un push usa el comando literal del CI sobre una base nueva, no listas enumeradas contra `dbiw`. El CI descubre todas las `*.postgres.integration.spec.ts`.
+3. Antes de publicar, `HEAD` se verifica aislado (`git archive`), sin el resto del árbol. C4e dejó `HEAD` sin compilar por una dependencia clasificada como ajena.
+4. Las restauraciones se hacen por archivo completo verificado por hash, no por patch con contexto. Prettier rompió el patch B1.
+
+**Fuera de este cierre, sin dueño asignado (no bloquean):**
+
+| Deuda | Origen | Riesgo |
+| --- | --- | --- |
+| DT-4: el aprovisionamiento reactivó un tenant en `MARKED_FOR_DELETION` | §K4f, observación de la línea 388 | El tenant escapa de la purga programada. Es de MOD13; necesita triage de `plat-ops` |
+| P3-5: pruebas de ciclo de vida y fecha de nacimiento con DDL hecho a mano | §K4 | Deriva frente a la cadena migrada, la misma causa que puso el CI en rojo en F3 |
+| Playwright 1.58.2 sin soporte en ubuntu 26.04 | §H3 | El CI queda fijado en `ubuntu-24.04` hasta que Playwright dé soporte |
+
+**Respaldos:** su condición de conservación («hasta G6.5», plan §4 P5) se cumplió. Siguen en disco hasta que el CTO ordene borrarlos: `refs/checkpoint/stash-B-rerun` (`3fa18ca2`), `%TEMP%\iwana-mod05-separate-snapshots-2026-11-01\` y el respaldo R3-ter de `contracts.service.spec`.
+
+**Sin commitear por decisión del CTO:** las PNG de evidencia modificadas en `docs/informes/evidence/`, que se dejan así.

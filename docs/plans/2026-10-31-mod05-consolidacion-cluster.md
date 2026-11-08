@@ -1,6 +1,6 @@
 # MOD05 — Consolidación del clúster D + E + F + U · Plan de orquestación
 
-**Fecha:** 2026-10-31 · **Versión:** 1.0 · **Estado:** Vigente · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
+**Fecha:** 2026-10-31 · **Versión:** 1.0 · **Estado:** Cerrado el 2026-11-07 ([cierre en el informe](../informes/INFORME-MOD05-CONSOLIDACION-CLUSTER-v1.0.md)) · **Emisor:** AI-EM-ARCH (modo EM + Orchestrator)
 **Prompt:** [PROMPT-MOD05-CONSOLIDACION-CLUSTER-v1.0.md](../prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-v1.0.md) · **Launcher (Ola 1):** [PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.0.md](../prompts/PROMPT-MOD05-CONSOLIDACION-CLUSTER-LAUNCH-v1.0.md)
 **Olas que consolida:**
 
@@ -120,6 +120,7 @@ Skills verificadas en disco el 2026-10-31 (`.agents/skills/<nombre>/SKILL.md`). 
 | H4                                                           | **Autorizado por el CTO el 2026-11-02.** Tras el dictamen AI-EM-ARCH de H5 y la revisión con 0 hallazgos C, ejecutar los tres commits por archivo completo, push y G6.5 para todos los workflows del SHA. Estado de la ejecución en §H4 del informe.                                                                                                                                                                                                                                                                                                   |
 | H5                                                           | Las 3 fallas de R4.1 quedaron corregidas; 0 hallazgos C. Las 7 fallas locales se clasifican como entorno: pasaron en CI con el mismo producto. **El CTO dio por cumplida la condición el 2026-11-02 y ordenó lanzar H4.** Conteo local preservado en el informe: 14 aprobados, 7 fallidos o con timeout y 1 omitido declarado.                                                                                                                                                                                                                         |
 | H4 / G6.5 | ✅ Commits `0dbc9cef`, `a491605d` y `3200cf9a`, con push sin force. **G6.5 cumplido**, verificado por AI-EM-ARCH: `CI` 41449913367 y `E2E Web Admin Smoke` 41449913339 en `success`, con todos los jobs en verde. **Clúster MOD05 (D, E, F, U) y DT-3 publicados.** El cierre documental de DT-3 queda a cargo de su sesión |
+| Cierre | ✅ 2026-11-07. Registro `e7f8613a` con `CI` 41456557300 y smoke 41456557590 en `success`. Plan cerrado. DT-4, P3-5 y Playwright en ubuntu 26.04 salen como deudas sin dueño. Los respaldos de P5 esperan la orden del CTO para borrarse |
 
 ## Lanzamiento
 
