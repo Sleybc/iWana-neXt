@@ -20,6 +20,7 @@ import { InternetVatResolverAdapter } from '../../taxation/ports/internet-vat-re
 import { IPrivacyMarksReadPort } from '../ports/privacy-marks-read.port';
 import { IContractImpersonationPort } from '../ports/contract-impersonation.port';
 import { IPersonalDataErasurePort } from '../ports/personal-data-erasure.port';
+import { bogotaCivilDate } from '../ports/privacy-tenant-query';
 import { PrivacyRequestsService } from './requests.service';
 import {
   applyTenantMigrationsInOrder,
@@ -171,7 +172,7 @@ describeWithDb('Retención del suscriptor (O-1) en PostgreSQL real', () => {
           requesterContact: 'titular-o1@example.invalid',
           identityVerificationMethod: 'DOCUMENTO_PRESENCIAL',
           partyId,
-          receivedAt: new Date().toISOString().slice(0, 10),
+          receivedAt: bogotaCivilDate(new Date()),
         },
         actorId,
       ),
