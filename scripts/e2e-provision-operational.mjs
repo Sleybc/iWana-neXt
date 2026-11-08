@@ -1794,7 +1794,7 @@ function runPlaywright(env, quarantineCount) {
   const markerLines = output
     .split(/\r?\n/u)
     .filter((line) =>
-      /^E2E_PLAYWRIGHT_(?:PASSED|FAILED|FAILED_TEST|FAILED_TEST_OMITTED|SKIPPED|DID_NOT_RUN|FLAKY|SKIP_REASON_COUNT|MISSING_SKIP_REASONS)=/u.test(
+      /^E2E_PLAYWRIGHT_(?:PASSED|FAILED|FAILED_TEST|FAILED_ERROR|FAILED_TEST_OMITTED|SKIPPED|DID_NOT_RUN|FLAKY|SKIP_REASON_COUNT|MISSING_SKIP_REASONS)=/u.test(
         line,
       ),
     );
