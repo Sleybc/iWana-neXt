@@ -156,7 +156,7 @@ Sin backfill completo, las búsquedas deterministas quedan rotas (hashes viejos 
    pnpm --filter @iwana/api exec node dist/cli/anonymize-titular.js --tenant "$TENANT_REF" --request "$REQUEST_ID" --apply
    ```
 
-   Reaplicar es idempotente y solo lleva al estado suprimido (también lo usa la remediación de H-2, D-HN-7). El CLI aún no escribe auditoría propia: hasta que exista (spec H-1, bitácora), la constancia es la del ticket.
+   Reaplicar es idempotente y solo lleva al estado suprimido (también lo usa la remediación de H-2, D-HN-7). Con la migración 178 (spec H-1), cada reaplicación queda en la bitácora `privacy_erasure_mutation_log`. Su consulta está en el runbook de supresión manual, Anexo A.3. El ticket registra los conteos.
 
    Repetir `--verify-only` hasta `residualFields` en `0` y volver a empezar por el dry-run de K2. Si el CLI no deja la fila en `NULL`, detenerse y escalar a AI-EM-ARCH.
 

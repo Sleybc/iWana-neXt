@@ -24,7 +24,7 @@ import type {
   TitularErasureTableResult,
 } from './titular-erasure.types';
 
-const CRM_RULES: Record<string, FieldRule[]> = {
+export const CRM_RULES: Record<string, FieldRule[]> = {
   expediente_records: [
     { column: 'full_name', kind: 'marker' },
     { column: 'source', kind: 'marker', marker: 'OTRO' },
@@ -140,7 +140,7 @@ const CRM_RULES: Record<string, FieldRule[]> = {
   crm_lifecycle_changes: [{ column: 'note_encrypted', kind: 'null' }],
 };
 
-const CONTRACT_LOCATION_RULES: FieldRule[] = [
+export const CONTRACT_LOCATION_RULES: FieldRule[] = [
   { column: 'installation_city', kind: 'null' },
   { column: 'installation_department', kind: 'null' },
   { column: 'installation_stratum', kind: 'null' },
@@ -149,7 +149,7 @@ const CONTRACT_LOCATION_RULES: FieldRule[] = [
   { column: 'installation_notes', kind: 'null' },
 ];
 
-const CONTRACT_FISCAL_RULES: FieldRule[] = [
+export const CONTRACT_FISCAL_RULES: FieldRule[] = [
   { column: 'fiscal_name', kind: 'null' },
   { column: 'fiscal_document', kind: 'null' },
   { column: 'fiscal_document_encrypted', kind: 'null' },
@@ -157,7 +157,7 @@ const CONTRACT_FISCAL_RULES: FieldRule[] = [
   { column: 'fiscal_address', kind: 'null' },
 ];
 
-const CONTRACT_COMMERCIAL_RULES: FieldRule[] = [{ column: 'alias', kind: 'marker' }];
+export const CONTRACT_COMMERCIAL_RULES: FieldRule[] = [{ column: 'alias', kind: 'marker' }];
 
 const CHILD_TABLES = ['contact_attempts', 'consent_records', 'coverage_checks'] as const;
 

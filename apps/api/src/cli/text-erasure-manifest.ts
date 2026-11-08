@@ -3,14 +3,15 @@
  * cubierta o excluida con motivo. Generado desde
  * docs/informes/evidence/privacy-barrido-texto-libre-2026-11-03/clasificacion-columnas.csv
  * (703 filas) mas el delta posterior al barrido:
- * billing_payments.allocations_fingerprint (migracion 173, MOD14).
+ * billing_payments.allocations_fingerprint (migracion 173, MOD14) y las cuatro
+ * columnas de privacy_erasure_mutation_log (migracion 178, H-1).
  *
  * Clases: CUBIERTA (participante que la anonimiza), EXCLUIDA (motivo por el que
  * no se toca), PENDIENTE-MOD14 (spec 2026-11-03 §12 H-5: solo listadas, B4 no
  * decide por ellas; el invariante las reconoce pero no las justifica).
  * R-1 a R-14 pasan a CUBIERTA por B3; R-15 queda EXCLUIDA-condicional con el
- * bloqueante D-BT-8. Total: 704 entradas
- * (CUBIERTA=184, EXCLUIDA=520, PENDIENTE-MOD14=0).
+ * bloqueante D-BT-8. Total: 708 entradas
+ * (CUBIERTA=184, EXCLUIDA=524, PENDIENTE-MOD14=0).
  * MOD14 clasificada en INFORME-MOD14-PRIVACY-CLASIFICACION-v1.0.md (2026-11-07).
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
@@ -2370,6 +2371,30 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'technology',
     k: 'EXCLUIDA',
     d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'privacy_erasure_mutation_log',
+    c: 'changed_columns',
+    k: 'EXCLUIDA',
+    d: 'H-1: nombres de columna cambiados, sin valores',
+  },
+  {
+    t: 'privacy_erasure_mutation_log',
+    c: 'operation',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: operación del trigger (UPDATE)',
+  },
+  {
+    t: 'privacy_erasure_mutation_log',
+    c: 'session_user',
+    k: 'EXCLUIDA',
+    d: 'OPERADOR: rol de base de datos que ejecutó la mutación',
+  },
+  {
+    t: 'privacy_erasure_mutation_log',
+    c: 'table_name',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: tabla de la 169 afectada',
   },
   {
     t: 'privacy_incidents',

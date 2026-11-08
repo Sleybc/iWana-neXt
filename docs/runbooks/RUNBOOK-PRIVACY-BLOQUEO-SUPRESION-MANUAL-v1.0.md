@@ -257,6 +257,20 @@ Desde R2 (2026-11-08), `--apply` solo con `--request` reintenta los expedientes 
 
 ### A.3 Verificación
 
+**Bitácora de supresión (migración 178, spec H-1).** Cada cambio que el CLI o la aplicación hacen con el GUC sobre una fila ya suprimida queda en `privacy_erasure_mutation_log`: es el rastro de una remediación. La lee solo el Oficial de privacidad; la API no puede escribir en ella ni borrarla. Para revisar una solicitud, sin valores personales:
+
+```sql
+BEGIN;
+SELECT format('SET LOCAL search_path TO %I', :'tenant_schema') \gexec
+SELECT occurred_at, table_name, operation, changed_columns, "session_user"
+  FROM privacy_erasure_mutation_log
+ WHERE anonymized_request_id = :'request_id'::uuid
+ ORDER BY occurred_at;
+ROLLBACK;
+```
+
+Registrar en el ticket los conteos por tabla, no la salida completa. La primera supresión de un expediente aún no marcado no deja entrada: la bitácora cubre las reaplicaciones.
+
 La verificación completa de columnas personales y ciphertexts es la que ejecuta `--apply`: debe terminar con `residualFields: 0` y `activeMediaAssets: 0`. **Alcance de ese cero:** solo comprueba las columnas que tienen regla. Que ninguna columna textual quede sin clasificar lo garantiza otra prueba, la de cobertura sobre el esquema migrado (`text-erasure-coverage.postgres.integration.spec.ts`, D-BT-10), que corre en CI. Como comprobación suplementaria de HMAC, desde `psql` se puede contar residuos sin seleccionar valores. Sustituir `tenant_schema`, `request_id` y la lista CSV de expedientes; si no hay expedientes, usar una cadena vacía. La consulta no modifica tablas y devuelve únicamente conteos:
 
 ```sql

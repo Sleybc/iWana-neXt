@@ -960,10 +960,23 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         [ticketId, tenantId],
       );
       await anonymizeTitularInTenantSchema(dataSource, schema, requestId, [], false, KEYS, 'apply');
+      // Estado heredado anterior a la 177: la 178 ya no deja escribirlo ni con el GUC, así que
+      // se siembra como dueño con el trigger desactivado dentro de la transacción (patrón CA-K2A-06).
       await runInTenantSchema(dataSource, schema, async (qr) => {
-        await qr.query("SELECT set_config('iwana.titular_erasure','on',true)");
+        await qr.query(
+          'ALTER TABLE subscribers DISABLE TRIGGER trg_subscribers_prevent_anonymized_mutation',
+        );
+        await qr.query(
+          'ALTER TABLE contracts DISABLE TRIGGER trg_contracts_prevent_anonymized_mutation',
+        );
         await qr.query('UPDATE subscribers SET stratum=1 WHERE id=$1', [subscriberId]);
         await qr.query('UPDATE contracts SET installation_stratum=1 WHERE id=$1', [contractId]);
+        await qr.query(
+          'ALTER TABLE subscribers ENABLE TRIGGER trg_subscribers_prevent_anonymized_mutation',
+        );
+        await qr.query(
+          'ALTER TABLE contracts ENABLE TRIGGER trg_contracts_prevent_anonymized_mutation',
+        );
       });
       const before = await verifyAnonymizedTenant(dataSource, schema, KEYS);
       expect(before.residualFields).toBeGreaterThan(0);

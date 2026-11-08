@@ -352,6 +352,26 @@ BEGIN
       app
     );
   END LOOP;
+
+  -- H-1: la bitácora de supresión solo la escribe su trigger; la app solo lee.
+  -- Va después del grant masivo de este bloque, como el re-endurecimiento de audit.
+  FOR r IN
+    SELECT n.nspname AS schema_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind = 'r'
+      AND c.relname = 'privacy_erasure_mutation_log'
+      AND n.nspname LIKE 'tenant\_%' ESCAPE '\'
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE %I.privacy_erasure_mutation_log FROM PUBLIC', r.schema_name);
+    EXECUTE format('REVOKE ALL ON TABLE %I.privacy_erasure_mutation_log FROM %I', r.schema_name, app);
+    EXECUTE format('GRANT SELECT ON TABLE %I.privacy_erasure_mutation_log TO %I', r.schema_name, app);
+    EXECUTE format(
+      'REVOKE ALL ON SEQUENCE %I.privacy_erasure_mutation_log_id_seq FROM %I',
+      r.schema_name,
+      app
+    );
+  END LOOP;
 END
 $dml$;
 

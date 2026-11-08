@@ -37,6 +37,7 @@ function sqlStringLiteral(value: string): string {
  * - App: USAGE (sin CREATE); DML en tablas; USAGE/SELECT en secuencias.
  * - Migrator: USAGE, CREATE en schema; DEFAULT PRIVILEGES → app.
  * - `audit_logs`: app solo SELECT, INSERT.
+ * - `privacy_erasure_mutation_log` (H-1): app solo SELECT; la escribe su trigger.
  */
 export function buildTenantSchemaAppGrantsSql(
   schemaName: string,
@@ -95,6 +96,18 @@ BEGIN
     EXECUTE format('REVOKE ALL ON TABLE %I.audit_logs FROM %I', sch, app);
     EXECUTE format(
       'GRANT SELECT, INSERT ON TABLE %I.audit_logs TO %I',
+      sch,
+      app
+    );
+  END IF;
+
+  -- H-1: la bitácora de supresión solo la escribe su trigger; la app solo lee.
+  IF to_regclass(format('%I.%I', sch, 'privacy_erasure_mutation_log')) IS NOT NULL THEN
+    EXECUTE format('REVOKE ALL ON TABLE %I.privacy_erasure_mutation_log FROM PUBLIC', sch);
+    EXECUTE format('REVOKE ALL ON TABLE %I.privacy_erasure_mutation_log FROM %I', sch, app);
+    EXECUTE format('GRANT SELECT ON TABLE %I.privacy_erasure_mutation_log TO %I', sch, app);
+    EXECUTE format(
+      'REVOKE ALL ON SEQUENCE %I.privacy_erasure_mutation_log_id_seq FROM %I',
       sch,
       app
     );

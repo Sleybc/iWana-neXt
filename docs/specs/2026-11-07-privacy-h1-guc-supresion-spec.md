@@ -1,14 +1,14 @@
 # Spec — `privacy` · H-1: el GUC de supresión no protege frente a SQL en la API
 
 **Versión:** 1.0
-**Estado:** Propuesta. Pendiente del G0 del CTO sobre §5. Toca la defensa en base de datos de DT-3; no se implementa nada antes de ese G0.
+**Estado:** Aprobada. G0 del CTO el 2026-11-07: opciones 1 y 3 (§7). Sin implementar.
 **Fecha:** 2026-11-07
 **Autor:** AI-EM-ARCH
 **Prioridad:** antes de G7. No bloquea K2, que no usa el GUC (spec K2 anonimizados, salida B).
 **Origen:** hallazgo H-1 de la [spec K2 anonimizados](2026-11-03-privacy-k2-recifrado-anonimizados-spec.md) §8, y dictamen de `sec-eng` en B5 de esa fase (2026-11-07, P2).
 **Artefactos base:** [spec DT-3](2026-11-01-privacy-dt3-mutaciones-titular-anonimizado-spec.md) D-RER-6 · migraciones 150 y 169 · [ADR-094](../adrs/ADR-094-Modelo-Proteccion-Datos-Personales-Habeas-Data.md)
 
-> Define comportamiento. No contiene código de producción. Plan y lanzador se emiten tras el G0, porque dependen de la opción elegida.
+> Define comportamiento. No contiene código de producción. **Plan:** [2026-11-07-privacy-h1-guc-supresion-orquestacion.md](../plans/2026-11-07-privacy-h1-guc-supresion-orquestacion.md) · **Lanzador:** [PROMPT-PRIVACY-H1-GUC-LAUNCH-v1.0](../prompts/PROMPT-PRIVACY-H1-GUC-LAUNCH-v1.0.md)
 
 ## 1. Problema
 
@@ -67,12 +67,56 @@ Dictamen de `sec-eng`, de menor a mayor coste.
 4. Enmienda de D-RER-6 en la spec DT-3: «rechaza todo `UPDATE`» pasa a «rechaza todo cambio que no lleve al estado suprimido».
 5. Dictamen jurídico sobre la integridad de la supresión bajo la Ley 1581, con abogado (ADR-094 §7.3).
 
-## 6. Criterios de aceptación (borrador, se fijan con el G0)
+## 6. Criterios de aceptación
 
 | # | Criterio |
 | --- | --- |
-| CA-H1-01 | Con `iwana_app` y el GUC activo, reponer un dato en una columna de un titular suprimido falla con `55000`. Con la opción 3, deja un registro de intento |
+| CA-H1-01 | Con `iwana_app` y el GUC activo, reponer un dato en una columna de un titular suprimido falla con `55000`. No deja registro: el `RAISE` revierte la transacción, incluida la bitácora (D-H1-2) |
 | CA-H1-02 | El borrado real con ocho participantes, el CLI y su reaplicación para remediar siguen pasando, y la integración K2 sigue 5/5 |
 | CA-H1-03 | `DELETE` de un titular suprimido falla siempre, con o sin GUC |
 | CA-H1-04 | La lista de columnas del trigger y `CRM_RULES` no divergen: una prueba de paridad falla si cambia una sin la otra |
-| CA-H1-05 | Con la opción 3, `iwana_app` no puede escribir ni borrar en la bitácora |
+| CA-H1-05 | `iwana_app` no puede insertar, modificar ni borrar en la bitácora, ni directamente ni invocando una función: no existe función escritora que pueda llamar (D-H1-2). Una llamada directa con el GUC fijado no deja ninguna entrada |
+| CA-H1-06 | Cada mutación permitida con el GUC sobre una fila suprimida deja una entrada con txid, `session_user`, tabla, id, columnas cambiadas y solicitud; un `--apply` de remediación del CLI también |
+| CA-H1-07 | La migración hace `up → down → up`; `down` restaura la función de la 169 y conserva la bitácora |
+
+## 7. Decisiones del G0 (2026-11-07)
+
+El CTO aprobó las opciones 1 y 3. Los puntos 3 y 4 de §5 se toman con su valor por defecto; la opción 2 queda fuera.
+
+### D-H1-1. Trigger monótono
+
+Una migración tenant nueva reemplaza `titular_prevent_anonymized_mutation()`. Número: el siguiente libre en `runner.ts` al lanzar (hoy 178, porque el barrido ocupa la 177).
+
+- **Sin GUC:** igual que hoy, rechaza todo `UPDATE` y `DELETE` sobre filas de un titular suprimido.
+- **Con GUC y fila no suprimida:** igual que hoy, deja pasar. Es la primera supresión de expedientes, que marcan al final.
+- **Con GUC y fila suprimida:** `DELETE` siempre rechazado. Un `UPDATE` pasa solo si cada columna que cambia cumple su transición permitida:
+  - columna personal de texto o número: queda en `NULL` o en el marcador de su regla (`ANONIMIZADO`, el SHA-256 de `marcador:id` para los hashes heredados; el estrato queda en `NULL` desde la 177, ADR-104);
+  - `jsonb`: el valor nuevo es `'{}'` o está contenido en el anterior (`OLD @> NEW`), que es lo que hace la redacción de snapshots;
+  - columnas de control (`updated_at`, `anonymized_*`, la transición de archivo que la 169 ya admite): sin cambio de reglas. La 150 sigue protegiendo `anonymized_*`.
+- Cubre las tablas de la 169: `subscribers`, `expediente_records` y `contracts`. Las demás tablas de participantes no tienen este trigger y quedan fuera.
+
+**Catálogo de columnas.** Vive en la migración, porque `packages/database` no importa de `apps/api`. Una prueba de paridad en `apps/api` lo compara con `CRM_RULES` y las reglas de contrato del participante, y falla si divergen (CA-H1-04). La integración de la 178 comprueba además con `pg_get_functiondef` que cada columna del catálogo tiene su transición en el SQL que corre.
+
+**`search_path` fijo (corrección del 2026-11-08, P1-1 de `sec-eng`).** El trigger corre con los privilegios y el `search_path` de quien lo dispara, que es justo el actor a contener. Con un `search_path` heredado, `iwana_app` podía tapar `subscribers` con una tabla temporal o crear operadores falsos en `public`. Las funciones de la 178, y las de la 150 y la 170 que comparten tabla, fijan `search_path = pg_catalog, pg_temp`, y la consulta a `subscribers` va calificada con `TG_TABLE_SCHEMA`. La 178 rellena también `contracts.anonymized_at` donde el suscriptor ya estaba suprimido.
+
+**Rollback.** El `down` de la 178 restaura la 169 tal cual, y con ella el `search_path` heredado: reabre el P1-1 y el paso libre con el GUC. En producción, revertir la 178 reabre H-1 entero; se trata como incidente de seguridad, no como rollback de rutina.
+
+### D-H1-2. Bitácora append-only
+
+- Tabla tenant `privacy_erasure_mutation_log`: id, `occurred_at`, txid, `session_user`, tabla, id de fila, operación, columnas cambiadas y `anonymized_request_id`.
+- Solo escribe en ella una **función de trigger** `AFTER UPDATE`, `SECURITY DEFINER` del dueño (`iwana_migrator`), con `search_path` fijado, sobre las tres tablas de la 169. Registra cuando la mutación usó el GUC sobre una fila suprimida, en la bitácora del schema de la propia fila (`TG_TABLE_SCHEMA`) y con las columnas cambiadas calculadas de `OLD` y `NEW`.
+- **No existe función escritora invocable.** PostgreSQL no permite llamar a una función de trigger fuera de un trigger, así que el rol de la API no puede insertar entradas falsas ni elegir el schema. `EXECUTE` revocado a `PUBLIC` en las funciones nuevas. (Corrección del 2026-11-08: la primera entrega de B1 usaba un escritor con parámetros y `EXECUTE` por defecto para `PUBLIC`, falsificable por `iwana_app`.)
+- `iwana_app` no tiene `INSERT`, `UPDATE` ni `DELETE` sobre la tabla. Un trigger propio rechaza `UPDATE` y `DELETE`.
+- Registra solo lo permitido: un rechazo revierte la transacción entera (CA-H1-01). El envenenamiento de sesión no se registra como tal; se ve como mutaciones permitidas con su `session_user` y txid, y aun así solo pueden llevar al estado suprimido.
+
+### D-H1-3. Retención y lectura (punto 3, por defecto)
+
+La misma retención que el registro de supresión de la solicitud. Lectura solo para el oficial de privacidad, por consulta documentada en el runbook. Sin endpoint en esta fase.
+
+### D-H1-4. Enmienda de D-RER-6 (punto 4)
+
+La spec DT-3 cambia «rechaza todo `UPDATE`» por «rechaza todo cambio que no lleve al estado suprimido», y cita esta spec. `crm-blocked-mutations.arch.spec.ts` no cambia: el GUC sigue reservado a los dos archivos de §2.
+
+### D-H1-5. Dictamen jurídico (punto 5)
+
+Sigue abierto, con abogado (ADR-094 §7.3). No bloquea la implementación; bloquea declarar cumplida la integridad de la supresión en G7.

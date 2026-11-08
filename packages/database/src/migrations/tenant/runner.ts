@@ -1,4 +1,3 @@
-import { PrivacyPqrRetentionAndNullStratum1770000000177 } from './177_privacy_pqr_retention_and_null_stratum';
 import { DropWfmTechnicianBusinessOverrides1748566800000 } from './041_drop_wfm_technician_business_overrides';
 import { CreateWfmOperationalEventualities1748653200042 } from './042_create_wfm_operational_eventualities';
 import { AddOrganizationSiteContactFields1748698800043 } from './043_add_organization_site_contact_fields';
@@ -134,6 +133,8 @@ import { BillingCore1730000000173 } from './173_billing_core';
 import { SeedBillingPermissions1740000000174 } from './174_seed_billing_permissions';
 import { BillingContractPriceBackfill1750000000175 } from './175_billing_contract_price_backfill';
 import { SubscriberDocumentNullWhenAnonymized1760000000176 } from './176_subscriber_document_null_when_anonymized';
+import { PrivacyPqrRetentionAndNullStratum1770000000177 } from './177_privacy_pqr_retention_and_null_stratum';
+import { PrivacyErasureMonotonicLog1780000000178 } from './178_privacy_erasure_monotonic_log';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -349,6 +350,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   BillingContractPriceBackfill1750000000175,
   SubscriberDocumentNullWhenAnonymized1760000000176,
   PrivacyPqrRetentionAndNullStratum1770000000177,
+  PrivacyErasureMonotonicLog1780000000178,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

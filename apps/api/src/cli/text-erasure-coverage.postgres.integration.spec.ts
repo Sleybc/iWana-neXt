@@ -23,12 +23,12 @@ if (integrationEnabled && !supportedDatabaseName) {
 
 jest.setTimeout(900_000);
 
-const EXPECTED_MANIFEST_SIZE = 704;
+const EXPECTED_MANIFEST_SIZE = 708;
 const EXPECTED_CLASSIFIED_MOD14 = 37;
 
 /**
  * Predicado textual D-BT-10: el mismo que produjo el manifiesto desde
- * tenant_test (704 columnas en 134 tablas). Cualquier columna nueva de texto
+ * tenant_test (708 columnas en 135 tablas). Cualquier columna nueva de texto
  * libre que una migración añada aparece aquí y rompe la igualdad exacta.
  */
 async function liveTextColumns(qr: QueryRunner): Promise<Set<string>> {
@@ -61,7 +61,7 @@ export function assertTextErasureManifestCovers(
 }
 
 describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
-  it('el manifiesto declara 704 entradas únicas con motivo no vacío', () => {
+  it('el manifiesto declara 708 entradas únicas con motivo no vacío', () => {
     expect(TEXT_ERASURE_MANIFEST).toHaveLength(EXPECTED_MANIFEST_SIZE);
     const keys = TEXT_ERASURE_MANIFEST.map((entry) => `${entry.t}.${entry.c}`);
     expect(new Set(keys).size).toBe(EXPECTED_MANIFEST_SIZE);
@@ -133,7 +133,7 @@ describeWithDb('D-BT-10 — manifiesto contra esquema migrado real', () => {
     await tenantDataSource.initialize();
     try {
       // Sin IWANA_APPLY_PII_CONTRACT: el manifiesto cubre el esquema con las
-      // columnas legacy-hash presentes, como tenant_test (704 columnas). La
+      // columnas legacy-hash presentes, como tenant_test (708 columnas). La
       // única diferida es 109 (contract que las retira); si aparece otra
       // diferida, el conteo cambia y hay que regenerar el manifiesto.
       await applyTenantMigrationsInOrder(tenantDataSource);

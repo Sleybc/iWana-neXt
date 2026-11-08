@@ -1,6 +1,7 @@
 # Spec — `privacy` · DT-3 «R-ER»: mutaciones sobre titulares anonimizados y concurrencia con la supresión
 
-**Versión:** 1.2
+**Versión:** 1.3
+**Cambio v1.2 → v1.3 (2026-11-08):** D-RER-6 enmendada por la [spec H-1](2026-11-07-privacy-h1-guc-supresion-spec.md) (D-H1-4, G0 del CTO el 2026-11-07). Con el GUC, el trigger ya no deja pasar cualquier cambio sobre una fila suprimida: solo los que la llevan al estado suprimido. Lo implementa la migración 178, que añade una bitácora append-only.
 **Cambio v1.1 → v1.2 (2026-11-01, tras repetir B3):** (1) CA-RER-05 contradecía a D-RER-2: pedía 409 para `archive`, que es la excepción permitida. Ahora el `archive` de la carrera responde 200 sin que reaparezca ningún valor anterior; el `PATCH` sigue en 409. (2) D-RER-2 fija cómo deja pasar la guarda HTTP al archivo: la ruta `POST crm/contracts/:id/archive` tenía `GuardBlockedTitular('params.id')` y rechazaba el titular anonimizado antes del servicio (CA-RER-03 en FAIL).
 **Estado:** Aprobado. G0 del CTO el 2026-11-02 sobre §9 (ocho puntos, con los dos cambios visibles).
 **Cambio v1.0 → v1.1 (2026-11-01, tras la Ola 1):** §5 suma el escritor `crm/responsibilities` (asignación de responsable del expediente), que el inventario de B1 encontró fuera de las rutas autorizadas. Es una ampliación del inventario, no de la regla.
@@ -132,7 +133,7 @@ Migración tenant nueva, con el siguiente número libre al implementar (no 167 n
 - Función `titular_prevent_anonymized_mutation()` y triggers `BEFORE UPDATE OR DELETE` en `subscribers`, `expediente_records` y `contracts`.
 - `subscribers` y `expediente_records`: si `OLD.anonymized_at IS NOT NULL`, rechaza todo `UPDATE` y `DELETE`.
 - `contracts`: si el suscriptor de `OLD.subscriber_id` está anonimizado, rechaza todo `DELETE` y todo `UPDATE`, **salvo** el archivo de D-RER-2: `OLD.status = 'TERMINATED'`, `NEW.status = 'ARCHIVED'` y ninguna columna distinta de `status`, `status_reason_code`, `status_changed_at` y `updated_at` cambia.
-- **Paso de la supresión:** los triggers no rechazan cuando `current_setting('iwana.titular_erasure', true) = 'on'`. Solo lo fijan, con `set_config('iwana.titular_erasure', 'on', true)` (alcance de transacción), el adaptador de supresión y el CLI de emergencia. Un test de arquitectura falla si otro archivo de `apps/` o `packages/` lo fija.
+- **Paso de la supresión (v1.3):** cuando `current_setting('iwana.titular_erasure', true) = 'on'`, los triggers dejan pasar la primera supresión de una fila aún no marcada. Sobre una fila ya suprimida rechazan todo cambio que no la lleve al estado suprimido (columna personal a `NULL` o a su marcador, `jsonb` contenido en el anterior) y todo `DELETE`, y registran lo permitido en la bitácora `privacy_erasure_mutation_log` (migración 178, spec H-1 D-H1-1 y D-H1-2). El GUC no es un control de acceso: cualquier rol puede fijarlo, y por eso la regla monótona no depende de quién lo fije. Solo lo fijan, con `set_config('iwana.titular_erasure', 'on', true)` (alcance de transacción), el adaptador de supresión y el CLI de emergencia. Un test de arquitectura falla si otro archivo de `apps/` o `packages/` lo fija.
 - Error: `RAISE EXCEPTION ... USING ERRCODE = '55000', HINT = 'PRIVACY_TITULAR_ANONYMIZED'`, igual que la 150. La API traduce ese `HINT` a 409 `PRIVACY_TITULAR_ANONYMIZED`; no debe llegar como 500.
 - Coexiste con `titular_prevent_anonymization_rewrite()` de la 150, que no cambia.
 - El `down` elimina triggers y función, sin tocar datos.

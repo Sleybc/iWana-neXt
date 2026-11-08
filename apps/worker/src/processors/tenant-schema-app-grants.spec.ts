@@ -65,6 +65,20 @@ describe('tenant-schema-app-grants', () => {
       expect(sql).not.toMatch(/GRANT USAGE, CREATE ON SCHEMA %I TO %I',\s*sch,\s*app/);
     });
 
+    it('deja la bitácora de supresión en solo lectura para app, después del grant masivo (H-1)', () => {
+      const sql = buildTenantSchemaAppGrantsSql('tenant_isp_test', 'iwana_app', 'iwana_migrator');
+      const bulkGrant = sql.indexOf('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES');
+      const revoke = sql.indexOf('REVOKE ALL ON TABLE %I.privacy_erasure_mutation_log FROM %I');
+
+      expect(revoke).toBeGreaterThan(bulkGrant);
+      expect(sql).toContain('GRANT SELECT ON TABLE %I.privacy_erasure_mutation_log TO %I');
+      expect(sql).toContain('REVOKE ALL ON TABLE %I.privacy_erasure_mutation_log FROM PUBLIC');
+      expect(sql).toContain(
+        'REVOKE ALL ON SEQUENCE %I.privacy_erasure_mutation_log_id_seq FROM %I',
+      );
+      expect(sql).not.toMatch(/GRANT SELECT, INSERT ON TABLE %I\.privacy_erasure_mutation_log/);
+    });
+
     it('rechaza schemaName inválido', () => {
       expect(() => buildTenantSchemaAppGrantsSql('public', 'iwana_app', 'iwana_migrator')).toThrow(
         /Schema name inválido/,
