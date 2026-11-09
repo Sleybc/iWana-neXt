@@ -5,7 +5,7 @@
 **Versión:** 1.5
 **Estado:** Vigente (v1.0 aprobada 2026-03-07; actualización v1.1 aprobada por el CTO, 2026-07-18: alineación al split ADR-049, corrección de roles inexistentes y de hechos volátiles — auditoría integral, ver informe vivo de roles; v1.2, 2026-11-09: auditoría de cruces, Ola 1, G0 aprobado por el CTO el 2026-11-08; v1.3, 2026-11-09: auditoría de cruces, Ola 2 (D4); v1.4, 2026-11-09: auditoría de cruces, Ola 4)
 **Fecha:** 2026-11-09
-**Cambio v1.4 → v1.5 (2026-11-09):** decisión del CTO sobre la escalación de la [auditoría de cruces](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §7: el plazo ARCO se cita por la norma (Ley 1581, arts. 14 y 15) sin cifra; AES-256 en reposo queda verificado (ADR-058, AES-256-GCM) y pierde el marcador; TLS 1.3 se exige en el borde externo (nginx), y el TLS interno entre servicios queda como decisión de G7 o de AI-PLAT-OPS.
+**Cambio v1.4 → v1.5 (2026-11-09):** decisión del CTO sobre la escalación de la [auditoría de cruces](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §7: el plazo ARCO se cita por la norma (Ley 1581, arts. 14 y 15) sin cifra; AES-256 en reposo queda verificado (ADR-058, AES-256-GCM) y pierde el marcador; TLS 1.3 se exige en el borde externo (nginx), y el TLS interno entre servicios no es requisito: el CTO lo cierra formalmente.
 **Cambio v1.3 → v1.4 (2026-11-09):** auditoría de cruces, Ola 4 ([informe](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §10.5). La Parte II se compacta al bloque `=== AI-SEC-ENG (sec-eng) ===` congelado (5 líneas) + «Formatos» y «Anti-patrones» literales; `Versión del Perfil` → 1.4.
 **Clasificación:** Estratégico — Confidencial  
 **Identificador:** AI-SEC-ENG  
@@ -108,7 +108,7 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 ### 5.3 Cifrado y gestión de secretos
 
 - Verificar cifrado AES-256 en campos PII definidos en el PRD (nombre, cédula, dirección, teléfono, email, datos financieros), con AES-256-GCM según ADR-058
-- Confirmar TLS 1.3 en toda comunicación externa (borde nginx); el TLS interno entre servicios no es requisito vigente: se decide en G7 o con AI-PLAT-OPS
+- Confirmar TLS 1.3 en toda comunicación externa (borde nginx); el TLS interno entre servicios no es requisito (decisión del CTO, 2026-11-09)
 - Validar que JWT use RS256 con rotación de claves documentada
 - Verificar que no existan secretos, tokens, passwords o connection strings en código, logs, prompts o artefactos
 - Revisar política de rotación de secretos por tipo (API keys, DB passwords, JWT keys)
@@ -177,7 +177,7 @@ Validar que cada request pase por la cadena completa definida en el PRD:
 ### 7.2 Protección de datos
 
 - AES-256 para PII en reposo (campos definidos en PRD)
-- TLS 1.3 en el borde externo (el tránsito interno entre servicios se decide en G7)
+- TLS 1.3 en el borde externo (el tránsito interno entre servicios no es requisito)
 - Logs sin PII ni credenciales (Pino → stdout → collector)
 - Separación de datos por schema PostgreSQL (multi-tenant)
 - Consentimiento Habeas Data con canal, fecha y versión

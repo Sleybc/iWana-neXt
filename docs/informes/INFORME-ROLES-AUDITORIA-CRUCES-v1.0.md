@@ -121,7 +121,7 @@ No son hallazgos: son afirmaciones sin fuente verificada en el repo.
 | --- | --- | --- |
 | «ARCO ≤15 días» | `SEC:133`, `SEC:368` | **Cerrado (2026-11-09, decisión del CTO):** se retira la cifra; SEC v1.5 cita los arts. 14 y 15 de la Ley 1581 |
 | «Jornada 42h» | `ANX:52` | **Cerrado (2026-11-09, decisión del CTO):** se retira la cifra; ANX v1.2 y `AGENTS.md` citan la Ley 2101 de 2021 |
-| AES-256 en reposo y TLS 1.3 | `SEC:64`, `SEC:107-108` | **Verificado en parte (2026-11-09).** AES-256 en reposo: AES-256-GCM en [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) (aprobado) y en `apps/api/src/common/crypto/aes-gcm.util.ts:221`. TLS 1.3 en el borde: `nginx/nginx.prod.conf:64` y `:161` (`ssl_protocols TLSv1.3`). **Sin evidencia:** TLS «interno entre servicios» (`SEC` §5.3); ni la configuración de la API ni `docker-compose.prod.yml` activan TLS hacia PostgreSQL o Redis. El marcador del perfil se mantiene hasta que la Ola de SEC lo acote al borde o se implemente |
+| AES-256 en reposo y TLS 1.3 | `SEC:64`, `SEC:107-108` | **Verificado en parte (2026-11-09).** AES-256 en reposo: AES-256-GCM en [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) (aprobado) y en `apps/api/src/common/crypto/aes-gcm.util.ts:221`. TLS 1.3 en el borde: `nginx/nginx.prod.conf:64` y `:161` (`ssl_protocols TLSv1.3`). **Sin evidencia:** TLS «interno entre servicios» (`SEC` §5.3); ni la configuración de la API ni `docker-compose.prod.yml` activan TLS hacia PostgreSQL o Redis. **Cerrado (2026-11-09, decisión del CTO):** SEC v1.5 exige TLS 1.3 solo en el borde; el TLS interno no es requisito |
 | JWT RS256 | `SEC:65` | **Verificado** en `apps/api/src/modules/auth/auth.module.ts:52` |
 
 Un texto escrito por la IA no constituye un dictamen jurídico: el cierre de las dos primeras filas corresponde al CTO, que consulta a Legal (`PROT:56-57`).
@@ -141,7 +141,7 @@ Opciones (máx. 3):
 Recomendación: A para 1 y 2; para 3, acotar el perfil al borde salvo que el CTO quiera TLS interno antes de G7.
 ```
 
-**Resolución del CTO (2026-11-09):** opción B para 1 y 2 (las cifras se retiran y los perfiles remiten a la norma, sin número, de modo que no hace falta dictamen) y, para 3, acotar al borde: SEC v1.5 exige TLS 1.3 en el borde externo y deja el TLS interno entre servicios como decisión de G7 o de AI-PLAT-OPS. AES-256-GCM queda verificado y pierde su marcador. §7 queda cerrado; si Legal confirma más adelante las cifras, pueden volver a los perfiles con su fuente.
+**Resolución del CTO (2026-11-09):** opción B para 1 y 2 (las cifras se retiran y los perfiles remiten a la norma, sin número, de modo que no hace falta dictamen) y, para 3, acotar al borde: SEC v1.5 exige TLS 1.3 en el borde externo y declara que el TLS interno entre servicios no es requisito (cierre formal del CTO, 2026-11-09). AES-256-GCM queda verificado y pierde su marcador. §7 queda cerrado; si Legal confirma más adelante las cifras, pueden volver a los perfiles con su fuente.
 
 ## 8. Plan por olas y decisiones G0
 
