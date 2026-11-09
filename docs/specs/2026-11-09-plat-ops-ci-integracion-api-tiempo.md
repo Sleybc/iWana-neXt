@@ -209,6 +209,28 @@ Duración del paso «Integration tests — API» en los runs del workflow CI en 
 - Sustituye a la recalibración a 6 min de §10.3, que salía de una sola medición.
 - El paso sigue por debajo de 5 min en los dos runs medidos, pero el de 4 min 58 s deja 2 s de margen. Si un run supera los 5 min, se vuelve a §4.4: primero la reserva F (Postgres sin durabilidad) y después N = 3, cada una con su propia medición.
 
-### 10.5 Pendiente
+### 10.5 Reserva F en prueba (orden del CTO 2026-11-09, «Sí, que la pruebe»)
+
+**Disparador:** `9e17d868` dio G6.5 ✅ (CI 42716815056), pero el paso API tardó **5 min 01 s** (23:20:01 a 23:25:02Z). Las tres mediciones con la opción A son 3:39, 4:58 y 5:01, y una ya pasa de 5 min (§10.4).
+
+**Cambio en `ci.yml`, paso «Integration DBs — una base por worker (API)»:** junto al `ALTER SYSTEM` de `max_locks_per_transaction` y antes del reinicio ya existente, se añade `ALTER SYSTEM SET fsync = off`, `synchronous_commit = off` y `full_page_writes = off`. Después del reinicio, `check_setting` comprueba con `SHOW` los cuatro parámetros (256, off, off, off) y el paso falla cerrado si alguno no entró en vigor. `timeout-minutes` (8) y N (4) no cambian. No se toca ningún script.
+
+**Verificación local del mecanismo** (Postgres 18.3, contenedor desechable):
+
+- Antes del reinicio, `fsync = on` y `max_locks_per_transaction = 64`. Después de `docker restart`, quedan 256, off, off y off. Los `-c` múltiples de un mismo `psql` se aplican uno a uno (`ALTER SYSTEM` no admite bloque de transacción).
+- `check_setting` con un valor `on` donde se espera `off` imprime `❌ fsync = on; se esperaba off tras el reinicio` y sale con estado 1. Con el valor esperado, pasa.
+
+**Medición local, paso completo con 4 workers y bloque literal del CI**, cada corrida sobre una base nueva y alternando:
+
+| Corrida | Durabilidad | Jest | Resultado |
+| --- | --- | --- | --- |
+| fon1 | on | 196 s | 86/83/3 · 589/570/19 · gate PASS |
+| foff1 | off | 170 s | ídem |
+| fon2 | on | 178 s | ídem |
+| foff2 | off | 221 s | ídem |
+
+Media con la durabilidad activa: 187 s; sin ella: 195,5 s. **En local no hay efecto medible:** el ruido de la máquina compartida (±25 s entre corridas iguales) supera el efecto, como ya pasó con el −8 % del microbenchmark (§2.5). El disco de Docker Desktop hace `fsync` barato. **La medición concluyente es la de CI.** Si el paso no baja de forma clara (menos de un 5 % frente a la mediana de 3:39, 4:58 y 5:01, que es 4:58), se revierte en un commit posterior para no dejar configuración sin efecto, y se evalúa N = 3.
+
+### 10.6 Pendiente
 
 - La rama de fallo cerrado de `clone-integration-dbs.sh` con `max_locks_per_transaction < 256` no se ejecutó en local.

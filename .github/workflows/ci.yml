@@ -676,6 +676,12 @@ jobs:
           export PGPASSWORD="${DB_BOOTSTRAP_PASSWORD}"
           PSQL=(psql -v ON_ERROR_STOP=1 -X -q -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_BOOTSTRAP_USER}" -d postgres)
           "${PSQL[@]}" -c 'ALTER SYSTEM SET max_locks_per_transaction = 256'
+          # Reserva F de §4.4 (orden del CTO del 2026-11-09). Este Postgres es el efímero
+          # del job y se destruye al terminar. Desactivar la durabilidad solo cambia qué se
+          # pierde si el servidor se cae; la semántica SQL, las transacciones y los
+          # bloqueos siguen igual. Así se ahorran los fsync de la cadena tenant, que
+          # es DDL intensivo y hace commit por migración.
+          "${PSQL[@]}" -c 'ALTER SYSTEM SET fsync = off'             -c 'ALTER SYSTEM SET synchronous_commit = off'             -c 'ALTER SYSTEM SET full_page_writes = off'
           docker restart "${{ job.services.postgres.id }}" >/dev/null
           for attempt in $(seq 1 60); do
             if "${PSQL[@]}" -tAc 'SELECT 1' >/dev/null 2>&1; then
@@ -687,7 +693,20 @@ jobs:
             fi
             sleep 1
           done
-          echo "max_locks_per_transaction = $("${PSQL[@]}" -tAc 'SHOW max_locks_per_transaction')"
+          # Falla cerrado si algún parámetro no entró en vigor con el reinicio.
+          check_setting() {
+            local actual
+            actual="$("${PSQL[@]}" -tAc "SHOW $1")"
+            echo "$1 = ${actual}"
+            if [[ "${actual}" != "$2" ]]; then
+              echo "❌ $1 = ${actual}; se esperaba $2 tras el reinicio"
+              exit 1
+            fi
+          }
+          check_setting max_locks_per_transaction 256
+          check_setting fsync off
+          check_setting synchronous_commit off
+          check_setting full_page_writes off
           bash scripts/db/clone-integration-dbs.sh
 
       # La base está arriba, migrada y el tenant ACTIVE `test` existe en este
