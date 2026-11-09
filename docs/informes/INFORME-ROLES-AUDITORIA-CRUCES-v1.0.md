@@ -1,13 +1,14 @@
 # Informe de auditoría — Cruces y optimización del ecosistema de roles
 
-**Versión:** 1.9
-**Estado:** Cerrado. Remediación completa (olas 0 a 4), publicada con G6.5 ✅: Ola 1 en `75528631`; olas 2 y 4 y la corrección del cercado en el tren `965bf5e5` (§9.5). Pendiente externo: §7, con el CTO y Legal (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
+**Versión:** 1.10
+**Estado:** Cerrado. Remediación completa (olas 0 a 4), publicada con G6.5 ✅: Ola 1 en `75528631`; olas 2 y 4 y la corrección del cercado en el tren `965bf5e5` (§9.5). §7 cerrado por decisión del CTO (2026-11-09) (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
 **Cambio v1.0 → v1.1 (2026-11-08):** el CTO aprueba G0-1 a G0-4 en bloque, con las recomendaciones de §8
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 aplicada sobre 9 perfiles y el anexo (§9)
 **Cambio v1.2 → v1.3 (2026-11-09):** §10 define las olas 2 a 4 (G0-4): nuevo hallazgo C13 (protocolo frente a ADR-107), fusión propuesta de la Ola 3 en la Ola 2, asignación de la deuda «Baseline y Stack», texto congelado de cada cambio y de los prompts compactos, y decisiones G0-5 a G0-11
 **Cambio v1.3 → v1.4 (2026-11-09):** el CTO aprueba G0-5 a G0-11 en bloque, con las recomendaciones de §10.6. §10.3 y §10.5 no cambian: siguen siendo el contrato congelado de las olas 2 y 4
 **Cambio v1.4 → v1.5 (2026-11-09):** §9.3 registra la Ola 2 (protocolo v1.10 + espejos, G1 ✅, G3 y veredicto de `docs-governance`); el Estado queda al día
 **Cambio v1.5 → v1.6 (2026-11-09):** §9.4 registra la Ola 4 (prompts compactos de §10.5, G1′ ✅ con T8-R, G3′ y veredicto de `docs-governance`); el Estado declara la remediación completa
+**Cambio v1.9 → v1.10 (2026-11-09):** el CTO resuelve la escalación de §7 (cifras retiradas; TLS acotado al borde); §7 cerrado
 **Cambio v1.8 → v1.9 (2026-11-09):** §7 registra la escalación al CTO de las tres afirmaciones abiertas (ARCO, jornada, TLS interno)
 **Cambio v1.7 → v1.8 (2026-11-09):** §7 verifica contra el repo la fila de AES-256/TLS 1.3: AES-256-GCM y TLS 1.3 en el borde confirmados; el TLS interno entre servicios no tiene evidencia. Las filas de ARCO y jornada siguen con el CTO y Legal
 **Cambio v1.6 → v1.7 (2026-11-09):** §9.5 registra el G6.5 del tren `965bf5e5` (CI 42678231774 y E2E 42678231542 en verde), que cubre las olas 2 y 4 y la corrección del cercado (`84a0ab65`); el informe pasa a Cerrado, con §7 como único pendiente externo
@@ -118,8 +119,8 @@ No son hallazgos: son afirmaciones sin fuente verificada en el repo.
 
 | Afirmación | Ubicación | Estado |
 | --- | --- | --- |
-| «ARCO ≤15 días» | `SEC:133`, `SEC:368` | Requiere verificación con fuente oficial |
-| «Jornada 42h» | `ANX:52` | Requiere verificación con fuente oficial |
+| «ARCO ≤15 días» | `SEC:133`, `SEC:368` | **Cerrado (2026-11-09, decisión del CTO):** se retira la cifra; SEC v1.5 cita los arts. 14 y 15 de la Ley 1581 |
+| «Jornada 42h» | `ANX:52` | **Cerrado (2026-11-09, decisión del CTO):** se retira la cifra; ANX v1.2 y `AGENTS.md` citan la Ley 2101 de 2021 |
 | AES-256 en reposo y TLS 1.3 | `SEC:64`, `SEC:107-108` | **Verificado en parte (2026-11-09).** AES-256 en reposo: AES-256-GCM en [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) (aprobado) y en `apps/api/src/common/crypto/aes-gcm.util.ts:221`. TLS 1.3 en el borde: `nginx/nginx.prod.conf:64` y `:161` (`ssl_protocols TLSv1.3`). **Sin evidencia:** TLS «interno entre servicios» (`SEC` §5.3); ni la configuración de la API ni `docker-compose.prod.yml` activan TLS hacia PostgreSQL o Redis. El marcador del perfil se mantiene hasta que la Ola de SEC lo acote al borde o se implemente |
 | JWT RS256 | `SEC:65` | **Verificado** en `apps/api/src/modules/auth/auth.module.ts:52` |
 
@@ -140,7 +141,7 @@ Opciones (máx. 3):
 Recomendación: A para 1 y 2; para 3, acotar el perfil al borde salvo que el CTO quiera TLS interno antes de G7.
 ```
 
-Hasta la respuesta, los marcadores «requiere verificación» de SEC y ANX siguen vigentes; nada de esta fila se da por cerrado.
+**Resolución del CTO (2026-11-09):** opción B para 1 y 2 (las cifras se retiran y los perfiles remiten a la norma, sin número, de modo que no hace falta dictamen) y, para 3, acotar al borde: SEC v1.5 exige TLS 1.3 en el borde externo y deja el TLS interno entre servicios como decisión de G7 o de AI-PLAT-OPS. AES-256-GCM queda verificado y pierde su marcador. §7 queda cerrado; si Legal confirma más adelante las cifras, pueden volver a los perfiles con su fuente.
 
 ## 8. Plan por olas y decisiones G0
 
@@ -192,7 +193,7 @@ Fuera de la Ola 1, como fijó el plan: C2 en QA (`QA:42`, `QA:167`) y C4 en SEC 
 
 **Queda para las olas siguientes:** Ola 2 — protocolo v1.10 con C1, C2 (autoridad de bloqueo por cobertura de QA), C3, C4 (escalación y veto de SEC), C6 en el protocolo, C8, V2 y el orden de verificadores, más sus espejos en QA, SEC, DS-OWNER y PLAT-OPS. Ola 3 — C5 y C12. Ola 4 — prompts compactos de la Parte II y `.claude/agents/`. Se planifican al cerrar esta ola (G0-4).
 
-**Deuda vista en la ejecución:** el nivel «Baseline … y `Stack_Tecnologico.md`» sigue dentro de la cadena de precedencia de EMA, SRF, FEP, PUX y DSO (fuera del G1; sin ola asignada: se incorpora al planificar las olas 2 a 4, G0-4); las cabeceras «Baseline de versiones: definido por sprint» de QA y SEC, y las menciones de sprint de SRF, DAT, OPS, EMA, FEP, PUX, DSO y `QA:86`/`QA:385`, quedan fuera de V6; las afirmaciones de §7 siguen pendientes de verificación por el CTO con Legal (`PROT:56-57`); enlace roto previo en el informe vivo a `.cursor/rules/ai-em-arch.mdc`.
+**Deuda vista en la ejecución:** el nivel «Baseline … y `Stack_Tecnologico.md`» sigue dentro de la cadena de precedencia de EMA, SRF, FEP, PUX y DSO (fuera del G1; sin ola asignada: se incorpora al planificar las olas 2 a 4, G0-4); las cabeceras «Baseline de versiones: definido por sprint» de QA y SEC, y las menciones de sprint de SRF, DAT, OPS, EMA, FEP, PUX, DSO y `QA:86`/`QA:385`, quedan fuera de V6; las afirmaciones de §7 se cerraron el 2026-11-09 por decisión del CTO (cifras retiradas, TLS acotado al borde); enlace roto previo en el informe vivo a `.cursor/rules/ai-em-arch.mdc`.
 
 ### 9.3 Ola 2 — protocolo v1.10 y espejos, 2026-11-09
 
@@ -260,7 +261,7 @@ Publicados en un solo tren, `75528631..965bf5e5`: `359246c4` (Ola 2), `d182e2c6`
 
 Ningún job se omitió: el tren llevaba código, así que la detección de solo-docs no recortó la suite. **G6.5 ✅** para las olas 2 y 4 y para la corrección. Este registro no lleva commit propio y viaja en el tren siguiente (ADR-107 D4).
 
-Con esto la auditoría queda cerrada en lo documental. Solo sigue abierto §7: verificación con fuente oficial a cargo del CTO con Legal; un texto escrito por la IA no constituye dictamen.
+Con esto la auditoría queda cerrada en lo documental. §7 también quedó cerrado el mismo día por decisión del CTO (ver §7).
 
 ## 10. Definición de las olas 2 a 4 (G0-4)
 

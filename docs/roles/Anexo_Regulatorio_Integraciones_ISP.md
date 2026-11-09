@@ -1,7 +1,8 @@
 # Anexo — Integraciones críticas y cumplimiento regulatorio mínimo por dominio ISP
 
-**Versión:** 1.1
+**Versión:** 1.2
 **Estado:** Vigente (contenido normativo extraído de Perfil_IA_EM_Architect_Unificado_v1 §13–§14, cuya vigencia como anexo declara [Perfil_IA_EM_Architect_Unificado_v2.md](Perfil_IA_EM_Architect_Unificado_v2.md) Parte III; extracción aprobada por el CTO, 2026-07-18)
+**Cambio v1.1 → v1.2 (2026-11-09):** decisión del CTO sobre la escalación de la [auditoría de cruces](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §7: la jornada se cita por la norma (Ley 2101 de 2021) sin cifra
 **Cambio v1.0 → v1.1 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md): **V8** — la regla de idempotencia se atribuye al perfil AI-EM-ARCH §3.2, no al protocolo §4, que no la contiene; **auditoría §7 (G0-3 = A)** — la jornada de 42 h (§2.5) queda marcada «requiere verificación con fuente oficial»
 **Fecha:** 2026-11-09
 **Clasificación:** Estratégico — Confidencial
@@ -50,7 +51,7 @@ Toda integración financiera o de provisioning es idempotente, con retry, trazab
 
 ### 2.5 HCM / SG-SST
 
-- Monitoreo de jornada 42h (requiere verificación con fuente oficial).
+- Monitoreo de la jornada máxima legal vigente (Ley 2101 de 2021).
 - IPERC, capacitaciones, FURAT y soportes auditables según fase.
 
 **Regla transversal (protocolo §7.2):** si un requisito regulatorio no está confirmado, se marca **"requiere verificación con fuente oficial"** — este anexo no sustituye esa verificación.

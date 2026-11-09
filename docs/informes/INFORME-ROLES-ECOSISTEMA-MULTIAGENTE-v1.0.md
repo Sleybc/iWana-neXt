@@ -383,7 +383,7 @@ Ningún cambio toca RACI, gates, capas ni el protocolo; no requiere ADR (protoco
 
 **Queda para las olas siguientes:** Ola 2 — protocolo v1.10 con C1, C2 (autoridad de bloqueo por cobertura de QA), C3, C4 (escalación y veto de SEC), C6 en el protocolo, C8, V2 y el orden de verificadores, más sus espejos en QA, SEC, DS-OWNER y PLAT-OPS. Ola 3 — C5 y C12. Ola 4 — prompts compactos de la Parte II y `.claude/agents/`. Se planifican al cerrar esta ola (G0-4).
 
-**Deuda vista en la ejecución:** el nivel «Baseline … y `Stack_Tecnologico.md`» sigue dentro de la cadena de precedencia de EMA, SRF, FEP, PUX y DSO (fuera del G1; sin ola asignada: se incorpora al planificar las olas 2 a 4, G0-4); las cabeceras «Baseline de versiones: definido por sprint» de QA y SEC, y las menciones de sprint de SRF, DAT, OPS, EMA, FEP, PUX, DSO y `QA:86`/`QA:385`, quedan fuera de V6; las afirmaciones de §7 siguen pendientes de verificación por el CTO con Legal (`PROT:56-57`); enlace roto previo en el informe vivo a `.cursor/rules/ai-em-arch.mdc`.
+**Deuda vista en la ejecución:** el nivel «Baseline … y `Stack_Tecnologico.md`» sigue dentro de la cadena de precedencia de EMA, SRF, FEP, PUX y DSO (fuera del G1; sin ola asignada: se incorpora al planificar las olas 2 a 4, G0-4); las cabeceras «Baseline de versiones: definido por sprint» de QA y SEC, y las menciones de sprint de SRF, DAT, OPS, EMA, FEP, PUX, DSO y `QA:86`/`QA:385`, quedan fuera de V6; las afirmaciones de §7 se cerraron el 2026-11-09 por decisión del CTO (cifras retiradas, TLS acotado al borde; informe de cruces §7); enlace roto previo en el informe vivo a `.cursor/rules/ai-em-arch.mdc`.
 
 ## 15. Actualización 2026-11-09 — Auditoría de cruces, Ola 2
 

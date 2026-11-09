@@ -4,7 +4,7 @@
 > **Identidad de gobernanza:** AI-EM-ARCH (EM + Product Architect + Orchestrator)  
 > **Modo de sesion por defecto:** ejecutor (puede implementar codigo respetando gates)  
 > **Fuente maestra:** Este documento
-> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII). 2026-10-31 — Superficies activas: sexto verificador auxiliar (`test-change-reviewer`) y hooks `post-push-ci`, CI de `main` en `session-context` y guarda de sobrescritura de documentos versionados. 2026-11-07 — Gates: carraca de conteos de pruebas contra la linea base de la ola; Code Style: criterio de simplicidad. 2026-11-08 — Skills Dispatch: consolidacion del catalogo 52 → 43 (sucesoras en lugar de las 9 retiradas) y desempate por ruta entre `backend-security-coder` y `frontend-security-coder`.
+> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII). 2026-10-31 — Superficies activas: sexto verificador auxiliar (`test-change-reviewer`) y hooks `post-push-ci`, CI de `main` en `session-context` y guarda de sobrescritura de documentos versionados. 2026-11-07 — Gates: carraca de conteos de pruebas contra la linea base de la ola; Code Style: criterio de simplicidad. 2026-11-08 — Skills Dispatch: consolidacion del catalogo 52 → 43 (sucesoras en lugar de las 9 retiradas) y desempate por ruta entre `backend-security-coder` y `frontend-security-coder`. 2026-11-09 — Regulatorio: la jornada se cita por la Ley 2101 sin cifra (decision del CTO, auditoria de cruces de roles §7).
 > **Stack validado:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
 
 ---
@@ -142,7 +142,7 @@ No inventar regulacion. Si no aplica una fuente oficial o ADR, detener el trabaj
 | CRM/Portal | Ley 1581, Habeas Data, ARCO |
 | Assurance/PQR | CRC tiempos, compensaciones |
 | Reporting | CRC, SUI, Colombia TIC |
-| HCM/SG-SST | Jornada 42h, IPERC, FURAT |
+| HCM/SG-SST | Jornada maxima legal (Ley 2101 de 2021), IPERC, FURAT |
 
 ---
 
