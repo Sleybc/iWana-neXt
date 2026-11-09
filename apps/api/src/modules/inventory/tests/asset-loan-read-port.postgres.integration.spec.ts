@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { AssetLoanAssignment, resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { AssetLoanService } from '../services/asset-loan.service';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -48,35 +52,73 @@ describeWithDb('AssetLoanReadPort — consulta tenant-aware en PostgreSQL', () =
 
     tenantA = randomUUID();
     tenantB = randomUUID();
-    await createTenantSchema(schemaA);
-    await createTenantSchema(schemaB);
+    await createTenantSchema(schemaA, tenantA);
+    await createTenantSchema(schemaB, tenantB);
     service = new AssetLoanService(dataSource);
-  }, 30_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
     await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaA}" CASCADE`);
     await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaB}" CASCADE`);
+    await dataSource.query('DELETE FROM public.tenants WHERE id = ANY($1::uuid[])', [
+      [tenantA, tenantB],
+    ]);
     await dataSource.destroy();
   });
 
-  async function createTenantSchema(schemaName: string): Promise<void> {
+  // El esquema lo crea la cadena de migraciones tenant vigente, no un DDL escrito a mano.
+  async function createTenantSchema(schemaName: string, tenantId: string): Promise<void> {
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Asset loan read port sintético',
+        `asset-loan-read-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'asset-loan-read@example.invalid',
+      ],
+    );
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".asset_loan_assignments (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        serialized_asset_id uuid NOT NULL,
-        subscriber_ref_id uuid NOT NULL,
-        contract_ref_id uuid,
-        installed_at timestamptz NOT NULL,
-        removed_at timestamptz,
-        execution_order_ref_id uuid,
-        stock_movement_id uuid,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `asset-loan-read-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+  }
+
+  // La cadena exige que cada comodato apunte a un activo serializado real
+  // (fk_asset_loan_assignments_asset → serialized_assets → inventory_items → inventory_categories).
+  async function insertSerializedAsset(schemaName: string, tenantId: string): Promise<string> {
+    const suffix = randomBytes(4).toString('hex');
+    const [category] = (await dataSource.query(
+      `INSERT INTO "${schemaName}".inventory_categories (tenant_id, code, code_prefix, name)
+       VALUES ($1, $2, $3, 'Categoría sintética')
+       RETURNING id::text AS id`,
+      [tenantId, `CAT-${suffix}`, suffix.slice(0, 3)],
+    )) as Array<{ id: string }>;
+    const [item] = (await dataSource.query(
+      `INSERT INTO "${schemaName}".inventory_items (
+         tenant_id, sku, name, category, category_id, tracking_mode, unit_of_measure
+       ) VALUES ($1, $2, 'Equipo sintético', 'CPE', $3, 'SERIALIZED', 'UNIT')
+       RETURNING id::text AS id`,
+      [tenantId, `SKU-${suffix}`, category!.id],
+    )) as Array<{ id: string }>;
+    const [asset] = (await dataSource.query(
+      `INSERT INTO "${schemaName}".serialized_assets (tenant_id, inventory_item_id, current_status)
+       VALUES ($1, $2, 'INSTALLED_COMODATO')
+       RETURNING id::text AS id`,
+      [tenantId, item!.id],
+    )) as Array<{ id: string }>;
+    return asset!.id;
   }
 
   async function insertLoan(
@@ -85,12 +127,14 @@ describeWithDb('AssetLoanReadPort — consulta tenant-aware en PostgreSQL', () =
     contractId: string,
     removedAt: Date | null,
   ): Promise<void> {
+    const assetId = await insertSerializedAsset(schemaName, tenantId);
+    // stock_movement_id queda NULL: la cadena lo ata por FK a stock_movements y la consulta no lo lee.
     await dataSource.query(
       `INSERT INTO "${schemaName}".asset_loan_assignments (
          id, tenant_id, serialized_asset_id, subscriber_ref_id, contract_ref_id,
          installed_at, removed_at, execution_order_ref_id, stock_movement_id
-       ) VALUES ($1, $2, $3, $4, $5, now(), $6, NULL, $7)`,
-      [randomUUID(), tenantId, randomUUID(), randomUUID(), contractId, removedAt, randomUUID()],
+       ) VALUES ($1, $2, $3, $4, $5, now(), $6, NULL, NULL)`,
+      [randomUUID(), tenantId, assetId, randomUUID(), contractId, removedAt],
     );
   }
 

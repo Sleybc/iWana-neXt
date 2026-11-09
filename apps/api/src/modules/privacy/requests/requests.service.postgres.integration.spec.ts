@@ -4,6 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { MediaUsage, resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { AccessPermissionKey, DocumentTypeParty } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { EffectivePermissionsService } from '../../access-control/services/effective-permissions.service';
@@ -21,6 +25,8 @@ const schemaName = `tenant_privacy_requests_${randomBytes(5).toString('hex')}`;
 const actorId = '60000000-0000-4000-8000-000000000001';
 const partyId = '60000000-0000-4000-8000-000000000002';
 const suspendedContractId = '60000000-0000-4000-8000-000000000003';
+// Fila efímera de public.tenants que exige la migración 092 para el esquema migrado.
+const tenantId = randomUUID();
 const keyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 if (dbAvailable && !allowedDatabaseName.test(process.env['DB_NAME'] ?? '')) {
@@ -129,114 +135,40 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // El esquema lo instala la cadena de migraciones tenant (P3-5), no un DDL escrito a mano:
+    // data_subject_requests y sus eventos, tareas, marcas, retention_policies (sembrada con
+    // IDENTIFICACION_DIRECCION_CONTRATO_SUSCRIPTOR = 5 años) y data_authorizations vienen de la
+    // 146 y sus enmiendas (149, 172, 179). La 092 exige el tenant canónico en public.tenants.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Privacy requests sintético',
+        `privacy-requests-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'privacy-requests@example.invalid',
+      ],
+    );
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`CREATE TABLE "${schemaName}".party (id uuid PRIMARY KEY)`);
-    await dataSource.query(`INSERT INTO "${schemaName}".party (id) VALUES ($1)`, [partyId]);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_subject_requests (
-        id uuid PRIMARY KEY,
-        party_id uuid,
-        requester_document_hmac text,
-        requester_name_encrypted varchar(500),
-        requester_document_type varchar(20),
-        requester_document_encrypted varchar(500),
-        requester_contact_encrypted varchar(500),
-        requester_evidence_media_id uuid,
-        identity_verification_method varchar(30),
-        identity_verified_at timestamptz,
-        identity_verified_by uuid,
-        requester_kind text NOT NULL,
-        kind text NOT NULL,
-        "right" text NOT NULL,
-        purpose text,
-        status text NOT NULL,
-        received_at timestamptz NOT NULL,
-        complete_at timestamptz,
-        due_at date NOT NULL,
-        impersonation_complaint_due_at date,
-        suspended_contract_ids uuid[] NOT NULL DEFAULT '{}',
-        extended_until date,
-        info_required_at timestamptz,
-        desist_at date,
-        response_text text,
-        response_channel text,
-        resolved_at timestamptz,
-        resolved_by uuid,
-        transferred_to varchar(200),
-        closed_at timestamptz,
-        disputed_contract_ids uuid[] NOT NULL DEFAULT '{}',
-        legal_basis text,
-        erased_at timestamptz,
-        erasure_categories text[] NOT NULL DEFAULT '{}',
-        CONSTRAINT ck_data_subject_requests_verified_before_processing
-          CHECK (status NOT IN ('EN_TRAMITE', 'PRORROGADA', 'RESUELTA') OR identity_verified_at IS NOT NULL),
-        CONSTRAINT ck_data_subject_requests_unverified_not_procedent_basis
-          CHECK (status <> 'NO_PROCEDENTE' OR identity_verified_at IS NOT NULL OR legal_basis = 'SOLICITANTE_NO_LEGITIMADO')
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_subject_request_events (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id uuid NOT NULL REFERENCES "${schemaName}".data_subject_requests(id),
-        from_status text,
-        to_status text NOT NULL,
-        actor_id uuid,
-        reason text,
-        occurred_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_subject_request_tasks (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id uuid NOT NULL REFERENCES "${schemaName}".data_subject_requests(id),
-        kind varchar(40) NOT NULL,
-        due_at date NOT NULL,
-        done_at timestamptz,
-        done_by uuid,
-        note text
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".party_privacy_marks (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        party_id uuid NOT NULL REFERENCES "${schemaName}".party(id),
-        mark text NOT NULL,
-        event text NOT NULL,
-        request_id uuid REFERENCES "${schemaName}".data_subject_requests(id),
-        occurred_at timestamptz NOT NULL DEFAULT now(),
-        actor_id uuid
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".retention_policies (
-        category text PRIMARY KEY,
-        years integer NOT NULL
-      )
-    `);
-    await dataSource.query(
-      `INSERT INTO "${schemaName}".retention_policies (category, years)
-       VALUES ('IDENTIFICACION_DIRECCION_CONTRATO_SUSCRIPTOR', 5)`,
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `privacy-requests-${tenantId.slice(0, 8)}`,
     );
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_authorizations (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        party_id uuid NOT NULL REFERENCES "${schemaName}".party(id),
-        purpose text NOT NULL,
-        kind text NOT NULL,
-        granted boolean NOT NULL,
-        channel text NOT NULL,
-        evidence_media_id uuid,
-        legal_text_id uuid,
-        ip inet,
-        user_agent text,
-        captured_by uuid,
-        captured_at timestamptz NOT NULL DEFAULT now(),
-        source_ref text
-      )
-    `);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     await dataSource.query(
-      `CREATE UNIQUE INDEX ON "${schemaName}".data_authorizations (source_ref) WHERE source_ref IS NOT NULL`,
+      `INSERT INTO "${schemaName}".party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', 'sintetico-solicitudes', 'Titular sintético')`,
+      [partyId],
     );
+    // Sonda solo de prueba: no existe en la cadena tenant; el doble del puerto de supresión
+    // escribe aquí dentro de la transacción para comprobar que el fallo posterior la revierte.
     await dataSource.query(`
       CREATE TABLE "${schemaName}".privacy_erasure_probe (
         request_id uuid NOT NULL
@@ -258,12 +190,13 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
       },
       new PqrRetentionReadAdapter(),
     );
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       try {
         await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       } finally {
         await dataSource.destroy();
       }
@@ -981,16 +914,19 @@ describeWithDb('Privacy requests — reglas R3/R4/R5 en PostgreSQL real', () => 
     const dueSoonId = randomUUID();
     const outsideWindowId = randomUUID();
     const taskRequestId = randomUUID();
+    // La cadena (146) exige método y verificador junto a identity_verified_at, y en SUPLANTACION
+    // identidad verificada y al menos un contrato impugnado; los plazos y estados no cambian.
     await dataSource.query(
       `INSERT INTO "${schemaName}".data_subject_requests
         (id, party_id, requester_kind, kind, "right", status, received_at, due_at,
-         identity_verified_at)
+         identity_verified_at, identity_verified_by, identity_verification_method,
+         disputed_contract_ids)
        VALUES
-        ($1, $5, 'TITULAR', 'CONSULTA', 'CONOCER', 'RADICADA', '2026-07-01T17:00:00Z', '2026-07-07', NULL),
-        ($2, $5, 'TITULAR', 'RECLAMO', 'CONOCER', 'EN_TRAMITE', '2026-07-01T17:00:00Z', '2026-07-10', '2026-07-01T17:00:00Z'),
-        ($3, $5, 'TITULAR', 'CONSULTA', 'CONOCER', 'RADICADA', '2026-07-01T17:00:00Z', '2026-07-14', NULL),
-        ($4, $5, 'TITULAR', 'SUPLANTACION', 'CONOCER', 'RADICADA', '2026-07-01T17:00:00Z', '2026-07-20', NULL)`,
-      [overdueId, dueSoonId, outsideWindowId, taskRequestId, partyId],
+        ($1, $5, 'TITULAR', 'CONSULTA', 'CONOCER', 'RADICADA', '2026-07-01T17:00:00Z', '2026-07-07', NULL, NULL, NULL, '{}'),
+        ($2, $5, 'TITULAR', 'RECLAMO', 'CONOCER', 'EN_TRAMITE', '2026-07-01T17:00:00Z', '2026-07-10', '2026-07-01T17:00:00Z', $6::uuid, 'DOCUMENTO_PRESENCIAL', '{}'),
+        ($3, $5, 'TITULAR', 'CONSULTA', 'CONOCER', 'RADICADA', '2026-07-01T17:00:00Z', '2026-07-14', NULL, NULL, NULL, '{}'),
+        ($4, $5, 'TITULAR', 'SUPLANTACION', 'CONOCER', 'RADICADA', '2026-07-01T17:00:00Z', '2026-07-20', '2026-07-01T17:00:00Z', $6::uuid, 'DOCUMENTO_PRESENCIAL', ARRAY[$7::uuid])`,
+      [overdueId, dueSoonId, outsideWindowId, taskRequestId, partyId, actorId, suspendedContractId],
     );
     await dataSource.query(
       `INSERT INTO "${schemaName}".data_subject_request_tasks (request_id, kind, due_at)

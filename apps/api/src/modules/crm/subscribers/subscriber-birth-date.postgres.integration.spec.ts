@@ -20,7 +20,10 @@ import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { SubscribersController } from './subscribers.controller';
 import { SubscribersService } from './subscribers.service';
 import { Contract } from '../contracts/entities/contract.entity';
-import { CreateCrmQuotesAndContracts1700000000028 } from '../../../../../../packages/database/src/migrations/tenant/028_create_crm_quotes_and_contracts';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { Subscriber } from './entities/subscriber.entity';
 import { Quote } from '../quotes/entities/quote.entity';
 
@@ -70,19 +73,32 @@ describeWithDb('Fecha de nacimiento 360° — hidratación de columna date en Po
       extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, 'Birth date synthetic fixture', $2, $3, 'ACTIVE', 'birth-date@example.invalid')`,
+      [tenantId, `birth-date-${SCHEMA.slice(-8)}`, SCHEMA],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant completa (subscribers con su
+    // birth_date date real, contracts y quotes), no la 028 sola más un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA "${SCHEMA}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, SCHEMA, `birth-date-${SCHEMA}`);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     await runInTenantSchema(dataSource, SCHEMA, async (queryRunner) => {
-      await new CreateCrmQuotesAndContracts1700000000028().up(queryRunner);
-      await queryRunner.query(`
-        CREATE TABLE subscribers (
-          id uuid PRIMARY KEY,
-          birth_date date,
-          deleted_at timestamptz
-        )
-      `);
+      // Columnas obligatorias del esquema migrado (persona natural con documento y estrato).
       await queryRunner.query(
-        'INSERT INTO subscribers (id, birth_date, deleted_at) VALUES ($1, $2::date, NULL)',
-        [subscriberId, birthDate],
+        `INSERT INTO subscribers
+          (id, birth_date, deleted_at, tenant_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, vat_treatment, address,
+           created_by)
+         VALUES ($1, $2::date, NULL, $3, 'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado',
+                 'Synthetic', 'DateOnly', 3, 'STANDARD', 'Calle sintética', $4)`,
+        [subscriberId, birthDate, tenantId, actor.sub],
       );
     });
 
@@ -190,13 +206,14 @@ describeWithDb('Fecha de nacimiento 360° — hidratación de columna date en Po
       ],
     }).compile();
     controller = testingModule.get(SubscribersController);
-  });
+  }, 180_000);
 
   afterAll(async () => {
     await testingModule?.close();
     if (!dataSource?.isInitialized) return;
     try {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     } finally {
       await dataSource.destroy();
     }

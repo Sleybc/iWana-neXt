@@ -7,6 +7,10 @@ import { PlatformAuditService } from './platform-audit.service';
 import { CrmContractImpersonationAdapter } from '../crm/privacy-adapters/crm-contract-impersonation.adapter';
 import { ContractStatus } from '../crm/enums/contract-status.enum';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -36,43 +40,40 @@ describeWithDb('AuditService.logWithin con PostgreSQL real', () => {
       extra: { ...dataSourceOptions.extra, max: 4, min: 1 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Audit A25 sintético',
+        `audit-a25-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'audit-a25@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant: audit_logs, subscribers y
+    // contracts con sus columnas, constraints y triggers reales, no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA ${qSchema()}`);
-    await dataSource.query(`
-      CREATE TABLE ${qSchema()}.audit_logs (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        user_id uuid,
-        action varchar(50) NOT NULL,
-        entity_type varchar(100) NOT NULL,
-        entity_id varchar(100) NOT NULL,
-        old_value jsonb,
-        new_value jsonb,
-        ip_address varchar(45),
-        user_agent varchar(512),
-        request_id varchar(100),
-        created_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qSchema()}.subscribers (
-        id uuid PRIMARY KEY,
-        party_id uuid NOT NULL,
-        anonymized_at timestamptz
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qSchema()}.contracts (
-        id uuid PRIMARY KEY,
-        subscriber_id uuid NOT NULL,
-        status varchar(20) NOT NULL,
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-  });
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `audit-a25-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+  }, 180_000);
 
   afterAll(async () => {
-    if (dataSource?.isInitialized) {
+    if (!dataSource?.isInitialized) return;
+    try {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${qSchema()} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    } finally {
       await dataSource.destroy();
     }
   });
@@ -127,15 +128,22 @@ describeWithDb('AuditService.logWithin con PostgreSQL real', () => {
     );
 
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      await qr.query('INSERT INTO subscribers (id, party_id) VALUES ($1, $2)', [
-        subscriberId,
-        partyId,
-      ]);
-      await qr.query('INSERT INTO contracts (id, subscriber_id, status) VALUES ($1, $2, $3)', [
-        contractId,
-        subscriberId,
-        ContractStatus.ACTIVE,
-      ]);
+      // Columnas obligatorias del esquema migrado (persona natural con datos fiscales).
+      await qr.query(
+        `INSERT INTO subscribers
+          (id, tenant_id, party_id, status, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, vat_treatment,
+           vat_responsibility, address, created_by)
+         VALUES ($1, $2, $3, 'ACTIVE', 'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado',
+                 'Titular', 'Sintético', 3, 'STANDARD', 'RESPONSABLE', 'Dirección sintética', $4)`,
+        [subscriberId, tenantId, partyId, actorId],
+      );
+      await qr.query(
+        `INSERT INTO contracts
+          (id, tenant_id, subscriber_id, status, plan_id, plan_snapshot_json)
+         VALUES ($1, $2, $3, $4, 'fixture-plan', '{}'::jsonb)`,
+        [contractId, tenantId, subscriberId, ContractStatus.ACTIVE],
+      );
       await qr.query(`
         CREATE FUNCTION ${qSchema()}.reject_audit_insert() RETURNS trigger
         LANGUAGE plpgsql AS $block$

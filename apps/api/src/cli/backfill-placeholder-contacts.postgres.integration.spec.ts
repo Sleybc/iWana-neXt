@@ -1,10 +1,15 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
 import { hmacPii } from '../common/crypto/pii-hash-key.util';
 import { runPlaceholderBackfillInTenantSchema } from './backfill-placeholder-contacts';
 
 const SCHEMA = `tenant_mod05_placeholder_${randomBytes(5).toString('hex')}`;
+const TENANT_ID = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const HASH_KEY = Buffer.from(
@@ -35,27 +40,32 @@ describeWithDb('Backfill MOD05 placeholder contacts — PostgreSQL real', () => 
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // Esquema propio con la cadena tenant vigente (incluida la 148, que deja email_encrypted,
+    // phone_encrypted y party_contact.value anulables, requisito del modo apply).
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        TENANT_ID,
+        'Placeholder backfill synthetic',
+        `placeholder-backfill-${TENANT_ID.slice(0, 8)}`,
+        SCHEMA,
+        'placeholder-backfill@example.invalid',
+      ],
+    );
     await dataSource.query(`CREATE SCHEMA "${SCHEMA}"`);
-    await dataSource.query(`
-      CREATE TABLE "${SCHEMA}".subscribers (
-        id uuid PRIMARY KEY,
-        expediente_id uuid,
-        party_id uuid,
-        status varchar(30) NOT NULL,
-        email_encrypted varchar(500),
-        email_hmac varchar(64),
-        phone_encrypted varchar(100),
-        phone_hmac varchar(64)
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${SCHEMA}".party_contact (
-        id uuid PRIMARY KEY,
-        party_id uuid NOT NULL,
-        value varchar(255),
-        value_hmac varchar(64)
-      )
-    `);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      SCHEMA,
+      `placeholder-backfill-${SCHEMA}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
 
     emailExpedienteId = randomUUID();
     phoneExpedienteId = randomUUID();
@@ -66,13 +76,38 @@ describeWithDb('Backfill MOD05 placeholder contacts — PostgreSQL real', () => 
       HASH_KEY,
     );
     placeholderPhoneHmac = hmacPii('0000000000', HASH_KEY);
+    const emptyContactPartyId = randomUUID();
+    const actorId = randomUUID();
 
+    // La cadena exige los expedientes (FK de subscribers.expediente_id) y las partes (FK de
+    // party_contact.party_id) que el DDL anterior no modelaba.
+    await dataSource.query(
+      `INSERT INTO "${SCHEMA}".expediente_records (id, tenant_id, full_name, created_by) VALUES
+        ($1, $3, 'Prospecto sintético', $4), ($2, $3, 'Prospecto sintético', $4)`,
+      [emailExpedienteId, phoneExpedienteId, TENANT_ID, actorId],
+    );
+    await dataSource.query(
+      `INSERT INTO "${SCHEMA}".party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', 'synthetic-document-1', 'Titular sintético'),
+              ($2, 'NATURAL', 'CC', 'synthetic-document-2', 'Titular sintético'),
+              ($3, 'NATURAL', 'CC', 'synthetic-document-3', 'Titular sintético')`,
+      [emailPartyId, phonePartyId, emptyContactPartyId],
+    );
     await dataSource.query(
       `INSERT INTO "${SCHEMA}".subscribers
-        (id, expediente_id, party_id, status, email_encrypted, email_hmac, phone_encrypted, phone_hmac)
+        (id, tenant_id, expediente_id, party_id, status, person_type, customer_segment,
+         vat_treatment, vat_responsibility, document_type, document_number_encrypted,
+         first_name, last_name, stratum, address, created_by,
+         email_encrypted, email_hmac, phone_encrypted, phone_hmac)
        VALUES
-        ($1, $2, $3, 'ACTIVE', 'synthetic-email-ciphertext', $4, 'synthetic-phone-ciphertext', $5),
-        ($6, $7, $8, 'ACTIVE', 'synthetic-email-ciphertext', $9, 'synthetic-real-phone-ciphertext', $10)`,
+        ($1, $11, $2, $3, 'ACTIVE', 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $12,
+         'synthetic-email-ciphertext', $4, 'synthetic-phone-ciphertext', $5),
+        ($6, $11, $7, $8, 'ACTIVE', 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $12,
+         'synthetic-email-ciphertext', $9, 'synthetic-real-phone-ciphertext', $10)`,
       [
         randomUUID(),
         emailExpedienteId,
@@ -84,11 +119,13 @@ describeWithDb('Backfill MOD05 placeholder contacts — PostgreSQL real', () => 
         phonePartyId,
         hmacPii(`expediente-${phoneExpedienteId}@placeholder.iwana.co`, HASH_KEY),
         hmacPii('3000000000', HASH_KEY),
+        TENANT_ID,
+        actorId,
       ],
     );
     await dataSource.query(
-      `INSERT INTO "${SCHEMA}".party_contact (id, party_id, value, value_hmac) VALUES
-        ($1, $2, NULL, $3), ($4, $5, '', $6), ($7, $8, '', NULL)`,
+      `INSERT INTO "${SCHEMA}".party_contact (id, party_id, type, value, value_hmac) VALUES
+        ($1, $2, 'EMAIL', NULL, $3), ($4, $5, 'PHONE', '', $6), ($7, $8, 'EMAIL', '', NULL)`,
       [
         randomUUID(),
         emailPartyId,
@@ -97,14 +134,15 @@ describeWithDb('Backfill MOD05 placeholder contacts — PostgreSQL real', () => 
         phonePartyId,
         placeholderPhoneHmac,
         randomUUID(),
-        randomUUID(),
+        emptyContactPartyId,
       ],
     );
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [TENANT_ID]);
       await dataSource.destroy();
     }
   });

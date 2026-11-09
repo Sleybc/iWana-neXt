@@ -13,6 +13,10 @@ import { PlatformAuditService } from '../../audit/platform-audit.service';
 import { IpamService } from '../ipam.service';
 import { NetworkActorReadPort } from '../ports/network-actor-read.port';
 import { NetworkCatalogService } from '../network-catalog.service';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -34,50 +38,33 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
       extra: { ...dataSourceOptions.extra, max: 3, min: 1 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'MOD13 catalog sintético',
+        `mod13-catalog-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'mod13-catalog@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant, no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".network_routers (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        name varchar(120) NOT NULL,
-        organization_site_id uuid NULL,
-        commercial_node_id uuid NULL,
-        management_host varchar(255) NOT NULL,
-        lan_interface varchar(64) NULL,
-        supported_control_methods varchar(40)[] NOT NULL,
-        status varchar(16) NOT NULL DEFAULT 'ACTIVE',
-        notes text NULL,
-        created_by uuid NOT NULL,
-        -- Fixture simplificada para atomicidad de auditoría; incluye la columna que mapea NetworkRouter desde migración 165.
-        legacy_lan_interface_id uuid NULL,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        version integer NOT NULL DEFAULT 1
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".ipv4_networks (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        router_id uuid NOT NULL
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".audit_logs (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        user_id uuid NULL,
-        action varchar(50) NOT NULL,
-        entity_type varchar(100) NOT NULL,
-        entity_id varchar(100) NOT NULL,
-        old_value jsonb NULL,
-        new_value jsonb NULL,
-        ip_address varchar(45) NULL,
-        user_agent varchar(512) NULL,
-        request_id varchar(100) NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `mod13-catalog-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+    // Sonda solo de prueba (no existe en la cadena): fuerza el fallo de AuditService.logWithin
+    // sobre la tabla audit_logs real para verificar el rollback atómico.
     await dataSource.query(`
       CREATE FUNCTION "${schemaName}".reject_audit_insert() RETURNS trigger
       LANGUAGE plpgsql AS $block$
@@ -112,11 +99,12 @@ describeWithDb('NetworkCatalogService — atomicidad de auditoría con PostgreSQ
         findReferenceById: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null }),
       } as never,
     );
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });

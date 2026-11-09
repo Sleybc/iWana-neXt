@@ -1,11 +1,16 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
 import { ContractStatus } from '../modules/crm/enums/contract-status.enum';
 import { SubscriberStatus } from '@iwana/shared';
 import { reportLifecycleInconsistenciesInTenant } from './report-lifecycle-inconsistencies';
 
 const schemaName = `tenant_lifecycle_report_${randomBytes(5).toString('hex')}`;
+const tenantId = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 
@@ -28,28 +33,37 @@ describeWithDb('Reporte de inconsistencias de ciclo de vida — PostgreSQL real'
       extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // Esquema propio con la cadena tenant vigente.
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Lifecycle report synthetic',
+        `lifecycle-report-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'lifecycle-report@example.invalid',
+      ],
+    );
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".subscribers (
-        id uuid PRIMARY KEY,
-        status varchar(30) NOT NULL,
-        activated_at timestamptz,
-        deleted_at timestamptz
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".contracts (
-        id uuid PRIMARY KEY,
-        subscriber_id uuid NOT NULL,
-        status varchar(30) NOT NULL,
-        deleted_at timestamptz
-      )
-    `);
-  }, 30_000);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `lifecycle-report-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+  }, 180_000);
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
     await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     await dataSource.destroy();
   });
 
@@ -62,9 +76,30 @@ describeWithDb('Reporte de inconsistencias de ciclo de vida — PostgreSQL real'
       noLiveContracts: randomUUID(),
       notActivated: randomUUID(),
     };
+    // La cadena exige los campos de persona natural y, en ACTIVE/SUSPENDED, vat_responsibility
+    // (ck_subscribers_fiscal_complete_when_active); contracts exige tenant_id, plan_id y snapshot.
+    const actorId = randomUUID();
     await dataSource.query(
-      `INSERT INTO "${schemaName}".subscribers (id, status, activated_at) VALUES
-        ($1, $2, $6), ($3, $4, $6), ($5, $7, $6), ($8, $9, $6), ($10, $11, NULL)`,
+      `INSERT INTO "${schemaName}".subscribers
+        (id, status, activated_at, tenant_id, person_type, customer_segment, vat_treatment,
+         vat_responsibility, document_type, document_number_encrypted, first_name, last_name,
+         stratum, address, created_by)
+       VALUES
+        ($1, $2, $6, $12, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $13),
+        ($3, $4, $6, $12, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $13),
+        ($5, $7, $6, $12, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $13),
+        ($8, $9, $6, $12, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $13),
+        ($10, $11, NULL, $12, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'RESPONSABLE', 'CC',
+         'synthetic-document-ciphertext', 'Nombre sintético', 'Apellido sintético', 2,
+         'Dirección sintética', $13)`,
       [
         ids.allSuspendedButActive,
         SubscriberStatus.ACTIVE,
@@ -77,12 +112,17 @@ describeWithDb('Reporte de inconsistencias de ciclo de vida — PostgreSQL real'
         SubscriberStatus.SUSPENDED,
         ids.notActivated,
         SubscriberStatus.PROSPECT,
+        tenantId,
+        actorId,
       ],
     );
     await dataSource.query(
-      `INSERT INTO "${schemaName}".contracts (id, subscriber_id, status) VALUES
-        ($1, $2, $3), ($4, $5, $6), ($7, $8, $9),
-        ($10, $11, $12), ($13, $14, $15), ($16, $17, $18)`,
+      `INSERT INTO "${schemaName}".contracts
+        (id, subscriber_id, status, tenant_id, plan_id, plan_snapshot_json)
+       VALUES
+        ($1, $2, $3, $19, 'synthetic-plan', '{}'), ($4, $5, $6, $19, 'synthetic-plan', '{}'),
+        ($7, $8, $9, $19, 'synthetic-plan', '{}'), ($10, $11, $12, $19, 'synthetic-plan', '{}'),
+        ($13, $14, $15, $19, 'synthetic-plan', '{}'), ($16, $17, $18, $19, 'synthetic-plan', '{}')`,
       [
         randomUUID(),
         ids.allSuspendedButActive,
@@ -102,6 +142,7 @@ describeWithDb('Reporte de inconsistencias de ciclo de vida — PostgreSQL real'
         randomUUID(),
         ids.noLiveContracts,
         ContractStatus.DRAFT,
+        tenantId,
       ],
     );
 

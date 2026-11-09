@@ -38,6 +38,10 @@ import { OrganizationSiteReadAdapter } from '../../organization/ports/organizati
 import { OrganizationService } from '../../organization/organization.service';
 import { CommercialNode } from '../../tenant/entities/commercial-node.entity';
 import { CommercialNodeReadAdapter } from '../../tenant/ports/commercial-node-read.adapter';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -96,150 +100,31 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
   let jwtTenantContextOverride: { tenantId: string; schemaName: string } | undefined;
 
   const createTables = async (): Promise<void> => {
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'MOD13 D23 HTTP sintético',
+        `mod13-d23-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'mod13-d23@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant, no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".users (
-        id uuid PRIMARY KEY,
-        email varchar(255) NOT NULL,
-        email_hmac varchar(64) NOT NULL,
-        password_hash varchar(60) NOT NULL,
-        role varchar(20) NOT NULL,
-        status varchar(30) NOT NULL,
-        tenant_id uuid NOT NULL,
-        mfa_enabled boolean NOT NULL DEFAULT false,
-        mfa_secret varchar(512),
-        mfa_required boolean NOT NULL DEFAULT false,
-        is_operational_resource boolean NOT NULL DEFAULT false,
-        password_reset_required boolean NOT NULL DEFAULT false,
-        password_reset_token varchar(512),
-        password_reset_expires_at timestamptz,
-        password_reset_token_expires_at timestamptz,
-        failed_login_attempts integer NOT NULL DEFAULT 0,
-        locked_until timestamptz,
-        last_login_at timestamptz,
-        email_verified boolean NOT NULL DEFAULT false,
-        email_verification_token varchar(512),
-        first_name varchar(100),
-        last_name varchar(100),
-        phone varchar(20),
-        job_title varchar(150),
-        document_type varchar(20),
-        document_number varchar(30),
-        avatar_url varchar(500),
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        deleted_at timestamptz
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".access_profiles (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        name varchar(120) NOT NULL,
-        description text,
-        base_role_constraint varchar(30),
-        scope_site_id uuid,
-        is_system boolean NOT NULL DEFAULT false,
-        is_active boolean NOT NULL DEFAULT true,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        deleted_at timestamptz
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".user_access_profiles (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        user_id uuid NOT NULL,
-        profile_id uuid NOT NULL,
-        valid_from date NOT NULL DEFAULT CURRENT_DATE,
-        valid_to date,
-        is_active boolean NOT NULL DEFAULT true
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".access_profile_permissions (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        profile_id uuid NOT NULL,
-        permission_key varchar(120) NOT NULL
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".network_routers (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        name varchar(120) NOT NULL,
-        organization_site_id uuid,
-        commercial_node_id uuid,
-        management_host varchar(255) NOT NULL,
-        lan_interface varchar(64),
-        legacy_lan_interface_id uuid,
-        supported_control_methods varchar(40)[] NOT NULL,
-        status varchar(16) NOT NULL,
-        notes text,
-        created_by uuid NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        version integer NOT NULL DEFAULT 1
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".network_router_interfaces (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        router_id uuid NOT NULL,
-        name varchar(64) NOT NULL,
-        kind varchar(16) NOT NULL,
-        notes text,
-        status varchar(16) NOT NULL DEFAULT 'ACTIVE',
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        version integer NOT NULL DEFAULT 1
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".ipv4_networks (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        router_id uuid NOT NULL
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".organization_sites (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        name varchar(160) NOT NULL,
-        code varchar(40) NOT NULL,
-        site_type varchar(40) NOT NULL,
-        address varchar(240),
-        municipality varchar(120),
-        department varchar(120),
-        country varchar(2) NOT NULL DEFAULT 'CO',
-        latitude numeric(10, 7),
-        longitude numeric(10, 7),
-        contact_name varchar(160),
-        contact_phone varchar(32),
-        is_primary boolean NOT NULL DEFAULT false,
-        is_active boolean NOT NULL DEFAULT true,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        deleted_at timestamptz
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".commercial_nodes (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        name varchar(150) NOT NULL,
-        latitude double precision NOT NULL,
-        longitude double precision NOT NULL,
-        is_active boolean NOT NULL DEFAULT true,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        deleted_at timestamptz
-      )
-    `);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `mod13-d23-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
   };
 
   const insertUser = async (id: string): Promise<void> => {
@@ -359,14 +244,24 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
     await insertProfile(tenantWideManageActorId, null, [
       AccessPermissionKey.NETWORK_CATALOG_MANAGE,
     ]);
+    // ck_network_routers_methods (160) exige al menos un método de control.
     await dataSource.query(
       `INSERT INTO "${schemaName}".network_routers
         (id, tenant_id, name, organization_site_id, commercial_node_id, management_host,
          supported_control_methods, status, created_by)
        VALUES
-        ($1, $2, 'Router site A', $3, $4, 'router-a.example.invalid', '{}', 'ACTIVE', $5),
-        ($6, $2, 'Router site B', $7, NULL, 'router-b.example.invalid', '{}', 'ACTIVE', $5)`,
-      [routerAId, tenantId, siteAId, commercialNodeId, actorId, routerBId, siteBId],
+        ($1, $2, 'Router site A', $3, $4, 'router-a.example.invalid', $8, 'ACTIVE', $5),
+        ($6, $2, 'Router site B', $7, NULL, 'router-b.example.invalid', $8, 'ACTIVE', $5)`,
+      [
+        routerAId,
+        tenantId,
+        siteAId,
+        commercialNodeId,
+        actorId,
+        routerBId,
+        siteBId,
+        [CONTROL_METHODS[0]],
+      ],
     );
 
     const redis = {
@@ -450,12 +345,13 @@ describeWithDb('Network catalog D23 — HTTP real con permisos efectivos en Post
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     await app.init();
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (app) await app.close();
     if (dataSource?.isInitialized) {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });

@@ -5,6 +5,10 @@ import { ConsentChannel } from '@iwana/shared';
 import type { DataAuthorizationEntity } from '../entities/data-authorization.entity';
 import type { AuditEntryInput } from '../../audit/interfaces/audit-entry.interface';
 import { resolveMigrationDbCredentials } from '../../../../../../packages/database/src/db-credentials';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { PrivacyAuthorizationAdapter } from '../authorizations/privacy-authorization.adapter';
 import { PurposesService } from './purposes.service';
 
@@ -14,6 +18,8 @@ const schemaName = `tenant_privacy_purposes_${randomBytes(5).toString('hex')}`;
 const tenantId = randomUUID();
 const actorId = randomUUID();
 const legalTextId = randomUUID();
+// La cadena real exige FK de data_authorizations a party y a legal_texts (migración 146).
+const authorizationPartyId = randomUUID();
 const integrationDbName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 
 if (dbAvailable && !integrationDbName.test(process.env['DB_NAME'] ?? '')) {
@@ -45,29 +51,55 @@ describeWithDb('Privacy purposes — PostgreSQL real (CA-LT-05/06)', () => {
       extra: { max: 3, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // El esquema lo instala la cadena de migraciones tenant (P3-5), no un DDL escrito a mano.
+    // privacy_purpose_settings y sus cuatro finalidades habilitadas las crea la migración 166;
+    // data_authorizations y legal_texts, la 146. La 092 exige el tenant canónico en public.tenants.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Privacy purposes sintético',
+        `privacy-purposes-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'privacy-purposes@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `privacy-purposes-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     const bootstrap = dataSource.createQueryRunner();
     await bootstrap.connect();
     try {
-      await bootstrap.query(`CREATE SCHEMA "${schemaName}"`);
-      await bootstrap.query(`CREATE TABLE "${schemaName}".privacy_purpose_settings (
-        purpose text PRIMARY KEY CHECK (purpose IN ('TRATAMIENTO_CONTRACTUAL','CONTACTO_COMERCIAL','REPORTE_CENTRALES_RIESGO','DATOS_BIOMETRICOS')),
-        enabled boolean NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(), updated_by uuid NULL
-      )`);
+      // Sumidero solo de prueba: el AuditService real escribe en public.audit_logs; esta tabla
+      // no existe en la cadena tenant y solo recoge lo que el doble de logWithin recibe dentro
+      // de la misma transacción del servicio.
       await bootstrap.query(`CREATE TABLE "${schemaName}".privacy_test_audit (
         entity_type text NOT NULL, entity_id uuid NOT NULL, old_value jsonb, new_value jsonb
       )`);
-      await bootstrap.query(`CREATE TABLE "${schemaName}".data_authorizations (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), party_id uuid NOT NULL, purpose text NOT NULL,
-        kind text NOT NULL, granted boolean NOT NULL, channel text NOT NULL, legal_text_id uuid,
-        evidence_media_id uuid, ip inet, user_agent text, captured_by uuid, captured_at timestamptz NOT NULL DEFAULT now(), source_ref text
-      )`);
-      await bootstrap.query(`INSERT INTO "${schemaName}".privacy_purpose_settings (purpose, enabled) VALUES
-        ('TRATAMIENTO_CONTRACTUAL', true), ('CONTACTO_COMERCIAL', true),
-        ('REPORTE_CENTRALES_RIESGO', true), ('DATOS_BIOMETRICOS', true)`);
+      await bootstrap.query(
+        `INSERT INTO "${schemaName}".party (id, party_type, document_type, document_number, display_name)
+         VALUES ($1, 'NATURAL', 'CC', 'sintetico-finalidades', 'Titular sintético')`,
+        [authorizationPartyId],
+      );
+      await bootstrap.query(
+        `INSERT INTO "${schemaName}".legal_texts (id, type, version, sha256, content, published_at)
+         VALUES ($1, 'AUTORIZACION', 'v-integracion', $2, 'Texto sintético de integración', now())`,
+        [legalTextId, 'a'.repeat(64)],
+      );
     } finally {
       await bootstrap.release();
     }
-  });
+  }, 180_000);
 
   afterAll(async () => {
     try {
@@ -80,6 +112,7 @@ describeWithDb('Privacy purposes — PostgreSQL real (CA-LT-05/06)', () => {
         const cleanup = dataSource.createQueryRunner();
         try {
           await cleanup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+          await cleanup.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
         } finally {
           await cleanup.release();
           await dataSource.destroy();
@@ -144,7 +177,7 @@ describeWithDb('Privacy purposes — PostgreSQL real (CA-LT-05/06)', () => {
     };
     const adapter = new PrivacyAuthorizationAdapter({} as never);
     const authorization = {
-      partyId: randomUUID(),
+      partyId: authorizationPartyId,
       purpose: 'DATOS_BIOMETRICOS' as const,
       channel: ConsentChannel.EMAIL,
       legalTextId,

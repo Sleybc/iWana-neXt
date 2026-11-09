@@ -6,6 +6,10 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { resolveMigrationDbCredentials } from '@iwana/db';
 import { DataSource } from 'typeorm';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { CrmPersonalDataErasureAdapter } from '../../crm/privacy-adapters/crm-personal-data-erasure.adapter';
 import { CrmTitularErasureParticipant } from '../../crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant';
 import { OperationalTaskTitularErasureParticipant } from '../../tasks/privacy/operational-task-titular-erasure.participant';
@@ -18,6 +22,8 @@ import { MediaTitularErasureParticipant } from './media-titular-erasure.particip
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
+const schema = `tenant_media_privacy_${randomBytes(5).toString('hex')}`;
+const tenantId = randomUUID();
 
 function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
@@ -50,6 +56,32 @@ describeWithDb('Media erasure por el adaptador API — evidencia de autorizació
     });
     await dataSource.initialize();
 
+    // El esquema lo instala la cadena de migraciones tenant (P3-5), no un DDL escrito a mano;
+    // la migración 092 exige el tenant canónico en public.tenants.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Media erasure sintético',
+        `media-erasure-${tenantId.slice(0, 8)}`,
+        schema,
+        'media-erasure@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA ${quoteIdentifier(schema)}`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schema,
+      `media-erasure-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+
     const syntheticKey = randomBytes(32).toString('hex');
     const config = {
       getOrThrow: (key: string) => {
@@ -71,40 +103,34 @@ describeWithDb('Media erasure por el adaptador API — evidencia de autorizació
       new NetworkTitularErasureParticipant(config),
       new SupplierProfileReadAdapter(),
     );
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (dataSource?.isInitialized) await dataSource.destroy();
+    if (!dataSource?.isInitialized) return;
+    try {
+      await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schema)} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    } finally {
+      await dataSource.destroy();
+    }
   });
 
   it('conserva activa la evidencia y sin cambios la autorización al resolver por la API', async () => {
-    const schema = `tenant_media_privacy_${randomBytes(5).toString('hex')}`;
     const q = quoteIdentifier(schema);
     const partyId = randomUUID();
     const requestId = randomUUID();
     const actorId = randomUUID();
     const mediaId = randomUUID();
-    await dataSource.query(`CREATE SCHEMA ${q}`);
-    await dataSource.query(`
-      CREATE TABLE ${q}.party (
-        id uuid PRIMARY KEY,
-        anonymized_at timestamptz,
-        anonymized_request_id uuid
-      )
-    `);
+    // Fixtures sobre el esquema migrado: party y data_authorizations con sus NOT NULL y CHECK reales.
     await dataSource.query(
-      `CREATE TABLE ${q}.party_contact (id uuid PRIMARY KEY, party_id uuid NOT NULL)`,
+      `INSERT INTO ${q}.party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', 'sintetico-media', 'Titular sintético')`,
+      [partyId],
     );
-    await dataSource.query(`
-      CREATE TABLE ${q}.data_authorizations (
-        id uuid PRIMARY KEY,
-        party_id uuid NOT NULL,
-        evidence_media_id uuid
-      )
-    `);
-    await dataSource.query(`INSERT INTO ${q}.party (id) VALUES ($1)`, [partyId]);
     await dataSource.query(
-      `INSERT INTO ${q}.data_authorizations (id, party_id, evidence_media_id) VALUES ($1, $2, $3)`,
+      `INSERT INTO ${q}.data_authorizations
+        (id, party_id, purpose, kind, granted, channel, evidence_media_id)
+       VALUES ($1, $2, 'TRATAMIENTO_CONTRACTUAL', 'LEGACY_IMPORT', true, 'CRM_CONVERSION', $3)`,
       [randomUUID(), partyId, mediaId],
     );
     await dataSource.query(
@@ -146,7 +172,6 @@ describeWithDb('Media erasure por el adaptador API — evidencia de autorizació
       ).toEqual(authorizationBefore);
     } finally {
       await dataSource.query(`DELETE FROM public.media_assets WHERE id = $1`, [mediaId]);
-      await dataSource.query(`DROP SCHEMA IF EXISTS ${q} CASCADE`);
     }
   });
 });

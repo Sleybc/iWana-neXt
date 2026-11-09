@@ -2,6 +2,10 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import { AppDataSource, OrganizationSite, TenantContext } from '@iwana/db';
 import { OrganizationSiteType } from '@iwana/shared';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../packages/database/src/migrations/tenant/runner';
 import { AuditService } from '../audit/audit.service';
 import { OrganizationService, type OrganizationSiteDetail } from './organization.service';
 
@@ -28,6 +32,7 @@ interface SiteDetailLoader {
 
 describeWithDb('Organization site code allocation (PostgreSQL concurrency)', () => {
   let createdSchema = false;
+  let createdTenant = false;
   let initializedDataSource = false;
   let service: OrganizationService;
   let tenantId: string;
@@ -38,39 +43,36 @@ describeWithDb('Organization site code allocation (PostgreSQL concurrency)', () 
       initializedDataSource = true;
     }
 
+    tenantId = randomUUID();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await AppDataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Orgcode concurrency sintético',
+        `orgcode-concurrency-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'orgcode-concurrency@example.invalid',
+      ],
+    );
+    createdTenant = true;
+
+    // El esquema lo crea la cadena de migraciones tenant vigente, no un DDL escrito a mano.
     await AppDataSource.query(`CREATE SCHEMA "${schemaName}"`);
     createdSchema = true;
+    const tenantDataSource = createTenantDataSource(
+      AppDataSource,
+      schemaName,
+      `orgcode-concurrency-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
 
-    await AppDataSource.query(`
-      CREATE TABLE "${schemaName}".organization_sites (
-        id UUID NOT NULL DEFAULT gen_random_uuid(),
-        tenant_id UUID NOT NULL,
-        name VARCHAR(160) NOT NULL,
-        code VARCHAR(40) NOT NULL,
-        site_type VARCHAR(40) NOT NULL,
-        address VARCHAR(240),
-        municipality VARCHAR(120),
-        department VARCHAR(120),
-        country VARCHAR(2) NOT NULL DEFAULT 'CO',
-        latitude NUMERIC(10, 7),
-        longitude NUMERIC(10, 7),
-        contact_name VARCHAR(160),
-        contact_phone VARCHAR(32),
-        is_primary BOOLEAN NOT NULL DEFAULT false,
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        deleted_at TIMESTAMPTZ,
-        CONSTRAINT pk_organization_sites PRIMARY KEY (id)
-      )
-    `);
-    await AppDataSource.query(`
-      CREATE UNIQUE INDEX uq_organization_sites_tenant_code
-        ON "${schemaName}".organization_sites (tenant_id, code)
-        WHERE deleted_at IS NULL
-    `);
-
-    tenantId = randomUUID();
     const auditService = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
     service = new OrganizationService(AppDataSource, auditService);
 
@@ -104,12 +106,16 @@ describeWithDb('Organization site code allocation (PostgreSQL concurrency)', () 
         updatedAt: site.updatedAt,
       };
     });
-  }, 30_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (createdSchema && AppDataSource.isInitialized) {
       await AppDataSource.query(`DROP SCHEMA "${schemaName}" CASCADE`);
       createdSchema = false;
+    }
+    if (createdTenant && AppDataSource.isInitialized) {
+      await AppDataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+      createdTenant = false;
     }
     if (initializedDataSource && AppDataSource.isInitialized) {
       await AppDataSource.destroy();

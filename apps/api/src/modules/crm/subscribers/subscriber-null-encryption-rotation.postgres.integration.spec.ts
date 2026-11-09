@@ -8,8 +8,14 @@ import {
   type ReencryptDbPort,
 } from '../../../common/crypto/reencrypt-aes.orchestrator';
 import type { EncryptedColumnTarget } from '../../../common/crypto/reencrypt-aes.targets';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const schemaName = `tenant_mod05_rotation_${randomBytes(5).toString('hex')}`;
+const tenantId = randomUUID();
+const actorId = randomUUID();
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const activeKey = Buffer.alloc(32, 0x22);
@@ -45,22 +51,52 @@ describeWithDb('Rotación AES con contacto NULL — PostgreSQL real', () => {
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
-    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".subscribers (
-        id uuid PRIMARY KEY,
-        email_encrypted varchar(500)
-      )
-    `);
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
     await dataSource.query(
-      `INSERT INTO "${schemaName}".subscribers (id, email_encrypted) VALUES ($1, NULL), ($2, $3)`,
-      [nullRowId, ciphertextRowId, encryptAes256Gcm(syntheticValue, previousKey)],
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, 'Rotation synthetic fixture', $2, $3, 'ACTIVE', 'rotation@example.invalid')`,
+      [tenantId, `rotation-${schemaName.slice(-10)}`, schemaName],
     );
-  });
+    // El esquema lo crea la cadena de migraciones del tenant: subscribers con su
+    // email_encrypted real, constraints y triggers, no un DDL escrito a mano.
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `rotation-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+    // Columnas obligatorias del esquema migrado (persona natural con documento y estrato).
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".subscribers
+        (id, email_encrypted, tenant_id, person_type, customer_segment, document_type,
+         document_number_encrypted, first_name, last_name, stratum, vat_treatment, address,
+         created_by)
+       SELECT fixture.id, fixture.email_encrypted, $1, 'NATURAL', 'RESIDENTIAL', 'CC',
+              'sintetico-cifrado', 'Titular', 'Sintético', 3, 'STANDARD', 'Dirección sintética', $2
+         FROM (VALUES ($3::uuid, NULL::varchar), ($4::uuid, $5::varchar))
+           AS fixture(id, email_encrypted)`,
+      [
+        tenantId,
+        actorId,
+        nullRowId,
+        ciphertextRowId,
+        encryptAes256Gcm(syntheticValue, previousKey),
+      ],
+    );
+  }, 180_000);
 
   afterAll(async () => {
-    if (dataSource?.isInitialized) {
+    if (!dataSource?.isInitialized) return;
+    try {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    } finally {
       await dataSource.destroy();
     }
   });

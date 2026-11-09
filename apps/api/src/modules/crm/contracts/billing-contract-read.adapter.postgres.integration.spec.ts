@@ -5,6 +5,10 @@ import { dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
 import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
 import { encryptAes256Gcm } from '../../../common/crypto/aes-gcm.util';
 import { BillingContractReadAdapter } from './billing-contract-read.adapter';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const databaseName = dataSourceOptions.database;
@@ -45,19 +49,32 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
   async function insertSubscriber(
     input: {
       id?: string;
+      tenantId?: string;
       anonymizedAt?: string | null;
       anonymizedRequestId?: string | null;
     } = {},
   ): Promise<string> {
     const id = input.id ?? randomUUID();
+    // Columnas obligatorias del esquema migrado: chk_subscriber_person_fields exige documento
+    // cifrado y estrato salvo en filas anonimizadas; address, customer_segment, vat_treatment
+    // y created_by son NOT NULL.
     await runInTenantSchema(dataSource, schemaName, (qr) =>
       qr.query(
         `INSERT INTO subscribers (
-           id, tenant_id, party_id, person_type, document_type, first_name, last_name,
-           business_name, address, rut_responsibilities, anonymized_at, anonymized_request_id
-         ) VALUES ($1, $2, $3, 'NATURAL', 'CC', 'Titular', 'Sintético', NULL, NULL,
-                   ARRAY[]::text[], $4, $5)`,
-        [id, tenantId, randomUUID(), input.anonymizedAt ?? null, input.anonymizedRequestId ?? null],
+           id, tenant_id, party_id, person_type, customer_segment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, business_name, address,
+           vat_treatment, rut_responsibilities, created_by, anonymized_at, anonymized_request_id
+         ) VALUES ($1, $2, $3, 'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado', 'Titular',
+                   'Sintético', 3, NULL, 'Dirección sintética', 'STANDARD', ARRAY[]::text[], $4,
+                   $5, $6)`,
+        [
+          id,
+          input.tenantId ?? tenantId,
+          randomUUID(),
+          randomUUID(),
+          input.anonymizedAt ?? null,
+          input.anonymizedRequestId ?? null,
+        ],
       ),
     );
     return id;
@@ -78,11 +95,11 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
       qr.query(
         `INSERT INTO contracts (
            id, tenant_id, subscriber_id, status, status_reason_code, terminated_at,
-           billing_cycle_day, start_date, end_date, plan_snapshot_json, vat_snapshot,
+           billing_cycle_day, start_date, end_date, plan_id, plan_snapshot_json, vat_snapshot,
            fiscal_name, fiscal_address, fiscal_document, fiscal_document_encrypted,
            additional_product_ids, additional_service_ids
          ) VALUES (
-           $1, $2, $3, $4, $5, $6, 15, '2026-01-01', NULL,
+           $1, $2, $3, $4, $5, $6, 15, '2026-01-01', NULL, 'fixture-plan',
            '{"name":"Plan sintético","monthlyPrice":"85000.00"}'::jsonb,
            NULL, NULL, NULL, NULL, $7, $8::jsonb, $9::jsonb
          )`,
@@ -111,60 +128,44 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
       extra: { ...dataSourceOptions.extra, max: 3, min: 1 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Billing contract read sintético',
+        tenantContext.tenantSlug,
+        schemaName,
+        'billing-contract-read@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant: subscribers, contracts y
+    // crm_billing_cycles (167 siembra el ciclo 15 con corte 30) con constraints y triggers
+    // reales, no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA ${quoteIdentifier(schemaName)}`);
-    await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      await qr.query(`
-        CREATE TABLE subscribers (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          party_id uuid NULL,
-          person_type varchar(20) NOT NULL,
-          document_type varchar(20) NULL,
-          first_name varchar(300) NULL,
-          last_name varchar(300) NULL,
-          business_name varchar(300) NULL,
-          address varchar(500) NULL,
-          rut_responsibilities text[] NOT NULL DEFAULT '{}',
-          anonymized_at timestamptz NULL,
-          anonymized_request_id uuid NULL,
-          deleted_at timestamptz NULL
-        );
-        CREATE TABLE crm_billing_cycles (
-          cycle_day smallint PRIMARY KEY,
-          cutoff_day smallint NOT NULL,
-          active boolean NOT NULL DEFAULT true
-        );
-        INSERT INTO crm_billing_cycles (cycle_day, cutoff_day) VALUES (15, 30);
-        CREATE TABLE contracts (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          subscriber_id uuid NOT NULL,
-          status varchar(20) NOT NULL,
-          status_reason_code varchar(40) NULL,
-          terminated_at timestamptz NULL,
-          billing_cycle_day smallint NULL,
-          start_date date NULL,
-          end_date date NULL,
-          plan_snapshot_json jsonb NOT NULL,
-          vat_snapshot jsonb NULL,
-          fiscal_name varchar(200) NULL,
-          fiscal_address varchar(255) NULL,
-          fiscal_document varchar(30) NULL,
-          fiscal_document_encrypted varchar(500) NULL,
-          additional_product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-          additional_service_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-          deleted_at timestamptz NULL
-        );
-      `);
-    });
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      tenantContext.tenantSlug,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     adapter = new BillingContractReadAdapter(dataSource, config, {
       getSnapshot: jest.fn().mockResolvedValue({ timezone: 'America/Bogota' }),
     } as unknown as SettingsPriorityTenantReadPort);
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (dataSource?.isInitialized) {
+    if (!dataSource?.isInitialized) return;
+    try {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    } finally {
       await dataSource.destroy();
     }
   });
@@ -177,8 +178,11 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
       anonymizedAt: '2026-10-01T00:00:00.000Z',
       anonymizedRequestId: randomUUID(),
     });
+    // ck_subscribers_anonymization_marker_pair (150) nace con las columnas y prohíbe la marca
+    // parcial: la segunda fila anonimizada lleva el par completo.
     const partialAnonymizedSubscriberId = await insertSubscriber({
       anonymizedAt: '2026-10-01T00:00:00.000Z',
+      anonymizedRequestId: randomUUID(),
     });
     const billableId = await insertContract({ subscriberId: billableSubscriberId });
     const previousPeriodTerminatedId = await insertContract({
@@ -276,15 +280,14 @@ describeWithDb('BillingContractReadAdapter contra PostgreSQL real', () => {
   });
   it('resuelve referencias sin PII, excluye otros tenants y distingue inexistentes en el bloqueo', async () => {
     const present = await insertSubscriber();
-    const anonymized = await insertSubscriber({ anonymizedRequestId: randomUUID() });
+    // ck_subscribers_anonymization_marker_pair (150) exige el par completo de marcas.
+    const anonymized = await insertSubscriber({
+      anonymizedAt: '2026-10-01T00:00:00.000Z',
+      anonymizedRequestId: randomUUID(),
+    });
     const missing = randomUUID();
     const foreign = randomUUID();
-    await runInTenantSchema(dataSource, schemaName, (qr) =>
-      qr.query(`INSERT INTO subscribers (id, tenant_id, person_type) VALUES ($1, $2, 'NATURAL')`, [
-        foreign,
-        randomUUID(),
-      ]),
-    );
+    await insertSubscriber({ id: foreign, tenantId: randomUUID() });
     const refs = await TenantContext.run(tenantContext, () =>
       adapter.findTitularRefs([present, anonymized, missing, foreign]),
     );

@@ -15,7 +15,10 @@ import {
   WorkOrderSourceContext,
 } from '@iwana/shared';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { AddSubscriberSupportLookupIndexes1590000000000 } from '../../../../../../packages/database/src/migrations/tenant/159_subscriber_support_lookup_indexes';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { VisitRequestsService } from '../services/visit-requests.service';
 import { ScheduleEventsService } from '../services/schedule-events.service';
 
@@ -82,44 +85,34 @@ describeWithDb('MOD05 E6 — filtros WFM por suscriptor en PostgreSQL real', () 
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'WFM soporte por suscriptor sintético',
+        `wfm-subscriber-support-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'wfm-subscriber-support@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones tenant vigente (incluye los índices de 159),
+    // no `synchronize()` ni un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA ${quoteIdentifier(schemaName)}`);
-    await dataSource.synchronize();
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `wfm-subscriber-support-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     actor.tenantId = tenantId;
     actor.schemaName = schemaName;
-
-    const migrationQueryRunner = dataSource.createQueryRunner();
-    await migrationQueryRunner.connect();
-    try {
-      await migrationQueryRunner.query(`SET search_path TO ${quoteIdentifier(schemaName)}`);
-      await migrationQueryRunner.query(`
-        CREATE TABLE subscribers (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          expediente_id uuid,
-          deleted_at timestamptz
-        )
-      `);
-      await migrationQueryRunner.query(`
-        CREATE TABLE contracts (
-          tenant_id uuid NOT NULL,
-          subscriber_id uuid NOT NULL,
-          deleted_at timestamptz
-        )
-      `);
-      await migrationQueryRunner.query(`
-        CREATE TABLE support_tickets (
-          tenant_id uuid NOT NULL,
-          requester_type text NOT NULL,
-          requester_ref_id varchar(160),
-          subject_type text,
-          subject_ref_id varchar(160),
-          deleted_at timestamptz
-        )
-      `);
-      await new AddSubscriberSupportLookupIndexes1590000000000().up(migrationQueryRunner);
-    } finally {
-      await migrationQueryRunner.release();
-    }
 
     await dataSource.query(
       `INSERT INTO ${q('visit_requests')}
@@ -182,6 +175,7 @@ describeWithDb('MOD05 E6 — filtros WFM por suscriptor en PostgreSQL real', () 
     if (!dataSource?.isInitialized) return;
     try {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     } finally {
       await dataSource.destroy();
     }

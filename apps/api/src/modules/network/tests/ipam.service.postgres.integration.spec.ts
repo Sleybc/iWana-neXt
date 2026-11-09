@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
 import { IpamService } from '../ipam.service';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -16,82 +20,79 @@ describeWithDb('IpamService — PostgreSQL real', () => {
   const networkId = randomUUID();
   const routerId = randomUUID();
   const inactiveRouterId = randomUUID();
-  const inactiveInterfaceId = randomUUID();
   const context = { tenantId, schemaName, tenantSlug: 'mod13-ipam-it' };
 
   const run = <T>(operation: () => Promise<T>) => TenantContext.run(context, operation);
 
+  type SqlRunner = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
+
+  async function insertRouter(
+    qr: SqlRunner,
+    id: string,
+    routerTenantId: string,
+    status: 'ACTIVE' | 'INACTIVE',
+  ): Promise<void> {
+    // Columnas obligatorias de network_routers en la cadena (160).
+    await qr.query(
+      `INSERT INTO network_routers
+        (id, tenant_id, name, management_host, supported_control_methods, status, created_by)
+       VALUES ($1, $2, $3, 'router.example.invalid', ARRAY['PCQ_ADDRESS_LIST'], $4, $2)`,
+      [id, routerTenantId, `Router IPAM ${id.slice(0, 8)}`, status],
+    );
+  }
+
   async function createIpamSchema(schema: string, schemaTenantId: string, schemaRouterId: string) {
-    await dataSource.query(`CREATE SCHEMA "${schema}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schema}".network_routers (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        status varchar(16) NOT NULL,
-        UNIQUE (tenant_id, id)
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schema}".network_router_interfaces (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        router_id uuid NOT NULL,
-        status varchar(16) NOT NULL,
-        created_by uuid NOT NULL,
-        UNIQUE (tenant_id, router_id, id)
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schema}".network_router_interface_ipv4_addresses (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        router_id uuid NOT NULL,
-        interface_id uuid NOT NULL,
-        address inet NOT NULL,
-        created_by uuid NOT NULL,
-        host_address inet GENERATED ALWAYS AS (set_masklen(address, 32)) STORED
-      )
-    `);
-    await dataSource.query(`
-      CREATE INDEX idx_interface_address_host
-        ON "${schema}".network_router_interface_ipv4_addresses (tenant_id, host_address)
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schema}".ipv4_networks (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        router_id uuid NOT NULL,
-        interface_id uuid NULL,
-        cidr cidr NOT NULL,
-        gateway inet NOT NULL,
-        assignable_from inet NOT NULL,
-        assignable_to inet NOT NULL,
-        excluded_ips inet[] NOT NULL DEFAULT '{}',
-        status varchar(16) NOT NULL
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schema}".ip_assignments (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        ipv4_network_id uuid NOT NULL,
-        ip inet NOT NULL,
-        service_provisioning_id uuid NOT NULL,
-        status varchar(16) NOT NULL,
-        released_at timestamptz NULL,
-        release_reason varchar(32) NULL,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await dataSource.query(`
-      CREATE UNIQUE INDEX uq_ip_assignments_live
-        ON "${schema}".ip_assignments (tenant_id, ip)
-        WHERE status IN ('RESERVED', 'ACTIVE')
-    `);
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
     await dataSource.query(
-      `INSERT INTO "${schema}".network_routers (id, tenant_id, status) VALUES ($1, $2, 'ACTIVE')`,
-      [schemaRouterId, schemaTenantId],
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        schemaTenantId,
+        'MOD13 IPAM sintético',
+        `mod13-ipam-${schemaTenantId.slice(0, 8)}`,
+        schema,
+        'mod13-ipam@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant, no un DDL escrito a mano.
+    await dataSource.query(`CREATE SCHEMA "${schema}"`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schema,
+      `mod13-ipam-${schemaTenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+    await runInTenantSchema(dataSource, schema, (qr) =>
+      insertRouter(qr, schemaRouterId, schemaTenantId, 'ACTIVE'),
+    );
+  }
+
+  /**
+   * ip_assignments.service_provisioning_id es FK NOT NULL a service_provisionings (161): cada
+   * reserva necesita su provisión sintética, creada en la misma transacción para que una reserva
+   * rechazada no deje filas.
+   */
+  async function insertProvisioning(
+    qr: SqlRunner,
+    provisioningId: string,
+    provisioningTenantId: string,
+    targetNetworkId: string,
+  ): Promise<void> {
+    await qr.query(
+      `INSERT INTO service_provisionings
+        (id, tenant_id, subscriber_id, execution_order_id, execution_order_number,
+         router_id, ipv4_network_id, control_method, control_params, status)
+       SELECT $1, $2, gen_random_uuid(), gen_random_uuid(), 'OTE-IPAM-IT', n.router_id, n.id,
+              'PCQ_ADDRESS_LIST', '{"method":"PCQ_ADDRESS_LIST","addressList":"subscribers"}'::jsonb,
+              'RESERVED'
+         FROM ipv4_networks n
+        WHERE n.id = $3 AND n.tenant_id = $2`,
+      [provisioningId, provisioningTenantId, targetNetworkId],
     );
   }
 
@@ -106,23 +107,53 @@ describeWithDb('IpamService — PostgreSQL real', () => {
     } = {},
   ): Promise<string> {
     const id = input.id ?? randomUUID();
+    const cidr = input.cidr ?? '10.31.0.0/24';
+    const gateway = input.gateway ?? '10.31.0.1';
+    // Gateway legado con máscara: la cadena solo lo admite como fila previa a 165, que añadió
+    // ck_ipv4_gateway_host NOT VALID. Se reproduce ese estado retirando la restricción solo para
+    // este INSERT y reponiéndola NOT VALID, igual que la deja la migración.
+    const legacyMaskedGateway = gateway.includes('/');
     await run(() =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
+        // ex_ipv4_networks_overlap (160) prohíbe redes solapadas del mismo tenant: los casos
+        // parametrizados reutilizan el CIDR, así que se retira la red sintética anterior, que no
+        // conserva reservas porque esos casos se rechazan.
+        await qr.query('DELETE FROM ipv4_networks WHERE tenant_id = $1 AND cidr && $2::cidr', [
+          tenantId,
+          cidr,
+        ]);
+        if (legacyMaskedGateway) {
+          await qr.query('ALTER TABLE ipv4_networks DROP CONSTRAINT ck_ipv4_gateway_host');
+        }
         await qr.query(
           `INSERT INTO ipv4_networks
-            (id, tenant_id, router_id, cidr, gateway, assignable_from, assignable_to, excluded_ips, status)
-           VALUES ($1, $2, $3, $4::cidr, $5::inet, $6::inet, $7::inet, $8::inet[], 'ACTIVE')`,
+            (id, tenant_id, router_id, name, cidr, gateway, assignable_from, assignable_to,
+             excluded_ips, default_control_method, status, created_by)
+           VALUES ($1, $2, $3, $4, $5::cidr, $6::inet, $7::inet, $8::inet, $9::inet[],
+                   'PCQ_ADDRESS_LIST', 'ACTIVE', $2)`,
           [
             id,
             tenantId,
             routerId,
-            input.cidr ?? '10.31.0.0/24',
-            input.gateway ?? '10.31.0.1',
+            `Red IPAM ${id.slice(0, 8)}`,
+            cidr,
+            gateway,
             input.assignableFrom ?? '10.31.0.10',
             input.assignableTo ?? '10.31.0.250',
             input.excludedIps ?? [],
           ],
         );
+        if (legacyMaskedGateway) {
+          await qr.query(
+            `ALTER TABLE ipv4_networks
+               ADD CONSTRAINT ck_ipv4_gateway_host
+               CHECK (
+                 masklen(gateway) = 32
+                 AND host(gateway) <> host(network(cidr))
+                 AND host(gateway) <> host(broadcast(cidr))
+               ) NOT VALID`,
+          );
+        }
       }),
     );
     return id;
@@ -134,13 +165,14 @@ describeWithDb('IpamService — PostgreSQL real', () => {
     requestedIp?: string,
   ): Promise<string> {
     return run(() =>
-      runInTenantSchema(dataSource, schemaName, (qr) =>
-        service.reserveIp(qr.manager, {
+      runInTenantSchema(dataSource, schemaName, async (qr) => {
+        await insertProvisioning(qr, provisioningId, tenantId, targetNetworkId);
+        return service.reserveIp(qr.manager, {
           networkId: targetNetworkId,
           provisioningId,
           ...(requestedIp ? { requestedIp } : {}),
-        }),
-      ),
+        });
+      }),
     );
   }
 
@@ -152,21 +184,22 @@ describeWithDb('IpamService — PostgreSQL real', () => {
           [inactiveRouterId, tenantId],
         )) as unknown[];
         if (otherRouterExists.length === 0) {
-          await qr.query(
-            `INSERT INTO network_routers (id, tenant_id, status) VALUES ($1, $2, 'INACTIVE')`,
-            [inactiveRouterId, tenantId],
-          );
-          await qr.query(
-            `INSERT INTO network_router_interfaces (id, tenant_id, router_id, status, created_by)
-             VALUES ($1, $2, $3, 'INACTIVE', $4)`,
-            [inactiveInterfaceId, tenantId, inactiveRouterId, tenantId],
-          );
+          await insertRouter(qr, inactiveRouterId, tenantId, 'INACTIVE');
         }
+        // uq_network_interface_ipv4_address (165) es único por interfaz y host: cada dirección
+        // local va en su propia interfaz inactiva del router inactivo.
+        const interfaceId = randomUUID();
+        await qr.query(
+          `INSERT INTO network_router_interfaces
+            (id, tenant_id, router_id, name, kind, status, created_by)
+           VALUES ($1, $2, $3, $4, 'PHYSICAL', 'INACTIVE', $5)`,
+          [interfaceId, tenantId, inactiveRouterId, `ether-${interfaceId.slice(0, 8)}`, tenantId],
+        );
         await qr.query(
           `INSERT INTO network_router_interface_ipv4_addresses
             (tenant_id, router_id, interface_id, address, created_by)
            VALUES ($1, $2, $3, $4::inet, $5)`,
-          [tenantId, inactiveRouterId, inactiveInterfaceId, `${host}/${prefix}`, tenantId],
+          [tenantId, inactiveRouterId, interfaceId, `${host}/${prefix}`, tenantId],
         );
       }),
     );
@@ -185,12 +218,15 @@ describeWithDb('IpamService — PostgreSQL real', () => {
     await createIpamSchema(secondSchemaName, secondTenantId, randomUUID());
     await createNetwork({ id: networkId });
     service = new IpamService(dataSource);
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
       await dataSource.query(`DROP SCHEMA IF EXISTS "${secondSchemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = ANY($1::uuid[])', [
+        [tenantId, secondTenantId],
+      ]);
       await dataSource.destroy();
     }
   });
@@ -402,7 +438,7 @@ describeWithDb('IpamService — PostgreSQL real', () => {
   it('normaliza por host gateways y exclusiones de filas legacy con máscara', async () => {
     const gatewayNetworkId = await createNetwork({
       cidr: '10.40.0.0/24',
-      gateway: '10.40.0.10/24',
+      gateway: '10.40.0.10/25',
       assignableFrom: '10.40.0.10',
       assignableTo: '10.40.0.12',
     });
@@ -445,20 +481,21 @@ describeWithDb('IpamService — PostgreSQL real', () => {
         runInTenantSchema(dataSource, secondSchemaName, async (qr) => {
           const secondRouter = randomUUID();
           const secondNetwork = randomUUID();
-          await qr.query(
-            `INSERT INTO network_routers (id, tenant_id, status) VALUES ($1, $2, 'ACTIVE')`,
-            [secondRouter, secondTenantId],
-          );
+          const secondProvisioning = randomUUID();
+          await insertRouter(qr, secondRouter, secondTenantId, 'ACTIVE');
           await qr.query(
             `INSERT INTO ipv4_networks
-              (id, tenant_id, router_id, cidr, gateway, assignable_from, assignable_to, status)
-             VALUES ($1, $2, $3, '10.42.0.0/24', '10.42.0.1', '10.42.0.10', '10.42.0.20', 'ACTIVE')`,
+              (id, tenant_id, router_id, name, cidr, gateway, assignable_from, assignable_to,
+               default_control_method, status, created_by)
+             VALUES ($1, $2, $3, 'Red IPAM segundo tenant', '10.42.0.0/24', '10.42.0.1',
+                     '10.42.0.10', '10.42.0.20', 'PCQ_ADDRESS_LIST', 'ACTIVE', $2)`,
             [secondNetwork, secondTenantId, secondRouter],
           );
+          await insertProvisioning(qr, secondProvisioning, secondTenantId, secondNetwork);
           await expect(
             service.reserveIp(qr.manager, {
               networkId: secondNetwork,
-              provisioningId: randomUUID(),
+              provisioningId: secondProvisioning,
               requestedIp: '10.42.0.12',
             }),
           ).resolves.toBe('10.42.0.12');

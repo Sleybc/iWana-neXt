@@ -31,236 +31,96 @@ const KEYS = {
 
 interface Fixture {
   schema: string;
+  tenantId: string;
   requestId: string;
   partyId: string;
   expedienteId: string;
   documentHmac: string;
+  actorId: string;
 }
 
 function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-async function createFixture(dataSource: DataSource): Promise<Fixture> {
+/**
+ * Esquema propio con la cadena tenant vigente (`applyTenantMigrationsInOrder`); antes se
+ * creaba con DDL a mano. Solo `potential_leads` se crea a mano: la cadena no la tiene y el CLI
+ * la vigila como tabla heredada.
+ */
+async function createFixture(
+  dataSource: DataSource,
+  options: { authorizationEvidenceMediaId?: string } = {},
+): Promise<Fixture> {
   const schema = `tenant_anonymize_${randomBytes(5).toString('hex')}`;
+  const tenantId = randomUUID();
   const requestId = randomUUID();
   const partyId = randomUUID();
   const expedienteId = randomUUID();
+  const actorId = randomUUID();
   const documentHmac = hmacPii(`synthetic-document-${randomUUID()}`, HASH_KEY);
   const q = quoteIdentifier(schema);
 
-  await dataSource.query(`CREATE SCHEMA ${q}`);
+  // La migración 092 exige un tenant canónico en public.tenants para su esquema.
   await dataSource.query(
     `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
-     VALUES (gen_random_uuid(), $1, $1, $2, 'ACTIVE', 'ci-tenant@example.invalid')`,
-    [`anonymize-${schema.slice(-10)}`, schema],
+     VALUES ($1, $2, $2, $3, 'ACTIVE', 'ci-tenant@example.invalid')`,
+    [tenantId, `anonymize-${schema.slice(-10)}`, schema],
   );
-  await dataSource.query(`CREATE TABLE ${q}.billing_documents (
-    id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL,
-    status text NOT NULL, void_note text, buyer_snapshot jsonb, buyer_document_encrypted varchar(500), updated_at timestamptz
-  )`);
-  await dataSource.query(
-    `CREATE TABLE ${q}.billing_document_lines (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, document_id uuid NOT NULL)`,
-  );
-  await dataSource.query(
-    `CREATE TABLE ${q}.billing_payments (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NOT NULL, reference text, note text, void_note text, updated_at timestamptz)`,
-  );
+  await dataSource.query(`CREATE SCHEMA ${q}`);
+  const migrationDataSource = createTenantDataSource(dataSource, schema, `anonymize-${schema}`);
+  await migrationDataSource.initialize();
+  try {
+    await applyTenantMigrationsInOrder(migrationDataSource);
+  } finally {
+    await migrationDataSource.destroy();
+  }
 
+  // Solo de prueba: ninguna migración tenant crea potential_leads; el CLI la bloquea y cuenta
+  // si existe (tabla heredada), y una prueba siembra una fila para que aborte.
   await dataSource.query(`CREATE TABLE ${q}.potential_leads (id uuid PRIMARY KEY)`);
-  await dataSource.query(`
-    CREATE TABLE ${q}.data_subject_requests (
-      id uuid PRIMARY KEY,
-      party_id uuid,
-      requester_document_hmac text,
-      requester_evidence_media_id uuid,
-      response_text text
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.data_authorizations (
-      id uuid PRIMARY KEY,
-      party_id uuid NOT NULL,
-      evidence_media_id uuid
-    )
-  `);
-  await dataSource.query(
-    `CREATE TABLE ${q}.audit_logs (id uuid PRIMARY KEY, action text NOT NULL)`,
-  );
-  await dataSource.query(`
-    CREATE TABLE ${q}.expediente_records (
-      id uuid PRIMARY KEY,
-      document_number_hmac text,
-      document_number_encrypted varchar(500),
-      document_number_hash varchar(64) NOT NULL,
-      fiscal_document text,
-      fiscal_document_encrypted varchar(500),
-      fiscal_document_hmac varchar(64),
-      full_name varchar(160) NOT NULL,
-      address varchar(255),
-      document_supports jsonb NOT NULL,
-      anonymized_at timestamptz,
-      anonymized_request_id uuid,
-      updated_at timestamptz
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.contact_attempts (
-      id uuid PRIMARY KEY,
-      expediente_id uuid NOT NULL,
-      notes text,
-      updated_at timestamptz
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.consent_records (
-      id uuid PRIMARY KEY,
-      expediente_id uuid NOT NULL,
-      ip_address varchar(64),
-      evidence_ref varchar(255),
-      revoked_reason varchar(255),
-      updated_at timestamptz
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.coverage_checks (
-      id uuid PRIMARY KEY,
-      expediente_id uuid NOT NULL,
-      latitude numeric(10, 7),
-      longitude numeric(10, 7),
-      address_used varchar(255),
-      snapshot_json jsonb NOT NULL,
-      updated_at timestamptz
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.party (
-      id uuid PRIMARY KEY,
-      document_type varchar(20) NOT NULL,
-      document_number varchar(500) NOT NULL,
-      document_number_hmac varchar(64),
-      verification_digit varchar(2),
-      display_name varchar(160) NOT NULL,
-      legal_name varchar(200),
-      birth_date date,
-      incorporation_date date,
-      notes text,
-      address varchar(255),
-      latitude numeric(10, 7),
-      longitude numeric(10, 7),
-      city varchar(120),
-      department varchar(120),
-      anonymized_at timestamptz,
-      anonymized_request_id uuid,
-      updated_at timestamptz,
-      UNIQUE (document_type, document_number)
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.party_contact (
-      id uuid PRIMARY KEY,
-      party_id uuid NOT NULL,
-      value varchar(255),
-      value_encrypted varchar(500),
-      value_hmac varchar(64),
-      metadata jsonb,
-      is_primary boolean NOT NULL DEFAULT false,
-      verified_at timestamptz,
-      updated_at timestamptz
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.subscribers (
-      id uuid PRIMARY KEY,
-      party_id uuid,
-      user_id uuid,
-      document_type varchar(20),
-      document_number_encrypted varchar(500),
-      document_number_hmac varchar(64),
-      document_number_hash varchar(64) NOT NULL,
-      email_hmac varchar(64),
-      email_hash varchar(64),
-      phone_hmac varchar(64),
-      phone_hash varchar(64),
-      first_name varchar(300),
-      last_name varchar(300),
-      stratum integer,
-      birth_date date,
-      nit varchar(500),
-      nit_verification_digit varchar(1),
-      business_name varchar(300),
-      commercial_name varchar(300),
-      legal_representative_id uuid,
-      email_encrypted varchar(500) NOT NULL,
-      phone_encrypted varchar(100) NOT NULL,
-      alt_contact_name varchar(160),
-      alt_contact_phone_encrypted varchar(100),
-      whatsapp varchar(50),
-      whatsapp_encrypted varchar(500),
-      whatsapp_hmac varchar(64),
-      address varchar(500) NOT NULL,
-      neighborhood varchar(100),
-      city varchar(50),
-      department varchar(50),
-      postal_code varchar(20),
-      latitude numeric(10, 7),
-      longitude numeric(10, 7),
-      manual_override_reason varchar(500),
-      external_id varchar(160),
-      status varchar(30),
-      anonymized_at timestamptz,
-      anonymized_request_id uuid,
-      updated_at timestamptz
-    )
-  `);
-  await dataSource.query(`
-    CREATE TABLE ${q}.users (
-      id uuid PRIMARY KEY,
-      email varchar(255) NOT NULL UNIQUE,
-      email_hmac varchar(64) NOT NULL UNIQUE,
-      email_hash varchar(64),
-      first_name varchar(100),
-      last_name varchar(100),
-      phone varchar(20),
-      job_title varchar(150),
-      document_type varchar(20),
-      document_number varchar(30),
-      avatar_url varchar(500),
-      deleted_at timestamptz,
-      updated_at timestamptz
-    )
-  `);
 
-  await dataSource.query(
-    `INSERT INTO ${q}.data_subject_requests
-      (id, party_id, requester_document_hmac, requester_evidence_media_id, response_text)
-     VALUES ($1, $2, $3, NULL, $4)`,
-    [requestId, partyId, documentHmac, 'synthetic request evidence must remain untouched'],
-  );
-  await dataSource.query(
-    `INSERT INTO ${q}.data_authorizations (id, party_id, evidence_media_id)
-     VALUES ($1, $2, NULL)`,
-    [randomUUID(), partyId],
-  );
-  await dataSource.query(`INSERT INTO ${q}.audit_logs (id, action) VALUES ($1, $2)`, [
-    randomUUID(),
-    'synthetic audit row',
-  ]);
   await dataSource.query(
     `INSERT INTO ${q}.party
-      (id, document_type, document_number, document_number_hmac, verification_digit,
+      (id, party_type, document_type, document_number, document_number_hmac, verification_digit,
        display_name, legal_name, birth_date, notes, address, city, department)
-     VALUES ($1, 'CC', $2, $3, '7', 'Titular sintético', 'Razón sintética', '1980-01-01',
+     VALUES ($1, 'NATURAL', 'CC', $2, $3, '7', 'Titular sintético', 'Razón sintética', '1980-01-01',
        'nota sintética', 'Calle sintética', 'Bogotá', 'Cundinamarca')`,
     [partyId, encryptAes256Gcm('synthetic-document-value', ENCRYPTION_KEY), documentHmac],
   );
   await dataSource.query(
+    `INSERT INTO ${q}.data_subject_requests
+      (id, party_id, requester_document_hmac, requester_evidence_media_id, response_text,
+       requester_kind, identity_verification_method, identity_verified_at, identity_verified_by,
+       kind, "right", status, received_at, due_at, complete_at, erased_at, erasure_categories)
+     VALUES ($1, $2, $3, NULL, $4, 'TITULAR', 'DOCUMENTO_PRESENCIAL', now(), $5,
+       'CONSULTA', 'SUPRIMIR', 'RESUELTA', now(), CURRENT_DATE + 30, now(),
+       now(), ARRAY['IDENTIFICACION']::text[])`,
+    [requestId, partyId, documentHmac, 'synthetic request evidence must remain untouched', actorId],
+  );
+  // data_authorizations es de solo anexar (146): la evidencia se fija al insertar, no después.
+  await dataSource.query(
+    `INSERT INTO ${q}.data_authorizations
+      (id, party_id, evidence_media_id, purpose, kind, granted, channel)
+     VALUES ($1, $2, $3, 'TRATAMIENTO_CONTRACTUAL', 'GRANT', true, 'PRESENCIAL')`,
+    [randomUUID(), partyId, options.authorizationEvidenceMediaId ?? null],
+  );
+  await dataSource.query(
+    `INSERT INTO ${q}.audit_logs (id, tenant_id, action, entity_type, entity_id)
+     VALUES ($1, $2, $3, 'synthetic', 'synthetic')`,
+    [randomUUID(), tenantId, 'synthetic audit row'],
+  );
+  await dataSource.query(
     `INSERT INTO ${q}.expediente_records
-      (id, document_number_hmac, document_number_encrypted, document_number_hash,
-       fiscal_document, fiscal_document_encrypted, fiscal_document_hmac,
+      (id, tenant_id, created_by, document_number_hmac, document_number_encrypted,
+       document_number_hash, fiscal_document, fiscal_document_encrypted, fiscal_document_hmac,
        full_name, address, document_supports)
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, 'Prospecto sintético', 'Dirección sintética', $7::jsonb)`,
+     VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, 'Prospecto sintético', 'Dirección sintética',
+       $9::jsonb)`,
     [
       expedienteId,
+      tenantId,
+      actorId,
       documentHmac,
       encryptAes256Gcm('synthetic-document-value', ENCRYPTION_KEY),
       'a'.repeat(64),
@@ -271,8 +131,8 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
   );
   await dataSource.query(
     `INSERT INTO ${q}.party_contact
-      (id, party_id, value, value_encrypted, value_hmac, metadata, is_primary)
-     VALUES ($1, $2, 'synthetic@example.invalid', $3, $4, $5::jsonb, true)`,
+      (id, party_id, type, value, value_encrypted, value_hmac, metadata, is_primary)
+     VALUES ($1, $2, 'EMAIL', 'synthetic@example.invalid', $3, $4, $5::jsonb, true)`,
     [
       randomUUID(),
       partyId,
@@ -281,7 +141,31 @@ async function createFixture(dataSource: DataSource): Promise<Fixture> {
       JSON.stringify({ label: 'synthetic' }),
     ],
   );
-  return { schema, requestId, partyId, expedienteId, documentHmac };
+  return { schema, tenantId, requestId, partyId, expedienteId, documentHmac, actorId };
+}
+
+/**
+ * Deja un residuo en un expediente ya anonimizado. La 169 (endurecida por la 178) impide esa
+ * escritura incluso con el GUC de supresión, así que se siembra como dueño con el trigger
+ * desactivado dentro de la transacción (patrón CA-K2A-06).
+ */
+async function seedResidualOnAnonymizedExpediente(
+  dataSource: DataSource,
+  fixture: Fixture,
+  fullName: string,
+): Promise<void> {
+  await runInTenantSchema(dataSource, fixture.schema, async (queryRunner) => {
+    await queryRunner.query(
+      'ALTER TABLE expediente_records DISABLE TRIGGER trg_expediente_records_prevent_anonymized_mutation',
+    );
+    await queryRunner.query('UPDATE expediente_records SET full_name = $2 WHERE id = $1', [
+      fixture.expedienteId,
+      fullName,
+    ]);
+    await queryRunner.query(
+      'ALTER TABLE expediente_records ENABLE TRIGGER trg_expediente_records_prevent_anonymized_mutation',
+    );
+  });
 }
 
 async function insertSubscriberAndUser(
@@ -295,11 +179,12 @@ async function insertSubscriberAndUser(
   const email = `synthetic.${userId}@example.invalid`;
   await dataSource.query(
     `INSERT INTO ${q}.users
-      (id, email, email_hmac, email_hash, first_name, last_name, phone,
-       job_title, document_type, document_number, avatar_url, deleted_at)
-     VALUES ($1, $2, $3, $4, 'Nombre sintético', 'Apellido sintético', '+570000000000',
-       'Cargo sintético', 'CC', '00000000', 'https://example.invalid/avatar', $5)`,
-    [userId, email, hmacPii(email, HASH_KEY), 'b'.repeat(64), accountDeletedAt],
+      (id, tenant_id, role, password_hash, email, email_hmac, email_hash, first_name, last_name,
+       phone, job_title, document_type, document_number, avatar_url, deleted_at)
+     VALUES ($1, $6, 'SUBSCRIBER', 'synthetic-password-hash', $2, $3, $4, 'Nombre sintético',
+       'Apellido sintético', '+570000000000', 'Cargo sintético', 'CC', '00000000',
+       'https://example.invalid/avatar', $5)`,
+    [userId, email, hmacPii(email, HASH_KEY), 'b'.repeat(64), accountDeletedAt, fixture.tenantId],
   );
   await dataSource.query(
     `INSERT INTO ${q}.subscribers
@@ -310,13 +195,15 @@ async function insertSubscriberAndUser(
        phone_encrypted, alt_contact_name, alt_contact_phone_encrypted,
        whatsapp, whatsapp_encrypted, whatsapp_hmac, address, neighborhood, city,
        department, postal_code, latitude, longitude, manual_override_reason,
-       external_id, status)
+       external_id, status, tenant_id, person_type, customer_segment, vat_treatment,
+       stratum, created_by)
      VALUES ($1, $2, $3, 'CC', $4, $5, $6, $7, $8, $9, $10,
        'Nombre sintético', 'Apellido sintético', '1980-01-01', '00000000', '0',
        'Empresa sintética', 'Comercial sintético', $11, $12, 'Contacto sintético',
        $13, '0000000000', $14, $15, 'Dirección sintética', 'Barrio sintético',
        'Bogotá', 'Cundinamarca', '000000', 4.5, -74.1, 'Motivo sintético',
-       'ID externo sintético', 'CANCELLED')`,
+       'ID externo sintético', 'CANCELLED', $16, 'NATURAL', 'RESIDENTIAL', 'STANDARD',
+       2, $17)`,
     [
       subscriberId,
       fixture.partyId,
@@ -333,6 +220,8 @@ async function insertSubscriberAndUser(
       encryptAes256Gcm('+570000000001', ENCRYPTION_KEY),
       encryptAes256Gcm('+570000000002', ENCRYPTION_KEY),
       'f'.repeat(64),
+      fixture.tenantId,
+      fixture.actorId,
     ],
   );
   return { subscriberId, userId, email };
@@ -614,9 +503,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       );
       expect(first.verification.residualFields).toBe(0);
 
-      await dataSource.query(
-        `UPDATE ${q}.expediente_records SET full_name = 'residuo sintetico de remediacion' WHERE id = $1`,
-        [fixture.expedienteId],
+      await seedResidualOnAnonymizedExpediente(
+        dataSource,
+        fixture,
+        'residuo sintetico de remediacion',
       );
       const dirty = await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS);
       expect(dirty.residualFields).toBeGreaterThan(0);
@@ -653,8 +543,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
       const emptyRequestId = randomUUID();
       await dataSource.query(
         `INSERT INTO ${q}.data_subject_requests
-          (id, party_id, requester_document_hmac, requester_evidence_media_id, response_text)
-         VALUES ($1, NULL, NULL, NULL, 'solicitud sintetica sin alcance')`,
+          (id, party_id, requester_document_hmac, requester_evidence_media_id, response_text,
+           requester_kind, kind, "right", status, received_at, due_at)
+         VALUES ($1, NULL, NULL, NULL, 'solicitud sintetica sin alcance',
+           'TITULAR', 'CONSULTA', 'SUPRIMIR', 'RADICADA', now(), CURRENT_DATE + 30)`,
         [emptyRequestId],
       );
       await expect(
@@ -690,20 +582,37 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     const q = quoteIdentifier(fixture.schema);
     try {
       await dataSource.query(
-        `INSERT INTO ${q}.contact_attempts (id, expediente_id, notes) VALUES ($1, $2, $3)`,
-        [randomUUID(), fixture.expedienteId, 'nota de contacto sintética'],
+        `INSERT INTO ${q}.contact_attempts
+          (id, tenant_id, expediente_id, notes, channel, result, advisor_id)
+         VALUES ($1, $4, $2, $3, 'PHONE', 'NO_ANSWER', $5)`,
+        [
+          randomUUID(),
+          fixture.expedienteId,
+          'nota de contacto sintética',
+          fixture.tenantId,
+          fixture.actorId,
+        ],
       );
       await dataSource.query(
         `INSERT INTO ${q}.consent_records
-          (id, expediente_id, ip_address, evidence_ref, revoked_reason)
-         VALUES ($1, $2, '192.0.2.4', 'synthetic-evidence', 'motivo sintético')`,
-        [randomUUID(), fixture.expedienteId],
+          (id, tenant_id, expediente_id, ip_address, evidence_ref, revoked_reason,
+           consent_type, status, channel, legal_text_version)
+         VALUES ($1, $3, $2, '192.0.2.4', 'synthetic-evidence', 'motivo sintético',
+           'DATA_PROCESSING', 'REVOKED', 'PHONE', 'v-synthetic')`,
+        [randomUUID(), fixture.expedienteId, fixture.tenantId],
       );
       await dataSource.query(
         `INSERT INTO ${q}.coverage_checks
-          (id, expediente_id, latitude, longitude, address_used, snapshot_json)
-         VALUES ($1, $2, 4.5, -74.1, 'dirección sintética', $3::jsonb)`,
-        [randomUUID(), fixture.expedienteId, JSON.stringify({ address: 'synthetic' })],
+          (id, tenant_id, expediente_id, latitude, longitude, address_used, snapshot_json,
+           result, checked_by)
+         VALUES ($1, $4, $2, 4.5, -74.1, 'dirección sintética', $3::jsonb, 'COVERED', $5)`,
+        [
+          randomUUID(),
+          fixture.expedienteId,
+          JSON.stringify({ address: 'synthetic' }),
+          fixture.tenantId,
+          fixture.actorId,
+        ],
       );
 
       const dryRun = await anonymizeTitularInTenantSchema(
@@ -774,7 +683,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           [fixture.expedienteId, fixture.requestId],
         ),
       ).toEqual([{ marked: true, request_marked: true }]);
-      expect(expediente[0]?.['document_number_hash']).toBeTruthy();
+      // La semilla fija un hash heredado ('a' x 64). La cadena lo crea anulable (087) y la regla
+      // `legacy-hash` lo borra a NULL; el marcador solo existiría en un esquema NOT NULL que la
+      // cadena nunca tuvo (spec K2 D-K2A-1).
+      expect(expediente[0]?.['document_number_hash']).toBeNull();
       const party = (await dataSource.query(
         `SELECT document_number, document_number_hmac, verification_digit, display_name, legal_name
            FROM ${q}.party WHERE id = $1`,
@@ -859,10 +771,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         findings: [],
       });
 
-      await dataSource.query(
-        `UPDATE ${q}.expediente_records SET full_name = 'synthetic residual fixture' WHERE id = $1`,
-        [fixture.expedienteId],
-      );
+      await seedResidualOnAnonymizedExpediente(dataSource, fixture, 'synthetic residual fixture');
       const residualVerification = await verifyAnonymizedTenant(dataSource, fixture.schema, KEYS);
       expect(residualVerification.residualFields).toBeGreaterThan(0);
       expect(residualVerification.findings).toEqual([
@@ -1001,9 +910,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
   }, 180_000);
 
   it('conserva evidencia de autorización no compartida y activa en el CLI', async () => {
-    const fixture = await createFixture(dataSource);
-    const q = quoteIdentifier(fixture.schema);
     const mediaId = randomUUID();
+    // data_authorizations es de solo anexar (146): la evidencia entra con la fila.
+    const fixture = await createFixture(dataSource, { authorizationEvidenceMediaId: mediaId });
+    const q = quoteIdentifier(fixture.schema);
     try {
       await dataSource.query(
         `INSERT INTO public.media_assets
@@ -1011,10 +921,6 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
          VALUES ($1, $2, 'privacy_evidence', 'fixture.bin', 'application/octet-stream',
            'bin', 1, $3)`,
         [mediaId, fixture.schema, `${fixture.schema}/privacy_evidence/${mediaId}.bin`],
-      );
-      await dataSource.query(
-        `UPDATE ${q}.data_authorizations SET evidence_media_id = $1 WHERE party_id = $2`,
-        [mediaId, fixture.partyId],
       );
 
       const result = await anonymizeTitularInTenantSchema(
@@ -1042,9 +948,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
   });
 
   it('mantiene activa la evidencia de autorización y sin cambios su fila al anonimizar por CLI', async () => {
-    const fixture = await createFixture(dataSource);
-    const q = quoteIdentifier(fixture.schema);
     const mediaId = randomUUID();
+    // data_authorizations es de solo anexar (146): la evidencia entra con la fila.
+    const fixture = await createFixture(dataSource, { authorizationEvidenceMediaId: mediaId });
+    const q = quoteIdentifier(fixture.schema);
     try {
       await dataSource.query(
         `INSERT INTO public.media_assets
@@ -1053,10 +960,7 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
            'bin', 1, $3)`,
         [mediaId, fixture.schema, `${fixture.schema}/privacy_evidence/${mediaId}.bin`],
       );
-      await dataSource.query(
-        `UPDATE ${q}.data_authorizations SET evidence_media_id = $1 WHERE party_id = $2`,
-        [mediaId, fixture.partyId],
-      );
+      // Solo de prueba: copia de la fila previa para comparar; no existe en la cadena.
       await dataSource.query(
         `CREATE TABLE ${q}.data_authorizations_snapshot AS
          SELECT * FROM ${q}.data_authorizations WHERE party_id = $1`,
@@ -1147,12 +1051,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         whatsapp_hmac: null,
         address: 'ANONIMIZADO',
       });
-      expect(decryptAes256Gcm(String(subscriber[0]?.['email_encrypted']), ENCRYPTION_KEY)).toBe(
-        'ANONIMIZADO',
-      );
-      expect(decryptAes256Gcm(String(subscriber[0]?.['phone_encrypted']), ENCRYPTION_KEY)).toBe(
-        'ANONIMIZADO',
-      );
+      // La semilla cifra correo y teléfono. Desde la 148 ambas columnas admiten NULL y la regla
+      // `null` las borra; el marcador cifrado solo aplicaría a un esquema previo a la 148.
+      expect(subscriber[0]?.['email_encrypted']).toBeNull();
+      expect(subscriber[0]?.['phone_encrypted']).toBeNull();
       expect(linked.email).not.toBe(anonymousEmail);
 
       const repeated = await anonymizeTitularInTenantSchema(
@@ -1272,38 +1174,6 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     const q = quoteIdentifier(fixture.schema);
     try {
       const linked = await insertSubscriberAndUser(dataSource, fixture, new Date());
-      await dataSource.query(`
-        CREATE TABLE ${q}.contracts (
-          id uuid PRIMARY KEY,
-          subscriber_id uuid NOT NULL,
-          installation_address text,
-          installation_postal_code text,
-          installation_notes text,
-          fiscal_name text,
-          fiscal_document text,
-          fiscal_address text,
-          alias text,
-          stratum_evidence_media_id uuid,
-          fiscal_document_encrypted varchar(500),
-          fiscal_document_hmac varchar(64),
-          vat_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
-          plan_snapshot_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-          installation_city text,
-          installation_department text,
-          installation_stratum integer,
-          service_usage text,
-          customer_segment text,
-          status text NOT NULL
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.quotes (
-          id uuid PRIMARY KEY,
-          subscriber_id uuid,
-          expediente_id uuid,
-          plan_snapshot_json jsonb NOT NULL DEFAULT '{}'::jsonb
-        )
-      `);
       const contractId = randomUUID();
       const quoteBySubscriber = randomUUID();
       const quoteByExpediente = randomUUID();
@@ -1322,11 +1192,11 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
            fiscal_document_encrypted, fiscal_document_hmac, alias,
            stratum_evidence_media_id, vat_snapshot, plan_snapshot_json,
            installation_city, installation_department, installation_stratum,
-           service_usage, customer_segment, status)
+           service_usage, customer_segment, status, tenant_id, plan_id)
          VALUES ($1, $2, 'fixture-address', 'fixture-postal', 'fixture-notes',
            'fixture-fiscal-name', NULL, 'fixture-fiscal-address', $3, $4, 'fixture-alias',
            $5, $6::jsonb, $7::jsonb, 'fixture-city', 'fixture-department', 3,
-           'RESIDENTIAL', 'STANDARD', 'ACTIVE')`,
+           'RESIDENTIAL', 'STANDARD', 'ACTIVE', $8, 'synthetic-plan')`,
         [
           contractId,
           linked.subscriberId,
@@ -1335,21 +1205,30 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           mediaId,
           JSON.stringify({ fiscalName: 'remove', amount: 10 }),
           JSON.stringify({ plan: { name: 'remove', documentType: 'remove' } }),
+          fixture.tenantId,
         ],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.quotes (id, subscriber_id, plan_snapshot_json)
-         VALUES ($1, $2, $3::jsonb)`,
+        `INSERT INTO ${q}.quotes
+          (id, subscriber_id, plan_snapshot_json, tenant_id, plan_id, monthly_amount)
+         VALUES ($1, $2, $3::jsonb, $4, 'synthetic-plan', 0)`,
         [
           quoteBySubscriber,
           linked.subscriberId,
           JSON.stringify({ phonePrimary: 'remove', code: 'keep' }),
+          fixture.tenantId,
         ],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.quotes (id, expediente_id, plan_snapshot_json)
-         VALUES ($1, $2, $3::jsonb)`,
-        [quoteByExpediente, fixture.expedienteId, JSON.stringify({ nested: { email: 'remove' } })],
+        `INSERT INTO ${q}.quotes
+          (id, expediente_id, plan_snapshot_json, tenant_id, plan_id, monthly_amount)
+         VALUES ($1, $2, $3::jsonb, $4, 'synthetic-plan', 0)`,
+        [
+          quoteByExpediente,
+          fixture.expedienteId,
+          JSON.stringify({ nested: { email: 'remove' } }),
+          fixture.tenantId,
+        ],
       );
 
       const result = await anonymizeTitularInTenantSchema(
@@ -1440,83 +1319,10 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
     const crmTaskId = randomUUID();
     const mediaId = randomUUID();
     try {
-      await dataSource.query(`
-        CREATE TABLE ${q}.visit_requests (
-          id uuid PRIMARY KEY, expediente_id uuid, subscriber_id uuid,
-          title varchar(160) NOT NULL, description text, origin_label varchar(160),
-          address text, municipality text, sector text, latitude numeric, longitude numeric,
-          cancel_reason varchar(200), additional_reason text, origin_context text,
-          origin_ref varchar(160), schedule_event_id uuid, work_order_id uuid,
-          execution_order_id uuid
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.schedule_events (
-          id uuid PRIMARY KEY, expediente_id uuid, subscriber_id uuid,
-          title varchar(160) NOT NULL, description text, address text,
-          municipality text, sector text, latitude numeric, longitude numeric,
-          failure_reason text, review_notes text, work_order_id uuid, execution_order_id uuid
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.work_orders (
-          id uuid PRIMARY KEY, source_context text, source_ref varchar(160),
-          scheduled_event_id uuid, summary varchar(200) NOT NULL, notes text
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.work_order_tasks (
-          id uuid PRIMARY KEY, work_order_id uuid, title varchar(160) NOT NULL,
-          description text, result_notes text
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.schedule_reschedule_logs (
-          id uuid PRIMARY KEY, schedule_event_id uuid, notes text, reason varchar(160)
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.execution_orders (
-          id uuid PRIMARY KEY, visit_request_id uuid, schedule_event_id uuid,
-          subscriber_id varchar(160), customer_display_label varchar(200) NOT NULL,
-          work_summary varchar(200) NOT NULL, service_address text, municipality text,
-          sector text, work_instructions text, close_notes text, template_label text,
-          template_requirements_snapshot jsonb NOT NULL, task_id uuid
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.execution_order_activities (
-          id uuid PRIMARY KEY, execution_order_id uuid, description text NOT NULL
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.execution_order_evidence (
-          id uuid PRIMARY KEY, execution_order_id uuid, notes text,
-          file_name varchar(200), media_asset_id uuid
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.execution_order_status_transitions (
-          id uuid PRIMARY KEY, execution_order_id uuid, reason varchar(255), changed_by uuid
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.operational_tasks (
-          id uuid PRIMARY KEY, origin_context text, origin_ref_id varchar(160),
-          recipient_type varchar(30), recipient_ref_id varchar(160), schedule_event_id uuid,
-          work_order_id uuid, title varchar(200) NOT NULL, description text, recipient_label varchar(160)
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.task_timeline_events (
-          id uuid PRIMARY KEY, task_id uuid, payload jsonb NOT NULL
-        )
-      `);
-      await dataSource.query(`
-        CREATE TABLE ${q}.task_assignment_history (
-          id uuid PRIMARY KEY, task_id uuid, reason varchar(500)
-        )
-      `);
+      // Tablas de la cadena (WFM 0xx, tasks 045 y órdenes de ejecución): se completan sus NOT NULL
+      // con valores neutros que no participan en el alcance de la supresión.
+      const tenantId = fixture.tenantId;
+      const actorId = fixture.actorId;
       await dataSource.query(
         `INSERT INTO public.media_assets
           (id, tenant_schema, usage, original_filename, mime_type, ext, size_bytes, object_key)
@@ -1528,10 +1334,12 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
         `INSERT INTO ${q}.visit_requests
           (id, expediente_id, subscriber_id, title, description, origin_label, address,
            municipality, sector, latitude, longitude, cancel_reason, additional_reason,
-           origin_context, origin_ref, schedule_event_id, work_order_id, execution_order_id)
+           origin_context, origin_ref, schedule_event_id, work_order_id, execution_order_id,
+           tenant_id, status, work_type, priority, requested_by_user_id)
          VALUES ($1, $2, $3, 'fixture-visit', 'fixture-description', 'fixture-origin',
            'fixture-address', 'fixture-city', 'fixture-sector', 1, 2, 'fixture-cancel',
-           'fixture-additional', 'TASKS', $4, $5, $6, $7)`,
+           'fixture-additional', 'TASKS', $4, $5, $6, $7,
+           $8, 'SCHEDULED', 'INSTALLATION', 'NORMAL', $9)`,
         [
           visitId,
           fixture.expedienteId,
@@ -1540,40 +1348,58 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           scheduleId,
           workOrderId,
           executionOrderId,
+          tenantId,
+          actorId,
         ],
       );
       await dataSource.query(
         `INSERT INTO ${q}.schedule_events
           (id, expediente_id, subscriber_id, title, description, address, municipality,
-           sector, latitude, longitude, failure_reason, review_notes, work_order_id, execution_order_id)
+           sector, latitude, longitude, failure_reason, review_notes, work_order_id, execution_order_id,
+           tenant_id, type, scheduled_start_at, scheduled_end_at, assigned_user_id, created_by)
          VALUES ($1, $2, $3, 'fixture-event', 'fixture-description', 'fixture-address',
-           'fixture-city', 'fixture-sector', 1, 2, 'fixture-failure', 'fixture-review', $4, $5)`,
-        [scheduleId, fixture.expedienteId, linked.subscriberId, workOrderId, executionOrderId],
+           'fixture-city', 'fixture-sector', 1, 2, 'fixture-failure', 'fixture-review', $4, $5,
+           $6, 'INSTALLATION', now(), now() + interval '1 hour', $7, $7)`,
+        [
+          scheduleId,
+          fixture.expedienteId,
+          linked.subscriberId,
+          workOrderId,
+          executionOrderId,
+          tenantId,
+          actorId,
+        ],
       );
       await dataSource.query(
         `INSERT INTO ${q}.work_orders
-          (id, source_context, source_ref, scheduled_event_id, summary, notes)
-         VALUES ($1, 'CRM', $2, $3, 'fixture-summary', 'fixture-notes')`,
-        [workOrderId, fixture.expedienteId, scheduleId],
+          (id, source_context, source_ref, scheduled_event_id, summary, notes,
+           tenant_id, code, type, assigned_user_id, created_by)
+         VALUES ($1, 'CRM', $2, $3, 'fixture-summary', 'fixture-notes',
+           $4, 'WO-FIXTURE-1', 'INSTALLATION', $5, $5)`,
+        [workOrderId, fixture.expedienteId, scheduleId, tenantId, actorId],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.work_order_tasks (id, work_order_id, title, description, result_notes)
-         VALUES ($1, $2, 'fixture-task', 'fixture-description', 'fixture-result')`,
-        [workOrderTaskId, workOrderId],
+        `INSERT INTO ${q}.work_order_tasks
+          (id, work_order_id, title, description, result_notes, tenant_id)
+         VALUES ($1, $2, 'fixture-task', 'fixture-description', 'fixture-result', $3)`,
+        [workOrderTaskId, workOrderId, tenantId],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.schedule_reschedule_logs (id, schedule_event_id, notes, reason)
-         VALUES ($1, $2, 'fixture-notes', 'OPERATIONAL_REASON')`,
-        [randomUUID(), scheduleId],
+        `INSERT INTO ${q}.schedule_reschedule_logs
+          (id, schedule_event_id, notes, reason, tenant_id, from_start_at, from_end_at,
+           to_start_at, to_end_at, changed_by)
+         VALUES ($1, $2, 'fixture-notes', 'OPERATIONAL_REASON', $3, now(), now(), now(), now(), $4)`,
+        [randomUUID(), scheduleId, tenantId, actorId],
       );
       await dataSource.query(
         `INSERT INTO ${q}.execution_orders
           (id, visit_request_id, schedule_event_id, subscriber_id, customer_display_label,
            work_summary, service_address, municipality, sector, work_instructions, close_notes,
-           template_label, template_requirements_snapshot, task_id)
+           template_label, template_requirements_snapshot, task_id,
+           tenant_id, execution_order_number, origin_context, work_type)
          VALUES ($1, $2, $3, $4, 'fixture-customer', 'fixture-work', 'fixture-address',
            'fixture-city', 'fixture-sector', 'fixture-instructions', 'fixture-close',
-           'fixture-template', $5::jsonb, $6)`,
+           'fixture-template', $5::jsonb, $6, $7, 'OT-FIXTURE-1', 'WFM', 'INSTALLATION')`,
         [
           executionOrderId,
           visitId,
@@ -1581,33 +1407,41 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           linked.subscriberId,
           JSON.stringify({ privateNote: 'remove' }),
           operationalTaskId,
+          tenantId,
         ],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.execution_order_activities (id, execution_order_id, description)
-         VALUES ($1, $2, 'fixture-activity')`,
-        [randomUUID(), executionOrderId],
+        `INSERT INTO ${q}.execution_order_activities
+          (id, execution_order_id, description, tenant_id, activity_type)
+         VALUES ($1, $2, 'fixture-activity', $3, 'NOTE')`,
+        [randomUUID(), executionOrderId, tenantId],
       );
       await dataSource.query(
         `INSERT INTO ${q}.execution_order_evidence
-          (id, execution_order_id, notes, file_name, media_asset_id)
-         VALUES ($1, $2, 'fixture-evidence-notes', 'fixture-file', $3)`,
-        [randomUUID(), executionOrderId, mediaId],
+          (id, execution_order_id, notes, file_name, media_asset_id, tenant_id, evidence_type)
+         VALUES ($1, $2, 'fixture-evidence-notes', 'fixture-file', $3, $4, 'PHOTO')`,
+        [randomUUID(), executionOrderId, mediaId, tenantId],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.execution_order_status_transitions (id, execution_order_id, reason)
-         VALUES ($1, $2, 'fixture-transition-reason')`,
-        [randomUUID(), executionOrderId],
+        `INSERT INTO ${q}.execution_order_status_transitions
+          (id, execution_order_id, reason, tenant_id, from_status, to_status, changed_at)
+         VALUES ($1, $2, 'fixture-transition-reason', $3, 'CREATED', 'ASSIGNED', now())`,
+        [randomUUID(), executionOrderId, tenantId],
       );
+      // task_origin_context no tiene TASKS (045) y recipient_type es NOT NULL: la tarea no CRM
+      // queda como MANUAL hacia un área interna, sin referencia al titular.
       await dataSource.query(
         `INSERT INTO ${q}.operational_tasks
           (id, origin_context, origin_ref_id, recipient_type, recipient_ref_id,
-           schedule_event_id, work_order_id, title, description, recipient_label)
+           schedule_event_id, work_order_id, title, description, recipient_label,
+           tenant_id, task_number, type, responsible_type, responsible_ref_id, execution_mode)
          VALUES
-          ($1, 'TASKS', 'fixture-origin', NULL, NULL, NULL, NULL,
-           'fixture-task-title', 'fixture-task-description', 'fixture-recipient'),
+          ($1, 'MANUAL', 'fixture-origin', 'INTERNAL_AREA', NULL, NULL, NULL,
+           'fixture-task-title', 'fixture-task-description', 'fixture-recipient',
+           $7, 'TSK-FIXTURE-1', 'FIELD_VISIT', 'USER', $8, 'FIELD_SERVICE'),
           ($2, 'CRM', $3, 'SUBSCRIBER', $4, $5, $6,
-           'fixture-crm-task', 'fixture-task-description', 'fixture-recipient')`,
+           'fixture-crm-task', 'fixture-task-description', 'fixture-recipient',
+           $7, 'TSK-FIXTURE-2', 'FIELD_VISIT', 'USER', $8, 'FIELD_SERVICE')`,
         [
           operationalTaskId,
           crmTaskId,
@@ -1615,17 +1449,26 @@ describeWithDb('Anonymize titular — PostgreSQL real con schema sintético', ()
           linked.subscriberId,
           scheduleId,
           workOrderId,
+          tenantId,
+          actorId,
         ],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.task_timeline_events (id, task_id, payload)
-         VALUES ($1, $2, $3::jsonb)`,
-        [randomUUID(), operationalTaskId, JSON.stringify({ description: 'fixture-timeline' })],
+        `INSERT INTO ${q}.task_timeline_events (id, task_id, payload, tenant_id, event_type)
+         VALUES ($1, $2, $3::jsonb, $4, 'CREATED')`,
+        [
+          randomUUID(),
+          operationalTaskId,
+          JSON.stringify({ description: 'fixture-timeline' }),
+          tenantId,
+        ],
       );
       await dataSource.query(
-        `INSERT INTO ${q}.task_assignment_history (id, task_id, reason)
-         VALUES ($1, $2, 'fixture-assignment-reason')`,
-        [randomUUID(), operationalTaskId],
+        `INSERT INTO ${q}.task_assignment_history
+          (id, task_id, reason, tenant_id, previous_responsible_type, previous_responsible_ref_id,
+           new_responsible_type, new_responsible_ref_id)
+         VALUES ($1, $2, 'fixture-assignment-reason', $3, 'USER', $4, 'USER', $4)`,
+        [randomUUID(), operationalTaskId, tenantId, actorId],
       );
 
       const result = await anonymizeTitularInTenantSchema(

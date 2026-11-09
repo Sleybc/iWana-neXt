@@ -20,7 +20,10 @@ import {
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import type { CrmSubscriberReadPort } from '../../crm/ports/crm-subscriber-read.port';
 import { TicketsService } from '../services/tickets.service';
-import { AddSubscriberSupportLookupIndexes1590000000000 } from '../../../../../../packages/database/src/migrations/tenant/159_subscriber_support_lookup_indexes';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -115,55 +118,31 @@ describeWithDb('Assurance tickets por suscriptor — PostgreSQL real', () => {
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Assurance soporte sintético',
+        `assurance-support-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'assurance-support@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones tenant vigente (incluye los índices de 159),
+    // no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA ${quotedSchema}`);
-
-    const queryRunner = dataSource.createQueryRunner();
-    await queryRunner.connect();
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `assurance-support-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
     try {
-      await queryRunner.query(`SET search_path TO ${quotedSchema}`);
-      await queryRunner.query(`
-        CREATE TABLE support_tickets (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          ticket_number varchar(30) NOT NULL UNIQUE,
-          type text NOT NULL,
-          status text NOT NULL,
-          priority text NOT NULL,
-          source text NOT NULL,
-          subject varchar(200) NOT NULL,
-          description text,
-          requester_type text NOT NULL,
-          requester_ref_id varchar(160),
-          subject_type text,
-          subject_ref_id varchar(160),
-          assigned_user_id uuid,
-          queue_name text,
-          sla_policy_id uuid,
-          sla_first_response_at timestamptz,
-          sla_resolve_by_at timestamptz,
-          first_responded_at timestamptz,
-          resolved_at timestamptz,
-          closed_at timestamptz,
-          sla_breach_status text NOT NULL,
-          field_decision text NOT NULL,
-          work_order_id uuid,
-          created_by_user_id uuid NOT NULL,
-          created_at timestamptz NOT NULL,
-          updated_at timestamptz NOT NULL
-        )
-      `);
-      await queryRunner.query(`
-        CREATE TABLE visit_requests (
-          tenant_id uuid,
-          subscriber_id uuid,
-          expediente_id uuid,
-          deleted_at timestamptz
-        )
-      `);
-      await queryRunner.query('CREATE TABLE schedule_events (tenant_id uuid, subscriber_id uuid)');
-      await new AddSubscriberSupportLookupIndexes1590000000000().up(queryRunner);
+      await applyTenantMigrationsInOrder(tenantDataSource);
     } finally {
-      await queryRunner.release();
+      await tenantDataSource.destroy();
     }
 
     service = new TicketsService(
@@ -180,6 +159,7 @@ describeWithDb('Assurance tickets por suscriptor — PostgreSQL real', () => {
     if (dataSource?.isInitialized) {
       try {
         await dataSource.query(`DROP SCHEMA IF EXISTS ${quotedSchema} CASCADE`);
+        await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       } finally {
         await dataSource.destroy();
       }

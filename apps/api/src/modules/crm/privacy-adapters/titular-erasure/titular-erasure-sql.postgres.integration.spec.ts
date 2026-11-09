@@ -17,6 +17,8 @@ import {
 import { CrmTitularErasureParticipant } from './crm-titular-erasure.participant';
 
 const schema = `tenant_privacy_versions_${randomBytes(4).toString('hex')}`;
+const schemaTenantId = randomUUID();
+const fixtureActorId = randomUUID();
 const databaseAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = databaseAvailable ? describe : describe.skip;
 const safeDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
@@ -37,6 +39,69 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
   let dataSource: DataSource | undefined;
   let runner: QueryRunner | undefined;
 
+  // Columnas obligatorias del esquema migrado: persona natural con documento y estrato
+  // (chk_subscriber_person_fields), address, customer_segment, vat_treatment y created_by.
+  async function insertSubscriberRow(
+    target: QueryRunner,
+    input: {
+      id: string;
+      firstName: string;
+      updatedAt: Date;
+      anonymizedRequestId?: string | null;
+    },
+  ): Promise<void> {
+    const anonymized = input.anonymizedRequestId != null;
+    await target.query(
+      `INSERT INTO subscribers
+        (id, tenant_id, person_type, customer_segment, document_type, document_number_encrypted,
+         first_name, last_name, stratum, vat_treatment, address, created_by, anonymized_at,
+         anonymized_request_id, updated_at)
+       VALUES ($1, $2, 'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado', $3, 'Sintético', 3,
+               'STANDARD', 'Dirección sintética', $4,
+               CASE WHEN $5::boolean THEN now() ELSE NULL END, $6, $7)`,
+      [
+        input.id,
+        schemaTenantId,
+        input.firstName,
+        fixtureActorId,
+        anonymized,
+        input.anonymizedRequestId ?? null,
+        input.updatedAt,
+      ],
+    );
+  }
+
+  // contracts exige tenant_id, subscriber_id, plan_id y plan_snapshot_json (NOT NULL).
+  async function insertContractRow(
+    target: QueryRunner,
+    input: {
+      id: string;
+      subscriberId: string;
+      alias: string;
+      updatedAt: Date;
+      installationNotes?: string | null;
+      fiscalName?: string | null;
+      planSnapshotJson?: string;
+    },
+  ): Promise<void> {
+    await target.query(
+      `INSERT INTO contracts
+        (id, tenant_id, subscriber_id, plan_id, alias, installation_notes, fiscal_name,
+         plan_snapshot_json, updated_at)
+       VALUES ($1, $2, $3, 'fixture-plan', $4, $5, $6, $7::jsonb, $8)`,
+      [
+        input.id,
+        schemaTenantId,
+        input.subscriberId,
+        input.alias,
+        input.installationNotes ?? null,
+        input.fiscalName ?? null,
+        input.planSnapshotJson ?? '{}',
+        input.updatedAt,
+      ],
+    );
+  }
+
   beforeAll(async () => {
     const credentials = resolveMigrationDbCredentials();
     dataSource = new DataSource({
@@ -52,36 +117,29 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
       logging: false,
     });
     await dataSource.initialize();
-    const bootstrap = dataSource.createQueryRunner();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, 'Privacy versions synthetic fixture', $2, $3, 'ACTIVE', 'privacy-versions@example.invalid')`,
+      [schemaTenantId, `privacy-versions-${schema.slice(-8)}`, schema],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant: contracts y subscribers con sus
+    // columnas, constraints y triggers de supresión reales, no un DDL escrito a mano.
+    await dataSource.query(`CREATE SCHEMA "${schema}"`);
+    const versionsDataSource = createTenantDataSource(
+      dataSource,
+      schema,
+      `privacy-versions-${schema}`,
+    );
+    await versionsDataSource.initialize();
     try {
-      await bootstrap.query(`CREATE SCHEMA "${schema}"`);
-      await bootstrap.query(`SET search_path TO "${schema}"`);
-      await bootstrap.query(`
-        CREATE TABLE contracts (
-          id uuid PRIMARY KEY,
-          subscriber_id uuid,
-          alias text NOT NULL,
-          installation_notes text,
-          fiscal_name text,
-          plan_snapshot_json jsonb,
-          updated_at timestamptz NOT NULL
-        )
-      `);
-      await bootstrap.query(`
-        CREATE TABLE subscribers (
-          id uuid PRIMARY KEY,
-          first_name text NOT NULL,
-          anonymized_at timestamptz,
-          anonymized_request_id uuid,
-          updated_at timestamptz NOT NULL
-        )
-      `);
+      await applyTenantMigrationsInOrder(versionsDataSource);
     } finally {
-      await bootstrap.release();
+      await versionsDataSource.destroy();
     }
     runner = dataSource.createQueryRunner();
     await runner.query(`SET search_path TO "${schema}"`);
-  });
+  }, 180_000);
 
   afterAll(async () => {
     try {
@@ -91,6 +149,7 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
         const cleanup = dataSource.createQueryRunner();
         try {
           await cleanup.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+          await cleanup.query('DELETE FROM public.tenants WHERE id = $1', [schemaTenantId]);
         } finally {
           await cleanup.release();
           await dataSource.destroy();
@@ -105,15 +164,17 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
     const subscriberId = randomUUID();
     const requestId = randomUUID();
     const futureVersion = new Date('2099-01-01T00:00:00.000Z');
-    await runner.query(
-      `INSERT INTO contracts (id, alias, updated_at) VALUES ($1, 'Alias previo', $2)`,
-      [contractId, futureVersion],
-    );
-    await runner.query(
-      `INSERT INTO subscribers (id, first_name, anonymized_at, anonymized_request_id, updated_at)
-       VALUES ($1, 'Anonimizado', NULL, NULL, $2)`,
-      [subscriberId, futureVersion],
-    );
+    await insertSubscriberRow(runner, {
+      id: subscriberId,
+      firstName: 'Anonimizado',
+      updatedAt: futureVersion,
+    });
+    await insertContractRow(runner, {
+      id: contractId,
+      subscriberId,
+      alias: 'Alias previo',
+      updatedAt: futureVersion,
+    });
     const columns = await readTenantColumns(runner);
     const contractRules: FieldRule[] = [{ column: 'alias', kind: 'marker' }];
     const contractResult = await anonymizeConfiguredTable(
@@ -166,15 +227,18 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
     const subscriberId = randomUUID();
     const requestId = randomUUID();
     const version = new Date('2099-01-01T00:00:00.000Z');
-    await runner.query(
-      `INSERT INTO contracts (id, alias, updated_at) VALUES ($1, 'ANONIMIZADO', $2)`,
-      [contractId, version],
-    );
-    await runner.query(
-      `INSERT INTO subscribers (id, first_name, anonymized_at, anonymized_request_id, updated_at)
-       VALUES ($1, 'Anonimizado', now(), $2, $3)`,
-      [subscriberId, requestId, version],
-    );
+    await insertSubscriberRow(runner, {
+      id: subscriberId,
+      firstName: 'Anonimizado',
+      updatedAt: version,
+      anonymizedRequestId: requestId,
+    });
+    await insertContractRow(runner, {
+      id: contractId,
+      subscriberId,
+      alias: 'ANONIMIZADO',
+      updatedAt: version,
+    });
     const columns = await readTenantColumns(runner);
     const contractResult = await anonymizeConfiguredTable(
       runner,
@@ -211,38 +275,47 @@ describeWithDb('Supresión CRM — versiones PostgreSQL reales', () => {
     const subscriberId = randomUUID();
     const requestId = randomUUID();
     const futureVersion = new Date('2099-01-01T00:00:00.000Z');
-    await runner.query(
-      `INSERT INTO subscribers (id, first_name, updated_at)
-       VALUES ($1, 'Nombre previo', $2)`,
-      [subscriberId, futureVersion],
-    );
-    await runner.query(
-      `INSERT INTO contracts
-         (id, subscriber_id, alias, installation_notes, fiscal_name, plan_snapshot_json, updated_at)
-       VALUES ($1, $2, 'Alias previo', 'Nota previa', 'Nombre fiscal previo', $3::jsonb, $4)`,
-      [
-        contractId,
-        subscriberId,
-        JSON.stringify({ plan: { name: 'dato personal sintético', code: 'keep' } }),
-        futureVersion,
-      ],
-    );
+    await insertSubscriberRow(runner, {
+      id: subscriberId,
+      firstName: 'Nombre previo',
+      updatedAt: futureVersion,
+    });
+    await insertContractRow(runner, {
+      id: contractId,
+      subscriberId,
+      alias: 'Alias previo',
+      installationNotes: 'Nota previa',
+      fiscalName: 'Nombre fiscal previo',
+      planSnapshotJson: JSON.stringify({ plan: { name: 'dato personal sintético', code: 'keep' } }),
+      updatedAt: futureVersion,
+    });
 
     const participant = new CrmTitularErasureParticipant(
       new ConfigService({ PII_HASH_KEY: Buffer.alloc(32, 1).toString('hex') }),
     );
-    await participant.apply(
-      {
-        partyId: null,
-        subscriberIds: [subscriberId],
-        expedienteIds: [],
-        userIds: [],
-        requestId,
-        cryptoKeys: KEYS,
-      },
-      runner,
-      'apply',
-    );
+    // Precondición del llamador real: el CLI anonymize-titular y CrmPersonalDataErasureAdapter
+    // abren la transacción y activan iwana.titular_erasure antes de invocar al participante;
+    // sin ella, el trigger 169 bloquea la segunda escritura sobre el titular ya marcado.
+    await runner.startTransaction();
+    try {
+      await runner.query(`SELECT set_config('iwana.titular_erasure', 'on', true)`);
+      await participant.apply(
+        {
+          partyId: null,
+          subscriberIds: [subscriberId],
+          expedienteIds: [],
+          userIds: [],
+          requestId,
+          cryptoKeys: KEYS,
+        },
+        runner,
+        'apply',
+      );
+      await runner.commitTransaction();
+    } catch (error) {
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      throw error;
+    }
 
     const contract = (await runner.query(
       `SELECT updated_at, alias, installation_notes, fiscal_name, plan_snapshot_json

@@ -20,10 +20,10 @@ import {
   WfmWorkType,
   ExecutionOrderStatus,
 } from '@iwana/shared';
-import { CreateNetworkCatalog1600000000000 } from '../../../../../packages/database/src/migrations/tenant/160_network_catalog';
-import { CreateNetworkProvisioning1610000000000 } from '../../../../../packages/database/src/migrations/tenant/161_network_provisioning';
-import { CreateRouterInterfacesAndIpv4Addresses1650000000000 } from '../../../../../packages/database/src/migrations/tenant/165_router_interfaces_and_ipv4_addresses';
-import { EnableBtreeGist1784419216000 } from '../../../../../packages/database/src/migrations/public/028_enable_btree_gist';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../packages/database/src/migrations/tenant/runner';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IpamService } from './ipam.service';
 import { ManualRouterProvisioningAdapter } from './adapters/manual-router-provisioning.adapter';
@@ -114,7 +114,9 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
         );
         await qr.query('DELETE FROM ip_assignments WHERE tenant_id = $1', [tenantId]);
         await qr.query('DELETE FROM service_provisionings WHERE tenant_id = $1', [tenantId]);
-        await qr.query('DELETE FROM audit_logs WHERE tenant_id = $1', [tenantId]);
+        // trg_audit_logs_immutable de la cadena rechaza DELETE fila a fila; el esquema es
+        // desechable y propio de esta suite, así que se vacía con TRUNCATE entre pruebas.
+        await qr.query('TRUNCATE audit_logs');
       }),
     );
   }
@@ -228,42 +230,32 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
       extra: { ...dataSourceOptions.extra, max: 4, min: 1 },
     });
     await dataSource.initialize();
-    const bootstrap = dataSource.createQueryRunner();
-    await bootstrap.connect();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'MOD13 B2 audit sintético',
+        `mod13-b2-audit-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'mod13-b2-audit@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena completa de migraciones del tenant (incluye audit_logs),
+    // no un subconjunto de migraciones ni un DDL escrito a mano.
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `mod13-b2-audit-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
     try {
-      await new EnableBtreeGist1784419216000().up(bootstrap);
-      await bootstrap.query(`CREATE SCHEMA "${schemaName}"`);
+      await applyTenantMigrationsInOrder(tenantDataSource);
     } finally {
-      await bootstrap.release();
+      await tenantDataSource.destroy();
     }
-
-    const migrationRunner = dataSource.createQueryRunner();
-    await migrationRunner.connect();
-    await migrationRunner.query(`SET search_path TO "${schemaName}"`);
-    try {
-      await new CreateNetworkCatalog1600000000000().up(migrationRunner);
-      await new CreateNetworkProvisioning1610000000000().up(migrationRunner);
-      await new CreateRouterInterfacesAndIpv4Addresses1650000000000().up(migrationRunner);
-    } finally {
-      await migrationRunner.release();
-    }
-
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".audit_logs (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        user_id uuid NULL,
-        action varchar(50) NOT NULL,
-        entity_type varchar(100) NOT NULL,
-        entity_id varchar(100) NOT NULL,
-        old_value jsonb NULL,
-        new_value jsonb NULL,
-        ip_address varchar(45) NULL,
-        user_agent varchar(512) NULL,
-        request_id varchar(100) NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
 
     await run(() =>
       runInTenantSchema(dataSource, schemaName, async (qr) => {
@@ -300,11 +292,12 @@ describeWithDb('MOD13 B2: auditoría y rollback de provisioning — PostgreSQL r
     transactionalAuditService = new AuditService(dataSource, {
       log: jest.fn().mockResolvedValue(undefined),
     } as unknown as PlatformAuditService);
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });

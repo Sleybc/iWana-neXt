@@ -35,6 +35,10 @@ import { MailerService } from '../mailer/mailer.service';
 import { hashEmail } from '../../common/crypto/hash-email.util';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 import type Redis from 'ioredis';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../packages/database/src/migrations/tenant/runner';
 
 // otplib@13 arrastra @scure/base (ESM-only) que Jest-CJS no puede cargar.
 // El mock es solo de carga: TOTP no interviene en login/changePassword
@@ -145,6 +149,7 @@ describeWithDb('AuthService bloqueo por intentos (PostgreSQL real)', () => {
     const emailHash = hashEmail(email, Buffer.from(TEST_PII_HASH_KEY_HEX, 'hex'));
     const passwordHash = await bcrypt.hash(password, 4);
 
+    // chk_users_role_tenant_domain solo admite roles de dominio tenant (ADMIN, NOC, ...).
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
       await qr.query(
         `INSERT INTO users (
@@ -152,7 +157,7 @@ describeWithDb('AuthService bloqueo por intentos (PostgreSQL real)', () => {
            mfa_enabled, mfa_required, is_operational_resource,
            password_reset_required, failed_login_attempts, locked_until,
            email_verified, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, 'tenant_admin', 'ACTIVE', $5,
+         ) VALUES ($1, $2, $3, $4, 'ADMIN', 'ACTIVE', $5,
                    false, false, false, false, 0, NULL, false, now(), now())`,
         [id, email, emailHash, passwordHash, tenantId],
       );
@@ -239,77 +244,41 @@ describeWithDb('AuthService bloqueo por intentos (PostgreSQL real)', () => {
       extra: { ...(dataSourceOptions.extra ?? {}), max: 15, min: 1 },
     });
     await dataSource.initialize();
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Auth lockout sintético',
+        `auth-lockout-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'auth-lockout@example.invalid',
+      ],
+    );
+    // El esquema lo crea la cadena de migraciones del tenant: users, refresh_tokens y
+    // audit_logs con sus columnas, constraints y triggers reales, no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA ${qSchema()}`);
-    await dataSource.query(`
-      CREATE TABLE ${qSchema()}.users (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        email varchar(255) NOT NULL UNIQUE,
-        email_hmac varchar(64) NOT NULL UNIQUE,
-        password_hash varchar(60) NOT NULL,
-        role varchar(20) NOT NULL,
-        status varchar(30) NOT NULL,
-        tenant_id uuid NOT NULL,
-        mfa_enabled boolean NOT NULL DEFAULT false,
-        mfa_secret varchar(512),
-        mfa_required boolean NOT NULL DEFAULT false,
-        is_operational_resource boolean NOT NULL DEFAULT false,
-        password_reset_required boolean NOT NULL DEFAULT false,
-        password_reset_token varchar(512),
-        password_reset_expires_at timestamptz,
-        password_reset_token_expires_at timestamptz,
-        failed_login_attempts integer NOT NULL DEFAULT 0,
-        locked_until timestamptz,
-        last_login_at timestamptz,
-        email_verified boolean NOT NULL DEFAULT false,
-        email_verification_token varchar(512),
-        first_name varchar(100),
-        last_name varchar(100),
-        phone varchar(20),
-        job_title varchar(150),
-        document_type varchar(20),
-        document_number varchar(30),
-        avatar_url varchar(500),
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        deleted_at timestamptz
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qSchema()}.refresh_tokens (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id uuid NOT NULL,
-        token_hash varchar(64) NOT NULL UNIQUE,
-        family_id uuid NOT NULL,
-        expires_at timestamptz NOT NULL,
-        revoked_at timestamptz,
-        revoke_reason varchar(50),
-        ip_address varchar(45),
-        user_agent varchar(512),
-        created_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE ${qSchema()}.audit_logs (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id uuid NOT NULL,
-        user_id uuid,
-        action varchar(50) NOT NULL,
-        entity_type varchar(100) NOT NULL,
-        entity_id varchar(100) NOT NULL,
-        old_value jsonb,
-        new_value jsonb,
-        ip_address varchar(45),
-        user_agent varchar(512),
-        request_id varchar(100),
-        created_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `auth-lockout-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     authService = createAuthService();
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    if (dataSource?.isInitialized) {
+    if (!dataSource?.isInitialized) return;
+    try {
       await dataSource.query(`DROP SCHEMA IF EXISTS ${qSchema()} CASCADE`);
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+    } finally {
       await dataSource.destroy();
     }
   });

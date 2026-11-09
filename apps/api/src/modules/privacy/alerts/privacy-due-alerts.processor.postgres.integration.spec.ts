@@ -1,8 +1,12 @@
 import { PqrRetentionReadAdapter } from '../../assurance/privacy/pqr-retention-read.adapter';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { resolveMigrationDbCredentials, TenantContext } from '@iwana/db';
 import { DataSource } from 'typeorm';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { MailerService } from '../../mailer/mailer.service';
 import { IPermissionHoldersReadPort } from '../../access-control/ports/permission-holders-read.port';
 import { AuditService } from '../../audit/audit.service';
@@ -21,11 +25,16 @@ const databaseAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'tru
 const describeWithDatabase = databaseAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 const schemaName = `tenant_privacy_alerts_${randomBytes(5).toString('hex')}`;
-const tenantId = '70000000-0000-4000-8000-000000000001';
-const tenantSlug = 'privacy-alerts-test';
+// Distinto por corrida: identifica la fila efímera de public.tenants que exige la migración 092.
+const tenantId = randomUUID();
+const tenantSlug = `privacy-alerts-${schemaName.slice(-10)}`;
 const desistRequestId = '70000000-0000-4000-8000-000000000002';
 const dueSoonRequestId = '70000000-0000-4000-8000-000000000003';
 const overdueTaskRequestId = '70000000-0000-4000-8000-000000000004';
+// La cadena exige titular, identidad verificada y contrato impugnado en SUPLANTACION (146).
+const impersonationPartyId = '70000000-0000-4000-8000-000000000006';
+const verifierId = '70000000-0000-4000-8000-000000000007';
+const disputedContractId = '70000000-0000-4000-8000-000000000008';
 const keyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 if (databaseAvailable && !allowedDatabaseName.test(process.env['DB_NAME'] ?? '')) {
@@ -72,54 +81,60 @@ describeWithDatabase('PrivacyDueAlertsProcessor — integración PostgreSQL con 
       extra: { max: 3, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
-    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_subject_requests (
-        id uuid PRIMARY KEY,
-        kind text NOT NULL,
-        status text NOT NULL,
-        desist_at date,
-        extended_until date,
-        closed_at timestamptz,
-        due_at date NOT NULL
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_subject_request_events (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id uuid NOT NULL REFERENCES "${schemaName}".data_subject_requests(id),
-        from_status text,
-        to_status text NOT NULL,
-        actor_id uuid,
-        reason text
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_subject_request_tasks (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id uuid NOT NULL REFERENCES "${schemaName}".data_subject_requests(id),
-        due_at date NOT NULL,
-        done_at timestamptz
-      )
-    `);
+    // El esquema lo instala la cadena de migraciones tenant (P3-5), no un DDL escrito a mano;
+    // la migración 092 exige el tenant canónico en public.tenants.
     await dataSource.query(
-      `INSERT INTO "${schemaName}".data_subject_requests (id, kind, status, desist_at, due_at)
-       VALUES ($1, 'CONSULTA', 'INCOMPLETA', '2026-04-01', '2026-04-10')`,
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Privacy alerts sintético',
+        tenantSlug,
+        schemaName,
+        'privacy-alerts@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(dataSource, schemaName, tenantSlug);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+    // Fixtures sobre el esquema migrado: requester_kind, "right" y received_at son NOT NULL;
+    // SUPLANTACION exige titular, identidad verificada y contrato impugnado, y la tarea, su kind.
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', 'sintetico-alertas', 'Titular sintético')`,
+      [impersonationPartyId],
+    );
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".data_subject_requests
+        (id, requester_kind, kind, "right", status, received_at, desist_at, due_at)
+       VALUES ($1, 'TITULAR', 'CONSULTA', 'CONOCER', 'INCOMPLETA', '2026-03-20T17:00:00Z',
+               '2026-04-01', '2026-04-10')`,
       [desistRequestId],
     );
     await dataSource.query(
-      `INSERT INTO "${schemaName}".data_subject_requests (id, kind, status, due_at)
-       VALUES ($1, 'RECLAMO', 'RADICADA', '2026-04-07')`,
+      `INSERT INTO "${schemaName}".data_subject_requests
+        (id, requester_kind, kind, "right", status, received_at, due_at)
+       VALUES ($1, 'TITULAR', 'RECLAMO', 'CONOCER', 'RADICADA', '2026-03-20T17:00:00Z', '2026-04-07')`,
       [dueSoonRequestId],
     );
     await dataSource.query(
-      `INSERT INTO "${schemaName}".data_subject_requests (id, kind, status, due_at)
-       VALUES ($1, 'SUPLANTACION', 'RADICADA', '2026-04-10')`,
-      [overdueTaskRequestId],
+      `INSERT INTO "${schemaName}".data_subject_requests
+        (id, party_id, requester_kind, kind, "right", status, received_at, due_at,
+         identity_verification_method, identity_verified_at, identity_verified_by,
+         disputed_contract_ids)
+       VALUES ($1, $2, 'TITULAR', 'SUPLANTACION', 'INCUMPLIMIENTO', 'RADICADA',
+               '2026-03-20T17:00:00Z', '2026-04-10', 'DOCUMENTO_PRESENCIAL',
+               '2026-03-20T17:00:00Z', $3, ARRAY[$4::uuid])`,
+      [overdueTaskRequestId, impersonationPartyId, verifierId, disputedContractId],
     );
     await dataSource.query(
-      `INSERT INTO "${schemaName}".data_subject_request_tasks (request_id, due_at)
-       VALUES ($1, '2026-03-31')`,
+      `INSERT INTO "${schemaName}".data_subject_request_tasks (request_id, kind, due_at)
+       VALUES ($1, 'SUSPENDER_COBRO_EXTERNO', '2026-03-31')`,
       [overdueTaskRequestId],
     );
 
@@ -145,12 +160,13 @@ describeWithDatabase('PrivacyDueAlertsProcessor — integración PostgreSQL con 
       configService as unknown as ConfigService,
       { recordNoRecipients: jest.fn() } as unknown as PrivacyDueAlertsMetrics,
     );
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       try {
         await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       } finally {
         await dataSource.destroy();
       }

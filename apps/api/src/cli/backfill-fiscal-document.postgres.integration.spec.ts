@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
 import { createFiscalDocumentCryptoFromKeys } from '../common/crypto/fiscal-document.util';
 import { runFiscalDocumentBackfillInTenantSchema } from './backfill-fiscal-document';
 
@@ -15,6 +19,7 @@ function quoteIdentifier(value: string): string {
 describeWithDb('Backfill fiscal — PostgreSQL real en schema sintético', () => {
   let dataSource: DataSource;
   let schemaName: string;
+  const tenantId = randomUUID();
   let crypto: ReturnType<typeof createFiscalDocumentCryptoFromKeys>;
 
   beforeAll(async () => {
@@ -40,17 +45,31 @@ describeWithDb('Backfill fiscal — PostgreSQL real en schema sintético', () =>
     });
     await dataSource.initialize();
     schemaName = `tenant_fiscal_backfill_${randomBytes(5).toString('hex')}`;
-    const quotedSchema = quoteIdentifier(schemaName);
-    await dataSource.query(`CREATE SCHEMA ${quotedSchema}`);
-    for (const table of ['contracts', 'expediente_records']) {
-      await dataSource.query(`
-        CREATE TABLE ${quotedSchema}.${quoteIdentifier(table)} (
-          id uuid PRIMARY KEY,
-          fiscal_document varchar(30),
-          fiscal_document_encrypted varchar(500),
-          fiscal_document_hmac varchar(64)
-        )
-      `);
+    // Esquema propio con la cadena tenant vigente: contracts y expediente_records conservan la
+    // columna fiscal_document en claro que este backfill vacía.
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Fiscal backfill synthetic',
+        `fiscal-backfill-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'fiscal-backfill@example.invalid',
+      ],
+    );
+    await dataSource.query(`CREATE SCHEMA ${quoteIdentifier(schemaName)}`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `fiscal-backfill-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
     }
     const activeKey = randomBytes(32);
     crypto = createFiscalDocumentCryptoFromKeys({
@@ -58,13 +77,14 @@ describeWithDb('Backfill fiscal — PostgreSQL real en schema sintético', () =>
       previousEncryptionKeys: null,
       hashKey: randomBytes(32),
     });
-  }, 30_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       if (schemaName) {
         await dataSource.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schemaName)} CASCADE`);
       }
+      await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
       await dataSource.destroy();
     }
   });
@@ -74,12 +94,16 @@ describeWithDb('Backfill fiscal — PostgreSQL real en schema sintético', () =>
     const contractId = randomUUID();
     const expedienteId = randomUUID();
     await dataSource.query(
-      `INSERT INTO ${schema}.contracts (id, fiscal_document) VALUES ($1, $2)`,
-      [contractId, 'synthetic-contract-fiscal'],
+      `INSERT INTO ${schema}.contracts
+         (id, tenant_id, subscriber_id, plan_id, plan_snapshot_json, fiscal_document)
+       VALUES ($1, $2, $3, 'synthetic-plan', '{}'::jsonb, $4)`,
+      [contractId, tenantId, randomUUID(), 'synthetic-contract-fiscal'],
     );
     await dataSource.query(
-      `INSERT INTO ${schema}.expediente_records (id, fiscal_document) VALUES ($1, $2)`,
-      [expedienteId, 'synthetic-expediente-fiscal'],
+      `INSERT INTO ${schema}.expediente_records
+         (id, tenant_id, full_name, created_by, fiscal_document)
+       VALUES ($1, $2, 'Prospecto sintético', $3, $4)`,
+      [expedienteId, tenantId, randomUUID(), 'synthetic-expediente-fiscal'],
     );
 
     const dryRun = await runFiscalDocumentBackfillInTenantSchema(

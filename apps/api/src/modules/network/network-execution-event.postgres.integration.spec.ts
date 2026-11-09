@@ -28,10 +28,10 @@ import {
   WfmWorkType,
   type NetworkExecutionEvent,
 } from '@iwana/shared';
-import { CreateNetworkCatalog1600000000000 } from '../../../../../packages/database/src/migrations/tenant/160_network_catalog';
-import { CreateNetworkProvisioning1610000000000 } from '../../../../../packages/database/src/migrations/tenant/161_network_provisioning';
-import { CreateRouterInterfacesAndIpv4Addresses1650000000000 } from '../../../../../packages/database/src/migrations/tenant/165_router_interfaces_and_ipv4_addresses';
-import { EnableBtreeGist1784419216000 } from '../../../../../packages/database/src/migrations/public/028_enable_btree_gist';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../packages/database/src/migrations/tenant/runner';
 import type { ExecutionSnapshot } from '../tasks/ports/execution-order-read.port';
 import { AuditService } from '../audit/audit.service';
 import { ExpedienteService } from '../crm/expedientes/expediente.service';
@@ -152,7 +152,9 @@ describeWithServices(
           await qr.query('DELETE FROM network_inbox_events WHERE tenant_id = $1', [tenantId]);
           await qr.query('DELETE FROM ip_assignments WHERE tenant_id = $1', [tenantId]);
           await qr.query('DELETE FROM service_provisionings WHERE tenant_id = $1', [tenantId]);
-          await qr.query('DELETE FROM audit_logs WHERE tenant_id = $1', [tenantId]);
+          // trg_audit_logs_immutable de la cadena rechaza DELETE fila a fila; el esquema es
+          // desechable y propio de esta suite, así que se vacía con TRUNCATE entre pruebas.
+          await qr.query('TRUNCATE audit_logs');
         }),
       );
     }
@@ -239,14 +241,30 @@ describeWithServices(
       await TenantContext.run(tenantContext, () =>
         runInTenantSchema(dataSource, schemaName, async (qr) => {
           const assetId = randomUUID();
+          // La cadena exige el ítem de inventario (FK fk_serialized_assets_item) y su categoría
+          // (fk_inventory_items_category_id); el préstamo exige installed_at.
+          const categoryCode = `IT-${randomUUID().slice(0, 8)}`;
+          const categories = (await qr.query(
+            `INSERT INTO inventory_categories (tenant_id, code, name, code_prefix)
+           VALUES ($1, $2, 'CPE de integración', 'CPE') RETURNING id`,
+            [tenantId, categoryCode],
+          )) as Array<{ id: string }>;
+          const items = (await qr.query(
+            `INSERT INTO inventory_items
+             (tenant_id, sku, name, category, tracking_mode, unit_of_measure, category_id)
+           VALUES ($1, $2, 'CPE de integración', 'CPE', 'SERIALIZED', 'UND', $3) RETURNING id`,
+            [tenantId, `SKU-${categoryCode}`, categories[0]?.id],
+          )) as Array<{ id: string }>;
           await qr.query(
-            `INSERT INTO serialized_assets (id, tenant_id, serial_number, subscriber_ref_id)
-           VALUES ($1, $2, $3, $4)`,
-            [assetId, tenantId, cpeSerialNumber, subscriberId],
+            `INSERT INTO serialized_assets
+             (id, tenant_id, inventory_item_id, serial_number, subscriber_ref_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+            [assetId, tenantId, items[0]?.id, cpeSerialNumber, subscriberId],
           );
           await qr.query(
-            `INSERT INTO asset_loan_assignments (id, tenant_id, serialized_asset_id, subscriber_ref_id)
-           VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO asset_loan_assignments
+             (id, tenant_id, serialized_asset_id, subscriber_ref_id, installed_at)
+           VALUES ($1, $2, $3, $4, NOW())`,
             [randomUUID(), tenantId, assetId, subscriberId],
           );
         }),
@@ -309,15 +327,35 @@ describeWithServices(
         extra: { ...dataSourceOptions.extra, max: 4, min: 1 },
       });
       await dataSource.initialize();
+      // La migración 092 exige un tenant canónico en public.tenants antes de migrar su esquema.
+      // Se registra en PROVISIONING y pasa a ACTIVE solo con el esquema completo: ningún proceso
+      // que recorra tenants ACTIVE debe ver un esquema a medio migrar.
+      await dataSource.query(
+        `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+         VALUES ($1, 'MOD13 B3 fixture', $2, $3, 'PROVISIONING', 'mod13-b3@example.invalid')`,
+        [tenantId, tenantSlug, schemaName],
+      );
+      // El esquema lo crea la cadena completa de migraciones del tenant (incluye audit_logs e
+      // inventario), no un subconjunto de migraciones ni un DDL escrito a mano.
+      await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+      const tenantDataSource = createTenantDataSource(
+        dataSource,
+        schemaName,
+        `mod13-b3-${tenantId.slice(0, 8)}`,
+      );
+      await tenantDataSource.initialize();
+      try {
+        await applyTenantMigrationsInOrder(tenantDataSource);
+      } finally {
+        await tenantDataSource.destroy();
+      }
+      await dataSource.query(`UPDATE public.tenants SET status = 'ACTIVE' WHERE id = $1`, [
+        tenantId,
+      ]);
       const setup = dataSource.createQueryRunner();
       await setup.connect();
       try {
-        await setup.query('CREATE SCHEMA ' + `"${schemaName}"`);
-        await new EnableBtreeGist1784419216000().up(setup);
         await setup.query(`SET search_path TO "${schemaName}"`);
-        await new CreateNetworkCatalog1600000000000().up(setup);
-        await new CreateNetworkProvisioning1610000000000().up(setup);
-        await new CreateRouterInterfacesAndIpv4Addresses1650000000000().up(setup);
         await setup.query(
           `INSERT INTO network_routers
            (id, tenant_id, name, management_host, supported_control_methods, created_by)
@@ -331,49 +369,6 @@ describeWithServices(
          VALUES ($1, $2, $3, 'Red B3', '10.77.0.0/24', '10.77.0.1', '10.77.0.10', '10.77.0.250',
                  'PCQ_ADDRESS_LIST', $4)`,
           [networkId, tenantId, routerId, actorId],
-        );
-        await setup.query(`
-        CREATE TABLE serialized_assets (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          serial_number varchar(120) NOT NULL,
-          subscriber_ref_id uuid NOT NULL,
-          contract_ref_id uuid NULL,
-          updated_at timestamptz NOT NULL DEFAULT NOW()
-        )
-      `);
-        await setup.query(`
-        CREATE TABLE asset_loan_assignments (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          serialized_asset_id uuid NOT NULL,
-          subscriber_ref_id uuid NOT NULL,
-          contract_ref_id uuid NULL,
-          removed_at timestamptz NULL,
-          updated_at timestamptz NOT NULL DEFAULT NOW()
-        )
-      `);
-        await setup.query(`
-        CREATE TABLE audit_logs (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          tenant_id uuid NOT NULL,
-          user_id uuid NULL,
-          action varchar(32) NOT NULL,
-          entity_type varchar(100) NOT NULL,
-          entity_id varchar(100) NOT NULL,
-          old_value jsonb NULL,
-          new_value jsonb NULL,
-          ip_address varchar(45) NULL,
-          user_agent varchar(512) NULL,
-          request_id varchar(100) NULL,
-          created_at timestamptz NOT NULL DEFAULT NOW()
-        )
-      `);
-        // El schema sintético se crea y se prepara antes de registrar su tenant de prueba como ACTIVE.
-        await setup.query(
-          `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
-         VALUES ($1, 'MOD13 B3 fixture', $2, $3, 'ACTIVE', 'mod13-b3@example.invalid')`,
-          [tenantId, tenantSlug, schemaName],
         );
       } finally {
         await setup.release();

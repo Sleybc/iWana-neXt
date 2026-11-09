@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { DataAuthorizationEntity } from '../entities/data-authorization.entity';
 import { PrivacyAuthorizationAdapter } from './privacy-authorization.adapter';
 
@@ -8,6 +12,7 @@ const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const allowedDatabaseName = /^(dbiw|test|iwana_it_[a-z0-9_]+)$/u;
 const schemaName = `tenant_privacy_authorization_${randomBytes(5).toString('hex')}`;
+const tenantId = randomUUID();
 const partyId = randomUUID();
 const actorId = randomUUID();
 
@@ -36,36 +41,46 @@ describeWithDb('PrivacyAuthorizationAdapter — idempotencia en PostgreSQL real'
       extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // El esquema lo instala la cadena de migraciones tenant (P3-5), no un DDL escrito a mano;
+    // la migración 092 exige el tenant canónico en public.tenants.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Privacy authorization sintético',
+        `privacy-authorization-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'privacy-authorization@example.invalid',
+      ],
+    );
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
-    await dataSource.query(`CREATE TABLE "${schemaName}".party (id uuid PRIMARY KEY)`);
-    await dataSource.query(`INSERT INTO "${schemaName}".party (id) VALUES ($1)`, [partyId]);
-    await dataSource.query(`
-      CREATE TABLE "${schemaName}".data_authorizations (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        party_id uuid NOT NULL REFERENCES "${schemaName}".party(id),
-        purpose text NOT NULL,
-        kind text NOT NULL,
-        granted boolean NOT NULL,
-        channel text NOT NULL,
-        evidence_media_id uuid,
-        legal_text_id uuid,
-        ip inet,
-        user_agent text,
-        captured_by uuid,
-        captured_at timestamptz NOT NULL DEFAULT now(),
-        source_ref text
-      )
-    `);
-    await dataSource.query(`
-      CREATE UNIQUE INDEX uq_data_authorizations_source_ref
-        ON "${schemaName}".data_authorizations (source_ref) WHERE source_ref IS NOT NULL
-    `);
-  });
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `privacy-authorization-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
+    await dataSource.query(
+      `INSERT INTO "${schemaName}".party (id, party_type, document_type, document_number, display_name)
+       VALUES ($1, 'NATURAL', 'CC', 'sintetico-autorizacion', 'Titular sintético')`,
+      [partyId],
+    );
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
-      await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-      await dataSource.destroy();
+      try {
+        await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
+      } finally {
+        await dataSource.destroy();
+      }
     }
   });
 

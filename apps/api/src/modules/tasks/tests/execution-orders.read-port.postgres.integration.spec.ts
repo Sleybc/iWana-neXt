@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { dataSourceOptions, TenantContext } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { ExecutionOrdersService } from '../services/execution-orders.service';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
@@ -11,6 +15,7 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
   let service: ExecutionOrdersService;
   let schemaName: string;
   const schemaNames: string[] = [];
+  const tenantIds: string[] = [];
   let tenantId: string;
   let secondTenantId: string;
 
@@ -22,41 +27,29 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
 
   const createSchema = async (tenant: string): Promise<string> => {
     const schema = `tenant_b5_${randomUUID().replace(/-/g, '')}`;
-    schemaNames.push(schema);
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenant,
+        'Execution order read port sintético',
+        `eo-read-port-${tenant.slice(0, 8)}`,
+        schema,
+        'eo-read-port@example.invalid',
+      ],
+    );
+    tenantIds.push(tenant);
+    // El esquema lo crea la cadena de migraciones tenant vigente, no un DDL escrito a mano.
     await dataSource.query(`CREATE SCHEMA "${schema}"`);
-    await dataSource.query(
-      `CREATE TYPE "${schema}".wfm_work_type AS ENUM ('INSTALLATION', 'SUPPORT', 'RETIREMENT')`,
-    );
-    await dataSource.query(
-      `CREATE TYPE "${schema}".execution_order_status AS ENUM (
-        'CREATED', 'ASSIGNED', 'EN_ROUTE', 'IN_PROGRESS', 'BLOCKED',
-        'COMPLETED', 'COMPLETED_WITH_OBSERVATIONS', 'NOT_EXECUTED', 'CANCELLED'
-      )`,
-    );
-    await dataSource.query(`
-      CREATE TABLE "${schema}".execution_orders (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        subscriber_id varchar(160),
-        assigned_technician_id uuid,
-        customer_display_label varchar(160),
-        work_type "${schema}".wfm_work_type NOT NULL,
-        status "${schema}".execution_order_status NOT NULL,
-        is_annulled boolean NOT NULL DEFAULT false
-      )
-    `);
-    await dataSource.query(`
-      CREATE TABLE "${schema}".execution_order_evidence (
-        id uuid PRIMARY KEY,
-        tenant_id uuid NOT NULL,
-        execution_order_id uuid NOT NULL,
-        evidence_type varchar(32) NOT NULL,
-        requirement_key varchar(160),
-        created_at timestamptz NOT NULL,
-        storage_key varchar(255),
-        private_metadata jsonb
-      )
-    `);
+    schemaNames.push(schema);
+    const tenantDataSource = createTenantDataSource(dataSource, schema, `eo-read-port-${schema}`);
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     return schema;
   };
 
@@ -70,18 +63,23 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
       isAnnulled?: boolean;
     },
   ): Promise<void> => {
+    const isAnnulled = values.isAnnulled ?? false;
+    // chk_execution_orders_annulled_cancelled: una OT anulada solo existe en estado CANCELLED.
+    // Columnas NOT NULL de la cadena (número, origen, etiqueta y resumen) con valores sintéticos.
     await dataSource.query(
       `INSERT INTO "${schema}".execution_orders
-        (id, tenant_id, subscriber_id, work_type, status, is_annulled)
-       VALUES ($1, $2, $3, $4::"${schema}".wfm_work_type,
-               $5::"${schema}".execution_order_status, $6)`,
+        (id, tenant_id, execution_order_number, origin_context, customer_display_label,
+         work_summary, subscriber_id, work_type, status, is_annulled)
+       VALUES ($1, $2, $3, 'MANUAL', 'Cliente sintético', 'Trabajo sintético', $4,
+               $5::"${schema}".wfm_work_type, $6::"${schema}".execution_order_status, $7)`,
       [
         randomUUID(),
         tenant,
+        `OT-${randomUUID()}`,
         values.subscriberId,
         values.workType ?? 'RETIREMENT',
-        values.status ?? 'CREATED',
-        values.isAnnulled ?? false,
+        values.status ?? (isAnnulled ? 'CANCELLED' : 'CREATED'),
+        isAnnulled,
       ],
     );
   };
@@ -99,13 +97,14 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
     tenantId = randomUUID();
     secondTenantId = randomUUID();
     schemaName = await createSchema(tenantId);
-  });
+  }, 180_000);
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
       for (const schema of schemaNames) {
         await dataSource.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       }
+      await dataSource.query('DELETE FROM public.tenants WHERE id = ANY($1::uuid[])', [tenantIds]);
       await dataSource.destroy();
     }
   });
@@ -176,10 +175,10 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
     const technicianId = randomUUID();
     await dataSource.query(
       `INSERT INTO "${schemaName}".execution_orders
-        (id, tenant_id, assigned_technician_id, customer_display_label,
-         work_type, status, is_annulled)
-       VALUES ($1, $2, $3, $4, 'INSTALLATION', 'IN_PROGRESS', false)`,
-      [orderId, tenantId, technicianId, 'Etiqueta reservada'],
+        (id, tenant_id, execution_order_number, origin_context, work_summary,
+         assigned_technician_id, customer_display_label, work_type, status, is_annulled)
+       VALUES ($1, $2, $5, 'MANUAL', 'Trabajo sintético', $3, $4, 'INSTALLATION', 'IN_PROGRESS', false)`,
+      [orderId, tenantId, technicianId, 'Etiqueta reservada', `OT-${randomUUID()}`],
     );
 
     await expect(
@@ -222,11 +221,13 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
       },
     ];
     for (const row of rows) {
+      // La cadena no tiene storage_key ni private_metadata: los datos privados de la evidencia
+      // viven en media_asset_id, file_name y notes, que el resumen tampoco debe proyectar.
       await dataSource.query(
         `INSERT INTO "${schemaName}".execution_order_evidence
           (id, tenant_id, execution_order_id, evidence_type, requirement_key,
-           created_at, storage_key, private_metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           created_at, media_asset_id, file_name, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           row.id,
           row.tenant,
@@ -234,8 +235,9 @@ describeWithDb('ExecutionOrderReadPort — PostgreSQL real', () => {
           row.type,
           row.requirement,
           row.createdAt,
-          'private/object/key',
-          { internal: true },
+          randomUUID(),
+          'private-object.jpg',
+          'Nota interna sintética',
         ],
       );
     }

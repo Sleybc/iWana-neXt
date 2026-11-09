@@ -1,6 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { resolveMigrationDbCredentials, runInTenantSchema } from '@iwana/db';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../packages/database/src/migrations/tenant/runner';
 import { AssuranceSubscriberTicketLinksReadAdapter } from '../modules/assurance/ports/assurance-subscriber-ticket-links-read.adapter';
 import { SubscribersService } from '../modules/crm/subscribers/subscribers.service';
 import { analyzeTicketSubscriberLinks } from './report-ticket-subscriber-links';
@@ -41,36 +45,52 @@ describeWithDb('Reporte de vínculos de tickets con suscriptores — PostgreSQL 
       extra: { max: 2, min: 1, connectionTimeoutMillis: 5_000 },
     });
     await dataSource.initialize();
+    // Esquema propio con la cadena tenant vigente. subscribers.tenant_id y
+    // support_tickets.tenant_id no tienen FK, así que las filas con el tenant ajeno (estado
+    // inconsistente que este reporte detecta) se siembran tal cual.
+    // La migración 092 exige un tenant canónico en public.tenants para su esquema.
+    await dataSource.query(
+      `INSERT INTO public.tenants (id, name, slug, schema_name, status, contact_email)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', $5)`,
+      [
+        tenantId,
+        'Ticket link report synthetic',
+        `ticket-link-report-${tenantId.slice(0, 8)}`,
+        schemaName,
+        'ticket-link-report@example.invalid',
+      ],
+    );
     await dataSource.query(`CREATE SCHEMA "${schemaName}"`);
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `ticket-link-report-${schemaName}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     await runInTenantSchema(dataSource, schemaName, async (queryRunner) => {
-      await queryRunner.query(`
-        CREATE TABLE subscribers (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          deleted_at timestamptz
-        )
-      `);
-      await queryRunner.query(`
-        CREATE TABLE support_tickets (
-          id uuid PRIMARY KEY,
-          tenant_id uuid NOT NULL,
-          requester_type varchar(40) NOT NULL,
-          requester_ref_id varchar(160),
-          subject varchar(200),
-          description text
-        )
-      `);
       await queryRunner.query(
-        `INSERT INTO subscribers (id, tenant_id, deleted_at) VALUES
-          ($1, $2, NULL), ($3, $4, NULL)`,
-        [linkedSubscriberId, tenantId, subscriberOwnedByOtherTenantId, otherTenantId],
+        `INSERT INTO subscribers
+          (id, tenant_id, deleted_at, person_type, customer_segment, vat_treatment, document_type,
+           document_number_encrypted, first_name, last_name, stratum, address, created_by)
+         VALUES
+          ($1, $2, NULL, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'CC', 'synthetic-ciphertext',
+           'Nombre sintético', 'Apellido sintético', 2, 'Dirección sintética', $5),
+          ($3, $4, NULL, 'NATURAL', 'RESIDENTIAL', 'STANDARD', 'CC', 'synthetic-ciphertext',
+           'Nombre sintético', 'Apellido sintético', 2, 'Dirección sintética', $5)`,
+        [linkedSubscriberId, tenantId, subscriberOwnedByOtherTenantId, otherTenantId, randomUUID()],
       );
     });
-  }, 30_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (!dataSource?.isInitialized) return;
     await dataSource.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    await dataSource.query('DELETE FROM public.tenants WHERE id = $1', [tenantId]);
     await dataSource.destroy();
   });
 
@@ -114,12 +134,14 @@ describeWithDb('Reporte de vínculos de tickets con suscriptores — PostgreSQL 
         requesterRef: subscriberOwnedByOtherTenantId,
       },
     ];
-    for (const ticket of tickets) {
+    const creatorId = randomUUID();
+    for (const [index, ticket] of tickets.entries()) {
       await runInTenantSchema(dataSource, schemaName, (queryRunner) =>
         queryRunner.query(
           `INSERT INTO support_tickets
-            (id, tenant_id, requester_type, requester_ref_id, subject, description)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+            (id, tenant_id, requester_type, requester_ref_id, subject, description,
+             ticket_number, type, created_by_user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'CUSTOMER_INCIDENT', $8)`,
           [
             ticket.id,
             ticket.owner,
@@ -127,6 +149,8 @@ describeWithDb('Reporte de vínculos de tickets con suscriptores — PostgreSQL 
             ticket.requesterRef,
             'synthetic-ticket-title-private-sentinel',
             'synthetic-ticket-description-private-sentinel',
+            `TKT-LINK-${index}`,
+            creatorId,
           ],
         ),
       );

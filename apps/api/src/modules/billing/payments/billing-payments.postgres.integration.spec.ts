@@ -2,11 +2,14 @@ import {
   createBillingTenantFixture,
   dropBillingTenantFixture,
 } from '../../../../../../packages/database/src/migrations/tenant/billing-migration.integration-helpers';
-import { BillingCore1730000000173 } from '../../../../../../packages/database/src/migrations/tenant/173_billing_core';
+import {
+  applyTenantMigrationsInOrder,
+  createTenantDataSource,
+} from '../../../../../../packages/database/src/migrations/tenant/runner';
 import { createHash, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
 import { dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
 import { AuditAction, BILLING_ERROR_CODES } from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
@@ -217,34 +220,41 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
     return rows[0]?.paid ?? null;
   }
 
+  // Fila mínima válida para el esquema migrado (persona natural con datos fiscales).
+  async function insertSubscriberRow(qr: QueryRunner): Promise<void> {
+    await qr.query(
+      `INSERT INTO subscribers
+        (id, tenant_id, party_id, status, person_type, customer_segment, document_type,
+         document_number_encrypted, first_name, last_name, stratum, vat_treatment,
+         vat_responsibility, address, created_by)
+       VALUES ($1, $2, $3, 'ACTIVE', 'NATURAL', 'RESIDENTIAL', 'CC', 'sintetico-cifrado',
+               'Titular', 'Sintético', 3, 'STANDARD', 'RESPONSABLE', 'Dirección sintética', $4)`,
+      [subscriberId, tenantId, partyId, actorId],
+    );
+  }
+
+  async function insertContractRow(qr: QueryRunner, id: string): Promise<void> {
+    await qr.query(
+      `INSERT INTO contracts (id, tenant_id, subscriber_id, status, plan_id, plan_snapshot_json)
+       VALUES ($1, $2, $3, $4, 'fixture-plan', '{}'::jsonb)`,
+      [id, tenantId, subscriberId, 'ACTIVE'],
+    );
+  }
+
   async function seedBaseTables(): Promise<void> {
+    // El esquema ya viene de la cadena de migraciones del tenant (subscribers, contracts,
+    // party_privacy_marks y las tablas de facturación reales). test_privacy_access_audit es un
+    // sumidero solo de prueba: registra las auditorías de privacidad que emite el mock de
+    // AuditService.logWithin y no existe en la cadena.
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
       await qr.query(`
-        CREATE TABLE subscribers (
-          id uuid PRIMARY KEY, tenant_id uuid NOT NULL, party_id uuid NULL,
-          anonymized_at timestamptz NULL, anonymized_request_id uuid NULL
-        );
-        CREATE TABLE contracts (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, subscriber_id uuid NULL, status varchar(20) NOT NULL, status_reason_code varchar(40) NULL);
-        CREATE TABLE party_privacy_marks (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(), party_id uuid NOT NULL,
-          mark text NOT NULL, event text NOT NULL, request_id uuid NULL,
-          occurred_at timestamptz NOT NULL DEFAULT now(), actor_id uuid NULL
-        );
         CREATE TABLE test_privacy_access_audit (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(), entity_id uuid NOT NULL,
           actor_id uuid NOT NULL, action text NOT NULL, privacy_mark text NOT NULL
         );
       `);
-      await new BillingCore1730000000173().up(qr);
-      await qr.query(
-        'INSERT INTO contracts (id, tenant_id, subscriber_id, status) VALUES ($1, $2, $3, $4)',
-        [contractId, tenantId, subscriberId, 'ACTIVE'],
-      );
-      await qr.query(`INSERT INTO subscribers (id, tenant_id, party_id) VALUES ($1, $2, $3)`, [
-        subscriberId,
-        tenantId,
-        partyId,
-      ]);
+      await insertContractRow(qr, contractId);
+      await insertSubscriberRow(qr);
       await qr.query(
         `INSERT INTO billing_periods (
            id, tenant_id, contract_id, subscriber_id, period_start, due_date, period_end, covered_start, generation_date, effective_policy
@@ -276,6 +286,17 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
     schemaName = fixture.schemaName;
     tenantId = fixture.tenantId;
     await fixture.queryRunner.release();
+    const tenantDataSource = createTenantDataSource(
+      dataSource,
+      schemaName,
+      `billing-payments-${tenantId.slice(0, 8)}`,
+    );
+    await tenantDataSource.initialize();
+    try {
+      await applyTenantMigrationsInOrder(tenantDataSource);
+    } finally {
+      await tenantDataSource.destroy();
+    }
     await seedBaseTables();
 
     events = new EventEmitter2();
@@ -329,15 +350,8 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
       await qr.query('DELETE FROM party_privacy_marks');
       await qr.query('DELETE FROM subscribers');
       await qr.query('DELETE FROM contracts');
-      await qr.query(
-        'INSERT INTO contracts (id, tenant_id, subscriber_id, status) VALUES ($1, $2, $3, $4)',
-        [contractId, tenantId, subscriberId, 'ACTIVE'],
-      );
-      await qr.query('INSERT INTO subscribers (id, tenant_id, party_id) VALUES ($1, $2, $3)', [
-        subscriberId,
-        tenantId,
-        partyId,
-      ]);
+      await insertContractRow(qr, contractId);
+      await insertSubscriberRow(qr);
       await qr.query(
         `INSERT INTO billing_periods (id, tenant_id, contract_id, subscriber_id, period_start, due_date, period_end, covered_start, generation_date, effective_policy)
          VALUES ($1, $2, $3, $4, '2026-11-01', '2026-11-14', '2026-11-30', '2026-11-01', '2026-11-01', '{}'::jsonb)`,
@@ -489,10 +503,7 @@ describeWithDb('BillingPaymentsService contra PostgreSQL real', () => {
     const otherPeriodId = randomUUID();
     const otherDocumentId = randomUUID();
     await runInTenantSchema(dataSource, schemaName, async (qr) => {
-      await qr.query(
-        'INSERT INTO contracts (id, tenant_id, subscriber_id, status) VALUES ($1, $2, $3, $4)',
-        [otherContractId, tenantId, subscriberId, 'ACTIVE'],
-      );
+      await insertContractRow(qr, otherContractId);
       await qr.query(
         `INSERT INTO billing_periods (id, tenant_id, contract_id, subscriber_id, period_start, due_date, period_end, covered_start, generation_date, effective_policy)
          VALUES ($1, $2, $3, $4, '2026-12-01', '2026-12-14', '2026-12-31', '2026-12-01', '2026-12-01', '{}'::jsonb)`,
