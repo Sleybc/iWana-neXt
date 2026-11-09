@@ -10,7 +10,6 @@
    Tailwind 4 no escanea node_modules por defecto.
    Se declaran explicitamente los paths de componentes y apps consumidoras. */
 @source "../components/**/*.{ts,tsx}";
-@source "../tokens.ts";
 @source "../../../../apps/web/src/**/*.{ts,tsx}";
 @source "../../../../apps/portal/src/**/*.{ts,tsx}";
 

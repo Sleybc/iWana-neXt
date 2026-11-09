@@ -24,7 +24,7 @@ import {
   type CreateBootstrapPasswordFormValues,
   type LoginFormValues,
 } from '@iwana/shared';
-import { Button, cn } from '@iwana/ui';
+import { AUTH_FORM_INPUT_ERROR_CLASS, AUTH_FORM_INPUT_FOCUS_CLASS, Button, cn } from '@iwana/ui';
 import { ApiError, persistAccessToken, platformUsersApi } from '@/lib/api-client';
 import {
   FORM_ALERT_ERROR_CLASS,
@@ -57,9 +57,8 @@ const authClassNames = {
   label: 'text-sm font-bold text-iwana-primary dark:text-white',
   fieldBase:
     'h-14 w-full rounded-2xl border bg-iwana-surface-soft pl-12 text-base text-slate-900 placeholder:text-slate-400 transition-all focus:border-transparent focus:outline-none focus:ring-2 dark:border-iwana-neutral-600 dark:bg-dark-surface-3 dark:text-white dark:placeholder:text-gray-400',
-  fieldDefault:
-    'border-slate-200 focus:ring-iwana-secondary/35 dark:border-iwana-neutral-600 dark:focus:ring-iwana-secondary-400/25',
-  fieldError: 'border-red-500 focus:ring-red-500/30',
+  fieldDefault: AUTH_FORM_INPUT_FOCUS_CLASS,
+  fieldError: AUTH_FORM_INPUT_ERROR_CLASS,
   fieldLeadingIcon:
     'absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-gray-400',
   fieldTrailingButton:

@@ -11,7 +11,7 @@ export default function MfaVerifyPage() {
           <div className="mb-8 text-center">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-[#EEEEFA] flex items-center justify-center mb-4">
               <svg
-                className="w-7 h-7 text-[#17163A]"
+                className="w-7 h-7 text-iwana-primary"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -25,7 +25,7 @@ export default function MfaVerifyPage() {
                 />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-[#17163A]">Verificación en dos pasos</h2>
+            <h2 className="text-2xl font-bold text-iwana-primary">Verificación en dos pasos</h2>
             <p className="mt-1 text-sm text-[#6B7280]">Ingresa el código de 6 dígitos</p>
           </div>
           <MfaVerifyForm />

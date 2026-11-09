@@ -15,7 +15,8 @@ export const AUTH_FORM_ICON_LEADING_CLASS =
 export const AUTH_FORM_ICON_TRAILING_BUTTON_CLASS =
   'absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600 dark:text-gray-400 dark:hover:text-gray-300';
 
-export const AUTH_FORM_INPUT_FOCUS_CLASS = 'border-slate-200 focus:ring-iwana-secondary';
+export const AUTH_FORM_INPUT_FOCUS_CLASS =
+  'border-slate-200 focus:ring-iwana-secondary-700 dark:focus:ring-iwana-secondary';
 export const AUTH_FORM_INPUT_ERROR_CLASS = 'border-red-500 focus:ring-red-500';
 
 export const AUTH_FORM_ERROR_CLASS = 'mt-1 text-xs text-red-600 dark:text-red-400';

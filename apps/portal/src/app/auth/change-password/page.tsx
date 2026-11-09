@@ -8,7 +8,12 @@ import { changePasswordSchema, type ChangePasswordFormValues } from '@iwana/shar
 import { useRouter } from 'next/navigation';
 import { authApi, ApiError } from '@/lib/api-client';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
-import { cn, FormStatus } from '@iwana/ui';
+import {
+  AUTH_FORM_INPUT_ERROR_CLASS,
+  AUTH_FORM_INPUT_FOCUS_CLASS,
+  cn,
+  FormStatus,
+} from '@iwana/ui';
 
 /**
  * Cambio obligatorio de contrasena: usa el esquema unico de `@iwana/shared`
@@ -61,7 +66,7 @@ export default function ChangePasswordPage() {
 
   return (
     <main
-      className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#181818]"
+      className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-dark-surface"
       aria-label="Cambio de contrasena obligatorio"
     >
       <LoginBrandPanel
@@ -70,7 +75,7 @@ export default function ChangePasswordPage() {
       />
 
       {/* Panel derecho — formulario */}
-      <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
+      <div className="w-full lg:w-1/2 bg-dark-surface flex items-center justify-center p-6 lg:p-12 relative">
         {/* Patron de puntos decorativo */}
         <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:32px_32px]" />
 
@@ -78,7 +83,7 @@ export default function ChangePasswordPage() {
           <div className="mb-10">
             {/* Logo visible solo en movil */}
             <div className="flex lg:hidden items-center gap-2 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-[#A5C330] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-iwana-secondary flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#181818" />
                   <path
@@ -151,8 +156,8 @@ export default function ChangePasswordPage() {
                   className={cn(
                     'w-full h-14 pl-12 pr-12 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                     errors.currentPassword
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-slate-200 focus:ring-[#A5C330]',
+                      ? AUTH_FORM_INPUT_ERROR_CLASS
+                      : AUTH_FORM_INPUT_FOCUS_CLASS,
                   )}
                   {...register('currentPassword')}
                 />
@@ -223,9 +228,7 @@ export default function ChangePasswordPage() {
                   autoComplete="new-password"
                   className={cn(
                     'w-full h-14 pl-12 pr-12 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
-                    errors.newPassword
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-slate-200 focus:ring-[#A5C330]',
+                    errors.newPassword ? AUTH_FORM_INPUT_ERROR_CLASS : AUTH_FORM_INPUT_FOCUS_CLASS,
                   )}
                   {...register('newPassword')}
                 />
@@ -312,8 +315,8 @@ export default function ChangePasswordPage() {
                   className={cn(
                     'w-full h-14 pl-12 pr-12 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                     errors.confirmPassword
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-slate-200 focus:ring-[#A5C330]',
+                      ? AUTH_FORM_INPUT_ERROR_CLASS
+                      : AUTH_FORM_INPUT_FOCUS_CLASS,
                   )}
                   {...register('confirmPassword')}
                 />
@@ -368,7 +371,7 @@ export default function ChangePasswordPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full h-14 mt-4 bg-[#A5C330] hover:bg-[#94b126] text-[#181818] text-lg font-bold rounded-xl transition-all transform active:scale-[0.99] flex items-center justify-center gap-2 shadow-lg shadow-[#A5C330]/20 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full h-14 mt-4 bg-iwana-secondary hover:bg-[#94b126] text-[#181818] text-lg font-bold rounded-xl transition-all transform active:scale-[0.99] flex items-center justify-center gap-2 shadow-lg shadow-iwana-secondary/20 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               <span>{isSubmitting ? 'Guardando...' : 'Establecer Nueva Contrasena'}</span>
               {!isSubmitting && (
@@ -391,7 +394,7 @@ export default function ChangePasswordPage() {
             <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-2 text-center">
               <div className="flex items-center gap-1 text-xs font-bold text-slate-600 uppercase tracking-wider">
                 <svg
-                  className="w-4 h-4 text-[#A5C330]"
+                  className="w-4 h-4 text-iwana-secondary"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"

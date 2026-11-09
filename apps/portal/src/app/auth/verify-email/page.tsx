@@ -7,7 +7,13 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, cn, FormStatus } from '@iwana/ui';
+import {
+  AUTH_FORM_INPUT_ERROR_CLASS,
+  AUTH_FORM_INPUT_FOCUS_CLASS,
+  Button,
+  cn,
+  FormStatus,
+} from '@iwana/ui';
 import { LoginBrandPanel } from '@/components/auth/LoginBrandPanel';
 import { ApiError, authApi } from '@/lib/api-client';
 
@@ -86,13 +92,13 @@ function VerifyEmailContent() {
   };
 
   return (
-    <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#181818]">
+    <main className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-dark-surface">
       <LoginBrandPanel
         title="Verifica tu correo"
         subtitle="Confirma la identidad del usuario antes del primer acceso operativo al portal empresarial."
       />
 
-      <div className="w-full lg:w-1/2 bg-[#181818] flex items-center justify-center p-6 lg:p-12 relative">
+      <div className="w-full lg:w-1/2 bg-dark-surface flex items-center justify-center p-6 lg:p-12 relative">
         <div className="absolute inset-0 opacity-5 bg-[radial-gradient(#A5C330_1px,transparent_1px)] bg-[length:32px_32px]" />
 
         <div className="w-full max-w-[560px] bg-white rounded-2xl p-8 lg:p-12 shadow-2xl relative z-10 space-y-8">
@@ -113,8 +119,8 @@ function VerifyEmailContent() {
                   className={cn(
                     'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                     verifyForm.formState.errors.tenantSlug
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-slate-200 focus:ring-[#A5C330]',
+                      ? AUTH_FORM_INPUT_ERROR_CLASS
+                      : AUTH_FORM_INPUT_FOCUS_CLASS,
                   )}
                   {...verifyForm.register('tenantSlug')}
                 />
@@ -133,8 +139,8 @@ function VerifyEmailContent() {
                   className={cn(
                     'w-full rounded-xl px-4 py-3 bg-slate-50 border text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all resize-none',
                     verifyForm.formState.errors.token
-                      ? 'border-red-500 focus:ring-red-500'
-                      : 'border-slate-200 focus:ring-[#A5C330]',
+                      ? AUTH_FORM_INPUT_ERROR_CLASS
+                      : AUTH_FORM_INPUT_FOCUS_CLASS,
                   )}
                   {...verifyForm.register('token')}
                 />
@@ -179,8 +185,8 @@ function VerifyEmailContent() {
                     className={cn(
                       'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                       resendForm.formState.errors.tenantSlug
-                        ? 'border-red-500 focus:ring-red-500'
-                        : 'border-slate-200 focus:ring-[#A5C330]',
+                        ? AUTH_FORM_INPUT_ERROR_CLASS
+                        : AUTH_FORM_INPUT_FOCUS_CLASS,
                     )}
                     {...resendForm.register('tenantSlug')}
                   />
@@ -199,8 +205,8 @@ function VerifyEmailContent() {
                     className={cn(
                       'w-full h-14 px-4 bg-slate-50 border rounded-xl text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all',
                       resendForm.formState.errors.email
-                        ? 'border-red-500 focus:ring-red-500'
-                        : 'border-slate-200 focus:ring-[#A5C330]',
+                        ? AUTH_FORM_INPUT_ERROR_CLASS
+                        : AUTH_FORM_INPUT_FOCUS_CLASS,
                     )}
                     {...resendForm.register('email')}
                   />
@@ -230,7 +236,7 @@ function VerifyEmailContent() {
           </section>
 
           <div className="border-t border-slate-100 pt-6 text-sm">
-            <Link className="text-slate-500 hover:text-[#A5C330]" href="/auth/login">
+            <Link className="text-slate-500 hover:text-iwana-secondary-700" href="/auth/login">
               Volver al login
             </Link>
           </div>
