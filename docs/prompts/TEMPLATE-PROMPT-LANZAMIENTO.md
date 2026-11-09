@@ -1,9 +1,10 @@
 # TEMPLATE — Prompt corto de lanzamiento
 
-**Version:** 1.1
+**Version:** 1.2
 **Estado:** Aprobado
+**Cambio v1.1 → v1.2 (2026-11-09):** reglas 6 y 7 por ADR-107 D8. Hay launcher solo para olas multiagente o que ejecuta otra sesión. Ningún launcher ordena un push por ola ni cierra solo para registrar un G6.5.
 **Cambio v1.0 → v1.1 (2026-09-14):** regla 5 — el bloque copiar-pegar se entrega en la respuesta, no solo se archiva (perfil v2.6 §3.6).
-**Fecha:** 2026-09-14
+**Fecha:** 2026-09-14 (v1.2: 2026-11-09)
 **Emitido por:** AI-EM-ARCH
 
 ## Vinculos de trazabilidad
@@ -20,6 +21,8 @@
 3. **Cero duplicacion de encargo.** Solo rutas, orden y skills. El *que hacer* vive en el prompt de ejecucion.
 4. **Una ola por launcher.** La ola siguiente se lanza con su propio archivo cuando su gate cierra.
 5. **El bloque se entrega, no solo se archiva.** Quien emite el launcher pega el bloque copiar-pegar en su respuesta al CTO, en el mismo acto, con el estado real al arrancar —qué esta cerrado y no debe re-despacharse— y la restriccion de secuencia si dos tramos comparten superficie. El archivo es la fuente y prevalece; la respuesta es la entrega. Un launcher archivado y no entregado obliga a pedirlo, que es el defecto que la v2.6 del perfil corrige.
+6. **Solo si hace falta (ADR-107 D8.2).** Se emite launcher para una ola multiagente o que ejecuta otra sesión. Una ola que hace la misma sesión se ejecuta desde el plan, sin archivo.
+7. **Cierre de ola sin push ni registro propio (ADR-107 D2, D4 y D8.4).** La línea «Cierre de ola» termina en G6 y commit local. El push solo se ordena si la ola es de CI o infraestructura, lleva una migración con NOT NULL, CHECK o FK, corrige un rojo o cierra la fase. No hay launchers de cierre solo para registrar un G6.5: el registro viaja en el siguiente commit funcional.
 
 ---
 
@@ -38,7 +41,7 @@
 | 2 | `{subagente}` | `docs/prompts/{PROMPT}.md` §{fase} | `{skill}` | `{ruta}` v{N} |
 
 **Paralelo:** {1 y 2 en paralelo, ninguno depende del otro}
-**Cierre de ola:** {condicion verificable — p. ej. `pnpm test --filter api` con conteo real y `Cached: 0`}
+**Cierre de ola:** {condicion verificable — p. ej. `pnpm test --filter api` con conteo real y `Cached: 0`} → commit local, sin push (salvo excepción de la regla 7)
 
 ---
 

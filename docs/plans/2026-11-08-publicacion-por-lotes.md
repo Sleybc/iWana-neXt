@@ -1,18 +1,19 @@
 # Plan de orquestación — Publicación por lotes, ADR-107
 
-**Versión:** 1.0
+**Versión:** 1.1
+**Cambio v1.0 → v1.1 (2026-11-09):** Ola 1b hecha, G6.5 de la Ola 2 registrado (D8.4), Ola 3 adelantada y definida en su [spec](../specs/2026-11-09-plat-ops-ci-jobs-paralelos.md), y D8 añadido al alcance. Origen: [INFORME-TRANSVERSAL-TIEMPOS-ENTREGA-v1.0](../informes/INFORME-TRANSVERSAL-TIEMPOS-ENTREGA-v1.0.md)
 **Estado:** Aprobado. [ADR-107](../adrs/ADR-107-Publicacion-por-Lotes-y-G6.5-Asincrono.md) aprobado por el CTO el 2026-11-08
 **Fecha:** 2026-11-08
 **Emitido por:** AI-EM-ARCH
-**Lanzador:** [PROMPT-TRANSVERSAL-PUBLICACION-LOTES-LAUNCH-v1.0](../prompts/PROMPT-TRANSVERSAL-PUBLICACION-LOTES-LAUNCH-v1.0.md)
-**Alcance:** adoptar D1–D7 de ADR-107: commit por ola, push por tren, G6.5 asíncrono, sin commits de registro, checkpoint ligero y CI con filtro de documentación.
+**Lanzadores:** Ola 2 [PROMPT-TRANSVERSAL-PUBLICACION-LOTES-LAUNCH-v1.0](../prompts/PROMPT-TRANSVERSAL-PUBLICACION-LOTES-LAUNCH-v1.0.md) · Ola 3 [PROMPT-TRANSVERSAL-PUBLICACION-LOTES-OLA3-LAUNCH-v1.0](../prompts/PROMPT-TRANSVERSAL-PUBLICACION-LOTES-OLA3-LAUNCH-v1.0.md)
+**Alcance:** adoptar D1–D8 de ADR-107: commit por ola, push por tren, G6.5 asíncrono, sin commits de registro, checkpoint ligero, CI con filtro de documentación y topes de ceremonia documental.
 
 ## 1. Precondiciones
 
 | # | Precondición | Estado al 2026-11-08 |
 | --- | --- | --- |
 | P0 | El CTO aprueba ADR-107 §6 | **Cerrada** el 2026-11-08, sin cambios |
-| P1 | La consolidación de skills publicó su cambio sobre `.agents/skills/iwana-checkpoint-commit/SKILL.md`, `AGENTS.md` y `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md` | **Abierta**: los tres tienen cambios sin commitear de otras olas |
+| P1 | La consolidación de skills publicó su cambio sobre `.agents/skills/iwana-checkpoint-commit/SKILL.md`, `AGENTS.md` y `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md` | **Cerrada** el 2026-11-09 para la skill y `AGENTS.md` (consolidación publicada en `43011278`). El prompt de checkpoint queda fuera de la Ola 1b |
 | P2 | `.github/workflows/ci.yml` sin cambios en el árbol | **Cerrada**: limpio al 2026-11-08 |
 | P3 | `main` en verde antes del primer tren que lleve la Ola 2 | Se comprueba con `gh run list --branch main --limit 1` al lanzar (D5) |
 
@@ -21,9 +22,9 @@
 | Ola | Bloque | Depende de | Archivos |
 | --- | --- | --- | --- |
 | 1 | ADR, plan y launcher | — | el ADR-107, este plan, el launcher. **Hecha** el 2026-11-08, sin commit |
-| 1b | Normas operativas | P0, P1 | Skill de checkpoint (paso 0 «checkpoint ligero», paso 7 «push solo por tren», entrega sin commit de G6.5), regla 8 del prompt de checkpoint y `AGENTS.md` (historial y una línea en «Gates Before Merge» que remita a ADR-107) |
-| 2 | CI | P0, P2 | `.github/workflows/ci.yml` |
-| 3 (opcional) | CI paralelo | Medición de una semana tras la Ola 2 | `.github/workflows/ci.yml` |
+| 1b | Normas operativas | P0, P1 | Skill de checkpoint (paso 0 «checkpoint ligero», paso 7 «push solo por tren», entrega sin commit de G6.5), `AGENTS.md` (historial, D8 y una línea en «Gates Before Merge» que remita a ADR-107) y plantilla de launcher v1.2. **Hecha** el 2026-11-09 |
+| 2 | CI | P0, P2 | `.github/workflows/ci.yml`. **Publicada** en `7926ba9b` |
+| 3 | CI paralelo: jobs `static`, `unit` (matriz) e `integration` | Rojo de `d09397ee` clasificado, §10.3 de la spec de integración API cerrado y `main` en verde | `.github/workflows/ci.yml` ([spec](../specs/2026-11-09-plat-ops-ci-jobs-paralelos.md)) |
 
 La Ola 1b y la Ola 2 son independientes entre sí y pueden ir en el mismo tren.
 
@@ -54,6 +55,12 @@ La Ola 1b y la Ola 2 son independientes entre sí y pueden ir en el mismo tren.
 | 1 / 1b | `pnpm audit:adr-citations` y `pnpm audit:doc-locations` con `BLOQUEANTE: 0`. En 1b, además `pnpm sync:skills:check` | El del tren que la lleve |
 | 2 | `pnpm test:tooling` en verde y YAML válido | **Síncrono** (excepción D3: ola de CI). En el tren deben salir dos corridas: una de solo documentación, en la que corren únicamente `adr-citations` y `changes`, y una con código, en la que corren los seis jobs (los cinco de antes más `changes`). Van en **dos pushes separados**, porque la detección mira todo el rango del push. Se comprueba con `gh run view <id> --json jobs` |
 
+**Registro G6.5 de la Ola 2 (D8.4, sin commit propio):**
+- Corrida con código: 42556844542 sobre `7926ba9b`, 6 de 6 jobs en verde en el intento 2. El intento 1 falló por la prueba inestable `AssuranceClient.spec.tsx`, que el commit no toca.
+- Corrida de solo documentación: 42684979514 sobre `b9553bbc`. `changes` y la auditoría de citas ADR en verde, y los 4 jobs pesados en `skipped`.
+
+**G6.5 ✅ el 2026-11-09.**
+
 **Norma operativa de la concurrencia (Ola 2):** GitHub deja como máximo una corrida en espera por grupo. Un tercer push mientras hay una corrida en curso y otra esperando cancela la que espera, y ese SHA se queda sin G6.5 (ADR-069). Por eso no se publica un tren nuevo mientras haya otro en curso y uno en espera.
 
 ## 5. Medición de la adopción
@@ -66,4 +73,4 @@ Una semana después de la Ola 2 se miden:
 - commits de solo registro, cuya meta es 0;
 - duración de las corridas de solo documentación.
 
-Con ese resultado se decide la Ola 3.
+La Ola 3 se adelantó el 2026-11-09 (ADR-107 §6 v1.1), así que la medición a una semana sirve para comprobar su efecto. Añade la proporción de commits `docs`, para medir D8.

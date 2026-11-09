@@ -4,7 +4,7 @@
 > **Identidad de gobernanza:** AI-EM-ARCH (EM + Product Architect + Orchestrator)  
 > **Modo de sesion por defecto:** ejecutor (puede implementar codigo respetando gates)  
 > **Fuente maestra:** Este documento
-> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII). 2026-10-31 — Superficies activas: sexto verificador auxiliar (`test-change-reviewer`) y hooks `post-push-ci`, CI de `main` en `session-context` y guarda de sobrescritura de documentos versionados. 2026-11-07 — Gates: carraca de conteos de pruebas contra la linea base de la ola; Code Style: criterio de simplicidad. 2026-11-08 — Skills Dispatch: consolidacion del catalogo 52 → 43 (sucesoras en lugar de las 9 retiradas) y desempate por ruta entre `backend-security-coder` y `frontend-security-coder`. 2026-11-09 — Regulatorio: la jornada se cita por la Ley 2101 sin cifra (decision del CTO, auditoria de cruces de roles §7).
+> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII). 2026-10-31 — Superficies activas: sexto verificador auxiliar (`test-change-reviewer`) y hooks `post-push-ci`, CI de `main` en `session-context` y guarda de sobrescritura de documentos versionados. 2026-11-07 — Gates: carraca de conteos de pruebas contra la linea base de la ola; Code Style: criterio de simplicidad. 2026-11-09 — ADR-107 v1.1: commit por ola, push por tren y G6.5 asíncrono en «Gates Before Merge»; topes de ceremonia documental (D8) en «Documentation Rules». 2026-11-08 — Skills Dispatch: consolidacion del catalogo 52 → 43 (sucesoras en lugar de las 9 retiradas) y desempate por ruta entre `backend-security-coder` y `frontend-security-coder`. 2026-11-09 — Regulatorio: la jornada se cita por la Ley 2101 sin cifra (decision del CTO, auditoria de cruces de roles §7).
 > **Stack validado:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
 
 ---
@@ -309,7 +309,8 @@ Tabla completa, restricciones y skills externas fuera del dispatch: `.agents/ski
 
   **Ningun prompt se deposita fuera de `docs/prompts/`.** No existe `.github/prompts/` ni ninguna otra carpeta de prompts: fue suprimida el 2026-07-27 y sus 33 archivos migrados. Esta regla vive aqui, y no solo en `.github/instructions/docs.instructions.md`, precisamente porque aquel archivo solo se activa en su `applyTo: docs/**` — es decir, no se aplicaba a quien se equivocaba de carpeta. `AGENTS.md` se lee siempre.
 
-- **After changes:** Update/create report in `docs/informes/`
+- **After changes:** actualizar el informe de la fase en `docs/informes/` (uno por fase, no por ola; ADR-107 D8.1)
+- **Topes de ceremonia (ADR-107 D8):** launcher solo para olas multiagente o que ejecuta otra sesión; revisión `docs-governance` una vez por fase, al cierre; el registro de G6.5 viaja en el siguiente commit funcional, nunca en un commit ni en un launcher propio
 - **Use Spanish** for business logic comments
 
 ---
@@ -326,3 +327,5 @@ Tabla completa, restricciones y skills externas fuera del dispatch: `.agents/ski
 - [ ] Lint and typecheck passing
 
 If coverage drops below 80%, identify untested areas and prioritize writing new tests before merging.
+
+**Commit y push ([ADR-107](docs/adrs/ADR-107-Publicacion-por-Lotes-y-G6.5-Asincrono.md)):** cada ola se commitea en local al llegar a G6. El push sale por tren: cierre de fase, código que otra sesión o el CI necesita, corrección de un rojo o una jornada sin respaldo. G6.5 se exige para cerrar la fase y no para lanzar la ola siguiente, salvo en olas de CI o infraestructura, migraciones con NOT NULL, CHECK o FK, y correcciones de un rojo. Tabla completa en `docs/informes/INFORME-TRANSVERSAL-TIEMPOS-ENTREGA-v1.0.md` §4; procedimiento en la skill `iwana-checkpoint-commit`.

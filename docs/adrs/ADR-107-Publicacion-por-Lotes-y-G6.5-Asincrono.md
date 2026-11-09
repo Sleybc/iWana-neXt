@@ -1,9 +1,10 @@
 # ADR-107: Publicación por lotes — commit por ola, push por tren y G6.5 asíncrono
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Estado:** Aprobado
-**Aprobado por:** CTO, 2026-11-08 — §6 completo, sin cambios de contenido
-**Fecha:** 2026-11-08
+**Aprobado por:** CTO, 2026-11-08 — §6 completo, sin cambios de contenido. v1.1 (D8) aprobada por el usuario el 2026-11-09
+**Cambio v1.0 → v1.1 (2026-11-09):** D8, topes de ceremonia documental. Origen: [INFORME-TRANSVERSAL-TIEMPOS-ENTREGA-v1.0](../informes/INFORME-TRANSVERSAL-TIEMPOS-ENTREGA-v1.0.md) §5, donde se midió que el 44 % de los commits son `docs`, hay más líneas nuevas en `docs/` que en código y 4 de 18 commits solo registraban un G6.5
+**Fecha:** 2026-11-08 (v1.1: 2026-11-09)
 **Autor:** AI-EM-ARCH (sesión ejecutora, Claude Code)
 **Módulos:** plataforma transversal — flujo de publicación en `main`, CI (`.github/workflows/ci.yml`), checkpoint de commits
 **Relacionado:** [ADR-069](ADR-069-Gates-G6.5-Merge-Readiness.md) (taxonomía G6 / G6.5 / G7) · [PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0](../prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md) · skill `iwana-checkpoint-commit` · [plan de orquestación](../plans/2026-11-08-publicacion-por-lotes.md)
@@ -74,6 +75,15 @@ Si `git status --porcelain` no muestra cambios fuera del índice, el árbol es e
 
 Un commit que solo cambia documentación que ningún test lee corre únicamente el gate documental (`adr-citations`). Cualquier otra ruta, incluida la gobernanza ejecutable (`.agents/`, `.claude/`, `AGENTS.md`, `scripts/`), corre todos los jobs. La lista exacta de rutas de `docs/` que leen las pruebas la fija `plat-ops` al implementar. Algunos ejemplos medidos: `docs/specs/2026-10-26-mod13-interfaces-api.md`, `docs/specs/2026-07-26-estados-atenuados-contraste-ds-contrato.md` y las de `docs/plans/` que usa `scripts/claude-hooks.test.mjs`. Ante la duda, la ruta corre todo.
 
+### D8 — Topes de ceremonia documental (v1.1)
+
+1. **Un informe por fase**, no por ola. Cada ola actualiza su sección del informe de la fase. Un informe nuevo solo nace con una fase nueva o con una investigación transversal que se pida expresamente.
+2. **Launcher solo para olas multiagente o que ejecuta otra sesión.** Una ola que hace la misma sesión se ejecuta desde el plan, sin archivo de launcher.
+3. **Revisión `docs-governance` una vez por fase**, al cierre, sobre todos los documentos de la fase. Por ola basta con `pnpm audit:adr-citations` y `pnpm audit:doc-locations`.
+4. **El registro de G6.5 va en el siguiente commit funcional de la fase** (D4). No hay commits ni launchers de cierre que solo registren un G6.5. Si la fase termina y no queda ningún commit funcional, el registro viaja en el primer commit de la fase siguiente o en el próximo tren.
+
+D8 no relaja ningún gate: G6, G6.5 y G7 se exigen igual. Solo limita cuántos documentos y commits produce cada ola.
+
 ## 3. Alternativas consideradas
 
 | Alternativa | Por qué no |
@@ -110,9 +120,9 @@ G6 local con conteos reales (`iwana-test-evidence`), la definición de G6.5 de A
 | Ola | Contenido | Dueño |
 | --- | --- | --- |
 | 1 | Este ADR, el plan de orquestación y el launcher (archivos nuevos, sin mezcla con otras olas) | AI-EM-ARCH |
-| 1b | Enmienda de la skill `iwana-checkpoint-commit` (D1, D2, D4 y D6), regla 8 del prompt de checkpoint y una línea de historial y de «Gates Before Merge» en `AGENTS.md`. Espera a que la consolidación de skills publique: los tres archivos tienen hoy cambios suyos sin commitear, y editarlos ahora mezclaría olas, que es justo lo que este ADR quiere evitar | AI-EM-ARCH |
+| 1b | Enmienda de la skill `iwana-checkpoint-commit` (D1, D2, D4 y D6) y de `AGENTS.md` (historial, D8 y «Gates Before Merge»). **Hecha el 2026-11-09**, con la v1.1. El prompt de checkpoint del 2026-10-31 no se toca: tiene una §F3 ajena sin commitear y la norma operativa vive en la skill | AI-EM-ARCH |
 | 2 | `ci.yml`: `concurrency` sin cancelación, job de detección de cambios (D7) y comentario de duración actualizado | `plat-ops` |
-| 3 (opcional) | Separar el job `ci` en «lint, typecheck, build y unit» e «integración PostgreSQL» en paralelo. Solo si tras una semana la ruta crítica sigue por encima de 20 min | `plat-ops` |
+| 3 | Separar el job `ci` en `static`, `unit` (matriz por paquete) e `integration`, en paralelo. Adelantada el 2026-11-09: en su primer día la ruta crítica midió 20–27 min ([spec](../specs/2026-11-09-plat-ops-ci-jobs-paralelos.md)) | `plat-ops` |
 
 Detalle en [`docs/plans/2026-11-08-publicacion-por-lotes.md`](../plans/2026-11-08-publicacion-por-lotes.md).
 
@@ -123,5 +133,7 @@ Aprobado por el CTO el 2026-11-08, sin cambios de contenido:
 1. D1–D6 tal como están.
 2. Tope del tren: 4 olas y una salida por jornada como máximo.
 3. D7 con el alcance descrito. La Ola 3 se decide tras la medición de una semana posterior a la Ola 2 (plan §5).
+
+**v1.1 (2026-11-09):** el usuario aprueba D8 y adelanta la Ola 3 sin esperar la semana de medición, a la vista del [informe de tiempos de entrega](../informes/INFORME-TRANSVERSAL-TIEMPOS-ENTREGA-v1.0.md) §3. D8 rige desde su aprobación.
 
 Vigencia: D1 a D5 rigen desde la aprobación. D6 se aplica en cuanto la Ola 1b enmiende la skill de checkpoint, y D7 cuando la Ola 2 publique `ci.yml`.
