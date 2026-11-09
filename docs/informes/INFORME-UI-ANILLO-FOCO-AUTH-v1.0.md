@@ -1,7 +1,7 @@
 # INFORME — Flujos de autenticación: anillo de foco accesible y hex de marca
 
 **Versión:** 1.0
-**Estado:** Aprobado. G0 a G4 y G6 ✅ el 2026-11-08; publicación (B6) por orden del usuario
+**Estado:** Aprobado y publicado. G0 a G4 y G6 ✅ el 2026-11-08; G6.5 ✅ el 2026-11-09 (`ebb0fe61`)
 **Fecha:** 2026-11-08
 **Emitido por:** AI-EM-ARCH
 **Convención documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
@@ -30,7 +30,7 @@ El anillo vive en una sola fuente, las constantes de `@iwana/ui`. Las cuatro pá
 | G3 | ✅ 2026-11-08 | `sr-qa`, 10 parejas. Las 4 de oscuro de páginas sin cambio salen idénticas; las otras 6 solo difieren en el anillo enfocado. Anillo ≥ 3:1 en todas las capturas. CSS generado: solo el intercambio de clases del anillo (spec §9.4) |
 | G4 | ✅ 2026-11-08 | `gate-verifier`, `--force` y `Cached: 0`: `@iwana/ui` 8/55, `@iwana/web` 38/233, `@iwana/portal` 348/3.478 + 1 omitido. Los mismos conteos que la línea base; lint y typecheck con exit 0. B2 no tocó ningún spec |
 | G6 | ✅ 2026-11-08 | `docs-governance`: GO, sin bloqueantes y con cinco menores, corregidos o resueltos en §6 |
-| G6.5 | Pendiente | CI de `main` en verde sobre el SHA publicado |
+| G6.5 | ✅ 2026-11-09 | `ebb0fe61` en `origin/main` por orden del usuario. `CI` verde (run 42616291077): lint, typecheck, build, unitarias, E2E portal, E2E R4.1, imágenes, citas ADR y detección de solo docs. `E2E Web Admin Smoke` verde (run 42616291094) |
 
 ## 3. Cambios
 
@@ -62,7 +62,7 @@ La deuda del guion del encargo de tokens (mock con dominio y formato reales) que
 
 ## 5. Publicación (B6)
 
-Pendiente de la orden del usuario. Commit propio vía `iwana-checkpoint-commit`, con esta lista explícita de rutas:
+Hecho: `ebb0fe61` (46 rutas), commit el 2026-11-08 y push el 2026-11-09, G6.5 ✅ (§2). Se armó vía `iwana-checkpoint-commit`, con esta lista explícita de rutas:
 
 - `packages/ui/src/components/auth/auth-form-styles.ts`
 - `packages/ui/src/styles/globals.css`
@@ -75,6 +75,8 @@ Pendiente de la orden del usuario. Commit propio vía `iwana-checkpoint-commit`,
 - `docs/prompts/PROMPT-UI-ANILLO-FOCO-AUTH-LAUNCH-v1.0.md`, `PROMPT-UI-ANILLO-FOCO-AUTH-OLA2-LAUNCH-v1.0.md`, `PROMPT-UI-ANILLO-FOCO-AUTH-OLA3-LAUNCH-v1.0.md`
 
 Excluye los specs en vuelo de `apps/portal/src/components/auth/` (spec H12), los `next-env.d.ts` y todo lo demás del árbol.
+
+Desviación del checkpoint: no se aisló el índice con `git stash --include-untracked`, porque unas 315 rutas en vuelo de otras sesiones habrían quedado fuera del árbol durante el gate. Se sustituyó por tres comprobaciones: las constantes importadas ya se exportaban desde `@iwana/ui` en `HEAD`; el diff de los 9 archivos de código es íntegro de este encargo; y G4 corrió sobre el árbol completo. El commit pesa unas 45.000 líneas, casi todas de los cuatro CSS generados de la evidencia (criterio 5).
 
 Los servidores de desarrollo de portal (3002) y web (3001) que lanzó `fe-platform` siguen vivos. Los detiene esa misma sesión por su PID, nunca por nombre.
 

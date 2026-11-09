@@ -6,7 +6,7 @@
 **Cambio v1.2 → v1.3 (2026-11-08):** G2 cerrado (spec §9.3); el lanzamiento pasa a la Ola 3
 **Cambio v1.1 → v1.2 (2026-11-08):** G1 cerrado (spec §9.2); B3-pre guarda también el CSS generado «antes» (spec §8.5); el lanzamiento pasa a la Ola 2
 **Cambio v1.0 → v1.1 (2026-11-08):** G0 cerrado (spec §9.1); el lanzamiento queda en la Ola 1
-**Estado:** Aprobado. G0 a G4 y G6 cerrados el 2026-11-08; B6 por orden del usuario
+**Estado:** Cerrado. G0 a G4 y G6 el 2026-11-08; G6.5 el 2026-11-09 (`ebb0fe61`, run 42616291077)
 **Fecha:** 2026-11-08
 **Emitido por:** AI-EM-ARCH
 **Definición:** [2026-11-08-ui-anillo-foco-auth-spec.md](../specs/2026-11-08-ui-anillo-foco-auth-spec.md) v1.5 · **Lanzadores:** [Ola 1](../prompts/PROMPT-UI-ANILLO-FOCO-AUTH-LAUNCH-v1.0.md) (G1 ✅) · [Ola 2](../prompts/PROMPT-UI-ANILLO-FOCO-AUTH-OLA2-LAUNCH-v1.0.md) (G2 ✅) · [Ola 3](../prompts/PROMPT-UI-ANILLO-FOCO-AUTH-OLA3-LAUNCH-v1.0.md) (G3 y G4 ✅) · **Cierre:** [INFORME-UI-ANILLO-FOCO-AUTH-v1.0](../informes/INFORME-UI-ANILLO-FOCO-AUTH-v1.0.md)
@@ -78,7 +78,7 @@ Trabajo en `main`, sin ramas, sin stash y sin commit hasta B6. **Nunca se matan 
 | G3 | **✅ 2026-11-08** (spec §9.4). Spec §8 criterios 2, 4 y 5 (CSS generado) |
 | G4 | **✅ 2026-11-08** (spec §9.4). Spec §8 criterio 3, con conteo real y `Cached: 0` |
 | G6 | **✅ 2026-11-08** (informe de cierre §2 y §6). `docs-governance` sin bloqueantes sobre el informe de cierre |
-| G6.5 | CI de `main` en verde sobre el SHA publicado |
+| G6.5 | **✅ 2026-11-09** (run 42616291077, informe de cierre §2). CI de `main` en verde sobre el SHA publicado |
 
 ## 7. Riesgos
 

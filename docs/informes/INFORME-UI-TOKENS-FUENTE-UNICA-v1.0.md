@@ -1,7 +1,7 @@
 # INFORME — `@iwana/ui`: fuente única de tokens y hex de marca
 
 **Versión:** 1.0
-**Estado:** Aprobado. G0 a G4 y G6 ✅ el 2026-11-08; publicación (B6) pendiente del CI de `main` y del orden de commits de §6
+**Estado:** Aprobado y publicado. G0 a G4, G6 y G6.5 ✅ el 2026-11-08 (`c73a9220`); queda el segundo commit de §6, que pertenece a la consolidación de skills
 **Fecha:** 2026-11-08
 **Emitido por:** AI-EM-ARCH
 **Convención documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
@@ -28,7 +28,7 @@
 | G3 | ✅ 2026-11-08 | `sr-qa`: 7 de 8 parejas idénticas píxel a píxel; `04-section-accordion-claro` difiere en 44 px, los del `PlusIcon` (línea 227), de lima a `#6A7A1C`, aprobado en §5. `shadow-iwana-secondary/20` compila a `#a5c33033` en el CSS de portal y de web |
 | G4 | ✅ 2026-11-08 | `gate-verifier`, sin caché (`Cached: 0`): `@iwana/ui` 55 tests en 8 suites, `@iwana/web` 233 en 38, `@iwana/portal` 3.479 en 348 (3.478 pasan, 1 omitido); los mismos conteos de la línea base. Lint y typecheck con exit 0 en los tres (10 avisos en web y 42 en portal, sin errores). Ningún spec cambió: `test-change-reviewer` no aplica |
 | G6 | ✅ 2026-11-08 | `docs-governance`: un bloqueante (la publicación mezclaba dos skills con cambios de la consolidación) y nueve menores. El bloqueante se resolvió con el orden de commits de §6; los menores, en §7 |
-| G6.5 | Bloqueado | CI de `main` en rojo sobre `81c9be55` (run 42536520408), por causas ajenas a este encargo |
+| G6.5 | ✅ 2026-11-08 | `c73a9220` llegó a `origin/main` junto con `b6b2c759` y `b48b2ba7`. `CI` verde sobre `b48b2ba7` (run 42548805100: lint, typecheck, build, unitarias, E2E portal, E2E R4.1 e imágenes). El run intermedio sobre `b6b2c759` (42544794538) falló en `retention-expiry-b3.postgres.integration.spec.ts` (privacy H-EXP), ajeno a este encargo y corregido por `b48b2ba7` |
 
 ## 3. Cambios
 
@@ -54,8 +54,8 @@ En la Ola 2, `fe-platform` ejecutó `taskkill` sobre todos los `node.exe` y `tur
 
 | Sev. | Deuda | Destino |
 | --- | --- | --- |
-| P2 | El anillo de foco lima de `AUTH_FORM_INPUT_FOCUS_CLASS` mide 1,91:1 sobre `iwana-surface-soft` en claro: indicador de foco por debajo de 3:1 | Encargo aparte de UI (cambia lo visible; D2 no lo permitía aquí) |
-| P3 | `globals.css:13` declara `@source "../tokens.ts"`, archivo inexistente; inerte y anterior a este encargo | Mismo encargo aparte |
+| P2 | El anillo de foco lima de `AUTH_FORM_INPUT_FOCUS_CLASS` mide 1,91:1 sobre `iwana-surface-soft` en claro: indicador de foco por debajo de 3:1 | [Encargo aparte](../specs/2026-11-08-ui-anillo-foco-auth-spec.md) |
+| P3 | `globals.css:13` declara `@source "../tokens.ts"`, archivo inexistente; inerte y anterior a este encargo | [Mismo encargo](../specs/2026-11-08-ui-anillo-foco-auth-spec.md) |
 | P3 | No existe un token de texto «tinta» para modo claro; `dark-surface` como texto es semánticamente impreciso | Contrato de tokens de `ds-owner` |
 | P3 | Ninguna captura versionada cubre el ícono de la línea 154 (los ítems salen cerrados); `sr-qa` lo verificó por estilos computados (claro `rgb(106,122,28)`, oscuro lima) | Ampliar el guion si se reabre el componente |
 | P3 | `gate-verifier` no pudo comparar los avisos de lint (10 en web, 42 en portal) con una corrida anterior | Sin acción: ningún error, y el diff no toca `apps/` |
@@ -65,9 +65,9 @@ En la Ola 2, `fe-platform` ejecutó `taskkill` sobre todos los `node.exe` y `tur
 
 ## 6. Publicación (B6)
 
-Pendiente. `core-components/SKILL.md` y `iwana-identity-ui-review/references/tokens.md` tienen en el mismo archivo cambios de este encargo y de la consolidación de skills, también sin commitear, así que no se pueden publicar por separado. Orden:
+Primer commit hecho: `c73a9220`, 32 rutas, G6.5 ✅ (§2). El segundo sigue pendiente de la consolidación. `core-components/SKILL.md` y `iwana-identity-ui-review/references/tokens.md` tienen en el mismo archivo cambios de este encargo y de la consolidación de skills, también sin commitear, así que no se pueden publicar por separado. Orden:
 
-1. **Commit de este encargo**, sin esas dos skills. Vía `iwana-checkpoint-commit`, con esta lista explícita de rutas:
+1. **Commit de este encargo** — ✅ `c73a9220` (2026-11-08), sin esas dos skills. Vía `iwana-checkpoint-commit`, con esta lista explícita de rutas:
    - `packages/ui/src/index.ts`
    - `packages/ui/src/styles/globals.css`
    - `packages/ui/src/components/SectionAccordion.tsx`
@@ -79,9 +79,11 @@ Pendiente. `core-components/SKILL.md` y `iwana-identity-ui-review/references/tok
    - `docs/specs/2026-11-08-ui-tokens-fuente-unica-spec.md`
    - `docs/plans/2026-11-08-ui-tokens-fuente-unica-orquestacion.md`
    - `docs/prompts/PROMPT-UI-TOKENS-FUENTE-UNICA-LAUNCH-v1.0.md`, `PROMPT-UI-TOKENS-FUENTE-UNICA-OLA2-LAUNCH-v1.0.md`, `PROMPT-UI-TOKENS-FUENTE-UNICA-OLA3-LAUNCH-v1.0.md`
-2. **Commit de la consolidación de skills**, cuando cierre su B5. Lleva las dos skills enteras, con los ajustes de este encargo dentro. Entre los dos commits, `core-components` en `HEAD` seguirá citando `src/tokens/` como existente: es el estado previo y se corrige con el segundo.
+2. **Commit de la consolidación de skills** — pendiente, cuando cierre su B5. Lleva las dos skills enteras, con los ajustes de este encargo dentro. Entre los dos commits, `core-components` en `HEAD` seguirá citando `src/tokens/` como existente: es el estado previo y se corrige con el segundo.
 
-Ambos excluyen los `next-env.d.ts` y todo lo demás del árbol. El push espera a que el CI de `main` vuelva a verde (G6.5).
+Ambos excluyen los `next-env.d.ts` y todo lo demás del árbol.
+
+Desviación del checkpoint en el primer commit: no se aisló el índice con `git stash --include-untracked`, porque había unas 300 rutas en vuelo de otras sesiones que el stash les habría retirado durante el gate. Se sustituyó por el `git grep` de consumidores de `src/tokens/` sobre `HEAD` (vacío), el diff íntegro de `packages/ui` (todo de este encargo) y G4 sobre el árbol completo. `lint-staged` avisó que no podía leer `.agents/skills/playwright-skill/package.json`, borrado por la consolidación y aún sin commitear: inocuo.
 
 ## 7. Correcciones tras G6
 

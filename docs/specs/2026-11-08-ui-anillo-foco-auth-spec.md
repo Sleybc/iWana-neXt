@@ -6,7 +6,7 @@
 **Cambio v1.2 → v1.3 (2026-11-08):** registro de la Ola 2 (§9.3): B3-pre y B2 hechos, G2 ✅
 **Cambio v1.1 → v1.2 (2026-11-08):** §5 completado y congelado por `ds-owner`; G1 registrado (§9.2), con una corrección del orquestador a la fila `change-password:394`
 **Cambio v1.0 → v1.1 (2026-11-08):** G0 registrado (§9.1); cifras de H5, H7, H8 y H11 corregidas tras la revisión de `docs-governance`
-**Estado:** Aprobado. G0 a G4 ✅ el 2026-11-08; cierre en [INFORME-UI-ANILLO-FOCO-AUTH-v1.0](../informes/INFORME-UI-ANILLO-FOCO-AUTH-v1.0.md)
+**Estado:** Cerrado. G0 a G4 y G6 ✅ el 2026-11-08; G6.5 ✅ el 2026-11-09 (`ebb0fe61`); cierre en [INFORME-UI-ANILLO-FOCO-AUTH-v1.0](../informes/INFORME-UI-ANILLO-FOCO-AUTH-v1.0.md)
 **Fecha:** 2026-11-08
 **Emitido por:** AI-EM-ARCH
 **Dueños:** `ds-owner` (contrato y veredictos) · `fe-platform` (código de `packages/ui`, `apps/portal` y `apps/web`)

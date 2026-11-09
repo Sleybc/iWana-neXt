@@ -1,12 +1,13 @@
 # Plan de orquestación — `@iwana/ui`: fuente única de tokens y hex de marca
 
-**Versión:** 1.5
+**Versión:** 1.6
 **Cambio v1.0 → v1.1 (2026-11-08):** correcciones de la revisión de `docs-governance`: bloque B3-pre para las capturas «antes», evidencia por Playwright y no por una skill externa, `grep` de riesgo acotado al código, y P4 actualizado
 **Cambio v1.1 → v1.2 (2026-11-08):** G0 y G1 cerrados; ruta de evidencias fijada; B2 incluye el comentario de `globals.css` (spec §3.5); el lanzamiento pasa a la Ola 2
 **Cambio v1.2 → v1.3 (2026-11-08):** G2 cerrado (spec §9.3); prohibición de matar procesos por nombre tras el incidente de la Ola 2; el lanzamiento pasa a la Ola 3
 **Cambio v1.3 → v1.4 (2026-11-08):** G3 y G4 cerrados (spec §9.4); informe de cierre emitido (B5)
 **Cambio v1.4 → v1.5 (2026-11-08):** G6 cerrado; P5 actualizado (el ajuste de skills se hizo aquí); B6 en dos commits ordenados
-**Estado:** Aprobado. G0 a G4 y G6 cerrados el 2026-11-08; B6 bloqueado por P4 y ordenado en el informe de cierre §6
+**Cambio v1.5 → v1.6 (2026-11-08):** B6 ejecutado (`c73a9220`), P4 cerrada y G6.5 ✅ (informe de cierre §2 y §6)
+**Estado:** Cerrado. G0 a G4, G6 y G6.5 el 2026-11-08; publicado en `c73a9220`. Las dos skills compartidas salen con el commit de la consolidación (informe de cierre §6)
 **Fecha:** 2026-11-08
 **Emitido por:** AI-EM-ARCH
 **Definición:** [2026-11-08-ui-tokens-fuente-unica-spec.md](../specs/2026-11-08-ui-tokens-fuente-unica-spec.md) v1.5 · **Lanzadores:** [Ola 1](../prompts/PROMPT-UI-TOKENS-FUENTE-UNICA-LAUNCH-v1.0.md) (G1 ✅) · [Ola 2](../prompts/PROMPT-UI-TOKENS-FUENTE-UNICA-OLA2-LAUNCH-v1.0.md) (G2 ✅) · [Ola 3](../prompts/PROMPT-UI-TOKENS-FUENTE-UNICA-OLA3-LAUNCH-v1.0.md) (G3 y G4 ✅) · **Cierre:** [INFORME-UI-TOKENS-FUENTE-UNICA-v1.0](../informes/INFORME-UI-TOKENS-FUENTE-UNICA-v1.0.md)
@@ -18,7 +19,7 @@
 | P1 | G0: el CTO resuelve D1 y D2 (spec §6) | **Cerrada** el 2026-11-08: D1 y D2 sí (spec §9.1) |
 | P2 | Nadie en vuelo sobre `packages/ui` | **Cerrada**: `git status -- packages/ui` vacío. Se vuelve a comprobar al lanzar B2 |
 | P3 | `apps/portal` tiene specs modificados por otras olas sin commitear (spec H8) | **Vigente.** B2 no edita `apps/`; las suites de `@iwana/portal` se corren con ese árbol, y una roja ajena se reporta, no se corrige |
-| P4 | CI de `main` en verde | **Abierta.** `CI` en rojo sobre `81c9be55`, HEAD de `main` (run 42536520408). Solo bloquea B6 |
+| P4 | CI de `main` en verde | **Cerrada.** Rojo sobre `81c9be55` (run 42536520408) por privacy H-EXP; verde sobre `b48b2ba7`, que ya contiene `c73a9220` (run 42548805100) |
 | P5 | La consolidación de skills edita `core-components` e `iwana-identity-ui-review` (Ola 3) | **Resuelta.** Plan original: no tocar `.agents/skills/`. Como el B4 de la consolidación cerró antes que este encargo, el ajuste del spec §7 se hizo aquí (spec §9.4); esos dos archivos se publican con el commit de la consolidación (informe de cierre §6) |
 
 ## 2. Superficie
@@ -81,7 +82,7 @@ Trabajo en `main`, sin ramas, sin stash y sin commit hasta B6. **Nunca se matan 
 | G3 | **✅ 2026-11-08** (spec §9.4). B3-pre y B3: spec §8 criterios 4 y 6, con capturas «antes» y «después» del mismo guion, versionadas y referenciadas en el informe de cierre |
 | G4 | **✅ 2026-11-08** (spec §9.4). B4: spec §8 criterio 3, con conteo real y `Cached: 0` |
 | G6 | **✅ 2026-11-08** (informe de cierre §2 y §7). `docs-governance` sin bloqueantes sobre el informe de cierre |
-| G6.5 | CI de `main` en verde sobre el SHA publicado |
+| G6.5 | **✅ 2026-11-08** (run 42548805100). CI de `main` en verde sobre el SHA publicado |
 
 ## 7. Riesgos
 
