@@ -1,6 +1,6 @@
 # Informe de auditoría — Cruces y optimización del ecosistema de roles
 
-**Versión:** 1.8
+**Versión:** 1.9
 **Estado:** Cerrado. Remediación completa (olas 0 a 4), publicada con G6.5 ✅: Ola 1 en `75528631`; olas 2 y 4 y la corrección del cercado en el tren `965bf5e5` (§9.5). Pendiente externo: §7, con el CTO y Legal (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
 **Cambio v1.0 → v1.1 (2026-11-08):** el CTO aprueba G0-1 a G0-4 en bloque, con las recomendaciones de §8
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 aplicada sobre 9 perfiles y el anexo (§9)
@@ -8,6 +8,7 @@
 **Cambio v1.3 → v1.4 (2026-11-09):** el CTO aprueba G0-5 a G0-11 en bloque, con las recomendaciones de §10.6. §10.3 y §10.5 no cambian: siguen siendo el contrato congelado de las olas 2 y 4
 **Cambio v1.4 → v1.5 (2026-11-09):** §9.3 registra la Ola 2 (protocolo v1.10 + espejos, G1 ✅, G3 y veredicto de `docs-governance`); el Estado queda al día
 **Cambio v1.5 → v1.6 (2026-11-09):** §9.4 registra la Ola 4 (prompts compactos de §10.5, G1′ ✅ con T8-R, G3′ y veredicto de `docs-governance`); el Estado declara la remediación completa
+**Cambio v1.8 → v1.9 (2026-11-09):** §7 registra la escalación al CTO de las tres afirmaciones abiertas (ARCO, jornada, TLS interno)
 **Cambio v1.7 → v1.8 (2026-11-09):** §7 verifica contra el repo la fila de AES-256/TLS 1.3: AES-256-GCM y TLS 1.3 en el borde confirmados; el TLS interno entre servicios no tiene evidencia. Las filas de ARCO y jornada siguen con el CTO y Legal
 **Cambio v1.6 → v1.7 (2026-11-09):** §9.5 registra el G6.5 del tren `965bf5e5` (CI 42678231774 y E2E 42678231542 en verde), que cubre las olas 2 y 4 y la corrección del cercado (`84a0ab65`); el informe pasa a Cerrado, con §7 como único pendiente externo
 **Fecha:** 2026-11-09
@@ -123,6 +124,23 @@ No son hallazgos: son afirmaciones sin fuente verificada en el repo.
 | JWT RS256 | `SEC:65` | **Verificado** en `apps/api/src/modules/auth/auth.module.ts:52` |
 
 Un texto escrito por la IA no constituye un dictamen jurídico: el cierre de las dos primeras filas corresponde al CTO, que consulta a Legal (`PROT:56-57`).
+
+**Escalación emitida (2026-11-09):**
+
+```text
+[ESCALACION AL CTO] Prioridad: media (no bloquea el cierre documental; bloquea afirmar estos datos en producción)
+Contexto: §7 de este informe. Tres afirmaciones de los perfiles SEC y ANX siguen sin fuente verificada.
+  1. «ARCO ≤15 días» (SEC §7 y prompt). Fuente candidata: Ley 1581 de 2012, art. 14 (consultas) y art. 15 (reclamos), en días hábiles.
+  2. «Jornada 42h» (ANX §2.5). Fuente candidata: Ley 2101 de 2021, reducción gradual de la jornada máxima.
+  3. TLS «interno entre servicios» (SEC §5.3). Sin evidencia en el repo: TLS 1.3 solo en el borde nginx.
+Opciones (máx. 3):
+  A. Legal confirma 1 y 2 contra el texto oficial vigente y el CTO decide 3 (acotar el perfil al borde o encargar TLS interno a plat-ops).
+  B. Retirar las cifras de los perfiles y dejar la remisión a la norma, sin número.
+  C. Mantener los marcadores hasta G7 (ADR-095) y decidirlo con la beta.
+Recomendación: A para 1 y 2; para 3, acotar el perfil al borde salvo que el CTO quiera TLS interno antes de G7.
+```
+
+Hasta la respuesta, los marcadores «requiere verificación» de SEC y ANX siguen vigentes; nada de esta fila se da por cerrado.
 
 ## 8. Plan por olas y decisiones G0
 
