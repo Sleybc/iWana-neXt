@@ -71,6 +71,8 @@ Topes aprobados por el usuario el 2026-11-09 (ADR-107 D8):
 3. **Revisión `docs-governance` una vez por fase**, al cierre.
 4. **El registro de G6.5 va en el siguiente commit funcional**, nunca en un commit ni en un launcher de cierre propio.
 
+D8 limita cuántos documentos hay; cuánto dice cada uno lo regula «Escritura mínima» de `AGENTS.md` (2026-11-09). Re-medición prevista el **2026-11-23** con el mismo conteo por superficie, ventana 2026-11-10 a 2026-11-23.
+
 ## 6. Cambios aplicados con este informe
 
 | Archivo | Cambio |

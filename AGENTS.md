@@ -120,7 +120,45 @@ No existe script `migration:generate`: las migraciones se escriben a mano en `pa
 | --- | --- |
 | Convencion | Prettier y ESLint del repo son fuente ejecutable; usar aliases `@iwana/*`, grupos de imports externo → workspace → relativo y naming consistente. |
 | UI y docs | Texto visible en espanol, sentence case, sin enums crudos en vistas finales; comentarios en espanol solo para logica no trivial. |
-| Simplicidad | A igual resultado gana el diff mas chico. Una mejora marginal que agrega complejidad (capas, flags, ramas, abstracciones de un solo uso) se justifica en el INFORME o se retira; borrar codigo conservando el comportamiento cuenta como mejora. El INFORME de cierre declara lineas agregadas y quitadas de la ola (`git diff --shortstat` del alcance) y que se elimino. Criterio de revision, no gate bloqueante. Origen: `program.md` de autoresearch, ver [referencia](docs/referencias/REFERENCIA-KARPATHY-METODOLOGIA-IA-v1.0.md) §5.2. |
+| Simplicidad | Ver «Escritura mínima». Una mejora marginal que agrega complejidad se justifica en el INFORME o se retira. |
+
+---
+
+## Escritura mínima
+
+Aplica a código, documentos y respuestas. Origen: [ponytail v5](https://github.com/DietrichGebert/ponytail) (−53 % de código sin perder controles en su benchmark) y `program.md` de autoresearch ([referencia](docs/referencias/REFERENCIA-KARPATHY-METODOLOGIA-IA-v1.0.md) §5.2). Criterio de revisión, no gate bloqueante.
+
+**Antes de escribir:** leer la tarea y lo que toca, y listar todo lo que el cambio debe alcanzar: llamadores, pruebas, fixtures, config, exports y documentos vivos que lo citan. Eso es el alcance; lo que nadie pidió no.
+
+**Código.** Tomar la primera opción que resuelva por completo:
+
+1. ¿Hace falta? Omitir opciones y flexibilidad que nadie pidió, y nombrarlas en una línea.
+2. ¿Ya existe en el repo (helper, servicio, primitive de `@iwana/ui`, patrón)? Usarlo como lo usa el código vecino.
+3. ¿Lo da la plataforma o la biblioteca estándar? Usarlo, salvo que el repo tenga el suyo.
+4. ¿Lo da una dependencia instalada? Usarla. Nunca una dependencia nueva por unas líneas.
+5. ¿Cabe en una línea que se entienda a la primera? Una línea.
+6. Si no: el mínimo código que funcione.
+
+**Documentos.** La misma escalera:
+
+1. ¿Hace falta el documento? Ver los topes de ADR-107 D8.
+2. ¿Hay un documento vivo donde va? Actualizar su sección, no crear otro.
+3. ¿Basta un enlace a la fuente? Enlazar, no copiar ni resumir lo que la fuente ya dice.
+4. ¿Basta una tabla, una lista o una línea? Usarla.
+5. Si no: el mínimo texto que sirva a una decisión o a una ejecución, sin contexto que el lector ya tiene, sin repetir el historial de git y sin relleno.
+
+**Reglas**
+
+- Perezoso con la solución, nunca con el cambio: se termina todo lo que la tarea toca.
+- A igual resultado gana el diff más chico, y borrar conservando el comportamiento cuenta como mejora. Un one-liner que hay que descifrar no es corto.
+- Sin abstracción, wrapper, opción, flag ni código «para después» que nadie pidió. Se conserva la estructura del Modulith.
+- Comentar solo el porqué que el código no muestra, en una línea.
+- Bugfix: buscar todos los llamadores antes de editar y arreglar la causa una sola vez, en el código compartido.
+- La lógica no trivial (rama, bucle, parser, dinero, seguridad, tenancy) deja una prueba; lo trivial no.
+- Un atajo con límite conocido lleva `// atajo: <límite>, <cuándo subir>`. El INFORME de cierre los lista.
+- Cada respuesta y cada INFORME terminan con una o dos líneas: qué se omitió, qué no se verificó y qué riesgo queda.
+
+**Nunca recortar:** validación en fronteras de confianza, aislamiento de tenant, manejo de errores que evita pérdida de datos, seguridad, PII, accesibilidad, trazabilidad regulatoria y de decisiones (porqué y fuente), evidencia de gates con conteo real, ni nada que haya pedido el usuario.
 
 ---
 

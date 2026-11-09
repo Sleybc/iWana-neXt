@@ -18,3 +18,4 @@ Referencia maestra: `AGENTS.md`.
 - Todo prompt generado debe vincular plantilla base y artefactos de entrada obligatorios.
 - Los informes de ejecucion y correccion se mantienen como documento vivo: se actualizan, no se duplican.
 - Convencion de nombre documental: `{TIPO}-{MODULO}-{FASE}-v{VERSION}.md`.
+- Escribir solo lo necesario: escalera documental de `AGENTS.md` → «Escritura mínima».

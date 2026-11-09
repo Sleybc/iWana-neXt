@@ -79,6 +79,7 @@ Conecta siempre que aplique:
 - nada de relleno aspiracional
 - decisiones, riesgos y pendientes explicitados
 - tablas y listas cuando aporten claridad real
+- escalera documental y «nunca recortar» de `AGENTS.md` → «Escritura mínima»
 
 ## Checklist de revision
 

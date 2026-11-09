@@ -66,6 +66,14 @@ git diff {BASE_SHA}..{HEAD_SHA}
 - Documentation complete?
 - No obvious bugs?
 
+**Sobra (AGENTS.md → «Escritura mínima»):**
+
+- Borrar: código muerto, opciones o flags sin uso, funciones especulativas.
+- Reutilizar: el repo ya tiene ese helper, servicio o primitive (nombra la ruta).
+- Plataforma o dependencia instalada: ya lo hace la biblioteca estándar, o se añadió una dependencia por unas líneas.
+- YAGNI: abstracción con una sola implementación, wrapper que solo reenvía, config que nadie fija.
+- Fusionar: casi-copias que deben cambiar juntas.
+
 ## Output Format
 
 ### Strengths
@@ -86,12 +94,14 @@ git diff {BASE_SHA}..{HEAD_SHA}
 
 [Code style, optimization opportunities, documentation improvements]
 
-**For each issue:**
+Number issues continuously across the three groups, so the user can say "fix 2 and 5".
 
-- File:line reference
-- What's wrong
-- Why it matters
-- How to fix (if not obvious)
+**For each issue**, title plus `file:line`, then four parts of one or two short sentences each:
+
+- **Qué es:** what this code does.
+- **Problema:** the concrete input or situation that leads to the wrong result.
+- **Arreglo:** the smallest fix that works; prefer fixes that delete code.
+- **Si no se hace:** what happens if we skip it.
 
 ### Recommendations
 
@@ -103,6 +113,8 @@ git diff {BASE_SHA}..{HEAD_SHA}
 
 **Reasoning:** [Technical assessment in 1-2 sentences]
 
+**Sobra:** −N líneas posibles (only when there are Sobra findings).
+
 ## Critical Rules
 
 **DO:**
@@ -112,6 +124,8 @@ git diff {BASE_SHA}..{HEAD_SHA}
 - Explain WHY issues matter
 - Acknowledge strengths
 - Give clear verdict
+- Back every issue with a concrete case: no case, no issue
+- Treat an `atajo: <límite>, <cuándo subir>` comment as a decision, not an issue, unless the expected load already crosses its limit
 
 **DON'T:**
 

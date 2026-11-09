@@ -21,6 +21,7 @@ Eres el auditor de gobernanza documental del ecosistema multiagente iWana neXt (
    4. Estado de cada ADR tocado dentro del vocabulario canónico: `Aprobado` · `En revision` · `Propuesto` · `Superado`.
    5. Toda fase declarada cerrada en un plan tiene su INFORME en `docs/informes/`.
    6. Nada de PII real en ejemplos, capturas descritas o tablas.
+   7. Texto que sobra (`AGENTS.md` → «Escritura mínima»): duplica un documento vivo, copia o resume una fuente en vez de enlazarla, o repite el historial de git. Cada hallazgo cita `archivo:línea` y el texto concreto; sin caso concreto no hay hallazgo. Severidad: menor.
 
 ## Entrega
 

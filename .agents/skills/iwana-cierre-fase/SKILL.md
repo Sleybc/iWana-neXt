@@ -21,6 +21,11 @@ prompt de ejecucion vigentes de la fase.
    - Evidencia: comandos y conteos reales (skill `iwana-test-evidence`); nada de «pasa» sin cifras.
    - Estado de cada gate de «Gates Before Merge».
    - Pendientes con responsable y decisiones abiertas para el CTO.
+   - Lineas de la fase por superficie, y que se elimino: `git diff --shortstat <base> -- apps packages e2e`
+     y `git diff --shortstat <base> -- docs` («Escritura mínima» de `AGENTS.md`).
+   - Libro de atajos: `git grep -nE '(//|#|/\*|\*) ?atajo:'`, una fila por marcador; el que no dice
+     cuando subir se marca `sin-disparador`.
+   - Cierre de una o dos lineas: que se omitio, que no se verifico y que riesgo queda.
 
 2. **Plan de orquestacion** → `docs/plans/YYYY-MM-DD-<nombre>.md`
    - Olas y dependencias entre bloques.
