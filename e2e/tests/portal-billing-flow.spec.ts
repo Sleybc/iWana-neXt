@@ -616,7 +616,11 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
   }) => {
     await loginInPortal(page, ADMIN_EMAIL, tenantAdminPassword);
     await page.goto('/dashboard/billing/payments');
-    await page.getByRole('button', { name: 'Registrar pago' }).click();
+    // Sin pagos, la cabecera y el estado vacío muestran «Registrar pago»: se
+    // espera la carga y se usa el de la cabecera (primero en el DOM). Sin la
+    // espera, el clic dependía de si la lista ya había cargado.
+    await expect(page.getByText('Aún no hay pagos registrados')).toBeVisible();
+    await page.getByRole('button', { name: 'Registrar pago' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Registrar pago' });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel('Suscriptor').fill('Titular');
