@@ -181,7 +181,19 @@ Sin commit ni push, a la espera de la orden del CTO.
 
 La línea base local en serie (§2.2) fue de 532 s. La diferencia entre 532 y 584 s es ruido de la máquina compartida.
 
-### 10.3 Pendiente
+### 10.3 Publicación y G6.5
 
-- Primer run de CI en `main` con el cambio, para medir el paso, recalibrar `timeout-minutes` según §6 y decidir si hace falta la reserva de §4.4.
+- Publicado en el tren `9223df3e..d09397ee` (`e824728a` de R7 y `d09397ee`). El CI 42704957642 de ese SHA quedó en rojo por una línea de R7 (`tenant-schema-purge.processor.ts:93`, guarda `log-error-safety`). Los pasos de integración no llegaron a correr.
+- R7 lo corrigió en `6c96342d`. **G6.5 ✅ (2026-11-09, verificado por AI-EM-ARCH):** CI 42708735995 y E2E Web Admin Smoke 42708735897 en `success`. Es el primer run con la opción A:
+
+| Paso | Duración | Detalle |
+| --- | --- | --- |
+| Integration DBs — una base por worker (API) | **3 s** (22:20:28 a 22:20:31Z) | `max_locks_per_transaction = 256`; clones `iwana_it_g7_test_w2`, `_w3` y `_w4` |
+| Integration tests — API (PostgreSQL real) | **3 min 39 s** (22:20:31 a 22:24:10Z); jest 217,6 s | 4 workers: `test` y los tres clones. 86 suites (83 aprobadas, 3 omitidas) y 589 pruebas (570 aprobadas, 19 omitidas). Gate: `PASS (86 specs; 3 omisiones declaradas; B5 17/17; K2 5/5)` |
+
+- Frente a los 8 min 10 s del run 42678231774, el paso baja un 55 %. **Se cumple el objetivo de < 5 min sin ninguna reserva de §4.4.**
+- **Recalibración (§6):** `ceil(1,5 × 3,65 min) = 6 min`, igual al mínimo. Se pasó `timeout-minutes` de 10 a 6, con el comentario del paso actualizado (SHA, fecha, duración, N = 4 y fórmula). Va en un commit aparte, sin push hasta la orden del CTO.
+
+### 10.4 Pendiente
+
 - La rama de fallo cerrado de `clone-integration-dbs.sh` con `max_locks_per_transaction < 256` no se ejecutó en local.

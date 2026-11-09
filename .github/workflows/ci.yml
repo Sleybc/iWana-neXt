@@ -701,10 +701,12 @@ jobs:
         # margen ante variación de runner/DB (el barrido añade unas 6 suites) y evita cuelgues largos.
         # Sobre 965bf5e5 (P3-5, 2026-11-09, en serie) tardó 8 min 10 s. Desde la opción A
         # corre con 4 workers (IWANA_IT_WORKERS) y una base por worker (paso anterior).
-        # El timeout se recalibra con el primer run verde: ceil(1,5 × medida), mínimo 6 min.
+        # Primer run verde con la opción A, sobre 6c96342d (2026-11-09, CI 42708735995):
+        # 3 min 39 s (22:20:31 a 22:24:10), con N = 4 workers. El paso de clonado tardó 3 s.
+        # timeout = ceil(1,5 × medida), con un mínimo de 6 min: ceil(1,5 × 3,65) = 6.
         # Cada suite debe ser autónoma dentro de su base: no puede depender del orden
         # ni del estado que deje otra suite.
-        timeout-minutes: 10
+        timeout-minutes: 6
         shell: bash
         env:
           IWANA_IT_WORKERS: 4
