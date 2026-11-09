@@ -1,5 +1,7 @@
 // @ts-nocheck
+import { Logger } from '@nestjs/common';
 import { UnrecoverableError } from 'bullmq';
+import { isValidSchemaName } from '@iwana/db';
 import { Pool } from 'pg';
 import { DataSource } from 'typeorm';
 import { TenantProvisioningProcessor } from './tenant-provisioning.processor';
@@ -32,8 +34,11 @@ jest.mock('@iwana/db', () => {
     applyTenantMigrationsInOrder: (...args: unknown[]) => mockApplyTenantMigrationsInOrder(...args),
     grantTenantSchemaAppPrivileges: (...args: unknown[]) =>
       mockGrantTenantSchemaAppPrivileges(...args),
-    summarizeErrorForLog: (error: unknown) =>
-      `class=${error instanceof Error ? error.constructor.name : 'UnknownError'} sqlstate=none`,
+    // DT-4: el resumen real conserva el `code=` de dominio (TENANT_NOT_PROVISIONABLE)
+    // que el doble anterior descartaba; para errores sin code produce lo mismo.
+    summarizeErrorForLog: jest.requireActual(
+      '../../../../packages/database/src/summarize-error-for-log',
+    ).summarizeErrorForLog,
     resolveMigrationDbCredentials,
     resolveAppDbRole: () =>
       (process.env['DB_APP_USER'] ?? process.env['DB_USER'] ?? 'iwana_app').trim(),
@@ -61,6 +66,8 @@ function buildTenantRepository(contactEmail = 'admin@isptest.co') {
       id: 'tenant-uuid-1',
       slug: 'isp-test',
       schemaName: 'tenant_isp_test',
+      // DT-4: el procesador solo aprovisiona tenants en PROVISIONING.
+      status: 'PROVISIONING',
       contactEmail,
     }),
   };
@@ -151,7 +158,8 @@ describe('TenantProvisioningProcessor', () => {
       update: jest.fn().mockReturnThis(),
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue(undefined),
+      // DT-4: el UPDATE condicional exige que la fila siga en PROVISIONING.
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
@@ -217,7 +225,8 @@ describe('TenantProvisioningProcessor', () => {
       update: jest.fn().mockReturnThis(),
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue(undefined),
+      // DT-4: el UPDATE condicional exige que la fila siga en PROVISIONING.
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
@@ -270,7 +279,8 @@ describe('TenantProvisioningProcessor', () => {
       update: jest.fn().mockReturnThis(),
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue(undefined),
+      // DT-4: el UPDATE condicional exige que la fila siga en PROVISIONING.
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
@@ -333,7 +343,8 @@ describe('TenantProvisioningProcessor', () => {
       update: jest.fn().mockReturnThis(),
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue(undefined),
+      // DT-4: el UPDATE condicional exige que la fila siga en PROVISIONING.
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
@@ -370,7 +381,8 @@ describe('TenantProvisioningProcessor', () => {
       update: jest.fn().mockReturnThis(),
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue(undefined),
+      // DT-4: el UPDATE condicional exige que la fila siga en PROVISIONING.
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const dataSource = {
       getRepository: jest.fn().mockReturnValue(tenantRepository),
@@ -396,5 +408,327 @@ describe('TenantProvisioningProcessor', () => {
     expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
     expect(mockPool.connect).not.toHaveBeenCalled();
     expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DT-4 (spec 2026-11-09-plat-ops-dt4 §3-§4): el aprovisionamiento no reactiva ni toca un
+  // tenant que no esté en PROVISIONING.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('DT-4 — guarda de estado del tenant', () => {
+    const job = {
+      data: { tenantId: 'tenant-uuid-1', schemaName: 'tenant_isp_test', tenantSlug: 'isp-test' },
+    } as never;
+
+    const CONDITIONAL_WHERE = 'id = :id AND status = :expectedStatus';
+    const CONDITIONAL_PARAMS = { id: 'tenant-uuid-1', expectedStatus: 'PROVISIONING' };
+
+    function buildHarness(status: string | null, executeResult: unknown = { affected: 1 }) {
+      const tenantRepository = {
+        findOne: jest
+          .fn()
+          .mockResolvedValue(
+            status === null
+              ? null
+              : { id: 'tenant-uuid-1', slug: 'isp-test', schemaName: 'tenant_isp_test', status },
+          ),
+      };
+      const updateBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue(executeResult),
+      };
+      const dataSource = {
+        getRepository: jest.fn().mockReturnValue(tenantRepository),
+        createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      } as unknown as DataSource;
+      const tenantSeedService = {
+        seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+        seedTaxPresets: jest.fn().mockResolvedValue(undefined),
+      } as unknown as TenantSeedService;
+      const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
+      return { processor, dataSource, updateBuilder, tenantSeedService };
+    }
+
+    function poolSql(): string[] {
+      return mockPool.query.mock.calls.map((call) => String(call[0]));
+    }
+
+    function mockSchemaAbsent(): void {
+      mockPool.query.mockReset();
+      mockPool.query.mockResolvedValue({ rowCount: 0, rows: [] });
+    }
+
+    function mockSchemaComplete(): void {
+      mockPool.query.mockReset();
+      mockPool.query.mockImplementation(async (sql: string) => {
+        if (sql.includes('information_schema.schemata')) {
+          return { rowCount: 1, rows: [{ schema_name: 'tenant_isp_test' }] };
+        }
+        if (sql.includes('information_schema.tables')) {
+          return { rowCount: 1, rows: [{ count: '1' }] };
+        }
+        if (sql.includes('typeorm_migrations')) return { rowCount: 1, rows: [{ count: '2' }] };
+        return { rowCount: 0, rows: [] };
+      });
+    }
+
+    function hasWarnWithCode(warn: jest.SpyInstance, code: string): boolean {
+      return warn.mock.calls.some((call) => String(call[0]).includes(code));
+    }
+
+    const NOT_PROVISIONABLE = [
+      'MARKED_FOR_DELETION',
+      'INACTIVE',
+      'SUSPENDED',
+      'PROVISIONING_FAILED',
+    ] as const;
+
+    it.each(NOT_PROVISIONABLE)(
+      'U1: %s sin esquema → UnrecoverableError TENANT_NOT_PROVISIONABLE sin DDL, seed ni UPDATE',
+      async (status) => {
+        mockSchemaAbsent();
+        const { processor, dataSource, tenantSeedService } = buildHarness(status);
+
+        const outcome = processor.process(job);
+        await expect(outcome).rejects.toBeInstanceOf(UnrecoverableError);
+        await expect(outcome).rejects.toMatchObject({
+          message: expect.stringContaining('code=TENANT_NOT_PROVISIONABLE'),
+        });
+
+        expect(mockPool.connect).not.toHaveBeenCalled();
+        expect(mockClient.query).not.toHaveBeenCalled();
+        expect(mockApplyTenantMigrationsInOrder).not.toHaveBeenCalled();
+        expect(mockGrantTenantSchemaAppPrivileges).not.toHaveBeenCalled();
+        expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
+        expect(tenantSeedService.seedTaxPresets).not.toHaveBeenCalled();
+        expect(dataSource.createQueryBuilder).not.toHaveBeenCalled();
+        expect(poolSql().some((sql) => /DROP SCHEMA|CREATE SCHEMA/u.test(sql))).toBe(false);
+        // DT-4: el estado se lee antes de checkSchemaExists (sin consultas al catálogo).
+        expect(poolSql().some((sql) => sql.includes('information_schema'))).toBe(false);
+        // El lock se libera aunque el job se rechace.
+        expect(poolSql().some((sql) => sql.includes('pg_advisory_unlock'))).toBe(true);
+      },
+    );
+
+    it.each(NOT_PROVISIONABLE)(
+      'U2: %s con esquema completo → mismo rechazo, sin UPDATE a ACTIVE ni grants',
+      async (status) => {
+        mockSchemaComplete();
+        const { processor, dataSource, tenantSeedService } = buildHarness(status);
+
+        const outcome = processor.process(job);
+        await expect(outcome).rejects.toBeInstanceOf(UnrecoverableError);
+        await expect(outcome).rejects.toMatchObject({
+          message: expect.stringContaining('code=TENANT_NOT_PROVISIONABLE'),
+        });
+
+        expect(dataSource.createQueryBuilder).not.toHaveBeenCalled();
+        expect(mockGrantTenantSchemaAppPrivileges).not.toHaveBeenCalled();
+        expect(mockApplyTenantMigrationsInOrder).not.toHaveBeenCalled();
+        expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
+        expect(poolSql().some((sql) => /DROP SCHEMA|CREATE SCHEMA/u.test(sql))).toBe(false);
+        // DT-4: el estado se lee antes de checkSchemaExists (sin consultas al catálogo).
+        expect(poolSql().some((sql) => sql.includes('information_schema'))).toBe(false);
+      },
+    );
+
+    it('U3: PROVISIONING y el UPDATE final afecta 0 filas → warn, sin DROP ni markFailed, sin error', async () => {
+      mockSchemaAbsent();
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const { processor, updateBuilder } = buildHarness('PROVISIONING', { affected: 0 });
+
+      try {
+        await expect(processor.process(job)).resolves.toBeUndefined();
+
+        expect(updateBuilder.set).toHaveBeenCalledTimes(1);
+        expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'ACTIVE' });
+        expect(updateBuilder.set).not.toHaveBeenCalledWith({ status: 'PROVISIONING_FAILED' });
+        expect(updateBuilder.where).toHaveBeenCalledWith(CONDITIONAL_WHERE, CONDITIONAL_PARAMS);
+        expect(poolSql().some((sql) => sql.includes('DROP SCHEMA'))).toBe(false);
+        expect(hasWarnWithCode(warn, 'TENANT_STATUS_CHANGED_DURING_PROVISIONING')).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('U3b: PROVISIONING en la ruta de recuperación con UPDATE de 0 filas → warn, sin DROP ni markFailed', async () => {
+      mockSchemaComplete();
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const { processor, updateBuilder } = buildHarness('PROVISIONING', { affected: 0 });
+
+      try {
+        await expect(processor.process(job)).resolves.toBeUndefined();
+
+        expect(updateBuilder.set).toHaveBeenCalledTimes(1);
+        expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'ACTIVE' });
+        expect(updateBuilder.where).toHaveBeenCalledWith(CONDITIONAL_WHERE, CONDITIONAL_PARAMS);
+        expect(poolSql().some((sql) => sql.includes('DROP SCHEMA'))).toBe(false);
+        expect(hasWarnWithCode(warn, 'TENANT_STATUS_CHANGED_DURING_PROVISIONING')).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('U4: fallo de migración con tenant PROVISIONING → markFailed con WHERE condicionado a PROVISIONING', async () => {
+      mockSchemaAbsent();
+      mockApplyTenantMigrationsInOrder.mockRejectedValueOnce(new Error('migración rota'));
+      const { processor, updateBuilder } = buildHarness('PROVISIONING');
+
+      await expect(processor.process(job)).rejects.toMatchObject({
+        message: 'class=Error sqlstate=none',
+      });
+
+      expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'PROVISIONING_FAILED' });
+      expect(updateBuilder.where).toHaveBeenCalledWith(CONDITIONAL_WHERE, CONDITIONAL_PARAMS);
+      expect(updateBuilder.where).not.toHaveBeenCalledWith('id = :id', expect.anything());
+    });
+
+    it('ACTIVE con esquema → no-op idempotente: reaplica grants y no cambia el estado', async () => {
+      mockSchemaComplete();
+      const { processor, dataSource, tenantSeedService } = buildHarness('ACTIVE');
+
+      await expect(processor.process(job)).resolves.toBeUndefined();
+
+      expect(mockGrantTenantSchemaAppPrivileges).toHaveBeenCalledTimes(1);
+      expect(dataSource.createQueryBuilder).not.toHaveBeenCalled();
+      expect(mockApplyTenantMigrationsInOrder).not.toHaveBeenCalled();
+      expect(tenantSeedService.seedInitialAdmin).not.toHaveBeenCalled();
+      expect(poolSql().some((sql) => /DROP SCHEMA|CREATE SCHEMA/u.test(sql))).toBe(false);
+    });
+
+    it('ACTIVE sin esquema → no-op: sin grants, sin DDL y sin cambio de estado', async () => {
+      mockSchemaAbsent();
+      const { processor, dataSource } = buildHarness('ACTIVE');
+
+      await expect(processor.process(job)).resolves.toBeUndefined();
+
+      expect(mockGrantTenantSchemaAppPrivileges).not.toHaveBeenCalled();
+      expect(dataSource.createQueryBuilder).not.toHaveBeenCalled();
+      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(poolSql().some((sql) => /DROP SCHEMA|CREATE SCHEMA/u.test(sql))).toBe(false);
+    });
+
+    // Contrato: un fallo del GRANT sobre un tenant en uso se propaga (error
+    // reintentable por BullMQ, no UnrecoverableError) pero nunca dispara el
+    // rollback: ni DROP SCHEMA ni markFailed sobre un tenant ACTIVE.
+    it('ACTIVE con esquema y GRANT que falla → el error sube sin DROP ni markFailed', async () => {
+      mockSchemaComplete();
+      mockGrantTenantSchemaAppPrivileges.mockRejectedValueOnce(new Error('rol app ausente'));
+      const { processor, dataSource } = buildHarness('ACTIVE');
+
+      const outcome = processor.process(job);
+      await expect(outcome).rejects.toMatchObject({ message: 'class=Error sqlstate=none' });
+      await expect(outcome).rejects.not.toBeInstanceOf(UnrecoverableError);
+
+      expect(dataSource.createQueryBuilder).not.toHaveBeenCalled();
+      expect(poolSql().some((sql) => /DROP SCHEMA|CREATE SCHEMA/u.test(sql))).toBe(false);
+      expect(poolSql().some((sql) => sql.includes('pg_advisory_unlock'))).toBe(true);
+    });
+
+    // DT-4 v1.1 §8.2 W1: un reintento colado no aprovisiona dos veces. Fake con
+    // estado: el UPDATE condicional del primer process() escribe la fila que
+    // lee el segundo; nada está programado por llamada.
+    it('W1: dos process() seguidos del mismo tenant → el segundo lee ACTIVE y no hace DDL ni seed', async () => {
+      const row = { id: 'tenant-uuid-1', status: 'PROVISIONING' };
+      const schemas = new Set<string>();
+
+      mockPool.query.mockReset();
+      mockPool.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('information_schema.schemata')) {
+          const exists = schemas.has(String(params?.[0]));
+          return exists
+            ? { rowCount: 1, rows: [{ schema_name: params?.[0] }] }
+            : { rowCount: 0, rows: [] };
+        }
+        return { rowCount: 0, rows: [] };
+      });
+      mockClient.query.mockImplementation(async (sql: string) => {
+        const created = /^CREATE SCHEMA IF NOT EXISTS "([^"]+)"$/u.exec(sql);
+        if (created?.[1]) schemas.add(created[1]);
+        return { rowCount: 0, rows: [] };
+      });
+
+      let pendingSet: { status?: string } = {};
+      let pendingParams: { id?: string; expectedStatus?: string } = {};
+      const updateBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockImplementation(function (this: unknown, patch: { status?: string }) {
+          pendingSet = patch;
+          return updateBuilder;
+        }),
+        where: jest.fn().mockImplementation((_sql: string, params: typeof pendingParams) => {
+          pendingParams = params;
+          return updateBuilder;
+        }),
+        execute: jest.fn().mockImplementation(async () => {
+          if (pendingParams.id !== row.id || pendingParams.expectedStatus !== row.status) {
+            return { affected: 0 };
+          }
+          Object.assign(row, pendingSet);
+          return { affected: 1 };
+        }),
+      };
+      const dataSource = {
+        getRepository: jest.fn().mockReturnValue({
+          findOne: jest.fn().mockImplementation(async () => ({ ...row })),
+        }),
+        createQueryBuilder: jest.fn().mockReturnValue(updateBuilder),
+      } as unknown as DataSource;
+      const tenantSeedService = {
+        seedInitialAdmin: jest.fn().mockResolvedValue({ created: true }),
+        seedTaxPresets: jest.fn().mockResolvedValue(undefined),
+      } as unknown as TenantSeedService;
+      const processor = new TenantProvisioningProcessor(dataSource, tenantSeedService);
+
+      try {
+        await expect(processor.process(job)).resolves.toBeUndefined();
+        expect(row.status).toBe('ACTIVE');
+        await expect(processor.process(job)).resolves.toBeUndefined();
+
+        expect(mockClient.query).toHaveBeenCalledTimes(1);
+        expect(mockClient.query).toHaveBeenCalledWith(
+          'CREATE SCHEMA IF NOT EXISTS "tenant_isp_test"',
+        );
+        expect(mockApplyTenantMigrationsInOrder).toHaveBeenCalledTimes(1);
+        expect(tenantSeedService.seedInitialAdmin).toHaveBeenCalledTimes(1);
+        expect(tenantSeedService.seedTaxPresets).toHaveBeenCalledTimes(1);
+        // Solo el primero escribe estado; el segundo es el no-op de ACTIVE.
+        expect(updateBuilder.execute).toHaveBeenCalledTimes(1);
+        // El segundo solo reaplica grants (ACTIVE con esquema existente).
+        expect(mockGrantTenantSchemaAppPrivileges).toHaveBeenCalledTimes(2);
+        expect(poolSql().some((sql) => sql.includes('DROP SCHEMA'))).toBe(false);
+        expect(row.status).toBe('ACTIVE');
+      } finally {
+        mockClient.query.mockReset();
+      }
+    });
+
+    it('tenant inexistente → UnrecoverableError sin DROP SCHEMA y con el lock liberado', async () => {
+      mockSchemaAbsent();
+      const { processor, updateBuilder } = buildHarness(null);
+
+      await expect(processor.process(job)).rejects.toBeInstanceOf(UnrecoverableError);
+
+      expect(poolSql().some((sql) => /DROP SCHEMA|CREATE SCHEMA/u.test(sql))).toBe(false);
+      expect(poolSql().some((sql) => sql.includes('pg_advisory_unlock'))).toBe(true);
+      expect(mockPool.connect).not.toHaveBeenCalled();
+      // markFailed condicional (no-op sobre una fila inexistente).
+      expect(updateBuilder.where).toHaveBeenCalledWith(CONDITIONAL_WHERE, CONDITIONAL_PARAMS);
+    });
+
+    it('schemaName inválido → markFailed condicional a PROVISIONING, sin lock ni DDL', async () => {
+      mockSchemaAbsent();
+      (isValidSchemaName as jest.Mock).mockReturnValueOnce(false);
+      const { processor, dataSource, updateBuilder } = buildHarness('PROVISIONING');
+
+      await expect(processor.process(job)).rejects.toBeInstanceOf(UnrecoverableError);
+
+      expect(updateBuilder.set).toHaveBeenCalledWith({ status: 'PROVISIONING_FAILED' });
+      expect(updateBuilder.where).toHaveBeenCalledWith(CONDITIONAL_WHERE, CONDITIONAL_PARAMS);
+      expect(mockPool.query).not.toHaveBeenCalled();
+      expect(mockPool.connect).not.toHaveBeenCalled();
+      expect(dataSource.getRepository).not.toHaveBeenCalled();
+    });
   });
 });

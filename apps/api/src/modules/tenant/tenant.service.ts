@@ -10,6 +10,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Redis from 'ioredis';
 import { DataSource, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { MediaUsage, Tenant, runInTenantSchema } from '@iwana/db';
 import type { MediaThemeVariant } from '@iwana/db';
 import { AuditAction, AdditionalProductCategory, TenantStatus } from '@iwana/shared';
@@ -53,6 +54,11 @@ import {
 import { CommercialNode } from './entities/commercial-node.entity';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { PlanCatalogItem } from './entities/plan-catalog-item.entity';
+import {
+  assertTenantStatusTransition,
+  tenantStatusTransitionConflict,
+  type TenantStatusRoute,
+} from './tenant-status-transitions';
 
 const TENANT_CACHE_TTL_SECONDS = 5 * 60;
 
@@ -1419,30 +1425,54 @@ export class TenantService {
       throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
     }
 
-    // Aplicar solo los campos presentes en el DTO (operacion PATCH)
-    if (dto.name !== undefined) tenant.name = dto.name;
-    if (dto.status !== undefined) tenant.status = dto.status;
-    if (dto.contactEmail !== undefined) tenant.contactEmail = dto.contactEmail;
-    if (dto.maxSubscribers !== undefined) tenant.maxSubscribers = dto.maxSubscribers ?? null;
-    if (dto.settings !== undefined) tenant.settings = dto.settings;
-    // Datos legales
-    if (dto.legalName !== undefined) tenant.legalName = dto.legalName ?? null;
-    if (dto.nit !== undefined) tenant.nit = dto.nit ?? null;
-    if (dto.nitDv !== undefined) tenant.nitDv = dto.nitDv ?? null;
-    if (dto.companyType !== undefined) tenant.companyType = dto.companyType ?? null;
-    // Dirección
-    if (dto.address !== undefined) tenant.address = dto.address ?? null;
-    if (dto.city !== undefined) tenant.city = dto.city ?? null;
-    if (dto.department !== undefined) tenant.department = dto.department ?? null;
-    if (dto.countryCode !== undefined) tenant.countryCode = dto.countryCode ?? null;
-    if (dto.postalCode !== undefined) tenant.postalCode = dto.postalCode ?? null;
-    if (dto.coordinates !== undefined) tenant.coordinates = dto.coordinates ?? null;
-    // Contacto adicional
-    if (dto.phone !== undefined) tenant.phone = dto.phone ?? null;
-    if (dto.website !== undefined) tenant.website = dto.website ?? null;
-    if (dto.economicSector !== undefined) tenant.economicSector = dto.economicSector ?? null;
+    // DT-4 v1.1 §8.4: el estado por PATCH solo se mueve entre ACTIVE, SUSPENDED
+    // e INACTIVE. Se valida antes de tocar la entidad: un 409 no modifica nada.
+    const previousStatus = tenant.status;
+    if (dto.status !== undefined) {
+      assertTenantStatusTransition('patch', previousStatus, dto.status);
+    }
 
-    const updated = await this.tenantRepo.save(tenant);
+    // Aplicar solo los campos presentes en el DTO (operacion PATCH). `patch`
+    // registra lo cambiado para el UPDATE condicional cuando cambia el estado.
+    const patch: Partial<Tenant> = {};
+    const assign = <K extends keyof Tenant>(key: K, value: Tenant[K]): void => {
+      tenant[key] = value;
+      patch[key] = value;
+    };
+    if (dto.name !== undefined) assign('name', dto.name);
+    if (dto.status !== undefined) assign('status', dto.status);
+    if (dto.contactEmail !== undefined) assign('contactEmail', dto.contactEmail);
+    if (dto.maxSubscribers !== undefined) assign('maxSubscribers', dto.maxSubscribers ?? null);
+    if (dto.settings !== undefined) assign('settings', dto.settings);
+    // Datos legales
+    if (dto.legalName !== undefined) assign('legalName', dto.legalName ?? null);
+    if (dto.nit !== undefined) assign('nit', dto.nit ?? null);
+    if (dto.nitDv !== undefined) assign('nitDv', dto.nitDv ?? null);
+    if (dto.companyType !== undefined) assign('companyType', dto.companyType ?? null);
+    // Dirección
+    if (dto.address !== undefined) assign('address', dto.address ?? null);
+    if (dto.city !== undefined) assign('city', dto.city ?? null);
+    if (dto.department !== undefined) assign('department', dto.department ?? null);
+    if (dto.countryCode !== undefined) assign('countryCode', dto.countryCode ?? null);
+    if (dto.postalCode !== undefined) assign('postalCode', dto.postalCode ?? null);
+    if (dto.coordinates !== undefined) assign('coordinates', dto.coordinates ?? null);
+    // Contacto adicional
+    if (dto.phone !== undefined) assign('phone', dto.phone ?? null);
+    if (dto.website !== undefined) assign('website', dto.website ?? null);
+    if (dto.economicSector !== undefined) assign('economicSector', dto.economicSector ?? null);
+
+    let updated: Tenant;
+    if (dto.status !== undefined) {
+      // DT-4 v1.1: con cambio de estado, un único UPDATE condicional al estado
+      // leído (compare-and-set). Si otra petición lo cambió entre la lectura y
+      // la escritura, 0 filas → 409 sin tocar caché ni índice de búsqueda.
+      if (!(await this.compareAndSetTenant(id, previousStatus, patch))) {
+        throw tenantStatusTransitionConflict();
+      }
+      updated = tenant;
+    } else {
+      updated = await this.tenantRepo.save(tenant);
+    }
     await this.invalidateTenantCache(tenant.id, tenant.slug);
     await this.cacheTenant(updated);
     this.logger.log(`Tenant actualizado: id=${updated.id} status=${updated.status}`);
@@ -1451,25 +1481,50 @@ export class TenantService {
     return this.toResponseDto(updated);
   }
 
-  /** Suspende un tenant y fuerza invalidacion de cache para cortar acceso inmediato. */
+  /**
+   * Suspende un tenant y fuerza invalidacion de cache para cortar acceso inmediato.
+   * DT-4 v1.1 §8.4: solo desde ACTIVE o SUSPENDED (idempotente).
+   */
   async suspend(id: string): Promise<TenantResponseDto> {
-    return this.updateStatus(id, TenantStatus.SUSPENDED);
+    return this.updateStatus(id, TenantStatus.SUSPENDED, 'suspend');
   }
 
-  /** Activa un tenant previamente suspendido o inactivo. */
+  /**
+   * Activa un tenant suspendido, inactivo o marcado para eliminación (restauración
+   * de ADR-033). DT-4 v1.1 §8.4: nunca salta el aprovisionamiento.
+   */
   async activate(id: string): Promise<TenantResponseDto> {
-    return this.updateStatus(id, TenantStatus.ACTIVE);
+    return this.updateStatus(id, TenantStatus.ACTIVE, 'activate');
   }
 
   /**
    * Actualiza el estado de provisioning con invalidación de caché consistente.
-   * Se usa desde el flujo de aprovisionamiento y reintentos BullMQ.
+   * Se usa desde el encolado (`enqueue`, a PROVISIONING_FAILED si la cola falla)
+   * y desde `retryProvisioning` (a PROVISIONING).
+   *
+   * DT-4 v1.1: aplica su propia fila de la tabla de transiciones (vía
+   * `provisioning`): a PROVISIONING solo desde PROVISIONING o PROVISIONING_FAILED;
+   * a PROVISIONING_FAILED solo desde PROVISIONING. Pasa por el mismo UPDATE
+   * condicional que las vías públicas: un tenant marcado o activo nunca vuelve
+   * a aprovisionamiento por aquí (409 TENANT_STATUS_TRANSITION_NOT_ALLOWED).
    */
   async setProvisioningStatus(
     id: string,
-    status: TenantStatus.PROVISIONING | TenantStatus.PROVISIONING_FAILED | TenantStatus.ACTIVE,
+    status: TenantStatus.PROVISIONING | TenantStatus.PROVISIONING_FAILED,
   ): Promise<TenantResponseDto> {
-    return this.updateStatus(id, status);
+    return this.updateStatus(id, status, 'provisioning');
+  }
+
+  /**
+   * Estado actual del tenant leído de la base, sin pasar por la caché.
+   * Lo usa la guarda inicial de `retry-provisioning` (DT-4 v1.1 §8.2).
+   */
+  async getCurrentStatus(id: string): Promise<TenantStatus> {
+    const tenant = await this.tenantRepo.findOne({ where: { id } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
+    }
+    return tenant.status;
   }
 
   /**
@@ -1951,23 +2006,80 @@ export class TenantService {
     return typeof value === 'boolean' ? value : fallback;
   }
 
-  /** Actualiza solo el estado operativo del tenant manteniendo invalidez de cache consistente. */
-  private async updateStatus(id: string, status: TenantStatus): Promise<TenantResponseDto> {
+  /**
+   * Actualiza solo el estado operativo del tenant manteniendo invalidez de cache consistente.
+   *
+   * DT-4 v1.1: toda vía (`suspend`, `activate`, `provisioning`) aplica su fila de
+   * la tabla de transiciones y escribe con un UPDATE condicional al estado leído
+   * (compare-and-set). Si el estado cambió entre la lectura y la escritura, 0
+   * filas → 409 TENANT_STATUS_TRANSITION_NOT_ALLOWED sin tocar caché ni auditoría.
+   */
+  private async updateStatus(
+    id: string,
+    status: TenantStatus,
+    route: TenantStatusRoute,
+  ): Promise<TenantResponseDto> {
     const tenant = await this.tenantRepo.findOne({ where: { id } });
     if (!tenant) {
       throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
     }
 
-    tenant.status = status;
-    if (status === TenantStatus.ACTIVE) {
-      tenant.deletedAt = null;
+    const previousStatus = tenant.status;
+    assertTenantStatusTransition(route, previousStatus, status);
+    const restoringMarked =
+      previousStatus === TenantStatus.MARKED_FOR_DELETION && status === TenantStatus.ACTIVE;
+    const oldValue = restoringMarked
+      ? (this.toResponseDto(tenant) as unknown as Record<string, unknown>)
+      : null;
+
+    const patch: Partial<Tenant> =
+      status === TenantStatus.ACTIVE ? { status, deletedAt: null } : { status };
+    if (!(await this.compareAndSetTenant(id, previousStatus, patch))) {
+      throw tenantStatusTransitionConflict();
     }
-    const updated = await this.tenantRepo.save(tenant);
+    const updated = Object.assign(tenant, patch);
     await this.invalidateTenantCache(tenant.id, tenant.slug);
     await this.cacheTenant(updated);
+
+    if (restoringMarked) {
+      // DT-4 v1.1 §8.4: la restauración de un tenant marcado (ADR-033) queda
+      // auditada desde el servicio, como delete(); no depende del interceptor.
+      await this.auditService.log({
+        tenantId: updated.id,
+        schemaName: updated.schemaName,
+        userId: null,
+        action: AuditAction.UPDATE,
+        entityType: 'Tenant',
+        entityId: updated.id,
+        oldValue,
+        newValue: this.toResponseDto(updated) as unknown as Record<string, unknown>,
+      });
+    }
+
     this.logger.log(`Tenant ${status.toLowerCase()}: id=${updated.id} status=${updated.status}`);
 
     return this.toResponseDto(updated);
+  }
+
+  /**
+   * DT-4 v1.1: UPDATE condicional (compare-and-set) de `public.tenants`. Escribe
+   * `patch` solo si la fila sigue en `expectedStatus`, en una única sentencia
+   * parametrizada (compatible con pgBouncer en modo transacción).
+   *
+   * @returns true si actualizó la fila; false si el estado ya no era el esperado.
+   */
+  private async compareAndSetTenant(
+    id: string,
+    expectedStatus: TenantStatus,
+    patch: Partial<Tenant>,
+  ): Promise<boolean> {
+    const result = await this.tenantRepo
+      .createQueryBuilder()
+      .update(Tenant)
+      .set(patch as QueryDeepPartialEntity<Tenant>)
+      .where('id = :id AND status = :expectedStatus', { id, expectedStatus })
+      .execute();
+    return (result?.affected ?? 0) > 0;
   }
 
   /** Marca el tenant para eliminacion diferida; el schema queda retenido hasta la purga. */
@@ -1975,6 +2087,17 @@ export class TenantService {
     const tenant = await this.tenantRepo.findOne({ where: { id } });
     if (!tenant) {
       throw new NotFoundException(`Tenant con id "${id}" no encontrado.`);
+    }
+
+    // DT-4 v1.1 §8.3 (R1): borrar de nuevo un tenant ya marcado es idempotente.
+    // No reinicia deleted_at (el plazo de retención corre desde el primer
+    // borrado), no guarda la fila y no registra un segundo DELETE.
+    // Sí invalida la caché: la lectura de arriba no pasa por ella y una entrada
+    // vieja (p. ej. de antes del primer borrado) seguiría resolviendo el tenant.
+    if (tenant.status === TenantStatus.MARKED_FOR_DELETION) {
+      await this.invalidateTenantCache(tenant.id, tenant.slug);
+      this.logger.log(`Tenant ya marcado para eliminacion (sin cambios): id=${id}`);
+      return;
     }
 
     const oldValue = this.toResponseDto(tenant) as unknown as Record<string, unknown>;

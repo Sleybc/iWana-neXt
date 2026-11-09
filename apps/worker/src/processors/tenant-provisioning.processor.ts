@@ -19,6 +19,12 @@ import { TENANT_PROVISIONING_QUEUE } from '@iwana/shared';
 import type { ProvisioningJobPayload } from '@iwana/shared';
 import { TenantSeedService } from '../services/tenant-seed.service';
 
+/** DT-4: código estable del rechazo de un job sobre un tenant no aprovisionable. */
+export const TENANT_NOT_PROVISIONABLE = 'TENANT_NOT_PROVISIONABLE';
+/** DT-4: código estable del aviso cuando el estado cambia durante el aprovisionamiento. */
+export const TENANT_STATUS_CHANGED_DURING_PROVISIONING =
+  'TENANT_STATUS_CHANGED_DURING_PROVISIONING';
+
 /**
  * Payload del job de provisioning (debe coincidir con la definicion en api).
  */
@@ -37,6 +43,10 @@ import { TenantSeedService } from '../services/tenant-seed.service';
  * 5. Ejecutar TenantSeedService.seedInitialAdmin para sembrar el admin del tenant.
  * 6. Actualizar tenant.status → ACTIVE en el schema PUBLIC via TypeORM.
  * 7. En caso de fallo: actualizar tenant.status → PROVISIONING_FAILED.
+ *
+ * DT-4 (spec 2026-11-09-plat-ops-dt4): solo se aprovisiona un tenant en PROVISIONING; ACTIVE
+ * es no-op y cualquier otro estado rechaza el job (TENANT_NOT_PROVISIONABLE).
+ * Las transiciones a ACTIVE y a PROVISIONING_FAILED son condicionales a PROVISIONING.
  *
  * SEGURIDAD:
  * - schemaName DEBE pasar isValidSchemaName() antes de la interpolacion.
@@ -106,6 +116,53 @@ export class TenantProvisioningProcessor extends WorkerHost {
     await this.acquireTenantLock(lockResource);
 
     try {
+      // DT-4 (spec 2026-11-09-plat-ops-dt4 §3.1): el estado del tenant se lee bajo el lock y
+      // ANTES de cualquier DDL. Solo PROVISIONING se aprovisiona; el job de un
+      // tenant marcado, suspendido, inactivo o fallido no puede reactivarlo.
+      // Esta guarda queda fuera del try de rollback: su rechazo nunca hace DROP
+      // SCHEMA ni markFailed.
+      const tenant = await this.dataSource.getRepository(Tenant).findOne({
+        where: { id: tenantId },
+      });
+
+      if (!tenant) {
+        // Sin fila no hay estado que proteger ni esquema que atribuirle: se marca
+        // como antes (no-op) y se rechaza sin reintento, sin DROP.
+        await this.markFailed(tenantId);
+        throw new UnrecoverableError(`Tenant ${tenantId} no encontrado en public.tenants.`);
+      }
+
+      if (tenant.status === 'ACTIVE') {
+        await this.completeActiveTenantNoop(schemaName, tenantSlug);
+        return;
+      }
+
+      if (tenant.status !== 'PROVISIONING') {
+        this.logger.warn(
+          `[provisioning] ${TENANT_NOT_PROVISIONABLE}: tenant ${tenantId} en estado ${tenant.status}; ` +
+            'job rechazado sin DDL ni cambio de estado',
+        );
+        throw this.notProvisionableError(tenantId, tenant.status);
+      }
+
+      await this.provisionTenant(tenantId, schemaName, tenantSlug, adminEmail);
+    } finally {
+      await this.releaseTenantLock(lockResource);
+    }
+  }
+
+  /**
+   * Flujo de aprovisionamiento de un tenant en PROVISIONING (completo, o
+   * recuperación si el esquema ya está migrado). Cualquier error dispara el
+   * rollback (DROP SCHEMA + markFailed condicional).
+   */
+  private async provisionTenant(
+    tenantId: string,
+    schemaName: string,
+    tenantSlug: string,
+    adminEmail: ProvisioningJobPayload['adminEmail'],
+  ): Promise<void> {
+    try {
       const schemaExists = await this.checkSchemaExists(schemaName);
       if (schemaExists) {
         this.logger.warn(
@@ -131,33 +188,13 @@ export class TenantProvisioningProcessor extends WorkerHost {
           // de migrar pero antes de actualizar el status (worker crash, restart).
           // Reaplicar grants SEC-04 por si el fallo ocurrió tras DDL y antes del GRANT.
           await this.grantAppSchemaPrivileges(schemaName);
-          const existing = await this.dataSource.getRepository(Tenant).findOne({
-            where: { id: tenantId },
-          });
-          if (existing && existing.status !== 'ACTIVE') {
-            await this.dataSource
-              .createQueryBuilder()
-              .update('public.tenants')
-              .set({ status: 'ACTIVE' })
-              .where('id = :id', { id: tenantId })
-              .execute();
+          if (await this.activateIfStillProvisioning(tenantId, tenantSlug)) {
             this.logger.log(
               `[provisioning] Tenant ${tenantSlug} activado (schema ya migrado, status corregido a ACTIVE)`,
-            );
-          } else {
-            this.logger.log(
-              `[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`,
             );
           }
           return;
         }
-      }
-      const tenant = await this.dataSource.getRepository(Tenant).findOne({
-        where: { id: tenantId },
-      });
-
-      if (!tenant) {
-        throw new UnrecoverableError(`Tenant ${tenantId} no encontrado en public.tenants.`);
       }
 
       // Crear el schema de PostgreSQL para el tenant.
@@ -193,15 +230,13 @@ export class TenantProvisioningProcessor extends WorkerHost {
       await this.tenantSeedService.seedTaxPresets(schemaName);
       this.logger.log(`[provisioning] Tax presets sembrados para schema "${schemaName}"`);
 
-      // Actualizar status del tenant a ACTIVE en el schema publico
-      await this.dataSource
-        .createQueryBuilder()
-        .update('public.tenants')
-        .set({ status: 'ACTIVE' })
-        .where('id = :id', { id: tenantId })
-        .execute();
-
-      this.logger.log(`[provisioning] Tenant ${tenantSlug} activado exitosamente (status=ACTIVE)`);
+      // Actualizar status del tenant a ACTIVE en el schema publico (solo si
+      // sigue en PROVISIONING: DT-4 §3.2).
+      if (await this.activateIfStillProvisioning(tenantId, tenantSlug)) {
+        this.logger.log(
+          `[provisioning] Tenant ${tenantSlug} activado exitosamente (status=ACTIVE)`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `[provisioning] Fallo al provisionar schema "${schemaName}" para tenant ${tenantId}: ${summarizeErrorForLog(error)}`,
@@ -210,9 +245,70 @@ export class TenantProvisioningProcessor extends WorkerHost {
       await this.rollbackProvisioning(schemaName, tenantId, error as Error);
 
       throw error;
-    } finally {
-      await this.releaseTenantLock(lockResource);
     }
+  }
+
+  /**
+   * DT-4 §3.2: paso a ACTIVE con compare-and-set sobre PROVISIONING. Si no
+   * afecta filas, el estado cambió durante el aprovisionamiento (p. ej. un
+   * DELETE): se registra y el job termina sin reintento, sin DROP ni markFailed;
+   * el esquema queda retenido para la purga como el de cualquier tenant marcado.
+   *
+   * @returns true si el tenant quedó ACTIVE.
+   */
+  private async activateIfStillProvisioning(
+    tenantId: string,
+    tenantSlug: string,
+  ): Promise<boolean> {
+    const result = await this.dataSource
+      .createQueryBuilder()
+      .update('public.tenants')
+      .set({ status: 'ACTIVE' })
+      .where('id = :id AND status = :expectedStatus', {
+        id: tenantId,
+        expectedStatus: 'PROVISIONING',
+      })
+      .execute();
+
+    if ((result?.affected ?? 0) === 0) {
+      this.logger.warn(
+        `[provisioning] ${TENANT_STATUS_CHANGED_DURING_PROVISIONING}: tenant ${tenantSlug} (${tenantId}) ` +
+          'dejó de estar en PROVISIONING durante el aprovisionamiento; no se activa ni se borra el esquema',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * DT-4 §3.1: un job sobre un tenant ya ACTIVE es un no-op idempotente. Solo
+   * reaplica los grants SEC-04 si el esquema existe; nunca hace DDL ni cambia
+   * el estado, y un fallo aquí no dispara rollback (el tenant está en uso).
+   */
+  private async completeActiveTenantNoop(schemaName: string, tenantSlug: string): Promise<void> {
+    if (await this.checkSchemaExists(schemaName)) {
+      await this.grantAppSchemaPrivileges(schemaName);
+    }
+    this.logger.log(`[provisioning] Tenant ${tenantSlug} ya estaba ACTIVE — nada que hacer`);
+  }
+
+  /**
+   * Error no reintentable con código estable. `SanitizeFailedReason` sustituye
+   * el mensaje por el resumen seguro, que conserva solo `code=TENANT_NOT_PROVISIONABLE`:
+   * el estado leído NO llega al `failedReason` del job; solo queda en el `warn`
+   * que `process()` registra antes de lanzar este error.
+   */
+  private notProvisionableError(tenantId: string, status: string): UnrecoverableError {
+    const error = new UnrecoverableError(
+      `${TENANT_NOT_PROVISIONABLE}: tenant ${tenantId} en estado ${status}`,
+    );
+    Object.defineProperty(error, 'code', {
+      value: TENANT_NOT_PROVISIONABLE,
+      enumerable: true,
+      configurable: true,
+      writable: false,
+    });
+    return error;
   }
 
   /**
@@ -224,7 +320,12 @@ export class TenantProvisioningProcessor extends WorkerHost {
         .createQueryBuilder()
         .update('public.tenants')
         .set({ status: 'PROVISIONING_FAILED' })
-        .where('id = :id', { id: tenantId })
+        // DT-4 §3.2: un fallo nunca saca a un tenant de MARKED_FOR_DELETION
+        // (ni de ningún otro estado distinto de PROVISIONING).
+        .where('id = :id AND status = :expectedStatus', {
+          id: tenantId,
+          expectedStatus: 'PROVISIONING',
+        })
         .execute();
     } catch (updateError) {
       this.logger.error(

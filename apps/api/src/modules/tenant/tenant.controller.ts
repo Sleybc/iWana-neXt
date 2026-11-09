@@ -933,6 +933,11 @@ export class TenantController {
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Actualizar datos del tenant (slug y schema son inmutables)' })
   @ApiResponse({ status: 200, description: 'Tenant actualizado.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Transición de estado no permitida (code=TENANT_STATUS_TRANSITION_NOT_ALLOWED). DT-4 v1.1 §8.4.',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTenantDto,
@@ -949,6 +954,11 @@ export class TenantController {
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Suspender tenant — bloquea acceso operativo inmediato' })
   @ApiResponse({ status: 200, description: 'Tenant suspendido.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Transición de estado no permitida (code=TENANT_STATUS_TRANSITION_NOT_ALLOWED). DT-4 v1.1 §8.4.',
+  })
   async suspend(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: TenantResponseDto }> {
     const tenant = await this.tenantService.suspend(id);
     return { data: tenant };
@@ -960,8 +970,13 @@ export class TenantController {
    */
   @Patch(':id/activate')
   @Roles(PlatformRole.SYSTEM_ADMIN)
-  @ApiOperation({ summary: 'Reactivar tenant previamente suspendido' })
+  @ApiOperation({ summary: 'Reactivar tenant suspendido, inactivo o marcado para eliminación' })
   @ApiResponse({ status: 200, description: 'Tenant reactivado.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Transición de estado no permitida (code=TENANT_STATUS_TRANSITION_NOT_ALLOWED). DT-4 v1.1 §8.4.',
+  })
   async activate(@Param('id', ParseUUIDPipe) id: string): Promise<{ data: TenantResponseDto }> {
     const tenant = await this.tenantService.activate(id);
     return { data: tenant };
@@ -969,12 +984,19 @@ export class TenantController {
 
   /**
    * PATCH /api/v1/tenants/:id/retry-provisioning
-   * Reintenta el provisioning de un tenant en estado PROVISIONING_FAILED.
+   * Reintenta el provisioning de un tenant en estado PROVISIONING o PROVISIONING_FAILED
+   * (DT-4 v1.1 §8.2; la guarda vive en TenantProvisioningService).
    */
   @Patch(':id/retry-provisioning')
   @Roles(PlatformRole.SYSTEM_ADMIN)
   @ApiOperation({ summary: 'Reintentar provisioning de tenant fallido' })
   @ApiResponse({ status: 200, description: 'Provisioning reencolado.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Estado no reintentable (code=TENANT_NOT_RETRYABLE) o job en curso ' +
+      '(code=TENANT_PROVISIONING_IN_PROGRESS). DT-4 v1.1 §8.2.',
+  })
   async retryProvisioning(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<{ data: TenantResponseDto }> {

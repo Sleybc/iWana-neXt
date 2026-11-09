@@ -5,10 +5,11 @@ import {
   UnauthorizedException,
   ValidationPipe,
 } from '@nestjs/common';
+import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { MediaUsage } from '@iwana/db';
-import { PlatformRole, UserRole } from '@iwana/shared';
+import { PlatformRole, TENANT_PROVISIONING_QUEUE, TenantStatus, UserRole } from '@iwana/shared';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -17,6 +18,7 @@ import { MediaAssetResponseDto } from '../media/dto/media-asset-response.dto';
 import { TenantController } from './tenant.controller';
 import { TenantService } from './tenant.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
+import { assertTenantStatusTransition } from './tenant-status-transitions';
 import { DashboardSummaryService } from './dashboard-summary.service';
 import { AuthService } from '../auth/auth.service';
 
@@ -467,5 +469,122 @@ describe('TenantController HTTP', () => {
       'admin@iwana.co',
     );
     expect(response.body.data.status).toBe('PROVISIONING');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DT-4 v1.1 §8.4 T6: el 409 lleva el código estable en el sobre de error HTTP.
+// `retry-provisioning` usa el TenantProvisioningService REAL (solo la cola y
+// TenantService son dobles), así que el 409 lo produce la guarda verdadera.
+// Códigos comparados contra los literales de la spec.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('TenantController HTTP — DT-4 v1.1 T6 (códigos de 409)', () => {
+  let app: INestApplication;
+  const tenantId = '44444444-4444-4444-8444-444444444444';
+
+  const tenantService = {
+    findOne: jest.fn(),
+    getCurrentStatus: jest.fn(),
+    setProvisioningStatus: jest.fn(),
+    update: jest.fn(),
+    activate: jest.fn(),
+  };
+  const provisioningQueue = { remove: jest.fn(), add: jest.fn() };
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [TenantController],
+      providers: [
+        { provide: TenantService, useValue: tenantService },
+        TenantProvisioningService,
+        { provide: getQueueToken(TENANT_PROVISIONING_QUEUE), useValue: provisioningQueue },
+        { provide: AuthService, useValue: {} },
+        { provide: DashboardSummaryService, useValue: { getSummary: jest.fn() } },
+        JwtAuthGuard,
+        RolesGuard,
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+  });
+
+  beforeEach(() => {
+    tenantService.findOne.mockResolvedValue({
+      id: tenantId,
+      slug: 'isp-test',
+      schemaName: 'tenant_isp_test',
+      status: 'PROVISIONING',
+      adminEmail: 'admin@isptest.invalid',
+    });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('PATCH /tenants/:id/retry-provisioning sobre un tenant marcado → 409 TENANT_NOT_RETRYABLE', async () => {
+    tenantService.getCurrentStatus.mockResolvedValue('MARKED_FOR_DELETION');
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tenants/${tenantId}/retry-provisioning`)
+      .set('Authorization', 'Bearer platform-admin-token')
+      .expect(409);
+
+    expect(response.body).toMatchObject({
+      code: 'TENANT_NOT_RETRYABLE',
+      message: expect.any(String),
+    });
+    expect(provisioningQueue.remove).not.toHaveBeenCalled();
+    expect(provisioningQueue.add).not.toHaveBeenCalled();
+    expect(tenantService.setProvisioningStatus).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /tenants/:id/retry-provisioning con el job activo → 409 TENANT_PROVISIONING_IN_PROGRESS', async () => {
+    tenantService.getCurrentStatus.mockResolvedValue('PROVISIONING');
+    provisioningQueue.remove.mockResolvedValue(0);
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tenants/${tenantId}/retry-provisioning`)
+      .set('Authorization', 'Bearer platform-admin-token')
+      .expect(409);
+
+    expect(response.body).toMatchObject({ code: 'TENANT_PROVISIONING_IN_PROGRESS' });
+    expect(provisioningQueue.add).not.toHaveBeenCalled();
+    expect(tenantService.setProvisioningStatus).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /tenants/:id con status no permitido → 409 TENANT_STATUS_TRANSITION_NOT_ALLOWED', async () => {
+    // El servicio de tenant es un doble; el error lo construye la tabla real.
+    tenantService.update.mockImplementation(async () => {
+      assertTenantStatusTransition('patch', TenantStatus.MARKED_FOR_DELETION, TenantStatus.ACTIVE);
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tenants/${tenantId}`)
+      .set('Authorization', 'Bearer platform-admin-token')
+      .send({ status: 'ACTIVE' })
+      .expect(409);
+
+    expect(response.body).toMatchObject({ code: 'TENANT_STATUS_TRANSITION_NOT_ALLOWED' });
+  });
+
+  it('PATCH /tenants/:id/activate desde PROVISIONING → 409 TENANT_STATUS_TRANSITION_NOT_ALLOWED', async () => {
+    tenantService.activate.mockImplementation(async () => {
+      assertTenantStatusTransition('activate', TenantStatus.PROVISIONING, TenantStatus.ACTIVE);
+    });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/api/v1/tenants/${tenantId}/activate`)
+      .set('Authorization', 'Bearer platform-admin-token')
+      .expect(409);
+
+    expect(response.body).toMatchObject({ code: 'TENANT_STATUS_TRANSITION_NOT_ALLOWED' });
   });
 });

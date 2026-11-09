@@ -62,6 +62,8 @@ function buildTenantRepository(contactEmail = 'admin@isptest.co') {
       id: 'tenant-uuid-1',
       slug: 'isp-test',
       schemaName: 'tenant_isp_test',
+      // DT-4: el procesador solo aprovisiona tenants en PROVISIONING.
+      status: 'PROVISIONING',
       contactEmail,
     }),
   };
@@ -72,7 +74,7 @@ function createProcessor(): TenantProvisioningProcessor {
     update: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
-    execute: jest.fn().mockResolvedValue(undefined),
+    execute: jest.fn().mockResolvedValue({ affected: 1 }),
   };
 
   const dataSource = {
@@ -298,7 +300,7 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue(undefined),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
       };
 
       const dataSource = {
@@ -337,7 +339,7 @@ describe('TenantProvisioningProcessor - Migration Features', () => {
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue(undefined),
+        execute: jest.fn().mockResolvedValue({ affected: 1 }),
       };
 
       const dataSource = {

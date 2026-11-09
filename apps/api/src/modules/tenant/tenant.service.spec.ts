@@ -119,6 +119,11 @@ describe('TenantService', () => {
     skip: jest.Mock;
     andWhere: jest.Mock;
     getManyAndCount: jest.Mock;
+    // DT-4 v1.1: UPDATE condicional (compare-and-set) de updateStatus/update.
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -129,6 +134,10 @@ describe('TenantService', () => {
       skip: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       getManyAndCount: jest.fn(),
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const mockRepo = {
       create: jest.fn(),
@@ -700,7 +709,9 @@ describe('TenantService', () => {
   // ---------------------------------------------------------------------------
   describe('update', () => {
     it('actualiza solo los campos presentes en el DTO', async () => {
-      const tenant = buildTenant();
+      // DT-4 v1.1 §8.4: PATCH solo cambia el estado entre ACTIVE/SUSPENDED/INACTIVE;
+      // el origen del fixture deja de ser PROVISIONING (buildTenant por defecto).
+      const tenant = buildTenant({ status: TenantStatus.INACTIVE });
       const updatedTenant = { ...tenant, name: 'ISP Actualizado', status: TenantStatus.ACTIVE };
       repo.findOne.mockResolvedValue({ ...tenant });
       repo.save.mockResolvedValue(updatedTenant);
@@ -759,9 +770,16 @@ describe('TenantService', () => {
       const result = await service.activate('tenant-uuid-001');
 
       expect(result.status).toBe(TenantStatus.ACTIVE);
-      expect(repo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ status: TenantStatus.ACTIVE, deletedAt: null }),
-      );
+      // DT-4 v1.1: el estado se escribe con UPDATE condicional, no con save().
+      expect(queryBuilder.set).toHaveBeenCalledWith({
+        status: TenantStatus.ACTIVE,
+        deletedAt: null,
+      });
+      expect(queryBuilder.where).toHaveBeenCalledWith('id = :id AND status = :expectedStatus', {
+        id: 'tenant-uuid-001',
+        expectedStatus: TenantStatus.MARKED_FOR_DELETION,
+      });
+      expect(repo.save).not.toHaveBeenCalled();
       expect(redis.del).toHaveBeenCalledWith('tenant:id:tenant-uuid-001', 'tenant:slug:isp-test');
     });
   });
@@ -792,6 +810,306 @@ describe('TenantService', () => {
 
       await expect(service.delete('tenant-missing')).rejects.toThrow(NotFoundException);
       expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DT-4 v1.1 (spec 2026-11-09-plat-ops-dt4 §8.3-§8.4)
+  // Códigos comparados contra los literales de la spec, no contra la constante.
+  // ---------------------------------------------------------------------------
+  const TRANSITION_CONFLICT = { response: { code: 'TENANT_STATUS_TRANSITION_NOT_ALLOWED' } };
+  const ALL_STATUSES = Object.values(TenantStatus) as TenantStatus[];
+
+  /**
+   * Fila fake con estado: `findOne` devuelve una copia de `row`, y el UPDATE
+   * condicional (`where ... status = :expectedStatus` + `execute`) solo la escribe
+   * si su estado sigue siendo el esperado, como haría PostgreSQL.
+   */
+  function useStatefulRow(initial: Tenant): { row: Tenant } {
+    const state = { row: { ...initial } };
+    let pendingSet: Partial<Tenant> = {};
+    let pendingParams: { id?: string; expectedStatus?: TenantStatus } = {};
+    repo.findOne.mockImplementation(async () => ({ ...state.row }));
+    queryBuilder.set.mockImplementation((patch: Partial<Tenant>) => {
+      pendingSet = patch;
+      return queryBuilder;
+    });
+    queryBuilder.where.mockImplementation((_sql: string, params: typeof pendingParams) => {
+      pendingParams = params;
+      return queryBuilder;
+    });
+    queryBuilder.execute.mockImplementation(async () => {
+      if (pendingParams.id !== state.row.id || pendingParams.expectedStatus !== state.row.status) {
+        return { affected: 0 };
+      }
+      Object.assign(state.row, pendingSet);
+      return { affected: 1 };
+    });
+    repo.save.mockImplementation(async (updated) => {
+      Object.assign(state.row, updated);
+      return { ...state.row } as Tenant;
+    });
+    return state;
+  }
+
+  describe('DT-4 v1.1 — R1 delete() idempotente', () => {
+    it('S1: borrar de nuevo un tenant marcado no guarda, no audita, no reinicia deletedAt e invalida la caché', async () => {
+      const firstDeletion = new Date('2026-10-01T00:00:00.000Z');
+      const tenant = buildTenant({
+        status: TenantStatus.MARKED_FOR_DELETION,
+        deletedAt: firstDeletion,
+      });
+      repo.findOne.mockResolvedValue(tenant);
+
+      await expect(service.delete(tenant.id)).resolves.toBeUndefined();
+
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(queryBuilder.execute).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+      expect(tenant.deletedAt).toBe(firstDeletion);
+      expect(tenant.status).toBe(TenantStatus.MARKED_FOR_DELETION);
+      expect(redis.del).toHaveBeenCalledWith('tenant:id:tenant-uuid-001', 'tenant:slug:isp-test');
+    });
+
+    it('S2: el primer borrado marca, fija deletedAt nuevo y audita DELETE', async () => {
+      const tenant = buildTenant({ status: TenantStatus.ACTIVE, deletedAt: null });
+      repo.findOne.mockResolvedValue({ ...tenant });
+      repo.save.mockImplementation(async (updated) => updated as Tenant);
+
+      await service.delete(tenant.id);
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: TenantStatus.MARKED_FOR_DELETION,
+          deletedAt: expect.any(Date),
+        }),
+      );
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'DELETE',
+          entityType: 'Tenant',
+          oldValue: expect.objectContaining({ status: TenantStatus.ACTIVE }),
+          newValue: expect.objectContaining({ status: TenantStatus.MARKED_FOR_DELETION }),
+        }),
+      );
+    });
+  });
+
+  describe('DT-4 v1.1 — R2 transiciones de estado explícitas', () => {
+    // Oráculos literales de la tabla de §8.4 (no derivados del código).
+    const PATCH_ALLOWED = ['ACTIVE', 'SUSPENDED', 'INACTIVE'];
+    const ACTIVATE_ALLOWED_FROM = ['ACTIVE', 'SUSPENDED', 'INACTIVE', 'MARKED_FOR_DELETION'];
+    const SUSPEND_ALLOWED_FROM = ['ACTIVE', 'SUSPENDED'];
+
+    const patchCases = ALL_STATUSES.flatMap((from) =>
+      ALL_STATUSES.map(
+        (to) => [from, to, PATCH_ALLOWED.includes(from) && PATCH_ALLOWED.includes(to)] as const,
+      ),
+    );
+
+    it.each(patchCases)('T1: PATCH status %s → %s (permitida=%s)', async (from, to, allowed) => {
+      const state = useStatefulRow(buildTenant({ status: from, deletedAt: null }));
+
+      if (allowed) {
+        const result = await service.update('tenant-uuid-001', { status: to });
+        expect(result.status).toBe(to);
+        expect(state.row.status).toBe(to);
+        expect(queryBuilder.where).toHaveBeenCalledWith('id = :id AND status = :expectedStatus', {
+          id: 'tenant-uuid-001',
+          expectedStatus: from,
+        });
+      } else {
+        await expect(service.update('tenant-uuid-001', { status: to })).rejects.toMatchObject(
+          TRANSITION_CONFLICT,
+        );
+        expect(queryBuilder.execute).not.toHaveBeenCalled();
+        expect(repo.save).not.toHaveBeenCalled();
+        expect(state.row.status).toBe(from);
+      }
+    });
+
+    it('T1-CAS: PATCH con status cuyo estado cambia entre la lectura y la escritura → 409 sin caché', async () => {
+      const state = useStatefulRow(buildTenant({ status: TenantStatus.ACTIVE }));
+      // Un DELETE concurrente marca la fila justo después de la lectura.
+      repo.findOne.mockImplementationOnce(async () => {
+        const snapshot = { ...state.row };
+        state.row.status = TenantStatus.MARKED_FOR_DELETION;
+        return snapshot;
+      });
+
+      await expect(
+        service.update('tenant-uuid-001', { status: TenantStatus.INACTIVE, name: 'Otro' }),
+      ).rejects.toMatchObject(TRANSITION_CONFLICT);
+
+      expect(state.row.status).toBe(TenantStatus.MARKED_FOR_DELETION);
+      expect(state.row.name).toBe('ISP Test Colombia');
+      expect(redis.del).not.toHaveBeenCalled();
+      expect(redis.set).not.toHaveBeenCalled();
+      expect(searchQueueServiceMock.enqueueTenantUpsert).not.toHaveBeenCalled();
+    });
+
+    it('T2: PATCH sin status sobre un tenant marcado actualiza otros campos sin tocar estado ni deletedAt', async () => {
+      const deletedAt = new Date('2026-10-01T00:00:00.000Z');
+      const state = useStatefulRow(
+        buildTenant({ status: TenantStatus.MARKED_FOR_DELETION, deletedAt }),
+      );
+
+      const result = await service.update('tenant-uuid-001', { name: 'Nombre nuevo' });
+
+      expect(result.name).toBe('Nombre nuevo');
+      expect(state.row.status).toBe(TenantStatus.MARKED_FOR_DELETION);
+      expect(state.row.deletedAt).toBe(deletedAt);
+    });
+
+    it.each(ALL_STATUSES.map((from) => [from, SUSPEND_ALLOWED_FROM.includes(from)] as const))(
+      'T3: suspend desde %s (permitida=%s)',
+      async (from, allowed) => {
+        const state = useStatefulRow(buildTenant({ status: from }));
+
+        if (allowed) {
+          await expect(service.suspend('tenant-uuid-001')).resolves.toMatchObject({
+            status: 'SUSPENDED',
+          });
+          expect(state.row.status).toBe('SUSPENDED');
+        } else {
+          await expect(service.suspend('tenant-uuid-001')).rejects.toMatchObject(
+            TRANSITION_CONFLICT,
+          );
+          expect(queryBuilder.execute).not.toHaveBeenCalled();
+          expect(state.row.status).toBe(from);
+        }
+      },
+    );
+
+    it.each(ALL_STATUSES.map((from) => [from, ACTIVATE_ALLOWED_FROM.includes(from)] as const))(
+      'T4: activate desde %s (permitida=%s)',
+      async (from, allowed) => {
+        const state = useStatefulRow(
+          buildTenant({ status: from, deletedAt: new Date('2026-10-01T00:00:00.000Z') }),
+        );
+
+        if (allowed) {
+          await expect(service.activate('tenant-uuid-001')).resolves.toMatchObject({
+            status: 'ACTIVE',
+          });
+          expect(state.row.status).toBe('ACTIVE');
+          expect(state.row.deletedAt).toBeNull();
+        } else {
+          await expect(service.activate('tenant-uuid-001')).rejects.toMatchObject(
+            TRANSITION_CONFLICT,
+          );
+          expect(queryBuilder.execute).not.toHaveBeenCalled();
+          expect(state.row.status).toBe(from);
+          expect(auditServiceMock.log).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it('T4-CAS: activate cuyo estado cambia entre la lectura y la escritura → 409 sin caché ni auditoría', async () => {
+      const state = useStatefulRow(buildTenant({ status: TenantStatus.MARKED_FOR_DELETION }));
+      repo.findOne.mockImplementationOnce(async () => {
+        const snapshot = { ...state.row };
+        state.row.status = TenantStatus.SUSPENDED;
+        return snapshot;
+      });
+
+      await expect(service.activate('tenant-uuid-001')).rejects.toMatchObject(TRANSITION_CONFLICT);
+
+      expect(state.row.status).toBe(TenantStatus.SUSPENDED);
+      expect(redis.del).not.toHaveBeenCalled();
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('T5: activate desde MARKED_FOR_DELETION restaura, limpia deletedAt y audita el cambio', async () => {
+      const state = useStatefulRow(
+        buildTenant({
+          status: TenantStatus.MARKED_FOR_DELETION,
+          deletedAt: new Date('2026-10-01T00:00:00.000Z'),
+        }),
+      );
+
+      const result = await service.activate('tenant-uuid-001');
+
+      expect(result.status).toBe(TenantStatus.ACTIVE);
+      expect(state.row).toMatchObject({ status: TenantStatus.ACTIVE, deletedAt: null });
+      expect(auditServiceMock.log).toHaveBeenCalledTimes(1);
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'UPDATE',
+          entityType: 'Tenant',
+          entityId: 'tenant-uuid-001',
+          oldValue: expect.objectContaining({ status: TenantStatus.MARKED_FOR_DELETION }),
+          newValue: expect.objectContaining({ status: TenantStatus.ACTIVE }),
+        }),
+      );
+    });
+
+    it('activate desde SUSPENDED no registra auditoría de servicio (solo la restauración la exige)', async () => {
+      useStatefulRow(buildTenant({ status: TenantStatus.SUSPENDED }));
+
+      await expect(service.activate('tenant-uuid-001')).resolves.toMatchObject({
+        status: TenantStatus.ACTIVE,
+      });
+      expect(auditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    // setProvisioningStatus ya no salta la tabla: tiene su propia fila (vía
+    // `provisioning`) y pasa por el mismo compare-and-set.
+    it.each([
+      ['PROVISIONING', 'PROVISIONING', true],
+      ['PROVISIONING_FAILED', 'PROVISIONING', true],
+      ['PROVISIONING', 'PROVISIONING_FAILED', true],
+      ['PROVISIONING_FAILED', 'PROVISIONING_FAILED', false],
+      ['MARKED_FOR_DELETION', 'PROVISIONING', false],
+      ['ACTIVE', 'PROVISIONING', false],
+      ['SUSPENDED', 'PROVISIONING', false],
+      ['INACTIVE', 'PROVISIONING', false],
+      ['MARKED_FOR_DELETION', 'PROVISIONING_FAILED', false],
+      ['ACTIVE', 'PROVISIONING_FAILED', false],
+    ] as const)('setProvisioningStatus %s → %s (permitida=%s)', async (from, to, allowed) => {
+      const state = useStatefulRow(buildTenant({ status: from as TenantStatus }));
+
+      if (allowed) {
+        await expect(
+          service.setProvisioningStatus(
+            'tenant-uuid-001',
+            to as TenantStatus.PROVISIONING | TenantStatus.PROVISIONING_FAILED,
+          ),
+        ).resolves.toMatchObject({ status: to });
+        expect(state.row.status).toBe(to);
+      } else {
+        await expect(
+          service.setProvisioningStatus(
+            'tenant-uuid-001',
+            to as TenantStatus.PROVISIONING | TenantStatus.PROVISIONING_FAILED,
+          ),
+        ).rejects.toMatchObject(TRANSITION_CONFLICT);
+        expect(state.row.status).toBe(from);
+      }
+    });
+
+    it('setProvisioningStatus cuyo estado cambia tras la lectura (DELETE en medio) → 409', async () => {
+      const state = useStatefulRow(buildTenant({ status: TenantStatus.PROVISIONING_FAILED }));
+      repo.findOne.mockImplementationOnce(async () => {
+        const snapshot = { ...state.row };
+        state.row.status = TenantStatus.MARKED_FOR_DELETION;
+        return snapshot;
+      });
+
+      await expect(
+        service.setProvisioningStatus('tenant-uuid-001', TenantStatus.PROVISIONING),
+      ).rejects.toMatchObject(TRANSITION_CONFLICT);
+      expect(state.row.status).toBe(TenantStatus.MARKED_FOR_DELETION);
+    });
+
+    it('getCurrentStatus lee la base sin pasar por la caché', async () => {
+      redis.get.mockResolvedValue(JSON.stringify(buildTenant({ status: TenantStatus.ACTIVE })));
+      repo.findOne.mockResolvedValue(buildTenant({ status: TenantStatus.MARKED_FOR_DELETION }));
+
+      await expect(service.getCurrentStatus('tenant-uuid-001')).resolves.toBe(
+        'MARKED_FOR_DELETION',
+      );
+      expect(redis.get).not.toHaveBeenCalled();
     });
   });
 
