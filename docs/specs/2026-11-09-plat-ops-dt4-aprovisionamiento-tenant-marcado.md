@@ -248,3 +248,23 @@ Sustituye a §3.3 y a A1/A2 de la v1.0.
 Nota sobre `portal-billing-flow`: Node 24.13.1 (el que fija CI) también formatea `31` COP como `"$ 31"`. Que la spec espere `150,00` depende del formateo del navegador o del build standalone. Corresponde a sr-qa y queda fuera de DT-4.
 
 **Decisión del usuario (2026-11-09):** la corrida fiel del aprovisionador, con la API en el 3000, se deja al G6.5 del CI tras el push. La evidencia local de DT-4 queda en `E2E_SETUP=OK` y `E2E_CLEANUP=OK`. El G6.5 debe mostrar `E2E_PLAYWRIGHT_FAILED=0` en el job «E2E operativo R4.1» del SHA publicado.
+
+## 10. Publicación y G6.5 (2026-11-09)
+
+Commit `965bf5e5`, publicado en un único push `75528631..965bf5e5` junto con el tren de roles y P3-5 (`c5be2ab2`). El CI se lanzó solo sobre el SHA de cabeza (ADR-107), así que su resultado cubre los 5 commits.
+
+| Workflow / job | Id | Conclusión |
+| --- | --- | --- |
+| CI | run 42678231774 | success |
+| Detección de cambios de solo documentación | 129365336074 | success |
+| Integridad de citas ADR | 129365336824 | success |
+| Lint + Typecheck + Build + Unit tests | 129365452395 | success |
+| Build y validación de imágenes production | 129365452519 | success |
+| E2E portal | 129365452584 | success |
+| E2E operativo R4.1 — API + storage + BullMQ reales | 129365452743 | success: 339 aprobadas, 0 fallidas, 1 omitida; `E2E_CLEANUP=OK` |
+| E2E Web Admin Smoke | run 42678231542 | success |
+| Admin bootstrap smoke | 129365338978 | success |
+
+Paso «Integration tests — API»: de 19:12:17 a 19:20:27 UTC, **8 min 10 s** con un límite de 10 min. 83 suites aprobadas y 3 omitidas de 86; 570 pruebas aprobadas y 19 omitidas de 589; gate de omisiones PASS (86 specs; 3 omisiones declaradas; B5 17/17; K2 5/5). Queda un margen de 1 min 50 s: el próximo crecimiento de la suite debe vigilar ese límite.
+
+**G6.5: ✅.**
