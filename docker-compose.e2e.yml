@@ -65,6 +65,9 @@ services:
       DB_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
       DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?DB_MIGRATOR_USER is required}
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is required}
+      # R7 / ADR-108: rol de la purga de tenants (lo fija el aprovisionador E2E).
+      DB_PURGER_USER: ${DB_PURGER_USER:?DB_PURGER_USER is required}
+      DB_PURGER_PASSWORD: ${DB_PURGER_PASSWORD:?DB_PURGER_PASSWORD is required}
       DB_NAME: ${DB_NAME:-dbiw}
       REDIS_HOST: redis
       REDIS_PORT: 6379

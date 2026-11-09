@@ -125,7 +125,9 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
     tenantId = inserted.rows[0]?.id;
     if (!tenantId) throw new Error('[BLOCKED] No fue posible crear el tenant sintético.');
 
-    const marked = await database.query<{ deleted_at: string }>(
+    // R7 (§3.3): el reloj de retención solo deja fechar la marca en el pasado a
+    // miembros del migrator; por eso la marca la hace cleanupPool.
+    const marked = await cleanupPool.query<{ deleted_at: string }>(
       `UPDATE public.tenants
           SET status = 'MARKED_FOR_DELETION', deleted_at = now() - INTERVAL '3650 days'
         WHERE id = $1
@@ -168,6 +170,8 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
           DB_USER,
           DB_PASSWORD,
           DB_NAME,
+          DB_PURGER_USER: process.env.DB_PURGER_USER,
+          DB_PURGER_PASSWORD: process.env.DB_PURGER_PASSWORD,
           TENANT_PURGE_RETENTION_DAYS: 30,
           TENANT_PURGE_BATCH_SIZE: 1,
         };
@@ -264,21 +268,23 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
       );
     }
 
-    // La purga corre con DB_USER (pool propio del procesador). Para este tenant
-    // solo necesita DELETE en public.tenants e INSERT en platform_audit_logs: su
-    // esquema no existe, así que el DROP SCHEMA IF EXISTS es un no-op que no
-    // exige ser dueño. (Un esquema real lo crea el migrator; ver informe DT-4.)
+    // R7 / ADR-108: la purga corre con el rol de purga (pool propio del procesador),
+    // que no toca tablas: solo ejecuta las funciones definer de la migración 029.
     const purgePool = (purge as unknown as { pool: Pool }).pool;
     const privileges = await purgePool.query<{
       user: string;
+      can_purge: boolean;
       can_delete: boolean;
-      can_audit: boolean;
     }>(
       `SELECT current_user AS user,
-              has_table_privilege('public.tenants', 'DELETE') AS can_delete,
-              has_table_privilege('public.platform_audit_logs', 'INSERT') AS can_audit`,
+              has_function_privilege('public.iwana_purge_tenant_schema(uuid, integer)', 'EXECUTE') AS can_purge,
+              has_table_privilege('public.tenants', 'DELETE') AS can_delete`,
     );
-    expect(privileges.rows[0]).toEqual({ user: DB_USER, can_delete: true, can_audit: true });
+    expect(privileges.rows[0]).toEqual({
+      user: process.env.DB_PURGER_USER,
+      can_purge: true,
+      can_delete: false,
+    });
 
     await purge.process({ id: 'dt4-purge' } as unknown as Job);
 

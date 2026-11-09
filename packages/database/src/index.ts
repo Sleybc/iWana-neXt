@@ -13,7 +13,11 @@
 export * from './entities';
 
 // Credenciales migrator (SEC-04) — CLI / DDL; no usar en runtime TypeORM
-export { resolveMigrationDbCredentials } from './db-credentials';
+export {
+  resolveMigrationDbCredentials,
+  resolvePurgeDbCredentials,
+  MissingPurgeCredentialsError,
+} from './db-credentials';
 export type { DbCredentials } from './db-credentials';
 
 // Diagnóstico TypeORM sin consultas, parámetros ni excepciones crudas (D11).

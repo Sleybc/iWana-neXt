@@ -1,4 +1,41 @@
-import { resolveMigrationDbCredentials } from '@iwana/db';
+import {
+  MissingPurgeCredentialsError,
+  resolveMigrationDbCredentials,
+  resolvePurgeDbCredentials,
+} from '@iwana/db';
+
+/**
+ * R7 / ADR-108: credenciales de la purga de tenants.
+ */
+describe('resolvePurgeDbCredentials', () => {
+  it('prefiere DB_PURGER_* cuando el rol de purga está definido', () => {
+    expect(
+      resolvePurgeDbCredentials({
+        NODE_ENV: 'production',
+        DB_USER: 'iwana_app',
+        DB_PASSWORD: 'app',
+        DB_PURGER_USER: ' iwana_purger ',
+        DB_PURGER_PASSWORD: 'purger',
+      }),
+    ).toEqual({ username: 'iwana_purger', password: 'purger', fallback: false });
+  });
+
+  it('en producción, sin DB_PURGER_USER, falla en lugar de usar DB_USER', () => {
+    expect(() =>
+      resolvePurgeDbCredentials({ NODE_ENV: 'production', DB_USER: 'iwana_app', DB_PASSWORD: 'x' }),
+    ).toThrow(MissingPurgeCredentialsError);
+  });
+
+  it('fuera de producción, sin DB_PURGER_USER, cae a DB_USER y lo marca', () => {
+    expect(
+      resolvePurgeDbCredentials({
+        NODE_ENV: 'development',
+        DB_USER: 'iwana_app',
+        DB_PASSWORD: 'x',
+      }),
+    ).toEqual({ username: 'iwana_app', password: 'x', fallback: true });
+  });
+});
 
 /**
  * Smoke SEC-04: sin DB_MIGRATOR_* el comportamiento histórico (DB_USER) no cambia.

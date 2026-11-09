@@ -296,6 +296,9 @@ setRuntimeDefault('DB_PASSWORD', randomRuntimeValue('e2e-db-bootstrap'));
 setRuntimeDefault('DB_APP_PASSWORD', randomRuntimeValue('e2e-db-app'));
 setRuntimeDefault('DB_MIGRATOR_USER', 'iwana_migrator');
 setRuntimeDefault('DB_MIGRATOR_PASSWORD', randomRuntimeValue('e2e-db-migrator'));
+// R7 / ADR-108: la purga de tenants del worker conecta con su propio rol.
+setRuntimeDefault('DB_PURGER_USER', 'iwana_purger');
+setRuntimeDefault('DB_PURGER_PASSWORD', randomRuntimeValue('e2e-db-purger'));
 setRuntimeDefault('REDIS_HOST', 'localhost');
 // La infraestructura E2E usa una clave efímera propia, nunca la del entorno dev.
 process.env.REDIS_PASSWORD = randomRuntimeValue('e2e-redis');

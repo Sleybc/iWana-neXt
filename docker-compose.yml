@@ -70,6 +70,8 @@ services:
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD is required}
       DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?DB_MIGRATOR_USER is required}
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is required}
+      # R7 / ADR-108: rol de purga de tenants. Vacío → el init usa POSTGRES_PASSWORD (solo lab).
+      DB_PURGER_PASSWORD: ${DB_PURGER_PASSWORD:-}
     expose:
       - '5432'
     volumes:

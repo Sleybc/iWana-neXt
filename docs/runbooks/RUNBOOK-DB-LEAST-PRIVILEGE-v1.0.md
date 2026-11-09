@@ -19,6 +19,7 @@ Separar el rol de runtime de la API/worker del ownership de tablas de auditoría
 | Bootstrap | `iwana` (`DB_BOOTSTRAP_USER` → `POSTGRES_USER`) | Superusuario del volumen Docker; solo admin/init y `scripts/db/*`. **No** usar como usuario de API en staging/prod. **Nunca** igualarlo a `DB_APP_USER` / `DB_MIGRATOR_USER` (GSEC-N1). |
 | Migrator | `iwana_migrator` (`DB_MIGRATOR_USER`) | Dueño de `platform_audit_logs` / `audit_logs`, función `reject_audit_mutation`, triggers inmutables; DDL de migraciones; **DML del ledger** `typeorm_migrations` (+ secuencia) en `public` y schemas tenant. |
 | App | `iwana_app` (`DB_APP_USER`) | Runtime API/worker: DML de negocio, `INSERT`/`SELECT` en audit; **sin** ownership de audit; **sin** permiso efectivo para `DROP TRIGGER` en audit. |
+| Purga (R7, [ADR-108](../adrs/ADR-108-Rol-de-Purga-de-Tenants-iwana_purger.md)) | `iwana_purger` (`DB_PURGER_USER`, solo `worker-prod`) | `NOINHERIT`, sin `TEMP`, sin membresías y sin privilegios sobre tablas. Solo `EXECUTE` sobre `public.iwana_list_purge_candidates` y `public.iwana_purge_tenant_schema` (migración pública 029, `SECURITY DEFINER`, dueño `iwana_migrator`). Lo crean `01-create-roles.sh` y `apply-least-privilege`; GSEC-N1 verifica que no esté elevado y que no haya membresías entre roles `iwana_*`. |
 
 Variables alineadas al repo: `DB_USER` / `DB_PASSWORD` son las credenciales del proceso que usa TypeORM (hoy `iwana_app`).
 

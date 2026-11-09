@@ -331,6 +331,10 @@ services:
       # DDL de provisioning: resolveMigrationDbCredentials() prefiere este rol.
       DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?DB_MIGRATOR_USER is required}
       DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?DB_MIGRATOR_PASSWORD is required}
+      # R7 / ADR-108: la purga de tenants conecta con este rol (solo EXECUTE sobre
+      # dos funciones definer). Sin él, el worker de producción no arranca.
+      DB_PURGER_USER: ${DB_PURGER_USER:?DB_PURGER_USER is required}
+      DB_PURGER_PASSWORD: ${DB_PURGER_PASSWORD:?DB_PURGER_PASSWORD is required}
       DB_NAME: ${DB_NAME:-dbiw}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}

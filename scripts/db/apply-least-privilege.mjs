@@ -59,6 +59,9 @@ const bootstrapPass = process.env.DB_BOOTSTRAP_PASSWORD ?? process.env.DB_PASSWO
 const appPass = process.env.DB_APP_PASSWORD ?? process.env.DB_PASSWORD ?? 'changeme-dev-only-app';
 const migratorPass =
   process.env.DB_MIGRATOR_PASSWORD ?? process.env.DB_PASSWORD ?? 'changeme-dev-only-migrator';
+// R7 / ADR-108: rol de purga de tenants (solo EXECUTE sobre dos funciones definer).
+const purgerPass =
+  process.env.DB_PURGER_PASSWORD ?? process.env.DB_PASSWORD ?? 'changeme-dev-only-purger';
 const appUser = process.env.DB_APP_USER ?? 'iwana_app';
 const migratorUser = process.env.DB_MIGRATOR_USER ?? 'iwana_migrator';
 const mode = process.env.LEAST_PRIVILEGE_MODE ?? 'docker';
@@ -171,6 +174,8 @@ function runPsqlDocker() {
       '-v',
       `migrator_pass=${migratorPass}`,
       '-v',
+      `purger_pass=${purgerPass}`,
+      '-v',
       `app_ddl=${appDdl}`,
     ],
     { input: sql, stdio: ['pipe', 'inherit', 'inherit'] },
@@ -208,6 +213,8 @@ function runPsqlHost() {
       `app_pass=${appPass}`,
       '-v',
       `migrator_pass=${migratorPass}`,
+      '-v',
+      `purger_pass=${purgerPass}`,
       '-v',
       `app_ddl=${appDdl}`,
     ],

@@ -33,6 +33,7 @@ import { PlatformUsersPasswordResetRequired1784419213000 } from './025_platform_
 import { MediaUsageStratumEvidence1784419214000 } from './026_media_usage_stratum_evidence';
 import { MediaUsagePrivacyEvidence1784419215000 } from './027_media_usage_privacy_evidence';
 import { EnableBtreeGist1784419216000 } from './028_enable_btree_gist';
+import { TenantSchemaPurgeDefiner1784419217000 } from './029_tenant_schema_purge_definer';
 
 /**
  * Migraciones del schema público, en orden.
@@ -76,6 +77,7 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   MediaUsageStratumEvidence1784419214000,
   MediaUsagePrivacyEvidence1784419215000,
   EnableBtreeGist1784419216000,
+  TenantSchemaPurgeDefiner1784419217000,
 ];
 
 /**

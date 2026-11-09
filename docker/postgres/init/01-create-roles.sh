@@ -15,10 +15,13 @@ APP_USER="${DB_APP_USER:-iwana_app}"
 MIGRATOR_USER="${DB_MIGRATOR_USER:-iwana_migrator}"
 APP_PASS="${DB_APP_PASSWORD:-${POSTGRES_PASSWORD}}"
 MIGRATOR_PASS="${DB_MIGRATOR_PASSWORD:-${POSTGRES_PASSWORD}}"
+# R7 / ADR-108: rol de purga de tenants (solo EXECUTE sobre dos funciones definer).
+PURGER_USER="iwana_purger"
+PURGER_PASS="${DB_PURGER_PASSWORD:-${POSTGRES_PASSWORD}}"
 DB_NAME="${POSTGRES_DB}"
 BOOTSTRAP_USER="${POSTGRES_USER}"
 
-if [[ -z "${APP_PASS}" || -z "${MIGRATOR_PASS}" || -z "${DB_NAME}" ]]; then
+if [[ -z "${APP_PASS}" || -z "${MIGRATOR_PASS}" || -z "${PURGER_PASS}" || -z "${DB_NAME}" ]]; then
   echo "01-create-roles: faltan password o POSTGRES_DB" >&2
   exit 1
 fi
@@ -44,7 +47,7 @@ ERR
   exit 1
 fi
 
-echo "01-create-roles: creando ${APP_USER} y ${MIGRATOR_USER} (si no existen)"
+echo "01-create-roles: creando ${APP_USER}, ${MIGRATOR_USER} y ${PURGER_USER} (si no existen)"
 
 # Variables psql (:'x') se interpolan fuera de dollar-quotes; usamos \gexec.
 psql -v ON_ERROR_STOP=1 \
@@ -54,6 +57,8 @@ psql -v ON_ERROR_STOP=1 \
   -v migrator_user="${MIGRATOR_USER}" \
   -v app_pass="${APP_PASS}" \
   -v migrator_pass="${MIGRATOR_PASS}" \
+  -v purger_user="${PURGER_USER}" \
+  -v purger_pass="${PURGER_PASS}" \
   -v db_name="${DB_NAME}" <<'SQL'
 SELECT format(
   'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT',
@@ -69,6 +74,18 @@ SELECT format(
   :'migrator_pass'
 )
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'migrator_user')
+\gexec
+
+SELECT format(
+  'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT',
+  :'purger_user',
+  :'purger_pass'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'purger_user')
+\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db_name', :'purger_user')
+\gexec
+SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'purger_user')
 \gexec
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db_name', :'app_user')
@@ -133,11 +150,24 @@ ELEVATED="$(
     --username "${POSTGRES_USER}" \
     --dbname "${DB_NAME}" \
     -v app_user="${APP_USER}" \
-    -v migrator_user="${MIGRATOR_USER}" <<'CHECK'
-SELECT coalesce(string_agg(rolname, ', ' ORDER BY rolname), '')
-FROM pg_roles
-WHERE rolname IN (:'app_user', :'migrator_user')
-  AND (rolsuper OR rolcreaterole OR rolbypassrls);
+    -v migrator_user="${MIGRATOR_USER}" \
+    -v purger_user="${PURGER_USER}" <<'CHECK'
+SELECT coalesce(string_agg(x, ', ' ORDER BY x), '')
+FROM (
+  SELECT rolname AS x
+  FROM pg_roles
+  WHERE rolname IN (:'app_user', :'migrator_user', :'purger_user')
+    AND (rolsuper OR rolcreaterole OR rolbypassrls)
+  UNION ALL
+  -- R7: el reloj de retencion de public.tenants depende de que no haya
+  -- membresias entre los roles de aplicacion.
+  SELECT m.rolname || ' miembro de ' || r.rolname
+  FROM pg_auth_members a
+  JOIN pg_roles r ON r.oid = a.roleid
+  JOIN pg_roles m ON m.oid = a.member
+  WHERE r.rolname IN (:'app_user', :'migrator_user', :'purger_user')
+    AND m.rolname IN (:'app_user', :'migrator_user', :'purger_user')
+) hallazgos;
 CHECK
 )"
 

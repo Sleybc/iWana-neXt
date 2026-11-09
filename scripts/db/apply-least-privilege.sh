@@ -30,6 +30,8 @@ DB_PORT_RESOLVED="${DB_PORT:-${PGPORT:-5432}}"
 BOOTSTRAP_PASS="${DB_BOOTSTRAP_PASSWORD:-${DB_PASSWORD:-}}"
 APP_PASS="${DB_APP_PASSWORD:-${DB_PASSWORD:-changeme-dev-only-app}}"
 MIGRATOR_PASS="${DB_MIGRATOR_PASSWORD:-${DB_PASSWORD:-changeme-dev-only-migrator}}"
+# R7 / ADR-108: rol de purga de tenants (solo EXECUTE sobre dos funciones definer).
+PURGER_PASS="${DB_PURGER_PASSWORD:-${DB_PASSWORD:-changeme-dev-only-purger}}"
 APP_USER="${DB_APP_USER:-iwana_app}"
 MIGRATOR_USER="${DB_MIGRATOR_USER:-iwana_migrator}"
 MODE="${LEAST_PRIVILEGE_MODE:-docker}"
@@ -73,8 +75,9 @@ run_psql_host() {
     -d "${DB_NAME_BOOTSTRAP}" \
     -v app_pass="${APP_PASS}" \
     -v migrator_pass="${MIGRATOR_PASS}" \
+    -v purger_pass="${PURGER_PASS}" \
     -v app_ddl="${APP_DDL}" \
-    -f "${ROOT}/scripts/db/apply-least-privilege.sql"
+    -f"${ROOT}/scripts/db/apply-least-privilege.sql"
 }
 
 run_psql_docker() {
@@ -90,6 +93,7 @@ run_psql_docker() {
       -d "${DB_NAME_BOOTSTRAP}" \
       -v app_pass="${APP_PASS}" \
       -v migrator_pass="${MIGRATOR_PASS}" \
+      -v purger_pass="${PURGER_PASS}" \
       -v app_ddl="${APP_DDL}" \
     < "${ROOT}/scripts/db/apply-least-privilege.sql"
 }

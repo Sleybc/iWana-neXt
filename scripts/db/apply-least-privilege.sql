@@ -84,6 +84,66 @@ SELECT format('REVOKE CREATE, TEMPORARY ON DATABASE %I FROM %I', current_databas
 REVOKE CREATE ON SCHEMA public FROM :"app_user";
 \endif
 
+-- R7 / ADR-108: rol de purga de tenants. Solo CONNECT, USAGE en public y EXECUTE
+-- sobre las dos funciones SECURITY DEFINER de la migración pública 029. Sin tablas,
+-- sin TEMP, sin membresías. Si las funciones aún no existen (antes de migrar), el
+-- EXECUTE lo concede la propia 029 o la siguiente pasada de este script.
+\set purger_user 'iwana_purger'
+\if :{?purger_pass}
+\else
+\set purger_pass 'changeme-dev-only-purger'
+\endif
+
+SELECT format(
+  'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT',
+  :'purger_user',
+  :'purger_pass'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'purger_user')
+\gexec
+
+SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'purger_user')
+\gexec
+SELECT format('REVOKE CREATE, TEMPORARY ON DATABASE %I FROM %I', current_database(), :'purger_user')
+\gexec
+GRANT USAGE ON SCHEMA public TO :"purger_user";
+REVOKE CREATE ON SCHEMA public FROM :"purger_user";
+
+SELECT format('GRANT EXECUTE ON FUNCTION public.iwana_list_purge_candidates(integer, integer) TO %I', :'purger_user')
+WHERE to_regprocedure('public.iwana_list_purge_candidates(integer, integer)') IS NOT NULL
+\gexec
+SELECT format('GRANT EXECUTE ON FUNCTION public.iwana_purge_tenant_schema(uuid, integer) TO %I', :'purger_user')
+WHERE to_regprocedure('public.iwana_purge_tenant_schema(uuid, integer)') IS NOT NULL
+\gexec
+
+-- GSEC-N1 ampliado (R7): el reloj de retención del trigger de public.tenants usa
+-- pg_has_role(session_user, migrator). Exige que ningún rol iwana_* sea miembro de
+-- otro y que el purger no esté elevado ni tenga TEMP.
+DO $r7guard$
+DECLARE
+  bad text;
+BEGIN
+  SELECT string_agg(m.rolname || ' -> ' || r.rolname, ', ')
+    INTO bad
+    FROM pg_auth_members a
+    JOIN pg_roles r ON r.oid = a.roleid
+    JOIN pg_roles m ON m.oid = a.member
+   WHERE r.rolname IN ('iwana_app', 'iwana_migrator', 'iwana_purger')
+     AND m.rolname IN ('iwana_app', 'iwana_migrator', 'iwana_purger');
+  IF bad IS NOT NULL THEN
+    RAISE EXCEPTION 'GSEC-N1 (R7): membresías entre roles de aplicación: %', bad;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_roles
+     WHERE rolname = 'iwana_purger'
+       AND (rolsuper OR rolcreaterole OR rolcreatedb OR rolbypassrls OR rolinherit)
+  ) OR has_database_privilege('iwana_purger', current_database(), 'TEMP') THEN
+    RAISE EXCEPTION 'GSEC-N1 (R7): iwana_purger con privilegio elevado o TEMP';
+  END IF;
+END
+$r7guard$;
+
 -- Función + event trigger (misma lógica que docker/postgres/init/02-*.sql)
 CREATE OR REPLACE FUNCTION public.iwana_reassign_audit_table_owner()
 RETURNS event_trigger

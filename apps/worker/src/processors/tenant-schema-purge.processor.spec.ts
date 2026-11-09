@@ -1,12 +1,6 @@
-import { UnrecoverableError } from 'bullmq';
 import { Pool } from 'pg';
+import { MissingPurgeCredentialsError } from '@iwana/db';
 import { TenantSchemaPurgeProcessor } from './tenant-schema-purge.processor';
-
-jest.mock('@nestjs/config', () => ({
-  ConfigService: jest.fn().mockImplementation(() => ({
-    get: jest.fn((key: string, defaultValue?: unknown) => defaultValue),
-  })),
-}));
 
 jest.mock('@nestjs/bullmq', () => ({
   Processor: () => () => undefined,
@@ -28,128 +22,120 @@ jest.mock('pg', () => ({
   })),
 }));
 
-function buildProcessor(): TenantSchemaPurgeProcessor {
-  const { ConfigService } = jest.requireMock('@nestjs/config') as {
-    ConfigService: jest.MockedClass<new () => { get: jest.Mock }>;
+const LIST_SQL =
+  'SELECT id::text AS id FROM public.iwana_list_purge_candidates($1::int, $2::int) AS id';
+const PURGE_SQL = 'SELECT public.iwana_purge_tenant_schema($1::uuid, $2::int) AS outcome';
+
+function buildProcessor(values: Record<string, unknown> = {}): TenantSchemaPurgeProcessor {
+  const env: Record<string, unknown> = {
+    DB_USER: 'iwana_app',
+    DB_PASSWORD: 'app',
+    DB_PURGER_USER: 'iwana_purger',
+    DB_PURGER_PASSWORD: 'purger',
+    ...values,
   };
-  const config = new ConfigService();
+  const config = {
+    get: jest.fn((key: string, defaultValue?: unknown) => env[key] ?? defaultValue),
+  };
   return new TenantSchemaPurgeProcessor(config as never);
 }
 
-describe('TenantSchemaPurgeProcessor', () => {
+function pgError(message: string, code = 'P0001'): Error {
+  return Object.assign(new Error(message), { code });
+}
+
+describe('TenantSchemaPurgeProcessor (R7 / ADR-108)', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('purga schemas de tenants marcados cuando vence la retencion', async () => {
-    mockClient.query
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'tenant-uuid-1',
-            schema_name: 'tenant_isp_co',
-            deleted_at: '2026-03-01T00:00:00.000Z',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({ rows: [{ locked: true }] })
-      .mockResolvedValue({ rowCount: 1 });
-
-    const processor = buildProcessor();
-    await processor.process({} as never);
-
-    expect(mockClient.query).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("status = 'MARKED_FOR_DELETION'"),
-      [30, 20],
+  it('conecta con el rol de purga, no con DB_USER', () => {
+    buildProcessor();
+    expect(Pool).toHaveBeenCalledWith(
+      expect.objectContaining({ user: 'iwana_purger', password: 'purger' }),
     );
-    expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
-    expect(mockClient.query).toHaveBeenCalledWith('DROP SCHEMA IF EXISTS "tenant_isp_co" CASCADE');
-    expect(mockClient.query).toHaveBeenCalledWith(
-      `DELETE FROM public.tenants WHERE id = $1 AND status = 'MARKED_FOR_DELETION'`,
-      ['tenant-uuid-1'],
-    );
-    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
-    expect(mockClient.release).toHaveBeenCalledTimes(1);
-    expect(Pool).toHaveBeenCalledTimes(1);
   });
 
-  it('respeta retencion y batch configurados como strings de entorno', async () => {
+  it('en producción no arranca sin DB_PURGER_USER', () => {
+    expect(() => buildProcessor({ NODE_ENV: 'production', DB_PURGER_USER: undefined })).toThrow(
+      MissingPurgeCredentialsError,
+    );
+    expect(Pool).not.toHaveBeenCalled();
+  });
+
+  it('fuera de producción, sin DB_PURGER_USER, usa DB_USER y lo avisa', () => {
+    buildProcessor({ NODE_ENV: 'development', DB_PURGER_USER: undefined });
+    expect(Pool).toHaveBeenCalledWith(expect.objectContaining({ user: 'iwana_app' }));
+  });
+
+  it('lista candidatos y purga cada uno con la función de la base, sin DDL propio', async () => {
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 'tenant-1' }, { id: 'tenant-2' }] })
+      .mockResolvedValueOnce({ rows: [{ outcome: 'PURGED' }] })
+      .mockResolvedValueOnce({ rows: [{ outcome: 'SKIPPED_LOCKED' }] });
+
+    await buildProcessor().process({} as never);
+
+    expect(mockClient.query).toHaveBeenNthCalledWith(1, LIST_SQL, [30, 20]);
+    expect(mockClient.query).toHaveBeenNthCalledWith(2, PURGE_SQL, ['tenant-1', 30]);
+    expect(mockClient.query).toHaveBeenNthCalledWith(3, PURGE_SQL, ['tenant-2', 30]);
+    const statements = mockClient.query.mock.calls.map((call) => String(call[0]));
+    expect(statements.some((sql) => /DROP|DELETE|INSERT|BEGIN|advisory/i.test(sql))).toBe(false);
+    expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('respeta retención y lote configurados como strings de entorno', async () => {
     mockClient.query.mockResolvedValueOnce({ rows: [] });
-    const config = {
-      get: jest.fn((key: string, defaultValue?: unknown) => {
-        if (key === 'TENANT_PURGE_RETENTION_DAYS') return '7';
-        if (key === 'TENANT_PURGE_BATCH_SIZE') return '3';
-        return defaultValue;
-      }),
-    };
-
-    const processor = new TenantSchemaPurgeProcessor(config as never);
-    await processor.process({} as never);
-
-    expect(mockClient.query).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("status = 'MARKED_FOR_DELETION'"),
-      [7, 3],
-    );
+    await buildProcessor({
+      TENANT_PURGE_RETENTION_DAYS: '45',
+      TENANT_PURGE_BATCH_SIZE: '3',
+    }).process({} as never);
+    expect(mockClient.query).toHaveBeenNthCalledWith(1, LIST_SQL, [45, 3]);
   });
 
-  it('calcula advisory lock dentro del rango int4 firmado de PostgreSQL', () => {
-    const processor = buildProcessor();
-    const hash = (
-      processor as unknown as { hashSchemaName: (schemaName: string) => number }
-    ).hashSchemaName('tenant_empresa_e2e_mcp_20260430_1153');
-
-    expect(hash).toBeGreaterThanOrEqual(-2147483648);
-    expect(hash).toBeLessThanOrEqual(2147483647);
-  });
-
-  it('rechaza schema_name invalido sin ejecutar DROP SCHEMA', async () => {
-    mockClient.query.mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'tenant-evil',
-          schema_name: 'public; DROP SCHEMA public',
-          deleted_at: '2026-03-01T00:00:00.000Z',
-        },
-      ],
-    });
-
-    const processor = buildProcessor();
-
-    await expect(processor.process({} as never)).rejects.toBeInstanceOf(UnrecoverableError);
-    expect(mockClient.query).toHaveBeenCalledTimes(1);
-    expect(mockClient.release).toHaveBeenCalledTimes(1);
-  });
-
-  it('libera lock y hace rollback si falla la purga', async () => {
+  it('un rechazo de la base no detiene el lote y el job termina en error', async () => {
     mockClient.query
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'tenant-uuid-2',
-            schema_name: 'tenant_error',
-            deleted_at: '2026-03-01T00:00:00.000Z',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({ rows: [{ locked: true }] })
-      .mockResolvedValueOnce({ rowCount: 1 }) // BEGIN
-      .mockResolvedValueOnce({ rowCount: 1 }) // audit started
-      .mockRejectedValueOnce(new Error('drop failed'))
-      .mockResolvedValue({ rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [{ id: 'tenant-1' }, { id: 'tenant-2' }, { id: 'tenant-3' }] })
+      .mockRejectedValueOnce(pgError('TENANT_PURGE_EXTERNAL_DEPENDENCY'))
+      .mockResolvedValueOnce({ rows: [{ outcome: 'PURGED' }] })
+      .mockRejectedValueOnce(pgError('permission denied for function', '42501'));
 
     const processor = buildProcessor();
+    const errorSpy = jest
+      .spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      )
+      .mockImplementation(() => undefined);
 
-    await expect(processor.process({} as never)).rejects.toMatchObject({
-      name: 'Error',
-      message: 'class=Error sqlstate=none',
-    });
-    expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
-    expect(mockClient.query).toHaveBeenCalledWith('SELECT pg_advisory_unlock($1, $2)', [
-      43,
-      expect.any(Number),
+    await expect(processor.process({} as never)).rejects.toBeInstanceOf(Error);
+
+    expect(mockClient.query).toHaveBeenCalledTimes(4);
+    expect(mockClient.query).toHaveBeenNthCalledWith(3, PURGE_SQL, ['tenant-2', 30]);
+    const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(logged).toEqual([
+      expect.stringContaining('codigo=TENANT_PURGE_EXTERNAL_DEPENDENCY'),
+      expect.stringContaining('codigo=SQLSTATE_42501'),
     ]);
     expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('el failedReason no expone el mensaje original ni el esquema', async () => {
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 'tenant-1' }] })
+      .mockRejectedValueOnce(pgError('TENANT_PURGE_RETENTION_NOT_MET'));
+    const processor = buildProcessor();
+    jest
+      .spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      )
+      .mockImplementation(() => undefined);
+
+    const failure = await processor.process({} as never).then(
+      () => undefined,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).not.toMatch(/tenant_/);
   });
 });
