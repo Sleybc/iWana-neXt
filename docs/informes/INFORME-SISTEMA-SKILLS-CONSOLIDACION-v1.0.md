@@ -1,7 +1,7 @@
 # INFORME — Consolidación del catálogo de skills (52 → 43)
 
 **Versión:** 1.4
-**Estado:** Aprobado. G0 el 2026-11-08 (§6); en ejecución, avance en §8
+**Estado:** Cerrado. Publicado en `43011278`, G6.5 ✅ 2026-11-09 (§8.6)
 **Cambio v1.0 → v1.1 (2026-11-08):** registro de G0 y del cierre de la Ola 1 (G1) en §8; deuda de B1 asignada a B2 y B3a
 **Cambio v1.1 → v1.2 (2026-11-08):** registro de la Ola 2 (§8.3); §5.1 quedó corto: el recorte a su lista perdió tres reglas únicas, que se restauran en B2-R; los auxiliares npm de `playwright-skill` salen en B4
 **Cambio v1.2 → v1.3 (2026-11-08):** registro de la Ola 3 (§8.4): G2 y G3 cerrados; inventario de referencias vivas a las 9 skills que salen, para B4
@@ -373,4 +373,6 @@ Ejecutada por AI-EM-ARCH en `main`, sin commit. Verificación del orquestador:
 | Baja | Cinco perfiles de `docs/roles/` (EMA, FEP, OPS, PUX, QA) y `.claude/agents/fe-platform.md` cambian sin subir versión | Ola 1 de la auditoría de cruces de roles (G0-1 = A) |
 | — | `.playwright-mcp/` tiene tres `INFORME-*.md` fuera de `docs/informes/` | Ajeno al ciclo |
 
-Siguiente: B6 (commit con lista explícita de rutas, push, G6.5).
+### 8.6 B6 — publicado `43011278`, G6.5 ✅ 2026-11-09
+
+Commit de 191 rutas con lista explícita; gate sobre el índice aislado: `audit-adr-citations` y `audit-doc-locations` con `BLOQUEANTE: 0` (un primer intento dio 1 por citar en el plan §7 un ADR aún sin commit; la frase se reescribió sin el número), `sync:skills:check` «OK: 43» y `sync:agents:check` «OK: 14»; `pop` limpio. Push `ebb0fe61..43011278`. G6.5: `CI` (run 42624717247) y `E2E Web Admin Smoke` (run 42624717223) en verde. Ciclo cerrado.

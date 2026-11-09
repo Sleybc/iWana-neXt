@@ -1,13 +1,14 @@
 # Informe de auditoría — Cruces y optimización del ecosistema de roles
 
-**Versión:** 1.6
-**Estado:** Remediación completa (olas 0 a 4): Ola 1 publicada (`75528631`, G6.5 ✅, §9); Ola 2 ejecutada y registrada (§9.3, commit `359246c4`); Ola 4 ejecutada (T8–T10, G1′ ✅) y registrada (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
+**Versión:** 1.7
+**Estado:** Cerrado. Remediación completa (olas 0 a 4), publicada con G6.5 ✅: Ola 1 en `75528631`; olas 2 y 4 y la corrección del cercado en el tren `965bf5e5` (§9.5). Pendiente externo: §7, con el CTO y Legal (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
 **Cambio v1.0 → v1.1 (2026-11-08):** el CTO aprueba G0-1 a G0-4 en bloque, con las recomendaciones de §8
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 aplicada sobre 9 perfiles y el anexo (§9)
 **Cambio v1.2 → v1.3 (2026-11-09):** §10 define las olas 2 a 4 (G0-4): nuevo hallazgo C13 (protocolo frente a ADR-107), fusión propuesta de la Ola 3 en la Ola 2, asignación de la deuda «Baseline y Stack», texto congelado de cada cambio y de los prompts compactos, y decisiones G0-5 a G0-11
 **Cambio v1.3 → v1.4 (2026-11-09):** el CTO aprueba G0-5 a G0-11 en bloque, con las recomendaciones de §10.6. §10.3 y §10.5 no cambian: siguen siendo el contrato congelado de las olas 2 y 4
 **Cambio v1.4 → v1.5 (2026-11-09):** §9.3 registra la Ola 2 (protocolo v1.10 + espejos, G1 ✅, G3 y veredicto de `docs-governance`); el Estado queda al día
 **Cambio v1.5 → v1.6 (2026-11-09):** §9.4 registra la Ola 4 (prompts compactos de §10.5, G1′ ✅ con T8-R, G3′ y veredicto de `docs-governance`); el Estado declara la remediación completa
+**Cambio v1.6 → v1.7 (2026-11-09):** §9.5 registra el G6.5 del tren `965bf5e5` (CI 42678231774 y E2E 42678231542 en verde), que cubre las olas 2 y 4 y la corrección del cercado (`84a0ab65`); el informe pasa a Cerrado, con §7 como único pendiente externo
 **Fecha:** 2026-11-09
 **Modo activo:** Architect + auditor (AI-EM-ARCH); solo lectura sobre `docs/roles/`
 **Alcance auditado:** el protocolo v1.9, los 9 perfiles ejecutores, los 6 verificadores auxiliares y el anexo regulatorio de [`docs/roles/`](../roles/)
@@ -227,7 +228,20 @@ Ejecutada por AI-EM-ARCH en tres sesiones paralelas sobre `main`, sin commit: T8
 
 **Revisión de AI-EM-ARCH tras `d182e2c6` (2026-11-09).** El cercado huérfano de EMA y SRF no era cosmético: en `Perfil_IA_EM_Architect_Unificado_v2.md:280` y `Perfil_IA_Sr_Dev_Fullstack_v2.md:196` abría un bloque de código sin cerrar, y la Parte III de los dos perfiles, con los changelogs que exige `PROT:361`, se mostraba entera como código. Se retiró la línea en ambos y se anotó en la entrada v2.9 de EMA y v2.4 de SRF, sin subir versión: ninguna de las dos se había publicado y la corrección viaja en el mismo tren. Tras el arreglo, los cercados de EMA, SRF, QA y SEC quedan en número par. Sale de la deuda.
 
-**Pendientes externos (no bloquean el cierre documental).** §7 sigue pendiente de verificación por el CTO con Legal (ARCO, jornada 42 h, AES-256/TLS 1.3). G6.5 del commit `359246c4` y de este commit viajan cada uno en su tren siguiente (ADR-107 D4).
+**Pendientes externos (no bloquean el cierre documental).** §7 sigue pendiente de verificación por el CTO con Legal (ARCO, jornada 42 h, AES-256/TLS 1.3). G6.5 del commit `359246c4` y de este commit viajan cada uno en su tren siguiente (ADR-107 D4). *(Cerrado el G6.5 en §9.5.)*
+
+### 9.5 G6.5 del tren de las olas 2 y 4, 2026-11-09
+
+Publicados en un solo tren, `75528631..965bf5e5`: `359246c4` (Ola 2), `d182e2c6` (Ola 4) y `84a0ab65` (corrección del cercado), junto con `c5be2ab2` (P3-5) y `965bf5e5` (DT-4), que no son de esta auditoría. Por ADR-107 (aprobado), G6.5 se verifica sobre el SHA publicado, la punta del tren:
+
+| Corrida | SHA | Jobs | Resultado |
+| --- | --- | --- | --- |
+| `CI` 42678231774 | `965bf5e5` | Detección de cambios de solo documentación · Integridad de citas ADR · Lint + Typecheck + Build + Unit tests · Build y validación de imágenes production · E2E portal · E2E operativo R4.1 | 6/6 en verde, 18:54 → 19:20 UTC (26 min) |
+| `E2E Web Admin Smoke` 42678231542 | `965bf5e5` | Admin bootstrap smoke | 1/1 en verde, 18:54 → 18:55 UTC |
+
+Ningún job se omitió: el tren llevaba código, así que la detección de solo-docs no recortó la suite. **G6.5 ✅** para las olas 2 y 4 y para la corrección. Este registro no lleva commit propio y viaja en el tren siguiente (ADR-107 D4).
+
+Con esto la auditoría queda cerrada en lo documental. Solo sigue abierto §7: verificación con fuente oficial a cargo del CTO con Legal; un texto escrito por la IA no constituye dictamen.
 
 ## 10. Definición de las olas 2 a 4 (G0-4)
 
