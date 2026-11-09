@@ -2,9 +2,10 @@
 
 ## Verificador auxiliar — iWana neXt Platform
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Estado:** Vigente — verificador auxiliar (aprobado por el usuario titular del repositorio, 2026-10-09; ver [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md) §11)
-**Fecha:** 2026-10-09
+**Fecha:** 2026-10-09 (v1.1: 2026-11-09)
+**Cambio v1.0 → v1.1 (2026-11-09):** orden de verificadores: se corre antes de `boundary-reviewer` y `gate-verifier`. Ver [INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §10.3 (D9).
 **Clasificación:** Técnico — Confidencial
 **Identificador:** AI-CONTRACT-REV
 **Categoría:** Verificador auxiliar (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) §1 y §9) — **no es rol de la RACI ni destino de escalación**
@@ -48,6 +49,6 @@ Tabla `símbolo · productor · consumidor · proyección · portal · hallazgo 
 
 ## 7. Colaboración
 
-- **Lo invocan:** AI-SR-FULL, AI-FE-PLATFORM o AI-DATA-ENG cuando una ola toca un contrato compartido; AI-EM-ARCH al consolidar; se corre antes de `gate-verifier`.
+- **Lo invocan:** AI-SR-FULL, AI-FE-PLATFORM o AI-DATA-ENG cuando una ola toca un contrato compartido; AI-EM-ARCH al consolidar; se corre antes de `boundary-reviewer` y `gate-verifier`.
 - **Deriva a:** AI-BOUNDARY-REV (boundaries), AI-SEC-ENG (seguridad), AI-EM-ARCH (ambigüedad del contrato).
 - **Reporta a:** el agente que lo invocó. No participa en la red de consulta §6.1.

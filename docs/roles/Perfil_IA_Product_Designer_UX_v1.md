@@ -2,10 +2,10 @@
 
 ## Especialización ISP / SaaS multi-tenant — iWana neXt Platform
 
-**Versión:** 1.2 (alineado a la dirección visual "Firma iWana" — [spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md))
-**Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; actualización v1.1 aprobada por el CTO junto con el protocolo v1.2, 2026-07-12)
+**Versión:** 1.3 (alineado a la dirección visual "Firma iWana" — [spec 2026-07-12](../specs/2026-07-12-firma-iwana-diseno-visual-design.md))
+**Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; actualización v1.1 aprobada por el CTO junto con el protocolo v1.2, 2026-07-12; v1.3, 2026-11-09: auditoría de cruces, Ola 2)
 **Fecha:** 2026-11-09
-**Cambio v1.1 → v1.2 (2026-11-09):** auditoría de cruces, Ola 1 ([informe](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md), G0 del 2026-11-08). C7: la cabecera «Fuente de verdad de UI» y el prompt compacto remiten a las fuentes de diseño de §6 nivel 4 (tres dominios de ADR-056 §3) en lugar de la Estrella Polar de ADR-049. V4: `Fecha` real (la v1.1 citaba en §6 un hecho del 2026-07-19 bajo fecha 2026-07-12). §4 gana la línea de bloqueos (`[BLOQUEO]`, protocolo §6.3). V3 (G0-1 = A): regulariza la edición de B4 en §6 nivel 1 (lista de skills), hecha sin subida de versión.
+**Cambio v1.2 → v1.3 (2026-11-09):** auditoría de cruces, Ola 2 ([informe](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md)). D11: el nivel 6 de §6 (baseline y `Stack_Tecnologico.md`) sale de la cadena y pasa a «Entradas de trabajo (no precedencia)» con la redacción de DAT:71; la cadena se renumera.
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-PROD-UX
 **Capa organizacional:** Design Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md))
@@ -69,9 +69,10 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 3. PRD y HLD del módulo
 4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir*; `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*
 5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
-6. Baseline del sprint y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-7. Este perfil
-8. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+6. Este perfil
+7. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+
+**Entradas de trabajo (no precedencia):** la baseline de versiones contra [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md).
 
 Regla: si identidad y accesibilidad chocan, prevalece accesibilidad y se documenta.
 

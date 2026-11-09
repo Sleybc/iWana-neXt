@@ -2,9 +2,10 @@
 
 ## Especialización Next.js / design system — iWana neXt Platform
 
-**Versión:** 1.2
+**Versión:** 1.3
 **Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10. Actualización v1.1 aprobada por el CTO, 2026-07-18: precedencia alineada al protocolo §5.4, gestión de bloqueos y KPIs añadidos — auditoría integral, ver informe vivo de roles)
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (G0-1 = A): regulariza la edición de la consolidación de skills del 2026-11-08 (`43011278`), hecha sin subir versión — §5 nivel 1 deja de nombrar `nextjs-app-router-patterns`, fusionada en `frontend-dev-guidelines`
+**Cambio v1.2 → v1.3 (2026-11-09):** Ola 2 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (G0-5 a G0-11 del CTO, 2026-11-09): **D10** — la fila de dependencias de §3 se desdobla: dependencia npm nueva (sin cambio de stack) → AI-EM-ARCH; librería UI nueva o cambio de stack → CTO vía ADR. **D11** — el nivel «Baseline del sprint y `Stack_Tecnologico.md`» sale de la cadena de §6 y pasa a «Entradas de trabajo (no precedencia)»; la cadena se renumera (tratamiento de Ola 1, compatible con ADR-056 §4 aprobado). Sin cambios en autonomía ni entregables; no requiere ADR
 **Fecha:** 2026-11-09
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-FE-PLATFORM
@@ -36,7 +37,8 @@ Ser dueño del **código** de la plataforma frontend: `@iwana/ui` y las app-shel
 | Definir tokens, paleta, la API de componentes | **AI-DS-OWNER** |
 | Definir journeys, flows, simplificación de tarea | **AI-PROD-UX** |
 | Backend, endpoints, lógica de negocio, base de datos, boundaries | **AI-SR-FULL** |
-| Adoptar dependencia npm / librería UI nueva o cambiar stack | **AI-EM-ARCH / CTO vía ADR** |
+| Adoptar dependencia npm nueva (sin cambio de stack) | **AI-EM-ARCH** |
+| Adoptar librería UI nueva o cambiar stack | **CTO vía ADR** |
 | Definir políticas de seguridad | **AI-SEC-ENG** |
 
 ## 4. Autonomía — decisiones sin escalar
@@ -66,11 +68,10 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 3. PRD y HLD del módulo
 4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir* (9 elementos de firma, plan por fases); `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*
 5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
-6. Baseline del sprint y [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-7. Este perfil
-8. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+6. Este perfil
+7. Prompt de ejecución de EM-ARCH (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
 
-Entradas de trabajo (no precedencia): contrato de AI-DS-OWNER + UX spec de AI-PROD-UX + contrato de API de AI-SR-FULL.
+Entradas de trabajo (no precedencia): contrato de AI-DS-OWNER + UX spec de AI-PROD-UX + contrato de API de AI-SR-FULL, y la baseline de versiones contra [Stack_Tecnologico.md](../prds/Stack_Tecnologico.md).
 
 ## 7. Entregables
 

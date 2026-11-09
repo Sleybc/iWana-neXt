@@ -1,8 +1,8 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.12
+**Versión:** 1.13
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13; **v1.12 — auditoría de cruces, Ola 1: 2026-11-09**, ver §14
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13; **v1.12 — auditoría de cruces, Ola 1: 2026-11-09**, ver §14; **v1.13 — auditoría de cruces, Ola 2: 2026-11-09**, ver §15
 **Sin pendientes de gobernanza abiertos.** La decisión menor que abrió v1.7 se cerró en v1.8 (§10.3). El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
@@ -384,3 +384,30 @@ Ningún cambio toca RACI, gates, capas ni el protocolo; no requiere ADR (protoco
 **Queda para las olas siguientes:** Ola 2 — protocolo v1.10 con C1, C2 (autoridad de bloqueo por cobertura de QA), C3, C4 (escalación y veto de SEC), C6 en el protocolo, C8, V2 y el orden de verificadores, más sus espejos en QA, SEC, DS-OWNER y PLAT-OPS. Ola 3 — C5 y C12. Ola 4 — prompts compactos de la Parte II y `.claude/agents/`. Se planifican al cerrar esta ola (G0-4).
 
 **Deuda vista en la ejecución:** el nivel «Baseline … y `Stack_Tecnologico.md`» sigue dentro de la cadena de precedencia de EMA, SRF, FEP, PUX y DSO (fuera del G1; sin ola asignada: se incorpora al planificar las olas 2 a 4, G0-4); las cabeceras «Baseline de versiones: definido por sprint» de QA y SEC, y las menciones de sprint de SRF, DAT, OPS, EMA, FEP, PUX, DSO y `QA:86`/`QA:385`, quedan fuera de V6; las afirmaciones de §7 siguen pendientes de verificación por el CTO con Legal (`PROT:56-57`); enlace roto previo en el informe vivo a `.cursor/rules/ai-em-arch.mdc`.
+
+## 15. Actualización 2026-11-09 — Auditoría de cruces, Ola 2
+
+**Origen:** [INFORME-ROLES-AUDITORIA-CRUCES-v1.0](INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §10 (definición; texto congelado en §10.3) y su [plan](../plans/2026-11-09-roles-auditoria-cruces-olas-2-4-orquestacion.md) v1.2. Cuatro tramos en paralelo contra §10.3 (G0-11 = A): T1 protocolo, T2 espejos de gobierno e ingeniería, T3 espejos de diseño, calidad y seguridad, T4 verificadores y subagentes. Sin commit hasta T7; sin push (el tren lo ordena el usuario, ADR-107).
+
+**Decisiones G0-5 a G0-11 (CTO, 2026-11-09, en bloque, con las recomendaciones de §10.6):** G0-5 = A (la Ola 3 se fusiona en la Ola 2); G0-6 = A (C12 sin mover autoridad, sin ADR); G0-7 = A (protocolo alineado con ADR-107 en la Ola 2); G0-8 = A (baseline a entradas de trabajo); G0-9 aprobado (menciones de sprint sin cambio); G0-10 = A (prompts ≤15 líneas + «Formatos»); G0-11 = A (cuatro tramos en paralelo).
+
+| Archivo | Versión anterior → nueva | Dn aplicados |
+| --- | --- | --- |
+| `Protocolo_Colaboracion_Multiagente_v1.md` | 1.9 → 1.10 | D1–D9 |
+| EMA (`Perfil_IA_EM_Architect_Unificado_v2.md`) | 2.7 → 2.8 | D1, D7, D10, D11 |
+| SRF (`Perfil_IA_Sr_Dev_Fullstack_v2.md`) | 2.2 → 2.3 | D10, D11 |
+| FEP (`Perfil_IA_Frontend_Platform_Engineer_v1.md`) | 1.2 → 1.3 | D10, D11 |
+| OPS (`Perfil_IA_Platform_Ops_Engineer_v1.md`) | 1.1 → 1.2 | D7 |
+| PUX (`Perfil_IA_Product_Designer_UX_v1.md`) | 1.2 → 1.3 | D11 |
+| DSO (`Perfil_IA_Design_System_Owner_v1.md`) | 1.3 → 1.4 | D6, D10, D11 |
+| QA (`Perfil_IA_Sr_Dev_QA_Testing_v1.md`) | 1.2 → 1.3 | D2 |
+| SEC (`Perfil_IA_Security_Engineer_AppSec_v1.md`) | 1.2 → 1.3 | D4 |
+| GAT (`Perfil_IA_Verificador_Gates_v1.md`) | 1.2 → 1.3 | D7, D9 |
+| BND (`Perfil_IA_Verificador_Boundaries_v1.md`) | 1.0 → 1.1 | D3, D9 |
+| CON (`Perfil_IA_Revisor_Contratos_v1.md`) | 1.0 → 1.1 | D9 |
+| TCR (`Perfil_IA_Revisor_Cambios_Pruebas_v1.md`) | 1.0 → 1.1 | D9 |
+| Subagentes `sr-qa.md`, `ds-owner.md`, `gate-verifier.md`, `boundary-reviewer.md` | sin versión | D2, D6, D9 |
+
+**Gates.** G1 ✅ 2026-11-09 (plan §6 v1.2): versiones de §10.4 en las cabeceras, cadenas de D11 renumeradas, `pnpm sync:agents:check` en verde («OK: 14 agentes»), `pnpm audit:adr-citations` con `BLOQUEANTE: 0`. Los dos patrones de G1 que eran defecto del plan, no de la ejecución, se corrigieron en el plan v1.2: «Baseline del sprint y» admite los changelogs que lo citan (como el G1 de la Ola 1) y «merge readiness» se sustituye por la comprobación de la semántica retirada (`autoriza…merge` / `merge pendiente`, vacía), porque es el nombre del gate en el título de ADR-069 (aprobado) y ADR-107 no lo renombra. G3: esta §15 y §9.3 del informe de cruces, con `pnpm audit:doc-locations` en `BLOQUEANTE: 0` (3 AVISOs preexistentes en `.playwright-mcp/`, ajenos a la ola). G4: T6 (`docs-governance`), veredicto registrado en §9.3 del informe de cruces.
+
+**Deuda vista en la ejecución:** el árbol trae trabajo ajeno en vuelo (specs de portal, otros `docs/informes/`); T7 commitea solo las 30 rutas del plan §5 T7 y deja el resto intacto. La Ola 4 arranca con el G1 de esta ola, sin esperar a su G6.5 (ADR-107 D3).

@@ -2,9 +2,10 @@
 
 ## Verificador auxiliar — iWana neXt Platform
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Estado:** Vigente — verificador auxiliar (aprobado por el usuario titular del repositorio, 2026-10-31; ver [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md) §12)
-**Fecha:** 2026-10-31
+**Fecha:** 2026-10-31 (v1.1: 2026-11-09)
+**Cambio v1.0 → v1.1 (2026-11-09):** orden de verificadores: se corre antes de `boundary-reviewer` y `gate-verifier`. Ver [INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §10.3 (D9).
 **Clasificación:** Técnico — Confidencial
 **Identificador:** AI-TEST-CHANGE-REV
 **Categoría:** Verificador auxiliar (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) §1 y §9) — **no es rol de la RACI ni destino de escalación**
@@ -48,6 +49,6 @@ Tabla `prueba · cambio · hunk que lo motivó · regla que lo justifica · vere
 
 ## 7. Colaboración
 
-- **Lo invocan:** AI-SR-FULL, AI-FE-PLATFORM o AI-SR-QA cuando una ola modifica specs existentes; AI-GATE-VERIFIER lo pide cuando ve pruebas ajustadas; AI-EM-ARCH al consolidar. Se corre antes de `gate-verifier`.
+- **Lo invocan:** AI-SR-FULL, AI-FE-PLATFORM o AI-SR-QA cuando una ola modifica specs existentes; AI-GATE-VERIFIER lo pide cuando ve pruebas ajustadas; AI-EM-ARCH al consolidar. Se corre antes de `boundary-reviewer` y `gate-verifier`.
 - **Deriva a:** AI-SR-QA (huecos de estrategia), AI-CONTRACT-REV (contrato compartido afectado), AI-EM-ARCH (regla ambigua).
 - **Reporta a:** el agente que lo invocó. No participa en la red de consulta §6.1.

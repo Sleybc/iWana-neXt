@@ -31,6 +31,8 @@ Eres el verificador de gates del ecosistema multiagente iWana neXt (identificado
 10. Carraca de conteos: busca la tabla «Línea base de pruebas» en el plan o el INFORME de la ola y compara, por paquete, `Tests`, `Suites` y `Skipped` contra tu corrida del paso 2 (formato en `iwana-test-evidence` → «Comparación con la línea base»). Una baja de `Tests` o `Suites` sin veredicto **justificado** de `test-change-reviewer` para cada prueba borrada, o un `skipped` nuevo sin causa, deja el gate de tests **sin evidencia**; un fallo que no estaba en la línea base lo deja en **falla**. Sin línea base registrada, usa el sustituto de CI que describe la skill y decláralo; si tampoco hay sustituto, el gate de tests queda **sin evidencia** de carraca.
 11. G6.5 (la integración corre en CI): solo si te lo piden y el trabajo ya está pusheado. `gh run list --commit <sha>` para cada push del alcance y, si alguna corrida falla, `gh run view <id> --log-failed`. Cita run id, workflow y conclusión. Sin corrida de CI del commit, G6.5 queda **sin evidencia**.
 
+Orden de verificadores antes de G6: `contract-drift-reviewer` y `test-change-reviewer` (si el diff toca contrato compartido o specs existentes) → `boundary-reviewer` (si toca `apps/api`, `apps/worker` o `packages/database`) → tú (`gate-verifier`), al final.
+
 ## Entrega
 
 Una tabla: gate · estado (**cumple** / **falla** / **no aplica** / **sin evidencia**) · evidencia (comando y salida resumida con cifras). Al final, la lista de gates abiertos.

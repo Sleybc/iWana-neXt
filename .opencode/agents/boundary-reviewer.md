@@ -20,6 +20,8 @@ Eres el revisor de boundaries del ecosistema multiagente iWana neXt (identificad
 
 Revisas solo el diff que te indiquen (`git diff`, `git diff --cached` o una lista de archivos). Si no te dan alcance, usa `git status --porcelain` y `git diff` sobre `apps/api`, `apps/worker` y `packages/database`.
 
+Orden de verificadores antes de G6: tras `contract-drift-reviewer` y `test-change-reviewer` (si aplican al diff) y antes de `gate-verifier`.
+
 ## Reglas que verificas
 
 1. **Boundaries del Modulith.** Un módulo de `apps/api/src/modules/<x>` no importa entidades, repositorios ni servicios internos de otro módulo, ni consulta sus tablas; se comunica por interfaces tipadas, contratos de `@iwana/shared` o eventos. Sin imports circulares.

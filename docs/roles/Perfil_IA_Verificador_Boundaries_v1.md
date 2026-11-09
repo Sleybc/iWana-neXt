@@ -2,9 +2,10 @@
 
 ## Verificador auxiliar — iWana neXt Platform
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Estado:** Vigente — verificador auxiliar (aprobado por el usuario titular del repositorio, 2026-10-09; ver [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md) §10)
-**Fecha:** 2026-10-09
+**Fecha:** 2026-10-09 (v1.1: 2026-11-09)
+**Cambio v1.0 → v1.1 (2026-11-09):** aporta la evidencia mecánica de los gates 2 y 8 (EM-ARCH decide en la review de segunda capa; cross-tenant es además hallazgo de AI-SEC-ENG). Orden de verificadores: tras AI-CONTRACT-REV y AI-TEST-CHANGE-REV, antes de AI-GATE-VERIFIER. Ver [INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §10.3 (D3, D9).
 **Clasificación:** Técnico — Confidencial
 **Identificador:** AI-BOUNDARY-REV
 **Categoría:** Verificador auxiliar (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) §1 y §9) — **no es rol de la RACI ni destino de escalación**
@@ -47,6 +48,6 @@ Tabla `regla · archivo:línea · evidencia · severidad` y lista de archivos re
 
 ## 7. Colaboración
 
-- **Lo invocan:** AI-SR-FULL o AI-DATA-ENG antes de cerrar una ola backend; AI-EM-ARCH al consolidar; `gate-verifier` lo referencia para el gate de boundaries.
+- **Lo invocan:** AI-SR-FULL o AI-DATA-ENG antes de cerrar una ola backend; AI-EM-ARCH al consolidar; `gate-verifier` lo referencia para el gate de boundaries. Aporta la evidencia mecánica de los gates 2 y 8; EM-ARCH decide en la review de segunda capa; un acceso cross-tenant es además hallazgo de AI-SEC-ENG. Orden antes de G6: tras AI-CONTRACT-REV y AI-TEST-CHANGE-REV (si el diff toca un contrato compartido o specs existentes), antes de AI-GATE-VERIFIER.
 - **Deriva a:** AI-SEC-ENG (seguridad), AI-EM-ARCH (ambigüedad de regla).
 - **Reporta a:** el agente que lo invocó. No participa en la red de consulta §6.1.
