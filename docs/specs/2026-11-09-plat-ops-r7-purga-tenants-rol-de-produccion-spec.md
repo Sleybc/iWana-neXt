@@ -407,3 +407,24 @@ AI-SEC-ENG encontró, y AI-PLAT-OPS confirmó en solo lectura, que en `iwana_pos
 - **Vía más probable:** `pnpm dev` ejecuta `pnpm db:migrate:all` contra `dbiw` al arrancar (`scripts/dev.mjs:1028`), y ese comando termina en `apply-least-privilege`, que crea `iwana_purger` si no existe. Durante el G6 el puerto 3000 estaba ocupado por otra instancia de la API, señal de que alguien levantó `pnpm dev` con estos archivos ya en disco.
 - **Consecuencia:** como el `.env` local no tiene `DB_PURGER_PASSWORD`, el rol en `dbiw` probablemente quedó con la contraseña de respaldo `DB_PASSWORD` (P3-3 materializado). No hay purgas ni eventos del reloj registrados en `dbiw` después de la aplicación.
 - **Lo que no hizo esta sesión:** ningún cambio de roles en `dbiw`. Si se quiere fijar una contraseña propia, el SQL es `ALTER ROLE iwana_purger PASSWORD '<valor de DB_PURGER_PASSWORD>'`, y se avisa antes a AI-EM-ARCH.
+
+## 16. CI rojo en `d09397ee` y corrección (2026-11-09)
+
+El run 42704957642 de `main` falló en «Unit tests + gate de cobertura»: la guarda transversal `apps/api/src/common/log-error-safety.architecture.spec.ts:411`, que recorre también `apps/worker/src`, marcó `tenant-schema-purge.processor.ts:93`. El `logger.error` interpolaba un código obtenido de `this.rejectionCode(error)`, es decir, derivado del error; el método no está entre los resúmenes revisados de la guarda.
+
+**Corrección (sin tocar la guarda):** `safeErrorType(error)`, función de módulo con el patrón que ya usan otros procesadores (p. ej. `execution-order-inventory-rescan.service.ts:49`): devuelve el motivo solo si pertenece a la lista cerrada de los seis `TENANT_PURGE_*` de la migración 029, el SQLSTATE solo si es uno de `42501`, `55P03`, `57014` o `40P01`, y en otro caso `TENANT_PURGE_FAILURE`.
+
+**Por qué el G6 no lo detectó:** se corrieron sin caché las unitarias completas del worker y de `@iwana/db`, pero no las de `@iwana/api`, que contienen guardas transversales que inspeccionan también el código del worker. Es la regla «Suite completa si cambia un @Module»: un cambio en `apps/worker` o `packages/database` exige también la suite unitaria completa de la API.
+
+**Verificación tras la corrección (sin caché, 2026-11-09):**
+
+| Suite | Resultado |
+| --- | --- |
+| Guarda `log-error-safety.architecture.spec.ts` | 24/24 |
+| Unitarias `@iwana/api` | 489 suites, 6533/6533 |
+| Unitarias `@iwana/worker` | 21 suites, 196/196 |
+| Unitarias `@iwana/db` | 79 suites, 429/429 |
+| Integradas del worker (base `test` en contenedor desechable, roles y 029 aplicados) | 3 suites, 5/5 |
+| ESLint del procesador y typecheck del worker | sin errores |
+
+Sin commit ni push: la publicación la decide el CTO.

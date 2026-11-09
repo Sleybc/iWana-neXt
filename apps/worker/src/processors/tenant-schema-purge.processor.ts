@@ -10,7 +10,32 @@ import { TENANT_SCHEMA_PURGE_QUEUE } from '@iwana/shared';
 /** Resultados normales de `public.iwana_purge_tenant_schema` (migración pública 029). */
 type PurgeOutcome = 'PURGED' | 'SKIPPED_LOCKED' | 'SKIPPED_GONE';
 
-const PURGE_REJECTION = /^TENANT_PURGE_[A-Z_]+$/;
+/** Motivos de rechazo de `public.iwana_purge_tenant_schema` (migración 029). Lista cerrada. */
+const PURGE_REJECTION_CODES = new Set([
+  'TENANT_PURGE_NOT_MARKED',
+  'TENANT_PURGE_RETENTION_NOT_MET',
+  'TENANT_PURGE_INVALID_SCHEMA_NAME',
+  'TENANT_PURGE_PROTECTED_SCHEMA',
+  'TENANT_PURGE_UNEXPECTED_OWNER',
+  'TENANT_PURGE_EXTERNAL_DEPENDENCY',
+]);
+
+/** SQLSTATE esperables en la purga (permisos, bloqueo, cancelación, interbloqueo). */
+const PURGE_KNOWN_SQLSTATES = new Set(['42501', '55P03', '57014', '40P01']);
+
+/**
+ * Código de log sin datos: el motivo de la función o el SQLSTATE si pertenecen a una
+ * lista cerrada; cualquier otro error se resume como `TENANT_PURGE_FAILURE`.
+ */
+function safeErrorType(error: unknown): string {
+  if (!(error instanceof Error)) return 'TENANT_PURGE_FAILURE';
+  if (PURGE_REJECTION_CODES.has(error.message)) return error.message;
+  const sqlstate = (error as { code?: unknown }).code;
+  if (typeof sqlstate === 'string' && PURGE_KNOWN_SQLSTATES.has(sqlstate)) {
+    return `SQLSTATE_${sqlstate}`;
+  }
+  return 'TENANT_PURGE_FAILURE';
+}
 
 /**
  * Processor BullMQ para la purga física diferida de tenants eliminados (ADR-033).
@@ -88,7 +113,7 @@ export class TenantSchemaPurgeProcessor extends WorkerHost {
             this.logger.warn(`[tenant-purge] Tenant omitido: id=${id} resultado=${outcome}`);
           }
         } catch (error: unknown) {
-          const code = this.rejectionCode(error);
+          const code = safeErrorType(error);
           failures.push(code);
           this.logger.error(`[tenant-purge] Tenant no purgado: id=${id} codigo=${code}`);
         }
@@ -103,14 +128,6 @@ export class TenantSchemaPurgeProcessor extends WorkerHost {
     } finally {
       client.release();
     }
-  }
-
-  /** Código sin datos: el motivo de la función, o el SQLSTATE si es otro error. */
-  private rejectionCode(error: unknown): string {
-    const message = error instanceof Error ? error.message : '';
-    if (PURGE_REJECTION.test(message)) return message;
-    const sqlstate = (error as { code?: unknown } | null)?.code;
-    return typeof sqlstate === 'string' ? `SQLSTATE_${sqlstate}` : 'UNKNOWN';
   }
 
   private getRetentionDays(): number {
