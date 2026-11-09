@@ -1,11 +1,12 @@
 # Plan de orquestación — Auditoría de cruces de roles, olas 2 a 4
 
-**Versión:** 1.4
-**Estado:** Aprobado. Ola 2 cerrada (`359246c4`). Ola 4: T8 a T10 ejecutados; G1′ ✅ salvo dos cabeceras (T8-R); sigue el cierre (T8-R → T11 → T12 → T13)
+**Versión:** 1.5
+**Estado:** Cerrado. Olas 2 y 4 publicadas en el tren `965bf5e5` con G6.5 ✅ (informe §9.5)
 **Cambio v1.0 → v1.1 (2026-11-09):** G0-5 a G0-11 cerrados en bloque con las recomendaciones; la definición pasa a la v1.4 del informe, con §10.3 y §10.5 sin cambios
 **Cambio v1.1 → v1.2 (2026-11-09):** G1 de la Ola 2 cerrado. Se corrigen dos patrones de G1 que eran defecto del plan, no de la ejecución: «Baseline del sprint y» admite los changelogs que lo citan, igual que el G1 de la Ola 1; y «merge readiness» se sustituye por la comprobación de la semántica retirada, porque es el nombre del gate en el título de ADR-069 (aprobado) y ADR-107 no lo renombra. §5 T7 recibe la lista explícita de rutas. Nuevo lanzador de cierre
 **Cambio v1.2 → v1.3 (2026-11-09):** Ola 2 cerrada (`359246c4`). Antes de lanzar la Ola 4 se precisa G0-10 sin cambiar su alcance. En EMA, SRF, QA y SEC la Parte II contiene reglas no negociables, umbrales y anti-patrones además de formatos, y compactar a ciegas podía borrar normas sin equivalente en la Parte I: se conservan «Formatos» y «Anti-patrones», y cada regla retirada exige destino comprobado (§5 T8 y T9, G1′). T10 recibe tres contradicciones ya localizadas. Versiones de la Ola 4 fijadas (§5). Nuevo lanzador de la Ola 4
 **Cambio v1.3 → v1.4 (2026-11-09):** veredicto de G1′. Los 9 prompts coinciden literalmente con §10.5 (EMA 9 líneas, SRF 6, el resto de 3 a 4); «Formatos» y «Anti-patrones» de EMA, SRF, QA y SEC son idénticos a los de `359246c4`; las tres contradicciones de T10 están corregidas y `sync:agents:check` da OK. Falla un punto: la cabecera `**Versión:**` de EMA sigue en 2.8 y la de SRF en 2.3, aunque su changelog y su Parte II ya declaran 2.9 y 2.4. Se corrige en T8-R, primer paso del lanzador de cierre. T13 se reduce a 23 rutas, porque T10 solo cambió 3 subagentes; G4′, a los 12 archivos cambiados. Deuda no bloqueante en §6
+**Cambio v1.4 → v1.5 (2026-11-09):** cierre. T13 en `d182e2c6` y corrección del cercado huérfano de EMA y SRF en `84a0ab65`; los tres commits de las olas salieron en el tren `965bf5e5`, con G6.5 ✅ (CI 42678231774 y E2E 42678231542)
 **Fecha:** 2026-11-09
 **Emitido por:** AI-EM-ARCH
 **Definición:** [INFORME-ROLES-AUDITORIA-CRUCES-v1.0](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) v1.5, §10 (sin cambios desde v1.3) · **Contrato congelado:** §10.3 (Ola 2) y §10.5 (Ola 4) de ese informe · **Lanzador vigente:** [Ola 4](../prompts/PROMPT-ROLES-AUDITORIA-CRUCES-OLA4-LAUNCH-v1.0.md)
@@ -99,7 +100,7 @@ Reglas para todos los tramos de edición: trabajo en `main`, sin ramas, sin stas
 | G4 | T6: `docs-governance` sin bloqueantes sobre los 17 archivos de la Ola 2. **✅ 2026-11-09** (informe §9.3); commit `359246c4`, 30 rutas |
 | G1′ (Ola 4) | Versiones de §5 T8 y T9 en las cabeceras; cada prompt compacto ≤15 líneas y coincide con §10.5; en EMA, SRF, QA y SEC, «Formatos» y «Anti-patrones» presentes y literales, e inventario de piezas retiradas sin ninguna «sin destino»; `rg -n 'BLOQUEO TÉCNICO|Crítica bloquea merge y despliegue' .claude/agents` vacío; ninguna regla de un subagente ejecutor contradice el prompt de su perfil (lo comprueba T12); `pnpm sync:agents:check` en verde. **✅ 2026-11-09 salvo las cabeceras de EMA (2.8, debe ser 2.9) y SRF (2.3, debe ser 2.4)**: se cierra con T8-R. Deuda no bloqueante: de la regla 12 de la Parte II de EMA, «se leen como documentación, no se invocan como tool» y «core-components define los tokens» no quedaron en la Parte I, aunque el inventario las daba por cubiertas en §3.6; la norma sigue vigente por `AGENTS.md` y `PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md` (Paso 3), de mayor precedencia. T10 anotó omisiones no contradictorias (verificadores no nombrados en `sr-backend`, `sr-qa` y `sec-eng`; split RSC en `fe-platform`; G6.5 en `plat-ops`): quedan como deuda baja, porque cada subagente remite a su perfil y al protocolo |
 | G4′ | T12: `docs-governance` sin bloqueantes sobre los 12 archivos cambiados en la Ola 4 (9 perfiles y 3 subagentes) y los dos informes |
-| G6.5 | Por tren (ADR-107): CI de `main` en verde sobre el SHA publicado. El registro viaja en el tren siguiente (D4) |
+| G6.5 | Por tren (ADR-107): CI de `main` en verde sobre el SHA publicado. El registro viaja en el tren siguiente (D4). **✅ 2026-11-09** sobre `965bf5e5`: CI 42678231774 (6/6 jobs) y E2E 42678231542 (1/1) (informe §9.5) |
 
 ## 7. Línea base de pruebas
 
