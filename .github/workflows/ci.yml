@@ -16,7 +16,121 @@ on:
   pull_request:
     branches: [main]
 
+# ADR-107 (Ola 2): una corrida por ref a la vez y sin cancelar la que está en curso;
+# el G6.5 de ADR-069 exige una corrida completa por SHA publicado.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # ADR-107 D7: detecta los commits de solo documentación. Publica docs_only=true
+  # solo si TODAS las rutas cambiadas están bajo docs/ y ninguna la lee ni la cita
+  # una prueba; entonces production-images, ci, execution-orders-e2e y e2e-portal
+  # se omiten y solo corre adr-citations. Ante cualquier duda (before nulo o todo
+  # ceros, evento sin regla, fetch o diff fallido, diff vacío, error de git grep)
+  # docs_only=false. Sin pnpm install: solo git y bash.
+  changes:
+    name: Detección de cambios de solo documentación
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clasificar rutas cambiadas
+        id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+
+          # Rutas de docs/ que una prueba lee de verdad (no fixtures ni rutas de
+          # salida de evidencia). Verificado el 2026-11-09 sobre scripts/**/*.test.mjs,
+          # apps/**/*.spec.ts(x), packages/**/*.spec.ts(x) y e2e/**: ninguna prueba
+          # lee un archivo de docs/. Las dos de abajo se conservan por prudencia
+          # (ADR-107 D7): las cita una prueba (x-contract-source del contrato MOD13 y
+          # el contrato de estados atenuados), aunque no las abra.
+          TEST_READ_DOCS=(
+            'docs/specs/2026-10-26-mod13-interfaces-api.md'
+            'docs/specs/2026-07-26-estados-atenuados-contraste-ds-contrato.md'
+          )
+          # Red de seguridad automática: si una prueba menciona el nombre del
+          # archivo cambiado, la ruta corre todo.
+          TEST_PATHSPECS=(
+            ':(glob)scripts/**/*.test.mjs'
+            ':(glob)apps/**/*.spec.ts'
+            ':(glob)apps/**/*.spec.tsx'
+            ':(glob)apps/**/*.e2e-spec.ts'
+            ':(glob)packages/**/*.spec.ts'
+            ':(glob)packages/**/*.spec.tsx'
+            ':(glob)e2e/**'
+          )
+
+          decide() {
+            echo "docs_only=$1" >> "$GITHUB_OUTPUT"
+            echo "docs_only=$1 — $2"
+            echo "**docs_only=$1** — $2" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+
+          case "$EVENT_NAME" in
+            push) base="$PUSH_BEFORE"; head="$PUSH_AFTER" ;;
+            pull_request) base="$PR_BASE"; head="$PR_HEAD" ;;
+            *) decide false "evento $EVENT_NAME sin regla de detección" ;;
+          esac
+
+          [[ "$base" =~ ^[0-9a-f]{40}$ ]] || decide false "SHA base ausente o inválido"
+          [[ "$base" =~ ^0+$ ]] && decide false "SHA base todo ceros (rama nueva)"
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]] || decide false "SHA head ausente o inválido"
+
+          git fetch --no-tags --depth=1 origin "$base" "$head" \
+            || decide false "no se pudo traer $base o $head"
+
+          list="$RUNNER_TEMP/changed-paths.z"
+          git -c core.quotePath=false diff --name-only --no-renames -z "$base" "$head" > "$list" \
+            || decide false "git diff $base..$head falló"
+          [[ -s "$list" ]] || decide false "diff vacío"
+
+          docs_only=true
+          count=0
+          while IFS= read -r -d '' path; do
+            count=$((count + 1))
+            if [[ "$path" != docs/* ]]; then
+              echo "fuera de docs/: $path"
+              docs_only=false
+              continue
+            fi
+            for listed in "${TEST_READ_DOCS[@]}"; do
+              if [[ "$path" == "$listed" ]]; then
+                echo "leída o citada por una prueba (lista): $path"
+                docs_only=false
+              fi
+            done
+            rc=0
+            git grep -q -F -e "${path##*/}" -- "${TEST_PATHSPECS[@]}" || rc=$?
+            if [[ "$rc" -eq 0 ]]; then
+              echo "mencionada por una prueba: $path"
+              docs_only=false
+            elif [[ "$rc" -ne 1 ]]; then
+              echo "git grep falló ($rc) para: $path"
+              docs_only=false
+            fi
+          done < "$list"
+
+          decide "$docs_only" "$count rutas entre ${base:0:8} y ${head:0:8}"
+
   # Gate de integridad documental: dos validadores Node puros sin dependencias —
   #  1. citas normativas ADR (protocolo §7.4, ADR-056 propuesta SR-QA #13)
   #  2. ubicación documental TIPO → carpeta (AGENTS.md → Documentation Rules,
@@ -55,6 +169,8 @@ jobs:
 
   production-images:
     name: Build y validación de imágenes production
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
 
     steps:
@@ -196,8 +312,11 @@ jobs:
 
   ci:
     name: Lint + Typecheck + Build + Unit tests
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    # Los últimos cinco runs verdes duraron 10:33–15:36; 35 min deja margen >2×.
+    # Medido en noviembre de 2026: los runs verdes duran 19–23 min; 35 min deja
+    # un margen de ~1,5× sobre el más lento.
     timeout-minutes: 35
 
     # Ephemeral CI DB only — passwords are disposable lab values, not production secrets.
@@ -755,6 +874,8 @@ jobs:
 
   execution-orders-e2e:
     name: E2E operativo R4.1 — API + storage + BullMQ reales
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
 
@@ -1047,6 +1168,8 @@ jobs:
   # cualquier flaky falla el job. El resumen publica conteos, nunca reportes crudos.
   e2e-portal:
     name: E2E portal
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
 
