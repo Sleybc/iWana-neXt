@@ -60,7 +60,7 @@ Opera en el **track frontend**, diseñado para no bloquearse contra el backend:
 
 Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
 
-1. `AGENTS.md` y catálogo `.agents/skills/` (`nextjs-app-router-patterns`, `frontend-dev-guidelines`, `core-components`, `tailwind-patterns`, `iwana-identity-ui-review`, `frontend-security-coder`)
+1. `AGENTS.md` y catálogo `.agents/skills/` (`frontend-dev-guidelines`, `core-components`, `tailwind-patterns`, `iwana-identity-ui-review`, `frontend-security-coder`)
 2. CTO y ADRs **aprobados** (incl. ADR-023 — aprobado 2026-07-19 vía [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md))
 3. PRD y HLD del módulo
 4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir* (9 elementos de firma, plan por fases); `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*

@@ -1,6 +1,6 @@
 ---
 name: frontend-dev-guidelines
-description: Frontend standards for iWana neXt with Next.js App Router, React Server Components, TypeScript estricto, accesibilidad, i18n y diseno orientado al sistema de componentes del proyecto. Use cuando se implementen pantallas, componentes, formularios o flujos frontend dentro del stack real del repo.
+description: Código de pantalla de apps/web y apps/portal en iWana neXt. Cubre Next.js App Router, Server/Client Components, carga de datos, formularios, estados de UI y estructura por feature. Usar cuando se escribe o cambia código de una página, layout, componente o flujo frontend. No usar para el aspecto visual (→ iwana-identity-ui-review), tokens o primitives (→ core-components) ni para backend.
 ---
 
 # Frontend Development Guidelines
@@ -174,6 +174,17 @@ components/
 - usar cualquier estilo hardcodeado si ya existe token equivalente
 - mezclar logica de datos, presentacion y side effects sin boundaries claros
 - depender de patrones mobile o React Native en el frontend web del repo
+- construir navegacion sin considerar permisos o contexto de tenant
+
+## Integracion con el resto del stack
+
+- la UI debe convivir con OpenAPI, autenticacion, tenancy y accesibilidad
+- no traslades al cliente decisiones que pertenecen al backend
+- si un flujo depende del tenant o permisos, el diseño debe contemplarlo desde la carga de datos y el rendering
+
+## Revision de App Router
+
+Checklist de revision y heuristica de senales de App Router: [`references/app-router.md`](references/app-router.md).
 
 ## Integracion con otras skills
 

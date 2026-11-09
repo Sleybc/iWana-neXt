@@ -1,13 +1,13 @@
 ---
 name: nestjs-expert
-description: NestJS guidance for iWana neXt focused on modulith boundaries, TypeORM, PostgreSQL multi-tenant por schema, OpenAPI, seguridad y pruebas con Jest/Supertest.
+description: "NestJS dentro del Modulith: módulos, servicios, controladores e inyección de dependencias. Usar cuando se escribe código en apps/api o apps/worker. No usar para modelar datos (→ postgresql), contratos HTTP (→ openapi-spec-generation) ni revisar arquitectura (→ architect-review)."
 ---
 
 # NestJS Expert
 
 ## Proposito
 
-Este skill gobierna el trabajo backend de iWana neXt en NestJS bajo un enfoque modulith, TypeORM, PostgreSQL multi-tenant por schema, OpenAPI y controles de seguridad alineados al repo.
+Este skill gobierna el trabajo backend de iWana neXt en NestJS bajo un enfoque modulith, TypeORM, OpenAPI y controles de seguridad alineados al repo. Tenancy y PII: `AGENTS.md` → Architecture Rules.
 
 ## Usar este skill cuando
 
@@ -26,10 +26,10 @@ Este skill gobierna el trabajo backend de iWana neXt en NestJS bajo un enfoque m
 
 1. NestJS con TypeScript estricto.
 2. Modulith con boundaries explicitos entre modulos.
-3. PostgreSQL multi-tenant por schema.
+3. Tenancy y PII segun `AGENTS.md` → Architecture Rules.
 4. TypeORM como ORM y migraciones versionadas.
 5. OpenAPI actualizada cuando cambien contratos HTTP.
-6. Seguridad zero-trust en datos, validacion y logs.
+6. Validacion y logs seguros en cada boundary.
 
 ## Reglas de arquitectura
 

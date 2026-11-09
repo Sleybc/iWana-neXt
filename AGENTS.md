@@ -4,7 +4,7 @@
 > **Identidad de gobernanza:** AI-EM-ARCH (EM + Product Architect + Orchestrator)  
 > **Modo de sesion por defecto:** ejecutor (puede implementar codigo respetando gates)  
 > **Fuente maestra:** Este documento
-> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII). 2026-10-31 — Superficies activas: sexto verificador auxiliar (`test-change-reviewer`) y hooks `post-push-ci`, CI de `main` en `session-context` y guarda de sobrescritura de documentos versionados. 2026-11-07 — Gates: carraca de conteos de pruebas contra la linea base de la ola; Code Style: criterio de simplicidad.
+> **Historial:** 2026-10-30 — Documentation Rules: nueva fila «Textos legales y actas jurídicas» (`docs/legal/`, sin PII). 2026-10-31 — Superficies activas: sexto verificador auxiliar (`test-change-reviewer`) y hooks `post-push-ci`, CI de `main` en `session-context` y guarda de sobrescritura de documentos versionados. 2026-11-07 — Gates: carraca de conteos de pruebas contra la linea base de la ola; Code Style: criterio de simplicidad. 2026-11-08 — Skills Dispatch: consolidacion del catalogo 52 → 43 (sucesoras en lugar de las 9 retiradas) y desempate por ruta entre `backend-security-coder` y `frontend-security-coder`.
 > **Stack validado:** [Stack_Tecnologico.md](docs/prds/Stack_Tecnologico.md)
 
 ---
@@ -60,7 +60,7 @@ Si una IA nueva se suma al workflow o una existente se desactiva:
 | Prompts | `docs/prompts/` | **Unica carpeta de prompts del repo.** Aplica a los tres tipos, sin excepcion: prompts de **ejecucion por fase** (`PROMPT-{MODULO}-{FASE}-v{VERSION}.md`, un solo encargo, versionados), prompts de **lanzamiento** (`PROMPT-{MODULO}-{FASE}-LAUNCH-v{VERSION}.md`, max. 40 lineas, lanzan una ola sin repetir el encargo) y prompts **operativos reutilizables** (`PROMPT-OPERATIVO-{NOMBRE}-v{VERSION}.md`, agnosticos de proveedor). Todos deben remitir a `AGENTS.md`, artefactos del modulo y restricciones reales. **Depositar un prompt fuera de `docs/prompts/` es defecto bloqueante**, no cuestion de estilo. |
 | Reglas por path | `.github/instructions/*.instructions.md` | Complementan a `AGENTS.md`; aplican por `applyTo`, no reemplazan la gobernanza global. |
 | MCP | `.agents/mcp/servers.json` → `.mcp.json` (Claude Code) y `.opencode/opencode.json` (OpenCode) via `pnpm sync:mcp` | Los MCP son cliente-dependientes: OpenCode los declara en config versionada; en Codex dependen de la sesion activa y no de un archivo ficticio del repo. |
-| Agentes / subagentes | Skills de workflow existentes | Preferir `brainstorming`, `writing-plans`, `architect-review` y `subagent-driven-development` antes que inventar agentes custom paralelos del repo. |
+| Agentes / subagentes | Skills de workflow existentes | Preferir `brainstorming`, `writing-plans`, `architect-review` y `executing-plans` antes que inventar agentes custom paralelos del repo. |
 
 ### Prompts Operativos
 
@@ -193,11 +193,10 @@ describe('UserService', () => {
 
 Frontend y UX:
 
-- Frontend App Router y arquitectura de pantalla: `nextjs-app-router-patterns` + `frontend-dev-guidelines`
-- Componentes, design system y tokens: `core-components` + `tailwind-patterns`
-- Direccion visual SaaS, propuestas esteticas fuertes y review visual sistemico: `senior-ui-systems-designer`
-- Identidad visual iWana en nuevas interfaces, secciones o modulos: `iwana-identity-ui-review` + `senior-ui-systems-designer`
-- Apoyo UI/UX avanzado, heuristicas, patrones, tipografia, color, responsive y performance visual: `ui-ux-pro-max`, siempre subordinada a `iwana-identity-ui-review`, `core-components`, `tailwind-patterns` y tokens reales del repo.
+- Codigo de pantalla de `apps/web` y `apps/portal` (App Router, RSC, datos, formularios): `frontend-dev-guidelines`
+- Primitives de `@iwana/ui` y tokens: `core-components`
+- Clases y variantes Tailwind: `tailwind-patterns`
+- Identidad visual iWana (direccion, diseno y review de UI): `iwana-identity-ui-review`
 - Accesibilidad visual y validacion WCAG: `wcag-audit-patterns`
 - Formularios, i18n y UX de detalle: complementar con `i18n-localization` y la skill del dominio afectado
 - Vocabulario visible, copy de producto, labels, seeds, auditorias, secciones o modulos nuevos: `system-vocabulary-review`
@@ -206,31 +205,32 @@ Backend y datos:
 
 - Modulos NestJS, servicios, boundaries, TypeORM: `nestjs-expert`
 - Flujos de autenticacion: `auth-implementation-patterns`
-- Review de seguridad backend/frontend: `backend-security-coder` / `frontend-security-coder` + `security-auditor`
-- Cambios de schema y migraciones: `database-migration` + `postgresql`
+- Codigo seguro: `backend-security-coder` en `apps/api`, `apps/worker` y `packages/`; `frontend-security-coder` en `apps/web` y `apps/portal` (desempate por ruta tocada); revision o auditoria de seguridad: `security-auditor`
+- Modelado de tablas y entidades: `postgresql`
+- Migracion del schema `public`: `database-migration`; migracion en `migrations/tenant/`: `iwana-tenant-migration`
 - Jobs y workers BullMQ: `bullmq-specialist`
 - Cambios de contrato OpenAPI: `openapi-spec-generation`
 
 Testing y calidad:
 
-- Tests unit/integration/E2E: `testing-patterns`, `test-driven-development`, `e2e-testing-patterns`, `playwright-skill`
+- Tests unit/integration: `testing-patterns`; E2E: `e2e-testing-patterns`; TDD explicito: `test-driven-development`
 - Auditorias de dependencias y limpieza: `codebase-cleanup-deps-audit`
 
 Arquitectura, docs y flujo de trabajo:
 
-- Estructura monorepo/Turborepo: `monorepo-architect` + `turborepo-caching`
-- ADRs y review arquitectonico: `architecture-decision-records` + `architect-review`
+- Estructura monorepo/Turborepo: `monorepo-architect`
+- ADRs: `architecture-decision-records`; review arquitectonico: `architect-review`
 - Documentacion e informes vivos: `docs-architect`
 - Debugging de fallas dificiles: `systematic-debugging`
 - Planificacion multi-paso: `writing-plans` → `executing-plans`
 - Solicitar/recibir code review: `requesting-code-review` / `receiving-code-review`
-- Cierre de rama de desarrollo: `finishing-a-development-branch`
+- Commit y publicacion en `main`: `iwana-checkpoint-commit`
 
 Para dominios no listados, consultar `.agents/skills/INDEX.md` (lista autoritativa vigente).
 
 Skills externas de plugin (solo Claude Code; siempre **de apoyo**, nunca obligatorias, y la skill del repo indicada prevalece):
 
-- Evidencia visual en el navegador integrado: `anthropic-skills:built-in-browser` (con `playwright-skill` para lo automatizado)
+- Evidencia visual en el navegador integrado: `anthropic-skills:built-in-browser` (con `e2e-testing-patterns` para lo automatizado)
 - APIs de plataforma del navegador (`<dialog>`, popover, container queries, View Transitions, INP): `modern-web-guidance:modern-web-guidance`, guias locales primero y `npx` solo con aprobacion del usuario
 - Estructura de errores, estados vacios y confirmaciones: `design:ux-copy`, subordinada a `system-vocabulary-review`
 - Investigacion con usuarios y sintesis para PRD/spec: `design:user-research` + `design:research-synthesis`; handoff de spec: `design:design-handoff`

@@ -1,22 +1,26 @@
 ---
 name: e2e-testing-patterns
-description: Patrones E2E avanzados con Playwright para iWana neXt. Usar para flujos de usuario críticos, tests flaky, trazas y CI paralelo. Complementa playwright-skill con patrones de profundidad.
+description: "Playwright en e2e/: selectores, esperas, storageState, tenant, Page Object Model, flaky, trazas, sharding y depuración en VS Code/Windows. Usar cuando se escribe, ajusta o depura un test E2E o se verifica un flujo en el navegador. No usar para pruebas unitarias o de integración (→ testing-patterns)."
 ---
 
 # E2E Testing Patterns — iWana neXt
 
 ## Propósito
 
-Complementa `playwright-skill` con patrones avanzados de E2E para el stack real del proyecto:
-autenticación multi-tenant, Page Object Model, fixtures de sesión, trazas en CI y sharding con Turborepo.
+Patrones de E2E con Playwright para el stack real del proyecto: validar interfaces web, flujos E2E, accesibilidad básica y regresiones funcionales; autenticación multi-tenant, Page Object Model, fixtures de sesión, trazas en CI y sharding con Turborepo.
+
+El entorno habitual es Windows + PowerShell, VS Code, Next.js App Router y Playwright como herramienta E2E oficial. No se asumen entornos Unix ni rutas tipo `/tmp` como convención primaria.
 
 ## Usar este skill cuando
 
+- Se verifique una pantalla o flujo del frontend en el navegador.
+- Se escriban o ajusten pruebas E2E con Playwright (formularios, navegación, filtros, tablas, estados vacíos).
 - Se implementen flujos E2E críticos (login, MFA, dashboard, gestión de tenants).
 - Se depuren tests flaky o con timeouts en CI.
 - Se configure paralelismo y sharding en el pipeline de Playwright.
 - Se necesiten patrones de autenticación reutilizables entre tests (storageState).
 - Se quiera establecer el estándar de Page Object Model para el proyecto.
+- Se investiguen regresiones visuales o funcionales reproducibles en navegador.
 
 ## No usar este skill cuando
 
@@ -172,6 +176,52 @@ steps:
   - run: pnpm test:e2e -- --shard=${{ matrix.shard }}/4
 ```
 
+## Datos y seguridad
+
+- No usar PII real en pruebas.
+- No embutir secretos ni tokens en codigo de test.
+- Si hace falta autenticacion, usar fixtures o utilidades de test controladas.
+- Si un flujo es multi-tenant, el tenant de prueba debe quedar explicito.
+
+## Estructura sugerida de un test
+
+```ts
+import { expect, test } from "@playwright/test";
+
+test("permite crear un registro y ver confirmacion", async ({ page }) => {
+  await page.goto("/registros/nuevo");
+
+  await page.getByLabel("Nombre").fill("Cliente de prueba");
+  await page.getByRole("button", { name: "Guardar" }).click();
+
+  await expect(page.getByText("Registro creado")).toBeVisible();
+  await expect(page).toHaveURL(/registros/);
+});
+```
+
+Si la tarea no es solo exploratoria, deja la prueba donde corresponda en la estructura del proyecto (`e2e/`) y mantenla coherente con Jest y Supertest como parte de la estrategia total de calidad.
+
+## Casos prioritarios
+
+En iWana neXt, Playwright debería priorizar:
+
+- Flujos críticos del portal o backoffice.
+- Autenticación y navegación protegida.
+- Formularios con validaciones relevantes.
+- Escenarios de tenant visible en UI cuando aplique.
+- Regresiones de accesibilidad o responsive en vistas clave.
+
+## Depuración en VS Code / Windows
+
+Cuando una prueba falle:
+
+- Confirma si es problema del flujo, del dato o del entorno.
+- Revisa si el selector representa la intención del usuario.
+- Inspecciona errores de consola o red si la interfaz depende de fetch/API.
+- Reduce el caso al mínimo reproducible antes de ampliar cobertura.
+
+Para trazas, modo headed y `--repeat-each` ver «Depuración de tests flaky». La referencia completa de la API de Playwright (selectores, esperas, red, sesión, visual, móvil, rendimiento, paralelismo) vive en [`references/playwright-skill/API_REFERENCE.md`](references/playwright-skill/API_REFERENCE.md).
+
 ## Checklist de test E2E
 
 - [ ] Usa selectores semánticos (getByRole, getByLabel) como primera opción
@@ -187,3 +237,8 @@ steps:
 - Login via UI en cada test — lento e innecesario con storageState
 - Tests que dependen del orden de ejecución — cada test debe ser idempotente
 - `page.waitForTimeout(2000)` — síntoma de race condition, usar assertions de Playwright
+- Scripts temporales con rutas Unix hardcodeadas como /tmp.
+- Mezclar demasiados objetivos en un solo test largo.
+- Automatizar flujos que no tienen datos o estado controlado.
+- Reproducir validaciones internas del backend en vez de verificar el resultado visible para el usuario.
+- Preferir `await page.waitForURL(...)` cuando cambie la ruta.

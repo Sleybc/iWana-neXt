@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/mermaid-expert/SKILL.md — no editar a mano.
 name: mermaid-expert
-description: Diagramas Mermaid para iWana neXt orientados a modulith, flujos de negocio, ADRs, integraciones y documentacion tecnica consistente.
+description: "Diagramas Mermaid de Modulith, flujos de negocio, integraciones y ADRs. Usar cuando se pide o hace falta un diagrama. No usar para redactar el documento que lo contiene (→ docs-architect)."
 ---
 
 # mermaid-expert

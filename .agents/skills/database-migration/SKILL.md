@@ -1,6 +1,6 @@
 ---
 name: database-migration
-description: Migraciones TypeORM versionadas y reversibles para iWana neXt. Usar para crear, aplicar o revertir migraciones PostgreSQL multi-tenant con estrategias zero-downtime.
+description: "Migraciones TypeORM versionadas y reversibles del schema public, con estrategia zero-downtime. Usar cuando se crea, aplica o revierte una migración fuera de migrations/tenant/. No usar para migraciones tenant (→ iwana-tenant-migration) ni para modelar tablas (→ postgresql)."
 ---
 
 # Database Migration — iWana neXt
@@ -8,17 +8,17 @@ description: Migraciones TypeORM versionadas y reversibles para iWana neXt. Usar
 ## Propósito
 
 Gobierna la creación, aplicación y reversión de migraciones TypeORM en el repo iWana neXt.
-El proyecto usa PostgreSQL multi-tenant por schema. Nunca `synchronize: true` en producción — solo migraciones versionadas.
+Las invariantes de tenancy y de `synchronize` viven en `AGENTS.md` → Architecture Rules (Multi-tenancy y Security): solo migraciones versionadas.
 
 ## Usar este skill cuando
 
 - Se creen o modifiquen entidades TypeORM y se necesite generar la migración correspondiente.
 - Se apliquen o reviertan migraciones en desarrollo, staging o producción.
 - Se diseñen estrategias zero-downtime para cambios de schema.
-- Se gestionen migraciones por schema de tenant en operaciones multi-tenant.
 
 ## No usar este skill cuando
 
+- El archivo de migración vaya en `packages/database/src/migrations/tenant/` → usar `iwana-tenant-migration` (numeración `NNN_*.ts`, `runner.ts`, `migration-order.spec.ts`).
 - La tarea sea solo de queries o lógica de negocio sin cambio de schema.
 - Se usen ORMs distintos a TypeORM (Prisma, Sequelize, Drizzle — no están en el stack).
 
@@ -29,22 +29,18 @@ El proyecto usa PostgreSQL multi-tenant por schema. Nunca `synchronize: true` en
 3. Usar tipos PostgreSQL correctos: `bigint`, `numeric`, `timestamptz`, `text`, `jsonb`. Nunca `varchar` sin longitud justificada, nunca `timestamp` sin zona.
 4. Nunca hardcodear nombres de schema de tenant — siempre resolver desde contexto de request via `TenantContext`.
 5. Migraciones de schema público van en `packages/database/src/migrations/public/`.
-6. Las migraciones de schema de tenant se gestionan vía `runInTenantSchema()` en `@iwana/db`.
+6. Las migraciones de schema de tenant se escriben y registran con `iwana-tenant-migration`, no con esta skill.
 
 ## Comandos reales del repo
 
 ```bash
-# Desde la raíz del monorepo:
-pnpm --filter @iwana/db migration:generate -- src/migrations/public/NombreMigracion
+# Desde la raíz del monorepo (compilar @iwana/db antes: corren contra dist/):
+pnpm --filter @iwana/db build
 pnpm --filter @iwana/db migration:run
 pnpm --filter @iwana/db migration:revert
-
-# O directamente desde packages/database/:
-cd packages/database
-npx typeorm migration:generate src/migrations/public/NombreMigracion -d src/data-source.ts
-npx typeorm migration:run -d src/data-source.ts
-npx typeorm migration:revert -d src/data-source.ts
 ```
+
+No existe `migration:generate` (`AGENTS.md`): la migración se escribe a mano en `packages/database/src/migrations/public/`.
 
 ## Estructura de migraciones
 
@@ -56,7 +52,7 @@ packages/database/src/
     └── public/             # Migraciones del schema público (tenants, platform_users, etc.)
 ```
 
-Las migraciones de schema de tenant NO se versionan como archivos estáticos — se aplican dinámicamente via `runInTenantSchema()` al provisionar un nuevo tenant.
+Las migraciones de schema de tenant viven en `packages/database/src/migrations/tenant/` y se tratan en `iwana-tenant-migration`.
 
 ## Patrones de migración
 
@@ -104,25 +100,9 @@ public async down(queryRunner: QueryRunner): Promise<void> {
 }
 ```
 
-### Migración en schema de tenant (dinámica)
+### Migración en schema de tenant
 
-Para cambios en el schema de tenant, usar `runInTenantSchema` de `@iwana/db`:
-
-```typescript
-import { runInTenantSchema } from '@iwana/db';
-
-// En un servicio de provisioning o migración dinámica:
-await runInTenantSchema(dataSource, tenant.schemaName, async (qr) => {
-  await qr.query(`
-    CREATE TABLE IF NOT EXISTS "suscriptores" (
-      "id" uuid NOT NULL DEFAULT gen_random_uuid(),
-      "nombre" text NOT NULL,
-      "creado_en" timestamptz NOT NULL DEFAULT now(),
-      CONSTRAINT "PK_suscriptores" PRIMARY KEY ("id")
-    )
-  `);
-});
-```
+Para cambios en el schema de tenant, usar `iwana-tenant-migration`: archivo `NNN_snake_case.ts` en `migrations/tenant/`, registro en `runner.ts` y verificación con `migration-order.spec.ts`. Esta skill no cubre ese flujo.
 
 ## Estrategia zero-downtime
 
@@ -161,4 +141,3 @@ await queryRunner.query(`ALTER TABLE "tabla" ALTER COLUMN "col" SET NOT NULL`);
 - `timestamp` sin zona — siempre `timestamptz`
 - Migración sin `down()` — bloquea rollback de deploy
 - `DROP COLUMN` sin verificar que no hay código que lo use
-- Acceso directo a schema de tenant sin `runInTenantSchema`

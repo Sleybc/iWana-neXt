@@ -1,6 +1,6 @@
 ---
 name: monorepo-architect
-description: Monorepo guidance for iWana neXt with Turborepo, pnpm, boundaries claros y caching coherente con el workspace. Use cuando se definan packages, pipelines, dependencias internas o convenciones del monorepo real del proyecto.
+description: "Monorepo con pnpm y Turborepo 2.x: packages, boundaries, pipelines de turbo.json, inputs/outputs y cache misses. Usar cuando se toca turbo.json o el workspace, se crea un package o se depura la caché o el tiempo de CI. No usar para features de un solo paquete ni para CI/CD ajeno a la caché (→ subagente plat-ops)."
 ---
 
 # Monorepo Architect
@@ -74,6 +74,56 @@ iwana-next/
 - evitar scripts que mezclen demasiadas responsabilidades
 - preferir pipelines incrementales y composables
 
+## Turborepo
+
+El proyecto usa pnpm@10.32.1 y Turborepo 2.x con sintaxis `"tasks"`. La fuente de verdad es el `turbo.json` de la raiz; los fragmentos de abajo son ilustrativos.
+
+### Regla critica: Turborepo 2.x usa `"tasks"`, no `"pipeline"`
+
+```json
+// ✅ Correcto — Turborepo 2.x
+{ "$schema": "https://turbo.build/schema.json", "tasks": { "build": { } } }
+
+// ❌ Incorrecto — Turborepo v1 (no usar en este repo)
+{ "pipeline": { "build": { } } }
+```
+
+### Forma del pipeline
+
+Ver el `turbo.json` de la raiz (tareas `build`, `dev`, `lint`, `typecheck`, `test`, `clean` y las especificas de `@iwana/db`). No copies su contenido aqui: cambia con el repo.
+
+### Depuracion de cache misses
+
+Ver que se cachea y que no: `pnpm turbo run build --dry-run`.
+
+Un cache miss ocurre cuando Turborepo no puede reutilizar un resultado previo. Causas comunes:
+
+**1. Inputs mal definidos — se incluyen archivos que cambian siempre**
+
+```json
+// ❌ Demasiado amplio — cualquier cambio en el repo invalida el cache
+"test": { "inputs": ["**/*"] }
+
+// ✅ Solo los archivos relevantes para los tests
+"test": { "inputs": ["src/**/*.ts", "src/**/*.tsx", "**/*.spec.ts", "**/*.test.ts"] }
+```
+
+**2. Variables de entorno no declaradas**
+
+```json
+"build": {
+  "dependsOn": ["^build"],
+  "env": ["NODE_ENV", "NEXT_PUBLIC_WEB_API_URL", "NEXT_PUBLIC_PORTAL_API_URL"],
+  "outputs": [".next/**", "!.next/cache/**"]
+}
+```
+
+**3. Outputs no definidos — Turborepo no sabe que guardar en cache**
+
+```json
+"build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**", "dist/**"] }
+```
+
 ## Checklist para nuevos packages
 
 - [ ] nombre coherente con su responsabilidad
@@ -95,6 +145,6 @@ iwana-next/
 
 - `architect-review` para validar boundaries y tradeoffs
 - `nestjs-expert` para la app backend
-- `nextjs-app-router-patterns` para la app web
+- `frontend-dev-guidelines` para las apps web y portal
 - `typescript-expert` para tipado y toolchain
 - `docker-expert` para empaquetado y despliegue

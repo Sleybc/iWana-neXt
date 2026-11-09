@@ -65,7 +65,7 @@ Ser dueño de la **plataforma de ejecución** de iWana neXt: pipelines de CI/CD,
 
 Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
 
-1. `AGENTS.md` (gobernanza maestra del workspace) y catálogo `.agents/skills/` según su dispatch (`monorepo-architect`, `turborepo-caching`, `database-migration`, `deploy-checklist` cuando aplique)
+1. `AGENTS.md` (gobernanza maestra del workspace) y catálogo `.agents/skills/` según su dispatch (`monorepo-architect`, `database-migration`, `deploy-checklist` cuando aplique)
 2. CTO humano y ADRs aprobados
 3. PRD y HLD del módulo vigentes (para releases de módulo)
 4. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)

@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/openapi-spec-generation/SKILL.md — no editar a mano.
 name: openapi-spec-generation
-description: Generacion y mantenimiento de OpenAPI para iWana neXt con NestJS, REST versionada, DTOs validados y trazabilidad documental.
+description: "Contrato OpenAPI y DTOs validados de la API REST versionada. Usar cuando cambia un contrato HTTP. No usar para la lógica del servicio (→ nestjs-expert)."
 ---
 
 # openapi-spec-generation

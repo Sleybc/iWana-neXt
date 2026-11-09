@@ -1,6 +1,6 @@
 ---
 name: backend-security-coder
-description: Practicas de seguridad backend para iWana neXt con NestJS, Zod, TypeORM, PostgreSQL multi-tenant por schema, JWT y auditoria.
+description: "Código backend seguro: validación Zod, SQL parametrizado, logs sin PII e integraciones. Usar cuando se escribe un endpoint o una integración expuesta. No usar para auditar o revisar (→ security-auditor) ni para flujos de autenticación (→ auth-implementation-patterns)."
 ---
 
 # Backend Security Coder
@@ -38,22 +38,20 @@ Incluye:
 
 No confies en tipos de TypeScript como sustituto de validacion runtime.
 
-### 2. Multi-tenant por schema en cada request autenticada
+### 2. Tenant en cada request autenticada
 
-Toda logica de seguridad backend debe verificar:
+La invariante de tenancy vive en `AGENTS.md` → Architecture Rules (Multi-tenancy). Aqui, toda logica de seguridad backend debe verificar:
 
 - como se resuelve el tenant
 - como se propaga al caso de uso o servicio
 - como se evita acceso cruzado entre schemas
-- que no existan valores hardcodeados de tenant o schema
 
 Si un cambio no deja claro el aislamiento de tenant, no esta listo.
 
-### 3. Zero-trust PII
+### 3. Datos sensibles
 
-Nunca permitas:
+La regla de cero PII vive en `AGENTS.md` → Architecture Rules (Security). Aqui, ademas, nunca permitas:
 
-- PII real en tests, fixtures, logs o documentos
 - secretos o tokens en codigo versionado
 - connection strings hardcodeadas
 - errores que devuelvan detalles internos innecesarios

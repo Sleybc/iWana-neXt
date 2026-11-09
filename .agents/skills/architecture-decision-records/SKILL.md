@@ -1,6 +1,6 @@
 ---
 name: architecture-decision-records
-description: Guia practica para escribir y mantener ADRs alineados a iWana neXt, su stack aprobado y su gobernanza documental.
+description: "Redacción y enmienda de ADRs alineados al stack aprobado y a la gobernanza documental. Usar cuando se crea o enmienda un ADR. No usar para PRD, HLD, informes o specs (→ docs-architect) ni para evaluar un diseño (→ architect-review)."
 ---
 
 # Architecture Decision Records
@@ -42,7 +42,7 @@ Si falta una fuente critica, dejalo explicito. No inventes contexto.
 Toda decision debe evaluarse contra estas restricciones base:
 
 - Arquitectura modulith con boundaries explicitos.
-- Multi-tenant por schema PostgreSQL desde el inicio.
+- Tenancy y seguridad segun `AGENTS.md` → Architecture Rules.
 - NestJS, Next.js App Router, TypeORM, Turborepo, Redis/BullMQ, OpenAPI y Docker on-prem como baseline.
 - Sin acceso directo a tablas de otro modulo.
 - Sin imports circulares entre bounded contexts.
@@ -150,7 +150,7 @@ Un ADR bueno en este repo:
 
 ## Ejemplos de decisiones que si ameritan ADR aqui
 
-- Confirmar o cambiar el patron multi-tenant por schema.
+- Confirmar o cambiar el patron de aislamiento por tenant.
 - Introducir una estrategia de eventos de dominio entre modulos.
 - Cambiar la politica de colas BullMQ o Redis para procesos core.
 - Definir estrategia de auditoria para operaciones sensibles.

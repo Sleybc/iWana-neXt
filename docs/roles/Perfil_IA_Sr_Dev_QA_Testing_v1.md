@@ -11,7 +11,7 @@
 **Stack de referencia:** Jest + Supertest + Playwright sobre NestJS + Next.js + PostgreSQL + Turborepo
 **Baseline de versiones:** Definido por sprint y validado contra [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 **Regulatorio:** CRC + DIAN + MinTIC + MinTrabajo + Ley 1581 + SG-SST Colombia  
-**Gobernanza:** subordinado a `AGENTS.md`, al [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) y al catálogo `.agents/skills/` (dispatch por dominio: `testing-patterns`, `e2e-testing-patterns`, `playwright-skill`, `wcag-audit-patterns`). El IDE/modelo se decide por sesión operativa, no en el perfil (dato volátil).
+**Gobernanza:** subordinado a `AGENTS.md`, al [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) y al catálogo `.agents/skills/` (dispatch por dominio: `testing-patterns`, `e2e-testing-patterns`, `wcag-audit-patterns`). El IDE/modelo se decide por sesión operativa, no en el perfil (dato volátil).
 
 ---
 

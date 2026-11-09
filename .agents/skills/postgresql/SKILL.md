@@ -1,6 +1,6 @@
 ---
 name: postgresql
-description: Guia PostgreSQL para iWana neXt con enfoque en multi-tenant por schema, TypeORM, migraciones versionadas, auditoria y diseno seguro de datos.
+description: "Modelado PostgreSQL: tipos, constraints, índices, JSONB, auditoría y retención. Usar cuando se diseña o cambia una entidad o tabla. No usar para escribir el archivo de migración (→ database-migration o iwana-tenant-migration)."
 ---
 
 # PostgreSQL
@@ -45,12 +45,9 @@ Aunque compartan base de datos:
 
 ### 3. TypeORM y migraciones versionadas
 
-En este repo:
-
 - el mapeo ORM debe ser explicito y mantenible
-- los cambios de esquema deben pasar por migraciones versionadas
-- las migraciones deben ser revisables y, cuando aplique, reversibles
-- no dependas de sincronizacion automatica como politica de entorno
+- los cambios de esquema pasan por migraciones versionadas; esta skill decide el modelo, no escribe el archivo
+- archivo de migracion del schema `public` → `database-migration`; archivo en `migrations/tenant/` → `iwana-tenant-migration`
 
 ## Criterios de modelado
 

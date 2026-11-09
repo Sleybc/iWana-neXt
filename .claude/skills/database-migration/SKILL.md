@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/database-migration/SKILL.md — no editar a mano.
 name: database-migration
-description: Migraciones TypeORM versionadas y reversibles para iWana neXt. Usar para crear, aplicar o revertir migraciones PostgreSQL multi-tenant con estrategias zero-downtime.
+description: "Migraciones TypeORM versionadas y reversibles del schema public, con estrategia zero-downtime. Usar cuando se crea, aplica o revierte una migración fuera de migrations/tenant/. No usar para migraciones tenant (→ iwana-tenant-migration) ni para modelar tablas (→ postgresql)."
 ---
 
 # database-migration

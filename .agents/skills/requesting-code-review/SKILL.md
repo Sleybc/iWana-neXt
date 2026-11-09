@@ -1,6 +1,6 @@
 ---
 name: requesting-code-review
-description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements
+description: "Enruta el diff al revisor del repo: boundary-reviewer, contract-drift-reviewer, test-change-reviewer o sec-eng; el revisor genérico solo si ninguno aplica. Usar cuando se termina una tarea u ola o antes de integrar. No usar para procesar feedback recibido (→ receiving-code-review)."
 ---
 
 # Requesting Code Review
@@ -29,9 +29,21 @@ BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
-**2. Dispatch code reviewer subagent:**
+**2. Pick the reviewer from the diff (iWana neXt):**
 
-Use Task tool with `general-purpose` type, fill template at `code-reviewer.md`
+| El diff toca | Revisor (subagente de `.claude/agents/`) |
+| --- | --- |
+| `apps/api`, `apps/worker` o `packages/database` (boundaries, tenancy) | `boundary-reviewer` |
+| Un contrato de `packages/shared` o una proyección que lo expone | `contract-drift-reviewer` |
+| Specs existentes con fixture o expectativa cambiados | `test-change-reviewer` |
+| Auth, PII, aislamiento de tenant o entrada no confiable | `sec-eng` |
+| Ninguna de las anteriores | `general-purpose` con la plantilla `code-reviewer.md` |
+
+Si el diff cumple varias filas, despacha todos los revisores que apliquen. Los cuatro del repo son de solo lectura y reportan hallazgos con `archivo:línea`.
+
+**3. Dispatch the reviewer:**
+
+Use Task tool with the chosen type. Only for the last row, fill the template at `code-reviewer.md`
 
 **Placeholders:**
 - `{DESCRIPTION}` - Brief summary of what you built
@@ -39,7 +51,7 @@ Use Task tool with `general-purpose` type, fill template at `code-reviewer.md`
 - `{BASE_SHA}` - Starting commit
 - `{HEAD_SHA}` - Ending commit
 
-**3. Act on feedback:**
+**4. Act on feedback:**
 - Fix Critical issues immediately
 - Fix Important issues before proceeding
 - Note Minor issues for later

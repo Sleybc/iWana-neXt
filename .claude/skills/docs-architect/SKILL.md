@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/docs-architect/SKILL.md — no editar a mano.
 name: docs-architect
-description: Documentacion tecnica y funcional para iWana neXt con gobernanza documental, trazabilidad entre artefactos y foco en PRD, HLD, ADR, informes y prompts operativos.
+description: "Documentación de PRD, HLD, informes, specs y prompts con gobernanza y trazabilidad. Usar cuando se crea, revisa o consolida cualquier documento de docs/ salvo ADRs. No usar para ADRs (→ architecture-decision-records) ni para diagramas (→ mermaid-expert)."
 ---
 
 # docs-architect

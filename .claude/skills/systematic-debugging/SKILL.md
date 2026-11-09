@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/systematic-debugging/SKILL.md — no editar a mano.
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+description: "Causa raíz antes de proponer un arreglo. Usar cuando hay un bug, un test rojo o un comportamiento inesperado. No usar para investigar varios fallos independientes a la vez (→ dispatching-parallel-agents)."
 ---
 
 # systematic-debugging

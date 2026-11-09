@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/dispatching-parallel-agents/SKILL.md — no editar a mano.
 name: dispatching-parallel-agents
-description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
+description: "Investigación paralela con un agente por problema independiente. Usar cuando hay dos o más fallos o preguntas independientes sin plan escrito. No usar con un plan escrito (→ executing-plans), con fallos relacionados ni con estado compartido."
 ---
 
 # dispatching-parallel-agents

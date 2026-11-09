@@ -61,7 +61,7 @@ Opera en el **track UX**, concurrente con backend, design-system y frontend (ver
 
 Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md), con la casilla de fuentes de diseño introducida por [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §4:
 
-1. `AGENTS.md` y catálogo `.agents/skills/` (`iwana-identity-ui-review`, `senior-ui-systems-designer`, `wcag-audit-patterns`, `ui-ux-pro-max`, `system-vocabulary-review`)
+1. `AGENTS.md` y catálogo `.agents/skills/` (`iwana-identity-ui-review`, `wcag-audit-patterns`, `system-vocabulary-review`)
 2. CTO y ADRs **aprobados** (incl. ADR-023 — aprobado 2026-07-19 vía ADR-056)
 3. PRD y HLD del módulo
 4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir*; `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*

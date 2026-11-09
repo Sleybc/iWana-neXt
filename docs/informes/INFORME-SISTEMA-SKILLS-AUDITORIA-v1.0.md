@@ -1,9 +1,9 @@
 # INFORME — Auditoria de Skills del Workspace
 
 **Modo activo:** Mixto
-**Version:** 1.8
+**Version:** 1.9
 **Estado:** Aprobado
-**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; **v1.7: 2026-10-19 — gobierno de las skills externas de plugin (solo Claude Code), catálogo core sin cambios**; **v1.8: 2026-10-31 — alta de `iwana-checkpoint-commit`, catálogo 51 → 52**; ver change-log)
+**Fecha:** 2026-07-09 (v1.3: 2026-07-18 — potencialización v2 de `iwana-identity-ui-review`; v1.4: 2026-09-13 — baja de `using-git-worktrees`, catálogo 47 → 46; **v1.5: 2026-10-08 — alta de tres skills propias del repo, catálogo 46 → 49**; **v1.6: 2026-10-09 — alta de dos skills propias más, catálogo 49 → 51**; **v1.7: 2026-10-19 — gobierno de las skills externas de plugin (solo Claude Code), catálogo core sin cambios**; **v1.8: 2026-10-31 — alta de `iwana-checkpoint-commit`, catálogo 51 → 52**; **v1.9: 2026-11-08 — propuesta de consolidación 52 → 43, sin ejecutar**; ver change-log)
 **Convencion documental:** {TIPO}-{MODULO}-{FASE}-v{VERSION}.md
 
 ## Vinculos de trazabilidad
@@ -798,3 +798,26 @@ Catalogo core: **51 skills**, sin cambios. Nivel externo gobernado: **15 de apoy
 ### Estado posterior
 
 Catalogo core: **52 skills** (52 directorios = `coreCount`); `pnpm sync:skills:check` OK.
+
+## Actualizacion 2026-11-08 — Consolidacion 52 -> 43 (ejecutada en local, sin commit)
+
+**Origen:** auditoria de solapamientos y ruteo del catalogo core, pedida por el usuario. G0 aprobado por el CTO el 2026-11-08; ejecutada en las Olas 1 a 4 (B1, B2/B3b, B2-R/B3a y B4).
+
+Se detectaron 22 pares que se solapan, 6 de ellos con impacto alto en el ruteo (cuatro skills compiten por «construir pantalla»; `playwright-skill` y `e2e-testing-patterns` duplican seccion por seccion; `ui-ux-pro-max` declara React Native como unico stack; `finishing-a-development-branch` asume ramas y la exigen dos skills de flujo; `iwana-tenant-migration` no es invocable por el modelo; `brainstorming` bloquea todo cambio y commitea sola). La propuesta fusiona 7 skills en sus sucesoras, da de baja `finishing-a-development-branch`, pasa `ui-ux-pro-max` a hold, refactoriza 16 y deja 20 sin cambio de alcance: **43 skills**. Las referencias historicas se resuelven con una tabla de sucesion en INDEX v1.9, sin reescribir planes ni prompts.
+
+### Artefactos
+
+- `docs/informes/INFORME-SISTEMA-SKILLS-CONSOLIDACION-v1.0.md` — definicion, solapamientos, catalogo resultante con disparadores y decisiones G0-1 a G0-4.
+- `docs/plans/2026-11-08-skills-consolidacion-orquestacion.md` — bloques B1-B6, matriz agente x skill y gates.
+- `docs/prompts/PROMPT-SISTEMA-SKILLS-CONSOLIDACION-LAUNCH-v1.0.md` — lanzador de la Ola 1, bloqueado hasta G0.
+
+### Estado posterior
+
+Catalogo core: **43 skills** (43 directorios en `.agents/skills/` = `coreCount` = 43 punteros en `.claude/skills/`). INDEX, MANIFEST y README en **v1.9**.
+
+- **Fusionadas** en su sucesora y retiradas del disco: `typescript-pro`, `playwright-skill`, `nextjs-app-router-patterns`, `senior-ui-systems-designer`, `turborepo-caching`, `subagent-driven-development`, `writing-skills` (tabla «Skills fusionadas → sucesora» de INDEX).
+- **Baja:** `finishing-a-development-branch` (la sustituye `iwana-checkpoint-commit`).
+- **Hold:** `ui-ux-pro-max`, con su procedencia upstream en la fila de hold de INDEX; ya no figura en `skills-lock.json`.
+- `skills-lock.json` queda con 8 entradas vigentes. `AGENTS.md` → Skills Dispatch pasa a una primaria por linea.
+- Pendientes: B5 (verificacion por `docs-governance`) y B6 (publicacion con lista explicita de rutas; el CI de `main` debe estar en verde).
+- Detalle y gates: `docs/informes/INFORME-SISTEMA-SKILLS-CONSOLIDACION-v1.0.md` §8.

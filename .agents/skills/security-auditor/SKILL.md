@@ -1,6 +1,6 @@
 ---
 name: security-auditor
-description: Auditoria de seguridad para iWana neXt enfocada en OWASP, zero-trust PII, tenancy, auditoria, cumplimiento aplicable y controles reales del stack.
+description: "Auditoría de seguridad de solo lectura con hallazgos formales: OWASP, tenancy, PII, auditoría y controles del stack; la usa sec-eng. Usar cuando se revisa la seguridad de un diff o un módulo. No usar para implementar (→ backend-security-coder o frontend-security-coder)."
 ---
 
 # Security Auditor

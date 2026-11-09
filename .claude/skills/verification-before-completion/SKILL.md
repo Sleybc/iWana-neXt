@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/verification-before-completion/SKILL.md — no editar a mano.
 name: verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: "Evidencia fresca antes de afirmar que algo está terminado o arreglado en UI, CI, build o comportamiento. Usar cuando se va a declarar un trabajo completo, antes de commitear o abrir un PR. No usar para afirmaciones sobre pruebas (→ iwana-test-evidence)."
 ---
 
 # verification-before-completion

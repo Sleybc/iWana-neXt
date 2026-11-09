@@ -1,6 +1,6 @@
 ---
 name: architect-review
-description: "Review arquitectonico enfocado en iWana neXt: modulith, boundaries, multi-tenant por schema, seguridad y stack aprobado."
+description: "Revisión arquitectónica de propuestas y diseños: boundaries del Modulith, tenancy, seguridad y necesidad de un ADR. Usar cuando se evalúa una propuesta o un diseño antes de implementarlo. No usar para revisar un diff ya escrito (→ requesting-code-review) ni para redactar el ADR (→ architecture-decision-records)."
 ---
 
 # Architect Review

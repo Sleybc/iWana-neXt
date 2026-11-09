@@ -1,6 +1,6 @@
 ---
 name: dispatching-parallel-agents
-description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
+description: "Investigación paralela con un agente por problema independiente. Usar cuando hay dos o más fallos o preguntas independientes sin plan escrito. No usar con un plan escrito (→ executing-plans), con fallos relacionados ni con estado compartido."
 ---
 
 # Dispatching Parallel Agents
@@ -40,6 +40,7 @@ digraph when_to_use {
 
 **Don't use when:**
 
+- There is a written plan to execute (use `executing-plans`, which includes its subagent mode)
 - Failures are related (fix one might fix others)
 - Need to understand full system state
 - Agents would interfere with each other

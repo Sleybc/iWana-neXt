@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+description: "Diseño previo dialogado: explora intención, requisitos y alternativas y deja un spec en docs/specs/ sin commitearlo. Usar cuando se pide una feature nueva o un cambio de comportamiento y no hay spec aprobada. No usar para cambios sin comportamiento nuevo (config, renombres, refactors, bugfix con causa conocida), ni cuando ya hay spec aprobada (→ writing-plans)."
 ---
 
 # Brainstorming Ideas Into Designs
@@ -10,12 +10,14 @@ Help turn ideas into fully formed designs and specs through natural collaborativ
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
 
 <HARD-GATE>
-Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+Applies to new features and changes of behavior that have no approved spec. Until you have presented a design and the user has approved it, do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action.
+
+Does NOT apply to changes that add no new behavior: configuration, renames, pure refactors, documentation, or a bugfix whose root cause is already known. Those go straight to the domain skill.
 </HARD-GATE>
 
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 
-Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+A new feature or behavior change that "looks simple" is where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), but you MUST present it and get approval. This anti-pattern does not stretch the gate to changes that add no behavior (see HARD-GATE above).
 
 ## Checklist
 
@@ -26,7 +28,7 @@ You MUST create a task for each of these items and complete them in order:
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<topic>-design.md` and commit
+6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<name>.md` (no `-design` suffix). Do NOT commit it: commit only when the user asks (`iwana-checkpoint-commit`)
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
 9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
@@ -108,10 +110,10 @@ digraph brainstorming {
 
 **Documentation:**
 
-- Write the validated design (spec) to `docs/specs/YYYY-MM-DD-<topic>-design.md`
+- Write the validated design (spec) to `docs/specs/YYYY-MM-DD-<name>.md` (no `-design` suffix)
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
-- Commit the design document to git
+- Do NOT commit the spec on your own. The repo commits only when the user asks (`iwana-checkpoint-commit`)
 
 **Spec Self-Review:**
 After writing the spec document, look at it with fresh eyes:
@@ -126,7 +128,7 @@ Fix any issues inline. No need to re-review — just fix and move on.
 **User Review Gate:**
 After the spec review loop passes, ask the user to review the written spec before proceeding:
 
-> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+> "Spec written to `<path>` (not committed). Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
 
 Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
 

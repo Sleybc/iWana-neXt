@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/frontend-security-coder/SKILL.md — no editar a mano.
 name: frontend-security-coder
-description: Seguridad frontend para iWana neXt con Next.js App Router, RSC, sanitizacion de salida, navegacion segura y proteccion de datos en UI.
+description: "Seguridad frontend: XSS, sanitización de salida, PII en UI y redirecciones. Usar cuando se renderiza contenido externo o PII, o hay navegación con parámetros. No usar para auditar (→ security-auditor) ni para la mecánica de pantalla (→ frontend-dev-guidelines)."
 ---
 
 # frontend-security-coder

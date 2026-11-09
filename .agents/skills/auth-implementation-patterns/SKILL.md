@@ -1,6 +1,6 @@
 ---
 name: auth-implementation-patterns
-description: Patrones de autenticacion y autorizacion para iWana neXt con JWT, rotacion de tokens, MFA, tenancy por schema y auditoria.
+description: "Autenticación y autorización: JWT, rotación de tokens, MFA, guards y permisos. Usar cuando se escribe o cambia login, tokens, permisos o guards. No usar para revisar la seguridad de un diff (→ security-auditor) ni para otros endpoints expuestos (→ backend-security-coder)."
 ---
 
 # Auth Implementation Patterns
@@ -9,7 +9,7 @@ description: Patrones de autenticacion y autorizacion para iWana neXt con JWT, r
 
 Usa esta skill cuando la tarea implique autenticacion, autorizacion o sesion dentro del stack real del proyecto.
 
-Debe aterrizar flujos de identidad al baseline del repo: NestJS, JWT con rotacion, MFA cuando aplique, multi-tenant por schema, RBAC o ABAC y auditoria de operaciones sensibles.
+Debe aterrizar flujos de identidad al baseline del repo: NestJS, JWT con rotacion, MFA cuando aplique, tenant resuelto segun `AGENTS.md` → Architecture Rules, RBAC o ABAC y auditoria de operaciones sensibles.
 
 ## Cuando usarla
 

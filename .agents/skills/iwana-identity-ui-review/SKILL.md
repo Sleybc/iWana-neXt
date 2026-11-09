@@ -1,6 +1,6 @@
 ---
 name: iwana-identity-ui-review
-description: Disciplina de diseño, alineacion y auditoria de UI para iWana neXt. Usar siempre que se cree, construya, revise, refine, mejore o audite cualquier pantalla, componente, modulo, dashboard, formulario, tabla, modal, drawer, settings, estado vacio o patron visual del portal o del backoffice — aunque nadie mencione la palabra iWana. Tambien cuando una UI se sienta generica, ruidosa, pesada, "de template" o fuera de identidad; cuando se pida "alinear al estilo", "que se vea como el resto", "mejorar el diseño"; cuando se evalue adoptar una tendencia de diseño o un patron tipo TailAdmin/Linear/Attio; y antes de introducir un patron visual o primitive nuevo. En modo diseño alinea la construccion a la identidad con playbook, recetas y tokens reales; en modo review produce hallazgos P0-P3 con evidencia verificable y un informe estandar. Incluye un script de auditoria mecanica de reglas duras.
+description: "Identidad visual de iWana en tres modos: dirección (2-3 propuestas), diseño y review P0-P3. Usar cuando se decide, construye o audita cómo se ve una pantalla, componente o patrón, o antes de introducir un patrón visual nuevo. No usar para la mecánica de RSC (→ frontend-dev-guidelines), tokens (→ core-components) ni WCAG profundo (→ wcag-audit-patterns)."
 metadata:
   category: discipline
   triggers: identidad, UI, interfaz, pantalla, componente, modulo, seccion, dashboard, settings, diseño, visual, estilo, alinear, iWana, brand, tokens, auditoria, review, accesibilidad, responsive, tendencia, TailAdmin
@@ -31,10 +31,9 @@ Delegar evita hallazgos redundantes entre skills y mantiene cada informe enfocad
 | Necesidad | Skill responsable | Esta skill aporta |
 | --- | --- | --- |
 | Auditoria WCAG profunda con evidencia formal | `wcag-audit-patterns` | Solo el barrido AA basico del checklist |
-| Propuesta de direccion visual nueva (2-3 opciones) | `senior-ui-systems-designer` | El marco de identidad que la propuesta debe respetar |
+| Propuesta de direccion visual nueva (2-3 opciones) | Esta misma skill, en **modo direccion** (`references/direccion-visual.md`) | El marco de identidad que la propuesta debe respetar y el metodo de propuesta |
 | Copy visible, labels, vocabulario de producto | `system-vocabulary-review` | Solo detectar el sintoma (enum crudo, tono incorrecto) y derivar |
 | Consolidacion de componentes compartidos | `core-components` | Detectar el patron repetible y proponer la promocion |
-| Heuristicas UX genericas ampliadas | `ui-ux-pro-max` (subordinada) | El filtro: toda sugerencia generica se adapta o descarta segun iWana y `references/trends-2026.md` |
 
 Si el problema es solo backend, contratos API o arquitectura tecnica sin superficie visual, esta skill no aplica.
 
@@ -58,10 +57,13 @@ Si este documento y los tokens reales divergen, mandan los tokens reales; docume
 | `references/prototype-map.md` | Necesites la Estrella Polar: sus 3 capas de precedencia (spec Firma > identidad/prototipo > codigo real), que referentes externos ya estan en el canon, que define cada prototipo y que esta prohibido copiar de TailAdmin (ADR-023) |
 | `references/trends-2026.md` | Alguien proponga una tendencia ("es lo que hace Linear/Attio", "es tendencia 2026") o evalues un patron nuevo: veredicto Adoptar/Adaptar/Rechazar con ancla |
 | `references/evaluation-criteria.md` | Ejecutes la metodologia completa de review: detalle de las 7 dimensiones |
+| `references/direccion-visual.md` | Haya que proponer 2-3 direcciones visuales para una interfaz nueva (modo direccion): metodo, formato de respuesta, heuristicas por tipo de pantalla y guardrails |
 
 ## Modos de operacion
 
-Elige el modo segun la tarea y declaralo al inicio de la respuesta. Mezclarlos produce informes inconsistentes.
+Elige el modo segun la tarea y declaralo al inicio de la respuesta. Mezclarlos produce informes inconsistentes. Hay tres: direccion, diseño y review.
+
+**Modo direccion** — la tarea es decidir como deberia verse una interfaz nueva antes de construirla: se proponen 2-3 direcciones visuales, se recomienda una y se baja a especificacion con criterios de aceptacion. Sigue `references/direccion-visual.md`; no generes informe de auditoria ni codigo. Al elegirse una direccion, la construccion pasa al modo diseño.
 
 **Modo diseño** — la tarea es crear o refinar una UI. Sigue el playbook de alineacion; no generes informe de auditoria. La salida es la UI (o especificacion) mas una nota corta de decisiones de identidad tomadas.
 
@@ -78,7 +80,7 @@ Cada construccion o refinamiento de UI sigue estos pasos — es lo que garantiza
 5. **Corre el script de auditoria** sobre los archivos tocados (seccion siguiente) y corrige los hallazgos deterministas antes de entregar.
 6. **Checklist de cierre** (seccion "Validacion antes de cerrar"): reconocible sin logo, tarea visible en primer viewport, AA, estados completos, patron promovible identificado.
 
-Si el patron que necesitas no tiene receta ni token: no lo inventes en la pantalla — proponlo explicitamente como patron/token nuevo (via DS-OWNER / `senior-ui-systems-designer`) y usa lo existente mientras tanto.
+Si el patron que necesitas no tiene receta ni token: no lo inventes en la pantalla — proponlo explicitamente como patron/token nuevo (via DS-OWNER, o en modo direccion si hay que explorar 2-3 opciones) y usa lo existente mientras tanto.
 
 ## Script de auditoria mecanica
 

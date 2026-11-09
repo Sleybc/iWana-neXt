@@ -1,14 +1,14 @@
 # Skills activas de iWana neXt
 
-- **Version:** 1.7
+- **Version:** 1.9
 - **Estado:** Aprobado
-- **Fecha:** 2026-10-19
+- **Fecha:** 2026-11-08
 
-Este directorio contiene el catalogo activo de skills del proyecto. La fuente maestra de gobernanza es `AGENTS.md`; el indice operativo del catalogo es `.agents/skills/INDEX.md`.
+Este directorio contiene el catalogo activo de skills del proyecto: 43 skills core tras la consolidacion del 2026-11-08 (7 fusionadas en su sucesora, 1 dada de baja y 1 en hold; ver las tablas «Skills fusionadas → sucesora», «Skills dadas de baja» y «Skills en hold» de `INDEX.md`). La fuente maestra de gobernanza es `AGENTS.md`; el indice operativo del catalogo es `.agents/skills/INDEX.md`.
 
 La disponibilidad efectiva puede variar segun el cliente:
 
-- GitHub Copilot puede usar `skills-lock.json` como filtro adicional de disponibilidad si ese cliente lo tiene habilitado.
+- GitHub Copilot puede usar `skills-lock.json` como filtro adicional de disponibilidad si ese cliente lo tiene habilitado. El archivo solo lista skills vigentes: las retiradas no figuran.
 - OpenCode consume el catalogo del workspace desde `skills.paths`.
 - Codex usa el catalogo segun el mecanismo de skills disponible en la sesion activa.
 - Claude Code descubre las skills desde `.claude/skills/`, que contiene **punteros generados** por `pnpm sync:skills` (ADR-092): mismo frontmatter que aqui y un cuerpo que remite al `SKILL.md` de este directorio. El contenido vive solo aqui. Toda alta, baja o cambio de frontmatter exige `pnpm sync:skills`; CI lo verifica con `pnpm sync:skills:check`.

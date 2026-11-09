@@ -1,6 +1,6 @@
 ---
 name: tailwind-patterns
-description: Patrones Tailwind para iWana neXt con tokens semanticos, composicion mantenible y frontend web coherente con el sistema visual del repo.
+description: "Mecánica de Tailwind v4 CSS-first: clases, variantes con CVA y dark mode; cita los tokens, no los define. Usar cuando se escriben clases o variantes. No usar para definir tokens o primitives (→ core-components)."
 ---
 
 ## Tailwind 4 CSS-first en iWana neXt
@@ -118,9 +118,7 @@ Activa esta skill para tareas como:
 
 ### Tokens
 
-- nombres semanticos donde el stack lo permita
-- spacing, radios y sombras consistentes
-- variantes visuales definidas por componente cuando corresponda
+Los tokens los define `core-components` (fuente: `packages/ui/src/styles/globals.css`); esta skill solo los cita en clases y variantes. Para proponer o cambiar un token, usa esa skill.
 
 ### Responsividad
 

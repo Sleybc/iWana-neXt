@@ -1,6 +1,6 @@
 ---
 name: mermaid-expert
-description: Diagramas Mermaid para iWana neXt orientados a modulith, flujos de negocio, ADRs, integraciones y documentacion tecnica consistente.
+description: "Diagramas Mermaid de Modulith, flujos de negocio, integraciones y ADRs. Usar cuando se pide o hace falta un diagrama. No usar para redactar el documento que lo contiene (→ docs-architect)."
 ---
 
 # Mermaid Expert

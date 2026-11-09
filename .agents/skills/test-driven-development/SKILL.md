@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: TDD aplicado a iWana neXt con foco en red-green-refactor, pruebas utiles por capa y validacion real antes de implementar.
+description: "Metodología red-green-refactor. Usar cuando un plan pide TDD explícito en una feature o un bugfix. No usar para elegir patrones de pruebas (→ testing-patterns) ni para afirmar que pasan (→ iwana-test-evidence)."
 ---
 
 # Test-Driven Development

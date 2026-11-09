@@ -1,9 +1,11 @@
 ---
 name: verification-before-completion
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: "Evidencia fresca antes de afirmar que algo está terminado o arreglado en UI, CI, build o comportamiento. Usar cuando se va a declarar un trabajo completo, antes de commitear o abrir un PR. No usar para afirmaciones sobre pruebas (→ iwana-test-evidence)."
 ---
 
 # Verification Before Completion
+
+> **En iWana neXt:** toda afirmación sobre pruebas (verdes, conteo de suites/tests, cobertura) se verifica con `iwana-test-evidence` (corrida sin caché de Turbo y conteo real). Esta skill cubre el resto: UI, CI, build, comportamiento y requisitos.
 
 ## Overview
 
@@ -41,7 +43,7 @@ Skip any step = lying, not verifying
 
 | Claim                 | Requires                        | Not Sufficient                 |
 | --------------------- | ------------------------------- | ------------------------------ |
-| Tests pass            | Test command output: 0 failures | Previous run, "should pass"    |
+| Tests pass            | `iwana-test-evidence`: conteo real, sin caché | Previous run, "should pass", turbo cache |
 | Linter clean          | Linter output: 0 errors         | Partial check, extrapolation   |
 | Build succeeds        | Build command: exit 0           | Linter passing, logs look good |
 | Bug fixed             | Test original symptom: passes   | Code changed, assumed fixed    |

@@ -1,6 +1,6 @@
 ---
 name: iwana-test-evidence
-description: Ejecuta las pruebas de uno o mas paquetes de iWana neXt sin cache de Turbo y reporta el conteo real de suites, tests y cobertura. Usar al iniciar una ola para fijar la linea base de conteos, antes de declarar verde una fase, un informe, una ola o el gate de cobertura ≥80 %, y siempre que una corrida termine sospechosamente rapido o sin cifras. Complementa a verification-before-completion con los comandos y trampas propios de este monorepo.
+description: "Ejecuta pruebas de uno o más paquetes sin caché de Turbo y reporta el conteo real de suites, tests y cobertura. Usar al iniciar una ola, antes de declarar verde una fase o un informe, para el gate de cobertura ≥80 % y cuando una corrida termina sospechosamente rápido. No usar para escribir pruebas (→ testing-patterns)."
 metadata:
   category: testing
   triggers: tests verdes, evidencia, conteo de tests, linea base, carraca, cobertura, gate, turbo cache, passWithNoTests, inicio de ola, cierre de fase, informe

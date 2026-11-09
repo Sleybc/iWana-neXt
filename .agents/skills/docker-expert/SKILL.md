@@ -1,6 +1,6 @@
 ---
 name: docker-expert
-description: Docker para iWana neXt con despliegue on-prem, imagenes seguras, builds reproducibles y orquestacion simple coherente con el monorepo.
+description: "Docker y Compose on-prem: imágenes seguras y builds reproducibles. Usar cuando se escribe o cambia un Dockerfile o un archivo de Compose. No usar para pipelines de CI/CD ni despliegues (→ subagente plat-ops)."
 ---
 
 # Docker Expert
@@ -31,7 +31,7 @@ Activa esta skill para tareas como:
 
 ### 2. El contenedor debe respetar el monorepo real
 
-- Considera pnpm y la estructura del repo.
+- Considera la estructura del repo.
 - Evita Dockerfiles que copien todo sin criterio.
 - Separa dependencias, build y runtime cuando tenga sentido.
 

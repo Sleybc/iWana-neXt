@@ -1,6 +1,6 @@
 ---
 name: docs-architect
-description: Documentacion tecnica y funcional para iWana neXt con gobernanza documental, trazabilidad entre artefactos y foco en PRD, HLD, ADR, informes y prompts operativos.
+description: "Documentación de PRD, HLD, informes, specs y prompts con gobernanza y trazabilidad. Usar cuando se crea, revisa o consolida cualquier documento de docs/ salvo ADRs. No usar para ADRs (→ architecture-decision-records) ni para diagramas (→ mermaid-expert)."
 ---
 
 # Docs Architect
@@ -15,7 +15,7 @@ El foco no es escribir texto largo por defecto. El foco es producir documentos u
 
 Activa esta skill para tareas como:
 
-- Crear o actualizar PRDs, HLDs, ADRs, informes o checklists.
+- Crear o actualizar PRDs, HLDs, informes, specs o checklists (los ADRs van en `architecture-decision-records`).
 - Revisar consistencia entre documentos del mismo modulo o fase.
 - Consolidar trazabilidad entre arquitectura, ejecucion y evidencia.
 - Corregir estructura, naming o gobernanza documental.

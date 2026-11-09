@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/testing-patterns/SKILL.md — no editar a mano.
 name: testing-patterns
-description: Patrones de testing para iWana neXt con Jest, Supertest y Playwright. Use cuando se escriban pruebas unitarias, de integracion o E2E alineadas al stack real del proyecto.
+description: "Pruebas unitarias y de integración con Jest y Supertest: pirámide, estructura y cobertura. Usar cuando se escribe un spec que no es E2E. No usar para Playwright (→ e2e-testing-patterns) ni para contar pruebas verdes (→ iwana-test-evidence)."
 ---
 
 # testing-patterns

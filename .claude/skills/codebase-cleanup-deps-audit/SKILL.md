@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/codebase-cleanup-deps-audit/SKILL.md — no editar a mano.
 name: codebase-cleanup-deps-audit
-description: Auditoría de dependencias pnpm para iWana neXt — vulnerabilidades CVE, licencias, paquetes desactualizados, supply chain. Usar antes de releases o cuando pnpm audit reporte issues.
+description: "Auditoría de dependencias pnpm: CVE, licencias, paquetes desactualizados y cadena de suministro. Usar cuando se auditan dependencias, antes de un release o cuando pnpm audit reporta problemas. No usar para configurar el workspace o los pipelines (→ monorepo-architect)."
 ---
 
 # codebase-cleanup-deps-audit

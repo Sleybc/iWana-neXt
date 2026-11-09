@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/architecture-decision-records/SKILL.md — no editar a mano.
 name: architecture-decision-records
-description: Guia practica para escribir y mantener ADRs alineados a iWana neXt, su stack aprobado y su gobernanza documental.
+description: "Redacción y enmienda de ADRs alineados al stack aprobado y a la gobernanza documental. Usar cuando se crea o enmienda un ADR. No usar para PRD, HLD, informes o specs (→ docs-architect) ni para evaluar un diseño (→ architect-review)."
 ---
 
 # architecture-decision-records

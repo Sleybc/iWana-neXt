@@ -1,6 +1,6 @@
 ---
 name: wcag-audit-patterns
-description: Auditoria WCAG para iWana neXt con foco en flujos web reales, evidencia accionable, pruebas manuales y correcciones alineadas al frontend del repo.
+description: "Auditoría WCAG 2.2 AA de flujos web reales, con evidencia accionable y pruebas manuales. Usar cuando se audita la accesibilidad o se remedia un hallazgo. No usar para construir la UI (→ frontend-dev-guidelines)."
 ---
 
 # WCAG Audit Patterns

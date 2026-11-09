@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/i18n-localization/SKILL.md — no editar a mano.
 name: i18n-localization
-description: Internacionalizacion y localizacion para iWana neXt con Next.js App Router, textos externos, formatos locales y control de hardcodes en UI.
+description: "Internacionalización: catálogos de mensajes y formatos de fecha, moneda y número. Usar cuando se externalizan textos o se formatean valores en la UI. No usar para decidir qué palabra mostrar (→ system-vocabulary-review)."
 ---
 
 # i18n-localization

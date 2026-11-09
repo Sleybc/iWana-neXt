@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+description: "Causa raíz antes de proponer un arreglo. Usar cuando hay un bug, un test rojo o un comportamiento inesperado. No usar para investigar varios fallos independientes a la vez (→ dispatching-parallel-agents)."
 ---
 
 # Systematic Debugging

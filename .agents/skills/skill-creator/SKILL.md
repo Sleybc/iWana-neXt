@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
+description: "Crear, mejorar y medir skills del catálogo (evals, benchmark, optimizar la descripción) con las reglas de INDEX, MANIFEST y sync:skills. Usar cuando se da de alta, cambia, fusiona o da de baja una skill, o se evalúa si dispara bien. No usar para documentos de docs/ (→ docs-architect)."
 ---
 
 # Skill Creator
@@ -28,6 +28,26 @@ Of course, you should always be flexible and if the user is like "I don't need t
 Then after the skill is done (but again, the order is flexible), you can also run the skill description improver, which we have a whole separate script for, to optimize the triggering of the skill.
 
 Cool? Cool.
+
+## Reglas del catálogo iWana
+
+Aplican a toda skill del repo, además de lo que sigue en este documento:
+
+- **Dónde se edita:** solo `.agents/skills/<nombre>/SKILL.md` (y sus `references/`, `scripts/`, `assets/`). `.claude/skills/` es **generado** (`pnpm sync:skills`, hook `.claude/hooks/sync-surfaces.mjs`): no se edita ni se copia contenido allí. Verifica con `pnpm sync:skills:check`.
+- **Frontmatter:** `name` (igual al directorio) y `description` obligatorios. La descripción sigue el formato «Usar cuando… / No usar para… → otra skill», es lo único que se carga en cada sesión y no supera unas 60 palabras. Los disparadores van en la descripción, no en el cuerpo.
+- **Una primaria por intención:** antes de crear una skill, comprueba que ninguna activa cubre ya la intención; si hay solape, refactoriza la existente en vez de añadir otra.
+- **Invariantes en un solo lugar:** tenancy, PII, stack y `pnpm` viven en `AGENTS.md`; la skill las cita en una línea y no las repite.
+- **Trazabilidad:** toda alta, baja o fusión actualiza `.agents/skills/INDEX.md`, `MANIFEST.json`, `README.md` e `INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`, y pasa la **política de admisión estricta** de INDEX (caso de uso recurrente, relación con el catálogo, prioridad). Una baja no es un archivado: la skill sale del disco.
+- **Contenido movido, no perdido:** al fusionar, lo único de la absorbida pasa a `references/` de la sucesora, que conserva su nombre y su `name:`.
+
+## Guía de redacción (migrada de writing-skills)
+
+Dos guías para cargar solo cuando haga falta (índice en [`references/writing-skills/README.md`](references/writing-skills/README.md)):
+
+| Necesidad | Lee |
+| --- | --- |
+| Que la descripción dispare (CSO, «SEO para LLMs») | `references/writing-skills/references/cso/README.md` |
+| Reglas que el agente no racionalice ni ignore | `references/writing-skills/references/anti-rationalization/README.md` |
 
 ## Communicating with the user
 

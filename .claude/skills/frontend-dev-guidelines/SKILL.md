@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/frontend-dev-guidelines/SKILL.md — no editar a mano.
 name: frontend-dev-guidelines
-description: Frontend standards for iWana neXt with Next.js App Router, React Server Components, TypeScript estricto, accesibilidad, i18n y diseno orientado al sistema de componentes del proyecto. Use cuando se implementen pantallas, componentes, formularios o flujos frontend dentro del stack real del repo.
+description: Código de pantalla de apps/web y apps/portal en iWana neXt. Cubre Next.js App Router, Server/Client Components, carga de datos, formularios, estados de UI y estructura por feature. Usar cuando se escribe o cambia código de una página, layout, componente o flujo frontend. No usar para el aspecto visual (→ iwana-identity-ui-review), tokens o primitives (→ core-components) ni para backend.
 ---
 
 # frontend-dev-guidelines

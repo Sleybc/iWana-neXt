@@ -1,6 +1,6 @@
 ---
 name: typescript-expert
-description: TypeScript para iWana neXt con tipado estricto, pragmatismo en monorepo, boundaries claros y soluciones mantenibles sobre el baseline real.
+description: TypeScript de iWana neXt. Tipado estricto, boundaries entre paquetes y tipado avanzado (generics, tipos condicionales y mapeados, decoradores NestJS, inferencia compleja). Usar cuando un problema de tipos o de contratos entre paquetes no se resuelve solo con el código del dominio. No usar para diseño de módulos (→ nestjs-expert) ni para validación runtime de seguridad (→ backend-security-coder).
 ---
 
 # TypeScript Expert
@@ -9,7 +9,7 @@ description: TypeScript para iWana neXt con tipado estricto, pragmatismo en mono
 
 Usa esta skill cuando una tarea requiera resolver problemas o decisiones de TypeScript dentro del monorepo real del proyecto.
 
-El objetivo no es presumir type gymnastics. El objetivo es producir codigo TypeScript claro, estricto, mantenible y coherente con NestJS, Next.js App Router, pnpm, Turborepo y los boundaries del repo.
+El objetivo no es presumir type gymnastics. El objetivo es producir codigo TypeScript claro, estricto, mantenible y coherente con NestJS, Next.js App Router y los boundaries del repo.
 
 ## Cuando usarla
 
@@ -93,6 +93,27 @@ Evita:
 - usar TypeScript como sustituto de validacion runtime
 - abrir boundaries del monorepo solo para compartir un tipo comodo
 - tocar configuracion global cuando el problema es local
+
+## Tipado avanzado
+
+Para problemas que el tipado simple no resuelve. Aplican las mismas reglas del repo: claridad del dominio antes que ingenio de tipos.
+
+### Areas de foco
+
+- Sistema de tipos avanzado: generics, tipos condicionales y mapeados
+- Configuracion estricta de TypeScript y opciones del compilador
+- Optimizacion de inferencia y tipos utilitarios
+- Decoradores y metadata (NestJS)
+- Sistemas de modulos y organizacion de namespaces
+- Integracion con React, Node.js y NestJS
+
+### Checklist de revision de tipos
+
+- [ ] Sin `any` sin justificacion — usar `unknown` y narrowing
+- [ ] Generics nombrados con semantica (`TEntity`, `TPayload`), no solo `T`
+- [ ] `strict: true` en todos los `tsconfig.json`
+- [ ] Tipos de retorno explicitos en funciones publicas de services y controllers
+- [ ] DTOs con class-validator donde el modulo ya lo usa; Zod en boundaries externos (`AGENTS.md`)
 
 ## Escalacion
 

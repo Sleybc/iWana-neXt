@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/postgresql/SKILL.md — no editar a mano.
 name: postgresql
-description: Guia PostgreSQL para iWana neXt con enfoque en multi-tenant por schema, TypeORM, migraciones versionadas, auditoria y diseno seguro de datos.
+description: "Modelado PostgreSQL: tipos, constraints, índices, JSONB, auditoría y retención. Usar cuando se diseña o cambia una entidad o tabla. No usar para escribir el archivo de migración (→ database-migration o iwana-tenant-migration)."
 ---
 
 # postgresql

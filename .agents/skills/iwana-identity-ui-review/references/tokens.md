@@ -1,5 +1,7 @@
 # Tokens canónicos iWana
 
+> **Copia derivada de `packages/ui/src/styles/globals.css`**, que es la fuente de verdad y la que define `core-components`. Los hex se conservan aquí porque `scripts/audit-ui.mjs` los usa como tabla hex → token; si divergen de `globals.css`, manda el archivo y esta copia debe corregirse.
+
 Referencia de valores exactos para afirmar o negar con evidencia. **Fuente de verdad: `packages/ui/src/styles/globals.css`** — si este documento y ese archivo divergen, manda el archivo y esta referencia debe corregirse. Complementa: `docs/identity/Manual_Implementacion_Identidad_Iwana.md`.
 
 ## Colores de marca
@@ -115,6 +117,6 @@ Toda sombra deriva del azul noche. Glass (`.iwana-glass`) es excepcional: overla
 
 ## Divergencias conocidas (no citar como si no existieran)
 
-1. `packages/ui/src/tokens/colors.ts` tiene una escala primary distinta de `globals.css` — **manda `globals.css`**; si aparece en código, es hallazgo de deriva (P2).
+1. `packages/ui/src/tokens/` (`iwanaColors`, `iwanaSpacing`, `iwanaTypography`) se retiró el 2026-11-08 (spec `2026-11-08-ui-tokens-fuente-unica-spec.md`, D1): no hay tokens en TypeScript. Si reaparece un espejo TS de los tokens en código, es hallazgo de deriva (P2) — **manda `globals.css`**.
 2. Los tokens `--chart-*` de la spec Firma iWana (Fase 3.1) **aún no existen** en `globals.css` — citarlos solo como dirección aprobada pendiente, nunca como token disponible.
 3. `Login-prototipo.html` usa una config antigua (lima como `primary`, dark `#181818` plano) — no es canónica; ver `prototype-map.md`.

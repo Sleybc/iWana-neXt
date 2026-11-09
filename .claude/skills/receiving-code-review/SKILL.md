@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/receiving-code-review/SKILL.md — no editar a mano.
 name: receiving-code-review
-description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+description: "Procesar el feedback de una revisión con rigor técnico: verificar antes de implementar, sin acuerdo performativo. Usar cuando llegan comentarios o hallazgos de una revisión, sobre todo si son confusos o dudosos. No usar para pedir la revisión (→ requesting-code-review)."
 ---
 
 # receiving-code-review

@@ -1,6 +1,6 @@
 ---
 name: system-vocabulary-review
-description: Use when writing, reviewing, auditing, or improving friendly user-visible vocabulary in iWana neXt; before creating modules, settings sections, audits, UI copy, API seed descriptions, docs, tests, or E2E text that could expose technical/internal terms or confuse non-technical users.
+description: "Vocabulario visible en español, sin términos técnicos internos: copy, labels, seeds, auditorías, módulos nuevos, docs y textos de E2E. Usar cuando se escribe o revisa texto que ve el usuario. No usar para catálogos y formatos (→ i18n-localization)."
 metadata:
   category: discipline
   triggers: vocabulario, copy, labels, textos visibles, auditoria, modulo, seccion, tenant, WFM, NOC, roles, permisos

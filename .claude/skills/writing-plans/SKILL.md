@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/writing-plans/SKILL.md — no editar a mano.
 name: writing-plans
-description: Use when you have a spec or requirements for a multi-step task, before touching code
+description: "Plan de implementación de varios pasos a partir de una spec aprobada. Usar cuando hay una spec o requisitos aprobados y faltan los pasos, antes de tocar código. No usar para cerrar una fase (→ iwana-cierre-fase) ni para ejecutar el plan (→ executing-plans)."
 ---
 
 # writing-plans

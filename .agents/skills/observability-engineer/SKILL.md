@@ -1,6 +1,6 @@
 ---
 name: observability-engineer
-description: Observabilidad para iWana neXt con logs utiles, metricas accionables, trazabilidad operativa y diseno gradual de monitoreo alineado al stack real del repo.
+description: "Observabilidad: logs útiles, métricas accionables, healthchecks y trazabilidad operativa. Usar cuando se diseña o cambia la telemetría de un servicio. No usar para depurar un bug concreto (→ systematic-debugging)."
 ---
 
 # Observability Engineer
@@ -29,7 +29,9 @@ Activa esta skill para tareas como:
 - Prioriza señales utiles antes que tooling exuberante.
 - Si una propuesta requiere nueva infraestructura relevante, documenta el gap y no la asumas como disponible.
 
-### 2. Zero-trust PII tambien aplica a logs y metricas
+### 2. PII en logs y metricas
+
+La regla de cero PII vive en `AGENTS.md` → Architecture Rules (Security); aqui aplica a telemetria:
 
 - No registrar PII real, secretos, tokens ni payloads sensibles completos.
 - Sanitizar eventos y errores antes de persistirlos o exportarlos.

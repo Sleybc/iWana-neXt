@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/core-components/SKILL.md — no editar a mano.
 name: core-components
-description: Sistema de componentes y patrones visuales para iWana neXt. Use cuando se construya UI web, se apliquen tokens de diseno o se definan primitivas reutilizables del frontend del proyecto.
+description: "API e inventario real de @iwana/ui y criterios para nuevas primitives; dueña única de los tokens. Usar cuando se crea o cambia una primitive de packages/ui o se define un token. No usar para estilos de una pantalla (→ tailwind-patterns) ni para su aspecto visual (→ iwana-identity-ui-review)."
 ---
 
 # core-components

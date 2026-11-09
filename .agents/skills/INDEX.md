@@ -1,8 +1,10 @@
 # Indice de Skills de iWana neXt
 
-**Version:** 1.8
+**Version:** 1.9
 **Estado:** Aprobado
-**Fecha:** 2026-10-31
+**Fecha:** 2026-11-08
+
+**Cambio v1.8 → v1.9 (2026-11-08):** consolidacion 52 → 43 por solapamiento y ruteo, aprobada por el CTO (G0). Siete skills se fusionan en su sucesora (`typescript-pro`, `playwright-skill`, `nextjs-app-router-patterns`, `senior-ui-systems-designer`, `turborepo-caching`, `subagent-driven-development` y `writing-skills`; ver [Skills fusionadas → sucesora](#skills-fusionadas--sucesora)), `finishing-a-development-branch` se da de baja (el repo trabaja solo en `main`; la sustituye `iwana-checkpoint-commit`) y `ui-ux-pro-max` pasa a hold. Las 43 descripciones se reescriben con el formato «Usar cuando / No usar para», las invariantes de tenancy, PII y pnpm se citan desde `AGENTS.md` en vez de repetirse, y `iwana-tenant-migration` pasa a ser invocable por el modelo. `coreCount` pasa de 52 a 43; `specializedOnDemand` de MANIFEST queda reconciliado con este indice. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-CONSOLIDACION-v1.0.md` y `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md`.
 
 **Cambio v1.7 → v1.8 (2026-10-31):** alta de una skill propia del repo (tercera pasada de `claude-code-setup`): `iwana-checkpoint-commit` (flujo de trabajo; solo la invoca el usuario). Empaqueta las reglas 2, 4 enmendada, 4-ter y 7 de `docs/prompts/PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v1.0.md`: verificar exactamente el índice con `stash --keep-index` y las exclusiones de `next-env.d.ts`, respaldar con SHA-256 los archivos parcialmente en el índice y revisar la corrida de CI de cada push. Nace de cinco incidentes de commit y push entre el 2026-10-17 y el 2026-10-31; el prompt sigue prevaleciendo. `coreCount` pasa de 51 a 52. Trazabilidad en `docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md` y `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md`.
 
@@ -34,14 +36,23 @@ Estados admitidos:
 
 `CLAUDE.md` es superficie activa (reactivada 2026-07-09) y aplica el mismo catalogo; desde ADR-092 (2026-10-09) Claude Code lo descubre via los punteros generados en `.claude/skills/` (`pnpm sync:skills`), que remiten al `SKILL.md` de este directorio sin copiar su contenido. `.opencode/` participa como configuracion cliente activa de OpenCode, pero no sustituye la precedencia documental del repo. Codex y Claude Code comparten la misma gobernanza via `AGENTS.md` y `.github/copilot-instructions.md`.
 
+## Reglas de activacion
+
+1. **Una primaria por intencion.** Una complementaria solo se suma si la columna de alcance de la primaria la nombra.
+2. **Invariantes en un solo lugar.** Tenancy, PII, stack y pnpm viven en `AGENTS.md`; cada skill las cita en una linea y no las repite.
+3. **Desempate por artefacto.** `migrations/tenant/` → `iwana-tenant-migration`; `e2e/` → `e2e-testing-patterns`; `turbo.json` → `monorepo-architect`; `packages/ui/` → `core-components`.
+4. **Desempate por verbo.** Escribir codigo → skill de implementacion; revisar o auditar → skill de auditoria mas subagente revisor; proponer o disenar → skill de diseno. Una tarea no carga dos modos a la vez.
+5. **Formato de descripcion.** «Usar cuando…» mas «No usar para… → otra skill». Variantes admitidas: «Usar al…» en lugar de «Usar cuando…», y «No usar con/sin…» cuando la exclusion es una condicion (plan escrito, peticion expresa) y no otra skill; en ese caso la redireccion es opcional.
+
 ## Skills core activas
+
+43 skills. La lista de cada prioridad coincide con `usagePriority` de `MANIFEST.json`, y cada dominio con `core`.
 
 ### Prioridad de uso
 
 #### Primera linea
 
 - nestjs-expert
-- nextjs-app-router-patterns
 - frontend-dev-guidelines
 - testing-patterns
 - monorepo-architect
@@ -59,7 +70,6 @@ Estados admitidos:
 - openapi-spec-generation
 - security-auditor
 - typescript-expert
-- typescript-pro
 
 #### Especializadas por necesidad
 
@@ -68,24 +78,29 @@ Estados admitidos:
 - i18n-localization
 - mermaid-expert
 - observability-engineer
-- playwright-skill
-- senior-ui-systems-designer
 - tailwind-patterns
 - test-driven-development
 - wcag-audit-patterns
-- turborepo-caching
 - database-migration
 - e2e-testing-patterns
 - codebase-cleanup-deps-audit
 - iwana-identity-ui-review
 - system-vocabulary-review
-- ui-ux-pro-max
 - iwana-tenant-migration
 - iwana-test-evidence
 - iwana-cierre-fase
 - iwana-matriz-motivos
 - iwana-queue-inspect
 - iwana-checkpoint-commit
+- dispatching-parallel-agents
+- executing-plans
+- receiving-code-review
+- requesting-code-review
+- systematic-debugging
+- verification-before-completion
+- writing-plans
+- brainstorming
+- skill-creator
 
 ### Arquitectura y gobierno
 
@@ -94,7 +109,6 @@ Estados admitidos:
 - docs-architect
 - mermaid-expert
 - monorepo-architect
-- turborepo-caching
 
 ### Backend y plataforma
 
@@ -111,7 +125,6 @@ Estados admitidos:
 - postgresql
 - security-auditor
 - typescript-expert
-- typescript-pro
 
 ### Frontend y accesibilidad
 
@@ -120,11 +133,8 @@ Estados admitidos:
 - frontend-security-coder
 - i18n-localization
 - iwana-identity-ui-review
-- nextjs-app-router-patterns
-- senior-ui-systems-designer
 - system-vocabulary-review
 - tailwind-patterns
-- ui-ux-pro-max
 - wcag-audit-patterns
 
 ### Testing
@@ -132,7 +142,6 @@ Estados admitidos:
 - e2e-testing-patterns
 - iwana-matriz-motivos
 - iwana-test-evidence
-- playwright-skill
 - test-driven-development
 - testing-patterns
 
@@ -141,17 +150,14 @@ Estados admitidos:
 - brainstorming
 - dispatching-parallel-agents
 - executing-plans
-- finishing-a-development-branch
 - iwana-checkpoint-commit
 - iwana-cierre-fase
 - receiving-code-review
 - requesting-code-review
 - skill-creator
-- subagent-driven-development
 - systematic-debugging
 - verification-before-completion
 - writing-plans
-- writing-skills
 
 ### Mantenimiento y dependencias
 
@@ -173,11 +179,11 @@ Claude Code recibe skills que **no viven en este repo**: plugins instalados en l
 
 | Skill externa | Disparador en este repo | Prevalece | Subagente / modo | Restriccion |
 | --- | --- | --- | --- | --- |
-| `anthropic-skills:built-in-browser` | Antes del primer uso del navegador integrado para evidencia visual de `apps/portal` o `apps/web` (cierre de modulo, verificacion de UI en el dev server) | `playwright-skill` para E2E automatizado | `fe-platform`, `sr-qa` | Las sesiones del navegador son del usuario: no cerrar sesion ni cambiar credenciales |
+| `anthropic-skills:built-in-browser` | Antes del primer uso del navegador integrado para evidencia visual de `apps/portal` o `apps/web` (cierre de modulo, verificacion de UI en el dev server) | `e2e-testing-patterns` para E2E automatizado | `fe-platform`, `sr-qa` | Las sesiones del navegador son del usuario: no cerrar sesion ni cambiar credenciales |
 | `anthropic-skills:chrome-browser` | Solo cuando el usuario pide expresamente su Chrome real | `anthropic-skills:built-in-browser` (por defecto) | `sr-qa` | No es el navegador por defecto; nunca credenciales reales fuera de entornos de prueba |
 | `pdf-viewer:view-pdf` (comandos `open`, `annotate`) | Revisar visualmente un PDF generado por el sistema (contratos, facturas, D-PDF) y marcar defectos con el usuario | `testing-patterns` (la asercion automatizada sigue siendo el gate) | `sr-qa` | `fill-form` y `sign` quedan fuera: no se firman ni rellenan documentos en nombre de nadie |
 | `anthropic-skills:pdf` | Extraer texto o tablas de un PDF generado para contrastarlo con el contrato de datos, o leer un PDF normativo aportado por el usuario | `testing-patterns` | `sr-qa`, `data-eng` | Datos personales del PDF: solo en el chat, nunca en logs ni en informes |
-| `modern-web-guidance:modern-web-guidance` | Al implementar una API de plataforma del navegador que el catalogo no cubre: `<dialog>`, popover, anchor positioning, container queries, `:has()`, View Transitions, scroll-driven animations, INP/LCP | `frontend-dev-guidelines`, `nextjs-app-router-patterns`, `core-components`, `tailwind-patterns` | `fe-platform` | Ver «Restriccion de `modern-web-guidance`» abajo |
+| `modern-web-guidance:modern-web-guidance` | Al implementar una API de plataforma del navegador que el catalogo no cubre: `<dialog>`, popover, anchor positioning, container queries, `:has()`, View Transitions, scroll-driven animations, INP/LCP | `frontend-dev-guidelines`, `core-components`, `tailwind-patterns` | `fe-platform` | Ver «Restriccion de `modern-web-guidance`» abajo |
 | `design:ux-copy` | Estructura de mensajes de error, estados vacios, confirmaciones destructivas y CTA | `system-vocabulary-review` (vocabulario, español, sentence case, sin enums crudos) | `prod-ux`, `fe-platform` | Sus ejemplos estan en ingles; se aplica el patron, nunca el texto |
 | `design:design-handoff` | Al redactar la seccion de estados, breakpoints y casos borde de una spec en `docs/specs/` para `fe-platform` | `iwana-identity-ui-review`, `core-components`; formato de `docs/specs/` | `prod-ux`, `ds-owner` | No inventa tokens: solo cita los de `packages/ui` |
 | `design:user-research` | Plan de entrevistas, guion de prueba de usabilidad o encuesta con operadores ISP | — (sin equivalente en el catalogo) | `prod-ux` | Datos de participantes bajo Ley 1581: anonimizar antes de versionar |
@@ -187,7 +193,7 @@ Claude Code recibe skills que **no viven en este repo**: plugins instalados en l
 | `engineering:incident-response` | Incidente en un entorno desplegado: triage, comunicacion y postmortem | `observability-engineer` | `plat-ops`, `sec-eng` | **Latente** hasta que exista un entorno desplegado; un incidente con datos personales escala a `sec-eng` |
 | `anthropic-skills:deep-research` | Investigacion multi-fuente para un PRD, HLD o ADR: normativa (Ley 1581, Ley 2573, DIAN, CRC), comparativa de proveedores o tecnologias | `architecture-decision-records`, `docs-architect` | AI-EM-ARCH, `data-eng` | Coordina subagentes de investigacion: solo cuando el usuario la pide. El resultado alimenta el artefacto del repo; no lo sustituye |
 | `anthropic-skills:prompt-engineering-patterns` | Redactar o depurar un `PROMPT-*` cuando un encargo se ejecuto mal por ambiguedad del prompt | `iwana-cierre-fase`, `docs/prompts/PROMPT-OPERATIVO-*` | AI-EM-ARCH | El formato y la carpeta los fija `AGENTS.md` → Documentation Rules |
-| `claude-code-setup:claude-automation-recommender` | Revisar las automatizaciones de Claude Code del repo (hooks, subagentes, skills, MCP) | `writing-skills`, `skill-creator` (del repo) | AI-EM-ARCH | Toda recomendacion aprobada se registra en `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md` |
+| `claude-code-setup:claude-automation-recommender` | Revisar las automatizaciones de Claude Code del repo (hooks, subagentes, skills, MCP) | `skill-creator` (del repo) | AI-EM-ARCH | Toda recomendacion aprobada se registra en `docs/informes/INFORME-CLAUDE-CODE-AUTOMATIZACIONES-v1.0.md` |
 
 #### Restriccion de `modern-web-guidance`
 
@@ -195,7 +201,7 @@ Su `SKILL.md` se declara obligatoria «primero» para todo HTML/CSS/JS de client
 
 - **Primero, las guias locales.** El plugin trae 218 guias en markdown en `guides/` (dentro de `~/.claude/plugins/synced/<cuenta>/modern-web-guidance/skills/modern-web-guidance/`); se buscan con Grep y se leen sin red.
 - **`npx -y modern-web-guidance@latest` descarga y ejecuta codigo de npm sin version fijada.** Solo con aprobacion explicita del usuario en el chat. No se agrega como dependencia ni como script del repo.
-- Next.js resuelve imagenes, fuentes y carga de scripts: una guia que lo contradiga cede ante `nextjs-app-router-patterns`.
+- Next.js resuelve imagenes, fuentes y carga de scripts: una guia que lo contradiga cede ante `frontend-dev-guidelines`.
 
 ### Fuera del dispatch
 
@@ -245,6 +251,7 @@ Estas skills fueron revisadas y se conservan archivadas por valor potencial, per
 - nx-workspace-patterns
 - nodejs-best-practices
 - context7-auto-research
+- ui-ux-pro-max — retirada del disco el 2026-11-08 (G0-1). Declaraba como unico stack React Native, pedia persistir un design system propio que choca con `ds-owner` y `packages/ui`, y no mencionaba iWana. Reincorporarla exige la politica de admision estricta. Procedencia upstream (antes en `skills-lock.json`): `nextlevelbuilder/ui-ux-pro-max-skill`, `sourceType` github, `skillPath` `.claude/skills/ui-ux-pro-max/SKILL.md`, `computedHash` `0a413bf988d06481f69bb81df2070741c3ba12dd9f1be2706d57f259c905992d`. No se extrajeron sus reglas de graficos (no se pidio conservarlas).
 
 ## Politica de restauracion
 
@@ -278,6 +285,20 @@ Toda alta o restauracion debe cumplir ademas estas reglas operativas:
 
 Sin entradas vigentes tras la restauracion ejecutada el 2026-03-12.
 
+## Skills fusionadas → sucesora
+
+Las siete skills de abajo salieron del catalogo y del disco el 2026-11-08. Su contenido unico paso a la sucesora; los planes y prompts historicos que las citan se leen con esta tabla, sin reescribirlos.
+
+| Skill absorbida | Sucesora | Que se conservo y donde |
+| --- | --- | --- |
+| `typescript-pro` | `typescript-expert` | Areas de foco y checklist de tipos → seccion «Tipado avanzado» |
+| `playwright-skill` | `e2e-testing-patterns` | Estructura de test, casos prioritarios, depuracion en VS Code/Windows y datos y seguridad; `API_REFERENCE.md` → `references/playwright-skill/`. Se retiraron `run.js`, `package.json` y `lib/` (ejecutaban `npm install`) |
+| `nextjs-app-router-patterns` | `frontend-dev-guidelines` | Checklist y heuristica de revision → `references/app-router.md`; tenant y permisos en la carga de datos → cuerpo |
+| `senior-ui-systems-designer` | `iwana-identity-ui-review` | Metodo de 2-3 direcciones y heuristicas por tipo de pantalla → modo «direccion» en `references/direccion-visual.md` |
+| `turborepo-caching` | `monorepo-architect` | Regla `tasks`/`pipeline`, forma del pipeline y depuracion de cache misses → seccion «Turborepo» |
+| `subagent-driven-development` | `executing-plans` | Flujo con subagentes, estados del implementador y plantillas de prompt → modo «con subagentes» y `references/`. El subagente ya no commitea |
+| `writing-skills` | `skill-creator` | Anti-racionalizacion y CSO → `references/writing-skills/`. Se descartaron los niveles AWS/Convex y la cita a `opencode-expert` |
+
 ## Skills dadas de baja
 
 Una baja no es un archivado: la skill sale del catalogo y del disco porque **no tiene caso de uso en este repo**, no porque se reserve para despues. Reincorporarla exige la politica de admision estricta de este indice, igual que un alta nueva.
@@ -285,6 +306,7 @@ Una baja no es un archivado: la skill sale del catalogo y del disco porque **no 
 | Skill | Fecha | Motivo |
 | --- | --- | --- |
 | `using-git-worktrees` | 2026-09-13 | El proyecto trabaja siempre sobre `main`, sin ramas de trabajo paralelas ni worktrees. Sin caso de uso recurrente y verificable en el repo. |
+| `finishing-a-development-branch` | 2026-11-08 | Describia merge, `git checkout`, `branch -d` y limpieza de worktrees en un repo que trabaja solo en `main`. La sustituye `iwana-checkpoint-commit` (G0-2). |
 
 ## Notas operativas
 
@@ -295,4 +317,4 @@ Una baja no es un archivado: la skill sale del catalogo y del disco porque **no 
 - Toda modificacion sustancial del catalogo debe reflejarse en docs/informes/INFORME-SISTEMA-SKILLS-AUDITORIA-v1.0.md.
 - Toda skill activa debe mantener frontmatter valido con `name` y `description` como minimo.
 - `skills-lock.json` puede limitar sets operativos en clientes que lo soporten, pero no reemplaza el catalogo fuente del workspace para OpenCode o Codex.
-- `skills-lock.json` vive en la raiz del repo y registra procedencia upstream (GitHub) para `skill-creator` y `ui-ux-pro-max`; el `skillPath` de esas entradas es la ruta dentro del repo upstream, no un directorio local. La copia gobernada de ambas vive en `.agents/skills/`.
+- `skills-lock.json` vive en la raiz del repo y registra procedencia upstream (GitHub) para `skill-creator`; el `skillPath` de esa entrada es la ruta dentro del repo upstream, no un directorio local. La copia gobernada vive en `.agents/skills/`. La procedencia de `ui-ux-pro-max`, retirada, quedo en su fila de «Skills en hold».

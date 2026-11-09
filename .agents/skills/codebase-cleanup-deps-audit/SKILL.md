@@ -1,6 +1,6 @@
 ---
 name: codebase-cleanup-deps-audit
-description: Auditoría de dependencias pnpm para iWana neXt — vulnerabilidades CVE, licencias, paquetes desactualizados, supply chain. Usar antes de releases o cuando pnpm audit reporte issues.
+description: "Auditoría de dependencias pnpm: CVE, licencias, paquetes desactualizados y cadena de suministro. Usar cuando se auditan dependencias, antes de un release o cuando pnpm audit reporta problemas. No usar para configurar el workspace o los pipelines (→ monorepo-architect)."
 ---
 
 # Codebase & Dependency Audit — iWana neXt

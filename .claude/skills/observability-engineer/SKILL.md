@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/observability-engineer/SKILL.md — no editar a mano.
 name: observability-engineer
-description: Observabilidad para iWana neXt con logs utiles, metricas accionables, trazabilidad operativa y diseno gradual de monitoreo alineado al stack real del repo.
+description: "Observabilidad: logs útiles, métricas accionables, healthchecks y trazabilidad operativa. Usar cuando se diseña o cambia la telemetría de un servicio. No usar para depurar un bug concreto (→ systematic-debugging)."
 ---
 
 # observability-engineer

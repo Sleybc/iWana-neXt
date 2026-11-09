@@ -1,6 +1,6 @@
 ---
 name: testing-patterns
-description: Patrones de testing para iWana neXt con Jest, Supertest y Playwright. Use cuando se escriban pruebas unitarias, de integracion o E2E alineadas al stack real del proyecto.
+description: "Pruebas unitarias y de integración con Jest y Supertest: pirámide, estructura y cobertura. Usar cuando se escribe un spec que no es E2E. No usar para Playwright (→ e2e-testing-patterns) ni para contar pruebas verdes (→ iwana-test-evidence)."
 ---
 
 # Testing Patterns
@@ -99,18 +99,7 @@ describe('CustomerStatusBadge', () => {
 
 ### E2E con Playwright
 
-```ts
-import { test, expect } from "@playwright/test";
-
-test("user can sign in and open dashboard", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel("Correo").fill("ops@example.test");
-  await page.getByLabel("Contrasena").fill("SecurePass123!");
-  await page.getByRole("button", { name: "Ingresar" }).click();
-
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-});
-```
+Los tests E2E se escriben con `e2e-testing-patterns` (selectores, storageState, tenant, flaky, sharding).
 
 ## Mocking
 
@@ -141,7 +130,7 @@ pnpm exec playwright test
 - `test-driven-development` para disciplina red-green-refactor
 - `nestjs-expert` para pruebas de modulos y controladores
 - `frontend-dev-guidelines` para componentes y pantallas web
-- `playwright-skill` para automatizacion y validacion de flujos reales
+- `e2e-testing-patterns` para automatizacion y validacion de flujos reales
 
 ## Umbrales de cobertura del proyecto
 

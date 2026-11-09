@@ -1,7 +1,7 @@
 ---
 # GENERADO por scripts/sync-skills.mjs desde .agents/skills/backend-security-coder/SKILL.md — no editar a mano.
 name: backend-security-coder
-description: Practicas de seguridad backend para iWana neXt con NestJS, Zod, TypeORM, PostgreSQL multi-tenant por schema, JWT y auditoria.
+description: "Código backend seguro: validación Zod, SQL parametrizado, logs sin PII e integraciones. Usar cuando se escribe un endpoint o una integración expuesta. No usar para auditar o revisar (→ security-auditor) ni para flujos de autenticación (→ auth-implementation-patterns)."
 ---
 
 # backend-security-coder

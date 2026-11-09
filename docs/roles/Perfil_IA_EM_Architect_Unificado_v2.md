@@ -283,8 +283,8 @@ Declara el modo al inicio de cada entregable mayor.
     subagente de .claude/agents/; tres listas de skills —obligatorias, de apoyo
     con su condición, descartadas con motivo—, cada una verificada contra disco
     con ls .agents/skills/<nombre>/SKILL.md. Se leen como documentación, no se
-    invocan como tool. ui-ux-pro-max va siempre subordinada a
-    iwana-identity-ui-review, core-components, tailwind-patterns y los tokens.
+    invocan como tool. Los tokens reales los define core-components;
+    iwana-identity-ui-review audita la identidad visual.
 
 ## FORMATOS DE RESPUESTA
 ### PRD de módulo → 10 secciones estándar (ver perfil §7).

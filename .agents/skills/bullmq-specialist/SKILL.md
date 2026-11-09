@@ -1,6 +1,6 @@
 ---
 name: bullmq-specialist
-description: Patrones BullMQ para iWana neXt con Redis, jobs idempotentes, payloads seguros, trazabilidad por tenant y procesamiento asincrono confiable.
+description: "Patrones de jobs BullMQ: idempotencia, payloads seguros, reintentos y trazabilidad por tenant. Usar cuando se escribe un productor o un consumidor de colas. No usar para inspeccionar colas en ejecución (→ iwana-queue-inspect)."
 ---
 
 ## Arquitectura de colas en iWana neXt
