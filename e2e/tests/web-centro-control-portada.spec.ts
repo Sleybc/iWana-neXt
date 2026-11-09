@@ -4,9 +4,10 @@
  */
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceDir } from './helpers/evidence';
 import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
 
-const EVIDENCE_DIR = path.join(process.cwd(), 'docs/quality/evidence-web-centro-control-portada');
+const EVIDENCE_DIR = evidenceDir('quality/evidence-web-centro-control-portada');
 
 const SIGNAL_CHIP_LABELS = [
   'Activas',

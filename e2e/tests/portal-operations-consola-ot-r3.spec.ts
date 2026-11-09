@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { seedSession, setupMocks } from './helpers/consola-ot-fixtures';
+import { evidencePath } from './helpers/evidence';
 
 // R3 — consumo y custodia bajo demanda de la consola de OT (HTTP simulado).
 //
@@ -7,11 +8,8 @@ import { seedSession, setupMocks } from './helpers/consola-ot-fixtures';
 // verifica en el navegador es el momento de la consulta (la custodia solo al abrir
 // «Registrar equipo instalado»), el filtro por categoría con varias páginas, los
 // estados de error y vacío, y que el acto no mezcla disponibilidad con historial.
-// Las capturas de `docs/quality/mod11-ola2b/` solo se escriben con R3_EVIDENCIA=1 para
-// que una corrida normal no reescriba archivos versionados.
-
-const EVIDENCE_DIR = 'docs/quality/mod11-ola2b';
-const captureEvidence = process.env.R3_EVIDENCIA === '1';
+// Las capturas se guardan en test-results/evidencia por defecto. E2E_EVIDENCIA=1
+// las guarda en `docs/quality/mod11-ola2b/`.
 
 const SNAPSHOT = {
   id: 'tpl-v2',
@@ -247,7 +245,7 @@ async function mockR3(page: Page, options: { emptyCustody?: boolean } = {}): Pro
 }
 
 async function evidence(page: Page, name: string) {
-  if (captureEvidence) await page.screenshot({ path: `${EVIDENCE_DIR}/${name}.png` });
+  await page.screenshot({ path: evidencePath('quality/mod11-ola2b', `${name}.png`) });
 }
 
 test.describe('R3 consumo y custodia bajo demanda (HTTP simulado)', () => {

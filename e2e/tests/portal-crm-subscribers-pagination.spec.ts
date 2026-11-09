@@ -8,9 +8,9 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { mockEffectivePermissions } from './helpers/effective-permissions';
+import { evidenceDir } from './helpers/evidence';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TOKEN =
@@ -296,8 +296,7 @@ async function setupMocks(page: Page) {
   });
 }
 
-const evidenceDir = path.join(process.cwd(), 'docs/informes/evidence/adr065-ola4-subscribers');
-mkdirSync(evidenceDir, { recursive: true });
+const EVIDENCE_DIR = evidenceDir('informes/evidence/adr065-ola4-subscribers');
 
 /**
  * Conteo visible del pie (CA-PAG v2-08).
@@ -326,7 +325,7 @@ function subscriberTextInMobileList(page: Page, text: string) {
  * aserciones; un fallo transitorio no debe tumbar el recorrido.
  */
 async function captureEvidence(page: Page, filename: string, maxAttempts = 3): Promise<void> {
-  const target = path.join(evidenceDir, filename);
+  const target = path.join(EVIDENCE_DIR, filename);
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await page.screenshot({ path: target, fullPage: true });
@@ -341,10 +340,6 @@ async function captureEvidence(page: Page, filename: string, maxAttempts = 3): P
 }
 
 test.describe('ADR-065 Ola 4 — Suscriptores paginación numerada', () => {
-  test.beforeAll(() => {
-    mkdirSync(evidenceDir, { recursive: true });
-  });
-
   test('recorrido página · tamaño · filtro · deep-link', async ({ page }) => {
     await setupMocks(page);
     await seedSession(page);

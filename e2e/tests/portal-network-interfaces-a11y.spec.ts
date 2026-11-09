@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { mkdir } from 'node:fs/promises';
 
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type Route } from '@playwright/test';
@@ -17,6 +16,7 @@ import type {
   RouterListDto,
   ServiceProvisioningDto,
 } from '@iwana/shared';
+import { evidenceDir } from './helpers/evidence';
 import { seedPortalSession } from './helpers/portal-session';
 
 const TENANT_SLUG = 'tenant-mod13-interface-e2e';
@@ -26,7 +26,7 @@ const INTERFACE_ID = 'interface-mod13-e2e';
 const NETWORK_ID = 'network-mod13-e2e';
 const ORDER_ID = 'order-mod13-e2e';
 const EVIDENCE_ID = 'evidence-mod13-e2e';
-const EVIDENCE_DIR = path.join(process.cwd(), 'docs/quality/evidence-mod13-o3-q');
+const EVIDENCE_DIR = evidenceDir('quality/evidence-mod13-o3-q');
 const NOW = '2026-10-27T12:00:00.000Z';
 
 function syntheticToken(): string {
@@ -537,7 +537,6 @@ test.describe('MOD13 · interfaces IPv4, pausa de reservas y accesibilidad', () 
           page.on('pageerror', (error) => pageErrors.push(error.message));
 
           const dialog = await openRouterDetail(page, theme);
-          await mkdir(EVIDENCE_DIR, { recursive: true });
           await page.screenshot({
             path: path.join(EVIDENCE_DIR, `routers-interfaces-${viewport.name}-${theme}.png`),
             fullPage: false,

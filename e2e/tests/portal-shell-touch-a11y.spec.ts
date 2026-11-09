@@ -4,6 +4,7 @@
  */
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceDir } from './helpers/evidence';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -23,7 +24,7 @@ const MOCK_ACCESS_TOKEN =
   ) +
   '.fakesig';
 
-const EVIDENCE_DIR = path.join(process.cwd(), 'docs/quality/evidence-portal-shell-touch');
+const EVIDENCE_DIR = evidenceDir('quality/evidence-portal-shell-touch');
 
 async function setupShellMocks(page: Page) {
   await page.route('**/api/v1/**', async (route) => {

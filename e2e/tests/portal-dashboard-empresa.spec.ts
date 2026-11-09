@@ -15,22 +15,14 @@
  */
 
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mockEffectivePermissions } from './helpers/effective-permissions';
+import { evidenceDir } from './helpers/evidence';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
-const EVIDENCE_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  'docs',
-  'informes',
-  'evidencias',
-  'portal-dashboard-recomposicion',
-);
+const EVIDENCE_DIR = evidenceDir('informes/evidencias/portal-dashboard-recomposicion');
 
 type TenantRole = 'ADMIN' | 'NOC' | 'SALES' | 'TECHNICIAN';
 

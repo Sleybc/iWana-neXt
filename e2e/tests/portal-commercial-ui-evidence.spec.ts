@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';
 import { mockEffectivePermissions } from './helpers/effective-permissions';
+import { evidenceDir } from './helpers/evidence';
 import { seedPortalSession } from './helpers/portal-session';
 
 const MOCK_TENANT_SLUG = 'isp-demo';
@@ -32,13 +32,7 @@ const MOCK_ACCESS_TOKEN =
   ) +
   '.fakesig';
 
-const EVIDENCE_DIR = path.join(
-  process.cwd(),
-  'docs',
-  'informes',
-  'evidence',
-  'portal-commercial-ui-2026-07-11',
-);
+const EVIDENCE_DIR = evidenceDir('informes/evidence/portal-commercial-ui-2026-07-11');
 
 async function setAuthSession(page: Page) {
   await seedPortalSession(page, { token: MOCK_ACCESS_TOKEN, tenantSlug: MOCK_TENANT_SLUG });
@@ -350,9 +344,6 @@ async function captureCommercialEvidence(page: Page, viewport: 'desktop' | 'mobi
     await expect(
       page.getByRole('heading', { name: shot.heading, exact: true }).first(),
     ).toBeVisible();
-    if (!existsSync(EVIDENCE_DIR)) {
-      mkdirSync(EVIDENCE_DIR, { recursive: true });
-    }
     await captureEvidenceScreenshot(page, shot.filename);
   }
 }
@@ -382,12 +373,6 @@ async function captureEvidenceScreenshot(
 }
 
 test.describe('Portal Comercial — evidencia visual UI alineada', () => {
-  test.beforeAll(() => {
-    if (!existsSync(EVIDENCE_DIR)) {
-      mkdirSync(EVIDENCE_DIR, { recursive: true });
-    }
-  });
-
   test.beforeEach(async ({ page }) => {
     await setupCommercialEvidenceMocks(page);
     await setAuthSession(page);

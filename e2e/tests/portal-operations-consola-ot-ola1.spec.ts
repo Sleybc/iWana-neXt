@@ -17,6 +17,7 @@
 import { expect, test } from '@playwright/test';
 
 import { setupMocks, seedSession } from './helpers/consola-ot-fixtures';
+import { evidencePath } from './helpers/evidence';
 
 test.describe('Consola OT OLA1 — evidencia en navegador OTE-20260828-001', () => {
   test('IN_PROGRESS: checklist con estado real y sin alerta falsa (+ captura)', async ({
@@ -50,7 +51,7 @@ test.describe('Consola OT OLA1 — evidencia en navegador OTE-20260828-001', () 
     // Evidencia en navegador (stop/go C5): captura del drawer con el checklist.
     await checklist.scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: 'docs/quality/evidencia-OTE-20260828-001.png',
+      path: evidencePath('quality', 'evidencia-OTE-20260828-001.png'),
     });
   });
 

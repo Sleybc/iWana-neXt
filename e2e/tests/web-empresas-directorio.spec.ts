@@ -5,9 +5,10 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { evidenceDir } from './helpers/evidence';
 import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
 
-const EVIDENCE_DIR = path.join(process.cwd(), 'docs/quality/evidence-web-empresas-directorio');
+const EVIDENCE_DIR = evidenceDir('quality/evidence-web-empresas-directorio');
 
 const DIRECTORY_CHIPS = ['Activas', 'En configuración', 'Requieren atención'] as const;
 

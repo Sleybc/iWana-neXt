@@ -6,9 +6,10 @@
  */
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceDir } from './helpers/evidence';
 import { setupWebApiMocks, submitPlatformLogin } from './helpers/web-api-mocks';
 
-const EVIDENCE_DIR = path.join(process.cwd(), 'docs/quality/evidence-web-shell-sidebar-touch');
+const EVIDENCE_DIR = evidenceDir('quality/evidence-web-shell-sidebar-touch');
 
 async function loginToDashboard(page: Page) {
   await page.goto('/auth/login');

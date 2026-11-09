@@ -5,9 +5,10 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { evidenceDir } from './helpers/evidence';
 import { loginAsPlatformAdmin, setupWebApiMocks } from './helpers/web-api-mocks';
 
-const EVIDENCE_DIR = path.join(process.cwd(), 'docs/quality/evidence-web-audit-logs');
+const EVIDENCE_DIR = evidenceDir('quality/evidence-web-audit-logs');
 
 async function openHistorialViaSidebar(page: Page) {
   await loginAsPlatformAdmin(page);
