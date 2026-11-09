@@ -1,6 +1,6 @@
 # Informe de auditoría — Cruces y optimización del ecosistema de roles
 
-**Versión:** 1.7
+**Versión:** 1.8
 **Estado:** Cerrado. Remediación completa (olas 0 a 4), publicada con G6.5 ✅: Ola 1 en `75528631`; olas 2 y 4 y la corrección del cercado en el tren `965bf5e5` (§9.5). Pendiente externo: §7, con el CTO y Legal (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
 **Cambio v1.0 → v1.1 (2026-11-08):** el CTO aprueba G0-1 a G0-4 en bloque, con las recomendaciones de §8
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 aplicada sobre 9 perfiles y el anexo (§9)
@@ -8,6 +8,7 @@
 **Cambio v1.3 → v1.4 (2026-11-09):** el CTO aprueba G0-5 a G0-11 en bloque, con las recomendaciones de §10.6. §10.3 y §10.5 no cambian: siguen siendo el contrato congelado de las olas 2 y 4
 **Cambio v1.4 → v1.5 (2026-11-09):** §9.3 registra la Ola 2 (protocolo v1.10 + espejos, G1 ✅, G3 y veredicto de `docs-governance`); el Estado queda al día
 **Cambio v1.5 → v1.6 (2026-11-09):** §9.4 registra la Ola 4 (prompts compactos de §10.5, G1′ ✅ con T8-R, G3′ y veredicto de `docs-governance`); el Estado declara la remediación completa
+**Cambio v1.7 → v1.8 (2026-11-09):** §7 verifica contra el repo la fila de AES-256/TLS 1.3: AES-256-GCM y TLS 1.3 en el borde confirmados; el TLS interno entre servicios no tiene evidencia. Las filas de ARCO y jornada siguen con el CTO y Legal
 **Cambio v1.6 → v1.7 (2026-11-09):** §9.5 registra el G6.5 del tren `965bf5e5` (CI 42678231774 y E2E 42678231542 en verde), que cubre las olas 2 y 4 y la corrección del cercado (`84a0ab65`); el informe pasa a Cerrado, con §7 como único pendiente externo
 **Fecha:** 2026-11-09
 **Modo activo:** Architect + auditor (AI-EM-ARCH); solo lectura sobre `docs/roles/`
@@ -118,7 +119,7 @@ No son hallazgos: son afirmaciones sin fuente verificada en el repo.
 | --- | --- | --- |
 | «ARCO ≤15 días» | `SEC:133`, `SEC:368` | Requiere verificación con fuente oficial |
 | «Jornada 42h» | `ANX:52` | Requiere verificación con fuente oficial |
-| AES-256 en reposo y TLS 1.3 | `SEC:64`, `SEC:107-108` | No figuran en `Stack_Tecnologico.md`; requieren verificación contra stack o ADR |
+| AES-256 en reposo y TLS 1.3 | `SEC:64`, `SEC:107-108` | **Verificado en parte (2026-11-09).** AES-256 en reposo: AES-256-GCM en [ADR-058](../adrs/ADR-058-Rotacion-Clave-Cifrado-PII-MFA.md) (aprobado) y en `apps/api/src/common/crypto/aes-gcm.util.ts:221`. TLS 1.3 en el borde: `nginx/nginx.prod.conf:64` y `:161` (`ssl_protocols TLSv1.3`). **Sin evidencia:** TLS «interno entre servicios» (`SEC` §5.3); ni la configuración de la API ni `docker-compose.prod.yml` activan TLS hacia PostgreSQL o Redis. El marcador del perfil se mantiene hasta que la Ola de SEC lo acote al borde o se implemente |
 | JWT RS256 | `SEC:65` | **Verificado** en `apps/api/src/modules/auth/auth.module.ts:52` |
 
 Un texto escrito por la IA no constituye un dictamen jurídico: el cierre de las dos primeras filas corresponde al CTO, que consulta a Legal (`PROT:56-57`).
