@@ -92,3 +92,4 @@ El prompt de checkpoint del 2026-10-31 (`PROMPT-TRANSVERSAL-CHECKPOINT-COMMITS-v
 | P2 | Ejecutar la Ola 3 (jobs paralelos) cuando P1 esté cerrado y `main` en verde | `plat-ops` |
 | P3 | Medición a una semana: corridas por día, commits de solo registro (meta 0), proporción de commits `docs` y ruta crítica | AI-EM-ARCH |
 | P4 | Arreglo de la prueba inestable `AssuranceClient.spec.tsx`, sin commitear en otra sesión | Dueño de esa sesión |
+| P5 | Que las 11 specs E2E que escriben capturas en `docs/` solo lo hagan con `E2E_EVIDENCIA=1`. El 2026-11-09, 28 de las 38 rutas de `docs/` con cambios en el árbol eran PNG regenerados. [Spec](../specs/2026-11-09-e2e-evidencias-fuera-de-docs.md) aprobada por el usuario el 2026-11-09; launcher `PROMPT-E2E-EVIDENCIAS-FUERA-DE-DOCS-LAUNCH-v1.0` | `sr-qa` |
