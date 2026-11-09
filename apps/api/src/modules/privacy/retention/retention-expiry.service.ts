@@ -378,15 +378,10 @@ export class RetentionExpiryService {
       alreadyComplete: boolean;
       unreconciled: RetentionExpiryReason | null;
     }>;
-    prospectPortMissing: boolean;
   }> {
-    const listProspectDiscard = this.standingPort.listProspectDiscard?.bind(this.standingPort);
-    if (!listProspectDiscard) {
-      // Sin el puerto no se puede demostrar el descarte: fallo cerrado
-      // con PORT_UNAVAILABLE en el lote.
-      return { scanned: 0, eligible: [], prospectPortMissing: true };
-    }
-    const details: ProspectDiscardRow[] = await listProspectDiscard({ manager });
+    // B5: los puertos de standing son obligatorios (abstractos): se llaman
+    // directamente, sin guardas inalcanzables.
+    const details: ProspectDiscardRow[] = await this.standingPort.listProspectDiscard({ manager });
     const scanned = details.length;
     const years = await this.policyYears(manager, PROSPECT_RETENTION_CATEGORY);
     const eligible: Awaited<ReturnType<RetentionExpiryService['selectProspectos']>>['eligible'] =
@@ -396,15 +391,23 @@ export class RetentionExpiryService {
       // B4-R2 B-3: un DESCARTADO sin fecha de descarte verificable no se
       // salta en silencio ni se inventa la fecha: entra al lote, cuya
       // revalidación deja ATTENTION_REQUIRED con PROSPECT_UNRECONCILED.
-      const unreconciled: RetentionExpiryReason | null = detail.discardedAt
+      let unreconciled: RetentionExpiryReason | null = detail.discardedAt
         ? null
         : 'PROSPECT_UNRECONCILED';
       const eligibleOn = detail.discardedAt
         ? addCalendarMonths(toBogotaCivilDate(detail.discardedAt), years * 12)
         : today;
       if (eligibleOn > today) continue;
-      if (!unreconciled && (await this.hasProspectDuty(manager, detail.expedienteId, today)))
-        continue;
+      if (!unreconciled) {
+        try {
+          if (await this.hasProspectDuty(manager, detail.expedienteId, today)) continue;
+        } catch (error) {
+          // B5 P3: la selección no concilia: se sanea con el código del fallo
+          // (cubierto por el CHECK de la 179) y el lote deja ATTENTION_REQUIRED
+          // con su reason_code, igual que processProspecto vía fail().
+          unreconciled = this.toReasonCode(error);
+        }
+      }
       if (
         cursor &&
         (eligibleOn < cursor.eligibleOn ||
@@ -427,7 +430,7 @@ export class RetentionExpiryService {
           ? -1
           : 1,
     );
-    return { scanned, eligible, prospectPortMissing: false };
+    return { scanned, eligible };
   }
 
   private async selectSolicitudes(
@@ -576,16 +579,7 @@ export class RetentionExpiryService {
       failed: 0,
       reasons: {} as Partial<Record<RetentionExpiryReason, number>>,
     };
-    const { eligible, prospectPortMissing, scanned } = await this.selectProspectos(
-      manager,
-      today,
-      cursor,
-    );
-    if (prospectPortMissing) {
-      outcome.failed += scanned;
-      outcome.reasons['PORT_UNAVAILABLE'] = (outcome.reasons['PORT_UNAVAILABLE'] ?? 0) + scanned;
-      return outcome;
-    }
+    const { eligible } = await this.selectProspectos(manager, today, cursor);
     for (const item of eligible) {
       if (remaining.count <= 0) {
         outcome.nextCursor = {
@@ -596,6 +590,22 @@ export class RetentionExpiryService {
         return outcome;
       }
       if (item.alreadyComplete) continue;
+      if (item.unreconciled) {
+        // B5 P3: la selección no concilió: el lote deja ATTENTION_REQUIRED con
+        // su reason_code vía fail(), igual que las solicitudes sin cierre.
+        if (dryRun) continue;
+        const reason = await this.fail(
+          manager,
+          'TITULAR',
+          item.expedienteId,
+          null,
+          item.eligibleOn,
+          item.unreconciled,
+        );
+        outcome.failed += 1;
+        outcome.reasons[reason] = (outcome.reasons[reason] ?? 0) + 1;
+        continue;
+      }
       remaining.count -= 1;
       outcome.prospectos += 1;
       if (dryRun) continue;
@@ -866,17 +876,9 @@ export class RetentionExpiryService {
       );
     // B2-R3 B1: la revalidación pasa por el puerto CRM; el bloqueo FOR UPDATE
     // de la fila ya lo hace resolveProspectScope en el adaptador.
-    const revalidate = this.standingPort.findProspectDiscard?.bind(this.standingPort);
-    if (!revalidate)
-      return this.fail(
-        manager,
-        'TITULAR',
-        item.expedienteId,
-        null,
-        item.eligibleOn,
-        'PORT_UNAVAILABLE',
-      );
-    const current = (await revalidate([item.expedienteId], { manager }))[0];
+    const current = (
+      await this.standingPort.findProspectDiscard([item.expedienteId], { manager })
+    )[0];
     if (!current || !current.discardedAt) {
       return this.fail(
         manager,

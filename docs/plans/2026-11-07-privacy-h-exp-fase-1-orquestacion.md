@@ -151,6 +151,21 @@ Publicado en `81c9be55`. **G6.5 ⛔.** R4.1 ya pasa (339/0 en `b6b2c759`), pero 
 
 **G2 CI-PIIKEY ✅ (2026-11-08).** El diff toca solo las 4 specs, con 8 líneas cada una. `ConfigService` recibe `{ ...process.env, PII_HASH_KEY: randomBytes(32) }` y ninguna aserción depende del HMAC. El ejecutor reprodujo el rojo y el verde con `.env*` apartados y en un PostgreSQL desechable: rojo 14 de 27; verde 27 de 27; integración completa 82 suites pasan y 3 se omiten (la lista esperada), 569 pruebas pasan, 19 se omiten y 0 fallan. Otras suites con `new ConfigService()` (`text-erasure-scope`, `pqr-retention`) no llegan a `resolvePiiHashKey` porque pasan `cryptoKeys`. Re-verificación de AI-EM-ARCH en un PostgreSQL nuevo: 4/4 suites y 27/27 con `PII_HASH_KEY` vacía (dotenv no la sobrescribe y `resolvePiiHashKey` la trata como ausente) y `MFA_ENCRYPTION_KEY` efímera, como en `ci.yml:302`. El volumen `iwana_ci_piikey_vol` quedó para borrado manual, porque el hook bloquea `docker volume rm`.
 
+**G6.5 ✅ (2026-11-08).** Corrección publicada en `b48b2ba7`. CI 42548805100 terminó en `success` en sus 5 jobs: imágenes, citas ADR, Lint + Typecheck + Build + Unit tests, E2E R4.1 y E2E portal. La integración de la API dio 82 suites pasadas y 3 omitidas (la lista esperada); 569 pruebas pasadas, 19 omitidas y 0 fallos. E2E Web Admin Smoke 42548805121 terminó en `success`. H-EXP Fase 1 queda cerrada en construcción; sigue B5 (cierre documental).
+
+### 1.12 B5 (AI-EM-ARCH, 2026-11-08)
+
+Se lanza en paralelo: `sr-backend` corrige los dos P3 de §1.10, mientras AI-DOCS escribe el informe de cierre, el HLD v1.6 y la nueva versión del runbook. Cuando ambos terminen, revisa `docs-governance`. [Lanzador B5](../prompts/PROMPT-PRIVACY-H-EXP-FASE-1-B5-LAUNCH-v1.0.md).
+
+**G2 de B5-P3 ✅ (2026-11-09).** Sin `[BLOQUEO]` y sin tocar la 179: los códigos que produce `toReasonCode` ya están en el CHECK. Cambios:
+- Desaparecen las guardas `?.bind` de `retention-expiry.service.ts`, junto con el campo `prospectPortMissing`.
+- `selectProspectos` captura el fallo de `hasProspectDuty` y lo marca `unreconciled`. `runProspectos` escribe la fila `ATTENTION_REQUIRED` vía `fail()`; en dry-run no escribe y el preview la separa.
+
+Pruebas:
+- Suite nueva `retention-expiry-b5`, en schema efímero: sin la política `PQR_SOPORTES`, la corrida deja `MISSING_POLICY` en el ledger y no toca los datos.
+- Ejecutor, en una base desechable: unitarias api 488/6452; integración 83 suites pasan y 3 se omiten (la lista esperada), 570 pruebas pasan, 19 se omiten y 0 fallan; typecheck 8/8.
+- Re-verificación de AI-EM-ARCH en un PostgreSQL nuevo, con `PII_HASH_KEY` vacía y `MFA_ENCRYPTION_KEY` efímera: las 6 suites de retención y prospecto, 37/37; `retention-expiry.service.spec` 15/15.
+
 ## 2. Bloques y ruta crítica
 
 | Bloque | Agente | Depende de | Rutas |

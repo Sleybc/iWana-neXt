@@ -56,6 +56,9 @@ function serviceWith(overrides: Record<string, unknown> = {}): RetentionExpirySe
         lastTerminatedAt: null,
       })),
       findProspectDiscard: jest.fn(async () => []),
+      // B5: los puertos de standing son obligatorios (abstractos); el doble
+      // los implementa siempre, sin guardas inalcanzables en el servicio.
+      listProspectDiscard: jest.fn(async () => []),
     },
     erasure: {
       plan: jest.fn(async () => ({ candidateExpedienteIds: [], blockers: [], counts: {} })),
@@ -537,6 +540,73 @@ describe('RetentionExpiryService B4-R2 (M-2, B-3, B-5)', () => {
     expect(preview.eligible.titulares).toEqual([]);
     expect(preview.unreconciled.titulares).toEqual([
       { partyId: party, requestId: request, reasonCode: 'CONTRACT_UNRECONCILED' },
+    ]);
+  });
+});
+
+describe('RetentionExpiryService B5 (P3 selección de prospectos)', () => {
+  const expediente = '99999999-9999-4999-8999-999999999999';
+
+  function prospectManager(writes: Array<{ sql: string; params: unknown[] }>): EntityManager {
+    return {
+      query: jest.fn(async (sql: string, params?: unknown[]) => {
+        if (/^\s*(INSERT|UPDATE|DELETE)/iu.test(sql)) writes.push({ sql, params: params ?? [] });
+        if (String(sql).includes('retention_policies')) {
+          const category = (params as string[] | undefined)?.[0];
+          return [{ years: category === 'PQR_SOPORTES' ? 3 : 2 }];
+        }
+        return [];
+      }),
+    } as unknown as EntityManager;
+  }
+
+  it('B5-P3: prospecto que la selección no concilia deja ATTENTION_REQUIRED con su código', async () => {
+    // Sin puerto PQR: hasProspectDuty falla cerrado con PORT_UNAVAILABLE y la
+    // selección lo sanea en lugar de abortar el barrido.
+    const row = {
+      expedienteId: expediente,
+      discardedAt: '2020-01-15T12:00:00.000Z',
+      hasContract: false,
+    };
+    const standing = {
+      standing: jest.fn(async () => ({
+        subscriberIds: [],
+        contractIds: [],
+        expedienteIds: [],
+        openContractIds: [],
+        lastTerminatedAt: null,
+        unreconciledContractClock: false,
+      })),
+      findProspectDiscard: jest.fn(async () => [row]),
+      listProspectDiscard: jest.fn(async () => [row]),
+    };
+    const service = serviceWith({ standing });
+    const preview = await service.previewTenant(prospectManager([]), '2026-11-08');
+    expect(preview.eligible.prospectos).toEqual([]);
+    expect(preview.unreconciled.prospectos).toEqual([
+      { expedienteId: expediente, reasonCode: 'PORT_UNAVAILABLE' },
+    ]);
+    const writes: Array<{ sql: string; params: unknown[] }> = [];
+    const result = await service.runTenantBatch(prospectManager(writes), {
+      actorId: '33333333-3333-4333-8333-333333333333',
+      runId: '44444444-4444-4444-8444-444444444444',
+      today: '2026-11-08',
+    });
+    expect(result.status).toBe('ATTENTION_REQUIRED');
+    expect(result.reasonCounts).toEqual({ PORT_UNAVAILABLE: 1 });
+    const ledger = writes.find((write) => write.sql.includes('privacy_retention_expiry_runs'));
+    // params: tipo, target_id, request_id, eligible_on, rules_version, estado, changed_rows, reason
+    // eligible_on sale del descarte (2020-01-15 + 2 años de la política); el
+    // código no conciliado viene del deber PQR, no de la fecha.
+    expect(ledger?.params).toEqual([
+      'TITULAR',
+      expediente,
+      null,
+      '2022-01-15',
+      RETENTION_EXPIRY_RULES_VERSION,
+      'ATTENTION_REQUIRED',
+      0,
+      'PORT_UNAVAILABLE',
     ]);
   });
 });
