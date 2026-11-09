@@ -17,10 +17,12 @@
 /* ================================================================
    Design Tokens iWana neXt — @theme Tailwind 4
    NOTA ACCESIBILIDAD: --color-iwana-secondary (#A5C330) NO pasa
-   WCAG AA sobre blanco. Para texto usar --color-iwana-secondary-700
-   (#6A7A1C) con contraste 4,76:1 sobre blanco (cumple AA).
-   Prohibido como texto sobre iwana-primary-50 (4,49:1 — falla AA);
-   como ícono aria-hidden sí (umbral SC 1.4.11 = 3:1).
+   WCAG AA sobre blanco ni alcanza 3:1 como ícono aria-hidden
+   (SC 1.4.11): mide 2,01:1. En modo claro usar
+   --color-iwana-secondary-700 (#6A7A1C), con contraste 4,76:1 sobre
+   blanco (cumple AA). Prohibido como texto sobre iwana-primary-50
+   (4,49:1 — falla AA). La lima base solo sirve en modo oscuro o como
+   fondo/borde decorativo.
    ================================================================ */
 @theme {
   /* Tipografia — Exo 2 Bold/Thin segun Manual Identidad Corporativa iWana */

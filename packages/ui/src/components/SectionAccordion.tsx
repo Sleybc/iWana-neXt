@@ -150,8 +150,8 @@ function SectionAccordion({
                       className={cn(
                         'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
                         isComplete
-                          ? 'bg-[#EDF8CC] text-[#6A7A1C] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
-                          : 'bg-iwana-secondary/10 text-iwana-secondary dark:bg-iwana-secondary/20 dark:text-iwana-secondary',
+                          ? 'bg-iwana-secondary-100 text-iwana-secondary-700 dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
+                          : 'bg-iwana-secondary/10 text-iwana-secondary-700 dark:bg-iwana-secondary/20 dark:text-iwana-secondary',
                       )}
                       aria-hidden="true"
                     >
@@ -172,7 +172,7 @@ function SectionAccordion({
                         className={cn(
                           'px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 shrink-0',
                           isComplete
-                            ? 'bg-[#EDF8CC] text-[#48531D] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
+                            ? 'bg-iwana-secondary-100 text-iwana-secondary-900 dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
                             : 'bg-gray-100 text-iwana-secondary-800 dark:bg-dark-surface-3 dark:text-gray-300',
                         )}
                       >
@@ -224,7 +224,7 @@ function SectionAccordion({
                   >
                     <div className="flex items-center space-x-3">
                       <div
-                        className="w-8 h-8 rounded-full bg-gray-100 text-iwana-secondary
+                        className="w-8 h-8 rounded-full bg-gray-100 text-iwana-secondary-700
                           flex items-center justify-center shrink-0
                           group-hover:bg-iwana-secondary/20 transition-colors
                           dark:bg-dark-surface-3 dark:text-iwana-secondary dark:group-hover:bg-iwana-secondary/20"
@@ -245,7 +245,7 @@ function SectionAccordion({
                         className={cn(
                           'px-2 py-0.5 rounded-full text-[11px] font-semibold',
                           isComplete
-                            ? 'bg-[#EDF8CC] text-[#48531D] dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
+                            ? 'bg-iwana-secondary-100 text-iwana-secondary-900 dark:bg-iwana-secondary-700/20 dark:text-iwana-secondary'
                             : 'bg-gray-100 text-iwana-secondary-800 dark:bg-dark-surface-3 dark:text-gray-300',
                         )}
                       >
@@ -316,7 +316,7 @@ function SectionAccordion({
                   className={cn(
                     'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors',
                     isOpen || isComplete
-                      ? 'bg-[#EDF8CC] text-[#6A7A1C]'
+                      ? 'bg-iwana-secondary-100 text-iwana-secondary-700'
                       : 'bg-gray-100 text-gray-400 group-hover:bg-iwana-secondary/10 group-hover:text-iwana-secondary-700 dark:group-hover:text-iwana-secondary-400',
                   )}
                   aria-hidden="true"
@@ -350,7 +350,7 @@ function SectionAccordion({
                     className={cn(
                       'px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1',
                       isComplete
-                        ? 'bg-[#EDF8CC] text-[#48531D]'
+                        ? 'bg-iwana-secondary-100 text-iwana-secondary-900'
                         : 'bg-gray-100 text-iwana-secondary-800',
                     )}
                   >
