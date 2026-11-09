@@ -63,6 +63,42 @@ function resolveConnection() {
   };
 }
 
+/** Error de configuración que debe tumbar la corrida, nunca convertirse en omisión. */
+class WorkerDatabasesMissingError extends Error {}
+
+/**
+ * Con `IWANA_IT_WORKERS` > 1 (integración API en paralelo, spec
+ * 2026-11-09-plat-ops-ci-integracion-api-tiempo), cada worker 2..N necesita su clon
+ * de `scripts/db/clone-integration-dbs.sh`. Si falta alguno, la corrida falla aquí,
+ * cerrada: un worker sin base daría errores de conexión sueltos, o algo peor, suites
+ * contra la base de otro worker.
+ */
+async function assertWorkerDatabasesExist(client, baseName) {
+  const { resolveIntegrationWorkers, workerDatabaseName } = require('./integration-worker-db');
+  const workers = resolveIntegrationWorkers();
+  if (workers <= 1) return;
+
+  const expected = [];
+  for (let workerId = 2; workerId <= workers; workerId += 1) {
+    expected.push(workerDatabaseName(baseName, workerId));
+  }
+  const { rows } = await client.query(
+    'SELECT datname FROM pg_database WHERE datname = ANY($1::text[])',
+    [expected],
+  );
+  const present = new Set(rows.map((row) => row.datname));
+  const missing = expected.filter((name) => !present.has(name));
+  if (missing.length > 0) {
+    throw new WorkerDatabasesMissingError(
+      `[BLOQUEO] IWANA_IT_WORKERS=${workers} pero faltan las bases de worker: ${missing.join(', ')}. ` +
+        'Créelas con scripts/db/clone-integration-dbs.sh o quite IWANA_IT_WORKERS.',
+    );
+  }
+  console.log(
+    `\n[integration-workers] ${workers} workers con base propia: ${[baseName, ...expected].join(', ')}.\n`,
+  );
+}
+
 module.exports = async function globalSetup() {
   loadWorkspaceEnv();
 
@@ -83,11 +119,15 @@ module.exports = async function globalSetup() {
   try {
     await client.connect();
     await client.query('SELECT 1');
+    await assertWorkerDatabasesExist(client, connection.database);
     process.env[AVAILABILITY_FLAG] = 'true';
     console.log(
       `\n[089-integration] PostgreSQL alcanzable en ${target}. La suite de integración se ejecutará.\n`,
     );
   } catch (error) {
+    if (error instanceof WorkerDatabasesMissingError) {
+      throw error;
+    }
     process.env[AVAILABILITY_FLAG] = 'false';
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(

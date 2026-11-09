@@ -1,3 +1,10 @@
+const { resolveIntegrationWorkers } = require('../../packages/database/test/integration-worker-db');
+
+// IWANA_IT_WORKERS > 1: un worker por base, con clones de
+// scripts/db/clone-integration-dbs.sh (spec 2026-11-09-plat-ops-ci-integracion-api-tiempo).
+// Sin la variable: un worker y una base, como antes.
+const integrationWorkers = resolveIntegrationWorkers();
+
 /** @type {import('jest').Config} */
 module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
@@ -22,6 +29,7 @@ module.exports = {
   },
   testEnvironment: 'node',
   globalSetup: '<rootDir>/../../../packages/database/test/integration-db-probe.js',
-  maxWorkers: 1,
+  setupFiles: ['<rootDir>/../../../packages/database/test/integration-worker-db.js'],
+  maxWorkers: integrationWorkers,
   testTimeout: 180_000,
 };

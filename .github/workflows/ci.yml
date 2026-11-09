@@ -334,6 +334,8 @@ jobs:
       DB_APP_PASSWORD: ci-app
       DB_MIGRATOR_USER: iwana_migrator
       DB_MIGRATOR_PASSWORD: ci-migrator
+      DB_PURGER_USER: iwana_purger
+      DB_PURGER_PASSWORD: ci-purger
 
     services:
       postgres:
@@ -654,6 +656,40 @@ jobs:
           fi
           echo "✅ Suite de integración 089 ejecutada contra PostgreSQL real"
 
+      # Integración API en paralelo (spec 2026-11-09-plat-ops-ci-integracion-api-tiempo,
+      # opción A, G0 del CTO 2026-11-09). Cada worker de jest usa su propia base: el
+      # worker 1 usa `test` y los workers 2..N usan clones `iwana_it_g7_test_w<k>`,
+      # creados con CREATE DATABASE … TEMPLATE a partir de la base ya preparada en los
+      # pasos anteriores (copia byte a byte, misma cadena tenant). Paralelizar dentro
+      # de una sola base no sirve, porque los CLI recorren todos los tenants de
+      # public.tenants. max_locks_per_transaction sube a 256: con 64, varios
+      # DROP SCHEMA … CASCADE concurrentes de esquemas tenant completos dan
+      # 53200 out of shared memory. Va antes del paso API y después del de la 089,
+      # para que nadie esté conectado a `test` mientras se clona.
+      - name: Integration DBs — una base por worker (API)
+        timeout-minutes: 3
+        shell: bash
+        env:
+          IWANA_IT_WORKERS: 4
+        run: |
+          set -euo pipefail
+          export PGPASSWORD="${DB_BOOTSTRAP_PASSWORD}"
+          PSQL=(psql -v ON_ERROR_STOP=1 -X -q -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_BOOTSTRAP_USER}" -d postgres)
+          "${PSQL[@]}" -c 'ALTER SYSTEM SET max_locks_per_transaction = 256'
+          docker restart "${{ job.services.postgres.id }}" >/dev/null
+          for attempt in $(seq 1 60); do
+            if "${PSQL[@]}" -tAc 'SELECT 1' >/dev/null 2>&1; then
+              break
+            fi
+            if (( attempt == 60 )); then
+              echo "❌ PostgreSQL no respondió 60 s después del reinicio"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "max_locks_per_transaction = $("${PSQL[@]}" -tAc 'SHOW max_locks_per_transaction')"
+          bash scripts/db/clone-integration-dbs.sh
+
       # La base está arriba, migrada y el tenant ACTIVE `test` existe en este
       # punto. Marca explícitamente el destino disponible: sin esta bandera, las
       # suites que usan `describe.skip` al faltar DB se contarían como PASS.
@@ -663,8 +699,15 @@ jobs:
         # Medido en CI sobre 5d6a366b (2026-11-07): 3 min 56 s (12:57:02 a 13:00:58);
         # el comentario anterior decía «máximo 62 s» y quedó obsoleto. 10 min da
         # margen ante variación de runner/DB (el barrido añade unas 6 suites) y evita cuelgues largos.
+        # Sobre 965bf5e5 (P3-5, 2026-11-09, en serie) tardó 8 min 10 s. Desde la opción A
+        # corre con 4 workers (IWANA_IT_WORKERS) y una base por worker (paso anterior).
+        # El timeout se recalibra con el primer run verde: ceil(1,5 × medida), mínimo 6 min.
+        # Cada suite debe ser autónoma dentro de su base: no puede depender del orden
+        # ni del estado que deje otra suite.
         timeout-minutes: 10
         shell: bash
+        env:
+          IWANA_IT_WORKERS: 4
         run: |
           set -uo pipefail
           report=/tmp/api-integration-report.json
