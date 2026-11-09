@@ -1,12 +1,13 @@
 # Informe de auditoría — Cruces y optimización del ecosistema de roles
 
-**Versión:** 1.5
-**Estado:** Ola 1 publicada (`75528631`, G6.5 ✅, §9); Ola 2 ejecutada (T1–T4, G1 ✅) y registrada (§9.3); commit en T7, sin push (tren siguiente, ADR-107); Ola 4 pendiente de T7
+**Versión:** 1.6
+**Estado:** Remediación completa (olas 0 a 4): Ola 1 publicada (`75528631`, G6.5 ✅, §9); Ola 2 ejecutada y registrada (§9.3, commit `359246c4`); Ola 4 ejecutada (T8–T10, G1′ ✅) y registrada (§9.4); commit en T13, sin push (tren siguiente, ADR-107)
 **Cambio v1.0 → v1.1 (2026-11-08):** el CTO aprueba G0-1 a G0-4 en bloque, con las recomendaciones de §8
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 aplicada sobre 9 perfiles y el anexo (§9)
 **Cambio v1.2 → v1.3 (2026-11-09):** §10 define las olas 2 a 4 (G0-4): nuevo hallazgo C13 (protocolo frente a ADR-107), fusión propuesta de la Ola 3 en la Ola 2, asignación de la deuda «Baseline y Stack», texto congelado de cada cambio y de los prompts compactos, y decisiones G0-5 a G0-11
 **Cambio v1.3 → v1.4 (2026-11-09):** el CTO aprueba G0-5 a G0-11 en bloque, con las recomendaciones de §10.6. §10.3 y §10.5 no cambian: siguen siendo el contrato congelado de las olas 2 y 4
 **Cambio v1.4 → v1.5 (2026-11-09):** §9.3 registra la Ola 2 (protocolo v1.10 + espejos, G1 ✅, G3 y veredicto de `docs-governance`); el Estado queda al día
+**Cambio v1.5 → v1.6 (2026-11-09):** §9.4 registra la Ola 4 (prompts compactos de §10.5, G1′ ✅ con T8-R, G3′ y veredicto de `docs-governance`); el Estado declara la remediación completa
 **Fecha:** 2026-11-09
 **Modo activo:** Architect + auditor (AI-EM-ARCH); solo lectura sobre `docs/roles/`
 **Alcance auditado:** el protocolo v1.9, los 9 perfiles ejecutores, los 6 verificadores auxiliares y el anexo regulatorio de [`docs/roles/`](../roles/)
@@ -199,6 +200,32 @@ Ejecutada por AI-EM-ARCH en cuatro sesiones paralelas sobre `main`, sin commit: 
 **G3.** Esta §9.3 y §15 del informe vivo, con `pnpm audit:doc-locations` en `BLOQUEANTE: 0` (3 AVISOs preexistentes en `.playwright-mcp/`, ajenos a la ola).
 
 **T6 (`docs-governance`, 2026-11-09).** Segunda pasada de la ola: **sin bloqueantes** (veredicto completo del subagente en el reporte de cierre). Verificado: 13 versiones de §10.4 en cabeceras con Fecha 2026-11-09 (GAT/BND/CON/TCR con su convención de fecha con historial, ola fechada en el paréntesis y el `Cambio`); changelogs en su lugar habitual; nota D9 y regla 2 D5 en el protocolo; greps G1 v1.2 en verde («Baseline del sprint y» solo en 3 changelogs, admitidos; «merge readiness» solo como paréntesis heredado de ADR-069); coherencia protocolo↔espejos en D1–D11; §9.3 y §15 completas; citas de ADR-107 con marcador (aprobado) y semántica D3/D4. No bloqueantes: fecha con historial en verificadores, «cobertura» residual en una frase genérica de `QA:23` sin efecto normativo. **G4 ✅.**
+
+### 9.4 Ola 4 — prompts compactos y reconciliación, 2026-11-09
+
+Ejecutada por AI-EM-ARCH en tres sesiones paralelas sobre `main`, sin commit: T8 (EMA, SRF, FEP, DAT, OPS), T9 (PUX, DSO, QA, SEC) y T10 (8 subagentes ejecutores + `pnpm sync:agents`). Definición en §10.5 (G0-10 = A); plan §5 T8–T10 y §6 G1′. T8-R subió la línea `**Versión:**` de la cabecera de EMA a 2.9 y de SRF a 2.4.
+
+| Archivo | Versión anterior → nueva | Prompt (líneas) |
+| --- | --- | --- |
+| EMA (`Perfil_IA_EM_Architect_Unificado_v2.md`) | 2.8 → 2.9 | 9 |
+| SRF (`Perfil_IA_Sr_Dev_Fullstack_v2.md`) | 2.3 → 2.4 | 7 |
+| FEP (`Perfil_IA_Frontend_Platform_Engineer_v1.md`) | 1.3 → 1.4 | 5 |
+| DAT (`Perfil IA Senior Data Engineer ISP.md`) | 3.1 → 3.2 | 4 (primer prompt compacto) |
+| OPS (`Perfil_IA_Platform_Ops_Engineer_v1.md`) | 1.2 → 1.3 | 4 |
+| PUX (`Perfil_IA_Product_Designer_UX_v1.md`) | 1.3 → 1.4 | 5 |
+| DSO (`Perfil_IA_Design_System_Owner_v1.md`) | 1.4 → 1.5 | 5 |
+| QA (`Perfil_IA_Sr_Dev_QA_Testing_v1.md`) | 1.3 → 1.4 | 5 |
+| SEC (`Perfil_IA_Security_Engineer_AppSec_v1.md`) | 1.3 → 1.4 | 5 |
+| Subagentes `sr-backend.md`, `fe-platform.md`, `sec-eng.md` | sin versión | reconciliados (3 contradicciones) |
+| Subagentes `prod-ux.md`, `ds-owner.md`, `sr-qa.md`, `data-eng.md`, `plat-ops.md` | sin versión | revisados sin cambio |
+
+**G1′ ✅ (plan §6, con T8-R).** Versiones de §5 T8 y T9 en las cabeceras; prompts ≤15 líneas y literales de §10.5; «Formatos» y «Anti-patrones» literales en EMA, SRF, QA y SEC, sin piezas «sin destino»; `rg 'BLOQUEO TÉCNICO|Crítica bloquea merge y despliegue' .claude/agents` vacío; `pnpm sync:agents:check` en verde; `pnpm audit:adr-citations` con `BLOQUEANTE: 0`.
+
+**G3′.** Esta §9.4 y §16 del informe vivo, con `pnpm audit:doc-locations` en `BLOQUEANTE: 0` (3 AVISOs preexistentes en `.playwright-mcp/`, ajenos).
+
+**T12 (`docs-governance`, 2026-11-09).** Segunda pasada de la ola: **sin bloqueantes** (veredicto completo del subagente en el reporte de cierre). Verificado: 9 cabeceras con la versión nueva y Fecha 2026-11-09 (incluida T8-R); 9 prompts literales de §10.5, todos ≤15 líneas; «Formatos» y «Anti-patrones» literales en EMA, SRF, QA y SEC; 3 contradicciones de §5 T10 corregidas y ninguna regla de subagente contra su prompt; §9.4 y §16 completas; sin PII, sin prompts fuera de `docs/prompts/`, ningún ADR tocado. No bloqueantes (deuda): cercado huérfano tras «Anti-patrones» en EMA y SRF (resto del bloque `markdown` retirado en T8); convención mezclada de conteo en las tablas (corregida a total con cabecera: DAT y OPS en 4); §16 sin mención explícita del pendiente §7 (cubierto en §9.4); cercado `markdown` en vez de `text` en los 4 bloques de T9 (cosmético). **G4′ ✅.**
+
+**Pendientes externos (no bloquean el cierre documental).** §7 sigue pendiente de verificación por el CTO con Legal (ARCO, jornada 42 h, AES-256/TLS 1.3). G6.5 del commit `359246c4` y de este commit viajan cada uno en su tren siguiente (ADR-107 D4).
 
 ## 10. Definición de las olas 2 a 4 (G0-4)
 

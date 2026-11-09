@@ -1,8 +1,8 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.13
+**Versión:** 1.14
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13; **v1.12 — auditoría de cruces, Ola 1: 2026-11-09**, ver §14; **v1.13 — auditoría de cruces, Ola 2: 2026-11-09**, ver §15
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13; **v1.12 — auditoría de cruces, Ola 1: 2026-11-09**, ver §14; **v1.13 — auditoría de cruces, Ola 2: 2026-11-09**, ver §15; **v1.14 — auditoría de cruces, Ola 4: 2026-11-09**, ver §16
 **Sin pendientes de gobernanza abiertos.** La decisión menor que abrió v1.7 se cerró en v1.8 (§10.3). El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
@@ -411,3 +411,29 @@ Ningún cambio toca RACI, gates, capas ni el protocolo; no requiere ADR (protoco
 **Gates.** G1 ✅ 2026-11-09 (plan §6 v1.2): versiones de §10.4 en las cabeceras, cadenas de D11 renumeradas, `pnpm sync:agents:check` en verde («OK: 14 agentes»), `pnpm audit:adr-citations` con `BLOQUEANTE: 0`. Los dos patrones de G1 que eran defecto del plan, no de la ejecución, se corrigieron en el plan v1.2: «Baseline del sprint y» admite los changelogs que lo citan (como el G1 de la Ola 1) y «merge readiness» se sustituye por la comprobación de la semántica retirada (`autoriza…merge` / `merge pendiente`, vacía), porque es el nombre del gate en el título de ADR-069 (aprobado) y ADR-107 no lo renombra. G3: esta §15 y §9.3 del informe de cruces, con `pnpm audit:doc-locations` en `BLOQUEANTE: 0` (3 AVISOs preexistentes en `.playwright-mcp/`, ajenos a la ola). G4: T6 (`docs-governance`), veredicto registrado en §9.3 del informe de cruces.
 
 **Deuda vista en la ejecución:** el árbol trae trabajo ajeno en vuelo (specs de portal, otros `docs/informes/`); T7 commitea solo las 30 rutas del plan §5 T7 y deja el resto intacto. La Ola 4 arranca con el G1 de esta ola, sin esperar a su G6.5 (ADR-107 D3).
+
+## 16. Actualización 2026-11-09 — Auditoría de cruces, Ola 4
+
+**Origen:** [INFORME-ROLES-AUDITORIA-CRUCES-v1.0](INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) §10.5 (prompts compactos, G0-10 = A) y su [plan](../plans/2026-11-09-roles-auditoria-cruces-olas-2-4-orquestacion.md) (§5 T8–T10, §6 G1′). Tres tramos en paralelo: T8 (EMA, SRF, FEP, DAT, OPS), T9 (PUX, DSO, QA, SEC) y T10 (8 subagentes ejecutores + `pnpm sync:agents`). Sin commit hasta T13; sin push (tren siguiente, ADR-107).
+
+| Archivo | Versión anterior → nueva | Prompt (líneas) |
+| --- | --- | --- |
+| EMA (`Perfil_IA_EM_Architect_Unificado_v2.md`) | 2.8 → 2.9 | 9 |
+| SRF (`Perfil_IA_Sr_Dev_Fullstack_v2.md`) | 2.3 → 2.4 | 7 |
+| FEP (`Perfil_IA_Frontend_Platform_Engineer_v1.md`) | 1.3 → 1.4 | 5 |
+| DAT (`Perfil IA Senior Data Engineer ISP.md`) | 3.1 → 3.2 | 4 (primer prompt compacto) |
+| OPS (`Perfil_IA_Platform_Ops_Engineer_v1.md`) | 1.2 → 1.3 | 4 |
+| PUX (`Perfil_IA_Product_Designer_UX_v1.md`) | 1.3 → 1.4 | 5 |
+| DSO (`Perfil_IA_Design_System_Owner_v1.md`) | 1.4 → 1.5 | 5 |
+| QA (`Perfil_IA_Sr_Dev_QA_Testing_v1.md`) | 1.3 → 1.4 | 5 |
+| SEC (`Perfil_IA_Security_Engineer_AppSec_v1.md`) | 1.3 → 1.4 | 5 |
+| Subagentes `sr-backend.md`, `fe-platform.md`, `sec-eng.md` | sin versión | reconciliados (3 contradicciones) |
+| Subagentes `prod-ux.md`, `ds-owner.md`, `sr-qa.md`, `data-eng.md`, `plat-ops.md` | sin versión | revisados sin cambio |
+
+Todos los bloques son literales de §10.5 y caben en el techo de 15 líneas. En EMA, SRF, QA y SEC, «Formatos» y «Anti-patrones» quedan literales; los inventarios de piezas retiradas no dejan ninguna «sin destino».
+
+**T10 — 3 contradicciones corregidas:** `sr-backend.md` usaba `[BLOQUEO TÉCNICO]` (C9, la Ola 1 lo corrigió en el perfil pero no en el subagente); `sec-eng.md` decía «Crítica bloquea merge y despliegue» (lenguaje pre-ADR-107, contra D4); `fe-platform.md` mandaba la librería UI nueva al orquestador (contra D10, es CTO vía ADR).
+
+**Gates.** G1′ ✅ 2026-11-09 (plan §6): versiones de §5 T8 y T9 en las cabeceras —incluida T8-R, que sube la línea `**Versión:**` de EMA a 2.9 y de SRF a 2.4—; prompts ≤15 líneas y literales; `rg 'BLOQUEO TÉCNICO|Crítica bloquea merge y despliegue' .claude/agents` vacío; `pnpm sync:agents:check` en verde («OK: 14 agentes»); `pnpm audit:adr-citations` con `BLOQUEANTE: 0`. G3′: esta §16 y §9.4 del informe de cruces, con `pnpm audit:doc-locations` en `BLOQUEANTE: 0` (3 AVISOs preexistentes en `.playwright-mcp/`, ajenos). G4′: T12 (`docs-governance`), veredicto registrado en §9.4 del informe de cruces.
+
+**Deuda no bloqueante (plan §6):** de la regla 12 de la Parte II de EMA, «se leen como documentación, no se invocan como tool» y «core-components define los tokens» no quedaron en la Parte I aunque el inventario las daba por cubiertas en §3.6; la norma sigue vigente por `AGENTS.md` y `PROMPT-OPERATIVO-ANALISIS-DISPATCH-v1.0.md` (Paso 3), de mayor precedencia. T10 anotó omisiones no contradictorias (verificadores no nombrados en `sr-backend`, `sr-qa` y `sec-eng`; split RSC en `fe-platform`; G6.5 en `plat-ops`): deuda baja, cada subagente remite a su perfil y al protocolo.

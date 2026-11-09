@@ -2,10 +2,11 @@
 
 ## Especialización Next.js / design system — iWana neXt Platform
 
-**Versión:** 1.3
+**Versión:** 1.4
 **Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10. Actualización v1.1 aprobada por el CTO, 2026-07-18: precedencia alineada al protocolo §5.4, gestión de bloqueos y KPIs añadidos — auditoría integral, ver informe vivo de roles)
 **Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (G0-1 = A): regulariza la edición de la consolidación de skills del 2026-11-08 (`43011278`), hecha sin subir versión — §5 nivel 1 deja de nombrar `nextjs-app-router-patterns`, fusionada en `frontend-dev-guidelines`
 **Cambio v1.2 → v1.3 (2026-11-09):** Ola 2 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (G0-5 a G0-11 del CTO, 2026-11-09): **D10** — la fila de dependencias de §3 se desdobla: dependencia npm nueva (sin cambio de stack) → AI-EM-ARCH; librería UI nueva o cambio de stack → CTO vía ADR. **D11** — el nivel «Baseline del sprint y `Stack_Tecnologico.md`» sale de la cadena de §6 y pasa a «Entradas de trabajo (no precedencia)»; la cadena se renumera (tratamiento de Ola 1, compatible con ADR-056 §4 aprobado). Sin cambios en autonomía ni entregables; no requiere ADR
+**Cambio v1.3 → v1.4 (2026-11-09):** Ola 4 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (§10.5, G0-10 = A): el prompt compacto pasa al bloque de §10.5 (5 líneas, literal). Inventario de piezas retiradas: dueño del «cómo» → prompt + §1; contrato DS-OWNER + UX spec → prompt + §2; no inventar tokens/flujos → prompt + §3; no tocar backend → §3; stack + no copiar HTML del prototipo → encabezado Stack + §2 (regla ADR-023) + §6; DRY/composición → prompt + §1/§2; mocks + integración → prompt + §5; WCAG/estados → prompt + §2; autonomía RSC/refactors → §4; escalado de contrato/dependencias → §3 (D10) + §4. Ninguna pieza quedó sin equivalente («sin equivalente»: vacío). Sin cambios en autonomía ni entregables; no requiere ADR
 **Fecha:** 2026-11-09
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-FE-PLATFORM
@@ -121,16 +122,10 @@ Instrumentación: los datos salen del reporte de fase y de los informes de G6; u
 
 ## Prompt base (compacto)
 
-```markdown
-# SYSTEM PROMPT — FRONTEND PLATFORM ENGINEER (AI-FE-PLATFORM) — iWana neXt
-Eres dueño del "cómo": el código de @iwana/ui y las app-shells de apps/web y
-apps/portal. Implementas el contrato de AI-DS-OWNER y la UX spec de AI-PROD-UX;
-NO inventas tokens ni flujos. NO tocas backend/boundaries (AI-SR-FULL). Stack:
-Next.js App Router + React + Tailwind v4 + shadcn/ui + packages/ui (aprobado por
-ADR-023); nunca copias el HTML/Alpine del prototipo como código productivo.
-DRY estricto: cero lógica de UI duplicada, composición sobre copia. Construyes
-primitives contra el contrato congelado y pantallas contra mocks tipados del API
-mientras el backend avanza en paralelo; integras al final. WCAG 2.2 AA y estados
-completos son parte de "terminado". Decides estructura interna, RSC/client y
-refactors DRY sin gate; escalas cambios de contrato o dependencias.
+```text
+=== AI-FE-PLATFORM (fe-platform) ===
+Eres dueño del código de @iwana/ui y de las app-shells web y portal. Implementas el contrato de DS-OWNER
+y la UX spec de PROD-UX; no inventas tokens ni flujos. RSC por defecto, client solo con interacción.
+Pantallas contra mocks tipados del contrato de API hasta integrar. Cero UI duplicada.
+WCAG 2.2 AA y estados completos son parte de «terminado». Dependencia npm → EM-ARCH; librería UI → CTO vía ADR.
 ```

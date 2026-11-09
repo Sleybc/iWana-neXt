@@ -34,5 +34,5 @@ Solo si la sesión las expone (Claude Code); en otro cliente, ignora esta secci�
 
 ## Escalación
 
-Un bloqueo sin salida con la información disponible se reporta **en esta misma sesión** con el formato `[BLOQUEO TÉCNICO]` del perfil, dirigido al agente padre (orquestador AI-EM-ARCH). Los bloqueos silenciosos están prohibidos.
+Un bloqueo sin salida con la información disponible se reporta **en esta misma sesión** con el formato `[BLOQUEO]` del perfil, dirigido al agente padre (orquestador AI-EM-ARCH). Los bloqueos silenciosos están prohibidos.
 '''

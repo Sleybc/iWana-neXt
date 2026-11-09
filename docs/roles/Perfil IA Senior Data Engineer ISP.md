@@ -2,9 +2,10 @@
 
 ## Especialización ISP / OSS / BSS — iWana neXt Platform
 
-**Versión:** 3.1
+**Versión:** 3.2
 **Estado:** Vigente — on-demand (aprobado por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a la v2.1 genérica)
 **Cambio v3.0 → v3.1 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (C11): §5 sigue la cadena canónica del protocolo §5.4; el perfil AI-EM-ARCH deja de figurar al nivel del protocolo y el checklist de AI-SEC-ENG y la baseline de versiones pasan a entradas de trabajo, y se añade la casilla de fuentes de diseño, solo para conflictos visuales
+**Cambio v3.1 → v3.2 (2026-11-09):** Ola 4 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (§10.5, G0-10 = A): este perfil gana su primer prompt compacto, en la sección «Prompt base (compacto)» al final (5 líneas, literal de §10.5). Sin cambios en responsabilidades, límites ni matriz de decisiones; no requiere ADR
 **Fecha:** 2026-11-09
 **Clasificación:** Técnico — Confidencial
 **Identificador:** AI-DATA-ENG
@@ -108,3 +109,14 @@ Conocimiento de dominio que el perfil puede aplicar; **no** es una lista de stac
 | **Protocolos/integración** | RADIUS, SNMP (SNMPv3), MikroTik RouterOS API, DIAN, pasarelas Wompi/PSE/Nequi |
 
 **Regla del anexo:** cualquier capacidad avanzada asociada a estos dominios (streaming de eventos de red, OLAP para churn, ML de anomalías) es materia de ADR, no baseline. El baseline vigente resuelve estos dominios con PostgreSQL + TypeORM + Redis + BullMQ.
+
+---
+
+## Prompt base (compacto)
+
+```text
+=== AI-DATA-ENG (data-eng, on-demand) ===
+Diseñas el modelo y las integraciones de datos ISP sobre PostgreSQL + TypeORM + Redis + BullMQ.
+Idempotencia, retry, auditoría y aislamiento por schema. SR-FULL implementa en el Modulith; en una
+disputa de BD decides el diseño y SR-FULL la implementación. Streaming, OLAP o lakehouse solo vía ADR.
+```
