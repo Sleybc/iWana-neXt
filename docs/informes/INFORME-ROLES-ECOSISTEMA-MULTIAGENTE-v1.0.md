@@ -1,8 +1,8 @@
 # INFORME — Auditoría y optimización del ecosistema multiagente (perfiles IA)
 
-**Versión:** 1.11
+**Versión:** 1.12
 **Estado:** Vigente
-**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13
+**Fecha:** 2026-07-10 (v1.1: 2026-07-18; v1.2 — auditoría integral y correcciones aplicadas: 2026-07-18; **v1.3 — auditoría del perfil AI-EM-ARCH y emisión de v2.2: 2026-08-02**, ver §6; **v1.4 — auditoría del protocolo y emisión de v1.4: 2026-08-02**, ver §7; **v1.5 — decisiones del CTO que cierran ambos pendientes: 2026-08-02**, ver §8; **v1.6 — diferimiento del dominio productivo vía ADR-070 (superado): 2026-08-02**, ver §9; **v1.7 — alta de tres verificadores auxiliares: 2026-10-08**, ver §10; **v1.8 — sus perfiles y la categoría en el protocolo v1.6: 2026-10-09**, ver §10.3); **v1.9 — dos verificadores auxiliares más (AI-CONTRACT-REV, AI-E2E-TRIAGE): 2026-10-09**, ver §11; **v1.10 — un verificador auxiliar más (AI-TEST-CHANGE-REV) y ajuste de AI-GATE-VERIFIER: 2026-10-31**, ver §12; **v1.11 — carraca de conteos y criterio de simplicidad: 2026-11-07**, ver §13; **v1.12 — auditoría de cruces, Ola 1: 2026-11-09**, ver §14
 **Sin pendientes de gobernanza abiertos.** La decisión menor que abrió v1.7 se cerró en v1.8 (§10.3). El dominio productivo, último asunto que quedaba, se cerró por diferimiento formal con disparador de reactivación ([ADR-070](../adrs/ADR-070-Diferimiento-Dominio-Productivo.md) (superado)) — ver §9.
 **Alcance:** Auditoría de `Perfil_IA_EM_Architect_Unificado_v1`, `Perfil_IA_Sr_Dev_Fullstack_v1` y `Perfil_IA_Senior_UI_Systems_Designer_v1`; emisión de versiones v2 y del protocolo de colaboración compartido.
 **Documentos emitidos:**
@@ -359,3 +359,28 @@ Alta en un solo acto según el protocolo §9 (v1.8): perfil, fila en *Verificado
 **Criterio de simplicidad (`AGENTS.md` → General Recommendations).** Criterio de revisión, no gate: a igual resultado gana el diff más chico, y el INFORME de cierre declara las líneas agregadas y quitadas de la ola.
 
 **Descartadas por no mejorar el método** (detalle en la referencia §10): evaluador inmutable por permiso (lo cubre AI-TEST-CHANGE-REV sin romper TDD), bitácora de descartes, higiene de contexto, *lint* documental y autonomía sin confirmaciones. El set de evaluación privado queda diferido hasta que haya que elegir modelo o esfuerzo de un subagente.
+
+## 14. Actualización 2026-11-09 — Auditoría de cruces, Ola 1
+
+**Origen:** [INFORME-ROLES-AUDITORIA-CRUCES-v1.0](INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (12 cruces, 9 contradicciones de versión, 3 afirmaciones sin fuente verificada) y su [plan](../plans/2026-11-08-roles-auditoria-cruces-orquestacion.md). La Ola 0 fue la publicación de la consolidación de skills (`43011278`, G6.5 ✅ 2026-11-09).
+
+**Decisiones G0 (CTO, 2026-11-08, en bloque):** G0-1 = A (las ediciones de la consolidación de skills sin subida de versión se regularizan con una línea de changelog por perfil); G0-2 = Ola 1 solo sobre perfiles y anexo, sin RACI, gates ni capas; G0-3 = A (marcadores «requiere verificación» en las afirmaciones de §7); G0-4 = olas 2 a 4 se planifican al cerrar la Ola 1.
+
+| Perfil | Versión | Hallazgos cerrados |
+| --- | --- | --- |
+| EMA (`Perfil_IA_EM_Architect_Unificado_v2.md`) | 2.6 → 2.7 | V1, C9, V3 |
+| SRF (`Perfil_IA_Sr_Dev_Fullstack_v2.md`) | 2.1 → 2.2 | C9, V6 |
+| FEP (`Perfil_IA_Frontend_Platform_Engineer_v1.md`) | 1.1 → 1.2 | V3 |
+| DAT (`Perfil IA Senior Data Engineer ISP.md`) | 3.0 → 3.1 | C11 |
+| OPS (`Perfil_IA_Platform_Ops_Engineer_v1.md`) | 1.0 → 1.1 | V7, C11, V3 |
+| ANX (`Anexo_Regulatorio_Integraciones_ISP.md`) | 1.0 → 1.1 | V8, §7 (jornada 42 h) |
+| PUX (`Perfil_IA_Product_Designer_UX_v1.md`) | 1.1 → 1.2 | C7, V4, V3 |
+| DSO (`Perfil_IA_Design_System_Owner_v1.md`) | 1.2 → 1.3 | C7, V5, C6 (perfil) |
+| QA (`Perfil_IA_Sr_Dev_QA_Testing_v1.md`) | 1.1 → 1.2 | C11, C10, V6, V9, V3 |
+| SEC (`Perfil_IA_Security_Engineer_AppSec_v1.md`) | 1.1 → 1.2 | C11, V6, §7 (ARCO, AES-256/TLS 1.3) |
+
+Ningún cambio toca RACI, gates, capas ni el protocolo; no requiere ADR (protocolo §9). G1 en verde tras T4 (`docs-governance`): la primera pasada detectó que el plan prescribía para DAT y OPS una cadena con un nivel «Baseline y Stack» ajeno a `PROT:248`, replicado en QA y SEC; se alinearon los cuatro perfiles (la baseline pasa a entradas de trabajo y DAT y OPS ganan la casilla de fuentes de diseño). Greps del plan §6 limpios fuera de changelogs y `PROT:323-325`; `pnpm audit:adr-citations` con `BLOQUEANTE: 0`. Detalle en la §9 del informe de cruces.
+
+**Queda para las olas siguientes:** Ola 2 — protocolo v1.10 con C1, C2 (autoridad de bloqueo por cobertura de QA), C3, C4 (escalación y veto de SEC), C6 en el protocolo, C8, V2 y el orden de verificadores, más sus espejos en QA, SEC, DS-OWNER y PLAT-OPS. Ola 3 — C5 y C12. Ola 4 — prompts compactos de la Parte II y `.claude/agents/`. Se planifican al cerrar esta ola (G0-4).
+
+**Deuda vista en la ejecución:** el nivel «Baseline … y `Stack_Tecnologico.md`» sigue dentro de la cadena de precedencia de EMA, SRF, FEP, PUX y DSO (fuera del G1; sin ola asignada: se incorpora al planificar las olas 2 a 4, G0-4); las cabeceras «Baseline de versiones: definido por sprint» de QA y SEC, y las menciones de sprint de SRF, DAT, OPS, EMA, FEP, PUX, DSO y `QA:86`/`QA:385`, quedan fuera de V6; las afirmaciones de §7 siguen pendientes de verificación por el CTO con Legal (`PROT:56-57`); enlace roto previo en el informe vivo a `.cursor/rules/ai-em-arch.mdc`.

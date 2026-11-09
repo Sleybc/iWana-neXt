@@ -2,9 +2,10 @@
 
 ## Especialización ISP / OSS / BSS — iWana neXt Platform
 
-**Versión:** 3.0
+**Versión:** 3.1
 **Estado:** Vigente — on-demand (aprobado por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a la v2.1 genérica)
-**Fecha:** 2026-07-10
+**Cambio v3.0 → v3.1 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (C11): §5 sigue la cadena canónica del protocolo §5.4; el perfil AI-EM-ARCH deja de figurar al nivel del protocolo y el checklist de AI-SEC-ENG y la baseline de versiones pasan a entradas de trabajo, y se añade la casilla de fuentes de diseño, solo para conflictos visuales
+**Fecha:** 2026-11-09
 **Clasificación:** Técnico — Confidencial
 **Identificador:** AI-DATA-ENG
 **Capa organizacional:** Engineering Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md))
@@ -57,13 +58,17 @@ Diseñar el modelo de datos y las integraciones de datos del dominio ISP dentro 
 
 ## 5. Precedencia documental
 
+Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
+
 1. `AGENTS.md` (gobernanza maestra del workspace) y el catálogo `.agents/skills/` según su dispatch (`database-migration`, `postgresql`, `bullmq-specialist`)
 2. CTO humano y ADRs aprobados
 3. PRD y HLD del módulo vigentes
-4. Perfil EM + Architect Unificado (AI-EM-ARCH) y [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (RACI, workflow, red de consulta)
-5. Checklist de seguridad de AI-SEC-ENG
-6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-7. Este perfil
+4. **Fuentes de diseño** (tres dominios de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3) — solo en conflictos de superficie visual; en lo demás la cadena salta de HLD al protocolo
+5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (RACI, workflow, red de consulta)
+6. Este perfil
+7. Prompt de ejecución por fase (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+
+**Entradas de trabajo (no precedencia):** el checklist de seguridad de AI-SEC-ENG, y la baseline de versiones contra [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md).
 
 ## 6. Entregables
 

@@ -2,9 +2,10 @@
 
 ## Especialización infraestructura on-premise ISP — iWana neXt Platform
 
-**Versión:** 1.0
+**Versión:** 1.1
 **Estado:** Vigente — on-demand (aprobado por el CTO, 2026-07-18; creado por la auditoría integral del ecosistema — ver informe vivo de roles. Cubre el hueco de ownership de infraestructura detectado: CI/CD, Docker, Nginx, backups y ejecución de releases no tenían dueño)
-**Fecha:** 2026-07-18
+**Cambio v1.0 → v1.1 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md): **V7** — §5 nivel 1 cita `docker-expert` en lugar de `deploy-checklist`, que no existe en `.agents/skills/`; **C11** — el checklist de AI-SEC-ENG y la baseline de versiones salen de la cadena y pasan a entradas de trabajo, y se añade la casilla de fuentes de diseño, solo para conflictos visuales; **V3 (G0-1 = A)** — regulariza la edición de la consolidación de skills del 2026-11-08 (`43011278`) en la misma línea, que retiró `turborepo-caching` sin subir versión
+**Fecha:** 2026-11-09
 **Clasificación:** Técnico — Confidencial
 **Identificador:** AI-PLAT-OPS
 **Capa organizacional:** Engineering Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md))
@@ -65,14 +66,15 @@ Ser dueño de la **plataforma de ejecución** de iWana neXt: pipelines de CI/CD,
 
 Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
 
-1. `AGENTS.md` (gobernanza maestra del workspace) y catálogo `.agents/skills/` según su dispatch (`monorepo-architect`, `database-migration`, `deploy-checklist` cuando aplique)
+1. `AGENTS.md` (gobernanza maestra del workspace) y catálogo `.agents/skills/` según su dispatch (`monorepo-architect`, `database-migration`, `docker-expert` cuando aplique)
 2. CTO humano y ADRs aprobados
 3. PRD y HLD del módulo vigentes (para releases de módulo)
-4. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
-5. Checklist de seguridad de AI-SEC-ENG
-6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-7. Este perfil
-8. Prompt de ejecución por fase (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+4. **Fuentes de diseño** (tres dominios de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3) — solo en conflictos de superficie visual; en lo demás la cadena salta de HLD al protocolo
+5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md)
+6. Este perfil
+7. Prompt de ejecución por fase (define el alcance operativo; en conflicto normativo con lo anterior, se detiene y escala)
+
+**Entradas de trabajo (no precedencia):** el checklist de seguridad de AI-SEC-ENG, y la baseline de versiones contra [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md).
 
 ## 6. Entregables
 

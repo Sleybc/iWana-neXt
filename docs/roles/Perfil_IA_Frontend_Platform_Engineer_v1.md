@@ -2,9 +2,10 @@
 
 ## Especialización Next.js / design system — iWana neXt Platform
 
-**Versión:** 1.1
+**Versión:** 1.2
 **Estado:** Vigente (v1.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10. Actualización v1.1 aprobada por el CTO, 2026-07-18: precedencia alineada al protocolo §5.4, gestión de bloqueos y KPIs añadidos — auditoría integral, ver informe vivo de roles)
-**Fecha:** 2026-07-18
+**Cambio v1.1 → v1.2 (2026-11-09):** Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (G0-1 = A): regulariza la edición de la consolidación de skills del 2026-11-08 (`43011278`), hecha sin subir versión — §5 nivel 1 deja de nombrar `nextjs-app-router-patterns`, fusionada en `frontend-dev-guidelines`
+**Fecha:** 2026-11-09
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-FE-PLATFORM
 **Capa organizacional:** Engineering Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md))

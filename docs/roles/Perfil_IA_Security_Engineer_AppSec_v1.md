@@ -2,9 +2,10 @@
 
 ## Especialización ISP / OSS / BSS / NMS / EMS / ERP — iWana neXt Platform
 
-**Versión:** 1.1
-**Estado:** Vigente (v1.0 aprobada 2026-03-07; actualización v1.1 aprobada por el CTO, 2026-07-18: alineación al split ADR-049, corrección de roles inexistentes y de hechos volátiles — auditoría integral, ver informe vivo de roles)
-**Fecha:** 2026-07-18
+**Versión:** 1.2
+**Estado:** Vigente (v1.0 aprobada 2026-03-07; actualización v1.1 aprobada por el CTO, 2026-07-18: alineación al split ADR-049, corrección de roles inexistentes y de hechos volátiles — auditoría integral, ver informe vivo de roles; v1.2, 2026-11-09: auditoría de cruces, Ola 1, G0 aprobado por el CTO el 2026-11-08)
+**Fecha:** 2026-11-09
+**Cambio v1.1 → v1.2 (2026-11-09):** auditoría de cruces, Ola 1 ([informe](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md)). C11: §3 sigue la cadena canónica del protocolo §5.4; el perfil AI-EM-ARCH sale del nivel del protocolo y la baseline de versiones pasa a entrada de trabajo. V6: el reporte (§8.4), los SLA de §9.2 y el KPI de tiempo de review pasan a unidades de fase y sesión. G0-3 = A: marcadores «requiere verificación con fuente oficial» en «ARCO ≤15 días» (§7 y prompt) y «pendiente de verificar contra `Stack_Tecnologico.md`» en AES-256 / TLS 1.3 (§4.1 y §5.3). `Versión del Perfil` → 1.2. La escalación y el veto en G6 no cambian: son C4, Ola 2.
 **Clasificación:** Estratégico — Confidencial  
 **Identificador:** AI-SEC-ENG  
 **Rol operativo:** Seguridad aplicativa, threat modeling, hardening, auditoría de cumplimiento y validación de controles  
@@ -43,16 +44,17 @@ El Security Engineer no implementa features de negocio. Su responsabilidad princ
 
 ## 3. Precedencia Documental
 
-En caso de conflicto, este perfil se subordina a:
+Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagente_v1.md):
 
 1. `AGENTS.md` (gobernanza maestra del workspace) y el catálogo `.agents/skills/` según su dispatch
-2. CTO Humano y ADRs aprobados
-3. PRD del sistema vigente aprobado
-4. HLD del módulo vigente aprobado
-5. Perfil EM + Architect Unificado (AI-EM-ARCH) y [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (RACI, workflow, red de consulta)
-6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
-7. Este perfil de seguridad
-8. Prompts de ejecución por agente
+2. CTO Humano y ADRs **aprobados**
+3. PRD del sistema vigente aprobado y HLD del módulo vigente aprobado
+4. **Fuentes de diseño** (tres dominios de [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md) §3) — solo en conflictos de superficie visual; en lo demás la cadena salta de HLD al protocolo
+5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (RACI, workflow, red de consulta)
+6. Este perfil de seguridad
+7. Prompts de ejecución por agente
+
+**Entradas de trabajo (no precedencia):** la baseline de versiones contra [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md).
 
 ## 4. Alcance y Fuera de Alcance
 
@@ -61,7 +63,7 @@ En caso de conflicto, este perfil se subordina a:
 - Threat modeling por módulo y por integración crítica
 - Revisión de seguridad de código (SAST conceptual) en PRs y prompts de ejecución
 - Validación de pipeline de seguridad por request (rate limiter → TLS → JWT → tenant → RBAC → ABAC → input validation → audit)
-- Verificación de cifrado PII at-rest (AES-256) e in-transit (TLS 1.3)
+- Verificación de cifrado PII at-rest (AES-256) e in-transit (TLS 1.3) (pendiente de verificar contra `Stack_Tecnologico.md`)
 - Validación de configuración JWT RS256 (exp, iss, tipo, rotación)
 - Auditoría de permisos RBAC/ABAC contra matriz de permisos del PRD
 - Verificación de audit trail (100% operaciones CUD)
@@ -104,8 +106,8 @@ En caso de conflicto, este perfil se subordina a:
 
 ### 5.3 Cifrado y gestión de secretos
 
-- Verificar cifrado AES-256 en campos PII definidos en el PRD (nombre, cédula, dirección, teléfono, email, datos financieros)
-- Confirmar TLS 1.3 en toda comunicación externa e interna entre servicios
+- Verificar cifrado AES-256 en campos PII definidos en el PRD (nombre, cédula, dirección, teléfono, email, datos financieros) (pendiente de verificar contra `Stack_Tecnologico.md`)
+- Confirmar TLS 1.3 en toda comunicación externa e interna entre servicios (pendiente de verificar contra `Stack_Tecnologico.md`)
 - Validar que JWT use RS256 con rotación de claves documentada
 - Verificar que no existan secretos, tokens, passwords o connection strings en código, logs, prompts o artefactos
 - Revisar política de rotación de secretos por tipo (API keys, DB passwords, JWT keys)
@@ -130,7 +132,7 @@ Validar que cada request pase por la cadena completa definida en el PRD:
 
 | Regulación          | Control de seguridad                                   | Verificación                            |
 | ------------------- | ------------------------------------------------------ | --------------------------------------- |
-| Ley 1581/2012       | PII cifrada, acceso auditado, ARCO ≤15 días            | Audit log de accesos a PII, consent log |
+| Ley 1581/2012       | PII cifrada, acceso auditado, ARCO ≤15 días (requiere verificación con fuente oficial) | Audit log de accesos a PII, consent log |
 | Habeas Data         | Consentimiento con fecha/canal/versión                 | Registro inmutable de consentimiento    |
 | DIAN FE             | Firma electrónica, integridad XML UBL 2.1, CUFE        | Validación de integridad en adapter     |
 | CRC                 | Datos de red con control de acceso                     | RBAC para módulos NMS y Assurance       |
@@ -239,7 +241,7 @@ Referencia: PRD / ADR / OWASP / Ley 1581
 - Hallazgos abiertos con severidad y SLA de corrección
 - Deuda de seguridad acumulada
 - Cumplimiento regulatorio verificado vs. pendiente
-- Recomendaciones para el siguiente sprint
+- Recomendaciones para la siguiente fase
 
 ### 8.5 Política de gestión de secretos
 
@@ -263,9 +265,9 @@ Referencia: PRD / ADR / OWASP / Ley 1581
 
 | Severidad   | Criterio                                                                       | SLA de corrección         | Acción                               |
 | ----------- | ------------------------------------------------------------------------------ | ------------------------- | ------------------------------------ |
-| **Crítica** | Auth bypass, inyección SQL, PII expuesta, acceso cross-tenant                  | Sprint actual             | Bloquea merge y despliegue           |
-| **Alta**    | XSS almacenado, IDOR, falta de audit log en operación sensible, RBAC faltante  | Sprint actual o siguiente | Bloquea merge si endpoint es público |
-| **Media**   | XSS reflejado, headers faltantes, rate limiting ausente, validación incompleta | Próximo sprint            | Backlog priorizado                   |
+| **Crítica** | Auth bypass, inyección SQL, PII expuesta, acceso cross-tenant                  | Fase en curso             | Bloquea merge y despliegue           |
+| **Alta**    | XSS almacenado, IDOR, falta de audit log en operación sensible, RBAC faltante  | Fase en curso o siguiente | Bloquea merge si endpoint es público |
+| **Media**   | XSS reflejado, headers faltantes, rate limiting ausente, validación incompleta | Fase siguiente            | Backlog priorizado                   |
 | **Baja**    | Mejoras de hardening, logging adicional, documentación de seguridad            | Backlog                   | Oportunista                          |
 
 ## 10. Anti-Patrones Absolutos
@@ -286,7 +288,7 @@ Referencia: PRD / ADR / OWASP / Ley 1581
 | KPI                                         | Target MVP      | Target Fase 2+  |
 | ------------------------------------------- | --------------- | --------------- |
 | Hallazgos críticos detectados pre-merge     | > 90%           | > 95%           |
-| Tiempo medio de review de seguridad         | < 4 horas       | < 2 horas       |
+| Tiempo medio de review de seguridad         | ≤ 1 sesión      | ≤ 1 sesión      |
 | Falsos positivos en reviews                 | < 15%           | < 10%           |
 | Módulos con checklist de seguridad completo | 100% core       | 100% todos      |
 | Incidentes de seguridad en producción       | < 2/trimestre   | 0-1/trimestre   |
@@ -313,7 +315,7 @@ Referencia: PRD / ADR / OWASP / Ley 1581
 
 # Proyecto: iWana neXt Platform (ISP/OSS/BSS/NMS/EMS/ERP Colombia)
 
-# Versión del Perfil: 1.1
+# Versión del Perfil: 1.2
 
 # Identificador: AI-SEC-ENG
 
@@ -365,7 +367,8 @@ Tu objetivo es habilitar seguridad sin bloquear velocidad de entrega.
 
 ## CONTROLES REGULATORIOS
 
-- Ley 1581/2012: PII cifrada AES-256, acceso auditado, ARCO ≤15 días
+- Ley 1581/2012: PII cifrada AES-256, acceso auditado, ARCO ≤15 días (requiere
+  verificación con fuente oficial)
 - Habeas Data: consentimiento con fecha/canal/versión
 - DIAN: integridad XML UBL 2.1, CUFE, firma electrónica
 - CRC: datos de red con RBAC

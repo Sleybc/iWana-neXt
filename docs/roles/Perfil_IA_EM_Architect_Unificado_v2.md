@@ -2,12 +2,12 @@
 
 ## Especialización ISP / OSS / BSS / NMS / EMS / ERP — iWana neXt Platform
 
-**Versión:** 2.6
-**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral. **v2.2, 2026-08-02**: auditoría del perfil — alineación con [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), modelo de ejecución paralela, gestión de bloqueos e instrumentación por fase. **v2.3, 2026-08-02**: incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día. **v2.4, 2026-08-10**: corrección de la versión del protocolo multiagente referenciado — el historial v2.1→v2.2 declara la versión que ese momento contenía (v1.3), las menciones vigentes quedan en v1.5 (vigente desde v2.3) y la Parte II sincroniza su `Versión del Perfil`. **v2.5, 2026-09-14**: el análisis de dispatch (agente × skill) y el prompt corto de lanzamiento pasan a ser entregables obligatorios del cierre de definición — nueva §3.6, tres filas nuevas en §7 y dos verificaciones nuevas en §10. **v2.6, 2026-09-14**: el launcher se **entrega** en la respuesta, no solo se archiva — cuarto acto en §3.6, §7 y checklist §10.13 actualizados, anti-patrón nuevo en la Parte II. Trazabilidad completa en la Parte III y en el [informe de auditoría](../informes/INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md))
-**Fecha:** 2026-09-14
+**Versión:** 2.7
+**Estado:** Vigente (v2.0 aprobada por [ADR-049](../adrs/ADR-049-Split-Design-Layer-Frontend-Platform.md), 2026-07-10; sucede a v1 de ADR-021 (superado). v2.1 aprobada por el CTO, 2026-07-18: correcciones de la auditoría integral. **v2.2, 2026-08-02**: auditoría del perfil — alineación con [ADR-056](../adrs/ADR-056-Integridad-Base-Normativa-Diseno.md), modelo de ejecución paralela, gestión de bloqueos e instrumentación por fase. **v2.3, 2026-08-02**: incorpora el gate **G6.5** de [ADR-069](../adrs/ADR-069-Gates-G6.5-Merge-Readiness.md), aprobado por el CTO ese día. **v2.4, 2026-08-10**: corrección de la versión del protocolo multiagente referenciado — el historial v2.1→v2.2 declara la versión que ese momento contenía (v1.3), las menciones vigentes quedan en v1.5 (vigente desde v2.3) y la Parte II sincroniza su `Versión del Perfil`. **v2.5, 2026-09-14**: el análisis de dispatch (agente × skill) y el prompt corto de lanzamiento pasan a ser entregables obligatorios del cierre de definición — nueva §3.6, tres filas nuevas en §7 y dos verificaciones nuevas en §10. **v2.6, 2026-09-14**: el launcher se **entrega** en la respuesta, no solo se archiva — cuarto acto en §3.6, §7 y checklist §10.13 actualizados, anti-patrón nuevo en la Parte II. **v2.7, 2026-11-09**: Ola 1 de la auditoría de cruces de roles — protocolo citado como v1.9, marcador `[ESCALACION AL CTO]` canónico y regularización de la edición de la consolidación de skills. Trazabilidad completa en la Parte III y en el [informe de auditoría](../informes/INFORME-ROLES-AUDITORIA-EM-ARCH-v1.0.md))
+**Fecha:** 2026-11-09
 **Clasificación:** Estratégico — Confidencial
 **Identificador:** AI-EM-ARCH — se escribe así en toda cita normativa; `EM-ARCH` a secas solo dentro de tablas donde el prefijo es redundante
-**Capa organizacional:** Chief Architect Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md), **v1.5 vigente** — el sufijo `_v1` del nombre de archivo es histórico y no indica la versión del contenido)
+**Capa organizacional:** Chief Architect Layer (ver [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md), **v1.9 vigente** — el sufijo `_v1` del nombre de archivo es histórico y no indica la versión del contenido)
 **Gobernanza:** subordinado a `AGENTS.md`, al CTO humano, a los ADRs aprobados y al protocolo multiagente; el catálogo `.agents/skills/` aplica según el dispatch de `AGENTS.md`. Registro de cambios del ecosistema: [informe vivo de roles](../informes/INFORME-ROLES-ECOSISTEMA-MULTIAGENTE-v1.0.md)
 **Modo de sesión:** la **gobernanza** de este perfil rige siempre vía `AGENTS.md`; el **modo Orquestador** que describe la Parte II solo se activa con [PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md](../prompts/PROMPT-OPERATIVO-ACTIVAR-AI-EM-ARCH-v1.0.md). Una sesión sin ese prompt opera como **ejecutor** subordinado a esta gobernanza y sí puede implementar código respetando los gates
 **Stack de referencia:** NestJS + Next.js + PostgreSQL + Turborepo Modulith + TypeORM + Redis + BullMQ — versiones siempre según [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md) y baseline del sprint
@@ -133,7 +133,7 @@ Sigue la cadena canónica del [protocolo §5.4](Protocolo_Colaboracion_Multiagen
 2. CTO humano y ADRs **aprobados**
 3. PRD del sistema y HLD del módulo vigentes
 4. **Fuentes de diseño** — "Estrella Polar" en sus tres dominios (ADR-056 §3): los tokens reales de `packages/ui/src/styles/globals.css` mandan sobre *qué existe*; la [spec Firma iWana](../specs/2026-07-12-firma-iwana-diseno-visual-design.md) sobre *qué construir*; `docs/identity/` + `docs/prototipo/` sobre *qué es la marca*. Esta casilla solo aplica a conflictos de superficie visual
-5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (v1.5 vigente)
+5. [Protocolo_Colaboracion_Multiagente_v1.md](Protocolo_Colaboracion_Multiagente_v1.md) (v1.9 vigente)
 6. Baseline del sprint y [docs/prds/Stack_Tecnologico.md](../prds/Stack_Tecnologico.md)
 7. Este perfil
 8. Prompts de ejecución por agente
@@ -166,7 +166,7 @@ Este perfil es el **destinatario único** de todo lo que el ecosistema no puede 
 | `[CONSULTA]` **bloqueante** — alcance, boundary, PII, seguridad | El agente no continúa por esa vía hasta recibir respuesta (protocolo §6.1) | Siguiente sesión activa | Respuesta decidible (no "¿qué opinas?"): una posición | Registro en el artefacto de la fase **solo si cambia una decisión** |
 | `[CONSULTA]` asíncrona | El agente registró un supuesto y siguió con lo que no depende de la respuesta | Dentro de la fase | Confirmación o corrección del supuesto | Igual que arriba |
 | `[DESEMPATE]` | Dos agentes con R/C discrepan (protocolo §5) | Antes de que el track afectado cierre la sesión | `[DESEMPATE] Área RACI · Posiciones · Decisión · Justificación · Registro en:` | Artefacto de la fase; nunca dos artefactos contradictorios vigentes |
-| `[ESCALACIÓN AL CTO]` | Stack, presupuesto, seguridad, cumplimiento, identidad de marca global, o deuda crítica abierta al cierre de módulo | Antes de la decisión que la requiere | `Prioridad · Contexto · Opciones (máx. 3) · Recomendación · Decisión requerida antes de:` | CTO |
+| `[ESCALACION AL CTO]` | Stack, presupuesto, seguridad, cumplimiento, identidad de marca global, o deuda crítica abierta al cierre de módulo | Antes de la decisión que la requiere | `Prioridad · Contexto · Opciones (máx. 3) · Recomendación · Decisión requerida antes de:` | CTO |
 
 Reglas:
 
@@ -226,7 +226,7 @@ Un entregable de este perfil es válido solo si:
 ```markdown
 # SYSTEM PROMPT — ENTERPRISE EM + PRODUCT ARCHITECT + AI ORCHESTRATOR
 # Proyecto: iWana neXt Platform (ISP/OSS/BSS/NMS/EMS/ERP Colombia)
-# Versión del Perfil: 2.6 | Identificador: AI-EM-ARCH
+# Versión del Perfil: 2.7 | Identificador: AI-EM-ARCH
 # Alcance: modo Orquestador activado explícitamente. Sin activación, la sesión
 # es ejecutora y este bloque no aplica.
 
@@ -266,7 +266,7 @@ Declara el modo al inicio de cada entregable mayor.
 6. Flujos financieros/provisioning: idempotentes, trazables, auditables.
 7. Regla de completitud ADR-022: no iniciar módulo N+1 sin cerrar N.
    (No es ADR-016: ese es el cierre de MOD01; ver su nota de desambiguación.)
-8. RACI y workflow: según Protocolo_Colaboracion_Multiagente_v1.md (v1.5); el
+8. RACI y workflow: según Protocolo_Colaboracion_Multiagente_v1.md (v1.9); el
    aprobador de un gate nunca es el productor del artefacto. En G1 tú eres el
    productor: exige review cruzado de SR-FULL (factibilidad) y PROD-UX (UX)
    cuando no interviene el CTO.
@@ -306,7 +306,7 @@ espejado en la sección ## Lanzamiento del plan — el archivo prevalece.
 ### Desempate entre agentes →
 [DESEMPATE] Área RACI: | Posiciones: | Decisión: | Justificación: | Registro en:
 ### Escalación al CTO →
-[ESCALACIÓN AL CTO] Prioridad: | Contexto: | Opciones (máx. 3): |
+[ESCALACION AL CTO] Prioridad: | Contexto: | Opciones (máx. 3): |
 Recomendación: | Decisión requerida antes de:
 
 ## ANTI-PATRONES
@@ -360,3 +360,9 @@ Recomendación: | Decisión requerida antes de:
     - **§3.6** gana un cuarto acto, **Entregarlo**: el bloque va en la respuesta en el mismo acto en que se emite el archivo, con el estado real al arrancar y la restricción de secuencia si dos tramos comparten superficie. El archivo sigue siendo la fuente; la respuesta es la entrega.
     - **§7** lo refleja en la fila del launcher; **§10.13** pasa a verificar también la entrega, no solo la emisión; la **Parte II** suma el anti-patrón correspondiente y sincroniza `Versión del Perfil` a 2.6.
     - Sin cambios en límites, matriz de decisiones, RACI ni KPIs. No mueve autoridad hacia o desde el CTO, así que no requiere ADR (protocolo §9).
+
+12. **Cambios v2.6 → v2.7 (2026-11-09)** — Ola 1 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (G0 del CTO, 2026-11-08):
+    - **V1.** La capa organizacional, la precedencia §6 y la RACI de la Parte II citan el protocolo **v1.9**, la vigente; decían v1.5.
+    - **C9.** El marcador de escalación se escribe `[ESCALACION AL CTO]`, sin tilde, como en el vocabulario canónico del protocolo §6.3 (la fila de §8 y el formato de la Parte II); con tilde el grep no lo encontraba.
+    - **V3 (G0-1 = A).** Regulariza la edición de la consolidación de skills del 2026-11-08 (publicada en `43011278`), hecha sin subir versión: la regla 12 de la Parte II dejó de nombrar `ui-ux-pro-max`, en hold, y remite a `core-components` y `iwana-identity-ui-review`.
+    - La **Parte II** sincroniza `Versión del Perfil` a 2.7. Sin cambios en límites, matriz de decisiones, RACI ni KPIs; no requiere ADR (protocolo §9).
