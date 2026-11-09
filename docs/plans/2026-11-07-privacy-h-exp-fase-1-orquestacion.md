@@ -145,6 +145,12 @@ Decisiones:
 
 **Riesgo para G6.5:** el CI de `main` está rojo desde `49e8448f` por `portal-billing-flow.spec.ts:613` y siguientes (MOD14, E2E R4.1: dos botones «Registrar pago»), ajeno a H-EXP. Hay un arreglo sin commit de otra sesión en `e2e/tests/portal-billing-flow.spec.ts`, que no entra en este commit. G6.5 de H-EXP exige ese job en verde.
 
+### 1.11 G6.5 ⛔ (AI-EM-ARCH, 2026-11-08)
+
+Publicado en `81c9be55`. **G6.5 ⛔.** R4.1 ya pasa (339/0 en `b6b2c759`), pero ahora falla el job «Integration tests — API (PostgreSQL real)» (runs 42536520408 y 42544794538): 4 suites, 14 pruebas, todas de H-EXP. Son `retention-expiry`, `retention-expiry-b3`, `retention-expiry-b4r2` y `crm-personal-data-erasure.prospect`. Error: «PII_HASH_KEY es requerida» desde `loadErasureKeys` (`titular-erasure-sql.ts:49`). **Causa:** las cuatro construyen `new ConfigService(process.env)`, y la clave solo existía porque se cargaba el `.env` local. CI no tiene `.env`. Las suites anteriores inyectan su propia clave sintética (`crm-titular-erasure.participant…spec.ts:146`, `privacy-due-alerts…spec.ts:53`). **Fallo del gate:** el G6 se verificó con el `.env` del repo presente, así que no reprodujo CI. Corrección: [CI-PIIKEY](../prompts/PROMPT-PRIVACY-H-EXP-FASE-1-CI-PIIKEY-LAUNCH-v1.0.md). Desde ahora, la verificación «como en CI» exige `PII_HASH_KEY` ausente del entorno y del `.env`.
+
+**G2 CI-PIIKEY ✅ (2026-11-08).** El diff toca solo las 4 specs, con 8 líneas cada una. `ConfigService` recibe `{ ...process.env, PII_HASH_KEY: randomBytes(32) }` y ninguna aserción depende del HMAC. El ejecutor reprodujo el rojo y el verde con `.env*` apartados y en un PostgreSQL desechable: rojo 14 de 27; verde 27 de 27; integración completa 82 suites pasan y 3 se omiten (la lista esperada), 569 pruebas pasan, 19 se omiten y 0 fallan. Otras suites con `new ConfigService()` (`text-erasure-scope`, `pqr-retention`) no llegan a `resolvePiiHashKey` porque pasan `cryptoKeys`. Re-verificación de AI-EM-ARCH en un PostgreSQL nuevo: 4/4 suites y 27/27 con `PII_HASH_KEY` vacía (dotenv no la sobrescribe y `resolvePiiHashKey` la trata como ausente) y `MFA_ENCRYPTION_KEY` efímera, como en `ci.yml:302`. El volumen `iwana_ci_piikey_vol` quedó para borrado manual, porque el hook bloquea `docker volume rm`.
+
 ## 2. Bloques y ruta crítica
 
 | Bloque | Agente | Depende de | Rutas |

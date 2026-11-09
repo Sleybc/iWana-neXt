@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { TenantContext, resolveMigrationDbCredentials } from '@iwana/db';
 import { runInTenantSchema } from '@iwana/db';
@@ -111,7 +111,13 @@ describeWithDb('CrmPersonalDataErasureAdapter — prospecto explícito (H-EXP B2
 
     const moduleRef = await Test.createTestingModule({
       providers: [
-        { provide: ConfigService, useValue: new ConfigService(process.env) },
+        {
+          provide: ConfigService,
+          useValue: new ConfigService({
+            ...process.env,
+            PII_HASH_KEY: randomBytes(32).toString('hex'),
+          }),
+        },
         CrmContractStandingReadAdapter,
         CrmTitularErasureParticipant,
         PartyTitularErasureParticipant,

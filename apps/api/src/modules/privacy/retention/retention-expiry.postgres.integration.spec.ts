@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -123,7 +123,13 @@ describeWithDb('RetentionExpiryService en PostgreSQL real (H-EXP B1/B2)', () => 
       providers: [
         { provide: getDataSourceToken(), useValue: baseDataSource },
         { provide: DataSource, useValue: baseDataSource },
-        { provide: ConfigService, useValue: new ConfigService(process.env) },
+        {
+          provide: ConfigService,
+          useValue: new ConfigService({
+            ...process.env,
+            PII_HASH_KEY: randomBytes(32).toString('hex'),
+          }),
+        },
         { provide: AuditService, useValue: { logWithin: auditWithin } },
         CrmContractStandingReadAdapter,
         { provide: IContractStandingReadPort, useExisting: CrmContractStandingReadAdapter },

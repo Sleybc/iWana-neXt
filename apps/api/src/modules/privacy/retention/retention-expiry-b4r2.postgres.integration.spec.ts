@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -275,7 +275,13 @@ describeWithDb('RetentionExpiry B4-R2 — M-1, M-2, B-1, B-3 y B-5 en PostgreSQL
       providers: [
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: DataSource, useValue: dataSource },
-        { provide: ConfigService, useValue: new ConfigService(process.env) },
+        {
+          provide: ConfigService,
+          useValue: new ConfigService({
+            ...process.env,
+            PII_HASH_KEY: randomBytes(32).toString('hex'),
+          }),
+        },
         { provide: AuditService, useValue: { logWithin: jest.fn(async () => undefined) } },
         CrmContractStandingReadAdapter,
         { provide: IContractStandingReadPort, useExisting: CrmContractStandingReadAdapter },
