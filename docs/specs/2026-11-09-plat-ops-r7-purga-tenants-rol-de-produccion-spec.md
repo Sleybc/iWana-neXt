@@ -428,3 +428,14 @@ El run 42704957642 de `main` falló en «Unit tests + gate de cobertura»: la gu
 | ESLint del procesador y typecheck del worker | sin errores |
 
 Sin commit ni push: la publicación la decide el CTO.
+
+## 17. G6.5 (2026-11-09) ✅
+
+| Paso | Commit | Run | Resultado |
+| --- | --- | --- | --- |
+| Publicación de R7 en el tren R7 + CI | `e824728a` (R7) dentro de `d09397ee` | CI 42704957642 | ❌ `failure`: «Unit tests + gate de cobertura» falló en `log-error-safety.architecture.spec.ts:411` por `tenant-schema-purge.processor.ts:93`. Las integraciones quedaron omitidas por ese fallo (§16) |
+| Corrección | `6c96342d` «fix(worker): log tenant purge rejections through the safe log contract (R7)», publicado junto a `47ba22f7` (ADR-107 v1.1, de otra sesión) con autorización del CTO («Sí, ambos»), rango `d09397ee..6c96342d` | — | — |
+| Verificación | `6c96342d` | CI 42708735995 | ✅ `success` en todos los jobs: «Integridad de citas ADR», «Detección de cambios de solo documentación», «Lint + Typecheck + Build + Unit tests» (incluye las integraciones de `@iwana/db`, API y worker), «E2E operativo R4.1 — API + storage + BullMQ reales» (Playwright), «E2E portal» y «Build y validación de imágenes production» |
+| Verificación | `6c96342d` | E2E Web Admin Smoke 42708735897 | ✅ `success` |
+
+Verificado por AI-EM-ARCH y comprobado con `gh run view` por AI-PLAT-OPS. Con esto R7 queda publicado y cerrado en CI. Siguen abiertos fuera de esta ola: los P2 y P3 de §15 (antes de G7), D-2 (constancia de devolución o exportación por tenant, condición de G7) y los seguimientos R7-b a R7-d de §8.
