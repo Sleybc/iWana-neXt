@@ -194,6 +194,21 @@ La línea base local en serie (§2.2) fue de 532 s. La diferencia entre 532 y 58
 - Frente a los 8 min 10 s del run 42678231774, el paso baja un 55 %. **Se cumple el objetivo de < 5 min sin ninguna reserva de §4.4.**
 - **Recalibración (§6):** `ceil(1,5 × 3,65 min) = 6 min`, igual al mínimo. Se pasó `timeout-minutes` de 10 a 6, con el comentario del paso actualizado (SHA, fecha, duración, N = 4 y fórmula). Va en un commit aparte, sin push hasta la orden del CTO.
 
-### 10.4 Pendiente
+### 10.4 Variación entre runners y nueva recalibración (orden del CTO 2026-11-09, «Sí, ajústalo»)
+
+Duración del paso «Integration tests — API» en los runs del workflow CI en `main` posteriores a `d09397ee`:
+
+| Run | SHA | Paso API | jest | Nota |
+| --- | --- | --- | --- | --- |
+| 42704957642 | `d09397ee` | — | — | Rojo en las pruebas unitarias (R7); el paso no corrió |
+| 42708735995 | `6c96342d` | 3 min 39 s | 217,6 s | 55 % menos que los 8 min 10 s en serie; `timeout-minutes` llevado a 6 en `2d0f93f7` |
+| 42712398219 | `6427486c` | **4 min 58 s** (22:47:45 a 22:52:43Z) | 296,9 s | 83 % del límite de 6 min |
+
+- **Dónde está la lentitud de 42712398219:** se reparte por igual. Comparando las suites que jest imprime con tiempo, la mediana es ×1,36 (p10 ×1,23 y p90 ×1,54) y ninguna se dispara; la ruta crítica sigue siendo `anonymize-titular` (119 s → 161 s). Los pasos que no tocan esta opción también se alargaron en ese run: typecheck +32 %, build +24 % y pruebas unitarias +28 %. Es un runner más lento, no una suite ni un worker.
+- **Regla nueva:** `timeout-minutes = ceil(1,5 × máximo observado)`, con un mínimo de 6. Con el máximo de 4 min 58 s, `ceil(1,5 × 4,97) = 8`. Se recalibra con el máximo de **al menos 5 runs** de `main`, no con uno.
+- Sustituye a la recalibración a 6 min de §10.3, que salía de una sola medición.
+- El paso sigue por debajo de 5 min en los dos runs medidos, pero el de 4 min 58 s deja 2 s de margen. Si un run supera los 5 min, se vuelve a §4.4: primero la reserva F (Postgres sin durabilidad) y después N = 3, cada una con su propia medición.
+
+### 10.5 Pendiente
 
 - La rama de fallo cerrado de `clone-integration-dbs.sh` con `max_locks_per_transaction < 256` no se ejecutó en local.
