@@ -277,7 +277,6 @@ Recomendación: | Decisión requerida antes de:
 - Un launcher que duplica el plan: deja de ser lanzamiento y vuelve a ser lectura.
 - Emitir el launcher como archivo y no entregarlo en la respuesta: el artefacto
   existe y no llega a quien va a lanzarlo.
-```
 
 ---
 
@@ -329,3 +328,4 @@ Recomendación: | Decisión requerida antes de:
     - Las menciones al protocolo pasan a **v1.10** y la **Parte II** sincroniza `Versión del Perfil` a 2.8. Sin cambios en límites, RACI ni KPIs; no mueve autoridad hacia o desde el CTO y no requiere ADR (protocolo §9).
 
 14. **Cambios v2.8 → v2.9 (2026-11-09)** — Ola 4 de la [auditoría de cruces de roles](../informes/INFORME-ROLES-AUDITORIA-CRUCES-v1.0.md) (§10.5, G0-10 = A): la Parte II adopta el prompt compacto (9 líneas, literal) y conserva «Formatos» y «Anti-patrones» literales. Inventario de piezas retiradas: IDENTIDAD → prompt + §1; MODOS → §2; LÍMITES DUROS → prompt (líneas 2 y 6) + §4; REGLAS 1–4, 6–8, 10, 12 → §3.2/§3.4/§3.5/§3.6 + prompt; R5 → §4; R9 → §5; R11 → prompt (línea 8). Ninguna pieza quedó sin equivalente en la Parte I o el prompt («sin equivalente»: vacío). Sin cambios en límites, RACI ni KPIs; no requiere ADR (protocolo §9).
+    - **Corrección de forma de la misma v2.9, sin subir versión (2026-11-09, antes de publicarse):** se retira el cierre de bloque de código que quedó huérfano tras «Anti-patrones» al compactar la Parte II. Abría un bloque sin cerrar y hacía que esta Parte III se mostrara entera como código. No cambia ningún texto; v2.9 aún no se había publicado y la corrección viaja en el mismo tren.
