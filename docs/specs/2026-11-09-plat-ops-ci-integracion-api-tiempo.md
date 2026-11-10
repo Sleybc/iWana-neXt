@@ -242,12 +242,27 @@ Media con la durabilidad activa: 187 s; sin ella: 195,5 s. **En local no hay efe
 | 42716815056 | `9e17d868` | no | 71 s | 301 s | 4,24 |
 | 42722797012 | `7fa0f5ae` | **sí** | 45 s | 192 s | **4,27** |
 
+**Intentos 2–4 (2026-11-10, mismos pasos extraídos de `actions/jobs`):** intento 2 válido **4,49** (089=67 s, API=301 s); intento 3 inválido, rojo en «Integration tests — API»; intento 4 inválido, rojo en «Integration tests — API». Ningún rojo tocó código productivo: lint/typecheck/build y el gate de cobertura pasaron (líneas base intactas).
+
+**Clasificación de los dos rojos (no reproducibles en lab; el Postgres local desechable con F corrió las dos suites afectadas en verde, `iwana-rf-f`, 54013):**
+
+| Intento | Suite roja | Causa clasificada |
+| --- | --- | --- |
+| 3 | `network-interface-ip-protection.races` «linealiza desactivación de red antes de reservar y rechaza la reserva» | **Flaky de temporización expuesto por F.** El bloque jest (sin banner de expect) corresponde a un rechazo no manejado (formato reproducido localmente con un probe), no a una aserción fallida: el rechazo de `reserveIp` apareció antes de que la aserción `rejects` quedara anclada. El intento 3 fue el runner más rápido de la muestra (API=215 s). El mecanismo es sensible al orden de callbacks inmediatos y fsync-off amplifica la velocidad. La suite corrió verde en los tres runs base de la opción A y en la sonda local con F. |
+| 4 | `report-subscriber-phone-readiness` `not.toMatch(/\d{7,}/)` | **Flaky latente ajeno a F (bug de la propia suite).** Recibido: `tenantSlug: "phone-readiness-55755500"`, 8 hex del UUID con **todos los dígitos** → provocan `\d{7,}` en la salida. P ≈ 5 % por corrida: `(10/16)^8 + 2·(10/16)^7·(6/16)`. De la aserción `expect(stdout).not.toContain` los valores de `SYNTHETIC` pasan; es el propio slug de la fixture. Se corrige con la fixture, no con la aserción (p. ej. slug con sufijo de letras hex o excluir el slug del reporte). En historial de la base sin F estadísticamente ocurrió ~1 de cada 20 corridas sin quedar registro previo. |
+
+Los intentos rojos **no cuentan** para la mediana (§10.6); para llegar a cinco válidos se relanza el mismo job (`gh run rerun --failed`, solo el job rojo).
+
+**Estado 2026-11-10 hasta el intento 4 (cancelado el intento 5, decisión tomada):** muestra con 2 válidos (4,27 y 4,49) y 2 inválidos con causa clasificada (tabla anterior). Los dos válidos ya están sobre el umbral de conservación 4,0275 (media 4,38 > base 4,2394), y la tasa de rojos con F fue 2 de 4 frente a cero rojos conocidos de estas suites en toda la base sin F. Los intentos 5 y siguientes ya no aclaran más: se decidió sin completar los 5 válidos.
+
+**Decisión (CTO, 2026-11-10): revertir F.** El criterio §10.6 no se cumple de forma recuperable: para conservar hacía falta que la mediana de 5 válidos quedara ≤4,0275, con solo 2 válidos ya ambos sobre el umbral y las alternativas restantes dependiendo de tres corridas ≤4,03 que ninguna de las cuatro intentos rozó (3,52-4,61 con el confusor incluido). La reversión es un commit aparte sobre `ci.yml` que retira los tres `ALTER SYSTEM SET` y sus `check_setting`; la guarda de `max_locks_per_transaction = 256` se conserva. Pendiente como alternativa de ahorro: evaluar N = 3 workers (§10.6). El intento 5 en curso se canceló (`gh run cancel`).
+
 Sin F, el cociente tiene mediana 4,24 y media 4,37; con F da 4,27. **Normalizado, F no mejora un 5 % o más:** queda a +0,7 % de la mediana (algo peor, dentro del ruido) y a −2,3 % de la media. La bajada aparente del −36 % la explica el runner, no la reserva. Con una sola muestra no se puede concluir. El indicador tiene un límite: la 089 también es DDL contra el mismo Postgres e incluye el arranque de jest, así que es una aproximación del runner, no una medida limpia.
 
-**Decisión:** no se revierte ni se confirma todavía. Se decide con al menos 5 runs de `main` con F (§10.6).
+**Decisión:** revertida (CTO, 2026-11-10; ver arriba).
 
 ### 10.6 Pendiente
 
-- **Decisión sobre la reserva F:** reunir al menos 5 runs de `main` con F y comparar su cociente API/089 con el de los 3 runs sin F. Si F no baja el cociente al menos un 5 %, se revierte en un commit aparte y se evalúa N = 3. Si lo baja, se confirma y `timeout-minutes` se recalibra con el máximo de esos runs (§10.4).
-
+- ~~**Decisión sobre la reserva F**~~ **Cerrado 2026-11-10:** F se probó en CI (CI `42722797012`, intentos 1-4) y se revirtió sin completar los 5 válidos: los dos únicos intentos válidos (4,27 y 4,49) ya quedaron sobre el umbral de conservación 4,0275 y la rate de rojos fue 2/4 frente a cero en la base (§10.5). El intento 5 se canceló. La reversión sale en un commit aparte de `ci.yml`.
+- **Evaluar N = 3 workers** como alternativa de ahorro del paso API (una base más, menos fanout contra postgres 18 de CI): encargo propio en esta spec si el CTO lo abre.
 - La rama de fallo cerrado de `clone-integration-dbs.sh` con `max_locks_per_transaction < 256` no se ejecutó en local.
