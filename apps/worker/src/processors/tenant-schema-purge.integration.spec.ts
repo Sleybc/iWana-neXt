@@ -23,6 +23,7 @@ import { ConfigService } from '@nestjs/config';
 import { resolveMigrationDbCredentials } from '@iwana/db';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { TenantSchemaPurgeProcessor } from './tenant-schema-purge.processor';
+import { recordTestPurgeEvidence } from '../../test/tenant-purge-evidence-fixture';
 
 function loadWorkspaceEnv(): void {
   if (process.env.DB_HOST && process.env.DB_PASSWORD) return;
@@ -58,6 +59,7 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
   let migratorPool: Pool | undefined;
   let purge: TenantSchemaPurgeProcessor | undefined;
   let tenantId: string | undefined;
+  let cleanEvidence: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
     if (process.env.R0_3_REAL_DB !== '1') {
@@ -104,6 +106,7 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
     );
     tenantId = inserted.rows[0]?.id;
     if (!tenantId) throw new Error('[BLOCKED] No fue posible crear el tenant sintético.');
+    cleanEvidence = await recordTestPurgeEvidence(tenantId);
 
     // 2. Misma configuración que worker-prod: ConfigService sobre process.env.
     purge = new TenantSchemaPurgeProcessor(new ConfigService());
@@ -125,6 +128,7 @@ describe('R7 — purga de tenants con el rol de producción (PostgreSQL real)', 
     }
     await (purge as unknown as { pool?: Pool } | undefined)?.pool?.end().catch(() => undefined);
     await migratorPool?.end().catch(() => undefined);
+    await cleanEvidence?.();
   });
 
   it('borra el esquema y la fila de un tenant marcado y vencido, y lo audita', async () => {

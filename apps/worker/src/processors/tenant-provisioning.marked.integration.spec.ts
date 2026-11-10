@@ -23,6 +23,7 @@ import type { ProvisioningJobPayload } from '@iwana/shared';
 import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { TenantProvisioningProcessor } from './tenant-provisioning.processor';
 import { TenantSchemaPurgeProcessor } from './tenant-schema-purge.processor';
+import { recordTestPurgeEvidence } from '../../test/tenant-purge-evidence-fixture';
 import type { TenantSeedService } from '../services/tenant-seed.service';
 
 function loadWorkspaceEnv(): void {
@@ -67,6 +68,7 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
   let purge: TenantSchemaPurgeProcessor | undefined;
   let tenantId: string | undefined;
   let originalDeletedAt: string | undefined;
+  let cleanEvidence: (() => Promise<void>) | undefined;
   const seedCalls: string[] = [];
   // W1 (§8.2): segundo tenant propio, este sí se aprovisiona de verdad.
   const w1Schema = `tenant_dt4w_${suffix}`;
@@ -135,6 +137,7 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
       [tenantId],
     );
     originalDeletedAt = marked.rows[0]?.deleted_at;
+    cleanEvidence = await recordTestPurgeEvidence(tenantId);
 
     dataSource = new DataSource({
       type: 'postgres',
@@ -216,6 +219,7 @@ describe('DT-4 — aprovisionamiento de un tenant marcado (PostgreSQL real)', ()
     if (dataSource?.isInitialized) await dataSource.destroy().catch(() => undefined);
     await cleanupPool?.end().catch(() => undefined);
     await database?.end().catch(() => undefined);
+    await cleanEvidence?.();
   });
 
   it('no reactiva el tenant marcado y la purga lo elimina al vencer la retención', async () => {

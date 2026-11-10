@@ -73,6 +73,8 @@ run_psql_host() {
     -p "${DB_PORT_RESOLVED}" \
     -U "${DB_USER_BOOTSTRAP}" \
     -d "${DB_NAME_BOOTSTRAP}" \
+    -v guard_app_user="${APP_USER}" \
+    -v guard_migrator_user="${MIGRATOR_USER}" \
     -v app_pass="${APP_PASS}" \
     -v migrator_pass="${MIGRATOR_PASS}" \
     -v purger_pass="${PURGER_PASS}" \
@@ -91,6 +93,8 @@ run_psql_docker() {
     psql -v ON_ERROR_STOP=1 \
       -U "${DB_USER_BOOTSTRAP}" \
       -d "${DB_NAME_BOOTSTRAP}" \
+      -v guard_app_user="${APP_USER}" \
+      -v guard_migrator_user="${MIGRATOR_USER}" \
       -v app_pass="${APP_PASS}" \
       -v migrator_pass="${MIGRATOR_PASS}" \
       -v purger_pass="${PURGER_PASS}" \

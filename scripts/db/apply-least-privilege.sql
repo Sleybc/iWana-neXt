@@ -17,6 +17,31 @@
 \set ON_ERROR_STOP on
 \set app_user 'iwana_app'
 \set migrator_user 'iwana_migrator'
+\set purger_user 'iwana_purger'
+
+-- Vigilar también los nombres configurados sin cambiar los grants de SEC-04.
+\if :{?guard_app_user}
+\else
+\set guard_app_user :app_user
+\endif
+\if :{?guard_migrator_user}
+\else
+\set guard_migrator_user :migrator_user
+\endif
+SELECT :'guard_app_user'::name IN (:'guard_migrator_user'::name, :'purger_user'::name, :'migrator_user'::name)
+    OR :'guard_migrator_user'::name IN (:'purger_user'::name, :'app_user'::name)
+    OR current_user IN (:'app_user'::name, :'migrator_user'::name, :'purger_user'::name,
+                        :'guard_app_user'::name, :'guard_migrator_user'::name)
+    AS r7_roles_overlap
+\gset
+\if :r7_roles_overlap
+DO $$ BEGIN
+  RAISE EXCEPTION 'GSEC-N1 (R7): bootstrap, aplicación, migración y purga requieren roles distintos';
+END $$;
+\endif
+
+-- Una guarda fallida no deja roles ni privilegios parcialmente aplicados.
+BEGIN;
 
 -- Password de lab: reutilizar el del rol actual vía ALTER no es portable;
 -- CREATE ROLE exige password. Si el rol ya existe, se omite CREATE.
@@ -88,7 +113,6 @@ REVOKE CREATE ON SCHEMA public FROM :"app_user";
 -- sobre las dos funciones SECURITY DEFINER de la migración pública 029. Sin tablas,
 -- sin TEMP, sin membresías. Si las funciones aún no existen (antes de migrar), el
 -- EXECUTE lo concede la propia 029 o la siguiente pasada de este script.
-\set purger_user 'iwana_purger'
 \if :{?purger_pass}
 \else
 \set purger_pass 'changeme-dev-only-purger'
@@ -116,22 +140,43 @@ SELECT format('GRANT EXECUTE ON FUNCTION public.iwana_purge_tenant_schema(uuid, 
 WHERE to_regprocedure('public.iwana_purge_tenant_schema(uuid, integer)') IS NOT NULL
 \gexec
 
--- GSEC-N1 ampliado (R7): el reloj de retención del trigger de public.tenants usa
--- pg_has_role(session_user, migrator). Exige que ningún rol iwana_* sea miembro de
--- otro y que el purger no esté elevado ni tenga TEMP.
+-- GSEC-N1 (R7): el reloj de retención comprueba membresías transitivas.
+SELECT pg_catalog.set_config('iwana.guard_app_user', :'guard_app_user'::name::text, true) AS r7_app,
+       pg_catalog.set_config('iwana.guard_migrator_user', :'guard_migrator_user'::name::text, true) AS r7_migrator
+\gset
+
 DO $r7guard$
 DECLARE
   bad text;
 BEGIN
-  SELECT string_agg(m.rolname || ' -> ' || r.rolname, ', ')
+  WITH roles AS (
+    SELECT oid, rolname FROM pg_catalog.pg_roles
+    WHERE rolname IN (
+      'iwana_app', 'iwana_migrator', 'iwana_purger',
+      pg_catalog.current_setting('iwana.guard_app_user'),
+      pg_catalog.current_setting('iwana.guard_migrator_user')
+    )
+  )
+  SELECT string_agg(m.rolname || ' -> ' || r.rolname || CASE
+           WHEN m.rolname = 'iwana_purger'
+             AND r.rolname IN ('iwana_migrator', pg_catalog.current_setting('iwana.guard_migrator_user'))
+             AND pg_catalog.pg_has_role(m.oid, r.oid, 'USAGE') THEN ' (USAGE)'
+           ELSE '' END, ', ' ORDER BY m.rolname, r.rolname)
     INTO bad
-    FROM pg_auth_members a
-    JOIN pg_roles r ON r.oid = a.roleid
-    JOIN pg_roles m ON m.oid = a.member
-   WHERE r.rolname IN ('iwana_app', 'iwana_migrator', 'iwana_purger')
-     AND m.rolname IN ('iwana_app', 'iwana_migrator', 'iwana_purger');
+    FROM roles m CROSS JOIN roles r
+   WHERE m.oid <> r.oid AND pg_catalog.pg_has_role(m.oid, r.oid, 'MEMBER');
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION 'GSEC-N1 (R7): membresías entre roles de aplicación: %', bad;
+  END IF;
+
+  -- Toda cadena de membresía saliente del purger empieza en pg_auth_members.
+  SELECT string_agg(DISTINCT r.rolname, ', ' ORDER BY r.rolname)
+    INTO bad
+    FROM pg_catalog.pg_auth_members a
+    JOIN pg_catalog.pg_roles r ON r.oid = a.roleid
+   WHERE a.member = pg_catalog.to_regrole('iwana_purger');
+  IF bad IS NOT NULL THEN
+    RAISE EXCEPTION 'GSEC-N1 (R7): iwana_purger es miembro de: %', bad;
   END IF;
 
   IF EXISTS (
@@ -143,6 +188,8 @@ BEGIN
   END IF;
 END
 $r7guard$;
+
+COMMIT;
 
 -- Función + event trigger (misma lógica que docker/postgres/init/02-*.sql)
 CREATE OR REPLACE FUNCTION public.iwana_reassign_audit_table_owner()
@@ -418,6 +465,13 @@ BEGIN
       'GRANT SELECT, INSERT ON TABLE public.platform_audit_logs TO %I',
       app
     );
+  END IF;
+
+  -- D-2 (ADR-033): la constancia previa a la purga no la toca la app. Si existe y
+  -- el grant masivo la alcanzó, la retiramos y dejamos solo el RLS FORCE del owner (031).
+  -- La re-aplicación post-migración ejecuta este script de nuevo, así que cubre las tablas nacidas entre pasadas.
+  IF to_regclass('public.tenant_purge_evidence') IS NOT NULL THEN
+    EXECUTE format('REVOKE ALL ON TABLE public.tenant_purge_evidence FROM %I', app);
   END IF;
 
   FOR r IN

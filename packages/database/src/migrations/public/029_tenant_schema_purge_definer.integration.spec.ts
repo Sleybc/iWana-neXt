@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { Pool, PoolClient } from 'pg';
 
 import { resolveMigrationDbCredentials } from '../../db-credentials';
@@ -63,6 +63,7 @@ describeWithDb(
     let migrator: Pool;
     let app: Pool;
     let purger: Pool;
+    let bootstrap: Pool;
     const createdSchemas: string[] = [];
     const createdIds: string[] = [];
 
@@ -103,6 +104,15 @@ describeWithDb(
       return rows[0]?.outcome;
     }
 
+    async function recordEvidence(id: string): Promise<void> {
+      await bootstrap.query(
+        `SELECT public.iwana_record_tenant_purge_evidence(
+           $1, (SELECT deleted_at FROM public.tenants WHERE id = $1), 'ISP_WRITTEN_INSTRUCTION', $2, $3
+         )`,
+        [id, randomUUID(), 'b'.repeat(64)],
+      );
+    }
+
     async function schemaExists(name: string): Promise<boolean> {
       const { rowCount } = await migrator.query('SELECT 1 FROM pg_namespace WHERE nspname = $1', [
         name,
@@ -120,6 +130,13 @@ describeWithDb(
 
     beforeAll(() => {
       const purgerUser = process.env['DB_PURGER_USER'];
+      const bootstrapUser = process.env['DB_BOOTSTRAP_USER'];
+      const bootstrapPassword = process.env['DB_BOOTSTRAP_PASSWORD'];
+      if (!bootstrapUser || !bootstrapPassword) {
+        throw new Error(
+          '[BLOCKED] Integración 029 exige DB_BOOTSTRAP_* para constancias sintéticas.',
+        );
+      }
       if (!purgerUser) {
         throw new Error(
           '[BLOCKED] Integración 029 exige DB_PURGER_USER/DB_PURGER_PASSWORD (rol iwana_purger, ADR-108).',
@@ -129,6 +146,7 @@ describeWithDb(
       migrator = pool(credentials.username, credentials.password);
       app = pool(process.env['DB_USER'] ?? '', process.env['DB_PASSWORD'] ?? '');
       purger = pool(purgerUser, process.env['DB_PURGER_PASSWORD'] ?? '', 3);
+      bootstrap = pool(bootstrapUser, bootstrapPassword);
     });
 
     afterAll(async () => {
@@ -136,11 +154,15 @@ describeWithDb(
         await migrator.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(() => undefined);
       }
       if (createdIds.length > 0) {
+        await bootstrap.query(
+          'DELETE FROM public.tenant_purge_evidence WHERE tenant_id = ANY($1::uuid[])',
+          [createdIds],
+        );
         await migrator
           .query('DELETE FROM public.tenants WHERE id = ANY($1::uuid[])', [createdIds])
           .catch(() => undefined);
       }
-      await Promise.all([migrator?.end(), app?.end(), purger?.end()]);
+      await Promise.all([migrator?.end(), app?.end(), purger?.end(), bootstrap?.end()]);
     });
 
     describe('§5.2 función de purga', () => {
@@ -161,12 +183,14 @@ describeWithDb(
 
       it('una retención grande la alarga; nula o negativa resuelve a 30', async () => {
         const long = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 31 });
+        await recordEvidence(long.id);
         expect((await errorOf(purge(purger, long.id, 1000))).message).toBe(
           'TENANT_PURGE_RETENTION_NOT_MET',
         );
         expect(await purge(purger, long.id, null)).toBe('PURGED');
 
         const negative = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 31 });
+        await recordEvidence(negative.id);
         expect(await purge(purger, negative.id, -5)).toBe('PURGED');
         expect(await schemaExists(negative.schemaName)).toBe(false);
       });
@@ -186,6 +210,7 @@ describeWithDb(
           withSchema: false,
           schemaName: 'tenant_iwana',
         });
+        await recordEvidence(t.id);
         const candidates = await purger.query<{ id: string }>(
           'SELECT id::text AS id FROM public.iwana_list_purge_candidates(30, 100) AS id',
         );
@@ -237,12 +262,81 @@ describeWithDb(
         await migrator.query(`DROP SCHEMA "${external}" CASCADE`);
       });
 
+      it('P2-2: conserva una columna de public que usa la collation del tenant', async () => {
+        const t = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 3650 });
+        const table = `public.r7_collation_${suffix}`;
+        await migrator.query(`CREATE COLLATION "${t.schemaName}".r7_sort FROM pg_catalog."C"`);
+        await migrator.query(
+          `CREATE TABLE ${table} (id int, label text COLLATE "${t.schemaName}".r7_sort)`,
+        );
+        try {
+          await migrator.query(`INSERT INTO ${table} VALUES (1, 'dato sintético')`);
+          expect((await errorOf(purge(purger, t.id))).message).toBe(
+            'TENANT_PURGE_EXTERNAL_DEPENDENCY',
+          );
+          expect(await schemaExists(t.schemaName)).toBe(true);
+          expect(await tenantRow(t.id)).toBeDefined();
+          expect((await migrator.query(`SELECT label FROM ${table}`)).rows).toEqual([
+            { label: 'dato sintético' },
+          ]);
+          const audit = await migrator.query(
+            `SELECT 1 FROM public.platform_audit_logs
+              WHERE entity_id = $1 AND action IN ('TENANT_PURGE_STARTED', 'TENANT_PURGE_COMPLETED')`,
+            [t.id],
+          );
+          expect(audit.rowCount).toBe(0);
+        } finally {
+          await migrator.query(`DROP TABLE ${table}`);
+        }
+      });
+
+      it('P2-2: conserva la extensión de public que tiene un miembro en el tenant', async () => {
+        const t = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 3650 });
+        await recordEvidence(t.id);
+        const member = `"${t.schemaName}".r7_extension_member()`;
+        await migrator.query('CREATE EXTENSION hstore WITH SCHEMA public');
+        try {
+          await migrator.query(`CREATE FUNCTION ${member} RETURNS int LANGUAGE sql AS 'SELECT 1'`);
+          await migrator.query(`ALTER EXTENSION hstore ADD FUNCTION ${member}`);
+
+          expect((await errorOf(purge(purger, t.id))).message).toBe(
+            'TENANT_PURGE_EXTERNAL_DEPENDENCY',
+          );
+          expect(await tenantRow(t.id)).toBeDefined();
+          const { rows } = await migrator.query(`
+            SELECT to_regtype('public.hstore') IS NOT NULL AS extension_preserved,
+                   ${member} AS member_result
+          `);
+          expect(rows).toEqual([{ extension_preserved: true, member_result: 1 }]);
+        } finally {
+          await migrator.query('DROP EXTENSION IF EXISTS hstore');
+        }
+      });
+
+      it('P2-2: permite la purga si la collation solo se usa dentro del tenant', async () => {
+        const t = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 3650 });
+        await recordEvidence(t.id);
+        await migrator.query(`CREATE COLLATION "${t.schemaName}".r7_sort FROM pg_catalog."C"`);
+        await migrator.query(
+          `ALTER DEFAULT PRIVILEGES IN SCHEMA "${t.schemaName}" GRANT SELECT ON TABLES TO iwana_app`,
+        );
+        await migrator.query(
+          `ALTER TABLE "${t.schemaName}".r7_negocio
+             ADD COLUMN label text COLLATE "${t.schemaName}".r7_sort`,
+        );
+
+        expect(await purge(purger, t.id)).toBe('PURGED');
+        expect(await schemaExists(t.schemaName)).toBe(false);
+        expect(await tenantRow(t.id)).toBeUndefined();
+      });
+
       it('purga una fila elegible sin esquema y audita con el actor de la sesión', async () => {
         const t = await createTenant({
           status: 'MARKED_FOR_DELETION',
           deletedDaysAgo: 3650,
           withSchema: false,
         });
+        await recordEvidence(t.id);
         expect(await purge(purger, t.id)).toBe('PURGED');
         expect(await tenantRow(t.id)).toBeUndefined();
         const audit = await migrator.query<{ action: string; actor: string }>(
@@ -252,6 +346,7 @@ describeWithDb(
         );
         expect(audit.rows).toEqual([
           { action: 'TENANT_PURGE_COMPLETED', actor: process.env['DB_PURGER_USER'] },
+          { action: 'TENANT_PURGE_EVIDENCE_RECORDED', actor: process.env['DB_BOOTSTRAP_USER'] },
           { action: 'TENANT_PURGE_STARTED', actor: process.env['DB_PURGER_USER'] },
         ]);
       });
@@ -262,6 +357,7 @@ describeWithDb(
 
       it('dos purgas concurrentes del mismo tenant: una purga, la otra se omite', async () => {
         const t = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 3650 });
+        await recordEvidence(t.id);
         const first = await purger.connect();
         const second = await purger.connect();
         try {
@@ -302,6 +398,7 @@ describeWithDb(
 
       it('con la purga en curso, la reactivación espera y nunca queda ACTIVE sin esquema', async () => {
         const t = await createTenant({ status: 'MARKED_FOR_DELETION', deletedDaysAgo: 3650 });
+        await recordEvidence(t.id);
         const purging = await purger.connect();
         const reactivation = await app.connect();
         try {

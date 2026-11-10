@@ -60,6 +60,20 @@ psql -v ON_ERROR_STOP=1 \
   -v purger_user="${PURGER_USER}" \
   -v purger_pass="${PURGER_PASS}" \
   -v db_name="${DB_NAME}" <<'SQL'
+SELECT :'app_user'::name IN (:'migrator_user'::name, :'purger_user'::name, 'iwana_migrator')
+    OR :'migrator_user'::name IN (:'purger_user'::name, 'iwana_app')
+    OR current_user IN ('iwana_app', 'iwana_migrator', :'app_user'::name, :'migrator_user'::name,
+                        :'purger_user'::name)
+    AS r7_roles_overlap
+\gset
+\if :r7_roles_overlap
+DO $$ BEGIN
+  RAISE EXCEPTION 'GSEC-N1 (R7): bootstrap, aplicación, migración y purga requieren roles distintos';
+END $$;
+\endif
+
+BEGIN;
+
 SELECT format(
   'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT',
   :'app_user',
@@ -139,55 +153,48 @@ SELECT format(
 )
 WHERE current_user IS DISTINCT FROM :'app_user'
 \gexec
-SQL
 
-# GSEC-N1 — Verificacion de privilegio real, no de existencia.
-# Las creaciones de arriba se saltan el rol si ya existe, y un rol preexistente NO
-# es prueba de que sea correcto: ese supuesto es justo lo que hacia silencioso el
-# acople. Aqui se consulta rolsuper/rolcreaterole/rolbypassrls y se aborta el init.
-ELEVATED="$(
-  psql -tAX \
-    --username "${POSTGRES_USER}" \
-    --dbname "${DB_NAME}" \
-    -v app_user="${APP_USER}" \
-    -v migrator_user="${MIGRATOR_USER}" \
-    -v purger_user="${PURGER_USER}" <<'CHECK'
-SELECT coalesce(string_agg(x, ', ' ORDER BY x), '')
+-- GSEC-N1: verificar los roles preexistentes antes de confirmar los grants.
+WITH roles AS (
+  SELECT oid, rolname FROM pg_catalog.pg_roles
+  WHERE rolname IN (
+    'iwana_app', 'iwana_migrator', 'iwana_purger', :'app_user', :'migrator_user', :'purger_user'
+  )
+)
+SELECT coalesce(string_agg(x, ', ' ORDER BY x), '') AS r7_elevated,
+       count(*) > 0 AS r7_guard_failed
 FROM (
   SELECT rolname AS x
   FROM pg_roles
   WHERE rolname IN (:'app_user', :'migrator_user', :'purger_user')
     AND (rolsuper OR rolcreaterole OR rolbypassrls)
   UNION ALL
-  -- R7: el reloj de retencion de public.tenants depende de que no haya
-  -- membresias entre los roles de aplicacion.
-  SELECT m.rolname || ' miembro de ' || r.rolname
-  FROM pg_auth_members a
-  JOIN pg_roles r ON r.oid = a.roleid
-  JOIN pg_roles m ON m.oid = a.member
-  WHERE r.rolname IN (:'app_user', :'migrator_user', :'purger_user')
-    AND m.rolname IN (:'app_user', :'migrator_user', :'purger_user')
-) hallazgos;
-CHECK
-)"
+  -- R7: el reloj de retencion usa membresia transitiva hacia iwana_migrator.
+  SELECT m.rolname || ' miembro de ' || r.rolname || CASE
+           WHEN m.rolname IN ('iwana_purger', :'purger_user')
+             AND r.rolname IN ('iwana_migrator', :'migrator_user')
+             AND pg_catalog.pg_has_role(m.oid, r.oid, 'USAGE') THEN ' (USAGE)'
+           ELSE '' END
+  FROM roles m CROSS JOIN roles r
+  WHERE m.oid <> r.oid AND pg_catalog.pg_has_role(m.oid, r.oid, 'MEMBER')
+  UNION ALL
+  -- ADR-108: el purger tampoco puede asumir roles ajenos a la aplicación.
+  SELECT DISTINCT m.rolname || ' miembro de ' || r.rolname
+  FROM pg_catalog.pg_auth_members a
+  JOIN roles m ON m.oid = a.member
+  JOIN pg_catalog.pg_roles r ON r.oid = a.roleid
+  WHERE m.rolname IN ('iwana_purger', :'purger_user')
+    AND a.roleid NOT IN (SELECT oid FROM roles)
+) hallazgos
+\gset
+\if :r7_guard_failed
+\warn 'GSEC-N1 (R7): privilegio elevado o membresía entre roles:' :r7_elevated
+DO $$ BEGIN
+  RAISE EXCEPTION 'GSEC-N1 (R7): bootstrap abortado';
+END $$;
+\endif
 
-if [[ -n "${ELEVATED}" ]]; then
-  cat >&2 <<ERR
-01-create-roles: FALLO DURO (GSEC-N1) — rol de aplicacion con privilegio elevado.
-
-  Rol(es) afectado(s): ${ELEVATED}
-  (SUPERUSER / CREATEROLE / BYPASSRLS)
-
-Con este privilegio el rol puede reasignar ownership y eliminar el trigger de
-inmutabilidad del audit: SEC-04 queda anulado. Causa habitual: POSTGRES_USER
-coincide con el rol de aplicacion y el entrypoint de Postgres lo creo como
-superusuario de bootstrap antes de correr este script.
-
-Revisa DB_BOOTSTRAP_USER en docker-compose.yml (debe diferir de DB_APP_USER y
-DB_MIGRATOR_USER) y levanta sobre un datadir limpio.
-Ver docs/runbooks/RUNBOOK-DB-LEAST-PRIVILEGE-v1.0.md.
-ERR
-  exit 1
-fi
+COMMIT;
+SQL
 
 echo "01-create-roles: OK"

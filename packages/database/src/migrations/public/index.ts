@@ -34,6 +34,8 @@ import { MediaUsageStratumEvidence1784419214000 } from './026_media_usage_stratu
 import { MediaUsagePrivacyEvidence1784419215000 } from './027_media_usage_privacy_evidence';
 import { EnableBtreeGist1784419216000 } from './028_enable_btree_gist';
 import { TenantSchemaPurgeDefiner1784419217000 } from './029_tenant_schema_purge_definer';
+import { HardenTenantPurgeDependencies1784419218000 } from './030_harden_tenant_purge_dependencies';
+import { TenantPurgeEvidence1784419219000 } from './031_tenant_purge_evidence';
 
 /**
  * Migraciones del schema público, en orden.
@@ -78,6 +80,8 @@ export const PUBLIC_MIGRATIONS: (new () => MigrationInterface)[] = [
   MediaUsagePrivacyEvidence1784419215000,
   EnableBtreeGist1784419216000,
   TenantSchemaPurgeDefiner1784419217000,
+  HardenTenantPurgeDependencies1784419218000,
+  TenantPurgeEvidence1784419219000,
 ];
 
 /**

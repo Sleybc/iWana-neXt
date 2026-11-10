@@ -120,6 +120,72 @@ describe('TenantSchemaPurgeProcessor (R7 / ADR-108)', () => {
     expect(mockClient.release).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['la constancia no está registrada o está revocada', pgError('TENANT_PURGE_EVIDENCE_REQUIRED')],
+    [
+      'la transacción de la constancia no corre en READ COMMITTED',
+      pgError('TENANT_PURGE_EVIDENCE_ISOLATION'),
+    ],
+  ])('resume los rechazos de evidencia D-2 con su codigo cerrado, %s', async (_caso, rechazo) => {
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 'tenant-1' }] })
+      .mockRejectedValueOnce(rechazo);
+    const processor = buildProcessor();
+    const errorSpy = jest
+      .spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      )
+      .mockImplementation(() => undefined);
+
+    await expect(processor.process({} as never)).rejects.toBeInstanceOf(Error);
+
+    const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain('codigo=TENANT_PURGE_EVIDENCE_');
+    expect(logged[0]).not.toContain('tenant_x');
+    expect(logged[0]).not.toContain('P0001');
+    expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [
+      'un error del driver con el esquema en el mensaje y un SQLSTATE fuera de la lista cerrada',
+      pgError('relation "tenant_x.customers" does not exist', '42P01'),
+    ],
+    [
+      'un valor que no es Error, aunque traiga mensaje y código con el esquema',
+      { message: 'relation "tenant_x.customers" does not exist', code: '42P01' },
+    ],
+    ['una cadena suelta con el esquema', 'tenant_x.customers: boom'],
+  ])('resume como TENANT_PURGE_FAILURE %s, sin filtrar el esquema', async (_caso, rechazo) => {
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [{ id: 'tenant-1' }] })
+      .mockRejectedValueOnce(rechazo);
+
+    const processor = buildProcessor();
+    const errorSpy = jest
+      .spyOn(
+        (processor as unknown as { logger: { error: (message: string) => void } }).logger,
+        'error',
+      )
+      .mockImplementation(() => undefined);
+
+    const failure = await processor.process({} as never).then(
+      () => undefined,
+      (error: unknown) => error as Error,
+    );
+
+    const logged = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain('codigo=TENANT_PURGE_FAILURE');
+    expect(logged[0]).not.toContain('tenant_x');
+    expect(logged[0]).not.toContain('42P01');
+    // El mensaje del job lo reduce el decorador de failedReason; aquí solo importa que falle.
+    expect(failure).toBeInstanceOf(Error);
+    expect(mockClient.release).toHaveBeenCalledTimes(1);
+  });
+
   it('el failedReason no expone el mensaje original ni el esquema', async () => {
     mockClient.query
       .mockResolvedValueOnce({ rows: [{ id: 'tenant-1' }] })
