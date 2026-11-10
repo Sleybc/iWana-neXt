@@ -44,6 +44,9 @@ import { ListMetaDto } from '../../../../common/pagination/list-meta.dto';
 import { GuardBlockedTitular } from '../guards/guard-blocked-titular.decorator';
 import { SubscriberNotesService } from './subscriber-notes.service';
 
+/** Todos los roles de tenant; los de plataforma no son UserRole (ADR-061 §4). */
+const ANY_TENANT_ROLE: readonly UserRole[] = Object.values(UserRole);
+
 const SUBSCRIBER_NOTE_OPENAPI_SCHEMA: SchemaObject = {
   type: 'object',
   title: 'SubscriberNote',
@@ -69,7 +72,10 @@ export class SubscriberNotesController {
   constructor(private readonly notesService: SubscriberNotesService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SALES, UserRole.SUPPORT, UserRole.ACCOUNTANT, UserRole.AUDITOR)
+  // Decisión del 2026-11-10: las notas las lee todo el que pueda ver suscriptores.
+  // Sin techo de roles: cualquier rol tenant con CRM_SUBSCRIBERS_READ. La lista
+  // completa de UserRole solo conserva la frontera de tipo de token (H-01).
+  @Roles(...ANY_TENANT_ROLE)
   @Permissions(AccessPermissionKey.CRM_SUBSCRIBERS_READ)
   @ApiOperation({ summary: 'Listar las notas manuales del suscriptor (más reciente primero)' })
   @ApiExtraModels(ListMetaDto)

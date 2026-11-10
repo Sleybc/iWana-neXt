@@ -199,7 +199,17 @@ export interface SubscriberListItem {
   primaryService: SubscriberPrimaryService | null;
   otherLiveServicesCount: number;
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
+  /**
+   * Sin el permiso `crm.subscribers.document.read` llega enmascarado: solo los
+   * últimos 4 caracteres visibles y el resto con «•» (todo «•» si tiene 4 o menos).
+   */
   documentNumber?: string | null;
+  /**
+   * true cuando el lector no tiene `crm.subscribers.document.read` y `documentNumber`
+   * viaja enmascarado (o ausente/null). La API lo emite siempre en lista, búsqueda,
+   * detalle, ficha 360° y respuestas de escritura; es opcional solo en el tipo.
+   */
+  documentNumberRestricted?: boolean;
   nit?: string | null;
   nitVerificationDigit?: string | null;
   phone?: string | null;

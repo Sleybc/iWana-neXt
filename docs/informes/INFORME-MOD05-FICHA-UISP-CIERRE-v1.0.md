@@ -60,6 +60,18 @@ Revisores: `boundary-reviewer` GO (3 menores) · `contract-drift-reviewer` GO co
 - Pendientes de producto: el API sigue enviando el documento completo (enmascarado solo visual, previo a esta fase); confirmar si ACCOUNTANT y AUDITOR deben leer notas; permiso propio para el mapa.
 - `fe-platform` reformateó por accidente un archivo del otro agente (solo formato) y restauró dos ajenos con `checkout`.
 
+## 4b. Decisiones del usuario aplicadas (2026-11-10)
+
+| # | Decisión | Aplicación |
+|---|---|---|
+| 1 | K2 sin ejecutar: aceptado | Queda registrado en §4 |
+| 2 | Documentos como pestaña propia, como en UISP | Pestaña «Documentos» tras Soporte; PDF de cobro solo con `BILLING_INVOICES_READ`; inventario y ola 2 actualizados por esta decisión |
+| 3 | Número de documento visible según el rol | Permiso `crm.subscribers.document.read` (migración 182; ADMIN, SUPPORT, SALES, ACCOUNTANT por defecto, configurable); sin él, el API lo enmascara, rechaza escribirlo (403) y la auditoría marca FULL o MASKED; portal en solo lectura con «Restringido por tu rol» |
+| 4 | Notas legibles por todos | `GET` de notas sin techo de roles, solo `CRM_SUBSCRIBERS_READ` |
+| 5 | Mapa sin permiso propio | Sin cambio |
+
+Conteos tras aplicarlas: API 491 suites · 6588; portal 363 · 3635 · 1 skipped; integración de la 182 y del permiso en verde. Fuera de alcance: documento en MOD08, oportunidades y adquirente de facturación, y NIT de persona jurídica.
+
 ## 5. Atajos
 
 | `atajo:` | Motivo |

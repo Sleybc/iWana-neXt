@@ -10,6 +10,7 @@ import {
 } from '@iwana/shared';
 import { portalActiveBadgeVariant } from '@/lib/portal-status-badge-rules';
 import { DEPARTAMENTOS } from '@/components/crm/expedientes/expediente-ui';
+import { DOCUMENT_RESTRICTED_LABEL, showsRestrictedDocument } from './subscriber-document-access';
 
 const LOCATION_CONNECTORS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'o', 'u']);
 
@@ -238,8 +239,13 @@ export function formatSubscriberListIdentityDetails(subscriber: SubscriberListIt
       ? Boolean(subscriber.nit?.trim())
       : Boolean(subscriber.documentNumber?.trim());
 
+  // Sin el permiso el número llega enmascarado: se muestra tal cual y se aclara por qué.
+  const documentDisplay = showsRestrictedDocument(subscriber)
+    ? `${formatDocumentDisplay(subscriber)} (${DOCUMENT_RESTRICTED_LABEL.toLowerCase()})`
+    : formatDocumentDisplay(subscriber);
+
   return [
-    ...(documentAvailable ? [formatDocumentDisplay(subscriber)] : []),
+    ...(documentAvailable ? [documentDisplay] : []),
     PERSON_TYPE_META[subscriber.personType].label,
     CUSTOMER_SEGMENT_META[subscriber.customerSegment].label,
   ].join(' · ');

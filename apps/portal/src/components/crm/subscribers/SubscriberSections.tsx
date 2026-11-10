@@ -12,6 +12,12 @@ import { PortalPanel } from '@/components/shared/portal-ui';
 import { DOCUMENT_TYPE_OPTIONS, PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import { validateNitVerificationDigit } from './subscriber-fiscal';
 import {
+  DOCUMENT_RESTRICTED_EDIT_HELP,
+  DOCUMENT_WRITE_FORBIDDEN_MESSAGE,
+  isDocumentNumberRestricted,
+  isDocumentWriteForbidden,
+} from './subscriber-document-access';
+import {
   DEPARTAMENTOS,
   getMunicipiosByDepartamento,
 } from '@/components/crm/expedientes/expediente-ui';
@@ -242,6 +248,8 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
   }, [subscriber]);
 
   const isJuridica = ident.personType === PersonType.JURIDICA;
+  // Sin acceso al documento el valor llega enmascarado: solo lectura y nunca se envía.
+  const documentRestricted = isDocumentNumberRestricted(subscriber);
   // Los datos fiscales viven en la pestaña Tributario: aquí se valida contra lo guardado.
   const rutResponsibilitiesRequired = isRutResponsibilitiesRequired({
     personType: ident.personType,
@@ -303,14 +311,20 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
         }
       } else {
         partial.documentType = (ident.documentType as DocumentType) || undefined;
-        partial.documentNumber = ident.documentNumber || undefined;
+        if (!documentRestricted) {
+          partial.documentNumber = ident.documentNumber || undefined;
+        }
         partial.firstName = ident.firstName || undefined;
         partial.lastName = ident.lastName || undefined;
       }
 
       await onSave(partial);
-    } catch {
-      setErrorIdent('No fue posible guardar la identificación.');
+    } catch (error) {
+      setErrorIdent(
+        isDocumentWriteForbidden(error)
+          ? DOCUMENT_WRITE_FORBIDDEN_MESSAGE
+          : 'No fue posible guardar la identificación.',
+      );
     } finally {
       setSavingIdent(false);
     }
@@ -514,10 +528,13 @@ export function SubscriberSections({ subscriber, onSave }: SubscriberSectionsPro
                     <Input
                       label="Número de documento"
                       value={ident.documentNumber}
-                      placeholder="Número de identificación"
-                      onChange={(e) =>
-                        setIdent((prev) => ({ ...prev, documentNumber: e.target.value }))
-                      }
+                      placeholder={documentRestricted ? undefined : 'Número de identificación'}
+                      readOnly={documentRestricted}
+                      helperText={documentRestricted ? DOCUMENT_RESTRICTED_EDIT_HELP : undefined}
+                      onChange={(e) => {
+                        if (documentRestricted) return;
+                        setIdent((prev) => ({ ...prev, documentNumber: e.target.value }));
+                      }}
                     />
                   </>
                 )}

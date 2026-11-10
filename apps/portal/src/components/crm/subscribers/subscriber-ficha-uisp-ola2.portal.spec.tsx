@@ -446,6 +446,8 @@ describe('Ficha del suscriptor — ola 2 (A, B, G)', () => {
         ...READ_PERMISSIONS,
         AccessPermissionKey.BILLING_PAYMENTS_REGISTER,
         AccessPermissionKey.BILLING_INVOICES_MANAGE,
+        // Decisión del usuario (2026-11-10): Documento lo habilita el permiso de subir soportes.
+        AccessPermissionKey.CRM_EXPEDIENTES_MANAGE,
         AccessPermissionKey.ASSURANCE_TICKETS_MANAGE,
         AccessPermissionKey.WFM_SCHEDULE_MANAGE,
         AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
@@ -466,7 +468,9 @@ describe('Ficha del suscriptor — ola 2 (A, B, G)', () => {
       ['Pago', AccessPermissionKey.BILLING_PAYMENTS_REGISTER, 'facturacion'],
       ['Ticket', AccessPermissionKey.ASSURANCE_TICKETS_MANAGE, 'soporte'],
       ['Visita', AccessPermissionKey.WFM_SCHEDULE_MANAGE, 'soporte'],
-      ['Documento', AccessPermissionKey.BILLING_INVOICES_MANAGE, 'facturacion'],
+      // Decisión del usuario (2026-11-10): «Documentos» es pestaña propia de la ficha (como en
+      // UISP) y Documento exige el permiso que habilita subir soportes, no el de facturación.
+      ['Documento', AccessPermissionKey.CRM_EXPEDIENTES_MANAGE, 'documentos'],
       ['Servicio', AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE, 'servicios'],
     ])(
       '%s solo con su permiso y lleva a la pestaña que tiene su flujo',

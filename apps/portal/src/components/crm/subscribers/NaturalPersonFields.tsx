@@ -5,10 +5,19 @@ import { Controller, type Control, type FieldErrors, type UseFormRegister } from
 import type { SubscriberFormValues } from './SubscriberForm';
 import { DOCUMENT_TYPE_OPTIONS, STRATUM_OPTIONS } from './subscriber-ui';
 
+/**
+ * Estado del número de documento según el acceso de quien captura: editable,
+ * solo lectura (valor ya enmascarado por la API) o deshabilitado (alta sin permiso).
+ */
+export type NaturalDocumentFieldState =
+  | { mode: 'editable' }
+  | { mode: 'readonly' | 'disabled'; help?: string };
+
 interface NaturalPersonFieldsProps {
   control: Control<SubscriberFormValues>;
   register: UseFormRegister<SubscriberFormValues>;
   errors: FieldErrors<SubscriberFormValues>;
+  documentField?: NaturalDocumentFieldState;
 }
 
 function toDateFromLocalDateValue(value: string): Date | undefined {
@@ -26,7 +35,12 @@ function toLocalDateValue(date: Date | undefined): string {
   return `${year}-${month}-${day}`;
 }
 
-export function NaturalPersonFields({ control, register, errors }: NaturalPersonFieldsProps) {
+export function NaturalPersonFields({
+  control,
+  register,
+  errors,
+  documentField = { mode: 'editable' },
+}: NaturalPersonFieldsProps) {
   const birthDateError =
     typeof errors.birthDate?.message === 'string' ? errors.birthDate.message : undefined;
 
@@ -46,7 +60,14 @@ export function NaturalPersonFields({ control, register, errors }: NaturalPerson
         )}
       </div>
       <div>
-        <Input label="Número de documento" className="h-11" {...register('documentNumber')} />
+        <Input
+          label="Número de documento"
+          className="h-11"
+          {...register('documentNumber')}
+          readOnly={documentField.mode === 'readonly'}
+          disabled={documentField.mode === 'disabled'}
+          helperText={documentField.mode === 'editable' ? undefined : documentField.help}
+        />
         {errors.documentNumber && (
           <p className="mt-1 text-xs text-rose-600">{errors.documentNumber.message}</p>
         )}

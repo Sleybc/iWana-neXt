@@ -316,8 +316,8 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 48 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(48);
+  it('ADMIN V2 contiene 49 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(49);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
@@ -558,5 +558,35 @@ describe('invariante Fase 2 — doble guard y excepciones D7', () => {
       const src = readFileSync(f!, 'utf8');
       expect(src).toMatch(/TECHNICIAN/);
     }
+  });
+});
+
+describe('permiso del número de documento del suscriptor (decisión 2026-11-10)', () => {
+  const key = AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ;
+  const granted = [UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES, UserRole.SUPPORT];
+
+  it('es ASSIGNABLE en el catálogo V2 del módulo crm', () => {
+    expect(MOD00_ACCESS_V2_CATALOG.find((entry) => entry.permissionKey === key)).toMatchObject({
+      moduleKey: 'crm',
+      action: 'document.read',
+      availability: AccessPermissionAvailability.ASSIGNABLE,
+      catalogVersion: AccessPermissionCatalogVersion.MOD00_ACCESS_V2,
+    });
+  });
+
+  it('solo Administración, Contable, Comercial y Soporte lo pueden recibir', () => {
+    const holders = Object.values(UserRole)
+      .filter((role) => ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[role].includes(key))
+      .sort();
+    expect(holders).toEqual([...granted].sort());
+  });
+
+  it('las plantillas estándar de esos cuatro roles lo traen por defecto', () => {
+    const templates = MOD00_ACCESS_V2_SYSTEM_ROLE_TEMPLATES.filter((template) =>
+      template.permissionKeys.includes(key),
+    )
+      .map((template) => template.baseRoleConstraint)
+      .sort();
+    expect(templates).toEqual([...granted].sort());
   });
 });

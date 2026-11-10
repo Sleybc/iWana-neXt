@@ -370,9 +370,29 @@ describe('SubscribersController Fase 2 — doble guard', () => {
     expect(auditPayload).not.toContain('Ana Prueba');
   });
 
+  it('POST /crm/subscribers/search — por documento sin el permiso responde enmascarado', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+    ]);
+    subscribersServiceMock.search.mockResolvedValue([listSubscriber]);
+
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers/search')
+      .set('Authorization', 'Bearer admin-token')
+      .send({ documentNumber: '12345678' })
+      .expect(200);
+
+    expect(response.body.data[0]).toMatchObject({
+      documentNumber: '••••5678',
+      documentNumberRestricted: true,
+    });
+    expect(JSON.stringify(response.body)).not.toContain('12345678');
+  });
+
   it('POST /crm/subscribers/search — criterios exactos llegan solo en el body', async () => {
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
       AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
     ]);
     subscribersServiceMock.search.mockResolvedValue([listSubscriber]);
 
@@ -421,6 +441,7 @@ describe('SubscribersController Fase 2 — doble guard', () => {
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
       AccessPermissionKey.CRM_SUBSCRIBERS_READ,
       AccessPermissionKey.CRM_BLOCKED_DATA_READ,
+      AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
     ]);
     subscribersServiceMock.findById.mockResolvedValue({ ...listSubscriber, id });
     privacyMarksReadPortMock.activeMarks.mockResolvedValue({
@@ -699,9 +720,36 @@ describe('SubscribersController Fase 2 — doble guard', () => {
       .expect(403);
   });
 
+  it('POST /crm/subscribers — 403 SUBSCRIBER_DOCUMENT_WRITE_FORBIDDEN sin el permiso del documento', async () => {
+    effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ]);
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/crm/subscribers')
+      .set('Authorization', 'Bearer sales-token')
+      .send({
+        personType: 'NATURAL',
+        customerSegment: 'RESIDENTIAL',
+        documentType: 'CC',
+        documentNumber: '123456789',
+        firstName: 'Test',
+        lastName: 'User',
+        stratum: 3,
+        vatResponsibility: VatResponsibility.RESPONSABLE,
+        rutResponsibilities: ['O-13'],
+        email: 'test@example.com',
+        phone: '3001234567',
+        address: 'Calle 123',
+      })
+      .expect(403);
+    expect(response.body).toMatchObject({ code: 'SUBSCRIBER_DOCUMENT_WRITE_FORBIDDEN' });
+    expect(subscribersServiceMock.create).not.toHaveBeenCalled();
+  });
+
   it('POST /crm/subscribers — 201 con permiso crm.subscribers.manage y rol SALES', async () => {
     effectivePermissionsMock.getEffectivePermissionsForUser.mockResolvedValue([
       AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
     ]);
     await request(app.getHttpServer())
       .post('/api/v1/crm/subscribers')

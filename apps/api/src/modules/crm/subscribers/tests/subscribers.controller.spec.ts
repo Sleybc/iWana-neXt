@@ -359,11 +359,13 @@ describe('SubscribersController', () => {
         'hasLiveContracts',
         'primaryService',
         'otherLiveServicesCount',
+        'documentNumberRestricted',
       ]);
       expect(Object.keys(listItem?.properties ?? {}).sort()).toEqual(
         [
           'privacyMarks',
           'documentNumber',
+          'documentNumberRestricted',
           'nit',
           'nitVerificationDigit',
           'phone',
@@ -438,6 +440,10 @@ describe('SubscribersController', () => {
   describe('create', () => {
     it('crea un suscriptor persona natural y delega al servicio', async () => {
       subscribersServiceMock.create.mockResolvedValue(mockSubscriber);
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+        AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
+      ]);
 
       const dto = {
         personType: PersonType.NATURAL,
@@ -752,6 +758,9 @@ describe('SubscribersController', () => {
 
     it('busca suscriptor por email', async () => {
       subscribersServiceMock.search.mockResolvedValue([mockSubscriber]);
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
+      ]);
       const user = { ...mockUser, role: UserRole.ACCOUNTANT } as JwtPayload;
 
       const result = await controller.search({ email: 'juan@example.com' }, user);
@@ -1534,12 +1543,253 @@ describe('SubscribersController', () => {
     });
   });
 
+  // ── Permiso crm.subscribers.document.read (decisión 2026-11-10) ──
+
+  describe('número de documento del titular', () => {
+    const withDocument = [
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+      AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
+    ];
+    const withoutDocument = [
+      AccessPermissionKey.CRM_SUBSCRIBERS_READ,
+      AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE,
+    ];
+
+    function lastAuditValue(): Record<string, unknown> | undefined {
+      return (auditServiceMock.log.mock.calls.at(-1)?.[0] as { newValue?: Record<string, unknown> })
+        ?.newValue;
+    }
+
+    it('detalle sin permiso: enmascarado, indicador en true y auditoría MASKED', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+      subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
+
+      const result = await controller.findById('sub-001', mockUser);
+
+      expect(result.data.documentNumber).toBe('••••5678');
+      expect(result.data.documentNumberRestricted).toBe(true);
+      expect(JSON.stringify(result)).not.toContain('12345678');
+      expect(lastAuditValue()).toMatchObject({ documentNumberAccess: 'MASKED' });
+    });
+
+    it('detalle con permiso: completo, indicador en false y auditoría FULL sin el número', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withDocument,
+      );
+      subscribersServiceMock.findById.mockResolvedValue(mockSubscriber);
+
+      const result = await controller.findById('sub-001', mockUser);
+
+      expect(result.data.documentNumber).toBe('12345678');
+      expect(result.data.documentNumberRestricted).toBe(false);
+      expect(lastAuditValue()).toMatchObject({ documentNumberAccess: 'FULL' });
+      expect(JSON.stringify(auditServiceMock.log.mock.calls.at(-1)?.[0])).not.toContain('12345678');
+    });
+
+    it('ficha 360° sin permiso enmascara el documento del titular', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+      subscribersServiceMock.get360View.mockResolvedValue({
+        subscriber: mockSubscriber,
+        contacts: [],
+        contracts: [],
+        quotes: [],
+        habeasData: [],
+        arcoRequests: [],
+        privacyMarks: [],
+        expedienteSummary: null,
+        timelineSeed: [],
+        provisioningReadiness: {},
+      });
+
+      const result = await controller.get360View('sub-001', mockUser);
+
+      expect(result.data.subscriber.documentNumber).toBe('••••5678');
+      expect(result.data.subscriber.documentNumberRestricted).toBe(true);
+      expect(JSON.stringify(result)).not.toContain('12345678');
+      expect(lastAuditValue()).toMatchObject({ documentNumberAccess: 'MASKED' });
+    });
+
+    it('lookup exacto por documento sin permiso: encuentra, pero responde enmascarado', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+      subscribersServiceMock.search.mockResolvedValue([mockSubscriber]);
+
+      const result = await controller.search({ documentNumber: '12345678' }, mockUser);
+
+      expect(subscribersServiceMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({ documentNumber: '12345678' }),
+      );
+      expect(result.data[0]).toMatchObject({
+        documentNumber: '••••5678',
+        documentNumberRestricted: true,
+      });
+      expect(lastAuditValue()).toMatchObject({ documentNumberAccess: 'MASKED' });
+    });
+
+    it('listado con permiso entrega el documento completo y lo registra como FULL', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withDocument,
+      );
+      subscribersServiceMock.findAll.mockResolvedValue({
+        data: [mockSubscriber],
+        total: 1,
+        meta: { page: 1, limit: 20, total: 1 },
+      });
+
+      const result = await controller.findAll(mockUser);
+
+      expect(result.data[0]).toMatchObject({
+        documentNumber: '12345678',
+        documentNumberRestricted: false,
+      });
+      expect(lastAuditValue()).toMatchObject({ documentNumberAccess: 'FULL' });
+    });
+
+    it('alta con documento sin permiso: 403 SUBSCRIBER_DOCUMENT_WRITE_FORBIDDEN sin llamar al servicio', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+
+      await expect(
+        controller.create(
+          {
+            personType: PersonType.NATURAL,
+            customerSegment: CustomerSegment.RESIDENTIAL,
+            documentType: DocumentType.CC,
+            documentNumber: '12345678',
+          } as never,
+          mockUser,
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'SUBSCRIBER_DOCUMENT_WRITE_FORBIDDEN' },
+      });
+      expect(subscribersServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('alta sin documento (persona jurídica) no exige el permiso y responde restringido', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+      subscribersServiceMock.create.mockResolvedValue({ ...mockSubscriber, documentNumber: null });
+
+      const result = await controller.create(
+        { personType: PersonType.JURIDICA, nit: '900111222' } as never,
+        mockUser,
+        mockRequest,
+      );
+
+      expect(subscribersServiceMock.create).toHaveBeenCalled();
+      expect(result.data.documentNumberRestricted).toBe(true);
+    });
+
+    it('usuario de plataforma: el alta no consulta permisos tenant y ve el documento', async () => {
+      subscribersServiceMock.create.mockResolvedValue(mockSubscriber);
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockClear();
+
+      const result = await controller.create(
+        { personType: PersonType.NATURAL, documentNumber: '12345678' } as never,
+        { ...mockUser, type: 'platform' as const, role: 'SYSTEM_ADMIN' },
+        mockRequest,
+      );
+
+      expect(effectivePermissionsServiceMock.getEffectivePermissionsForUser).not.toHaveBeenCalled();
+      expect(result.data.documentNumber).toBe('12345678');
+    });
+
+    it('edición que cambia el documento sin permiso: 403 y no actualiza', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+
+      await expect(
+        controller.update('sub-001', { documentNumber: '87654321' } as never, mockUser),
+      ).rejects.toMatchObject({ response: { code: 'SUBSCRIBER_DOCUMENT_WRITE_FORBIDDEN' } });
+      expect(subscribersServiceMock.update).not.toHaveBeenCalled();
+    });
+
+    it('edición que vacía el documento (null) sin permiso también es 403', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+
+      await expect(
+        controller.update('sub-001', { documentNumber: null } as never, mockUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(subscribersServiceMock.update).not.toHaveBeenCalled();
+    });
+
+    it('edición sin tocar el documento sigue permitida sin el permiso y responde enmascarado', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+      subscribersServiceMock.update.mockResolvedValue(mockSubscriber);
+
+      const result = await controller.update('sub-001', { firstName: 'Juana' } as never, mockUser);
+
+      expect(subscribersServiceMock.update).toHaveBeenCalled();
+      expect(result.data.documentNumber).toBe('••••5678');
+    });
+
+    it('guardado por sección de identificación con documento sin permiso: 403', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withoutDocument,
+      );
+
+      await expect(
+        controller.updateSection(
+          'sub-001',
+          'identification',
+          { documentNumber: '87654321' },
+          mockUser,
+        ),
+      ).rejects.toMatchObject({ response: { code: 'SUBSCRIBER_DOCUMENT_WRITE_FORBIDDEN' } });
+      expect(subscribersServiceMock.updateSection).not.toHaveBeenCalled();
+    });
+
+    it('guardado por sección con permiso delega y devuelve el documento completo', async () => {
+      effectivePermissionsServiceMock.getEffectivePermissionsForUser.mockResolvedValue(
+        withDocument,
+      );
+      subscribersServiceMock.updateSection.mockResolvedValue(mockSubscriber);
+
+      const result = await controller.updateSection(
+        'sub-001',
+        'identification',
+        { documentNumber: '12345678' },
+        mockUser,
+      );
+
+      expect(subscribersServiceMock.updateSection).toHaveBeenCalled();
+      expect(result.data.documentNumber).toBe('12345678');
+      expect(result.data.documentNumberRestricted).toBe(false);
+    });
+  });
+
+  /** Por defecto con el permiso del documento: estas pruebas validan la sanitización. */
   function sanitizeResponse<T extends Record<string, unknown>>(
     subscriber: T,
+    canReadDocument = true,
   ): Record<string, unknown> {
     const controllerWithSanitizer = controller as unknown as {
-      sanitizeResponse: (value: Subscriber) => Record<string, unknown>;
+      sanitizeResponse: (
+        value: Subscriber,
+        privacyMarks: undefined,
+        canSeeBlocked: boolean,
+        canReadDocument: boolean,
+      ) => Record<string, unknown>;
     };
-    return controllerWithSanitizer.sanitizeResponse(subscriber as unknown as Subscriber);
+    return controllerWithSanitizer.sanitizeResponse(
+      subscriber as unknown as Subscriber,
+      undefined,
+      false,
+      canReadDocument,
+    );
   }
 });

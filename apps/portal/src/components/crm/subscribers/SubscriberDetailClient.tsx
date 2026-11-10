@@ -28,6 +28,7 @@ import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
 import { SubscriberOverviewTab } from './SubscriberOverviewTab';
 import { SubscriberDocumentsPanel } from './SubscriberDocumentsPanel';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
+import { isDocumentNumberRestricted } from './subscriber-document-access';
 import { SubscriberTechnicalServiceSection } from './SubscriberTechnicalServiceSection';
 
 interface SubscriberDetailClientProps {
@@ -47,6 +48,7 @@ const SUBSCRIBER_TAB_IDS = [
   'servicios',
   'facturacion',
   'soporte',
+  'documentos',
   'datos',
   'tributario',
   'cumplimiento',
@@ -67,7 +69,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
   const canRegisterPayment = hasPermission(AccessPermissionKey.BILLING_PAYMENTS_REGISTER);
-  const canManageInvoices = hasPermission(AccessPermissionKey.BILLING_INVOICES_MANAGE);
+  const canManageExpedientes = hasPermission(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE);
   const canManageTickets = hasPermission(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE);
   const canManageVisits = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
   const canManageSubscribers = hasPermission(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE);
@@ -92,7 +94,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   } | null>(null);
   const [activeSubscriberTab, setActiveSubscriberTab] = useState(urlTab);
   const [fiscalDirty, setFiscalDirty] = useState(false);
-  // «Registrar ▾ → Documento» lleva el foco a la tarjeta Documentos de Facturación (§3 F).
+  // «Registrar ▾ → Documento» abre la pestaña Documentos y lleva el foco a su título (§3 F).
   const [documentsFocusRequest, setDocumentsFocusRequest] = useState(0);
   const selectSubscriberTab = useCallback(
     (tabId: string) => {
@@ -169,7 +171,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   }, [subscriber, selectSubscriberTab]);
 
   // «Registrar ▾» (spec §3 B): cada opción exige el permiso del módulo dueño y lleva a la
-  // pestaña que ya tiene su flujo; Pago y Documento viven en Facturación, que exige su lectura.
+  // pestaña que ya tiene su flujo. Pago vive en Facturación, que exige su lectura; Documento
+  // vive en la pestaña Documentos y exige el permiso que habilita subir soportes.
   const registerActions = useMemo<SubscriberRegisterAction[]>(() => {
     if (!subscriber || subscriber.privacyRestricted || subscriber.anonymizedAt) return [];
     const options: Array<SubscriberRegisterAction & { allowed: boolean }> = [
@@ -194,9 +197,9 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
       {
         id: 'documento',
         label: 'Documento',
-        allowed: canReadBilling && canManageInvoices,
+        allowed: canManageExpedientes,
         onSelect: () => {
-          selectSubscriberTab('facturacion');
+          selectSubscriberTab('documentos');
           setDocumentsFocusRequest((value) => value + 1);
         },
       },
@@ -216,7 +219,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     canRegisterPayment,
     canManageTickets,
     canManageVisits,
-    canManageInvoices,
+    canManageExpedientes,
     canManageSubscribers,
     selectSubscriberTab,
   ]);
@@ -287,22 +290,12 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               content: anonymized ? (
                 <AnonymizedStatementNotice />
               ) : (
-                <div className="space-y-4">
-                  <SubscriberBillingTab
-                    key={subscriber.id}
-                    subscriberId={subscriber.id}
-                    contracts={subscriber360?.contracts ?? []}
-                    statement={statement}
-                  />
-                  <SubscriberDocumentsPanel
-                    expedienteId={subscriber360?.expedienteSummary?.id ?? null}
-                    contracts={subscriber360?.contracts ?? []}
-                    anonymized={anonymized}
-                    restricted={subscriber.privacyRestricted}
-                    statement={statement.data}
-                    focusRequest={documentsFocusRequest}
-                  />
-                </div>
+                <SubscriberBillingTab
+                  key={subscriber.id}
+                  subscriberId={subscriber.id}
+                  contracts={subscriber360?.contracts ?? []}
+                  statement={statement}
+                />
               ),
             },
           ]
@@ -311,6 +304,23 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
         id: 'soporte',
         label: 'Soporte',
         content: <SubscriberSupportTab subscriber={subscriber} />,
+      },
+      {
+        // Pestaña propia como en UISP (decisión del usuario, 2026-11-10). La ficha ya exige
+        // CRM_SUBSCRIBERS_READ en el layout; los PDF de cobro solo llegan con la lectura de
+        // facturación, y sin ella el estado de cuenta ni siquiera se consulta.
+        id: 'documentos',
+        label: 'Documentos',
+        content: (
+          <SubscriberDocumentsPanel
+            expedienteId={subscriber360?.expedienteSummary?.id ?? null}
+            contracts={subscriber360?.contracts ?? []}
+            anonymized={anonymized}
+            restricted={subscriber.privacyRestricted}
+            statement={canReadBilling ? statement.data : null}
+            focusRequest={documentsFocusRequest}
+          />
+        ),
       },
       {
         id: 'datos',
@@ -351,7 +361,9 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                   subscriber.personType === PersonType.JURIDICA
                     ? subscriber.businessName
                     : `${subscriber.firstName ?? ''} ${subscriber.lastName ?? ''}`.trim(),
-                ...(subscriber.documentNumber !== undefined
+                // Enmascarado por falta de permiso no sirve como documento del solicitante.
+                ...(subscriber.documentNumber !== undefined &&
+                !isDocumentNumberRestricted(subscriber)
                   ? { document: subscriber.documentNumber }
                   : {}),
                 ...((subscriber.email ?? subscriber.phone) !== undefined

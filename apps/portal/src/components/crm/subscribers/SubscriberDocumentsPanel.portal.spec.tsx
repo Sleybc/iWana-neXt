@@ -1,5 +1,7 @@
 /**
- * Tarjeta «Documentos» del suscriptor (spec 2026-11-10 §3 F, D4).
+ * Panel «Documentos» del suscriptor (spec 2026-11-10 §3 F, D4). Desde la decisión del usuario
+ * del 2026-11-10 vive en la pestaña propia «Documentos» de la ficha, como en UISP, y no al final
+ * de Facturación; la ficha solo le pasa el estado de cuenta con la lectura de facturación.
  */
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -173,6 +175,14 @@ describe('SubscriberDocumentsPanel', () => {
     expect(items[0]).not.toHaveTextContent('Sede Norte');
   });
 
+  it('sin estado de cuenta (sin lectura de facturación) no lista PDF de cobro', async () => {
+    renderPanel({ statement: null });
+    const items = await rows();
+    expect(items).toHaveLength(3);
+    expect(screen.queryByText(/Documento de cobro/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Descargar PDF/ })).not.toBeInTheDocument();
+  });
+
   it('sin documentos muestra el estado vacío', async () => {
     renderPanel({ expedienteId: null, contracts: [], statement: null });
     expect(await screen.findByText('Aún no hay documentos')).toBeInTheDocument();
@@ -245,7 +255,7 @@ describe('SubscriberDocumentsPanel', () => {
     });
   });
 
-  it('«Registrar ▾ → Documento» lleva el foco al título de la tarjeta', async () => {
+  it('«Registrar ▾ → Documento» lleva el foco al título de la pestaña Documentos', async () => {
     const { rerender } = renderPanel();
     await rows();
     rerender(

@@ -38,6 +38,8 @@ export enum AccessPermissionKey {
   CRM_CUSTOMERS_MANAGE = 'crm.customers.manage',
   CRM_SUBSCRIBERS_READ = 'crm.subscribers.read',
   CRM_SUBSCRIBERS_MANAGE = 'crm.subscribers.manage',
+  /** Ver y escribir el número de documento completo del titular; sin él la API lo enmascara. */
+  CRM_SUBSCRIBERS_DOCUMENT_READ = 'crm.subscribers.document.read',
   CRM_EXPEDIENTES_READ = 'crm.expedientes.read',
   CRM_EXPEDIENTES_MANAGE = 'crm.expedientes.manage',
   COMMERCIAL_CATALOG_READ = 'commercial.catalog.read',

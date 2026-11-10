@@ -187,18 +187,21 @@ describe('Ficha del suscriptor — inventario de no regresión (W0, CA-1)', () =
   });
   afterEach(() => jest.restoreAllMocks());
 
+  // Decisión del usuario (2026-11-10): «Documentos» es una pestaña propia de la ficha, como en
+  // UISP, después de Soporte y visible sin la lectura de facturación (7/6 → 8/7 pestañas).
   describe('H1 — pestañas', () => {
-    it('con BILLING_INVOICES_READ muestra las 7 pestañas', async () => {
+    it('con BILLING_INVOICES_READ muestra las 8 pestañas', async () => {
       const tablist = await renderFicha();
       const names = within(tablist)
         .getAllByRole('tab')
         .map((tab) => tab.textContent?.trim());
-      expect(names).toHaveLength(7);
+      expect(names).toHaveLength(8);
       for (const name of [
         'Vista general',
         'Servicios',
         'Facturación',
         'Soporte',
+        'Documentos',
         'Datos',
         'Tributario',
         'Cumplimiento',
@@ -207,15 +210,16 @@ describe('Ficha del suscriptor — inventario de no regresión (W0, CA-1)', () =
       }
     });
 
-    it('sin BILLING_INVOICES_READ oculta Facturación y conserva las otras 6', async () => {
+    it('sin BILLING_INVOICES_READ oculta Facturación y conserva las otras 7', async () => {
       mockGranted.current = new Set(BASE_PERMISSIONS);
       const tablist = await renderFicha();
-      expect(within(tablist).getAllByRole('tab')).toHaveLength(6);
+      expect(within(tablist).getAllByRole('tab')).toHaveLength(7);
       expect(within(tablist).queryByRole('tab', { name: 'Facturación' })).not.toBeInTheDocument();
       for (const name of [
         'Vista general',
         'Servicios',
         'Soporte',
+        'Documentos',
         'Datos',
         'Tributario',
         'Cumplimiento',

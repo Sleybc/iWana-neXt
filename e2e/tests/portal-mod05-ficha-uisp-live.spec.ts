@@ -248,12 +248,17 @@ test.describe('Ficha del suscriptor estilo UISP (live)', () => {
     );
     await page.getByRole('tab', { name: 'Vista general', exact: true }).click();
     await register.click();
+    // Decisión del usuario (2026-11-10): Documento abre la pestaña propia «Documentos» (como en
+    // UISP) y lleva el foco a su título.
     await page.getByRole('menuitem', { name: 'Documento', exact: true }).click();
-    await expect(page.getByRole('tab', { name: 'Facturación', exact: true })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Documentos', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    await expect(region(page, 'Documentos')).toBeVisible();
+    await expect(page).toHaveURL(/[?&]tab=documentos(?:&|$)/u);
+    const documents = region(page, 'Documentos');
+    await expect(documents).toBeVisible();
+    await expect(documents.getByRole('heading', { name: 'Documentos', exact: true })).toBeFocused();
     await page.getByRole('tab', { name: 'Vista general', exact: true }).click();
     await register.click();
     await page.getByRole('menuitem', { name: 'Servicio', exact: true }).click();

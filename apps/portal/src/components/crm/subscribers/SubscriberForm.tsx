@@ -5,6 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button, Card, CardContent, CardHeader, CardTitle, FormStatus, Select } from '@iwana/ui';
 import {
+  AccessPermissionKey,
   ConsentChannel,
   CreateSubscriberSchema,
   isRutResponsibilitiesRequired,
@@ -22,15 +23,24 @@ import { ApiError, privacyApi } from '@/lib/api-client';
 import { LegalTextContent } from '@/components/privacy/LegalTextContent';
 import { LegalTextReferences } from '@/components/privacy/LegalTextReferences';
 import { useEnabledPurposes } from '@/components/privacy/use-enabled-purposes';
+import { usePermissions } from '@/components/access-control/permissions-context';
 import type { DataPurpose, LegalText } from '@iwana/shared';
 import Link from 'next/link';
 import { JuridicaPersonFields } from './JuridicaPersonFields';
-import { NaturalPersonFields } from './NaturalPersonFields';
+import { NaturalPersonFields, type NaturalDocumentFieldState } from './NaturalPersonFields';
 import { PERSON_TYPE_OPTIONS } from './subscriber-ui';
 import { SharedPersonFields } from './SharedPersonFields';
 import { SubscriberFiscalFields } from './SubscriberFiscalFields';
 import { filterRutResponsibilities, validateNitVerificationDigit } from './subscriber-fiscal';
 import { VatTreatmentBanner } from './VatTreatmentBanner';
+import {
+  DOCUMENT_RESTRICTED_CREATE_HELP,
+  DOCUMENT_RESTRICTED_CREATE_NATURAL_MESSAGE,
+  DOCUMENT_RESTRICTED_EDIT_HELP,
+  DOCUMENT_WRITE_FORBIDDEN_MESSAGE,
+  isDocumentNumberRestricted,
+  isDocumentWriteForbidden,
+} from './subscriber-document-access';
 
 const CONSENT_CHANNEL_OPTIONS = [
   { value: ConsentChannel.TELEFONO, label: 'Teléfono' },
@@ -161,6 +171,21 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
   const [textError, setTextError] = useState(false);
   const [textRetry, setTextRetry] = useState(0);
   const editing = Boolean(initialData);
+  const permissions = usePermissions();
+  // Edición: manda lo que dijo la API sobre este registro. Alta: el permiso efectivo.
+  const documentPermissionPending = !editing && permissions.status === 'loading';
+  const documentRestricted = editing
+    ? isDocumentNumberRestricted(initialData)
+    : !documentPermissionPending &&
+      !permissions.hasPermission(AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ);
+  const documentWritable = !documentRestricted && !documentPermissionPending;
+  const documentField: NaturalDocumentFieldState = documentWritable
+    ? { mode: 'editable' }
+    : documentPermissionPending
+      ? { mode: 'disabled' }
+      : editing
+        ? { mode: 'readonly', help: DOCUMENT_RESTRICTED_EDIT_HELP }
+        : { mode: 'disabled', help: DOCUMENT_RESTRICTED_CREATE_HELP };
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [authorizationText, setAuthorizationText] = useState<LegalText | null>(null);
   const [authorizationTextLoading, setAuthorizationTextLoading] = useState(!initialData);
@@ -246,6 +271,16 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
     clearErrors();
     setSubmitError(null);
 
+    if (!editing && values.personType === PersonType.NATURAL && !documentWritable) {
+      // El alta de persona natural exige el documento y este perfil no puede registrarlo.
+      setSubmitError(
+        documentPermissionPending
+          ? 'Estamos comprobando tus accesos. Intenta de nuevo en unos segundos.'
+          : DOCUMENT_RESTRICTED_CREATE_NATURAL_MESSAGE,
+      );
+      return;
+    }
+
     let nit = values.nit.trim();
     let nitVerificationDigit = values.nitVerificationDigit.trim();
     if (values.personType === PersonType.JURIDICA && nit.includes('-')) {
@@ -301,7 +336,8 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
             ...common,
             personType: PersonType.NATURAL,
             documentType: values.documentType || undefined,
-            documentNumber: values.documentNumber.trim(),
+            // Sin acceso al documento nunca viaja: la API respondería 403.
+            ...(documentWritable ? { documentNumber: values.documentNumber.trim() } : {}),
             firstName: values.firstName.trim(),
             lastName: values.lastName.trim(),
             stratum: values.stratum ? Number(values.stratum) : undefined,
@@ -380,7 +416,11 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
         setSubmitError(error.issues[0]?.message ?? 'No fue posible validar el formulario.');
         return;
       }
-      setSubmitError('No fue posible guardar el suscriptor.');
+      setSubmitError(
+        isDocumentWriteForbidden(error)
+          ? DOCUMENT_WRITE_FORBIDDEN_MESSAGE
+          : 'No fue posible guardar el suscriptor.',
+      );
     }
   };
 
@@ -423,7 +463,12 @@ export function SubscriberForm({ initialData, onSave, onCancel }: SubscriberForm
               onNitChange={handleNitChange}
             />
           ) : (
-            <NaturalPersonFields control={control} register={register} errors={errors} />
+            <NaturalPersonFields
+              control={control}
+              register={register}
+              errors={errors}
+              documentField={documentField}
+            />
           )}
 
           <SharedPersonFields register={register} errors={errors} />

@@ -22,6 +22,27 @@ import { ApiError, commercialApi, subscriberTaxApi, privacyApi } from '@/lib/api
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
 import { CreateContractDialog } from './CreateContractDialog';
 
+// El alta de persona natural registra el número de documento, que desde el contrato
+// de acceso al documento exige `crm.subscribers.document.read`; sin él el campo se
+// deshabilita y el alta se bloquea. Este spec prueba el alta de quien sí tiene el acceso.
+jest.mock('@/components/access-control/permissions-context', () => {
+  const actual = jest.requireActual('@/components/access-control/permissions-context');
+  const granted = new Set(['crm.subscribers.document.read']);
+  return {
+    ...actual,
+    usePermissions: (() => {
+      let ctx: Record<string, unknown> | undefined;
+      return () =>
+        (ctx ??= {
+          ...actual.STATIC_FALLBACK_PERMISSIONS_CONTEXT,
+          effectivePermissions: granted,
+          hasPermission: (permission: string) => granted.has(permission),
+          hasAnyPermission: (permissions: readonly string[]) =>
+            permissions.some((permission) => granted.has(permission)),
+        });
+    })(),
+  };
+});
 jest.mock('./use-billing-cycles', () => ({
   useBillingCycles: () => ({ cycles: [], loading: false, error: false, retry: jest.fn() }),
 }));

@@ -138,6 +138,7 @@ import { PrivacyErasureMonotonicLog1780000000178 } from './178_privacy_erasure_m
 import { RetentionExpiryLedger1790000000179 } from './179_retention_expiry_ledger';
 import { SubscriberNote1800000000180 } from './180_subscriber_note';
 import { SubscriberNoteGuard1810000000181 } from './181_subscriber_note_guard';
+import { SeedSubscriberDocumentPermission1820000000182 } from './182_seed_subscriber_document_permission';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -357,6 +358,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   RetentionExpiryLedger1790000000179,
   SubscriberNote1800000000180,
   SubscriberNoteGuard1810000000181,
+  SeedSubscriberDocumentPermission1820000000182,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

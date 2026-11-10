@@ -14,6 +14,7 @@ import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { maskDocument } from '@/components/privacy/privacy-labels';
 import { SubscriberContactActions } from './SubscriberContactActions';
 import { SubscriberDerivedBadges } from './SubscriberDerivedBadges';
+import { DOCUMENT_RESTRICTED_LABEL, showsRestrictedDocument } from './subscriber-document-access';
 import type { SubscriberDerivedBadge } from './subscriber-badges';
 import {
   CUSTOMER_SEGMENT_META,
@@ -32,9 +33,15 @@ interface SubscriberIdentityCardProps {
   onOpenData: () => void;
 }
 
-/** Documento enmascarado (CA-4): nunca el número completo en la Vista general. */
+/**
+ * Documento enmascarado (CA-4): nunca el número completo en la Vista general. Si la API
+ * ya lo envió enmascarado por falta de permiso, se muestra tal cual llega.
+ */
 export function formatMaskedDocument(
-  subscriber: Pick<SubscriberRecord, 'personType' | 'documentType' | 'documentNumber' | 'nit'>,
+  subscriber: Pick<
+    SubscriberRecord,
+    'personType' | 'documentType' | 'documentNumber' | 'documentNumberRestricted' | 'nit'
+  >,
 ): string | null {
   if (subscriber.personType === PersonType.JURIDICA) {
     const nit = subscriber.nit?.trim();
@@ -45,7 +52,8 @@ export function formatMaskedDocument(
   const typeLabel = DOCUMENT_TYPE_OPTIONS.find(
     (item) => item.value === subscriber.documentType,
   )?.label;
-  return typeLabel ? `${typeLabel} ${maskDocument(number)}` : maskDocument(number);
+  const masked = showsRestrictedDocument(subscriber) ? number : maskDocument(number);
+  return typeLabel ? `${typeLabel} ${masked}` : masked;
 }
 
 /** ID visible: el externo cuando existe (p. ej. importado); si no, el prefijo del interno. */
@@ -69,6 +77,7 @@ export function SubscriberIdentityCard({
   const anonymizedValue = privacyDisplayValue(null, { anonymizedAt });
   const name = personalVisible ? formatSubscriberName(subscriber) : anonymizedValue;
   const document = personalVisible ? formatMaskedDocument(subscriber) : null;
+  const documentRestricted = Boolean(document) && showsRestrictedDocument(subscriber);
 
   const textRow = (label: string, value: string | null | undefined, mono = false) =>
     personalVisible ? (
@@ -110,6 +119,11 @@ export function SubscriberIdentityCard({
         {personalVisible ? (
           <PortalFieldRow label="Documento" mono empty={!document}>
             {document}
+            {documentRestricted ? (
+              <span className="block font-sans text-xs text-gray-600 dark:text-gray-300">
+                {DOCUMENT_RESTRICTED_LABEL}
+              </span>
+            ) : null}
           </PortalFieldRow>
         ) : (
           <PortalFieldRow label="Documento">{anonymizedValue}</PortalFieldRow>

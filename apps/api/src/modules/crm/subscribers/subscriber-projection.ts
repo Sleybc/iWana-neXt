@@ -77,11 +77,30 @@ function toIsoOrNull(value: Date | string | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+const DOCUMENT_MASK_CHAR = '•';
+const DOCUMENT_VISIBLE_TAIL = 4;
+
+/**
+ * Enmascara el número de documento del titular para quien no tiene
+ * `crm.subscribers.document.read`: deja visibles los últimos 4 caracteres y cubre el
+ * resto con «•». Con 4 o menos caracteres lo cubre entero, para no revelarlo completo.
+ */
+export function maskDocumentNumber<T extends string | null | undefined>(value: T): T {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  const characters = [...value];
+  if (characters.length <= DOCUMENT_VISIBLE_TAIL) {
+    return DOCUMENT_MASK_CHAR.repeat(characters.length) as T;
+  }
+  const visible = characters.slice(-DOCUMENT_VISIBLE_TAIL).join('');
+  return `${DOCUMENT_MASK_CHAR.repeat(characters.length - DOCUMENT_VISIBLE_TAIL)}${visible}` as T;
+}
+
 /** Construye una lista cerrada; roles desconocidos solo reciben campos base. */
 export function projectSubscriberForList(
   subscriber: SubscriberWithDecryptedFields,
   role: string,
   canSeeBlocked = false,
+  canReadDocument = false,
 ): SubscriberListItem {
   const anonymizedAt = toIsoOrNull(subscriber.anonymizedAt);
   const privacyRestricted =
@@ -134,6 +153,7 @@ export function projectSubscriberForList(
     primaryService,
     otherLiveServicesCount: subscriber.otherLiveServicesCount ?? 0,
     privacyMarks: subscriber.privacyMarks ?? [],
+    documentNumberRestricted: !canReadDocument,
   };
 
   if (privacyRestricted || anonymizedAt !== null) {
@@ -164,7 +184,9 @@ export function projectSubscriberForList(
 
   const allowedFields = SUBSCRIBER_LIST_FIELD_ROLE_MAP[role as UserRole] ?? [];
   const fieldValues: Record<SubscriberListField, unknown> = {
-    documentNumber: subscriber.documentNumber,
+    documentNumber: canReadDocument
+      ? subscriber.documentNumber
+      : maskDocumentNumber(subscriber.documentNumber),
     nit: subscriber.nit,
     nitVerificationDigit: subscriber.nitVerificationDigit,
     phone: subscriber.phone,

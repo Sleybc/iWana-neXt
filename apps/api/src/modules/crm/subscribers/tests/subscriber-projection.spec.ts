@@ -7,7 +7,7 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import { Subscriber } from '../entities/subscriber.entity';
-import { projectSubscriberForList } from '../subscriber-projection';
+import { maskDocumentNumber, projectSubscriberForList } from '../subscriber-projection';
 import type { SubscriberListItem } from '@iwana/shared';
 
 const subscriber = {
@@ -175,6 +175,8 @@ describe('projectSubscriberForList', () => {
       'anonymizedRequestId',
       'contactPending',
       'otherLiveServicesCount',
+      // Indicador booleano sin PII (permiso del número de documento, 2026-11-10).
+      'documentNumberRestricted',
     ]);
 
     expect(projected.privacyRestricted).toBe(true);
@@ -329,5 +331,61 @@ describe('projectSubscriberForList', () => {
 
     expect(noContact.contactPending).toBe(true);
     expect(phoneOnly.contactPending).toBe(false);
+  });
+
+  describe('número de documento según crm.subscribers.document.read', () => {
+    it.each([UserRole.ADMIN, UserRole.SUPPORT, UserRole.ACCOUNTANT])(
+      'sin el permiso, %s recibe el documento enmascarado y el indicador en true',
+      (role) => {
+        const projected = projectSubscriberForList(subscriber, role, false, false);
+        expect(projected.documentNumber).toBe('••••5678');
+        expect(projected.documentNumberRestricted).toBe(true);
+        expect(JSON.stringify(projected)).not.toContain('12345678');
+      },
+    );
+
+    it('con el permiso recibe el documento completo y el indicador en false', () => {
+      const projected = projectSubscriberForList(subscriber, UserRole.SUPPORT, false, true);
+      expect(projected.documentNumber).toBe('12345678');
+      expect(projected.documentNumberRestricted).toBe(false);
+    });
+
+    it('por defecto enmascara: quien no declara el permiso no ve el número', () => {
+      expect(projectSubscriberForList(subscriber, UserRole.ADMIN).documentNumber).toBe('••••5678');
+    });
+
+    it('el rol sin el campo en el mapa sigue sin recibirlo, tenga o no el permiso', () => {
+      const projected = projectSubscriberForList(subscriber, UserRole.SALES, false, true);
+      expect(projected).not.toHaveProperty('documentNumber');
+      expect(projected.documentNumberRestricted).toBe(false);
+    });
+
+    it('bloqueado sin acceso lo deja en null aunque tenga el permiso del documento', () => {
+      const blocked = projectSubscriberForList(
+        { ...subscriber, privacyMarks: ['DATOS_BLOQUEADOS'] } as Subscriber,
+        UserRole.ADMIN,
+        false,
+        true,
+      );
+      expect(blocked.documentNumber).toBeNull();
+      expect(blocked.documentNumberRestricted).toBe(false);
+    });
+  });
+});
+
+describe('maskDocumentNumber', () => {
+  it.each([
+    ['12345678', '••••5678'],
+    ['1020304050', '••••••4050'],
+    ['AB-12345', '••••2345'],
+    ['12345', '•2345'],
+    ['1234', '••••'],
+    ['12', '••'],
+  ])('enmascara %s como %s', (input, expected) => {
+    expect(maskDocumentNumber(input)).toBe(expected);
+  });
+
+  it.each([null, undefined, ''])('deja %p sin cambios', (input) => {
+    expect(maskDocumentNumber(input)).toBe(input);
   });
 });
