@@ -231,6 +231,23 @@ Duración del paso «Integration tests — API» en los runs del workflow CI en 
 
 Media con la durabilidad activa: 187 s; sin ella: 195,5 s. **En local no hay efecto medible:** el ruido de la máquina compartida (±25 s entre corridas iguales) supera el efecto, como ya pasó con el −8 % del microbenchmark (§2.5). El disco de Docker Desktop hace `fsync` barato. **La medición concluyente es la de CI.** Si el paso no baja de forma clara (menos de un 5 % frente a la mediana de 3:39, 4:58 y 5:01, que es 4:58), se revierte en un commit posterior para no dejar configuración sin efecto, y se evalúa N = 3.
 
+**Primera medición en CI con F:** `7fa0f5ae`, G6.5 ✅ (CI 42722797012 y smoke 42722797018 en `success`). El paso API tardó **3 min 12 s** (23:57:59 a 00:01:11Z), frente a la mediana anterior de 4:58.
+
+**Confusor:** el paso de la 089 corre **antes** del `ALTER SYSTEM` y en este run tardó 45 s, frente a 64 y 71 s en los dos anteriores: este runner ya era rápido sin la reserva. Para separarlo, se normaliza cada run con el cociente API/089 como indicador de la velocidad del runner. Las duraciones salen de los `startedAt` y `completedAt` del job:
+
+| Run | SHA | F | 089 | API | API/089 |
+| --- | --- | --- | --- | --- | --- |
+| 42708735995 | `6c96342d` | no | 52 s | 219 s | 4,21 |
+| 42712398219 | `6427486c` | no | 64 s | 298 s | 4,66 |
+| 42716815056 | `9e17d868` | no | 71 s | 301 s | 4,24 |
+| 42722797012 | `7fa0f5ae` | **sí** | 45 s | 192 s | **4,27** |
+
+Sin F, el cociente tiene mediana 4,24 y media 4,37; con F da 4,27. **Normalizado, F no mejora un 5 % o más:** queda a +0,7 % de la mediana (algo peor, dentro del ruido) y a −2,3 % de la media. La bajada aparente del −36 % la explica el runner, no la reserva. Con una sola muestra no se puede concluir. El indicador tiene un límite: la 089 también es DDL contra el mismo Postgres e incluye el arranque de jest, así que es una aproximación del runner, no una medida limpia.
+
+**Decisión:** no se revierte ni se confirma todavía. Se decide con al menos 5 runs de `main` con F (§10.6).
+
 ### 10.6 Pendiente
+
+- **Decisión sobre la reserva F:** reunir al menos 5 runs de `main` con F y comparar su cociente API/089 con el de los 3 runs sin F. Si F no baja el cociente al menos un 5 %, se revierte en un commit aparte y se evalúa N = 3. Si lo baja, se confirma y `timeout-minutes` se recalibra con el máximo de esos runs (§10.4).
 
 - La rama de fallo cerrado de `clone-integration-dbs.sh` con `max_locks_per_transaction < 256` no se ejecutó en local.
