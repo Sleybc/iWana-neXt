@@ -130,6 +130,7 @@ describe('SubscriberDocumentsPanel', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     expect(within(items[1]!).queryByRole('link')).not.toBeInTheDocument();
     expect(safeDocumentHref('//otro.example.test/x')).toBeNull();
+    expect(safeDocumentHref('/\\otro.example.test/x')).toBeNull();
     expect(safeDocumentHref('http://otro.example.test/x')).toBeNull();
     expect(safeDocumentHref('https://cdn.example.test/x')).toBe('https://cdn.example.test/x');
   });

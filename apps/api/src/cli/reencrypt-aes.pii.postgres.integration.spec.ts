@@ -185,6 +185,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     requesterDocument: 'synthetic-requester-document',
     requesterContact: 'synthetic-requester-contact',
     buyerDocument: 'synthetic-buyer-document',
+    subscriberNote: 'synthetic-subscriber-note',
   } as const;
 
   async function seedFixture(): Promise<void> {
@@ -283,6 +284,12 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
          source, batch_id, note_encrypted)
        VALUES ($1, 'SUBSCRIBER', $2, $2, 'ACTIVE', 'SUSPENDED', 'MORA', 'MANUAL', $3, $4)`,
       [tenantId, subscriberOne, randomUUID(), encryptLegacy(synthetic.lifecycleNote)],
+    );
+    // Nota del suscriptor (180): la 181 solo deja recifrarla con iwana.pii_reencrypt.
+    await dataSource.query(
+      `INSERT INTO ${q}.subscriber_note (subscriber_id, body_encrypted, created_by)
+       VALUES ($1, $2, $3)`,
+      [subscriberOne, encryptLegacy(synthetic.subscriberNote), actorId],
     );
     await dataSource.query(
       `INSERT INTO ${q}.party (id, party_type, document_type, document_number, display_name)
@@ -877,7 +884,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(dryRun.hasBlockingIssues).toBe(false);
-    expect(dryRun.totals.reencrypted).toBe(21);
+    expect(dryRun.totals.reencrypted).toBe(22);
     expect(dryRun.totals.nonCiphertext).toBe(0);
     expect(
       dryRun.targets.filter((metric) => metric.candidates === 0).map((m) => m.entityType),
@@ -909,7 +916,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(apply.hasBlockingIssues).toBe(false);
-    expect(apply.totals.reencrypted).toBe(21);
+    expect(apply.totals.reencrypted).toBe(22);
 
     const repeated = await runMfaToPii(db, {
       mode: 'apply',
@@ -950,6 +957,13 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       synthetic.subscriberEmailTwo,
     );
     expect(migrated?.['phone_encrypted']).not.toBeNull();
+    const [note] = (await dataSource.query(
+      `SELECT body_encrypted FROM ${quoteIdentifier(schemaName)}.subscriber_note WHERE subscriber_id = $1`,
+      [subscriberOne],
+    )) as Array<{ body_encrypted: string }>;
+    expect(decryptAes256Gcm(note?.body_encrypted ?? '', piiKey, null)).toBe(
+      synthetic.subscriberNote,
+    );
 
     const nullSafe = await dataSource.query(
       `SELECT phone_encrypted FROM ${quoteIdentifier(schemaName)}.subscribers WHERE id = $1`,

@@ -19,6 +19,7 @@ import {
   createTenantDataSource,
 } from '../../../../../../../packages/database/src/migrations/tenant/runner';
 import { SubscriberNotesService } from './subscriber-notes.service';
+import { TypeOrmReencryptDbAdapter } from '../../../../common/crypto/reencrypt-aes.db-adapter';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
@@ -151,11 +152,20 @@ describeWithDb('Notas manuales del suscriptor: PostgreSQL real', () => {
     const subscriberId = await insertSubscriber();
     const first = await withTenant(() => service.create(subscriberId, 'Primera nota', actorId));
     const second = await withTenant(() => service.create(subscriberId, 'Segunda nota', actorId));
-    await dataSource.query(
-      `UPDATE ${qualified('subscriber_note')}
-          SET created_at = created_at - interval '1 minute' WHERE id = $1`,
-      [first.id],
-    );
+    // La 181 hace la tabla de solo inserción: el ajuste de reloj del fixture desactiva la guarda.
+    await dataSource.transaction(async (manager) => {
+      await manager.query(
+        `ALTER TABLE ${qualified('subscriber_note')} DISABLE TRIGGER trg_subscriber_note_guard`,
+      );
+      await manager.query(
+        `UPDATE ${qualified('subscriber_note')}
+            SET created_at = created_at - interval '1 minute' WHERE id = $1`,
+        [first.id],
+      );
+      await manager.query(
+        `ALTER TABLE ${qualified('subscriber_note')} ENABLE TRIGGER trg_subscriber_note_guard`,
+      );
+    });
 
     const page1 = await withTenant(() => service.list(subscriberId, actor, { page: 1, limit: 1 }));
     expect(page1.data.map((note) => note.id)).toEqual([second.id]);
@@ -268,5 +278,96 @@ describeWithDb('Notas manuales del suscriptor: PostgreSQL real', () => {
     expect(erased.data.map((note) => note.body)).toEqual([ANONYMIZED]);
     const kept = await withTenant(() => service.list(other, actor));
     expect(kept.data.map((note) => note.body)).toEqual(['Nota de otro titular']);
+  });
+
+  it('181: la base rechaza INSERT directo en titular anonimizado (M-1)', async () => {
+    const subscriberId = await insertSubscriber({ anonymized: true });
+    await expect(
+      dataSource.query(
+        `INSERT INTO ${qualified('subscriber_note')} (subscriber_id, body_encrypted, created_by)
+         VALUES ($1, 'cifrado-sintetico', $2)`,
+        [subscriberId, actorId],
+      ),
+    ).rejects.toMatchObject({
+      driverError: expect.objectContaining({ code: '55000', hint: 'PRIVACY_TITULAR_ANONYMIZED' }),
+    });
+    expect(await noteCount(subscriberId)).toBe(0);
+  });
+
+  it('181: UPDATE y DELETE directos se rechazan; tabla de solo inserción (M-2)', async () => {
+    const subscriberId = await insertSubscriber();
+    const note = await withTenant(() => service.create(subscriberId, 'Inmutable', actorId));
+    const appendOnly = {
+      driverError: expect.objectContaining({ code: '55000', hint: 'SUBSCRIBER_NOTE_APPEND_ONLY' }),
+    };
+    await expect(
+      dataSource.query(
+        `UPDATE ${qualified('subscriber_note')} SET body_encrypted = 'otro' WHERE id = $1`,
+        [note.id],
+      ),
+    ).rejects.toMatchObject(appendOnly);
+    await expect(
+      dataSource.query(`DELETE FROM ${qualified('subscriber_note')} WHERE id = $1`, [note.id]),
+    ).rejects.toMatchObject(appendOnly);
+    expect(await noteCount(subscriberId)).toBe(1);
+    const listed = await withTenant(() => service.list(subscriberId, actor));
+    expect(listed.data.map((row) => row.body)).toEqual(['Inmutable']);
+  });
+
+  it('181: UPDATE y DELETE en notas de un titular ya anonimizado fallan con PRIVACY_TITULAR_ANONYMIZED', async () => {
+    const subscriberId = await insertSubscriber();
+    const note = await withTenant(() => service.create(subscriberId, 'Antes', actorId));
+    await dataSource.query(
+      `UPDATE ${qualified('subscribers')} SET anonymized_at = now(), anonymized_request_id = $2
+        WHERE id = $1`,
+      [subscriberId, randomUUID()],
+    );
+    const anonymized = {
+      driverError: expect.objectContaining({ code: '55000', hint: 'PRIVACY_TITULAR_ANONYMIZED' }),
+    };
+    await expect(
+      dataSource.query(
+        `UPDATE ${qualified('subscriber_note')} SET body_encrypted = 'otro' WHERE id = $1`,
+        [note.id],
+      ),
+    ).rejects.toMatchObject(anonymized);
+    await expect(
+      dataSource.query(`DELETE FROM ${qualified('subscriber_note')} WHERE id = $1`, [note.id]),
+    ).rejects.toMatchObject(anonymized);
+    expect(await noteCount(subscriberId)).toBe(1);
+  });
+
+  it('181/K2: el adaptador de recifrado reescribe body_encrypted, también en anonimizados', async () => {
+    const subscriberId = await insertSubscriber();
+    const note = await withTenant(() => service.create(subscriberId, 'Para recifrar', actorId));
+    const adapter = new TypeOrmReencryptDbAdapter(dataSource);
+    const target = {
+      entityType: 'subscriberNote.bodyEncrypted',
+      table: 'subscriber_note',
+      column: 'body_encrypted',
+      idColumn: 'id',
+    } as never;
+    expect(await adapter.probeEncryptedWrite(schemaName, target, note.id, 'cifrado-k2')).toBeNull();
+    await adapter.updateEncryptedValue(schemaName, target, note.id, 'cifrado-k2');
+    await dataSource.query(
+      `UPDATE ${qualified('subscribers')} SET anonymized_at = now(), anonymized_request_id = $2
+        WHERE id = $1`,
+      [subscriberId, randomUUID()],
+    );
+    await adapter.updateEncryptedValue(schemaName, target, note.id, 'cifrado-k2-anon');
+    const [row] = (await dataSource.query(
+      `SELECT body_encrypted FROM ${qualified('subscriber_note')} WHERE id = $1`,
+      [note.id],
+    )) as Array<{ body_encrypted: string }>;
+    expect(row?.body_encrypted).toBe('cifrado-k2-anon');
+    // El GUC es local a la transacción del adaptador: fuera de ella sigue la guarda.
+    await expect(
+      dataSource.query(
+        `UPDATE ${qualified('subscriber_note')} SET body_encrypted = 'x' WHERE id = $1`,
+        [note.id],
+      ),
+    ).rejects.toMatchObject({
+      driverError: expect.objectContaining({ code: '55000', hint: 'PRIVACY_TITULAR_ANONYMIZED' }),
+    });
   });
 });

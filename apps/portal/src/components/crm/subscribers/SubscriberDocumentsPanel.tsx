@@ -61,7 +61,8 @@ function readableAuthor(value: string | null | undefined): string | null {
 /** Solo rutas relativas del mismo origen o https; nunca `javascript:` ni `//host`. */
 export function safeDocumentHref(value: string | null | undefined): string | null {
   if (!value) return null;
-  if (value.startsWith('/') && !value.startsWith('//')) return value;
+  // `//` y `/\` los navegadores los resuelven como URL de otro origen.
+  if (value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\')) return value;
   try {
     return new URL(value).protocol === 'https:' ? value : null;
   } catch {

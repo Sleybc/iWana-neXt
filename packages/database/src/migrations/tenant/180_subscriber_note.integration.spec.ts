@@ -61,7 +61,7 @@ describePg('180 — notas manuales del suscriptor (MOD05 D3)', () => {
     );
     await qr.query(`SET search_path TO "${schema}", public`);
     const index = TENANT_MIGRATIONS.findIndex((M) => new M().name === migration.name);
-    expect(index).toBe(TENANT_MIGRATIONS.length - 1);
+    expect(index).toBeGreaterThanOrEqual(0);
     for (const M of TENANT_MIGRATIONS.slice(0, index)) await new M().up(qr);
   });
 

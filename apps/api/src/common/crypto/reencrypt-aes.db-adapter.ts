@@ -117,6 +117,10 @@ export class TypeOrmReencryptDbAdapter implements PiiReencryptDbPort {
     id: string,
     newCiphertext: string,
   ): Promise<void> {
+    if (target.table === 'subscriber_note' && target.column === 'body_encrypted') {
+      // Excepción K2 de la 181 (solo inserción): vale solo para esta transacción de una fila.
+      await qr.query(`SELECT set_config('iwana.pii_reencrypt', 'on', true)`);
+    }
     await qr.query(
       `UPDATE "${target.table}" SET "${target.column}" = $1 WHERE "${target.idColumn}" = $2`,
       [newCiphertext, id],
