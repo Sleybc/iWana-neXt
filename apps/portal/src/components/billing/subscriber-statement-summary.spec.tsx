@@ -1,0 +1,161 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { BillingAccountStatement, BillingDocumentResponse } from '@iwana/shared';
+import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
+import { SubscriberStatementSummary } from './SubscriberStatementSummary';
+import {
+  IMPERSONATION_HOLD_TITLE,
+  PROTECTED_LABEL,
+  PROTECTED_NOTICE,
+  formatBillingMoney,
+} from './billing-copy';
+import type { SubscriberStatementLoad } from './use-subscriber-statement';
+
+const SUBSCRIBER_ID = '55555555-5555-4555-8555-555555555555';
+
+/** Testing Library colapsa el espacio duro de la moneda en el nodo, no en el texto esperado. */
+const money = (value: string) => formatBillingMoney(value).replace(/\s/gu, ' ');
+
+function buildDocument(overrides: Partial<BillingDocumentResponse>): BillingDocumentResponse {
+  return {
+    id: '11111111-1111-4111-8111-111111111111',
+    tenantId: '22222222-2222-4222-8222-222222222222',
+    periodId: '33333333-3333-4333-8333-333333333333',
+    contractId: '44444444-4444-4444-8444-444444444444',
+    subscriberId: SUBSCRIBER_ID,
+    status: 'EMITIDO',
+    number: 'DC-000101',
+    dueDate: '2026-11-19',
+    periodStart: '2026-10-05',
+    periodEnd: '2026-11-04',
+    coveredStart: '2026-10-05',
+    paymentState: 'PENDIENTE',
+    buyerProtected: false,
+    subtotal: '100.00',
+    taxTotal: '19.00',
+    total: '119.00',
+    unbilledAdditionalCount: 0,
+    createdAt: '2026-11-05T12:00:00.000Z',
+    updatedAt: '2026-11-05T12:00:00.000Z',
+    pendingAmount: '119.00',
+    ...overrides,
+  };
+}
+
+const STATEMENT: BillingAccountStatement = {
+  subscriberId: SUBSCRIBER_ID,
+  buyerProtected: false,
+  impersonationHold: false,
+  totalInvoiced: '119.00',
+  totalPaid: '0.00',
+  totalPending: '119.00',
+  creditBalance: '25.00',
+  documents: [],
+  payments: [],
+  contractSummaries: [],
+};
+
+function loaded(data: BillingAccountStatement): SubscriberStatementLoad {
+  return { data, loading: false, error: null, reload: jest.fn() };
+}
+
+function renderSummary(statement: SubscriberStatementLoad, onOpenBilling = jest.fn()) {
+  render(<SubscriberStatementSummary statement={statement} onOpenBilling={onOpenBilling} />);
+  return { onOpenBilling, region: screen.getByRole('region', { name: 'Estado de cuenta' }) };
+}
+
+describe('SubscriberStatementSummary (spec 2026-11-09 §3)', () => {
+  it('CA-1: muestra deuda, saldo a favor y los tres pendientes más antiguos', () => {
+    const documents = [
+      buildDocument({
+        id: 'a1111111-1111-4111-8111-111111111111',
+        number: 'DC-4',
+        dueDate: '2026-12-19',
+      }),
+      buildDocument({
+        id: 'a2222222-2222-4222-8222-222222222222',
+        number: 'DC-1',
+        dueDate: '2026-09-19',
+      }),
+      buildDocument({
+        id: 'a3333333-3333-4333-8333-333333333333',
+        number: 'DC-3',
+        dueDate: '2026-11-19',
+      }),
+      buildDocument({
+        id: 'a4444444-4444-4444-8444-444444444444',
+        number: 'DC-2',
+        dueDate: '2026-10-19',
+      }),
+    ];
+    const { region } = renderSummary(loaded({ ...STATEMENT, totalPending: '500.00', documents }));
+
+    expect(within(region).getByText('Deuda pendiente')).toBeInTheDocument();
+    expect(within(region).getByText(money('500.00'))).toBeInTheDocument();
+    expect(within(region).getByText('Saldo a favor')).toBeInTheDocument();
+    expect(within(region).getByText(money('25.00'))).toBeInTheDocument();
+    const items = within(region).getAllByRole('listitem');
+    expect(items.map((item) => within(item).getByText(/^DC-/u).textContent)).toEqual([
+      'DC-1',
+      'DC-2',
+      'DC-3',
+    ]);
+    expect(items[0]).toHaveTextContent(`Vence ${formatBillingDate('2026-09-19')}`);
+  });
+
+  it('CA-3: anuncia los vencidos con texto además del color', () => {
+    const { region } = renderSummary(
+      loaded({ ...STATEMENT, documents: [buildDocument({ paymentState: 'VENCIDO' })] }),
+    );
+    expect(within(region).getByText('Tiene documentos vencidos')).toBeInTheDocument();
+    expect(within(within(region).getByRole('listitem')).getByText('Vencido')).toBeInTheDocument();
+  });
+
+  it('CA-3: sin vencidos no muestra el aviso', () => {
+    const { region } = renderSummary(loaded({ ...STATEMENT, documents: [buildDocument({})] }));
+    expect(within(region).queryByText('Tiene documentos vencidos')).not.toBeInTheDocument();
+    expect(within(region).queryByText('Vencido')).not.toBeInTheDocument();
+  });
+
+  it('CA-4: enlaza a Facturación desde el encabezado y desde «Ver los N documentos»', async () => {
+    const user = userEvent.setup();
+    const dueDates = ['2026-08-01', '2026-09-01', '2026-10-01', '2026-11-01', '2026-12-01'];
+    const documents = dueDates.map((dueDate, index) =>
+      buildDocument({
+        id: `b${index}111111-1111-4111-8111-111111111111`,
+        number: `DC-${index}`,
+        dueDate,
+      }),
+    );
+    const { onOpenBilling, region } = renderSummary(loaded({ ...STATEMENT, documents }));
+
+    await user.click(
+      within(region).getByRole('button', { name: 'Ver los 5 documentos pendientes' }),
+    );
+    await user.click(within(region).getByRole('button', { name: 'Ver facturación' }));
+    expect(onOpenBilling).toHaveBeenCalledTimes(2);
+  });
+
+  it('CA-5: sin pendientes lo dice y mantiene las métricas', () => {
+    const { region } = renderSummary(loaded({ ...STATEMENT, totalPending: '0.00' }));
+    expect(within(region).getByText('No hay documentos de cobro pendientes')).toBeInTheDocument();
+    expect(within(region).getByText('Deuda pendiente')).toBeInTheDocument();
+  });
+
+  it('CA-6: muestra los avisos de titular en custodia y de suplantación', () => {
+    const { region } = renderSummary(
+      loaded({ ...STATEMENT, buyerProtected: true, impersonationHold: true }),
+    );
+    expect(within(region).getByText(PROTECTED_LABEL)).toBeInTheDocument();
+    expect(within(region).getByText(PROTECTED_NOTICE)).toBeInTheDocument();
+    expect(within(region).getByText(IMPERSONATION_HOLD_TITLE)).toBeInTheDocument();
+  });
+
+  it('CA-7: un error ofrece reintentar', async () => {
+    const user = userEvent.setup();
+    const reload = jest.fn();
+    const { region } = renderSummary({ data: null, loading: false, error: 'Falla', reload });
+    await user.click(within(region).getByRole('button', { name: 'Reintentar' }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});

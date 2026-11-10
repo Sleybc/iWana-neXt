@@ -10,6 +10,8 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { SubscriberBillingTab } from '@/components/billing/SubscriberBillingTab';
+import { SubscriberStatementSummary } from '@/components/billing/SubscriberStatementSummary';
+import { useSubscriberStatement } from '@/components/billing/use-subscriber-statement';
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
 import { SubscriberForm } from './SubscriberForm';
 import { SubscriberHeader } from './SubscriberHeader';
@@ -61,6 +63,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
   const subscriberId = typeof params?.id === 'string' ? params.id : '';
+  const statement = useSubscriberStatement(subscriberId, mode === 'detail' && canReadBilling);
   const [subscriber360, setSubscriber360] = useState<Subscriber360Response | null>(null);
   const [loading, setLoading] = useState(mode === 'detail');
   const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(false);
@@ -170,6 +173,14 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             canReadPrivacy={canReadPrivacy}
             onNavigate={selectSubscriberTab}
             onReload={() => loadSubscriber(true)}
+            accountSummary={
+              canReadBilling ? (
+                <SubscriberStatementSummary
+                  statement={statement}
+                  onOpenBilling={() => selectSubscriberTab('facturacion')}
+                />
+              ) : undefined
+            }
           />
         ) : null,
       },
@@ -207,6 +218,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
                   key={subscriber.id}
                   subscriberId={subscriber.id}
                   contracts={subscriber360?.contracts ?? []}
+                  statement={statement}
                 />
               ),
             },
@@ -284,6 +296,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     canReadBilling,
     canReadNetworkProvisioning,
     fiscalDirty,
+    statement,
   ]);
 
   if (mode === 'create') {

@@ -664,6 +664,27 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
       ),
     ).toBeVisible();
 
+    // Spec 2026-11-09 §3 (CA-11): estado de cuenta en la Vista general; abrir la pestaña no vuelve a pedirlo.
+    const statementRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes(`/billing/subscribers/${subscriberId}/statement`)) {
+        statementRequests.push(request.url());
+      }
+    });
+    await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=vista-general`);
+    const summary = page.getByRole('region', { name: 'Estado de cuenta' });
+    await expect(summary.getByText('$ 31,00')).toBeVisible();
+    await expect(summary.getByText('No hay documentos de cobro pendientes')).toBeVisible();
+    const requestsBeforeTab = statementRequests.length;
+    expect(requestsBeforeTab).toBeGreaterThan(0);
+    await summary.getByRole('button', { name: 'Ver facturación' }).click();
+    await expect(page.getByRole('tab', { name: 'Facturación' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByText('Saldo a favor disponible')).toBeVisible();
+    expect(statementRequests).toHaveLength(requestsBeforeTab);
+
     await page.goto(`/dashboard/crm/subscribers/agenda-corte?date=${agendaDate}`);
     const row = page.getByRole('row', { name: /Titular Sintético/u });
     await expect(row.getByText('Pagado').first()).toBeVisible();

@@ -3,6 +3,12 @@ import type { BillingAccountStatement } from '@iwana/shared';
 import { ApiError } from '@/lib/api-client';
 import { SubscriberBillingTab } from './SubscriberBillingTab';
 import { PROTECTED_LABEL, PROTECTED_NOTICE, additionalNotice } from './billing-copy';
+import { useSubscriberStatement } from './use-subscriber-statement';
+
+function TabWithStatement({ subscriberId }: { subscriberId: string }) {
+  const statement = useSubscriberStatement(subscriberId, true);
+  return <SubscriberBillingTab subscriberId={subscriberId} contracts={[]} statement={statement} />;
+}
 
 const mockStatement = jest.fn();
 const mockDocuments = jest.fn();
@@ -24,13 +30,19 @@ jest.mock('@/lib/api-client', () => {
 });
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => false }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => false });
+  })(),
 }));
 
 jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/dashboard/crm/subscribers/1',
-  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { replace: jest.fn(), push: jest.fn() });
+  })(),
 }));
 
 const STATEMENT: BillingAccountStatement = {
@@ -63,7 +75,7 @@ function renderTab(statement: BillingAccountStatement) {
       sort: null,
     },
   });
-  return render(<SubscriberBillingTab subscriberId={statement.subscriberId} contracts={[]} />);
+  return render(<TabWithStatement subscriberId={statement.subscriberId} />);
 }
 
 beforeEach(() => {
@@ -131,7 +143,7 @@ describe('SubscriberBillingTab (CA-UX-FAC-12, 13; RS-21, RS-22)', () => {
     mockStatement.mockRejectedValue(
       new ApiError(503, 'PRIVACY_AUDIT_UNAVAILABLE', 'No fue posible auditar.'),
     );
-    render(<SubscriberBillingTab subscriberId={STATEMENT.subscriberId} contracts={[]} />);
+    render(<TabWithStatement subscriberId={STATEMENT.subscriberId} />);
     await waitFor(() =>
       expect(
         screen.getByText(

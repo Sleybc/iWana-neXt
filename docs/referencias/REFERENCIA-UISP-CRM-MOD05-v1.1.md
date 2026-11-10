@@ -3,7 +3,7 @@
 **Tipo:** Referencia técnica comparativa  
 **Módulo destino:** MOD05 CRM; módulos futuros de Facturación y Soporte; MOD13 Red y Aprovisionamiento  
 **Versión:** 1.1 (reemplaza a [v1.0](REFERENCIA-UISP-CRM-MOD05-v1.0.md))  
-**Cambios (cabecera):** v1.1 evalúa la cobertura contra MOD05, amplía con el contrato de la API CRM, contrasta con el CRM y Suscriptores implementados (§10) y añade la configuración de tiempos de facturación y corte (§5.4); historial completo en §16.  
+**Cambios (cabecera):** v1.1 evalúa la cobertura contra MOD05, amplía con el contrato de la API CRM, contrasta con el CRM y Suscriptores implementados (§10), añade la configuración de tiempos de facturación y corte (§5.4) y, en la rev. 4 (2026-11-09), la interfaz y experiencia de usuario (§15); historial completo en §17.  
 **Estado:** Aprobado como documento de consulta; no normativo  
 **Fecha:** 2026-10-31  
 **Audiencia:** arquitectura, producto, backend, integraciones y operaciones
@@ -39,6 +39,8 @@ La v1.0 cubría bien la relación servicio → factura → pago → suspensión 
 | Integración y eventos | Parcial | Webhooks como notificación ligera que se rehidrata por API; claves de app de lectura/escritura | §8 |
 
 Conclusión: la v1.0 era **insuficiente** para usarse como referencia del módulo completo. Esta versión cierra esas brechas con el contrato de la API como evidencia.
+
+Revisión del 2026-11-09: a ambas versiones les faltaba la **interfaz** (navegación, distribución de formularios, menús, botones y ubicación de los elementos), así que no servían como referencia de UI/UX. §15 la cubre con capturas oficiales y notas de versión.
 
 ## 3. Modelo funcional observado
 
@@ -315,6 +317,8 @@ Leyenda: **Ya alineado** (iWana lo cubre) · **Adoptar** · **Adaptar** (con cam
 
 Comparación capacidad por capacidad entre UISP y lo que **existe hoy en el código** de iWana: API `apps/api/src/modules/crm` (22 entidades, 82 endpoints en 14 archivos de controlador), contratos compartidos de `packages/shared` y portal `apps/portal/src/app/dashboard/crm` (expedientes, suscriptores, ficha y agenda de corte). Verificado el 2026-10-31 sobre `main` (`1ce4f263`) más el árbol de trabajo sin commitear.
 
+> **Vigencia:** esta sección es anterior a MOD14 (`de0bcfa7`); ver la nota al final de §15.8.
+
 Veredictos: **iWana supera** · **Paridad** · **Brecha** (UISP lo tiene y iWana no) · **Brecha deliberada** (fuera de alcance por decisión vigente) · **Hallazgo** (defecto o deuda propia que el contraste destapó).
 
 ### 10.1 Resumen
@@ -476,7 +480,111 @@ Esta secuencia es una propuesta de exploración, no un contrato aprobado. Factur
 5. Crear o actualizar ADR cuando el cambio altere boundaries, contratos entre módulos, seguridad o un patrón aprobado.
 6. Mantener el ciclo por servicio y las precondiciones de corte de ADR-102 hasta que una decisión posterior aprobada los modifique.
 
-## 15. Fuentes
+## 15. Interfaz y experiencia de usuario
+
+Añadida el 2026-11-09. Hasta la rev. 3, ni la v1.0 ni la v1.1 describían la interfaz de UISP: cubrían funciones y el contrato de la API, sin menús, formularios, botones ni ubicación de elementos. Esta sección cubre ese hueco y lo contrasta con el portal de iWana.
+
+### 15.1 Evidencia y límites
+
+| Clave | Fuente | Vigencia |
+|---|---|---|
+| **C20** | Capturas oficiales del centro de ayuda de UISP: pagos, reembolsos, ficha de pago, formulario de plan, sección de facturación del servicio, ajustes de facturación y página de suspensión | Nov. 2020, UISP 1.x. Son las capturas más recientes publicadas por Ubiquiti |
+| **C18** | Capturas del sitio de producto de UCRM, predecesor del CRM de UISP: ficha del cliente, factura, agenda y zona de cliente | 2018. Interfaz anterior: sirve para la composición de las vistas, no para el estilo actual |
+| **RN** | Notas de versión de UISP publicadas en la comunidad de Ubiquiti, hasta la 3.1.65 | Vigentes. Nombran los elementos de la interfaz, pero sin capturas |
+
+Límites: no existe demo pública (`ucrm-demo.ubnt.com` no responde), la app móvil UISP CRM ya no está en la App Store y no se usó ninguna instancia propia. La disposición actual (UISP 3.x) puede diferir de C20 en estilo y en el orden de las pestañas. Para confirmar un detalle antes de diseñar, la vía es una instancia de prueba (§13).
+
+### 15.2 Navegación global
+
+- **Riel lateral de íconos sin texto** (C20), en este orden: Panel, Clientes, Facturación, Pagos, Agenda, Tickets, Reportes; separador; Notificaciones, Ayuda y Configuración. En C18 el menú era expandido, con texto y submenús por grupo (Facturación, Red, Sistema).
+- **Barra superior** con búsqueda global «Search CRM» centrada, acceso al módulo de red y avatar (C20). En la 3.1.65 la cabecera se unificó con la del módulo de red para cambiar de módulo sin perder el contexto (RN).
+- **Configuración por áreas con pestañas horizontales:** Facturación → Facturación, Suspensión, Cargos, Organización, Impuestos, Medios de pago, Suscripciones (C20). Los planes viven en Sistema → Planes y productos, y las claves de API en Sistema → Seguridad (RN).
+- **Panel principal configurable** (3.1.65): el operador elige qué gráficos ver, y las etiquetas de cliente del panel enlazan a la lista ya filtrada (RN).
+
+### 15.3 Página de detalle
+
+Patrón común a cliente, pago y factura (C20, C18):
+
+1. **Encabezado:** migas «Clientes / nombre», donde la sección es un enlace de vuelta, y junto al título un **botón dividido** de creación. Su rótulo es la acción principal («+ Reembolso») y su flecha abre las demás: pago, pagos múltiples, importar pagos y reembolso.
+2. **Barra de íconos de acciones del documento** junto al título: editar, enviar por correo, descargar, imprimir y eliminar. Las acciones excepcionales van aparte, como enlace a la derecha («Reembolsar al medio de pago original»).
+3. **«Ver como cliente»** arriba a la derecha de la ficha: abre la zona de cliente tal como la ve el suscriptor (C18).
+4. **Pestañas** bajo el encabezado. En C20 se ven Resumen, Facturas y Proformas, y la captura corta las siguientes. En C18: Información, Facturas, Pagos y Red.
+5. **Cuerpo en dos columnas de tarjetas** con título en mayúsculas pequeñas: a la izquierda los datos propios («Información básica», «Detalle del pago»); a la derecha las relaciones («Facturas», con número, total y monto aplicado).
+
+### 15.4 Resumen del cliente
+
+Composición de C18, corroborada por la descripción del producto:
+
+- **Franja de indicadores** arriba a la izquierda: saldo de cuenta, crédito y pendiente (en rojo si hay deuda). Debajo, pago esperado y próximo día de facturación.
+- **Tarjeta de datos:** ID, correo, teléfono, dirección, fecha de registro, tipo de cliente, organización, cuenta bancaria y notas.
+- **Columna derecha, de arriba abajo:** servicios, cada uno con un punto de color por estado, el plan, el sitio y el equipo al que se conecta, el precio, una etiqueta si está suspendido o terminado y un botón «+» para agregar; un **mapa** con la ubicación de cada servicio; las **facturas** recientes, con las vencidas en rojo y un enlace «Ver todas».
+- Además: bitácora de actividad, notas, documentos con vista previa de imágenes (RN 3.1.65) y, si hay pagos recurrentes, un recuadro con el enlace «Nueva suscripción».
+- **Cliente archivado en solo lectura:** no se edita nada hasta restaurarlo, y sus tickets se cierran al archivar (RN 3.1.65).
+- La zona de cliente **reutiliza la misma composición** sin acciones de operador (C18).
+
+### 15.5 Formularios
+
+Observado en C20:
+
+- **Un control segmentado arriba que cambia los campos:** Internet o General en el plan.
+- **Etiqueta con asterisco** en los obligatorios e **ícono de ayuda (?)** en cada etiqueta, con la explicación del campo.
+- **Unidad pegada al campo** («Mbps», prefijo «USD») y **texto en línea** para los parámetros numéricos: «[3] días de anticipación».
+- **Revelado progresivo:** enlaces bajo el campo, como «Definir etiqueta en factura» o «Definir detalles de shaping», abren los campos opcionales solo si hacen falta.
+- **Periodos de precio en una fila** de campos de moneda: mensual, 2, 3 y 6 meses, 1 y 2 años.
+- **Herencia visible:** junto a cada parámetro heredable, una casilla «usar el valor del sistema». Mientras está marcada, el control se ve deshabilitado **mostrando el valor heredado**.
+- **Booleanos como interruptor SÍ/NO**, y **enumeraciones de dos o tres opciones como control segmentado** (Vencido / Anticipado; Al crear / Al vencer).
+- **Ajustes en dos columnas:** etiqueta a la izquierda; a la derecha el control, el texto de ayuda con «Leer más» y, al lado, el campo que depende de él («Cobrar automáticamente [1] días antes del vencimiento»).
+- **Modales:** título centrado, cierre con X, etiquetas a la izquierda y una **pista contextual bajo el campo crítico** («Crédito disponible: $100.00»). Abajo a la derecha, «Cancelar» como texto y «Guardar» como primario.
+- **Confirmaciones:** el título nombra la acción y la frase destaca en negrita el monto afectado.
+
+### 15.6 Listas y grillas
+
+- Pestañas de vista sobre la lista (todos los pagos… reembolsos), **casilla de selección con contador** para acciones masivas, encabezados ordenables con flecha y estado vacío en texto (C20).
+- Acciones masivas en grillas, como enviar facturas desde la ficha del cliente; más filtros en facturas (RN 3.1.65).
+- Más columnas configurables en la lista de clientes y exportación de facturas (RN 2.2.12). Filtro por torre a la que está conectado el cliente (RN 1.4.2).
+- El ID visible propio (`userIdent`) reemplaza al técnico en todas las grillas y exportaciones (RN).
+
+### 15.7 Agenda, soporte y autoservicio
+
+- **Agenda** (C18): encabezado con «+», **cola de trabajos sin asignar** en una columna a la izquierda y **línea de tiempo por técnico** (una fila por técnico, columnas por hora) con navegación por fecha y cambio de vista. Desde la agenda se pueden borrar varios trabajos a la vez (RN).
+- **Tickets:** comentarios privados o públicos, con botón «Hacer público» (RN).
+- **Zona de cliente:** menú lateral con Cuenta, Pagos, Facturas y Soporte (C18). Allí el cliente puede activar 2FA y vincular uno de sus servicios al ticket que abre (RN).
+- **Página de suspensión:** mensaje grande de servicio vencido, rango de fechas del servicio, un selector «¿Necesita más tiempo?» y un botón primario «Reactivar servicio» (C20).
+
+### 15.8 Contraste con el portal de iWana y tratamiento
+
+Situación de iWana verificada el 2026-11-09 en `main` (`9ed55090`) más el árbol de trabajo: `Sidebar.tsx`, `TopHeader.tsx`, `components/crm/subscribers/` y `components/billing/` de `apps/portal`, y `packages/ui/src/components`. Tratamientos con la leyenda de §9.
+
+| Patrón UISP | iWana hoy | Tratamiento |
+|---|---|---|
+| Riel lateral solo de íconos | Menú lateral con texto agrupado por módulo, que se puede colapsar | **Ya alineado.** No usar íconos sin texto como modo por defecto: afecta la accesibilidad y el vocabulario |
+| Búsqueda global en la barra superior | `GlobalSearch` en `TopHeader` | **Ya alineado** |
+| Encabezado de ficha: migas, acción primaria y menú | `SubscriberHeader`: acción primaria según el estado (Suspender o Reactivar servicios), con el motivo visible cuando está deshabilitada, y «Más acciones» | **iWana supera** |
+| Botón dividido «+ Nuevo ▾» con varias creaciones | No hay creación rápida desde la ficha; «Registrar pago» vive en Pagos | **Evaluar** un «Registrar ▾» en la ficha (pago, ticket, visita), filtrado por permisos y delegado al módulo dueño de cada acción |
+| Pestañas de la ficha | Vista general, Servicios, Facturación, Soporte, Datos, Tributario y Cumplimiento | **Paridad**, con más profundidad fiscal y de privacidad |
+| Indicadores financieros en el **resumen** | Están en la pestaña Facturación (total facturado, total pagado, deuda pendiente, saldo a favor); el panel «Facturación» de la vista general solo muestra medio de pago, ciclo y razón social | **Adoptar:** llevar deuda pendiente, saldo a favor y próximo corte a la cabecera de la vista general como lectura de MOD14, con enlace a la pestaña |
+| Servicios con punto de estado, precio y «+» | `ContractCard` con estado, precio, próximo corte y menú de acciones | **Paridad** |
+| Mapa de servicios en el resumen | `LocationPreviewMap` en la pestaña Datos | **Evaluar** en la vista general. La ubicación es dato personal: mostrarla solo con permiso |
+| Facturas recientes con vencidas en rojo y «Ver todas» | Documentos en la pestaña Facturación | **Adoptar** un bloque de los últimos documentos pendientes en la vista general. No usar solo el color para marcar el vencido: añadir texto o ícono |
+| «Ver como cliente» | No hay portal del suscriptor | **Brecha deliberada** (§9.5) |
+| Casilla «usar el valor del sistema» que **muestra el valor heredado** | `BillingContractPolicy` ofrece «Heredar» como opción o como placeholder, pero no muestra el valor efectivo | **Adoptar:** mostrar el valor del tenant junto a «Heredar» («Heredar (14 días)») para que el operador sepa qué aplica |
+| Ayuda (?) por campo | No hay primitive de tooltip en `@iwana/ui` (sí `Popover` y `FormField`) | **Evaluar** con `ds-owner`: la ayuda debe ser accesible con teclado y con lector de pantalla, no solo al pasar el mouse |
+| Control segmentado e interruptor SÍ/NO | No existen como primitives; hay `RadioCardGroup` y `CheckboxCard` | **Evaluar** con `ds-owner` antes de crear primitives nuevas (regla de consolidación de `core-components`) |
+| Revelado progresivo de campos opcionales | `SectionAccordion` y `FormSection` en `@iwana/ui` | **Adoptar** el criterio en los formularios largos de suscriptor y contrato, con las primitives existentes |
+| Pista contextual bajo el campo crítico | Parcial en los diálogos de cobro | **Adoptar** en los montos («Saldo a favor disponible: …») |
+| Confirmación que destaca el monto | Diálogo de ciclo de vida con **vista previa del efecto** e idempotencia | **iWana supera** |
+| Selección múltiple con acciones masivas | La lista de suscriptores no tiene selección múltiple | **Evaluar** solo para acciones de bajo riesgo (exportar, etiquetar, enviar aviso). La suspensión masiva exige otra decisión por su efecto en red y en cobro |
+| Columnas configurables y exportación CSV | Colas, filtros, orden, vista lateral (`SubscriberPeek`) y tarjetas móviles | **Evaluar** la exportación con gobierno de PII (Ley 1581): campos mínimos, permiso y auditoría |
+| Etiquetas de color enlazadas desde el panel | No existen | Ya listado en §11 (prioridad baja) |
+| Cliente archivado en solo lectura | Estado cancelado sin «Más acciones»; guarda de titular bloqueado y anonimizado | **Ya alineado** |
+| Agenda con cola sin asignar y línea de tiempo por técnico | Módulo Programación, fuera de MOD05 | **Contrastar en el módulo dueño**, no en MOD05 |
+| Página de suspensión con reactivación por pago | No existe | **Evaluar** con autoservicio y MOD13. Depende de las precondiciones de corte de §12 |
+
+Las filas «Adoptar» de la ficha (indicadores, documentos pendientes y valor heredado) se especifican en la [spec del estado de cuenta en la ficha](../specs/2026-11-09-mod05-ficha-estado-de-cuenta-ux.md), aprobada el 2026-11-09.
+
+**Nota de vigencia de §10.** §10.3, §10.6 y §11 describen un estado anterior a MOD14: hoy existen pestaña Facturación, documentos de cobro, pagos y saldo a favor (publicados en `de0bcfa7`). Esta revisión no re-audita §10 completa. Antes de usar §10 para una decisión de facturación, contrastarla con el código vigente.
+
+## 16. Fuentes
 
 ### Ubiquiti / UISP
 
@@ -489,6 +597,9 @@ Esta secuencia es una propuesta de exploración, no un contrato aprobado. Factur
 - [CRM Sandbox Mode](https://help.uisp.com/hc/en-us/articles/22590956782871-UISP-CRM-Sandbox-Mode) — entorno para observar comportamiento sin efectos reales.
 - [CRM Plugins](https://help.uisp.com/hc/en-us/articles/22590998471191-UISP-CRM-Plugins) y [manifest](https://github.com/Ubiquiti-App/UCRM-plugins/blob/master/docs/manifest.md) — extensión PHP.
 - [LibreQoS issue #455](https://github.com/LibreQoE/LibreQoS/issues/455) — uso de webhooks del CRM por un integrador externo.
+- Capturas de los artículos [Refunds](https://help.uisp.com/hc/en-us/articles/22590982769175-UISP-CRM-Refunds), [Prepaid Service and Service Reactivation](https://help.uisp.com/hc/en-us/articles/22590998643351-UISP-CRM-Prepaid-Service-and-Service-Reactivation) y [Ubiquiti Payment Gateway](https://help.uisp.com/hc/en-us/articles/22590998395543-UISP-CRM-Ubiquiti-Payment-Gateway) — evidencia C20 de §15 (consultado 2026-11-09).
+- [Sitio de producto UCRM](https://d7yy9pqew0o2n.cloudfront.net/) — capturas de 2018 de la ficha del cliente, factura, agenda y zona de cliente (evidencia C18 de §15).
+- [Notas de versión de UISP (RSS)](https://community.ui.com/rss/releases/UNMS/ff938aa4-bc58-49da-b9f6-2fc48b875ab0), en particular [UISP 2.2.12](https://community.ui.com/releases/UISP-Application-2-2-12/6f998fe1-0213-476b-8416-6163f5758a0a) y [UISP 1.4.2](https://community.ui.com/releases/UISP-1-4-2/9a1f73df-ac97-4ad0-8ad9-763049e38cc7) — evidencia RN de §15.
 
 ### iWana neXt
 
@@ -500,7 +611,7 @@ Esta secuencia es una propuesta de exploración, no un contrato aprobado. Factur
 - [Spec de cambio de plan del contrato](../specs/2026-10-30-mod05-cambio-plan-contrato-ux.md) y [plan](../plans/2026-10-30-mod05-cambio-plan-contrato.md)
 - Código verificado el 2026-10-31 en `main` (`1ce4f263`) y árbol de trabajo: controladores y entidades de `apps/api/src/modules/crm/`, `subscribers/subscribers.service.ts` (`get360View`), `subscribers/subscriber-queue-predicates.ts`, `ports/`, `packages/shared/src/schemas/lifecycle.schema.ts`, `packages/shared/src/enums/subscriber-status.enum.ts`, `apps/portal/src/app/dashboard/crm/` y `apps/portal/src/components/crm/subscribers/`
 
-## 16. Historial
+## 17. Historial
 
 | Versión | Fecha | Cambio |
 |---|---|---|
@@ -509,3 +620,4 @@ Esta secuencia es una propuesta de exploración, no un contrato aprobado. Factur
 | 1.1 (rev.) | 2026-10-31 | Antes del primer commit: nueva §10 con el contraste capacidad por capacidad contra el CRM y Suscriptores implementados; corrige §9.3 (el cambio de plan inmediato existe en el árbol de trabajo); registra los hallazgos de contactos y cotizaciones vacíos en la vista 360° y del flujo de captación deprecado aún expuesto; renumera §11–§16 |
 | 1.1 (rev. 2) | 2026-10-31 | Corrige el hallazgo de contactos: `contacts: []` es intencional por D-CONT (CTO, 2026-10-15), que reemplazó el plan A-BE6 de Fase 04. Registra la corrección de cotizaciones en la 360° y el hallazgo de que ningún flujo crea cotizaciones CRM |
 | 1.1 (rev. 3) | 2026-10-31 | Añade §5.4 (configuración de tiempos de facturación y corte, insumo de ADR-103) y el enlace a MOD14 en §11 |
+| 1.1 (rev. 4) | 2026-11-09 | Nueva §15 de interfaz y experiencia de usuario: navegación, página de detalle, resumen del cliente, formularios, grillas, agenda y autoservicio, con su evidencia y su contraste contra el portal. Añade la nota de vigencia de §10 tras MOD14. Fuentes pasa a §16 e Historial a §17 |

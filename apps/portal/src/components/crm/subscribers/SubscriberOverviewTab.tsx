@@ -36,6 +36,8 @@ interface SubscriberOverviewTabProps {
   onNavigate: (tabId: OverviewTabId) => void;
   /** Recarga la ficha sin desmontar las pestañas. */
   onReload: () => Promise<void>;
+  /** Panel de estado de cuenta; lo arma la ficha solo si existe la pestaña Facturación. */
+  accountSummary?: ReactNode;
 }
 
 const termClassName = 'text-xs font-medium text-gray-500 dark:text-gray-400';
@@ -122,6 +124,7 @@ export function SubscriberOverviewTab({
   canReadPrivacy,
   onNavigate,
   onReload,
+  accountSummary,
 }: SubscriberOverviewTabProps) {
   const { subscriber, contracts, expedienteSummary } = subscriber360;
   const anonymizedAt = subscriber.anonymizedAt;
@@ -497,17 +500,20 @@ export function SubscriberOverviewTab({
     </PortalPanel>
   ) : null;
 
-  // Dos columnas independientes: cada una crece según su contenido, sin huecos por fila.
+  // Estado de cuenta arriba y a todo el ancho; debajo, dos columnas independientes.
   return (
-    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-      <div className="space-y-6">
-        {servicesPanel}
-        {contactPanel}
-      </div>
-      <div className="space-y-6">
-        {billingPanel}
-        {originPanel}
-        {privacyPanel}
+    <div className="space-y-6">
+      {accountSummary}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          {servicesPanel}
+          {contactPanel}
+        </div>
+        <div className="space-y-6">
+          {billingPanel}
+          {originPanel}
+          {privacyPanel}
+        </div>
       </div>
     </div>
   );

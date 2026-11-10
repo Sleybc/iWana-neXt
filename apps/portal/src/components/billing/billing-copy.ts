@@ -63,3 +63,7 @@ export function fromMoneyCents(value: number): string {
 export function additionalNotice(count: number): string {
   return `Este contrato tiene ${count} adicionales que todavía no se cobran en este documento`;
 }
+
+export const IMPERSONATION_HOLD_TITLE =
+  'Cobro suspendido preventivamente por investigación de suplantación de identidad (Ley 2573 de 2022).';
+export const IMPERSONATION_HOLD_NOTICE = 'No se generarán nuevos cobros hasta resolución.';

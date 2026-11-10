@@ -9,18 +9,24 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import type { Contract, Subscriber360Response, SubscriberRecord } from '@/lib/api-client';
-import { contractsApi, subscribersApi } from '@/lib/api-client';
+import { billingApi, contractsApi, subscribersApi } from '@/lib/api-client';
 import { SubscriberDetailClient } from './SubscriberDetailClient';
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'subscriber-synthetic' }),
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: (() => {
+    let router: Record<string, unknown> | undefined;
+    return () => (router ??= { push: jest.fn(), replace: jest.fn() });
+  })(),
   usePathname: () => '/dashboard/crm/subscribers/subscriber-synthetic',
   useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/components/access-control/permissions-context', () => ({
-  usePermissions: () => ({ hasPermission: () => false }),
+  usePermissions: (() => {
+    let ctx: Record<string, unknown> | undefined;
+    return () => (ctx ??= { hasPermission: () => false });
+  })(),
 }));
 
 function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberRecord {
@@ -282,6 +288,19 @@ describe('SubscriberDetailClient — MOD05 deuda CD-04', () => {
     await user.click(await screen.findByRole('button', { name: 'Completar datos fiscales' }));
 
     expect(screen.getByRole('tab', { name: 'Datos' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('sin permiso de facturación no muestra el estado de cuenta ni lo consulta', async () => {
+    jest.spyOn(subscribersApi, 'get360').mockResolvedValue(buildSubscriber360(buildSubscriber()));
+    const statementSpy = jest.spyOn(billingApi, 'statement');
+
+    render(<SubscriberDetailClient mode="detail" />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Titular sintético Apellido sintético' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Estado de cuenta' })).not.toBeInTheDocument();
+    expect(statementSpy).not.toHaveBeenCalled();
   });
 });
 

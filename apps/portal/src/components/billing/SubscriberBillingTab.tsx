@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import {
   AccessPermissionKey,
   AllocateCreditCommandSchema,
@@ -32,30 +32,29 @@ import { BillingPaymentTable } from './BillingPaymentsClient';
 import {
   additionalNotice,
   formatBillingMoney,
+  IMPERSONATION_HOLD_NOTICE,
+  IMPERSONATION_HOLD_TITLE,
   moneyCents,
   PAYMENT_STATES,
   PROTECTED_LABEL,
   PROTECTED_NOTICE,
 } from './billing-copy';
-import {
-  BillingLoadState,
-  billingInputClass,
-  useBillingLoad,
-  useBillingMutation,
-} from './billing-ui';
+import { BillingLoadState, billingInputClass, useBillingMutation } from './billing-ui';
+import type { SubscriberStatementLoad } from './use-subscriber-statement';
 
 export function SubscriberBillingTab({
   subscriberId,
   contracts,
+  statement,
 }: {
   subscriberId: string;
   contracts: Contract[];
+  statement: SubscriberStatementLoad;
 }) {
   const { hasPermission } = usePermissions();
   const canRegister = hasPermission(AccessPermissionKey.BILLING_PAYMENTS_REGISTER);
   const canManagePolicy = hasPermission(AccessPermissionKey.BILLING_POLICY_MANAGE);
-  const load = useCallback(() => billingApi.statement(subscriberId), [subscriberId]);
-  const { data, loading, error, reload } = useBillingLoad(load);
+  const { data, loading, error, reload } = statement;
   const [revision, setRevision] = useState(0);
   const [pay, setPay] = useState(false);
   const [credit, setCredit] = useState(false);
@@ -78,8 +77,8 @@ export function SubscriberBillingTab({
       {data.impersonationHold ? (
         <PortalAlert
           variant="info"
-          title="Cobro suspendido preventivamente por investigación de suplantación de identidad (Ley 2573 de 2022)."
-          description="No se generarán nuevos cobros hasta resolución."
+          title={IMPERSONATION_HOLD_TITLE}
+          description={IMPERSONATION_HOLD_NOTICE}
         />
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
