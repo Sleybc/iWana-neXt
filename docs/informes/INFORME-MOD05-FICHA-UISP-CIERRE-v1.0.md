@@ -38,7 +38,18 @@ Revisores: `boundary-reviewer` GO (3 menores) · `contract-drift-reviewer` GO co
 | CA-7 densidad | ❌ **no ejecutado**: sin entorno |
 | CA-8 WCAG | ⚠️ axe solo en jsdom (páginas de servicio); en navegador claro/oscuro **no ejecutado** |
 
-**Causa del NO EJECUTADO:** API, worker y portal no estaban arriba (puertos 3000–3002 y 4000 sin respuesta). Por regla del repo no se levantó el entorno. Para ejecutar: entorno arriba, `E2E_PRIVACY_1B_TENANT_SLUG` y `E2E_PRIVACY_ADMIN_PASSWORD`, y `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-mod05-ficha-uisp-live.spec.ts`.
+**Corrida E2E del 2026-11-10 (actualiza la tabla):** migraciones 180 y 181 aplicadas en desarrollo (8 tenants activos); API y worker levantados por separado, sin `dev.mjs`; `portal-mod05-ficha-uisp-live.spec.ts`: 1 passed, 1 skipped, 1 failed.
+
+| CA | Resultado en navegador |
+|---|---|
+| CA-2, CA-3, CA-6 | ✅ dos columnas, nota creada y visible en Actividad, «Registrar ▾», insignias |
+| CA-5 | ⚠️ alta de servicio ✅ con axe sin violaciones; detalle **omitido**: el suscriptor convertido no trae contrato |
+| CA-8 | ✅ axe sin violaciones serias en ficha y menú «Registrar», claro y oscuro, y en alta de servicio |
+| CA-7 | ✅ tras ajustar el criterio (usuario) y compactar el encabezado: a 1440×900 Estado de cuenta y Contacto empiezan en 375 px (antes 657), Servicios en 694 y Siguiente cobro en 803; en 375 px sin desborde y orden Servicios → Actividad → Contacto. Corrida final: 2 passed, 1 skipped |
+
+**Encabezado compacto:** título, estado, tipo de persona y acciones en una fila; datos fiscales en una línea; aviso de datos incompletos como banner con detalle plegable; `PortalAlert` gana `density="compact"`. Portal: 361 suites, 3615 passed, 1 skipped; inventario y ola 2 sin modificar.
+
+**Antecedente (ya superado):** API, worker y portal no estaban arriba (puertos 3000–3002 y 4000 sin respuesta). Por regla del repo no se levantó el entorno. Para ejecutar: entorno arriba, `E2E_PRIVACY_1B_TENANT_SLUG` y `E2E_PRIVACY_ADMIN_PASSWORD`, y `pnpm exec playwright test --config e2e/playwright.portal.config.ts e2e/tests/portal-mod05-ficha-uisp-live.spec.ts`.
 
 ## 4. Omitido, no verificado y riesgos
 

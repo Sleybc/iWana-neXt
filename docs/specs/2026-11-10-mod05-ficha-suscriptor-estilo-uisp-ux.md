@@ -64,7 +64,7 @@ La rev. 4 de la referencia comparó con capturas de 2018 y 2020 y marcó como al
 | CA-4 | El mapa y el documento de identidad solo se muestran con el permiso que hoy los muestra; el documento sale enmascarado |
 | CA-5 | La página de servicio cubre todas las acciones del panel lateral, incluida la concurrencia y la vista previa del efecto |
 | CA-6 | Ninguna insignia de G se puede asignar a mano cuando su dato existe |
-| CA-7 | Densidad: la Vista general de un titular con un servicio cabe sin desplazamiento a 1440×900; en 375 px las columnas se apilan en el orden de §3 A |
+| CA-7 | Densidad: a 1440×900, estado de cuenta, identidad (Contacto), Servicios y Siguiente cobro empiezan en la primera pantalla sin desplazar; el resto puede quedar abajo, como en UISP; en 375 px no hay desborde horizontal y las columnas se apilan en el orden de §3 A. *Ajustado por el usuario el 2026-11-10: el criterio original («cabe completa sin desplazamiento») midió 2317 px en navegador* |
 | CA-8 | WCAG 2.2 AA en ficha, página de servicio y diálogos; ayuda accesible con teclado |
 
 ## 6. Decisiones abiertas

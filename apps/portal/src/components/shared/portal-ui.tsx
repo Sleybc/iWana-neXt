@@ -1868,6 +1868,11 @@ interface PortalAlertProps {
   icon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean }> | undefined;
   className?: string | undefined;
   /**
+   * Densidad. `compact` dibuja una sola línea (icono, título, descripción y acción en fila que
+   * envuelve en móvil) para avisos persistentes dentro de un encabezado.
+   */
+  density?: 'default' | 'compact' | undefined;
+  /**
    * Politenez de la región live. Independiente de `variant`.
    * - assertive → role=alert, aria-live=assertive
    * - polite (default) → role=status, aria-live=polite
@@ -2187,6 +2192,7 @@ export function PortalAlert({
   action,
   icon,
   className,
+  density = 'default',
   live = 'polite',
 }: PortalAlertProps) {
   const styles = alertVariantStyles[variant];
@@ -2205,6 +2211,26 @@ export function PortalAlert({
             'aria-live': 'polite',
             'aria-atomic': true,
           } as const);
+
+  if (density === 'compact') {
+    return (
+      <div
+        {...liveRegionProps}
+        className={cn(
+          'flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-1.5',
+          styles.root,
+          className,
+        )}
+      >
+        <Icon className={cn('h-4 w-4 shrink-0', styles.iconColor)} aria-hidden={true} />
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <p className={cn('text-sm font-semibold', styles.titleColor)}>{title}</p>
+          {description && <div className={cn('text-sm', styles.bodyColor)}>{description}</div>}
+        </div>
+        {action && <div className="ml-auto shrink-0">{action}</div>}
+      </div>
+    );
+  }
 
   return (
     <div

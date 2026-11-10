@@ -311,15 +311,16 @@ test.describe('Ficha del suscriptor estilo UISP (live)', () => {
     }
     await page.emulateMedia({ colorScheme: 'light' });
 
-    // CA-7: la Vista general de un titular con un servicio cabe sin desplazamiento a 1440×900.
+    // CA-7 (v1.1, decisión del usuario 2026-11-10): lo crítico empieza en la primera pantalla a
+    // 1440×900, sin desplazar; el resto puede quedar abajo, como en UISP.
     await page.goto(`/dashboard/crm/subscribers/${id}`);
     await expect(region(page, 'Actividad')).toBeVisible();
-    const heights = await page.evaluate(() => ({
-      scroll: document.documentElement.scrollHeight,
-      inner: innerHeight,
-    }));
-    console.info('CA-7 1440x900', JSON.stringify(heights));
-    expect(heights.scroll).toBeLessThanOrEqual(heights.inner);
+    for (const name of ['Estado de cuenta', 'Contacto', 'Servicios', 'Siguiente cobro']) {
+      const box = await region(page, name).boundingBox();
+      expect(box, `tarjeta ${name} en 1440×900`).not.toBeNull();
+      console.info('CA-7 1440x900', name, Math.round(box!.y));
+      expect(box!.y, `${name} empieza en la primera pantalla`).toBeLessThan(900);
+    }
 
     // CA-7: en 375 px no hay desborde horizontal y la columna izquierda va antes que la derecha.
     await page.setViewportSize({ width: 375, height: 812 });

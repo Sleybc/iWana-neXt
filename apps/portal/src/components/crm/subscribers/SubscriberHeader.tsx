@@ -93,18 +93,24 @@ export function SubscriberHeader({
   const cancellationDisabledCopy =
     'Termina primero todos los servicios vigentes para cancelar al suscriptor.';
 
+  const touch = 'min-h-11 md:min-h-9';
+
   return (
-    <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
-      <div>
-        <Link
-          href="/dashboard/crm/subscribers"
-          className="mb-2 flex items-center text-sm font-medium text-gray-500 transition-colors hover:text-iwana-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary"
-        >
-          <ArrowLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-          Volver a suscriptores
-        </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white md:text-2xl">
+    <div className="space-y-2 rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[var(--shadow-sm)] dark:border-dark-border dark:bg-dark-surface-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <Link
+            href="/dashboard/crm/subscribers"
+            aria-label="Volver a suscriptores"
+            className={`inline-flex ${touch} items-center rounded-md text-sm font-medium text-gray-500 transition-colors hover:text-iwana-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-iwana-primary`}
+          >
+            <ArrowLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+            Suscriptores
+          </Link>
+          <span className="text-gray-400 dark:text-gray-500" aria-hidden="true">
+            /
+          </span>
+          <h2 className="min-w-0 break-words text-lg font-semibold tracking-tight text-gray-900 dark:text-white md:text-xl">
             {name}
           </h2>
           <Badge variant={statusMeta.variant} className="rounded-full">
@@ -121,77 +127,30 @@ export function SubscriberHeader({
               Contacto pendiente
             </Badge>
           )}
-          {registerActions.length > 0 && (
-            <div className="ml-auto">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild aria-controls="subscriber-register-menu">
-                  <Button type="button" variant="primary" className="min-h-11 gap-1.5">
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Registrar
-                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  id="subscriber-register-menu"
-                  width="w-56"
-                  align="end"
-                  sideOffset={8}
-                >
-                  {registerActions.map((action) => (
-                    <DropdownMenuItem
-                      key={action.id}
-                      className="min-h-11"
-                      onClick={action.onSelect}
-                    >
-                      {action.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {personMeta.label} · {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
+          </p>
         </div>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          {personMeta.label} · {CUSTOMER_SEGMENT_META[subscriber.customerSegment].label}
-        </p>
-        <div className="mt-3">
-          <PrivacyMarks marks={marks} />
-        </div>
-      </div>
 
-      <VatTreatmentBanner
-        personType={subscriber.personType}
-        vatResponsibility={subscriber.vatResponsibility}
-        rutResponsibilities={filterRutResponsibilities(subscriber.rutResponsibilities)}
-      />
-
-      {fiscalIncomplete && (
-        <FiscalDataIncompleteAlert
-          missing={subscriber.fiscalCompleteness.missing}
-          onComplete={canEditSubscriber ? onCompleteFiscalData : undefined}
-        />
-      )}
-
-      {canEditSubscriber && (
-        <div className="flex flex-wrap gap-3">
-          {subscriber.contactPending && (
-            <Button type="button" variant="secondary" onClick={onAddContact}>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canEditSubscriber && subscriber.contactPending && (
+            <Button type="button" variant="secondary" className={touch} onClick={onAddContact}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Agregar contacto
             </Button>
           )}
-          {subscriber.status === SubscriberStatus.LEAD && (
-            <Button type="button" variant="secondary" onClick={onChangeStatus}>
+          {canEditSubscriber && subscriber.status === SubscriberStatus.LEAD && (
+            <Button type="button" variant="secondary" className={touch} onClick={onChangeStatus}>
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Cambiar estado
             </Button>
           )}
-          {subscriber.status === SubscriberStatus.ACTIVE && (
-            <div className="space-y-1">
+          {canEditSubscriber && subscriber.status === SubscriberStatus.ACTIVE && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <Button
                 type="button"
                 variant="primary"
-                className="min-h-11"
+                className={touch}
                 disabled={!hasActiveServices}
                 aria-describedby={!hasActiveServices ? 'subscriber-suspend-disabled' : undefined}
                 onClick={() => onOpenLifecycle('SUSPEND')}
@@ -201,7 +160,7 @@ export function SubscriberHeader({
               {!hasActiveServices && (
                 <p
                   id="subscriber-suspend-disabled"
-                  className="max-w-sm text-xs text-gray-600 dark:text-gray-300"
+                  className="max-w-[16rem] text-xs text-gray-600 dark:text-gray-300"
                   role="status"
                 >
                   No hay servicios activos para suspender.
@@ -209,12 +168,12 @@ export function SubscriberHeader({
               )}
             </div>
           )}
-          {subscriber.status === SubscriberStatus.SUSPENDED && (
-            <div className="space-y-1">
+          {canEditSubscriber && subscriber.status === SubscriberStatus.SUSPENDED && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <Button
                 type="button"
                 variant="primary"
-                className="min-h-11"
+                className={touch}
                 disabled={!hasSuspendedServices}
                 aria-describedby={
                   !hasSuspendedServices ? 'subscriber-reactivate-disabled' : undefined
@@ -226,7 +185,7 @@ export function SubscriberHeader({
               {!hasSuspendedServices && (
                 <p
                   id="subscriber-reactivate-disabled"
-                  className="max-w-sm text-xs text-gray-600 dark:text-gray-300"
+                  className="max-w-[16rem] text-xs text-gray-600 dark:text-gray-300"
                   role="status"
                 >
                   No hay servicios suspendidos para reactivar.
@@ -234,10 +193,33 @@ export function SubscriberHeader({
               )}
             </div>
           )}
-          {subscriber.status !== SubscriberStatus.CANCELLED && (
+          {registerActions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild aria-controls="subscriber-register-menu">
+                <Button type="button" variant="primary" className={`${touch} gap-1.5`}>
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Registrar
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                id="subscriber-register-menu"
+                width="w-56"
+                align="end"
+                sideOffset={8}
+              >
+                {registerActions.map((action) => (
+                  <DropdownMenuItem key={action.id} className="min-h-11" onClick={action.onSelect}>
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {canEditSubscriber && subscriber.status !== SubscriberStatus.CANCELLED && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild aria-controls="subscriber-action-menu">
-                <Button type="button" variant="secondary" className="min-h-11">
+                <Button type="button" variant="secondary" className={touch}>
                   <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
                   Más acciones
                 </Button>
@@ -271,6 +253,24 @@ export function SubscriberHeader({
             </DropdownMenu>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <VatTreatmentBanner
+          variant="inline"
+          personType={subscriber.personType}
+          vatResponsibility={subscriber.vatResponsibility}
+          rutResponsibilities={filterRutResponsibilities(subscriber.rutResponsibilities)}
+        />
+        <PrivacyMarks marks={marks} />
+      </div>
+
+      {fiscalIncomplete && (
+        <FiscalDataIncompleteAlert
+          density="compact"
+          missing={subscriber.fiscalCompleteness.missing}
+          onComplete={canEditSubscriber ? onCompleteFiscalData : undefined}
+        />
       )}
     </div>
   );
