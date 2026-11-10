@@ -13,7 +13,7 @@ import {
 } from '@/components/dashboard/TenantsTable';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { tenantApi, type TenantListItem } from '@/lib/api-client';
+import { ApiError, tenantApi, type TenantListItem } from '@/lib/api-client';
 import { mergeUrlSearchParams, withSearchParams } from '@/lib/merge-url-search-params';
 import { PICKER_SOFT_CAP } from '@/lib/picker-soft-cap';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
@@ -289,9 +289,19 @@ export default function TenantsPage() {
 
         showNotification('success', PLATFORM_UI_COPY.tenants.retrySuccess);
       } catch (err) {
-        console.error('Error retrying provisioning:', err);
+        console.error('Error retrying provisioning.');
         await Promise.all([loadTenants(), loadParkSummary()]);
-        showNotification('error', PLATFORM_UI_COPY.tenants.actionError);
+
+        const copy = PLATFORM_UI_COPY.tenants;
+        let message: string = copy.actionError;
+        if (err instanceof ApiError && err.status === 409) {
+          if (err.code === 'TENANT_PROVISIONING_IN_PROGRESS') {
+            message = copy.retryInProgress;
+          } else if (err.code === 'TENANT_NOT_RETRYABLE') {
+            message = copy.retryNotAllowed;
+          }
+        }
+        showNotification('error', message);
       }
     },
     [loadParkSummary, loadTenants, showNotification, upsertTenantInState],

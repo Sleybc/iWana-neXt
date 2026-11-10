@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TenantsPage from './page';
+import { ApiError } from '@/lib/api-client';
 import { PLATFORM_UI_COPY } from '@/lib/platform-ui-copy';
 
 jest.mock('next/link', () => ({
@@ -70,6 +71,7 @@ jest.mock('@/components/shared/ConfirmDialog', () => ({
 }));
 
 jest.mock('@/lib/api-client', () => ({
+  ApiError: jest.requireActual<typeof import('@/lib/api-client')>('@/lib/api-client').ApiError,
   tenantApi: {
     list: jest.fn(),
     suspend: jest.fn(),
@@ -413,4 +415,40 @@ describe('TenantsPage', () => {
     });
     expect(await screen.findByText(PLATFORM_UI_COPY.tenants.actionError)).toBeInTheDocument();
   });
+
+  it.each([
+    {
+      status: 409,
+      code: 'TENANT_PROVISIONING_IN_PROGRESS',
+      message: 'La configuración de esta empresa sigue en curso. Revisa su estado en unos minutos.',
+    },
+    {
+      status: 409,
+      code: 'TENANT_NOT_RETRYABLE',
+      message:
+        'El estado actual de esta empresa impide reintentar el alta. Revisa su estado en el directorio.',
+    },
+    { status: 409, code: 'CONFLICT', message: PLATFORM_UI_COPY.tenants.actionError },
+    {
+      status: 500,
+      code: 'TENANT_NOT_RETRYABLE',
+      message: PLATFORM_UI_COPY.tenants.actionError,
+    },
+  ])(
+    'muestra el aviso correspondiente al reintento rechazado con $status $code',
+    async ({ status, code, message }) => {
+      const apiMessage = 'Mensaje interno de la API';
+      tenantApi.list.mockResolvedValue([failedTenant]);
+      tenantApi.retryProvisioning.mockRejectedValueOnce(new ApiError(status, code, apiMessage));
+
+      render(<TenantsPage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Abrir menú de acciones' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Reintentar configuración' }));
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.queryByText(apiMessage)).not.toBeInTheDocument();
+      expect(tenantApi.waitForProvisioning).not.toHaveBeenCalled();
+    },
+  );
 });

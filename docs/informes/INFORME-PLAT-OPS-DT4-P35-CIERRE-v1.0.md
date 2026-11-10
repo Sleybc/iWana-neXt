@@ -26,7 +26,7 @@ Tamaño (`git show --stat`):
 | G0 | ✅ CTO, 2026-11-09 | Spec v1.1, incluidos R1/R2 y la enmienda de `retry-provisioning`. |
 | G6 | ✅ | Spec §9: bloque literal del CI sobre base `iwana_it_g7_*`, gate de omisiones y aprovisionador E2E local con `E2E_SETUP=OK` / `E2E_CLEANUP=OK`. La corrida fiel del aprovisionador se delegó al G6.5 por decisión del usuario. |
 | G6.5 | ✅ | Push único `75528631..965bf5e5` (con el tren de roles). CI 42678231774 y smoke 42678231542 en `success`; E2E operativo R4.1 339/0/1 con limpieza OK. Detalle por job en la spec §10. |
-| G7 | Diferido hasta la beta | Además bloqueado por R7 (abajo). |
+| G7 | Diferido hasta la beta | Para habilitar la purga, quedan P2-1, P2-2 y D-2 (abajo). |
 
 ## 3. Lecciones de proceso
 
@@ -40,13 +40,24 @@ P3-5 elevó el paso «Integration tests — API» de 3 min 56 s (`5d6a366b`, 202
 
 ## 5. Seguimientos
 
-| ID | Prioridad | Estado al cierre |
+| ID | Prioridad | Estado al 2026-11-10 |
 | --- | --- | --- |
-| R7 — la purga del worker no puede borrar esquemas (`iwana_app` no es dueño; los esquemas son de `iwana_migrator`) | P1, bloquea G7 y la retención de la Ley 1581 | Encargo abierto el 2026-11-09 por orden del CTO. |
-| Tiempo del paso de integración API | P2 | Encargo abierto el 2026-11-09 por orden del CTO. |
-| R8 — la consola de plataforma muestra un error genérico ante los 409 de «Reintentar» | P3 | Solución propuesta por AI-EM-ARCH el 2026-11-09; pendiente de orden. |
+| R7 — purga con rol de mínimo privilegio | P1 | G6.5 verde. Antes de G7 quedan los dos P2 de `sec-eng` (membresías transitivas y dependencias entre esquemas). D-2 exige constancia por tenant de devolución o exportación de los datos al ISP, o su instrucción escrita de supresión, antes de la primera purga real. [Spec R7 §7, §15 y §17](../specs/2026-11-09-plat-ops-r7-purga-tenants-rol-de-produccion-spec.md) |
+| Tiempo del paso de integración API | P2 | Reserva F activa en CI. La primera de cinco corridas válidas de `main` dio un cociente API/089 de 4,27 frente a la mediana base de 4,24. La reversión se decide al completar la muestra si la mejora normalizada queda por debajo del 5 %. [Spec de CI §10.5–10.6](../specs/2026-11-09-plat-ops-ci-integracion-api-tiempo.md#106-pendiente) |
+| R8 — mensajes para los dos 409 de «Reintentar» en la consola de plataforma | P3 | Implementado por `fe-platform` el 2026-11-10. `TENANT_PROVISIONING_IN_PROGRESS` indica que la configuración sigue en curso y `TENANT_NOT_RETRYABLE` pide revisar el estado en el directorio. Los demás errores muestran el aviso genérico. [Spec DT-4 §8.2](../specs/2026-11-09-plat-ops-dt4-aprovisionamiento-tenant-marcado.md) |
 | R3 (auditoría de transiciones del worker), R4 (locks 42/43), R5 (esquemas borrados fuera de la purga en desarrollo), R6 (`RELAY_FAILURE` con `failed=0`) | P3 | Sin dueño. |
 | CA-NET-11 (mock sin `assertWritableReferences`), Playwright en ubuntu 26.04 | P3 | Sin dueño, heredados. |
+
+### Línea base y verificación de R8
+
+| Paquete | Medición del 2026-11-10 | Suites | Pruebas | Omitidas |
+| --- | --- | ---: | ---: | ---: |
+| `@iwana/web` | Base `c7eb5636`, `pnpm exec turbo run test --filter=@iwana/web --force` | 38 | 233 | 0 |
+| `@iwana/web` | `pnpm --filter @iwana/web exec jest --coverage --coverageReporters=text-summary --coverageReporters=json-summary --silent` | 38 | 237 | 0 |
+
+La base tenía el [CI documental 42725900488](https://github.com/Sleybc/iWana-neXt/actions/runs/42725900488) en verde. En R8, lint y typecheck pasaron. La página alcanzó 84,81 % de líneas cubiertas. La revisión de pruebas confirmó cuatro casos nuevos y la conservación de las expectativas previas.
+
+**GO local de R8 (2026-11-10).** Playwright en Chrome, 3 de 3 casos aprobados en `/tenants`. El clic en «Reintentar configuración» mostró el aviso específico para cada uno de los dos 409 del contrato y el genérico para un tercer 409. Las respuestas HTTP se simularon con el contrato del API. CI de R8 pendiente de publicación.
 
 ## 6. Dictamen
 

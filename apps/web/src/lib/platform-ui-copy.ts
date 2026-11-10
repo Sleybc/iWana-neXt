@@ -74,6 +74,10 @@ export const PLATFORM_UI_COPY = {
     suspendSuccess: 'Empresa suspendida.',
     activateSuccess: 'Empresa reactivada.',
     retrySuccess: 'Reintento de alta enviado.',
+    retryInProgress:
+      'La configuración de esta empresa sigue en curso. Revisa su estado en unos minutos.',
+    retryNotAllowed:
+      'El estado actual de esta empresa impide reintentar el alta. Revisa su estado en el directorio.',
     actionError: 'No pudimos completar la acción. Reintenta en unos minutos.',
     notificationsTitle: 'Avisos del directorio',
     notificationsSubtitle: 'Empresas que conviene revisar ahora.',
