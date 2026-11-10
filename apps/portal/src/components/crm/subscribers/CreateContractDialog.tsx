@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import {
   CustomerSegment,
@@ -13,6 +13,7 @@ import {
   FormField,
   FormStatus,
   ModalLayer,
+  SectionAccordion,
   Select,
   overlayEdgeClassName,
   cn,
@@ -22,8 +23,13 @@ import { ApiError, commercialApi, contractsApi, mapPickerSearchResponse } from '
 import {
   PortalSkeletonBlock,
   PortalAlert,
+  PortalPanel,
   interactiveFocusClassName,
+  portalPanelDenseBodyClassName,
+  portalPanelDenseClassName,
 } from '@/components/shared/portal-ui';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { FirstChargePreview } from './FirstChargePreview';
 import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
 import { readFiscalDataIncompleteError } from './subscriber-fiscal';
 import { BillingCycleField } from './BillingCycleField';
@@ -82,6 +88,11 @@ interface CreateContractDialogProps {
   onSuccess: () => Promise<void>;
 }
 
+/** Alta en panel (`dialog`) o en página completa (`page`, spec MOD05 UISP §3 E). */
+export interface CreateContractFormProps extends CreateContractDialogProps {
+  layout: 'dialog' | 'page';
+}
+
 // ── Estado del formulario ─────────────────────────────────────────────────────
 
 interface FormState {
@@ -126,19 +137,26 @@ const INITIAL_FORM: FormState = {
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
-export function CreateContractDialog({
+export function CreateContractDialog(props: CreateContractDialogProps) {
+  return <CreateContractForm layout="dialog" {...props} />;
+}
+
+export function CreateContractForm({
+  layout,
   subscriberId,
   personType = PersonType.NATURAL,
   onClose,
   onSuccess,
-}: CreateContractDialogProps) {
+}: CreateContractFormProps) {
+  const isPage = layout === 'page';
+  const fieldId = useId();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const billingCycles = useBillingCycles();
   // Estos diálogos se montan/desmontan desde el padre, así que su apertura es su
   // propia presencia: se difunde `true` mientras vivan y el hook libera el estado
   // al desmontar. Sin esto el chrome queda bajo el velo pero NO inerte y el foco
   // escapa (mismo defecto que M9 corrigió en `PortalSidePeek`).
-  usePortalModalDrawerBroadcast(true);
+  usePortalModalDrawerBroadcast(!isPage);
 
   const [planResolving, setPlanResolving] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -161,7 +179,7 @@ export function CreateContractDialog({
   //
   // Escape replica el botón de la cabecera, que está `disabled` mientras
   // `saving`: no se descarta un alta en vuelo, igual que el velo inerte.
-  usePortalSideDrawerA11y(true, dialogRef, () => {
+  usePortalSideDrawerA11y(!isPage, dialogRef, () => {
     if (saving) {
       return;
     }
@@ -358,7 +376,407 @@ export function CreateContractDialog({
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Bloques compartidos por el panel y la página ─────────────────────────
+
+  const planInner = (
+    <>
+      <SearchablePicker
+        label={
+          <>
+            Plan <span className="text-red-500">*</span>
+          </>
+        }
+        resource={{ singular: 'plan', plural: 'planes' }}
+        value={form.planId}
+        selectedItem={form.selectedPlanItem}
+        onChange={(item) => {
+          void handlePlanSelect(item);
+        }}
+        onSearch={searchPlans}
+        placeholder="Buscar plan…"
+        disabled={saving || planResolving}
+      />
+      {planResolving && (
+        <div role="status" aria-label="Cargando detalle del plan" className="mt-1.5">
+          <PortalSkeletonBlock className="h-4 w-48 rounded" />
+        </div>
+      )}
+      {form.selectedPlan && !planResolving && (
+        <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+          {form.selectedPlan.technology} · ↓{form.selectedPlan.downloadSpeedMbps} Mbps · ↑
+          {form.selectedPlan.uploadSpeedMbps} Mbps
+        </p>
+      )}
+    </>
+  );
+
+  const identInner = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <label htmlFor={`${fieldId}-alias`} className={labelCls}>
+          Alias del servicio
+        </label>
+        <input
+          id={`${fieldId}-alias`}
+          type="text"
+          value={form.alias}
+          onChange={set('alias')}
+          placeholder="Ej: Hogar Cra 10 · se autogenera si se deja en blanco"
+          className={inputCls}
+          maxLength={120}
+        />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-customerSegment`} className={labelCls}>
+          Segmento del cliente
+        </label>
+        <select
+          id={`${fieldId}-customerSegment`}
+          value={form.customerSegment}
+          onChange={set('customerSegment')}
+          className={selectCls}
+        >
+          <option value="">— Hereda del suscriptor —</option>
+          {SEGMENT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+
+  const addressInner = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <label htmlFor={`${fieldId}-installationAddress`} className={labelCls}>
+          Dirección
+        </label>
+        <input
+          id={`${fieldId}-installationAddress`}
+          type="text"
+          value={form.installationAddress}
+          onChange={set('installationAddress')}
+          placeholder="Cra 10 #23-45"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-installationCity`} className={labelCls}>
+          Ciudad
+        </label>
+        <input
+          id={`${fieldId}-installationCity`}
+          type="text"
+          value={form.installationCity}
+          onChange={set('installationCity')}
+          placeholder="Bogotá"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-installationDepartment`} className={labelCls}>
+          Departamento
+        </label>
+        <input
+          id={`${fieldId}-installationDepartment`}
+          type="text"
+          value={form.installationDepartment}
+          onChange={set('installationDepartment')}
+          placeholder="Cundinamarca"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-installationPostalCode`} className={labelCls}>
+          Código postal
+        </label>
+        <input
+          id={`${fieldId}-installationPostalCode`}
+          type="text"
+          value={form.installationPostalCode}
+          onChange={set('installationPostalCode')}
+          placeholder="110111"
+          className={inputCls}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label htmlFor={`${fieldId}-installationNotes`} className={labelCls}>
+          Notas de instalación
+        </label>
+        <textarea
+          id={`${fieldId}-installationNotes`}
+          value={form.installationNotes}
+          onChange={set('installationNotes')}
+          rows={2}
+          placeholder="Instrucciones de acceso, referencias, etc."
+          className={[inputCls, 'resize-none'].join(' ')}
+        />
+      </div>
+    </div>
+  );
+
+  const servicePoint = (
+    <ServicePointFields
+      fieldIdPrefix="create-contract"
+      personType={personType}
+      serviceUsage={serviceUsage}
+      onServiceUsageChange={(value) => {
+        setServiceUsage(value);
+        setUsageError(undefined);
+        if (value !== ServiceUsage.RESIDENTIAL) {
+          setInstallationStratum('');
+          setPendingEvidenceFile(null);
+          setEvidenceUploadError(null);
+          setStratumError(undefined);
+        }
+      }}
+      installationStratum={installationStratum}
+      onInstallationStratumChange={(value) => {
+        setInstallationStratum(value);
+        setStratumError(undefined);
+        if (!['1', '2', '3'].includes(value)) {
+          setPendingEvidenceFile(null);
+          setEvidenceUploadError(null);
+        }
+      }}
+      hasStratumEvidence={hasStratumEvidence}
+      pendingEvidenceFile={pendingEvidenceFile}
+      onPendingEvidenceFileChange={(file) => {
+        setPendingEvidenceFile(file);
+        setEvidenceUploadError(null);
+      }}
+      {...(savedDraftId
+        ? {
+            onRemoveEvidence: async () => {
+              if (hasStratumEvidence) {
+                const updated = await contractsApi.deleteStratumEvidence(savedDraftId);
+                setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+              }
+              setPendingEvidenceFile(null);
+              setEvidenceUploadError(null);
+            },
+          }
+        : {})}
+      {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
+      disabled={saving}
+      {...(usageError ? { usageError } : {})}
+      {...(stratumError ? { stratumError } : {})}
+    />
+  );
+
+  const addonsInner = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <SearchableMultiPicker
+        label="Productos adicionales"
+        resource={{ singular: 'producto adicional', plural: 'productos adicionales' }}
+        value={form.additionalProducts}
+        onChange={(next) => setForm((prev) => ({ ...prev, additionalProducts: next }))}
+        onSearch={searchProducts}
+        placeholder="Buscar producto adicional…"
+        disabled={saving}
+      />
+      <SearchableMultiPicker
+        label="Servicios adicionales"
+        resource={{ singular: 'servicio adicional', plural: 'servicios adicionales' }}
+        value={form.additionalServices}
+        onChange={(next) => setForm((prev) => ({ ...prev, additionalServices: next }))}
+        onSearch={searchServices}
+        placeholder="Buscar servicio adicional…"
+        disabled={saving}
+      />
+    </div>
+  );
+
+  const billingInner = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label htmlFor={`${fieldId}-paymentMethod`} className={labelCls}>
+          Método de pago
+        </label>
+        <select
+          id={`${fieldId}-paymentMethod`}
+          value={form.paymentMethod}
+          onChange={set('paymentMethod')}
+          className={selectCls}
+        >
+          <option value="">— Sin especificar —</option>
+          {PAYMENT_METHOD_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <BillingCycleField
+        cycles={billingCycles.cycles}
+        value={form.billingCycleDay}
+        onChange={(value) => setForm((current) => ({ ...current, billingCycleDay: value }))}
+        loading={billingCycles.loading}
+        catalogError={billingCycles.error}
+        onRetry={billingCycles.retry}
+        disabled={saving}
+        allowUnassigned
+        id="create-contract-billing-cycle"
+      />
+    </div>
+  );
+
+  const fiscalInner = (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label htmlFor={`${fieldId}-fiscalName`} className={labelCls}>
+          Nombre fiscal
+        </label>
+        <input
+          id={`${fieldId}-fiscalName`}
+          type="text"
+          value={form.fiscalName}
+          onChange={set('fiscalName')}
+          placeholder="Razón social o nombre"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-fiscalDocument`} className={labelCls}>
+          Documento / NIT
+        </label>
+        <input
+          id={`${fieldId}-fiscalDocument`}
+          type="text"
+          value={form.fiscalDocument}
+          onChange={set('fiscalDocument')}
+          placeholder="900.123.456-7"
+          className={inputCls}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label htmlFor={`${fieldId}-fiscalAddress`} className={labelCls}>
+          Dirección fiscal
+        </label>
+        <input
+          id={`${fieldId}-fiscalAddress`}
+          type="text"
+          value={form.fiscalAddress}
+          onChange={set('fiscalAddress')}
+          placeholder="Dirección de facturación"
+          className={inputCls}
+        />
+      </div>
+    </div>
+  );
+
+  const firstChargePreview = isPage ? (
+    <FirstChargePreview
+      plan={form.selectedPlan}
+      billingCycleDay={form.billingCycleDay ? Number(form.billingCycleDay) : null}
+    />
+  ) : null;
+
+  const submitDisabled = saving || planResolving || (!form.planId && !savedDraftId);
+
+  const formStatus = (
+    <>
+      {fiscalMissing && <FiscalDataIncompleteAlert missing={fiscalMissing} />}
+      <FormStatus status={saveError ? 'error' : 'idle'} message={saveError ?? undefined} />
+    </>
+  );
+
+  // ── Render en página (spec MOD05 UISP §3 E y §4) ──────────────────────────
+
+  if (isPage) {
+    const pageActions = (
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={saving}
+          className={cn(
+            'min-h-11 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300',
+            interactiveFocusClassName,
+          )}
+        >
+          Cancelar
+        </button>
+        <Button
+          loading={saving}
+          type="submit"
+          form="create-contract-form"
+          disabled={submitDisabled}
+          className="min-h-11"
+        >
+          {!saving && <Plus className="h-4 w-4" aria-hidden />}
+          Crear servicio en borrador
+        </Button>
+      </div>
+    );
+    const accordionItems = [
+      {
+        id: 'complementos',
+        label: 'Complementos del plan',
+        description: 'Productos y servicios adicionales',
+        children: addonsInner,
+      },
+      ...(personType !== PersonType.NATURAL
+        ? [
+            {
+              id: 'datos-fiscales',
+              label: 'Datos fiscales (opcional)',
+              description: 'Solo si el contrato se factura con otros datos',
+              children: fiscalInner,
+            },
+          ]
+        : []),
+    ];
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Nuevo servicio contratado"
+          subtitle={
+            <>
+              Se creará un contrato en estado <strong>Borrador</strong>
+            </>
+          }
+          actions={pageActions}
+        />
+        <form onSubmit={handleSubmit} id="create-contract-form" className="space-y-4">
+          {formStatus}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+            <div className="flex min-w-0 flex-col gap-4">
+              <PortalPanel as="section" labelled density="dense" title="Plan de conectividad">
+                {planInner}
+              </PortalPanel>
+              <PortalPanel
+                as="section"
+                labelled
+                density="dense"
+                title="Identificación del servicio"
+              >
+                {identInner}
+              </PortalPanel>
+              <PortalPanel as="section" labelled density="dense" title="Dirección de instalación">
+                {addressInner}
+              </PortalPanel>
+            </div>
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className={cn(portalPanelDenseClassName, portalPanelDenseBodyClassName)}>
+                {servicePoint}
+              </div>
+              <PortalPanel as="section" labelled density="dense" title="Facturación">
+                {billingInner}
+              </PortalPanel>
+              {firstChargePreview}
+            </div>
+          </div>
+          <SectionAccordion variant="card" keepMounted items={accordionItems} />
+          <div className="flex justify-end">{pageActions}</div>
+        </form>
+      </div>
+    );
+  }
+
+  // ── Render en panel ───────────────────────────────────────────────────────
 
   // Capa única ADR-075 **portalada a `document.body`** (enmienda C-DS-04 §2bis):
   // velo y diálogo comparten UNA capa `--z-modal`, por encima del chrome. El
@@ -415,275 +833,40 @@ export function CreateContractDialog({
         {/* Formulario */}
         <form onSubmit={handleSubmit} id="create-contract-form" className="flex-1 overflow-y-auto">
           <div className="space-y-6 p-6">
-            {fiscalMissing && <FiscalDataIncompleteAlert missing={fiscalMissing} />}
-            <FormStatus status={saveError ? 'error' : 'idle'} message={saveError ?? undefined} />
+            {formStatus}
 
-            {/* ── Plan ─────────────────────────────────────────────────── */}
             <div>
               <p className={sectionTitleCls}>Plan de conectividad</p>
-              <SearchablePicker
-                label={
-                  <>
-                    Plan <span className="text-red-500">*</span>
-                  </>
-                }
-                resource={{ singular: 'plan', plural: 'planes' }}
-                value={form.planId}
-                selectedItem={form.selectedPlanItem}
-                onChange={(item) => {
-                  void handlePlanSelect(item);
-                }}
-                onSearch={searchPlans}
-                placeholder="Buscar plan…"
-                disabled={saving || planResolving}
-              />
-              {planResolving && (
-                <div role="status" aria-label="Cargando detalle del plan" className="mt-1.5">
-                  <PortalSkeletonBlock className="h-4 w-48 rounded" />
-                </div>
-              )}
-              {form.selectedPlan && !planResolving && (
-                <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {form.selectedPlan.technology} · ↓{form.selectedPlan.downloadSpeedMbps} Mbps · ↑
-                  {form.selectedPlan.uploadSpeedMbps} Mbps
-                </p>
-              )}
+              {planInner}
             </div>
 
-            {/* ── Alias ────────────────────────────────────────────────── */}
             <div>
               <p className={sectionTitleCls}>Identificación del servicio</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Alias del servicio</label>
-                  <input
-                    type="text"
-                    value={form.alias}
-                    onChange={set('alias')}
-                    placeholder="Ej: Hogar Cra 10 · se autogenera si se deja en blanco"
-                    className={inputCls}
-                    maxLength={120}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Segmento del cliente</label>
-                  <select
-                    value={form.customerSegment}
-                    onChange={set('customerSegment')}
-                    className={selectCls}
-                  >
-                    <option value="">— Hereda del suscriptor —</option>
-                    {SEGMENT_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              {identInner}
             </div>
 
-            {/* ── Dirección de instalación ──────────────────────────────── */}
             <div>
               <p className={sectionTitleCls}>Dirección de instalación</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Dirección</label>
-                  <input
-                    type="text"
-                    value={form.installationAddress}
-                    onChange={set('installationAddress')}
-                    placeholder="Cra 10 #23-45"
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Ciudad</label>
-                  <input
-                    type="text"
-                    value={form.installationCity}
-                    onChange={set('installationCity')}
-                    placeholder="Bogotá"
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Departamento</label>
-                  <input
-                    type="text"
-                    value={form.installationDepartment}
-                    onChange={set('installationDepartment')}
-                    placeholder="Cundinamarca"
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Código postal</label>
-                  <input
-                    type="text"
-                    value={form.installationPostalCode}
-                    onChange={set('installationPostalCode')}
-                    placeholder="110111"
-                    className={inputCls}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Notas de instalación</label>
-                  <textarea
-                    value={form.installationNotes}
-                    onChange={set('installationNotes')}
-                    rows={2}
-                    placeholder="Instrucciones de acceso, referencias, etc."
-                    className={[inputCls, 'resize-none'].join(' ')}
-                  />
-                </div>
-              </div>
+              {addressInner}
             </div>
 
-            <ServicePointFields
-              fieldIdPrefix="create-contract"
-              personType={personType}
-              serviceUsage={serviceUsage}
-              onServiceUsageChange={(value) => {
-                setServiceUsage(value);
-                setUsageError(undefined);
-                if (value !== ServiceUsage.RESIDENTIAL) {
-                  setInstallationStratum('');
-                  setPendingEvidenceFile(null);
-                  setEvidenceUploadError(null);
-                  setStratumError(undefined);
-                }
-              }}
-              installationStratum={installationStratum}
-              onInstallationStratumChange={(value) => {
-                setInstallationStratum(value);
-                setStratumError(undefined);
-                if (!['1', '2', '3'].includes(value)) {
-                  setPendingEvidenceFile(null);
-                  setEvidenceUploadError(null);
-                }
-              }}
-              hasStratumEvidence={hasStratumEvidence}
-              pendingEvidenceFile={pendingEvidenceFile}
-              onPendingEvidenceFileChange={(file) => {
-                setPendingEvidenceFile(file);
-                setEvidenceUploadError(null);
-              }}
-              {...(savedDraftId
-                ? {
-                    onRemoveEvidence: async () => {
-                      if (hasStratumEvidence) {
-                        const updated = await contractsApi.deleteStratumEvidence(savedDraftId);
-                        setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
-                      }
-                      setPendingEvidenceFile(null);
-                      setEvidenceUploadError(null);
-                    },
-                  }
-                : {})}
-              {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
-              disabled={saving}
-              {...(usageError ? { usageError } : {})}
-              {...(stratumError ? { stratumError } : {})}
-            />
+            {servicePoint}
 
-            {/* ── Productos y servicios adicionales ────────────────────── */}
             <div>
               <p className={sectionTitleCls}>Complementos del plan</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <SearchableMultiPicker
-                  label="Productos adicionales"
-                  resource={{ singular: 'producto adicional', plural: 'productos adicionales' }}
-                  value={form.additionalProducts}
-                  onChange={(next) => setForm((prev) => ({ ...prev, additionalProducts: next }))}
-                  onSearch={searchProducts}
-                  placeholder="Buscar producto adicional…"
-                  disabled={saving}
-                />
-                <SearchableMultiPicker
-                  label="Servicios adicionales"
-                  resource={{ singular: 'servicio adicional', plural: 'servicios adicionales' }}
-                  value={form.additionalServices}
-                  onChange={(next) => setForm((prev) => ({ ...prev, additionalServices: next }))}
-                  onSearch={searchServices}
-                  placeholder="Buscar servicio adicional…"
-                  disabled={saving}
-                />
-              </div>
+              {addonsInner}
             </div>
 
-            {/* ── Facturación ───────────────────────────────────────────── */}
             <div>
               <p className={sectionTitleCls}>Facturación</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={labelCls}>Método de pago</label>
-                  <select
-                    value={form.paymentMethod}
-                    onChange={set('paymentMethod')}
-                    className={selectCls}
-                  >
-                    <option value="">— Sin especificar —</option>
-                    {PAYMENT_METHOD_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <BillingCycleField
-                  cycles={billingCycles.cycles}
-                  value={form.billingCycleDay}
-                  onChange={(value) =>
-                    setForm((current) => ({ ...current, billingCycleDay: value }))
-                  }
-                  loading={billingCycles.loading}
-                  catalogError={billingCycles.error}
-                  onRetry={billingCycles.retry}
-                  disabled={saving}
-                  allowUnassigned
-                  id="create-contract-billing-cycle"
-                />
-              </div>
+              {billingInner}
             </div>
 
-            {/* ── Datos fiscales (opcional) ──────────────────────────────── */}
             {/* Persona natural: el nombre y el documento ya son los del suscriptor. */}
             {personType !== PersonType.NATURAL && (
               <div>
                 <p className={sectionTitleCls}>Datos fiscales (opcional)</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={labelCls}>Nombre fiscal</label>
-                    <input
-                      type="text"
-                      value={form.fiscalName}
-                      onChange={set('fiscalName')}
-                      placeholder="Razón social o nombre"
-                      className={inputCls}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Documento / NIT</label>
-                    <input
-                      type="text"
-                      value={form.fiscalDocument}
-                      onChange={set('fiscalDocument')}
-                      placeholder="900.123.456-7"
-                      className={inputCls}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Dirección fiscal</label>
-                    <input
-                      type="text"
-                      value={form.fiscalAddress}
-                      onChange={set('fiscalAddress')}
-                      placeholder="Dirección de facturación"
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
+                {fiscalInner}
               </div>
             )}
           </div>
@@ -703,7 +886,7 @@ export function CreateContractDialog({
             loading={saving}
             type="submit"
             form="create-contract-form"
-            disabled={saving || planResolving || (!form.planId && !savedDraftId)}
+            disabled={submitDisabled}
             className="min-h-11 flex-1"
           >
             {!saving && <Plus className="h-4 w-4" aria-hidden />}

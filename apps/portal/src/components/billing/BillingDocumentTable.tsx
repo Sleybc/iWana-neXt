@@ -12,6 +12,7 @@ import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui
 import { PortalAlert, PortalSidePeek } from '@/components/shared/portal-ui';
 import { billingApi } from '@/lib/api-client';
 import { BillingConfirmation } from './BillingConfirmation';
+import { downloadBillingDocumentPdf } from './billing-document-pdf';
 import {
   additionalNotice,
   BLOCKING_REASONS,
@@ -50,16 +51,7 @@ export function BillingDocumentTable({
     setPdfError(null);
     setDownloading(document.id);
     try {
-      const blob = await billingApi.documentPdf(document.id);
-      const url = URL.createObjectURL(blob);
-      try {
-        const link = window.document.createElement('a');
-        link.href = url;
-        link.download = `${document.number ?? 'documento-de-cobro'}.pdf`;
-        link.click();
-      } finally {
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
+      await downloadBillingDocumentPdf(document);
     } catch (error) {
       setPdfError(billingError(error));
     } finally {

@@ -21,6 +21,9 @@ import {
 
 interface SubscriberTechnicalServiceSectionProps {
   subscriberId: string;
+  /** Detalle de un contrato (página de servicio): solo su aprovisionamiento. */
+  contractId?: string;
+  density?: 'default' | 'dense';
 }
 
 function statusVariant(
@@ -34,6 +37,8 @@ function statusVariant(
 
 export function SubscriberTechnicalServiceSection({
   subscriberId,
+  contractId,
+  density = 'default',
 }: SubscriberTechnicalServiceSectionProps) {
   const [services, setServices] = useState<ServiceProvisioningDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +49,8 @@ export function SubscriberTechnicalServiceSection({
     setError(null);
     try {
       const response = await networkApi.listSubscriberProvisioning(subscriberId);
-      setServices(Array.isArray(response) ? response : []);
+      const all = Array.isArray(response) ? response : [];
+      setServices(contractId ? all.filter((service) => service.contractId === contractId) : all);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 403) {
         setError(NETWORK_PROVISIONING_COPY.subscriberDenied);
@@ -54,7 +60,7 @@ export function SubscriberTechnicalServiceSection({
     } finally {
       setLoading(false);
     }
-  }, [subscriberId]);
+  }, [subscriberId, contractId]);
 
   useEffect(() => {
     void loadServices();
@@ -68,6 +74,7 @@ export function SubscriberTechnicalServiceSection({
       title="Servicio técnico"
       description="Estado de la instalación y la conexión de cada servicio."
       contentClassName="space-y-4"
+      density={density}
     >
       {error ? (
         <PortalAlert

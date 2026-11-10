@@ -17,7 +17,7 @@ import {
 import { useSubscriberStatement } from '@/components/billing/use-subscriber-statement';
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
 import { SubscriberForm } from './SubscriberForm';
-import { SubscriberHeader } from './SubscriberHeader';
+import { SubscriberHeader, type SubscriberRegisterAction } from './SubscriberHeader';
 import { SubscriberSections } from './SubscriberSections';
 import { SubscriberFiscalSection } from './SubscriberFiscalSection';
 import { SubscriberStatusTransitionDialog } from './SubscriberStatusTransitionDialog';
@@ -26,6 +26,7 @@ import { TaxProfileBlock } from './TaxProfileBlock';
 import { ServiciosTab } from './ServiciosTab';
 import { SubscriberLifecycleDialog } from './SubscriberLifecycleDialog';
 import { SubscriberOverviewTab } from './SubscriberOverviewTab';
+import { SubscriberDocumentsPanel } from './SubscriberDocumentsPanel';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
 import { SubscriberTechnicalServiceSection } from './SubscriberTechnicalServiceSection';
 
@@ -65,6 +66,11 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const canReadPrivacy = hasPermission(AccessPermissionKey.PRIVACY_READ);
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
+  const canRegisterPayment = hasPermission(AccessPermissionKey.BILLING_PAYMENTS_REGISTER);
+  const canManageInvoices = hasPermission(AccessPermissionKey.BILLING_INVOICES_MANAGE);
+  const canManageTickets = hasPermission(AccessPermissionKey.ASSURANCE_TICKETS_MANAGE);
+  const canManageVisits = hasPermission(AccessPermissionKey.WFM_SCHEDULE_MANAGE);
+  const canManageSubscribers = hasPermission(AccessPermissionKey.CRM_SUBSCRIBERS_MANAGE);
   const subscriberId = typeof params?.id === 'string' ? params.id : '';
   const [subscriber360, setSubscriber360] = useState<Subscriber360Response | null>(null);
   const anonymized = Boolean(subscriber360?.subscriber.anonymizedAt);
@@ -86,6 +92,8 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   } | null>(null);
   const [activeSubscriberTab, setActiveSubscriberTab] = useState(urlTab);
   const [fiscalDirty, setFiscalDirty] = useState(false);
+  // «Registrar ▾ → Documento» lleva el foco a la tarjeta Documentos de Facturación (§3 F).
+  const [documentsFocusRequest, setDocumentsFocusRequest] = useState(0);
   const selectSubscriberTab = useCallback(
     (tabId: string) => {
       setActiveSubscriberTab(tabId);
@@ -160,6 +168,59 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     );
   }, [subscriber, selectSubscriberTab]);
 
+  // «Registrar ▾» (spec §3 B): cada opción exige el permiso del módulo dueño y lleva a la
+  // pestaña que ya tiene su flujo; Pago y Documento viven en Facturación, que exige su lectura.
+  const registerActions = useMemo<SubscriberRegisterAction[]>(() => {
+    if (!subscriber || subscriber.privacyRestricted || subscriber.anonymizedAt) return [];
+    const options: Array<SubscriberRegisterAction & { allowed: boolean }> = [
+      {
+        id: 'pago',
+        label: 'Pago',
+        allowed: canReadBilling && canRegisterPayment,
+        onSelect: () => selectSubscriberTab('facturacion'),
+      },
+      {
+        id: 'ticket',
+        label: 'Ticket',
+        allowed: canManageTickets,
+        onSelect: () => selectSubscriberTab('soporte'),
+      },
+      {
+        id: 'visita',
+        label: 'Visita',
+        allowed: canManageVisits,
+        onSelect: () => selectSubscriberTab('soporte'),
+      },
+      {
+        id: 'documento',
+        label: 'Documento',
+        allowed: canReadBilling && canManageInvoices,
+        onSelect: () => {
+          selectSubscriberTab('facturacion');
+          setDocumentsFocusRequest((value) => value + 1);
+        },
+      },
+      {
+        id: 'servicio',
+        label: 'Servicio',
+        allowed: canManageSubscribers,
+        onSelect: () => selectSubscriberTab('servicios'),
+      },
+    ];
+    return options
+      .filter((option) => option.allowed)
+      .map(({ allowed: _allowed, ...option }) => option);
+  }, [
+    subscriber,
+    canReadBilling,
+    canRegisterPayment,
+    canManageTickets,
+    canManageVisits,
+    canManageInvoices,
+    canManageSubscribers,
+    selectSubscriberTab,
+  ]);
+
   const tabs = useMemo(() => {
     if (!subscriber) {
       return [];
@@ -181,6 +242,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             canReadPrivacy={canReadPrivacy}
             onNavigate={selectSubscriberTab}
             onReload={() => loadSubscriber(true)}
+            statement={statement.data}
             accountSummary={
               canReadBilling ? (
                 <SubscriberStatementSummary
@@ -225,12 +287,22 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               content: anonymized ? (
                 <AnonymizedStatementNotice />
               ) : (
-                <SubscriberBillingTab
-                  key={subscriber.id}
-                  subscriberId={subscriber.id}
-                  contracts={subscriber360?.contracts ?? []}
-                  statement={statement}
-                />
+                <div className="space-y-4">
+                  <SubscriberBillingTab
+                    key={subscriber.id}
+                    subscriberId={subscriber.id}
+                    contracts={subscriber360?.contracts ?? []}
+                    statement={statement}
+                  />
+                  <SubscriberDocumentsPanel
+                    expedienteId={subscriber360?.expedienteSummary?.id ?? null}
+                    contracts={subscriber360?.contracts ?? []}
+                    anonymized={anonymized}
+                    restricted={subscriber.privacyRestricted}
+                    statement={statement.data}
+                    focusRequest={documentsFocusRequest}
+                  />
+                </div>
               ),
             },
           ]
@@ -309,6 +381,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     fiscalDirty,
     statement,
     anonymized,
+    documentsFocusRequest,
   ]);
 
   if (mode === 'create') {
@@ -399,6 +472,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               }}
               onAddContact={() => selectSubscriberTab('datos')}
               onCompleteFiscalData={openFiscalCompletion}
+              registerActions={registerActions}
             />
           </div>
 

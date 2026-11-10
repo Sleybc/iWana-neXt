@@ -26,12 +26,14 @@ export function useContractPlan(contract: Contract) {
   const snapshotDown =
     planNumber(snapshot?.downloadSpeedMbps) ?? planNumber(snapshot?.downloadSpeed);
   const snapshotUp = planNumber(snapshot?.uploadSpeedMbps) ?? planNumber(snapshot?.uploadSpeed);
+  // Sin plan referenciado no hay catálogo que consultar.
   const needsCatalog =
-    !snapshotName ||
-    snapshotPrice === undefined ||
-    snapshotDown === undefined ||
-    snapshotUp === undefined;
-  const catalog = resolved?.id === contract.planId ? resolved.plan : null;
+    Boolean(contract.planId) &&
+    (!snapshotName ||
+      snapshotPrice === undefined ||
+      snapshotDown === undefined ||
+      snapshotUp === undefined);
+  const catalog = resolved && resolved.id === contract.planId ? resolved.plan : null;
   const loading = needsCatalog && resolved?.id !== contract.planId;
 
   useEffect(() => {

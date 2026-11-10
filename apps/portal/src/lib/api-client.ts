@@ -131,6 +131,10 @@ import {
   type Page,
 } from '@iwana/shared';
 import type {
+  CreateSubscriberNote,
+  LifecycleHistoryResponse,
+  SubscriberNote,
+  SubscriberNoteListResponse,
   LifecyclePreviewRequest,
   LifecyclePreviewResponse,
   LifecycleReactivateCommand,
@@ -6741,6 +6745,15 @@ export const crmApi = {
   },
 };
 
+/** `?page=&limit=` solo con los valores presentes. */
+function pageQuery(params?: { page?: number; limit?: number }): string {
+  const search = new URLSearchParams();
+  if (params?.page !== undefined) search.set('page', String(params.page));
+  if (params?.limit !== undefined) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return query ? `?${query}` : '';
+}
+
 export const subscribersApi = {
   create: (payload: CreateSubscriberPayload, tenantSlug?: string) =>
     request<SubscriberRecord>(
@@ -6830,6 +6843,29 @@ export const subscribersApi = {
 
   getById: (id: string, tenantSlug?: string) =>
     request<SubscriberRecord>(`/crm/subscribers/${id}`, undefined, tenantSlug),
+
+  /** Historial de ciclo de vida del titular y sus servicios, más reciente primero. */
+  lifecycleChanges: (id: string, params?: { page?: number; limit?: number }, tenantSlug?: string) =>
+    request<LifecycleHistoryResponse>(
+      `/crm/subscribers/${encodeURIComponent(id)}/lifecycle-changes${pageQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  /** Notas manuales del suscriptor (D3): solo se listan y se crean. */
+  listNotes: (id: string, params?: { page?: number; limit?: number }, tenantSlug?: string) =>
+    request<SubscriberNoteListResponse>(
+      `/crm/subscribers/${encodeURIComponent(id)}/notes${pageQuery(params)}`,
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  createNote: (id: string, payload: CreateSubscriberNote, tenantSlug?: string) =>
+    request<SubscriberNote>(
+      `/crm/subscribers/${encodeURIComponent(id)}/notes`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      tenantSlug,
+    ),
 
   update: (id: string, payload: UpdateSubscriberPayload, tenantSlug?: string) =>
     request<SubscriberRecord>(

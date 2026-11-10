@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ChevronDown, ChevronUp, FileText, Plus, Wifi } from 'lucide-react';
 import { Button } from '@iwana/ui';
 import { AccessPermissionKey } from '@iwana/shared';
@@ -8,11 +9,10 @@ import type { LifecycleAction } from '@iwana/shared';
 import type { Contract, ContractStatus, Subscriber360Response } from '@/lib/api-client';
 import { ApiError, commercialApi, contractsApi } from '@/lib/api-client';
 import { ContractCard } from './ContractCard';
-import { ContractDetailDrawer } from './ContractDetailDrawer';
 import { ConvertExpedienteToContractDialog } from './ConvertExpedienteToContractDialog';
-import { CreateContractDialog } from './CreateContractDialog';
 import { ActivateServiceDialog } from './ActivateServiceDialog';
 import { useBillingCycles } from './use-billing-cycles';
+import { contractDetailHref, newContractHref, useOptionalRouter } from './use-subscriber-360';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import {
   PortalAlert,
@@ -86,8 +86,8 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
   };
   const [showExpedientePanel, setShowExpedientePanel] = useState(false);
   const [showConvertDialog, setShowConvertDialog] = useState(false);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
+  // Detalle y alta de servicio viven en página propia (spec MOD05 UISP §3 E, CA-5).
+  const router = useOptionalRouter();
   const [activatingContract, setActivatingContract] = useState<Contract | null>(null);
   const [activationFocusId, setActivationFocusId] = useState<string | null>(null);
   useEffect(() => {
@@ -293,14 +293,11 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
   const showChips = stateChips.length > 1;
 
   const addServiceButton = (variant: 'primary' | 'secondary') => (
-    <Button
-      type="button"
-      variant={variant}
-      className="min-h-11 gap-1.5"
-      onClick={() => setShowCreateDialog(true)}
-    >
-      <Plus className="h-4 w-4" aria-hidden />
-      Agregar servicio
+    <Button asChild variant={variant} className="min-h-11 gap-1.5">
+      <Link href={newContractHref(subscriber.id)}>
+        <Plus className="h-4 w-4" aria-hidden />
+        Agregar servicio
+      </Link>
     </Button>
   );
 
@@ -501,7 +498,9 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
                     billingCyclesLoading={billingCycles.loading}
                     onTransition={handleTransition}
                     onRemove={handleRemove}
-                    onViewDetail={setSelectedContract}
+                    onViewDetail={(contract) =>
+                      router?.push(contractDetailHref(subscriber.id, contract.id))
+                    }
                     privacyRestricted={privacyRestricted}
                     anonymizedRequestId={subscriber.anonymizedRequestId}
                     canReadPrivacy={canReadPrivacy}
@@ -512,38 +511,6 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
           </>
         )}
       </PortalPanel>
-
-      {/* Drawer de detalle del contrato */}
-      {selectedContract && (
-        <ContractDetailDrawer
-          contract={selectedContract}
-          billingCycles={billingCycles.cycles}
-          billingCyclesLoading={billingCycles.loading}
-          billingCyclesError={billingCycles.error}
-          onRetryBillingCycles={billingCycles.retry}
-          customerSegment={subscriber.customerSegment}
-          personType={subscriber.personType}
-          privacyRestricted={privacyRestricted}
-          anonymizedRequestId={subscriber.anonymizedRequestId}
-          canReadPrivacy={canReadPrivacy}
-          onClose={() => setSelectedContract(null)}
-          onReload={async () => {
-            await onReload();
-          }}
-          onContractUpdated={setSelectedContract}
-          onOpenLifecycle={(action, contractId) => {
-            setSelectedContract(null);
-            onOpenLifecycle(action, contractId);
-          }}
-          onActivate={(contract) => {
-            setSelectedContract(null);
-            setActivatingContract(contract);
-          }}
-          onRemove={async (id) => {
-            await handleRemove(id);
-          }}
-        />
-      )}
 
       {activatingContract ? (
         <ActivateServiceDialog
@@ -557,19 +524,6 @@ export function ServiciosTab({ subscriber360, onReload, onOpenLifecycle }: Servi
           }}
         />
       ) : null}
-
-      {/* Diálogo crear nuevo contrato */}
-      {showCreateDialog && !privacyRestricted && (
-        <CreateContractDialog
-          subscriberId={subscriber.id}
-          personType={subscriber.personType}
-          onClose={() => setShowCreateDialog(false)}
-          onSuccess={async () => {
-            setShowCreateDialog(false);
-            await onReload();
-          }}
-        />
-      )}
 
       {/* Diálogo convertir expediente a contrato */}
       {showConvertDialog && expedienteSummary && !privacyRestricted && (

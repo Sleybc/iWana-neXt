@@ -43,6 +43,8 @@ import {
   formatSubscriberPrimaryService,
 } from './subscriber-ui';
 import { SubscriberMobileCard } from './SubscriberMobileCard';
+import { SubscriberDerivedBadges } from './SubscriberDerivedBadges';
+import { deriveSubscriberListBadges } from './subscriber-badges';
 import { SubscriberMoreFilters, type SubscriberActiveFilter } from './SubscriberMoreFilters';
 import { SubscriberPeek } from './SubscriberPeek';
 import {
@@ -1073,6 +1075,10 @@ function SubscribersListClientInner() {
                                     </p>
                                   ) : null}
                                 </Link>
+                                <SubscriberDerivedBadges
+                                  badges={deriveSubscriberListBadges(subscriber)}
+                                  className="mt-1"
+                                />
                               </td>
                               <td className={portalDataTableCellClassName}>
                                 <p className="font-medium">{service.title}</p>

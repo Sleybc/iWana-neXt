@@ -30,7 +30,7 @@ interface SubscriberVisitsSectionProps {
   canRead: boolean;
 }
 
-type VisitEntry = {
+export type VisitEntry = {
   id: string;
   key: string;
   kind: 'request' | 'event';
@@ -149,6 +149,37 @@ function fromScheduleEvent(event: WfmScheduleEvent): VisitEntry {
     createdAt: event.createdAt,
     event,
   };
+}
+
+/** Pendiente de agendar o agendada sin terminar: «abierta» para la Vista general. */
+export function isOpenVisitEntry(entry: Pick<VisitEntry, 'kind' | 'status'>): boolean {
+  return entry.kind === 'request'
+    ? PENDING_REQUEST_STATUSES.has(entry.status as VisitRequestStatus) ||
+        FUTURE_REQUEST_STATUSES.has(entry.status as VisitRequestStatus)
+    : PENDING_EVENT_STATUSES.has(entry.status as ScheduleEventStatus) ||
+        FUTURE_EVENT_STATUSES.has(entry.status as ScheduleEventStatus);
+}
+
+/** Visitas propias del suscriptor (sin las de tickets), ordenadas como en Soporte. */
+export async function loadSubscriberVisitEntries(subscriberId: string): Promise<VisitEntry[]> {
+  const [requestsResponse, eventsResponse] = await Promise.all([
+    wfmApi.visitRequests.list({
+      subscriberId,
+      page: 1,
+      limit: 100,
+      scope: 'all',
+    }),
+    wfmApi.events.list({ subscriberId, page: 1, limit: 100 }),
+  ]);
+  const events = eventsResponse.data.filter((event) => !event.ticketId);
+  const eventIds = new Set(events.map((event) => event.id));
+  const requests = requestsResponse.items.filter(
+    (request) =>
+      request.originContext !== WorkOrderSourceContext.ASSURANCE &&
+      !request.ticketId &&
+      (!request.scheduleEventId || !eventIds.has(request.scheduleEventId)),
+  );
+  return sortVisits([...requests.map(fromVisitRequest), ...events.map(fromScheduleEvent)]);
 }
 
 function buildAgendamientoHref(entry: VisitEntry): string {
@@ -339,24 +370,7 @@ export function SubscriberVisitsSection({ subscriber, canRead }: SubscriberVisit
     setLoading(true);
     setError(false);
     try {
-      const [requestsResponse, eventsResponse] = await Promise.all([
-        wfmApi.visitRequests.list({
-          subscriberId: subscriber.id,
-          page: 1,
-          limit: 100,
-          scope: 'all',
-        }),
-        wfmApi.events.list({ subscriberId: subscriber.id, page: 1, limit: 100 }),
-      ]);
-      const events = eventsResponse.data.filter((event) => !event.ticketId);
-      const eventIds = new Set(events.map((event) => event.id));
-      const requests = requestsResponse.items.filter(
-        (request) =>
-          request.originContext !== WorkOrderSourceContext.ASSURANCE &&
-          !request.ticketId &&
-          (!request.scheduleEventId || !eventIds.has(request.scheduleEventId)),
-      );
-      setEntries(sortVisits([...requests.map(fromVisitRequest), ...events.map(fromScheduleEvent)]));
+      setEntries(await loadSubscriberVisitEntries(subscriber.id));
     } catch {
       setError(true);
     } finally {

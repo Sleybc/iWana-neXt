@@ -33,6 +33,11 @@ const CLOSED_STATUSES = new Set<TicketStatus>([
   TicketStatus.CANCELLED,
 ]);
 
+/** Ticket sin resolver, cerrar ni cancelar; lo usa también la Vista general. */
+export function isActiveTicket(ticket: Pick<AssuranceTicket, 'status'>): boolean {
+  return !CLOSED_STATUSES.has(ticket.status);
+}
+
 function getTicketSlaDeadline(ticket: AssuranceTicket): number {
   const deadlines = [
     !ticket.firstRespondedAt ? ticket.slaFirstResponseAt : null,
@@ -45,7 +50,7 @@ function getTicketSlaDeadline(ticket: AssuranceTicket): number {
   return deadlines.length ? Math.min(...deadlines) : Number.POSITIVE_INFINITY;
 }
 
-function compareTickets(left: AssuranceTicket, right: AssuranceTicket): number {
+export function compareTickets(left: AssuranceTicket, right: AssuranceTicket): number {
   const leftClosed = CLOSED_STATUSES.has(left.status);
   const rightClosed = CLOSED_STATUSES.has(right.status);
   if (leftClosed !== rightClosed) return leftClosed ? 1 : -1;

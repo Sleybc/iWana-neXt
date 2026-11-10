@@ -9,7 +9,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@iwana/ui';
-import { AlertTriangle, ArrowLeft, MoreHorizontal, Plus, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
 import { PersonType, SubscriberStatus } from '@iwana/shared';
 import type { LifecycleAction } from '@iwana/shared';
 import type { Contract, SubscriberRecord } from '@/lib/api-client';
@@ -28,6 +35,13 @@ import { FiscalDataIncompleteAlert } from './FiscalDataIncompleteAlert';
 import { VatTreatmentBanner } from './VatTreatmentBanner';
 import { isEligibleLifecycleContract } from './subscriber-lifecycle-ui';
 
+/** Opción de «Registrar ▾»: ya filtrada por el permiso del módulo dueño (CA-3). */
+export interface SubscriberRegisterAction {
+  id: 'pago' | 'ticket' | 'visita' | 'documento' | 'servicio';
+  label: string;
+  onSelect: () => void;
+}
+
 interface SubscriberHeaderProps {
   subscriber: SubscriberRecord;
   contracts?: Contract[];
@@ -38,6 +52,8 @@ interface SubscriberHeaderProps {
   onCancelSubscriber?: () => void;
   onAddContact: () => void;
   onCompleteFiscalData?: () => void;
+  /** Sin opciones permitidas, el botón «Registrar» no se muestra. */
+  registerActions?: SubscriberRegisterAction[];
 }
 
 export function SubscriberHeader({
@@ -50,6 +66,7 @@ export function SubscriberHeader({
   onCancelSubscriber = () => undefined,
   onAddContact,
   onCompleteFiscalData,
+  registerActions = [],
 }: SubscriberHeaderProps) {
   const name = privacyDisplayValue(
     subscriber.anonymizedAt ? null : formatSubscriberName(subscriber),
@@ -103,6 +120,35 @@ export function SubscriberHeader({
               <AlertTriangle className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
               Contacto pendiente
             </Badge>
+          )}
+          {registerActions.length > 0 && (
+            <div className="ml-auto">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild aria-controls="subscriber-register-menu">
+                  <Button type="button" variant="primary" className="min-h-11 gap-1.5">
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Registrar
+                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  id="subscriber-register-menu"
+                  width="w-56"
+                  align="end"
+                  sideOffset={8}
+                >
+                  {registerActions.map((action) => (
+                    <DropdownMenuItem
+                      key={action.id}
+                      className="min-h-11"
+                      onClick={action.onSelect}
+                    >
+                      {action.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">

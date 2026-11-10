@@ -1,6 +1,6 @@
 'use client';
 
-import { cloneElement, useId, useRef, useState } from 'react';
+import { cloneElement, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   Archive,
   Building2,
@@ -31,9 +31,13 @@ import type { LifecycleAction } from '@iwana/shared';
 import type { ContractUpdateInput } from '@iwana/shared';
 import {
   PortalAlert,
+  PortalFieldList,
+  PortalFieldRow,
+  PortalPanel,
   portalFieldClassName,
   interactiveFocusClassName,
 } from '@/components/shared/portal-ui';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { BillingCycleField } from './BillingCycleField';
 import { useContractPlan } from './use-contract-plan';
 import { ChangeContractPlanDialog, ContractPlanSummary } from './ChangeContractPlanDialog';
@@ -186,6 +190,21 @@ interface ContractDetailDrawerProps {
   onRemove?: (id: string) => Promise<void>;
 }
 
+/**
+ * Props del detalle en página (spec MOD05 UISP §3 E): mismo estado y acciones que el
+ * panel lateral; solo cambia la composición. `onClose` no aplica: la página no se cierra.
+ */
+export interface ContractDetailViewProps extends Omit<ContractDetailDrawerProps, 'onClose'> {
+  layout: 'drawer' | 'page';
+  onClose?: () => void;
+  /** Página: acción de la cabecera (volver a los servicios del suscriptor). */
+  pageBackAction?: ReactNode;
+  /** Página: mapa del punto de servicio dentro de «Servicio e instalación». */
+  installationMap?: ReactNode;
+  /** Página: bloques extra al final de la columna derecha (aprovisionamiento). */
+  pageAside?: ReactNode;
+}
+
 // ── Subcomponente campo de detalle ────────────────────────────────────────────
 
 function DetailField({
@@ -210,15 +229,15 @@ function DetailField({
 
 // ── Subcomponente sección ─────────────────────────────────────────────────────
 
-function Section({
-  icon,
-  title,
-  children,
-}: {
+interface SectionProps {
   icon: React.ReactNode;
   title: string;
+  /** Solo lo usa la variante densa: en edición el cuerpo pasa a rejilla de campos. */
+  editing?: boolean;
   children: React.ReactNode;
-}) {
+}
+
+function Section({ icon, title, children }: SectionProps) {
   return (
     <section className="border-b border-gray-100 pb-5 last:border-0 dark:border-dark-border">
       <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
@@ -227,6 +246,41 @@ function Section({
       </h3>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
     </section>
+  );
+}
+
+// ── Variante densa para la página (spec MOD05 UISP §8) ──────────────────────
+
+function DenseSection({ title, editing = false, children }: SectionProps) {
+  return (
+    <PortalPanel as="section" labelled density="dense" title={title}>
+      <div
+        className={
+          editing
+            ? 'grid grid-cols-1 gap-4 sm:grid-cols-2'
+            : 'divide-y divide-gray-100 dark:divide-dark-border'
+        }
+      >
+        {children}
+      </div>
+    </PortalPanel>
+  );
+}
+
+function DenseDetailField({
+  label,
+  value,
+  emptyValue,
+}: {
+  label: string;
+  value: string | null | undefined;
+  emptyValue?: string | undefined;
+}) {
+  if (!value && !emptyValue) return null;
+  return (
+    <PortalFieldList>
+      <PortalFieldRow label={label}>{privacyDisplayValue(value, { emptyValue })}</PortalFieldRow>
+    </PortalFieldList>
   );
 }
 
@@ -292,7 +346,16 @@ const ACTION_BTN: Record<string, string> = {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export function ContractDetailDrawer({
+export function ContractDetailDrawer(props: ContractDetailDrawerProps) {
+  return <ContractDetailView layout="drawer" {...props} />;
+}
+
+/** Estado y acciones del contrato, compuestos como panel lateral o como página. */
+export function ContractDetailView({
+  layout,
+  pageBackAction,
+  installationMap,
+  pageAside,
   contract,
   billingCycles = [],
   billingCyclesLoading = false,
@@ -303,13 +366,14 @@ export function ContractDetailDrawer({
   privacyRestricted = false,
   anonymizedRequestId,
   canReadPrivacy = false,
-  onClose,
+  onClose = () => undefined,
   onReload,
   onContractUpdated,
   onOpenLifecycle = () => undefined,
   onActivate,
   onRemove,
-}: ContractDetailDrawerProps) {
+}: ContractDetailViewProps) {
+  const isPage = layout === 'page';
   const [changingPlan, setChangingPlan] = useState(false);
   // La secuencia remonta el texto dentro de la región viva: un segundo éxito con
   // el mismo mensaje también se anuncia (el texto por sí solo no cambiaría).
@@ -319,11 +383,12 @@ export function ContractDetailDrawer({
   const [isEditing, setIsEditing] = useState(false);
   const [isEditingServicePoint, setIsEditingServicePoint] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
   // Estos diálogos se montan/desmontan desde el padre, así que su apertura es su
   // propia presencia: se difunde `true` mientras vivan y el hook libera el estado
   // al desmontar. Sin esto el chrome queda bajo el velo pero NO inerte y el foco
   // escapa (mismo defecto que M9 corrigió en `PortalSidePeek`).
-  usePortalModalDrawerBroadcast(true);
+  usePortalModalDrawerBroadcast(!isPage);
 
   const [form, setForm] = useState<EditForm>(() => buildEditForm(contract));
   const [serviceUsage, setServiceUsage] = useState<ServiceUsage | ''>(contract.serviceUsage ?? '');
@@ -347,6 +412,16 @@ export function ContractDetailDrawer({
     description: string;
     action?: 'close';
   } | null>(null);
+
+  // La página recibe el contrato recargado del padre tras una acción (archivar,
+  // ciclo de vida, activación); fuera de edición, el estado local lo adopta.
+  useEffect(() => {
+    if (isEditing || isEditingServicePoint) return;
+    setCurrentContract(contract);
+    setHasStratumEvidence(Boolean(contract.stratumEvidenceMediaId));
+    // Solo cuando cambia el contrato recibido; el modo de edición no debe reiniciarlo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contract]);
 
   const statusMeta = CONTRACT_STATUS_META[contract.status];
   const plan = useContractPlan(currentContract);
@@ -381,7 +456,9 @@ export function ContractDetailDrawer({
   // El primer campo inválido del punto de servicio recibe el foco; los selects
   // del DS exponen el trigger con este id.
   const focusServiceField = (field: 'usage' | 'stratum') => {
-    panelRef.current?.querySelector<HTMLElement>(`#contract-${field}`)?.focus();
+    (isPage ? pageRef : panelRef).current
+      ?.querySelector<HTMLElement>(`#contract-${field}`)
+      ?.focus();
   };
 
   const handleSave = async () => {
@@ -592,7 +669,7 @@ export function ContractDetailDrawer({
   // cancela la edición en lugar de descartar el panel — la misma razón por la
   // que el velo queda inerte mientras `isEditing`.
   usePortalSideDrawerA11y(
-    true,
+    !isPage,
     panelRef,
     isEditing ? handleCancelEdit : isEditingServicePoint ? handleCancelServicePoint : onClose,
   );
@@ -648,8 +725,782 @@ export function ContractDetailDrawer({
   };
 
   const actions = ACTIONS_BY_STATUS[contract.status];
+  const SectionC = isPage ? DenseSection : Section;
+  const FieldC = isPage ? DenseDetailField : DetailField;
+  const isEditingAny = isEditing || isEditingServicePoint;
+  const contractTitle = privacyDisplayValue(
+    privacyRestricted || currentContract.titularAnonymizedAt
+      ? null
+      : formatContractAlias(contract.alias) || null,
+    {
+      privacyRestricted,
+      anonymizedAt: currentContract.titularAnonymizedAt,
+    },
+  );
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Bloques compartidos por el panel lateral y la página ──────────────────
+
+  const transitionErrorAlert = transitionError && (
+    <PortalAlert
+      variant="error"
+      live="assertive"
+      title={transitionError.title}
+      description={transitionError.description}
+      action={
+        transitionError.action ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-11"
+            onClick={() => setTransitionError(null)}
+          >
+            Cerrar
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+
+  const planSection = (
+    <SectionC
+      editing={isEditing}
+      icon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
+      title="Plan contratado"
+    >
+      <div className="sm:col-span-2">
+        <ContractPlanSummary plan={plan} />
+        {priceFromCatalog ? (
+          <p className="text-xs text-gray-500 dark:text-gray-400">Precio actual del plan</p>
+        ) : null}
+      </div>
+      {isEditing ? (
+        <div className="space-y-2 sm:col-span-2">
+          <Button
+            variant="secondary"
+            disabled={!planEligible || hasPendingChanges || saving}
+            onClick={() => setChangingPlan(true)}
+          >
+            Cambiar plan
+          </Button>
+          {hasPendingChanges ? (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Guarda o cancela los cambios pendientes antes de cambiar el plan.
+            </p>
+          ) : null}
+          {!planEligible ? (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Solo puedes cambiar el plan de un contrato en borrador o activo.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {!isEditing && (
+        <>
+          <FieldC
+            label="Segmento"
+            value={
+              contract.customerSegment
+                ? (SEGMENT_LABELS[contract.customerSegment] ?? contract.customerSegment)
+                : null
+            }
+          />
+          <FieldC label="Creado" value={createdDate} />
+        </>
+      )}
+      {isEditing && (
+        <Select
+          label="Segmento del cliente"
+          value={form.customerSegment}
+          onChange={handleField('customerSegment')}
+        >
+          <option value="">— Sin especificar —</option>
+          {Object.entries(SEGMENT_LABELS).map(([val, lbl]) => (
+            <option key={val} value={val}>
+              {lbl}
+            </option>
+          ))}
+        </Select>
+      )}
+    </SectionC>
+  );
+
+  const installationSection = (
+    <SectionC
+      editing={isEditing}
+      icon={<MapPin className="h-3.5 w-3.5" aria-hidden />}
+      title="Servicio e instalación"
+    >
+      {!isEditing ? (
+        <>
+          <FieldC
+            label="Alias"
+            value={
+              currentContract.titularAnonymizedAt
+                ? null
+                : privacyDisplayValue(contract.alias, {
+                    anonymizedAt: currentContract.titularAnonymizedAt,
+                  })
+            }
+            emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+          />
+          <FieldC
+            label="Dirección"
+            value={currentContract.titularAnonymizedAt ? null : contract.installationAddress}
+            emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+          />
+          <FieldC label="Ciudad" value={formatLocationLabel(contract.installationCity)} />
+          <FieldC
+            label="Departamento"
+            value={formatLocationLabel(contract.installationDepartment)}
+          />
+          <FieldC
+            label="Código postal"
+            value={currentContract.titularAnonymizedAt ? null : contract.installationPostalCode}
+            emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+          />
+          {(contract.installationNotes || currentContract.titularAnonymizedAt) && (
+            <div className="sm:col-span-2">
+              <FieldC
+                label="Notas de instalación"
+                value={currentContract.titularAnonymizedAt ? null : contract.installationNotes}
+                emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <Input
+            label="Alias del servicio"
+            type="text"
+            value={form.alias}
+            onChange={handleField('alias')}
+            readOnly={Boolean(currentContract.titularAnonymizedAt)}
+            placeholder={currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Alias del servicio'}
+            className={inputCls}
+          />
+          <div className="sm:col-span-2">
+            <Input
+              label="Dirección de instalación"
+              type="text"
+              value={form.installationAddress}
+              onChange={handleField('installationAddress')}
+              readOnly={Boolean(currentContract.titularAnonymizedAt)}
+              placeholder={
+                currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Dirección de instalación'
+              }
+              className={inputCls}
+            />
+          </div>
+          <Input
+            label="Ciudad"
+            type="text"
+            value={form.installationCity}
+            onChange={handleField('installationCity')}
+            placeholder="Bogotá"
+            className={inputCls}
+          />
+          <Input
+            label="Departamento"
+            type="text"
+            value={form.installationDepartment}
+            onChange={handleField('installationDepartment')}
+            placeholder="Cundinamarca"
+            className={inputCls}
+          />
+          <Input
+            label="Código postal"
+            type="text"
+            value={form.installationPostalCode}
+            onChange={handleField('installationPostalCode')}
+            readOnly={Boolean(currentContract.titularAnonymizedAt)}
+            placeholder={currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Código postal'}
+            className={inputCls}
+          />
+          <div className="sm:col-span-2">
+            <FormField label="Notas de instalación">
+              <textarea
+                value={form.installationNotes}
+                onChange={handleField('installationNotes')}
+                readOnly={Boolean(currentContract.titularAnonymizedAt)}
+                rows={2}
+                placeholder={
+                  currentContract.titularAnonymizedAt
+                    ? 'Anonimizado'
+                    : 'Instrucciones de acceso, referencias, etc.'
+                }
+                className={[inputCls, 'resize-none'].join(' ')}
+              />
+            </FormField>
+          </div>
+        </>
+      )}
+      {isPage && !isEditing && installationMap ? (
+        <div className="pt-3">{installationMap}</div>
+      ) : null}
+    </SectionC>
+  );
+
+  const billingSection = (
+    <SectionC
+      editing={isEditing}
+      icon={<CreditCard className="h-3.5 w-3.5" aria-hidden />}
+      title="Facturación"
+    >
+      {!isEditing ? (
+        <>
+          <FieldC label="Método de pago" value={contract.paymentMethod} />
+          {currentContract.status === 'ACTIVE' ? (
+            currentContract.billingCycleDay == null ? (
+              <FieldC label="Ciclo de facturación" value="Sin ciclo de facturación" />
+            ) : (
+              <>
+                <FieldC
+                  label="Ciclo de facturación"
+                  value={`Ciclo: día ${currentContract.billingCycleDay}`}
+                />
+                <FieldC
+                  label="Próximo corte"
+                  value={
+                    currentCycle
+                      ? formatBillingDate(currentCycle.nextCutoffDate)
+                      : billingCyclesLoading
+                        ? 'Cargando fecha…'
+                        : 'No disponible'
+                  }
+                />
+              </>
+            )
+          ) : (
+            <FieldC
+              label="Ciclo de facturación"
+              value={
+                currentContract.billingCycleDay == null
+                  ? 'Sin asignar'
+                  : `Día ${currentContract.billingCycleDay}`
+              }
+            />
+          )}
+          {currentContract.billingCycle ? (
+            <div className="sm:col-span-2">
+              <FieldC label="Dato anterior de facturación" value={currentContract.billingCycle} />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Este dato no asigna un ciclo.
+              </p>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Select
+            label="Método de pago"
+            value={form.paymentMethod}
+            onChange={handleField('paymentMethod')}
+          >
+            <option value="">— Sin especificar —</option>
+            {PAYMENT_METHOD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+          <BillingCycleField
+            cycles={billingCycles}
+            value={form.billingCycleDay}
+            onChange={(value) => setForm((current) => ({ ...current, billingCycleDay: value }))}
+            loading={billingCyclesLoading}
+            catalogError={billingCyclesError}
+            onRetry={onRetryBillingCycles}
+            disabled={saving}
+            allowUnassigned={currentContract.billingCycleDay == null}
+            id="edit-contract-billing-cycle"
+          />
+          {currentContract.status === 'ACTIVE' ? (
+            form.billingCycleDay ? (
+              <>
+                <FieldC label="Ciclo de facturación" value={`Ciclo: día ${form.billingCycleDay}`} />
+                <FieldC
+                  label="Próximo corte"
+                  value={
+                    editedCycle ? formatBillingDate(editedCycle.nextCutoffDate) : 'No disponible'
+                  }
+                />
+              </>
+            ) : (
+              <FieldC label="Ciclo de facturación" value="Sin ciclo de facturación" />
+            )
+          ) : null}
+          {currentContract.billingCycle ? (
+            <div className="sm:col-span-2">
+              <FieldC label="Dato anterior de facturación" value={currentContract.billingCycle} />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Este dato no asigna un ciclo.
+              </p>
+            </div>
+          ) : null}
+        </>
+      )}
+    </SectionC>
+  );
+
+  const servicePointSection = (
+    <SectionC
+      editing={isEditingServicePoint || (isEditing && contract.status === 'DRAFT')}
+      icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+      title="Punto de servicio"
+    >
+      {isEditingServicePoint || (isEditing && contract.status === 'DRAFT') ? (
+        <div className="sm:col-span-2 space-y-3">
+          <ServicePointFields
+            fieldIdPrefix="contract"
+            personType={personType}
+            serviceUsage={serviceUsage}
+            onServiceUsageChange={(value) => {
+              setServiceUsage(value);
+              setServiceUsageError(undefined);
+              if (value !== ServiceUsage.RESIDENTIAL) {
+                setInstallationStratum('');
+                setPendingEvidenceFile(null);
+                setEvidenceUploadError(null);
+                setStratumError(undefined);
+              }
+            }}
+            installationStratum={installationStratum}
+            onInstallationStratumChange={(value) => {
+              setInstallationStratum(value);
+              setStratumError(undefined);
+              if (!['1', '2', '3'].includes(value)) {
+                setPendingEvidenceFile(null);
+                setEvidenceUploadError(null);
+              }
+            }}
+            hasStratumEvidence={hasStratumEvidence}
+            pendingEvidenceFile={pendingEvidenceFile}
+            onPendingEvidenceFileChange={(file) => {
+              setPendingEvidenceFile(file);
+              setEvidenceUploadError(null);
+            }}
+            {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
+            onRemoveEvidence={async () => {
+              const updated = await contractsApi.deleteStratumEvidence(contract.id);
+              setCurrentContract(updated);
+              setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
+              setPendingEvidenceFile(null);
+              await onReload();
+            }}
+            {...(serviceUsageError ? { usageError: serviceUsageError } : {})}
+            {...(stratumError ? { stratumError } : {})}
+            disabled={saving}
+          />
+          {servicePointError ? (
+            <PortalAlert
+              variant="error"
+              title="No fue posible actualizar el punto de servicio"
+              description={servicePointError}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <FieldC
+            label="Uso del servicio"
+            value={
+              currentContract.serviceUsage === ServiceUsage.RESIDENTIAL
+                ? 'Residencial'
+                : currentContract.serviceUsage === ServiceUsage.NON_RESIDENTIAL
+                  ? 'No residencial'
+                  : 'Pendiente de definir'
+            }
+          />
+          {currentContract.serviceUsage === ServiceUsage.RESIDENTIAL ? (
+            <FieldC
+              label="Estrato del predio de instalación"
+              value={
+                currentContract.installationStratum != null
+                  ? `Estrato ${currentContract.installationStratum}`
+                  : 'Pendiente de definir'
+              }
+            />
+          ) : null}
+          {hasStratumEvidence ? (
+            <FieldC label="Soporte del estrato" value="Soporte cargado" />
+          ) : null}
+          {contract.status === 'ACTIVE' ? (
+            <div className="sm:col-span-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setServiceUsage(currentContract.serviceUsage ?? '');
+                  setInstallationStratum(currentContract.installationStratum?.toString() ?? '');
+                  setHasStratumEvidence(Boolean(currentContract.stratumEvidenceMediaId));
+                  setPendingEvidenceFile(null);
+                  setEvidenceUploadError(null);
+                  setIsEditingServicePoint(true);
+                }}
+                className={cn(
+                  'min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-iwana-secondary-700 transition hover:border-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-iwana-secondary-300',
+                  interactiveFocusClassName,
+                )}
+              >
+                Actualizar punto de servicio
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </SectionC>
+  );
+
+  const vatSection = (
+    <SectionC
+      editing={false}
+      icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
+      title="IVA del contrato"
+    >
+      {currentContract.vatSnapshot ? (
+        <>
+          <FieldC
+            label="Tratamiento y tarifa"
+            value={`${vatTreatmentLabel(currentContract.vatSnapshot.treatment)} · ${currentContract.vatSnapshot.ratePercent} %`}
+          />
+          <FieldC
+            label="Fundamento"
+            value={vatLegalBasisLabel(currentContract.vatSnapshot.legalBasis)}
+          />
+          {currentContract.vatSnapshot.resolvedAt ? (
+            <FieldC
+              label="Fecha de cálculo"
+              value={`Calculado el ${new Date(currentContract.vatSnapshot.resolvedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}`}
+            />
+          ) : null}
+          {currentContract.vatSnapshot.requiresAccountantReview ? (
+            <div className="sm:col-span-2">
+              <PortalAlert
+                variant="warning"
+                title="Este concepto requiere revisión del contador."
+                live="off"
+              />
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="sm:col-span-2">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            {currentContract.status === 'DRAFT'
+              ? 'El cálculo de IVA estará disponible cuando se active el contrato.'
+              : 'El cálculo de IVA no está disponible para este contrato.'}
+          </p>
+        </div>
+      )}
+    </SectionC>
+  );
+
+  const fiscalSection = Boolean(
+    contract.fiscalName ||
+    contract.fiscalDocument ||
+    contract.fiscalAddress ||
+    (isEditing && personType !== PersonType.NATURAL) ||
+    currentContract.titularAnonymizedAt,
+  ) && (
+    <SectionC
+      editing={isEditing}
+      icon={<Building2 className="h-3.5 w-3.5" aria-hidden />}
+      title="Datos fiscales"
+    >
+      {!isEditing ? (
+        <>
+          <FieldC
+            label="Nombre fiscal"
+            value={currentContract.titularAnonymizedAt ? null : contract.fiscalName}
+            emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+          />
+          <FieldC
+            label="Documento fiscal"
+            value={currentContract.titularAnonymizedAt ? null : contract.fiscalDocument}
+            emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+          />
+          {(contract.fiscalAddress || currentContract.titularAnonymizedAt) && (
+            <div className="sm:col-span-2">
+              <FieldC
+                label="Dirección fiscal"
+                value={currentContract.titularAnonymizedAt ? null : contract.fiscalAddress}
+                emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <Input
+            label="Nombre fiscal"
+            type="text"
+            value={form.fiscalName}
+            onChange={handleField('fiscalName')}
+            readOnly={Boolean(currentContract.titularAnonymizedAt)}
+            placeholder={
+              currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Razón social o nombre'
+            }
+            className={inputCls}
+          />
+          <Input
+            label="Documento / NIT"
+            type="text"
+            value={form.fiscalDocument}
+            onChange={handleField('fiscalDocument')}
+            readOnly={Boolean(currentContract.titularAnonymizedAt)}
+            placeholder={currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Documento fiscal'}
+            className={inputCls}
+          />
+          <div className="sm:col-span-2">
+            <Input
+              label="Dirección fiscal"
+              type="text"
+              value={form.fiscalAddress}
+              onChange={handleField('fiscalAddress')}
+              readOnly={Boolean(currentContract.titularAnonymizedAt)}
+              placeholder={
+                currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Dirección de facturación'
+              }
+              className={inputCls}
+            />
+          </div>
+        </>
+      )}
+    </SectionC>
+  );
+
+  const metaSection = !isEditing && (
+    <SectionC
+      editing={false}
+      icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
+      title="Información del contrato"
+    >
+      <FieldC label="Fecha de creación" value={createdDate} />
+      {contract.startDate && (
+        <FieldC
+          label="Fecha de inicio"
+          value={new Date(contract.startDate).toLocaleDateString('es-CO', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          })}
+        />
+      )}
+      {contract.endDate && (
+        <FieldC
+          label="Fecha de fin"
+          value={new Date(contract.endDate).toLocaleDateString('es-CO', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          })}
+        />
+      )}
+      {contract.additionalProductIds.length > 0 && (
+        <div className="sm:col-span-2">
+          <FieldC
+            label={`Productos adicionales (${contract.additionalProductIds.length})`}
+            value={contract.additionalProductIds.join(', ')}
+          />
+        </div>
+      )}
+      {contract.additionalServiceIds.length > 0 && (
+        <div className="sm:col-span-2">
+          <FieldC
+            label={`Servicios adicionales (${contract.additionalServiceIds.length})`}
+            value={contract.additionalServiceIds.join(', ')}
+          />
+        </div>
+      )}
+    </SectionC>
+  );
+
+  const saveErrorAlert = saveError ? (
+    <div className="mb-3">
+      <PortalAlert
+        variant="error"
+        live="assertive"
+        title="No fue posible guardar los cambios"
+        description={saveError}
+      />
+    </div>
+  ) : null;
+
+  const footerActions =
+    isEditing || isEditingServicePoint ? (
+      /* Modo edición: guardar / cancelar */
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={isEditingServicePoint ? handleCancelServicePoint : handleCancelEdit}
+          disabled={saving}
+          className={cn(
+            interactiveFocusClassName,
+            'min-h-11 flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300',
+          )}
+        >
+          Cancelar
+        </button>
+        <Button
+          loading={saving}
+          type="button"
+          onClick={isEditingServicePoint ? handleSaveServicePoint : handleSave}
+          disabled={saving}
+          className="min-h-11 flex-1"
+        >
+          {!saving && <Save className="h-4 w-4" aria-hidden />}
+          {isEditingServicePoint ? 'Actualizar punto de servicio' : 'Guardar cambios'}
+        </Button>
+      </div>
+    ) : (
+      /* Modo lectura: editar + transiciones */
+      <div className="space-y-3">
+        {/* Transiciones de estado */}
+        {actions.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {actions.map(({ label, action, icon, variant }) => (
+              <Button
+                loading={transitioning}
+                key={action}
+                type="button"
+                disabled={transitioning}
+                onClick={() => handleTransition(action)}
+                variant={variant === 'danger' ? 'softDestructive' : 'secondary'}
+                className="min-h-11"
+              >
+                {!transitioning && icon}
+                {label}
+              </Button>
+            ))}
+            {contract.status === 'DRAFT' && onRemove && (
+              <button
+                type="button"
+                disabled={transitioning}
+                onClick={handleRemove}
+                className={ACTION_BTN.danger}
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                Eliminar borrador
+              </button>
+            )}
+          </div>
+        )}
+        {/* Botón editar */}
+        {contract.status !== 'ARCHIVED' && (
+          <button
+            type="button"
+            onClick={() => {
+              setForm(buildEditForm(currentContract));
+              setIsEditing(true);
+            }}
+            className={cn(
+              interactiveFocusClassName,
+              'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-700 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200',
+            )}
+          >
+            <Edit2 className="h-4 w-4" aria-hidden />
+            Editar contrato
+          </button>
+        )}
+      </div>
+    );
+
+  const announcer = (
+    <p role="status" className="sr-only">
+      <span key={announcement.sequence}>{announcement.text}</span>
+    </p>
+  );
+
+  const planDialog = changingPlan ? (
+    <ChangeContractPlanDialog
+      contract={currentContract}
+      customerSegment={currentContract.customerSegment ?? customerSegment}
+      onClose={() => setChangingPlan(false)}
+      onUpdated={(updated, changed) => {
+        setCurrentContract(updated);
+        setForm(buildEditForm(updated));
+        setServiceUsage(updated.serviceUsage ?? '');
+        setInstallationStratum(updated.installationStratum?.toString() ?? '');
+        onContractUpdated?.(updated);
+        announce(changed ? 'Plan actualizado' : 'Datos del contrato actualizados');
+        void onReload().catch(() =>
+          setSaveError('El contrato se actualizó, pero no fue posible refrescar la lista.'),
+        );
+      }}
+    />
+  ) : null;
+
+  // ── Render en página (spec MOD05 UISP §3 E) ───────────────────────────────
+
+  if (isPage) {
+    return (
+      <div className="space-y-4">
+        {announcer}
+        <div ref={pageRef} inert={changingPlan || undefined} className="space-y-4">
+          <PageHeader
+            title={contractTitle}
+            subtitle={
+              <span className="flex flex-wrap items-center gap-2">
+                <span>Contrato de servicio</span>
+                <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                <PrivacyAnonymizedBadge
+                  anonymizedAt={currentContract.titularAnonymizedAt}
+                  anonymizedRequestId={anonymizedRequestId}
+                  canReadPrivacy={canReadPrivacy}
+                />
+              </span>
+            }
+            actions={pageBackAction}
+          />
+          {privacyRestricted ? (
+            <PortalAlert
+              variant="warning"
+              title="Datos bloqueados"
+              description="La información personal de este contrato no está disponible para este perfil."
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+                <div className="flex min-w-0 flex-col gap-4">
+                  <PortalPanel
+                    as="section"
+                    labelled
+                    density="dense"
+                    title="Estado del servicio"
+                    titleAddon={<Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>}
+                  >
+                    <div className="space-y-3">
+                      {transitionErrorAlert}
+                      {saveErrorAlert}
+                      {footerActions}
+                    </div>
+                  </PortalPanel>
+                  {planSection}
+                  {billingSection}
+                  {servicePointSection}
+                  {vatSection}
+                </div>
+                <div className="flex min-w-0 flex-col gap-4">
+                  {installationSection}
+                  {fiscalSection}
+                  {metaSection}
+                  {pageAside}
+                </div>
+              </div>
+              {isEditingAny ? (
+                <div className="flex justify-end">
+                  <div className="w-full sm:max-w-md">{footerActions}</div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+        {planDialog}
+      </div>
+    );
+  }
+
+  // ── Render en panel lateral ───────────────────────────────────────────────
 
   // Capa única ADR-075 **portalada a `document.body`** (enmienda C-DS-04 §2bis):
   // velo y panel comparten UNA capa `--z-modal`, por encima del chrome. El velo
@@ -663,13 +1514,8 @@ export function ContractDetailDrawer({
   // Velo /30 → /45 (token `--color-veil`): el /30 fallaba WCAG 1.4.11 con
   // 2,10:1 entre el borde del panel blanco y el fondo velado.
   return (
-    <ModalLayer
-      align="end"
-      {...(isEditing || isEditingServicePoint ? {} : { onVeilClick: onClose })}
-    >
-      <p role="status" className="sr-only">
-        <span key={announcement.sequence}>{announcement.text}</span>
-      </p>
+    <ModalLayer align="end" {...(isEditingAny ? {} : { onVeilClick: onClose })}>
+      {announcer}
       {/* Drawer */}
       <aside
         ref={panelRef}
@@ -693,15 +1539,7 @@ export function ContractDetailDrawer({
               id="drawer-contract-title"
               className="mt-0.5 truncate text-lg font-bold text-gray-900 dark:text-white"
             >
-              {privacyDisplayValue(
-                privacyRestricted || currentContract.titularAnonymizedAt
-                  ? null
-                  : formatContractAlias(contract.alias) || null,
-                {
-                  privacyRestricted,
-                  anonymizedAt: currentContract.titularAnonymizedAt,
-                },
-              )}
+              {contractTitle}
             </h2>
             <PrivacyAnonymizedBadge
               anonymizedAt={currentContract.titularAnonymizedAt}
@@ -740,617 +1578,14 @@ export function ContractDetailDrawer({
             />
           ) : (
             <>
-              {/* Errores */}
-              {transitionError && (
-                <PortalAlert
-                  variant="error"
-                  live="assertive"
-                  title={transitionError.title}
-                  description={transitionError.description}
-                  action={
-                    transitionError.action ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="min-h-11"
-                        onClick={() => setTransitionError(null)}
-                      >
-                        Cerrar
-                      </Button>
-                    ) : undefined
-                  }
-                />
-              )}
-
-              {/* ── Plan contratado ───────────────────────────────────────────── */}
-              <Section
-                icon={<CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
-                title="Plan contratado"
-              >
-                <div className="sm:col-span-2">
-                  <ContractPlanSummary plan={plan} />
-                  {priceFromCatalog ? (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Precio actual del plan
-                    </p>
-                  ) : null}
-                </div>
-                {isEditing ? (
-                  <div className="space-y-2 sm:col-span-2">
-                    <Button
-                      variant="secondary"
-                      disabled={!planEligible || hasPendingChanges || saving}
-                      onClick={() => setChangingPlan(true)}
-                    >
-                      Cambiar plan
-                    </Button>
-                    {hasPendingChanges ? (
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Guarda o cancela los cambios pendientes antes de cambiar el plan.
-                      </p>
-                    ) : null}
-                    {!planEligible ? (
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Solo puedes cambiar el plan de un contrato en borrador o activo.
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {!isEditing && (
-                  <>
-                    <DetailField
-                      label="Segmento"
-                      value={
-                        contract.customerSegment
-                          ? (SEGMENT_LABELS[contract.customerSegment] ?? contract.customerSegment)
-                          : null
-                      }
-                    />
-                    <DetailField label="Creado" value={createdDate} />
-                  </>
-                )}
-                {isEditing && (
-                  <Select
-                    label="Segmento del cliente"
-                    value={form.customerSegment}
-                    onChange={handleField('customerSegment')}
-                  >
-                    <option value="">— Sin especificar —</option>
-                    {Object.entries(SEGMENT_LABELS).map(([val, lbl]) => (
-                      <option key={val} value={val}>
-                        {lbl}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Section>
-
-              {/* ── Instalación ───────────────────────────────────────────────── */}
-              <Section
-                icon={<MapPin className="h-3.5 w-3.5" aria-hidden />}
-                title="Servicio e instalación"
-              >
-                {!isEditing ? (
-                  <>
-                    <DetailField
-                      label="Alias"
-                      value={
-                        currentContract.titularAnonymizedAt
-                          ? null
-                          : privacyDisplayValue(contract.alias, {
-                              anonymizedAt: currentContract.titularAnonymizedAt,
-                            })
-                      }
-                      emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
-                    />
-                    <DetailField
-                      label="Dirección"
-                      value={
-                        currentContract.titularAnonymizedAt ? null : contract.installationAddress
-                      }
-                      emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
-                    />
-                    <DetailField
-                      label="Ciudad"
-                      value={formatLocationLabel(contract.installationCity)}
-                    />
-                    <DetailField
-                      label="Departamento"
-                      value={formatLocationLabel(contract.installationDepartment)}
-                    />
-                    <DetailField
-                      label="Código postal"
-                      value={
-                        currentContract.titularAnonymizedAt ? null : contract.installationPostalCode
-                      }
-                      emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
-                    />
-                    {(contract.installationNotes || currentContract.titularAnonymizedAt) && (
-                      <div className="sm:col-span-2">
-                        <DetailField
-                          label="Notas de instalación"
-                          value={
-                            currentContract.titularAnonymizedAt ? null : contract.installationNotes
-                          }
-                          emptyValue={
-                            currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined
-                          }
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Input
-                      label="Alias del servicio"
-                      type="text"
-                      value={form.alias}
-                      onChange={handleField('alias')}
-                      readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                      placeholder={
-                        currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Alias del servicio'
-                      }
-                      className={inputCls}
-                    />
-                    <div className="sm:col-span-2">
-                      <Input
-                        label="Dirección de instalación"
-                        type="text"
-                        value={form.installationAddress}
-                        onChange={handleField('installationAddress')}
-                        readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                        placeholder={
-                          currentContract.titularAnonymizedAt
-                            ? 'Anonimizado'
-                            : 'Dirección de instalación'
-                        }
-                        className={inputCls}
-                      />
-                    </div>
-                    <Input
-                      label="Ciudad"
-                      type="text"
-                      value={form.installationCity}
-                      onChange={handleField('installationCity')}
-                      placeholder="Bogotá"
-                      className={inputCls}
-                    />
-                    <Input
-                      label="Departamento"
-                      type="text"
-                      value={form.installationDepartment}
-                      onChange={handleField('installationDepartment')}
-                      placeholder="Cundinamarca"
-                      className={inputCls}
-                    />
-                    <Input
-                      label="Código postal"
-                      type="text"
-                      value={form.installationPostalCode}
-                      onChange={handleField('installationPostalCode')}
-                      readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                      placeholder={
-                        currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Código postal'
-                      }
-                      className={inputCls}
-                    />
-                    <div className="sm:col-span-2">
-                      <FormField label="Notas de instalación">
-                        <textarea
-                          value={form.installationNotes}
-                          onChange={handleField('installationNotes')}
-                          readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                          rows={2}
-                          placeholder={
-                            currentContract.titularAnonymizedAt
-                              ? 'Anonimizado'
-                              : 'Instrucciones de acceso, referencias, etc.'
-                          }
-                          className={[inputCls, 'resize-none'].join(' ')}
-                        />
-                      </FormField>
-                    </div>
-                  </>
-                )}
-              </Section>
-
-              {/* ── Facturación ───────────────────────────────────────────────── */}
-              <Section
-                icon={<CreditCard className="h-3.5 w-3.5" aria-hidden />}
-                title="Facturación"
-              >
-                {!isEditing ? (
-                  <>
-                    <DetailField label="Método de pago" value={contract.paymentMethod} />
-                    {currentContract.status === 'ACTIVE' ? (
-                      currentContract.billingCycleDay == null ? (
-                        <DetailField
-                          label="Ciclo de facturación"
-                          value="Sin ciclo de facturación"
-                        />
-                      ) : (
-                        <>
-                          <DetailField
-                            label="Ciclo de facturación"
-                            value={`Ciclo: día ${currentContract.billingCycleDay}`}
-                          />
-                          <DetailField
-                            label="Próximo corte"
-                            value={
-                              currentCycle
-                                ? formatBillingDate(currentCycle.nextCutoffDate)
-                                : billingCyclesLoading
-                                  ? 'Cargando fecha…'
-                                  : 'No disponible'
-                            }
-                          />
-                        </>
-                      )
-                    ) : (
-                      <DetailField
-                        label="Ciclo de facturación"
-                        value={
-                          currentContract.billingCycleDay == null
-                            ? 'Sin asignar'
-                            : `Día ${currentContract.billingCycleDay}`
-                        }
-                      />
-                    )}
-                    {currentContract.billingCycle ? (
-                      <div className="sm:col-span-2">
-                        <DetailField
-                          label="Dato anterior de facturación"
-                          value={currentContract.billingCycle}
-                        />
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Este dato no asigna un ciclo.
-                        </p>
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <Select
-                      label="Método de pago"
-                      value={form.paymentMethod}
-                      onChange={handleField('paymentMethod')}
-                    >
-                      <option value="">— Sin especificar —</option>
-                      {PAYMENT_METHOD_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <BillingCycleField
-                      cycles={billingCycles}
-                      value={form.billingCycleDay}
-                      onChange={(value) =>
-                        setForm((current) => ({ ...current, billingCycleDay: value }))
-                      }
-                      loading={billingCyclesLoading}
-                      catalogError={billingCyclesError}
-                      onRetry={onRetryBillingCycles}
-                      disabled={saving}
-                      allowUnassigned={currentContract.billingCycleDay == null}
-                      id="edit-contract-billing-cycle"
-                    />
-                    {currentContract.status === 'ACTIVE' ? (
-                      form.billingCycleDay ? (
-                        <>
-                          <DetailField
-                            label="Ciclo de facturación"
-                            value={`Ciclo: día ${form.billingCycleDay}`}
-                          />
-                          <DetailField
-                            label="Próximo corte"
-                            value={
-                              editedCycle
-                                ? formatBillingDate(editedCycle.nextCutoffDate)
-                                : 'No disponible'
-                            }
-                          />
-                        </>
-                      ) : (
-                        <DetailField
-                          label="Ciclo de facturación"
-                          value="Sin ciclo de facturación"
-                        />
-                      )
-                    ) : null}
-                    {currentContract.billingCycle ? (
-                      <div className="sm:col-span-2">
-                        <DetailField
-                          label="Dato anterior de facturación"
-                          value={currentContract.billingCycle}
-                        />
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Este dato no asigna un ciclo.
-                        </p>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </Section>
-
-              <Section
-                icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
-                title="Punto de servicio"
-              >
-                {isEditingServicePoint || (isEditing && contract.status === 'DRAFT') ? (
-                  <div className="sm:col-span-2 space-y-3">
-                    <ServicePointFields
-                      fieldIdPrefix="contract"
-                      personType={personType}
-                      serviceUsage={serviceUsage}
-                      onServiceUsageChange={(value) => {
-                        setServiceUsage(value);
-                        setServiceUsageError(undefined);
-                        if (value !== ServiceUsage.RESIDENTIAL) {
-                          setInstallationStratum('');
-                          setPendingEvidenceFile(null);
-                          setEvidenceUploadError(null);
-                          setStratumError(undefined);
-                        }
-                      }}
-                      installationStratum={installationStratum}
-                      onInstallationStratumChange={(value) => {
-                        setInstallationStratum(value);
-                        setStratumError(undefined);
-                        if (!['1', '2', '3'].includes(value)) {
-                          setPendingEvidenceFile(null);
-                          setEvidenceUploadError(null);
-                        }
-                      }}
-                      hasStratumEvidence={hasStratumEvidence}
-                      pendingEvidenceFile={pendingEvidenceFile}
-                      onPendingEvidenceFileChange={(file) => {
-                        setPendingEvidenceFile(file);
-                        setEvidenceUploadError(null);
-                      }}
-                      {...(evidenceUploadError ? { uploadErrorMessage: evidenceUploadError } : {})}
-                      onRemoveEvidence={async () => {
-                        const updated = await contractsApi.deleteStratumEvidence(contract.id);
-                        setCurrentContract(updated);
-                        setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
-                        setPendingEvidenceFile(null);
-                        await onReload();
-                      }}
-                      {...(serviceUsageError ? { usageError: serviceUsageError } : {})}
-                      {...(stratumError ? { stratumError } : {})}
-                      disabled={saving}
-                    />
-                    {servicePointError ? (
-                      <PortalAlert
-                        variant="error"
-                        title="No fue posible actualizar el punto de servicio"
-                        description={servicePointError}
-                      />
-                    ) : null}
-                  </div>
-                ) : (
-                  <>
-                    <DetailField
-                      label="Uso del servicio"
-                      value={
-                        currentContract.serviceUsage === ServiceUsage.RESIDENTIAL
-                          ? 'Residencial'
-                          : currentContract.serviceUsage === ServiceUsage.NON_RESIDENTIAL
-                            ? 'No residencial'
-                            : 'Pendiente de definir'
-                      }
-                    />
-                    {currentContract.serviceUsage === ServiceUsage.RESIDENTIAL ? (
-                      <DetailField
-                        label="Estrato del predio de instalación"
-                        value={
-                          currentContract.installationStratum != null
-                            ? `Estrato ${currentContract.installationStratum}`
-                            : 'Pendiente de definir'
-                        }
-                      />
-                    ) : null}
-                    {hasStratumEvidence ? (
-                      <DetailField label="Soporte del estrato" value="Soporte cargado" />
-                    ) : null}
-                    {contract.status === 'ACTIVE' ? (
-                      <div className="sm:col-span-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setServiceUsage(currentContract.serviceUsage ?? '');
-                            setInstallationStratum(
-                              currentContract.installationStratum?.toString() ?? '',
-                            );
-                            setHasStratumEvidence(Boolean(currentContract.stratumEvidenceMediaId));
-                            setPendingEvidenceFile(null);
-                            setEvidenceUploadError(null);
-                            setIsEditingServicePoint(true);
-                          }}
-                          className={cn(
-                            'min-h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-iwana-secondary-700 transition hover:border-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-iwana-secondary-300',
-                            interactiveFocusClassName,
-                          )}
-                        >
-                          Actualizar punto de servicio
-                        </button>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </Section>
-
-              <Section
-                icon={<ShieldCheck className="h-3.5 w-3.5" aria-hidden />}
-                title="IVA del contrato"
-              >
-                {currentContract.vatSnapshot ? (
-                  <>
-                    <DetailField
-                      label="Tratamiento y tarifa"
-                      value={`${vatTreatmentLabel(currentContract.vatSnapshot.treatment)} · ${currentContract.vatSnapshot.ratePercent} %`}
-                    />
-                    <DetailField
-                      label="Fundamento"
-                      value={vatLegalBasisLabel(currentContract.vatSnapshot.legalBasis)}
-                    />
-                    {currentContract.vatSnapshot.resolvedAt ? (
-                      <DetailField
-                        label="Fecha de cálculo"
-                        value={`Calculado el ${new Date(currentContract.vatSnapshot.resolvedAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}`}
-                      />
-                    ) : null}
-                    {currentContract.vatSnapshot.requiresAccountantReview ? (
-                      <div className="sm:col-span-2">
-                        <PortalAlert
-                          variant="warning"
-                          title="Este concepto requiere revisión del contador."
-                          live="off"
-                        />
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="sm:col-span-2">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      {currentContract.status === 'DRAFT'
-                        ? 'El cálculo de IVA estará disponible cuando se active el contrato.'
-                        : 'El cálculo de IVA no está disponible para este contrato.'}
-                    </p>
-                  </div>
-                )}
-              </Section>
-
-              {/* ── Datos fiscales ────────────────────────────────────────────── */}
-              {/* Persona natural: solo si ya hay datos guardados, para no ocultarlos. */}
-              {Boolean(
-                contract.fiscalName ||
-                contract.fiscalDocument ||
-                contract.fiscalAddress ||
-                (isEditing && personType !== PersonType.NATURAL) ||
-                currentContract.titularAnonymizedAt,
-              ) && (
-                <Section
-                  icon={<Building2 className="h-3.5 w-3.5" aria-hidden />}
-                  title="Datos fiscales"
-                >
-                  {!isEditing ? (
-                    <>
-                      <DetailField
-                        label="Nombre fiscal"
-                        value={currentContract.titularAnonymizedAt ? null : contract.fiscalName}
-                        emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
-                      />
-                      <DetailField
-                        label="Documento fiscal"
-                        value={currentContract.titularAnonymizedAt ? null : contract.fiscalDocument}
-                        emptyValue={currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined}
-                      />
-                      {(contract.fiscalAddress || currentContract.titularAnonymizedAt) && (
-                        <div className="sm:col-span-2">
-                          <DetailField
-                            label="Dirección fiscal"
-                            value={
-                              currentContract.titularAnonymizedAt ? null : contract.fiscalAddress
-                            }
-                            emptyValue={
-                              currentContract.titularAnonymizedAt ? 'Anonimizado' : undefined
-                            }
-                          />
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <Input
-                        label="Nombre fiscal"
-                        type="text"
-                        value={form.fiscalName}
-                        onChange={handleField('fiscalName')}
-                        readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                        placeholder={
-                          currentContract.titularAnonymizedAt
-                            ? 'Anonimizado'
-                            : 'Razón social o nombre'
-                        }
-                        className={inputCls}
-                      />
-                      <Input
-                        label="Documento / NIT"
-                        type="text"
-                        value={form.fiscalDocument}
-                        onChange={handleField('fiscalDocument')}
-                        readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                        placeholder={
-                          currentContract.titularAnonymizedAt ? 'Anonimizado' : 'Documento fiscal'
-                        }
-                        className={inputCls}
-                      />
-                      <div className="sm:col-span-2">
-                        <Input
-                          label="Dirección fiscal"
-                          type="text"
-                          value={form.fiscalAddress}
-                          onChange={handleField('fiscalAddress')}
-                          readOnly={Boolean(currentContract.titularAnonymizedAt)}
-                          placeholder={
-                            currentContract.titularAnonymizedAt
-                              ? 'Anonimizado'
-                              : 'Dirección de facturación'
-                          }
-                          className={inputCls}
-                        />
-                      </div>
-                    </>
-                  )}
-                </Section>
-              )}
-
-              {/* ── Metadatos ────────────────────────────────────────────────── */}
-              {!isEditing && (
-                <Section
-                  icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
-                  title="Información del contrato"
-                >
-                  <DetailField label="Fecha de creación" value={createdDate} />
-                  {contract.startDate && (
-                    <DetailField
-                      label="Fecha de inicio"
-                      value={new Date(contract.startDate).toLocaleDateString('es-CO', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    />
-                  )}
-                  {contract.endDate && (
-                    <DetailField
-                      label="Fecha de fin"
-                      value={new Date(contract.endDate).toLocaleDateString('es-CO', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    />
-                  )}
-                  {contract.additionalProductIds.length > 0 && (
-                    <div className="sm:col-span-2">
-                      <DetailField
-                        label={`Productos adicionales (${contract.additionalProductIds.length})`}
-                        value={contract.additionalProductIds.join(', ')}
-                      />
-                    </div>
-                  )}
-                  {contract.additionalServiceIds.length > 0 && (
-                    <div className="sm:col-span-2">
-                      <DetailField
-                        label={`Servicios adicionales (${contract.additionalServiceIds.length})`}
-                        value={contract.additionalServiceIds.join(', ')}
-                      />
-                    </div>
-                  )}
-                </Section>
-              )}
+              {transitionErrorAlert}
+              {planSection}
+              {installationSection}
+              {billingSection}
+              {servicePointSection}
+              {vatSection}
+              {fiscalSection}
+              {metaSection}
             </>
           )}
         </div>
@@ -1358,114 +1593,12 @@ export function ContractDetailDrawer({
         {/* Footer con acciones */}
         {!privacyRestricted && (
           <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-4 dark:border-dark-border dark:bg-dark-surface-2">
-            {saveError ? (
-              <div className="mb-3">
-                <PortalAlert
-                  variant="error"
-                  live="assertive"
-                  title="No fue posible guardar los cambios"
-                  description={saveError}
-                />
-              </div>
-            ) : null}
-            {isEditing || isEditingServicePoint ? (
-              /* Modo edición: guardar / cancelar */
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={isEditingServicePoint ? handleCancelServicePoint : handleCancelEdit}
-                  disabled={saving}
-                  className={cn(
-                    interactiveFocusClassName,
-                    'min-h-11 flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300',
-                  )}
-                >
-                  Cancelar
-                </button>
-                <Button
-                  loading={saving}
-                  type="button"
-                  onClick={isEditingServicePoint ? handleSaveServicePoint : handleSave}
-                  disabled={saving}
-                  className="min-h-11 flex-1"
-                >
-                  {!saving && <Save className="h-4 w-4" aria-hidden />}
-                  {isEditingServicePoint ? 'Actualizar punto de servicio' : 'Guardar cambios'}
-                </Button>
-              </div>
-            ) : (
-              /* Modo lectura: editar + transiciones */
-              <div className="space-y-3">
-                {/* Transiciones de estado */}
-                {actions.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {actions.map(({ label, action, icon, variant }) => (
-                      <Button
-                        loading={transitioning}
-                        key={action}
-                        type="button"
-                        disabled={transitioning}
-                        onClick={() => handleTransition(action)}
-                        variant={variant === 'danger' ? 'softDestructive' : 'secondary'}
-                        className="min-h-11"
-                      >
-                        {!transitioning && icon}
-                        {label}
-                      </Button>
-                    ))}
-                    {contract.status === 'DRAFT' && onRemove && (
-                      <button
-                        type="button"
-                        disabled={transitioning}
-                        onClick={handleRemove}
-                        className={ACTION_BTN.danger}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                        Eliminar borrador
-                      </button>
-                    )}
-                  </div>
-                )}
-                {/* Botón editar */}
-                {contract.status !== 'ARCHIVED' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForm(buildEditForm(currentContract));
-                      setIsEditing(true);
-                    }}
-                    className={cn(
-                      interactiveFocusClassName,
-                      'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-700 transition hover:border-iwana-secondary-700 hover:text-iwana-secondary-700 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200',
-                    )}
-                  >
-                    <Edit2 className="h-4 w-4" aria-hidden />
-                    Editar contrato
-                  </button>
-                )}
-              </div>
-            )}
+            {saveErrorAlert}
+            {footerActions}
           </div>
         )}
       </aside>
-      {changingPlan ? (
-        <ChangeContractPlanDialog
-          contract={currentContract}
-          customerSegment={currentContract.customerSegment ?? customerSegment}
-          onClose={() => setChangingPlan(false)}
-          onUpdated={(updated, changed) => {
-            setCurrentContract(updated);
-            setForm(buildEditForm(updated));
-            setServiceUsage(updated.serviceUsage ?? '');
-            setInstallationStratum(updated.installationStratum?.toString() ?? '');
-            onContractUpdated?.(updated);
-            announce(changed ? 'Plan actualizado' : 'Datos del contrato actualizados');
-            void onReload().catch(() =>
-              setSaveError('El contrato se actualizó, pero no fue posible refrescar la lista.'),
-            );
-          }}
-        />
-      ) : null}
+      {planDialog}
     </ModalLayer>
   );
 }

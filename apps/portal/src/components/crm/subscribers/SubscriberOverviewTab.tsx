@@ -1,15 +1,20 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Badge, Button, Input, cn } from '@iwana/ui';
-import { ChevronRight, FileText, Pencil, Wifi, X } from 'lucide-react';
+import { ChevronRight, FileText, Pencil, Plus, Wifi, X } from 'lucide-react';
+import { AccessPermissionKey, type BillingAccountStatement } from '@iwana/shared';
 import {
   ApiError,
   crmApi,
+  type Contract,
   type ContractStatus,
   type Subscriber360Response,
 } from '@/lib/api-client';
+import { usePermissions } from '@/components/access-control/permissions-context';
+import { formatBillingMoney } from '@/components/billing/billing-copy';
 import {
   formatExpedienteStatus,
   getStatusBadgeVariant,
@@ -17,8 +22,11 @@ import {
 import {
   PortalAlert,
   PortalEmptyState,
+  PortalFieldList,
+  PortalFieldRow,
   PortalPanel,
   portalInlineTextLinkClassName,
+  portalPanelDenseActionClassName,
 } from '@/components/shared/portal-ui';
 import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import {
@@ -27,8 +35,22 @@ import {
   formatSubscriberDate,
   formatSubscriberLocation,
 } from './subscriber-ui';
+import { deriveSubscriberBadges } from './subscriber-badges';
+import { SubscriberActivityCard } from './SubscriberActivityCard';
+import { SubscriberIdentityCard } from './SubscriberIdentityCard';
+import {
+  SubscriberActiveTicketsCard,
+  SubscriberNextChargeCard,
+  SubscriberOpenVisitsCard,
+} from './SubscriberOverviewCards';
+import { useContractPlan } from './use-contract-plan';
 
-type OverviewTabId = 'servicios' | 'datos' | 'cumplimiento';
+const LocationPreviewMap = dynamic(() => import('./LocationPreviewMap'), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse bg-gray-100 dark:bg-dark-surface-3" />,
+});
+
+type OverviewTabId = 'servicios' | 'datos' | 'cumplimiento' | 'facturacion' | 'soporte';
 
 interface SubscriberOverviewTabProps {
   subscriber360: Subscriber360Response;
@@ -38,11 +60,13 @@ interface SubscriberOverviewTabProps {
   onReload: () => Promise<void>;
   /** Panel de estado de cuenta; lo arma la ficha solo si existe la pestaña Facturación. */
   accountSummary?: ReactNode;
+  /** Estado de cuenta ya leído por la ficha; alimenta la insignia de deuda vencida. */
+  statement?: BillingAccountStatement | null;
 }
 
 const termClassName = 'text-xs font-medium text-gray-500 dark:text-gray-400';
-const valueClassName = 'mt-0.5 break-words text-sm text-gray-900 dark:text-white';
 const emptyValueClassName = 'text-gray-500 dark:text-gray-400';
+const bodyNoteClassName = 'pb-2 text-sm text-gray-500 dark:text-gray-400';
 
 // Orden de lectura del resumen: lo vigente primero.
 const SUMMARY_STATUSES: ContractStatus[] = ['ACTIVE', 'SUSPENDED', 'DRAFT', 'TERMINATED'];
@@ -87,23 +111,6 @@ function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function Field({
-  label,
-  children,
-  className,
-}: {
-  label: string;
-  children: ReactNode;
-  className?: string | undefined;
-}) {
-  return (
-    <div className={cn('min-w-0', className)}>
-      <dt className={termClassName}>{label}</dt>
-      <dd className={valueClassName}>{children}</dd>
-    </div>
-  );
-}
-
 function GoToTab({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <div className="flex justify-end">
@@ -119,15 +126,82 @@ function GoToTab({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
+const STATUS_DOT_CLASS: Record<ContractStatus, string> = {
+  ACTIVE: 'bg-success-500',
+  SUSPENDED: 'bg-amber-500',
+  DRAFT: 'bg-gray-400',
+  TERMINATED: 'bg-error-500',
+  ARCHIVED: 'bg-gray-400',
+};
+
+function ServiceRow({ contract, anonymized }: { contract: Contract; anonymized: boolean }) {
+  const meta = CONTRACT_STATUS_META[contract.status];
+  const plan = useContractPlan(contract);
+  const name = anonymized
+    ? 'Servicio'
+    : formatContractAlias(contract.alias) || 'Servicio sin nombre';
+  const planLine = [
+    plan.name,
+    ...(plan.price !== undefined ? [`${formatBillingMoney(plan.price)}/mes`] : []),
+  ].join(' · ');
+  return (
+    <li className="flex items-start justify-between gap-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{name}</p>
+        <p className="truncate text-sm text-gray-600 dark:text-gray-300">{planLine}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {contract.status === 'ACTIVE' && contract.billingCycleDay != null
+            ? `Ciclo día ${contract.billingCycleDay}`
+            : contract.status === 'DRAFT'
+              ? 'Pendiente de activar'
+              : `Desde ${formatSubscriberDate(contract.statusChangedAt ?? contract.createdAt)}`}
+        </p>
+      </div>
+      <span className="flex shrink-0 items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
+        <span
+          aria-hidden="true"
+          className={cn('h-2 w-2 rounded-full', STATUS_DOT_CLASS[contract.status])}
+        />
+        {meta.label}
+      </span>
+    </li>
+  );
+}
+
 export function SubscriberOverviewTab({
   subscriber360,
   canReadPrivacy,
   onNavigate,
   onReload,
   accountSummary,
+  statement = null,
 }: SubscriberOverviewTabProps) {
   const { subscriber, contracts, expedienteSummary } = subscriber360;
   const anonymizedAt = subscriber.anonymizedAt;
+  const { hasPermission } = usePermissions();
+  const canReadBilling = hasPermission(AccessPermissionKey.BILLING_INVOICES_READ);
+  const canReadTickets = hasPermission(AccessPermissionKey.ASSURANCE_TICKETS_READ);
+  const canReadVisits = hasPermission(AccessPermissionKey.WFM_SCHEDULE_READ);
+  // Mapa y documento con el mismo criterio con que hoy los muestra la pestaña Datos (CA-4).
+  const personalVisible = !anonymizedAt && !subscriber.privacyRestricted;
+  const mapCoordinates =
+    personalVisible && subscriber.latitude != null && subscriber.longitude != null
+      ? { latitude: Number(subscriber.latitude), longitude: Number(subscriber.longitude) }
+      : null;
+  const activeContract = contracts.find((contract) => contract.status === 'ACTIVE') ?? null;
+  const badges = useMemo(
+    () =>
+      deriveSubscriberBadges({
+        status: subscriber.status,
+        vatTreatment: subscriber.vatTreatment,
+        contactPending: subscriber.contactPending,
+        anonymizedAt,
+        fiscalCompleteness: subscriber.fiscalCompleteness,
+        serviceStatuses: contracts.map((contract) => contract.status),
+        documentPaymentStates: statement?.documents.map((document) => document.paymentState),
+      }),
+    [subscriber, anonymizedAt, contracts, statement],
+  );
   const canEditBilling =
     Boolean(expedienteSummary) && !subscriber.privacyRestricted && !anonymizedAt;
 
@@ -161,15 +235,6 @@ export function SubscriberOverviewTab({
   );
   const overdueRequests = openRequests.filter((request) => request.isOverdue).length;
 
-  const contactValue = (value: string | null | undefined, fallback: string) => {
-    const display = privacyDisplayValue(anonymizedAt ? null : (value ?? null), { anonymizedAt });
-    return value || anonymizedAt ? (
-      display
-    ) : (
-      <span className={emptyValueClassName}>{fallback}</span>
-    );
-  };
-
   async function saveBilling() {
     if (!expedienteSummary) return;
     const payload: Record<string, unknown> = {};
@@ -196,15 +261,21 @@ export function SubscriberOverviewTab({
     <PortalPanel
       as="section"
       labelled
+      density="dense"
       title="Servicios"
-      description={
-        statusCounts.length > 0
-          ? statusCounts
-              .map(({ status, count }) => pluralize(count, ...STATUS_COUNT_LABELS[status]))
-              .join(' · ')
-          : undefined
+      actions={
+        personalVisible ? (
+          <button
+            type="button"
+            aria-label="Agregar servicio"
+            className={cn(portalPanelDenseActionClassName, 'gap-1')}
+            onClick={() => onNavigate('servicios')}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Agregar
+          </button>
+        ) : undefined
       }
-      contentClassName="space-y-2"
     >
       {serviceRows.length === 0 ? (
         <PortalEmptyState
@@ -224,57 +295,44 @@ export function SubscriberOverviewTab({
           }
         />
       ) : (
-        <>
+        <div className="space-y-2">
+          {statusCounts.length > 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {statusCounts
+                .map(({ status, count }) => pluralize(count, ...STATUS_COUNT_LABELS[status]))
+                .join(' · ')}
+            </p>
+          ) : null}
           <ul className="divide-y divide-gray-100 dark:divide-dark-border">
-            {serviceRows.map((contract) => {
-              const meta = CONTRACT_STATUS_META[contract.status];
-              const name = anonymizedAt
-                ? 'Servicio'
-                : formatContractAlias(contract.alias) || 'Servicio sin nombre';
-              return (
-                <li key={contract.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
-                      {name}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {contract.status === 'ACTIVE' && contract.billingCycleDay != null
-                        ? `Ciclo día ${contract.billingCycleDay}`
-                        : contract.status === 'DRAFT'
-                          ? 'Pendiente de activar'
-                          : `Desde ${formatSubscriberDate(contract.statusChangedAt ?? contract.createdAt)}`}
-                    </p>
-                  </div>
-                  <Badge variant={meta.variant} className="shrink-0">
-                    {meta.label}
-                  </Badge>
-                </li>
-              );
-            })}
+            {serviceRows.map((contract) => (
+              <ServiceRow
+                key={contract.id}
+                contract={contract}
+                anonymized={Boolean(anonymizedAt)}
+              />
+            ))}
           </ul>
           {hiddenServices > 0 ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               Y {pluralize(hiddenServices, 'servicio más', 'servicios más')}.
             </p>
           ) : null}
+          {mapCoordinates ? (
+            <figure aria-label="Mapa del punto de servicio" className="space-y-1">
+              <div className="h-44 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-border">
+                <LocationPreviewMap
+                  latitude={mapCoordinates.latitude}
+                  longitude={mapCoordinates.longitude}
+                />
+              </div>
+              <figcaption className="text-xs text-gray-500 dark:text-gray-400">
+                © Colaboradores de OpenStreetMap
+              </figcaption>
+            </figure>
+          ) : null}
           <GoToTab label="Ver servicios" onClick={() => onNavigate('servicios')} />
-        </>
+        </div>
       )}
-    </PortalPanel>
-  );
-
-  const contactPanel = (
-    <PortalPanel as="section" labelled title="Contacto" contentClassName="space-y-2">
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-        <Field label="Correo">{contactValue(subscriber.email, 'Sin correo')}</Field>
-        <Field label="Teléfono">{contactValue(subscriber.phone, 'Sin teléfono')}</Field>
-        <Field label="Ubicación" className="sm:col-span-2">
-          {anonymizedAt
-            ? privacyDisplayValue(null, { anonymizedAt })
-            : formatSubscriberLocation(subscriber.city, subscriber.department)}
-        </Field>
-      </dl>
-      <GoToTab label="Ver datos" onClick={() => onNavigate('datos')} />
     </PortalPanel>
   );
 
@@ -282,20 +340,13 @@ export function SubscriberOverviewTab({
     <PortalPanel
       as="section"
       labelled
+      density="dense"
       title="Facturación"
-      description={
-        !expedienteSummary
-          ? undefined
-          : anonymizedAt
-            ? 'Datos anonimizados: la facturación ya no se puede editar.'
-            : 'Datos tomados de la oportunidad de origen.'
-      }
       actions={
         canEditBilling && !billingEditing ? (
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            className="min-h-11 gap-1.5"
+            className={cn(portalPanelDenseActionClassName, 'gap-1.5')}
             aria-label="Editar facturación"
             onClick={() => {
               setBillingDraft({
@@ -310,11 +361,18 @@ export function SubscriberOverviewTab({
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Editar
-          </Button>
+          </button>
         ) : undefined
       }
       contentClassName="space-y-3"
     >
+      {expedienteSummary ? (
+        <p className={bodyNoteClassName}>
+          {anonymizedAt
+            ? 'Datos anonimizados: la facturación ya no se puede editar.'
+            : 'Datos tomados de la oportunidad de origen.'}
+        </p>
+      ) : null}
       <p
         role="status"
         aria-live="polite"
@@ -385,22 +443,18 @@ export function SubscriberOverviewTab({
           </div>
         </div>
       ) : (
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <PortalFieldList>
           {BILLING_FIELDS.map(({ key, label }) => {
             const value = expedienteSummary[key];
             return (
-              <Field
-                key={key}
-                label={label}
-                className={key === 'fiscalName' ? 'sm:col-span-2' : undefined}
-              >
+              <PortalFieldRow key={key} label={label}>
                 {key === 'fiscalName' && anonymizedAt
                   ? privacyDisplayValue(null, { anonymizedAt })
                   : value || <span className={emptyValueClassName}>Sin configurar</span>}
-              </Field>
+              </PortalFieldRow>
             );
           })}
-        </dl>
+        </PortalFieldList>
       )}
     </PortalPanel>
   );
@@ -409,6 +463,7 @@ export function SubscriberOverviewTab({
     <PortalPanel
       as="section"
       labelled
+      density="dense"
       title="Oportunidad de origen"
       titleAddon={
         expedienteSummary ? (
@@ -417,26 +472,25 @@ export function SubscriberOverviewTab({
           </Badge>
         ) : undefined
       }
-      contentClassName="space-y-2"
     >
       {expedienteSummary ? (
-        <>
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-            <Field label="Creada">
+        <div className="space-y-2">
+          <PortalFieldList>
+            <PortalFieldRow label="Creada">
               {expedienteSummary.createdAt ? (
                 formatSubscriberDate(expedienteSummary.createdAt)
               ) : (
                 <span className={emptyValueClassName}>Sin fecha</span>
               )}
-            </Field>
-            <Field label="Último cambio de estado">
+            </PortalFieldRow>
+            <PortalFieldRow label="Último cambio de estado">
               {expedienteSummary.statusChangedAt ? (
                 formatSubscriberDate(expedienteSummary.statusChangedAt)
               ) : (
                 <span className={emptyValueClassName}>Sin cambios</span>
               )}
-            </Field>
-          </dl>
+            </PortalFieldRow>
+          </PortalFieldList>
           <div className="flex justify-end">
             <Link
               href={`/dashboard/crm/expedientes/${expedienteSummary.id}`}
@@ -446,7 +500,7 @@ export function SubscriberOverviewTab({
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>
           </div>
-        </>
+        </div>
       ) : (
         <PortalEmptyState
           embedded
@@ -459,7 +513,7 @@ export function SubscriberOverviewTab({
   );
 
   const privacyPanel = subscriber360.privacyDetailsRestricted ? (
-    <PortalPanel as="section" labelled title="Privacidad">
+    <PortalPanel as="section" labelled density="dense" title="Privacidad">
       <PortalAlert
         variant="warning"
         title="No tienes acceso al detalle de privacidad"
@@ -470,50 +524,82 @@ export function SubscriberOverviewTab({
     <PortalPanel
       as="section"
       labelled
+      density="dense"
       title="Privacidad"
       titleAddon={
         overdueRequests > 0 ? (
           <Badge variant="error">{pluralize(overdueRequests, 'vencida', 'vencidas')}</Badge>
         ) : undefined
       }
-      contentClassName="space-y-2"
     >
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-        <Field label="Tratamiento de datos">
-          {treatmentAuthorization?.granted ? (
-            `Autorizado el ${formatSubscriberDate(treatmentAuthorization.capturedAt)}`
-          ) : treatmentAuthorization ? (
-            `Revocado el ${formatSubscriberDate(treatmentAuthorization.capturedAt)}`
-          ) : (
-            <span className={emptyValueClassName}>Sin autorización registrada</span>
-          )}
-        </Field>
-        <Field label="Solicitudes abiertas">
-          {openRequests.length > 0 ? (
-            pluralize(openRequests.length, 'solicitud', 'solicitudes')
-          ) : (
-            <span className={emptyValueClassName}>Ninguna</span>
-          )}
-        </Field>
-      </dl>
-      <GoToTab label="Ver cumplimiento" onClick={() => onNavigate('cumplimiento')} />
+      <div className="space-y-2">
+        <PortalFieldList>
+          <PortalFieldRow label="Tratamiento de datos">
+            {treatmentAuthorization?.granted ? (
+              `Autorizado el ${formatSubscriberDate(treatmentAuthorization.capturedAt)}`
+            ) : treatmentAuthorization ? (
+              `Revocado el ${formatSubscriberDate(treatmentAuthorization.capturedAt)}`
+            ) : (
+              <span className={emptyValueClassName}>Sin autorización registrada</span>
+            )}
+          </PortalFieldRow>
+          <PortalFieldRow label="Solicitudes abiertas">
+            {openRequests.length > 0 ? (
+              pluralize(openRequests.length, 'solicitud', 'solicitudes')
+            ) : (
+              <span className={emptyValueClassName}>Ninguna</span>
+            )}
+          </PortalFieldRow>
+        </PortalFieldList>
+        <GoToTab label="Ver cumplimiento" onClick={() => onNavigate('cumplimiento')} />
+      </div>
     </PortalPanel>
   ) : null;
 
-  // Estado de cuenta arriba y a todo el ancho; debajo, dos columnas independientes.
+  // Dos columnas (spec §3 A). En móvil se apilan en el mismo orden: izquierda y luego derecha.
+  // Actividad (bloque D) cierra la columna izquierda.
   return (
-    <div className="space-y-6">
-      {accountSummary}
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
-          {servicesPanel}
-          {contactPanel}
-        </div>
-        <div className="space-y-6">
-          {billingPanel}
-          {originPanel}
-          {privacyPanel}
-        </div>
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="flex min-w-0 flex-col gap-4">
+        {accountSummary}
+        {servicesPanel}
+        <SubscriberActivityCard
+          subscriberId={subscriber.id}
+          contracts={contracts}
+          anonymized={Boolean(anonymizedAt)}
+          restricted={subscriber.privacyRestricted}
+          statement={statement}
+          canReadBilling={canReadBilling}
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-4">
+        <SubscriberIdentityCard
+          subscriber={subscriber}
+          badges={badges}
+          hasOrigin={Boolean(expedienteSummary)}
+          onOpenData={() => onNavigate('datos')}
+        />
+        {canReadBilling && !anonymizedAt ? (
+          <SubscriberNextChargeCard
+            contract={activeContract}
+            onOpenBilling={() => onNavigate('facturacion')}
+          />
+        ) : null}
+        {canReadVisits ? (
+          <SubscriberOpenVisitsCard
+            subscriberId={subscriber.id}
+            onOpenSupport={() => onNavigate('soporte')}
+          />
+        ) : null}
+        {canReadTickets ? (
+          <SubscriberActiveTicketsCard
+            subscriberId={subscriber.id}
+            onOpenSupport={() => onNavigate('soporte')}
+          />
+        ) : null}
+        {privacyPanel}
+        {billingPanel}
+        {originPanel}
       </div>
     </div>
   );

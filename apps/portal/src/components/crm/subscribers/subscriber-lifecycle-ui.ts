@@ -61,3 +61,31 @@ export function isEligibleLifecycleContract(contract: Contract, action: Lifecycl
   if (action === 'REACTIVATE') return contract.status === 'SUSPENDED';
   return contract.status === 'ACTIVE' || contract.status === 'SUSPENDED';
 }
+
+/** Aviso de éxito tras suspender, reactivar o terminar servicios. */
+export function lifecycleSuccessMessage(
+  action: LifecycleAction,
+  affectedCount: number,
+): { title: string; description: string } {
+  const subject = affectedCount === 1 ? 'servicio' : 'servicios';
+  const verb = affectedCount === 1 ? 'suspendió' : 'suspendieron';
+  const title =
+    action === 'SUSPEND'
+      ? 'Servicios suspendidos'
+      : action === 'REACTIVATE'
+        ? 'Servicios reactivados'
+        : affectedCount === 1
+          ? 'Servicio terminado'
+          : 'Servicios terminados';
+  const description =
+    action === 'SUSPEND'
+      ? `Se ${verb} ${affectedCount} ${subject}.`
+      : action === 'REACTIVATE'
+        ? affectedCount === 1
+          ? 'Se reactivó 1 servicio.'
+          : `Se reactivaron ${affectedCount} servicios.`
+        : affectedCount === 1
+          ? 'Se terminó 1 servicio.'
+          : `Se terminaron ${affectedCount} servicios.`;
+  return { title, description };
+}
