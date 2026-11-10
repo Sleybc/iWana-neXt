@@ -43,8 +43,8 @@ P3-5 elevó el paso «Integration tests — API» de 3 min 56 s (`5d6a366b`, 202
 | ID | Prioridad | Estado al 2026-11-10 |
 | --- | --- | --- |
 | R7 — purga con rol de mínimo privilegio | P1 | G6.5 verde. Antes de G7 quedan los dos P2 de `sec-eng` (membresías transitivas y dependencias entre esquemas). D-2 exige constancia por tenant de devolución o exportación de los datos al ISP, o su instrucción escrita de supresión, antes de la primera purga real. [Spec R7 §7, §15 y §17](../specs/2026-11-09-plat-ops-r7-purga-tenants-rol-de-produccion-spec.md) |
-| Tiempo del paso de integración API | P2 | **Cerrado 2026-11-10: Reserva F descartada.** Los dos únicos intentos CI válidos dieron 4,27 y 4,49 (umbral de conservación ≤ 4,0275; base 4,2394) con 2 rojos de 4 intentos; los dos rojos quedaron clasificados y el intento 5 se canceló. F retirada de `ci.yml` en commit aparte; queda abierto el encargo de evaluar N = 3 workers. [Spec de CI §10.5–10.6](../specs/2026-11-09-plat-ops-ci-integracion-api-tiempo.md#106-pendiente) |
-| R8 — mensajes para los dos 409 de «Reintentar» en la consola de plataforma | P3 | Implementado por `fe-platform` el 2026-11-10. `TENANT_PROVISIONING_IN_PROGRESS` indica que la configuración sigue en curso y `TENANT_NOT_RETRYABLE` pide revisar el estado en el directorio. Los demás errores muestran el aviso genérico. [Spec DT-4 §8.2](../specs/2026-11-09-plat-ops-dt4-aprovisionamiento-tenant-marcado.md) |
+| Tiempo del paso de integración API | P2 | **Cerrado 2026-11-10: Reserva F descartada.** Los dos únicos intentos CI válidos dieron 4,27 y 4,49 (umbral de conservación ≤ 4,0275; base 4,2394) con 2 rojos de 4 intentos; los dos rojos quedaron clasificados y el intento 5 se canceló. F retirada de `ci.yml` en commit aparte (`78479648`); la CI sobre la reversión quedó verde (42822215107). Queda abierto el encargo de evaluar N = 3 workers. [Spec de CI §10.5–10.6](../specs/2026-11-09-plat-ops-ci-integracion-api-tiempo.md#106-pendiente) |
+| R8 - mensajes para los dos 409 de «Reintentar» en la consola de plataforma | P3 | **Cerrado 2026-11-10 (`eda576fc`, publicado en el tren `78479648` con CI 42822215107 ✅).** `TENANT_PROVISIONING_IN_PROGRESS` indica que la configuración sigue en curso y `TENANT_NOT_RETRYABLE` pide revisar el estado en el directorio. Los demás errores muestran el aviso genérico. GO local Playwright 3/3 en `/tenants`. [Spec DT-4 §8.2](../specs/2026-11-09-plat-ops-dt4-aprovisionamiento-tenant-marcado.md) |
 | R3 (auditoría de transiciones del worker), R4 (locks 42/43), R5 (esquemas borrados fuera de la purga en desarrollo), R6 (`RELAY_FAILURE` con `failed=0`) | P3 | Sin dueño. |
 | CA-NET-11 (mock sin `assertWritableReferences`), Playwright en ubuntu 26.04 | P3 | Sin dueño, heredados. |
 
@@ -57,7 +57,7 @@ P3-5 elevó el paso «Integration tests — API» de 3 min 56 s (`5d6a366b`, 202
 
 La base tenía el [CI documental 42725900488](https://github.com/Sleybc/iWana-neXt/actions/runs/42725900488) en verde. En R8, lint y typecheck pasaron. La página alcanzó 84,81 % de líneas cubiertas. La revisión de pruebas confirmó cuatro casos nuevos y la conservación de las expectativas previas.
 
-**GO local de R8 (2026-11-10).** Playwright en Chrome, 3 de 3 casos aprobados en `/tenants`. El clic en «Reintentar configuración» mostró el aviso específico para cada uno de los dos 409 del contrato y el genérico para un tercer 409. Las respuestas HTTP se simularon con el contrato del API. CI de R8 pendiente de publicación.
+**GO local de R8 (2026-11-10).** Playwright en Chrome, 3 de 3 casos aprobados en `/tenants`. El clic en «Reintentar configuración» mostró el aviso específico para cada uno de los dos 409 del contrato y el genérico para un tercer 409. Las respuestas HTTP se simularon con el contrato del API. Commit `eda576fc` publicado con el tren del 2026-11-10; G6.5 ✅ en CI [42822215107](https://github.com/Sleybc/iWana-neXt/actions/runs/42822215107).
 
 ## 6. Dictamen
 

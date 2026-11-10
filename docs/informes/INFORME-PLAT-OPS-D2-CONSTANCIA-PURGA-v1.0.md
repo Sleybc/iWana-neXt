@@ -2,7 +2,7 @@
 
 **Versión:** 1.0
 **Fecha:** 2026-11-10
-**Estado:** Código local completo y verde (commit `547986b2`); G6.5 pendiente del push por tren (Reserva F ya resuelta y F-flakies corregidos).
+**Estado:** Cerrado — G6.5 ✅ en la corrida de `main` [CI 42822215107](https://github.com/Sleybc/iWana-neXt/actions/runs/42822215107) (tren `c7eb5636` → `78479648`, smoke 42822215039 ✅).
 **Autor:** AI-EM-ARCH (ejecutor)
 **Spec:** [2026-11-10-plat-ops-d2-constancia-purga-tenant.md](../specs/2026-11-10-plat-ops-d2-constancia-purga-tenant.md) v1.0
 **Plan:** [2026-11-10-plat-ops-d2-constancia-purga-tenant.md](../plans/2026-11-10-plat-ops-d2-constancia-purga-tenant.md)
@@ -53,9 +53,9 @@ D-2 y los dos P2 de sec-eng quedan satisfechos tecnológicamente; G7 (primera pu
 
 ## 6. Reserva F (otra raíz del mismo día)
 
-**Resuelta el 2026-11-10 (CTO): F descartada y revertida.** La muestra en CI `42722797012` quedó con 2 válidos (4,27 y 4,49) sobre el umbral de conservación 4,0275 y 2 rojos clasificados (carreras IPAM y teléfono-listo, ambos con causa documentada en la spec §10.5); el intento 5 se canceló. Los dos flakies ya tienen su corrección en commit local (`29a265e9`); la reversión de `7fa0f5ae` sale en su propio commit. Queda pendiente de abrir el encargo N=3 (spec §10.6).
+**Resuelta el 2026-11-10 (CTO): F descartada y revertida.** La muestra en CI `42722797012` quedó con 2 válidos (4,27 y 4,49) sobre el umbral de conservación 4,0275 y 2 rojos clasificados (carreras IPAM y teléfono-listo, ambos con causa documentada en la spec §10.5); el intento 5 se canceló. Los dos flakies ya tienen su corrección en commit local (`29a265e9`); la reversión de `7fa0f5ae` salió en su propio commit (`78479648`). Queda pendiente de abrir el encargo N=3 (spec §10.6). Baseline de referencia sin F para la evaluación N=3: CI `42822215107` dio cociente 4,67 (089=57 s, API=266 s).
 
-**En el mismo bloque pendiente de publicación:** `eda576fc` (R8) y `c7eb5636` (estado de cuenta) siguen local; el push sale con el tren cuando el CTO ordene publicar.
+**Publicación (tren del 2026-11-10):** push `1487f892..78479648` aprobado por el CTO con el tren completo (5 commits: MOD05 estado de cuenta, R8, D-2, fixes de flakies y reversión de F). CI `42822215107` y smoke `42822215039` en `success`; todos los jobs verdes a la primera corrida, incluida la migración 031 en CI y las dos suites antes rojas.
 
 ---
-Se omitió: no se ejecutó la suite completa de `apps/api`. Riesgo: el contenido exacto de los restantes commits del tren y los detalles del informe transversal pueden variar respecto a este documento después de la revisión documental del cierre de fase.
+Se omitió: la suite completa de `apps/api` no se ejecutó entera en local (solo las dos suites afectadas + su unit spec). Riesgo: el encargo N=3 y la programación de la operativa G7 dependen de decisiones posteriores del CTO.
