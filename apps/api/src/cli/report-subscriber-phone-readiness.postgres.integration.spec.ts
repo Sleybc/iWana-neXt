@@ -61,7 +61,10 @@ function quoteIdentifier(value: string): string {
 describeWithDb('Reporte de teléfonos de suscriptores — PostgreSQL real', () => {
   const schemaName = `tenant_phone_readiness_${randomBytes(5).toString('hex')}`;
   const tenantId = randomUUID();
-  const tenantSlug = `phone-readiness-${tenantId.slice(0, 8)}`;
+  // El slug hereda solo 6 hex del UUID: con 8, un hex de 7-8 dígitos hace un falso
+  // positivo de la aserción not.toMatch(/\d{7,}/) (~5 % de corridas, red 42722797012
+  // intento 4). 6 hex no puede formar una carrera de 7 dígitos dentro del segmento.
+  const tenantSlug = `phone-readiness-${tenantId.slice(0, 6)}`;
   const encryptionKey = parseEncryptionKeyHex(ENCRYPTION_KEY_HEX);
   const blockedPartyId = randomUUID();
   let dataSource: DataSource;

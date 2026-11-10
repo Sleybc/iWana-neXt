@@ -140,7 +140,16 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
   let interfaceService: NetworkInterfaceCatalogService;
   let catalogService: NetworkCatalogService;
   const context = () => ({ tenantId, schemaName: SCHEMA, tenantSlug: SCHEMA });
-  const run = <T>(operation: () => Promise<T>) => TenantContext.run(context(), operation);
+  const run = <T>(operation: () => Promise<T>) => {
+    // Las carreras resuelven y rechazan por su cuenta. Si una promesa rechaza antes de
+    // que su expect(...).rejects la ancle (ventana entre la creación y el awaits),
+    // Node la reporta como rechazo sin handler y jest lo atribuye al test que corre
+    // en ese momento, no al que la creó (red CI 42722797012, intento 3). El catch
+    // marcador se ancla al crearla: los rejects/esperas siguen leyendo la misma promesa.
+    const promise = TenantContext.run(context(), operation) as Promise<T>;
+    void promise.catch(() => {});
+    return promise;
+  };
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
   const authorization = {
     requireSiteOrTenantWideAction: jest.fn().mockResolvedValue(undefined),
