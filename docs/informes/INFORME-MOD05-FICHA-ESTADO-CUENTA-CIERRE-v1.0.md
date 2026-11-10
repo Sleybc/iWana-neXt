@@ -1,7 +1,7 @@
 # Informe de cierre — MOD05 Ficha: estado de cuenta y valores heredados
 
 **Versión:** 1.0
-**Estado:** G6 ✅ — unitarias, E2E, lint, tipos y audit-ui en verde; sin commit
+**Estado:** G6 ✅ — unitarias, E2E, lint, tipos y audit-ui en verde; commit `c7eb5636` y arreglo del titular anonimizado en commit aparte, sin push
 **Fecha:** 2026-11-09
 **Spec:** [2026-11-09-mod05-ficha-estado-de-cuenta-ux](../specs/2026-11-09-mod05-ficha-estado-de-cuenta-ux.md) · **Plan:** [2026-11-09-mod05-ficha-estado-de-cuenta](../plans/2026-11-09-mod05-ficha-estado-de-cuenta.md) · **Origen:** [referencia UISP CRM v1.1](../referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md) §15.8
 
@@ -39,6 +39,6 @@ Sin endpoints, contratos, migraciones ni cambios en `apps/api` o `packages/share
 
 ## 4. Omisiones y riesgos
 
-- Producto: con un titular anonimizado o con la auditoría de privacidad caída, el panel de la Vista general muestra un error con «Reintentar» que no se resuelve (ya pasaba en la pestaña). Decidir si se oculta.
+- Resuelto el 2026-11-10: con el titular anonimizado la API responde 404 a propósito. La ficha ya no pide el estado de cuenta (espera la 360 y comprueba `anonymizedAt`) y muestra un aviso fijo sin «Reintentar» en la Vista general y en Facturación; `billingError` traduce el 404. El 503 de auditoría de privacidad es temporal y conserva «Reintentar». Pruebas: +2 (ficha anonimizada y traducción del 404); 42 suites y 388 pruebas de billing y subscribers en verde. La E2E no se repitió: primero faltaba el build de `@iwana/db` (otra sesión con la migración 030 en curso); después, el puerto 3002 que exige `playwright.portal.config.ts` lo ocupaba el portal de `pnpm dev`. El arreglo no toca el recorrido de la E2E (sin titulares anonimizados); repetirla antes del push.
 - Al recargar, panel y pestaña vuelven al indicador de carga (comportamiento previo de la pestaña). Cambios hechos en otras pestañas no refrescan el estado de cuenta sin recargar la ficha (consecuencia de R-A3).
-- Commit bloqueado: `subscriber-billing-tab.spec.tsx` y `SubscriberDetailClient.mod05-deuda.portal.spec.tsx` mezclan este cambio con uno de otra sesión.
+- `c7eb5636` incluye, por orden del usuario, el cambio de otra sesión (mocks estables) en `subscriber-billing-tab.spec.tsx` y `SubscriberDetailClient.mod05-deuda.portal.spec.tsx`.

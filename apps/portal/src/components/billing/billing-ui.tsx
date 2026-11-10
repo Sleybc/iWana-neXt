@@ -26,6 +26,8 @@ export function billingError(error: unknown): string {
       return 'No es posible registrar pagos para una cuenta anonimizada.';
     if (error.code === 'PRIVACY_AUDIT_UNAVAILABLE')
       return 'No fue posible auditar la consulta de datos protegidos. Por seguridad, la información permanece oculta.';
+    if (error.code === 'BILLING_SUBSCRIBER_NOT_FOUND')
+      return 'No se encontró el estado de cuenta de este titular.';
     if (error.code === 'BILLING_POLICY_CHANGED')
       return 'La política fue modificada recientemente. Vuelve a abrirla para consultar los valores vigentes.';
   }

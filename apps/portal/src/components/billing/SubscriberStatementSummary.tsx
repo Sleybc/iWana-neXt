@@ -12,6 +12,8 @@ import {
 import { formatBillingDate } from '@/components/crm/subscribers/billing-cycle-ui';
 import { pendingDocuments } from './BillingPaymentDialog';
 import {
+  ANONYMIZED_STATEMENT_NOTICE,
+  ANONYMIZED_STATEMENT_TITLE,
   formatBillingMoney,
   IMPERSONATION_HOLD_NOTICE,
   IMPERSONATION_HOLD_TITLE,
@@ -28,11 +30,21 @@ const VISIBLE_DOCUMENTS = 3;
 export function SubscriberStatementSummary({
   statement,
   onOpenBilling,
+  anonymized = false,
 }: {
   statement: SubscriberStatementLoad;
   onOpenBilling: () => void;
+  /** Titular anonimizado: la API ya no entrega el estado de cuenta (404 a propósito). */
+  anonymized?: boolean;
 }) {
   const { data, loading, error, reload } = statement;
+  if (anonymized) {
+    return (
+      <PortalPanel as="section" labelled title="Estado de cuenta" contentClassName="space-y-4">
+        <AnonymizedStatementNotice />
+      </PortalPanel>
+    );
+  }
   return (
     <PortalPanel
       as="section"
@@ -128,6 +140,16 @@ function StatementBody({
         />
       ) : null}
     </>
+  );
+}
+
+export function AnonymizedStatementNotice() {
+  return (
+    <PortalAlert
+      variant="info"
+      title={ANONYMIZED_STATEMENT_TITLE}
+      description={ANONYMIZED_STATEMENT_NOTICE}
+    />
   );
 }
 

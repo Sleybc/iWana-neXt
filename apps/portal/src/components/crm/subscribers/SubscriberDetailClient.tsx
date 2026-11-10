@@ -10,7 +10,10 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { PortalAlert, PortalSkeletonBlock } from '@/components/shared/portal-ui';
 import { usePermissions } from '@/components/access-control/permissions-context';
 import { SubscriberBillingTab } from '@/components/billing/SubscriberBillingTab';
-import { SubscriberStatementSummary } from '@/components/billing/SubscriberStatementSummary';
+import {
+  AnonymizedStatementNotice,
+  SubscriberStatementSummary,
+} from '@/components/billing/SubscriberStatementSummary';
 import { useSubscriberStatement } from '@/components/billing/use-subscriber-statement';
 import { CompliancePanel } from '@/components/privacy/CompliancePanel';
 import { SubscriberForm } from './SubscriberForm';
@@ -63,8 +66,13 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
   const canManagePrivacy = hasPermission(AccessPermissionKey.PRIVACY_MANAGE);
   const canReadNetworkProvisioning = hasPermission(AccessPermissionKey.NETWORK_PROVISIONING_READ);
   const subscriberId = typeof params?.id === 'string' ? params.id : '';
-  const statement = useSubscriberStatement(subscriberId, mode === 'detail' && canReadBilling);
   const [subscriber360, setSubscriber360] = useState<Subscriber360Response | null>(null);
+  const anonymized = Boolean(subscriber360?.subscriber.anonymizedAt);
+  // Se espera a la 360: con el titular anonimizado la API responde 404 a propósito.
+  const statement = useSubscriberStatement(
+    subscriberId,
+    mode === 'detail' && canReadBilling && subscriber360 !== null && !anonymized,
+  );
   const [loading, setLoading] = useState(mode === 'detail');
   const [showLoadingSkeleton, setShowLoadingSkeleton] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +185,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               canReadBilling ? (
                 <SubscriberStatementSummary
                   statement={statement}
+                  anonymized={anonymized}
                   onOpenBilling={() => selectSubscriberTab('facturacion')}
                 />
               ) : undefined
@@ -213,7 +222,9 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
             {
               id: 'facturacion',
               label: 'Facturación',
-              content: (
+              content: anonymized ? (
+                <AnonymizedStatementNotice />
+              ) : (
                 <SubscriberBillingTab
                   key={subscriber.id}
                   subscriberId={subscriber.id}
@@ -297,6 +308,7 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
     canReadNetworkProvisioning,
     fiscalDirty,
     statement,
+    anonymized,
   ]);
 
   if (mode === 'create') {

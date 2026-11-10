@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { act, renderHook } from '@testing-library/react';
-import { useBillingMutation } from './billing-ui';
+import { ApiError } from '@/lib/api-client';
+import { billingError, useBillingMutation } from './billing-ui';
 
 describe('Mutaciones de facturación', () => {
   const originalUuid = Object.getOwnPropertyDescriptor(globalThis.crypto, 'randomUUID');
@@ -50,5 +51,15 @@ describe('Mutaciones de facturación', () => {
 
     await act(async () => result.current.run(payload, send, onSuccess));
     expect(send.mock.calls[2]?.[0]).not.toBe(send.mock.calls[1]?.[0]);
+  });
+});
+
+describe('billingError', () => {
+  it('traduce el 404 del estado de cuenta sin el mensaje genérico', () => {
+    expect(
+      billingError(
+        new ApiError(404, 'BILLING_SUBSCRIBER_NOT_FOUND', 'No se encontró el suscriptor.'),
+      ),
+    ).toBe('No se encontró el estado de cuenta de este titular.');
   });
 });

@@ -34,7 +34,7 @@ jest.mock('@/components/access-control/permissions-context', () => ({
   })(),
 }));
 
-function buildSubscriber(): SubscriberRecord {
+function buildSubscriber(overrides: Partial<SubscriberRecord> = {}): SubscriberRecord {
   return {
     id: 'subscriber-synthetic',
     tenantId: 'tenant-synthetic',
@@ -87,6 +87,7 @@ function buildSubscriber(): SubscriberRecord {
     anonymizedAt: null,
     anonymizedRequestId: null,
     privacyMarks: [],
+    ...overrides,
   };
 }
 
@@ -181,5 +182,24 @@ describe('SubscriberDetailClient — estado de cuenta con permiso de facturació
       'true',
     );
     expect(statementSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('titular anonimizado: aviso fijo en la Vista general y en Facturación, sin consultar', async () => {
+    const user = userEvent.setup();
+    jest
+      .spyOn(subscribersApi, 'get360')
+      .mockResolvedValue(
+        buildSubscriber360(buildSubscriber({ anonymizedAt: '2026-11-01T00:00:00.000Z' })),
+      );
+    render(<SubscriberDetailClient mode="detail" />);
+
+    const region = await screen.findByRole('region', { name: 'Estado de cuenta' });
+    expect(within(region).getByText('Titular anonimizado')).toBeInTheDocument();
+    expect(within(region).queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Facturación' }));
+    const panel = screen.getByRole('tabpanel', { name: 'Facturación' });
+    expect(within(panel).getByText('Titular anonimizado')).toBeInTheDocument();
+    expect(statementSpy).not.toHaveBeenCalled();
   });
 });

@@ -67,3 +67,6 @@ export function additionalNotice(count: number): string {
 export const IMPERSONATION_HOLD_TITLE =
   'Cobro suspendido preventivamente por investigación de suplantación de identidad (Ley 2573 de 2022).';
 export const IMPERSONATION_HOLD_NOTICE = 'No se generarán nuevos cobros hasta resolución.';
+export const ANONYMIZED_STATEMENT_TITLE = 'Titular anonimizado';
+export const ANONYMIZED_STATEMENT_NOTICE =
+  'El estado de cuenta ya no se consulta porque los datos del titular fueron anonimizados.';
