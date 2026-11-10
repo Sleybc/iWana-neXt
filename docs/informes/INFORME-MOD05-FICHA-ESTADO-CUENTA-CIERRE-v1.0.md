@@ -1,7 +1,7 @@
 # Informe de cierre — MOD05 Ficha: estado de cuenta y valores heredados
 
 **Versión:** 1.0
-**Estado:** G6 ✅ — unitarias, E2E, lint, tipos y audit-ui en verde; `c7eb5636` publicado en el tren que cierra `21fa2b91`, G6.5 ✅ (CI 42828209000); arreglo del titular anonimizado en `b413204f`, sin push
+**Estado:** G6 ✅ — unitarias, E2E, lint, tipos y audit-ui en verde; `c7eb5636` publicado en el tren que cierra `21fa2b91`, G6.5 ✅ (CI 42828209000); arreglo del titular anonimizado en `b413204f`, publicado en `0ba50ee7`, G6.5 ✅ (CI 42834842793 y E2E Web Admin Smoke 42834842956 en verde)
 **Fecha:** 2026-11-09
 **Spec:** [2026-11-09-mod05-ficha-estado-de-cuenta-ux](../specs/2026-11-09-mod05-ficha-estado-de-cuenta-ux.md) · **Plan:** [2026-11-09-mod05-ficha-estado-de-cuenta](../plans/2026-11-09-mod05-ficha-estado-de-cuenta.md) · **Origen:** [referencia UISP CRM v1.1](../referencias/REFERENCIA-UISP-CRM-MOD05-v1.1.md) §15.8
 
