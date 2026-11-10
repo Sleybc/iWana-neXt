@@ -26,6 +26,8 @@ import { InventoryModule } from '../../inventory/inventory.module';
 import { ExecutionOrderSchedulingModule } from '../../tasks/execution-order-scheduling.module';
 import { CommercialModule } from '../../commercial/commercial.module';
 import { QuotesModule } from '../quotes/quotes.module';
+import { SubscriberNotesController } from './notes/subscriber-notes.controller';
+import { SubscriberNotesService } from './notes/subscriber-notes.service';
 
 @Module({
   imports: [
@@ -45,7 +47,7 @@ import { QuotesModule } from '../quotes/quotes.module';
     CommercialModule,
     QuotesModule,
   ],
-  controllers: [SubscribersController, SubscriberTaxController],
+  controllers: [SubscribersController, SubscriberTaxController, SubscriberNotesController],
   providers: [
     VatTreatmentService,
     SubscriberFiscalCompletenessService,
@@ -57,6 +59,7 @@ import { QuotesModule } from '../quotes/quotes.module';
     SubscriberCancellationListener,
     SubscriberTaxProfileService,
     SubscribersBlockedTitularGuard,
+    SubscriberNotesService,
     { provide: CrmSubscriberReadPort, useExisting: SubscribersService },
   ],
   exports: [

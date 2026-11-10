@@ -1831,8 +1831,15 @@ interface PortalPanelProps {
   busy?: boolean | undefined;
   /** Densidad del home (DS v1.6). Solo consumidores del inicio. Default: p-5. */
   compact?: boolean | undefined;
+  /**
+   * Densidad de ficha (D1, spec MOD05 §8). `dense` gana sobre `compact`;
+   * en `dense` se ignoran `eyebrow` y `description`. Default: `default`.
+   */
+  density?: PortalPanelDensity | undefined;
   children: ReactNode;
 }
+
+export type PortalPanelDensity = 'default' | 'dense';
 
 interface PortalSectionHeaderProps {
   eyebrow?: string | undefined;
@@ -1950,11 +1957,46 @@ export function PortalPanel({
   titleRef,
   busy = false,
   compact = false,
+  density = 'default',
   children,
 }: PortalPanelProps) {
   const Component = as;
   const titleId = useId();
   const isLabelled = labelled && Boolean(title);
+
+  if (density === 'dense') {
+    return (
+      <Component
+        id={id}
+        className={cn(portalPanelDenseClassName, className)}
+        aria-busy={busy || undefined}
+        aria-labelledby={isLabelled ? titleId : undefined}
+      >
+        {(title || actions) && (
+          <div className={cn(portalPanelDenseHeaderClassName, headerClassName)}>
+            {title && (
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h2
+                  ref={titleRef}
+                  id={isLabelled ? titleId : undefined}
+                  tabIndex={titleTabIndex}
+                  className={cn(
+                    portalPanelDenseTitleClassName,
+                    titleTabIndex === -1 ? interactiveFocusClassName : null,
+                  )}
+                >
+                  {title}
+                </h2>
+                {titleAddon}
+              </div>
+            )}
+            {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+          </div>
+        )}
+        <div className={cn(portalPanelDenseBodyClassName, contentClassName)}>{children}</div>
+      </Component>
+    );
+  }
 
   return (
     <Component
@@ -2008,6 +2050,83 @@ export function PortalPanel({
         {children}
       </div>
     </Component>
+  );
+}
+
+/* --- Densidad de ficha D1 (spec MOD05 2026-11-10 §8.2) --- */
+
+/** Contenedor `density="dense"`: sin sombra ni padding propio. */
+export const portalPanelDenseClassName =
+  'rounded-xl border border-gray-200 bg-white p-0 dark:border-dark-border dark:bg-dark-surface-2';
+
+export const portalPanelDenseHeaderClassName =
+  'flex min-h-11 items-center justify-between gap-2 border-b border-gray-100 px-4 py-2 dark:border-dark-border';
+
+export const portalPanelDenseTitleClassName =
+  'text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300';
+
+/** Cuerpo denso; `contentClassName` puede anular solo el padding. */
+export const portalPanelDenseBodyClassName = 'px-4 py-3';
+
+/** Acción de cabecera densa (enlace o `button` tipo enlace). Máximo una visible. */
+export const portalPanelDenseActionClassName = cn(
+  'inline-flex min-h-11 items-center text-sm font-medium text-iwana-primary underline-offset-4 hover:underline dark:text-iwana-primary-300 sm:min-h-0',
+  interactiveFocusClassName,
+);
+
+export const portalFieldListClassName = 'divide-y divide-gray-100 dark:divide-dark-border';
+
+export const portalFieldRowClassName =
+  'grid grid-cols-1 gap-0.5 py-2 sm:grid-cols-[minmax(7rem,38%)_1fr] sm:gap-3';
+
+export const portalFieldLabelClassName = 'text-sm text-gray-500 dark:text-gray-400';
+
+export const portalFieldValueClassName =
+  'flex min-w-0 items-center justify-between gap-2 text-sm text-gray-900 break-words dark:text-white';
+
+export const portalFieldEmptyValueClassName = 'text-gray-500 dark:text-gray-400';
+
+export interface PortalFieldListProps {
+  children: ReactNode;
+  className?: string | undefined;
+}
+
+export function PortalFieldList({ children, className }: PortalFieldListProps) {
+  return <dl className={cn(portalFieldListClassName, className)}>{children}</dl>;
+}
+
+export interface PortalFieldRowProps {
+  label: string;
+  children?: ReactNode;
+  /** Muestra «Sin dato» atenuado en lugar del valor. */
+  empty?: boolean | undefined;
+  /** `font-mono` para ID visible, documento enmascarado o importes. */
+  mono?: boolean | undefined;
+  /** Enlace o botón de icono al final del `dd`; debe llevar `aria-label` que nombre el dato. */
+  action?: ReactNode | undefined;
+  className?: string | undefined;
+}
+
+export function PortalFieldRow({
+  label,
+  children,
+  empty = false,
+  mono = false,
+  action,
+  className,
+}: PortalFieldRowProps) {
+  return (
+    <div className={cn(portalFieldRowClassName, className)}>
+      <dt className={portalFieldLabelClassName}>{label}</dt>
+      <dd className={portalFieldValueClassName}>
+        {empty ? (
+          <span className={portalFieldEmptyValueClassName}>Sin dato</span>
+        ) : (
+          <span className={cn('min-w-0', mono && 'font-mono')}>{children}</span>
+        )}
+        {action && <span className="shrink-0">{action}</span>}
+      </dd>
+    </div>
   );
 }
 

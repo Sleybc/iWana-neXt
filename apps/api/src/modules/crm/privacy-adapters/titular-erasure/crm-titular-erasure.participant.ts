@@ -138,6 +138,8 @@ export const CRM_RULES: Record<string, FieldRule[]> = {
   ],
   subscriber_tax_assignments: [{ column: 'reason', kind: 'null' }],
   crm_lifecycle_changes: [{ column: 'note_encrypted', kind: 'null' }],
+  // MOD05 D3: texto libre cifrado y NOT NULL; queda el marcador cifrado.
+  subscriber_note: [{ column: 'body_encrypted', kind: 'encrypted-marker' }],
 };
 
 export const CONTRACT_LOCATION_RULES: FieldRule[] = [
@@ -542,6 +544,31 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
           'crm_lifecycle_changes',
           lifecycleChangeIds,
           CRM_RULES['crm_lifecycle_changes'] ?? [],
+          columns,
+          keys,
+          mode,
+          undefined,
+          updatedAtAdvanced,
+        ),
+      ),
+    );
+
+    const noteIds = await selectErasureIds(
+      qr,
+      'subscriber_note',
+      columns,
+      scope.subscriberIds.length > 0 ? ['subscriber_id = ANY($1::uuid[])'] : [],
+      scope.subscriberIds.length > 0 ? [scope.subscriberIds] : [],
+    );
+    results.push(
+      fieldResult(
+        'subscriber_note',
+        'COMERCIAL',
+        await anonymizeConfiguredTable(
+          qr,
+          'subscriber_note',
+          noteIds,
+          CRM_RULES['subscriber_note'] ?? [],
           columns,
           keys,
           mode,

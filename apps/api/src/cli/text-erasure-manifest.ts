@@ -10,10 +10,11 @@
  * no se toca), PENDIENTE-MOD14 (spec 2026-11-03 §12 H-5: solo listadas, B4 no
  * decide por ellas; el invariante las reconoce pero no las justifica).
  * R-1 a R-14 pasan a CUBIERTA por B3; R-15 queda EXCLUIDA-condicional con el
- * bloqueante D-BT-8. Total: 715 entradas
- * (CUBIERTA=184, EXCLUIDA=531, PENDIENTE-MOD14=0).
+ * bloqueante D-BT-8. Total: 716 entradas
+ * (CUBIERTA=185, EXCLUIDA=531, PENDIENTE-MOD14=0).
  * La entrada 715 es privacy_retention_expiry_runs.reason_code (migracion 179,
- * B2-R2): CODIGO, sin texto libre.
+ * B2-R2): CODIGO, sin texto libre. La 716 es subscriber_note.body_encrypted (migracion
+ * 180, MOD05 D3): texto libre CUBIERTO por CrmTitularErasureParticipant.
  * MOD14 clasificada en INFORME-MOD14-PRIVACY-CLASIFICACION-v1.0.md (2026-11-07).
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
@@ -3103,6 +3104,12 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'origin_ref_id',
     k: 'EXCLUIDA',
     d: 'INVENTARIO: habla del equipo; vínculo indirecto o referencia sin validar',
+  },
+  {
+    t: 'subscriber_note',
+    c: 'body_encrypted',
+    k: 'CUBIERTA',
+    d: 'CrmTitularErasureParticipant (encrypted-marker; MOD05 D3, nota manual del suscriptor)',
   },
   {
     t: 'subscriber_tax_assignments',

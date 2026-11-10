@@ -223,6 +223,9 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
   'apps/api/src/modules/crm/subscribers/subscriber-lifecycle.service.ts': [
     'crm_lifecycle_changes.note_encrypted',
   ],
+  'apps/api/src/modules/crm/subscribers/notes/subscriber-notes.service.ts': [
+    'subscriber_note.body_encrypted',
+  ],
   'apps/api/src/modules/crm/subscribers/subscribers.service.ts': [
     'subscribers.document_number_encrypted',
     'subscribers.email_encrypted',

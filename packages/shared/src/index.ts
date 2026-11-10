@@ -80,6 +80,8 @@ export * from './utils/normalize-document-number';
 export * from './schemas/auth.schema';
 export * from './schemas/subscriber.schema';
 export * from './schemas/lifecycle.schema';
+export * from './schemas/list-meta.schema';
+export * from './schemas/subscriber-note.schema';
 export * from './schemas/contract.schema';
 export * from './schemas/billing-cycle.schema';
 export * from './schemas/tax-profile-snapshot';

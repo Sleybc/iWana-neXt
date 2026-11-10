@@ -3,7 +3,7 @@
 **Tipo:** Referencia técnica comparativa  
 **Módulo destino:** MOD05 CRM; módulos futuros de Facturación y Soporte; MOD13 Red y Aprovisionamiento  
 **Versión:** 1.1 (reemplaza a [v1.0](REFERENCIA-UISP-CRM-MOD05-v1.0.md))  
-**Cambios (cabecera):** v1.1 evalúa la cobertura contra MOD05, amplía con el contrato de la API CRM, contrasta con el CRM y Suscriptores implementados (§10), añade la configuración de tiempos de facturación y corte (§5.4) y, en la rev. 4 (2026-11-09), la interfaz y experiencia de usuario (§15); historial completo en §17.  
+**Cambios (cabecera):** v1.1 evalúa la cobertura contra MOD05, amplía con el contrato de la API CRM, contrasta con el CRM y Suscriptores implementados (§10), añade la configuración de tiempos de facturación y corte (§5.4) y, en la rev. 4 (2026-11-09), la interfaz y experiencia de usuario (§15); la rev. 5 (2026-11-10) la contrasta con la instancia real del ISP (§15.9); historial completo en §17.  
 **Estado:** Aprobado como documento de consulta; no normativo  
 **Fecha:** 2026-10-31  
 **Audiencia:** arquitectura, producto, backend, integraciones y operaciones
@@ -494,6 +494,8 @@ Añadida el 2026-11-09. Hasta la rev. 3, ni la v1.0 ni la v1.1 describían la in
 
 Límites: no existe demo pública (`ucrm-demo.ubnt.com` no responde), la app móvil UISP CRM ya no está en la App Store y no se usó ninguna instancia propia. La disposición actual (UISP 3.x) puede diferir de C20 en estilo y en el orden de las pestañas. Para confirmar un detalle antes de diseñar, la vía es una instancia de prueba (§13).
 
+> **Rev. 5 (2026-11-10):** la instancia real del ISP se observó y §15.9 **prevalece** sobre §15.2–§15.8 donde difieran. §15.8 marcó como «Ya alineado» o «Paridad» patrones que en la instancia real son distintos (composición de la ficha, densidad, página frente a diálogo); por eso la ficha no cambió tras la rev. 4.
+
 ### 15.2 Navegación global
 
 - **Riel lateral de íconos sin texto** (C20), en este orden: Panel, Clientes, Facturación, Pagos, Agenda, Tickets, Reportes; separador; Notificaciones, Ayuda y Configuración. En C18 el menú era expandido, con texto y submenús por grupo (Facturación, Red, Sistema).
@@ -584,6 +586,53 @@ Las filas «Adoptar» de la ficha (indicadores, documentos pendientes y valor he
 
 **Nota de vigencia de §10.** §10.3, §10.6 y §11 describen un estado anterior a MOD14: hoy existen pestaña Facturación, documentos de cobro, pagos y saldo a favor (publicados en `de0bcfa7`). Esta revisión no re-audita §10 completa. Antes de usar §10 para una decisión de facturación, contrastarla con el código vigente.
 
+### 15.9 Observación en la instancia real (rev. 5)
+
+**Evidencia C26:** UISP 3.x en producción del ISP, CRM en español, recorrido el 2026-11-10 en solo lectura con la sesión del usuario (no se guardó ni envió nada) y un export de cliente (`client-export`, 9 JSON + PDF + adjuntos) custodiado **fuera del repositorio** por contener PII. Esta sección no reproduce datos de suscriptores.
+
+**Cómo usa el ISP la herramienta.** UISP es el libro de cuenta y el CRM; no es el sistema completo:
+
+| Hecho | Consecuencia para iWana |
+|---|---|
+| Módulo de red sin gateway; corte automático apagado; retraso de corte 3 días y mínimo impago configurado | La red y los cambios de plan se operan en WispHub (bitácora y etiqueta lo citan). MOD13 y ADR-102 no se contrastan contra la red de UISP |
+| Facturación automática apagada; una vista previa acumula 25 meses | El cobro recurrente se dispara a mano |
+| PDF de factura sin CUFE, IVA ni resolución | Es cuenta de cobro; la factura DIAN se emite en Siigo. No es referencia fiscal |
+| Sin complementos ni webhooks | Siigo y WispHub se concilian a mano |
+| 69 etiquetas de color; 2 atributos (Estrato, Cédula, texto libre); 3 motivos de suspensión | Las etiquetas suplen funciones ausentes (tabla siguiente) |
+| Mapa con clientes geocodificados fuera de Colombia | Validar coordenadas al importar |
+
+**Etiquetas como síntoma.** Agrupadas por la función que suplen:
+
+| Grupo | Ejemplos | En iWana |
+|---|---|---|
+| IVA | EXENTO, EXCLUIDO, COMERCIAL IVA | Tratamiento de IVA por punto de servicio (ADR-093): **derivado** |
+| Facturación DIAN manual | FACTURAR EN SIIGO, ENVIAR FACTURA DE SIIGO, CLIENTE NO SIIGO | MOD14 + adaptador DIAN: **derivado** |
+| Datos incompletos | FALTA CÉDULA, FALTA CORREO, FALTA RECIBO DE LUZ, Falta coordenadas | Completitud fiscal y colas de la lista: **derivado** |
+| Cobranza | LLAMAR ANTES DE SUSPENDER, NO SUSPENDER, En riesgo, PAGO AUTOMÁTICO día N | Parte derivada (ciclo, deuda); parte es criterio del operador: **manual** |
+| Comercial | COTIZACIÓN, No hay viabilidad, informar cuando haya fibra | Expediente y cobertura: **derivado** |
+| Campo | Escalera larga, Tiene estabilizador, Equipos del usuario | Sin equivalente: **manual** |
+
+**Composición observada (corrige §15.3–§15.6):**
+
+| Pantalla | Patrón real |
+|---|---|
+| Ficha · encabezado | Migas «Clientes / nombre»; botón dividido «+▾» (Factura como acción principal; Presupuesto, Pago, Nota de crédito, Servicio, Documento, Ticket); archivar; descargar |
+| Ficha · pestañas | Vista general, Facturas, Proformas, Pagos, Notas de crédito, Devoluciones, Estado de cuenta, Documentos, Tickets. La acción del encabezado cambia con la pestaña («+ Factura», «+ Documento», «+ Ticket») |
+| Ficha · Vista general | Izquierda: saldo, crédito y pendiente → pago esperado y próximo día de facturación → Servicios (punto de estado, plan, conexión, precio, «+», **mapa dentro de la tarjeta**) → Registros (bitácora unificada con caja de nota, filtros por tipo, exportación CSV/PDF por fechas). Derecha: identidad (iniciales, nombre, lápiz, etiquetas, ID, correo, teléfonos, nota; «mostrar más» con el resto) → vista previa de la siguiente factura → Tareas → Tickets activos |
+| Estilo | Tarjetas blancas con borde fino, títulos en versalitas pequeñas, etiqueta gris a la izquierda y valor a la derecha, alta densidad, acciones como enlaces en mayúscula, vacíos con ícono y una frase |
+| Formularios de entidad (cliente, servicio, tarea, factura) | **Página completa**, una tarjeta de ~960 px en dos columnas, secciones plegables al final, Cancelar/Guardar arriba **y** abajo. Servicio: control segmentado Recurrente/Prepago, interruptor «usar la dirección del cliente», **vista previa en vivo de la primera factura** |
+| Acciones rápidas (pago, ticket, documento) | **Diálogo pequeño**, etiquetas a la izquierda, interruptor SÍ/NO con ayuda debajo, monto precargado con el saldo |
+| Detalle de documento (factura, pago, servicio) | Encabezado con estado, íconos de acción y un primario; dos columnas de tarjetas; secundarios plegables (vista previa del PDF, notas internas, registro de correos) |
+| Documentos | Filtro Todos/Documentos/Imágenes/Otros; columnas autor, plantilla, tamaño, visible para el cliente; «+ Documento» con **Subir** o **Crear desde plantilla** (el ISP no tiene plantillas) |
+| Estado de cuenta | Extracto calculado (fecha, elemento, facturado, pagos, saldo acumulado; pagos en verde, vencido en rojo con ícono, «Saldo actual»); filtro de periodo; PDF; «Enviar al cliente» |
+| Grillas | Pestañas con conteo, selección con contador, exportar, rango de fechas, columnas configurables y reordenables, **tarjeta de totales** |
+| Tickets | Bandeja dividida: filtros por estado como botones, lista con iniciales y resumen, conversación con línea de tiempo, comentario privado |
+| Ajustes | Pestañas horizontales; fila = etiqueta, control y ayuda gris debajo; interruptores, segmentados, unidades pegadas, avisos ámbar |
+
+**Export de cliente.** Estructura y huecos en la [spec de exportación e importación](../specs/2026-11-10-transversal-exportacion-importacion-suscriptor-uisp.md) §1.
+
+**Tratamiento.** Rige el principio **complementar sin retroceso**: se adopta composición, densidad, patrón página/diálogo, estado de cuenta, documentos y bitácora; no se adoptan los atajos (etiquetas manuales para datos que iWana calcula, cédula y estrato como texto). Especificado en la [spec de la ficha estilo UISP](../specs/2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md), que reemplaza las filas de §15.8 que contradice.
+
 ## 16. Fuentes
 
 ### Ubiquiti / UISP
@@ -621,3 +670,4 @@ Las filas «Adoptar» de la ficha (indicadores, documentos pendientes y valor he
 | 1.1 (rev. 2) | 2026-10-31 | Corrige el hallazgo de contactos: `contacts: []` es intencional por D-CONT (CTO, 2026-10-15), que reemplazó el plan A-BE6 de Fase 04. Registra la corrección de cotizaciones en la 360° y el hallazgo de que ningún flujo crea cotizaciones CRM |
 | 1.1 (rev. 3) | 2026-10-31 | Añade §5.4 (configuración de tiempos de facturación y corte, insumo de ADR-103) y el enlace a MOD14 en §11 |
 | 1.1 (rev. 4) | 2026-11-09 | Nueva §15 de interfaz y experiencia de usuario: navegación, página de detalle, resumen del cliente, formularios, grillas, agenda y autoservicio, con su evidencia y su contraste contra el portal. Añade la nota de vigencia de §10 tras MOD14. Fuentes pasa a §16 e Historial a §17 |
+| 1.1 (rev. 5) | 2026-11-10 | Nueva §15.9 con la instancia real del ISP (evidencia C26): uso real de la herramienta, etiquetas como síntoma, composición observada y export de cliente. Prevalece sobre §15.2–§15.8 donde difieran |

@@ -136,6 +136,7 @@ import { SubscriberDocumentNullWhenAnonymized1760000000176 } from './176_subscri
 import { PrivacyPqrRetentionAndNullStratum1770000000177 } from './177_privacy_pqr_retention_and_null_stratum';
 import { PrivacyErasureMonotonicLog1780000000178 } from './178_privacy_erasure_monotonic_log';
 import { RetentionExpiryLedger1790000000179 } from './179_retention_expiry_ledger';
+import { SubscriberNote1800000000180 } from './180_subscriber_note';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -353,6 +354,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   PrivacyPqrRetentionAndNullStratum1770000000177,
   PrivacyErasureMonotonicLog1780000000178,
   RetentionExpiryLedger1790000000179,
+  SubscriberNote1800000000180,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

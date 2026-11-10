@@ -6,6 +6,7 @@ import { ContractsController } from '../contracts/contracts.controller';
 import { ExpedientesController } from '../expedientes/expedientes.controller';
 import { SubscribersController } from '../subscribers/subscribers.controller';
 import { SubscriberTaxController } from '../subscribers/subscriber-tax.controller';
+import { SubscriberNotesController } from '../subscribers/notes/subscriber-notes.controller';
 
 const BLOCKED_TITULAR_METADATA = 'privacy:blocked-titular-guard';
 const MUTATION_METHODS = new Set([
@@ -55,6 +56,7 @@ describe('CRM blocked titular mutation guards', () => {
     const controllers = [
       SubscribersController,
       SubscriberTaxController,
+      SubscriberNotesController,
       ContractsController,
       ExpedientesController,
     ];
