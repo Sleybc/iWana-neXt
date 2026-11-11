@@ -137,3 +137,70 @@ describe('C-PRIV-API v1.0 — schemas compartidos de privacy', () => {
     ).toBe(false);
   });
 });
+
+describe('plantilla CONTRATO_SERVICIO (ADR-109, spec G2)', () => {
+  const contract = {
+    type: 'CONTRATO_SERVICIO',
+    version: '2026.1',
+    content: '<h1>Contrato</h1>',
+    format: 'HTML',
+    legalApprovalDeclaration: 'APROBADO_POR_ASESORIA_JURIDICA',
+  };
+
+  it('publica con la declaración y en HTML', () => {
+    expect(createLegalTextSchema.safeParse(contract).success).toBe(true);
+  });
+
+  it('sin declaración no publica', () => {
+    const rest: Record<string, unknown> = { ...contract };
+    delete rest.legalApprovalDeclaration;
+    expect(createLegalTextSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('no acepta datos del abogado ni otra declaración', () => {
+    expect(createLegalTextSchema.safeParse({ ...contract, lawyerName: 'X' }).success).toBe(false);
+    expect(
+      createLegalTextSchema.safeParse({ ...contract, legalApprovalDeclaration: 'SI' }).success,
+    ).toBe(false);
+  });
+
+  it('el contrato exige HTML y HTML solo vale para el contrato', () => {
+    expect(createLegalTextSchema.safeParse({ ...contract, format: 'MARKDOWN' }).success).toBe(
+      false,
+    );
+    expect(
+      createLegalTextSchema.safeParse({
+        type: 'AUTORIZACION',
+        version: '1',
+        content: '<p/>',
+        format: 'HTML',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('la vista registra usuario y fecha de la aprobación, sin datos del abogado', () => {
+    const view = {
+      id: '11111111-1111-4111-8111-111111111111',
+      type: 'CONTRATO_SERVICIO',
+      version: '2026.1',
+      sha256: 'a'.repeat(64),
+      content: '<h1>Contrato</h1>',
+      format: 'HTML',
+      publishedAt: '2026-11-11T15:00:00.000Z',
+      url: null,
+      isCurrent: true,
+      legalApproval: {
+        declaration: 'APROBADO_POR_ASESORIA_JURIDICA',
+        approvedByUserId: '22222222-2222-4222-8222-222222222222',
+        approvedAt: '2026-11-11T15:00:00.000Z',
+      },
+    };
+    expect(legalTextSchema.safeParse(view).success).toBe(true);
+    expect(
+      legalTextSchema.safeParse({
+        ...view,
+        legalApproval: { ...view.legalApproval, lawyerCard: '123' },
+      }).success,
+    ).toBe(false);
+  });
+});

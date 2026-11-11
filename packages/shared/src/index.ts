@@ -67,6 +67,7 @@ export * from './contracts/inventory/executor-custody';
 export * from './contracts/inventory';
 export * from './contracts/network';
 export * from './contracts/crm';
+export * from './contracts/organization';
 export * from './contracts/billing';
 
 // Operations

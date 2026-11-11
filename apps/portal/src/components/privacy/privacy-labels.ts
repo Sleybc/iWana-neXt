@@ -135,6 +135,7 @@ export const LEGAL_TEXT_TYPE_LABELS: Record<LegalTextType, string> = {
   POLITICA_TRATAMIENTO: 'Política de tratamiento de datos',
   AVISO_PRIVACIDAD: 'Aviso de privacidad',
   AUTORIZACION: 'Autorización para el uso de datos',
+  CONTRATO_SERVICIO: 'Contrato de servicio',
 };
 
 export function getLabel<T extends string>(

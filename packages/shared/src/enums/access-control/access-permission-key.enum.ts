@@ -42,6 +42,8 @@ export enum AccessPermissionKey {
   CRM_SUBSCRIBERS_DOCUMENT_READ = 'crm.subscribers.document.read',
   CRM_EXPEDIENTES_READ = 'crm.expedientes.read',
   CRM_EXPEDIENTES_MANAGE = 'crm.expedientes.manage',
+  /** Recibir el aviso diario de contratos pendientes de firma (spec cierre de venta G5; ADR-109 D3). */
+  CRM_CONTRACTS_PENDING_SIGNATURE_NOTIFY = 'crm.contracts.pending_signature.notify',
   COMMERCIAL_CATALOG_READ = 'commercial.catalog.read',
   COMMERCIAL_CATALOG_MANAGE = 'commercial.catalog.manage',
   ASSURANCE_TICKETS_READ = 'assurance.tickets.read',

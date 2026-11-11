@@ -33,6 +33,19 @@ export const COMMERCIAL_ACTIVATION_STATUSES = [
 ] as const;
 export type CommercialActivationStatus = (typeof COMMERCIAL_ACTIVATION_STATUSES)[number];
 
+/**
+ * Motivos de `BLOCKED` en la activación comercial. `CONTRACT_UNSIGNED` (ADR-109 D3): servicio
+ * aprovisionado con contrato sin firmar; no suspende el servicio.
+ */
+export const COMMERCIAL_ACTIVATION_BLOCK_REASONS = [
+  'NO_EXPEDIENTE',
+  'CONTACT_REQUIRED',
+  'FISCAL_INCOMPLETE',
+  'CONTRACT_UNSIGNED',
+] as const;
+export type CommercialActivationBlockReason = (typeof COMMERCIAL_ACTIVATION_BLOCK_REASONS)[number];
+export const CommercialActivationBlockReasonSchema = z.enum(COMMERCIAL_ACTIVATION_BLOCK_REASONS);
+
 const controlNameSchema = z
   .string()
   .trim()
