@@ -10,6 +10,7 @@ export const CONTRACT_AUTO_CREATION_FIELD_LABELS: Record<ContractAutoCreationMis
   {
     PLAN: 'Plan de la oportunidad',
     INSTALLATION_ADDRESS: 'Dirección del punto de servicio',
+    SERVICE_USAGE: 'Uso del servicio (tipo de persona, segmento y estrato)',
     CONTRACTUAL_AUTHORIZATION: 'Autorización de tratamiento contractual',
     ...FISCAL_MISSING_FIELD_LABELS,
   };

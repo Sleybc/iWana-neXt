@@ -12,10 +12,11 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, SelectQueryBuilder } from 'typeorm';
 import { z } from 'zod';
-import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { clampLimit } from '../../../common/pagination/clamp-limit';
 import { applySort } from '../../../common/pagination/apply-sort';
@@ -98,6 +99,7 @@ import {
 import { PlanCatalogReadPort } from '../../commercial/ports/plan-catalog-read.port';
 import { CrmSubscriberReadPort } from '../ports/crm-subscriber-read.port';
 import { CrmQuoteReadPort } from '../ports/crm-quote-read.port';
+import { ContractAutoCreationPort } from '../ports/contract-auto-creation.port';
 import { ANONYMIZED } from '../privacy-adapters/titular-erasure/titular-erasure-sql';
 import { titularAnonymizedConflict } from './guards/titular-anonymized-conflict';
 
@@ -339,6 +341,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
     @Optional()
     @Inject(CrmQuoteReadPort)
     private readonly crmQuoteReadPort?: CrmQuoteReadPort,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {
     const keys = loadPiiAesGcmKeyPair(this.configService);
     this.encryptionKey = keys.activeKey;
@@ -1016,6 +1019,7 @@ export class SubscribersService implements CrmSubscriberReadPort {
     actorId: string,
   ): Promise<Subscriber> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    let pendingAutoContractExpedienteId: string | null = null;
     await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const entity = await qr.manager.findOne(Subscriber, {
         where: { id, tenantId },
@@ -1192,6 +1196,9 @@ export class SubscribersService implements CrmSubscriberReadPort {
         entity.legalRepresentativeDisplayName = representative.identity.displayName;
       }
       await qr.manager.save(Subscriber, entity);
+      if (entity.contractAutoCreationIssue && entity.expedienteId) {
+        pendingAutoContractExpedienteId = entity.expedienteId;
+      }
     });
 
     this.logger.log(`Suscriptor actualizado: ${id} [actor: ${actorId}]`);
@@ -1208,7 +1215,32 @@ export class SubscribersService implements CrmSubscriberReadPort {
       isDiff: true,
     });
 
+    if (pendingAutoContractExpedienteId) {
+      await this.retryPendingAutoContract(id, pendingAutoContractExpedienteId, actorId);
+    }
+
     return this.findById(id);
+  }
+
+  /**
+   * Cierre de venta fase 2: con aviso de contrato automático pendiente, completar datos del
+   * suscriptor reintenta la creación (idempotente). El puerto se resuelve en ejecución porque
+   * ContractsModule importa SubscribersModule. Un fallo no revierte la actualización ya guardada.
+   */
+  private async retryPendingAutoContract(
+    subscriberId: string,
+    expedienteId: string,
+    actorId: string,
+  ): Promise<void> {
+    if (!this.moduleRef) return;
+    try {
+      const port = this.moduleRef.get(ContractAutoCreationPort, { strict: false });
+      await port.retryPendingForSubscriber({ subscriberId, expedienteId, actorId });
+    } catch (error) {
+      this.logger.warn(
+        `[contract-auto] Reintento del contrato automático fallido subscriber=${subscriberId} ${summarizeErrorForLog(error)}`,
+      );
+    }
   }
 
   /**

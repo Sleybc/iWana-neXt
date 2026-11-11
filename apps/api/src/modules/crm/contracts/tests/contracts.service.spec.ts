@@ -22,7 +22,7 @@ import {
   VatTreatment,
   type LifecycleTerminateCommand,
 } from '@iwana/shared';
-import { ContractsService } from '../contracts.service';
+import { ContractsService, deriveServiceUsage } from '../contracts.service';
 import { CONTRACT_PLAN_ID_MAX_LENGTH } from '../utils/contract-plan-id.util';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Contract } from '../entities/contract.entity';
@@ -221,7 +221,19 @@ function buildContract(overrides: Partial<Contract> = {}): Contract {
 
 describe('ContractsService', () => {
   let service: ContractsService;
-  const commercialCatalogPort = { getPlanById: jest.fn() };
+  const commercialCatalogPort = { getPlanById: jest.fn(), createSnapshot: jest.fn() };
+  const planSnapshotOf = (_tenantId: string, _schema: string, planId: string) => ({
+    planId,
+    name: 'Plan sintético',
+    downloadSpeed: 100,
+    uploadSpeed: 50,
+    technology: 'FTTH',
+    monthlyPrice: 80000,
+    installationFee: 50000,
+    vatConcept: VatConcept.INTERNET_ACCESS,
+    networkType: NetworkType.FIXED,
+    snapshotAt: new Date('2026-11-11T00:00:00Z'),
+  });
   const internetVatResolver = { resolve: jest.fn() };
   const auditService = { log: jest.fn(), logWithin: jest.fn().mockResolvedValue(undefined) };
   const mediaService = {
@@ -266,6 +278,9 @@ describe('ContractsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    commercialCatalogPort.createSnapshot.mockImplementation(
+      async (...args: [string, string, string]) => planSnapshotOf(...args),
+    );
     mockRunInTenantSchema.mockReset();
     mockLockedContractStatus = ContractStatus.DRAFT;
     mockLockedContractBillingCycleDay = 1;
@@ -1605,7 +1620,20 @@ describe('ContractsService', () => {
       await service.createFromExpediente('sub-1', {});
 
       expect(savedEntity.planId).toBe('plan-fibra-100');
-      expect(savedEntity.planSnapshotJson).toEqual({ id: 'plan-fibra-100', source: 'expediente' });
+      // D2: snapshot completo del catálogo (nombre, mensualidad, IVA), no solo el id.
+      expect(savedEntity.planSnapshotJson).toEqual({
+        planId: 'plan-fibra-100',
+        name: 'Plan sintético',
+        downloadSpeed: 100,
+        uploadSpeed: 50,
+        technology: 'FTTH',
+        monthlyPrice: 80000,
+        installationFee: 50000,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.FIXED,
+        snapshotAt: '2026-11-11T00:00:00.000Z',
+      });
+      expect(savedEntity.installationFee).toBe(50000);
     });
 
     it.each([
@@ -1708,6 +1736,108 @@ describe('ContractsService', () => {
         paymentMethod: 'TRANSFER',
         billingCycle: 'QUARTERLY',
         fiscalName: 'Titular del expediente',
+      });
+    });
+
+    it.each([
+      [
+        'NATURAL + RESIDENTIAL con estrato → RESIDENTIAL',
+        PersonType.NATURAL,
+        CustomerSegment.RESIDENTIAL,
+        2,
+        ServiceUsage.RESIDENTIAL,
+      ],
+      [
+        'NATURAL + CORPORATE → NON_RESIDENTIAL',
+        PersonType.NATURAL,
+        CustomerSegment.CORPORATE,
+        null,
+        ServiceUsage.NON_RESIDENTIAL,
+      ],
+      [
+        'NATURAL + PYME → NON_RESIDENTIAL',
+        PersonType.NATURAL,
+        CustomerSegment.PYME,
+        null,
+        ServiceUsage.NON_RESIDENTIAL,
+      ],
+      [
+        'RESIDENTIAL sin estrato del punto → sin uso (lo pide la firma)',
+        PersonType.NATURAL,
+        CustomerSegment.RESIDENTIAL,
+        null,
+        null,
+      ],
+    ])(
+      'D1: sin uso declarado lo deriva (ADR-093): %s',
+      async (_caso, personType, customerSegment, stratum, expected) => {
+        const subscriber = {
+          id: 'sub-1',
+          partyId: 'party-test-uuid',
+          expedienteId: 'exp-1',
+          address: 'Calle 12 #4-20',
+          customerSegment,
+          personType,
+          stratum: null,
+        };
+        const expediente = {
+          id: 'exp-1',
+          interestedPlanId: 'plan-1',
+          address: 'Calle 12 #4-20',
+          stratum,
+          customerSegment: null,
+        };
+        let savedData: Record<string, unknown> = {};
+        mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+          cb({
+            manager: {
+              findOne: jest
+                .fn()
+                .mockResolvedValueOnce(subscriber)
+                .mockResolvedValueOnce(expediente),
+              create: (_entity: unknown, data: Record<string, unknown>) => data,
+              save: async (_entity: unknown, data: Record<string, unknown>) => {
+                savedData = data;
+                return { ...data, id: 'ctr-derived' };
+              },
+            },
+          }),
+        );
+
+        await service.createFromExpediente('sub-1', {});
+
+        expect(savedData.serviceUsage).toBe(expected);
+        expect(savedData.planSnapshotJson).toMatchObject({
+          planId: 'plan-1',
+          monthlyPrice: 80000,
+        });
+      },
+    );
+
+    it('D2: plan sin tarifa vigente en el catálogo → 422 PLAN_PRICE_REQUIRED (no crea snapshot vacío)', async () => {
+      commercialCatalogPort.createSnapshot.mockRejectedValueOnce(
+        new NotFoundException('sin precio'),
+      );
+      mockRunInTenantSchema.mockImplementationOnce(async (_ds, _schema, cb) =>
+        cb({
+          manager: {
+            findOne: jest
+              .fn()
+              .mockResolvedValueOnce({
+                id: 'sub-1',
+                partyId: 'party-test-uuid',
+                expedienteId: 'exp-1',
+                personType: PersonType.NATURAL,
+                customerSegment: CustomerSegment.PYME,
+              })
+              .mockResolvedValueOnce({ id: 'exp-1', interestedPlanId: 'plan-1', address: 'X' }),
+            create: jest.fn(),
+            save: jest.fn(),
+          },
+        }),
+      );
+      await expect(service.createFromExpediente('sub-1', {})).rejects.toMatchObject({
+        response: { code: 'PLAN_PRICE_REQUIRED' },
       });
     });
 
@@ -3362,5 +3492,20 @@ describe('ContractsService', () => {
 
       await expect(transition(ContractStatus.ARCHIVED)).rejects.toThrow(NotFoundException);
     });
+  });
+});
+
+describe('deriveServiceUsage (ADR-093, regla del backfill 144)', () => {
+  it.each([
+    [PersonType.NATURAL, 'RESIDENTIAL', ServiceUsage.RESIDENTIAL],
+    [PersonType.NATURAL, 'PYME', ServiceUsage.NON_RESIDENTIAL],
+    [PersonType.JURIDICA, 'RESIDENTIAL', ServiceUsage.NON_RESIDENTIAL],
+    [PersonType.JURIDICA, 'CORPORATE', ServiceUsage.NON_RESIDENTIAL],
+    [null, 'RESIDENTIAL', null],
+    [PersonType.NATURAL, null, null],
+  ])('%s + %s → %s', (personType, segment, expected) => {
+    expect(
+      deriveServiceUsage(personType as PersonType | null, segment as CustomerSegment | null),
+    ).toBe(expected);
   });
 });

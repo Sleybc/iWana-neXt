@@ -258,6 +258,20 @@ describe('W0 F2 creación manual y activación manual — servicio', () => {
         {
           provide: CommercialCatalogReadPort,
           useValue: {
+            createSnapshot: jest
+              .fn()
+              .mockImplementation(async (_tenantId: string, _schema: string, planId: string) => ({
+                planId,
+                name: 'Plan sintético',
+                downloadSpeed: 100,
+                uploadSpeed: 50,
+                technology: 'FTTH',
+                monthlyPrice: 80000,
+                installationFee: 50000,
+                vatConcept: VatConcept.INTERNET_ACCESS,
+                networkType: NetworkType.FIXED,
+                snapshotAt: new Date('2026-11-11T00:00:00Z'),
+              })),
             getPlanById: jest.fn().mockResolvedValue({
               id: 'plan-w0f2',
               vatConcept: VatConcept.INTERNET_ACCESS,

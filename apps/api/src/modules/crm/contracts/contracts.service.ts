@@ -42,6 +42,7 @@ import {
   type LifecycleTerminateCommand,
   type ContractAutoCreationIssue,
   type ContractAutoCreationMissingField,
+  CONTRACT_AUTO_CREATION_MISSING_FIELDS,
 } from '@iwana/shared';
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
@@ -65,7 +66,10 @@ import { ContractStatus } from '../enums/contract-status.enum';
 import { ExpedienteRecord } from '../expedientes/entities/expediente-record.entity';
 import { Subscriber } from '../subscribers/entities/subscriber.entity';
 import { IInternetVatResolverPort } from '../../taxation/ports/internet-vat-resolver.port';
-import { CommercialCatalogReadPort } from '../../commercial/ports/commercial-catalog-read.port';
+import {
+  CommercialCatalogReadPort,
+  type CommercialItemSnapshot,
+} from '../../commercial/ports/commercial-catalog-read.port';
 import { AuditService } from '../../audit/audit.service';
 import type { AuditEntryInput } from '../../audit/interfaces/audit-entry.interface';
 import { MediaService } from '../../media/media.service';
@@ -140,6 +144,28 @@ export type ContractAutoCreationOutcome =
   | { outcome: 'CREATED'; contract: Contract }
   | { outcome: 'EXISTING'; contract: null }
   | { outcome: 'MISSING_DATA'; contract: null; issue: ContractAutoCreationIssue };
+
+/**
+ * Uso del servicio derivado (ADR-093, misma regla que el backfill de la migración 144):
+ * RESIDENTIAL solo si la persona es NATURAL y el segmento RESIDENTIAL; NON_RESIDENTIAL en otro
+ * caso. Sin tipo de persona o sin segmento no se deriva (null).
+ */
+export function deriveServiceUsage(
+  personType: PersonType | null | undefined,
+  segment: CustomerSegment | null | undefined,
+): ServiceUsage | null {
+  if (!personType || !segment) return null;
+  return personType === PersonType.NATURAL && segment === ('RESIDENTIAL' as CustomerSegment)
+    ? ServiceUsage.RESIDENTIAL
+    : ServiceUsage.NON_RESIDENTIAL;
+}
+
+function sortMissingFields(
+  missing: ContractAutoCreationMissingField[],
+): ContractAutoCreationMissingField[] {
+  const unique = new Set(missing);
+  return CONTRACT_AUTO_CREATION_MISSING_FIELDS.filter((field) => unique.has(field));
+}
 
 function isUniqueViolation(error: unknown): boolean {
   const candidate = error as { code?: string; driverError?: { code?: string } };
@@ -364,6 +390,7 @@ export class ContractsService {
             department: true,
             postalCode: true,
             customerSegment: true,
+            stratum: true,
           },
         );
         await this.assertSubscriberNotBlocked(
@@ -406,32 +433,13 @@ export class ContractsService {
           throw new NotFoundException(`Expediente ${expedienteId} no encontrado.`);
         }
         await this.hydrateExpedienteFiscalDocument(qr.manager, expediente);
-        let automaticCycleDay: number | null = null;
-        if (automatic) {
-          const missing = await this.collectAutomaticCreationMissing(
-            qr.manager,
-            subscriber,
-            expediente,
-          );
-          if (missing.length > 0) {
-            const issue: ContractAutoCreationIssue = {
-              reason: 'MISSING_DATA',
-              missing,
-              detectedAt: new Date().toISOString(),
-            };
-            await qr.query(
-              `UPDATE subscribers SET contract_auto_creation_issue = $3::jsonb
-              WHERE id = $1 AND tenant_id = $2`,
-              [subscriberId, tenantId, JSON.stringify(issue)],
+        const normalizedPlanId = normalizeContractPlanId(expediente.interestedPlanId);
+        const planId = automatic
+          ? normalizedPlanId
+          : this._requirePlanId(
+              expediente.interestedPlanId,
+              'El expediente no tiene un plan de interés registrado. Crea el contrato de forma directa.',
             );
-            return { outcome: 'MISSING_DATA', contract: null, issue };
-          }
-          automaticCycleDay = await this.resolveExpedienteCycleDay(qr, expediente.billingCycle);
-        }
-        const planId = this._requirePlanId(
-          expediente.interestedPlanId,
-          'El expediente no tiene un plan de interés registrado. Crea el contrato de forma directa.',
-        );
 
         // Dirección de instalación: prioridad DTO → expediente → subscriber
         const installationAddress =
@@ -444,35 +452,82 @@ export class ContractsService {
           dto.installationPostalCode ?? expediente.postalCode ?? subscriber.postalCode ?? null;
 
         const expedienteAddress = expediente.address?.trim() ?? '';
+        const subscriberAddress = subscriber.address?.trim() ?? '';
         const resolvedInstallationAddress = installationAddress?.trim() ?? '';
         const sameInstallationPoint =
           expedienteAddress.length > 0 && expedienteAddress === resolvedInstallationAddress;
-        const serviceUsage = dto.serviceUsage ?? null;
+        const subscriberInstallationPoint =
+          subscriberAddress.length > 0 && subscriberAddress === resolvedInstallationAddress;
+        const subscriberStratum = subscriberInstallationPoint ? (subscriber.stratum ?? null) : null;
         const installationStratum =
           dto.installationStratum !== undefined
             ? dto.installationStratum
             : sameInstallationPoint
-              ? expediente.stratum
-              : null;
+              ? (expediente.stratum ?? subscriberStratum)
+              : subscriberStratum;
+
+        const customerSegment =
+          dto.customerSegment ?? expediente.customerSegment ?? subscriber.customerSegment ?? null;
+        // Uso del servicio: lo declarado o, si no, la regla de ADR-093 (backfill de la 144).
+        // Un uso RESIDENTIAL derivado sin estrato del punto no se deriva: queda como faltante
+        // (automático) o sin uso hasta la firma (manual), nunca un residencial inválido.
+        const derivedUsage = deriveServiceUsage(subscriber.personType, customerSegment);
+        const serviceUsage =
+          dto.serviceUsage ??
+          (derivedUsage === ServiceUsage.RESIDENTIAL && installationStratum == null
+            ? null
+            : derivedUsage);
         if (serviceUsage === ServiceUsage.RESIDENTIAL) {
           this._validateServicePoint(serviceUsage, installationStratum, subscriber.personType);
         }
 
+        const planSnapshot = planId
+          ? await this.loadExpedientePlanSnapshot(qr.manager, planId, customerSegment)
+          : null;
+
+        let automaticCycleDay: number | null = null;
+        if (automatic) {
+          const missing = await this.collectAutomaticCreationMissing(
+            qr.manager,
+            subscriber,
+            expediente,
+          );
+          if (planId && !planSnapshot) missing.push('PLAN');
+          if (!serviceUsage) missing.push('SERVICE_USAGE');
+          if (missing.length > 0) {
+            const issue: ContractAutoCreationIssue = {
+              reason: 'MISSING_DATA',
+              missing: sortMissingFields(missing),
+              detectedAt: new Date().toISOString(),
+            };
+            await qr.query(
+              `UPDATE subscribers SET contract_auto_creation_issue = $3::jsonb
+              WHERE id = $1 AND tenant_id = $2`,
+              [subscriberId, tenantId, JSON.stringify(issue)],
+            );
+            return { outcome: 'MISSING_DATA', contract: null, issue };
+          }
+          automaticCycleDay = await this.resolveExpedienteCycleDay(qr, expediente.billingCycle);
+        }
+        if (!planId || !planSnapshot) {
+          throw new UnprocessableEntityException({
+            code: 'PLAN_PRICE_REQUIRED',
+            message:
+              'El plan de la oportunidad no está disponible o no tiene una tarifa vigente para el segmento del servicio.',
+          });
+        }
+
         const alias = dto.alias?.trim() || this._buildAlias(installationCity, installationAddress);
 
-        const customerSegment =
-          dto.customerSegment ?? expediente.customerSegment ?? subscriber.customerSegment ?? null;
-        const installationFee = await this.resolveInstallationFee(
-          qr.manager,
-          planId,
-          customerSegment,
-        );
         const entity = qr.manager.create(Contract, {
           tenantId,
           quoteId: null,
           subscriberId,
           planId,
-          planSnapshotJson: { id: planId, source: 'expediente' },
+          planSnapshotJson: {
+            ...planSnapshot,
+            snapshotAt: planSnapshot.snapshotAt.toISOString(),
+          },
           status: ContractStatus.DRAFT,
           alias,
           installationAddress: installationAddress ?? null,
@@ -491,7 +546,10 @@ export class ContractsService {
           billingCycle: dto.billingCycle ?? expediente.billingCycle ?? null,
           billingCycleDay: dto.billingCycleDay ?? automaticCycleDay,
           sourceExpedienteId: automatic?.expedienteId ?? null,
-          installationFee,
+          installationFee:
+            Number.isFinite(planSnapshot.installationFee) && planSnapshot.installationFee >= 0
+              ? round2Money(planSnapshot.installationFee)
+              : null,
           fiscalName: expediente.fiscalName ?? null,
           fiscalDocument: null,
           fiscalAddress: null,
@@ -1398,6 +1456,38 @@ export class ContractsService {
         : null;
     } catch (error) {
       if (error instanceof NotFoundException) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Snapshot completo del plan de la oportunidad (nombre, mensualidad, cargo de instalación,
+   * concepto IVA y red) leído del catálogo de MOD06 por su puerto, como en el cambio de plan.
+   * Null si el plan es un identificador heredado, no está activo o no tiene tarifa vigente.
+   */
+  private async loadExpedientePlanSnapshot(
+    manager: EntityManager,
+    planId: string,
+    segment: CustomerSegment | null,
+  ): Promise<CommercialItemSnapshot | null> {
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    try {
+      const snapshot = await this.commercialCatalogPort.createSnapshot(
+        tenantId,
+        schemaName,
+        planId,
+        segment ?? undefined,
+        { manager },
+      );
+      if (!snapshot || !Number.isFinite(snapshot.monthlyPrice) || snapshot.monthlyPrice < 0) {
+        return null;
+      }
+      return snapshot;
+    } catch (error) {
+      if (error instanceof NotFoundException) return null;
+      // Identificador heredado que no es UUID: el catálogo no lo puede tener.
+      const driverCode = (error as { driverError?: { code?: string } } | null)?.driverError?.code;
+      if (driverCode === '22P02') return null;
       throw error;
     }
   }

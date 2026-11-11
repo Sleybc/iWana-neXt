@@ -24,6 +24,7 @@ export const CONTRACT_AUTO_CREATION_MISSING_LABELS: Record<
 > = {
   PLAN: 'plan de la oportunidad',
   INSTALLATION_ADDRESS: 'dirección del punto de servicio',
+  SERVICE_USAGE: 'uso del servicio (tipo de persona, segmento y estrato del punto)',
   CONTRACTUAL_AUTHORIZATION: 'autorización de tratamiento contractual',
   VAT_RESPONSIBILITY: 'responsabilidad de IVA',
   RUT_RESPONSIBILITIES: 'responsabilidades del RUT',
@@ -108,6 +109,46 @@ export class ContractAutoCreationService implements ContractAutoCreationPort {
       },
     });
     await this.notifyOwner(subscriberId, expedienteId, result.issue);
+  }
+
+  async retryPendingForSubscriber(
+    request: ContractAutoCreationRequest,
+  ): Promise<'CREATED' | 'EXISTING' | 'MISSING_DATA' | 'SKIPPED'> {
+    const { subscriberId, expedienteId, actorId } = request;
+    let result: Awaited<ReturnType<ContractsService['createAutomaticFromExpediente']>>;
+    try {
+      result = await this.contractsService.createAutomaticFromExpediente(
+        subscriberId,
+        expedienteId,
+        actorId,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) {
+        this.logger.warn(
+          `[contract-auto] Reintento omitido expediente=${expedienteId} ${summarizeErrorForLog(error)}`,
+        );
+        return 'SKIPPED';
+      }
+      throw error;
+    }
+    if (result.outcome === 'CREATED') {
+      this.logger.log(
+        `[contract-auto] Contrato ${result.contract.id} creado al reintentar expediente ${expedienteId}`,
+      );
+    } else if (result.outcome === 'MISSING_DATA') {
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'Subscriber',
+        entityId: subscriberId,
+        userId: actorId,
+        newValue: {
+          contractAutoCreationIssue: { missing: result.issue.missing },
+          expedienteId,
+          retry: true,
+        },
+      });
+    }
+    return result.outcome;
   }
 
   /** Correo al responsable comercial de la oportunidad; un fallo no revierte el aviso. */

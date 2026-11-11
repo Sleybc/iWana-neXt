@@ -186,4 +186,55 @@ describe('ContractAutoCreationService', () => {
         'responsabilidades del RUT, dígito de verificación del NIT, representante legal.',
     );
   });
+  describe('retryPendingForSubscriber (reintento al completar datos)', () => {
+    it('crea el contrato y devuelve CREATED sin avisar ni auditar el aviso', async () => {
+      contracts.createAutomaticFromExpediente.mockResolvedValue({
+        outcome: 'CREATED',
+        contract: { id: 'ctr-1' },
+      });
+      await expect(service.retryPendingForSubscriber(REQUEST)).resolves.toBe('CREATED');
+      expect(contracts.createAutomaticFromExpediente).toHaveBeenCalledWith(
+        'sub-1',
+        'exp-1',
+        'actor-1',
+      );
+      expect(mailer.sendMail).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('si aún falta un dato audita el aviso actualizado y no reenvía correo', async () => {
+      contracts.createAutomaticFromExpediente.mockResolvedValue({
+        outcome: 'MISSING_DATA',
+        contract: null,
+        issue: ISSUE,
+      });
+      await expect(service.retryPendingForSubscriber(REQUEST)).resolves.toBe('MISSING_DATA');
+      expect(mailer.sendMail).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'Subscriber',
+          entityId: 'sub-1',
+          newValue: expect.objectContaining({
+            contractAutoCreationIssue: { missing: ['PLAN', 'VAT_RESPONSIBILITY'] },
+            retry: true,
+          }),
+        }),
+      );
+    });
+
+    it('un rechazo de negocio se omite (SKIPPED); un error inesperado se propaga', async () => {
+      contracts.createAutomaticFromExpediente.mockRejectedValueOnce(new ConflictException('x'));
+      await expect(service.retryPendingForSubscriber(REQUEST)).resolves.toBe('SKIPPED');
+      contracts.createAutomaticFromExpediente.mockRejectedValueOnce(new Error('db caída'));
+      await expect(service.retryPendingForSubscriber(REQUEST)).rejects.toThrow('db caída');
+    });
+
+    it('idempotente: con contrato existente devuelve EXISTING', async () => {
+      contracts.createAutomaticFromExpediente.mockResolvedValue({
+        outcome: 'EXISTING',
+        contract: null,
+      });
+      await expect(service.retryPendingForSubscriber(REQUEST)).resolves.toBe('EXISTING');
+    });
+  });
 });

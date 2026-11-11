@@ -229,6 +229,7 @@ export type ContractResponse = z.infer<typeof ContractResponseSchema>;
 export const CONTRACT_AUTO_CREATION_MISSING_FIELDS = [
   'PLAN',
   'INSTALLATION_ADDRESS',
+  'SERVICE_USAGE',
   'CONTRACTUAL_AUTHORIZATION',
   'VAT_RESPONSIBILITY',
   'RUT_RESPONSIBILITIES',

@@ -27,6 +27,7 @@ import { CatalogPriceHistory } from '../../../commercial/entities/catalog-price-
 import { PlanDetail } from '../../../commercial/entities/plan-detail.entity';
 import { ContractsService } from '../contracts.service';
 import { Contract } from '../entities/contract.entity';
+import { ContractPermanenceRecord } from '../entities/contract-permanence.entity';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
 import { SubscriberFiscalCompletenessService } from '../../subscribers/subscriber-fiscal-completeness.service';
@@ -127,6 +128,7 @@ describeWithDb('CRM · marcas de privacidad dentro de la transacción (PostgreSQ
     return [
       ...((dataSourceOptions.entities ?? []) as never[]),
       Contract,
+      ContractPermanenceRecord,
       Subscriber,
       AuditLog,
       MediaAsset,

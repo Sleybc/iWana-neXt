@@ -7,12 +7,16 @@
 // manual limpia el aviso.
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
+import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AuditLog, dataSourceOptions, runInTenantSchema, TenantContext } from '@iwana/db';
 import {
   CustomerSegment,
+  NetworkType,
   PersonType,
+  ServiceUsage,
   TaxRegime,
+  VatConcept,
   VatTreatment,
   type ContractAutoCreationIssue,
 } from '@iwana/shared';
@@ -45,7 +49,8 @@ import {
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const describeWithDb = dbAvailable ? describe : describe.skip;
 const integrationCryptoKeyHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-const PLAN_ID = 'plan-auto-integration';
+// Plan del catálogo (UUID) con tarifa vigente; el puerto de MOD06 se simula.
+const PLAN_ID = '7d3f6b1e-2c4a-4e8b-9f10-5a6b7c8d9e01';
 
 describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con PostgreSQL real', () => {
   let dataSource: DataSource;
@@ -71,11 +76,33 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
   const mailer = { sendMail: jest.fn().mockResolvedValue(undefined) };
   const userEmails = { emailOf: jest.fn().mockResolvedValue('responsable@example.test') };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const catalog = {
+    createSnapshot: jest.fn(async (_tenant: string, _schema: string, planId: string) => {
+      if (planId !== PLAN_ID) throw new NotFoundException('plan no encontrado');
+      return {
+        planId,
+        name: 'Fibra sintética 300',
+        downloadSpeed: 300,
+        uploadSpeed: 150,
+        technology: 'FTTH',
+        monthlyPrice: 95000,
+        installationFee: 60000,
+        vatConcept: VatConcept.INTERNET_ACCESS,
+        networkType: NetworkType.FIXED,
+        snapshotAt: new Date('2026-11-11T00:00:00Z'),
+      };
+    }),
+  };
 
   async function insertSale(input: {
     planId?: string | null;
     billingCycle?: string | null;
     authorized?: boolean;
+    segment?: CustomerSegment;
+    /** Estrato del expediente (el del suscriptor es siempre 3). */
+    stratum?: number | null;
+    subscriberAddress?: string;
+    vatResponsibility?: string | null;
   }): Promise<{ subscriberId: string; expedienteId: string }> {
     const subscriberId = randomUUID();
     const partyId = randomUUID();
@@ -87,7 +114,7 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
         `INSERT INTO expediente_records
            (id, tenant_id, full_name, interested_plan_id, created_by, address, stratum,
             billing_cycle, additional_service_ids, current_responsible_user_id)
-         VALUES ($1, $2, 'Expediente sintetico', $3, $4, 'Dirección sintética 1', 3, $5,
+         VALUES ($1, $2, 'Expediente sintetico', $3, $4, 'Dirección sintética 1', $7, $5,
                  '["svc-auto-1"]'::jsonb, $6)`,
         [
           expedienteId,
@@ -96,6 +123,7 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
           actorId,
           input.billingCycle ?? null,
           ownerId,
+          input.stratum === undefined ? 3 : input.stratum,
         ],
       );
       await qr.query(
@@ -107,7 +135,7 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
           'rut_responsibilities, address, created_by, expediente_id',
           ') VALUES (',
           "$1, $2, $3, $4, $5, 'CC', $6, 'Fixture', 'Automatico', 3, $6, $6, $7, $8,",
-          "'RESPONSABLE', ARRAY['O-13']::text[], 'Dirección sintética 1', $9, $10",
+          "$12, ARRAY['O-13']::text[], $11, $9, $10",
           ')',
         ].join('\n'),
         [
@@ -115,12 +143,14 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
           tenantId,
           partyId,
           PersonType.NATURAL,
-          CustomerSegment.RESIDENTIAL,
+          input.segment === undefined ? CustomerSegment.RESIDENTIAL : input.segment,
           'cifrado-' + tag,
           VatTreatment.STANDARD,
           TaxRegime.SIMPLIFIED,
           actorId,
           expedienteId,
+          input.subscriberAddress ?? 'Dirección sintética 1',
+          input.vatResponsibility === undefined ? 'RESPONSABLE' : input.vatResponsibility,
         ],
       );
     });
@@ -182,7 +212,7 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
     } as unknown as ConfigService;
     contracts = new ContractsService(
       dataSource,
-      { createSnapshot: jest.fn() } as unknown as CommercialCatalogReadPort,
+      catalog as unknown as CommercialCatalogReadPort,
       {} as IInternetVatResolverPort,
       audit as unknown as AuditService,
       {} as MediaService,
@@ -237,6 +267,18 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
       installationAddress: 'Dirección sintética 1',
       installationStratum: 3,
       additionalServiceIds: ['svc-auto-1'],
+      // D1: uso derivado (NATURAL + segmento RESIDENTIAL → RESIDENTIAL, ADR-093).
+      serviceUsage: ServiceUsage.RESIDENTIAL,
+      installationFee: 60000,
+    });
+    // D2: snapshot completo del plan, el que lee el primer cobro (nombre y mensualidad).
+    expect(rows[0]!.planSnapshotJson).toMatchObject({
+      planId: PLAN_ID,
+      name: 'Fibra sintética 300',
+      monthlyPrice: 95000,
+      installationFee: 60000,
+      vatConcept: VatConcept.INTERNET_ACCESS,
+      networkType: NetworkType.FIXED,
     });
     const read = await TenantContext.run(ctx(), () =>
       contracts.findOneForRead(rows[0]!.id, false, actorId),
@@ -370,5 +412,97 @@ describeWithDb('Contrato automático desde la oportunidad (fase 2, A+B) con Post
     ).resolves.toBeUndefined();
     expect(await liveContracts(subscriberId)).toHaveLength(0);
     expect(mailer.sendMail).not.toHaveBeenCalled();
+  });
+  it('D1: segmento no residencial → contrato con uso NON_RESIDENTIAL y sin estrato exigido', async () => {
+    const { subscriberId, expedienteId } = await insertSale({
+      billingCycle: '1',
+      segment: CustomerSegment.PYME,
+    });
+    await TenantContext.run(ctx(), () =>
+      autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
+    );
+    const rows = await liveContracts(subscriberId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.serviceUsage).toBe(ServiceUsage.NON_RESIDENTIAL);
+  });
+
+  it('D1: residencial sin estrato del punto de servicio → no crea y avisa SERVICE_USAGE (nunca contrato sin uso)', async () => {
+    const { subscriberId, expedienteId } = await insertSale({
+      billingCycle: '1',
+      stratum: null,
+      subscriberAddress: 'Otra dirección sintética 9',
+    });
+    await TenantContext.run(ctx(), () =>
+      autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
+    );
+    expect(await liveContracts(subscriberId)).toHaveLength(0);
+    expect(await issueOf(subscriberId)).toMatchObject({ missing: ['SERVICE_USAGE'] });
+  });
+
+  it('D1: expediente sin estrato en el mismo punto del suscriptor → hereda el estrato del suscriptor', async () => {
+    const { subscriberId, expedienteId } = await insertSale({ billingCycle: '1', stratum: null });
+    await TenantContext.run(ctx(), () =>
+      autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
+    );
+    const rows = await liveContracts(subscriberId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      serviceUsage: ServiceUsage.RESIDENTIAL,
+      installationStratum: 3,
+    });
+  });
+
+  it('D2: plan sin tarifa vigente en el catálogo → no crea y avisa PLAN', async () => {
+    const { subscriberId, expedienteId } = await insertSale({
+      planId: '00000000-0000-4000-8000-0000000000aa',
+    });
+    await TenantContext.run(ctx(), () =>
+      autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
+    );
+    expect(await liveContracts(subscriberId)).toHaveLength(0);
+    expect(await issueOf(subscriberId)).toMatchObject({ missing: ['PLAN'] });
+  });
+
+  it('reintento: completar el dato faltante crea el contrato (idempotente) y limpia el aviso; si aún falta, no reenvía correo', async () => {
+    const { subscriberId, expedienteId } = await insertSale({
+      billingCycle: '1',
+      vatResponsibility: null,
+    });
+    await TenantContext.run(ctx(), () =>
+      autoCreation.createForExpediente({ subscriberId, expedienteId, actorId }),
+    );
+    expect(await issueOf(subscriberId)).toMatchObject({ missing: ['VAT_RESPONSIBILITY'] });
+    expect(mailer.sendMail).toHaveBeenCalledTimes(1);
+
+    // Reintento sin completar: sigue el aviso y no hay segundo correo.
+    await expect(
+      TenantContext.run(ctx(), () =>
+        autoCreation.retryPendingForSubscriber({ subscriberId, expedienteId, actorId }),
+      ),
+    ).resolves.toBe('MISSING_DATA');
+    expect(mailer.sendMail).toHaveBeenCalledTimes(1);
+
+    await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query(`UPDATE subscribers SET vat_responsibility = 'RESPONSABLE' WHERE id = $1`, [
+        subscriberId,
+      ]),
+    );
+    await expect(
+      TenantContext.run(ctx(), () =>
+        autoCreation.retryPendingForSubscriber({ subscriberId, expedienteId, actorId }),
+      ),
+    ).resolves.toBe('CREATED');
+    await expect(
+      TenantContext.run(ctx(), () =>
+        autoCreation.retryPendingForSubscriber({ subscriberId, expedienteId, actorId }),
+      ),
+    ).resolves.toBe('EXISTING');
+    const rows = await liveContracts(subscriberId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      sourceExpedienteId: expedienteId,
+      serviceUsage: ServiceUsage.RESIDENTIAL,
+    });
+    expect(await issueOf(subscriberId)).toBeNull();
   });
 });

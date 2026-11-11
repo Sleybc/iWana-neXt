@@ -1207,6 +1207,63 @@ describe('SubscribersService', () => {
   // ── update ──
 
   describe('update', () => {
+    describe('reintento del contrato automático (cierre de venta fase 2)', () => {
+      const issue = {
+        reason: 'MISSING_DATA' as const,
+        missing: ['VAT_RESPONSIBILITY' as const],
+        detectedAt: '2026-11-11T00:00:00.000Z',
+      };
+      const port = { retryPendingForSubscriber: jest.fn() };
+      beforeEach(() => {
+        port.retryPendingForSubscriber.mockReset().mockResolvedValue('CREATED');
+        (service as unknown as { moduleRef: unknown }).moduleRef = { get: () => port };
+      });
+
+      it('con aviso pendiente y expediente, reintenta tras guardar los datos completados', async () => {
+        const existing = buildSubscriber({
+          vatResponsibility: null,
+          rutResponsibilities: [],
+          expedienteId: 'exp-1',
+          contractAutoCreationIssue: issue,
+        });
+        mockSave(existing);
+
+        await service.update(
+          existing.id,
+          { vatResponsibility: VatResponsibility.NO_RESPONSABLE },
+          'actor-1',
+        );
+
+        expect(port.retryPendingForSubscriber).toHaveBeenCalledWith({
+          subscriberId: existing.id,
+          expedienteId: 'exp-1',
+          actorId: 'actor-1',
+        });
+      });
+
+      it('sin aviso pendiente no reintenta', async () => {
+        const existing = buildSubscriber({
+          expedienteId: 'exp-1',
+          contractAutoCreationIssue: null,
+        });
+        mockSave(existing);
+        await service.update(existing.id, { phone: '3000000001' }, 'actor-1');
+        expect(port.retryPendingForSubscriber).not.toHaveBeenCalled();
+      });
+
+      it('un fallo del reintento no revierte la actualización ya guardada', async () => {
+        port.retryPendingForSubscriber.mockRejectedValue(new Error('caída'));
+        const existing = buildSubscriber({
+          expedienteId: 'exp-1',
+          contractAutoCreationIssue: issue,
+        });
+        mockSave(existing);
+        await expect(
+          service.update(existing.id, { phone: '3000000001' }, 'actor-1'),
+        ).resolves.toMatchObject({ id: existing.id });
+      });
+    });
+
     it('permite editar el teléfono de un responsable de IVA con RUT vacío', async () => {
       const existing = buildSubscriber({
         vatResponsibility: VatResponsibility.RESPONSABLE,
