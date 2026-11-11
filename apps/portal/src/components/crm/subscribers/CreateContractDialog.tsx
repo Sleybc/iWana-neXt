@@ -167,6 +167,8 @@ export function CreateContractForm({
   const [hasStratumEvidence, setHasStratumEvidence] = useState(false);
   const [pendingEvidenceFile, setPendingEvidenceFile] = useState<File | null>(null);
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+  // Cargo de instalación congelado en el borrador ya creado (fase 2, CA-6).
+  const [savedDraftInstallationFee, setSavedDraftInstallationFee] = useState<number | null>(null);
   const [evidenceUploadError, setEvidenceUploadError] = useState<string | null>(null);
   const [usageError, setUsageError] = useState<string | undefined>();
   const [stratumError, setStratumError] = useState<string | undefined>();
@@ -338,6 +340,7 @@ export function CreateContractForm({
 
       if (pendingEvidenceFile) {
         setSavedDraftId(created.id);
+        setSavedDraftInstallationFee(created.installationFee ?? null);
         try {
           const updated = await contractsApi.uploadStratumEvidence(created.id, pendingEvidenceFile);
           setHasStratumEvidence(Boolean(updated.stratumEvidenceMediaId));
@@ -671,6 +674,7 @@ export function CreateContractForm({
     <FirstChargePreview
       plan={form.selectedPlan}
       billingCycleDay={form.billingCycleDay ? Number(form.billingCycleDay) : null}
+      {...(savedDraftId ? { contractInstallationFee: savedDraftInstallationFee } : {})}
     />
   ) : null;
 

@@ -39,6 +39,8 @@ import {
 } from '@/components/shared/portal-ui';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { BillingCycleField } from './BillingCycleField';
+import { BillingCycleMissingNotice } from './contract-auto-creation-ui';
+import { formatBillingMoney } from '@/components/billing/billing-copy';
 import { useContractPlan } from './use-contract-plan';
 import { ChangeContractPlanDialog, ContractPlanSummary } from './ChangeContractPlanDialog';
 import { findBillingCycle, formatBillingDate } from './billing-cycle-ui';
@@ -949,7 +951,16 @@ export function ContractDetailView({
     >
       {!isEditing ? (
         <>
+          {currentContract.billingCycleMissing ? (
+            <BillingCycleMissingNotice className="sm:col-span-2" />
+          ) : null}
           <FieldC label="Método de pago" value={contract.paymentMethod} />
+          {currentContract.installationFee != null ? (
+            <FieldC
+              label="Instalación"
+              value={formatBillingMoney(currentContract.installationFee)}
+            />
+          ) : null}
           {currentContract.status === 'ACTIVE' ? (
             currentContract.billingCycleDay == null ? (
               <FieldC label="Ciclo de facturación" value="Sin ciclo de facturación" />

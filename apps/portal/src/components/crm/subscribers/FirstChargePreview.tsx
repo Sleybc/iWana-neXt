@@ -27,6 +27,12 @@ type PreviewState =
 interface FirstChargePreviewProps {
   plan: Pick<PlanCatalogItem, 'basePrice' | 'currentPrice' | 'installationFee'> | null;
   billingCycleDay: number | null;
+  /**
+   * Cargo de instalación congelado en el contrato (fase 2, CA-6). Si el contrato ya existe se
+   * pasa su `installationFee` (null = sin cargo) y reemplaza al del catálogo; `undefined` mientras
+   * el contrato no exista.
+   */
+  contractInstallationFee?: number | null;
 }
 
 /**
@@ -35,7 +41,11 @@ interface FirstChargePreviewProps {
  * elegido; el valor es el precio del plan, rotulado «Estimado». Sin el permiso de
  * lectura de facturación el bloque no se muestra.
  */
-export function FirstChargePreview({ plan, billingCycleDay }: FirstChargePreviewProps) {
+export function FirstChargePreview({
+  plan,
+  billingCycleDay,
+  contractInstallationFee,
+}: FirstChargePreviewProps) {
   const { hasPermission } = usePermissions();
   const canReadBilling = hasPermission(AccessPermissionKey.BILLING_INVOICES_READ);
   const ready = canReadBilling && plan !== null && billingCycleDay !== null;
@@ -59,6 +69,10 @@ export function FirstChargePreview({ plan, billingCycleDay }: FirstChargePreview
   if (!canReadBilling) return null;
 
   const price = plan ? (plan.currentPrice ?? plan.basePrice) : null;
+  const installationFee =
+    contractInstallationFee !== undefined
+      ? contractInstallationFee
+      : (plan?.installationFee ?? null);
   const cycle =
     state.status === 'ready'
       ? state.preview.cycles.find((item) => item.cycleDay === billingCycleDay)
@@ -124,9 +138,9 @@ export function FirstChargePreview({ plan, billingCycleDay }: FirstChargePreview
           <PortalFieldRow label="Valor mensual" mono empty={price == null}>
             {price == null ? null : formatBillingMoney(price)}
           </PortalFieldRow>
-          {plan && plan.installationFee > 0 ? (
+          {installationFee != null && installationFee > 0 ? (
             <PortalFieldRow label="Instalación" mono>
-              {formatBillingMoney(plan.installationFee)}
+              {formatBillingMoney(installationFee)}
             </PortalFieldRow>
           ) : null}
         </PortalFieldList>

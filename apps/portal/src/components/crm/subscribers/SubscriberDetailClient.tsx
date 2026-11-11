@@ -30,6 +30,11 @@ import { SubscriberDocumentsPanel } from './SubscriberDocumentsPanel';
 import { SubscriberSupportTab } from './SubscriberSupportTab';
 import { isDocumentNumberRestricted } from './subscriber-document-access';
 import { SubscriberTechnicalServiceSection } from './SubscriberTechnicalServiceSection';
+import {
+  ContractAutoCreationIssueNotice,
+  contractAutoCreationCompletionTab,
+} from './contract-auto-creation-ui';
+import { newContractHref } from './use-subscriber-360';
 
 interface SubscriberDetailClientProps {
   mode: 'create' | 'detail';
@@ -488,6 +493,22 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               registerActions={registerActions}
             />
           </div>
+
+          {subscriber.contractAutoCreationIssue ? (
+            <ContractAutoCreationIssueNotice
+              issue={subscriber.contractAutoCreationIssue}
+              onCompleteData={() =>
+                selectSubscriberTab(
+                  contractAutoCreationCompletionTab(
+                    subscriber.contractAutoCreationIssue?.missing ?? [],
+                  ),
+                )
+              }
+              createContractHref={
+                canManageSubscribers && !anonymized ? newContractHref(subscriber.id) : null
+              }
+            />
+          ) : null}
 
           <div>
             <SubscriberTabsContainer

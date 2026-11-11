@@ -1,5 +1,5 @@
 import { BILLING_BLOCKED_BUYER_DISPLAY_NAME } from '@iwana/shared';
-import type { BillingPeriodPaymentState } from '@iwana/shared';
+import type { BillingDocumentLineKind, BillingPeriodPaymentState } from '@iwana/shared';
 import type { BadgeProps } from '@iwana/ui';
 
 export const PAYMENT_STATES = {
@@ -23,6 +23,14 @@ export const PAYMENT_METHODS = {
   DATAFONO: 'Datáfono / Tarjeta',
   OTRO: 'Otro medio',
 } as const;
+
+/** Tipo de línea del documento de cobro (fase 2: la instalación va en el primer cobro). */
+export const DOCUMENT_LINE_KINDS = {
+  PLAN: 'Plan',
+  ADICIONAL: 'Adicional',
+  PRORRATEO: 'Prorrateo',
+  INSTALACION: 'Instalación',
+} satisfies Record<BillingDocumentLineKind, string>;
 
 export const DOCUMENT_VOID_REASONS = {
   ERROR_DE_VALOR: 'Error en el valor facturado',

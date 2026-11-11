@@ -28,6 +28,7 @@ import { privacyDisplayValue } from '@/components/privacy/privacy-display';
 import { formatLifecycleDate, lifecycleReasonLabel } from './subscriber-lifecycle-ui';
 import { findBillingCycle, formatBillingDate } from './billing-cycle-ui';
 import { useContractPlan } from './use-contract-plan';
+import { BillingCycleMissingNotice } from './contract-auto-creation-ui';
 import {
   PortalSkeletonBlock,
   portalInlineTextLinkClassName,
@@ -332,6 +333,7 @@ export function ContractCard({
               Pendiente de activar
             </p>
           )}
+          {contract.billingCycleMissing && <BillingCycleMissingNotice className="sm:col-span-2" />}
         </div>
       )}
 

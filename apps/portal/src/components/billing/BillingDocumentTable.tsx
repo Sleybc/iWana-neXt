@@ -16,6 +16,7 @@ import { downloadBillingDocumentPdf } from './billing-document-pdf';
 import {
   additionalNotice,
   BLOCKING_REASONS,
+  DOCUMENT_LINE_KINDS,
   DOCUMENT_STATES,
   DOCUMENT_VOID_REASONS,
   formatBillingMoney,
@@ -249,10 +250,14 @@ function BillingDocumentDetail({ id, onClose }: { id: string; onClose: () => voi
           </dl>
           {data.lines?.length ? (
             <BillingTable
-              columns={['Concepto', 'Total']}
+              columns={['Tipo', 'Concepto', 'Total']}
               rows={data.lines.map((line) => ({
                 id: line.id,
-                cells: [line.description, formatBillingMoney(line.total)],
+                cells: [
+                  DOCUMENT_LINE_KINDS[line.kind],
+                  line.description,
+                  formatBillingMoney(line.total),
+                ],
               }))}
             />
           ) : null}

@@ -13,6 +13,7 @@ import {
 import { ApiError } from '@/lib/api-client';
 import { PORTAL_DOCUMENT_TYPE_LABELS } from '@/lib/user-labels';
 import { OPERATOR_CONTRACT_FIELD_LABELS } from '@/components/settings/OperatorContractProfileSection';
+import { BILLING_CYCLE_MISSING_COPY } from '@/components/crm/subscribers/contract-auto-creation-ui';
 
 /** Contrato de la OT que el panel de aprovisionamiento resolvió para el paso. */
 export interface ExecutionOrderContractContext {
@@ -25,6 +26,8 @@ export interface ExecutionOrderContractContext {
   provisioningStatus: ServiceProvisioningStatus | null;
   /** Documento del titular para precargar quien firma (solo contrato sin firma); editable. */
   holderDocument?: { type: string | null; number: string | null };
+  /** Contrato en borrador sin ciclo de facturación: la firma responde 409 (fase 2, CA-2). */
+  billingCycleMissing?: boolean;
 }
 
 /** Vista reducida del técnico más el contrato de la OT que publica CRM. */
@@ -253,6 +256,8 @@ export function contractStepError(error: unknown): ContractStepError {
           message:
             'El contrato cambió desde que se mostró. Genéralo de nuevo y léelo con el cliente.',
         };
+      case 'BILLING_CYCLE_REQUIRED':
+        return { kind: 'final', message: BILLING_CYCLE_MISSING_COPY.reason };
       case 'IDEMPOTENCY_KEY_REUSED':
         return {
           kind: 'retry',

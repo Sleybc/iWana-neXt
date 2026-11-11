@@ -138,3 +138,28 @@ describe('BillingDocumentTable (CA-UX-FAC-05, 07, 13)', () => {
     );
   });
 });
+
+describe('BillingDocumentTable — línea de instalación (fase 2, CA-4/CA-5)', () => {
+  it('muestra el tipo «Instalación» y el descuento por permanencia de la descripción', async () => {
+    const line = {
+      id: '66666666-6666-4666-8666-666666666666',
+      documentId: BASE.id,
+      kind: 'INSTALACION' as const,
+      description: 'Instalación (cargo $ 120.000, descuento por permanencia $ 120.000)',
+      quantity: '1.0000',
+      unitPrice: '120000.00',
+      baseAmount: '0.00',
+      taxAmount: '0.00',
+      total: '0.00',
+      vatTreatment: 'GRAVADO',
+      vatRate: '19.0000',
+      position: 1,
+    };
+    mockDocument.mockResolvedValue({ ...BASE, lines: [line] });
+    renderTable([BASE]);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    expect(await screen.findByText('Instalación')).toBeInTheDocument();
+    expect(screen.getByText(/descuento por permanencia/)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Tipo' })).toBeInTheDocument();
+  });
+});

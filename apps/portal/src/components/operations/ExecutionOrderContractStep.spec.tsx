@@ -12,6 +12,7 @@ import { ExecutionOrderContractStep } from './ExecutionOrderContractStep';
 import {
   CONTRACT_STEP_COPY,
   contractGenerationPollDelay,
+  contractStepError,
   contractStepDisabledReason,
   resolveExecutionOrderContract,
   signerDocumentTypeFrom,
@@ -462,5 +463,44 @@ describe('paso «Contrato» — firma', () => {
     expect(screen.getByRole('heading', { name: 'Contrato firmado' })).toBeInTheDocument();
     expect(api.getLatestGeneration).not.toHaveBeenCalled();
     expect(api.getDocument).not.toHaveBeenCalled();
+  });
+});
+
+describe('paso «Contrato» — falta ciclo de facturación (fase 2, CA-2)', () => {
+  beforeEach(() => {
+    api.getLatestGeneration.mockResolvedValue(READY);
+  });
+
+  it('un 409 BILLING_CYCLE_REQUIRED muestra el motivo y deshabilita la firma', async () => {
+    const user = userEvent.setup();
+    api.sign.mockRejectedValue(new ApiError(409, 'BILLING_CYCLE_REQUIRED', 'x'));
+    renderStep();
+
+    await screen.findByTitle('Contrato para leer con el cliente');
+    await signWithDocument(user);
+
+    expect(await screen.findByText('Falta ciclo de facturación')).toBeInTheDocument();
+    expect(
+      screen.getByText('Asigna el ciclo de facturación del contrato antes de firmarlo.'),
+    ).toBeInTheDocument();
+    const capture = screen.getByRole('group', { name: 'Captura de firma del contrato' });
+    expect(within(capture).getByRole('button', { name: 'Firmar contrato' })).toBeDisabled();
+    expect(api.sign).toHaveBeenCalledTimes(1);
+  });
+
+  it('con el contrato marcado sin ciclo la firma nace deshabilitada', async () => {
+    renderStep({ contract: { ...CONTRACT, billingCycleMissing: true } });
+
+    await screen.findByTitle('Contrato para leer con el cliente');
+    expect(screen.getByText('Falta ciclo de facturación')).toBeInTheDocument();
+    const capture = screen.getByRole('group', { name: 'Captura de firma del contrato' });
+    expect(within(capture).getByRole('button', { name: 'Firmar contrato' })).toBeDisabled();
+  });
+
+  it('traduce BILLING_CYCLE_REQUIRED a un motivo sin salida desde la consola', () => {
+    expect(contractStepError(new ApiError(409, 'BILLING_CYCLE_REQUIRED', 'x'))).toEqual({
+      kind: 'final',
+      message: 'Asigna el ciclo de facturación del contrato antes de firmarlo.',
+    });
   });
 });

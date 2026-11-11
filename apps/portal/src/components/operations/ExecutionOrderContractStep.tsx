@@ -10,7 +10,8 @@ import {
 } from '@iwana/shared';
 import { Badge, Button, Input, Select } from '@iwana/ui';
 import { PortalAlert } from '@/components/shared/portal-ui';
-import { contractSigningApi } from '@/lib/api-client';
+import { ApiError, contractSigningApi } from '@/lib/api-client';
+import { BillingCycleMissingNotice } from '@/components/crm/subscribers/contract-auto-creation-ui';
 import { ensureIdempotencyKey } from '@/lib/idempotency-key';
 import { ExecutionOrderSignatureCapture } from './ExecutionOrderSignatureCapture';
 import {
@@ -107,6 +108,8 @@ export function ExecutionOrderContractStep({
   const [signerErrors, setSignerErrors] = useState<SignerErrors>({});
   const [signing, setSigning] = useState(false);
   const [announcement, setAnnouncement] = useState('');
+  // Sin ciclo la firma responde 409 BILLING_CYCLE_REQUIRED (fase 2, CA-2): se bloquea con motivo.
+  const [cycleMissing, setCycleMissing] = useState(contract.billingCycleMissing === true);
   const mounted = useRef(true);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idempotencyKey = useRef<string | null>(null);
@@ -359,6 +362,12 @@ export function ExecutionOrderContractStep({
         idempotencyKey.current = null;
         attemptFingerprint.current = null;
       }
+      if (caught instanceof ApiError && caught.code === 'BILLING_CYCLE_REQUIRED') {
+        // El aviso «Falta ciclo de facturación» explica el bloqueo; no se duplica como error.
+        setCycleMissing(true);
+        setAnnouncement('');
+        return false;
+      }
       handleError(caught);
       return false;
     } finally {
@@ -413,6 +422,7 @@ export function ExecutionOrderContractStep({
         <p className="text-sm text-gray-600 dark:text-gray-300">{disabledReason}</p>
       ) : (
         <div className="space-y-3">
+          {cycleMissing ? <BillingCycleMissingNotice announce /> : null}
           {error ? (
             <PortalAlert
               variant="error"
@@ -568,7 +578,7 @@ export function ExecutionOrderContractStep({
                 label="Captura de firma del contrato"
                 instructions={COPY.signatureInstructions}
                 saveLabel={COPY.sign}
-                disabled={signing || documentUrl === null}
+                disabled={signing || documentUrl === null || cycleMissing}
                 onSave={sign}
               />
             </div>
