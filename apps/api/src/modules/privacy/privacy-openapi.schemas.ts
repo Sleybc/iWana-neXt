@@ -1,5 +1,11 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
-import { ConsentChannel, erasureCategorySchema } from '@iwana/shared';
+import {
+  ConsentChannel,
+  LEGAL_APPROVAL_DECLARATION,
+  erasureCategorySchema,
+  legalTextFormatSchema,
+  legalTextTypeSchema,
+} from '@iwana/shared';
 
 const uuid: SchemaObject = { type: 'string', format: 'uuid' };
 const timestamp: SchemaObject = { type: 'string', format: 'date-time' };
@@ -39,7 +45,12 @@ export const updatePurposeSettingsRequestSchema = objectSchema(
 
 const legalTextType = {
   type: 'string',
-  enum: ['POLITICA_TRATAMIENTO', 'AVISO_PRIVACIDAD', 'AUTORIZACION'],
+  enum: [...legalTextTypeSchema.options],
+} satisfies SchemaObject;
+
+const legalTextFormat = {
+  type: 'string',
+  enum: [...legalTextFormatSchema.options],
 } satisfies SchemaObject;
 
 export const createAuthorizationRequestSchema = objectSchema(
@@ -93,8 +104,15 @@ export const createLegalTextRequestSchema = objectSchema(
     type: legalTextType,
     version: { type: 'string', minLength: 1, maxLength: 32 },
     content: { type: 'string', minLength: 1, maxLength: 200_000 },
-    format: { type: 'string', enum: ['PLAIN', 'MARKDOWN'], default: 'PLAIN' },
+    format: { ...legalTextFormat, default: 'PLAIN' },
     url: nullableUri,
+    legalApprovalDeclaration: {
+      type: 'string',
+      enum: [LEGAL_APPROVAL_DECLARATION],
+      description:
+        'Obligatoria para CONTRATO_SERVICIO (HTML): declara que asesoría jurídica aprobó el texto. ' +
+        'Quién publica y cuándo los registra el servidor.',
+    },
   },
   ['type', 'version', 'content'],
 );
@@ -106,10 +124,21 @@ const legalText = objectSchema(
     version: { type: 'string' },
     sha256: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
     content: { type: 'string' },
-    format: { type: 'string', enum: ['PLAIN', 'MARKDOWN'] },
+    format: legalTextFormat,
     publishedAt: timestamp,
     url: nullableUri,
     isCurrent: { type: 'boolean' },
+    legalApproval: {
+      ...objectSchema(
+        {
+          declaration: { type: 'string', enum: [LEGAL_APPROVAL_DECLARATION] },
+          approvedByUserId: uuid,
+          approvedAt: timestamp,
+        },
+        ['declaration', 'approvedByUserId', 'approvedAt'],
+      ),
+      nullable: true,
+    },
   },
   ['id', 'type', 'version', 'sha256', 'content', 'format', 'publishedAt', 'url', 'isCurrent'],
 );

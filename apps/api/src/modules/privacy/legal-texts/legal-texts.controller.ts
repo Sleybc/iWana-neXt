@@ -21,6 +21,7 @@ import {
   createLegalTextSchema,
   currentLegalTextQuerySchema,
   legalTextSchema,
+  legalTextTypeSchema,
 } from '@iwana/shared';
 import { Permissions } from '../../access-control/decorators/permissions.decorator';
 import { PermissionsGuard } from '../../access-control/guards/permissions.guard';
@@ -29,6 +30,8 @@ import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { LegalTextsService } from './legal-texts.service';
 import {
@@ -51,7 +54,7 @@ export class LegalTextsController {
   @ApiQuery({
     name: 'type',
     required: true,
-    enum: ['POLITICA_TRATAMIENTO', 'AVISO_PRIVACIDAD', 'AUTORIZACION'],
+    enum: [...legalTextTypeSchema.options],
   })
   @ApiOkResponse({ description: 'Texto legal vigente.', schema: currentLegalTextResponseSchema })
   @ApiBadRequestResponse({ description: 'El tipo de texto no cumple el contrato.' })
@@ -91,12 +94,19 @@ export class LegalTextsController {
   @ApiOperation({ summary: 'Publicar una nueva versión de texto legal' })
   @ApiBody({ schema: createLegalTextRequestSchema })
   @ApiCreatedResponse({ description: 'Nueva versión publicada.', schema: legalTextResponseSchema })
-  @ApiBadRequestResponse({ description: 'El cuerpo no cumple el contrato de texto legal.' })
+  @ApiBadRequestResponse({
+    description:
+      'El cuerpo no cumple el contrato de texto legal, falta la declaración de aprobación ' +
+      'jurídica del contrato o el HTML contiene construcciones activas.',
+  })
   @ApiConflictResponse({ description: 'Ya existe esa versión para el tipo de texto.' })
   @ApiUnauthorizedResponse({ description: 'La sesión no es válida.' })
   @ApiForbiddenResponse({ description: 'El rol o permiso no permite esta acción.' })
-  async create(@Body(new ZodValidationPipe(createLegalTextSchema)) dto: CreateLegalText) {
-    const data = await this.legalTextsService.create(dto);
+  async create(
+    @Body(new ZodValidationPipe(createLegalTextSchema)) dto: CreateLegalText,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.legalTextsService.create(dto, { userId: user.sub });
     return { data: legalTextSchema.parse(data) };
   }
 }

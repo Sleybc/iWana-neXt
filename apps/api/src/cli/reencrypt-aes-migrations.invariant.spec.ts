@@ -200,6 +200,9 @@ const PII_KEY_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
     'subscriber_contacts.email_encrypted',
     'subscriber_contacts.phone_encrypted',
   ],
+  'apps/api/src/modules/crm/contracts/documents/contract-document-generation.service.ts': [
+    'contract_document_generations.snapshot_encrypted',
+  ],
   'apps/api/src/modules/crm/expedientes/expediente.service.ts': [
     'expediente_records.document_number_encrypted',
     'expediente_records.phone_primary_encrypted',

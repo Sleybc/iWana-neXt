@@ -34,6 +34,27 @@ export class PlanDetail {
   })
   installationRule: InstallationRule;
 
+  /** Cargo por conexión del plan (bloque H). */
+  @Column({ type: 'numeric', precision: 14, scale: 2, name: 'connection_fee', default: '0' })
+  connectionFee: string;
+
+  @Column({ type: 'boolean', name: 'offers_permanence', default: false })
+  offersPermanence: boolean;
+
+  /** 1..12 si ofrece permanencia; NULL si no (CHECK en la 183). */
+  @Column({ type: 'smallint', name: 'permanence_months', nullable: true })
+  permanenceMonths: number | null;
+
+  /** 0 < valor ≤ cargo por conexión si ofrece permanencia; NULL si no. */
+  @Column({
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    name: 'permanence_discounted_amount',
+    nullable: true,
+  })
+  permanenceDiscountedAmount: string | null;
+
   @OneToOne(() => CatalogItem, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'item_id' })
   item: CatalogItem;

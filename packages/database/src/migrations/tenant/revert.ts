@@ -62,6 +62,9 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'CreateNetworkProvisioning1610000000000',
   'CreateRouterInterfacesAndIpv4Addresses1650000000000',
   'SubscriberNote1800000000180',
+  'OperatorContractProfile1840000000184',
+  'LegalTextContractTemplate1850000000185',
+  'ContractDocumentGenerations1860000000186',
 ];
 
 /** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */

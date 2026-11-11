@@ -16,9 +16,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CatalogController } from './controllers/catalog.controller';
 import { CatalogService } from './services/catalog.service';
 import { PriceHistoryService } from './services/price-history.service';
+import { PlanPermanenceService } from './services/plan-permanence.service';
 
 type TenantCtx = { tenantId: string; schemaName: string };
 
+const planPermanenceServiceMock = { getOfferOrThrow: jest.fn(), updateOffer: jest.fn() };
 const schemaCalls: string[] = [];
 let activeTenantContext: TenantCtx = { tenantId: 'tenant-a-id', schemaName: 'tenant_a' };
 
@@ -271,6 +273,7 @@ describe('CatalogController tenant isolation', () => {
         { provide: DataSource, useValue: {} },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: PriceHistoryService, useValue: priceHistoryServiceMock },
+        { provide: PlanPermanenceService, useValue: planPermanenceServiceMock },
         JwtAuthGuard,
         RolesGuard,
       ],

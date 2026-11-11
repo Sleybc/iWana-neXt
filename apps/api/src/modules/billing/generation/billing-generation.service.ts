@@ -82,6 +82,17 @@ function previousPeriodStart(cycleDay: number, periodStart: string): string {
     : computeBillingPeriod(cycleDay, year, month - 1).periodStart;
 }
 
+/** Periodo del ciclo que contiene la fecha civil `date` (día de ciclo 1-28). */
+export function periodContaining(cycleDay: number, date: string) {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+  if (day >= cycleDay) return computeBillingPeriod(cycleDay, year, month);
+  return month === 1
+    ? computeBillingPeriod(cycleDay, year - 1, 12)
+    : computeBillingPeriod(cycleDay, year, month - 1);
+}
+
 function localDateFor(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
@@ -115,6 +126,12 @@ export class BillingGenerationService {
       date?: string;
       contractId?: string;
       actorId?: string | null;
+      /**
+       * Primer cobro por activación (ADR-109 D6): ancla el periodo objetivo en esta
+       * fecha civil en lugar del lote del día. Exige `contractId`. Si el contrato ya
+       * tiene cualquier periodo, devuelve `existing` (idempotente por contrato y periodo).
+       */
+      firstChargeFrom?: string;
     } = {},
   ): Promise<BillingGenerationSummary> {
     const context = TenantContext.getOrThrow();
@@ -151,9 +168,10 @@ export class BillingGenerationService {
             fullContract,
             localDate,
             input.actorId ?? null,
-            !!input.contractId,
+            !!input.contractId && !input.firstChargeFrom,
             prepared,
             events,
+            input.contractId ? input.firstChargeFrom : undefined,
           ),
         );
         await this.documents.publishEvents(events);
@@ -218,6 +236,7 @@ export class BillingGenerationService {
     manual: boolean,
     prepared: Awaited<ReturnType<BillingDocumentsService['prepareIssue']>>,
     events: PeriodEvent[],
+    firstChargeFrom?: string,
   ): Promise<
     'generated' | 'existing' | 'omittedTermination' | 'blocked' | 'notDue' | 'withoutCycle'
   > {
@@ -244,12 +263,18 @@ export class BillingGenerationService {
       cutoff_enabled: override?.cutoff_enabled ?? basePolicy.cutoff_enabled,
       first_period_mode: override?.first_period_mode ?? basePolicy.first_period_mode,
     };
-    let target = resolveGenerationTarget(
-      contract.cycleDay,
-      { periodTiming: policy.period_timing, generationLeadDays: policy.generation_lead_days },
-      localDate,
-    );
-    const billingStart = override?.billing_start_date ?? contract.activatedAt;
+    const billingStart = firstChargeFrom
+      ? (override?.billing_start_date ?? firstChargeFrom)
+      : (override?.billing_start_date ?? contract.activatedAt);
+    // Primer cobro por activación: el objetivo es el periodo que contiene el inicio
+    // de cobro, sin esperar la fecha de generación del lote (CA-3).
+    let target = firstChargeFrom
+      ? periodContaining(contract.cycleDay, civilDate(billingStart ?? firstChargeFrom))
+      : resolveGenerationTarget(
+          contract.cycleDay,
+          { periodTiming: policy.period_timing, generationLeadDays: policy.generation_lead_days },
+          localDate,
+        );
     if (billingStart && billingStart > target.periodEnd) return 'notDue';
     let combinedStart: string | null = null;
     if (
@@ -269,7 +294,8 @@ export class BillingGenerationService {
         policy.period_timing,
         policy.generation_lead_days,
       );
-      if (nextGenerationDate > localDate) return 'notDue';
+      // En el primer cobro el tramo inicial sale junto al periodo siguiente, ya mismo.
+      if (!firstChargeFrom && nextGenerationDate > localDate) return 'notDue';
       combinedStart = billingStart;
       if (contract.terminatedAt && contract.terminatedAt < target.periodStart)
         return 'omittedTermination';
@@ -306,6 +332,15 @@ export class BillingGenerationService {
       covered_start: string;
       period_end: string;
     }>;
+    if (firstChargeFrom) {
+      // Idempotencia del primer cobro: cualquier periodo previo del contrato (por este
+      // evento repetido, por el lote o por generación manual) significa que ya existe.
+      const anyPeriod = (await manager.query(
+        'SELECT id FROM billing_periods WHERE tenant_id=$1 AND contract_id=$2 LIMIT 1',
+        [tenantId, contract.contractId],
+      )) as Array<{ id: string }>;
+      if (anyPeriod.length) return 'existing';
+    }
     if (existing.length) {
       const live = (await manager.query(
         "SELECT id FROM billing_documents WHERE tenant_id=$1 AND period_id=$2 AND status<>'ANULADO' LIMIT 1",

@@ -139,6 +139,10 @@ import { RetentionExpiryLedger1790000000179 } from './179_retention_expiry_ledge
 import { SubscriberNote1800000000180 } from './180_subscriber_note';
 import { SubscriberNoteGuard1810000000181 } from './181_subscriber_note_guard';
 import { SeedSubscriberDocumentPermission1820000000182 } from './182_seed_subscriber_document_permission';
+import { ContractPermanence1830000000183 } from './183_contract_permanence';
+import { OperatorContractProfile1840000000184 } from './184_operator_contract_profile';
+import { LegalTextContractTemplate1850000000185 } from './185_legal_text_contract_template';
+import { ContractDocumentGenerations1860000000186 } from './186_contract_document_generations';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -359,6 +363,10 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   SubscriberNote1800000000180,
   SubscriberNoteGuard1810000000181,
   SeedSubscriberDocumentPermission1820000000182,
+  ContractPermanence1830000000183,
+  OperatorContractProfile1840000000184,
+  LegalTextContractTemplate1850000000185,
+  ContractDocumentGenerations1860000000186,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

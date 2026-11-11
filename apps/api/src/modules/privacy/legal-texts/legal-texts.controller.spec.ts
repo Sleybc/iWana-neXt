@@ -41,9 +41,17 @@ describe('LegalTextsController', () => {
   it('publica y valida la respuesta de una nueva versión', async () => {
     service.create.mockResolvedValue(legalText);
     await expect(
-      controller.create({ type: 'AUTORIZACION', version: '3.0' } as never),
+      controller.create(
+        { type: 'AUTORIZACION', version: '3.0' } as never,
+        {
+          sub: '76000000-0000-4000-8000-000000000002',
+        } as never,
+      ),
     ).resolves.toEqual({
       data: legalText,
+    });
+    expect(service.create).toHaveBeenCalledWith(expect.anything(), {
+      userId: '76000000-0000-4000-8000-000000000002',
     });
   });
 });

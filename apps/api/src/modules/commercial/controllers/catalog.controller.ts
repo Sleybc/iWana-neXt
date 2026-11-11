@@ -8,12 +8,18 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CatalogItemType, CustomerSegment } from '@iwana/shared';
+import {
+  CatalogItemType,
+  CustomerSegment,
+  PlanPermanenceOfferSchema,
+  type PlanPermanenceOffer,
+} from '@iwana/shared';
 import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { Permissions } from '../../access-control/decorators/permissions.decorator';
@@ -23,6 +29,9 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { CatalogService } from '../services/catalog.service';
 import { PriceHistoryService } from '../services/price-history.service';
+import { PlanPermanenceService } from '../services/plan-permanence.service';
+import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
+import { SkipAudit } from '../../audit/decorators/skip-audit.decorator';
 import {
   CreateCatalogItemDto,
   CreatePlanCatalogItemDto,
@@ -49,6 +58,7 @@ export class CatalogController {
   constructor(
     private readonly catalogService: CatalogService,
     private readonly priceHistoryService: PriceHistoryService,
+    private readonly planPermanenceService: PlanPermanenceService,
   ) {}
 
   @Get()
@@ -190,6 +200,46 @@ export class CatalogController {
     @Request() req: { user: JwtPayload },
   ) {
     const data = await this.priceHistoryService.createPrice(id, dto, req.user.sub);
+    return { data };
+  }
+
+  // ─── Cargo por conexión y permanencia (cierre de venta, bloque H) ────────
+
+  @Get(':id/permanence-offer')
+  @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
+  @ApiOperation({
+    summary: 'Cargo por conexión y oferta de permanencia del plan',
+    description:
+      'PlanPermanenceOffer (@iwana/shared). Sin oferta, months y discountedOrDeferredAmount van en null. ' +
+      'La opción sin permanencia siempre existe en el contrato.',
+  })
+  @ApiResponse({ status: 404, description: 'Plan no encontrado en el tenant' })
+  async getPermanenceOffer(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ data: PlanPermanenceOffer }> {
+    const data = await this.planPermanenceService.getOfferOrThrow(id);
+    return { data };
+  }
+
+  @Put(':id/permanence-offer')
+  @Roles(...COMMERCIAL_CATALOG_WRITE_ROLES)
+  @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
+  @SkipAudit()
+  @ApiOperation({
+    summary: 'Definir cargo por conexión y oferta de permanencia del plan',
+    description:
+      'Cuerpo PlanPermanenceOffer: con oferta, months 1..12 y 0 < discountedOrDeferredAmount ≤ connectionFee; ' +
+      'sin oferta, ambos en null. Auditado como PlanPermanenceOffer.',
+  })
+  @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({ status: 404, description: 'Plan no encontrado en el tenant' })
+  async updatePermanenceOffer(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(PlanPermanenceOfferSchema)) body: PlanPermanenceOffer,
+    @Request() req: { user: JwtPayload },
+  ): Promise<{ data: PlanPermanenceOffer }> {
+    const data = await this.planPermanenceService.updateOffer(id, body, req.user.sub);
     return { data };
   }
 }

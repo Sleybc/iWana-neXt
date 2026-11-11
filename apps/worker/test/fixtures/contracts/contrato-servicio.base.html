@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Contrato único de servicios fijos (fixture de prueba)</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  body { font-family: Calibri, Carlito, Arial, sans-serif; font-size: 11pt; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  td { border: 1px solid #333; padding: 2px 4px; }
+</style>
+</head>
+<body>
+<section class="page">
+  <h1>Contrato {{ contract.id }}</h1>
+  <p>Operador: {{ operator.legalName }} — NIT {{ operator.nit }}</p>
+  <p>Titular: {{ holder.fullName }} — {{ holder.documentType }} {{ holder.documentNumber }}</p>
+  <p>Correo: {{ holder.email }} · Teléfono: {{ holder.phone }}</p>
+</section>
+<section class="page">
+  <h2>Servicio</h2>
+  <p>{{ service.planName }} ({{ service.technology }}) {{ service.downloadMbps }}/{{ service.uploadMbps }} Mbps</p>
+  <p>Valor {{ service.monthlyPrice }} · IVA {{ service.vatRatePercent }} {{ service.vatAmount }} · Total {{ service.monthlyTotal }}</p>
+  <p>Estrato {{ service.stratum }} · {{ installation.address }}, {{ installation.city }}, {{ installation.department }}</p>
+</section>
+<section class="page">
+  <h2>Equipos</h2>
+  <table>{{{ equipmentRows }}}</table>
+  <p>Hurto o daño: {{ operator.equipmentIncidentReportChannel }}</p>
+</section>
+<section class="page">
+  <h2>Atención</h2>
+  <ul>{{{ customerServiceChannels }}}</ul>
+  <p>Calidad y cobertura: {{ operator.qualityAndCoverageUrl }}</p>
+  <p>Reconexión {{ operator.reconnectionFee }} · Tope de incremento {{ operator.annualIncreaseCapPercent }}</p>
+</section>
+<section class="page">
+  <h2>Permanencia</h2>
+  <!--IF:permanence-->
+  <p>Cargo {{ permanence.connectionFee }}, descuento {{ permanence.discountedOrDeferredAmount }}, {{ permanence.months }} meses, del {{ permanence.startDate }} al {{ permanence.endDate }}</p>
+  <table>{{{ permanenceRows }}}</table>
+  <!--ENDIF:permanence-->
+  <!--IF:otherConditions--><p>{{ operator.otherConditions }}</p><!--ENDIF:otherConditions-->
+</section>
+<section class="page">
+  <h2>Firma</h2>
+  <p>Generado {{ contract.generatedAt }} · plantilla {{ template.version }}</p>
+</section>
+</body>
+</html>

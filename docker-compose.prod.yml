@@ -359,6 +359,9 @@ services:
       STORAGE_DRIVER: minio
       # SEC-P1: el worker hash/backfill de PII exige la clave HMAC (A1/A2 por entorno).
       PII_HASH_KEY: ${PII_HASH_KEY:?PII_HASH_KEY is required}
+      # ADR-109 D5: descifra el snapshot del contrato y cifra el PDF (misma clave PII que la API).
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:?PII_ENCRYPTION_KEY is required}
+      PII_ENCRYPTION_KEY_PREVIOUS: ${PII_ENCRYPTION_KEY_PREVIOUS-}
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?TYPESENSE_API_KEY is required}
       TYPESENSE_HOST: ${TYPESENSE_HOST:-typesense}
       TYPESENSE_PORT: ${TYPESENSE_PORT:-8108}

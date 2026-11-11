@@ -4,7 +4,9 @@
 **Spec:** [2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux](../specs/2026-11-10-mod05-ficha-suscriptor-estilo-uisp-ux.md) (G0 del usuario 2026-11-10)
 **Plan:** [2026-11-10-mod05-ficha-suscriptor-estilo-uisp](../plans/2026-11-10-mod05-ficha-suscriptor-estilo-uisp.md)
 **Commits (sin push):** `3fb15608` ola 1 · `9be42c87` olas 2–4 · `5ec0aa5a` correcciones de seguridad y E2E
-**Estado:** G6 ✅ en pruebas unitarias e integración · **CA-7 y CA-8 sin evidencia en navegador** · G6.5 pendiente (sin push)
+**Estado:** G6 ✅ · E2E en navegador ✅ · **G6.5 ✅ 2026-11-11** (CI run 43005178276 success, E2E Web Admin Smoke 43005178194 success, sobre `f2593291`)
+
+**Tren publicado:** `3fb15608`, `9be42c87`, `5ec0aa5a`, `b7a278c5`, `9485404d`, `96db2537`, `f2593291`. El primer CI (run 42913847153, sobre `96db2537`) falló en 8 E2E del portal que esperaban la UI anterior (panel lateral, insignia única, faltantes fiscales visibles, «Suspendido» no exacto); los 8 eran cambios intencionales y se ajustaron sin aflojar aserciones en `f2593291`. Hallazgo previo, ajeno a la fase: `portal-mod05-deuda-fiscal-live` «suscriptor heredado… pendientes de completar» falla contra la base de desarrollo (completitud calculada como completa) y en CI se omite por no haber filas anteriores a la 153.
 
 ## 1. Qué se entregó
 

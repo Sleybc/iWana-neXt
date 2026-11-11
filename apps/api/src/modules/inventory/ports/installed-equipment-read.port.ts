@@ -13,4 +13,10 @@ export abstract class InstalledEquipmentReadPort {
     executionOrderId: string,
     subscriberId: string,
   ): Promise<InstalledEquipmentRef | null>;
+
+  /** Todos los CPE que la OT dejó INSTALLED_AT_CUSTOMER (contrato del cliente, ADR-109 D5). */
+  abstract listInstalledAtCustomer(
+    executionOrderId: string,
+    subscriberId: string,
+  ): Promise<InstalledEquipmentRef[]>;
 }

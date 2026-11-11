@@ -1,0 +1,156 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ContractDocumentSnapshotSchema, type ContractDocumentSnapshot } from '@iwana/shared';
+import { fillContractTemplate } from '../../contracts/contract-template';
+
+/**
+ * Plantilla semilla del contrato (cierre de venta, bloque A; spec G6, CA-6, CA-7).
+ * Verifica que solo queden los módulos fijos, que esté marcada como prueba no publicada
+ * y que rellene con el renderer del worker escapando los valores.
+ */
+/** Mismo nombre que `CONTRACT_TEMPLATE_FILE` del procesador (contract-pdf.processor.ts). */
+const TEMPLATE = readFileSync(join(__dirname, 'contrato-servicio.base.html'), 'utf8');
+
+function snapshot(overrides: Partial<ContractDocumentSnapshot> = {}): ContractDocumentSnapshot {
+  return ContractDocumentSnapshotSchema.parse({
+    snapshotVersion: 1,
+    contractId: '10000000-0000-4000-8000-000000000001',
+    executionOrderId: null,
+    template: { legalTextId: '20000000-0000-4000-8000-000000000002', version: '0.1-prueba' },
+    operator: {
+      legalName: 'Operador Sintético SAS',
+      nit: '900000001',
+      qualityAndCoverageUrl: 'https://operador.example/calidad',
+      customerServiceChannels: [{ kind: 'PHONE', value: '6015550000', label: null }],
+      reconnectionFee: 15000,
+      annualIncreaseCapPercent: 5,
+      equipmentIncidentReportChannel: 'Línea de soporte',
+      otherConditions: null,
+    },
+    holder: {
+      fullName: 'Titular Sintético',
+      documentType: 'CC',
+      documentNumber: '1000000001',
+      email: 'titular@example.invalid',
+      phone: '3000000000',
+    },
+    service: {
+      planId: 'plan-1',
+      planName: 'Hogar 300',
+      technology: 'FTTH',
+      downloadMbps: 300,
+      uploadMbps: 150,
+      monthlyPrice: 80000,
+      vatRatePercent: 19,
+      vatAmount: 15200,
+      monthlyTotal: 95200,
+      stratum: 3,
+      serviceUsage: 'RESIDENTIAL',
+    },
+    installation: { address: 'Calle 1 # 2-3', city: 'Medellín', department: 'Antioquia' },
+    equipment: [{ serialNumber: 'SN-1', macAddress: null, model: 'ONT sintética' }],
+    permanence: null,
+    capturedAt: '2026-11-11T15:00:00.000Z',
+    ...overrides,
+  });
+}
+
+describe('Plantilla base del contrato único (servicios fijos)', () => {
+  it('está marcada como versión de prueba no publicada', () => {
+    expect(TEMPLATE).toContain('<meta name="iwana-template-status" content="PRUEBA-NO-PUBLICADA">');
+    expect(TEMPLATE).toMatch(/Versión de prueba — no publicada/u);
+  });
+
+  it.each([
+    'Condiciones comerciales plan servicios móviles',
+    'VALOR MENSUAL PLAN<br>SERVICIOS MÓVILES',
+    'Para los servicios móviles',
+    'portación',
+    'Servicios móviles:</b>',
+    'Costo reconexión servicios móviles',
+    'Sobre tus servicios móviles',
+    'Contenidos y aplicaciones',
+    'Portabilidad numérica móvil',
+    'roaming',
+    'Larga distancia (telefonía)',
+    'Línea o número móvil',
+  ])('no conserva el módulo móvil o no aplicable: %s', (fragment) => {
+    expect(TEMPLATE).not.toContain(fragment);
+  });
+
+  it('conserva el texto fijo de los módulos de servicios fijos', () => {
+    for (const fragment of [
+      'Principales obligaciones del usuario',
+      'Si no respondemos es porque aceptamos su petición o reclamo.',
+      'Esto se llama silencio administrativo positivo.',
+      'Ley 679 de 2001',
+      'Usted puede cambiar de domicilio y continuar con el servicio siempre que sea técnicamente posible.',
+    ]) {
+      expect(TEMPLATE).toContain(fragment);
+    }
+  });
+
+  it('declara la familia tipográfica Calibri con Carlito como sustituta métrica', () => {
+    expect(TEMPLATE).toMatch(/font-family:\s*Calibri,\s*Carlito,/u);
+  });
+
+  it('no contiene scripts ni manejadores de eventos', () => {
+    expect(TEMPLATE).not.toMatch(/<\s*script|\son[a-z]+\s*=|javascript\s*:/iu);
+  });
+
+  it('rellena todos los marcadores y omite la permanencia si no se pactó (CA-7)', () => {
+    const html = fillContractTemplate(TEMPLATE, snapshot());
+    expect(html).not.toMatch(/\{\{|<!--(IF|ENDIF):/u);
+    expect(html).toContain('Operador Sintético SAS');
+    expect(html).toContain('Hogar 300');
+    expect(html).toContain('6015550000');
+    expect(html).not.toContain('Cláusula de permanencia mínima');
+    expect(html).not.toContain('Otras condiciones');
+  });
+
+  it('muestra la permanencia con su tabla mes a mes cuando se pactó', () => {
+    const schedule = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      amount: 120000 - index * 10000,
+    }));
+    const html = fillContractTemplate(
+      TEMPLATE,
+      snapshot({
+        permanence: {
+          months: 12,
+          connectionFee: 150000,
+          discountedOrDeferredAmount: 120000,
+          startDate: '2026-11-12',
+          endDate: '2027-11-12',
+          schedule,
+        },
+      }),
+    );
+    expect(html).toContain('Cláusula de permanencia mínima');
+    expect(html).toContain('12/11/2026');
+    expect(html.match(/<tr><td>\d+<\/td><td>\$/gu)).toHaveLength(12);
+  });
+
+  it('escapa los valores: un nombre con HTML no inyecta marcado', () => {
+    const html = fillContractTemplate(
+      TEMPLATE,
+      snapshot({
+        holder: {
+          fullName: '<img src=x onerror=alert(1)>',
+          documentType: 'CC',
+          documentNumber: '1',
+          email: null,
+          phone: null,
+        },
+        operator: {
+          ...snapshot().operator,
+          otherConditions: '<script>alert(1)</script> {{ holder.fullName }}',
+        },
+      }),
+    );
+    expect(html).not.toContain('<img src=x');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('Otras condiciones');
+  });
+});

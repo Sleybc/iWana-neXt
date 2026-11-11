@@ -3,6 +3,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { HabeasDataModule } from './habeas-data/habeas-data.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { ContractsModule } from './contracts/contracts.module';
+import { ContractDocumentsModule } from './contracts/documents/contract-documents.module';
 import { CoverageReadPort } from './ports/coverage-read.port';
 import { ExecutionPolicyReadPort } from './ports/execution-policy-read.port';
 import { TenantModule } from '../tenant/tenant.module';
@@ -43,6 +44,7 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     // D-OPP: OpportunitiesModule desmontado; `opportunities` no tiene migración.
     QuotesModule,
     ContractsModule,
+    ContractDocumentsModule,
     ExpedientesModule,
     AttributionsModule,
     ResponsibilitiesModule,

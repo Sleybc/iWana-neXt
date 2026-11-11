@@ -44,3 +44,7 @@ export const NETWORK_EXECUTION_EVENTS_QUEUE = 'network-execution-events';
 
 /** Cola de conciliación periódica de aprovisionamientos de red. */
 export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconcile';
+
+/** Generación del PDF del contrato en el worker (cierre de venta, ADR-109 D5). Payload: ContractPdfJobPayload. */
+export const CRM_CONTRACT_PDF_QUEUE = 'crm-contract-pdf';
+export const CRM_CONTRACT_PDF_JOB_NAME = 'generate-contract-pdf';

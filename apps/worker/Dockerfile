@@ -70,7 +70,10 @@ RUN pnpm --filter @iwana/worker deploy --prod --legacy /output
 #     TypeScript y hasta el propio Dockerfile viajaban a producción.
 # Los LICENSE y README de terceros NO se tocan: conservarlos es obligación de
 # las licencias de redistribución, no peso prescindible.
+#   - src/templates: tsc no emite las plantillas HTML del contrato (ADR-109 D5); se
+#     copian a dist/templates antes de podar src/.
 RUN set -eu; \
+    if [ -d /output/src/templates ]; then cp -R /output/src/templates /output/dist/templates; fi; \
     find /output -type f \( -name '*.map' -o -name '*.d.ts' \) -delete; \
     for iwana_dir in $(find /output/node_modules -type d -name '@iwana'); do \
       for pkg_dir in "$iwana_dir"/*; do \
@@ -92,7 +95,7 @@ RUN set -eu; \
 # Smoke test del cierre de dependencias tras la poda: carga el grafo pesado sin
 # abrir conexiones a Redis ni a Postgres. Si la poda rompiera un paquete, el
 # build falla aquí y no en producción.
-RUN cd /output && node -e "require('reflect-metadata');require('@nestjs/core');require('bullmq');require('typeorm');require('@iwana/db');require('@iwana/storage');require('@iwana/shared');"
+RUN cd /output && node -e "require('reflect-metadata');require('@nestjs/core');require('bullmq');require('typeorm');require('@iwana/db');require('@iwana/storage');require('@iwana/shared');require('playwright-core');"
 
 # ── runner: imagen mínima de producción ─────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
@@ -109,6 +112,21 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # --link crea una capa independiente del padre; con --link el chown es numérico.
 COPY --from=builder --link --chown=1001:1001 /output ./
+
+# PDF del contrato (ADR-109 D5, CA-14): Chromium sin interfaz SOLO en el worker, en la
+# versión exacta que fija playwright-core 1.58.2 (no el chromium de Debian). `--with-deps`
+# instala por apt las librerías del sistema. Carlito es métricamente compatible con Calibri
+# (la plantilla declara `Calibri, Carlito`); Liberation cubre Arial/Times. Se instala como
+# root antes de `USER worker` y queda de solo lectura. La imagen de la API no cambia.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN set -eu; \
+    node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends fonts-crosextra-carlito fonts-liberation fontconfig; \
+    fc-cache -f; \
+    rm -rf /var/lib/apt/lists/* /tmp/*; \
+    chmod -R a+rX /ms-playwright; \
+    test -n "$(find /ms-playwright -maxdepth 1 -name 'chromium_headless_shell-*' -print -quit)"
 
 USER worker
 

@@ -88,6 +88,11 @@ export const PII_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
   piiTarget('subscriberLifecycleChange.noteEncrypted', 'crm_lifecycle_changes', 'note_encrypted'),
   piiTarget('subscriberNote.bodyEncrypted', 'subscriber_note', 'body_encrypted'),
   piiTarget(
+    'contractDocumentGeneration.snapshotEncrypted',
+    'contract_document_generations',
+    'snapshot_encrypted',
+  ),
+  piiTarget(
     'billingDocument.buyerDocumentEncrypted',
     'billing_documents',
     'buyer_document_encrypted',

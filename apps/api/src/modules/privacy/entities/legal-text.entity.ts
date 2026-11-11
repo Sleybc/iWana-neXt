@@ -1,5 +1,5 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import { LegalTextFormat, LegalTextType } from '@iwana/shared';
+import { LEGAL_APPROVAL_DECLARATION, LegalTextFormat, LegalTextType } from '@iwana/shared';
 
 @Entity({ name: 'legal_texts' })
 @Index('uq_legal_texts_type_version', ['type', 'version'], { unique: true })
@@ -27,4 +27,16 @@ export class LegalTextEntity {
 
   @Column({ type: 'text', nullable: true })
   url: string | null;
+
+  /** Declaración de aprobación jurídica (migración 185); obligatoria en CONTRATO_SERVICIO. */
+  @Column({ name: 'legal_approval_declaration', type: 'text', nullable: true })
+  legalApprovalDeclaration: typeof LEGAL_APPROVAL_DECLARATION | null;
+
+  /** Usuario que publicó con la declaración; sale del JWT. */
+  @Column({ name: 'approved_by_user_id', type: 'uuid', nullable: true })
+  approvedByUserId: string | null;
+
+  /** Fecha del servidor al publicar con la declaración. */
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt: Date | null;
 }

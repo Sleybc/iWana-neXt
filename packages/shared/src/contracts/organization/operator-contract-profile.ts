@@ -58,7 +58,7 @@ export type UpdateOperatorContractProfileInput = z.infer<
 /** Vista: suma la razón social y el NIT de la empresa, de solo lectura. */
 export const OperatorContractProfileSchema = z
   .object({
-    legalName: z.string().max(200).nullable(),
+    legalName: z.string().max(300).nullable(),
     nit: z.string().max(20).nullable(),
     ...editableFields,
     updatedAt: z.string().datetime({ offset: true }).nullable(),

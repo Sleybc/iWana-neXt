@@ -21,7 +21,11 @@ import { TenantModule } from '../tenant/tenant.module';
 import { PrivacyModule } from '../privacy/privacy.module';
 import { BillingGenerationService } from './generation/billing-generation.service';
 import { BillingGenerationProcessor } from './generation/billing-generation.processor';
-import { BILLING_GENERATION_QUEUE } from './generation/billing-generation.constants';
+import {
+  BILLING_GENERATION_QUEUE,
+  CRM_CONTRACT_EVENTS_QUEUE,
+} from './generation/billing-generation.constants';
+import { ContractActivatedProcessor } from './generation/contract-activated.processor';
 import { BillingDocumentsController } from './documents/billing-documents.controller';
 import { BillingDocumentsService } from './documents/billing-documents.service';
 import { BillingIssuerReadPort } from './ports/billing-issuer-read.port';
@@ -43,6 +47,7 @@ import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-re
     TenantModule,
     PrivacyModule,
     BullModule.registerQueue({ name: BILLING_GENERATION_QUEUE }),
+    BullModule.registerQueue({ name: CRM_CONTRACT_EVENTS_QUEUE }),
   ],
   controllers: [BillingPolicyController, BillingPaymentsController, BillingDocumentsController],
   providers: [
@@ -51,6 +56,7 @@ import { TenantBillingIssuerReadAdapter } from './ports/tenant-billing-issuer-re
     BillingDocumentsService,
     BillingGenerationService,
     BillingGenerationProcessor,
+    ContractActivatedProcessor,
     TenantBillingIssuerReadAdapter,
     { provide: BillingAccountReadPort, useExisting: BillingPaymentsService },
     { provide: BillingIssuerReadPort, useExisting: TenantBillingIssuerReadAdapter },

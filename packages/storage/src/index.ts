@@ -25,3 +25,11 @@ export { LocalFsStorageAdapter } from './adapters/local-fs-storage.adapter';
 // Factoría
 export { createStorageAdapter } from './create-storage-adapter';
 export type { CreateStorageAdapterOptions, StorageDriver } from './create-storage-adapter';
+
+// Cifrado en reposo de objetos binarios (ADR-109 D5)
+export {
+  ENCRYPTED_OBJECT_CONTENT_TYPE,
+  ENCRYPTED_OBJECT_MAGIC,
+  decryptObjectBuffer,
+  encryptObjectBuffer,
+} from './crypto/encrypted-object';

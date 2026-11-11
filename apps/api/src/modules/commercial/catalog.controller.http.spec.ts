@@ -23,6 +23,7 @@ import { PermissionsGuard } from '../access-control/guards/permissions.guard';
 import { CatalogController } from './controllers/catalog.controller';
 import { CatalogService } from './services/catalog.service';
 import { PriceHistoryService } from './services/price-history.service';
+import { PlanPermanenceService } from './services/plan-permanence.service';
 
 jest.mock('../auth/guards/jwt-auth.guard', () => ({
   JwtAuthGuard: class JwtAuthGuard {
@@ -133,12 +134,18 @@ describe('CatalogController HTTP', () => {
     createPrice: jest.fn(),
   };
 
+  const planPermanenceServiceMock = {
+    getOfferOrThrow: jest.fn(),
+    updateOffer: jest.fn(),
+  };
+
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [CatalogController],
       providers: [
         { provide: CatalogService, useValue: catalogServiceMock },
         { provide: PriceHistoryService, useValue: priceHistoryServiceMock },
+        { provide: PlanPermanenceService, useValue: planPermanenceServiceMock },
         JwtAuthGuard,
         RolesGuard,
         PermissionsGuard,
@@ -480,5 +487,59 @@ describe('CatalogController HTTP', () => {
       .expect(403);
 
     expect(catalogServiceMock.create).not.toHaveBeenCalled();
+  });
+
+  describe('oferta de permanencia del plan (bloque H)', () => {
+    const PLAN = '33333333-3333-4333-8333-333333333333';
+    const OFFER = {
+      connectionFee: 200000,
+      offersPermanence: true,
+      months: 12,
+      discountedOrDeferredAmount: 120000,
+    };
+
+    it('GET devuelve la oferta', async () => {
+      planPermanenceServiceMock.getOfferOrThrow.mockResolvedValue(OFFER);
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
+        .set('Authorization', 'Bearer admin-token')
+        .expect(200);
+      expect(res.body).toEqual({ data: OFFER });
+    });
+
+    it('PUT valida y pasa el actor del JWT', async () => {
+      planPermanenceServiceMock.updateOffer.mockResolvedValue(OFFER);
+      await request(app.getHttpServer())
+        .put(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
+        .set('Authorization', 'Bearer admin-token')
+        .send(OFFER)
+        .expect(200);
+      expect(planPermanenceServiceMock.updateOffer).toHaveBeenCalledWith(
+        PLAN,
+        OFFER,
+        'usr-admin-sub',
+      );
+    });
+
+    it.each([
+      { ...OFFER, months: 13 },
+      { ...OFFER, discountedOrDeferredAmount: 200001 },
+      { ...OFFER, offersPermanence: false },
+      { ...OFFER, extra: true },
+    ])('PUT rechaza %j con 400', async (body) => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
+        .set('Authorization', 'Bearer admin-token')
+        .send(body)
+        .expect(400);
+      expect(planPermanenceServiceMock.updateOffer).not.toHaveBeenCalled();
+    });
+
+    it('PUT exige token', async () => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
+        .send(OFFER)
+        .expect(401);
+    });
   });
 });

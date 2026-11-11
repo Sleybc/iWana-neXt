@@ -1,12 +1,37 @@
 import { createHash } from 'node:crypto';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { AuditAction, CreateLegalText, LegalText, LegalTextType } from '@iwana/shared';
+import {
+  AuditAction,
+  CreateLegalText,
+  LEGAL_TEXT_TYPES_REQUIRING_LEGAL_APPROVAL,
+  LegalText,
+  LegalTextType,
+} from '@iwana/shared';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { AuditService } from '../../audit/audit.service';
 import { LegalTextEntity } from '../entities/legal-text.entity';
 import { IPrivacyLegalTextReadPort } from '../ports/privacy-legal-text-read.port';
 import { withPrivacyTenant } from '../ports/privacy-tenant-query';
+
+/** Quién publica; sale del JWT verificado, nunca del cuerpo. */
+export interface LegalTextPublisher {
+  userId: string;
+}
+
+/**
+ * Construcciones activas que no caben en una plantilla de contrato: el worker la
+ * renderiza en Chromium, así que no se admite script, marcos ni manejadores de eventos.
+ */
+const UNSAFE_HTML_PATTERNS: readonly RegExp[] = [
+  /<\s*(script|iframe|object|embed|frame|frameset|base|form|meta\s+http-equiv)\b/iu,
+  /\son[a-z]+\s*=/iu,
+  /javascript\s*:/iu,
+];
+
+export function requiresLegalApproval(type: LegalTextType): boolean {
+  return (LEGAL_TEXT_TYPES_REQUIRING_LEGAL_APPROVAL as readonly string[]).includes(type);
+}
 
 export function sha256LegalText(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
@@ -54,7 +79,31 @@ export class LegalTextsService implements IPrivacyLegalTextReadPort {
     return row ? this.toView(row, true) : null;
   }
 
-  async create(input: CreateLegalText): Promise<LegalText> {
+  async create(input: CreateLegalText, publisher?: LegalTextPublisher): Promise<LegalText> {
+    const needsApproval = requiresLegalApproval(input.type);
+    if (needsApproval && (input.legalApprovalDeclaration === undefined || !publisher)) {
+      throw new BadRequestException({
+        code: 'PRIVACY_LEGAL_TEXT_APPROVAL_REQUIRED',
+        message: 'La plantilla de contrato solo se publica aprobada por asesoría jurídica.',
+      });
+    }
+    if (
+      input.format === 'HTML' &&
+      UNSAFE_HTML_PATTERNS.some((pattern) => pattern.test(input.content))
+    ) {
+      throw new BadRequestException({
+        code: 'PRIVACY_LEGAL_TEXT_UNSAFE_HTML',
+        message: 'La plantilla no admite scripts, marcos, formularios ni manejadores de eventos.',
+      });
+    }
+    const approval =
+      input.legalApprovalDeclaration !== undefined && publisher
+        ? {
+            legalApprovalDeclaration: input.legalApprovalDeclaration,
+            approvedByUserId: publisher.userId,
+            approvedAt: new Date(),
+          }
+        : { legalApprovalDeclaration: null, approvedByUserId: null, approvedAt: null };
     const sha256 = sha256LegalText(input.content);
     let saved: LegalTextEntity;
     try {
@@ -69,6 +118,7 @@ export class LegalTextsService implements IPrivacyLegalTextReadPort {
             format: input.format,
             publishedAt: new Date(),
             url: input.url ?? null,
+            ...approval,
           }),
         );
       });
@@ -86,7 +136,14 @@ export class LegalTextsService implements IPrivacyLegalTextReadPort {
       action: AuditAction.CREATE,
       entityType: 'LegalText',
       entityId: saved.id,
-      newValue: { type: saved.type, version: saved.version, sha256: saved.sha256 },
+      userId: publisher?.userId ?? null,
+      newValue: {
+        type: saved.type,
+        version: saved.version,
+        sha256: saved.sha256,
+        legalApprovalDeclaration: saved.legalApprovalDeclaration ?? null,
+        approvedAt: saved.approvedAt ? saved.approvedAt.toISOString() : null,
+      },
     });
     return this.toView(saved, true);
   }
@@ -111,6 +168,15 @@ export class LegalTextsService implements IPrivacyLegalTextReadPort {
       publishedAt: row.publishedAt.toISOString(),
       url: row.url,
       isCurrent,
+      ...(row.legalApprovalDeclaration && row.approvedByUserId && row.approvedAt
+        ? {
+            legalApproval: {
+              declaration: row.legalApprovalDeclaration,
+              approvedByUserId: row.approvedByUserId,
+              approvedAt: row.approvedAt.toISOString(),
+            },
+          }
+        : {}),
     };
   }
 }

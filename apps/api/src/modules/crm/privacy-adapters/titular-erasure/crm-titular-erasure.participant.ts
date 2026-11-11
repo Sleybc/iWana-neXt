@@ -140,6 +140,9 @@ export const CRM_RULES: Record<string, FieldRule[]> = {
   crm_lifecycle_changes: [{ column: 'note_encrypted', kind: 'null' }],
   // MOD05 D3: texto libre cifrado y NOT NULL; queda el marcador cifrado.
   subscriber_note: [{ column: 'body_encrypted', kind: 'encrypted-marker' }],
+  // Cierre de venta (ADR-109 D5): snapshot cifrado del contrato (documento completo); el
+  // CHECK de PENDING exige valor, queda el marcador cifrado y el worker no lo procesa.
+  contract_document_generations: [{ column: 'snapshot_encrypted', kind: 'encrypted-marker' }],
 };
 
 export const CONTRACT_LOCATION_RULES: FieldRule[] = [
@@ -624,6 +627,30 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
     const contracts =
       scope.relatedIds?.contractIds ??
       (await this.idsForContracts(qr, columns, scope.subscriberIds));
+    const generationIds = await selectErasureIds(
+      qr,
+      'contract_document_generations',
+      columns,
+      contracts.length > 0 ? ['contract_id = ANY($1::uuid[])'] : [],
+      contracts.length > 0 ? [contracts] : [],
+    );
+    results.push(
+      fieldResult(
+        'contract_document_generations',
+        'COMERCIAL',
+        await anonymizeConfiguredTable(
+          qr,
+          'contract_document_generations',
+          generationIds,
+          CRM_RULES['contract_document_generations'] ?? [],
+          columns,
+          keys,
+          mode,
+          undefined,
+          updatedAtAdvanced,
+        ),
+      ),
+    );
     let contractMarkerChanges = 0;
     let contractMarkerResidual = 0;
     if (contracts.length > 0 && columnOf(columns, 'contracts', 'anonymized_at')) {

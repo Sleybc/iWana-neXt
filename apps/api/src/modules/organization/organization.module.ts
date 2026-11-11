@@ -13,6 +13,12 @@ import { AccessControlModule } from '../access-control/access-control.module';
 import { AuditModule } from '../audit/audit.module';
 import { OrganizationController } from './organization.controller';
 import { OrganizationService } from './organization.service';
+import { OperatorContractProfileController } from './operator-contract-profile.controller';
+import { OperatorContractProfileService } from './operator-contract-profile.service';
+import { OperatorContractProfileReadPort } from './ports/operator-contract-profile-read.port';
+import { OperatorIdentityReadPort } from './ports/operator-identity-read.port';
+import { TenantOperatorIdentityReadAdapter } from './ports/tenant-operator-identity-read.adapter';
+import { TenantModule } from '../tenant/tenant.module';
 import { OrganizationSiteReadAdapter } from './ports/organization-site-read.adapter';
 import { OrganizationSiteReadPort } from './ports/organization-site-read.port';
 import { OrganizationOperationalAccessAdapter } from './ports/organization-operational-access.adapter';
@@ -33,10 +39,15 @@ import { SettingsPriorityOrganizationReadPort } from './ports/settings-priority-
     ]),
     AccessControlModule,
     AuditModule,
+    TenantModule,
   ],
-  controllers: [OrganizationController],
+  controllers: [OrganizationController, OperatorContractProfileController],
   providers: [
     OrganizationService,
+    OperatorContractProfileService,
+    TenantOperatorIdentityReadAdapter,
+    { provide: OperatorIdentityReadPort, useExisting: TenantOperatorIdentityReadAdapter },
+    { provide: OperatorContractProfileReadPort, useExisting: OperatorContractProfileService },
     OrganizationSiteReadAdapter,
     OrganizationOperationalAccessAdapter,
     SettingsPriorityOrganizationReadAdapter,
@@ -52,6 +63,7 @@ import { SettingsPriorityOrganizationReadPort } from './ports/settings-priority-
   ],
   exports: [
     OrganizationService,
+    OperatorContractProfileReadPort,
     OrganizationSiteReadPort,
     OrganizationOperationalAccessPort,
     SettingsPriorityOrganizationReadPort,

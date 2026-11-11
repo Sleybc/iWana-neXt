@@ -21,6 +21,7 @@ import {
   OPERATIONS_EXECUTION_DLQ,
   NETWORK_EXECUTION_EVENTS_QUEUE,
   SCHEDULE_EVENTS_SWEEP_QUEUE,
+  CRM_CONTRACT_PDF_QUEUE,
 } from '@iwana/shared';
 import { AssuranceFieldServiceProcessor } from './processors/assurance-field-service.processor';
 import { RefreshTokenPurgeProcessor } from './processors/refresh-token-purge.processor';
@@ -50,6 +51,8 @@ import {
   EvidenceAnalysisProcessor,
   EVIDENCE_ANALYSIS_QUEUE,
 } from './processors/evidence-analysis.processor';
+import { ContractPdfProcessor } from './processors/contract-pdf.processor';
+import { ContractPdfRenderer } from './contracts/contract-pdf-renderer';
 import { validateWorkerConfiguration } from './worker.config';
 import { WorkerHeartbeatService } from './services/worker-heartbeat.service';
 
@@ -230,6 +233,8 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     BullModule.registerQueue({ name: EVIDENCE_ORPHAN_DETECTION_QUEUE }),
     BullModule.registerQueue({ name: EVIDENCE_ANALYSIS_QUEUE }),
     BullModule.registerQueue({ name: SCHEDULE_EVENTS_SWEEP_QUEUE }),
+    // Cierre de venta (ADR-109 D5): PDF del contrato con Chromium, solo en el worker.
+    BullModule.registerQueue({ name: CRM_CONTRACT_PDF_QUEUE }),
   ],
   providers: [
     {
@@ -270,6 +275,8 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     EvidenceOrphanDetectionProcessor,
     EvidenceAnalysisProcessor,
     ExpiredScheduleEventsProcessor,
+    ContractPdfRenderer,
+    ContractPdfProcessor,
   ],
 })
 export class WorkerModule {}

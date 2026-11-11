@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<!--
+  Plantilla semilla del contrato único de servicios fijos (Res. CRC 5050, Anexo 2.3; ADR-109 D4, spec G6).
+  VERSIÓN DE PRUEBA — NO PUBLICADA. Solo para desarrollo: no se firma con ella (spec CA-6).
+  Para publicarla: quitar el meta «iwana-template-status» y el aviso «.draft-banner», y publicarla
+  como CONTRATO_SERVICIO (HTML) con la declaración de aprobación jurídica (G2).
+
+  Origen: contrato-unico-convergente-pospago.html (réplica del formato CRC). Se retiraron los
+  módulos del segmento móvil (condiciones, valor, activación, suspensión y reconexión móviles y el
+  bloque azul completo del formato) y el de larga distancia, que no aplica. El resto del texto fijo
+  no se reescribió.
+
+  Marcadores (contrato con apps/worker/src/contracts/contract-template.ts, bloque B):
+  llaves dobles = texto escapado; llaves triples = fragmento ya escapado; secciones IF/ENDIF
+  en comentarios HTML (permanence, otherConditions). Ver contract-template.ts.
+  Sin dato en el snapshot (quedan como en el formato): vigencia en meses, productos o servicios
+  adicionales y su fecha de cobro, fecha máxima de instalación y dirección del suscriptor.
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="iwana-template-status" content="PRUEBA-NO-PUBLICADA">
+<title>Contrato único de servicios fijos</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Calibri,Carlito,Arial,Helvetica,sans-serif;background:#e8e8e8;margin:0;padding:20px;color:#111;font-size:11.3px;line-height:1.42}
+  .sheet{width:816px;min-height:1056px;background:#fff;margin:0 auto 22px;padding:38px 36px 30px;position:relative;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  .col{min-width:0}
+  p{text-align:justify;margin:7px 0}
+  .crc-head{background:#33266e;color:#fff;display:grid;grid-template-columns:130px 1fr;padding:10px 12px;gap:10px;align-items:center}
+  .crc-logo{font-weight:900;font-size:34px;line-height:1;letter-spacing:1px}
+  .crc-logo small{display:block;font-size:7.5px;font-weight:700;line-height:1.2}
+  .crc-title{font-weight:800;font-size:15px;line-height:1.25;text-transform:uppercase}
+  .gray-block{background:#5f5f5f;color:#fff;padding:8px 9px;text-align:justify}
+  .h-gray{background:#606060;color:#fff;font-weight:800;text-transform:uppercase;padding:4px 7px;margin:14px 0 6px;font-size:12.5px;line-height:1.3}
+  .h-red{background:#b50000;color:#fff;font-weight:800;text-transform:uppercase;padding:4px 7px;margin:14px 0 6px;font-size:12.5px}
+  .blue{color:#3d85c6}
+  .light{color:#a8a8a8}
+  .box{border:1px solid #222;padding:0}
+  .box .h-gray{margin:0}
+  .box-inner{padding:6px 8px}
+  table.t{width:100%;border-collapse:collapse;margin:4px 0 8px}
+  table.t td,table.t th{border:1px solid #333;padding:5px 7px;vertical-align:top;text-align:left}
+  table.t th{background:#fff}
+  .cb{display:inline-block;width:13px;height:13px;border:1.5px solid #333;vertical-align:-2px;margin-left:5px;background:#fff;font-size:10px;line-height:10px;text-align:center;font-weight:800}
+  .chk-row{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0}
+  .foot{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:#888;font-size:11px}
+  .medios td:first-child{background:#606060;color:#fff;font-weight:800;font-size:18px;text-align:center;width:38px}
+  .medios ul{margin:4px 0 0;padding-left:16px}
+  .darkcell{background:#606060;color:#fff}
+  .val{font-weight:800}
+  .signature-slot{height:70px}
+  .draft-banner{border:2px dashed #b50000;color:#b50000;font-weight:800;text-align:center;padding:4px;margin-bottom:8px;text-transform:uppercase}
+  a{color:#0b3dcc}
+  b.k{font-weight:800}
+  @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;margin:0;width:auto;min-height:auto;page-break-after:always}}
+</style>
+</head>
+<body>
+
+<!-- PÁGINA 1 -->
+<div class="sheet"><div class="draft-banner">Versión de prueba — no publicada — sin validez contractual</div><div class="cols">
+<div class="col">
+  <div class="crc-head"><div class="crc-logo">CRC<small>COMISIÓN<br>DE REGULACIÓN<br>DE COMUNICACIONES</small></div><div class="crc-title">Contrato único<br>convergente servicios<br>fijos y móviles en la<br>modalidad pospago</div></div>
+  <div class="gray-block" style="margin-top:10px">
+    <p style="margin:0">Este contrato explica las condiciones para la prestación de los servicios entre usted y <span class="val">{{ operator.legalName }}</span> (NIT <span class="val">{{ operator.nit }}</span>), por el que pagará mínimo mensualmente el valor señalado en la sección «Valor de los servicios contratados». Este contrato tendrá vigencia de __ meses, contados a partir de la fecha de suscripción de este contrato.</p>
+    <p style="margin:8px 0 0">Acepto que mi contrato se renueve sucesiva y automáticamente por un plazo igual al inicial <span class="cb"></span> *</p>
+  </div>
+  <div class="blue" style="font-size:10.5px">* Espacio diligenciado por el usuario</div>
+  <div class="h-gray">Los servicios</div>
+  <p>Con este contrato nos comprometemos a prestarle los servicios que usted elija*:</p>
+  <div class="chk-row"><span>Internet fijo <span class="cb">X</span></span><span>Televisión <span class="cb"></span></span><span>Telefonía fija <span class="cb"></span></span></div>
+  <p class="blue">El cobro por la efectiva prestación de los servicios fijos se realizará a partir de su instalación.</p>
+  <p>Productos o servicios adicionales________________________</p>
+  <p class="blue">El cobro por la efectiva prestación de los productos o servicios adicionales se realizará a partir de <span class="light">dd/mm/aaaa</span></p>
+  <p>Usted se compromete a pagar oportunamente el (los) precio(s) acordado(s).</p>
+  <div class="box"><div class="h-gray">Información del usuario</div><div class="box-inner">
+    <p>Contrato Nº: <span class="val">{{ contract.id }}</span><br>Nombre / Razón Social <span class="val">{{ holder.fullName }}</span><br>Identificación <span class="val">{{ holder.documentType }} {{ holder.documentNumber }}</span><br>Correo electrónico <span class="val">{{ holder.email }}</span><br>Teléfono de contacto <span class="val">{{ holder.phone }}</span><br>Dirección Servicio fijo <span class="val">{{ installation.address }}</span> Estrato <span class="val">{{ service.stratum }}</span><br>Departamento <span class="val">{{ installation.department }}</span> Municipio <span class="val">{{ installation.city }}</span><br>Dirección del suscriptor _______________________________</p>
+  </div></div>
+</div>
+<div class="col">
+  <div class="h-gray">Condiciones comerciales plan servicios fijos</div>
+  <table class="t"><tr><td>Internet fijo</td></tr><tr><td>{{ service.planName }} · {{ service.technology }} · Velocidad de bajada {{ service.downloadMbps }} Mbps · Velocidad de subida {{ service.uploadMbps }} Mbps</td></tr><tr><td>Televisión cerrada</td></tr><tr><td class="light">No contratado</td></tr><tr><td>Telefonía fija</td></tr><tr><td class="light">No contratado</td></tr><tr><td>Servicios adicionales</td></tr><tr><td class="light">Descripción</td></tr></table>
+  <div class="h-gray">Valor de los servicios contratados</div>
+  <table class="t"><tr><td style="text-align:right">VALOR MENSUAL PLAN<br>SERVICIOS FIJOS</td><td class="val" style="width:120px">{{ service.monthlyPrice }}</td></tr><tr><td style="text-align:right">IVA ({{ service.vatRatePercent }})</td><td class="val">{{ service.vatAmount }}</td></tr><tr><td style="text-align:right">VALOR MENSUAL TOTAL</td><td class="val">{{ service.monthlyTotal }}</td></tr></table>
+  <div class="h-gray">Beneficios del paquete de servicios:</div>
+  <table class="t"><tr><td>Los beneficios del paquete de servicios son:<br><br><span class="light" style="display:block;text-align:center">Espacio para diligenciar por el operador con ocasión del ofrecimiento de un paquete de servicios.</span></td></tr></table>
+  <div class="h-gray">Incrementos tarifarios</div>
+  <p>{{ operator.legalName }} podrá incrementar anualmente el valor de su plan hasta un máximo de <span class="val">{{ operator.annualIncreaseCapPercent }}</span> del precio vigente. El cambio solo regirá en el periodo siguiente al aviso del incremento, que se enviará por el mismo canal de la factura al menos cinco (5) días hábiles antes de que termine el ciclo de facturación en curso.</p>
+</div>
+</div><div class="foot">Página 1 de 6 · Plantilla {{ template.version }}</div></div>
+
+<!-- PÁGINA 2 -->
+<div class="sheet"><div class="cols">
+<div class="col">
+  <p>Si la nueva tarifa no le conviene, podrá terminar el contrato pagando solo lo adeudado hasta la fecha. Además, cualquier aumento fuera de lo pactado o sin su autorización le permite dar por terminado el contrato sin penalidades, incluso si existe cláusula de permanencia mínima.</p>
+  <div class="h-gray">Principales obligaciones del usuario</div>
+  <p>1) pagar oportunamente los servicios prestados, incluyendo los intereses de mora cuando haya incumplimiento; 2) suministrar información verdadera; 3) Hacer uso adecuado de los equipos, la SIM y los servicios; 4) no divulgar ni acceder a pornografía infantil (consultar anexo); 5) avisar a las autoridades cualquier evento de robo o hurto de elementos de la red, como el cable y avisar al operador en caso de robo o pérdida de la SIM o el equipo móvil; 6) usar equipos móviles homologados y 7) abstenerse de usar equipos hurtados; 8) No cometer o ser partícipe de actividades de fraude; 9) hacer uso adecuado de su derecho a presentar PQR; 10) actuar de buena fe; 11) mantener actualizada la información de contacto.</p>
+  <p>El operador podrá terminar el contrato ante incumplimiento de estas obligaciones.</p>
+  <div class="h-gray">Condiciones de activación o instalación</div>
+  <p><b class="k">Para los servicios fijos:</b></p>
+  <p>El plazo máximo de instalación es de 15 días hábiles, contados a partir de la suscripción del presente contrato, es decir, a más tardar día <span class="light">dd/mm/aaaa</span>.</p>
+  <p>En caso de que no sea posible la activación o instalación de alguno de los servicios contratados, usted podrá terminar el contrato sin costo alguno, ni penalidades, incluso si existe cláusula de permanencia mínima. Adicionalmente, usted tiene derecho a solicitar la devolución del dinero en caso de haber hecho un pago anticipado.</p>
+</div>
+<div class="col">
+  <div class="h-gray">Calidad y compensación</div>
+  <p>Cuando se presente indisponibilidad del servicio o este se suspenda a pesar de su pago oportuno, lo compensaremos en su próxima factura. Debemos cumplir con las condiciones de calidad definidas por la CRC. Consúltelas en nuestra página web: <span class="val">{{ operator.qualityAndCoverageUrl }}</span></p>
+  <div class="h-gray">Cesión</div>
+  <p>Si quiere ceder este contrato a otra persona, debe presentar una solicitud por escrito a través de nuestros Medios de Atención, acompañada de la aceptación por escrito de la persona a la que se hará la cesión. Dentro de los 15 días hábiles siguientes, analizaremos su solicitud y le daremos una respuesta. Si se acepta la cesión queda liberado de cualquier responsabilidad con nosotros.</p>
+  <div class="h-gray">Modificación o terminación</div>
+  <p>Nosotros no podemos modificar el contrato sin su autorización. Esto incluye que no podemos cobrarle servicios que no haya aceptado expresamente. Si esto ocurre tiene derecho a terminar el contrato, incluso estando vigente la cláusula de permanencia mínima, aplicable únicamente para servicios fijos, sin la obligación de pagar suma alguna por este concepto.</p>
+  <p>No obstante, usted puede en cualquier momento solicitar la modificación o terminación de los servicios contratados. Dicha modificación o terminación se hará efectiva en el período de facturación siguiente, para lo cual deberá presentar la respectiva solicitud por lo menos con 3 días hábiles de anterioridad a la fecha de corte de facturación, informada en su factura.</p>
+  <p>Usted puede modificar o cancelar cualquiera de los servicios contratados, sean del segmento fijo o del segmento móvil, de manera independiente, caso en el cual, durante el periodo de facturación siguiente le enviaremos copia del contrato ajustado por el medio que usted elija.</p>
+  <div class="h-gray">Suspensión</div>
+</div>
+</div><div class="foot">Página 2 de 6</div></div>
+
+<!-- PÁGINA 3 -->
+<div class="sheet"><div class="cols">
+<div class="col">
+  <p><b class="k">Servicios fijos:</b> Usted tiene derecho a solicitar la suspensión del servicio por un máximo de 2 meses al año. Para esto debe presentar la solicitud antes del inicio del ciclo de facturación que desea suspender. Si existe una cláusula de permanencia mínima, su vigencia se prorrogará por el tiempo que dure la suspensión.</p>
+  <div class="h-gray">Pago y facturación</div>
+  <p>Si usted está adquiriendo un paquete de servicios, recibirá una sola factura por esos servicios, en la que podrá diferenciar el precio correspondiente a cada servicio y al paquete completo. Si el paquete de servicios incluye servicios del segmento móvil y del segmento fijo, usted podrá recibir una factura por cada segmento.</p>
+  <p>La factura le debe llegar como mínimo 5 días hábiles antes de la fecha de pago. Si no llega, puede solicitarla a través de nuestros Medios de Atención y debe pagarla oportunamente. Usted puede pagar los servicios fijos y móviles de manera separada.</p>
+  <p>Si no paga a tiempo, previo aviso, suspenderemos su servicio hasta que pague sus saldos pendientes. Los servicios fijos y móviles se suspenderán de manera separada dependiendo sobre cuál de ellos recae el impago. Contamos con 3 días hábiles luego de su pago para reconectarle el servicio.</p>
+  <p>Si no paga a tiempo, también podemos reportar su deuda a las centrales de riesgo. Para esto tenemos que avisarle por lo menos una vez con 20 días calendario de anticipación, si su deuda es superior al 15% del salario mínimo legal mensual vigente (SMLMV). Si su deuda es igual o inferior al 15% del SMLMV, tenemos que avisarle al menos en dos ocasiones, en días diferentes, y solo podremos reportarlo pasados 20 días a partir de la segunda comunicación. Si paga luego de este reporte tenemos la obligación dentro del mes de siguiente de informar su pago para que ya no aparezca reportado.</p>
+  <p>Si tiene un reclamo sobre su factura, puede presentarlo antes de la fecha de pago y en ese caso no debe pagar las sumas reclamadas hasta que resolvamos su solicitud. Si ya pagó, tiene 6 meses para presentar la reclamación.</p>
+</div>
+<div class="col">
+  <div class="h-gray">Cobro por reconexión del servicio</div>
+  <p>En caso de suspensión del servicio por mora en el pago, podremos cobrarle un valor por reconexión que corresponderá estrictamente a los costos asociados a la operación de reconexión. En caso de servicios empaquetados procede máximo un cobro de reconexión por cada tipo de conexión (medio de transmisión) empleado en la prestación de los servicios.</p>
+  <table class="t"><tr><td>Costo reconexión servicios fijos:</td><td class="val" style="width:120px">{{ operator.reconnectionFee }}</td></tr></table>
+  <div class="h-gray" style="text-align:center">Cómo comunicarse con nosotros<br>(medios de atención)</div>
+  <table class="t medios"><tr><td>1</td><td>Nuestros medios de atención son: oficinas físicas, página web, líneas telefónicas gratuitas, <ul>{{{ customerServiceChannels }}}</ul> Consulte las interacciones que hemos migrado a la digitalización en nuestra página web.</td></tr><tr><td>2</td><td>Presente cualquier queja, petición o recurso a través de estos medios y le responderemos en máximo 15 días hábiles.</td></tr><tr><td>3</td><td>Si no respondemos es porque aceptamos su petición o reclamo. Esto se llama silencio administrativo positivo.</td></tr><tr><td colspan="2"><b class="k">Si no está de acuerdo con nuestra respuesta</b></td></tr><tr><td>4</td><td>Tiene la opción de insistir en su reclamo ante nosotros y pedir que, si no llegamos a una solución satisfactoria para usted, enviemos su reclamo directamente a la Superintendencia de Industria y Comercio para que resuelva de manera definitiva la disputa. Esto se llama recurso de reposición y en subsidio de apelación.</td></tr></table>
+</div>
+</div><div class="foot">Página 3 de 6</div></div>
+
+<!-- PÁGINA 4 -->
+<div class="sheet"><div class="cols">
+<div class="col">
+  <div class="h-red">Sobre tus servicios fijos</div>
+<!--IF:permanence-->
+  <div class="h-red">Cláusula de permanencia mínima</div>
+  <p><b class="k">ACEPTO LA CLÁUSULA DE PERMANENCIA MÍNIMA <span class="cb" style="width:15px;height:15px">X</span> *</b><br><span class="blue" style="font-size:10.5px">* Espacio diligenciado por el usuario</span></p>
+  <p>La presente cláusula de permanencia mínima, en caso de ser aceptada por usted, solo aplica respecto del plan de servicios fijos, NO APLICA SOBRE EL PLAN DE SERVICIOS MÓVILES.</p>
+  <p>Se incluye esta cláusula en consideración a que le estamos otorgando un descuento respecto del valor del cargo por conexión, o le diferimos el pago del mismo, con ocasión de la instalación del servicio por primera vez o por una nueva instalación generada por el cambio de domicilio. En cualquier caso, solo estaría vigente una cláusula de permanencia mínima. En la factura encontrará el valor a pagar si decide terminar el contrato anticipadamente.</p>
+  <table class="t"><tr><td class="darkcell">Valor total del cargo por conexión</td><td class="val" style="width:130px">{{ permanence.connectionFee }}</td></tr><tr><td class="darkcell">Suma que le fue descontada o diferida del valor total del cargo de conexión</td><td class="val">{{ permanence.discountedOrDeferredAmount }}</td></tr><tr><td class="darkcell">Fecha de inicio de la permanencia mínima</td><td class="val">{{ permanence.startDate }}</td></tr><tr><td class="darkcell">Fecha de finalización de la permanencia mínima</td><td class="val">{{ permanence.endDate }}</td></tr></table>
+</div>
+<div class="col">
+  <table class="t"><tr><td colspan="2" class="darkcell" style="text-align:center">Valor a pagar si termina el contrato anticipadamente según mes ({{ permanence.months }} meses)</td></tr><tr><td class="darkcell">Mes</td><td class="darkcell">Valor</td></tr>{{{ permanenceRows }}}</table>
+  <p>Encontrará los detalles sobre la permanencia mínima de los servicios fijos en su factura.</p>
+<!--ENDIF:permanence-->
+</div>
+</div><div class="foot">Página 4 de 6</div></div>
+
+<!-- PÁGINA 5 -->
+<div class="sheet"><div class="cols">
+<div class="col">
+  <div class="h-red">Cambio de domicilio</div>
+  <p>Usted puede cambiar de domicilio y continuar con el servicio siempre que sea técnicamente posible. Si desde el punto de vista técnico no es viable el traslado del servicio, usted puede ceder su contrato a un tercero o terminarlo pagando el valor de la cláusula de permanencia mínima si está vigente.</p>
+  <div class="h-red">Entrega y devolución de equipos</div>
+  <p>{{ operator.legalName }} entrega los equipos en el plan de servicios fijos bajo las siguientes condiciones:</p>
+  <table class="t"><tr><td class="darkcell">Equipo</td><td class="darkcell">Serial</td><td class="darkcell">MAC</td></tr>{{{ equipmentRows }}}</table>
+  <p>Al terminar este contrato usted deberá devolver los equipos entregados. En este sentido, deberá atender la cita que se programe para la recolección de los equipos en el lugar de instalación. En caso de no atender esta cita, los equipos deberán ser entregados en el centro de atención que le indiquemos.</p>
+  <p>El hurto, pérdida o daño de equipos deberá reportarse a <span class="val">{{ operator.equipmentIncidentReportChannel }}</span>.</p>
+<!--IF:otherConditions-->
+  <div class="h-gray">Otras condiciones</div>
+  <p style="white-space:pre-line">{{ operator.otherConditions }}</p>
+<!--ENDIF:otherConditions-->
+  <div class="box" style="margin-top:12px;padding:14px;text-align:center"><div class="signature-slot" data-signature-slot="acceptance"></div><p style="text-align:center;border-top:1px solid #111;padding-top:8px"><b class="k">Aceptación contrato mediante firma o cualquier<br>otro medio válido</b></p><p style="text-align:left"><b class="k">Fecha</b> &nbsp;&nbsp; <span style="font-size:15px;font-weight:800">{{ contract.generatedAt }}</span></p></div>
+  <div class="light" style="font-size:10px">Consulte el régimen de protección de los derechos de los usuarios de comunicaciones en www.crcom.gov.co</div>
+</div><div class="col"></div>
+</div><div class="foot">Página 5 de 6</div></div>
+
+<!-- PÁGINA 6 -->
+<div class="sheet"><div class="cols">
+<div class="col">
+  <div class="crc-head"><div class="crc-logo">CRC<small>COMISIÓN<br>DE REGULACIÓN<br>DE COMUNICACIONES</small></div><div class="crc-title" style="font-size:14px">Anexo de disposiciones<br>legales</div></div>
+  <div class="h-gray">1. Autorización centrales de riesgo</div>
+  <p class="light">Espacio a diligenciar por el operador acorde con las disposiciones de la Ley 1266 de 2008.</p>
+  <div style="height:90px"></div>
+  <div class="h-gray">2. Autorización para el tratamiento de datos personales</div>
+  <p class="light">Espacio a diligenciar por el operador acorde con las disposiciones de la Ley 1581 de 2012.</p>
+  <div style="height:90px"></div>
+  <div class="h-gray">3. Pornografía infantil</div>
+  <p>En cumplimiento de la Ley 679 de 2001 y conforme a lo establecido en los artículos 4 y 5 del Decreto 1524 de 2012, los proveedores o servidores, administradores y usuarios de redes globales de información no podrán alojar en su propio sitio: a). imágenes, textos o archivos que impliquen directa o indirectamente actividades sexuales con menores de edad, b). material pornográfico, cuando existan indicios que las personas fotografiadas o filmadas son menores de edad, c). vínculos sobre sitios telemáticos que contengan o distribuyan material pornográfico relativo a menores de edad. Deberá: a. Denunciar ante las autoridades competentes cualquier acto criminal contra menores de edad que tenga conocimiento. b. Combatir con todos los medios técnicos a su alcance la difusión de material pornográfico asociado a menores. c. Abstenerse de usar las redes globales de información para la divulgación de material ilegal con menores de edad. d. Establecer mecanismos técnicos de bloqueo por medio de</p>
+</div>
+<div class="col">
+  <p>los cuales los usuarios puedan proteger a sí mismos o a sus hijos de material ilegal, ofensivo o indeseable en relación con menores de edad. El incumplimiento de estas prohibiciones acarreará las sanciones administrativas y penales contempladas en las normas señaladas.</p>
+  <div class="signature-slot" data-signature-slot="subscriber"></div>
+  <div style="border-top:1px solid #111;text-align:center;padding-top:4px">Firma del Suscriptor</div>
+  <table class="t"><tr><td>TIPO DE DOCUMENTO: <span class="val">{{ holder.documentType }}</span></td></tr><tr><td>NÚMERO DOCUMENTO: <span class="val">{{ holder.documentNumber }}</span></td></tr><tr><td>FECHA: <span class="val">{{ contract.generatedAt }}</span></td></tr></table>
+  <div style="font-size:10.5px">Consulte el régimen de protección de usuarios en<br>www.crcom.gov.co</div>
+</div>
+</div><div class="foot">Página 6 de 6</div></div>
+
+</body>
+</html>

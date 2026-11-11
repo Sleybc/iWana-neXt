@@ -24,6 +24,22 @@ export class InstalledEquipmentReadAdapter extends InstalledEquipmentReadPort {
     executionOrderId: string,
     subscriberId: string,
   ): Promise<InstalledEquipmentRef | null> {
+    const rows = await this.queryInstalled(executionOrderId, subscriberId, 1);
+    return rows[0] ?? null;
+  }
+
+  async listInstalledAtCustomer(
+    executionOrderId: string,
+    subscriberId: string,
+  ): Promise<InstalledEquipmentRef[]> {
+    return this.queryInstalled(executionOrderId, subscriberId, 50);
+  }
+
+  private async queryInstalled(
+    executionOrderId: string,
+    subscriberId: string,
+    limit: number,
+  ): Promise<InstalledEquipmentRef[]> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     return runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const rows = (await qr.query(
@@ -42,13 +58,14 @@ export class InstalledEquipmentReadAdapter extends InstalledEquipmentReadPort {
             AND asset.current_status = $4
             AND asset.serial_number IS NOT NULL
           ORDER BY assignment.installed_at ASC, assignment.id ASC
-          LIMIT 1`,
-        [tenantId, executionOrderId, subscriberId, SerializedAssetStatus.INSTALLED_COMODATO],
+          LIMIT $5`,
+        [tenantId, executionOrderId, subscriberId, SerializedAssetStatus.INSTALLED_COMODATO, limit],
       )) as InstalledEquipmentRow[];
-      const row = rows[0];
-      return row?.serial_number
-        ? { serialNumber: row.serial_number, macAddress: row.mac_address, model: row.model }
-        : null;
+      return rows.flatMap((row) =>
+        row.serial_number
+          ? [{ serialNumber: row.serial_number, macAddress: row.mac_address, model: row.model }]
+          : [],
+      );
     });
   }
 }

@@ -20,6 +20,7 @@ import { CatalogService } from './services/catalog.service';
 import { CommercialDashboardService } from './services/commercial-dashboard.service';
 import { CompatibilityService } from './services/compatibility.service';
 import { PriceHistoryService } from './services/price-history.service';
+import { PlanPermanenceService } from './services/plan-permanence.service';
 import { PromotionService } from './services/promotion.service';
 
 jest.mock('../auth/guards/jwt-auth.guard', () => ({
@@ -127,6 +128,7 @@ describe('Commercial controllers Fase 2 — doble guard', () => {
       providers: [
         { provide: CatalogService, useValue: catalogServiceMock },
         { provide: PriceHistoryService, useValue: {} },
+        { provide: PlanPermanenceService, useValue: {} },
         { provide: BundleService, useValue: bundleServiceMock },
         { provide: PromotionService, useValue: promotionServiceMock },
         { provide: CompatibilityService, useValue: compatibilityServiceMock },

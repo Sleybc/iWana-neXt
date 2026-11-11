@@ -3,6 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Contract } from './entities/contract.entity';
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
+import { ContractPermanenceRecord } from './entities/contract-permanence.entity';
+import { ContractPermanenceController } from './contract-permanence.controller';
+import { ContractPermanenceService } from './contract-permanence.service';
 import { ContractSignGuard } from './guards/contract-sign.guard';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { AuditModule } from '../../audit/audit.module';
@@ -20,7 +23,7 @@ import { BillingAccountReadModule } from '../../billing/billing-account-read.mod
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Contract]),
+    TypeOrmModule.forFeature([Contract, ContractPermanenceRecord]),
     AccessControlModule,
     AuditModule,
     CommercialModule,
@@ -31,14 +34,15 @@ import { BillingAccountReadModule } from '../../billing/billing-account-read.mod
     TenantModule,
     BillingAccountReadModule,
   ],
-  controllers: [ContractsController, BillingCyclesController],
+  controllers: [ContractsController, BillingCyclesController, ContractPermanenceController],
   providers: [
     ContractsService,
+    ContractPermanenceService,
     ContractSignGuard,
     ContractsBlockedTitularGuard,
     ContractsTenantSettingsReadAdapter,
     { provide: ContractsTenantSettingsReadPort, useExisting: ContractsTenantSettingsReadAdapter },
   ],
-  exports: [ContractsService],
+  exports: [ContractsService, ContractPermanenceService],
 })
 export class ContractsModule {}

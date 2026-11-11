@@ -1,6 +1,9 @@
 ﻿import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanCatalogReadPort } from './ports/plan-catalog-read.port';
+import { PlanPermanenceOfferReadPort } from './ports/plan-permanence-offer-read.port';
+import { PlanPermanenceService } from './services/plan-permanence.service';
+import { AuditModule } from '../audit/audit.module';
 import { CommercialCatalogReadPort } from './ports/commercial-catalog-read.port';
 import { CommercialCompatibilityReadPort } from './ports/commercial-compatibility-read.port';
 
@@ -49,6 +52,7 @@ import { AccessControlModule } from '../access-control/access-control.module';
     ]),
     TaxationModule,
     AccessControlModule,
+    AuditModule,
   ],
   controllers: [
     CatalogController,
@@ -66,6 +70,8 @@ import { AccessControlModule } from '../access-control/access-control.module';
     CompatibilityService,
     CommercialDashboardService,
     CommercialCatalogReadAdapter,
+    PlanPermanenceService,
+    { provide: PlanPermanenceOfferReadPort, useExisting: PlanPermanenceService },
     {
       provide: CommercialCatalogReadPort,
       useExisting: CommercialCatalogReadAdapter,
@@ -80,6 +86,11 @@ import { AccessControlModule } from '../access-control/access-control.module';
       useExisting: CommercialCompatibilityReadAdapter,
     },
   ],
-  exports: [CommercialCatalogReadPort, PlanCatalogReadPort, CommercialCompatibilityReadPort],
+  exports: [
+    CommercialCatalogReadPort,
+    PlanCatalogReadPort,
+    CommercialCompatibilityReadPort,
+    PlanPermanenceOfferReadPort,
+  ],
 })
 export class CommercialModule {}
