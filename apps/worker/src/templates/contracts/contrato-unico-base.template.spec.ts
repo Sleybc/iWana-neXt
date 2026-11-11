@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ContractDocumentSnapshotSchema, type ContractDocumentSnapshot } from '@iwana/shared';
+import {
+  checkContractTemplateHtml,
+  ContractDocumentSnapshotSchema,
+  type ContractDocumentSnapshot,
+} from '@iwana/shared';
 import { fillContractTemplate } from '../../contracts/contract-template';
 
 /**
@@ -57,8 +61,12 @@ function snapshot(overrides: Partial<ContractDocumentSnapshot> = {}): ContractDo
 
 describe('Plantilla base del contrato único (servicios fijos)', () => {
   it('está marcada como versión de prueba no publicada', () => {
-    expect(TEMPLATE).toContain('<meta name="iwana-template-status" content="PRUEBA-NO-PUBLICADA">');
+    expect(TEMPLATE).toContain('class="draft-banner"');
     expect(TEMPLATE).toMatch(/Versión de prueba — no publicada/u);
+  });
+
+  it('pasa la lista blanca de HTML con la que se publica y se renderiza (SEC-2/SEC-4)', () => {
+    expect(checkContractTemplateHtml(TEMPLATE)).toEqual({ ok: true });
   });
 
   it.each([

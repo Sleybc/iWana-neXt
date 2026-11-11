@@ -14,7 +14,7 @@
  */
 
 // Contrato + token DI
-export type { StoragePort, PutObjectOptions } from './ports/storage.port';
+export type { StoragePort, PutObjectOptions, StoredObjectSummary } from './ports/storage.port';
 export { STORAGE_PORT } from './ports/storage.port';
 
 // Adaptadores

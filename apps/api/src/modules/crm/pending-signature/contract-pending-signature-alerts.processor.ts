@@ -9,6 +9,8 @@ import { DataSource } from 'typeorm';
 import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
 import { IPermissionHoldersReadPort } from '../../access-control/ports/permission-holders-read.port';
 import { MailerService } from '../../mailer/mailer.service';
+import { resolveRegisteredTenant } from '../../tenant/ports/resolve-registered-tenant';
+import { TenantLifecycleReadPort } from '../../tenant/ports/tenant-lifecycle-read.port';
 import {
   CONTRACT_PENDING_SIGNATURE_ALERTS_QUEUE,
   CONTRACT_PENDING_SIGNATURE_CRON_PATTERN,
@@ -21,22 +23,9 @@ import {
 } from './contract-pending-signature.constants';
 import { ContractPendingSignatureService } from './contract-pending-signature.service';
 
-const TENANT_SWEEP_SQL = `
-  SELECT id::text, slug, schema_name
-  FROM public.tenants
-  WHERE status = 'ACTIVE' AND deleted_at IS NULL
-  ORDER BY schema_name
-`;
-
 const TENANT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const TENANT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const CIVIL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
-
-interface ActiveTenantRow {
-  id: string;
-  slug: string;
-  schema_name: string;
-}
 
 /** Payload sin PII: solo el contexto tenant explícito y la fecha civil de la corrida. */
 export interface ContractPendingSignatureTenantJobPayload {
@@ -119,6 +108,7 @@ export class ContractPendingSignatureAlertsProcessor
     private readonly permissionHoldersReadPort: IPermissionHoldersReadPort,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    @Inject(TenantLifecycleReadPort) private readonly tenants: TenantLifecycleReadPort,
   ) {
     super();
   }
@@ -154,7 +144,12 @@ export class ContractPendingSignatureAlertsProcessor
   }
 
   private async enqueueActiveTenants(): Promise<void> {
-    const tenants = (await this.dataSource.query(TENANT_SWEEP_SQL)) as ActiveTenantRow[];
+    // Registro de tenants por el puerto del módulo Tenant, nunca SQL directo a public.tenants.
+    const tenants = (await this.tenants.listActiveTenantContexts()).map((tenant) => ({
+      id: tenant.id,
+      slug: tenant.slug,
+      schema_name: tenant.schemaName,
+    }));
     const date = bogotaCivilDate(new Date());
     let failed = 0;
 
@@ -193,8 +188,14 @@ export class ContractPendingSignatureAlertsProcessor
   }
 
   /** Expuesto para pruebas: procesa un tenant con un instante de referencia explícito. */
-  async processTenant(payload: ContractPendingSignatureTenantJobPayload, now: Date): Promise<void> {
+  async processTenant(
+    untrusted: ContractPendingSignatureTenantJobPayload,
+    now: Date,
+  ): Promise<void> {
     const threshold = CONTRACT_PENDING_SIGNATURE_THRESHOLD_HOURS;
+    // El contexto sale del registro de tenants; el payload solo se contrasta (boundary-reviewer).
+    const tenant = await resolveRegisteredTenant(this.tenants, untrusted);
+    const payload = { ...untrusted, schemaName: tenant.schemaName, tenantSlug: tenant.slug };
     await TenantContext.run(
       {
         tenantId: payload.tenantId,

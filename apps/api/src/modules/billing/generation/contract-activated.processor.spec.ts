@@ -54,12 +54,23 @@ function fixture() {
     generate: jest.fn().mockResolvedValue(summary({ generated: 1 })),
     automaticGenerationEnabled: jest.fn().mockResolvedValue(false),
   };
+  const activationEvents = {
+    findActivationEvent: jest.fn().mockResolvedValue({
+      eventId: '44444444-4444-4444-8444-444444444444',
+      tenantId: TENANT,
+      contractId: CONTRACT,
+      published: true,
+      billingStartDate: '2026-11-10',
+      contractStatus: 'ACTIVE',
+    }),
+  };
   const processor = new ContractActivatedProcessor(
     tenants as never,
     settings as never,
     generation as never,
+    activationEvents as never,
   );
-  return { processor, tenants, generation };
+  return { processor, tenants, generation, activationEvents };
 }
 
 const job = (data: unknown, name: string = CONTRACT_ACTIVATED_EVENT_TYPE) =>
@@ -158,5 +169,69 @@ describe('periodContaining', () => {
     [1, '2026-02-28', '2026-02-01', '2026-02-28'],
   ])('ciclo %i, fecha %s → %s..%s', (cycle, date, start, end) => {
     expect(periodContaining(cycle, date)).toEqual({ periodStart: start, periodEnd: end });
+  });
+
+  describe('SEC-3: la fecha sale del outbox de CRM, nunca del payload', () => {
+    it('ignora un billingStartDate falsificado en el payload', async () => {
+      const { processor, generation, activationEvents } = fixture();
+      const forged = envelope({
+        payload: { ...envelope().payload, billingStartDate: '2020-01-01' },
+      });
+      await processor.process(job(forged));
+      expect(activationEvents.findActivationEvent).toHaveBeenCalledWith(
+        '44444444-4444-4444-8444-444444444444',
+      );
+      expect(generation.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ firstChargeFrom: '2026-11-10' }),
+      );
+    });
+
+    it.each([
+      ['inexistente', null],
+      ['de otro contrato', { contractId: '99999999-9999-4999-8999-999999999999' }],
+      ['de otro tenant', { tenantId: '88888888-8888-4888-8888-888888888888' }],
+      ['con contrato no activo', { contractStatus: 'DRAFT' }],
+      ['sin fecha', { billingStartDate: null }],
+    ])('rechaza sin reintento un evento %s', async (_name, change) => {
+      const { processor, generation, activationEvents } = fixture();
+      if (change === null) activationEvents.findActivationEvent.mockResolvedValue(null);
+      else {
+        activationEvents.findActivationEvent.mockResolvedValue({
+          eventId: '44444444-4444-4444-8444-444444444444',
+          tenantId: TENANT,
+          contractId: CONTRACT,
+          published: true,
+          billingStartDate: '2026-11-10',
+          contractStatus: 'ACTIVE',
+          ...change,
+        });
+      }
+      await expect(processor.process(job(envelope()))).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(generation.generate).not.toHaveBeenCalled();
+    });
+
+    it('un aggregateId que no coincide con el contrato del outbox se rechaza', async () => {
+      const { processor, generation } = fixture();
+      await expect(
+        processor.process(job(envelope({ aggregateId: '99999999-9999-4999-8999-999999999999' }))),
+      ).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(generation.generate).not.toHaveBeenCalled();
+    });
+
+    it('un evento aún no marcado publicado se reintenta (error recuperable)', async () => {
+      const { processor, generation, activationEvents } = fixture();
+      activationEvents.findActivationEvent.mockResolvedValue({
+        eventId: '44444444-4444-4444-8444-444444444444',
+        tenantId: TENANT,
+        contractId: CONTRACT,
+        published: false,
+        billingStartDate: '2026-11-10',
+        contractStatus: 'ACTIVE',
+      });
+      const error = await processor.process(job(envelope())).catch((caught: Error) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(UnrecoverableError);
+      expect(generation.generate).not.toHaveBeenCalled();
+    });
   });
 });

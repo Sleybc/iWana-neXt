@@ -74,3 +74,55 @@ describe('SubscribersController — pendingSignature en el detalle', () => {
     expect(result.data).not.toHaveProperty('pendingSignature');
   });
 });
+
+// La ficha del portal lee la vista 360°: la insignia depende de que también la lleve (CA-5).
+describe('SubscribersController — pendingSignature en la vista 360°', () => {
+  function build360(pending?: { subscribersPendingSignature: jest.Mock }) {
+    const view360 = {
+      subscriber: subscriber(),
+      contacts: [],
+      contracts: [],
+      quotes: [],
+      habeasData: [],
+      arcoRequests: [],
+      privacyMarks: [],
+      expedienteSummary: null,
+      timelineSeed: [],
+      provisioningReadiness: null,
+    };
+    return new SubscribersController(
+      { get360View: jest.fn().mockResolvedValue(view360) } as never,
+      { log: jest.fn().mockResolvedValue(undefined) } as never,
+      { getEffectivePermissionsForUser: jest.fn().mockResolvedValue([]) } as never,
+      {} as never,
+      { activeMarks: jest.fn().mockResolvedValue({}) } as never,
+      {} as never,
+      pending as never,
+    );
+  }
+
+  it('true cuando el lector marca al suscriptor', async () => {
+    const pending = {
+      subscribersPendingSignature: jest.fn().mockResolvedValue(new Set([SUBSCRIBER_ID])),
+    };
+
+    const result = await build360(pending).get360View(SUBSCRIBER_ID, user);
+
+    expect(pending.subscribersPendingSignature).toHaveBeenCalledWith([SUBSCRIBER_ID]);
+    expect(result.data.subscriber.pendingSignature).toBe(true);
+  });
+
+  it('false cuando no está pendiente', async () => {
+    const pending = { subscribersPendingSignature: jest.fn().mockResolvedValue(new Set()) };
+
+    const result = await build360(pending).get360View(SUBSCRIBER_ID, user);
+
+    expect(result.data.subscriber.pendingSignature).toBe(false);
+  });
+
+  it('sin lector el campo no viaja', async () => {
+    const result = await build360().get360View(SUBSCRIBER_ID, user);
+
+    expect(result.data.subscriber).not.toHaveProperty('pendingSignature');
+  });
+});

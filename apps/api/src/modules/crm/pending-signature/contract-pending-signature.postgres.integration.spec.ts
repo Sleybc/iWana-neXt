@@ -163,6 +163,16 @@ describeWithDatabase('Contrato pendiente de firma — integración PostgreSQL', 
       holders as never,
       mailer as never,
       config as never,
+      {
+        findTenantLifecycleById: jest.fn(async (id: string) =>
+          id === tenantId
+            ? { id, schemaName, slug: tenantSlug, status: 'ACTIVE', deletedAt: null }
+            : null,
+        ),
+        listActiveTenantContexts: jest.fn(async () => [
+          { id: tenantId, schemaName, slug: tenantSlug, status: 'ACTIVE', deletedAt: null },
+        ]),
+      } as never,
     );
   });
 

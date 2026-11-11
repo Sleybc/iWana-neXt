@@ -32,5 +32,5 @@ export interface ContractProvisioningActivationReadPort {
    * Aprovisionamientos activados del contrato con activación comercial BLOCKED por
    * CONTRACT_UNSIGNED (bloque D: la firma los pasa a DONE).
    */
-  listUnsignedBlockedProvisioningIds?(contractId: string): Promise<string[]>;
+  listUnsignedBlockedProvisioningIds(contractId: string): Promise<string[]>;
 }

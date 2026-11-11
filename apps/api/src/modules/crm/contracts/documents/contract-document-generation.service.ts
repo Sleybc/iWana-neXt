@@ -50,6 +50,14 @@ import { ContractsService } from '../contracts.service';
 import type { Contract } from '../entities/contract.entity';
 
 const TEMPLATE_TYPE = 'CONTRATO_SERVICIO' as const;
+
+/** OT cerradas: el técnico ya no accede al documento del contrato (SEC-5). */
+const CLOSED_EXECUTION_ORDER_STATUSES: ReadonlySet<string> = new Set([
+  'COMPLETED',
+  'COMPLETED_WITH_OBSERVATIONS',
+  'NOT_EXECUTED',
+  'CANCELLED',
+]);
 const JOB_ATTEMPTS = 3;
 const JOB_BACKOFF_MS = 5_000;
 
@@ -181,7 +189,8 @@ export class ContractDocumentGenerationService {
     }
 
     const snapshot = await this.buildSnapshot(contract, executionOrderId, template, operator);
-    return this.enqueueGeneration(contract, executionOrderId, actor, snapshot);
+    // SEC-2: se congela la huella del contenido publicado; el worker solo renderiza ese texto.
+    return this.enqueueGeneration(contract, executionOrderId, actor, snapshot, template.sha256);
   }
 
   /** Última generación del contrato para la OT; null si aún no se pidió. */
@@ -312,21 +321,34 @@ export class ContractDocumentGenerationService {
     return order;
   }
 
-  /** El técnico solo opera la OT que tiene asignada; el supervisor cualquiera del tenant. */
+  /**
+   * El técnico solo opera la OT que tiene asignada y mientras esté en ejecución (no cerrada ni
+   * anulada; SEC-5); el supervisor cualquiera del tenant.
+   */
   private async assertAssignedOrSupervisor(
-    order: { assignedTechnicianId: string | null },
+    order: { assignedTechnicianId: string | null; status?: string; closedAt?: string | null },
     actor: JwtPayload,
   ): Promise<void> {
-    if (order.assignedTechnicianId === actor.sub) return;
+    const assigned = order.assignedTechnicianId === actor.sub;
+    const inExecution =
+      !order.closedAt &&
+      (order.status === undefined || !CLOSED_EXECUTION_ORDER_STATUSES.has(order.status));
+    if (assigned && inExecution) return;
     const permissions = await this.effectivePermissionsService.getEffectivePermissionsForUser(
       actor.sub,
     );
-    if (!permissions.includes(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)) {
-      throw new ForbiddenException({
-        code: 'EXECUTION_ORDER_NOT_ASSIGNED',
-        message: 'La orden de trabajo no está asignada a este usuario.',
-      });
-    }
+    if (permissions.includes(AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE)) return;
+    throw new ForbiddenException(
+      assigned
+        ? {
+            code: 'EXECUTION_ORDER_NOT_IN_EXECUTION',
+            message: 'La orden de trabajo ya no está en ejecución.',
+          }
+        : {
+            code: 'EXECUTION_ORDER_NOT_ASSIGNED',
+            message: 'La orden de trabajo no está asignada a este usuario.',
+          },
+    );
   }
 
   private async isTitularBlocked(contractId: string): Promise<boolean> {
@@ -435,6 +457,7 @@ export class ContractDocumentGenerationService {
     executionOrderId: string,
     actor: JwtPayload,
     snapshot: ContractDocumentSnapshot,
+    templateSha256: string,
   ): Promise<ContractDocumentGeneration> {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const digest = snapshotDigest(snapshot);
@@ -444,8 +467,8 @@ export class ContractDocumentGenerationService {
       const inserted = (await qr.query(
         `INSERT INTO contract_document_generations
            (tenant_id, contract_id, execution_order_id, status, template_legal_text_id,
-            template_version, snapshot_encrypted, snapshot_sha256, requested_by)
-         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8)
+            template_version, template_sha256, snapshot_encrypted, snapshot_sha256, requested_by)
+         VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9)
          ON CONFLICT (tenant_id, contract_id, snapshot_sha256)
            WHERE status IN ('PENDING', 'READY') DO NOTHING
          RETURNING ${GENERATION_COLUMNS}`,
@@ -455,6 +478,7 @@ export class ContractDocumentGenerationService {
           executionOrderId,
           snapshot.template.legalTextId,
           snapshot.template.version,
+          templateSha256,
           encrypted,
           digest,
           actor.sub,

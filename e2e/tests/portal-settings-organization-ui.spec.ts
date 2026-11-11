@@ -390,6 +390,29 @@ async function setupOrganizationUiMocks(page: Page, options: OrganizationUiMockO
       return;
     }
 
+    // Sección «Datos del operador para contratos» (cierre de venta, CA-11): perfil completo.
+    if (pathname.endsWith('/organization/contract-profile') && method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            legalName: 'Operador Sintético QA S.A.S.',
+            nit: '900000001',
+            qualityAndCoverageUrl: 'https://operador.example/calidad',
+            customerServiceChannels: [{ kind: 'PHONE', value: '6015550000', label: null }],
+            reconnectionFee: 15000,
+            annualIncreaseCapPercent: 5,
+            equipmentIncidentReportChannel: 'Línea de soporte',
+            otherConditions: null,
+            updatedAt: '2026-11-11T15:00:00.000Z',
+          },
+          meta: { missingFields: [] },
+        }),
+      });
+      return;
+    }
+
     if (url.includes('/auth/logout') && method === 'POST') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       return;
@@ -582,6 +605,14 @@ test.describe('Portal settings organization UI', () => {
           page.getByRole('heading', { name: 'Perfil empresarial y organización' }),
         ).toBeVisible();
         await expect(page.getByRole('table')).toBeVisible();
+        const operatorHeading = page.getByRole('heading', {
+          name: 'Datos del operador para contratos',
+        });
+        await expect(operatorHeading).toBeVisible();
+        const operatorSection = page.locator('section').filter({ has: operatorHeading });
+        await expect(operatorSection.getByRole('textbox', { name: 'Razón social' })).toHaveValue(
+          'Operador Sintético QA S.A.S.',
+        );
         await expectThemeApplied(page, theme);
 
         await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');

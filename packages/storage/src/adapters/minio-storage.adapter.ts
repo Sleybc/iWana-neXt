@@ -2,12 +2,13 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'node:stream';
-import type { PutObjectOptions, StoragePort } from '../ports/storage.port';
+import type { PutObjectOptions, StoragePort, StoredObjectSummary } from '../ports/storage.port';
 
 /**
  * Configuración para el adaptador MinIO / S3.
@@ -90,6 +91,21 @@ export class MinioStorageAdapter implements StoragePort {
         Key: objectKey,
       }),
     );
+  }
+
+  async listObjects(prefix: string): Promise<StoredObjectSummary[]> {
+    const objects: StoredObjectSummary[] = [];
+    let token: string | undefined;
+    do {
+      const page = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }),
+      );
+      for (const item of page.Contents ?? []) {
+        if (item.Key) objects.push({ key: item.Key, lastModified: item.LastModified ?? null });
+      }
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
+    return objects;
   }
 
   async objectExists(objectKey: string): Promise<boolean> {

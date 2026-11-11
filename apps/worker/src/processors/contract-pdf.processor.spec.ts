@@ -5,6 +5,10 @@ import { UnrecoverableError, type Job } from 'bullmq';
 import { CRM_CONTRACT_PDF_JOB_NAME, type ContractPdfJobPayload } from '@iwana/shared';
 import { decryptObjectBuffer, type StoragePort } from '@iwana/storage';
 import type { DataSource } from 'typeorm';
+import {
+  FROZEN_TEMPLATE_COLUMNS,
+  legalTextRow,
+} from '../../test/fixtures/contracts/contract-legal-text.fixture';
 import { buildContractSnapshotFixture } from '../../test/fixtures/contracts/contract-snapshot.fixture';
 import type { ContractPdfRenderer } from '../contracts/contract-pdf-renderer';
 import {
@@ -14,10 +18,16 @@ import {
 } from './contract-pdf.processor';
 
 const tenantQuery = jest.fn();
+const mockLegalQuery = jest.fn();
 jest.mock('@iwana/db', () => ({
   ...jest.requireActual('@iwana/db'),
   runInTenantSchema: jest.fn((_ds: unknown, _schema: string, fn: (qr: unknown) => unknown) =>
-    fn({ query: tenantQuery }),
+    fn({
+      query: (sql: string, params: unknown[]) =>
+        String(sql).includes('FROM legal_texts')
+          ? mockLegalQuery(sql, params)
+          : tenantQuery(sql, params),
+    }),
   ),
 }));
 
@@ -61,11 +71,13 @@ describe('ContractPdfProcessor', () => {
     tenant_id: TENANT_ID,
     status: 'PENDING',
     snapshot_encrypted: encryptSnapshot(snapshot),
+    ...FROZEN_TEMPLATE_COLUMNS,
     ...overrides,
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLegalQuery.mockResolvedValue([legalTextRow()]);
     (dataSource.query as jest.Mock).mockResolvedValue([{ schema_name: SCHEMA }]);
     renderer.render.mockResolvedValue(pdf);
     processor = new ContractPdfProcessor(
@@ -163,6 +175,41 @@ describe('ContractPdfProcessor', () => {
     tenantQuery.mockResolvedValue([generationRow()]);
     const error = await processor.process(job()).catch((caught: Error) => caught);
     expect(String((error as Error).message)).not.toContain('1000000001');
+  });
+
+  it.each([
+    ['sin plantilla congelada', { template_sha256: null }, legalTextRow()],
+    ['huella congelada distinta', { template_sha256: 'f'.repeat(64) }, legalTextRow()],
+    ['contenido alterado tras publicar', {}, legalTextRow({ content: '<p>otro</p>' })],
+    ['sin aprobación jurídica', {}, legalTextRow({ legal_approval_declaration: null })],
+    ['otro tipo de texto', {}, legalTextRow({ type: 'AUTORIZACION' })],
+    ['texto inexistente', {}, null],
+  ])('no renderiza con plantilla no verificable (%s) y queda FAILED', async (_n, gen, text) => {
+    tenantQuery.mockResolvedValue([generationRow(gen)]);
+    mockLegalQuery.mockResolvedValue(text ? [text] : []);
+    await expect(processor.process(job())).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(renderer.render).not.toHaveBeenCalled();
+    expect(tenantQuery.mock.calls.some(([sql]) => String(sql).includes('RENDER_FAILED'))).toBe(
+      true,
+    );
+  });
+
+  it('no renderiza un texto publicado con HTML fuera de la lista blanca', async () => {
+    const content = '<p>x</p><link rel="stylesheet" href="http://evil.test/a.css">';
+    const sha = createHash('sha256').update(content, 'utf8').digest('hex');
+    tenantQuery.mockResolvedValue([generationRow({ template_sha256: sha })]);
+    mockLegalQuery.mockResolvedValue([legalTextRow({ content, sha256: sha })]);
+    await expect(processor.process(job())).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(renderer.render).not.toHaveBeenCalled();
+  });
+
+  it('lee el texto legal por id y versión congelados', async () => {
+    tenantQuery.mockResolvedValueOnce([generationRow()]).mockResolvedValueOnce([]);
+    await processor.process(job());
+    expect(mockLegalQuery.mock.calls[0]![1]).toEqual([
+      FROZEN_TEMPLATE_COLUMNS.template_legal_text_id,
+      FROZEN_TEMPLATE_COLUMNS.template_version,
+    ]);
   });
 
   it('resuelve el directorio de plantillas configurado o el de src', () => {

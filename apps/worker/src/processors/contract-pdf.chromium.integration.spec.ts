@@ -26,6 +26,10 @@ import { buildContractSnapshotFixture } from '../../test/fixtures/contracts/cont
 import { ContractPdfRenderer } from '../contracts/contract-pdf-renderer';
 import { fillContractTemplate } from '../contracts/contract-template';
 import {
+  FIXTURE_TEMPLATE_CONTENT,
+  publishedTemplate,
+} from '../../test/fixtures/contracts/contract-legal-text.fixture';
+import {
   CONTRACT_TEMPLATE_FILE,
   ContractPdfProcessor,
   contractPdfObjectKey,
@@ -156,7 +160,26 @@ describeWithDb('PDF del contrato: Postgres real + Chromium real', () => {
       return manager.query(sql, params) as Promise<unknown>;
     });
 
-  async function seedGeneration(): Promise<ContractPdfJobPayload> {
+  /** Publica el contenido como CONTRATO_SERVICIO aprobado y devuelve id, versión y huella. */
+  async function publishTemplate(content: string) {
+    const published = publishedTemplate(content);
+    const version = `prueba-${randomUUID().slice(0, 8)}`;
+    const rows = (await scoped(
+      `INSERT INTO legal_texts
+         (type, version, sha256, content, published_at, format,
+          legal_approval_declaration, approved_by_user_id, approved_at)
+       VALUES ('CONTRATO_SERVICIO', $1, $2, $3, now(), 'HTML',
+               'APROBADO_POR_ASESORIA_JURIDICA', $4, now())
+       RETURNING id`,
+      [version, published.frozen.template_sha256, published.row.content, randomUUID()],
+    )) as Array<{ id: string }>;
+    return { id: rows[0]!.id, version, sha256: published.frozen.template_sha256 };
+  }
+
+  async function seedGeneration(
+    content: string = FIXTURE_TEMPLATE_CONTENT,
+  ): Promise<ContractPdfJobPayload> {
+    const template = await publishTemplate(content);
     const subscriberId = randomUUID();
     const contractId = randomUUID();
     const generationId = randomUUID();
@@ -180,13 +203,15 @@ describeWithDb('PDF del contrato: Postgres real + Chromium real', () => {
     await scoped(
       `INSERT INTO contract_document_generations
          (id, tenant_id, contract_id, status, template_legal_text_id, template_version,
-          snapshot_encrypted, snapshot_sha256, requested_by)
-       VALUES ($1, $2, $3, 'PENDING', $4, '1.0-prueba', $5, $6, $7)`,
+          template_sha256, snapshot_encrypted, snapshot_sha256, requested_by)
+       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6, $7, $8, $9)`,
       [
         generationId,
         tenantId,
         contractId,
-        snapshot.template.legalTextId,
+        template.id,
+        template.version,
+        template.sha256,
         encryptSnapshot(snapshot),
         createHash('sha256').update(contractId).digest('hex'),
         actorId,
@@ -257,7 +282,7 @@ describeWithDb('PDF del contrato: Postgres real + Chromium real', () => {
       new ContractPdfRenderer(new ConfigService({})),
       new ConfigService({ PII_ENCRYPTION_KEY: KEY, CONTRACT_TEMPLATES_DIR: templatesDir }),
     );
-    const payload = await seedGeneration();
+    const payload = await seedGeneration(realTemplate);
     await real.process(job(payload));
 
     const row = await readGeneration(payload.generationId);
@@ -278,15 +303,14 @@ describeWithDb('PDF del contrato: Postgres real + Chromium real', () => {
     expect(again.attempts).toBe(1);
   });
 
-  it('agotados los reintentos de un render imposible marca FAILED con RENDER_FAILED', async () => {
+  it('una huella congelada que no coincide con el texto publicado no se renderiza y queda FAILED', async () => {
+    // legal_texts es solo de inserción (trigger 146): se altera la huella congelada.
     const payload = await seedGeneration();
-    const broken = new ContractPdfProcessor(
-      dataSource,
-      diskStorage(storageDir),
-      new ContractPdfRenderer(new ConfigService({})),
-      new ConfigService({ PII_ENCRYPTION_KEY: KEY, CONTRACT_TEMPLATES_DIR: storageDir }),
-    );
-    await expect(broken.process(job(payload, 2))).rejects.toThrow();
+    await scoped(`UPDATE contract_document_generations SET template_sha256 = $2 WHERE id = $1`, [
+      payload.generationId,
+      'f'.repeat(64),
+    ]);
+    await expect(processor.process(job(payload))).rejects.toThrow();
     const row = await readGeneration(payload.generationId);
     expect(row.status).toBe('FAILED');
     expect(row.failure_reason).toBe('RENDER_FAILED');

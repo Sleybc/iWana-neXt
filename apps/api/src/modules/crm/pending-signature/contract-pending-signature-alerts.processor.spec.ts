@@ -35,6 +35,14 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
   let holders: { holders: jest.Mock };
   let mailer: { sendMail: jest.Mock };
   let processor: ContractPendingSignatureAlertsProcessor;
+  let tenants: { findTenantLifecycleById: jest.Mock; listActiveTenantContexts: jest.Mock };
+  const registered = {
+    id: payload.tenantId,
+    slug: payload.tenantSlug,
+    schemaName: payload.schemaName,
+    status: 'ACTIVE',
+    deletedAt: null,
+  };
   const manager = { marker: 'manager' };
 
   beforeEach(() => {
@@ -53,6 +61,10 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
     };
     mailer = { sendMail: jest.fn().mockResolvedValue(undefined) };
     runInTenant.mockImplementation(async (_ds, _schema, fn) => fn({ manager } as never));
+    tenants = {
+      findTenantLifecycleById: jest.fn().mockResolvedValue(registered),
+      listActiveTenantContexts: jest.fn().mockResolvedValue([registered]),
+    };
     processor = new ContractPendingSignatureAlertsProcessor(
       dataSource as never,
       queue as never,
@@ -60,6 +72,7 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
       holders as never,
       mailer as never,
       { get: () => 'https://portal.example.test' } as never,
+      tenants as never,
     );
   });
 
@@ -73,9 +86,9 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
   });
 
   it('el barrido encola un job por tenant válido con jobId determinista y sin PII', async () => {
-    dataSource.query.mockResolvedValue([
-      { id: payload.tenantId, slug: payload.tenantSlug, schema_name: payload.schemaName },
-      { id: 'malo', slug: 'x', schema_name: 'public' },
+    tenants.listActiveTenantContexts.mockResolvedValue([
+      registered,
+      { ...registered, id: 'malo', slug: 'x', schemaName: 'public' },
     ]);
 
     await processor.process({ name: CONTRACT_PENDING_SIGNATURE_SWEEP_JOB, data: {} } as never);
@@ -90,9 +103,6 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
   });
 
   it('el barrido falla si no pudo encolar algún tenant', async () => {
-    dataSource.query.mockResolvedValue([
-      { id: payload.tenantId, slug: payload.tenantSlug, schema_name: payload.schemaName },
-    ]);
     queue.add.mockRejectedValue(new Error('redis'));
     await expect(
       processor.process({ name: CONTRACT_PENDING_SIGNATURE_SWEEP_JOB, data: {} } as never),
@@ -127,6 +137,28 @@ describe('ContractPendingSignatureAlertsProcessor', () => {
     expect(mail.text).toContain('https://portal.example.test/dashboard/crm/subscribers');
     expect(`${mail.text}${mail.html}`).not.toContain(C1);
     run.mockRestore();
+  });
+
+  it('lee los tenants por el puerto del módulo Tenant, sin SQL directo', async () => {
+    await processor.process({ name: CONTRACT_PENDING_SIGNATURE_SWEEP_JOB, data: {} } as never);
+    expect(tenants.listActiveTenantContexts).toHaveBeenCalled();
+    expect(dataSource.query).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['schema distinto al registro', { schemaName: 'tenant_otro' }, registered],
+    ['slug distinto al registro', { tenantSlug: 'otro' }, registered],
+    ['tenant inactivo', {}, { ...registered, status: 'SUSPENDED' }],
+    ['tenant inexistente', {}, null],
+  ])('rechaza sin reintento un job con %s', async (_name, change, record) => {
+    tenants.findTenantLifecycleById.mockResolvedValue(record);
+    await expect(
+      processor.process({
+        name: CONTRACT_PENDING_SIGNATURE_TENANT_JOB,
+        data: { ...payload, ...change },
+      } as never),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(service.listDueForAlert).not.toHaveBeenCalled();
   });
 
   it('un solo contrato usa el singular', async () => {

@@ -6,7 +6,6 @@ import type { Job } from 'bullmq';
 import { UnrecoverableError } from 'bullmq';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { DataSource } from 'typeorm';
 import { isValidSchemaName, runInTenantSchema, summarizeErrorForLog } from '@iwana/db';
@@ -17,6 +16,7 @@ import {
   ContractDocumentSnapshotSchema,
   ContractPdfJobPayloadSchema,
   ContractSignedPdfJobPayloadSchema,
+  checkContractTemplateHtml,
   contractSignatureObjectKeys,
   type ContractDocumentSnapshot,
   type ContractPdfJobPayload,
@@ -39,8 +39,14 @@ import {
 import { ContractPdfRenderer } from '../contracts/contract-pdf-renderer';
 import { embedSignature, fillContractTemplate } from '../contracts/contract-template';
 
+/**
+ * Semilla de la primera versión de CONTRATO_SERVICIO (SEC-2): no es fuente de render. El worker
+ * solo renderiza el texto legal publicado y aprobado que la generación congeló (id, versión y
+ * huella). La semilla sirve para publicar la primera versión y para las pruebas.
+ */
 export const CONTRACT_TEMPLATES_DIR_ENV = 'CONTRACT_TEMPLATES_DIR';
 export const CONTRACT_TEMPLATE_FILE = 'contrato-servicio.base.html';
+const CONTRACT_TEMPLATE_TYPE = 'CONTRATO_SERVICIO';
 
 interface GenerationRow {
   id: string;
@@ -48,9 +54,20 @@ interface GenerationRow {
   tenant_id: string;
   status: 'PENDING' | 'READY' | 'FAILED';
   snapshot_encrypted: string | null;
+  template_legal_text_id: string | null;
+  template_version: string | null;
+  template_sha256: string | null;
 }
 
-/** Plantillas: `dist/templates` en la imagen; `src/templates` en desarrollo y pruebas. */
+interface LegalTextRow {
+  content: string;
+  sha256: string;
+  type: string;
+  format: string;
+  legal_approval_declaration: string | null;
+}
+
+/** Semilla: `dist/templates` en la imagen; `src/templates` en desarrollo y pruebas. */
 export function resolveContractTemplatesDir(configured?: string): string {
   if (configured?.trim()) return resolve(configured.trim());
   const candidates = [
@@ -161,9 +178,11 @@ export class ContractPdfProcessor extends WorkerHost {
       throw new UnrecoverableError('Imagen de la firma ilegible.');
     }
     const snapshot = this.readSnapshot(row.snapshot_encrypted, payload.contractId);
+    // Mismo contenido congelado que el PDF sin firmar; la huella se verifica de nuevo.
+    const template = await this.loadTemplate(row, schemaName);
     let html: string;
     try {
-      html = embedSignature(fillContractTemplate(await this.readTemplate(), snapshot), png);
+      html = embedSignature(fillContractTemplate(template, snapshot), png);
     } catch {
       throw new UnrecoverableError('No se pudo incrustar la firma en la plantilla.');
     }
@@ -184,14 +203,41 @@ export class ContractPdfProcessor extends WorkerHost {
     return { signedDocumentSha256, bytes: pdf.length };
   }
 
-  private readTemplate(): Promise<string> {
-    return readFile(
-      resolve(
-        resolveContractTemplatesDir(this.config.get<string>(CONTRACT_TEMPLATES_DIR_ENV)),
-        CONTRACT_TEMPLATE_FILE,
+  /**
+   * Contenido del texto legal congelado en la generación (SEC-2/SEC-4): se lee por id y
+   * versión, debe ser CONTRATO_SERVICIO en HTML con aprobación jurídica, su huella debe
+   * coincidir con la congelada y con la registrada, y debe pasar la lista blanca de HTML.
+   * Cualquier discrepancia es definitiva (no se reintenta).
+   */
+  private async loadTemplate(row: GenerationRow, schemaName: string): Promise<string> {
+    const frozen = row.template_sha256?.trim();
+    if (!row.template_legal_text_id || !row.template_version || !frozen) {
+      throw new UnrecoverableError('La generación no tiene plantilla congelada.');
+    }
+    const texts = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT content, sha256, type, format, legal_approval_declaration
+           FROM legal_texts WHERE id = $1 AND version = $2`,
+        [row.template_legal_text_id, row.template_version],
       ),
-      'utf8',
-    );
+    )) as LegalTextRow[];
+    const text = texts[0];
+    if (
+      !text ||
+      text.type !== CONTRACT_TEMPLATE_TYPE ||
+      text.format !== 'HTML' ||
+      !text.legal_approval_declaration
+    ) {
+      throw new UnrecoverableError('La plantilla congelada no está publicada y aprobada.');
+    }
+    const actual = createHash('sha256').update(text.content, 'utf8').digest('hex');
+    if (actual !== frozen || text.sha256.trim() !== frozen) {
+      throw new UnrecoverableError('La huella de la plantilla no coincide con la congelada.');
+    }
+    if (!checkContractTemplateHtml(text.content).ok) {
+      throw new UnrecoverableError('La plantilla contiene HTML no admitido.');
+    }
+    return text.content;
   }
 
   private async generate(
@@ -203,7 +249,7 @@ export class ContractPdfProcessor extends WorkerHost {
     if (!row.snapshot_encrypted) throw new UnrecoverableError('Generación sin snapshot.');
 
     const snapshot = this.readSnapshot(row.snapshot_encrypted, payload.contractId);
-    const template = await this.readTemplate();
+    const template = await this.loadTemplate(row, schemaName);
     let html: string;
     try {
       html = fillContractTemplate(template, snapshot);
@@ -251,7 +297,8 @@ export class ContractPdfProcessor extends WorkerHost {
   ): Promise<GenerationRow> {
     const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.query(
-        `SELECT id, contract_id, tenant_id, status, snapshot_encrypted
+        `SELECT id, contract_id, tenant_id, status, snapshot_encrypted,
+                template_legal_text_id, template_version, template_sha256
            FROM contract_document_generations
           WHERE id = $1 AND tenant_id = $2`,
         [payload.generationId, payload.tenantId],

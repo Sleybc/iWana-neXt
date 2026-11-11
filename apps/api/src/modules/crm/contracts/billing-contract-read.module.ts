@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TenantModule } from '../../tenant/tenant.module';
 import { BillingContractReadPort } from '../../billing/ports/billing-contract-read.port';
 import { BillingContractReadAdapter } from './billing-contract-read.adapter';
+import { ContractActivationEventReadPort } from '../../billing/ports/contract-activation-event-read.port';
+import { ContractActivationEventReadAdapter } from './contract-activation-event-read.adapter';
 
 /**
  * Módulo de lectura CRM consumido por Billing; no importa el módulo CRM completo.
@@ -12,7 +14,9 @@ import { BillingContractReadAdapter } from './billing-contract-read.adapter';
   providers: [
     BillingContractReadAdapter,
     { provide: BillingContractReadPort, useExisting: BillingContractReadAdapter },
+    ContractActivationEventReadAdapter,
+    { provide: ContractActivationEventReadPort, useExisting: ContractActivationEventReadAdapter },
   ],
-  exports: [BillingContractReadPort],
+  exports: [BillingContractReadPort, ContractActivationEventReadPort],
 })
 export class BillingContractReadModule {}

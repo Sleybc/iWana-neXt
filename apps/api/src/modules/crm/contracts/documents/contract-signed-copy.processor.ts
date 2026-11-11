@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Job, UnrecoverableError } from 'bullmq';
 import type { DataSource } from 'typeorm';
@@ -8,6 +8,8 @@ import { AuditAction } from '@iwana/shared';
 import { SanitizeFailedReason } from '../../../../common/sanitize-failed-reason.decorator';
 import { AuditService } from '../../../audit/audit.service';
 import { MailerService } from '../../../mailer/mailer.service';
+import { resolveRegisteredTenant } from '../../../tenant/ports/resolve-registered-tenant';
+import { TenantLifecycleReadPort } from '../../../tenant/ports/tenant-lifecycle-read.port';
 import {
   CONTRACT_SIGNED_COPY_FILENAME,
   contractSignedCopyTemplate,
@@ -82,6 +84,7 @@ export class ContractSignedCopyProcessor extends WorkerHost {
     private readonly tenantSettings: ContractsTenantSettingsReadPort,
     private readonly mailer: MailerService,
     private readonly auditService: AuditService,
+    @Inject(TenantLifecycleReadPort) private readonly tenants: TenantLifecycleReadPort,
   ) {
     super();
   }
@@ -96,15 +99,18 @@ export class ContractSignedCopyProcessor extends WorkerHost {
   }
 
   /** Expuesto para pruebas. Devuelve el estado resultante o null si la firma no existe. */
-  async send(payload: ContractSignedCopyJobPayload): Promise<ContractSignedCopyStatus | null> {
+  async send(untrusted: ContractSignedCopyJobPayload): Promise<ContractSignedCopyStatus | null> {
+    // SEC-7: schema y slug salen del registro de tenants; el payload solo se contrasta.
+    const tenant = await resolveRegisteredTenant(this.tenants, untrusted);
+    const payload = { ...untrusted, schemaName: tenant.schemaName, tenantSlug: tenant.slug };
     return TenantContext.run(
       {
-        tenantId: payload.tenantId,
-        schemaName: payload.schemaName,
-        tenantSlug: payload.tenantSlug,
+        tenantId: tenant.id,
+        schemaName: tenant.schemaName,
+        tenantSlug: tenant.slug,
       },
       () =>
-        runInTenantSchema(this.dataSource, payload.schemaName, async (qr) => {
+        runInTenantSchema(this.dataSource, tenant.schemaName, async (qr) => {
           const rows = (await qr.query(
             `SELECT s.id, s.contract_id, c.subscriber_id, s.signed_at, s.copy_email_status
                FROM contract_signatures s

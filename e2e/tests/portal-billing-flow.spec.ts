@@ -286,6 +286,38 @@ async function createDisposableTenant(): Promise<void> {
   agendaDate = `${today.slice(0, 8)}${String(cutoffDay).padStart(2, '0')}`;
 }
 
+/**
+ * ADR-109 D6 (spec bloque E): la activación emite `crm.contract.activated` y MOD14
+ * genera al instante el primer cobro. El consumidor es asíncrono: se espera un único
+ * borrador del periodo completo y sin número, que el flujo emite después.
+ */
+async function expectFirstChargeFromActivation(subscriber: string): Promise<void> {
+  const headers = apiHeaders(adminToken ?? '', TENANT_SLUG);
+  type Doc = { status: string; number: string | null; periodStart: string; total: string };
+  let documents: Doc[] = [];
+  await expect
+    .poll(
+      async () => {
+        documents = await expectJson<Doc[]>(
+          api!,
+          `/billing/documents?subscriberId=${subscriber}&limit=5`,
+          'GET',
+          200,
+          { headers },
+        );
+        return documents.length;
+      },
+      { timeout: 30_000, message: 'La activación no generó el primer cobro.' },
+    )
+    .toBe(1);
+  expect(documents[0]).toMatchObject({
+    status: 'BORRADOR',
+    periodStart,
+    total: '119.00',
+  });
+  expect(documents[0]?.number ?? null).toBeNull();
+}
+
 async function seedBillingFixture(): Promise<void> {
   const token = adminToken ?? '';
   const headers = apiHeaders(token, TENANT_SLUG);
@@ -324,6 +356,7 @@ async function seedBillingFixture(): Promise<void> {
     fiscalDocument: string,
     fiscalName: string,
     firstName: string,
+    withAdditional: boolean,
   ) {
     const subscriber = await expectJson<{ id: string }>(api!, '/crm/subscribers', 'POST', 201, {
       headers,
@@ -367,9 +400,21 @@ async function seedBillingFixture(): Promise<void> {
           fiscalName,
           fiscalDocument,
           fiscalAddress: `Dirección sintética ${RUN_ID}`,
+          // ADR-109 D6: la activación genera el primer cobro desde el inicio del
+          // contrato. Con inicio en el día del ciclo el periodo se cobra completo
+          // (100 + IVA 19 = 119), que es la base de los importes de este flujo.
+          startDate: periodStart,
         },
       },
     );
+    if (withAdditional) {
+      // RS-12: el aviso de adicionales se congela al generar y la API no expone
+      // adicionales en esta fase: se siembra por SQL antes de activar, porque la
+      // activación ya genera el documento.
+      tenantPsql(
+        `UPDATE __SCHEMA__.contracts SET additional_product_ids = '["adicional-qa"]'::jsonb WHERE id = '${contract.id}';`,
+      );
+    }
     const active = await expectJson<{ billingCycleDay: number; vatSnapshot: unknown }>(
       api!,
       `/crm/contracts/${contract.id}/activate`,
@@ -379,21 +424,17 @@ async function seedBillingFixture(): Promise<void> {
     );
     expect(active.billingCycleDay).toBe(cycleDay);
     expect(active.vatSnapshot).toMatchObject({ treatment: 'STANDARD', ratePercent: 19 });
+    await expectFirstChargeFromActivation(subscriber.id);
     return { subscriberId: subscriber.id, contractId: contract.id };
   }
 
-  const main = await seedSubscriber('qa', '900000001', 'Titular Sintético', 'Titular');
+  const main = await seedSubscriber('qa', '900000001', 'Titular Sintético', 'Titular', true);
   subscriberId = main.subscriberId;
   contractId = main.contractId;
-  const blocked = await seedSubscriber('qb', '900000002', 'Titular Bloqueado', 'Bloqueado');
+  const blocked = await seedSubscriber('qb', '900000002', 'Titular Bloqueado', 'Bloqueado', false);
   blockedSubscriberId = blocked.subscriberId;
   blockedContractId = blocked.contractId;
 
-  // RS-12: el aviso de adicionales se siembra antes de generar (la API no expone
-  // adicionales en esta fase).
-  tenantPsql(
-    `UPDATE __SCHEMA__.contracts SET additional_product_ids = '["adicional-qa"]'::jsonb WHERE id = '${contractId}';`,
-  );
   // Punto 3: marca de bloqueo sembrada por SQL (la API no expone marcas directas).
   const party = tenantPsql(
     `SELECT party_id::text FROM __SCHEMA__.subscribers WHERE id = '${blockedSubscriberId}';`,
@@ -481,6 +522,19 @@ function auditCount(entityType: string, action: string): number {
 
 test.use({ trace: 'retain-on-failure', screenshot: 'only-on-failure', video: 'off' });
 
+/**
+ * Monto COP tal como lo formatea el navegador (mismo Intl que `formatBillingMoney`).
+ * Los decimales de COP dependen de la versión de ICU/CLDR del navegador (CLDR 48: sin
+ * decimales), así que el valor esperado se calcula en la página y no se fija en el texto.
+ */
+async function copInBrowser(page: Page, value: number): Promise<string> {
+  return page.evaluate(
+    (amount) =>
+      new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(amount),
+    value,
+  );
+}
+
 test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
   test.skip(
     missingLiveEnvironment.length > 0,
@@ -561,9 +615,11 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     page,
   }) => {
     await loginInPortal(page, ADMIN_EMAIL, tenantAdminPassword);
-    await page.goto('/dashboard/billing/documents');
-    // CA-UX-FAC-17: primera visita con acción de generar.
-    await expect(page.getByText('Aún no hay documentos de cobro')).toBeVisible();
+    // ADR-109 D6: la activación ya generó un borrador por contrato. El estado vacío
+    // de primera visita (CA-UX-FAC-17) ya no es alcanzable en este flujo; lo cubre
+    // `billing-documents-client.spec.tsx`.
+    await page.goto(`/dashboard/billing/documents?subscriberId=${subscriberId}`);
+    await expect(page.getByText('Sin número')).toBeVisible();
     await page.getByRole('button', { name: 'Generar documentos' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Generar documentos' });
     await expect(dialog).toBeVisible();
@@ -577,10 +633,11 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
       .click();
     await dialog.getByLabel('Contrato').selectOption({ index: 1 });
     await dialog.getByRole('button', { name: 'Generar documentos' }).click();
-    // CA-FAC-03: el lote genera un solo documento para el contrato.
-    await expect(page.getByText('Documentos generados: 1')).toBeVisible();
-    // CA-FAC-05: sin motivo de bloqueo, el borrador es emisible.
-    await expect(page.getByText('Sin número')).toBeVisible();
+    // CA-FAC-03: el lote no duplica el documento que generó la activación.
+    await expect(page.getByText('Documentos generados: 0')).toBeVisible();
+    await expect(page.getByText(/Ya existían: 1\./u)).toBeVisible();
+    // CA-FAC-05: sin motivo de bloqueo, el borrador es emisible (uno solo).
+    await expect(page.getByText('Sin número')).toHaveCount(1);
     await page
       .getByRole('checkbox', {
         name: new RegExp(`Seleccionar documento ${formatBillingDateEs(periodStart)}`, 'u'),
@@ -635,7 +692,9 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     await expect(dialog.getByText(/Remanente a saldo a favor/u)).toContainText('31');
     await dialog.getByRole('button', { name: 'Registrar pago' }).click();
     await expect(page.getByText('Aún no hay pagos registrados')).not.toBeVisible();
-    await expect(page.getByText('150,00').first()).toBeVisible();
+    await expect(
+      page.getByText(await copInBrowser(page, 150), { exact: true }).first(),
+    ).toBeVisible();
     // Punto 1: el remanente queda como saldo a favor exacto en el estado de cuenta.
     const statement = await expectJson<{ creditBalance: string }>(
       request,
@@ -656,7 +715,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     await expect(page.getByText('Saldo a favor disponible')).toBeVisible();
     // Punto 1: el valor visible de la tarjeta coincide con el saldo a favor.
     const creditCard = page.locator('article', { hasText: 'Saldo a favor disponible' });
-    await expect(creditCard.getByText('$ 31,00')).toBeVisible();
+    await expect(creditCard.getByText(await copInBrowser(page, 31))).toBeVisible();
     // RS-12: aviso de adicionales sin cobrar.
     await expect(
       page.getByText(
@@ -673,7 +732,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     });
     await page.goto(`/dashboard/crm/subscribers/${subscriberId}?tab=vista-general`);
     const summary = page.getByRole('region', { name: 'Estado de cuenta' });
-    await expect(summary.getByText('$ 31,00')).toBeVisible();
+    await expect(summary.getByText(await copInBrowser(page, 31))).toBeVisible();
     await expect(summary.getByText('No hay documentos de cobro pendientes')).toBeVisible();
     const requestsBeforeTab = statementRequests.length;
     expect(requestsBeforeTab).toBeGreaterThan(0);
@@ -773,7 +832,7 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     // debe no afectar.
     const beforeDocs = await expectJson<unknown>(
       request,
-      '/billing/documents?limit=5',
+      `/billing/documents?subscriberId=${subscriberId}&limit=5`,
       'GET',
       200,
       {
@@ -813,9 +872,13 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
         documentPrefix: 'DC',
       },
     });
-    const afterDocs = await expectJson<unknown>(request, '/billing/documents?limit=5', 'GET', 200, {
-      headers,
-    });
+    const afterDocs = await expectJson<unknown>(
+      request,
+      `/billing/documents?subscriberId=${subscriberId}&limit=5`,
+      'GET',
+      200,
+      { headers },
+    );
     const after = (
       afterDocs as unknown as Array<{
         subtotal: string;
@@ -972,9 +1035,11 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
     page,
     request,
   }) => {
-    // El titular bloqueado necesita un documento para ejercer lista y detalle.
+    // El titular bloqueado necesita un documento emitido para ejercer lista y
+    // detalle. ADR-109 D6: su borrador lo generó la activación; generar de nuevo
+    // no lo duplica.
     const adminHeaders = apiHeaders(adminToken ?? '', TENANT_SLUG);
-    const generated = await expectJson<{ generated: number }>(
+    const generated = await expectJson<{ generated: number; existing: number }>(
       request,
       '/billing/documents/generate',
       'POST',
@@ -984,7 +1049,8 @@ test.describe('MOD14 Facturación — flujo E2E en navegador (V1-R)', () => {
         data: { contractId: blockedContractId },
       },
     );
-    expect(generated.generated).toBe(1);
+    expect(generated.generated).toBe(0);
+    expect(generated.existing).toBe(1);
     const blockedDocs = await expectJson<Array<{ id: string }>>(
       request,
       `/billing/documents?subscriberId=${blockedSubscriberId}&limit=5`,

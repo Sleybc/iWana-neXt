@@ -50,6 +50,8 @@
 
 **Riesgos aceptados:** la validez de la firma manuscrita digital depende del concepto del abogado (registrado en la versión de plantilla); un fallo del worker retrasa la firma, no el servicio.
 
+**Nota de retención de los objetos del contrato (2026-11-11, hallazgo SEC-1):** se evaluó conservar cifrado el PDF firmado al suprimir. No se conserva: la retención del contrato y del expediente de vinculación (ADR-094 v1.1 §D7: 5 años desde la terminación y bloqueo hasta la fecha más tardía de los hitos A–D) se aplica **antes** de la supresión, con el bloqueo (`DATOS_BLOQUEADOS`). La anonimización solo corre cuando la supresión es procedente o la retención venció, y en ese punto ADR-094 §D7 ordena borrar la evidencia documental. Por eso el PDF sin firmar, la imagen de la firma y el PDF firmado se borran todos; el borrado físico lo hace el barrido del worker tras el commit de la supresión (`contracts.anonymized_at`), junto con los huérfanos de firmas fallidas. Si el abogado fija un plazo propio para el contrato firmado distinto del bloqueo, esta nota se revisa.
+
 **Impacto:** OpenAPI (endpoints de generación, firma y estado), migraciones reversibles, Dockerfile del worker (`plat-ops`), pruebas de integración contra Postgres y Redis reales, E2E de la consola de OT.
 
 ## 5. Referencias

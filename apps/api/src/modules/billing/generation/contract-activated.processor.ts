@@ -13,6 +13,7 @@ import { TenantLifecycleReadPort } from '../../tenant/ports/tenant-lifecycle-rea
 import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
 import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
 import { BillingGenerationService } from './billing-generation.service';
+import { ContractActivationEventReadPort } from '../ports/contract-activation-event-read.port';
 import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
 
 export type ContractActivatedOutcome =
@@ -62,7 +63,9 @@ function outcomeOf(summary: BillingGenerationSummary): ContractActivatedOutcome 
  * `approval_mode`, prorrateo y vencimientos salen de la política efectiva.
  *
  * El tenant sale del registro de tenants, nunca del payload: el payload solo aporta
- * el identificador que se valida contra un tenant activo.
+ * el identificador que se valida contra un tenant activo. Tampoco la fecha (SEC-3): el
+ * evento debe existir en el outbox de CRM por eventId, estar publicado y coincidir en
+ * tenant y contrato; `billingStartDate` sale de esa fila y el contrato debe estar ACTIVE.
  */
 @Injectable()
 @Processor(CRM_CONTRACT_EVENTS_QUEUE, { concurrency: 2 })
@@ -73,6 +76,7 @@ export class ContractActivatedProcessor extends WorkerHost {
     @Inject(TenantLifecycleReadPort) private readonly tenants: TenantLifecycleReadPort,
     private readonly tenantSettings: SettingsPriorityTenantReadPort,
     private readonly generation: BillingGenerationService,
+    private readonly activationEvents: ContractActivationEventReadPort,
   ) {
     super();
   }
@@ -95,11 +99,12 @@ export class ContractActivatedProcessor extends WorkerHost {
     return TenantContext.run(
       { tenantId: tenant.id, schemaName: tenant.schemaName, tenantSlug: tenant.slug },
       async () => {
+        const firstChargeFrom = await this.verifiedBillingStart(envelope, tenant.id);
         const settings = await this.tenantSettings.getSnapshot({ tenantId: tenant.id });
         const summary = await this.generation.generate({
           date: localDateFor(new Date(), settings.timezone),
           contractId: envelope.payload.contractId,
-          firstChargeFrom: envelope.payload.billingStartDate,
+          firstChargeFrom,
           actorId: null,
         });
         // Un fallo de generación se reintenta; el reintento es idempotente.
@@ -111,5 +116,30 @@ export class ContractActivatedProcessor extends WorkerHost {
         return outcome;
       },
     );
+  }
+
+  /** SEC-3: la fecha de inicio de cobro sale del outbox de CRM, nunca del payload. */
+  private async verifiedBillingStart(
+    envelope: ContractActivatedEnvelope,
+    tenantId: string,
+  ): Promise<string> {
+    const event = await this.activationEvents.findActivationEvent(envelope.eventId);
+    if (
+      !event ||
+      event.tenantId !== tenantId ||
+      event.contractId !== envelope.payload.contractId ||
+      event.contractId !== envelope.aggregateId
+    ) {
+      throw new UnrecoverableError('El evento de activación no corresponde al outbox de CRM.');
+    }
+    // El publicador marca published_at después de encolar: un evento aún no marcado se reintenta.
+    if (!event.published) throw new Error('El evento de activación aún no consta publicado.');
+    if (event.contractStatus !== 'ACTIVE') {
+      throw new UnrecoverableError('El contrato del evento de activación no está activo.');
+    }
+    if (!event.billingStartDate || !/^\d{4}-\d{2}-\d{2}$/u.test(event.billingStartDate)) {
+      throw new UnrecoverableError('El evento de activación no tiene fecha de inicio de cobro.');
+    }
+    return event.billingStartDate;
   }
 }

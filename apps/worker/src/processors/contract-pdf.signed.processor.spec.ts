@@ -9,16 +9,26 @@ import {
 } from '@iwana/shared';
 import { decryptObjectBuffer, encryptObjectBuffer, type StoragePort } from '@iwana/storage';
 import type { DataSource } from 'typeorm';
+import {
+  SEED_TEMPLATE,
+  legalTextRow,
+} from '../../test/fixtures/contracts/contract-legal-text.fixture';
 import { buildContractSnapshotFixture } from '../../test/fixtures/contracts/contract-snapshot.fixture';
 import type { ContractPdfRenderer } from '../contracts/contract-pdf-renderer';
 import { embedSignature, isPngBuffer } from '../contracts/contract-template';
 import { ContractPdfProcessor } from './contract-pdf.processor';
 
 const tenantQuery = jest.fn();
+const mockLegalQuery = jest.fn();
 jest.mock('@iwana/db', () => ({
   ...jest.requireActual('@iwana/db'),
   runInTenantSchema: jest.fn((_ds: unknown, _schema: string, fn: (qr: unknown) => unknown) =>
-    fn({ query: tenantQuery }),
+    fn({
+      query: (sql: string, params: unknown[]) =>
+        String(sql).includes('FROM legal_texts')
+          ? mockLegalQuery(sql, params)
+          : tenantQuery(sql, params),
+    }),
   ),
 }));
 
@@ -81,6 +91,7 @@ describe('ContractPdfProcessor — PDF firmado (bloque D)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLegalQuery.mockResolvedValue([SEED_TEMPLATE.row]);
     (dataSource.query as jest.Mock).mockResolvedValue([{ schema_name: SCHEMA }]);
     tenantQuery.mockResolvedValue([
       {
@@ -89,6 +100,7 @@ describe('ContractPdfProcessor — PDF firmado (bloque D)', () => {
         tenant_id: payload.tenantId,
         status: 'READY',
         snapshot_encrypted: encryptSnapshot(snapshot),
+        ...SEED_TEMPLATE.frozen,
       },
     ]);
     storage.getObject.mockResolvedValue(encryptObjectBuffer(PNG, Buffer.from(KEY, 'hex')));

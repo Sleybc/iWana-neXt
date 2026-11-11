@@ -1,3 +1,7 @@
+import {
+  CONTRACT_MEDIA_SWEEP_QUEUE,
+  ContractMediaSweepProcessor,
+} from './processors/contract-media-sweep.processor';
 import { BullModule, BullRegistrar } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
@@ -235,6 +239,8 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     BullModule.registerQueue({ name: SCHEDULE_EVENTS_SWEEP_QUEUE }),
     // Cierre de venta (ADR-109 D5): PDF del contrato con Chromium, solo en el worker.
     BullModule.registerQueue({ name: CRM_CONTRACT_PDF_QUEUE }),
+    // SEC-1: barrido de objetos de contratos anonimizados y huérfanos.
+    BullModule.registerQueue({ name: CONTRACT_MEDIA_SWEEP_QUEUE }),
   ],
   providers: [
     {
@@ -273,6 +279,7 @@ function createWorkerStorageAdapter(config: ConfigService): StoragePort {
     ExecutionOrderTombstoneProcessor,
     ExecutionOrderDlqProcessor,
     EvidenceOrphanDetectionProcessor,
+    ContractMediaSweepProcessor,
     EvidenceAnalysisProcessor,
     ExpiredScheduleEventsProcessor,
     ContractPdfRenderer,

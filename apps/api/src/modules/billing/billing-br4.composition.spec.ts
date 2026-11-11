@@ -1,3 +1,5 @@
+import { ContractActivationEventReadPort } from './ports/contract-activation-event-read.port';
+import { ContractActivationEventReadAdapter } from '../crm/contracts/contract-activation-event-read.adapter';
 // otplib@13 trae ESM (@scure/base), incompatible con el runner CJS de Jest.
 jest.mock('otplib', () => ({
   TOTP: jest.fn(),
@@ -42,10 +44,17 @@ describe('BR-4 composición de módulos y contratos', () => {
     ).toBe(false);
   });
 
-  it('BR-4.5 BillingContractReadModule provee y exporta solo el puerto', () => {
+  it('BR-4.5 BillingContractReadModule provee y exporta solo puertos', () => {
     const providers = meta(MODULE_METADATA.PROVIDERS, BillingContractReadModule);
     const exports = meta(MODULE_METADATA.EXPORTS, BillingContractReadModule);
-    expect(exports).toEqual([BillingContractReadPort]);
+    // SEC-3 añade el puerto de lectura del outbox de activación; siguen sin exportarse adaptadores.
+    expect(exports).toEqual([BillingContractReadPort, ContractActivationEventReadPort]);
+    expect(providers).toContainEqual(
+      expect.objectContaining({
+        provide: ContractActivationEventReadPort,
+        useExisting: ContractActivationEventReadAdapter,
+      }),
+    );
     expect(providers).toContainEqual(
       expect.objectContaining({
         provide: BillingContractReadPort,

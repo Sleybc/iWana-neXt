@@ -189,7 +189,7 @@ describe('ContractDocumentGenerationService', () => {
     expect(result.status).toBe('PENDING');
     const [, params] = insertCall();
     const snapshot = JSON.parse(
-      decryptAes256Gcm(params[5] as string, Buffer.from(KEY_HEX, 'hex')),
+      decryptAes256Gcm(params[6] as string, Buffer.from(KEY_HEX, 'hex')),
     ) as ContractDocumentSnapshot;
     expect(ContractDocumentSnapshotSchema.parse(snapshot)).toBeTruthy();
     expect(snapshot.holder.documentNumber).toBe('1000000001');
@@ -197,8 +197,10 @@ describe('ContractDocumentGenerationService', () => {
     expect(snapshot.installation.address).toBe('Calle 1 # 2-3');
     expect(snapshot.equipment).toHaveLength(1);
     expect(snapshot.permanence).toBeNull();
-    expect(params[6]).toBe(snapshotDigest(snapshot));
-    expect(String(params[5])).not.toContain('1000000001');
+    expect(params[7]).toBe(snapshotDigest(snapshot));
+    expect(String(params[6])).not.toContain('1000000001');
+    // SEC-2: se congela la huella del contenido de la plantilla publicada.
+    expect(params[5]).toBe(TEMPLATE.sha256);
 
     expect(queue.add).toHaveBeenCalledWith(
       CRM_CONTRACT_PDF_JOB_NAME,
@@ -232,7 +234,7 @@ describe('ContractDocumentGenerationService', () => {
     });
     await run(() => service.request(CONTRACT_ID, ORDER_ID, actor));
     const snapshot = JSON.parse(
-      decryptAes256Gcm(insertCall()[1][5] as string, Buffer.from(KEY_HEX, 'hex')),
+      decryptAes256Gcm(insertCall()[1][6] as string, Buffer.from(KEY_HEX, 'hex')),
     ) as ContractDocumentSnapshot;
     expect(snapshot.permanence).toMatchObject({ months: 2, discountedOrDeferredAmount: 100000 });
   });
@@ -380,6 +382,41 @@ describe('ContractDocumentGenerationService', () => {
     ]);
     await expect(run(() => service.latest(CONTRACT_ID, ORDER_ID, actor))).resolves.toMatchObject({
       generationId: GENERATION_ID,
+    });
+  });
+
+  it.each(['COMPLETED', 'COMPLETED_WITH_OBSERVATIONS', 'NOT_EXECUTED', 'CANCELLED'])(
+    'SEC-5: el técnico asignado no accede con la OT %s; el supervisor sí',
+    async (status) => {
+      orders.getExecutionSnapshot.mockResolvedValue({
+        isAnnulled: false,
+        status,
+        subscriberId: SUBSCRIBER_ID,
+        assignedTechnicianId: TECH_ID,
+      });
+      await expect(run(() => service.latest(CONTRACT_ID, ORDER_ID, actor))).rejects.toMatchObject({
+        response: { code: 'EXECUTION_ORDER_NOT_IN_EXECUTION' },
+      });
+      await expect(run(() => service.request(CONTRACT_ID, ORDER_ID, actor))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      permissions.getEffectivePermissionsForUser.mockResolvedValue([
+        AccessPermissionKey.OPERATIONS_EXECUTION_ORDERS_SUPERVISE,
+      ]);
+      await expect(run(() => service.latest(CONTRACT_ID, ORDER_ID, actor))).resolves.toBeDefined();
+    },
+  );
+
+  it('SEC-5: el técnico asignado no accede a una OT con cierre registrado', async () => {
+    orders.getExecutionSnapshot.mockResolvedValue({
+      isAnnulled: false,
+      status: 'IN_PROGRESS',
+      closedAt: '2026-11-11T10:00:00.000Z',
+      subscriberId: SUBSCRIBER_ID,
+      assignedTechnicianId: TECH_ID,
+    });
+    await expect(run(() => service.latest(CONTRACT_ID, ORDER_ID, actor))).rejects.toMatchObject({
+      response: { code: 'EXECUTION_ORDER_NOT_IN_EXECUTION' },
     });
   });
 

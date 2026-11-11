@@ -89,6 +89,9 @@ sequenceDiagram
 - La ubicación del técnico se guarda solo como evidencia de la firma, con precisión limitada.
 - Huella SHA-256 sobre el PDF final; cualquier descarga posterior verifica la huella.
 - Nada de datos personales en logs ni en payloads de colas; el evento lleva solo identificadores.
+- **Desviación registrada (2026-11-11, revisión sec-eng):** el PDF sin firmar y el firmado no se entregan por URL firmada sino por descarga en streaming desde la API (`StreamableFile`, `Cache-Control: no-store`). Cada acceso pasa por guards, permiso, verificación de huella y auditoría; el objeto cifrado nunca sale del bucket ni queda una URL reutilizable.
+- **Objetos de medios en la supresión (SEC-1):** la supresión marca `contracts.anonymized_at` en su transacción; el barrido del worker (`crm-contract-media-sweep`, cada 6 h) borra todos los objetos bajo `{schema}/contracts/{id}/` de los contratos anonimizados y los huérfanos sin fila con más de 24 h (firma fallida tras subir la imagen, 503 del worker, render sin commit). Ver ADR-109 §4.
+- **Plantilla congelada (SEC-2/SEC-4):** la generación congela id, versión y SHA-256 del texto legal CONTRATO_SERVICIO publicado; el worker renderiza ese contenido y la firma lo re-renderiza con la misma huella. `contrato-servicio.base.html` es solo la semilla de la primera versión. El HTML se valida por lista blanca al publicar y al renderizar.
 
 ## 7. Criterios de aceptación
 

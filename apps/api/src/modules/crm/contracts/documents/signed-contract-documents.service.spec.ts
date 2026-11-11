@@ -13,7 +13,10 @@ import {
 } from '@iwana/shared';
 import { contractSignedCopyTemplate } from '../../../mailer/templates/contract-signed-copy.template';
 import { contractSignedCopyJobId } from './contract-signed-copy.constants';
-import { parseContractSignedCopyPayload } from './contract-signed-copy.processor';
+import {
+  ContractSignedCopyProcessor,
+  parseContractSignedCopyPayload,
+} from './contract-signed-copy.processor';
 import { ContractSignedCopyProducer } from './contract-signed-copy.producer';
 import { SignedContractDocumentsService } from './signed-contract-documents.service';
 
@@ -210,6 +213,38 @@ describe('Copia del contrato firmado por correo', () => {
     const queue = { add: jest.fn(async () => Promise.reject(new Error('redis caído'))) };
     const producer = new ContractSignedCopyProducer(queue as never);
     await expect(inContext(() => producer.enqueue(SIGNATURE))).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['schema distinto al registro', { schemaName: 'tenant_ajeno' }, 'ACTIVE'],
+    ['slug distinto al registro', { tenantSlug: 'ajeno' }, 'ACTIVE'],
+    ['tenant inactivo', {}, 'SUSPENDED'],
+  ])('SEC-7: rechaza sin reintento un payload con %s', async (_name, change, status) => {
+    const dataSource = { createQueryRunner: jest.fn() };
+    const tenants = {
+      findTenantLifecycleById: jest.fn(async () => ({
+        id: TENANT,
+        schemaName: context.schemaName,
+        slug: context.tenantSlug,
+        status,
+        deletedAt: null,
+      })),
+    };
+    const processor = new ContractSignedCopyProcessor(
+      dataSource as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      tenants as never,
+    );
+    await expect(
+      processor.send({ ...context, ...change, signatureId: SIGNATURE }),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(tenants.findTenantLifecycleById).toHaveBeenCalledWith(TENANT);
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
   });
 
   it('la plantilla no lleva datos del titular y muestra la fecha civil', () => {

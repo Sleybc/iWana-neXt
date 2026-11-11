@@ -1,5 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
+
 /**
  * Migración 183 — permanencia mínima (cierre de venta, bloque H; CA-13).
  *
@@ -9,7 +11,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *   todos los datos van en NULL (la opción sin permanencia siempre existe). La tabla
  *   mes 1..N no se persiste: se calcula del valor y los meses.
  *
- * `down()` retira la tabla y las columnas; los datos de permanencia se pierden.
+ * `down()` retira la tabla y las columnas. Si hay aceptaciones de permanencia o planes con
+ * cargo u oferta de permanencia, lo bloquea salvo `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true`:
+ * esos datos no se reconstruyen.
  */
 export class ContractPermanence1830000000183 implements MigrationInterface {
   name = 'ContractPermanence1830000000183';
@@ -69,6 +73,23 @@ export class ContractPermanence1830000000183 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
+      const counts = (await queryRunner.query(`
+        SELECT
+          (CASE WHEN to_regclass('contract_permanence') IS NULL THEN 0
+                ELSE (SELECT COUNT(*) FROM contract_permanence) END)::int AS acceptances,
+          (SELECT COUNT(*) FROM plan_details
+            WHERE connection_fee <> 0 OR offers_permanence = true)::int AS plans
+      `)) as Array<{ acceptances: number; plans: number }>;
+      const { acceptances = 0, plans = 0 } = counts[0] ?? {};
+      if (acceptances > 0 || plans > 0) {
+        throw new Error(
+          `Rollback de ContractPermanence bloqueado: ${acceptances} aceptación(es) de permanencia ` +
+            `y ${plans} plan(es) con cargo u oferta. Para continuar de forma destructiva, ` +
+            `exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true.`,
+        );
+      }
+    }
     await queryRunner.query(`DROP TABLE IF EXISTS contract_permanence`);
     await queryRunner.query(`
       ALTER TABLE plan_details

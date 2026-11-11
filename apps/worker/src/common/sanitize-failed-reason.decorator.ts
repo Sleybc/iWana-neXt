@@ -23,7 +23,16 @@ export function SanitizeFailedReason(): MethodDecorator {
             // Preserva instanceof (p. ej. UnrecoverableError de BullMQ) para que
             // los estados de reintento sigan teniendo el mismo comportamiento.
             Object.setPrototypeOf(safeError, Object.getPrototypeOf(error));
-            if (/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(error.name)) safeError.name = error.name;
+            // defineProperty y no asignación: un prototipo con `name` solo-getter
+            // (p. ej. errores de librerías) haría lanzar un TypeError que ocultaría la causa.
+            if (/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(error.name)) {
+              Object.defineProperty(safeError, 'name', {
+                value: error.name,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+              });
+            }
           }
           throw safeError;
         }

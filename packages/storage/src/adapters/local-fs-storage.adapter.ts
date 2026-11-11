@@ -2,14 +2,15 @@ import {
   createReadStream,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import type { Readable } from 'node:stream';
-import type { PutObjectOptions, StoragePort } from '../ports/storage.port';
+import type { PutObjectOptions, StoragePort, StoredObjectSummary } from '../ports/storage.port';
 
 /**
  * Adaptador de almacenamiento local sobre el sistema de archivos.
@@ -42,7 +43,7 @@ export class LocalFsStorageAdapter implements StoragePort {
   ): Promise<void> {
     const filePath = join(this.resolvedBase, objectKey);
     // Crear directorios intermedios (ej: tenant_xxx/logo/)
-    const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+    const dir = dirname(filePath);
     mkdirSync(dir, { recursive: true });
 
     if (Buffer.isBuffer(body)) {
@@ -66,6 +67,24 @@ export class LocalFsStorageAdapter implements StoragePort {
     if (existsSync(filePath)) {
       rmSync(filePath, { force: true });
     }
+  }
+
+  async listObjects(prefix: string): Promise<StoredObjectSummary[]> {
+    const objects: StoredObjectSummary[] = [];
+    const walk = (dir: string): void => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (entry.isFile()) {
+          const key = relative(this.resolvedBase, path).split(sep).join('/');
+          if (key.startsWith(prefix)) objects.push({ key, lastModified: statSync(path).mtime });
+        }
+      }
+    };
+    const slash = prefix.lastIndexOf('/');
+    walk(join(this.resolvedBase, slash >= 0 ? prefix.slice(0, slash) : ''));
+    return objects;
   }
 
   async objectExists(objectKey: string): Promise<boolean> {

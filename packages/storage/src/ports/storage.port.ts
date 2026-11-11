@@ -27,6 +27,13 @@ export interface PutObjectOptions {
  *
  * ADR-033 — Storage MinIO + StoragePort
  */
+/** Objeto listado por prefijo (barridos de huérfanos). */
+export interface StoredObjectSummary {
+  key: string;
+  /** Última modificación; null si el almacenamiento no la informa. */
+  lastModified: Date | null;
+}
+
 export interface StoragePort {
   /**
    * Sube un objeto al bucket configurado.
@@ -41,6 +48,12 @@ export interface StoragePort {
    * No lanza error si el objeto no existe.
    */
   deleteObject(objectKey: string): Promise<void>;
+
+  /**
+   * Lista las claves bajo un prefijo (con `/` final). Opcional: lo usan los barridos de
+   * huérfanos; quien lo necesite debe fallar cerrado si el adaptador no lo implementa.
+   */
+  listObjects?(prefix: string): Promise<StoredObjectSummary[]>;
 
   /**
    * Verifica si un objeto existe en el bucket.

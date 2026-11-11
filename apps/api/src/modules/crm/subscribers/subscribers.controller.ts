@@ -926,7 +926,11 @@ export class SubscribersController {
       arcoRequests: readAccess.permissions.has(AccessPermissionKey.PRIVACY_READ)
         ? view360.arcoRequests
         : [],
-      subscriber: subscriberResponse,
+      // La ficha lee esta vista: sin el campo, la insignia «Pendiente de firma» no aparece (CA-5).
+      subscriber: this.withPendingSignature(
+        subscriberResponse,
+        await this.pendingSignatureFor([view360.subscriber]),
+      ),
       contracts: view360.contracts,
       expedienteSummary: privacyRestricted
         ? this.redactExpedienteSummary(view360.expedienteSummary)

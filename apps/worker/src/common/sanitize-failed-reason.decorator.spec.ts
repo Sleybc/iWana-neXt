@@ -48,4 +48,31 @@ describe('SanitizeFailedReason', () => {
     });
     expect(String(thrown)).not.toContain('CENTINELA-PII-0005');
   });
+  it('keeps the original class when its prototype exposes name as a getter only', async () => {
+    class GetterNameError extends Error {
+      get name(): string {
+        return 'GetterNameError';
+      }
+    }
+    class ProcessorProbe {
+      async process(): Promise<void> {
+        throw new GetterNameError('detail CENTINELA-PII-0006');
+      }
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(ProcessorProbe.prototype, 'process');
+    if (!descriptor) throw new Error('process method descriptor is missing');
+    const decoratedDescriptor = { ...descriptor };
+    SanitizeFailedReason()(ProcessorProbe.prototype, 'process', decoratedDescriptor);
+    Object.defineProperty(ProcessorProbe.prototype, 'process', decoratedDescriptor);
+
+    const thrown = await new ProcessorProbe().process().catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(GetterNameError);
+    expect(thrown).toMatchObject({
+      name: 'GetterNameError',
+      message: 'class=GetterNameError sqlstate=none',
+    });
+    expect(String(thrown)).not.toContain('CENTINELA-PII-0006');
+  });
 });

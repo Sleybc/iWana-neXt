@@ -353,8 +353,7 @@ export class ContractSignatureService implements OnModuleDestroy {
   /** La firma resuelve CONTRACT_UNSIGNED: BLOCKED → DONE (puerto de estado comercial). */
   private async releaseUnsignedBlock(contractId: string): Promise<void> {
     try {
-      const ids =
-        (await this.provisioningActivation.listUnsignedBlockedProvisioningIds?.(contractId)) ?? [];
+      const ids = await this.provisioningActivation.listUnsignedBlockedProvisioningIds(contractId);
       for (const id of ids) await this.commercialStatus.record(id, 'DONE', null);
     } catch (error) {
       // El contrato ya quedó ACTIVE; repetir la firma (replay) vuelve a intentarlo.

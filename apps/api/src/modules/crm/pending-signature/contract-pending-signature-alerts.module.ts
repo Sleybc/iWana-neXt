@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { AccessControlModule } from '../../access-control/access-control.module';
+import { TenantModule } from '../../tenant/tenant.module';
 import { CONTRACT_PENDING_SIGNATURE_ALERTS_QUEUE } from './contract-pending-signature.constants';
 import { ContractPendingSignatureAlertsProcessor } from './contract-pending-signature-alerts.processor';
 import { ContractPendingSignatureReadModule } from './contract-pending-signature-read.module';
@@ -11,6 +12,7 @@ import { ContractPendingSignatureReadModule } from './contract-pending-signature
     BullModule.registerQueue({ name: CONTRACT_PENDING_SIGNATURE_ALERTS_QUEUE }),
     AccessControlModule,
     ContractPendingSignatureReadModule,
+    TenantModule,
   ],
   providers: [ContractPendingSignatureAlertsProcessor],
 })

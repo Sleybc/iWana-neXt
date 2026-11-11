@@ -200,7 +200,11 @@ describe('OperatorContractProfileSection', () => {
     render(<OperatorContractProfileSection canEdit />);
 
     expect(await screen.findByText('No se cargaron los datos del operador')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Reintentar/ }));
+    const retry = screen.getByRole('button', { name: /Reintentar/ });
+    // Contraste sobre la alerta de error: color de título de la alerta, no el verde del enlace.
+    expect(retry).toHaveClass('text-red-900', 'dark:text-red-100');
+    expect(retry).not.toHaveClass('text-iwana-secondary-700');
+    fireEvent.click(retry);
     expect(await screen.findByLabelText('Web de calidad y cobertura')).toBeInTheDocument();
   });
 

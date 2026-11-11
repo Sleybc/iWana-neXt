@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import {
   AuditAction,
   CreateLegalText,
+  checkContractTemplateHtml,
   LEGAL_TEXT_TYPES_REQUIRING_LEGAL_APPROVAL,
   LegalText,
   LegalTextType,
@@ -18,16 +19,6 @@ import { withPrivacyTenant } from '../ports/privacy-tenant-query';
 export interface LegalTextPublisher {
   userId: string;
 }
-
-/**
- * Construcciones activas que no caben en una plantilla de contrato: el worker la
- * renderiza en Chromium, así que no se admite script, marcos ni manejadores de eventos.
- */
-const UNSAFE_HTML_PATTERNS: readonly RegExp[] = [
-  /<\s*(script|iframe|object|embed|frame|frameset|base|form|meta\s+http-equiv)\b/iu,
-  /\son[a-z]+\s*=/iu,
-  /javascript\s*:/iu,
-];
 
 export function requiresLegalApproval(type: LegalTextType): boolean {
   return (LEGAL_TEXT_TYPES_REQUIRING_LEGAL_APPROVAL as readonly string[]).includes(type);
@@ -87,13 +78,12 @@ export class LegalTextsService implements IPrivacyLegalTextReadPort {
         message: 'La plantilla de contrato solo se publica aprobada por asesoría jurídica.',
       });
     }
-    if (
-      input.format === 'HTML' &&
-      UNSAFE_HTML_PATTERNS.some((pattern) => pattern.test(input.content))
-    ) {
+    // Lista blanca de etiquetas y atributos (SEC-2/SEC-4): el worker renderiza este contenido.
+    if (input.format === 'HTML' && !checkContractTemplateHtml(input.content).ok) {
       throw new BadRequestException({
         code: 'PRIVACY_LEGAL_TEXT_UNSAFE_HTML',
-        message: 'La plantilla no admite scripts, marcos, formularios ni manejadores de eventos.',
+        message:
+          'La plantilla solo admite texto, tablas y estilos en línea; sin scripts, recursos externos ni manejadores de eventos.',
       });
     }
     const approval =

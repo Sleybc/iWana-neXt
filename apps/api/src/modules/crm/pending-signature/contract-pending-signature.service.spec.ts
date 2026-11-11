@@ -22,7 +22,11 @@ const hoursAgo = (hours: number) => new Date(NOW.getTime() - hours * 3_600_000);
 describe('ContractPendingSignatureService', () => {
   const runInTenant = runInTenantSchema as jest.MockedFunction<typeof runInTenantSchema>;
   let query: jest.Mock;
-  let port: { listServiceStart: jest.Mock; getServiceStart: jest.Mock };
+  let port: {
+    listServiceStart: jest.Mock;
+    getServiceStart: jest.Mock;
+    listUnsignedBlockedProvisioningIds: jest.Mock;
+  };
   let service: ContractPendingSignatureService;
 
   beforeEach(() => {
@@ -33,6 +37,7 @@ describe('ContractPendingSignatureService', () => {
     port = {
       listServiceStart: jest.fn().mockResolvedValue(new Map()),
       getServiceStart: jest.fn(),
+      listUnsignedBlockedProvisioningIds: jest.fn().mockResolvedValue([]),
     };
     service = new ContractPendingSignatureService({} as never, port);
   });

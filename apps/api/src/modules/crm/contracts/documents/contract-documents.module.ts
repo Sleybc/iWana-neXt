@@ -11,6 +11,7 @@ import { InstalledEquipmentReadModule } from '../../../inventory/ports/installed
 import { OrganizationModule } from '../../../organization/organization.module';
 import { PrivacyModule } from '../../../privacy/privacy.module';
 import { ExecutionOrderSchedulingModule } from '../../../tasks/execution-order-scheduling.module';
+import { TenantModule } from '../../../tenant/tenant.module';
 import { SubscribersModule } from '../../subscribers/subscribers.module';
 import { ContractsModule } from '../contracts.module';
 import { ContractDocumentGenerationService } from './contract-document-generation.service';
@@ -40,12 +41,14 @@ import { SignedContractDocumentsService } from './signed-contract-documents.serv
     ContractsModule,
     ExecutionOrderSchedulingModule,
     InstalledEquipmentReadModule,
+    // STORAGE_PORT (objetos cifrados del contrato).
     MediaModule,
     NetworkCommercialStatusModule,
     NetworkContractActivationReadModule,
     OrganizationModule,
     PrivacyModule,
     SubscribersModule,
+    TenantModule,
   ],
   controllers: [
     ContractDocumentsController,

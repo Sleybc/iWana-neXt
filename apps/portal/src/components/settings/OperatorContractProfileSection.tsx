@@ -240,7 +240,9 @@ export function OperatorContractProfileSection({ canEdit }: OperatorContractProf
               type="button"
               variant="link"
               size="lg"
-              className="min-h-11"
+              // Sobre el fondo rojo de PortalAlert el verde del enlace no llega a 4,5:1;
+              // usa el color de título de la alerta de error (WCAG 1.4.3).
+              className="min-h-11 text-red-900 dark:text-red-100"
               onClick={() => void load()}
             >
               <RefreshCcw className="h-4 w-4" aria-hidden={true} />

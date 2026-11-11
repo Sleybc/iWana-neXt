@@ -681,6 +681,11 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
         ),
       ),
     );
+    // SEC-1: `contracts.anonymized_at` también ordena el borrado físico de los objetos del
+    // contrato en medios (PDF sin firmar, imagen de firma y PDF firmado, cifrados bajo
+    // `{schema}/contracts/{id}/`). Lo hace el barrido del worker (ContractMediaSweepProcessor)
+    // después del commit: borrar aquí, dentro de la transacción, perdería evidencia si la
+    // supresión revierte. Ver ADR-109 §4 (nota de retención).
     let contractMarkerChanges = 0;
     let contractMarkerResidual = 0;
     if (contracts.length > 0 && columnOf(columns, 'contracts', 'anonymized_at')) {

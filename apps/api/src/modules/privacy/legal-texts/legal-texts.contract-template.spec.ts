@@ -83,6 +83,12 @@ describe('LegalTextsService — plantilla de contrato (bloque A, G2)', () => {
     ['manejador de evento', '<img src="x" onerror="alert(1)">'],
     ['javascript:', '<a href="javascript:alert(1)">x</a>'],
     ['iframe', '<iframe src="https://example.invalid"></iframe>'],
+    ['link', '<link rel="stylesheet" href="https://example.invalid/a.css">'],
+    ['style @import', '<style>@import url("https://example.invalid/a.css");</style>'],
+    ['img http', '<img src="http://example.invalid/p.png">'],
+    ['a href data:', '<a href="data:text/html;base64,PHA+">x</a>'],
+    ['svg xlink', '<svg><use xlink:href="https://example.invalid/s.svg#a"></use></svg>'],
+    ['meta con espacios', '< meta http-equiv="refresh" content="0">'],
   ])('rechaza HTML activo (%s)', async (_label, content) => {
     const { service, repository } = serviceWithRepository();
     await expect(

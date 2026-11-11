@@ -1,3 +1,4 @@
+import { TenantStatus } from '@iwana/shared';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'node:crypto';
@@ -228,6 +229,19 @@ describeWithDb('Contrato firmado en Documentos y copia por correo: PostgreSQL re
       tenantSettings as never,
       { sendMail } as never,
       audit,
+      {
+        findTenantLifecycleById: jest.fn(async (id: string) =>
+          id === tenantId
+            ? {
+                id,
+                schemaName,
+                slug: context.tenantSlug,
+                status: TenantStatus.ACTIVE,
+                deletedAt: null,
+              }
+            : null,
+        ),
+      } as never,
     );
   }, 180_000);
 

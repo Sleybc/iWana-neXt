@@ -35,6 +35,7 @@ import { PlatformAuditService } from '../../../audit/platform-audit.service';
 import { BillingDocumentsService } from '../../../billing/documents/billing-documents.service';
 import { BillingGenerationService } from '../../../billing/generation/billing-generation.service';
 import { ContractActivatedProcessor } from '../../../billing/generation/contract-activated.processor';
+import { ContractActivationEventReadAdapter } from '../contract-activation-event-read.adapter';
 import { BillingPaymentsService } from '../../../billing/payments/billing-payments.service';
 import { BillingContractReadAdapter } from '../billing-contract-read.adapter';
 import { ContractActivationEventsPublisher } from '../contract-activation-events';
@@ -391,6 +392,7 @@ describeWithServices('Firma del contrato: PostgreSQL + Redis reales', () => {
         audit,
         privacyMarks as never,
       ),
+      new ContractActivationEventReadAdapter(dataSource),
     );
     billingWorker = new Worker(
       CRM_CONTRACT_EVENTS_QUEUE,

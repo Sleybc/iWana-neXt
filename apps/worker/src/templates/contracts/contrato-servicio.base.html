@@ -2,8 +2,10 @@
 <!--
   Plantilla semilla del contrato único de servicios fijos (Res. CRC 5050, Anexo 2.3; ADR-109 D4, spec G6).
   VERSIÓN DE PRUEBA — NO PUBLICADA. Solo para desarrollo: no se firma con ella (spec CA-6).
-  Para publicarla: quitar el meta «iwana-template-status» y el aviso «.draft-banner», y publicarla
-  como CONTRATO_SERVICIO (HTML) con la declaración de aprobación jurídica (G2).
+  Sin etiquetas meta: la lista blanca de HTML (checkContractTemplateHtml) no las admite.
+  Para publicarla: quitar el aviso «.draft-banner», y publicarla como CONTRATO_SERVICIO (HTML) con la declaración de aprobación
+  jurídica (G2). Es SEMILLA de la primera versión: el worker no la lee al renderizar; renderiza
+  solo el texto legal publicado que congela cada generación (id, versión y huella; SEC-2).
 
   Origen: contrato-unico-convergente-pospago.html (réplica del formato CRC). Se retiraron los
   módulos del segmento móvil (condiciones, valor, activación, suspensión y reconexión móviles y el
@@ -18,8 +20,6 @@
 -->
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="iwana-template-status" content="PRUEBA-NO-PUBLICADA">
 <title>Contrato único de servicios fijos</title>
 <style>
   *{box-sizing:border-box}

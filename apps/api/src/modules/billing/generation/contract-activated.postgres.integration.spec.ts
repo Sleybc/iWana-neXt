@@ -17,6 +17,7 @@ import { BillingDocumentsService } from '../documents/billing-documents.service'
 import { BillingGenerationService } from './billing-generation.service';
 import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
 import { ContractActivatedProcessor } from './contract-activated.processor';
+import { ContractActivationEventReadAdapter } from '../../crm/contracts/contract-activation-event-read.adapter';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';
 const redisAvailable = process.env['IWANA_REDIS_INTEGRATION_AVAILABLE'] === 'true';
@@ -143,6 +144,21 @@ describeWithServices(
       };
     }
 
+    /** Escribe el evento en el outbox de CRM (publicado) como lo haría la activación. */
+    async function outbox(
+      contract: BillableContract,
+      billingStartDate: string,
+    ): Promise<ContractActivatedEnvelope> {
+      const event = envelope(contract, billingStartDate);
+      await rows(
+        `INSERT INTO contract_activation_events
+           (id, tenant_id, contract_id, source, envelope, occurred_at, published_at)
+         VALUES ($1, $2, $3, 'SIGNATURE', $4::jsonb, $5, now())`,
+        [event.eventId, tenantId, contract.contractId, JSON.stringify(event), event.occurredAt],
+      );
+      return event;
+    }
+
     async function publishAndWait(jobs: Array<{ name: string; data: unknown }>): Promise<string[]> {
       const ids = jobs.map(() => randomUUID());
       const settled = new Promise<void>((resolve) => {
@@ -173,6 +189,21 @@ describeWithServices(
       billingFixture = await createBillingSchema(dataSource);
       schemaName = billingFixture.schemaName;
       tenantId = billingFixture.tenantId;
+      // El esquema de Billing no trae el outbox de CRM: misma DDL que la migración 188.
+      await rows(`
+        CREATE TABLE IF NOT EXISTS contract_activation_events (
+          id uuid PRIMARY KEY,
+          tenant_id uuid NOT NULL,
+          contract_id uuid NOT NULL REFERENCES contracts (id),
+          source varchar(16) NOT NULL,
+          envelope jsonb NOT NULL,
+          occurred_at timestamptz NOT NULL DEFAULT now(),
+          published_at timestamptz NULL,
+          publish_attempts integer NOT NULL DEFAULT 0,
+          last_error varchar(200) NULL,
+          CONSTRAINT uq_cae_contract UNIQUE (tenant_id, contract_id),
+          CONSTRAINT chk_cae_source CHECK (source IN ('SIGNATURE', 'MANUAL'))
+        )`);
       // Política sembrada por la 173: ANTICIPADO, SEPARADO, BORRADOR y lote apagado.
       expect(
         await rows<{ automatic_generation: boolean }>(
@@ -256,6 +287,7 @@ describeWithServices(
         tenants as never,
         tenantSettings as never,
         generation,
+        new ContractActivationEventReadAdapter(dataSource),
       );
 
       prefix = `mod14-e-${randomUUID().replace(/-/gu, '')}`;
@@ -280,7 +312,7 @@ describeWithServices(
 
     it('CA-3: genera de inmediato un único borrador con lote apagado aunque el evento se repita', async () => {
       const contract = await seedContract('2026-11-11');
-      const event = envelope(contract, '2026-11-11');
+      const event = await outbox(contract, '2026-11-11');
       const ids = await publishAndWait([
         { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: event },
         { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: event },
@@ -329,7 +361,7 @@ describeWithServices(
         [contract.contractId, tenantId],
       );
       const [id] = await publishAndWait([
-        { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: envelope(contract, '2026-11-11') },
+        { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: await outbox(contract, '2026-11-11') },
       ]);
 
       expect(failures.get(id!)).toBeUndefined();
@@ -351,7 +383,7 @@ describeWithServices(
       expect(manual.generated).toBe(1);
 
       const [id] = await publishAndWait([
-        { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: envelope(contract, '2026-11-11') },
+        { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: await outbox(contract, '2026-11-11') },
       ]);
       expect(outcomes.get(id!)).toBe('existing');
       expect(
@@ -364,7 +396,7 @@ describeWithServices(
 
     it('rechaza sin reintento un envelope inválido o de un tenant inexistente y no escribe', async () => {
       const contract = await seedContract('2026-11-11');
-      const valid = envelope(contract, '2026-11-11');
+      const valid = await outbox(contract, '2026-11-11');
       const before = await rows<{ count: number }>(
         'SELECT count(*)::int AS count FROM billing_periods WHERE tenant_id = $1',
         [tenantId],
@@ -393,6 +425,27 @@ describeWithServices(
           [tenantId],
         ),
       ).toEqual(before);
+    }, 60_000);
+
+    it('SEC-3: toma la fecha del outbox, no del payload, y rechaza eventos ajenos al outbox', async () => {
+      const contract = await seedContract('2026-11-11');
+      const stored = await outbox(contract, '2026-11-11');
+      const forged = { ...stored, payload: { ...stored.payload, billingStartDate: '2026-11-01' } };
+      const notInOutbox = envelope(contract, '2026-11-11');
+      const [forgedId, missingId] = await publishAndWait([
+        { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: forged },
+        { name: CONTRACT_ACTIVATED_EVENT_TYPE, data: notInOutbox },
+      ]);
+
+      expect(failures.get(forgedId!)).toBeUndefined();
+      expect(outcomes.get(forgedId!)).toBe('generated');
+      expect(failures.get(missingId!)?.name).toBe('UnrecoverableError');
+      expect(
+        await rows<{ covered_start: string }>(
+          `SELECT covered_start::text FROM billing_periods WHERE tenant_id = $1 AND contract_id = $2`,
+          [tenantId, contract.contractId],
+        ),
+      ).toEqual([{ covered_start: '2026-11-11' }]);
     }, 60_000);
   },
 );
