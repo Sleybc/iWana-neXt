@@ -212,7 +212,7 @@ export class ContractDocumentGenerationService {
    * El técnico solo opera la OT que tiene asignada; el supervisor cualquiera del tenant.
    * La OT debe ser del mismo titular del contrato y no estar anulada.
    */
-  private async assertExecutionOrderAccess(
+  async assertExecutionOrderAccess(
     contract: Contract,
     executionOrderId: string,
     actor: JwtPayload,

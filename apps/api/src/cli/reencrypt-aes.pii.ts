@@ -92,6 +92,7 @@ export const PII_ENCRYPTED_TARGETS: readonly EncryptedColumnTarget[] = [
     'contract_document_generations',
     'snapshot_encrypted',
   ),
+  piiTarget('contractSignature.signerEncrypted', 'contract_signatures', 'signer_encrypted'),
   piiTarget(
     'billingDocument.buyerDocumentEncrypted',
     'billing_documents',

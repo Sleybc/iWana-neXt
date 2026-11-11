@@ -198,6 +198,12 @@ export interface SubscriberListItem {
   hasLiveContracts: boolean;
   primaryService: SubscriberPrimaryService | null;
   otherLiveServicesCount: number;
+  /**
+   * true si el suscriptor tiene un contrato sin firma (`DRAFT`) con servicio ya activado
+   * (ADR-109 D3). Insignia «Pendiente de firma» en lista y ficha. Opcional: lo emiten la
+   * lista, la búsqueda y el detalle; otras respuestas pueden omitirlo.
+   */
+  pendingSignature?: boolean;
   privacyMarks?: import('./privacy/marks').PrivacyMark[];
   /**
    * Sin el permiso `crm.subscribers.document.read` llega enmascarado: solo los

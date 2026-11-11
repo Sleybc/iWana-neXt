@@ -21,10 +21,8 @@ import { TenantModule } from '../tenant/tenant.module';
 import { PrivacyModule } from '../privacy/privacy.module';
 import { BillingGenerationService } from './generation/billing-generation.service';
 import { BillingGenerationProcessor } from './generation/billing-generation.processor';
-import {
-  BILLING_GENERATION_QUEUE,
-  CRM_CONTRACT_EVENTS_QUEUE,
-} from './generation/billing-generation.constants';
+import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
+import { BILLING_GENERATION_QUEUE } from './generation/billing-generation.constants';
 import { ContractActivatedProcessor } from './generation/contract-activated.processor';
 import { BillingDocumentsController } from './documents/billing-documents.controller';
 import { BillingDocumentsService } from './documents/billing-documents.service';

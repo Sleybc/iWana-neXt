@@ -9,7 +9,9 @@ export function LegalTextContent({
   content: string;
   format: LegalTextFormat;
 }) {
-  if (format === 'PLAIN') return <div className="whitespace-pre-wrap">{content}</div>;
+  // HTML (plantilla de contrato) se muestra como código fuente escapado: nunca se inyecta en el DOM.
+  if (format === 'PLAIN' || format === 'HTML')
+    return <div className="whitespace-pre-wrap break-words">{content}</div>;
   return (
     <div className="min-w-0 overflow-x-auto text-sm">
       <ReactMarkdown

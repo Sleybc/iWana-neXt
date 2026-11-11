@@ -14,6 +14,8 @@ import { AttributionsModule } from './attributions/attributions.module';
 import { ResponsibilitiesModule } from './responsibilities/responsibilities.module';
 import { SubscribersModule } from './subscribers/subscribers.module';
 import { NetworkCommercialStatusModule } from '../network/network-commercial-status.module';
+import { ContractPendingSignatureReadModule } from './pending-signature/contract-pending-signature-read.module';
+import { ContractPendingSignatureAlertsModule } from './pending-signature/contract-pending-signature-alerts.module';
 import { ServiceProvisioningActivationListener } from './subscribers/listeners/service-provisioning-activation.listener';
 
 class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
@@ -50,6 +52,8 @@ class TenantExecutionPolicyReadAdapter extends ExecutionPolicyReadPort {
     ResponsibilitiesModule,
     SubscribersModule,
     NetworkCommercialStatusModule,
+    ContractPendingSignatureReadModule,
+    ContractPendingSignatureAlertsModule,
   ],
   providers: [
     { provide: CoverageReadPort, useClass: TenantCoverageReadAdapter },

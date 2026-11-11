@@ -1,4 +1,5 @@
 import type {
+  CommercialActivationBlockReason,
   CommercialActivationStatus,
   ControlMethod,
   ServiceProvisioningStatus,
@@ -91,11 +92,12 @@ export function getCommercialActivationLabel(status: CommercialActivationStatus)
 }
 
 export function getCommercialActivationDetailLabel(
-  detail: 'CONTACT_REQUIRED' | 'FISCAL_INCOMPLETE' | 'NO_EXPEDIENTE' | null,
+  detail: CommercialActivationBlockReason | null,
 ): string | null {
   if (detail === 'CONTACT_REQUIRED') return 'Falta teléfono o correo de contacto';
   if (detail === 'FISCAL_INCOMPLETE') return 'Faltan datos fiscales';
   if (detail === 'NO_EXPEDIENTE') return 'No hay un expediente asociado';
+  if (detail === 'CONTRACT_UNSIGNED') return 'Contrato pendiente de firma';
   return null;
 }
 

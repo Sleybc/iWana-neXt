@@ -653,6 +653,14 @@ export const MOD00_ACCESS_V2_CATALOG: PermissionSeedDefinition[] = [
     availability: AccessPermissionAvailability.ASSIGNABLE,
   },
   {
+    permissionKey: AccessPermissionKey.CRM_CONTRACTS_PENDING_SIGNATURE_NOTIFY,
+    moduleKey: 'crm',
+    action: 'pending_signature.notify',
+    description: 'Recibir el aviso de contratos con servicio activo pendientes de firma',
+    catalogVersion: versionV2,
+    availability: AccessPermissionAvailability.ASSIGNABLE,
+  },
+  {
     permissionKey: AccessPermissionKey.CRM_EXPEDIENTES_READ,
     moduleKey: 'crm',
     action: 'read',
@@ -867,6 +875,7 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2: Record<UserRole, AccessPermis
     AccessPermissionKey.NETWORK_PROVISIONING_EXECUTE,
     AccessPermissionKey.NETWORK_PROVISIONING_CERTIFY,
     AccessPermissionKey.NETWORK_PROVISIONING_REGULARIZE,
+    AccessPermissionKey.CRM_CONTRACTS_PENDING_SIGNATURE_NOTIFY,
   ],
   [UserRole.SUPPORT]: [
     AccessPermissionKey.SETTINGS_READ,
@@ -930,6 +939,7 @@ export const ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2: Record<UserRole, AccessPermis
     AccessPermissionKey.CRM_SUBSCRIBERS_DOCUMENT_READ,
     AccessPermissionKey.COMMERCIAL_CATALOG_READ,
     AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,
+    AccessPermissionKey.CRM_CONTRACTS_PENDING_SIGNATURE_NOTIFY,
   ],
   [UserRole.HR]: [
     AccessPermissionKey.SETTINGS_READ,

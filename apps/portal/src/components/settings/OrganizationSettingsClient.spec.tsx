@@ -28,6 +28,13 @@ jest.mock('@/components/auth/AuthProvider', () => ({
   useAuth: () => useAuthMock(),
 }));
 
+// La sección de datos del operador tiene su propio spec; aquí solo se verifica que se monte.
+jest.mock('./OperatorContractProfileSection', () => ({
+  OperatorContractProfileSection: ({ canEdit }: { canEdit: boolean }) => (
+    <div data-testid="operator-contract-profile" data-can-edit={String(canEdit)} />
+  ),
+}));
+
 jest.mock('@/lib/api-client', () => ({
   ApiError: class MockApiError extends Error {
     status: number;
@@ -236,6 +243,25 @@ describe('OrganizationSettingsClient', () => {
     expect(screen.queryByRole('button', { name: /Ver detalle/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Guardar servicios' })).not.toBeInTheDocument();
     expect(screen.queryByText('Ir a Calendario operativo y jornadas →')).not.toBeInTheDocument();
+  });
+
+  it('monta los datos del operador para contratos editables para el administrador que gestiona sedes', async () => {
+    render(<OrganizationSettingsClient />);
+
+    const section = await screen.findByTestId('operator-contract-profile');
+    expect(section).toHaveAttribute('data-can-edit', 'true');
+  });
+
+  it('monta los datos del operador para contratos en solo lectura para otros roles', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-2', role: UserRole.SUPPORT },
+      isLoading: false,
+    });
+
+    render(<OrganizationSettingsClient />);
+
+    const section = await screen.findByTestId('operator-contract-profile');
+    expect(section).toHaveAttribute('data-can-edit', 'false');
   });
 
   it('mantiene las tarjetas de organización dentro del ancho disponible', async () => {

@@ -25,6 +25,7 @@ import {
   type BillingCycle,
   type BillingCycleOption,
   type ActivateContractInput,
+  type ContractActivationSource,
   type ContractPlanChangeInput,
   type ContractPlanTaxSnapshot,
   type CutoffAgendaQuery,
@@ -47,6 +48,7 @@ import { projectSubscriberForList } from '../subscribers/subscriber-projection';
 import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
 import { BillingAccountReadPort } from '../../billing/ports/billing-account-read.port';
 import { getTenantLocalDate } from './billing-cycle-date.util';
+import { appendContractActivatedEvent } from './contract-activation-events';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { CreateContractFromExpedienteDto } from './dto/create-contract-from-expediente.dto';
@@ -81,6 +83,17 @@ import {
 } from './contract-read-projection';
 
 /** Transiciones de estado permitidas según máquina de estados del spec. */
+interface ActivationOptions {
+  /** Origen del evento crm.contract.activated si la transición sale de DRAFT. */
+  activationSource?: ContractActivationSource;
+  /** 409 CONTRACT_NOT_DRAFT si el contrato no está en DRAFT. */
+  requireDraft?: boolean;
+  /** Fecha de inicio (start_date) y de inicio de cobro. */
+  startDate?: string;
+  manualReason?: string;
+  within?: (manager: EntityManager, contract: Contract) => Promise<void>;
+}
+
 const ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
   [ContractStatus.DRAFT]: [ContractStatus.ACTIVE],
   [ContractStatus.ACTIVE]: [ContractStatus.SUSPENDED, ContractStatus.TERMINATED],
@@ -1109,13 +1122,54 @@ export class ContractsService {
 
   // ── Transiciones de estado ──────────────────────────────────────────────────
 
-  /** DRAFT → ACTIVE (firma del contrato) */
+  /**
+   * DRAFT → ACTIVE (activación manual, W0) y SUSPENDED → ACTIVE (heredado). Desde DRAFT
+   * escribe `crm.contract.activated` (MANUAL) en el outbox dentro de la misma transacción.
+   */
   async activate(
     id: string,
     actorId?: string,
     command: ActivateContractInput = {},
   ): Promise<Contract> {
-    return this._transition(id, ContractStatus.ACTIVE, actorId, command.billingCycleDay);
+    return this._transition(id, ContractStatus.ACTIVE, actorId, command.billingCycleDay, {
+      activationSource: 'MANUAL',
+    });
+  }
+
+  /**
+   * Activación manual de ADMIN con motivo obligatorio y sin firma (CA-8, ADR-109 D2).
+   * Solo DRAFT → ACTIVE; el motivo queda en la auditoría.
+   */
+  async activateManual(
+    id: string,
+    actorId: string,
+    command: { billingCycleDay?: number | undefined; reason: string },
+  ): Promise<Contract> {
+    return this._transition(id, ContractStatus.ACTIVE, actorId, command.billingCycleDay, {
+      activationSource: 'MANUAL',
+      requireDraft: true,
+      manualReason: command.reason,
+    });
+  }
+
+  /**
+   * DRAFT → ACTIVE por firma (bloque D). `startDate` = fecha de activación del
+   * aprovisionamiento; `within` persiste la firma y la permanencia en la misma transacción.
+   */
+  async activateFromSignature(
+    id: string,
+    actorId: string,
+    options: {
+      startDate: string;
+      within: (manager: EntityManager, contract: Contract) => Promise<void>;
+    },
+  ): Promise<Contract> {
+    return this._transition(id, ContractStatus.ACTIVE, actorId, undefined, {
+      activationSource: 'SIGNATURE',
+      requireDraft: true,
+      startDate: options.startDate,
+      within: options.within,
+    });
   }
 
   /** Recalcula el snapshot fiscal de un punto de servicio ya activo. */
@@ -1682,8 +1736,13 @@ export class ContractsService {
     target: ContractStatus,
     actorId?: string,
     requestedBillingCycleDay?: number,
+    activation: ActivationOptions = {},
   ): Promise<Contract> {
     const { schemaName, tenantId } = TenantContext.getOrThrow();
+    const timezone =
+      target === ContractStatus.ACTIVE && this.tenantSettingsReadPort
+        ? await this.tenantSettingsReadPort.getTimezone(tenantId)
+        : 'America/Bogota';
     const updated = await runInTenantSchema(this.dataSource, schemaName, async (qr) => {
       const subscriber = await this.lockContractSubscriberForMutation(qr, id, tenantId);
       const anonymized = subscriber.anonymizedAt != null;
@@ -1746,6 +1805,12 @@ export class ContractsService {
         );
         return projected;
       }
+      if (activation.requireDraft && currentStatus !== ContractStatus.DRAFT) {
+        throw new ConflictException({
+          code: 'CONTRACT_NOT_DRAFT',
+          message: 'Solo se activa por esta vía un contrato pendiente de firma.',
+        });
+      }
       const allowed = ALLOWED_TRANSITIONS[currentStatus];
       if (!allowed.includes(target)) {
         throw new ConflictException(
@@ -1792,9 +1857,26 @@ export class ContractsService {
       if (target === ContractStatus.TERMINATED || target === ContractStatus.ARCHIVED) {
         entity.terminatedAt ??= entity.statusChangedAt;
       }
+      const activatesFromDraft =
+        target === ContractStatus.ACTIVE && previousStatus === ContractStatus.DRAFT;
+      if (activatesFromDraft && activation.startDate) entity.startDate = activation.startDate;
       prepareFiscalDocumentForSave(entity);
       this.advanceContractVersion(entity);
       const saved = await qr.manager.save(Contract, entity);
+      if (activatesFromDraft && activation.within) await activation.within(qr.manager, saved);
+      if (activatesFromDraft && activation.activationSource) {
+        await appendContractActivatedEvent(qr, {
+          tenantId,
+          contractId: saved.id,
+          subscriberId: saved.subscriberId,
+          activatedAt: entity.statusChangedAt ?? new Date(),
+          billingStartDate:
+            activation.startDate ??
+            saved.startDate ??
+            getTenantLocalDate(entity.statusChangedAt ?? new Date(), timezone),
+          source: activation.activationSource,
+        });
+      }
       const projected = await this.projectContractForMutation(saved, qr.manager);
       await this.auditService.logWithin(
         {
@@ -1812,6 +1894,12 @@ export class ContractsService {
             status: projected.status,
             ...(target === ContractStatus.ACTIVE
               ? { billingCycleDay: projected.billingCycleDay }
+              : {}),
+            ...(activation.manualReason
+              ? { activation: 'MANUAL', reason: activation.manualReason }
+              : {}),
+            ...(activation.activationSource === 'SIGNATURE'
+              ? { activation: 'SIGNATURE', startDate: projected.startDate }
               : {}),
           },
         },

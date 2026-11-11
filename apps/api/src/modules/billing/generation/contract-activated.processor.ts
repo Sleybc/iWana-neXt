@@ -13,7 +13,7 @@ import { TenantLifecycleReadPort } from '../../tenant/ports/tenant-lifecycle-rea
 import { SettingsPriorityTenantReadPort } from '../../tenant/ports/settings-priority-tenant-read.port';
 import { SanitizeFailedReason } from '../../../common/sanitize-failed-reason.decorator';
 import { BillingGenerationService } from './billing-generation.service';
-import { CRM_CONTRACT_EVENTS_QUEUE } from './billing-generation.constants';
+import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
 
 export type ContractActivatedOutcome =
   | 'generated'

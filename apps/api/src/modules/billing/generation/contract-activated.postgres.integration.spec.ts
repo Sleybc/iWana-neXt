@@ -15,7 +15,7 @@ import type { BillableContract } from '../ports/billing-contract-read.port';
 import { BillingPaymentsService } from '../payments/billing-payments.service';
 import { BillingDocumentsService } from '../documents/billing-documents.service';
 import { BillingGenerationService } from './billing-generation.service';
-import { CRM_CONTRACT_EVENTS_QUEUE } from './billing-generation.constants';
+import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
 import { ContractActivatedProcessor } from './contract-activated.processor';
 
 const dbAvailable = process.env['IWANA_DB_INTEGRATION_AVAILABLE'] === 'true';

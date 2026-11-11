@@ -28,6 +28,7 @@ import { CommercialModule } from '../../commercial/commercial.module';
 import { QuotesModule } from '../quotes/quotes.module';
 import { SubscriberNotesController } from './notes/subscriber-notes.controller';
 import { SubscriberNotesService } from './notes/subscriber-notes.service';
+import { ContractPendingSignatureReadModule } from '../pending-signature/contract-pending-signature-read.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { SubscriberNotesService } from './notes/subscriber-notes.service';
     ExecutionOrderSchedulingModule,
     CommercialModule,
     QuotesModule,
+    ContractPendingSignatureReadModule,
   ],
   controllers: [SubscribersController, SubscriberTaxController, SubscriberNotesController],
   providers: [

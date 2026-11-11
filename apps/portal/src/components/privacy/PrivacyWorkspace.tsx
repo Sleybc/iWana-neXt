@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AccessPermissionKey } from '@iwana/shared';
+import { AccessPermissionKey, LEGAL_APPROVAL_DECLARATION } from '@iwana/shared';
 import { Button, SectionAccordion, interactiveFocusClassName } from '@iwana/ui';
 import { Check } from 'lucide-react';
 import { usePermissions } from '@/components/access-control/permissions-context';
@@ -47,6 +47,7 @@ const LEGAL_TEXT_TYPE_ORDER: LegalTextType[] = [
   'POLITICA_TRATAMIENTO',
   'AVISO_PRIVACIDAD',
   'AUTORIZACION',
+  'CONTRATO_SERVICIO',
 ];
 
 export interface LegalTextHistoryEntry {
@@ -435,6 +436,8 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
   const [version, setVersion] = useState('');
   const [content, setContent] = useState('');
   const [format, setFormat] = useState<LegalTextFormat>('MARKDOWN');
+  const [legalApproved, setLegalApproved] = useState(false);
+  const isContractTemplate = type === 'CONTRATO_SERVICIO';
   const [purposes, setPurposes] = useState<PurposeSetting[]>([]);
   const [savingPurposes, setSavingPurposes] = useState(false);
   const [url, setUrl] = useState('');
@@ -463,10 +466,20 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
     void load();
   }, [load]);
 
+  const selectType = (next: LegalTextType) => {
+    setType(next);
+    setLegalApproved(false);
+    setFormat(next === 'CONTRATO_SERVICIO' ? 'HTML' : 'MARKDOWN');
+  };
+
   const save = async () => {
     if (
       !window.confirm(
-        `Vas a publicar la versión ${version.trim()} de ${LEGAL_TEXT_TYPE_LABELS[type]}. No se puede editar ni eliminar después. Las nuevas autorizaciones usarán este texto.`,
+        `Vas a publicar la versión ${version.trim()} de ${LEGAL_TEXT_TYPE_LABELS[type]}. No se puede editar ni eliminar después. ${
+          isContractTemplate
+            ? 'Los nuevos contratos usarán esta plantilla.'
+            : 'Las nuevas autorizaciones usarán este texto.'
+        }`,
       )
     )
       return;
@@ -479,11 +492,13 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
         content,
         format,
         url: url.trim() || null,
+        ...(isContractTemplate ? { legalApprovalDeclaration: LEGAL_APPROVAL_DECLARATION } : {}),
       });
       setCreating(false);
       setVersion('');
       setContent('');
       setUrl('');
+      setLegalApproved(false);
       await load();
     } catch (saveError) {
       setError(
@@ -517,7 +532,7 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
               <select
                 className={selectClass}
                 value={type}
-                onChange={(event) => setType(event.target.value as LegalTextType)}
+                onChange={(event) => selectType(event.target.value as LegalTextType)}
               >
                 {Object.entries(LEGAL_TEXT_TYPE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -551,8 +566,14 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
                 value={format}
                 onChange={(event) => setFormat(event.target.value as LegalTextFormat)}
               >
-                <option value="MARKDOWN">Texto con formato</option>
-                <option value="PLAIN">Texto simple</option>
+                {isContractTemplate ? (
+                  <option value="HTML">HTML</option>
+                ) : (
+                  <>
+                    <option value="MARKDOWN">Texto con formato</option>
+                    <option value="PLAIN">Texto simple</option>
+                  </>
+                )}
               </select>
             </label>
             <div>
@@ -568,11 +589,33 @@ function LegalTextsSurface({ canManage }: { canManage: boolean }) {
                 onChange={(event) => setUrl(event.target.value)}
               />
             </label>
+            {isContractTemplate ? (
+              <label className="flex items-start gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4"
+                  checked={legalApproved}
+                  onChange={(event) => setLegalApproved(event.target.checked)}
+                />
+                <span>
+                  Aprobado por asesoría jurídica
+                  <span className="block font-normal text-gray-600 dark:text-gray-300">
+                    Declaro que esta plantilla de contrato fue revisada y aprobada por asesoría
+                    jurídica. Sin esta declaración no se puede publicar.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <p className="text-sm text-gray-600 dark:text-gray-300">
               Al publicar, el tipo, la versión y el contenido quedan inmutables.
             </p>
             <Button
-              disabled={saving || !version.trim() || !content.trim()}
+              disabled={
+                saving ||
+                !version.trim() ||
+                !content.trim() ||
+                (isContractTemplate && !legalApproved)
+              }
               onClick={() => void save()}
             >
               {saving ? 'Publicando…' : 'Publicar versión'}

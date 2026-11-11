@@ -48,3 +48,11 @@ export const NETWORK_PROVISIONING_RECONCILE_QUEUE = 'network-provisioning-reconc
 /** Generación del PDF del contrato en el worker (cierre de venta, ADR-109 D5). Payload: ContractPdfJobPayload. */
 export const CRM_CONTRACT_PDF_QUEUE = 'crm-contract-pdf';
 export const CRM_CONTRACT_PDF_JOB_NAME = 'generate-contract-pdf';
+/** Firma del contrato: re-render del PDF con la firma incrustada (bloque D). Payload: ContractSignedPdfJobPayload. */
+export const CRM_CONTRACT_SIGNED_PDF_JOB_NAME = 'sign-contract-pdf';
+
+/**
+ * Eventos de contrato de CRM (ADR-109 D2/D6). Productor: outbox de MOD05
+ * (`contract_activation_events`); consumidor: MOD14. Job name = eventType, jobId = eventId.
+ */
+export const CRM_CONTRACT_EVENTS_QUEUE = 'crm-contract-events';

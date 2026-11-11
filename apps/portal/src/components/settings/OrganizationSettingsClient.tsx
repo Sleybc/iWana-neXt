@@ -48,6 +48,7 @@ import { PORTAL_DEFAULT_PAGE_SIZE } from '@/lib/portal-page-size';
 import { useTableQueryState } from '@/lib/use-table-query-state';
 import { CompanyProfileForm } from './CompanyProfileForm';
 import { OperationalSettingsForm } from './OperationalSettingsForm';
+import { OperatorContractProfileSection } from './OperatorContractProfileSection';
 import {
   PortalAlert,
   PortalEmptyState,
@@ -746,6 +747,10 @@ function OrganizationSettingsClientInner() {
           </div>
         ) : null}
       </div>
+
+      {permissionsState !== 'loading' && permissionsState !== 'denied' && canReadSites ? (
+        <OperatorContractProfileSection canEdit={canEdit && canManageSites} />
+      ) : null}
 
       {sitesError ? (
         <PortalAlert

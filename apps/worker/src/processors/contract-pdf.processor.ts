@@ -13,14 +13,20 @@ import { isValidSchemaName, runInTenantSchema, summarizeErrorForLog } from '@iwa
 import {
   CRM_CONTRACT_PDF_JOB_NAME,
   CRM_CONTRACT_PDF_QUEUE,
+  CRM_CONTRACT_SIGNED_PDF_JOB_NAME,
   ContractDocumentSnapshotSchema,
   ContractPdfJobPayloadSchema,
+  ContractSignedPdfJobPayloadSchema,
+  contractSignatureObjectKeys,
   type ContractDocumentSnapshot,
   type ContractPdfJobPayload,
+  type ContractSignedPdfJobPayload,
+  type ContractSignedPdfJobResult,
 } from '@iwana/shared';
 import {
   ENCRYPTED_OBJECT_CONTENT_TYPE,
   STORAGE_PORT,
+  decryptObjectBuffer,
   encryptObjectBuffer,
   type StoragePort,
 } from '@iwana/storage';
@@ -31,7 +37,7 @@ import {
   type ContractPdfKeys,
 } from '../contracts/contract-pdf-keys';
 import { ContractPdfRenderer } from '../contracts/contract-pdf-renderer';
-import { fillContractTemplate } from '../contracts/contract-template';
+import { embedSignature, fillContractTemplate } from '../contracts/contract-template';
 
 export const CONTRACT_TEMPLATES_DIR_ENV = 'CONTRACT_TEMPLATES_DIR';
 export const CONTRACT_TEMPLATE_FILE = 'contrato-servicio.base.html';
@@ -85,7 +91,10 @@ export class ContractPdfProcessor extends WorkerHost {
   }
 
   @SanitizeFailedReason()
-  async process(job: Job<ContractPdfJobPayload>): Promise<void> {
+  async process(
+    job: Job<ContractPdfJobPayload | ContractSignedPdfJobPayload>,
+  ): Promise<void | ContractSignedPdfJobResult> {
+    if (job.name === CRM_CONTRACT_SIGNED_PDF_JOB_NAME) return this.processSigned(job);
     if (job.name !== CRM_CONTRACT_PDF_JOB_NAME) {
       throw new UnrecoverableError(`Job no soportado en ${CRM_CONTRACT_PDF_QUEUE}.`);
     }
@@ -118,6 +127,73 @@ export class ContractPdfProcessor extends WorkerHost {
     }
   }
 
+  /**
+   * PDF firmado (bloque D; ADR-109 D1). Enfoque elegido: re-render con Chromium del mismo
+   * snapshot cifrado de la generación READY, con la imagen de la firma incrustada en los
+   * huecos `data-signature-slot`. Se descartó estampar el PDF ya generado porque exige una
+   * dependencia nueva (pdf-lib) y la API no tiene Chromium. La API espera este resultado para
+   * responder con la huella; los fallos no cambian el estado de la generación (la firma se
+   * reintenta con la misma clave de idempotencia y las mismas claves de objeto).
+   */
+  private async processSigned(job: Job<unknown>): Promise<ContractSignedPdfJobResult> {
+    const parsed = ContractSignedPdfJobPayloadSchema.safeParse(job.data);
+    if (!parsed.success) throw new UnrecoverableError('Payload de firma inválido.');
+    const payload = parsed.data;
+    const schemaName = await this.resolveSchema(payload.tenantId);
+    const startedAt = Date.now();
+    const row = await this.loadGeneration(payload, schemaName);
+    if (row.status !== 'READY' || !row.snapshot_encrypted) {
+      throw new UnrecoverableError('La generación del contrato no está lista para firmar.');
+    }
+    const keys = contractSignatureObjectKeys(
+      schemaName,
+      payload.contractId,
+      payload.generationId,
+      payload.signingKey,
+    );
+    let png: Buffer;
+    try {
+      png = decryptObjectBuffer(
+        await this.storage.getObject(keys.signatureImage),
+        this.getKeys().readKeys,
+      );
+    } catch {
+      throw new UnrecoverableError('Imagen de la firma ilegible.');
+    }
+    const snapshot = this.readSnapshot(row.snapshot_encrypted, payload.contractId);
+    let html: string;
+    try {
+      html = embedSignature(fillContractTemplate(await this.readTemplate(), snapshot), png);
+    } catch {
+      throw new UnrecoverableError('No se pudo incrustar la firma en la plantilla.');
+    }
+    const pdf = await this.renderer.render(html);
+    const signedDocumentSha256 = createHash('sha256').update(pdf).digest('hex');
+    await this.storage.putObject(
+      keys.signedDocument,
+      encryptObjectBuffer(pdf, this.getKeys().activeKey),
+      {
+        contentType: ENCRYPTED_OBJECT_CONTENT_TYPE,
+        metadata: { encryption: 'aes-256-gcm', kind: 'contract-signed-pdf' },
+      },
+    );
+    this.logger.log(
+      `contract_pdf.signed generationId=${payload.generationId} ` +
+        `attempt=${job.attemptsMade + 1} durationMs=${Date.now() - startedAt} bytes=${pdf.length}`,
+    );
+    return { signedDocumentSha256, bytes: pdf.length };
+  }
+
+  private readTemplate(): Promise<string> {
+    return readFile(
+      resolve(
+        resolveContractTemplatesDir(this.config.get<string>(CONTRACT_TEMPLATES_DIR_ENV)),
+        CONTRACT_TEMPLATE_FILE,
+      ),
+      'utf8',
+    );
+  }
+
   private async generate(
     payload: ContractPdfJobPayload,
     schemaName: string,
@@ -127,13 +203,7 @@ export class ContractPdfProcessor extends WorkerHost {
     if (!row.snapshot_encrypted) throw new UnrecoverableError('Generación sin snapshot.');
 
     const snapshot = this.readSnapshot(row.snapshot_encrypted, payload.contractId);
-    const template = await readFile(
-      resolve(
-        resolveContractTemplatesDir(this.config.get<string>(CONTRACT_TEMPLATES_DIR_ENV)),
-        CONTRACT_TEMPLATE_FILE,
-      ),
-      'utf8',
-    );
+    const template = await this.readTemplate();
     let html: string;
     try {
       html = fillContractTemplate(template, snapshot);
@@ -176,7 +246,7 @@ export class ContractPdfProcessor extends WorkerHost {
   }
 
   private async loadGeneration(
-    payload: ContractPdfJobPayload,
+    payload: Pick<ContractPdfJobPayload, 'generationId' | 'tenantId' | 'contractId'>,
     schemaName: string,
   ): Promise<GenerationRow> {
     const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>

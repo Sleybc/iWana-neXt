@@ -168,3 +168,31 @@ export function fillContractTemplate(template: string, snapshot: ContractDocumen
   });
   return html;
 }
+
+const SIGNATURE_SLOT_PATTERN = /(<div\b[^>]*\bdata-signature-slot="[a-z]+"[^>]*>)\s*(<\/div>)/gu;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** true si el buffer empieza con la firma de un PNG. */
+export function isPngBuffer(buffer: Buffer): boolean {
+  return buffer.length > PNG_SIGNATURE.length && buffer.subarray(0, 8).equals(PNG_SIGNATURE);
+}
+
+/**
+ * Incrusta la imagen de la firma en cada hueco `data-signature-slot` del HTML ya rellenado
+ * (bloque D; ADR-109 D1). La imagen va como `data:` (el renderer solo permite `data:`).
+ * Exige al menos un hueco: una plantilla sin huecos no produce un contrato firmado.
+ */
+export function embedSignature(html: string, png: Buffer): string {
+  if (!isPngBuffer(png)) throw new Error('La firma no es un PNG.');
+  const source = `data:image/png;base64,${png.toString('base64')}`;
+  let slots = 0;
+  const signed = html.replace(SIGNATURE_SLOT_PATTERN, (_match, open: string, close: string) => {
+    slots += 1;
+    return (
+      `${open}<img src="${source}" alt="Firma del suscriptor" ` +
+      `style="max-height:70px;max-width:100%;object-fit:contain">${close}`
+    );
+  });
+  if (slots === 0) throw new Error('La plantilla no tiene huecos de firma.');
+  return signed;
+}

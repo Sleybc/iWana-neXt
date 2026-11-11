@@ -143,6 +143,12 @@ export const CRM_RULES: Record<string, FieldRule[]> = {
   // Cierre de venta (ADR-109 D5): snapshot cifrado del contrato (documento completo); el
   // CHECK de PENDING exige valor, queda el marcador cifrado y el worker no lo procesa.
   contract_document_generations: [{ column: 'snapshot_encrypted', kind: 'encrypted-marker' }],
+  // Bloque D (ADR-109 D1): quien firmó (cifrado, NOT NULL → marcador) y la ubicación aproximada.
+  contract_signatures: [
+    { column: 'signer_encrypted', kind: 'encrypted-marker' },
+    { column: 'location_latitude', kind: 'null' },
+    { column: 'location_longitude', kind: 'null' },
+  ],
 };
 
 export const CONTRACT_LOCATION_RULES: FieldRule[] = [
@@ -643,6 +649,30 @@ export class CrmTitularErasureParticipant implements TitularErasureParticipant {
           'contract_document_generations',
           generationIds,
           CRM_RULES['contract_document_generations'] ?? [],
+          columns,
+          keys,
+          mode,
+          undefined,
+          updatedAtAdvanced,
+        ),
+      ),
+    );
+    const signatureIds = await selectErasureIds(
+      qr,
+      'contract_signatures',
+      columns,
+      contracts.length > 0 ? ['contract_id = ANY($1::uuid[])'] : [],
+      contracts.length > 0 ? [contracts] : [],
+    );
+    results.push(
+      fieldResult(
+        'contract_signatures',
+        'COMERCIAL',
+        await anonymizeConfiguredTable(
+          qr,
+          'contract_signatures',
+          signatureIds,
+          CRM_RULES['contract_signatures'] ?? [],
           columns,
           keys,
           mode,

@@ -316,8 +316,8 @@ describe('invariante catálogo MOD00_ACCESS_V2', () => {
     expect(roles).not.toContain(UserRole.INVESTOR);
   });
 
-  it('ADMIN V2 contiene 49 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
-    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(49);
+  it('ADMIN V2 contiene 50 claves ASSIGNABLE y descripciones promovidas sin "en fase futura"', () => {
+    expect(ROLE_ASSIGNABLE_PERMISSION_MATRIX_V2[UserRole.ADMIN]).toHaveLength(50);
     const promoted = [
       AccessPermissionKey.COMMERCIAL_CATALOG_READ,
       AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE,

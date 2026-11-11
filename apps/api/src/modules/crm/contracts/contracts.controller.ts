@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Headers,
+  Optional,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -37,6 +38,7 @@ import {
   UserRole,
   LIFECYCLE_REASON_CODES_BY_ACTION,
   ActivateContractSchema,
+  ManualContractActivationSchema,
   ContractPlanChangeSchema,
   LifecycleSuspendCommandSchema,
   LifecycleReactivateCommandSchema,
@@ -48,6 +50,7 @@ import {
   type LifecycleTerminateCommand,
   type ListResponse,
   type ActivateContractInput,
+  type ManualContractActivationInput,
   type ContractPlanChangeInput,
 } from '@iwana/shared';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -67,6 +70,7 @@ import { UpdateContractDto } from './dto/update-contract.dto';
 import { CreateContractFromExpedienteDto } from './dto/create-contract-from-expediente.dto';
 import { UpdateServicePointDto } from './dto/update-service-point.dto';
 import { ContractResponseEnvelopeDto } from './dto/contract-response.dto';
+import { ContractActivationEventsPublisher } from './contract-activation-events';
 import { ContractsService } from './contracts.service';
 import { Contract } from './entities/contract.entity';
 import { RejectClientStratumEvidenceGuard } from './guards/reject-client-stratum-evidence.guard';
@@ -143,6 +147,8 @@ export class ContractsController {
   constructor(
     private readonly contractsService: ContractsService,
     private readonly effectivePermissionsService: EffectivePermissionsService,
+    @Optional()
+    private readonly activationEventsPublisher?: ContractActivationEventsPublisher,
   ) {}
 
   // ── Endpoints anidados bajo /crm/subscribers/:subscriberId ─────────────────
@@ -690,6 +696,43 @@ export class ContractsController {
     @CurrentUser() actor: JwtPayload,
   ): Promise<{ data: Contract }> {
     const data = await this.contractsService.activate(id, actor.sub, dto ?? {});
+    await this.activationEventsPublisher?.publishForContract(id);
+    return { data };
+  }
+
+  @Post('crm/contracts/:id/activate-manual')
+  @GuardBlockedTitular('params.id')
+  @Roles(UserRole.ADMIN, PlatformRole.SYSTEM_ADMIN)
+  @Permissions(AccessPermissionKey.CRM_EXPEDIENTES_MANAGE)
+  @SkipAudit()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Activación manual sin firma (DRAFT → ACTIVE) con motivo obligatorio (CA-8)',
+  })
+  @ApiBody({
+    required: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['reason'],
+      properties: {
+        billingCycleDay: { type: 'integer', minimum: 1, maximum: 28 },
+        reason: { type: 'string', minLength: 10, maxLength: 500 },
+      },
+    },
+  })
+  @ApiExtraModels(ContractResponseEnvelopeDto)
+  @ApiResponse({ status: 200, type: ContractResponseEnvelopeDto })
+  @ApiResponse({ status: 409, description: 'CONTRACT_NOT_DRAFT o titular bloqueado' })
+  @ApiResponse({ status: 422, description: 'Ciclo obligatorio o ciclo no disponible' })
+  async activateManual(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodBodyValidationPipe(ManualContractActivationSchema))
+    dto: ManualContractActivationInput,
+    @CurrentUser() actor: JwtPayload,
+  ): Promise<{ data: Contract }> {
+    const data = await this.contractsService.activateManual(id, actor.sub, dto);
+    await this.activationEventsPublisher?.publishForContract(id);
     return { data };
   }
 

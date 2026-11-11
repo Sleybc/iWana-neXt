@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
-import type { NextFunction, Request, Response } from 'express';
+import { json, type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { createGlobalValidationPipe } from './common/pipes/global-validation.pipe';
@@ -23,7 +23,13 @@ import { createGlobalValidationPipe } from './common/pipes/global-validation.pip
  * Interfaz: process.env.BIND_HOST ?? 127.0.0.1 (0.0.0.0 solo con NODE_ENV=production)
  */
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+
+  // La firma del contrato llega como PNG en base64 (hasta 700.000 caracteres, ADR-109):
+  // solo esa ruta admite 1 MB; el resto conserva el límite por defecto de Nest (100 KB).
+  app.use('/api/v1/crm/contracts/:id/signature', json({ limit: '1mb' }));
+  app.useBodyParser('json');
+  app.useBodyParser('urlencoded', { extended: true });
 
   // Prefijo global de la API — todos los endpoints quedan en /api/v1/*
   app.setGlobalPrefix('api/v1');
@@ -146,4 +152,4 @@ async function bootstrap(): Promise<void> {
   await app.listen(port, bindHost);
 }
 
-bootstrap();
+void bootstrap();

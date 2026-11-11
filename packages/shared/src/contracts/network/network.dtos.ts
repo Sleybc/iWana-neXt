@@ -1,6 +1,7 @@
 import type { ExecutionOrderStatus } from '../../enums/operations';
 import type { WfmWorkType } from '../../enums/wfm';
 import type {
+  CommercialActivationBlockReason,
   CommercialActivationStatus,
   ControlMethod,
   ControlParams,
@@ -205,7 +206,7 @@ export interface ServiceProvisioningDto {
   failureReason: 'CLOSED_WITHOUT_CERTIFICATION' | null;
   commercialActivation: {
     status: CommercialActivationStatus;
-    detail: 'CONTACT_REQUIRED' | 'FISCAL_INCOMPLETE' | 'NO_EXPEDIENTE' | null;
+    detail: CommercialActivationBlockReason | null;
   };
   routerInstruction: RouterInstruction | null;
   version: number;

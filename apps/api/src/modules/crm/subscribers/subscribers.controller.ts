@@ -11,6 +11,7 @@ import {
   Headers,
   Inject,
   NotFoundException,
+  Optional,
   Param,
   ParseBoolPipe,
   ParseUUIDPipe,
@@ -82,6 +83,7 @@ import { runInTenantSchema, TenantContext } from '@iwana/db';
 import { GuardBlockedTitular } from './guards/guard-blocked-titular.decorator';
 import { SubscriberLifecycleService } from './subscriber-lifecycle.service';
 import { ContractStatus } from '../enums/contract-status.enum';
+import { ContractPendingSignatureService } from '../pending-signature/contract-pending-signature.service';
 
 /**
  * Roles administrativos habilitados para el alta manual fuera de flujo.
@@ -244,7 +246,29 @@ export class SubscribersController {
     private readonly subscriberLifecycleService: SubscriberLifecycleService,
     @Inject(IPrivacyMarksReadPort) private readonly privacyMarksReadPort: IPrivacyMarksReadPort,
     @InjectDataSource() private readonly dataSource: DataSource,
+    // Opcional: los armados de prueba existentes no lo proveen; en la app lo da
+    // ContractPendingSignatureReadModule (ADR-109 D3).
+    @Optional() private readonly pendingSignatureService?: ContractPendingSignatureService,
   ) {}
+
+  /** Suscriptores con contrato sin firma y servicio activado; null si no hay lector. */
+  private async pendingSignatureFor(
+    subscribers: ReadonlyArray<{ id: string }>,
+  ): Promise<ReadonlySet<string> | null> {
+    if (!this.pendingSignatureService) return null;
+    return this.pendingSignatureService.subscribersPendingSignature(
+      subscribers.map((subscriber) => subscriber.id),
+    );
+  }
+
+  /** Agrega `pendingSignature` (opcional en el contrato) sin alterar el resto de la proyección. */
+  private withPendingSignature<T extends { id: string }>(
+    item: T,
+    pending: ReadonlySet<string> | null,
+  ): T & { pendingSignature?: boolean } {
+    if (pending === null) return item;
+    return { ...item, pendingSignature: pending.has(item.id) };
+  }
 
   /**
    * POST /crm/subscribers
@@ -367,13 +391,17 @@ export class SubscribersController {
       this.documentAccess(readAccess.canReadDocument),
     );
 
+    const pendingSignature = await this.pendingSignatureFor(result.data);
     return {
       data: result.data.map((subscriber) =>
-        projectSubscriberForList(
-          subscriber,
-          user.role,
-          readAccess.canSeeBlocked,
-          readAccess.canReadDocument,
+        this.withPendingSignature(
+          projectSubscriberForList(
+            subscriber,
+            user.role,
+            readAccess.canSeeBlocked,
+            readAccess.canReadDocument,
+          ),
+          pendingSignature,
         ),
       ),
       total: result.total,
@@ -528,13 +556,17 @@ export class SubscribersController {
           : undefined,
         this.documentAccess(readAccess.canReadDocument),
       );
+      const pendingSignature = await this.pendingSignatureFor(result.data);
       return {
         data: result.data.map((subscriber) =>
-          projectSubscriberForList(
-            subscriber,
-            user.role,
-            readAccess.canSeeBlocked,
-            readAccess.canReadDocument,
+          this.withPendingSignature(
+            projectSubscriberForList(
+              subscriber,
+              user.role,
+              readAccess.canSeeBlocked,
+              readAccess.canReadDocument,
+            ),
+            pendingSignature,
           ),
         ),
         total: result.total,
@@ -564,13 +596,17 @@ export class SubscribersController {
       this.documentAccess(readAccess.canReadDocument),
     );
 
+    const pendingSignature = await this.pendingSignatureFor(results);
     return {
       data: results.map((subscriber) =>
-        projectSubscriberForList(
-          subscriber,
-          user.role,
-          readAccess.canSeeBlocked,
-          readAccess.canReadDocument,
+        this.withPendingSignature(
+          projectSubscriberForList(
+            subscriber,
+            user.role,
+            readAccess.canSeeBlocked,
+            readAccess.canReadDocument,
+          ),
+          pendingSignature,
         ),
       ),
     };
@@ -607,12 +643,16 @@ export class SubscribersController {
       readAccess.grantedBy,
       this.documentAccess(readAccess.canReadDocument),
     );
+    const pendingSignature = await this.pendingSignatureFor([subscriber]);
     return {
-      data: this.sanitizeResponse(
-        enrichedSubscriber,
-        privacyMarks,
-        readAccess.canSeeBlocked,
-        readAccess.canReadDocument,
+      data: this.withPendingSignature(
+        this.sanitizeResponse(
+          enrichedSubscriber,
+          privacyMarks,
+          readAccess.canSeeBlocked,
+          readAccess.canReadDocument,
+        ),
+        pendingSignature,
       ),
     };
   }

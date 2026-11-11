@@ -1,4 +1,7 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { CRM_CONTRACT_EVENTS_QUEUE } from '@iwana/shared';
+import { ContractActivationEventsPublisher } from './contract-activation-events';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Contract } from './entities/contract.entity';
 import { ContractsController } from './contracts.controller';
@@ -24,6 +27,7 @@ import { BillingAccountReadModule } from '../../billing/billing-account-read.mod
 @Module({
   imports: [
     TypeOrmModule.forFeature([Contract, ContractPermanenceRecord]),
+    BullModule.registerQueue({ name: CRM_CONTRACT_EVENTS_QUEUE }),
     AccessControlModule,
     AuditModule,
     CommercialModule,
@@ -38,11 +42,17 @@ import { BillingAccountReadModule } from '../../billing/billing-account-read.mod
   providers: [
     ContractsService,
     ContractPermanenceService,
+    ContractActivationEventsPublisher,
     ContractSignGuard,
     ContractsBlockedTitularGuard,
     ContractsTenantSettingsReadAdapter,
     { provide: ContractsTenantSettingsReadPort, useExisting: ContractsTenantSettingsReadAdapter },
   ],
-  exports: [ContractsService, ContractPermanenceService],
+  exports: [
+    ContractsService,
+    ContractPermanenceService,
+    ContractActivationEventsPublisher,
+    ContractsTenantSettingsReadPort,
+  ],
 })
 export class ContractsModule {}

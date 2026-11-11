@@ -39,6 +39,10 @@ const classifications: Readonly<Record<string, TargetClassification>> = {
     participant:
       'apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts',
   },
+  'contractSignature.signerEncrypted': {
+    participant:
+      'apps/api/src/modules/crm/privacy-adapters/titular-erasure/crm-titular-erasure.participant.ts',
+  },
   'billingDocument.buyerDocumentEncrypted': {
     participant: 'apps/api/src/modules/billing/privacy/billing-titular-erasure.participant.ts',
   },

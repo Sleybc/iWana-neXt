@@ -1,6 +1,13 @@
 // apps/portal/src/lib/api-client.ts
 
 import {
+  UpdateOperatorContractProfileSchema,
+  type OperatorContractProfile,
+  type OperatorContractRequiredField,
+  type UpdateOperatorContractProfileInput,
+} from '@iwana/shared';
+
+import {
   AcquisitionChannel,
   AccessPermissionAvailability,
   AccessPermissionCatalogVersion,
@@ -5323,6 +5330,11 @@ export const configurationApi = {
   },
 };
 
+export interface OperatorContractProfileResponse {
+  data: OperatorContractProfile;
+  meta: { missingFields: OperatorContractRequiredField[] };
+}
+
 export const organizationApi = {
   list: (params?: { page?: number; limit?: number }, tenantSlug?: string) => {
     const searchParams = new URLSearchParams();
@@ -5356,6 +5368,25 @@ export const organizationApi = {
       tenantSlug,
     ),
 
+  /** Datos del operador para el contrato (CA-11). GET con organization.sites.read. */
+  getContractProfile: (tenantSlug?: string) =>
+    request<OperatorContractProfileResponse>(
+      '/organization/contract-profile',
+      { returnFullResponse: true },
+      tenantSlug,
+    ),
+
+  /** Solo ADMIN con organization.sites.manage. El cuerpo se valida con el esquema compartido. */
+  updateContractProfile: (dto: UpdateOperatorContractProfileInput, tenantSlug?: string) =>
+    request<OperatorContractProfileResponse>(
+      '/organization/contract-profile',
+      {
+        method: 'PUT',
+        body: JSON.stringify(UpdateOperatorContractProfileSchema.parse(dto)),
+        returnFullResponse: true,
+      },
+      tenantSlug,
+    ),
   replaceBusinessHours: (id: string, dto: ReplaceSiteBusinessHoursDto, tenantSlug?: string) =>
     request<OrganizationSiteDetail>(
       `/organization/sites/${id}/business-hours`,

@@ -12,6 +12,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import {
   AuditAction,
   AccessPermissionKey,
+  CommercialActivationBlockReasonSchema,
   ControlParamsSchema,
   ExecutionOrderStatus,
   ExecutionOrderResult,
@@ -1492,11 +1493,8 @@ export class ServiceProvisioningService {
   private activationDetail(
     value: string | null,
   ): ServiceProvisioningDto['commercialActivation']['detail'] {
-    return value === 'CONTACT_REQUIRED' ||
-      value === 'FISCAL_INCOMPLETE' ||
-      value === 'NO_EXPEDIENTE'
-      ? value
-      : null;
+    const parsed = CommercialActivationBlockReasonSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
   }
 
   private assertVersion(row: ServiceProvisioning, expectedVersion: number): void {
