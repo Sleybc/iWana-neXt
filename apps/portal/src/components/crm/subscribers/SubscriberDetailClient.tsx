@@ -492,23 +492,23 @@ export function SubscriberDetailClient({ mode }: SubscriberDetailClientProps) {
               onCompleteFiscalData={openFiscalCompletion}
               registerActions={registerActions}
             />
+            {subscriber.contractAutoCreationIssue ? (
+              <ContractAutoCreationIssueNotice
+                className="mt-2"
+                issue={subscriber.contractAutoCreationIssue}
+                onCompleteData={() =>
+                  selectSubscriberTab(
+                    contractAutoCreationCompletionTab(
+                      subscriber.contractAutoCreationIssue?.missing ?? [],
+                    ),
+                  )
+                }
+                createContractHref={
+                  canManageSubscribers && !anonymized ? newContractHref(subscriber.id) : null
+                }
+              />
+            ) : null}
           </div>
-
-          {subscriber.contractAutoCreationIssue ? (
-            <ContractAutoCreationIssueNotice
-              issue={subscriber.contractAutoCreationIssue}
-              onCompleteData={() =>
-                selectSubscriberTab(
-                  contractAutoCreationCompletionTab(
-                    subscriber.contractAutoCreationIssue?.missing ?? [],
-                  ),
-                )
-              }
-              createContractHref={
-                canManageSubscribers && !anonymized ? newContractHref(subscriber.id) : null
-              }
-            />
-          ) : null}
 
           <div>
             <SubscriberTabsContainer

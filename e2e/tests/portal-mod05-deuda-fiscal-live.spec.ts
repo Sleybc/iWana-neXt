@@ -1347,7 +1347,7 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
     });
   });
 
-  test('suscriptor heredado: la 153 mapeó el régimen y la pantalla muestra el RUT «pendientes de completar»', async ({
+  test('suscriptor heredado: la 153 mapeó el régimen y a la persona natural no responsable no se le exige RUT (ADR-100)', async ({
     page,
   }) => {
     const session = await createSession(page);
@@ -1360,7 +1360,7 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
       );
       const candidate = await query(
         `SELECT id FROM subscribers
-          WHERE deleted_at IS NULL AND anonymized_at IS NULL AND tax_regime IS NOT NULL
+          WHERE deleted_at IS NULL AND anonymized_at IS NULL AND tax_regime = 'SIMPLIFIED'
             AND cardinality(rut_responsibilities) = 0 AND person_type = 'NATURAL'
           ORDER BY created_at DESC LIMIT 1`,
       );
@@ -1381,13 +1381,15 @@ test.describe('MOD05 deuda fiscal contra API real de un tenant', () => {
 
     const detail = await subscriberDetail(page, session, legacy.candidateId!);
     expect(detail['rutResponsibilities']).toEqual([]);
-    expect(detail['fiscalCompleteness']).toEqual({
-      complete: false,
-      missing: ['RUT_RESPONSIBILITIES'],
-    });
+    // ADR-100: persona natural no responsable de IVA → el RUT no es exigible.
+    expect(detail['vatResponsibility']).toBe('NO_RESPONSABLE');
+    expect(detail['fiscalCompleteness']).toEqual({ complete: true, missing: [] });
 
     await page.goto(`/dashboard/crm/subscribers/${legacy.candidateId!}`);
-    await expect(page.getByText('Responsabilidades del RUT pendientes de completar')).toBeVisible();
+    await expect(page.getByText('Sin RUT declarado').first()).toBeVisible();
+    await expect(page.getByText('Responsabilidades del RUT pendientes de completar')).toHaveCount(
+      0,
+    );
     await expect(page.getByText('No responsable').first()).toBeVisible();
   });
 });

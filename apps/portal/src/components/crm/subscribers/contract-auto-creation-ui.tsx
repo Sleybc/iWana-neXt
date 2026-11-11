@@ -34,6 +34,7 @@ interface ContractAutoCreationIssueNoticeProps {
   onCompleteData: () => void;
   /** Destino del alta manual; null si el usuario no puede crear contratos. */
   createContractHref: string | null;
+  className?: string;
 }
 
 /**
@@ -45,11 +46,13 @@ export function ContractAutoCreationIssueNotice({
   issue,
   onCompleteData,
   createContractHref,
+  className,
 }: ContractAutoCreationIssueNoticeProps) {
   return (
     <PortalAlert
       variant="warning"
       density="compact"
+      {...(className ? { className } : {})}
       title="No se pudo crear el contrato automáticamente"
       description={
         <details className="group">
