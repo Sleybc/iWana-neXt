@@ -255,21 +255,21 @@ export class ContractDocumentGenerationService {
     const { tenantId, schemaName } = TenantContext.getOrThrow();
     const rows = (await runInTenantSchema(this.dataSource, schemaName, (qr) =>
       qr.query(
-        `SELECT c.id::text AS id, c.status
+        `SELECT c.id::text AS id, c.status, c.billing_cycle_day
            FROM contracts c
           WHERE c.tenant_id = $1 AND c.subscriber_id = $2
             AND c.id = (SELECT g.contract_id FROM contract_document_generations g
                          WHERE g.tenant_id = $1 AND g.execution_order_id = $3
                          ORDER BY g.requested_at DESC, g.id DESC LIMIT 1)
          UNION ALL
-         SELECT c.id::text AS id, c.status
+         SELECT c.id::text AS id, c.status, c.billing_cycle_day
            FROM contracts c
           WHERE c.tenant_id = $1 AND c.subscriber_id = $2 AND c.status = 'DRAFT'
             AND NOT EXISTS (SELECT 1 FROM contract_document_generations g
                              WHERE g.tenant_id = $1 AND g.execution_order_id = $3)`,
         [tenantId, order.subscriberId, executionOrderId],
       ),
-    )) as Array<{ id: string; status: string }>;
+    )) as Array<{ id: string; status: string; billing_cycle_day: number | null }>;
     if (rows.length !== 1) return null;
     const contract = rows[0]!;
 
@@ -284,6 +284,8 @@ export class ContractDocumentGenerationService {
     const result = ExecutionOrderContractSchema.parse({
       contractId: contract.id,
       status: contract.status,
+      billingCycleMissing:
+        contract.status === ContractStatus.DRAFT && contract.billing_cycle_day == null,
       holder: {
         fullName,
         documentType: signable ? (subscriber.documentType ?? null) : null,

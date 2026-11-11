@@ -46,6 +46,7 @@ import {
 import { buildPageMeta, clampLimit } from '../../../common/pagination';
 import { clampPage } from '../../../common/pagination/clamp-page';
 import { Contract } from './entities/contract.entity';
+import { ContractPermanenceRecord } from './entities/contract-permanence.entity';
 import { titularAnonymizedConflict } from '../subscribers/guards/titular-anonymized-conflict';
 import { projectSubscriberForList } from '../subscribers/subscriber-projection';
 import { ContractsTenantSettingsReadPort } from './ports/contracts-tenant-settings-read.port';
@@ -1297,6 +1298,9 @@ export class ContractsService {
       this.advanceContractVersion(next);
       prepareFiscalDocumentForSave(next);
       const saved = await qr.manager.save(Contract, next);
+      if (entity.status === ContractStatus.DRAFT) {
+        await this.voidAcceptedPermanenceOnPlanChange(qr.manager, saved.id, tenantId, actorId);
+      }
       await this.auditService.logWithin(
         {
           action: AuditAction.UPDATE,
@@ -1316,6 +1320,56 @@ export class ContractsService {
       );
       return this.projectContractForMutation(saved, qr.manager);
     });
+  }
+
+  /**
+   * Cambio de plan en borrador (decisión R4): la permanencia aceptada se calculó con el cargo
+   * de instalación y la oferta del plan anterior, así que se anula en la misma transacción
+   * (sin aceptar, todos sus datos en NULL) y se audita. El cliente la vuelve a aceptar con el
+   * plan nuevo; el PDF y el primer cobro leen entonces la permanencia vigente.
+   */
+  private async voidAcceptedPermanenceOnPlanChange(
+    manager: EntityManager,
+    contractId: string,
+    tenantId: string,
+    actorId: string | undefined,
+  ): Promise<void> {
+    const existing = await manager.findOne(ContractPermanenceRecord, {
+      where: { contractId, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!existing?.accepted) return;
+    const oldValue = {
+      accepted: true,
+      months: existing.months,
+      connectionFee: existing.connectionFee,
+      discountedAmount: existing.discountedAmount,
+    };
+    await manager.update(
+      ContractPermanenceRecord,
+      { contractId, tenantId },
+      {
+        accepted: false,
+        months: null,
+        connectionFee: null,
+        discountedAmount: null,
+        startDate: null,
+        endDate: null,
+        voluntarySuspensionDays: 0,
+        ...(actorId ? { updatedBy: actorId } : {}),
+      },
+    );
+    await this.auditService.logWithin(
+      {
+        action: AuditAction.UPDATE,
+        entityType: 'ContractPermanence',
+        entityId: contractId,
+        userId: actorId ?? null,
+        oldValue,
+        newValue: { accepted: false, reason: 'PLAN_CHANGED' },
+      },
+      manager,
+    );
   }
 
   /**

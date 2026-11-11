@@ -151,6 +151,11 @@ const EXECUTION_ORDER_CONTRACT_SCHEMA: SchemaObject = {
   properties: {
     contractId: { type: 'string', format: 'uuid' },
     status: { type: 'string' },
+    billingCycleMissing: {
+      type: 'boolean',
+      description:
+        'Borrador sin ciclo de facturación: la firma responde 409 BILLING_CYCLE_REQUIRED.',
+    },
     holder: {
       type: 'object',
       additionalProperties: false,

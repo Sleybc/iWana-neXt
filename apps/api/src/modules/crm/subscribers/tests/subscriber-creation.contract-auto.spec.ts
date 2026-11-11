@@ -24,6 +24,7 @@ describe('SubscriberCreationService — contrato automático tras el suscriptor'
   const event = new ExpedienteReadyForInstallationEvent('ten-1', 'tenant_1', 'exp-1', 'actor-1');
   const subscribers = { findByExpedienteId: jest.fn() };
   const port = { createForExpediente: jest.fn().mockResolvedValue(undefined) };
+  const audit = { log: jest.fn() };
 
   async function build(withPort: boolean): Promise<SubscriberCreationService> {
     const module = await Test.createTestingModule({
@@ -31,7 +32,7 @@ describe('SubscriberCreationService — contrato automático tras el suscriptor'
         SubscriberCreationService,
         { provide: DataSource, useValue: {} },
         { provide: SubscribersService, useValue: subscribers },
-        { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: AuditService, useValue: audit },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         {
           provide: ConfigService,
@@ -82,10 +83,22 @@ describe('SubscriberCreationService — contrato automático tras el suscriptor'
     await expect(service.handleExpedienteReadyForInstallation(event)).rejects.toThrow('inesperado');
   });
 
-  it('sin ContractsModule cargado se omite sin fallar', async () => {
+  it('con ModuleRef y puerto no resoluble: no falla, registra error y audita el omitido', async () => {
     const service = await build(false);
+    const errorLog = jest
+      .spyOn((service as unknown as { logger: { error: () => void } }).logger, 'error')
+      .mockImplementation(() => undefined);
     await expect(service.handleExpedienteReadyForInstallation(event)).resolves.toBeUndefined();
     expect(port.createForExpediente).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('expediente=exp-1'));
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'Subscriber',
+        entityId: 'sub-1',
+        userId: 'actor-1',
+        newValue: { contractAutoCreationSkipped: 'PORT_UNAVAILABLE', expedienteId: 'exp-1' },
+      }),
+    );
   });
 
   it('construido a mano sin ModuleRef también se omite', async () => {
@@ -98,8 +111,9 @@ describe('SubscriberCreationService — contrato automático tras el suscriptor'
       config,
       subscribers as unknown as SubscribersService,
       { emit: jest.fn() } as unknown as EventEmitter2,
-      { log: jest.fn() } as unknown as AuditService,
+      audit as unknown as AuditService,
     );
     await expect(service.handleExpedienteReadyForInstallation(event)).resolves.toBeUndefined();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });

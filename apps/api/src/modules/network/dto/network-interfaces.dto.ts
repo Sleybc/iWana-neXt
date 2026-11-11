@@ -561,6 +561,10 @@ export class ProvisioningOrderContextResponseDto {
         id: { type: 'string', format: 'uuid' },
         alias: { type: 'string', nullable: true },
         status: { type: 'string' },
+        billingCycleMissing: {
+          type: 'boolean',
+          description: 'Borrador sin ciclo de facturación: la firma lo exige.',
+        },
       },
       required: ['id', 'alias', 'status'],
     },

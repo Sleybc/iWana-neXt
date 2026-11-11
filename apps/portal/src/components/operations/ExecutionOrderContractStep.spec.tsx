@@ -195,6 +195,7 @@ describe('paso «Contrato» — habilitación', () => {
       status: 'DRAFT',
       holderName: 'Titular Ficticio',
       provisioningStatus: 'CERTIFIED',
+      billingCycleMissing: false,
     });
     expect(
       resolveExecutionOrderContract({
@@ -213,6 +214,34 @@ describe('paso «Contrato» — habilitación', () => {
       } as ProvisioningOrderContextDto),
     ).toBeNull();
     expect(resolveExecutionOrderContract(null)).toBeNull();
+  });
+
+  it('propaga billingCycleMissing desde el contexto de aprovisionamiento y desde CRM (fase 2, CA-2)', () => {
+    const context = {
+      subscriber: { id: 'sub', displayLabel: 'Titular Ficticio' },
+      contracts: [{ id: 'c-draft', alias: null, status: 'DRAFT', billingCycleMissing: true }],
+      provisioning: { contractId: 'c-draft', status: 'CERTIFIED' },
+    } as unknown as ProvisioningOrderContextDto;
+    expect(resolveExecutionOrderContract(context)?.billingCycleMissing).toBe(true);
+
+    const view = {
+      executionOrderId: 'ot-1',
+      status: 'CERTIFIED',
+      ip: null,
+      certified: true,
+      updatedAt: null,
+    } as const;
+    expect(
+      resolveExecutionOrderContract(null, {
+        view,
+        contract: {
+          contractId: 'c-draft',
+          status: 'DRAFT',
+          billingCycleMissing: true,
+          holder: { fullName: 'Titular Ficticio', documentType: null, documentNumber: null },
+        },
+      })?.billingCycleMissing,
+    ).toBe(true);
   });
 
   it('vista del técnico: usa el contrato de la OT que publica CRM y precarga el documento', () => {
@@ -242,6 +271,7 @@ describe('paso «Contrato» — habilitación', () => {
       holderName: 'Titular Ficticio',
       provisioningStatus: 'CERTIFIED',
       holderDocument: { type: 'CC', number: '1000000001' },
+      billingCycleMissing: false,
     });
     expect(resolveExecutionOrderContract(null, { view, contract: null })).toBeNull();
     expect(signerDocumentTypeFrom('CE')).toBe('CE');

@@ -39,7 +39,7 @@ export class SubscriberServiceContextReadAdapter extends SubscriberServiceContex
 
       const contracts = await qr.manager.find(Contract, {
         where: { tenantId, subscriberId },
-        select: ['id', 'alias', 'status', 'planId', 'createdAt'],
+        select: ['id', 'alias', 'status', 'planId', 'billingCycleDay', 'createdAt'],
         order: { createdAt: 'DESC' },
       });
       const expediente = subscriber.expedienteId
@@ -63,6 +63,7 @@ export class SubscriberServiceContextReadAdapter extends SubscriberServiceContex
             alias: contract.alias,
             status: contract.status,
             planId: contract.planId,
+            billingCycleMissing: contract.status === 'DRAFT' && contract.billingCycleDay == null,
           }),
         ),
       };

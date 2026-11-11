@@ -90,7 +90,10 @@ export function buildContractTemplateValues(
     'service.monthlyTotal': formatMoney(service.monthlyTotal),
     'service.stratum': text(service.stratum),
     'service.installationFee':
-      service.installationFee == null ? 'No aplica' : formatMoney(service.installationFee),
+      // Null (instantánea previa a la fase 2) o 0: no hay cargo que cobrar.
+      service.installationFee == null || service.installationFee === 0
+        ? 'Sin cargo'
+        : formatMoney(service.installationFee),
     'installation.address': text(installation.address),
     'installation.city': text(installation.city),
     'installation.department': text(installation.department),

@@ -13,6 +13,7 @@ import {
 } from '@iwana/shared';
 import { ContractsService } from '../contracts.service';
 import { Contract } from '../entities/contract.entity';
+import { ContractPermanenceRecord } from '../entities/contract-permanence.entity';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
 import { CommercialCatalogReadPort } from '../../../commercial/ports/commercial-catalog-read.port';
@@ -169,7 +170,7 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
   beforeAll(async () => {
     dataSource = new DataSource({
       ...dataSourceOptions,
-      entities: [Contract, Subscriber, AuditLog],
+      entities: [Contract, Subscriber, ContractPermanenceRecord, AuditLog],
       migrations: [],
       logging: false,
       extra: { max: 6, min: 1, application_name: schemaName },
@@ -257,6 +258,53 @@ describeWithDb('Cambio de plan: PostgreSQL y auditoría atómica en schema sint�
       );
     },
   );
+  it('R4: en DRAFT con permanencia aceptada, cambiar a un plan con menor cargo la anula y audita', async () => {
+    const contract = await fixture(ContractStatus.DRAFT);
+    await runInTenantSchema(dataSource, schemaName, async (qr) => {
+      await qr.query(`UPDATE contracts SET installation_fee = 200000 WHERE id = $1`, [contract.id]);
+      await qr.query(
+        `INSERT INTO contract_permanence
+           (contract_id, tenant_id, accepted, months, connection_fee, discounted_amount,
+            created_by, updated_by)
+         VALUES ($1, $2, true, 12, 200000, 120000, $3, $3)`,
+        [contract.id, tenantId, actorId],
+      );
+    });
+    catalog.createSnapshot.mockResolvedValue({ ...snapshot, installationFee: 100000 });
+    const current = await persisted(contract.id);
+
+    await inContext(() => service.changePlan(contract.id, command(current), actorId));
+
+    const [row] = (await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.query(
+        `SELECT c.installation_fee, p.accepted, p.months, p.connection_fee, p.discounted_amount,
+                p.start_date, p.end_date
+           FROM contracts c JOIN contract_permanence p ON p.contract_id = c.id
+          WHERE c.id = $1`,
+        [contract.id],
+      ),
+    )) as Array<Record<string, unknown>>;
+    // Primer cobro: el cargo congelado es el del plan nuevo. PDF: sin permanencia aceptada no
+    // se imprime la sección de permanencia hasta que el cliente la vuelva a aceptar.
+    expect(row).toEqual({
+      installation_fee: '100000.00',
+      accepted: false,
+      months: null,
+      connection_fee: null,
+      discounted_amount: null,
+      start_date: null,
+      end_date: null,
+    });
+    const permanenceAudit = await runInTenantSchema(dataSource, schemaName, (qr) =>
+      qr.manager.find(AuditLog, {
+        where: { entityId: contract.id, entityType: 'ContractPermanence' },
+      }),
+    );
+    expect(permanenceAudit).toHaveLength(1);
+    expect(permanenceAudit[0]?.oldValue).toMatchObject({ accepted: true, months: 12 });
+    expect(permanenceAudit[0]?.newValue).toEqual({ accepted: false, reason: 'PLAN_CHANGED' });
+  });
+
   it('revierte plan, versión, snapshot, IVA y auditoría si el INSERT de auditoría falla', async () => {
     const contract = await fixture(ContractStatus.ACTIVE);
     const realAudit = audit.logWithin.bind(audit);

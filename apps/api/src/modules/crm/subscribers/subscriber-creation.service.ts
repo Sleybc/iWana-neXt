@@ -5,7 +5,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
-import { runInTenantSchema, TenantContext } from '@iwana/db';
+import { runInTenantSchema, summarizeErrorForLog, TenantContext } from '@iwana/db';
 import {
   PersonType,
   CustomerSegment,
@@ -62,7 +62,12 @@ export class SubscriberCreationService {
     const subscriberId = await this.createFromExpediente(event.expedienteId, event.actorUserId);
     // Fase 2, bloque A (D3): después del suscriptor, el contrato DRAFT de la oportunidad.
     // Idempotente: un evento repetido no crea un segundo contrato.
-    await this.resolveContractAutoCreation()?.createForExpediente({
+    const contractAutoCreation = await this.resolveContractAutoCreation(
+      subscriberId,
+      event.expedienteId,
+      event.actorUserId,
+    );
+    await contractAutoCreation?.createForExpediente({
       subscriberId,
       expedienteId: event.expedienteId,
       actorId: event.actorUserId,
@@ -71,13 +76,29 @@ export class SubscriberCreationService {
 
   /**
    * ContractsModule importa SubscribersModule; el puerto se resuelve en ejecución para no
-   * invertir la dependencia. Sin ContractsModule cargado (pruebas aisladas) se omite.
+   * invertir la dependencia. Sin `moduleRef` (pruebas aisladas) se omite en silencio; con
+   * `moduleRef` y sin puerto resoluble (cableado roto en producción) se registra un error y se
+   * audita el omitido: el suscriptor queda creado y el contrato pendiente de crear a mano.
    */
-  private resolveContractAutoCreation(): ContractAutoCreationPort | null {
+  private async resolveContractAutoCreation(
+    subscriberId: string,
+    expedienteId: string,
+    actorId: string,
+  ): Promise<ContractAutoCreationPort | null> {
     if (!this.moduleRef) return null;
     try {
       return this.moduleRef.get(ContractAutoCreationPort, { strict: false });
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        `[contract-auto] Puerto de contrato automático no resuelto expediente=${expedienteId} ${summarizeErrorForLog(error)}`,
+      );
+      await this.auditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'Subscriber',
+        entityId: subscriberId,
+        userId: actorId,
+        newValue: { contractAutoCreationSkipped: 'PORT_UNAVAILABLE', expedienteId },
+      });
       return null;
     }
   }

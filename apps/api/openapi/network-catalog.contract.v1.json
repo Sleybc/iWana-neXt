@@ -8051,6 +8051,10 @@
                 },
                 "status": {
                   "type": "string"
+                },
+                "billingCycleMissing": {
+                  "type": "boolean",
+                  "description": "Borrador sin ciclo de facturación: la firma lo exige."
                 }
               },
               "required": ["id", "alias", "status"]

@@ -20,7 +20,7 @@ const DESTRUCTIVE_DOWN_ENV_VAR = 'IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN';
  *
  * `down()` restaura `connection_fee` desde el respaldo (subido al valor descontado si hiciera
  * falta para cumplir la restricción original) y retira la columna del contrato y el respaldo.
- * Si algún contrato tiene `installation_fee` lo bloquea salvo
+ * Si algún contrato tiene `installation_fee` o hay filas en el respaldo lo bloquea salvo
  * `IWANA_ALLOW_DESTRUCTIVE_TENANT_DOWN=true`: ese valor congelado no se reconstruye.
  */
 export class InstallationFeeUnified1910000000191 implements MigrationInterface {
@@ -112,14 +112,16 @@ export class InstallationFeeUnified1910000000191 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     if (process.env[DESTRUCTIVE_DOWN_ENV_VAR] !== 'true') {
       const rows = (await queryRunner.query(`
-        SELECT COUNT(*)::int AS total FROM contracts WHERE installation_fee IS NOT NULL
-      `)) as Array<{ total: number }>;
-      const total = rows[0]?.total ?? 0;
-      if (total > 0) {
+        SELECT (SELECT COUNT(*)::int FROM contracts WHERE installation_fee IS NOT NULL) AS contracts,
+               (SELECT COUNT(*)::int FROM plan_connection_fee_retirements) AS retirements
+      `)) as Array<{ contracts: number; retirements: number }>;
+      const contracts = rows[0]?.contracts ?? 0;
+      const retirements = rows[0]?.retirements ?? 0;
+      if (contracts > 0 || retirements > 0) {
         throw new Error(
-          `Rollback de InstallationFeeUnified bloqueado: ${total} contrato(s) con cargo de ` +
-            `instalación congelado. Para continuar de forma destructiva, exporte ` +
-            `${DESTRUCTIVE_DOWN_ENV_VAR}=true.`,
+          `Rollback de InstallationFeeUnified bloqueado: ${contracts} contrato(s) con cargo de ` +
+            `instalación congelado y ${retirements} cargo(s) retirado(s) en respaldo. Para ` +
+            `continuar de forma destructiva, exporte ${DESTRUCTIVE_DOWN_ENV_VAR}=true.`,
         );
       }
     }

@@ -232,9 +232,12 @@ describeWithDb('Migración 191 — installation_fee unificado en PostgreSQL real
     expect(backupGone[0]?.gone).toBe(true);
   });
 
-  it('down en vacío no exige la variable y la 191 se reaplica', async () => {
+  it('down: el respaldo solo también bloquea; en vacío no exige la variable y se reaplica', async () => {
     await m191.up(qr());
     await qr().query(`UPDATE contracts SET installation_fee = NULL`);
+    // Solo el respaldo de cargos retirados también bloquea (hallazgo de boundary-reviewer).
+    await expect(m191.down(qr())).rejects.toThrow(/cargo\(s\) retirado\(s\)/u);
+    await qr().query(`DELETE FROM plan_connection_fee_retirements`);
     await m191.down(qr());
     expect(await columnExists('plan_details', 'connection_fee')).toBe(true);
     await m191.up(qr());

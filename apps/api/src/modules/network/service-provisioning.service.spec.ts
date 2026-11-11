@@ -206,7 +206,14 @@ const commercialContext = {
   planId: 'plan-001',
   downloadMbps: null as number | null,
   uploadMbps: null as number | null,
-  contracts: [{ id: 'contract-001', alias: 'Principal', status: 'ACTIVE' as const }],
+  contracts: [
+    {
+      id: 'contract-001',
+      alias: 'Principal',
+      status: 'ACTIVE' as const,
+      billingCycleMissing: false,
+    },
+  ],
 };
 
 const reserveRow = (overrides: Record<string, unknown> = {}) => ({
@@ -1002,6 +1009,30 @@ describe('ServiceProvisioningService B2 guardrails', () => {
 
     expect(executionOrderReadPort.listProvisioningEvidence).toHaveBeenCalledWith('eo-001');
     expect(response).toMatchObject({ evidences: evidence });
+  });
+
+  it('el contexto propaga billingCycleMissing del puerto de CRM (fase 2, CA-2)', async () => {
+    const { service, manager } = createService({
+      permissions: [AccessPermissionKey.NETWORK_PROVISIONING_READ],
+      executionOrderReadPort: {
+        listProvisioningEvidence: jest.fn().mockResolvedValue([]),
+      },
+      subscriberContextPort: {
+        getForSubscriber: jest.fn().mockResolvedValue({
+          ...commercialContext,
+          contracts: [
+            { id: 'contract-002', alias: null, status: 'DRAFT', billingCycleMissing: true },
+          ],
+        }),
+      },
+    });
+    mockProvisioningAndParents(manager, reserveRow());
+
+    const response = await service.getOrderContext('eo-001', actor);
+
+    expect(response).toMatchObject({
+      contracts: [{ id: 'contract-002', alias: null, status: 'DRAFT', billingCycleMissing: true }],
+    });
   });
 
   it('regularize rechaza una OT que no es instalación ejecutada y cerrada', async () => {

@@ -918,7 +918,12 @@ export class ServiceProvisioningService {
             pcqAddressList: planProfile?.pcqAddressList ?? null,
           }
         : null,
-      contracts: commercial.contracts.map(({ id, alias, status }) => ({ id, alias, status })),
+      contracts: commercial.contracts.map(({ id, alias, status, billingCycleMissing }) => ({
+        id,
+        alias,
+        status,
+        billingCycleMissing,
+      })),
       cpe: equipment
         ? {
             serialNumber: equipment.serialNumber,

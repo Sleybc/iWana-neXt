@@ -79,18 +79,20 @@ describe('fillContractTemplate', () => {
     expect(() => fillContractTemplate(template, buildContractSnapshotFixture())).toThrow(error);
   });
 
-  it('expone el cargo de instalación congelado; sin él o en instantáneas viejas, «No aplica»', () => {
+  it('expone el cargo de instalación congelado; null, 0 o instantáneas viejas, «Sin cargo»', () => {
     const base = buildContractSnapshotFixture();
     const frozen = { ...base, service: { ...base.service, installationFee: 150000 } };
     expect(buildContractTemplateValues(frozen)['service.installationFee']).toBe(
       formatMoney(150000),
     );
     const none = { ...base, service: { ...base.service, installationFee: null } };
-    expect(buildContractTemplateValues(none)['service.installationFee']).toBe('No aplica');
+    expect(buildContractTemplateValues(none)['service.installationFee']).toBe('Sin cargo');
+    const zero = { ...base, service: { ...base.service, installationFee: 0 } };
+    expect(buildContractTemplateValues(zero)['service.installationFee']).toBe('Sin cargo');
     const { installationFee: _omitted, ...legacyService } = frozen.service;
     expect(
       buildContractTemplateValues({ ...base, service: legacyService })['service.installationFee'],
-    ).toBe('No aplica');
+    ).toBe('Sin cargo');
   });
 
   it('escapa los caracteres HTML peligrosos', () => {

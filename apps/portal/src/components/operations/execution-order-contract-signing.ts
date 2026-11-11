@@ -57,6 +57,7 @@ export function resolveExecutionOrderContract(
         type: contract.holder.documentType,
         number: contract.holder.documentNumber,
       },
+      billingCycleMissing: contract.billingCycleMissing === true,
     };
   }
   const referenced = context.provisioning?.contractId
@@ -70,6 +71,7 @@ export function resolveExecutionOrderContract(
     status: contract.status,
     holderName: context.subscriber.displayLabel,
     provisioningStatus: context.provisioning?.status ?? null,
+    billingCycleMissing: contract.billingCycleMissing === true,
   };
 }
 

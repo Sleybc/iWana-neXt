@@ -230,7 +230,13 @@ export interface ProvisioningOrderContextDto {
     uploadMbps: number | null;
     pcqAddressList: string | null;
   } | null;
-  contracts: Array<{ id: string; alias: string | null; status: string }>;
+  contracts: Array<{
+    id: string;
+    alias: string | null;
+    status: string;
+    /** Borrador sin ciclo de facturación: la firma lo exige (fase 2, CA-2). */
+    billingCycleMissing?: boolean;
+  }>;
   cpe: { serialNumber: string; macAddress: string | null; model: string | null } | null;
   evidences: Array<{
     id: string;

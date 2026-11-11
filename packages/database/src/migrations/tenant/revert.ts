@@ -69,6 +69,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'ContractSignatures1880000000188',
   'ContractTemplateContentHash1900000000190',
   'InstallationFeeUnified1910000000191',
+  'ContractAutoCreationFromExpediente1920000000192',
   'BillingLineKindInstallation1930000000193',
 ];
 

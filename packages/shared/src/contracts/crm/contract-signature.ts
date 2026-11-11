@@ -241,6 +241,11 @@ export const ExecutionOrderContractSchema = z
   .object({
     contractId: z.string().uuid(),
     status: z.string().min(1),
+    /**
+     * Borrador sin ciclo de facturación: la firma responde 409 `BILLING_CYCLE_REQUIRED`
+     * (fase 2, CA-2). Opcional en el tipo; la API lo envía siempre.
+     */
+    billingCycleMissing: z.boolean().optional(),
     holder: z
       .object({
         fullName: z.string(),

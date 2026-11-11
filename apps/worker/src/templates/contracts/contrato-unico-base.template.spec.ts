@@ -5,7 +5,7 @@ import {
   ContractDocumentSnapshotSchema,
   type ContractDocumentSnapshot,
 } from '@iwana/shared';
-import { fillContractTemplate } from '../../contracts/contract-template';
+import { fillContractTemplate, formatMoney } from '../../contracts/contract-template';
 
 /**
  * Plantilla semilla del contrato (cierre de venta, bloque A; spec G6, CA-6, CA-7).
@@ -114,6 +114,28 @@ describe('Plantilla base del contrato único (servicios fijos)', () => {
     expect(html).toContain('6015550000');
     expect(html).not.toContain('Cláusula de permanencia mínima');
     expect(html).not.toContain('Otras condiciones');
+  });
+
+  it('muestra el cargo de instalación en las condiciones comerciales; sin cargo, «Sin cargo» (R5)', () => {
+    const section = (html: string) =>
+      html.slice(
+        html.indexOf('Condiciones comerciales plan servicios fijos'),
+        html.indexOf('<!-- PÁGINA 2 -->'),
+      );
+    const base = snapshot();
+    const charged = fillContractTemplate(
+      TEMPLATE,
+      snapshot({ service: { ...base.service, installationFee: 150000 } }),
+    );
+    expect(section(charged)).toContain('CARGO DE INSTALACIÓN');
+    expect(section(charged)).toContain(formatMoney(150000));
+    for (const installationFee of [0, null]) {
+      const free = fillContractTemplate(
+        TEMPLATE,
+        snapshot({ service: { ...base.service, installationFee } }),
+      );
+      expect(section(free)).toContain('Sin cargo');
+    }
   });
 
   it('muestra la permanencia con su tabla mes a mes cuando se pactó', () => {

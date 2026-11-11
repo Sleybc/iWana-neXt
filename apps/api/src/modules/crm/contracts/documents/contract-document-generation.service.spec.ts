@@ -469,11 +469,12 @@ describe('ContractDocumentGenerationService', () => {
       });
 
     it('técnico asignado: contrato DRAFT con documento del titular, auditado', async () => {
-      answer([{ id: CONTRACT_ID, status: 'DRAFT' }]);
+      answer([{ id: CONTRACT_ID, status: 'DRAFT', billing_cycle_day: 15 }]);
       const result = await run(() => service.executionOrderContract(ORDER_ID, actor));
       expect(result).toEqual({
         contractId: CONTRACT_ID,
         status: 'DRAFT',
+        billingCycleMissing: false,
         holder: { fullName: 'Ana Prueba', documentType: 'CC', documentNumber: '1000000001' },
       });
       const params = query.mock.calls.find(([sql]) => String(sql).includes('FROM contracts c'))![1];
@@ -497,6 +498,18 @@ describe('ContractDocumentGenerationService', () => {
         documentNumber: null,
       });
       expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('DRAFT sin ciclo marca billingCycleMissing; ACTIVE sin ciclo no (fase 2, CA-2)', async () => {
+      answer([{ id: CONTRACT_ID, status: 'DRAFT', billing_cycle_day: null }]);
+      const draft = await run(() => service.executionOrderContract(ORDER_ID, actor));
+      expect(draft?.billingCycleMissing).toBe(true);
+      const sql = query.mock.calls.find(([text]) => String(text).includes('FROM contracts c'))![0];
+      expect(String(sql)).toContain('c.billing_cycle_day');
+
+      answer([{ id: CONTRACT_ID, status: 'ACTIVE', billing_cycle_day: null }], true);
+      const active = await run(() => service.executionOrderContract(ORDER_ID, actor));
+      expect(active?.billingCycleMissing).toBe(false);
     });
 
     it('DRAFT con firma registrada no expone el documento', async () => {

@@ -7,6 +7,8 @@ export interface SubscriberServiceContractRef {
   alias: string | null;
   status: string;
   planId: string;
+  /** Borrador sin ciclo de facturación: la firma lo exige (fase 2, CA-2). */
+  billingCycleMissing: boolean;
 }
 
 export interface SubscriberServiceContext {
