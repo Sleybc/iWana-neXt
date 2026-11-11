@@ -150,6 +150,14 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
     void promise.catch(() => {});
     return promise;
   };
+  // `run` ancla la promesa interna, pero los ayudantes async (createNetwork, set*Status)
+  // devuelven otra promesa envolvente que rechaza por su cuenta. En una carrera, si rechaza
+  // mientras el test aún espera a la otra operación, Node la marca sin handler y jest falla
+  // el test (CI 43077333725: NotFoundException + PromiseRejectionHandledWarning).
+  const anchored = <T>(promise: Promise<T>): Promise<T> => {
+    void promise.catch(() => {});
+    return promise;
+  };
   const audit = { logWithin: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
   const authorization = {
     requireSiteOrTenantWideAction: jest.fn().mockResolvedValue(undefined),
@@ -747,14 +755,14 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
     let reservation: Promise<string> | undefined;
     try {
       if (deactivationFirst) {
-        deactivation = setNetworkStatus(networkId, 'INACTIVE');
+        deactivation = anchored(setNetworkStatus(networkId, 'INACTIVE'));
         await waitForAdvisoryWait(dataSource!, `ipv4:${networkId}`);
         reservation = reserve(networkId, provisioningId, host);
         await waitForAdvisoryWait(dataSource!, `ipv4:${networkId}`, 2);
       } else {
         reservation = reserve(networkId, provisioningId, host);
         await waitForAdvisoryWait(dataSource!, `ipv4:${networkId}`);
-        deactivation = setNetworkStatus(networkId, 'INACTIVE');
+        deactivation = anchored(setNetworkStatus(networkId, 'INACTIVE'));
         await waitForAdvisoryWait(dataSource!, `ipv4:${networkId}`, 2);
       }
 
@@ -792,14 +800,14 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
     let networkId: string | undefined;
     try {
       if (deactivationFirst) {
-        deactivation = setRouterStatus('INACTIVE');
+        deactivation = anchored(setRouterStatus('INACTIVE'));
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`);
-        poolCreation = createNetwork(cidr);
+        poolCreation = anchored(createNetwork(cidr));
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`, 2);
       } else {
-        poolCreation = createNetwork(cidr);
+        poolCreation = anchored(createNetwork(cidr));
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`);
-        deactivation = setRouterStatus('INACTIVE');
+        deactivation = anchored(setRouterStatus('INACTIVE'));
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`, 2);
       }
 
@@ -892,14 +900,14 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
     let networkId: string | undefined;
     try {
       if (poolFirst) {
-        poolCreation = createNetwork(cidr);
+        poolCreation = anchored(createNetwork(cidr));
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`);
         correction = correctAddress(localAddress.id, targetHost);
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`, 2);
       } else {
         correction = correctAddress(localAddress.id, targetHost);
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`);
-        poolCreation = createNetwork(cidr);
+        poolCreation = anchored(createNetwork(cidr));
         await waitForAdvisoryWait(dataSource!, `ipv4-catalog:${tenantId}`, 2);
       }
 
@@ -1666,7 +1674,7 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
     let release: ReturnType<typeof service.release> | undefined;
     try {
       if (deactivationFirst) {
-        deactivation = setNetworkStatus(networkId, 'INACTIVE');
+        deactivation = anchored(setNetworkStatus(networkId, 'INACTIVE'));
         await waitForAdvisoryWait(dataSource!, poolLock);
         release = run(() =>
           service.release(
@@ -1685,7 +1693,7 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
           ),
         );
         await waitForAdvisoryWait(dataSource!, poolLock);
-        deactivation = setNetworkStatus(networkId, 'INACTIVE');
+        deactivation = anchored(setNetworkStatus(networkId, 'INACTIVE'));
         await waitForAdvisoryWait(dataSource!, poolLock, 2);
       }
 
@@ -1738,10 +1746,10 @@ describeWithDb('MOD13 interfaces ↔ IPAM — carreras PostgreSQL reales', () =>
       if (regularizeFirst) {
         regularization = run(() => service.regularize(body, syntheticActor()));
         await waitForAdvisoryWait(dataSource!, poolLock);
-        deactivation = setNetworkStatus(networkId, 'INACTIVE');
+        deactivation = anchored(setNetworkStatus(networkId, 'INACTIVE'));
         await waitForAdvisoryWait(dataSource!, poolLock, 2);
       } else {
-        deactivation = setNetworkStatus(networkId, 'INACTIVE');
+        deactivation = anchored(setNetworkStatus(networkId, 'INACTIVE'));
         await waitForAdvisoryWait(dataSource!, poolLock);
         regularization = run(() => service.regularize(body, syntheticActor()));
         await waitForAdvisoryWait(dataSource!, poolLock, 2);

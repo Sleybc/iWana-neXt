@@ -10,11 +10,14 @@
  * no se toca), PENDIENTE-MOD14 (spec 2026-11-03 §12 H-5: solo listadas, B4 no
  * decide por ellas; el invariante las reconoce pero no las justifica).
  * R-1 a R-14 pasan a CUBIERTA por B3; R-15 queda EXCLUIDA-condicional con el
- * bloqueante D-BT-8. Total: 716 entradas
- * (CUBIERTA=185, EXCLUIDA=531, PENDIENTE-MOD14=0).
+ * bloqueante D-BT-8. Total: 742 entradas
+ * (CUBIERTA=187, EXCLUIDA=555, PENDIENTE-MOD14=0).
  * La entrada 715 es privacy_retention_expiry_runs.reason_code (migracion 179,
  * B2-R2): CODIGO, sin texto libre. La 716 es subscriber_note.body_encrypted (migracion
  * 180, MOD05 D3): texto libre CUBIERTO por CrmTitularErasureParticipant.
+ * Las 717 a 742 son del Cierre de venta (migraciones 183 a 190): snapshot_encrypted y
+ * signer_encrypted CUBIERTAS por CrmTitularErasureParticipant (marcador cifrado); el
+ * resto son códigos, huellas, enums, outbox o configuración del ISP.
  * MOD14 clasificada en INFORME-MOD14-PRIVACY-CLASIFICACION-v1.0.md (2026-11-07).
  */
 export type TextErasureManifestKind = 'CUBIERTA' | 'EXCLUIDA' | 'PENDIENTE-MOD14';
@@ -522,6 +525,132 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'result',
     k: 'EXCLUIDA',
     d: 'CODIGO: referencia, código o dominio del sistema',
+  },
+  {
+    t: 'contract_activation_events',
+    c: 'envelope',
+    k: 'EXCLUIDA',
+    d: 'EFIMERA: outbox de crm.contract.activated; solo ids, fechas y origen, sin texto del titular',
+  },
+  {
+    t: 'contract_activation_events',
+    c: 'last_error',
+    k: 'EXCLUIDA',
+    d: 'EFIMERA: envoltorio técnico de confiabilidad',
+  },
+  {
+    t: 'contract_activation_events',
+    c: 'source',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'document_object_key',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clave de almacenamiento del documento generado',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'document_sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella SHA-256',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'failure_reason',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'missing_operator_fields',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: nombres de campos del perfil del operador',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'snapshot_encrypted',
+    k: 'CUBIERTA',
+    d: 'CrmTitularErasureParticipant (marker)',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'snapshot_sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella SHA-256',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'template_sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella SHA-256',
+  },
+  {
+    t: 'contract_document_generations',
+    c: 'template_version',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: versión de la plantilla del contrato',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'copy_email_status',
+    k: 'EXCLUIDA',
+    d: 'ENUM: dominio cerrado',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'device_platform',
+    k: 'EXCLUIDA',
+    d: 'OPERADOR: dispositivo del técnico que recoge la firma',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'device_user_agent',
+    k: 'EXCLUIDA',
+    d: 'OPERADOR: dispositivo del técnico que recoge la firma',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'signature_object_key',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clave de almacenamiento del trazo de firma',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'signed_document_object_key',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: clave de almacenamiento del documento firmado',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'signed_document_sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella SHA-256',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'signer_encrypted',
+    k: 'CUBIERTA',
+    d: 'CrmTitularErasureParticipant (marker)',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'template_version',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: versión de la plantilla del contrato',
+  },
+  {
+    t: 'contract_signatures',
+    c: 'unsigned_document_sha256',
+    k: 'EXCLUIDA',
+    d: 'CODIGO: huella SHA-256',
   },
   {
     t: 'contracts',
@@ -1990,6 +2119,12 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
   },
   {
     t: 'legal_texts',
+    c: 'legal_approval_declaration',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'legal_texts',
     c: 'sha256',
     k: 'EXCLUIDA',
     d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
@@ -2204,6 +2339,30 @@ export const TEXT_ERASURE_MANIFEST: readonly TextErasureManifestEntry[] = [
     c: 'work_order_id',
     k: 'EXCLUIDA',
     d: 'CODIGO: referencia, código o dominio del sistema',
+  },
+  {
+    t: 'operator_contract_profile',
+    c: 'customer_service_channels',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'operator_contract_profile',
+    c: 'equipment_incident_report_channel',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'operator_contract_profile',
+    c: 'other_conditions',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
+  },
+  {
+    t: 'operator_contract_profile',
+    c: 'quality_and_coverage_url',
+    k: 'EXCLUIDA',
+    d: 'CATALOGO: configuración del ISP, sin vínculo con un titular',
   },
   {
     t: 'organization_business_hours_exceptions',

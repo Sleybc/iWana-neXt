@@ -159,6 +159,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
   const billingPeriodId = randomUUID();
   const billingDocumentId = randomUUID();
   const expedienteId = randomUUID();
+  const contractGenerationId = randomUUID();
   const mfaObjectiveId = randomUUID();
   const mfaEmailCiphertext = encryptLegacy('synthetic-mfa-email');
   const mfaObjectiveCiphertext = encryptLegacy('synthetic-mfa-objective');
@@ -186,6 +187,8 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
     requesterContact: 'synthetic-requester-contact',
     buyerDocument: 'synthetic-buyer-document',
     subscriberNote: 'synthetic-subscriber-note',
+    contractSnapshot: 'synthetic-contract-snapshot',
+    contractSigner: 'synthetic-contract-signer',
   } as const;
 
   async function seedFixture(): Promise<void> {
@@ -251,6 +254,44 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
         tenantId,
         subscriberOne,
         encryptLegacy(synthetic.contractFiscalDocument, piiPreviousKey),
+      ],
+    );
+    // Cierre de venta (186/188): la instantánea del contrato y el firmante van cifrados con PII.
+    await dataSource.query(
+      `INSERT INTO ${q}.contract_document_generations
+        (id, tenant_id, contract_id, status, snapshot_encrypted, snapshot_sha256, requested_by)
+       VALUES ($1, $2, $3, 'PENDING', $4, $5, $6)`,
+      [
+        contractGenerationId,
+        tenantId,
+        contractId,
+        encryptLegacy(synthetic.contractSnapshot),
+        'a'.repeat(64),
+        actorId,
+      ],
+    );
+    await dataSource.query(
+      `INSERT INTO ${q}.contract_signatures
+        (tenant_id, contract_id, generation_id, idempotency_key, execution_order_id,
+         technician_id, signer_encrypted, template_legal_text_id, template_version,
+         unsigned_document_sha256, signed_document_sha256, signature_asset_id,
+         signature_object_key, signed_document_asset_id, signed_document_object_key,
+         billing_start_date, device_user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '1.0', $9, $10, $11, 'k2/signature.png', $12,
+               'k2/signed.pdf', '2026-11-01', 'k2-fixture')`,
+      [
+        tenantId,
+        contractId,
+        contractGenerationId,
+        randomUUID(),
+        randomUUID(),
+        actorId,
+        encryptLegacy(synthetic.contractSigner),
+        randomUUID(),
+        'b'.repeat(64),
+        'c'.repeat(64),
+        randomUUID(),
+        randomUUID(),
       ],
     );
     await dataSource.query(
@@ -884,7 +925,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(dryRun.hasBlockingIssues).toBe(false);
-    expect(dryRun.totals.reencrypted).toBe(22);
+    expect(dryRun.totals.reencrypted).toBe(24);
     expect(dryRun.totals.nonCiphertext).toBe(0);
     expect(
       dryRun.targets.filter((metric) => metric.candidates === 0).map((m) => m.entityType),
@@ -916,7 +957,7 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       keys,
     });
     expect(apply.hasBlockingIssues).toBe(false);
-    expect(apply.totals.reencrypted).toBe(22);
+    expect(apply.totals.reencrypted).toBe(24);
 
     const repeated = await runMfaToPii(db, {
       mode: 'apply',
@@ -965,6 +1006,20 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       synthetic.subscriberNote,
     );
 
+    const [contractClosing] = (await dataSource.query(
+      `SELECT g.snapshot_encrypted, s.signer_encrypted
+         FROM ${quoteIdentifier(schemaName)}.contract_document_generations g
+         JOIN ${quoteIdentifier(schemaName)}.contract_signatures s ON s.generation_id = g.id
+        WHERE g.id = $1`,
+      [contractGenerationId],
+    )) as Array<{ snapshot_encrypted: string; signer_encrypted: string }>;
+    expect(decryptAes256Gcm(contractClosing?.snapshot_encrypted ?? '', piiKey, null)).toBe(
+      synthetic.contractSnapshot,
+    );
+    expect(decryptAes256Gcm(contractClosing?.signer_encrypted ?? '', piiKey, null)).toBe(
+      synthetic.contractSigner,
+    );
+
     const nullSafe = await dataSource.query(
       `SELECT phone_encrypted FROM ${quoteIdentifier(schemaName)}.subscribers WHERE id = $1`,
       [subscriberTwo],
@@ -990,6 +1045,8 @@ describeWithDb('CLI reencrypt-aes PII — PostgreSQL real, esquema tenant migrad
       UNION ALL SELECT 'lifecycle', id, note_encrypted FROM ${quoteIdentifier(schemaName)}.crm_lifecycle_changes
       UNION ALL SELECT 'party', id, document_number FROM ${quoteIdentifier(schemaName)}.party
       UNION ALL SELECT 'party_contact', id, value_encrypted FROM ${quoteIdentifier(schemaName)}.party_contact
+      UNION ALL SELECT 'contract_snapshot', id, snapshot_encrypted FROM ${quoteIdentifier(schemaName)}.contract_document_generations
+      UNION ALL SELECT 'contract_signer', id, signer_encrypted FROM ${quoteIdentifier(schemaName)}.contract_signatures
       UNION ALL SELECT 'request', id, requester_name_encrypted FROM ${quoteIdentifier(schemaName)}.data_subject_requests
     `);
     expect(allPiiRows.length).toBeGreaterThan(0);

@@ -11,6 +11,14 @@
     {
       "spec": "apps/api/src/modules/tasks/tests/execution-orders.item-usage-projection.postgres.integration.spec.ts",
       "reason": "La suite exige DB_NAME=i4_qa_20261006_a1; el job API ejecuta contra su base efímera test y no apunta a la base sintética compartida."
+    },
+    {
+      "spec": "apps/api/src/modules/billing/generation/contract-activated.postgres.integration.spec.ts",
+      "reason": "Esta suite publica y consume eventos BullMQ y requiere Redis real con IWANA_REDIS_INTEGRATION_AVAILABLE=true; el job de integración API provisiona PostgreSQL pero no Redis."
+    },
+    {
+      "spec": "apps/api/src/modules/crm/contracts/documents/contract-signature.postgres.integration.spec.ts",
+      "reason": "Esta suite publica y consume eventos BullMQ y requiere Redis real con IWANA_REDIS_INTEGRATION_AVAILABLE=true; el job de integración API provisiona PostgreSQL pero no Redis."
     }
   ]
 }

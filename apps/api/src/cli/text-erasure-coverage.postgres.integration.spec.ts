@@ -23,7 +23,7 @@ if (integrationEnabled && !supportedDatabaseName) {
 
 jest.setTimeout(900_000);
 
-const EXPECTED_MANIFEST_SIZE = 716;
+const EXPECTED_MANIFEST_SIZE = 742;
 const EXPECTED_CLASSIFIED_MOD14 = 37;
 
 /**
@@ -61,7 +61,7 @@ export function assertTextErasureManifestCovers(
 }
 
 describe('D-BT-10 — manifiesto de columnas textuales (puro)', () => {
-  it('el manifiesto declara 716 entradas únicas con motivo no vacío', () => {
+  it('el manifiesto declara 742 entradas únicas con motivo no vacío', () => {
     expect(TEXT_ERASURE_MANIFEST).toHaveLength(EXPECTED_MANIFEST_SIZE);
     const keys = TEXT_ERASURE_MANIFEST.map((entry) => `${entry.t}.${entry.c}`);
     expect(new Set(keys).size).toBe(EXPECTED_MANIFEST_SIZE);
