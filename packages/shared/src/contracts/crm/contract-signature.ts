@@ -313,33 +313,62 @@ export type ContractSignatureRecord = z.infer<typeof ContractSignatureRecordSche
 export const PERMANENCE_MAX_MONTHS = 12;
 const permanenceMonthsSchema = z.number().int().min(1).max(PERMANENCE_MAX_MONTHS);
 
-/** Oferta del plan (MOD06). Sin oferta, months y monto van en null. */
-export const PlanPermanenceOfferSchema = z
-  .object({
-    connectionFee: moneySchema,
-    offersPermanence: z.boolean(),
-    months: permanenceMonthsSchema.nullable(),
-    discountedOrDeferredAmount: moneySchema.nullable(),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    const issue = (path: string, message: string) =>
-      context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
-    if (value.offersPermanence) {
-      if (value.months === null) issue('months', 'La permanencia exige los meses.');
-      if (value.discountedOrDeferredAmount === null || value.discountedOrDeferredAmount <= 0) {
-        issue('discountedOrDeferredAmount', 'La permanencia exige un valor descontado o diferido.');
-      } else if (value.discountedOrDeferredAmount > value.connectionFee) {
-        issue('discountedOrDeferredAmount', 'El valor descontado no supera el cargo por conexión.');
-      }
-    } else {
-      if (value.months !== null) issue('months', 'Sin permanencia no hay meses.');
-      if (value.discountedOrDeferredAmount !== null) {
-        issue('discountedOrDeferredAmount', 'Sin permanencia no hay valor descontado.');
-      }
+const planPermanenceOfferShape = {
+  offersPermanence: z.boolean(),
+  months: permanenceMonthsSchema.nullable(),
+  discountedOrDeferredAmount: moneySchema.nullable(),
+};
+
+type PlanPermanenceOfferShape = {
+  offersPermanence: boolean;
+  months: number | null;
+  discountedOrDeferredAmount: number | null;
+  installationFee?: number | null;
+};
+
+function refinePlanPermanenceOffer(value: PlanPermanenceOfferShape, context: z.RefinementCtx) {
+  const issue = (path: string, message: string) =>
+    context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (value.offersPermanence) {
+    if (value.months === null) issue('months', 'La permanencia exige los meses.');
+    if (value.discountedOrDeferredAmount === null || value.discountedOrDeferredAmount <= 0) {
+      issue('discountedOrDeferredAmount', 'La permanencia exige un valor descontado o diferido.');
+    } else if (
+      value.installationFee !== undefined &&
+      value.installationFee !== null &&
+      value.discountedOrDeferredAmount > value.installationFee
+    ) {
+      issue('discountedOrDeferredAmount', 'El valor descontado no supera el cargo de instalación.');
     }
-  });
+  } else {
+    if (value.months !== null) issue('months', 'Sin permanencia no hay meses.');
+    if (value.discountedOrDeferredAmount !== null) {
+      issue('discountedOrDeferredAmount', 'Sin permanencia no hay valor descontado.');
+    }
+  }
+}
+
+/**
+ * Oferta del plan (MOD06). Sin oferta, months y monto van en null.
+ * `installationFee` es el cargo de instalación oficial: `installation_fee` vigente del plan
+ * (historial de precios por segmento; D1 de la fase 2). Null si el plan no tiene precio vigente
+ * para el segmento consultado. Reemplaza al retirado `connectionFee`.
+ */
+export const PlanPermanenceOfferSchema = z
+  .object({ installationFee: moneySchema.nullable(), ...planPermanenceOfferShape })
+  .strict()
+  .superRefine(refinePlanPermanenceOffer);
 export type PlanPermanenceOffer = z.infer<typeof PlanPermanenceOfferSchema>;
+
+/**
+ * Cuerpo de la edición de la oferta (MOD06). El cargo no se edita aquí: se lee del historial de
+ * precios y el servidor valida `discountedOrDeferredAmount` ≤ `installation_fee` vigente.
+ */
+export const PlanPermanenceOfferUpdateSchema = z
+  .object(planPermanenceOfferShape)
+  .strict()
+  .superRefine(refinePlanPermanenceOffer);
+export type PlanPermanenceOfferUpdate = z.infer<typeof PlanPermanenceOfferUpdateSchema>;
 
 /** Fila de la tabla del PDF: valor a pagar si termina en ese mes. */
 export const PermanenceScheduleRowSchema = z
@@ -351,6 +380,7 @@ export const ContractPermanenceSchema = z
   .object({
     accepted: z.boolean(),
     months: permanenceMonthsSchema.nullable(),
+    /** Cargo de instalación congelado en el contrato (`contracts.installation_fee`) al aceptar. */
     connectionFee: moneySchema.nullable(),
     discountedOrDeferredAmount: moneySchema.nullable(),
     /** Fecha de activación del aprovisionamiento. */
@@ -376,11 +406,11 @@ export const ContractPermanenceSchema = z
     }
     const { months, connectionFee, discountedOrDeferredAmount, startDate, endDate } = value;
     if (months === null) issue('months', 'Exige meses.');
-    if (connectionFee === null) issue('connectionFee', 'Exige el cargo por conexión.');
+    if (connectionFee === null) issue('connectionFee', 'Exige el cargo de instalación.');
     if (discountedOrDeferredAmount === null || discountedOrDeferredAmount <= 0) {
       issue('discountedOrDeferredAmount', 'Exige un valor descontado o diferido.');
     } else if (connectionFee !== null && discountedOrDeferredAmount > connectionFee) {
-      issue('discountedOrDeferredAmount', 'El valor descontado no supera el cargo por conexión.');
+      issue('discountedOrDeferredAmount', 'El valor descontado no supera el cargo de instalación.');
     }
     if (startDate === null) issue('startDate', 'Exige la fecha de inicio.');
     if (endDate === null) issue('endDate', 'Exige la fecha de fin.');

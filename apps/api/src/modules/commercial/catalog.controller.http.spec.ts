@@ -492,11 +492,13 @@ describe('CatalogController HTTP', () => {
   describe('oferta de permanencia del plan (bloque H)', () => {
     const PLAN = '33333333-3333-4333-8333-333333333333';
     const OFFER = {
-      connectionFee: 200000,
+      installationFee: 200000,
       offersPermanence: true,
       months: 12,
       discountedOrDeferredAmount: 120000,
     };
+    /** El cuerpo del PUT no lleva cargo: es el installation_fee del historial de precios. */
+    const BODY = { offersPermanence: true, months: 12, discountedOrDeferredAmount: 120000 };
 
     it('GET devuelve la oferta', async () => {
       planPermanenceServiceMock.getOfferOrThrow.mockResolvedValue(OFFER);
@@ -512,20 +514,22 @@ describe('CatalogController HTTP', () => {
       await request(app.getHttpServer())
         .put(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
         .set('Authorization', 'Bearer admin-token')
-        .send(OFFER)
+        .send(BODY)
         .expect(200);
       expect(planPermanenceServiceMock.updateOffer).toHaveBeenCalledWith(
         PLAN,
-        OFFER,
+        BODY,
         'usr-admin-sub',
       );
     });
 
     it.each([
-      { ...OFFER, months: 13 },
-      { ...OFFER, discountedOrDeferredAmount: 200001 },
-      { ...OFFER, offersPermanence: false },
-      { ...OFFER, extra: true },
+      { ...BODY, months: 13 },
+      { ...BODY, discountedOrDeferredAmount: 0 },
+      { ...BODY, offersPermanence: false },
+      { ...BODY, extra: true },
+      OFFER,
+      { ...BODY, connectionFee: 200000 },
     ])('PUT rechaza %j con 400', async (body) => {
       await request(app.getHttpServer())
         .put(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
@@ -538,7 +542,7 @@ describe('CatalogController HTTP', () => {
     it('PUT exige token', async () => {
       await request(app.getHttpServer())
         .put(`/api/v1/commercial/catalog/${PLAN}/permanence-offer`)
-        .send(OFFER)
+        .send(BODY)
         .expect(401);
     });
   });

@@ -9,6 +9,7 @@ import {
   VatTreatment,
 } from '@iwana/shared';
 import { CatalogItem } from '../../../commercial/entities/catalog-item.entity';
+import { CatalogPriceHistory } from '../../../commercial/entities/catalog-price-history.entity';
 import { PlanDetail } from '../../../commercial/entities/plan-detail.entity';
 import { PlanPermanenceService } from '../../../commercial/services/plan-permanence.service';
 import { Contract } from '../entities/contract.entity';
@@ -38,7 +39,16 @@ describeWithDb('Permanencia mínima (bloque H) con PostgreSQL real', () => {
   const q = (sql: string, params: unknown[] = []) =>
     runInTenantSchema(dataSource, schemaName, (qr) => qr.query(sql, params));
 
-  async function insertPlan(): Promise<string> {
+  async function insertPrice(planId: string, segment: CustomerSegment, fee: number) {
+    await q(
+      `INSERT INTO catalog_price_history
+         (item_id, tenant_id, customer_segment, base_price, installation_fee, created_by)
+       VALUES ($1, $2, $3, 90000, $4, $5)`,
+      [planId, tenantId, segment, fee, actorId],
+    );
+  }
+
+  async function insertPlan(installationFee?: number): Promise<string> {
     const id = randomUUID();
     await q(
       `INSERT INTO catalog_items (id, tenant_id, type, name) VALUES ($1, $2, $3, 'Plan permanencia')`,
@@ -49,10 +59,17 @@ describeWithDb('Permanencia mínima (bloque H) con PostgreSQL real', () => {
        VALUES ($1, 300, 100, 'FIBER')`,
       [id],
     );
+    if (installationFee !== undefined) {
+      await insertPrice(id, CustomerSegment.RESIDENTIAL, installationFee);
+    }
     return id;
   }
 
-  async function insertContract(planId: string, status = ContractStatus.DRAFT): Promise<string> {
+  async function insertContract(
+    planId: string,
+    status = ContractStatus.DRAFT,
+    installationFee: number | null = null,
+  ): Promise<string> {
     const subscriberId = randomUUID();
     const tag = subscriberId.slice(0, 8);
     await q(
@@ -88,6 +105,8 @@ describeWithDb('Permanencia mínima (bloque H) con PostgreSQL real', () => {
           planId,
           planSnapshotJson: { id: planId },
           status,
+          customerSegment: CustomerSegment.RESIDENTIAL,
+          installationFee,
           alias: 'Servicio permanencia',
           additionalProductIds: [],
           additionalServiceIds: [],
@@ -102,7 +121,14 @@ describeWithDb('Permanencia mínima (bloque H) con PostgreSQL real', () => {
   beforeAll(async () => {
     dataSource = new DataSource({
       ...dataSourceOptions,
-      entities: [Contract, CatalogItem, PlanDetail, ContractPermanenceRecord, AuditLog],
+      entities: [
+        Contract,
+        CatalogItem,
+        CatalogPriceHistory,
+        PlanDetail,
+        ContractPermanenceRecord,
+        AuditLog,
+      ],
       migrations: [],
       logging: false,
       extra: { ...dataSourceOptions.extra, max: 3, min: 1 },
@@ -133,41 +159,104 @@ describeWithDb('Permanencia mínima (bloque H) con PostgreSQL real', () => {
     }
   });
 
-  it('un plan nuevo no ofrece permanencia y su cargo es 0', async () => {
+  it('un plan nuevo no ofrece permanencia; sin precio vigente no tiene cargo', async () => {
     const planId = await insertPlan();
     await expect(inTenant(() => plans.getOfferOrThrow(planId))).resolves.toEqual({
-      connectionFee: 0,
+      installationFee: null,
       offersPermanence: false,
       months: null,
       discountedOrDeferredAmount: null,
     });
   });
 
-  it('el CHECK de plan_details rechaza más de 12 meses o valor mayor que el cargo', async () => {
+  it('CA-7: plan_details ya no tiene connection_fee; el cargo es installation_fee vigente', async () => {
+    const [column] = await q(
+      `SELECT COUNT(*)::int AS total FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'plan_details' AND column_name = 'connection_fee'`,
+      [schemaName],
+    );
+    expect(column.total).toBe(0);
+    const planId = await insertPlan(150_000);
+    await insertPrice(planId, CustomerSegment.PYME, 250_000);
+    await expect(inTenant(() => plans.getOfferOrThrow(planId))).resolves.toMatchObject({
+      installationFee: 150_000,
+    });
+    await expect(
+      inTenant(() => plans.getOffer(planId, { segment: CustomerSegment.PYME })),
+    ).resolves.toMatchObject({ installationFee: 250_000 });
+  });
+
+  it('el CHECK de plan_details rechaza más de 12 meses o meses nulos con oferta', async () => {
     const planId = await insertPlan();
     await expect(
       q(
-        `UPDATE plan_details SET connection_fee = 100, offers_permanence = true,
+        `UPDATE plan_details SET offers_permanence = true,
            permanence_months = 13, permanence_discounted_amount = 50 WHERE item_id = $1`,
         [planId],
       ),
     ).rejects.toMatchObject({ code: '23514' });
     await expect(
       q(
-        `UPDATE plan_details SET connection_fee = 100, offers_permanence = true,
-           permanence_months = 6, permanence_discounted_amount = 101 WHERE item_id = $1`,
+        `UPDATE plan_details SET offers_permanence = true,
+           permanence_months = NULL, permanence_discounted_amount = 50 WHERE item_id = $1`,
         [planId],
       ),
     ).rejects.toMatchObject({ code: '23514' });
   });
 
+  it('la oferta no supera el installation_fee vigente (409) y se valida contra todos los segmentos', async () => {
+    const planId = await insertPlan(150_000);
+    await insertPrice(planId, CustomerSegment.PYME, 100_000);
+    await expect(
+      inTenant(() =>
+        plans.updateOffer(
+          planId,
+          { offersPermanence: true, months: 6, discountedOrDeferredAmount: 120_000 },
+          actorId,
+        ),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PERMANENCE_EXCEEDS_INSTALLATION_FEE' } });
+    await expect(
+      inTenant(() =>
+        plans.updateOffer(
+          planId,
+          { offersPermanence: true, months: 6, discountedOrDeferredAmount: 100_000 },
+          actorId,
+        ),
+      ),
+    ).resolves.toMatchObject({ installationFee: 150_000, discountedOrDeferredAmount: 100_000 });
+  });
+
+  it('la permanencia usa el installation_fee congelado en el contrato, no el vigente', async () => {
+    const planId = await insertPlan(200_000);
+    await inTenant(() =>
+      plans.updateOffer(
+        planId,
+        { offersPermanence: true, months: 12, discountedOrDeferredAmount: 120_000 },
+        actorId,
+      ),
+    );
+    const frozen = await insertContract(planId, ContractStatus.DRAFT, 180_000);
+    const view = await inTenant(() => permanence.set(frozen, true, actorId));
+    expect(view.permanence.connectionFee).toBe(180_000);
+    expect(view.planOffer?.installationFee).toBe(180_000);
+    const [row] = await q(`SELECT connection_fee FROM contract_permanence WHERE contract_id = $1`, [
+      frozen,
+    ]);
+    expect(row.connection_fee).toBe('180000.00');
+
+    const tooLow = await insertContract(planId, ContractStatus.DRAFT, 100_000);
+    await expect(inTenant(() => permanence.set(tooLow, true, actorId))).rejects.toMatchObject({
+      response: { code: 'PERMANENCE_EXCEEDS_INSTALLATION_FEE' },
+    });
+  });
+
   it('flujo completo: oferta → aceptación en DRAFT → activación → suspensión', async () => {
-    const planId = await insertPlan();
+    const planId = await insertPlan(200_000);
     await inTenant(() =>
       plans.updateOffer(
         planId,
         {
-          connectionFee: 200_000,
           offersPermanence: true,
           months: 12,
           discountedOrDeferredAmount: 120_000,

@@ -41,6 +41,10 @@ import { Contract } from '../entities/contract.entity';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { Subscriber } from '../../subscribers/entities/subscriber.entity';
 import { CommercialCatalogReadPort } from '../../../commercial/ports/commercial-catalog-read.port';
+import { CommercialCatalogReadAdapter } from '../../../commercial/ports/commercial-catalog-read.adapter';
+import { CatalogItem } from '../../../commercial/entities/catalog-item.entity';
+import { CatalogPriceHistory } from '../../../commercial/entities/catalog-price-history.entity';
+import { PlanDetail } from '../../../commercial/entities/plan-detail.entity';
 import { IInternetVatResolverPort } from '../../../taxation/ports/internet-vat-resolver.port';
 import { InternetVatResolverAdapter } from '../../../taxation/ports/internet-vat-resolver.adapter';
 import { AuditService } from '../../../audit/audit.service';
@@ -217,7 +221,15 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
   beforeAll(async () => {
     dataSource = new DataSource({
       ...dataSourceOptions,
-      entities: [Contract, Subscriber, AuditLog, MediaAsset],
+      entities: [
+        Contract,
+        Subscriber,
+        AuditLog,
+        MediaAsset,
+        CatalogItem,
+        CatalogPriceHistory,
+        PlanDetail,
+      ],
       migrations: [],
       logging: false,
       extra: { ...dataSourceOptions.extra, max: 5, min: 1 },
@@ -246,7 +258,10 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     actor.tenantId = tenantId;
     actor.schemaName = testSchemaName;
 
+    // createSnapshot real (MOD06) para congelar installation_fee de planes UUID (fase 2, D1).
+    const realCatalog = new CommercialCatalogReadAdapter(dataSource);
     const planPort = {
+      createSnapshot: realCatalog.createSnapshot.bind(realCatalog),
       getPlanById: async (_tenantId: string, _schemaName: string, planId: string) => ({
         id: planId,
         name: 'Plan de integración',
@@ -787,6 +802,82 @@ describeWithDb('Contratos: IVA por punto de servicio con PostgreSQL real', () =>
     expect(serialized).toContain('STANDARD');
     expect(serialized).not.toContain('"installationStratum":2');
     expect(serialized).not.toContain('00000000-0000-4000-8000-000000000');
+  });
+
+  it('fase 2 D1/CA-6: el contrato congela installation_fee vigente al crearse y lo expone', async () => {
+    const { id: subscriberId } = await insertSubscriber();
+    const planId = randomUUID();
+    await runInTenantSchema(dataSource, testSchemaName, async (qr) => {
+      await qr.query(
+        `INSERT INTO catalog_items (id, tenant_id, type, name, is_active)
+         VALUES ($1, $2, 'PLAN', 'Plan instalación congelada', true)`,
+        [planId, tenantId],
+      );
+      await qr.query(
+        `INSERT INTO catalog_price_history
+           (item_id, tenant_id, customer_segment, base_price, installation_fee, created_by)
+         VALUES ($1, $2, 'RESIDENTIAL', 90000, 150000, $3), ($1, $2, 'PYME', 90000, 250000, $3)`,
+        [planId, tenantId, actor.sub],
+      );
+    });
+    const response = await TenantContext.run(tenantContext(), () =>
+      request(app.getHttpServer())
+        .post('/api/v1/crm/contracts')
+        .send({ subscriberId, planId, planSnapshotJson: { id: planId }, billingCycleDay: 1 }),
+    );
+    expect(response.status).toBe(201);
+    expect(response.body.data.installationFee).toBe(150000);
+    const contractId = response.body.data.id as string;
+
+    // Un precio nuevo no cambia el valor congelado del contrato.
+    await runInTenantSchema(dataSource, testSchemaName, async (qr) => {
+      await qr.query(
+        `UPDATE catalog_price_history SET is_current = false, valid_to = now()
+          WHERE item_id = $1 AND customer_segment = 'RESIDENTIAL'`,
+        [planId],
+      );
+      await qr.query(
+        `INSERT INTO catalog_price_history
+           (item_id, tenant_id, customer_segment, base_price, installation_fee, created_by)
+         VALUES ($1, $2, 'RESIDENTIAL', 90000, 175000, $3)`,
+        [planId, tenantId, actor.sub],
+      );
+    });
+    const detail = await TenantContext.run(tenantContext(), () =>
+      app.get(ContractsService).findOne(contractId),
+    );
+    expect(detail.installationFee).toBe(150000);
+    const [row] = (await runInTenantSchema(dataSource, testSchemaName, (qr) =>
+      qr.query(`SELECT installation_fee FROM contracts WHERE id = $1`, [contractId]),
+    )) as Array<{ installation_fee: string }>;
+    expect(row?.installation_fee).toBe('150000.00');
+
+    const pyme = await TenantContext.run(tenantContext(), () =>
+      app.get(ContractsService).create(
+        {
+          subscriberId,
+          planId,
+          planSnapshotJson: { id: planId },
+          billingCycleDay: 1,
+          customerSegment: CustomerSegment.PYME,
+        },
+        actor.sub,
+      ),
+    );
+    expect(pyme.installationFee).toBe(250000);
+
+    const legacy = await TenantContext.run(tenantContext(), () =>
+      app.get(ContractsService).create(
+        {
+          subscriberId,
+          planId: 'plan-integration-fixed',
+          planSnapshotJson: { id: 'plan-integration-fixed' },
+          billingCycleDay: 1,
+        },
+        actor.sub,
+      ),
+    );
+    expect(legacy.installationFee).toBeNull();
   });
 
   it('audita crear, activar y /service-point sin persistir nombre ni documento fiscales', async () => {

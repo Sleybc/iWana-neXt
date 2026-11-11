@@ -1,9 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TenantContext } from '@iwana/db';
-import { AuditAction, type PlanPermanenceOffer } from '@iwana/shared';
+import { AuditAction, CustomerSegment, type PlanPermanenceOffer } from '@iwana/shared';
 import { ContractStatus } from '../../enums/contract-status.enum';
 import { ContractPermanenceService, toContractPermanence } from '../contract-permanence.service';
 import { ContractPermanenceRecord } from '../entities/contract-permanence.entity';
+import { Subscriber } from '../../subscribers/entities/subscriber.entity';
 import { SetContractPermanenceBodySchema } from '../contract-permanence.controller';
 
 const TENANT = {
@@ -16,7 +17,7 @@ const PLAN_ID = '33333333-3333-4333-8333-333333333333';
 const ACTOR = '44444444-4444-4444-8444-444444444444';
 
 const OFFER: PlanPermanenceOffer = {
-  connectionFee: 200_000,
+  installationFee: 200_000,
   offersPermanence: true,
   months: 12,
   discountedOrDeferredAmount: 120_000,
@@ -44,6 +45,9 @@ function build(options: {
   existing?: ContractPermanenceRecord | null;
   offer?: PlanPermanenceOffer | null;
   planId?: string;
+  installationFee?: number | null;
+  customerSegment?: CustomerSegment | null;
+  subscriberSegment?: CustomerSegment | null;
 }) {
   const contract =
     options.status === null
@@ -52,11 +56,16 @@ function build(options: {
           id: CONTRACT_ID,
           status: options.status ?? ContractStatus.DRAFT,
           planId: options.planId ?? PLAN_ID,
+          subscriberId: '55555555-5555-4555-8555-555555555555',
+          customerSegment: options.customerSegment ?? null,
+          installationFee: options.installationFee === undefined ? null : options.installationFee,
         };
   const manager = {
-    findOne: jest.fn(async (entity: unknown) =>
-      entity === ContractPermanenceRecord ? (options.existing ?? null) : contract,
-    ),
+    findOne: jest.fn(async (entity: unknown) => {
+      if (entity === ContractPermanenceRecord) return options.existing ?? null;
+      if (entity === Subscriber) return { customerSegment: options.subscriberSegment ?? null };
+      return contract;
+    }),
     create: jest.fn((_entity: unknown, data: object) =>
       Object.assign(new ContractPermanenceRecord(), data),
     ),
@@ -123,7 +132,7 @@ describe('ContractPermanenceService (bloque H)', () => {
   it('409 PLAN_WITHOUT_PERMANENCE si el plan no la ofrece', async () => {
     const { service } = build({
       offer: {
-        connectionFee: 0,
+        installationFee: 0,
         offersPermanence: false,
         months: null,
         discountedOrDeferredAmount: null,
@@ -214,5 +223,55 @@ describe('ContractPermanenceService (bloque H)', () => {
     expect(SetContractPermanenceBodySchema.safeParse({ accepted: true, months: 3 }).success).toBe(
       false,
     );
+  });
+  describe('cargo de instalación congelado (fase 2, D1 y CA-6)', () => {
+    it('usa el installation_fee congelado en el contrato y no el vigente', async () => {
+      const { service } = build({ installationFee: 180_000 });
+      const view = await inTenant(() => service.set(CONTRACT_ID, true, ACTOR));
+      expect(view.permanence.connectionFee).toBe(180_000);
+      expect(view.planOffer?.installationFee).toBe(180_000);
+    });
+
+    it('contrato heredado sin valor congelado usa el vigente del plan', async () => {
+      const { service } = build({ installationFee: null });
+      const view = await inTenant(() => service.set(CONTRACT_ID, true, ACTOR));
+      expect(view.permanence.connectionFee).toBe(200_000);
+    });
+
+    it('409 PERMANENCE_EXCEEDS_INSTALLATION_FEE si el valor supera el cargo congelado', async () => {
+      const { service, manager } = build({ installationFee: 100_000 });
+      await expect(inTenant(() => service.set(CONTRACT_ID, true, ACTOR))).rejects.toMatchObject({
+        response: { code: 'PERMANENCE_EXCEEDS_INSTALLATION_FEE' },
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('409 CONTRACT_INSTALLATION_FEE_REQUIRED sin cargo congelado ni vigente', async () => {
+      const { service } = build({ offer: { ...OFFER, installationFee: null } });
+      await expect(inTenant(() => service.set(CONTRACT_ID, true, ACTOR))).rejects.toMatchObject({
+        response: { code: 'CONTRACT_INSTALLATION_FEE_REQUIRED' },
+      });
+    });
+
+    it('rechazar no exige cargo de instalación', async () => {
+      const { service } = build({ offer: { ...OFFER, installationFee: null } });
+      const view = await inTenant(() => service.set(CONTRACT_ID, false, ACTOR));
+      expect(view.permanence.accepted).toBe(false);
+    });
+
+    it('consulta la oferta con el segmento del contrato o, si falta, el del suscriptor', async () => {
+      const own = build({ customerSegment: CustomerSegment.PYME });
+      await inTenant(() => own.service.get(CONTRACT_ID));
+      expect(own.port.getOffer).toHaveBeenCalledWith(
+        PLAN_ID,
+        expect.objectContaining({ segment: CustomerSegment.PYME }),
+      );
+      const inherited = build({ subscriberSegment: CustomerSegment.CORPORATE });
+      await inTenant(() => inherited.service.get(CONTRACT_ID));
+      expect(inherited.port.getOffer).toHaveBeenCalledWith(
+        PLAN_ID,
+        expect.objectContaining({ segment: CustomerSegment.CORPORATE }),
+      );
+    });
   });
 });

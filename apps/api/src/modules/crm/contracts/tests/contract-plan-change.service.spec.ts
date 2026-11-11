@@ -148,6 +148,26 @@ describe('ContractsService.changePlan', () => {
     );
     expect(vat.resolve).not.toHaveBeenCalled();
   });
+  it('DRAFT vuelve a congelar el installation_fee del plan nuevo (fase 2, D1)', async () => {
+    contract.installationFee = 50_000;
+    catalog.createSnapshot.mockResolvedValue({ ...snapshot, installationFee: 120_000.004 });
+    const result = await service.changePlan(contract.id, command, 'actor-test');
+    expect(result.installationFee).toBe(120_000);
+    expect(audit.logWithin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oldValue: expect.objectContaining({ installationFee: 50_000 }),
+        newValue: expect.objectContaining({ installationFee: 120_000 }),
+      }),
+      manager,
+    );
+  });
+  it('ACTIVE conserva el installation_fee congelado: la instalación ya ocurrió', async () => {
+    contract.status = ContractStatus.ACTIVE;
+    contract.installationFee = 50_000;
+    catalog.createSnapshot.mockResolvedValue({ ...snapshot, installationFee: 120_000 });
+    const result = await service.changePlan(contract.id, command);
+    expect(result.installationFee).toBe(50_000);
+  });
   it('ACTIVE resuelve IVA con el mismo snapshot capturado y segmento override', async () => {
     contract.status = ContractStatus.ACTIVE;
     contract.customerSegment = CustomerSegment.CORPORATE;

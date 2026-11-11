@@ -176,6 +176,12 @@ export const ContractResponseSchema = z
     additionalProductIds: z.array(z.string()),
     additionalServiceIds: z.array(z.string()),
     paymentMethod: z.string().nullable(),
+    /**
+     * Cargo de instalación congelado al crear el contrato: `installation_fee` vigente del plan
+     * para el segmento del servicio (D1 fase 2). Null en contratos heredados o sin precio vigente.
+     * Opcional en el tipo para no romper consumidores; la API siempre lo envía.
+     */
+    installationFee: z.number().finite().nonnegative().nullable().optional(),
     billingCycleDay: z.number().int().min(1).max(28).nullable(),
     /** @deprecated Mantener para leer contratos heredados. */
     billingCycle: z.string().nullable(),

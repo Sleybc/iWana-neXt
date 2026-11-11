@@ -10,6 +10,7 @@ import {
   ContractSignatureResponseSchema,
   ManualContractActivationSchema,
   PlanPermanenceOfferSchema,
+  PlanPermanenceOfferUpdateSchema,
   contractActivatedIdempotencyKey,
 } from './contract-signature';
 
@@ -282,7 +283,7 @@ describe('firma del contrato', () => {
 describe('permanencia mínima', () => {
   it('plan sin permanencia no lleva meses ni monto', () => {
     const none = {
-      connectionFee: 120000,
+      installationFee: 120000,
       offersPermanence: false,
       months: null,
       discountedOrDeferredAmount: null,
@@ -293,7 +294,7 @@ describe('permanencia mínima', () => {
 
   it('plan con permanencia: hasta 12 meses y monto no mayor al cargo', () => {
     const offer = {
-      connectionFee: 120000,
+      installationFee: 120000,
       offersPermanence: true,
       months: 12,
       discountedOrDeferredAmount: 120000,
@@ -304,6 +305,37 @@ describe('permanencia mínima', () => {
       PlanPermanenceOfferSchema.safeParse({ ...offer, discountedOrDeferredAmount: 130000 }).success,
     ).toBe(false);
     expect(PlanPermanenceOfferSchema.safeParse({ ...offer, months: null }).success).toBe(false);
+    expect(PlanPermanenceOfferSchema.safeParse({ ...offer, connectionFee: 120000 }).success).toBe(
+      false,
+    );
+  });
+
+  it('oferta sin installation_fee vigente: installationFee null y sin tope en el esquema', () => {
+    const offer = {
+      installationFee: null,
+      offersPermanence: true,
+      months: 6,
+      discountedOrDeferredAmount: 50000,
+    };
+    expect(PlanPermanenceOfferSchema.safeParse(offer).success).toBe(true);
+  });
+
+  it('edición de la oferta: no acepta el cargo; el tope lo valida el servidor', () => {
+    const body = { offersPermanence: true, months: 6, discountedOrDeferredAmount: 50000 };
+    expect(PlanPermanenceOfferUpdateSchema.safeParse(body).success).toBe(true);
+    expect(
+      PlanPermanenceOfferUpdateSchema.safeParse({ ...body, installationFee: 90000 }).success,
+    ).toBe(false);
+    expect(
+      PlanPermanenceOfferUpdateSchema.safeParse({ ...body, discountedOrDeferredAmount: 0 }).success,
+    ).toBe(false);
+    expect(
+      PlanPermanenceOfferUpdateSchema.safeParse({
+        offersPermanence: false,
+        months: 3,
+        discountedOrDeferredAmount: null,
+      }).success,
+    ).toBe(false);
   });
 
   const accepted = {

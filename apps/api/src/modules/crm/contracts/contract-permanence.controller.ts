@@ -56,8 +56,9 @@ export class ContractPermanenceController {
   @ApiOperation({
     summary: 'Aceptar o rechazar la permanencia mínima (solo contrato en borrador)',
     description:
-      'Con accepted=true copia cargo, meses y valor de la oferta vigente del plan. ' +
-      'accepted=false (sin permanencia) siempre es posible. 409 CONTRACT_NOT_DRAFT o PLAN_WITHOUT_PERMANENCE.',
+      'Con accepted=true copia meses y valor de la oferta vigente del plan; el cargo es el ' +
+      'installation_fee congelado en el contrato (o el vigente del plan y segmento si no lo tiene) ' +
+      'y el valor no lo supera. accepted=false (sin permanencia) siempre es posible.',
   })
   @ApiBody({
     schema: {
@@ -69,7 +70,12 @@ export class ContractPermanenceController {
   })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
   @ApiResponse({ status: 404, description: 'Contrato no encontrado en el tenant' })
-  @ApiResponse({ status: 409, description: 'CONTRACT_NOT_DRAFT | PLAN_WITHOUT_PERMANENCE' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'CONTRACT_NOT_DRAFT | PLAN_WITHOUT_PERMANENCE | CONTRACT_INSTALLATION_FEE_REQUIRED | ' +
+      'PERMANENCE_EXCEEDS_INSTALLATION_FEE',
+  })
   async set(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodBodyValidationPipe(SetContractPermanenceBodySchema))

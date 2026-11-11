@@ -147,6 +147,7 @@ import { ContractPendingSignatureNotify1870000000187 } from './187_contract_pend
 import { ContractSignatures1880000000188 } from './188_contract_signatures';
 import { ContractSignatureCopyEmail1890000000189 } from './189_contract_signature_copy_email';
 import { ContractTemplateContentHash1900000000190 } from './190_contract_template_content_hash';
+import { InstallationFeeUnified1910000000191 } from './191_installation_fee_unified';
 import { DataSource, MigrationInterface, QueryRunner } from 'typeorm';
 import { SafeTypeOrmLogger } from '../../safe-typeorm.logger';
 import { isMigrationDeferred, type DeferrableMigration } from '../shared/deferred-migration.util';
@@ -375,6 +376,7 @@ export const TENANT_MIGRATIONS: (new () => MigrationInterface)[] = [
   ContractSignatures1880000000188,
   ContractSignatureCopyEmail1890000000189,
   ContractTemplateContentHash1900000000190,
+  InstallationFeeUnified1910000000191,
 ];
 
 const MIGRATION_LOCK_NAMESPACE = 42;

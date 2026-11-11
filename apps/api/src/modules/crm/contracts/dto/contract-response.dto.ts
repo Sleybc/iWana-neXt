@@ -93,6 +93,16 @@ export class ContractResponseDto {
   @ApiPropertyOptional({ nullable: true })
   paymentMethod: string | null;
 
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    minimum: 0,
+    description:
+      'Cargo de instalación congelado al crear el contrato (installation_fee vigente del plan y ' +
+      'segmento). Null en contratos heredados o sin precio vigente.',
+  })
+  installationFee: number | null;
+
   @ApiProperty({ nullable: true, deprecated: true })
   billingCycle: string | null;
 

@@ -34,10 +34,6 @@ export class PlanDetail {
   })
   installationRule: InstallationRule;
 
-  /** Cargo por conexión del plan (bloque H). */
-  @Column({ type: 'numeric', precision: 14, scale: 2, name: 'connection_fee', default: '0' })
-  connectionFee: string;
-
   @Column({ type: 'boolean', name: 'offers_permanence', default: false })
   offersPermanence: boolean;
 
@@ -45,7 +41,7 @@ export class PlanDetail {
   @Column({ type: 'smallint', name: 'permanence_months', nullable: true })
   permanenceMonths: number | null;
 
-  /** 0 < valor ≤ cargo por conexión si ofrece permanencia; NULL si no. */
+  /** 0 < valor ≤ installation_fee vigente (validado en el servicio) si ofrece permanencia; NULL si no. */
   @Column({
     type: 'numeric',
     precision: 14,

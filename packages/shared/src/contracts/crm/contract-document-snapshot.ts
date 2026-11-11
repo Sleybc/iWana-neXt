@@ -51,6 +51,11 @@ export const ContractDocumentSnapshotSchema = z
         monthlyTotal: money,
         stratum: z.number().int().min(1).max(6).nullable(),
         serviceUsage: text(20).nullable(),
+        /**
+         * Cargo de instalación congelado en el contrato (`installation_fee`). Opcional para leer
+         * instantáneas anteriores a la fase 2; null si el contrato no lo tiene.
+         */
+        installationFee: money.nullable().optional(),
       })
       .strict(),
     installation: z

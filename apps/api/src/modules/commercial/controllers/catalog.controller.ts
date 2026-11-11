@@ -17,8 +17,9 @@ import { ApiBearerAuth, ApiExtraModels, ApiOperation, ApiResponse, ApiTags } fro
 import {
   CatalogItemType,
   CustomerSegment,
-  PlanPermanenceOfferSchema,
+  PlanPermanenceOfferUpdateSchema,
   type PlanPermanenceOffer,
+  type PlanPermanenceOfferUpdate,
 } from '@iwana/shared';
 import { AccessPermissionKey, UserRole } from '@iwana/shared';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -203,15 +204,17 @@ export class CatalogController {
     return { data };
   }
 
-  // ─── Cargo por conexión y permanencia (cierre de venta, bloque H) ────────
+  // ─── Oferta de permanencia sobre installation_fee (cierre de venta, bloque H; fase 2 D1) ─
 
   @Get(':id/permanence-offer')
   @Roles(...COMMERCIAL_CATALOG_READ_ROLES, UserRole.AUDITOR)
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_READ)
   @ApiOperation({
-    summary: 'Cargo por conexión y oferta de permanencia del plan',
+    summary: 'Oferta de permanencia del plan y su cargo de instalación vigente',
     description:
-      'PlanPermanenceOffer (@iwana/shared). Sin oferta, months y discountedOrDeferredAmount van en null. ' +
+      'PlanPermanenceOffer (@iwana/shared). installationFee es el installation_fee vigente del plan ' +
+      '(segmento RESIDENTIAL; null sin precio vigente). Sin oferta, months y ' +
+      'discountedOrDeferredAmount van en null. ' +
       'La opción sin permanencia siempre existe en el contrato.',
   })
   @ApiResponse({ status: 404, description: 'Plan no encontrado en el tenant' })
@@ -227,16 +230,21 @@ export class CatalogController {
   @Permissions(AccessPermissionKey.COMMERCIAL_CATALOG_MANAGE)
   @SkipAudit()
   @ApiOperation({
-    summary: 'Definir cargo por conexión y oferta de permanencia del plan',
+    summary: 'Definir la oferta de permanencia del plan',
     description:
-      'Cuerpo PlanPermanenceOffer: con oferta, months 1..12 y 0 < discountedOrDeferredAmount ≤ connectionFee; ' +
-      'sin oferta, ambos en null. Auditado como PlanPermanenceOffer.',
+      'Cuerpo PlanPermanenceOfferUpdate (sin cargo: el cargo es el installation_fee del historial de ' +
+      'precios). Con oferta, months 1..12 y 0 < discountedOrDeferredAmount ≤ installation_fee vigente ' +
+      'de cada segmento del plan; sin oferta, ambos en null. Auditado como PlanPermanenceOffer.',
   })
   @ApiResponse({ status: 400, description: 'VALIDATION_ERROR' })
+  @ApiResponse({
+    status: 409,
+    description: 'PERMANENCE_EXCEEDS_INSTALLATION_FEE | PLAN_INSTALLATION_FEE_REQUIRED',
+  })
   @ApiResponse({ status: 404, description: 'Plan no encontrado en el tenant' })
   async updatePermanenceOffer(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(PlanPermanenceOfferSchema)) body: PlanPermanenceOffer,
+    @Body(new ZodValidationPipe(PlanPermanenceOfferUpdateSchema)) body: PlanPermanenceOfferUpdate,
     @Request() req: { user: JwtPayload },
   ): Promise<{ data: PlanPermanenceOffer }> {
     const data = await this.planPermanenceService.updateOffer(id, body, req.user.sub);

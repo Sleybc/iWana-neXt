@@ -89,6 +89,8 @@ export function buildContractTemplateValues(
     'service.vatAmount': service.vatAmount === null ? 'No aplica' : formatMoney(service.vatAmount),
     'service.monthlyTotal': formatMoney(service.monthlyTotal),
     'service.stratum': text(service.stratum),
+    'service.installationFee':
+      service.installationFee == null ? 'No aplica' : formatMoney(service.installationFee),
     'installation.address': text(installation.address),
     'installation.city': text(installation.city),
     'installation.department': text(installation.department),

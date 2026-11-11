@@ -68,6 +68,7 @@ export const MIGRATIONS_REQUIRING_DESTRUCTIVE_FLAG: readonly string[] = [
   'ContractDocumentGenerations1860000000186',
   'ContractSignatures1880000000188',
   'ContractTemplateContentHash1900000000190',
+  'InstallationFeeUnified1910000000191',
 ];
 
 /** Migraciones cuyo down() cuenta filas incompatibles y aborta antes de alterar el schema. */

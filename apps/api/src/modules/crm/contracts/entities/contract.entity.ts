@@ -116,6 +116,23 @@ export class Contract {
   @Column({ type: 'varchar', length: 30, name: 'payment_method', nullable: true })
   paymentMethod: string | null;
 
+  /**
+   * Cargo de instalación congelado al crear el contrato (`installation_fee` vigente del plan y
+   * segmento; migración 191). Null en contratos heredados o sin precio vigente.
+   */
+  @Column({
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    name: 'installation_fee',
+    nullable: true,
+    transformer: {
+      to: (value: number | null | undefined) => (value == null ? value : value.toFixed(2)),
+      from: (value: string | null) => (value === null ? null : Number(value)),
+    },
+  })
+  installationFee: number | null;
+
   @Column({ type: 'varchar', length: 20, name: 'billing_cycle', nullable: true })
   /** @deprecated Dato libre heredado; los contratos nuevos usan billingCycleDay. */
   billingCycle: string | null;

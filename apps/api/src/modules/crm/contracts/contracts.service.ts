@@ -28,6 +28,7 @@ import {
   type ContractActivationSource,
   type ContractPlanChangeInput,
   type ContractPlanTaxSnapshot,
+  type CustomerSegment,
   type CutoffAgendaQuery,
   type CutoffAgendaResponse,
   type CutoffAgendaItem,
@@ -129,6 +130,13 @@ const AUDITABLE_CONTRACT_UPDATE_FIELDS = new Set([
   'planSnapshotJson',
 ]);
 
+const CONTRACT_PLAN_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+function round2Money(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
@@ -185,6 +193,7 @@ export class ContractsService {
           nit: true,
           nitVerificationDigit: true,
           legalRepresentativePartyId: true,
+          customerSegment: true,
         },
       );
       await this.assertSubscriberNotBlocked(
@@ -233,6 +242,11 @@ export class ContractsService {
         paymentMethod: dto.paymentMethod ?? null,
         billingCycle: dto.billingCycle ?? null,
         billingCycleDay: dto.billingCycleDay ?? null,
+        installationFee: await this.resolveInstallationFee(
+          qr.manager,
+          planId,
+          dto.customerSegment ?? subscriber.customerSegment ?? null,
+        ),
         fiscalName: dto.fiscalName ?? null,
         fiscalDocument: null,
         fiscalAddress: dto.fiscalAddress ?? null,
@@ -353,6 +367,13 @@ export class ContractsService {
 
       const alias = dto.alias?.trim() || this._buildAlias(installationCity, installationAddress);
 
+      const customerSegment =
+        dto.customerSegment ?? expediente.customerSegment ?? subscriber.customerSegment ?? null;
+      const installationFee = await this.resolveInstallationFee(
+        qr.manager,
+        planId,
+        customerSegment,
+      );
       const entity = qr.manager.create(Contract, {
         tenantId,
         quoteId: null,
@@ -366,8 +387,7 @@ export class ContractsService {
         installationDepartment: installationDepartment ?? null,
         installationPostalCode: installationPostalCode ?? null,
         installationNotes: dto.installationNotes ?? null,
-        customerSegment:
-          dto.customerSegment ?? expediente.customerSegment ?? subscriber.customerSegment ?? null,
+        customerSegment,
         serviceUsage,
         installationStratum,
         stratumEvidenceMediaId: null,
@@ -377,6 +397,7 @@ export class ContractsService {
         paymentMethod: dto.paymentMethod ?? expediente.paymentMethod ?? null,
         billingCycle: dto.billingCycle ?? expediente.billingCycle ?? null,
         billingCycleDay: dto.billingCycleDay ?? null,
+        installationFee,
         fiscalName: expediente.fiscalName ?? null,
         fiscalDocument: null,
         fiscalAddress: null,
@@ -1081,11 +1102,18 @@ export class ContractsService {
         planId: entity.planId,
         planSnapshotJson: entity.planSnapshotJson,
         vatSnapshot: entity.vatSnapshot,
+        installationFee: entity.installationFee,
       };
       const next: Contract = Object.assign(new Contract(), entity, {
         planId: command.planId,
         planSnapshotJson: { ...snapshot, snapshotAt: snapshot.snapshotAt.toISOString() },
         vatSnapshot: null,
+        // En borrador la venta aún no se instala: el cargo se congela con el plan nuevo.
+        // Activo: la instalación ya ocurrió y conserva el cargo congelado.
+        installationFee:
+          entity.status === ContractStatus.DRAFT
+            ? round2Money(snapshot.installationFee)
+            : entity.installationFee,
       });
       if (entity.status === ContractStatus.ACTIVE) {
         this._validateActivationInputs(
@@ -1111,6 +1139,7 @@ export class ContractsService {
             planId: saved.planId,
             planSnapshotJson: saved.planSnapshotJson,
             vatSnapshot: saved.vatSnapshot,
+            installationFee: saved.installationFee,
             effectiveAt: new Date().toISOString(),
           },
         },
@@ -1118,6 +1147,36 @@ export class ContractsService {
       );
       return this.projectContractForMutation(saved, qr.manager);
     });
+  }
+
+  /**
+   * `installation_fee` vigente del plan para el segmento (fase 2, D1), leído por el puerto de
+   * MOD06 dentro de la transacción. Null si el plan es un identificador heredado, no está
+   * activo o no tiene precio vigente para el segmento: el contrato se crea igual y el cobro de
+   * instalación no aplica.
+   */
+  private async resolveInstallationFee(
+    manager: EntityManager,
+    planId: string,
+    segment: CustomerSegment | null,
+  ): Promise<number | null> {
+    if (!CONTRACT_PLAN_UUID_PATTERN.test(planId)) return null;
+    const { schemaName, tenantId } = TenantContext.getOrThrow();
+    try {
+      const snapshot = await this.commercialCatalogPort.createSnapshot(
+        tenantId,
+        schemaName,
+        planId,
+        segment ?? undefined,
+        { manager },
+      );
+      return Number.isFinite(snapshot.installationFee) && snapshot.installationFee >= 0
+        ? round2Money(snapshot.installationFee)
+        : null;
+    } catch (error) {
+      if (error instanceof NotFoundException) return null;
+      throw error;
+    }
   }
 
   // ── Transiciones de estado ──────────────────────────────────────────────────

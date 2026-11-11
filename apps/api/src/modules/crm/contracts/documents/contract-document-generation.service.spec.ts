@@ -110,6 +110,7 @@ describe('ContractDocumentGenerationService', () => {
       installationCity: 'Bogotá',
       installationDepartment: 'Cundinamarca',
       vatSnapshot: { ratePercent: 19 },
+      installationFee: 130000,
     });
     contracts.assertContractNotBlocked.mockResolvedValue(undefined);
     orders.getExecutionSnapshot.mockResolvedValue({
@@ -194,6 +195,8 @@ describe('ContractDocumentGenerationService', () => {
     expect(ContractDocumentSnapshotSchema.parse(snapshot)).toBeTruthy();
     expect(snapshot.holder.documentNumber).toBe('1000000001');
     expect(snapshot.service).toMatchObject({ vatAmount: 15200, monthlyTotal: 95200, stratum: 3 });
+    // CA-6: el PDF usa el installation_fee congelado en el contrato, no el vigente del catálogo.
+    expect(snapshot.service.installationFee).toBe(130000);
     expect(snapshot.installation.address).toBe('Calle 1 # 2-3');
     expect(snapshot.equipment).toHaveLength(1);
     expect(snapshot.permanence).toBeNull();

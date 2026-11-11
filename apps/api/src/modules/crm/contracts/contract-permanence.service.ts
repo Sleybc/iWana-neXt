@@ -2,10 +2,16 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { TenantContext, runInTenantSchema } from '@iwana/db';
-import { AuditAction, type ContractPermanence, type PlanPermanenceOffer } from '@iwana/shared';
+import {
+  AuditAction,
+  type ContractPermanence,
+  type CustomerSegment,
+  type PlanPermanenceOffer,
+} from '@iwana/shared';
 import { AuditService } from '../../audit/audit.service';
 import { PlanPermanenceOfferReadPort } from '../../commercial/ports/plan-permanence-offer-read.port';
 import { ContractStatus } from '../enums/contract-status.enum';
+import { Subscriber } from '../subscribers/entities/subscriber.entity';
 import { Contract } from './entities/contract.entity';
 import { ContractPermanenceRecord } from './entities/contract-permanence.entity';
 import {
@@ -24,7 +30,10 @@ export interface ContractPermanenceView {
    * startDate y endDate van en null hasta la activación.
    */
   permanence: ContractPermanence;
-  /** Oferta actual del plan del contrato; null si el plan no está en el catálogo. */
+  /**
+   * Oferta actual del plan del contrato para su segmento; null si el plan no está en el catálogo.
+   * `installationFee` es el congelado en el contrato si lo tiene; si no, el vigente.
+   */
   planOffer: PlanPermanenceOffer | null;
 }
 
@@ -59,7 +68,9 @@ function summarize(permanence: ContractPermanence): Record<string, unknown> {
 /**
  * Permanencia mínima del contrato (cierre de venta, bloque H; CA-13).
  * - Editable solo con el contrato en DRAFT; rechazarla (accepted=false) siempre es posible.
- * - Montos y meses salen de la oferta del plan (MOD06, por puerto), nunca del cliente.
+ * - Meses y valor salen de la oferta del plan (MOD06, por puerto), nunca del cliente.
+ * - El cargo es el `installation_fee` congelado en el contrato (fase 2, D1/CA-6); en contratos
+ *   heredados sin él, el vigente del plan y segmento. El valor descontado no lo supera.
  * - Inicio = fecha de activación (`applyActivationDate`); el fin se corre con la suspensión
  *   voluntaria (`shiftForVoluntarySuspension`). Se exponen para el flujo de activación y el
  *   ciclo de vida, que las cablean en su bloque.
@@ -79,7 +90,7 @@ export class ContractPermanenceService {
       const record = await qr.manager.findOne(ContractPermanenceRecord, {
         where: { contractId, tenantId },
       });
-      const planOffer = await this.readOffer(contract.planId, qr.manager);
+      const planOffer = await this.readOffer(contract, qr.manager);
       return { permanence: toContractPermanence(record), planOffer };
     });
   }
@@ -99,12 +110,26 @@ export class ContractPermanenceService {
           message: 'La permanencia solo se edita mientras el contrato está en borrador.',
         });
       }
-      const planOffer = await this.readOffer(contract.planId, manager);
+      const planOffer = await this.readOffer(contract, manager);
       if (accepted && (!planOffer || !planOffer.offersPermanence)) {
         throw new ConflictException({
           code: 'PLAN_WITHOUT_PERMANENCE',
           message: 'El plan del contrato no ofrece permanencia.',
         });
+      }
+      if (accepted && planOffer) {
+        if (planOffer.installationFee === null) {
+          throw new ConflictException({
+            code: 'CONTRACT_INSTALLATION_FEE_REQUIRED',
+            message: 'El contrato no tiene un cargo de instalación para aplicar la permanencia.',
+          });
+        }
+        if ((planOffer.discountedOrDeferredAmount ?? 0) > planOffer.installationFee) {
+          throw new ConflictException({
+            code: 'PERMANENCE_EXCEEDS_INSTALLATION_FEE',
+            message: 'El valor descontado supera el cargo de instalación del contrato.',
+          });
+        }
       }
 
       const existing = await manager.findOne(ContractPermanenceRecord, {
@@ -116,7 +141,7 @@ export class ContractPermanenceService {
         tenantId,
         accepted,
         months: offer?.months ?? null,
-        connectionFee: offer ? offer.connectionFee.toFixed(2) : null,
+        connectionFee: offer?.installationFee != null ? offer.installationFee.toFixed(2) : null,
         discountedAmount:
           offer?.discountedOrDeferredAmount != null
             ? offer.discountedOrDeferredAmount.toFixed(2)
@@ -191,10 +216,17 @@ export class ContractPermanenceService {
     tenantId: string,
     contractId: string,
     lock: boolean,
-  ): Promise<Pick<Contract, 'id' | 'status' | 'planId'>> {
+  ): Promise<ContractForPermanence> {
     const contract = await manager.findOne(Contract, {
       where: { id: contractId, tenantId },
-      select: { id: true, status: true, planId: true },
+      select: {
+        id: true,
+        status: true,
+        planId: true,
+        subscriberId: true,
+        customerSegment: true,
+        installationFee: true,
+      },
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!contract) throw new NotFoundException(`Contrato ${contractId} no encontrado`);
@@ -202,10 +234,29 @@ export class ContractPermanenceService {
   }
 
   private async readOffer(
-    planId: string,
+    contract: ContractForPermanence,
     manager: EntityManager,
   ): Promise<PlanPermanenceOffer | null> {
-    if (!UUID_PATTERN.test(planId)) return null;
-    return this.planOfferPort.getOffer(planId, { manager });
+    if (!UUID_PATTERN.test(contract.planId)) return null;
+    const segment = contract.customerSegment ?? (await this.subscriberSegment(manager, contract));
+    const offer = await this.planOfferPort.getOffer(contract.planId, { manager, segment });
+    if (!offer || contract.installationFee === null) return offer;
+    return { ...offer, installationFee: contract.installationFee };
+  }
+
+  private async subscriberSegment(
+    manager: EntityManager,
+    contract: ContractForPermanence,
+  ): Promise<CustomerSegment | null> {
+    const subscriber = await manager.findOne(Subscriber, {
+      where: { id: contract.subscriberId },
+      select: { id: true, customerSegment: true },
+    });
+    return subscriber?.customerSegment ?? null;
   }
 }
+
+type ContractForPermanence = Pick<
+  Contract,
+  'id' | 'status' | 'planId' | 'subscriberId' | 'customerSegment' | 'installationFee'
+>;

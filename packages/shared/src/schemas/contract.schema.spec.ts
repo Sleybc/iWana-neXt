@@ -115,6 +115,7 @@ describe('C-API-3 contrato', () => {
       additionalProductIds: [],
       additionalServiceIds: [],
       paymentMethod: null,
+      installationFee: 120000,
       billingCycle: null,
       billingCycleDay: null,
       fiscalName: null,

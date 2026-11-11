@@ -427,6 +427,8 @@ export class ContractDocumentGenerationService {
         monthlyTotal: round2(monthlyPrice + (vatAmount ?? 0)),
         stratum: contract.installationStratum ?? subscriber.stratum ?? null,
         serviceUsage: contract.serviceUsage ?? null,
+        // Mismo valor que la vista previa del alta y el cobro (CA-6): el congelado en el contrato.
+        installationFee: contract.installationFee ?? null,
       },
       installation: {
         address: contract.installationAddress ?? subscriber.address ?? null,

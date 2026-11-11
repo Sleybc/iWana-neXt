@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildContractSnapshotFixture } from '../../test/fixtures/contracts/contract-snapshot.fixture';
-import { escapeHtml, fillContractTemplate, formatMoney } from './contract-template';
+import {
+  buildContractTemplateValues,
+  escapeHtml,
+  fillContractTemplate,
+  formatMoney,
+} from './contract-template';
 
 const fixtureTemplate = readFileSync(
   resolve(__dirname, '../../test/fixtures/contracts/contrato-servicio.base.html'),
@@ -72,6 +77,20 @@ describe('fillContractTemplate', () => {
     ['<!--IF:permanence-->x', /sin cerrar/u],
   ])('falla cerrado ante %s', (template, error) => {
     expect(() => fillContractTemplate(template, buildContractSnapshotFixture())).toThrow(error);
+  });
+
+  it('expone el cargo de instalación congelado; sin él o en instantáneas viejas, «No aplica»', () => {
+    const base = buildContractSnapshotFixture();
+    const frozen = { ...base, service: { ...base.service, installationFee: 150000 } };
+    expect(buildContractTemplateValues(frozen)['service.installationFee']).toBe(
+      formatMoney(150000),
+    );
+    const none = { ...base, service: { ...base.service, installationFee: null } };
+    expect(buildContractTemplateValues(none)['service.installationFee']).toBe('No aplica');
+    const { installationFee: _omitted, ...legacyService } = frozen.service;
+    expect(
+      buildContractTemplateValues({ ...base, service: legacyService })['service.installationFee'],
+    ).toBe('No aplica');
   });
 
   it('escapa los caracteres HTML peligrosos', () => {
